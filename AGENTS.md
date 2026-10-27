@@ -231,3 +231,28 @@ scripts/worktree.sh rm 7                 # compose down -v, remove the worktree 
 
 `secrets/` and `.env` are git-ignored. Passwords are mounted as Docker secret files, never
 passed as environment variables.
+
+### Security checks (CI)
+
+Each is its own job in `ci.yml` and in the `ci` gate:
+
+| Job | What it checks |
+|---|---|
+| `secrets` | gitleaks over the whole history |
+| `pip-audit` | `uv export --frozen` (production, then with dev) through `pip-audit` (pinned) |
+| `npm-audit` | `npm audit --audit-level=high` in `frontend/` |
+| `trivy-fs` | Trivy on the repository (vulnerabilities, Dockerfile/compose misconfiguration) |
+| `trivy-image` | Trivy on the image built in the job (never pushed) |
+| `compose` | `web` and `worker` run as non-root; no secret value appears in `docker inspect` |
+
+Trivy and gitleaks are checksum-verified release binaries; `pip-audit` is pinned by exact version.
+Trivy fails on HIGH and CRITICAL findings that have a fix available (`--ignore-unfixed`); unfixed
+ones can't be acted on and surface through Dependabot once a fix exists. Every GitHub Action is
+pinned by full commit SHA with the version in a trailing comment; Dependabot (`.github/dependabot.yml`,
+weekly) keeps Actions, uv, npm, Dockerfile and compose images current, with `build(deps)` and `ci(deps)`
+commit prefixes.
+
+New advisory: **upgrade first** (bump the dependency or base image, refresh the lockfile). Only if
+no fix exists or the code path is unreachable, add a dated ignore: `.trivyignore` (one ID per line,
+with a `# reason, expires YYYY-MM-DD` comment above) or `--ignore-vuln ID` for pip-audit with the
+same comment. An expired ignore is removed in the next PR that touches it. Never ignore without a reason.
