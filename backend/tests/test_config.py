@@ -140,7 +140,7 @@ def test_secrets_do_not_appear_in_repr_str_or_dumps() -> None:
 
 def test_read_secret_files_ignores_missing_files_and_directories(tmp_path: Path) -> None:
     (tmp_path / "present").write_text("  value \n", encoding="utf-8")
-    assert read_secret_files(tmp_path, ("present", "absent")) == {"present": "value"}
+    assert read_secret_files(tmp_path, ("present", "absent")) == {"present": "  value "}
     assert read_secret_files(tmp_path / "no-such-dir", ("present",)) == {}
 
 
@@ -149,3 +149,11 @@ def test_missing_secrets_dir_is_not_an_error(
 ) -> None:
     monkeypatch.setenv("CLASSBEAT_SECRETS_DIR", str(tmp_path / "missing"))
     assert Settings().database_password is None
+
+
+@pytest.mark.parametrize("ending", ["", "\n", "\r\n"])
+def test_secret_file_keeps_spaces_and_drops_only_the_trailing_newline(
+    tmp_path: Path, ending: str
+) -> None:
+    (tmp_path / "database_password").write_bytes(f"  pa ss  {ending}".encode())
+    assert read_secret_files(tmp_path, ("database_password",)) == {"database_password": "  pa ss  "}

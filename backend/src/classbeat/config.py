@@ -29,7 +29,9 @@ def read_secret_files(directory: Path, names: tuple[str, ...]) -> dict[str, str]
     for name in names:
         path = directory / name
         if path.is_file():
-            values[name] = path.read_text(encoding="utf-8").strip()
+            text = path.read_bytes().decode("utf-8")
+            # Only the trailing newline an editor or `echo` adds; spaces may be part of a secret.
+            values[name] = text.removesuffix("\n").removesuffix("\r")
     return values
 
 
