@@ -245,14 +245,24 @@ Each is its own job in `ci.yml` and in the `ci` gate:
 | `trivy-image` | Trivy on the image built in the job (never pushed) |
 | `compose` | `web` and `worker` run as non-root; no secret value appears in `docker inspect` |
 
-Trivy and gitleaks are checksum-verified release binaries; `pip-audit` is pinned by exact version.
-Trivy fails on HIGH and CRITICAL findings that have a fix available (`--ignore-unfixed`); unfixed
-ones can't be acted on and surface through Dependabot once a fix exists. Every GitHub Action is
-pinned by full commit SHA with the version in a trailing comment; Dependabot (`.github/dependabot.yml`,
-weekly) keeps Actions, uv, npm, Dockerfile and compose images current, with `build(deps)` and `ci(deps)`
-commit prefixes.
+Trivy and gitleaks are checksum-verified release binaries. `pip-audit` (exact version) lives in
+the `audit` dependency group of `backend/pyproject.toml`, so its own dependencies are hash-locked in
+`uv.lock` and CI installs it with `uv sync --frozen --only-group audit`; the runtime image
+(`uv sync --locked --no-dev`) never contains it. The audited requirements are exported with hashes
+and checked with `--require-hashes`. `setup-uv` is pinned to the same uv version as the Dockerfile.
+
+Trivy fails on HIGH and CRITICAL findings that have a fix available (`--ignore-unfixed`).
+**Accepted risk:** unfixed HIGH/CRITICAL findings are not gated. They are revisited at the M6
+security review, and once a fix appears Trivy starts failing on them. `trivy-fs` scans lockfiles and
+the Dockerfile (misconfiguration); it does not cover `compose.yaml`.
+
+Every GitHub Action is pinned by full commit SHA with the version in a trailing comment.
+Dependabot (`.github/dependabot.yml`, weekly) keeps Actions, uv, npm and the Dockerfile and compose
+images current, with `build(deps)` and `ci(deps)` commit prefixes. It does not track Debian packages
+inside the base image: when Trivy fails on one, bump the base image tag in the Dockerfile.
 
 New advisory: **upgrade first** (bump the dependency or base image, refresh the lockfile). Only if
 no fix exists or the code path is unreachable, add a dated ignore: `.trivyignore` (one ID per line,
-with a `# reason, expires YYYY-MM-DD` comment above) or `--ignore-vuln ID` for pip-audit with the
-same comment. An expired ignore is removed in the next PR that touches it. Never ignore without a reason.
+with a `# reason` comment above and Trivy's `exp:YYYY-MM-DD` expiry, e.g. `CVE-2025-0001 exp:2026-12-31`)
+or `--ignore-vuln ID` for pip-audit with the same comment. An expired ignore is removed in the next
+PR that touches it. Never ignore without a reason.

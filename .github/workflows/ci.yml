@@ -87,6 +87,8 @@ jobs:
           persist-credentials: false
 
       - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+        with:
+          version: 0.13.6
 
       - name: Install dependencies
         run: uv sync --locked
@@ -138,13 +140,16 @@ jobs:
         run: |
           set -euo pipefail
           docker inspect $(docker compose ps -aq) > "$RUNNER_TEMP/inspect.json"
+          checked=0
           for f in secrets/*; do
             [ -s "$f" ] || continue
+            checked=$((checked + 1))
             if grep -qF -- "$(cat "$f")" "$RUNNER_TEMP/inspect.json"; then
               echo "::error::a value from $f appears in docker inspect"
               exit 1
             fi
           done
+          [ "$checked" -gt 0 ] || { echo "::error::no secret files were checked"; exit 1; }
           rm -f "$RUNNER_TEMP/inspect.json"
 
       - name: Logs on failure
@@ -164,18 +169,22 @@ jobs:
           persist-credentials: false
 
       - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+        with:
+          version: 0.13.6
 
-      # Audits exactly what uv.lock pins: production dependencies, then the dev group too.
+      # pip-audit itself comes from the hash-locked `audit` group of backend/uv.lock.
+      # It audits exactly what uv.lock pins: production dependencies, then the dev group too.
       - name: Audit locked dependencies
         working-directory: backend
-        env:
-          PIP_AUDIT_VERSION: 2.10.1
         run: |
           set -euo pipefail
+          uv sync --frozen --only-group audit
           uv export --frozen --no-dev --no-emit-project -o "$RUNNER_TEMP/requirements-prod.txt"
           uv export --frozen --no-emit-project -o "$RUNNER_TEMP/requirements-all.txt"
           for f in requirements-prod requirements-all; do
-            uvx "pip-audit==${PIP_AUDIT_VERSION}" --no-deps --disable-pip --strict               -r "$RUNNER_TEMP/$f.txt"
+            uv run --frozen --only-group audit pip-audit \
+              --require-hashes --disable-pip --strict \
+              -r "$RUNNER_TEMP/$f.txt"
           done
 
   npm-audit:
@@ -196,9 +205,8 @@ jobs:
         run: npm audit --audit-level=high
 
   # Trivy runs from a checksum-verified release binary. Scans fail on HIGH and CRITICAL
-  # findings that have a fix available (--ignore-unfixed); unfixed ones are not actionable
-  # and are reviewed through Dependabot and AGENTS.md. Exceptions go in .trivyignore with
-  # a reason and an expiry date.
+  # findings that have a fix available (--ignore-unfixed): an accepted risk, see AGENTS.md.
+  # Exceptions go in .trivyignore with a reason and an exp:YYYY-MM-DD expiry.
   trivy-fs:
     name: Trivy repository scan
     runs-on: ubuntu-24.04
@@ -214,17 +222,18 @@ jobs:
         run: |
           set -euo pipefail
           cd "$RUNNER_TEMP"
-          curl -fsSL -o trivy.tgz             "https://github.com/aquasecurity/trivy/releases/download/v${VERSION}/trivy_${VERSION}_Linux-64bit.tar.gz"
+          curl -fsSL -o trivy.tgz \
+            "https://github.com/aquasecurity/trivy/releases/download/v${VERSION}/trivy_${VERSION}_Linux-64bit.tar.gz"
           echo "${SHA256}  trivy.tgz" | sha256sum --check
           tar -xzf trivy.tgz trivy
 
       - name: Scan the repository
-        run: >-
-          "$RUNNER_TEMP/trivy" fs
-          --scanners vuln,misconfig
-          --severity HIGH,CRITICAL --ignore-unfixed --exit-code 1
-          --skip-dirs node_modules --skip-dirs .venv
-          .
+        run: |
+          "$RUNNER_TEMP/trivy" fs \
+            --scanners vuln,misconfig \
+            --severity HIGH,CRITICAL --ignore-unfixed --exit-code 1 \
+            --skip-dirs node_modules --skip-dirs .venv \
+            .
 
   trivy-image:
     name: Trivy image scan
@@ -241,7 +250,8 @@ jobs:
         run: |
           set -euo pipefail
           cd "$RUNNER_TEMP"
-          curl -fsSL -o trivy.tgz             "https://github.com/aquasecurity/trivy/releases/download/v${VERSION}/trivy_${VERSION}_Linux-64bit.tar.gz"
+          curl -fsSL -o trivy.tgz \
+            "https://github.com/aquasecurity/trivy/releases/download/v${VERSION}/trivy_${VERSION}_Linux-64bit.tar.gz"
           echo "${SHA256}  trivy.tgz" | sha256sum --check
           tar -xzf trivy.tgz trivy
 
@@ -250,10 +260,10 @@ jobs:
         run: docker build -t classbeat:ci .
 
       - name: Scan the image
-        run: >-
-          "$RUNNER_TEMP/trivy" image
-          --severity HIGH,CRITICAL --ignore-unfixed --exit-code 1
-          classbeat:ci
+        run: |
+          "$RUNNER_TEMP/trivy" image \
+            --severity HIGH,CRITICAL --ignore-unfixed --exit-code 1 \
+            classbeat:ci
 
   # The one required check. Every job above is listed in `needs`; a skipped job passes,
   # anything else fails the gate.
