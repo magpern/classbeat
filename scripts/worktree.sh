@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Per-worktree dev stacks for classbeat.
 #   worktree.sh init [issue]        .env and secrets/ for the current checkout (if missing)
-#   worktree.sh new <issue> <slug>  worktree (from origin/main, or $WORKTREE_BASE_REF) ../classbeat-wt/<issue>-<slug>, then init there
+#   worktree.sh new <issue> <slug>  worktree ../classbeat-wt/<issue>-<slug> from origin/main (or $WORKTREE_BASE_REF), then init
 #   worktree.sh rm <issue>          stop the stack (volumes too), remove the worktree and its branch
 #   worktree.sh ls                  worktrees with project name and ports
 set -euo pipefail
