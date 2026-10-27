@@ -152,7 +152,37 @@ To resume after a context reset:
 
 ## Developer commands
 
-Filled in as the skeleton lands (M0).
+### Backend
+
+Run from `backend/`. uv installs Python 3.12 by itself.
+
+```bash
+cd backend
+uv sync                        # install from uv.lock (CI uses `uv sync --locked`)
+uv run ruff check              # lint
+uv run ruff format --check     # formatting (`uv run ruff format` fixes it)
+uv run pyright                 # types
+uv run pytest                  # tests; the database tests skip unless the Postgres below is up
+uv run python -m classbeat     # the API on http://127.0.0.1:8000 (--host, --port); try /api/health
+uv run python -m classbeat.worker   # the worker; stops on Ctrl+C or SIGTERM
+uv run alembic upgrade head    # migrations, against the database in CLASSBEAT_DATABASE_URL
+```
+
+Database tests need a throwaway Postgres. Give it a name and port of its own (one per
+worktree), point `CLASSBEAT_TEST_DATABASE_URL` at it and stop it when done:
+
+```bash
+docker run -d --rm --name classbeat-2-pg -e POSTGRES_PASSWORD=test -p 127.0.0.1:55402:5432 postgres:17
+export CLASSBEAT_TEST_DATABASE_URL=postgresql+psycopg://postgres:test@127.0.0.1:55402/postgres
+uv run pytest
+docker stop classbeat-2-pg
+```
+
+Settings come from `CLASSBEAT_*` environment variables. Secrets come only from files named
+after the field, without the prefix, in `CLASSBEAT_SECRETS_DIR` (default `/run/secrets`):
+`database_password` replaces the password in `CLASSBEAT_DATABASE_URL`
+(`postgresql+psycopg://...`); `CLASSBEAT_DATABASE_PASSWORD` is ignored. In CI (`CI=true`) a
+missing `CLASSBEAT_TEST_DATABASE_URL` fails the database tests instead of skipping them.
 
 ### Frontend
 

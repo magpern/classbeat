@@ -60,12 +60,55 @@ jobs:
       - run: npm test
       - run: npm run build
 
+  backend:
+    name: Backend
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: backend
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          # Throwaway database of this job only; not a secret.
+          POSTGRES_PASSWORD: test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      CLASSBEAT_TEST_DATABASE_URL: postgresql+psycopg://postgres:test@127.0.0.1:5432/postgres
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+
+      - name: Install dependencies
+        run: uv sync --locked
+
+      - name: Lint
+        run: uv run ruff check
+
+      - name: Format check
+        run: uv run ruff format --check
+
+      - name: Type check
+        run: uv run pyright
+
+      - name: Tests
+        run: uv run pytest
+
   # The one required check. Every job above is listed in `needs`; a skipped job passes,
   # anything else fails the gate.
   ci:
     name: ci
     if: always()
-    needs: [secrets, frontend]
+    needs: [secrets, frontend, backend]
     runs-on: ubuntu-24.04
     steps:
       - name: All jobs passed
