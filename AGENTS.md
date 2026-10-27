@@ -204,3 +204,29 @@ npm run build        # typecheck, then Vite writes frontend/dist
 - System fonts and local assets only; nothing is requested from a third-party host at runtime
   (`src/no-third-party-hosts.test.ts` guards the sources).
 - CI runs the same five commands in the `frontend` job.
+
+### Stack and worktrees
+
+Docker Desktop (or Docker Engine with Compose v2) runs the whole stack: `db` (Postgres 17),
+`migrate` (one-shot `alembic upgrade head`), `web`, `worker` and `mailpit`, all from one image
+(`Dockerfile`, `compose.yaml`). Ports bind `127.0.0.1` and come from `.env`.
+
+```bash
+scripts/worktree.sh init                 # .env and secrets/ (random passwords) if missing
+docker compose up -d --build --wait      # web on http://127.0.0.1:$WEB_PORT (default 8000)
+curl -i http://127.0.0.1:8000/api/ready  # 200 when the database answers; / serves the SPA
+docker compose logs -f web worker
+docker compose down -v                   # stop and delete the volume
+```
+
+Every worktree gets its own project name, volume and ports (web `8000+<issue>`, Postgres
+`55400+<issue>`, Mailpit UI `18000+<issue>`), so stacks never collide:
+
+```bash
+scripts/worktree.sh new 7 some-slug      # ../classbeat-wt/7-some-slug on branch 7-some-slug, then init
+scripts/worktree.sh ls                   # worktrees with project name and ports
+scripts/worktree.sh rm 7                 # compose down -v, remove the worktree, delete the branch if merged
+```
+
+`secrets/` and `.env` are git-ignored. Passwords are mounted as Docker secret files, never
+passed as environment variables.
