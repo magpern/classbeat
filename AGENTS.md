@@ -180,7 +180,8 @@ uv run pytest
 docker stop classbeat-2-pg
 ```
 
-Settings come from `CLASSBEAT_*` environment variables. The database password can instead be
-the file `/run/secrets/database_password` (or `CLASSBEAT_DATABASE_PASSWORD`); it replaces the
-password in `CLASSBEAT_DATABASE_URL` (`postgresql+psycopg://...`). In CI, a missing
-`CLASSBEAT_TEST_DATABASE_URL` fails the run instead of skipping the database tests.
+Settings come from `CLASSBEAT_*` environment variables. Secrets come only from files named
+after the field, without the prefix, in `CLASSBEAT_SECRETS_DIR` (default `/run/secrets`):
+`database_password` replaces the password in `CLASSBEAT_DATABASE_URL`
+(`postgresql+psycopg://...`); `CLASSBEAT_DATABASE_PASSWORD` is ignored. In CI (`CI=true`) a
+missing `CLASSBEAT_TEST_DATABASE_URL` fails the database tests instead of skipping them.

@@ -73,7 +73,7 @@ def test_password_from_secret_file_replaces_the_one_in_the_url(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     (tmp_path / "database_password").write_text("from-the-file\n", encoding="utf-8")
-    monkeypatch.setitem(Settings.model_config, "secrets_dir", str(tmp_path))
+    monkeypatch.setenv("CLASSBEAT_SECRETS_DIR", str(tmp_path))
     url = Settings(database_url=URL).sqlalchemy_url()  # pyright: ignore[reportArgumentType]
     assert url.password == "from-the-file"
     assert (url.username, url.host, url.port, url.database) == (
@@ -85,19 +85,23 @@ def test_password_from_secret_file_replaces_the_one_in_the_url(
     assert url.drivername == "postgresql+psycopg"
 
 
-def test_password_from_environment_replaces_the_one_in_the_url(
-    monkeypatch: pytest.MonkeyPatch,
+def test_database_password_is_not_read_from_the_environment(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
+    monkeypatch.setenv("CLASSBEAT_SECRETS_DIR", str(tmp_path))  # empty: no secret files
     monkeypatch.setenv("CLASSBEAT_DATABASE_URL", URL)
     monkeypatch.setenv("CLASSBEAT_DATABASE_PASSWORD", "from-the-env")
-    assert Settings().sqlalchemy_url().password == "from-the-env"
+    settings = Settings()
+    assert settings.database_password is None
+    assert settings.sqlalchemy_url().password == "url-password"
 
 
-def test_environment_wins_over_secret_file(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    (tmp_path / "database_password").write_text("from-the-file", encoding="utf-8")
-    monkeypatch.setitem(Settings.model_config, "secrets_dir", str(tmp_path))
-    monkeypatch.setenv("CLASSBEAT_DATABASE_PASSWORD", "from-the-env")
-    assert Settings().sqlalchemy_url().password == "from-the-env"
+def test_the_secret_file_name_has_no_prefix(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    (tmp_path / "classbeat_database_password").write_text("prefixed", encoding="utf-8")
+    monkeypatch.setenv("CLASSBEAT_SECRETS_DIR", str(tmp_path))
+    assert Settings().database_password is None
 
 
 def test_url_password_is_kept_without_database_password() -> None:
@@ -136,13 +140,12 @@ def test_secrets_do_not_appear_in_repr_str_or_dumps() -> None:
 
 def test_read_secret_files_ignores_missing_files_and_directories(tmp_path: Path) -> None:
     (tmp_path / "present").write_text("  value \n", encoding="utf-8")
-    assert read_secret_files(tmp_path, ["present", "absent"]) == {"present": "value"}
-    assert read_secret_files(tmp_path / "no-such-dir", ["present"]) == {}
-    assert read_secret_files(None, ["present"]) == {}
+    assert read_secret_files(tmp_path, ("present", "absent")) == {"present": "value"}
+    assert read_secret_files(tmp_path / "no-such-dir", ("present",)) == {}
 
 
 def test_missing_secrets_dir_is_not_an_error(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    monkeypatch.setitem(Settings.model_config, "secrets_dir", str(tmp_path / "missing"))
+    monkeypatch.setenv("CLASSBEAT_SECRETS_DIR", str(tmp_path / "missing"))
     assert Settings().database_password is None

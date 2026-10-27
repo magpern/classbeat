@@ -11,28 +11,30 @@ from sqlalchemy.engine import URL, make_url
 from sqlalchemy.exc import ArgumentError
 
 DATABASE_DRIVER = "postgresql+psycopg"
-SECRETS_DIR = "/run/secrets"
+DEFAULT_SECRETS_DIR = "/run/secrets"
+# Fields read from secret files, and never from the environment.
+SECRET_FILE_FIELDS = ("database_password",)
 
 
-def read_secret_files(
-    secrets_dir: str | os.PathLike[str] | None, names: list[str]
-) -> dict[str, str]:
-    """Read ``<secrets_dir>/<name>`` for each name; missing files and directories are skipped."""
-    if secrets_dir is None:
-        return {}
-    base = Path(secrets_dir)
-    if not base.is_dir():
+def secrets_dir() -> Path:
+    """Where secret files live: ``CLASSBEAT_SECRETS_DIR``, default ``/run/secrets``."""
+    return Path(os.environ.get("CLASSBEAT_SECRETS_DIR") or DEFAULT_SECRETS_DIR)
+
+
+def read_secret_files(directory: Path, names: tuple[str, ...]) -> dict[str, str]:
+    """Read ``<directory>/<name>`` for each name; missing files and directories are skipped."""
+    if not directory.is_dir():
         return {}
     values: dict[str, str] = {}
     for name in names:
-        path = base / name
+        path = directory / name
         if path.is_file():
             values[name] = path.read_text(encoding="utf-8").strip()
     return values
 
 
 class SecretFilesSettingsSource(PydanticBaseSettingsSource):
-    """Docker/Compose secrets: one file per field, named after the field without the prefix.
+    """Secrets come only from files, named after the field without the env prefix.
 
     ``/run/secrets/database_password`` sets ``database_password``. pydantic-settings' own
     secrets source would look for ``classbeat_database_password`` because of ``env_prefix``.
@@ -42,10 +44,21 @@ class SecretFilesSettingsSource(PydanticBaseSettingsSource):
         return None, field_name, False  # unused: __call__ reads the files directly
 
     def __call__(self) -> dict[str, Any]:
-        secrets_dir = self.settings_cls.model_config.get("secrets_dir")
-        if not isinstance(secrets_dir, str | os.PathLike):
-            return {}
-        return read_secret_files(secrets_dir, list(self.settings_cls.model_fields))
+        return dict(read_secret_files(secrets_dir(), SECRET_FILE_FIELDS))
+
+
+class WithoutSecretsSource(PydanticBaseSettingsSource):
+    """Wraps the environment source and drops the secret fields: env vars never set secrets."""
+
+    def __init__(self, inner: PydanticBaseSettingsSource) -> None:
+        super().__init__(inner.settings_cls)
+        self._inner = inner
+
+    def get_field_value(self, field: FieldInfo, field_name: str) -> tuple[Any, str, bool]:
+        return self._inner.get_field_value(field, field_name)
+
+    def __call__(self) -> dict[str, Any]:
+        return {k: v for k, v in self._inner().items() if k not in SECRET_FILE_FIELDS}
 
 
 class Settings(BaseSettings):
@@ -58,7 +71,6 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_prefix="CLASSBEAT_",
         env_ignore_empty=True,
-        secrets_dir=SECRETS_DIR,
         hide_input_in_errors=True,
         extra="ignore",
     )
@@ -67,6 +79,7 @@ class Settings(BaseSettings):
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = "INFO"
     # May embed a password, so it is a secret too.
     database_url: SecretStr = SecretStr(f"{DATABASE_DRIVER}://classbeat@127.0.0.1:5432/classbeat")
+    # From the file ``database_password`` in the secrets dir (never the environment).
     # When set, replaces the password in ``database_url``.
     database_password: SecretStr | None = None
     static_dir: Path | None = None
@@ -81,7 +94,11 @@ class Settings(BaseSettings):
         dotenv_settings: PydanticBaseSettingsSource,
         file_secret_settings: PydanticBaseSettingsSource,
     ) -> tuple[PydanticBaseSettingsSource, ...]:
-        return (init_settings, env_settings, SecretFilesSettingsSource(settings_cls))
+        return (
+            init_settings,
+            WithoutSecretsSource(env_settings),
+            SecretFilesSettingsSource(settings_cls),
+        )
 
     @field_validator("log_level", mode="before")
     @classmethod
