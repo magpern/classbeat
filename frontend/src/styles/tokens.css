@@ -1,0 +1,73 @@
+/*
+ * Design tokens: the one place for colour, spacing and type.
+ * Light is the default; dark follows prefers-color-scheme.
+ * classbeat has its own look (lagoon teal, warm paper, amber): no colours or marks from
+ * MOWL / Intelligent Cycling or any other product.
+ */
+
+:root {
+  color-scheme: light dark;
+
+  /* Colour: light */
+  --cb-color-bg: #f6f4ef;
+  --cb-color-surface: #ffffff;
+  --cb-color-surface-sunken: #ebe8e0;
+  --cb-color-border: #d3cfc2;
+  --cb-color-text: #1d2a2e;
+  --cb-color-text-muted: #51636a;
+  --cb-color-primary: #1f6f78;
+  --cb-color-on-primary: #ffffff;
+  --cb-color-accent: #8f4a08;
+  --cb-color-accent-soft: #f6e6d2;
+  --cb-color-success: #2b7a4b;
+  --cb-color-danger: #b23b30;
+  --cb-color-focus: #1f6f78;
+
+  /* Spacing */
+  --cb-space-1: 0.25rem;
+  --cb-space-2: 0.5rem;
+  --cb-space-3: 0.75rem;
+  --cb-space-4: 1rem;
+  --cb-space-5: 1.5rem;
+  --cb-space-6: 2rem;
+  --cb-space-7: 3rem;
+  --cb-space-8: 4.5rem;
+
+  /* Type: system fonts only, nothing is downloaded */
+  --cb-font-sans: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --cb-font-mono: ui-monospace, 'Cascadia Code', 'SF Mono', Menlo, Consolas, monospace;
+  --cb-text-sm: 0.875rem;
+  --cb-text-base: 1rem;
+  --cb-text-lg: 1.25rem;
+  --cb-text-xl: 1.75rem;
+  --cb-text-2xl: clamp(1.75rem, 1.1rem + 2.8vw, 2.75rem);
+  --cb-weight-regular: 400;
+  --cb-weight-medium: 500;
+  --cb-weight-bold: 700;
+  --cb-leading-tight: 1.2;
+  --cb-leading-base: 1.55;
+
+  /* Shape */
+  --cb-radius-sm: 0.375rem;
+  --cb-radius-md: 0.75rem;
+  --cb-radius-full: 999px;
+  --cb-content-width: 64rem;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --cb-color-bg: #11191c;
+    --cb-color-surface: #182226;
+    --cb-color-surface-sunken: #0d1416;
+    --cb-color-border: #2c3b40;
+    --cb-color-text: #e7edef;
+    --cb-color-text-muted: #9fb1b7;
+    --cb-color-primary: #5cc1ca;
+    --cb-color-on-primary: #08262a;
+    --cb-color-accent: #e8a45e;
+    --cb-color-accent-soft: #3a2a18;
+    --cb-color-success: #6fcb97;
+    --cb-color-danger: #f08c82;
+    --cb-color-focus: #5cc1ca;
+  }
+}
