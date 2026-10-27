@@ -124,12 +124,40 @@ jobs:
       - name: Tests
         run: uv run pytest
 
+  compose:
+    name: Compose stack
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Create .env and secrets
+        run: scripts/worktree.sh init
+
+      - name: Start the stack
+        run: docker compose up -d --build --wait
+
+      - name: Check /api/ready and /
+        run: |
+          set -euo pipefail
+          curl -fsS --retry 5 --retry-delay 2 http://127.0.0.1:8000/api/ready
+          curl -fsS http://127.0.0.1:8000/ | grep -qi '<!doctype html>'
+
+      - name: Logs on failure
+        if: failure()
+        run: docker compose ps -a && docker compose logs --no-color --tail 100
+
+      - name: Stop the stack
+        if: always()
+        run: docker compose down -v
+
   # The one required check. Every job above is listed in `needs`; a skipped job passes,
   # anything else fails the gate.
   ci:
     name: ci
     if: always()
-    needs: [secrets, frontend, backend]
+    needs: [secrets, frontend, backend, compose]
     runs-on: ubuntu-24.04
     steps:
       - name: All jobs passed
