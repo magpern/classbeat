@@ -8,6 +8,8 @@ a privilege of a kind nobody thought of still fails.
 from sqlalchemy import text
 from sqlalchemy.engine import Connection
 
+from classbeat.db.tables import NO_APP_ACCESS
+
 APP, OWNER = "classbeat_app", "classbeat_owner"
 TABLE_PRIVILEGES = {"SELECT", "INSERT", "UPDATE", "DELETE"}
 SEQUENCE_PRIVILEGES = {"USAGE", "SELECT"}
@@ -151,6 +153,8 @@ def check_roles(conn: Connection) -> list[str]:
     )
     for obj in sorted({o for o, *_ in relations}):
         expected = SEQUENCE_PRIVILEGES if obj.endswith(":S") else TABLE_PRIVILEGES
+        if obj.split(":")[0] in NO_APP_ACCESS:
+            expected = set()
         need(
             _privileges(relations, APP, obj) == expected,
             f"{obj}: classbeat_app privileges must be exactly {sorted(expected)}",

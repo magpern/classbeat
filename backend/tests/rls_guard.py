@@ -15,8 +15,6 @@ from sqlalchemy.engine import Connection
 EXPECTED_EXPRESSION = (
     "(owner_id = (NULLIF(current_setting('app.user_id'::text, true), ''::text))::uuid)"
 )
-# Alembic's own bookkeeping table: not per-user, written by migrate only.
-INFRASTRUCTURE_TABLES = frozenset({"alembic_version"})
 SAFE_DELETE_ACTIONS = {"a": "NO ACTION", "r": "RESTRICT", "c": "CASCADE"}
 SET_ACTIONS = {"n": "SET NULL", "d": "SET DEFAULT"}
 
@@ -67,16 +65,12 @@ def check_tables(conn: Connection, system_tables: Mapping[str, str]) -> list[str
     unlisted = {n for n in system_tables if not system_tables[n].strip()}
     problems += [f"{n}: SYSTEM_TABLES needs a reason" for n in sorted(unlisted)]
     is_owned = {
-        oid: r["relkind"] in ("r", "p")
-        and r["relname"] not in system_tables
-        and r["relname"] not in INFRASTRUCTURE_TABLES
+        oid: r["relkind"] in ("r", "p") and r["relname"] not in system_tables
         for oid, r in by_oid.items()
     }
 
     for oid, rel in by_oid.items():
         name = rel["relname"]
-        if name in INFRASTRUCTURE_TABLES:
-            continue
         names = {c["attname"]: c for c in columns[oid].values()}
         if rel["relkind"] not in ("r", "p"):
             problems.append(f"{name}: relation kind {rel['relkind']!r} is not allowed in public")

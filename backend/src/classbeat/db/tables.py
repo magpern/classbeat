@@ -6,4 +6,8 @@ from types import MappingProxyType
 # Every other table in ``public`` is owned; the guard test in ``tests/test_rls_guard.py``
 # holds both sides to the contract. The first entries arrive with M1 (users, identities,
 # sessions) and M2 (shared music analysis).
-SYSTEM_TABLES: MappingProxyType[str, str] = MappingProxyType({})
+SYSTEM_TABLES: MappingProxyType[str, str] = MappingProxyType(
+    {"alembic_version": "Alembic migration bookkeeping; no app access"}
+)
+# System tables the app role must have no privilege on at all (the rest get DML).
+NO_APP_ACCESS = frozenset({"alembic_version"})

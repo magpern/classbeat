@@ -81,6 +81,9 @@ ALTER DEFAULT PRIVILEGES FOR ROLE classbeat_owner REVOKE EXECUTE ON FUNCTIONS FR
 -- The same for objects that already exist (this script may run again later).
 REVOKE ALL ON ALL TABLES IN SCHEMA public FROM PUBLIC, classbeat_app;
 GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO classbeat_app;
+-- Migration bookkeeping stays closed to the app (the baseline migration revokes it too).
+SELECT 'REVOKE ALL ON TABLE public.alembic_version FROM classbeat_app, PUBLIC'
+ WHERE to_regclass('public.alembic_version') IS NOT NULL \gexec
 REVOKE ALL ON ALL SEQUENCES IN SCHEMA public FROM PUBLIC, classbeat_app;
 GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO classbeat_app;
 REVOKE ALL ON ALL FUNCTIONS IN SCHEMA public FROM PUBLIC;

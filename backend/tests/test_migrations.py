@@ -5,6 +5,11 @@ from alembic import command
 from alembic.config import Config
 from alembic.script import ScriptDirectory
 from sqlalchemy import create_engine, text
+from sqlalchemy.exc import ProgrammingError
+
+from classbeat.db import SYSTEM_TABLES
+from rls_guard import check_tables
+from role_guard import check_roles
 
 BACKEND_DIR = Path(__file__).resolve().parent.parent
 
@@ -48,5 +53,37 @@ def test_upgrade_head_then_downgrade_base(
         assert applied_revisions(database_url) == ["0001_baseline"]
         command.downgrade(config, "base")
         assert applied_revisions(database_url) == []
+    finally:
+        command.downgrade(config, "base")
+
+
+def test_the_app_role_has_no_access_to_the_migration_table(
+    owner_database_url: str,
+    app_database_url: str,
+    database_url: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("CLASSBEAT_MIGRATIONS_DATABASE_URL", owner_database_url)
+    config = alembic_config()
+    try:
+        command.upgrade(config, "head")
+        app = create_engine(app_database_url)
+        admin = create_engine(database_url)
+        try:
+            with app.connect() as connection:
+                for statement in (
+                    "SELECT * FROM alembic_version",
+                    "UPDATE alembic_version SET version_num = 'x'",
+                    "DELETE FROM alembic_version",
+                ):
+                    with pytest.raises(ProgrammingError, match="permission denied"):
+                        connection.execute(text(statement))
+                    connection.rollback()
+            with admin.connect() as connection:
+                assert check_roles(connection) == []
+                assert check_tables(connection, SYSTEM_TABLES) == []
+        finally:
+            app.dispose()
+            admin.dispose()
     finally:
         command.downgrade(config, "base")
