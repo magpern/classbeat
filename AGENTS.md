@@ -152,8 +152,6 @@ To resume after a context reset:
 
 ## Developer commands
 
-Filled in as the skeleton lands (M0).
-
 ### Backend
 
 Run from `backend/`. uv installs Python 3.12 by itself.
@@ -185,3 +183,24 @@ after the field, without the prefix, in `CLASSBEAT_SECRETS_DIR` (default `/run/s
 `database_password` replaces the password in `CLASSBEAT_DATABASE_URL`
 (`postgresql+psycopg://...`); `CLASSBEAT_DATABASE_PASSWORD` is ignored. In CI (`CI=true`) a
 missing `CLASSBEAT_TEST_DATABASE_URL` fails the database tests instead of skipping them.
+
+### Frontend
+
+React 19, TypeScript and Vite in `frontend/` (Node 24, npm; `package-lock.json` is committed).
+Run these from `frontend/`:
+
+```bash
+npm ci               # install exactly what the lockfile says
+npm run dev          # dev server on :5173; proxies /api to http://localhost:8000
+npm run lint         # ESLint (typescript-eslint, react-hooks)
+npm run typecheck    # tsc -b, strict
+npm test             # Vitest + Testing Library (jsdom), no network
+npm run build        # typecheck, then Vite writes frontend/dist
+```
+
+- Proxy target: set `API_PROXY_TARGET` (shell or `frontend/.env`, git-ignored) to point the dev
+  server at another backend, for example `API_PROXY_TARGET=http://localhost:8001 npm run dev`.
+- Colours, spacing and type live only in `frontend/src/styles/tokens.css` (light and dark).
+- System fonts and local assets only; nothing is requested from a third-party host at runtime
+  (`src/no-third-party-hosts.test.ts` guards the sources).
+- CI runs the same five commands in the `frontend` job.
