@@ -101,8 +101,10 @@ cmd_rm() {
   check_issue "$issue"
   dir="$(find_worktree "$issue")" || die "no worktree for issue $issue under $(wt_base)"
   branch="$(git -C "$dir" rev-parse --abbrev-ref HEAD)"
+  [ -z "$(git -C "$dir" status --porcelain)" ] \
+    || die "$dir has uncommitted or untracked work; commit or discard it first (nothing was changed)"
   if [ -f "$dir/compose.yaml" ] && [ -f "$dir/.env" ]; then
-    (cd "$dir" && docker compose down -v --remove-orphans) \
+    (cd "$dir" && docker compose down -v --remove-orphans --rmi local) \
       || die "docker compose down failed in $dir; fix that first (nothing was removed)"
   fi
   # No --force: git refuses a worktree with uncommitted or untracked work (ignored .env and
