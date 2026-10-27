@@ -38,7 +38,8 @@ versions, how settings and secrets are read, and how the pieces are packaged.
 - Logging: stdlib `logging`, one JSON object per line on stdout.
 - Quality: **ruff** (lint and format), **pyright** (standard mode), **pytest** with
   pytest-asyncio (`asyncio_mode = "auto"`). Database tests run against a real Postgres
-  (`CLASSBEAT_TEST_DATABASE_URL`); they skip locally when it's unset and always run in CI.
+  (`CLASSBEAT_TEST_DATABASE_URL`); they skip locally when it's unset, and fail in CI
+  (`CI=true`) when it's missing, so a lost setting can't turn the RLS guards green.
 - From M2 the domain library `mowl` comes from a pinned `mowl-workouts` release wheel.
 
 ### Frontend
@@ -74,8 +75,13 @@ versions, how settings and secrets are read, and how the pieces are packaged.
   non-secret local values (ports, compose project name) and is gitignored; `.env.example` is
   committed with placeholders.
 - **Secrets are files**, never environment variables: Docker secrets mounted at
-  `/run/secrets/<name>`, read by pydantic-settings (`secrets_dir`). Locally they live in
-  `secrets/` (gitignored). In code they are `SecretStr` and never logged or shown in a repr.
+  `/run/secrets/<name>` (directory overridable with `CLASSBEAT_SECRETS_DIR` for tests), named
+  without a prefix (`database_password`, `database_owner_password`, …). They are read by a
+  small custom settings source, not pydantic-settings' `secrets_dir`, which would prefix the
+  file names with `env_prefix`. An environment variable never supplies a secret. Locally the
+  files live in `secrets/` (gitignored). In code they are `SecretStr` and never logged or
+  shown in a repr.
+- `classbeat.db` is a package (engine and sessionmaker, `session`, `rls` modules).
 - A database password is a separate secret that replaces the password part of the database
   URL, so URLs in settings carry no secret.
 

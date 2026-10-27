@@ -33,10 +33,14 @@ to [the roadmap](../roadmap.md); §7 there lists the security work per milestone
 ```
 browser ──TLS── caddy ── web ──────────── Postgres
                           │ (app role, RLS)  │
+                          ├── sign-in providers (Google, GitHub, Microsoft; Spotify OAuth)
+                          ├── mail relay
+                          ├── MOWL / Swedebeat sign-in (user's password, once)
                        worker ───────────────┘
-                          ├── model APIs (our keys)
+                          ├── model APIs (our keys; receives class data)
                           └── MOWL / Spotify / Swedebeat (the user's tokens)
-GitHub repo ── Actions ── GHCR image ── VPS (owner-deployed)
+GitHub repo ── Actions ── GHCR image (private) ── VPS (owner-deployed)
+development agents ── the repository, issues, PRs (their input is untrusted text too)
 ```
 
 Everything crossing into web or worker is validated there: browser input, upstream API
@@ -71,6 +75,13 @@ responses and model output alike.
 | T23 | A MOWL or Swedebeat password captured or kept | Typed on our page over TLS, used once for a token, never stored, logged, put in a URL or sent to a model | M2 |
 | T24 | Email abuse: sign-up spam, reset flooding | Invite codes; rate limits on sign-up, verification and reset mail | M1 |
 | T25 | Playlist links shown to other users | Never displayed outside the owner's pages; privacy wording explains what Spotify's non-public setting means | M4 |
+| T26 | SQL injection: the app role can set `app.user_id` itself, so injected SQL defeats both the code checks and RLS, and could lock owned tables | Only bound parameters and the ORM; no SQL built from strings (ruff's SQL-injection rule on); the app role has no `TRUNCATE`, `MAINTAIN` or ownership (ADR 0002) | M0, every PR |
+| T27 | A stolen but still valid session changing the account's identities, email, password or connections | Recent authentication (10 min) required for those actions (§3) | M1 |
+| T28 | Taking over the first admin through `ADMIN_EMAILS` with an unverified email | The bootstrap grants admin only to an account whose email is verified, then requires TOTP setup | M1 |
+| T29 | Shared music analysis leaking one user's sources to another | Reuse only after an access check with the requester's own credentials; the analysis holds no playlist links or owner data (§6) | M2, M4 |
+| T30 | `NOTIFY` payloads read by any listener on the database | Payloads carry only IDs; data is read afterwards in a user session (ADR 0002 §5) | M3a |
+| T31 | Prompt injection of the development agents through issue, PR or upstream text | Agents treat repository and web content as data; the review gate and ruleset apply to every merge; secrets are never in the repository or agent prompts | M0 |
+| T32 | User data sent to model providers beyond need | Only the class brief, the music data track F allows, and the draft are sent; no tokens, emails or account data; provider data-retention terms checked before enabling a provider (§5) | M3a, M3c |
 
 ## Accepted risks (beta)
 
@@ -78,5 +89,8 @@ responses and model output alike.
   account and wider use needs MOWL's authorization (track F).
 - Spotify BYOK is not confirmed compliant for a hosted service; live use waits for the
   permission assessment (ADR 0010).
-- The Swedebeat app key shipped in the `mowl-workouts` wheel can be extracted; Swedebeat
-  features stay behind a disabled flag.
+- Swedebeat sign-in needs Swedebeat's app key, which the `mowl-workouts` wheel carries and
+  which can be extracted from it. AGENTS.md forbids using credentials embedded in third-party
+  apps, so classbeat doesn't use that key: Swedebeat features stay behind a disabled flag with
+  fakes until Swedebeat authorizes server-side use, and the classbeat image never contains it.
+- Images on GHCR are private; making a package public is an owner decision.
