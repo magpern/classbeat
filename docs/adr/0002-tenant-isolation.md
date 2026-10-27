@@ -21,11 +21,13 @@ class UserContext:
     user_id: UUID
     role: Literal["user", "admin"]
     entitlements: frozenset[str] = frozenset()
-    connections: Mapping[str, UUID] = MappingProxyType({})  # provider → credential row id
+    connections: frozenset[tuple[str, UUID]] = frozenset()  # (provider, credential row id)
 ```
 
 - Lives in `classbeat.context`. Immutable, request- or job-scoped, never stored globally.
-  `connections` holds references to the user's credential rows, never the credentials.
+  `connections` holds references to the user's credential rows, never the credentials. The
+  context is **hashable** (a frozen dataclass whose fields are all hashable, which is why
+  `connections` is a `frozenset` of pairs and not a mapping); a test checks `hash(ctx)`.
 - Built **only** by two issuers: `classbeat.auth` from the authenticated server-side session
   (M1) and `classbeat.jobs` from the job row the worker claimed (M3a). Until those exist, only
   tests build one.
@@ -45,7 +47,11 @@ Every table holding per-user data, the job queue and job events included (roadma
 
 - `owner_id uuid NOT NULL`, referencing `users(id)` once `users` exists (M1; before that only
   test tables are owned).
+- `id uuid` primary key with a **server-generated** default; owned rows never take an `id`
+  from the client or a model.
 - `UNIQUE (owner_id, id)` (alongside the primary key on `id`), so children can reference it.
+  The primary key on `id` and this constraint are the only unique constraints without the
+  owner rule below.
 - **Every other unique constraint or unique index includes `owner_id`.** Uniqueness is checked
   without RLS, so a global `UNIQUE (name)` would let user A learn which of B's values exist and
   claim one first.
@@ -54,6 +60,11 @@ Every table holding per-user data, the job queue and job events included (roadma
   foreign keys without RLS, so a plain `class_id REFERENCES classes(id)` would let user A
   point at user B's row, learn which of B's IDs exist from the error, and block B's deletes.
   With the owner in the key, a child can only reference its own owner's rows.
+- **`ON DELETE` on an owner-inclusive key** is `CASCADE`, `RESTRICT` (or the default `NO
+  ACTION`), or `SET NULL (<x>_id)` with the column list; never a bare `SET NULL`, which would
+  null `owner_id` too.
+- **No foreign key from a system table into an owned table** (§3): it would be checked
+  without RLS and let system code see or block owned rows.
 - RLS, applied by the migration helper `classbeat.db.rls.enable_owner_rls(table)`:
 
 ```sql
@@ -118,20 +129,29 @@ ignores RLS), `REFERENCES`, `TRIGGER`, `MAINTAIN` (Postgres 17), `CREATE` or `TE
 
 `UPDATE` and `DELETE` let a role take any table lock (`LOCK TABLE … ACCESS EXCLUSIVE`), and
 Postgres has no way to grant them without it. A stuck lock is a denial-of-service risk, not a
-data leak; the app sets `lock_timeout` and `statement_timeout`, and T26 in the threat model
-covers the injection path to it.
+data leak. `statement_timeout` (30 s), `lock_timeout` (5 s) and
+`idle_in_transaction_session_timeout` (60 s) are **role defaults** of `classbeat_app`
+(`ALTER ROLE … SET`), so every connection has them, not only sessions that set them. Injected
+SQL could still lower them, so this limits accidents, not attacks; T26 in the threat model
+covers the injection path.
 
-- `PUBLIC` loses `CONNECT` and `TEMP` on the database and `CREATE` on the schema, and
+- `PUBLIC` loses `CONNECT` and `TEMP` on the database and `USAGE` and `CREATE` on schema
+  `public`, and
   `ALTER DEFAULT PRIVILEGES FOR ROLE classbeat_owner REVOKE EXECUTE ON FUNCTIONS FROM PUBLIC`
   stops new functions being callable by everyone. `classbeat_owner`, `classbeat_app` and
-  (from M5) `classbeat_maint` get `CONNECT` explicitly.
+  (from M5) `classbeat_maint` get `CONNECT` explicitly; `classbeat_owner` and `classbeat_app`
+  get `USAGE` on `public` explicitly (the owner also `CREATE`).
 - Compose creates the roles in `docker/postgres/init/` from secret files
   (`postgres_password`, `database_owner_password`, `database_password`).
 - Web and worker use `CLASSBEAT_DATABASE_URL` + `database_password`; `migrate` uses
   `CLASSBEAT_MIGRATIONS_DATABASE_URL` + `database_owner_password`.
 - **Web and worker refuse to start** if their database role is a superuser, has `BYPASSRLS`,
-  or owns any table. Until #5 lands, compose connects as `postgres` with this check off in
-  `environment=dev`; #5 removes that exception, and the check then has no override.
+  is a member of such a role, or owns any table or the database. The check runs at startup
+  and again on every new pooled connection, so a database that was down at startup cannot
+  let a privileged connection through later. Until compose connects as `classbeat_app`, one
+  exception exists: `environment=dev` **and** the explicit setting
+  `allow_privileged_database_role=true`. The setting is refused in any other environment, and
+  the exception is removed when compose is switched; the check then has no override.
 - Data migrations on owned tables see no rows under `FORCE` (an `UPDATE` reports 0 rows). They
   either run per owner with `app.user_id` set, or as `classbeat_maint` with an audit row; the
   migration states which.
@@ -167,11 +187,15 @@ async with system_session(sessionmaker) as session:
    `with_check`), any other policy restrictive, `UNIQUE (owner_id, id)`, every other unique
    constraint or index including `owner_id`, and every foreign key to another owned table
    mapping `owner_id` to the parent's `owner_id` (column pairs compared, so a swapped key
-   fails). No owned table is partitioned.
+   fails), with `ON DELETE` as in §2. No owned table is partitioned, no foreign key goes
+   from a system table into an owned table, and `public` holds no views.
 2. `classbeat_app`'s privileges equal the allowlist in §4 (checked as an allowlist against
    `pg_roles`, `pg_auth_members`, `information_schema` and `aclexplode`, so a new privilege
    kind fails the test), and nothing is granted to `PUBLIC` beyond Postgres' built-in
-   catalog access; `classbeat_owner` has `rolbypassrls` false and is a member of no
+   catalog access (`pg_catalog`, `information_schema`, the `plpgsql` and `sql` languages). The
+   ACLs checked are those on the database, schema `public` and its tables, sequences,
+   columns and functions, the default privileges, and the `classbeat_app` role defaults
+   (the three timeouts); `classbeat_owner` has `rolbypassrls` false and is a member of no
    `BYPASSRLS` role.
 3. On test-only owned parent and child tables: user A never sees, updates, deletes or inserts
    user B's rows; A can't create a child pointing at B's parent; a session without a context

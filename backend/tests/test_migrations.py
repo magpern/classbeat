@@ -37,10 +37,11 @@ def test_offline_mode_renders_sql_without_a_database(capsys: pytest.CaptureFixtu
 
 
 def test_upgrade_head_then_downgrade_base(
-    database_url: str, monkeypatch: pytest.MonkeyPatch
+    owner_database_url: str, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    # env.py takes the URL from Settings, so the test points it at the test database.
-    monkeypatch.setenv("CLASSBEAT_DATABASE_URL", database_url)
+    # env.py takes the owner role's URL from Settings, so the test points it at the test database.
+    monkeypatch.setenv("CLASSBEAT_MIGRATIONS_DATABASE_URL", owner_database_url)
+    database_url = owner_database_url
     config = alembic_config()
     try:
         command.upgrade(config, "head")

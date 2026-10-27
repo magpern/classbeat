@@ -157,3 +157,44 @@ def test_secret_file_keeps_spaces_and_drops_only_the_trailing_newline(
 ) -> None:
     (tmp_path / "database_password").write_bytes(f"  pa ss  {ending}".encode())
     assert read_secret_files(tmp_path, ("database_password",)) == {"database_password": "  pa ss  "}
+
+
+def test_migrations_url_and_owner_password_are_separate_from_the_app_ones(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    (tmp_path / "database_owner_password").write_text("owner-secret\n", encoding="utf-8")
+    (tmp_path / "database_password").write_text("app-secret\n", encoding="utf-8")
+    monkeypatch.setenv("CLASSBEAT_SECRETS_DIR", str(tmp_path))
+    monkeypatch.setenv("CLASSBEAT_DATABASE_URL", URL)
+    monkeypatch.setenv(
+        "CLASSBEAT_MIGRATIONS_DATABASE_URL",
+        "postgresql+psycopg://classbeat_owner@db.example/classbeat",
+    )
+    monkeypatch.setenv("CLASSBEAT_DATABASE_OWNER_PASSWORD", "from-the-env")  # ignored
+    settings = Settings()
+    assert settings.sqlalchemy_url().password == "app-secret"
+    assert settings.sqlalchemy_url().username == "app"
+    migrations = settings.migrations_sqlalchemy_url()
+    assert (migrations.username, migrations.password) == ("classbeat_owner", "owner-secret")
+    assert "owner-secret" not in repr(settings)
+    assert "owner-secret" not in str(settings.model_dump())
+
+
+def test_default_users_are_the_app_and_owner_roles() -> None:
+    settings = Settings()
+    assert settings.sqlalchemy_url().username == "classbeat_app"
+    assert settings.migrations_sqlalchemy_url().username == "classbeat_owner"
+
+
+def test_migrations_url_is_validated_without_echoing_it() -> None:
+    with pytest.raises(ValidationError) as excinfo:
+        Settings(migrations_database_url="mysql://u:leaky-secret@h/db")  # pyright: ignore[reportArgumentType]
+    assert "migrations_database_url" in str(excinfo.value)
+    assert "leaky-secret" not in str(excinfo.value)
+
+
+def test_privileged_database_role_is_off_by_default_and_dev_only() -> None:
+    assert Settings().allow_privileged_database_role is False
+    assert Settings(environment="dev", allow_privileged_database_role=True)
+    with pytest.raises(ValidationError):
+        Settings(environment="prod", allow_privileged_database_role=True)

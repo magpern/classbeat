@@ -61,17 +61,17 @@ async def test_health_does_not_touch_the_database(unreachable_database_url: str)
     assert response.json() == {"status": "ok", "version": __version__}
 
 
-async def test_ready_is_200_with_a_real_database(database_url: str) -> None:
-    async with make_client(database_url) as client:
+async def test_ready_is_200_with_a_real_database(app_database_url: str) -> None:
+    async with make_client(app_database_url) as client:
         response = await client.get("/api/ready")
     assert response.status_code == 200
     assert response.json() == {"status": "ready"}
 
 
 async def test_ready_uses_database_password_instead_of_the_url_password(
-    database_url: str,
+    app_database_url: str,
 ) -> None:
-    url = make_url(database_url)
+    url = make_url(app_database_url)
     assert url.password, "the test database URL must carry a password"
     wrong = url.set(password="wrong-" + url.password).render_as_string(hide_password=False)
     async with make_client(wrong) as client:

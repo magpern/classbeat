@@ -1,4 +1,4 @@
-"""Alembic environment: async engine, URL taken from ``Settings``."""
+"""Alembic environment: async engine as the owner role, URL taken from ``Settings``."""
 
 import asyncio
 
@@ -7,7 +7,7 @@ from sqlalchemy import pool
 from sqlalchemy.engine import Connection
 
 from classbeat.config import Settings
-from classbeat.db import create_engine, event_loop_factory
+from classbeat.db import create_migrations_engine, event_loop_factory
 
 # Tables arrive with the milestones that need them; autogenerate gets a MetaData then.
 target_metadata = None
@@ -15,7 +15,7 @@ target_metadata = None
 
 def run_migrations_offline() -> None:
     context.configure(
-        url=Settings().sqlalchemy_url(),
+        url=Settings().migrations_sqlalchemy_url(),
         target_metadata=target_metadata,
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
@@ -31,7 +31,7 @@ def do_run_migrations(connection: Connection) -> None:
 
 
 async def run_async_migrations() -> None:
-    engine = create_engine(Settings(), poolclass=pool.NullPool)
+    engine = create_migrations_engine(Settings(), poolclass=pool.NullPool)
     try:
         async with engine.connect() as connection:
             await connection.run_sync(do_run_migrations)
