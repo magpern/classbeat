@@ -31,7 +31,6 @@ GitHub hold the detail.
 - **Note (product):** until Spotify answers S2 and S3, live runs can't send Spotify-derived
   music (including Spotify playlists imported into MOWL) to Claude. Live beta use with Claude
   therefore waits for Spotify, unless you choose otherwise.
-- **Track:** add ADR 0010 to the ADR index once #10 has merged.
 
 ## Live activation log
 
