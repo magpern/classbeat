@@ -68,14 +68,14 @@ responses and model output alike.
 | T16 | Admin misuse | Admins never see tokens; every admin action audited; admin reads through the separate audited role | M5 |
 | T17 | Compromised dependency, base image or Action | Lockfiles; exact versions; checksum-verified tool downloads; pip-audit, npm audit, Trivy; Dependabot; least-privilege workflow `permissions`; no `pull_request_target`; `persist-credentials: false` | M0 |
 | T18 | An agent committing a secret or weakening a check | gitleaks on the whole history in CI; fresh-Opus review gate; ruleset with required checks; agents can't bypass | M0 |
-| T19 | SSRF through user-supplied links (playlists, mixes) | Parse provider IDs only, never fetch user URLs; worker outbound allowlist (MOWL, Spotify, Swedebeat, model APIs) | M3a, M4 |
+| T19 | SSRF through user-supplied links (playlists, mixes) | Parse provider IDs only, never fetch user URLs; outbound allowlists for worker (MOWL, Spotify, Swedebeat, model APIs) and web (sign-in providers, Spotify OAuth, MOWL and Swedebeat sign-in, mail relay) | M3a, M4 |
 | T20 | XSS through user, model or upstream text in the SPA | React escaping only, no raw HTML rendering; strict CSP | M1, M6 |
 | T21 | Exposed services or container breakout | Non-root image; local ports bound to 127.0.0.1; only Caddy public on the VPS; Postgres never published there | M0, M6 |
 | T22 | Keeping data longer than allowed, or no way to delete it | GDPR export and delete; retention of Spotify-derived data per track F answers | F, M6 |
 | T23 | A MOWL or Swedebeat password captured or kept | Typed on our page over TLS, used once for a token, never stored, logged, put in a URL or sent to a model | M2 |
 | T24 | Email abuse: sign-up spam, reset flooding | Invite codes; rate limits on sign-up, verification and reset mail | M1 |
 | T25 | Playlist links shown to other users | Never displayed outside the owner's pages; privacy wording explains what Spotify's non-public setting means | M4 |
-| T26 | SQL injection: the app role can set `app.user_id` itself, so injected SQL defeats both the code checks and RLS, and could lock owned tables | Only bound parameters and the ORM; no SQL built from strings (ruff's SQL-injection rule on); the app role has no `TRUNCATE`, `MAINTAIN` or ownership (ADR 0002) | M0, every PR |
+| T26 | SQL injection: the app role can set `app.user_id` itself, so injected SQL defeats both the code checks and RLS, and could hold locks on owned tables | Only bound parameters and the ORM; no SQL built from strings (ruff's SQL-injection rule on); the app role has no `TRUNCATE`, `MAINTAIN` or ownership (ADR 0002). Locks can't be prevented for a role with `UPDATE`/`DELETE`; `lock_timeout` and `statement_timeout` limit the damage (residual denial-of-service risk) | M0, every PR |
 | T27 | A stolen but still valid session changing the account's identities, email, password or connections | Recent authentication (10 min) required for those actions (§3) | M1 |
 | T28 | Taking over the first admin through `ADMIN_EMAILS` with an unverified email | The bootstrap grants admin only to an account whose email is verified, then requires TOTP setup | M1 |
 | T29 | Shared music analysis leaking one user's sources to another | Reuse only after an access check with the requester's own credentials; the analysis holds no playlist links or owner data (§6) | M2, M4 |
@@ -92,5 +92,6 @@ responses and model output alike.
 - Swedebeat sign-in needs Swedebeat's app key, which the `mowl-workouts` wheel carries and
   which can be extracted from it. AGENTS.md forbids using credentials embedded in third-party
   apps, so classbeat doesn't use that key: Swedebeat features stay behind a disabled flag with
-  fakes until Swedebeat authorizes server-side use, and the classbeat image never contains it.
+  fakes until Swedebeat authorizes server-side use, and the classbeat image never contains it:
+  it installs a `mowl-workouts` wheel built without the bundled key file (M2).
 - Images on GHCR are private; making a package public is an owner decision.

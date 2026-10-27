@@ -46,6 +46,9 @@ Every table holding per-user data, the job queue and job events included (roadma
 - `owner_id uuid NOT NULL`, referencing `users(id)` once `users` exists (M1; before that only
   test tables are owned).
 - `UNIQUE (owner_id, id)` (alongside the primary key on `id`), so children can reference it.
+- **Every other unique constraint or unique index includes `owner_id`.** Uniqueness is checked
+  without RLS, so a global `UNIQUE (name)` would let user A learn which of B's values exist and
+  claim one first.
 - **Foreign keys between owned tables include the owner**:
   `FOREIGN KEY (owner_id, class_id) REFERENCES classes (owner_id, id)`. Postgres checks
   foreign keys without RLS, so a plain `class_id REFERENCES classes(id)` would let user A
@@ -85,9 +88,14 @@ Cross-user operations on owned tables go through narrow **`SECURITY DEFINER` fun
 broad table access:
 
 - Each function is owned by a dedicated `NOLOGIN` role with `BYPASSRLS` and only the table
-  privileges it needs, has a fixed `search_path`, takes and returns the minimum (for the job
-  queue: claim the next job and return its `id`, `owner_id` and `lease_version`), and
-  `classbeat_app` gets only `EXECUTE` on it.
+  privileges it needs, sets `search_path = pg_catalog, public, pg_temp` and schema-qualifies
+  what it touches, takes and returns the minimum (for the job queue: claim the next job and
+  return its `id`, `owner_id` and `lease_version`), and `classbeat_app` gets only `EXECUTE`
+  on it.
+- Handing a function to its owner role needs membership in that role, and membership would
+  give `classbeat_owner` `BYPASSRLS` through `SET ROLE`. So the superuser runs that step
+  (a privileged migration step the M3a ADR defines), and `classbeat_owner` is never a member
+  of a `BYPASSRLS` role.
 - After a claim, the worker builds the `UserContext` from the returned owner and reads the
   job's data in a user session.
 - The milestone that adds such a function defines it in its own ADR (M3a: claim and reaper).
@@ -108,13 +116,22 @@ broad table access:
 `SECURITY DEFINER` functions meant for it. Nothing else: in particular no `TRUNCATE` (it
 ignores RLS), `REFERENCES`, `TRIGGER`, `MAINTAIN` (Postgres 17), `CREATE` or `TEMP`.
 
-- `PUBLIC` loses `CONNECT` and `TEMP` on the database and `CREATE` on the schema.
+`UPDATE` and `DELETE` let a role take any table lock (`LOCK TABLE … ACCESS EXCLUSIVE`), and
+Postgres has no way to grant them without it. A stuck lock is a denial-of-service risk, not a
+data leak; the app sets `lock_timeout` and `statement_timeout`, and T26 in the threat model
+covers the injection path to it.
+
+- `PUBLIC` loses `CONNECT` and `TEMP` on the database and `CREATE` on the schema, and
+  `ALTER DEFAULT PRIVILEGES FOR ROLE classbeat_owner REVOKE EXECUTE ON FUNCTIONS FROM PUBLIC`
+  stops new functions being callable by everyone. `classbeat_owner`, `classbeat_app` and
+  (from M5) `classbeat_maint` get `CONNECT` explicitly.
 - Compose creates the roles in `docker/postgres/init/` from secret files
   (`postgres_password`, `database_owner_password`, `database_password`).
 - Web and worker use `CLASSBEAT_DATABASE_URL` + `database_password`; `migrate` uses
   `CLASSBEAT_MIGRATIONS_DATABASE_URL` + `database_owner_password`.
 - **Web and worker refuse to start** if their database role is a superuser, has `BYPASSRLS`,
-  or owns any table. A setting allows this only in `environment=dev` until #5 lands.
+  or owns any table. Until #5 lands, compose connects as `postgres` with this check off in
+  `environment=dev`; #5 removes that exception, and the check then has no override.
 - Data migrations on owned tables see no rows under `FORCE` (an `UPDATE` reports 0 rows). They
   either run per owner with `app.user_id` set, or as `classbeat_maint` with an audit row; the
   migration states which.
@@ -145,15 +162,21 @@ async with system_session(sessionmaker) as session:
 
 1. Every table in `public` is either in `SYSTEM_TABLES` (and then has no `owner_id`), or is
    owned: `owner_id` `NOT NULL`, `relrowsecurity` and `relforcerowsecurity` true, exactly one
-   permissive policy, named `owner_isolation`, with the expressions above (compared through
-   `pg_policies`), any other policy restrictive, `UNIQUE (owner_id, id)`, and every foreign
-   key to another owned table including `owner_id`. No owned table is partitioned.
+   permissive policy, named `owner_isolation`, for `ALL` commands and `PUBLIC`, with the
+   expressions above (compared through `pg_policies`: `permissive`, `cmd`, `roles`, `qual`,
+   `with_check`), any other policy restrictive, `UNIQUE (owner_id, id)`, every other unique
+   constraint or index including `owner_id`, and every foreign key to another owned table
+   mapping `owner_id` to the parent's `owner_id` (column pairs compared, so a swapped key
+   fails). No owned table is partitioned.
 2. `classbeat_app`'s privileges equal the allowlist in §4 (checked as an allowlist against
    `pg_roles`, `pg_auth_members`, `information_schema` and `aclexplode`, so a new privilege
-   kind fails the test); `classbeat_owner` has `rolbypassrls` false.
+   kind fails the test), and nothing is granted to `PUBLIC` beyond Postgres' built-in
+   catalog access; `classbeat_owner` has `rolbypassrls` false and is a member of no
+   `BYPASSRLS` role.
 3. On test-only owned parent and child tables: user A never sees, updates, deletes or inserts
    user B's rows; A can't create a child pointing at B's parent; a session without a context
-   sees no rows; `classbeat_app` can't disable RLS, alter or lock the table.
+   sees no rows; `classbeat_app` can't disable RLS or alter the table; a global-looking
+   unique value of B's can't be detected or blocked by A.
 4. A pooled connection reused after a `user_session` carries no `app.user_id`; `commit()`
    inside `user_session` raises.
 5. The AST check of §1.

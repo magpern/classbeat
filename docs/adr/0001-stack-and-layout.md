@@ -40,7 +40,8 @@ versions, how settings and secrets are read, and how the pieces are packaged.
   pytest-asyncio (`asyncio_mode = "auto"`). Database tests run against a real Postgres
   (`CLASSBEAT_TEST_DATABASE_URL`); they skip locally when it's unset, and fail in CI
   (`CI=true`) when it's missing, so a lost setting can't turn the RLS guards green.
-- From M2 the domain library `mowl` comes from a pinned `mowl-workouts` release wheel.
+- From M2 the domain library `mowl` comes from a pinned `mowl-workouts` release wheel, built
+  without the bundled Swedebeat app key (threat model, accepted risks).
 
 ### Frontend
 
