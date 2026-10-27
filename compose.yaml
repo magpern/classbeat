@@ -1,0 +1,90 @@
+# Local stack: db, migrate (one-shot), web, worker, mailpit.
+# Ports bind 127.0.0.1 only and come from .env (scripts/worktree.sh init writes it).
+# Passwords are files under secrets/ mounted as Docker secrets, never environment variables.
+
+x-app: &app
+  build: .
+  image: ${COMPOSE_PROJECT_NAME:-classbeat}:local
+  restart: "no"
+  environment: &app-env
+    CLASSBEAT_ENVIRONMENT: dev
+    # The password comes from the database_password secret file (Settings reads it).
+    # TODO(#5): switch to the classbeat_app role here and give migrate
+    # CLASSBEAT_MIGRATIONS_DATABASE_URL + database_owner_password. Until then everyone
+    # connects as the postgres superuser with postgres_password.
+    CLASSBEAT_DATABASE_URL: postgresql+psycopg://postgres@db:5432/classbeat
+  secrets:
+    - source: postgres_password # TODO(#5): database_password for web and worker
+      target: database_password
+  depends_on:
+    migrate:
+      condition: service_completed_successfully
+
+services:
+  db:
+    image: postgres:17.11
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: classbeat
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
+    secrets:
+      - postgres_password
+    volumes:
+      - db-data:/var/lib/postgresql/data
+      # TODO(#5): mount ./docker/postgres/init here to create the roles.
+    ports:
+      - "127.0.0.1:${DB_PORT:-55432}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U postgres -d classbeat"]
+      interval: 3s
+      timeout: 5s
+      retries: 20
+
+  migrate:
+    <<: *app
+    command: ["alembic", "upgrade", "head"]
+    depends_on:
+      db:
+        condition: service_healthy
+
+  web:
+    <<: *app
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${WEB_PORT:-8000}:8000"
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/ready', timeout=3)"
+      interval: 3s
+      timeout: 5s
+      retries: 20
+
+  worker:
+    <<: *app
+    restart: unless-stopped
+    command: ["python", "-m", "classbeat.worker"]
+
+  mailpit:
+    image: axllent/mailpit:v1.32.0
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${MAILPIT_PORT:-8025}:8025"
+    healthcheck:
+      test: ["CMD", "/mailpit", "readyz"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+secrets:
+  postgres_password:
+    file: ./secrets/postgres_password
+  database_owner_password:
+    file: ./secrets/database_owner_password
+  database_password:
+    file: ./secrets/database_password
+
+volumes:
+  db-data:
