@@ -2,7 +2,7 @@
 # Per-worktree dev stacks for classbeat.
 #   worktree.sh init [issue]        .env and secrets/ for the current checkout (if missing)
 #   worktree.sh new <issue> <slug>  worktree ../classbeat-wt/<issue>-<slug> from origin/main (or $WORKTREE_BASE_REF), then init
-#   worktree.sh rm <issue>          stop the stack (volumes too), remove the worktree and its branch
+#   worktree.sh rm <issue>          stop the stack (volumes too), remove the worktree, delete its branch if merged
 #   worktree.sh ls                  worktrees with project name and ports
 set -euo pipefail
 
@@ -10,6 +10,16 @@ SELF="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/$(basename "${BASH_SOURCE[0]
 SECRETS=(postgres_password database_owner_password database_password)
 
 die() { echo "worktree.sh: $*" >&2; exit 1; }
+
+MAX_ISSUE=9999
+
+# Digits, no leading zero, 1..MAX_ISSUE (ports are 20000/30000/40000 + issue).
+check_issue() {
+  case "$1" in
+    ""|0*|*[!0-9]*) die "issue must be a number without leading zeros" ;;
+  esac
+  [ "$1" -le "$MAX_ISSUE" ] || die "issue must be at most $MAX_ISSUE"
+}
 
 repo_root() { git rev-parse --show-toplevel; }
 
@@ -27,8 +37,7 @@ cmd_init() {
   root="$(repo_root)"
   cd "$root"
   if [ -n "$issue" ]; then
-    case "$issue" in *[!0-9]*) die "issue must be a number" ;; esac
-    [ "$issue" -le 9999 ] || die "issue number too large for the port scheme"
+    check_issue "$issue"
   fi
 
   if [ ! -f .env ]; then
@@ -36,9 +45,9 @@ cmd_init() {
     if [ -n "$issue" ]; then
       sed -i \
         -e "s/^COMPOSE_PROJECT_NAME=.*/COMPOSE_PROJECT_NAME=classbeat-$issue/" \
-        -e "s/^WEB_PORT=.*/WEB_PORT=$((8000 + issue))/" \
-        -e "s/^DB_PORT=.*/DB_PORT=$((55400 + issue))/" \
-        -e "s/^MAILPIT_PORT=.*/MAILPIT_PORT=$((18000 + issue))/" .env
+        -e "s/^WEB_PORT=.*/WEB_PORT=$((20000 + issue))/" \
+        -e "s/^DB_PORT=.*/DB_PORT=$((30000 + issue))/" \
+        -e "s/^MAILPIT_PORT=.*/MAILPIT_PORT=$((40000 + issue))/" .env
     fi
     echo "created .env"
   fi
@@ -58,9 +67,11 @@ cmd_init() {
 
 cmd_new() {
   local issue="${1:-}" slug="${2:-}"
-  [ -n "$issue" ] && [ -n "$slug" ] || die "usage: worktree.sh new <issue> <slug>"
-  case "$issue" in *[!0-9]*) die "issue must be a number" ;; esac
-  case "$slug" in *[!a-z0-9-]*) die "slug may only contain a-z, 0-9 and -" ;; esac
+  [ -n "$slug" ] || die "usage: worktree.sh new <issue> <slug>"
+  check_issue "$issue"
+  case "$slug" in
+    ""|-*|*-|*[!a-z0-9-]*) die "slug may only contain a-z, 0-9 and -, and not start or end with -" ;;
+  esac
   local branch="$issue-$slug" dir
   dir="$(wt_base)/$branch"
   [ ! -e "$dir" ] || die "$dir already exists"
@@ -75,28 +86,34 @@ cmd_new() {
   echo "worktree: $dir"
 }
 
+# Only worktrees directly under ../classbeat-wt/ are matched.
 find_worktree() {
-  local issue="$1" path
+  local issue="$1" path base
+  base="$(wt_base)"
   while read -r path; do
-    case "$(basename "$path")" in "$issue"-*) echo "$path"; return 0 ;; esac
+    case "$path" in "$base"/"$issue"-*) echo "$path"; return 0 ;; esac
   done < <(git worktree list --porcelain | sed -n 's/^worktree //p')
   return 1
 }
 
 cmd_rm() {
   local issue="${1:-}" dir branch
-  [ -n "$issue" ] || die "usage: worktree.sh rm <issue>"
-  case "$issue" in *[!0-9]*) die "issue must be a number" ;; esac
-  dir="$(find_worktree "$issue")" || die "no worktree for issue $issue"
+  check_issue "$issue"
+  dir="$(find_worktree "$issue")" || die "no worktree for issue $issue under $(wt_base)"
   branch="$(git -C "$dir" rev-parse --abbrev-ref HEAD)"
-  if [ -f "$dir/compose.yaml" ]; then
-    (cd "$dir" && docker compose down -v --remove-orphans) || echo "warning: docker compose down failed" >&2
+  if [ -f "$dir/compose.yaml" ] && [ -f "$dir/.env" ]; then
+    (cd "$dir" && docker compose down -v --remove-orphans) \
+      || die "docker compose down failed in $dir; fix that first (nothing was removed)"
   fi
-  git worktree remove --force "$dir"
+  # No --force: git refuses a worktree with uncommitted or untracked work (ignored .env and
+  # secrets/ do not count).
+  git worktree remove "$dir" \
+    || die "git refused to remove $dir (uncommitted work?). Commit or discard it, then run rm again"
   if git branch -d "$branch" 2>/dev/null; then
     echo "deleted branch $branch"
   else
-    echo "kept branch $branch (not merged)"
+    echo "kept branch $branch: git does not see it as merged (squash merges never are)."
+    echo "If the PR is merged, delete it with: git branch -D $branch"
   fi
 }
 

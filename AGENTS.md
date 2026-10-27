@@ -219,13 +219,14 @@ docker compose logs -f web worker
 docker compose down -v                   # stop and delete the volume
 ```
 
-Every worktree gets its own project name, volume and ports (web `8000+<issue>`, Postgres
-`55400+<issue>`, Mailpit UI `18000+<issue>`), so stacks never collide:
+Every worktree gets its own project name, volume and ports (web `20000+<issue>`, Postgres
+`30000+<issue>`, Mailpit UI `40000+<issue>`; issue numbers 1-9999), disjoint from the defaults of
+the main checkout (8000, 55432, 8025), so stacks never collide:
 
 ```bash
 scripts/worktree.sh new 7 some-slug      # ../classbeat-wt/7-some-slug on branch 7-some-slug, then init
 scripts/worktree.sh ls                   # worktrees with project name and ports
-scripts/worktree.sh rm 7                 # compose down -v, remove the worktree, delete the branch if merged
+scripts/worktree.sh rm 7                 # compose down -v, remove the worktree (refuses if dirty), `git branch -d`
 ```
 
 `secrets/` and `.env` are git-ignored. Passwords are mounted as Docker secret files, never
