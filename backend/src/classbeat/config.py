@@ -2,9 +2,9 @@
 
 import os
 from pathlib import Path
-from typing import Any, Literal, Self
+from typing import Any, Literal
 
-from pydantic import SecretStr, ValidationInfo, field_validator, model_validator
+from pydantic import SecretStr, ValidationInfo, field_validator
 from pydantic.fields import FieldInfo
 from pydantic_settings import BaseSettings, PydanticBaseSettingsSource, SettingsConfigDict
 from sqlalchemy.engine import URL, make_url
@@ -93,9 +93,6 @@ class Settings(BaseSettings):
     )
     # From the file ``database_owner_password``; replaces the password in the URL above.
     database_owner_password: SecretStr | None = None
-    # Temporary (removed when compose connects as the app role): let web and worker run as a
-    # superuser or other privileged role. Honoured only with ``environment=dev``.
-    allow_privileged_database_role: bool = False
     static_dir: Path | None = None
     worker_heartbeat_seconds: float = 30.0
 
@@ -129,12 +126,6 @@ class Settings(BaseSettings):
         if url.drivername != DATABASE_DRIVER:
             raise ValueError(f"{info.field_name} must use the {DATABASE_DRIVER}:// scheme")
         return value
-
-    @model_validator(mode="after")
-    def _privileged_role_only_in_dev(self) -> Self:
-        if self.allow_privileged_database_role and self.environment != "dev":
-            raise ValueError("allow_privileged_database_role is only allowed with environment=dev")
-        return self
 
     @field_validator("worker_heartbeat_seconds")
     @classmethod

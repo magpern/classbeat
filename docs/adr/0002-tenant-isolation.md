@@ -148,10 +148,7 @@ covers the injection path.
 - **Web and worker refuse to start** if their database role is a superuser, has `BYPASSRLS`,
   is a member of such a role, or owns any table or the database. The check runs at startup
   and again on every new pooled connection, so a database that was down at startup cannot
-  let a privileged connection through later. Until compose connects as `classbeat_app`, one
-  exception exists: `environment=dev` **and** the explicit setting
-  `allow_privileged_database_role=true`. The setting is refused in any other environment, and
-  the exception is removed when compose is switched; the check then has no override.
+  let a privileged connection through later. There is no override.
 - Data migrations on owned tables see no rows under `FORCE` (an `UPDATE` reports 0 rows). They
   either run per owner with `app.user_id` set, or as `classbeat_maint` with an audit row; the
   migration states which.

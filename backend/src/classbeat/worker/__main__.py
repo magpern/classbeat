@@ -21,7 +21,7 @@ def _install_signal_handlers(loop: asyncio.AbstractEventLoop, stop: asyncio.Even
 async def _run(settings: Settings) -> None:
     engine = create_engine(settings)
     try:
-        await verify_database_role(engine, settings)  # refuses to start on a privileged role
+        await verify_database_role(engine)  # refuses to start on a privileged role
     finally:
         await engine.dispose()
     stop = asyncio.Event()

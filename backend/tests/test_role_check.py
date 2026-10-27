@@ -1,6 +1,5 @@
 """Guard 6 of ADR 0002 section 6: web and worker refuse to run as a role that bypasses RLS."""
 
-import logging
 import secrets
 from collections.abc import Iterator
 
@@ -88,7 +87,7 @@ async def test_startup_and_every_connection_refuse_a_privileged_role(
     engine = create_engine(settings)
     try:
         with pytest.raises(DatabaseRoleError, match=problem) as startup:
-            await verify_database_role(engine, settings)
+            await verify_database_role(engine)
         with pytest.raises(DatabaseRoleError, match=problem):
             async with engine.connect() as connection:  # the per-connection check
                 await connection.execute(text("SELECT 1"))
@@ -101,7 +100,7 @@ async def test_a_role_that_is_fine_passes(database_url: str, probe_roles: None) 
     settings = settings_for(database_url, "guard_plain")
     engine = create_engine(settings)
     try:
-        await verify_database_role(engine, settings)
+        await verify_database_role(engine)
         async with engine.connect() as connection:
             assert (await connection.execute(text("SELECT 1"))).scalar_one() == 1
     finally:
@@ -112,7 +111,7 @@ async def test_the_app_role_passes(app_database_url: str) -> None:
     settings = Settings(database_url=app_database_url, environment="test")  # pyright: ignore[reportArgumentType]
     engine = create_engine(settings)
     try:
-        await verify_database_role(engine, settings)
+        await verify_database_role(engine)
     finally:
         await engine.dispose()
 
@@ -122,44 +121,22 @@ async def test_the_owner_role_is_refused_for_web_and_worker(owner_database_url: 
     engine = create_engine(settings)
     try:
         with pytest.raises(DatabaseRoleError, match=r"owns tables|owns the database"):
-            await verify_database_role(engine, settings)
+            await verify_database_role(engine)
     finally:
         await engine.dispose()
 
 
-async def test_the_dev_exception_needs_dev_and_the_explicit_setting(
-    database_url: str, caplog: pytest.LogCaptureFixture
+async def test_there_is_no_override_not_even_in_dev(
+    database_url: str, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    # The test database URL is a superuser, as compose's postgres connection is until #4 lands.
-    with caplog.at_level(logging.WARNING):
-        settings = Settings(
-            database_url=database_url,  # pyright: ignore[reportArgumentType]
-            environment="dev",
-            allow_privileged_database_role=True,
-        )
-        engine = create_engine(settings)
-        try:
-            await verify_database_role(engine, settings)
-            async with engine.connect() as connection:
-                assert (await connection.execute(text("SELECT 1"))).scalar_one() == 1
-        finally:
-            await engine.dispose()
-    assert "privileged database role allowed" in caplog.text
-
-    # Without the setting, dev refuses.
-    refused = Settings(database_url=database_url, environment="dev")  # pyright: ignore[reportArgumentType]
-    engine = create_engine(refused)
+    monkeypatch.setenv("CLASSBEAT_ALLOW_PRIVILEGED_DATABASE_ROLE", "true")  # ignored setting
+    settings = Settings(database_url=database_url, environment="dev")  # pyright: ignore[reportArgumentType]
+    engine = create_engine(settings)
     try:
-        with pytest.raises(DatabaseRoleError):
-            await verify_database_role(engine, refused)
+        with pytest.raises(DatabaseRoleError, match="is a superuser"):
+            await verify_database_role(engine)
     finally:
         await engine.dispose()
-
-
-@pytest.mark.parametrize("environment", ["test", "prod"])
-def test_the_exception_cannot_be_set_outside_dev(environment: str, database_url: str) -> None:
-    with pytest.raises(ValueError, match="only allowed with environment=dev"):
-        Settings(environment=environment, allow_privileged_database_role=True)  # pyright: ignore[reportArgumentType]
 
 
 async def test_a_database_that_is_down_at_startup_does_not_stop_the_app_but_stays_checked(
@@ -168,7 +145,7 @@ async def test_a_database_that_is_down_at_startup_does_not_stop_the_app_but_stay
     settings = Settings(database_url=unreachable_database_url, environment="test")  # pyright: ignore[reportArgumentType]
     engine = create_engine(settings)
     try:
-        await verify_database_role(engine, settings)  # no error: nothing to check yet
+        await verify_database_role(engine)  # no error: nothing to check yet
     finally:
         await engine.dispose()
 

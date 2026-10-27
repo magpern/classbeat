@@ -195,9 +195,8 @@ after the field, without the prefix, in `CLASSBEAT_SECRETS_DIR` (default `/run/s
 and worker) and `database_owner_password` replaces the one in
 `CLASSBEAT_MIGRATIONS_DATABASE_URL` (the owner role, for Alembic); the matching
 `CLASSBEAT_DATABASE_PASSWORD` and `CLASSBEAT_DATABASE_OWNER_PASSWORD` variables are ignored.
-Web and worker refuse to start as a superuser, a `BYPASSRLS` role or a table owner; only
-`CLASSBEAT_ENVIRONMENT=dev` with `CLASSBEAT_ALLOW_PRIVILEGED_DATABASE_ROLE=true` lifts that
-(temporary, until compose connects as `classbeat_app`). In CI (`CI=true`) a missing
+Web and worker refuse to start as a superuser, a `BYPASSRLS` role or a table owner (no
+override). In CI (`CI=true`) a missing
 `CLASSBEAT_TEST_DATABASE_URL` or missing roles fail the database tests instead of skipping them.
 
 ### Frontend

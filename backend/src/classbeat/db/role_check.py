@@ -12,8 +12,6 @@ from sqlalchemy import event, text
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.ext.asyncio import AsyncEngine
 
-from classbeat.config import Settings
-
 logger = logging.getLogger(__name__)
 
 # One row of booleans for the connected role. Memberships are followed transitively, because a
@@ -63,16 +61,8 @@ def _raise_if_unsafe(row: Any) -> None:
         )
 
 
-def _skip_check(settings: Settings) -> bool:
-    # Validation already limits the flag to environment=dev; checked again here on purpose.
-    return settings.allow_privileged_database_role and settings.environment == "dev"
-
-
-def refuse_privileged_roles(engine: AsyncEngine, settings: Settings) -> None:
+def refuse_privileged_roles(engine: AsyncEngine) -> None:
     """Check every new connection of ``engine``; a privileged role is refused with an error."""
-    if _skip_check(settings):
-        logger.warning("privileged database role allowed (dev only); RLS may be bypassed")
-        return
 
     @event.listens_for(engine.sync_engine, "connect")
     def check_connection(dbapi_connection: Any, _record: object) -> None:
@@ -86,11 +76,9 @@ def refuse_privileged_roles(engine: AsyncEngine, settings: Settings) -> None:
         _raise_if_unsafe(row)
 
 
-async def verify_database_role(engine: AsyncEngine, settings: Settings) -> None:
+async def verify_database_role(engine: AsyncEngine) -> None:
     """Refuse to start when the role is privileged. An unreachable database is not an error here:
     the per-connection check still applies to every connection made later."""
-    if _skip_check(settings):
-        return
     try:
         async with engine.connect() as connection:
             row = (await connection.execute(text(ROLE_QUERY))).one()

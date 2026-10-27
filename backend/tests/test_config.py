@@ -191,10 +191,3 @@ def test_migrations_url_is_validated_without_echoing_it() -> None:
         Settings(migrations_database_url="mysql://u:leaky-secret@h/db")  # pyright: ignore[reportArgumentType]
     assert "migrations_database_url" in str(excinfo.value)
     assert "leaky-secret" not in str(excinfo.value)
-
-
-def test_privileged_database_role_is_off_by_default_and_dev_only() -> None:
-    assert Settings().allow_privileged_database_role is False
-    assert Settings(environment="dev", allow_privileged_database_role=True)
-    with pytest.raises(ValidationError):
-        Settings(environment="prod", allow_privileged_database_role=True)

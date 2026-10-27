@@ -82,7 +82,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         engine = create_engine(settings)
         try:
-            await verify_database_role(engine, settings)  # refuses to start on a privileged role
+            await verify_database_role(engine)  # refuses to start on a privileged role
             app.state.engine = engine
             app.state.session_factory = create_session_factory(engine)
             yield

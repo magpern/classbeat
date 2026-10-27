@@ -30,7 +30,7 @@ def create_engine(settings: Settings, **kwargs: Any) -> AsyncEngine:
         connect_args={"connect_timeout": CONNECT_TIMEOUT_SECONDS},
         **kwargs,
     )
-    refuse_privileged_roles(engine, settings)
+    refuse_privileged_roles(engine)
     return engine
 
 
