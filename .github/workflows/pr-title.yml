@@ -1,0 +1,36 @@
+name: PR title
+
+# PRs are squash-merged, so the PR title becomes the commit on main: check it against
+# commitlint.config.cjs. A separate workflow, so editing the title re-runs only this check.
+on:
+  pull_request:
+    types: [opened, edited, reopened, synchronize]
+
+permissions:
+  contents: read
+
+jobs:
+  pr-title:
+    name: pr-title
+    runs-on: ubuntu-24.04
+    steps:
+      # No token left in .git/config while third-party lint code runs.
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          package-manager-cache: false
+
+      # The title goes through an environment variable, never into the script text.
+      - name: Check the title with commitlint
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          set -euo pipefail
+          printf '%s\n' "$PR_TITLE" | npx --yes \
+            --package @commitlint/cli@21.2.3 \
+            --package @commitlint/config-conventional@21.2.3 \
+            -- commitlint --verbose
