@@ -21,6 +21,8 @@ from urllib.error import HTTPError, URLError
 
 from mowl.errors import MowlError
 
+from classbeat.egress import OutboundBlocked
+
 logger = logging.getLogger(__name__)
 
 CATEGORIES = (
@@ -129,19 +131,43 @@ def log_outcome(outcome: Outcome, action: str) -> None:
     )
 
 
+def _outbound_blocked(exc: BaseException) -> OutboundBlocked | None:
+    """The allowlist refusal, raised directly or as the ``__cause__``/``__context__`` of a
+    library error (a library may wrap it); two levels deep at most."""
+    current: BaseException | None = exc
+    for _ in range(3):
+        if current is None:
+            return None
+        if isinstance(current, OutboundBlocked):
+            return current
+        current = current.__cause__ or current.__context__
+    return None
+
+
 async def run_library_call[T](
     call: Callable[[], T], *, library_error: type[BaseException] = MowlError, sign_in: bool
 ) -> T:
     """Run a synchronous library call in a worker thread (``asyncio.to_thread``).
 
     ``library_error`` is the library's own error class, ``mowl.errors.MowlError`` (tests pass
-    their own). Any ``Exception`` becomes ``ConnectionFailure(category)`` with no chain.
+    their own). Any ``Exception`` becomes ``ConnectionFailure(category)`` with no chain, except
+    a request the worker's outbound allowlist refused (ADR 0006 §9): that is raised again as a
+    fresh ``OutboundBlocked`` (host only, no chain), so the job fails ``outbound_blocked`` and the
+    connection's ``last_error`` is not touched (the refusal is not the connection's fault).
     """
     outcome: Outcome | None = None
+    blocked_host: str | None = None
     try:
         return await asyncio.to_thread(call)
     except Exception as exc:
-        outcome = classify(exc, library_error=library_error, sign_in=sign_in)
+        found = _outbound_blocked(exc)
+        if found is not None:
+            blocked_host = found.host
+        else:
+            outcome = classify(exc, library_error=library_error, sign_in=sign_in)
     # Outside the except block: no __context__. ``exc`` is already unbound here.
+    if blocked_host is not None:
+        raise OutboundBlocked(blocked_host)
+    assert outcome is not None  # noqa: S101 - set in the except block
     log_outcome(outcome, "sign_in" if sign_in else "use")
     raise ConnectionFailure(outcome.category, outcome.retry_after)

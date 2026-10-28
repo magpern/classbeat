@@ -23,12 +23,14 @@ _PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
     (re.compile(r"(__Host-classbeat_\w+[\"']?\s*:\s*[\"']?)[^\"',;}\s]+"), rf"\1{_REDACTED}"),
     (
         re.compile(
-            r"(?i)\b(authorization|x-csrf-token|cookie|set-cookie)\b"
+            r"(?i)\b(authorization|x-csrf-token|x-api-key|cookie|set-cookie)\b"
             r"([\"']?\s*[:=]\s*[\"']?)[^\r\n\"']*"
         ),
         rf"\1\2{_REDACTED}",
     ),
     (re.compile(r"(?i)\bbearer\s+[\w.~+/=-]+"), f"Bearer {_REDACTED}"),
+    # ADR 0006 §9: an Anthropic API key, wherever it shows up.
+    (re.compile(r"\bsk-ant-[\w-]+"), _REDACTED),
     (re.compile(r"(/oauth/[^\s?\"'#]*)\?[^\s\"'#]*"), r"\1"),
     # Mail links carry their token in the fragment (section 5): ``/reset#token=...``.
     (re.compile(r"(?i)([#?&]token=)[\w.~%-]+"), rf"\1{_REDACTED}"),
@@ -57,6 +59,9 @@ SECRET_KEYS = frozenset(
         "swedebeat_device_id",
         "spotify_access_token",
         "spotify_refresh_token",
+        "api_key",
+        "x-api-key",
+        "anthropic_api_key",
     }
 )
 

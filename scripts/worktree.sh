@@ -7,7 +7,7 @@
 set -euo pipefail
 
 SELF="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/$(basename "${BASH_SOURCE[0]}")"
-SECRETS=(postgres_password database_owner_password database_password app_secret_key connection_kek)
+SECRETS=(postgres_password database_owner_password database_password app_secret_key connection_kek anthropic_api_key)
 
 die() { echo "worktree.sh: $*" >&2; exit 1; }
 
@@ -58,6 +58,14 @@ cmd_init() {
   local name bytes
   for name in "${SECRETS[@]}"; do
     if [ ! -f "secrets/$name" ]; then
+      if [ "$name" = "anthropic_api_key" ]; then
+        # ADR 0006 section 9: an empty placeholder, never a real key (an empty file is no key;
+        # the worker refuses MODEL_PROVIDER=anthropic until the owner puts the key here).
+        : > "secrets/$name"
+        chmod 644 "secrets/$name" 2>/dev/null || true
+        echo "created secrets/$name (empty placeholder)"
+        continue
+      fi
       # app_secret_key feeds the HKDF of ADR 0003 section 8 (at least 32 bytes); 64 here.
       # connection_kek (ADR 0004 section 2) is exactly 32 bytes: 64 lowercase hex characters.
       if [ "$name" = "app_secret_key" ]; then bytes=64; else bytes=32; fi

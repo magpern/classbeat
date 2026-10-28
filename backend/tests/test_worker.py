@@ -50,7 +50,11 @@ def test_worker_process_exits_0_on_a_signal(
     sig: signal.Signals, unreachable_database_url: str
 ) -> None:
     # A closed port: a database that answers with a refused login would now stop the worker.
-    env = {**os.environ, "CLASSBEAT_DATABASE_URL": unreachable_database_url}
+    env = {
+        **os.environ,
+        "CLASSBEAT_DATABASE_URL": unreachable_database_url,
+        "CLASSBEAT_MODEL_PROVIDER": "fake",
+    }
     command = [sys.executable, "-m", "classbeat.worker"]
     with subprocess.Popen(  # noqa: S603 - our own interpreter and module
         command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, env=env
