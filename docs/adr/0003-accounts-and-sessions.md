@@ -432,8 +432,7 @@ Fixed windows are counted in `rate_limits` with one upsert per check. There is n
     `window_start`), with `GREATEST(count - 1, 0)`. It never touches a newer window, so
     attempts that straddle a boundary gain nothing.
   - An attempt from a known device reserves no per-account slot at all.
-- **IPv6:** IPv4-mapped addresses are unmapped first; IPv6 is bucketed by its /64, so rotating within one
-  allocation doesn't escape the per-IP limits.
+- **IPv6:** IPv4-mapped addresses are unmapped first; IPv6 is bucketed by its /64 prefix.
 - **Bounded hashing:** argon2 runs in a bounded thread pool (`CLASSBEAT_PASSWORD_HASH_WORKERS`,
   default 4). A request that waits more than 5 s for a worker gets 503.
 - **When a limit trips:** the request gets 429 with `Retry-After`. There is no permanent lockout.
