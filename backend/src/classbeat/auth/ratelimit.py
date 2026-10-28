@@ -46,6 +46,12 @@ MAIL_ACCOUNT = Limit("mail", "account", 10, 3600)
 MAIL_IP = Limit("mail", "ip", 10, 3600)
 OAUTH_IP = Limit("oauth", "ip", 30, 15 * 60)
 PASSWORD_CHANGE = Limit("password-change", "account", 10, 3600)
+# ADR 0004 section 4: provider connects (MOWL sign-in with a password) count requests, per
+# classbeat user, per IP and per normalized provider email, so the route can't be used to test
+# passwords against MOWL. A success releases its slots.
+CONNECT_USER = Limit("connect", "account", 5, 15 * 60)
+CONNECT_IP = Limit("connect", "ip", 20, 15 * 60)
+CONNECT_PROVIDER_EMAIL = Limit("connect", "provider-email", 5, 15 * 60)
 
 OnSuccess = Literal["decrement", "delete"]
 
@@ -180,4 +186,14 @@ def mfa_buckets(user_id: str, ip: str) -> list[Bucket]:
         Bucket(MFA_PAIR, f"{user_id}|{address}", "delete"),
         Bucket(MFA_ACCOUNT, user_id),
         Bucket(MFA_IP, address),
+    ]
+
+
+def connect_buckets(provider: str, user_id: str, ip: str, email_normalized: str) -> list[Bucket]:
+    """A provider connect with email and password (MOWL): per user, per IP, per provider email.
+    The values are HMAC-keyed like every bucket; the email is never stored in the clear."""
+    return [
+        Bucket(CONNECT_USER, f"{provider}|{user_id}"),
+        Bucket(CONNECT_IP, bucket_ip(ip)),
+        Bucket(CONNECT_PROVIDER_EMAIL, f"{provider}|{email_normalized}"),
     ]

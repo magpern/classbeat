@@ -34,6 +34,9 @@ from classbeat.mail import Mailer
 
 logger = logging.getLogger(__name__)
 
+# Routes whose request bodies can hold a password or token.
+SECRET_INPUT_PATHS = ("/api/auth/", "/api/connections")
+
 
 def install(app: FastAPI) -> None:
     """Routes, the Origin/CSRF middleware and the 429 and 503 handlers."""
@@ -68,9 +71,10 @@ def install(app: FastAPI) -> None:
     async def validation_failed(request: Request, exc: Exception) -> Response:
         if not isinstance(exc, RequestValidationError):
             raise exc
-        if not request.url.path.startswith("/api/auth/"):
+        if not request.url.path.startswith(SECRET_INPUT_PATHS):
             return await request_validation_exception_handler(request, exc)
-        # FastAPI's default echoes ``input`` (a password or token); drop it on auth routes.
+        # FastAPI's default echoes ``input`` (a password or token); drop it on auth routes and on
+        # provider connects (the MOWL password, ADR 0004 section 4).
         errors = [
             {key: value for key, value in error.items() if key not in ("input", "ctx", "url")}
             for error in exc.errors()
