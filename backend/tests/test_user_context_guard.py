@@ -6,6 +6,14 @@ import pytest
 
 from user_context_scan import DEFINITION, ISSUER_PACKAGES, scan_source
 
+DEPENDS = "from fastapi import Depends"
+ANNOTATED = "from typing import Annotated"
+
+
+def lines(*parts: str) -> str:
+    return chr(10).join(parts)
+
+
 SRC = Path(__file__).resolve().parent.parent / "src"
 IMPORT = "from classbeat.context import UserContext\n"
 
@@ -30,6 +38,16 @@ ALLOWED = [
     "import classbeat.context\ndef f(ctx: classbeat.context.UserContext): ...",
     "import functools\np = functools.partial(print, 1)",  # no UserContext in this module
     "x = 'a'.replace('a', 'b')",
+    lines(DEPENDS, IMPORT, "def get(): ...", "async def h(ctx: UserContext = Depends(get)): ..."),
+    lines(
+        ANNOTATED,
+        DEPENDS,
+        IMPORT,
+        "def get(): ...",
+        "async def h(ctx: Annotated[UserContext, Depends(get)]): ...",
+    ),
+    lines(DEPENDS, "def h(x: int = Depends()): ..."),
+    lines(ANNOTATED, DEPENDS, IMPORT, "def h(x: Annotated[int, Depends()]): ..."),
 ]
 REFUSED = {
     "call": IMPORT + "ctx = UserContext(user_id=1, role='user')",
@@ -64,6 +82,36 @@ REFUSED = {
     "def f(ctx): return r(ctx)",
     "issuer token import": "from classbeat.context import issuer_token\nissuer_token()",
     "issuer token attribute": "import classbeat.context as c\nc.issuer_token()",
+    "Depends(UserContext)": lines(DEPENDS, IMPORT, "async def h(ctx=Depends(UserContext)): ..."),
+    "Depends(UserContext) in Annotated": lines(
+        ANNOTATED,
+        DEPENDS,
+        IMPORT,
+        "async def h(ctx: Annotated[UserContext, Depends(UserContext)]): ...",
+    ),
+    "Depends(UserContext) through an alias": lines(
+        "import fastapi",
+        "from classbeat.context import UserContext as C",
+        "async def h(ctx=fastapi.Depends(dependency=C)): ...",
+    ),
+    "bare Depends() default": lines(
+        DEPENDS, IMPORT, "async def h(ctx: UserContext = Depends()): ..."
+    ),
+    "bare Depends() keyword-only default": lines(
+        DEPENDS, IMPORT, "async def h(*, ctx: UserContext = Depends()): ..."
+    ),
+    "bare Depends() in Annotated": lines(
+        ANNOTATED, DEPENDS, IMPORT, "async def h(ctx: Annotated[UserContext, Depends()]): ..."
+    ),
+    "bare Depends() in typing.Annotated": lines(
+        "import typing",
+        DEPENDS,
+        IMPORT,
+        "async def h(ctx: typing.Annotated[UserContext, Depends()]): ...",
+    ),
+    "bare Depends() with a string annotation": lines(
+        DEPENDS, IMPORT, "async def h(ctx: 'UserContext' = Depends()): ..."
+    ),
     "issuer private token": "from classbeat.context import _ISSUER\nx = _ISSUER",
 }
 
