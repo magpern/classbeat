@@ -53,6 +53,12 @@ ALLOWED = [
     "x = 'select the data copied from sessions_archive'",  # a different name
     "x = 'delete the invites of the group'",
     "x = 'copied from sessions'",
+    "x = 'copied from sessions'",
+    "x = f'{n} rows copied from sessions of {u}'",
+    "x = 'rows ' + 'copied from sessions'",
+    "x = 'Showing ' + str(n) + ' users'",
+    "x = 1 + 2",
+    "x = 'the table sessions is described in the docs'",
     "__import__('classbeat.context').context",
     "__import__('classbeat.auth').auth.create_invite",
 ]
@@ -145,6 +151,30 @@ REFUSED = {
     "drop if exists": "q = 'DROP TABLE IF EXISTS invites'",
     "from list with alias": "q = 'select 1 from a x, b as y, auth_events'",
     "keyword then comment": "q = 'select 1 from /* c */ users'",
+    # verb and table in different pieces (review of #55)
+    "f-string column list": 'q = text(f"SELECT {cols} FROM users WHERE id = :id")',
+    "f-string from list": 'q = f"SELECT {c} FROM a, users"',
+    "f-string delete": 'q = f"DELETE {x} FROM users"',
+    "plus chain from": 'q = "SELECT * " + "FROM users"',
+    "plus chain into": 'q = "INSERT " + "INTO invites VALUES (1)"',
+    "plus chain join": 'q = "SELECT * FROM a " + "JOIN sessions ON true"',
+    "plus chain with a name": 'q = "SELECT " + cols + " FROM users"',
+    "plus chain in a call": 'q = text("SELECT * " + "FROM " + "users")',
+    "bare fragment": 'q = " FROM users WHERE id = :id"',
+    "bare fragment start": 'q = "FROM sessions"',
+    "bare join fragment": 'q = " JOIN identities i ON i.user_id = u.id"',
+    "bare update fragment": 'q = "UPDATE users SET role = 1"',
+    "bare fragment with alias": 'q = " FROM users u WHERE u.id = 1"',
+    "bare fragment semicolon": 'q = "x FROM users;"',
+    "fragment in an f-string": 'q = f" FROM users WHERE id = {i}"',
+    # narrowed in the first version (review of #55)
+    "grant on": "q = 'GRANT SELECT ON users TO x'",
+    "revoke on": "q = 'REVOKE ALL ON sessions FROM x'",
+    "grant on table": "q = 'GRANT ALL ON TABLE invites TO x'",
+    "any schema": "q = 'select * from classbeat.users'",
+    "any quoted schema": 'q = \'select * from "app"."users"\'',
+    "quoted without space": "q = 'SELECT count(*) FROM\"users\"'",
+    "join quoted without space": "q = 'select 1 from x join\"sessions\" on true'",
 }
 
 

@@ -2,7 +2,8 @@
 
 RS256 only: ``none``, HS* and every other algorithm are refused before any key is looked at.
 The signature is checked against the provider's JWKS. The keys are cached per URL for the
-``Cache-Control: max-age`` the provider sent (default one hour, at least a minute, at most 24 h),
+``Cache-Control: max-age`` the provider sent (default one hour when absent; at least a minute,
+so ``0``, ``no-cache`` and ``no-store`` give a minute; at most 24 h),
 so a key the provider retired stops being accepted; a token naming an unknown ``kid`` triggers
 one refetch, at most once a minute per URL, and concurrent sign-ins share that fetch. Claims:
 ``iss``, ``aud`` (with ``azp`` equal to our client id when ``aud`` has several values), ``exp``,
@@ -58,9 +59,9 @@ JwksFetcher = Callable[[str], Awaitable[Jwks]]
 
 
 def _ttl(max_age: float | None) -> float:
-    if max_age is None or max_age <= 0:
+    if max_age is None:
         return JWKS_DEFAULT_TTL
-    return min(max(max_age, JWKS_MIN_TTL), JWKS_MAX_TTL)
+    return min(max(max_age, JWKS_MIN_TTL), JWKS_MAX_TTL)  # 0 (no-cache, no-store) -> the minimum
 
 
 class JwksCache:
@@ -99,7 +100,8 @@ class JwksCache:
                 fetched = await self._fetch(url)
                 keys = KeySet.import_key_set(fetched.document)  # pyright: ignore[reportArgumentType]
             except Exception:
-                self._keys.pop(url, None)  # no stale keys after a failed refresh
+                # Unexpired keys stay: an unknown kid (anyone can send one) must not turn
+                # sign-in off during a provider outage. Expired ones are never served.
                 raise IdTokenError("the signing keys could not be fetched") from None
             finally:
                 self._fetched_at[url] = self._clock()  # counted when the fetch is over, also failed

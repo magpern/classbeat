@@ -54,6 +54,8 @@ class FakeProviders:
         self.published: list[RSAKey] = [self.key]
         self.codes: dict[str, dict[str, Any]] = {}
         self.jwks_fetches = 0
+        self.jwks_cache_control: str | None = None  # header the JWKS endpoints send
+        self.jwks_status = 200
         self.token_requests = 0
         self.github_emails: dict[str, list[dict[str, Any]]] = {}
         self.transport = httpx.MockTransport(self._handle)
@@ -64,8 +66,11 @@ class FakeProviders:
         url = str(request.url)
         if url in (GOOGLE_JWKS, MICROSOFT_JWKS):
             self.jwks_fetches += 1
+            headers = {"Cache-Control": self.jwks_cache_control} if self.jwks_cache_control else {}
             return httpx.Response(
-                200, json={"keys": [k.as_dict(private=False) for k in self.published]}
+                self.jwks_status,
+                json={"keys": [k.as_dict(private=False) for k in self.published]},
+                headers=headers,
             )
         if request.method == "POST" and url.split("?")[0] in (
             "https://oauth2.googleapis.com/token",

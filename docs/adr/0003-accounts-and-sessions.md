@@ -130,8 +130,9 @@ so the SPA can prompt.
 
   The new row keeps the old `expires_at` (rotation never extends a session past its 30 days)
   and carries over `mfa_at` and `reauth_at` unless the rotation sets them. There is no grace
-  period: a request in flight with the old token gets 401 and the SPA retries once after
-  refetching the session.
+  period: a request in flight with the old token gets 401. The SPA repeats only safe requests
+  (GET, HEAD, OPTIONS), once, after refetching the session; an unsafe request is never repeated
+  on a 401. One in flight across a rotation gets the CSRF 403 instead, which the SPA retries once.
 - **Revocation:**
   - A password change or an email change revokes every other session of the user.
   - A reset, and a role change (CLI or the `ADMIN_EMAILS` grant at sign-in), revoke **all** of
@@ -271,10 +272,10 @@ is no Starlette session middleware.
   - For `link` and `reauth`, the request's current session must belong to `flow.user_id`.
 - **ID tokens (OIDC):** checked against the provider's JWKS, RS256 only (`none` and HS* refused),
   with `iss`, `aud` (plus `azp` = our client id if `aud` has several values), `exp`, `iat` (60 s
-  leeway) and `nonce`. The JWKS is cached per URL for the response's `max-age` (default 1 h,
-  within 1 min to 24 h), so a retired key stops being accepted. An unknown `kid` or an expired
-  entry refetches at most once a minute per URL, under a per-URL lock (shared by concurrent
-  sign-ins).
+  leeway) and `nonce`. The JWKS is cached per URL for the response's `max-age` (default 1 h; 0,
+  `no-cache` and `no-store` give the 1 min minimum; at most 24 h), so a retired key stops being
+  accepted. An unknown `kid` or an expired entry refetches at most once a minute per URL, under
+  a per-URL lock (shared by concurrent sign-ins); a failed refetch keeps unexpired keys.
   - **Google:** the subject is `sub`. The email counts as verified only if `email_verified` is true.
   - **Microsoft** (`common` endpoint): `iss` must equal
     `https://login.microsoftonline.com/{tid}/v2.0` for the token's own `tid`. The subject is

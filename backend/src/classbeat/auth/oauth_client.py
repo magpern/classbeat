@@ -42,12 +42,20 @@ class ProviderError(Exception):
     """The provider refused or answered nonsense. Never carries a token or response body."""
 
 
-_MAX_AGE = re.compile(r"(?:^|[\s,])max-age=(\d+)", re.IGNORECASE)
+_MAX_AGE = re.compile(r"max-age=(\d+)", re.IGNORECASE)
 
 
 def _max_age(cache_control: str | None) -> float | None:
-    match = _MAX_AGE.search(cache_control or "")
-    return float(match.group(1)) if match else None
+    """Seconds the provider allows caching: ``max-age=N``; 0 for ``no-cache`` and ``no-store``
+    (``JwksCache`` clamps it to its minimum); None when absent or malformed (the default)."""
+    seconds: float | None = None
+    for directive in (cache_control or "").split(","):
+        directive = directive.strip().lower()
+        if directive in ("no-cache", "no-store") or directive.startswith("no-cache="):
+            return 0.0
+        if match := _MAX_AGE.fullmatch(directive):
+            seconds = float(match.group(1))
+    return seconds
 
 
 async def _fetch_jwks_with(transport: httpx.AsyncBaseTransport | None, url: str) -> Jwks:

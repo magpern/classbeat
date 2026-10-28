@@ -203,7 +203,7 @@ async def test_a_failed_fetch_is_not_retried_within_the_minute(
         (600, 600),  # honoured
         (5, 60),  # at least the refetch interval
         (10 * 24 * 3600, 24 * 3600),  # capped at 24 h
-        (0, 3600),  # not usable: the default
+        (0, 60),  # no-cache, no-store, max-age=0: the minimum, not the default
     ],
 )
 async def test_cached_keys_expire_after_the_providers_max_age_within_limits(
@@ -232,6 +232,33 @@ async def test_a_key_the_provider_retired_stops_being_accepted(
     fake.published.append(fake.rotated)  # the provider retired "good-key"
     now[0] += 601
     with pytest.raises(IdTokenError, match="unknown key id"):
+        await verify(fake, google, token(fake, google), cache)
+
+
+async def test_a_failed_refetch_keeps_the_keys_that_have_not_expired(
+    fake: FakeProviders, providers
+) -> None:
+    """A forged kid during a provider outage must not turn sign-in off."""
+    now = [1000.0]
+    healthy = await fetch(fake, 600)
+    down = False
+
+    async def flaky(url: str) -> Jwks:
+        if down:
+            raise OSError("down")
+        return await healthy(url)
+
+    cache = JwksCache(flaky, clock=lambda: now[0])
+    google = providers["google"]
+    await verify(fake, google, token(fake, google), cache)
+    down = True
+    now[0] += 120  # not expired, and past the refetch limit
+    forged = token(fake, google, kid="forged-kid")
+    with pytest.raises(IdTokenError, match="could not be fetched"):
+        await verify(fake, google, forged, cache)
+    assert (await verify(fake, google, token(fake, google), cache)).subject == "sub-1"
+    now[0] += 600  # now they have expired: no stale key is served
+    with pytest.raises(IdTokenError):
         await verify(fake, google, token(fake, google), cache)
 
 
@@ -271,3 +298,91 @@ async def test_several_audiences_need_azp_to_be_our_client_id(
     # A single audience needs no azp, and a list of one neither.
     assert (await verify(fake, google, token(fake, google))).subject == "sub-1"
     assert (await verify(fake, google, token(fake, google, aud=[ours]))).subject == "sub-1"
+
+
+# --- Cache-Control parsing and the HTTP fetch (oauth_client) ------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("header", "expected"),
+    [
+        ("max-age=300", 300.0),
+        ("public, max-age=19000, must-revalidate", 19000.0),
+        ("MAX-AGE=45", 45.0),
+        ("private,max-age=30", 30.0),
+        ("max-age=0", 0.0),
+        ("no-cache", 0.0),
+        ("no-store", 0.0),
+        ("no-store, max-age=600", 0.0),
+        ('no-cache="set-cookie"', 0.0),
+        ("max-age=99999999999", 99999999999.0),  # huge: the cache caps it
+        (None, None),
+        ("", None),
+        ("public", None),
+        ("max-age=abc", None),
+        ("max-age=-5", None),
+        ('max-age="300"', None),
+        ("max-age = 300", None),
+        ("s-maxage=10", None),
+        ("max-age=", None),
+        ("max-age=1.5", None),
+    ],
+)
+def test_max_age_is_read_from_cache_control(header: str | None, expected: float | None) -> None:
+    from classbeat.auth.oauth_client import _max_age
+
+    assert _max_age(header) == expected
+
+
+@pytest.mark.parametrize(
+    ("header", "lifetime"),
+    [
+        ("max-age=600", 600),
+        ("max-age=5", 60),
+        ("max-age=0", 60),
+        ("no-store", 60),
+        ("max-age=99999999999", 24 * 3600),
+        ("max-age=abc", 3600),
+        (None, 3600),
+    ],
+)
+async def test_the_fetch_sends_the_header_through_to_the_cache_lifetime(
+    fake: FakeProviders, providers, header: str | None, lifetime: int
+) -> None:
+    """End to end: a real HTTP response (the fake JWKS endpoint) -> _fetch_jwks_with -> cache."""
+    from classbeat.auth.oauth_client import _fetch_jwks_with
+    from oidcfake import GOOGLE_JWKS
+
+    fake.jwks_cache_control = header
+    now = [1000.0]
+
+    async def fetcher(url: str) -> Jwks:
+        return await _fetch_jwks_with(fake.transport, url)
+
+    cache = JwksCache(fetcher, clock=lambda: now[0])
+    google = providers["google"]
+    assert google.jwks_url == GOOGLE_JWKS
+    await verify(fake, google, token(fake, google), cache)
+    now[0] += lifetime - 1
+    await verify(fake, google, token(fake, google), cache)
+    assert fake.jwks_fetches == 1
+    now[0] += 2
+    await verify(fake, google, token(fake, google), cache)
+    assert fake.jwks_fetches == 2
+
+
+async def test_the_fetch_returns_the_document_and_refuses_an_error_status(
+    fake: FakeProviders,
+) -> None:
+    from classbeat.auth.oauth_client import _fetch_jwks_with
+    from oidcfake import GOOGLE_JWKS
+
+    fake.jwks_cache_control = "max-age=77"
+    jwks = await _fetch_jwks_with(fake.transport, GOOGLE_JWKS)
+    assert jwks.max_age == 77.0
+    assert [k["kid"] for k in jwks.document["keys"]] == ["good-key"]
+    fake.jwks_status = 503
+    import httpx
+
+    with pytest.raises(httpx.HTTPStatusError):
+        await _fetch_jwks_with(fake.transport, GOOGLE_JWKS)

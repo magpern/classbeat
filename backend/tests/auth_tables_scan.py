@@ -6,7 +6,8 @@ obfuscated code. Known limits: rebinding through arbitrary variables or containe
 ``getattr`` names, ``sys.modules`` lookups, ``exec``/``eval``, SQL assembled from pieces at run
 time or read from a file, config or the database (runtime SQL), SQL in ``bytes`` literals (only
 ``str`` constants are scanned), and anything else a static scan of one file cannot follow. The
-review gate (AGENTS.md) catches those.
+review gate (AGENTS.md) catches those. A subquery before the table in a FROM list
+(``FROM a, (select 1) b, users``) and ``JOIN (users)`` are not followed either.
 
 ``scan_source`` parses Python source (a module outside ``classbeat/auth/``) and returns what it
 refuses. Outside the package only the public API of ``classbeat.auth`` itself may be used:
@@ -24,11 +25,16 @@ refuses. Outside the package only the public API of ``classbeat.auth`` itself ma
   ``name=``;
 - ``__import__("classbeat.auth")`` returns the top-level ``classbeat`` package, so
   ``__import__("classbeat.auth").auth.tables`` is followed like ``import classbeat``;
-- any string constant (also the literal parts of f-strings) that contains an SQL statement verb
-  (select, insert, update, delete, copy, truncate, alter, merge, with, lock, drop, create, grant)
-  as a whole word and an auth table name (optionally double-quoted and schema-qualified) right
-  after an SQL keyword (from, join, into, update, table, copy, using, truncate, lock; comments
-  skipped; ``ONLY`` and ``IF EXISTS`` allowed) or later in a ``FROM a, b`` list. Prose such as
+- any string expression that is SQL: a constant, an f-string (each expression is a
+  placeholder) or a ``+`` chain of strings, taken as one text, so a verb and a table in
+  different pieces still count. It must contain an SQL statement verb (select, insert, update,
+  delete, copy, truncate, alter, merge, with, lock, drop, create, grant, revoke) as a whole word
+  and an auth table name (optionally double-quoted, with any schema qualifier) right after an
+  SQL keyword (from, join, into, update, table, copy, using, truncate, lock; after ``ON`` for
+  grant/revoke; comments skipped; ``ONLY`` and ``IF EXISTS`` allowed; no space is needed before
+  a quoted name) or later in a ``FROM a, b`` list. Without a verb, a fragment is still refused
+  when it starts with the keyword and table (``" FROM users"``) or when the table is followed by
+  a clause keyword or ``;`` (``" FROM users WHERE id = :id"``). Prose such as
   "copied from the sessions of the user" or "copied from sessions" (no statement verb) is not
   flagged; "update the sessions" is not either (the table does not follow the keyword).
 
@@ -97,29 +103,71 @@ SUBMODULES = frozenset(
 )
 FORBIDDEN_NAMES = frozenset(TABLE_NAMES) | {"metadata"} | SUBMODULES
 SQL_VERBS = re.compile(
-    r"\b(?:select|insert|update|delete|copy|truncate|alter|merge|with|lock|drop|create|grant)\b",
+    r"\b(?:select|insert|update|delete|copy|truncate|alter|merge|with|lock|drop|create|grant"
+    r"|revoke)\b",
     re.IGNORECASE,
 )
-_TABLE = r"(?:\"?public\"?\s*\.\s*)?\"?(?P<name>" + "|".join(TABLE_NAMES) + r")\"?(?![\w$])"
+_GRANTS = re.compile(r"\b(?:grant|revoke)\b", re.IGNORECASE)
+# A table name, optionally quoted and qualified with any schema: public.users, "s"."users".
+_TABLE = r"(?:(?:\"[^\"]+\"|\w+)\s*\.\s*)?\"?(?P<name>" + "|".join(TABLE_NAMES) + r")\"?(?![\w$])"
 _KEYWORD = r"(?<![\w$])(?:from|join|into|update|table|copy|using|truncate|lock)"
+_GAP = r"(?:\s+|(?=\"))"  # Postgres reads FROM"users" too
 _MODIFIERS = r"(?:(?:only|if\s+exists)\s+)*"
-# A table name right after an SQL keyword, optionally quoted and schema-qualified.
-SQL_AFTER_KEYWORD = re.compile(_KEYWORD + r"\s+" + _MODIFIERS + _TABLE, re.IGNORECASE)
+_AFTER = _GAP + _MODIFIERS + _TABLE
+# A table name right after an SQL keyword.
+SQL_AFTER_KEYWORD = re.compile(_KEYWORD + _AFTER, re.IGNORECASE)
+# GRANT/REVOKE ... ON users
+SQL_AFTER_ON = re.compile(r"(?<![\w$])on" + _AFTER, re.IGNORECASE)
 # A table name later in a FROM list: ``FROM a, b x, users``.
 SQL_IN_FROM_LIST = re.compile(
     r"(?<![\w$])from\s+(?:[\w\".$]+(?:\s+(?:as\s+)?[\w\"]+)?\s*,\s*)+" + _TABLE,
     re.IGNORECASE,
 )
+# Without a statement verb (a fragment of a statement built from pieces): the keyword and table
+# at the very start, or followed by SQL continuation (a clause keyword or ``;``), not by prose.
+_CONTINUATION = (
+    r"(?:\s+(?:as\s+)?[\w\"]+)?\s+(?:where|on|set|values|order\s+by|group\s+by|limit|returning"
+    r"|join|inner|left|right|cross|natural|full|using|select)\b|\s*;"
+)
+SQL_FRAGMENT_START = re.compile(_KEYWORD + _AFTER, re.IGNORECASE)
+SQL_FRAGMENT_CONTINUED = re.compile(
+    _KEYWORD + _AFTER + r"(?=" + _CONTINUATION + r")", re.IGNORECASE
+)
 _SQL_COMMENT = re.compile(r"/\*.*?\*/|--[^\n]*", re.DOTALL)
+PLACEHOLDER = " {} "
 
 
 def sql_table_in(text: str) -> str | None:
-    """The auth table an SQL-looking string names, or None."""
-    if not SQL_VERBS.search(text):
-        return None
+    """The auth table an SQL-looking string names, or None.
+
+    ``text`` is a whole string: one constant, an f-string with a placeholder for each
+    expression, or a ``+`` chain of strings joined the same way.
+    """
     text = _SQL_COMMENT.sub(" ", text)
-    match = SQL_AFTER_KEYWORD.search(text) or SQL_IN_FROM_LIST.search(text)
+    if SQL_VERBS.search(text):
+        match = SQL_AFTER_KEYWORD.search(text) or SQL_IN_FROM_LIST.search(text)
+        if match is None and _GRANTS.search(text):
+            match = SQL_AFTER_ON.search(text)
+    else:
+        match = SQL_FRAGMENT_START.match(text.lstrip()) or SQL_FRAGMENT_CONTINUED.search(text)
     return match.group("name") if match else None
+
+
+def _string_text(node: ast.AST) -> tuple[str, bool]:
+    """``(text, has_string)`` of a string expression: constants, f-strings and ``+`` chains."""
+    if isinstance(node, ast.Constant) and isinstance(node.value, str):
+        return node.value, True
+    if isinstance(node, ast.JoinedStr):
+        parts = [
+            v.value if isinstance(v, ast.Constant) and isinstance(v.value, str) else PLACEHOLDER
+            for v in node.values
+        ]
+        return "".join(parts), True
+    if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Add):
+        left, left_str = _string_text(node.left)
+        right, right_str = _string_text(node.right)
+        return left + right, left_str or right_str
+    return PLACEHOLDER, False
 
 
 def _dotted(node: ast.AST) -> str | None:
@@ -239,10 +287,15 @@ def scan_source(source: str) -> list[tuple[int, str]]:
                 found.append((node.lineno, "__dict__ of classbeat.auth"))
         elif isinstance(node, ast.Call):
             found += _call_findings(node, roots)
-        elif isinstance(node, ast.Constant) and isinstance(node.value, str):
-            if node.value == TABLES_MODULE or _is_auth_submodule(node.value):
-                found.append((node.lineno, f"string reference to {node.value}"))
-            if table := sql_table_in(node.value):
+        elif (
+            isinstance(node, ast.Constant)
+            and isinstance(node.value, str)
+            and (node.value == TABLES_MODULE or _is_auth_submodule(node.value))
+        ):
+            found.append((node.lineno, f"string reference to {node.value}"))
+        if isinstance(node, ast.Constant | ast.JoinedStr | ast.BinOp):
+            text, has_string = _string_text(node)
+            if has_string and (table := sql_table_in(text)):
                 found.append((node.lineno, f"raw SQL naming table {table}"))
     return sorted(set(found))
 
