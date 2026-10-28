@@ -7,7 +7,7 @@
 set -euo pipefail
 
 SELF="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/$(basename "${BASH_SOURCE[0]}")"
-SECRETS=(postgres_password database_owner_password database_password)
+SECRETS=(postgres_password database_owner_password database_password app_secret_key)
 
 die() { echo "worktree.sh: $*" >&2; exit 1; }
 
@@ -30,7 +30,8 @@ wt_base() {
   if [ "$(basename "$parent")" = "classbeat-wt" ]; then echo "$parent"; else echo "$parent/classbeat-wt"; fi
 }
 
-random_secret() { head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n'; }
+# $1 = number of random bytes (hex-encoded: twice as many characters).
+random_secret() { head -c "${1:-32}" /dev/urandom | od -An -tx1 | tr -d ' \n'; }
 
 cmd_init() {
   local issue="${1:-}" root
@@ -54,10 +55,12 @@ cmd_init() {
 
   mkdir -p secrets
   chmod 700 secrets 2>/dev/null || true
-  local name
+  local name bytes
   for name in "${SECRETS[@]}"; do
     if [ ! -f "secrets/$name" ]; then
-      printf '%s' "$(random_secret)" > "secrets/$name"
+      # app_secret_key feeds the HKDF of ADR 0003 section 8 (at least 32 bytes); 64 here.
+      if [ "$name" = "app_secret_key" ]; then bytes=64; else bytes=32; fi
+      printf '%s' "$(random_secret "$bytes")" > "secrets/$name"
       # The container user (uid 10001) must read the bind-mounted file; secrets/ itself is 0700.
       chmod 644 "secrets/$name" 2>/dev/null || true
       echo "created secrets/$name"

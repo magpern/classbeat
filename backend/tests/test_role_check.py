@@ -10,6 +10,7 @@ import pytest
 from sqlalchemy import create_engine as create_sync_engine
 from sqlalchemy import text
 
+from authtools import APP_SECRET
 from classbeat.config import Settings
 from classbeat.db import DatabaseRoleError, create_engine, verify_database_role
 from classbeat.db.role_check import (
@@ -186,7 +187,11 @@ async def test_the_web_app_does_not_start_with_a_privileged_role(database_url: s
 
 
 async def test_the_web_app_starts_with_the_app_role(app_database_url: str) -> None:
-    settings = Settings(database_url=app_database_url, environment="test")  # pyright: ignore[reportArgumentType]
+    settings = Settings(
+        database_url=app_database_url,  # pyright: ignore[reportArgumentType]
+        environment="test",
+        app_secret_key=APP_SECRET,  # pyright: ignore[reportArgumentType]
+    )
     app = create_app(settings)
     async with app.router.lifespan_context(app):
         transport = httpx.ASGITransport(app=app)

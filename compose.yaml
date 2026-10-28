@@ -11,8 +11,11 @@ x-app: &app
     # Web and worker connect as the app role; the password comes from the database_password
     # secret file (Settings reads it). Migrations use the owner role (see `migrate`).
     CLASSBEAT_DATABASE_URL: postgresql+psycopg://classbeat_app@db:5432/classbeat
+    # The origin the browser uses (ADR 0003 section 4); the Origin check compares against it.
+    CLASSBEAT_PUBLIC_BASE_URL: http://127.0.0.1:${WEB_PORT:-8000}
   secrets:
     - database_password
+    - app_secret_key
   depends_on:
     migrate:
       condition: service_completed_successfully
@@ -92,6 +95,8 @@ secrets:
     file: ./secrets/database_owner_password
   database_password:
     file: ./secrets/database_password
+  app_secret_key:
+    file: ./secrets/app_secret_key
 
 volumes:
   db-data:

@@ -12,7 +12,7 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from sqlalchemy import text
 
-from classbeat import __version__
+from classbeat import __version__, auth
 from classbeat.config import Settings
 from classbeat.db import create_engine, create_session_factory, verify_database_role
 
@@ -85,8 +85,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             await verify_database_role(engine)  # refuses to start on a privileged role
             app.state.engine = engine
             app.state.session_factory = create_session_factory(engine)
+            auth.attach_state(app, settings, app.state.session_factory)
             yield
         finally:
+            auth.detach_state(app)
             await engine.dispose()
 
     docs_enabled = settings.environment != "prod"
@@ -100,6 +102,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     )
     app.state.settings = settings
     app.include_router(api)
+    auth.install(app)
 
     if settings.static_dir is not None:
         if settings.static_dir.is_dir():

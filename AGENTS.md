@@ -188,6 +188,8 @@ uv run pyright                 # types
 uv run pytest                  # tests; the database tests skip unless the Postgres below is up
 uv run python -m classbeat     # the API on http://127.0.0.1:8000 (--host, --port); try /api/health
 uv run python -m classbeat.worker   # the worker; stops on Ctrl+C or SIGTERM
+uv run python -m classbeat invite create [--expires 7d]    # operator commands (ADR 0003 section 7);
+uv run python -m classbeat admin grant|revoke|mfa-reset EMAIL   # in the stack: docker compose exec web ...
 uv run alembic upgrade head    # migrations as the owner role, CLASSBEAT_MIGRATIONS_DATABASE_URL
 ```
 
@@ -216,7 +218,9 @@ Settings come from `CLASSBEAT_*` environment variables. Secrets come only from f
 after the field, without the prefix, in `CLASSBEAT_SECRETS_DIR` (default `/run/secrets`):
 `database_password` replaces the password in `CLASSBEAT_DATABASE_URL` (the app role, for web
 and worker) and `database_owner_password` replaces the one in
-`CLASSBEAT_MIGRATIONS_DATABASE_URL` (the owner role, for Alembic); the matching
+`CLASSBEAT_MIGRATIONS_DATABASE_URL` (the owner role, for Alembic); `app_secret_key` (at least
+32 bytes, created by `scripts/worktree.sh init`; the web app refuses to start without it) feeds
+the derived keys of ADR 0003 section 8; the matching
 `CLASSBEAT_DATABASE_PASSWORD` and `CLASSBEAT_DATABASE_OWNER_PASSWORD` variables are ignored.
 Web and worker refuse to start as a superuser, a `BYPASSRLS` role or a table owner (no
 override). In CI (`CI=true`) a missing

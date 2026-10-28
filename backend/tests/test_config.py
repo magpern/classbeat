@@ -191,3 +191,47 @@ def test_migrations_url_is_validated_without_echoing_it() -> None:
         Settings(migrations_database_url="mysql://u:leaky-secret@h/db")  # pyright: ignore[reportArgumentType]
     assert "migrations_database_url" in str(excinfo.value)
     assert "leaky-secret" not in str(excinfo.value)
+
+
+def test_account_settings_defaults() -> None:
+    settings = Settings()
+    assert settings.public_base_url == "http://127.0.0.1:8000"
+    assert settings.admin_email_set == frozenset()
+    assert settings.trusted_proxy_networks == ()
+    assert (settings.session_idle_days, settings.session_absolute_days) == (7, 30)
+    assert settings.password_hash_workers == 4
+    assert settings.purge_interval_seconds == 3600
+
+
+@pytest.mark.parametrize(
+    ("value", "origin"),
+    [
+        ("https://Classbeat.Example/", "https://classbeat.example"),
+        ("http://127.0.0.1:20036", "http://127.0.0.1:20036"),
+        ("https://classbeat.example:8443", "https://classbeat.example:8443"),
+    ],
+)
+def test_public_base_url_is_normalised_to_an_origin(value: str, origin: str) -> None:
+    assert Settings(public_base_url=value).public_base_url == origin
+
+
+@pytest.mark.parametrize(
+    "value", ["classbeat.example", "ftp://x", "https://x/path", "https://x?q=1", "https://u:p@x"]
+)
+def test_public_base_url_must_be_a_bare_http_origin(value: str) -> None:
+    with pytest.raises(ValidationError):
+        Settings(public_base_url=value)
+
+
+def test_trusted_proxies_and_numeric_settings_are_validated() -> None:
+    settings = Settings(trusted_proxies="10.0.0.0/8, 2001:db8::/32,192.0.2.1")
+    assert len(settings.trusted_proxy_networks) == 3
+    for name, value in (
+        ("trusted_proxies", "not-an-ip"),
+        ("session_idle_days", 0),
+        ("session_absolute_days", 0),
+        ("password_hash_workers", 0),
+        ("purge_interval_seconds", 0),
+    ):
+        with pytest.raises(ValidationError):
+            Settings(**{name: value})  # pyright: ignore[reportArgumentType]

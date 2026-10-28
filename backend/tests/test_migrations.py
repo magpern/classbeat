@@ -7,7 +7,9 @@ from alembic.script import ScriptDirectory
 from sqlalchemy import create_engine, text
 from sqlalchemy.exc import ProgrammingError
 
+from classbeat.auth.tables import metadata
 from classbeat.db import SYSTEM_TABLES
+from dbtools import migrated
 from rls_guard import check_tables
 from role_guard import check_roles
 
@@ -28,9 +30,9 @@ def applied_revisions(database_url: str) -> list[str]:
     return [row[0] for row in rows]
 
 
-def test_there_is_one_baseline_revision() -> None:
+def test_the_revisions_form_one_line() -> None:
     script = ScriptDirectory.from_config(alembic_config())
-    assert script.get_heads() == ["0001_baseline"]
+    assert script.get_heads() == ["0002_auth"]
     assert script.get_base() == "0001_baseline"
 
 
@@ -39,6 +41,7 @@ def test_offline_mode_renders_sql_without_a_database(capsys: pytest.CaptureFixtu
     out = capsys.readouterr().out
     assert "CREATE TABLE alembic_version" in out
     assert "0001_baseline" in out
+    assert "CREATE TABLE public.sessions" in out
 
 
 def test_upgrade_head_then_downgrade_base(
@@ -50,7 +53,7 @@ def test_upgrade_head_then_downgrade_base(
     config = alembic_config()
     try:
         command.upgrade(config, "head")
-        assert applied_revisions(database_url) == ["0001_baseline"]
+        assert applied_revisions(database_url) == ["0002_auth"]
         command.downgrade(config, "base")
         assert applied_revisions(database_url) == []
     finally:
@@ -87,3 +90,30 @@ def test_the_app_role_has_no_access_to_the_migration_table(
             admin.dispose()
     finally:
         command.downgrade(config, "base")
+
+
+def test_0002_auth_up_and_down(owner_database_url: str, database_url: str) -> None:
+    engine = create_engine(database_url)
+
+    def tables() -> set[str]:
+        with engine.connect() as connection:
+            rows = connection.execute(
+                text("SELECT tablename FROM pg_tables WHERE schemaname = 'public'")
+            )
+            return {row[0] for row in rows}
+
+    try:
+        with migrated(owner_database_url, "0001_baseline"):
+            assert tables() == {"alembic_version"}
+            command.upgrade(alembic_config(), "head")
+            assert tables() == {"alembic_version", *AUTH}
+            command.downgrade(alembic_config(), "0001_baseline")
+            assert tables() == {"alembic_version"}
+            command.upgrade(alembic_config(), "head")
+            assert tables() == {"alembic_version", *AUTH}
+        assert tables() <= {"alembic_version"}
+    finally:
+        engine.dispose()
+
+
+AUTH = sorted(metadata.tables)

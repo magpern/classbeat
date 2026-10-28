@@ -1,8 +1,10 @@
 """Application settings, read from the environment (prefix ``CLASSBEAT_``) and secret files."""
 
+import ipaddress
 import os
 from pathlib import Path
 from typing import Any, Literal
+from urllib.parse import urlsplit
 
 from pydantic import SecretStr, ValidationInfo, field_validator
 from pydantic.fields import FieldInfo
@@ -10,10 +12,13 @@ from pydantic_settings import BaseSettings, PydanticBaseSettingsSource, Settings
 from sqlalchemy.engine import URL, make_url
 from sqlalchemy.exc import ArgumentError
 
+from classbeat.emailnorm import normalize_email
+
 DATABASE_DRIVER = "postgresql+psycopg"
 DEFAULT_SECRETS_DIR = "/run/secrets"
 # Fields read from secret files, and never from the environment.
-SECRET_FILE_FIELDS = ("database_password", "database_owner_password")
+SECRET_FILE_FIELDS = ("database_password", "database_owner_password", "app_secret_key")
+MIN_APP_SECRET_BYTES = 32
 
 
 def secrets_dir() -> Path:
@@ -95,6 +100,23 @@ class Settings(BaseSettings):
     database_owner_password: SecretStr | None = None
     static_dir: Path | None = None
     worker_heartbeat_seconds: float = 30.0
+    # How often the worker purges expired auth rows (ADR 0003 section 1: hourly).
+    purge_interval_seconds: float = 3600.0
+
+    # Accounts and sessions (ADR 0003).
+    # From the file ``app_secret_key`` (at least 32 bytes); the web app refuses to start without
+    # it. All auth keys are derived from it (section 8).
+    app_secret_key: SecretStr | None = None
+    # The one public origin, for the Origin check (section 4) and for links in mail.
+    public_base_url: str = "http://127.0.0.1:8000"
+    # Comma-separated addresses that become admin at their next sign-in (section 7).
+    admin_emails: str = ""
+    # Comma-separated addresses or CIDR ranges of reverse proxies whose X-Forwarded-For is
+    # believed (section 9). Empty: the peer address is the client.
+    trusted_proxies: str = ""
+    session_idle_days: int = 7
+    session_absolute_days: int = 30
+    password_hash_workers: int = 4
 
     @classmethod
     def settings_customise_sources(
@@ -134,6 +156,58 @@ class Settings(BaseSettings):
             raise ValueError("worker_heartbeat_seconds must be greater than 0")
         return value
 
+    @field_validator("app_secret_key")
+    @classmethod
+    def _check_app_secret_key(cls, value: SecretStr | None) -> SecretStr | None:
+        if value is not None and len(value.get_secret_value().encode()) < MIN_APP_SECRET_BYTES:
+            raise ValueError(f"app_secret_key must be at least {MIN_APP_SECRET_BYTES} bytes long")
+        return value
+
+    @field_validator("public_base_url")
+    @classmethod
+    def _check_public_base_url(cls, value: str) -> str:
+        parts = urlsplit(value)
+        if (
+            parts.scheme not in ("http", "https")
+            or not parts.hostname
+            or parts.path not in ("", "/")
+            or parts.query
+            or parts.fragment
+            or parts.username
+            or parts.password
+        ):
+            raise ValueError("public_base_url must be an http(s) origin without a path")
+        return public_origin(value)
+
+    @field_validator("trusted_proxies")
+    @classmethod
+    def _check_trusted_proxies(cls, value: str) -> str:
+        parse_networks(value)
+        return value
+
+    @field_validator("session_idle_days", "session_absolute_days", "password_hash_workers")
+    @classmethod
+    def _check_positive(cls, value: int, info: ValidationInfo) -> int:
+        if value < 1:
+            raise ValueError(f"{info.field_name} must be at least 1")
+        return value
+
+    @field_validator("purge_interval_seconds")
+    @classmethod
+    def _check_purge_interval(cls, value: float) -> float:
+        if value <= 0:
+            raise ValueError("purge_interval_seconds must be greater than 0")
+        return value
+
+    @property
+    def admin_email_set(self) -> frozenset[str]:
+        """``admin_emails`` in the normalized form of ADR 0003 section 1 (ASCII lower case)."""
+        return frozenset(normalize_email(e) for e in self.admin_emails.split(",") if e.strip())
+
+    @property
+    def trusted_proxy_networks(self) -> tuple[ipaddress.IPv4Network | ipaddress.IPv6Network, ...]:
+        return parse_networks(self.trusted_proxies)
+
     def sqlalchemy_url(self) -> URL:
         """The app role's URL, with ``database_password`` substituted when it is set."""
         return _with_password(self.database_url, self.database_password)
@@ -141,6 +215,30 @@ class Settings(BaseSettings):
     def migrations_sqlalchemy_url(self) -> URL:
         """The owner role's URL, with ``database_owner_password`` substituted when it is set."""
         return _with_password(self.migrations_database_url, self.database_owner_password)
+
+
+def public_origin(url: str) -> str:
+    """``scheme://host[:port]`` of ``url``, lower case, as a browser sends it in ``Origin``."""
+    parts = urlsplit(url)
+    host = parts.hostname or ""
+    if ":" in host:
+        host = f"[{host}]"
+    port = f":{parts.port}" if parts.port is not None else ""
+    return f"{parts.scheme.lower()}://{host.lower()}{port}"
+
+
+def parse_networks(
+    value: str,
+) -> tuple[ipaddress.IPv4Network | ipaddress.IPv6Network, ...]:
+    """Parse a comma-separated list of addresses and CIDR ranges."""
+    networks: list[ipaddress.IPv4Network | ipaddress.IPv6Network] = []
+    for item in value.split(","):
+        if item.strip():
+            try:
+                networks.append(ipaddress.ip_network(item.strip(), strict=False))
+            except ValueError:
+                raise ValueError("trusted_proxies must list IP addresses or CIDR ranges") from None
+    return tuple(networks)
 
 
 def _with_password(url: SecretStr, password: SecretStr | None) -> URL:
