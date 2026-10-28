@@ -12,36 +12,31 @@ from classbeat.config import Settings
 from classbeat.worker.loop import run_worker
 
 
+def _down(url: str) -> Settings:
+    # A closed port: the loop keeps polling (no claim before the queue check passed).
+    return Settings(database_url=url, worker_poll_seconds=0.02)  # pyright: ignore[reportArgumentType]
+
+
 async def test_worker_logs_start_and_stop_and_exits_when_the_stop_event_is_set(
-    caplog: pytest.LogCaptureFixture,
+    caplog: pytest.LogCaptureFixture, unreachable_database_url: str
 ) -> None:
     stop = asyncio.Event()
     with caplog.at_level(logging.INFO, logger="classbeat.worker.loop"):
-        task = asyncio.create_task(run_worker(Settings(), stop))
-        await asyncio.sleep(0.05)
-        assert not task.done()
+        task = asyncio.create_task(run_worker(_down(unreachable_database_url), stop))
+        await asyncio.sleep(0.3)
+        assert not task.done()  # a database that is down does not stop the worker
         stop.set()
-        await asyncio.wait_for(task, timeout=1)
-    messages = [record.getMessage() for record in caplog.records]
+        await asyncio.wait_for(task, timeout=5)
+    messages = [r.getMessage() for r in caplog.records if r.name == "classbeat.worker.loop"]
     assert messages == ["worker started", "worker stopped"]
 
 
-async def test_worker_logs_a_heartbeat_every_interval(caplog: pytest.LogCaptureFixture) -> None:
-    stop = asyncio.Event()
-    settings = Settings(worker_heartbeat_seconds=0.02)
-    with caplog.at_level(logging.INFO, logger="classbeat.worker.loop"):
-        task = asyncio.create_task(run_worker(settings, stop))
-        await asyncio.sleep(0.3)
-        stop.set()
-        await asyncio.wait_for(task, timeout=1)
-    heartbeats = [r for r in caplog.records if r.getMessage() == "worker heartbeat"]
-    assert len(heartbeats) >= 3
-
-
-async def test_worker_with_the_stop_event_already_set_returns_at_once() -> None:
+async def test_worker_with_the_stop_event_already_set_returns_at_once(
+    unreachable_database_url: str,
+) -> None:
     stop = asyncio.Event()
     stop.set()
-    await asyncio.wait_for(run_worker(Settings(), stop), timeout=1)
+    await asyncio.wait_for(run_worker(_down(unreachable_database_url), stop), timeout=5)
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="POSIX signals; the container runs Linux")
@@ -66,6 +61,7 @@ def test_worker_process_exits_0_on_a_signal(
             process.send_signal(sig)
             assert process.wait(timeout=3) == 0
             rest = [json.loads(line) for line in process.stdout.read().splitlines()]
-            assert [entry["message"] for entry in rest] == ["worker stopped"]
+            assert rest[-1]["message"] == "worker stopped"
+            assert all(entry["level"] != "ERROR" for entry in rest)
         finally:
             process.kill()

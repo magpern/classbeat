@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any, Literal
 from urllib.parse import urlsplit
 
-from pydantic import SecretStr, ValidationInfo, field_validator, model_validator
+from pydantic import Field, SecretStr, ValidationInfo, field_validator, model_validator
 from pydantic.fields import FieldInfo
 from pydantic_settings import BaseSettings, PydanticBaseSettingsSource, SettingsConfigDict
 from sqlalchemy.engine import URL, make_url
@@ -113,7 +113,8 @@ class Settings(BaseSettings):
     # From the file ``database_owner_password``; replaces the password in the URL above.
     database_owner_password: SecretStr | None = None
     static_dir: Path | None = None
-    worker_heartbeat_seconds: float = 30.0
+    # The worker's claim poll when no ``jobs_queued`` notification arrives (ADR 0005 section 3).
+    worker_poll_seconds: float = 2.0
     # How often the worker purges expired auth rows (ADR 0003 section 1: hourly).
     purge_interval_seconds: float = 3600.0
 
@@ -160,6 +161,18 @@ class Settings(BaseSettings):
     # ``anthropic_api_key`` secret file; ``fake`` (the dev stack and CI) is refused in ``prod``.
     # ``check_worker_model_provider`` enforces both at worker start.
     model_provider: Literal["anthropic", "fake"] = "anthropic"
+
+    # Jobs (ADR 0005 sections 3 and 4).
+    job_lease_seconds: int = Field(default=120, ge=30, le=600)
+    worker_concurrency: int = Field(default=2, ge=1, le=32)
+    # Reap, expire and settle (ADR 0005 section 3: every 30 s).
+    worker_maintenance_seconds: float = Field(default=30.0, gt=0)
+    # On SIGTERM, how long runs may take to reach a checkpoint or return from a call before
+    # their leases are handed back (inside compose's 30 s stop_grace_period).
+    worker_shutdown_wait_seconds: float = Field(default=25.0, ge=0, le=25)
+    approval_ttl_hours: int = Field(default=168, ge=1, le=8760)
+    # operation_busy requeues per phase that cost no attempt; after that each one counts (#86).
+    job_busy_requeue_limit: int = Field(default=5, ge=0, le=100)
     # From the file ``anthropic_api_key`` (never the environment), mounted on the worker only;
     # the web app refuses to start when it can read it. An empty file counts as no key
     # (``scripts/worktree.sh init`` creates an empty one; it is never a real key).
@@ -196,11 +209,11 @@ class Settings(BaseSettings):
             raise ValueError(f"{info.field_name} must use the {DATABASE_DRIVER}:// scheme")
         return value
 
-    @field_validator("worker_heartbeat_seconds")
+    @field_validator("worker_poll_seconds")
     @classmethod
-    def _check_heartbeat(cls, value: float) -> float:
+    def _check_poll(cls, value: float) -> float:
         if value <= 0:
-            raise ValueError("worker_heartbeat_seconds must be greater than 0")
+            raise ValueError("worker_poll_seconds must be greater than 0")
         return value
 
     @field_validator("app_secret_key")

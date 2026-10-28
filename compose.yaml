@@ -106,6 +106,9 @@ services:
     <<: *app
     restart: unless-stopped
     command: ["python", "-m", "classbeat.worker"]
+    # ADR 0005 section 3: on SIGTERM the worker waits up to 25 s for runs to reach a checkpoint,
+    # then hands their leases back (each under the role's 5 s lock_timeout) within these 30 s.
+    stop_grace_period: 30s
     environment:
       <<: *app-env
       # ADR 0006 section 9: `fake` (the default in .env.example) for the dev stack and CI;

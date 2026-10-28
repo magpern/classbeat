@@ -281,10 +281,15 @@ def test_every_other_use_is_refused(source: str) -> None:
     assert scan_source(source) != []
 
 
-def test_the_issuer_exemption_is_two_modules_not_the_auth_package() -> None:
-    assert set(ISSUER_MODULES) == {"classbeat/auth/deps.py", "classbeat/context.py"}
+def test_the_issuer_exemption_is_three_modules_not_the_auth_or_jobs_package() -> None:
+    assert set(ISSUER_MODULES) == {
+        "classbeat/auth/deps.py",
+        "classbeat/jobs/issuer.py",
+        "classbeat/context.py",
+    }
     route = "classbeat/auth/routes.py"
     assert route not in ISSUER_MODULES
+    assert "classbeat/jobs/runner.py" not in ISSUER_MODULES
     forged = IMPORT + "ctx = UserContext(user_id=1, role='user')"
     assert scan_source(forged) != []  # what the scan would say about a route module that did this
 

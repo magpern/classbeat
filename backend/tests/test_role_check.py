@@ -236,7 +236,7 @@ async def test_the_worker_starts_with_the_app_role(app_database_url: str) -> Non
     settings = Settings(
         database_url=app_database_url,  # pyright: ignore[reportArgumentType]
         environment="test",
-        worker_heartbeat_seconds=0.01,
+        worker_poll_seconds=0.01,
     )
     task = asyncio.create_task(_run(settings))
     await asyncio.sleep(0.5)
