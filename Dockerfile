@@ -4,7 +4,7 @@
 FROM ghcr.io/astral-sh/uv:0.13.6 AS uv
 
 # --- frontend build ---------------------------------------------------------------------
-FROM node:24.22.1-bookworm-slim AS frontend
+FROM node:26.12.1-bookworm-slim AS frontend
 WORKDIR /build/frontend
 COPY frontend/package.json frontend/package-lock.json ./
 RUN npm ci
