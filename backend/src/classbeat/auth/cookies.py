@@ -84,3 +84,11 @@ def set_oauth_cookie(response: Response, value: str) -> None:
         httponly=True,
         samesite="lax",
     )
+
+
+def clear_oauth_cookie(response: Response) -> None:
+    response.delete_cookie(OAUTH_COOKIE, path="/", secure=True, httponly=True, samesite="lax")
+
+
+def clear_pending_cookie(response: Response) -> None:
+    response.delete_cookie(PENDING_COOKIE, path="/", secure=True, httponly=True, samesite="lax")

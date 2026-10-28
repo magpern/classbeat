@@ -86,3 +86,27 @@ def mfa_failures_notice(to: str) -> MailMessage:
         "There were five failed two-factor attempts on your classbeat account within an hour.\n"
         "If this wasn't you, change your password.\n",
     )
+
+
+def provider_signup_confirmation(
+    settings: Settings, to: str, provider: str, token: str
+) -> MailMessage:
+    return MailMessage(
+        to,
+        "Confirm your classbeat account",
+        f"Someone signed in with {provider.title()} and asked to create a classbeat account "
+        "with this address.\n\n"
+        "To finish, open this link in the same browser (valid for 24 hours):\n"
+        f"{link(settings, '/signup/confirm', token)}\n\n"
+        "If this wasn't you, ignore this mail. No account is created.\n",
+    )
+
+
+def identity_linked_notice(to: str, provider: str) -> MailMessage:
+    return MailMessage(
+        to,
+        "A sign-in method was added to your classbeat account",
+        f"{provider.title()} was linked to your classbeat account as a way to sign in.\n"
+        "If this wasn't you, sign in, remove it from your account page and change your "
+        "password.\n",
+    )

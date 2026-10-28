@@ -12,11 +12,16 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from classbeat.auth.admin_routes import router as admin_router
 from classbeat.auth.email_routes import router as email_router
+from classbeat.auth.identity_routes import router as identity_router
 from classbeat.auth.keys import Keys
 from classbeat.auth.mfa_routes import router as mfa_router
 from classbeat.auth.middleware import AuthMiddleware
 from classbeat.auth.notices import register_security_notifier
 from classbeat.auth.notifier import MailNotifier
+from classbeat.auth.oauth_client import OAuthRuntime
+from classbeat.auth.oauth_handoff import router as handoff_router
+from classbeat.auth.oauth_providers import enabled_providers
+from classbeat.auth.oauth_routes import router as oauth_router
 from classbeat.auth.passwords import PasswordHashBusy, PasswordHasher
 from classbeat.auth.ratelimit import RateLimited, RateLimiter
 from classbeat.auth.reset_routes import router as reset_router
@@ -36,6 +41,10 @@ def install(app: FastAPI) -> None:
     for flow in (signup_router, signin_router, reset_router, email_router):
         app.include_router(flow)
     app.include_router(mfa_router)
+    # OAuth: the callback is not under /api and must precede the SPA catch-all (web.create_app
+    # installs auth first). "pending" routes before the "{provider}" ones.
+    for oauth in (handoff_router, oauth_router, identity_router):
+        app.include_router(oauth)
     app.include_router(admin_router)
     app.add_middleware(AuthMiddleware)
 
@@ -85,6 +94,10 @@ def attach_state(
     app.state.limiter = RateLimiter(factory, keys)
     app.state.password_hasher = PasswordHasher(settings.password_hash_workers)
     app.state.mailer = Mailer(settings)
+    app.state.oauth = OAuthRuntime(enabled_providers(settings))
+    # httpx logs each request URL at INFO; the OAuth ones are not worth a log line.
+    for noisy in ("httpx", "httpcore"):
+        logging.getLogger(noisy).setLevel(logging.WARNING)
     # #39's security notices (TOTP enrolled, repeated MFA failures) go out as mail.
     register_security_notifier(MailNotifier(app.state.mailer))
 

@@ -6,12 +6,13 @@ and sends one mail after the response. ``POST /api/auth/signup/confirm`` needs t
 chosen password; a wrong password leaves the row untouched and counts as a sign-in failure.
 
 Provider sign-ups (``pending_signups.provider`` set) are confirmed in the browser that started
-them: that path arrives with #38, and this endpoint refuses such a row without touching it.
+them (``oauth_handoff``); in any other browser the row and its token stay untouched.
 """
 
 from datetime import timedelta
+from uuid import UUID
 
-from fastapi import APIRouter, BackgroundTasks, HTTPException, Request
+from fastapi import APIRouter, BackgroundTasks, HTTPException, Request, Response
 from pydantic import BaseModel, Field
 from sqlalchemy import delete, func, insert, select, update
 from sqlalchemy.exc import IntegrityError
@@ -24,6 +25,7 @@ from classbeat.auth.deps import request_ip
 from classbeat.auth.events import record_event
 from classbeat.auth.flowtools import EmailAddress, factory, mailer, reserve
 from classbeat.auth.keys import new_token, token_hash
+from classbeat.auth.oauth_handoff import confirm_provider_signup
 from classbeat.auth.passwords import PasswordRuleError, normalize_password
 from classbeat.auth.ratelimit import SIGN_IN_IP, SIGNUP_ADDRESS, SIGNUP_IP, Bucket, password_buckets
 from classbeat.auth.tables import invites, pending_signups
@@ -45,7 +47,8 @@ class SignUpIn(BaseModel):
 
 class ConfirmIn(BaseModel):
     token: str = Field(max_length=FIELD_MAX)
-    password: str = Field(max_length=FIELD_MAX)
+    # Required for a password sign-up; a provider sign-up is bound to its browser instead.
+    password: str | None = Field(default=None, max_length=FIELD_MAX)
 
 
 class Accepted(BaseModel):
@@ -60,7 +63,7 @@ def refuse(status: int, reason: str) -> HTTPException:
     return HTTPException(status_code=status, detail={"reason": reason})
 
 
-async def _valid_invite(db: AsyncSession, code: str | None) -> object | None:
+async def valid_invite(db: AsyncSession, code: str | None) -> UUID | None:
     if not code:
         return None
     return (
@@ -93,7 +96,7 @@ async def sign_up(body: SignUpIn, request: Request, background: BackgroundTasks)
     if settings.signup_mode == "invite":
         # Checked before hashing, so a bad invite never occupies the hashing pool.
         async with system_session(factory(request)) as db:
-            invite_id = await _valid_invite(db, body.invite_code)
+            invite_id = await valid_invite(db, body.invite_code)
         if invite_id is None:
             raise refuse(400, "invalid_invite")  # its own error (section 5)
     password_hash = await request.app.state.password_hasher.hash(password)  # both branches
@@ -125,7 +128,9 @@ class _Refused(Exception):
 
 
 @router.post("/signup/confirm")
-async def confirm_sign_up(body: ConfirmIn, request: Request) -> Created:
+async def confirm_sign_up(
+    body: ConfirmIn, request: Request, response: Response, background: BackgroundTasks
+) -> Created:
     # Deliberately ignores signup_mode: a pending sign-up made while sign-ups were open (or
     # invited) stays confirmable until it expires, even after a switch to "closed"; its invite
     # was valid when it was made and is still consumed at confirmation.
@@ -139,19 +144,23 @@ async def confirm_sign_up(body: ConfirmIn, request: Request) -> Created:
                     pending_signups.c.email_normalized,
                     pending_signups.c.password_hash,
                     pending_signups.c.provider,
+                    pending_signups.c.browser_hash,
                 ).where(
                     pending_signups.c.token_hash == digest,
                     pending_signups.c.expires_at > func.now(),
                 )
             )
         ).first()
-    if row is None or row.provider is not None or row.password_hash is None:
-        # Unknown, expired or provider token: only the IP is counted (no account to name).
+    if row is None or (row.provider is None and row.password_hash is None):
+        # Unknown or expired token: only the IP is counted (no account to name).
         await reserve(request, [Bucket(SIGN_IN_IP, bucket_ip(ip))])
         raise refuse(400, "invalid_token")
+    if row.provider is not None:
+        await confirm_provider_signup(request, response, background, digest, row)
+        return Created()
     attempt = await reserve(request, password_buckets(row.email_normalized, ip, known_device=False))
     try:
-        typed = normalize_password(body.password)
+        typed = normalize_password(body.password) if body.password is not None else None
     except PasswordRuleError:
         typed = None
     if typed is None or not await request.app.state.password_hasher.verify(

@@ -22,6 +22,9 @@ SECRET_FILE_FIELDS = (
     "database_owner_password",
     "app_secret_key",
     "smtp_password",
+    "oauth_google_client_secret",
+    "oauth_github_client_secret",
+    "oauth_microsoft_client_secret",
 )
 # Hosts where unencrypted SMTP (``smtp_tls = none``) is allowed: loopback and the compose service.
 PLAIN_SMTP_HOSTS = frozenset({"localhost", "mailpit"})
@@ -135,6 +138,15 @@ class Settings(BaseSettings):
     smtp_username: str | None = None
     # From the file ``smtp_password`` (never the environment).
     smtp_password: SecretStr | None = None
+
+    # OAuth sign-in (section 5). A provider is on only when its client id and its secret file
+    # (``oauth_<provider>_client_secret``, never the environment) both exist.
+    oauth_google_client_id: str | None = None
+    oauth_github_client_id: str | None = None
+    oauth_microsoft_client_id: str | None = None
+    oauth_google_client_secret: SecretStr | None = None
+    oauth_github_client_secret: SecretStr | None = None
+    oauth_microsoft_client_secret: SecretStr | None = None
 
     @classmethod
     def settings_customise_sources(
