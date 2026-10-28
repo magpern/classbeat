@@ -92,10 +92,13 @@ responses and model output alike.
 
 ## Accepted risks (beta)
 
-- MOWL's API is undocumented and may change or be refused; the beta uses each tester's own
-  account and wider use needs MOWL's authorization (track F).
-- Spotify BYOK is not confirmed compliant for a hosted service; live use waits for the
-  permission assessment (ADR 0010).
+- MOWL's API is unofficial and undocumented: MOWL may block an account or change the API
+  without notice. The beta (owner and invited friends) uses each tester's own account on the
+  owner's risk acceptance; wider use needs MOWL's authorization (ADR 0010).
+- Spotify: song picking sends Spotify-derived metadata to Claude, which the Developer Policy
+  forbids, and BYOK's fit with the one-Client-ID rule is unconfirmed. Accepted by the owner for
+  the beta circle; a developer app or account may be disabled, borne by each tester for their
+  own. Public or paid use needs Spotify first (ADR 0010).
 - Swedebeat sign-in needs Swedebeat's app key, which the `mowl-workouts` wheel carries and
   which can be extracted from it. AGENTS.md forbids using credentials embedded in third-party
   apps, so classbeat doesn't use that key: Swedebeat features stay behind a disabled flag with

@@ -1,6 +1,9 @@
 # Questions for the providers (track F)
 
-Ready for the owner to send. Agents never contact providers (AGENTS.md, safety envelope).
+**Not sent.** The owner decided on 2026-10-28 not to involve the providers while classbeat is
+a personal app for the owner and invited friends ([ADR 0010](../adr/0010-live-activation-permissions.md)).
+The questions are kept for a later public or paid phase. Agents never contact providers
+(AGENTS.md, safety envelope).
 Sources were read on 2026-10-27; the owner should confirm the quoted wording on the live pages
 before sending, because it was retrieved through an automated reader.
 

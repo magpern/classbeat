@@ -13,12 +13,17 @@ roadmap differ, the roadmap wins.** Section numbers (§1, §4, M2 …) refer to 
 | Role | Model class | Owns | Must not |
 |---|---|---|---|
 | Architect / Orchestrator | Opus | The next milestone, its PR split and acceptance criteria, dependencies, scheduling, merge order, ADRs, track F, `docs/status.md` | Normally write production code |
-| Developer | Sonnet | One PR in its own branch and worktree: code, tests, CI fixes, **all** reviewer findings | Change architecture or acceptance criteria without the Architect |
+| Developer | Sonnet; Opus for security-critical PRs (below) | One PR in its own branch and worktree: code, tests, CI fixes, **all** reviewer findings | Change architecture or acceptance criteria without the Architect |
 | Explorer | Haiku | Bounded work: searches, evidence, fixtures, docs, extra tests | Own security, auth, isolation, crypto or billing decisions |
 | Reviewer | a **fresh** Opus context per review, sharing no context with the Architect or Developer | The diff, the acceptance criteria, tests, CI output, ADR compliance → `PASS` or `FAIL` with findings | Fix its own findings; review an ADR it wrote |
 
 Model *classes*, not versions: use the current generation of each tier. A model substitution
 never widens a role's authority. Agent definitions live in `.claude/agents/`.
+
+**Security-critical PRs get an Opus Developer** (owner decision, 2026-10-28): encryption and key
+handling, jobs with leases and fencing, Spotify OAuth, and approvals and external writes. The
+issue says so in its "Owner:" line; everything else keeps a Sonnet Developer. The Reviewer is a
+fresh Opus context either way, never the Developer's.
 
 ## Unit of work: one issue, one PR
 

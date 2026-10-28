@@ -1,6 +1,6 @@
 # ADR 0010: Provider permissions for live activation
 
-Status: Accepted (the table is updated as answers arrive)
+Status: Accepted (amended 2026-10-28: owner's risk acceptance for the beta circle)
 
 ## Context
 
@@ -31,38 +31,55 @@ What the desk research found (2026-10-27, public pages only):
 
 ## Decision
 
-The live activation gate allows a feature against real accounts only when its row below says
-so **and** the owner authorizes the specific run (AGENTS.md, safety envelope). Until then the
-feature runs against fakes only.
+**Owner decision (2026-10-28): the providers are not contacted.** classbeat starts as a
+small personal app for the owner and friends the owner invites: invite-only, free,
+non-commercial. For that circle the owner accepts the provider-terms risks below instead of
+waiting for answers, so every feature's live path may be switched on once it is technically
+complete. The testers are the owner's friends and are told directly; the app shows no
+separate risk notice.
 
-| Feature | Needs | Status | Allowed until answered |
-|---|---|---|---|
-| Save and update a class in the user's own MOWL account | MOWL M1 | unasked | Owner's own account only, owner-authorized runs; no testers |
-| Design on music already in MOWL whose tracks come from Spotify | MOWL M1, Spotify S2, S3 | unasked | Fakes only: no Spotify-derived titles, artists, IDs or analysis to a model |
-| Design on music in MOWL that doesn't come from Spotify | MOWL M1 | unasked | Owner's own account only, owner-authorized runs |
-| Spotify sign-in with the user's own Client ID (BYOK) | Spotify S1 | unasked | Owner's own Spotify app and account only, owner-authorized runs |
-| Claude choosing songs from Spotify metadata and MOWL analysis | Spotify S2, S3 | unasked | Fakes only; no real Spotify metadata to a model |
-| Creating the pool and final playlists in a user's Spotify account | Spotify S1, S3 (and S2, since the pool is model-chosen) | unasked | Owner's own account only, owner-authorized runs, private playlists, songs chosen by hand or by fakes, never by a model on real metadata |
-| Keeping track lists and timing for saved classes | Spotify S4 | unasked | Fakes only; until S4 is answered no real Spotify Content is stored |
-| Any tester beyond the owner, any paid or public use | all of the above, S5, MOWL M3 | unasked | Not allowed |
-| Swedebeat features | Swedebeat (not yet asked) | unasked | Disabled flag; fakes only |
+Accepted risks (also in the threat model):
 
-Status values: unasked, asked (date), granted (date, with the reply's wording or a link),
-refused (date). A refusal disables the feature's live path and goes to the owner as a product
-decision.
+- **Spotify:** song picking sends Spotify-derived metadata and MOWL's analysis of it to Claude,
+  which the Developer Policy forbids (§III 14); each tester connects their own Spotify
+  developer app (BYOK), whose fit with the one-Client-ID-per-application rule (§VI 1(b)) is
+  unconfirmed. The likely consequence is Spotify disabling a developer app or, less likely,
+  an account; each tester carries it for their own app and account.
+- **MOWL:** the API is unofficial and undocumented. MOWL may block an account or change the
+  API without notice, breaking the app until it is adapted.
+
+The live activation gate still requires, for every agent-run test against a real account, the
+owner's authorization for that specific run (AGENTS.md, safety envelope). Anything beyond the
+circle needs the providers first:
+
+| Feature | Beta circle (now) | Beyond the circle |
+|---|---|---|
+| Save and update a class in the user's own MOWL account | Allowed | Needs MOWL M1, M3 |
+| Design on music in MOWL, from Spotify or not, with Claude | Allowed | Needs MOWL M1, Spotify S2, S3 |
+| Spotify sign-in with the user's own Client ID (BYOK) | Allowed | Needs Spotify S1 |
+| Claude choosing songs from Spotify metadata and MOWL analysis | Allowed | Needs Spotify S2, S3 |
+| Creating the pool and final playlists in a user's Spotify account (private) | Allowed | Needs Spotify S1, S2, S3 |
+| Keeping track lists and timing for saved classes | Allowed, deleted with the class or account | Needs Spotify S4 |
+| Any paid or public use, or users the owner doesn't know | Not allowed | Needs all of the above, S5, MOWL M3, and agreements (M7) |
+| Swedebeat features | Disabled flag; fakes only (its app key isn't used, see the threat model) | Needs Swedebeat |
+
+The questions stay in [docs/providers/questions.md](../providers/questions.md), unsent, for a
+later public or paid phase.
 
 ## Alternatives
 
-- **Go live and ask later**: rejected; the policy text already points at S2 and S3.
+- **Ask the providers first** (this ADR's first version): the owner chose not to involve them
+  for a personal app; the questions are kept for a public or paid phase.
+- **Go live without recording the risk**: rejected; the decision and its risks are written down
+  here so a later public phase starts from them.
 - **Route song choice around Spotify** (another catalogue or transfer service): out of scope by
   the roadmap; revisited only before M7.
 
 ## Consequences
 
 - Development continues through M6 against fakes; no milestone waits on these answers.
-- In practice the beta can't use Claude on real Spotify music until S2 and S3 are answered.
-  The roadmap's "the beta runs on existing MOWL playlists/mixes" holds only for music that
-  doesn't come from Spotify; this reading is recorded for the owner in `docs/status.md`.
-- The owner sends the questions (waiting for the owner in `docs/status.md`) and records the
-  replies here through a PR.
+- Live use in the beta circle needs no provider answer, only the owner's authorization for
+  each agent-run live test. Milestone F closes as not pursued.
+- Going beyond the circle (public, paid, or strangers) reopens this ADR: the questions are sent
+  first and the "Beyond the circle" column applies.
 - M4 uses `POST /me/playlists` and the `/items` endpoints, with tests on the new response shape.

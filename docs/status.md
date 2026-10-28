@@ -8,7 +8,7 @@ GitHub hold the detail.
 | # | Milestone | State |
 |---|---|---|
 | M0 | Repo, protocol, CI, skeleton, compose, worktrees | done (milestone closed 2026-10-28) |
-| F | Provider-permission questions (ADR 0010) | questions ready; waiting for the owner to send them |
+| F | Provider-permission questions (ADR 0010) | closed, not pursued (owner's risk acceptance, 2026-10-28) |
 | M1 | Accounts | done (milestone closed 2026-10-28) |
 | M2 | `mowl-workouts` v0.4.0, isolation, encryption, connect MOWL | next |
 | M3a | Jobs, Anthropic loop, design on existing music | not started |
@@ -55,12 +55,8 @@ GitHub hold the detail.
 
 ## Waiting for the owner
 
-- **Send the provider questions** in [providers/questions.md](providers/questions.md) to Spotify
-  developer support and to MOWL, and say when they were sent. Development doesn't wait on the
-  answers; live activation does ([ADR 0010](adr/0010-live-activation-permissions.md)).
-- **Note (product):** until Spotify answers S2 and S3, live runs can't send Spotify-derived
-  music (including Spotify playlists imported into MOWL) to Claude. Live beta use with Claude
-  therefore waits for Spotify, unless you choose otherwise.
+- Nothing open. (2026-10-28: the providers are not contacted; the beta runs on the owner's risk
+  acceptance, [ADR 0010](adr/0010-live-activation-permissions.md).)
 
 ## Live activation log
 
