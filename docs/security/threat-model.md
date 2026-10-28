@@ -131,3 +131,6 @@ responses and model output alike.
   until it expires, and older backups keep it wrapped until they age out (ADR 0004 §4).
 - During the beta the KEK file lives on the same host as the database; encryption protects
   database dumps and backups, not a compromise of the host itself. Revisited at M6 (ADR 0004).
+- After a suspected KEK compromise the wipe removes every stored MOWL and Spotify token and
+  mails each affected user, but MOWL tokens can't be revoked and may stay valid at MOWL until
+  they expire; users are told to end sessions or change their MOWL password (ADR 0004 §2).

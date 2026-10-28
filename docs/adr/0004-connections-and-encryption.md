@@ -101,28 +101,44 @@ the CLI.
   `totp_decrypt_failed` and is fixed by `admin mfa-reset` (ADR 0003 §7).
 - **Rotation runbook** (routine, no compromise): add the new KEK as `connection_kek` with a
   new `CLASSBEAT_CONNECTION_KEK_ID`, keep the old one as `connection_kek_<old id>`, restart,
-  run `python -m classbeat keys rewrap`, and delete the old file (and every copy of it) only
-  after rewrap reports zero rows for that `key_id` in both connections and TOTP.
+  run `python -m classbeat keys rewrap`, and once rewrap reports zero rows for that `key_id`
+  in both connections and TOTP, remove the old file and its compose `secrets:` entries from
+  the running stack. Keep one copy with the backups until every backup taken before the
+  rotation has aged out, so those backups stay restorable (M6); then destroy it.
 - **After a suspected KEK compromise, everything goes.** Rewrap changes only the wrap: a row
   moved to a new KEK keeps its data key and ciphertext, so an old KEK plus any old dump or
   backup can still read it, and the tokens inside stay valid at the provider. Working out
   which rows a leaked key exposes is therefore not attempted. Any suspected compromise of any
   KEK, current or retired, is treated as exposing every connection and every TOTP secret:
   1. stop web and worker (no traffic, no key held in memory);
-  2. install a new KEK as `connection_kek` with a new id;
-  3. run `python -m classbeat keys wipe --confirm`, which needs no KEK at all: it deletes every
-     row of `connections` and of `connection_keks`, and resets every TOTP row the way
-     `admin mfa-reset` does (ADR 0003 §7: removes the TOTP row and recovery codes, forgets
-     known devices, revokes sessions, writes `auth_events`, mails the user), per owner;
-  4. delete every old KEK file and every copy of it, and treat backups taken before the wipe
-     as compromised (destroy them, or re-run the wipe after restoring one: M6 restore drill);
+  2. install a new KEK as `connection_kek` with a new id, and remove the old KEK files and
+     their compose `secrets:` entries; if the leak came through the secrets directory, also
+     rotate `app_secret_key` (ADR 0003 §8) and the database passwords;
+  3. run `docker compose run --rm web python -m classbeat keys wipe --confirm` (`run`, since
+     web is stopped). It needs no KEK and runs as the owner role (the migrations URL), so the
+     app role never gets `DELETE` on `connection_keks`. It refuses to start if any session of
+     the app role is connected (`pg_stat_activity`), or if the configured KEK id already has a
+     check row (the leaked key wasn't replaced). Then, per owner:
+     - it **mails each user who had a connection, before deleting it**: which providers were
+       affected, that classbeat removed them, and what to do (end sessions or change the
+       password at MOWL, whose tokens can't be revoked and may stay valid until they expire;
+       remove the app's access in the Spotify account), and writes an `auth_events` row
+       `connections_wiped`;
+     - it deletes that user's `connections` rows and resets their TOTP the way
+       `admin mfa-reset` does (ADR 0003 §7: removes the TOTP row and recovery codes, forgets
+       known devices, revokes sessions, writes `auth_events`, mails the user);
+     then it deletes every `connection_keks` row and runs `VACUUM (FULL)` on the affected
+     tables. It prints counts only and is safe to re-run after a failure (already-wiped users
+     are skipped; a user who was mailed but not yet wiped is mailed again);
+  4. treat backups taken before the wipe as compromised, including WAL or PITR archives:
+     destroy them, or, after restoring one, run the wipe again before web and worker start
+     (M6 restore drill);
   5. start web and worker; the new KEK gets its check row on startup.
-  Users then see their connections as gone, reconnect and re-enroll TOTP; they are told to end
-  other sessions at the provider (MOWL has no revoke endpoint; Spotify users remove the app's
-  access in their Spotify account). For a beta of a handful of users this costs a few
+  Users then reconnect and re-enroll TOTP. For a beta of a handful of users this costs a few
   reconnects and is the only response that can't miss a row. A #65 test: after
   rotate → rewrap → wipe, no connection row, no `connection_keks` row and no v2 TOTP secret is
-  left, and a fresh connect works under the new KEK.
+  left, a user with a connection and no TOTP got the mail, and a fresh connect works under
+  the new KEK.
 - **Rewrap mechanics:** it runs per owner (ADR 0002 §4): it gets the user ids from a
   `classbeat.auth` function (guard 8), sets `app.user_id`, and processes that owner's rows as
   `classbeat_app`, so it needs no RLS bypass. Each row is re-wrapped in its own transaction:
@@ -290,4 +306,4 @@ degrades to a reconnect prompt, never to a failure that loses work.
   path by design.
 - `mowl-workouts` follow-ups (before Swedebeat or M4): hide `swedebeat_device_id` from `repr`,
   and structured errors (a status attribute) so §5 doesn't depend on `__cause__`.
-- Threat model T40 to T44 and two accepted risks follow from this ADR.
+- Threat model T40 to T44 and three accepted risks follow from this ADR.
