@@ -12,7 +12,7 @@ COPY frontend/ ./
 RUN npm run build
 
 # --- runtime ----------------------------------------------------------------------------
-FROM python:3.12.16-slim-bookworm AS runtime
+FROM python:3.15.0-slim-bookworm AS runtime
 
 ENV UV_COMPILE_BYTECODE=1 \
     UV_LINK_MODE=copy \
