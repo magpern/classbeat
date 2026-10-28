@@ -187,6 +187,17 @@ describe('account page', () => {
     expect(await screen.findByText(/Repeat the change you were making/)).toBeInTheDocument()
   })
 
+  it('does not treat inherited object keys as outcome codes', async () => {
+    fakeApi({
+      'GET /api/auth/session': SIGNED_IN,
+      'GET /api/auth/identities': IDENTITIES,
+      'GET /api/auth/mfa': MFA_OFF,
+    })
+    renderAt('/account?oauth=toString')
+    expect(await screen.findByRole('alert')).toHaveTextContent(/could not be completed/)
+    expect(screen.queryByText(/Repeat the change/)).toBeNull()
+  })
+
   it('prompts for a two-factor code on stepup_required', async () => {
     let stepped = false
     const api = fakeApi({

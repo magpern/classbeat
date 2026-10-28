@@ -37,10 +37,12 @@ export function GuardProvider({ children }: { children: ReactNode }) {
   const { refresh } = useSession()
 
   const open = useRef<Pending | null>(null)
+  const unmounted = useRef(false)
 
   // One prompt at a time. A second request for the same kind joins the open prompt; one for the
   // other kind waits until it is closed. No promise is left unresolved.
   const ask = useCallback(function askFor(kind: Kind): Promise<void> {
+    if (unmounted.current) return Promise.reject(new PromptCancelled())
     const current = open.current
     if (current !== null && current.kind === kind) {
       return new Promise<void>((resolve, reject) => {
@@ -59,17 +61,18 @@ export function GuardProvider({ children }: { children: ReactNode }) {
     })
   }, [])
 
-  useEffect(
-    () => () => {
+  useEffect(() => {
+    unmounted.current = false
+    return () => {
+      unmounted.current = true
       const current = open.current
       open.current = null
       current?.waiters.forEach((waiter) => {
         waiter.reject(new PromptCancelled())
       })
       current?.settle()
-    },
-    [],
-  )
+    }
+  }, [])
 
   const guard = useCallback<Guard>(
     async (action) => {

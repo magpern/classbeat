@@ -80,23 +80,11 @@ export interface RequestOptions {
 }
 
 /**
- * Whether a 401 may be repeated after refetching the session (ADR 0003 section 3: a request in
- * flight while the session rotated carries the old token and gets 401). Safe methods can always
- * be repeated. An unsafe request only when the server refused it before acting: the plain
- * `not_authenticated` answer of the auth dependency, whose body is exactly `{detail: {reason}}`.
- * Wrong credentials (`invalid_credentials`) are never repeated, nor is a 401 that carries data
- * of work already done (the TOTP confirmation returns its recovery codes next to it).
- */
-function mayRetryUnauthorized(unsafe: boolean, reason: string | null, body: unknown): boolean {
-  if (!unsafe) return true
-  if (reason !== 'not_authenticated') return false
-  return typeof body === 'object' && body !== null && Object.keys(body).join() === 'detail'
-}
-
-/**
  * One API call. Unsafe methods carry `X-CSRF-Token`; a 403 that blames the token is retried
- * once with a fresh one (the session may have rotated), and a 401 once after refetching the
- * session when `mayRetryUnauthorized` allows it. Returns the parsed JSON, or `undefined` for an
+ * once with a fresh one (the session may have rotated). A 401 (a request in flight while the
+ * session rotated, ADR 0003 section 3) is repeated once after refetching the session, for safe
+ * methods only: some 401s of unsafe requests come after the server acted (second-factor routes,
+ * /reauth), and an unsafe request across a rotation gets the CSRF 403 handled above. Returns the parsed JSON, or `undefined` for an
  * empty answer. Anything but 2xx throws an `ApiError`.
  */
 export async function request(
@@ -130,9 +118,9 @@ export async function request(
     }
     if (
       response.status === 401 &&
+      !unsafe &&
       !sessionRetried &&
-      !options.signal?.aborted &&
-      mayRetryUnauthorized(unsafe, reason, body)
+      !options.signal?.aborted
     ) {
       sessionRetried = true
       try {

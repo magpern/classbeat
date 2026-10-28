@@ -43,14 +43,14 @@ function setup(grants: { reauth: boolean; stepup: boolean }) {
       </button>
     )
   }
-  render(
+  const view = render(
     <SessionProvider>
       <GuardProvider>
         <Runner />
       </GuardProvider>
     </SessionProvider>,
   )
-  return outcomes
+  return { outcomes, unmount: view.unmount }
 }
 
 describe('GuardProvider with several prompts', () => {
@@ -72,7 +72,7 @@ describe('GuardProvider with several prompts', () => {
         return { ok: true }
       },
     })
-    const outcomes = setup(grants)
+    const { outcomes } = setup(grants)
     fireEvent.click(screen.getByRole('button', { name: 'go' }))
 
     let dialog = await screen.findByRole('dialog')
@@ -100,7 +100,7 @@ describe('GuardProvider with several prompts', () => {
 
   it('cancelling rejects every waiting action, queued ones included, and leaves nothing open', async () => {
     fakeApi(routes)
-    const outcomes = setup({ reauth: false, stepup: false })
+    const { outcomes } = setup({ reauth: false, stepup: false })
     fireEvent.click(screen.getByRole('button', { name: 'go' }))
     fireEvent.click(await screen.findByRole('button', { name: 'Cancel' }))
     await waitFor(() => {
@@ -113,5 +113,16 @@ describe('GuardProvider with several prompts', () => {
       expect(outcomes.c).toBe('cancelled')
     })
     expect(screen.queryByRole('dialog')).toBeNull()
+  })
+
+  it('unmounting rejects every waiter, the queued prompt of the other kind included', async () => {
+    fakeApi(routes)
+    const { outcomes, unmount } = setup({ reauth: false, stepup: false })
+    fireEvent.click(screen.getByRole('button', { name: 'go' }))
+    await screen.findByRole('dialog')
+    unmount()
+    await waitFor(() => {
+      expect(outcomes).toEqual({ a: 'cancelled', b: 'cancelled', c: 'cancelled' })
+    })
   })
 })

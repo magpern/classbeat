@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { fakeApi, json, reason } from '../test/fakeApi'
-import { ApiError, get, post } from './client'
+import { ApiError, del, get, post } from './client'
 import { errorMessage } from './messages'
 
 describe('API client', () => {
@@ -78,39 +78,20 @@ describe('API client', () => {
       expect(api.to('GET', '/api/x')).toHaveLength(2)
     })
 
-    it('repeats a refused POST with the new CSRF token', async () => {
-      let tokens = 0
-      let posts = 0
-      const api = fakeApi({
-        'GET /api/auth/session': () => ({ authenticated: true, csrf_token: `t${String(++tokens)}` }),
-        'POST /api/x': (_b: unknown, headers: Headers) =>
-          ++posts === 1 ? reason(401, 'not_authenticated') : { seen: headers.get('X-CSRF-Token') },
-      })
-      expect(await post('/api/x')).toEqual({ seen: 't2' })
-      expect(api.to('POST', '/api/x')).toHaveLength(2)
+    it.each([
+      ['/api/auth/mfa/stepup', 'not_authenticated'],
+      ['/api/auth/reauth', 'not_authenticated'],
+      ['/api/auth/login', 'invalid_credentials'],
+    ])('sends a POST to %s exactly once when it gets 401 %s', async (path, why) => {
+      const api = fakeApi({ [`POST ${path}`]: reason(401, why) })
+      await expect(post(path)).rejects.toMatchObject({ status: 401, reason: why })
+      expect(api.to('POST', path)).toHaveLength(1)
     })
 
-    it('never repeats wrong credentials', async () => {
-      const api = fakeApi({ 'POST /api/auth/login': reason(401, 'invalid_credentials') })
-      await expect(post('/api/auth/login')).rejects.toMatchObject({ reason: 'invalid_credentials' })
-      expect(api.to('POST', '/api/auth/login')).toHaveLength(1)
-    })
-
-    it('never repeats a POST whose 401 carries the result of work already done', async () => {
-      const api = fakeApi({
-        'POST /api/x': json(
-          { detail: { reason: 'not_authenticated' }, enrolled: true, recovery_codes: ['a'] },
-          401,
-        ),
-      })
-      await expect(post('/api/x')).rejects.toMatchObject({ status: 401 })
-      expect(api.to('POST', '/api/x')).toHaveLength(1)
-    })
-
-    it('never repeats a POST 401 without the not_authenticated reason', async () => {
-      const api = fakeApi({ 'POST /api/x': json({}, 401) })
-      await expect(post('/api/x')).rejects.toMatchObject({ status: 401 })
-      expect(api.to('POST', '/api/x')).toHaveLength(1)
+    it('never repeats a DELETE or a bodyless 401 either', async () => {
+      const api = fakeApi({ 'DELETE /api/x': json({}, 401) })
+      await expect(del('/api/x')).rejects.toMatchObject({ status: 401 })
+      expect(api.to('DELETE', '/api/x')).toHaveLength(1)
     })
 
     it('reports the original 401 when the session cannot be refetched', async () => {
