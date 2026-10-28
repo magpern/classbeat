@@ -21,6 +21,8 @@ from sqlalchemy.engine import make_url
 from authtools import Env
 from smtpfake import SmtpFake
 
+pytest_plugins = ["mfatools"]  # fixtures of the MFA tests: make_actor, clock, notifier
+
 if sys.platform == "win32":
     # psycopg's async mode does not run on the default Windows (proactor) event loop.
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())

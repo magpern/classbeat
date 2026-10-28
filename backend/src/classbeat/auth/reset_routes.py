@@ -18,14 +18,20 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from classbeat.auth import mails
 from classbeat.auth.accounts import find_user
 from classbeat.auth.clientip import bucket_ip
-from classbeat.auth.deps import current_session, request_ip
+from classbeat.auth.deps import current_session, request_ip, require_recent_auth
 from classbeat.auth.devices import forget_devices
 from classbeat.auth.events import record_event
 from classbeat.auth.flowtools import EmailAddress, factory, mailer, reserve
 from classbeat.auth.hooks import ResetLinkSender
 from classbeat.auth.passwords import PasswordRuleError, normalize_password
-from classbeat.auth.ratelimit import MAIL_ACCOUNT, MAIL_IP, MAIL_PAIR, SIGN_IN_IP, Bucket
-from classbeat.auth.sensitive import require_sensitive
+from classbeat.auth.ratelimit import (
+    MAIL_ACCOUNT,
+    MAIL_IP,
+    MAIL_PAIR,
+    PASSWORD_CHANGE,
+    SIGN_IN_IP,
+    Bucket,
+)
 from classbeat.auth.sessions import SessionInfo, revoke_user_sessions
 from classbeat.auth.signup_routes import Accepted, refuse
 from classbeat.auth.tables import identities, users
@@ -161,12 +167,25 @@ async def complete_reset(body: ResetCompleteIn, request: Request) -> Done:
     # ADR 0003 section 9: take the per-IP slot first (released on success), and hash only for
     # a live token, so junk requests never occupy the bounded hashing pool.
     attempt = await reserve(request, [Bucket(SIGN_IN_IP, bucket_ip(ip))])
+    wanted = set(body.remove_methods)
     async with system_session(factory(request)) as db:
         live = await peek_token(db, PURPOSE, body.token)
+        owned_now = set()
+        if live is not None and wanted:
+            owned_now = set(
+                (
+                    await db.execute(
+                        select(identities.c.id).where(
+                            identities.c.user_id == live.user_id, identities.c.id.in_(wanted)
+                        )
+                    )
+                ).scalars()
+            )
     if live is None:
         raise refuse(400, "invalid_token")
+    if owned_now != wanted:
+        raise HTTPException(status_code=404)  # before hashing; the token stays unused
     password_hash = await request.app.state.password_hasher.hash(password)
-    wanted = set(body.remove_methods)
     async with system_session(factory(request)) as db:
         token = await consume_token(db, PURPOSE, body.token)
         if token is not None:
@@ -210,7 +229,7 @@ async def complete_reset(body: ResetCompleteIn, request: Request) -> Done:
 async def change_password(
     body: ChangePasswordIn,
     request: Request,
-    ctx: Annotated[UserContext, Depends(require_sensitive)],
+    ctx: Annotated[UserContext, Depends(require_recent_auth)],
     info: Annotated[SessionInfo | None, Depends(current_session)],
 ) -> Done:
     """Set or change the password. Every other session is revoked; the caller's stays."""
@@ -220,6 +239,7 @@ async def change_password(
         password = normalize_password(body.new_password)
     except PasswordRuleError:
         raise refuse(400, "password_rule") from None
+    await reserve(request, [Bucket(PASSWORD_CHANGE, str(ctx.user_id))])
     password_hash = await request.app.state.password_hasher.hash(password)
     async with system_session(factory(request)) as db:
         await db.execute(

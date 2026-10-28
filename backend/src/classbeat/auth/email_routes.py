@@ -18,11 +18,10 @@ from classbeat.auth import mails
 from classbeat.auth.accounts import find_user
 from classbeat.auth.clientip import bucket_ip
 from classbeat.auth.cookies import clear_session_cookie
-from classbeat.auth.deps import current_session, request_ip, require_user
+from classbeat.auth.deps import current_session, request_ip, require_recent_auth, require_user
 from classbeat.auth.events import record_event
 from classbeat.auth.flowtools import EmailAddress, factory, mailer, reserve
 from classbeat.auth.ratelimit import MAIL_ACCOUNT, MAIL_IP, MAIL_PAIR, SIGN_IN_IP, Bucket
-from classbeat.auth.sensitive import require_sensitive
 from classbeat.auth.sessions import SessionInfo, revoke_user_sessions
 from classbeat.auth.signup_routes import Accepted, refuse
 from classbeat.auth.tables import users
@@ -66,7 +65,7 @@ async def request_email_change(
     body: ChangeEmailIn,
     request: Request,
     background: BackgroundTasks,
-    ctx: Annotated[UserContext, Depends(require_sensitive)],
+    ctx: Annotated[UserContext, Depends(require_recent_auth)],
 ) -> Accepted:
     settings = request.app.state.settings
     normalized, ip = normalize_email(body.new_email), bucket_ip(request_ip(request))
@@ -154,7 +153,7 @@ async def confirm_email_change(
 async def delete_account(
     request: Request,
     response: Response,
-    ctx: Annotated[UserContext, Depends(require_sensitive)],
+    ctx: Annotated[UserContext, Depends(require_recent_auth)],
 ) -> None:
     """Delete the user (recent auth, and step-up with a confirmed TOTP); rows cascade."""
     async with system_session(factory(request)) as db:

@@ -300,3 +300,54 @@ async def test_a_successful_complete_releases_its_ip_slot(menv: Env, smtp: SmtpF
 
     digest = menv.app.state.limiter.bucket_hash(SIGN_IN_IP, "127.0.0.1")
     assert await menv.scalar("SELECT count FROM rate_limits WHERE bucket_hash = :h", h=digest) == 0
+
+
+async def test_the_security_notifier_mails_totp_and_mfa_failure_notices(
+    menv: Env, smtp: SmtpFake
+) -> None:
+    import uuid
+
+    from classbeat.auth import notices
+
+    # Registered at start-up by the web app.
+    await notices.notify_totp_enrolled(uuid.uuid4(), "user@example.com")
+    await notices.notify_mfa_failures(uuid.uuid4(), "user@example.com")
+    subjects = [m.subject for m in smtp.to("user@example.com")]
+    assert any("Two-factor" in s for s in subjects)
+    assert any("Failed two-factor" in s for s in subjects)
+
+
+async def test_reauth_for_a_totp_user_sets_recent_auth_but_not_step_up(menv: Env) -> None:
+    browser = await signed_in(menv)
+    await menv.run(
+        "INSERT INTO mfa_totp (user_id, secret_ciphertext, nonce, key_id, confirmed_at) "
+        "SELECT id, 'x', 'y', 'app-v1', now() FROM users"
+    )
+    await age_reauth(menv)
+    assert (await browser.post("/api/auth/reauth", {"password": PASSWORD})).status_code == 200
+    session = (await browser.get("/api/auth/session")).json()["session"]
+    assert session["recent_auth"] is True
+    assert session["stepup"] is False
+    refused = await browser.post("/api/auth/password/change", {"new_password": NEW})
+    assert (refused.status_code, reason(refused)) == (403, "stepup_required")
+
+
+async def test_complete_checks_method_ownership_before_hashing(menv: Env, smtp: SmtpFake) -> None:
+    await user_with_password(menv)
+    other = await menv.user("other@example.com")
+    foreign = await link_identity(menv, other)
+    await ask(Browser(menv))
+    calls = spy_on_hashing(menv)
+    refused = await complete(Browser(menv), smtp.messages[0].token(), remove=[foreign])
+    assert refused.status_code == 404
+    assert calls == []
+
+
+async def test_password_change_is_limited_per_user(menv: Env) -> None:
+    browser = await signed_in(menv)
+    codes = [
+        (await browser.post("/api/auth/password/change", {"new_password": NEW})).status_code
+        for _ in range(11)
+    ]
+    assert codes[:10] == [200] * 10
+    assert codes[10] == 429

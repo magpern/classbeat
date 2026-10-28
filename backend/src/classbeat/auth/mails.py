@@ -68,3 +68,21 @@ def email_changed_notice(to: str) -> MailMessage:
         "The email address of your classbeat account was changed. This is the old address.\n"
         "If this wasn't you, contact the operator.\n",
     )
+
+
+def totp_enrolled_notice(to: str) -> MailMessage:
+    return MailMessage(
+        to,
+        "Two-factor authentication was set up on your classbeat account",
+        "An authenticator app was enrolled (or replaced) on your classbeat account.\n"
+        "If this wasn't you, reset your password and contact the operator.\n",
+    )
+
+
+def mfa_failures_notice(to: str) -> MailMessage:
+    return MailMessage(
+        to,
+        "Failed two-factor attempts on your classbeat account",
+        "There were five failed two-factor attempts on your classbeat account within an hour.\n"
+        "If this wasn't you, change your password.\n",
+    )

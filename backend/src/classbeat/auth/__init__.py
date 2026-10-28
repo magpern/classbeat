@@ -47,6 +47,7 @@ from classbeat.auth.keys import (
     hmac_digest,
     token_hash,
 )
+from classbeat.auth.notices import SecurityNotifier, register_security_notifier
 from classbeat.auth.passwords import (
     PasswordHashBusy,
     PasswordHasher,
@@ -92,6 +93,7 @@ __all__ = [
     "RateLimited",
     "RateLimiter",
     "Resolution",
+    "SecurityNotifier",
     "SessionGone",
     "SessionInfo",
     "UserRow",
@@ -122,6 +124,7 @@ __all__ = [
     "purge_expired",
     "record_event",
     "register_reset_link_sender",
+    "register_security_notifier",
     "remember_device",
     "request_device_token",
     "request_ip",

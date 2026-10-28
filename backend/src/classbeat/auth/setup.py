@@ -10,9 +10,13 @@ from fastapi.responses import JSONResponse
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from classbeat.auth.admin_routes import router as admin_router
 from classbeat.auth.email_routes import router as email_router
 from classbeat.auth.keys import Keys
+from classbeat.auth.mfa_routes import router as mfa_router
 from classbeat.auth.middleware import AuthMiddleware
+from classbeat.auth.notices import register_security_notifier
+from classbeat.auth.notifier import MailNotifier
 from classbeat.auth.passwords import PasswordHashBusy, PasswordHasher
 from classbeat.auth.ratelimit import RateLimited, RateLimiter
 from classbeat.auth.reset_routes import router as reset_router
@@ -31,6 +35,8 @@ def install(app: FastAPI) -> None:
     app.include_router(router)
     for flow in (signup_router, signin_router, reset_router, email_router):
         app.include_router(flow)
+    app.include_router(mfa_router)
+    app.include_router(admin_router)
     app.add_middleware(AuthMiddleware)
 
     @app.exception_handler(RateLimited)
@@ -79,9 +85,12 @@ def attach_state(
     app.state.limiter = RateLimiter(factory, keys)
     app.state.password_hasher = PasswordHasher(settings.password_hash_workers)
     app.state.mailer = Mailer(settings)
+    # #39's security notices (TOTP enrolled, repeated MFA failures) go out as mail.
+    register_security_notifier(MailNotifier(app.state.mailer))
 
 
 def detach_state(app: FastAPI) -> None:
+    register_security_notifier(None)
     hasher: PasswordHasher | None = getattr(app.state, "password_hasher", None)
     if hasher is not None:
         hasher.close()
