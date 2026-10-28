@@ -38,7 +38,11 @@ jobs:
             echo "::error::Tag '$TAG' is not vMAJOR.MINOR.PATCH[-prerelease]"
             exit 1
           fi
-          git fetch --no-tags origin main
+          # fetch-depth: 0 fetched every branch; no credentials are needed (or kept) here.
+          if ! git rev-parse --verify --quiet refs/remotes/origin/main >/dev/null; then
+            echo "::error::origin/main is missing from the checkout"
+            exit 1
+          fi
           if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
             echo "::error::Tag commit $GITHUB_SHA is not on main"
             exit 1
@@ -87,8 +91,8 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           provenance: mode=max
           sbom: true
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-from: type=gha,scope=release
+          cache-to: type=gha,scope=release,mode=max
 
   release:
     name: GitHub Release
