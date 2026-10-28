@@ -33,8 +33,15 @@ def test_keys_are_hkdf_sha256_with_the_fixed_salt_and_their_own_info() -> None:
 
 def test_each_purpose_gets_a_different_32_byte_key() -> None:
     keys = Keys.from_secret(SECRET)
-    values = [keys.csrf, keys.rate_limit, keys.device, keys.recovery_codes, keys.totp]
-    assert len(set(values)) == 5
+    values = [
+        keys.csrf,
+        keys.rate_limit,
+        keys.device,
+        keys.recovery_codes,
+        keys.totp,
+        keys.totp_pending,
+    ]
+    assert len(set(values)) == 6
     assert all(len(v) == 32 for v in values)
     assert keys.totp == derive_key(SECRET, "totp-v1")
     assert keys.recovery_codes == derive_key(SECRET, "recovery-codes")

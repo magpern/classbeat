@@ -75,9 +75,12 @@ async def require_recent_auth(
     ctx: Annotated[UserContext, Depends(require_user)],
     info: Annotated[SessionInfo | None, Depends(current_session)],
 ) -> UserContext:
-    """Re-authenticated within 10 minutes."""
+    """Re-authenticated within 10 minutes and, once the user's TOTP is confirmed, a step-up
+    within 5 minutes as well (ADR 0003 section 6)."""
     if info is None or not info.recent_auth:
         _refuse(403, "reauth_required")
+    if info.totp_enabled and not info.recent_stepup:
+        _refuse(403, "stepup_required")
     return ctx
 
 

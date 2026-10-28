@@ -14,7 +14,7 @@ from sqlalchemy import delete, func, insert, select, update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from classbeat.auth.keys import new_token, token_hash
-from classbeat.auth.tables import sessions, users
+from classbeat.auth.tables import mfa_totp, sessions, users
 from classbeat.config import Settings
 from classbeat.db import system_session
 
@@ -44,6 +44,7 @@ class SessionInfo:
     mfa_at: datetime | None
     stepup_at: datetime | None
     now: datetime
+    totp_enabled: bool = False  # a confirmed TOTP exists: step-up applies (section 6)
 
     @property
     def role(self) -> Literal["user", "admin"]:
@@ -116,6 +117,13 @@ async def resolve_session(
                     users.c.role,
                     users.c.disabled_at,
                     func.now().label("now"),
+                    select(mfa_totp.c.id)
+                    .where(
+                        mfa_totp.c.user_id == sessions.c.user_id,
+                        mfa_totp.c.confirmed_at.is_not(None),
+                    )
+                    .exists()
+                    .label("totp_enabled"),
                 )
                 .join(users, users.c.id == sessions.c.user_id)
                 .where(sessions.c.token_hash == token_hash(token))
@@ -146,6 +154,7 @@ async def resolve_session(
             mfa_at=row.mfa_at,
             stepup_at=row.stepup_at,
             now=row.now,
+            totp_enabled=row.totp_enabled,
         ),
     )
 
@@ -276,6 +285,11 @@ async def rotate_session(
         )
     ).one()
     return IssuedSession(row.id, token, row.expires_at, max(int(row.remaining), 0))
+
+
+async def clear_mfa(db: AsyncSession, session_id: UUID) -> None:
+    """The session no longer counts as having passed TOTP (after TOTP was removed)."""
+    await db.execute(update(sessions).where(sessions.c.id == session_id).values(mfa_at=None))
 
 
 async def revoke_session(db: AsyncSession, user_id: UUID, session_id: UUID) -> bool:
