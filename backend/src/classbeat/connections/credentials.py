@@ -1,16 +1,17 @@
 """What the provider library receives: a ``Credentials`` object, never a dict or bare fields.
 
-ADR 0004 §3. ``Credentials`` here is a local stand-in with exactly the constructor fields of
-``mowl.credentials.Credentials`` (mowl-workouts v0.4.0), so #66 can swap in the real class when
-it pins the wheel: the repository builds it with keyword arguments only. Unlike the library's
-own class, its ``repr`` and ``str`` show nothing at all (the library's ``repr`` still shows
-``swedebeat_device_id``), and it refuses to be pickled or copied by value.
+ADR 0004 §3. ``Credentials`` is the library's own ``mowl.credentials.Credentials`` (mowl-workouts
+v0.4.0), subclassed only to tighten what it shows: the library's ``repr`` hides the tokens but
+still prints ``swedebeat_device_id``, the Spotify Client ID and the redirect URI, so here ``repr``
+and ``str`` show nothing at all, and the object refuses to be pickled or copied by value. It is
+still a ``mowl.credentials.Credentials`` (``isinstance`` holds), so every library call takes it.
 """
 
-from collections.abc import Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any, NoReturn
 from uuid import UUID
+
+from mowl.credentials import Credentials as LibraryCredentials
 
 from classbeat.connections.tables import PROVIDERS
 
@@ -23,18 +24,8 @@ PAYLOAD_FIELDS: dict[str, frozenset[str]] = {
 assert set(PAYLOAD_FIELDS) == set(PROVIDERS)  # noqa: S101 - a module invariant
 
 
-@dataclass(repr=False, eq=False)
-class Credentials:
-    """The fields of ``mowl.credentials.Credentials``. Never logged, stored or serialized."""
-
-    mowl_token: str = ""
-    swedebeat_token: str = ""
-    swedebeat_device_id: str = ""
-    spotify_client_id: str = ""
-    spotify_access_token: str = ""
-    spotify_refresh_token: str = ""
-    spotify_expires_at: float = 0.0
-    on_spotify_token: Callable[[dict[str, Any]], None] | None = field(default=None)
+class Credentials(LibraryCredentials):
+    """The library's credentials. Never logged, stored or serialized."""
 
     def __repr__(self) -> str:
         return "Credentials(...)"
@@ -43,6 +34,15 @@ class Credentials:
 
     def __reduce__(self) -> NoReturn:
         raise TypeError("credentials are never serialized")
+
+    def __reduce_ex__(self, protocol: Any) -> NoReturn:
+        raise TypeError("credentials are never serialized")
+
+    def __copy__(self) -> NoReturn:
+        raise TypeError("credentials are never copied")
+
+    def __deepcopy__(self, memo: Any) -> NoReturn:
+        raise TypeError("credentials are never copied")
 
 
 def build_credentials(
