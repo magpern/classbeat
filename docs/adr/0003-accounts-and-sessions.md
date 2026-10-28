@@ -61,7 +61,7 @@ Every table has an `id uuid` primary key (server default) unless a key is named.
 | `identities` | `user_id`, `provider`, `subject`, `email_at_link`, `created_at`; `UNIQUE (provider, subject)` | none |
 | `sessions` | `user_id`, `token_hash` (unique), `created_at`, `last_seen_at`, `expires_at` (absolute), `reauth_at`, `mfa_at`, `stepup_at`, `user_agent` (truncated), `ip` | SHA-256 of the token |
 | `known_devices` | `user_id`, `device_hash` (unique), `created_at`, `last_used_at` | HMAC (`device` key, §8) |
-| `pending_signups` | `token_hash` (unique; null until the email is entered), `email`, `email_normalized` (both null until then), `password_hash` (nullable), `provider`, `subject`, `browser_hash` (all three set together or null), `invite_id` → `invites`, `expires_at` | SHA-256; argon2id |
+| `pending_signups` | `token_hash` (unique; null until the email is entered), `email`, `email_normalized` (both null until then; not unique: each row has its own token and the first confirmation wins), `password_hash` (nullable), `provider`, `subject`, `browser_hash` (all three set together or null), `invite_id` → `invites`, `expires_at` | SHA-256; argon2id |
 | `auth_tokens` | `purpose` (`reset_password`, `change_email`), `token_hash` (unique), `user_id`, `new_email`, `email_at_issue`, `expires_at`, `used_at` | SHA-256 |
 | `oauth_flows` | `flow_hash` (unique), `provider`, `purpose` (`sign_in`, `link`, `reauth`), `state_hash`, `nonce`, `pkce_verifier`, `user_id` (for `link`/`reauth`), `invite_id` → `invites`, `return_to`, `expires_at` | the flow id and state as SHA-256; the verifier and nonce are kept as given, live ≤ 10 min and are deleted on use |
 | `invites` | `code_hash` (unique), `created_by` (*set null*; null for the CLI), `used_by` (*set null*), `expires_at`, `used_at` | SHA-256 |
@@ -315,12 +315,13 @@ is evaluated first, then the rows for `sign_in` from the top:
 through the client:
 1. **At the callback**, the server creates a `pending_signups` row with `provider`, `subject`,
    `invite_id` and `browser_hash`. `email` and `token_hash` stay empty, and the row expires in
-   15 minutes. It sets a random `__Host-classbeat_pending` cookie (`HttpOnly`, 24 h) whose hash
+   15 minutes. It sets a random `__Host-classbeat_pending` cookie (`HttpOnly`, `Secure`, `SameSite=Lax`, 24 h) whose hash
    is `browser_hash`. A second pending sign-up in the same browser replaces the first.
 2. **The email page** posts only an address. The server takes `provider`, `subject` and the
    invite **only from the row the cookie points to**, never from the request body. It fills in
    the email and token, extends the expiry to 24 h, and from then on treats it like a password
-   sign-up (same responses, limits and invite rules).
+   sign-up (same responses, limits and invite rules; for an address that already has an
+   account the row keeps no email or token and simply expires).
 3. **The confirmation link** creates the account and the identity only in the browser holding
    that cookie. In any other browser it creates nothing, leaves the token unused, and says to
    finish on the device where the sign-in started.
@@ -345,7 +346,7 @@ client can't submit someone else's `subject`.
 Re-authentication is one of the following, and each rotates the session:
 - the password (`POST /api/auth/reauth`);
 - an OAuth `reauth` flow (§5);
-- for admins, a TOTP code.
+- for admins, a TOTP code (which also sets `stepup_at`, so one code serves both).
 
 **Step-up** means a TOTP or recovery code within 5 minutes (`stepup_at`). For a user whose
 TOTP is confirmed, step-up is needed **in addition to** recent authentication for every action
@@ -411,7 +412,7 @@ sign-in only for the admin role (§7).
   - M2's envelope encryption (§7 of the roadmap) re-encrypts them under its scheme, and
     `key_id` tells the two apart.
 - **Rotating `app_secret_key`:**
-  - It invalidates CSRF tokens, rate-limit buckets and recovery codes.
+  - It invalidates CSRF tokens, rate-limit buckets, known devices and recovery codes.
   - For TOTP secrets it needs the M2 scheme; until then, rotation means re-enrolling TOTP.
 
 ### 9. Rate limits
@@ -430,7 +431,7 @@ Fixed windows are counted in `rate_limits` with one upsert per check. There is n
     `window_start`), with `GREATEST(count - 1, 0)`. It never touches a newer window, so
     attempts that straddle a boundary gain nothing.
   - An attempt from a known device reserves no per-account slot at all.
-- **IPv6:** IPv6 addresses are bucketed by their /64 prefix, so rotating addresses within one
+- **IPv6:** IPv4-mapped addresses are unmapped first; IPv6 is bucketed by its /64, so rotating within one
   allocation doesn't escape the per-IP limits.
 - **Bounded hashing:** argon2 runs in a bounded thread pool (`CLASSBEAT_PASSWORD_HASH_WORKERS`,
   default 4). A request that waits more than 5 s for a worker gets 503.

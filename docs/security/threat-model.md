@@ -109,3 +109,11 @@ responses and model output alike.
   (ADR 0003 §5).
 - GitHub can't force a re-login, so re-authentication through GitHub only proves a live GitHub
   session (ADR 0003 §5).
+- A stolen known-device cookie lifts that user's per-account sign-in cap; guessing is then
+  limited only by the per-(account, IP) and per-IP limits (ADR 0003 §3, §9).
+- Someone who has an admin's password can exhaust the per-account TOTP limit (20/hour) and keep
+  the admin out of MFA for that hour (ADR 0003 §9).
+- After `admin mfa-reset`, the password stays valid until the owner resets it, so its holder
+  could enroll TOTP first; the enrollment mail warns the owner, who runs `mfa-reset` again
+  (ADR 0003 §7).
+- Users behind one NAT (a gym network, for example) share the per-IP buckets (ADR 0003 §9).
