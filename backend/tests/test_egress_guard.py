@@ -6,9 +6,11 @@ import pytest
 
 from egress_scan import (
     EXEMPT,
+    WORKER_ENTRYPOINTS,
     WORKER_PACKAGES,
     exempt_calls_used,
     imported_modules,
+    loaded_exempt_modules,
     scan_source,
 )
 
@@ -57,6 +59,31 @@ def test_worker_code_never_imports_an_exempt_module() -> None:
             )
 
 
+def test_the_worker_process_never_loads_an_exempt_module() -> None:
+    """Reachability, not only direct imports: a fresh interpreter imports every worker entry
+    point; no exempt module (OAuth sign-in, mail) or other client library may be loaded."""
+    assert loaded_exempt_modules(WORKER_ENTRYPOINTS) == []
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "classbeat.auth.setup",  # the auth package's web half
+        "classbeat.auth.oauth_client",
+        "classbeat.mail",
+        "classbeat.auth.flowtools",  # reaches mail through a helper module
+    ],
+)
+def test_the_reachability_check_fails_when_a_worker_path_reaches_an_exempt_module(
+    path: str,
+) -> None:
+    assert loaded_exempt_modules((*WORKER_ENTRYPOINTS, path)) != []
+
+
+def test_importing_the_auth_package_loads_no_web_module() -> None:
+    assert loaded_exempt_modules(("classbeat.auth", "classbeat.auth.purge")) == []
+
+
 def test_the_allowlist_module_itself_is_scanned_as_allowed() -> None:
     source = (SRC / "classbeat" / "egress.py").read_text(encoding="utf-8")
     assert scan_source(source, "classbeat.egress") == []
@@ -96,6 +123,20 @@ REFUSED = [
     "import httpcore",
     "import importlib\nimportlib.import_module('requests')",
     "__import__('aiohttp')",
+    "from anthropic import AsyncAnthropic\nAsyncAnthropic(http_client=None)",
+    "from anthropic import AsyncAnthropic\nAsyncAnthropic(http_client=self.client)",
+    "import anthropic, httpx\nanthropic.AsyncAnthropic(http_client=httpx.AsyncClient())",
+    "import xmlrpc.client",
+    "import imaplib",
+    "import poplib",
+    "import ssl\nssl.get_server_certificate(('x', 443))",
+    "loop.create_connection(factory, 'x', 443)",
+    "async def f():\n    await loop.sock_connect(sock, ('x', 443))",
+    "async def f():\n    await asyncio.get_running_loop().create_connection(f, 'x', 443)",
+    "import httpx\nclass C(httpx.AsyncClient): pass",
+    "from httpx import Client\nclass C(Client): pass",
+    "import httpx\nclass T(httpx.AsyncBaseTransport): pass",
+    "import urllib.request\nclass H(urllib.request.BaseHandler): pass",
 ]
 
 
@@ -109,6 +150,9 @@ ALLOWED = [
     "import httpx\nx: httpx.AsyncBaseTransport\nhttpx.Timeout(1.0)\nhttpx.MockTransport(f)",
     "import anthropic\nanthropic.AsyncAnthropic(api_key=k, http_client=c)",
     "from anthropic import AsyncAnthropic\nAsyncAnthropic(http_client=client, max_retries=2)",
+    "from anthropic import AsyncAnthropic\nfrom classbeat.egress import allowlisted_async_client\n"
+    "AsyncAnthropic(http_client=allowlisted_async_client())",
+    "class Fine(Exception): pass",
     "import socket\nexcept_types = (socket.timeout,)",
     "from urllib.error import HTTPError, URLError",
     "from urllib.parse import urlsplit\nurlsplit('https://x')",

@@ -37,6 +37,7 @@ CATEGORIES = (
 )
 MAX_RETRY_AFTER = 86_400  # a day; larger hints are clamped
 _RETRY_DIGITS = 6
+_CHAIN_LIMIT = 64  # exceptions looked at in one chain
 
 
 class ConnectionFailure(Exception):
@@ -132,15 +133,19 @@ def log_outcome(outcome: Outcome, action: str) -> None:
 
 
 def _outbound_blocked(exc: BaseException) -> OutboundBlocked | None:
-    """The allowlist refusal, raised directly or as the ``__cause__``/``__context__`` of a
-    library error (a library may wrap it); two levels deep at most."""
-    current: BaseException | None = exc
-    for _ in range(3):
-        if current is None:
-            return None
+    """The allowlist refusal anywhere in ``exc``'s chain: itself, or any ``__cause__`` or
+    ``__context__`` (both links followed, cycles and depth bounded), since a library may wrap it
+    or raise something else while handling it."""
+    pending: list[BaseException] = [exc]
+    seen: set[int] = set()
+    while pending and len(seen) < _CHAIN_LIMIT:
+        current = pending.pop()
+        if id(current) in seen:
+            continue
+        seen.add(id(current))
         if isinstance(current, OutboundBlocked):
             return current
-        current = current.__cause__ or current.__context__
+        pending += [e for e in (current.__cause__, current.__context__) if e is not None]
     return None
 
 

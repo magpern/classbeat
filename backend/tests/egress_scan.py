@@ -27,6 +27,10 @@ import ast
 EGRESS = "classbeat.egress"
 # Packages that run in the worker: they may never import an exempt module.
 WORKER_PACKAGES = ("classbeat.worker", "classbeat.agent", "classbeat.jobs")
+# What the worker process imports at start. Add each new worker entry point here (J2, A1, D1:
+# ``classbeat.jobs``, ``classbeat.agent`` ...); the reachability test imports them all in a fresh
+# interpreter and fails if an exempt module, or a client library they use, is loaded.
+WORKER_ENTRYPOINTS = ("classbeat.worker.__main__",)
 
 _CALLS = frozenset(
     {
@@ -83,8 +87,41 @@ _CALLS = frozenset(
         "anthropic.DefaultAsyncHttpxClient",
         "openai.OpenAI",
         "openai.AsyncOpenAI",
+        "ssl.get_server_certificate",
+        "xmlrpc.client.ServerProxy",
     }
 )
+# Any call by these attribute names, whatever the object (an event loop, a socket): raw
+# connections around both allowlisted paths.
+_CALL_ATTRIBUTES = frozenset(
+    {
+        "create_connection",
+        "create_unix_connection",
+        "create_datagram_endpoint",
+        "sock_connect",
+        "open_connection",
+        "open_unix_connection",
+    }
+)
+# Subclassing these builds a client or transport outside the allowlist.
+_BASES = frozenset(
+    {
+        "httpx.Client",
+        "httpx.AsyncClient",
+        "httpx.HTTPTransport",
+        "httpx.AsyncHTTPTransport",
+        "httpx.BaseTransport",
+        "httpx.AsyncBaseTransport",
+        "urllib.request.BaseHandler",
+        "urllib.request.OpenerDirector",
+        "urllib.request.HTTPSHandler",
+        "urllib.request.HTTPHandler",
+        "http.client.HTTPConnection",
+        "http.client.HTTPSConnection",
+        "socket.socket",
+    }
+)
+ALLOWLISTED_CLIENT = "classbeat.egress.allowlisted_async_client"
 # The SDK clients are allowed when they are handed the allowlisted client (``http_client=``).
 _SDK_CLIENTS = frozenset(
     {"anthropic.Anthropic", "anthropic.AsyncAnthropic", "openai.OpenAI", "openai.AsyncOpenAI"}
@@ -102,6 +139,11 @@ _MODULES = frozenset(
         "ftplib",
         "telnetlib",
         "httpx2",
+        "xmlrpc.client",
+        "imaplib",
+        "poplib",
+        "nntplib",
+        "smtpd",
     }
 )
 
@@ -200,18 +242,43 @@ def scan_source(source: str, module: str) -> list[tuple[int, str]]:
         if _blocked_module(name):
             found.append((line, f"imports {name}: outbound clients live in {EGRESS}"))
     for node in ast.walk(tree):
+        if isinstance(node, ast.ClassDef):
+            for base in node.bases:
+                name = _dotted(base, aliases)
+                if name is not None and _canonical(name) in _BASES:
+                    found.append((node.lineno, f"subclasses {name}: clients live in {EGRESS}"))
+            continue
         if not isinstance(node, ast.Call):
             continue
-        name = _dotted(node.func, aliases)
+        func = node.func
+        if isinstance(func, ast.Attribute) and func.attr in _CALL_ATTRIBUTES:
+            found.append((node.lineno, f"calls .{func.attr}: raw connections live in {EGRESS}"))
+            continue
+        name = _dotted(func, aliases)
         if name is None:
             continue
         name = _canonical(name)
         if name not in _CALLS or name in exempt:
             continue
-        if name in _SDK_CLIENTS and any(k.arg == "http_client" for k in node.keywords):
+        if name in _SDK_CLIENTS and _hands_the_allowlisted_client(node, aliases):
             continue
         found.append((node.lineno, f"calls {name}: outbound clients live in {EGRESS}"))
     return sorted(set(found))
+
+
+def _hands_the_allowlisted_client(call: ast.Call, aliases: dict[str, str]) -> bool:
+    """``http_client=`` is a variable (built by ``allowlisted_async_client``, checked in review)
+    or a direct call of it; ``None``, another constant or any other expression is refused."""
+    for keyword in call.keywords:
+        if keyword.arg != "http_client":
+            continue
+        value = keyword.value
+        if isinstance(value, ast.Name):
+            return True
+        if isinstance(value, ast.Call):
+            return _dotted(value.func, aliases) == ALLOWLISTED_CLIENT
+        return False
+    return False
 
 
 def exempt_calls_used(source: str, module: str) -> set[str]:
@@ -225,6 +292,29 @@ def exempt_calls_used(source: str, module: str) -> set[str]:
             if name is not None:
                 used.add(_canonical(name))
     return used & set(EXEMPT.get(module, {}))
+
+
+def loaded_exempt_modules(entry_modules: tuple[str, ...]) -> list[str]:
+    """Import ``entry_modules`` in a fresh interpreter; the exempt modules (and their client
+    libraries) that end up in ``sys.modules``."""
+    import json
+    import subprocess
+    import sys
+
+    probe = (
+        "import importlib, json, sys\n"
+        f"for name in {list(entry_modules)!r}:\n"
+        "    importlib.import_module(name)\n"
+        "print(json.dumps(sorted(sys.modules)))\n"
+    )
+    result = subprocess.run(  # noqa: S603 - our own interpreter, a fixed probe
+        [sys.executable, "-c", probe], capture_output=True, text=True, timeout=60, check=True
+    )
+    loaded = set(json.loads(result.stdout.splitlines()[-1]))
+    # ``http.client`` and ``httpcore`` are what the allowlisted urllib and httpx paths run on.
+    libraries = sorted(_MODULES - {"http.client", "httpcore"})
+    watched = (*EXEMPT, "authlib", "smtplib", *libraries)
+    return sorted(m for m in loaded if any(m == w or m.startswith(w + ".") for w in watched))
 
 
 def imported_modules(source: str, module: str) -> set[str]:

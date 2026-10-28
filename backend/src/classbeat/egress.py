@@ -81,16 +81,36 @@ class Allowlist:
 
     def check_url(self, url: str) -> str:
         """``check`` for a URL string; one that does not parse is refused."""
+        parts = None
+        port: int | None = None
         try:
             parts = urlsplit(url)
             port = parts.port
         except ValueError:
-            raise blocked(None) from None
+            parts = None
+        if parts is None:
+            # Outside the except block: no __context__ (the ValueError's text holds URL parts).
+            raise blocked(None)
         has_userinfo = parts.username is not None or parts.password is not None
         return self.check(parts.scheme, parts.hostname, port, has_userinfo)
 
 
 WORKER_ALLOWLIST = Allowlist(WORKER_HOSTS)
+
+# Set by ``install_worker_allowlist``: this process is the worker. The web-only call sites the
+# guard exempts (OAuth sign-in, account mail) call ``refuse_in_worker`` first, so they cannot
+# reach the network from the worker even if worker code ends up calling them.
+_worker_process = False
+
+
+def worker_allowlist_installed() -> bool:
+    return _worker_process
+
+
+def refuse_in_worker(host: str | None) -> None:
+    """For the web-only outbound call sites: raise ``OutboundBlocked`` inside the worker."""
+    if _worker_process:
+        raise blocked(host)
 
 
 def blocked(host: str | None) -> OutboundBlocked:
@@ -121,6 +141,30 @@ class _AllowlistGuard(urllib.request.BaseHandler):
     def default_open(self, req: urllib.request.Request) -> None:
         _check_urllib_request(self._allowlist, req)
         return None  # go on to https_open
+
+
+def _same_host(old: str, new: str) -> bool:
+    a, b = urlsplit(old), urlsplit(new)
+    return (a.hostname or "").lower() == (b.hostname or "").lower()
+
+
+class _SameHostRedirectHandler(urllib.request.HTTPRedirectHandler):
+    """Follows a redirect only to the same host: urllib copies every header (the library's
+    ``authorization`` too) onto the next hop, so a hop to the other allowlisted host would hand
+    one provider's token to the other. The new hop still goes through the guard."""
+
+    def redirect_request(
+        self,
+        req: urllib.request.Request,
+        fp: Any,
+        code: int,
+        msg: str,
+        headers: Any,
+        newurl: str,
+    ) -> urllib.request.Request | None:
+        if not _same_host(req.full_url, newurl):
+            raise blocked(urlsplit(newurl).hostname if "://" in newurl else None)
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
 
 
 class _AllowlistHTTPSHandler(urllib.request.HTTPSHandler):
@@ -155,7 +199,7 @@ def build_allowlist_opener(
         https_handler if https_handler is not None else _AllowlistHTTPSHandler(allowlist),
         urllib.request.UnknownHandler(),
         urllib.request.HTTPDefaultErrorHandler(),
-        urllib.request.HTTPRedirectHandler(),  # each hop goes through the guard again
+        _SameHostRedirectHandler(),  # same host only; each hop goes through the guard again
         urllib.request.HTTPErrorProcessor(),  # 4xx and 5xx raise HTTPError, as the library expects
     )
     for handler in handlers:
@@ -165,8 +209,10 @@ def build_allowlist_opener(
 
 def install_worker_allowlist() -> urllib.request.OpenerDirector:
     """Install the worker's opener for every ``urllib.request.urlopen`` in the process."""
+    global _worker_process
     opener = build_allowlist_opener(WORKER_ALLOWLIST)
     urllib.request.install_opener(opener)
+    _worker_process = True
     return opener
 
 
@@ -174,7 +220,9 @@ def install_worker_allowlist() -> urllib.request.OpenerDirector:
 
 
 class AllowlistTransport(httpx.AsyncBaseTransport):
-    """Checks every request (each redirect hop is a request) before the inner transport."""
+    """Checks every request (each redirect hop is a request) before the inner transport, and
+    refuses a redirect response that points at another host: httpx drops ``Authorization`` on a
+    cross-origin hop but keeps ``x-api-key``, so the model key must never follow one."""
 
     def __init__(self, allowlist: Allowlist, inner: httpx.AsyncBaseTransport) -> None:
         self._allowlist = allowlist
@@ -184,7 +232,19 @@ class AllowlistTransport(httpx.AsyncBaseTransport):
         url = request.url
         host = url.raw_host.decode("ascii", errors="replace")
         self._allowlist.check(url.scheme, host, url.port, bool(url.userinfo))
-        return await self._inner.handle_async_request(request)
+        response = await self._inner.handle_async_request(request)
+        location = response.headers.get("location")
+        if response.is_redirect and location is not None:
+            target: httpx.URL | None
+            try:
+                target = url.join(location)
+            except (httpx.InvalidURL, ValueError):
+                target = None
+            if target is None or target.raw_host.lower() != url.raw_host.lower():
+                await response.aclose()
+                shown = None if target is None else target.raw_host.decode("ascii", "replace")
+                raise blocked(shown)
+        return response
 
     async def aclose(self) -> None:
         await self._inner.aclose()

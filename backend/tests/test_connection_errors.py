@@ -191,3 +191,31 @@ async def test_an_allowlist_refusal_wrapped_by_the_library_is_still_outbound_blo
     assert raised.value.__cause__ is None
     assert raised.value.__context__ is None
     assert TOKEN not in str(raised.value)
+
+
+async def test_a_refusal_anywhere_in_the_chain_is_found() -> None:
+    """Both links (``__cause__`` and ``__context__``) are followed, at any depth."""
+
+    def call() -> None:
+        inner = RuntimeError("inner")
+        inner.__context__ = OutboundBlocked("deep.example")
+        middle = ValueError("middle")
+        middle.__cause__ = KeyError("decoy")  # a cause without the refusal ...
+        middle.__context__ = inner  # ... and the refusal behind the context
+        outer = FakeMowlError(TOKEN)
+        outer.__cause__ = middle
+        raise outer
+
+    with pytest.raises(OutboundBlocked) as raised:
+        await run_library_call(call, library_error=FakeMowlError, sign_in=False)
+    assert raised.value.host == "deep.example"
+
+
+async def test_a_cyclic_chain_without_a_refusal_is_a_connection_failure() -> None:
+    def call() -> None:
+        a, b = RuntimeError("a"), RuntimeError("b")
+        a.__context__, b.__context__ = b, a
+        raise a
+
+    with pytest.raises(ConnectionFailure, match="unknown"):
+        await run_library_call(call, library_error=FakeMowlError, sign_in=False)

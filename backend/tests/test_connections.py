@@ -17,6 +17,7 @@ from classbeat import connections
 from classbeat.auth.deps import issue_context
 from classbeat.connections import ConnectionFailure, Credentials
 from classbeat.db import create_session_factory, system_session, user_session
+from classbeat.egress import OutboundBlocked
 from ctx import make_context
 from test_connection_errors import TICKET, FakeMowlError, http_error
 
@@ -232,6 +233,23 @@ async def test_use_maps_a_401_to_needs_reconnect_and_records_success(
     assert seen == [TOKEN]  # no provider call once it needs a reconnect
     for secret in (TOKEN, TICKET):
         assert secret not in caplog.text
+
+
+async def test_an_allowlist_refusal_in_use_leaves_the_connection_untouched(env: Env) -> None:
+    """ADR 0006 section 9: the refusal is not the connection's fault, so no status or last_error."""
+    ctx = await connected(env)
+
+    def blocked(credentials: Credentials) -> None:
+        raise OutboundBlocked("evil.example")
+
+    before = (await connections.list_connections(env.factory, ctx))[0]
+    with pytest.raises(OutboundBlocked):
+        await connections.use(
+            env.factory, env.app.state.keyring, ctx, "mowl", blocked, library_error=FakeMowlError
+        )
+    after = (await connections.list_connections(env.factory, ctx))[0]
+    assert (after.status, after.last_error, after.last_used_at) == ("connected", None, None)
+    assert (before.status, before.last_error) == (after.status, after.last_error)
 
 
 async def test_connect_signs_in_first_and_never_keeps_the_password(

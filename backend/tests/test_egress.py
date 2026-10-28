@@ -8,6 +8,7 @@ import urllib.request
 import urllib.response
 from email.message import Message
 from typing import Any
+from urllib.parse import urlsplit
 
 import httpx
 import pytest
@@ -98,6 +99,8 @@ def test_anything_else_is_refused_before_a_connection(url: str, host: str) -> No
         _opener(fake).open(url, timeout=1)
     assert raised.value.host == host
     assert raised.value.args == ("outbound request blocked",)
+    assert raised.value.__cause__ is None
+    assert raised.value.__context__ is None  # no ValueError holding URL parts
     assert fake.seen == []
 
 
@@ -144,6 +147,23 @@ def test_a_redirect_to_an_allowlisted_host_is_followed() -> None:
     with _opener(fake).open(start, timeout=1) as response:
         assert response.geturl() == target
     assert [u for u, _, _ in fake.seen] == [start, target]
+
+
+@pytest.mark.parametrize(
+    ("start", "target"),
+    [
+        ("https://api.mowl.com/v1/start", "https://api.anthropic.com/v1/messages"),
+        ("https://api.anthropic.com/v1/x", "https://api.mowl.com/v1/programs"),
+    ],
+)
+def test_a_redirect_to_the_other_allowlisted_host_is_refused(start: str, target: str) -> None:
+    """urllib copies the library's authorization header onto the next hop: never another host."""
+    fake = FakeHTTPS(redirects={start: target})
+    request = urllib.request.Request(start, headers={"authorization": "planted-mowl-token"})  # noqa: S310
+    with pytest.raises(OutboundBlocked) as raised:
+        _opener(fake).open(request, timeout=1)
+    assert raised.value.host == urlsplit(target).hostname
+    assert [u for u, _, _ in fake.seen] == [start]
 
 
 @pytest.mark.parametrize("variable", PROXY_VARIABLES)
@@ -264,6 +284,31 @@ async def test_the_model_client_checks_every_redirect_hop() -> None:
         with pytest.raises(OutboundBlocked):
             await client.get("https://api.anthropic.com/v1/x", follow_redirects=True)
     assert recorder.seen == ["https://api.anthropic.com/v1/x"]
+
+
+@pytest.mark.parametrize("follow", [True, False])
+async def test_the_model_client_refuses_a_redirect_to_the_other_allowlisted_host(
+    follow: bool,
+) -> None:
+    """httpx keeps ``x-api-key`` on a cross-origin hop: the transport refuses the redirect."""
+    recorder = Recorder(redirect_to="https://api.mowl.com/v1/programs")
+    async with allowlisted_async_client(inner=httpx.MockTransport(recorder)) as client:
+        with pytest.raises(OutboundBlocked) as raised:
+            await client.get(
+                "https://api.anthropic.com/v1/x",
+                headers={"x-api-key": "planted"},
+                follow_redirects=follow,
+            )
+    assert raised.value.host == "api.mowl.com"
+    assert recorder.seen == ["https://api.anthropic.com/v1/x"]
+
+
+async def test_the_model_client_follows_a_same_host_redirect() -> None:
+    recorder = Recorder(redirect_to="/v1/next")
+    async with allowlisted_async_client(inner=httpx.MockTransport(recorder)) as client:
+        response = await client.get("https://api.anthropic.com/v1/x", follow_redirects=True)
+    assert response.status_code == 200
+    assert recorder.seen == ["https://api.anthropic.com/v1/x", "https://api.anthropic.com/v1/next"]
 
 
 @pytest.mark.parametrize("variable", PROXY_VARIABLES)
