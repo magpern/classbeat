@@ -2,10 +2,16 @@ import copy
 import dataclasses
 import pickle
 import uuid
+from types import SimpleNamespace
 
 import pytest
 
-from classbeat.context import _ISSUER, UserContext, issuer_token  # pyright: ignore[reportPrivateUsage]
+from classbeat.context import (  # pyright: ignore[reportPrivateUsage]
+    _ISSUER,
+    UserContext,
+    issuer_token,
+    require_context,
+)
 from ctx import make_context
 
 USER = uuid.uuid4()
@@ -59,9 +65,58 @@ def test_a_context_cannot_be_built_or_copied_without_the_issuer_token(forge) -> 
 def test_the_token_is_not_a_field_and_not_stored() -> None:
     ctx = build()
     assert "issuer" not in {f.name for f in dataclasses.fields(ctx)}
-    assert getattr(ctx, "issuer", None) is None  # InitVar: the class default, never the token
-    assert copy.copy(ctx) == ctx  # an unchanged copy is harmless
-    assert pickle.loads(pickle.dumps(ctx)) == ctx  # noqa: S301 - our own test object
+    assert not hasattr(ctx, "issuer")
+
+
+def test_re_calling_init_changes_nothing() -> None:
+    ctx = build()
+    before = (ctx.user_id, ctx.role, ctx.entitlements, ctx.connections)
+    other = uuid.uuid4()
+    for token in (None, object(), _ISSUER):  # even with the real token: already initialised
+        with pytest.raises(PermissionError):
+            ctx.__init__(other, "admin", issuer=token)  # type: ignore[misc]  # pyright: ignore
+        assert (ctx.user_id, ctx.role, ctx.entitlements, ctx.connections) == before
+    with pytest.raises(PermissionError):  # an invalid call is refused for the token first
+        ctx.__init__("not-a-uuid", "root")  # type: ignore[misc]  # pyright: ignore
+    assert (ctx.user_id, ctx.role, ctx.entitlements, ctx.connections) == before
+
+
+def test_a_context_cannot_be_pickled_or_copied_by_value() -> None:
+    ctx = build()
+    with pytest.raises(TypeError, match="pickled"):
+        pickle.dumps(ctx)
+    with pytest.raises(TypeError):
+        copy.copy(ctx)
+    with pytest.raises(TypeError):
+        copy.deepcopy(ctx)
+    with pytest.raises(TypeError, match="restored"):
+        ctx.__setstate__({})  # pyright: ignore[reportAttributeAccessIssue]
+
+
+class Sub(UserContext):
+    pass
+
+
+class LookAlike:
+    def __init__(self) -> None:
+        self.user_id = uuid.uuid4()
+        self.role = "user"
+
+
+def test_require_context_accepts_only_the_exact_class() -> None:
+    ctx = build()
+    assert require_context(ctx) is ctx
+    subclass = Sub(uuid.uuid4(), "user", issuer=_ISSUER)
+    for bad in (
+        LookAlike(),
+        SimpleNamespace(user_id=uuid.uuid4()),
+        subclass,
+        uuid.uuid4(),
+        {},
+        None,
+    ):
+        with pytest.raises(TypeError, match="UserContext is required"):
+            require_context(bad)
 
 
 @pytest.mark.parametrize(

@@ -5,18 +5,19 @@ Only ``classbeat.auth`` (from the authenticated server-side session, M1) and
 
 - a runtime barrier: construction needs the issuer token (``issuer_token()``), so
   ``UserContext(...)``, ``type(ctx)(...)``, ``ctx.__class__(...)`` and ``dataclasses.replace``
-  without it raise;
+  without it raise, re-calling ``ctx.__init__`` on an existing context raises before it changes
+  anything, contexts cannot be pickled, and ``require_context`` accepts only the exact class;
 - an AST scan (``tests/test_user_context_guard.py``) that refuses any reference to the class,
   the token, ``dataclasses.replace``, ``object.__setattr__`` and similar outside the issuers.
 
 Both stop accidental misuse and make misuse visible in review. Deliberately malicious code
-inside our own process (reflection, ``object.__setattr__`` on a frozen instance, ctypes) is out
-of scope for runtime checks; the review gate catches it. Everything else receives the context
-as the ``ctx`` parameter.
+inside our own process (``object.__setattr__`` on a frozen instance, ``object.__new__`` plus
+slot descriptors, ctypes) is out of scope for runtime checks; the review gate catches it.
+Everything else receives the context as the ``ctx`` parameter.
 """
 
-from dataclasses import InitVar, dataclass, field
-from typing import Literal
+from dataclasses import dataclass
+from typing import Literal, NoReturn
 from uuid import UUID
 
 ROLES = ("user", "admin")
@@ -32,7 +33,7 @@ def issuer_token() -> object:
     return _ISSUER
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, init=False)
 class UserContext:
     """Immutable and hashable. Request- or job-scoped; never stored globally.
 
@@ -42,26 +43,52 @@ class UserContext:
 
     user_id: UUID
     role: Literal["user", "admin"]
-    entitlements: frozenset[str] = frozenset()
-    connections: frozenset[tuple[str, UUID]] = frozenset()
-    # Not stored. Without the token, construction fails, and so does ``dataclasses.replace``
-    # (it does not pass the token on).
-    issuer: InitVar[object] = field(default=None, kw_only=True)
+    entitlements: frozenset[str]
+    connections: frozenset[tuple[str, UUID]]
 
-    def __post_init__(self, issuer: object) -> None:
+    def __init__(
+        self,
+        user_id: UUID,
+        role: Literal["user", "admin"],
+        entitlements: frozenset[str] = frozenset(),
+        connections: frozenset[tuple[str, UUID]] = frozenset(),
+        *,
+        issuer: object = None,
+    ) -> None:
+        # Both checks come before any field is assigned, so a refused call (including a
+        # repeated ``ctx.__init__(...)``) changes nothing. ``dataclasses.replace`` does not
+        # pass the token, so it is refused too.
         if issuer is not _ISSUER:
             raise PermissionError("a UserContext can only be issued by classbeat.auth or jobs")
-        if not isinstance(self.user_id, UUID):
+        try:
+            object.__getattribute__(self, "user_id")
+        except AttributeError:
+            pass  # a fresh instance: its slots are still empty
+        else:
+            raise PermissionError(
+                "a UserContext is already initialised and cannot be re-initialised"
+            )
+        if not isinstance(user_id, UUID):
             raise TypeError("user_id must be a UUID")
-        if self.role not in ROLES:
+        if role not in ROLES:
             raise ValueError(f"role must be one of {ROLES}")
-        if not isinstance(self.entitlements, frozenset):
+        if not isinstance(entitlements, frozenset):
             raise TypeError("entitlements must be a frozenset")
-        if not isinstance(self.connections, frozenset):
+        if not isinstance(connections, frozenset):
             raise TypeError("connections must be a frozenset of (provider, credential id)")
-        providers = [pair[0] for pair in self.connections]
+        providers = [pair[0] for pair in connections]
         if len(providers) != len(set(providers)):
             raise ValueError("connections has more than one credential for a provider")
+        object.__setattr__(self, "user_id", user_id)
+        object.__setattr__(self, "role", role)
+        object.__setattr__(self, "entitlements", entitlements)
+        object.__setattr__(self, "connections", connections)
+
+    def __reduce__(self) -> NoReturn:
+        raise TypeError("a UserContext cannot be pickled or copied by value")
+
+    def __setstate__(self, state: object) -> NoReturn:
+        raise TypeError("a UserContext cannot be restored from a state")
 
     def connection(self, provider: str) -> UUID | None:
         """The credential row id for ``provider``, or ``None``."""
@@ -69,3 +96,13 @@ class UserContext:
             if name == provider:
                 return credential_id
         return None
+
+
+def require_context(ctx: object) -> UserContext:
+    """Return ``ctx`` if it is exactly a ``UserContext``; anything else is refused.
+
+    No look-alike with a ``user_id`` attribute, no subclass instance, no UUID, no dict.
+    """
+    if type(ctx) is not UserContext:
+        raise TypeError("a UserContext is required")
+    return ctx

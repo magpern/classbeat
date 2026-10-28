@@ -2,6 +2,7 @@
 
 import uuid
 from collections.abc import AsyncIterator
+from types import SimpleNamespace
 
 import pytest
 from sqlalchemy import text
@@ -10,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from sqlalchemy.pool import AsyncAdaptedQueuePool
 
 from classbeat.config import Settings
-from classbeat.context import UserContext
+from classbeat.context import UserContext, issuer_token
 from classbeat.db import (
     TransactionOwnedError,
     create_engine,
@@ -252,3 +253,27 @@ async def test_rolling_back_through_another_path_fails_closed(sessions: Sessions
         assert (await session.execute(text("SELECT count(*) FROM t_parent"))).scalar_one() == 0
         with pytest.raises(DBAPIError, match="row-level security"):
             await session.execute(INSERT_PARENT, {"o": A.user_id, "n": "y"})
+
+
+class _Sub(UserContext):
+    pass
+
+
+@pytest.mark.parametrize(
+    "fake",
+    [
+        SimpleNamespace(user_id=B.user_id, role="user"),
+        _Sub(B.user_id, "user", issuer=issuer_token()),
+        B.user_id,
+        {"user_id": B.user_id},
+        None,
+    ],
+    ids=["look-alike", "subclass instance", "bare uuid", "dict", "none"],
+)
+async def test_only_the_exact_user_context_opens_a_session(
+    sessions: Sessions, fake: object
+) -> None:
+    await add_parent(sessions, B, "b1")
+    with pytest.raises(TypeError, match="UserContext is required"):
+        async with user_session(sessions, fake):  # pyright: ignore[reportArgumentType]
+            pytest.fail("a session must not open for anything but a UserContext")

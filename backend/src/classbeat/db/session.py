@@ -17,12 +17,11 @@ it raise (a new transaction would run without the setting). What this does and d
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from typing import Any, NoReturn
-from uuid import UUID
 
 from sqlalchemy import event, text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from classbeat.context import UserContext
+from classbeat.context import UserContext, require_context
 
 SET_USER = text("SELECT set_config('app.user_id', :user_id, true)")
 
@@ -88,9 +87,7 @@ async def user_session(
     sessionmaker: async_sessionmaker[AsyncSession], ctx: UserContext
 ) -> AsyncIterator[AsyncSession]:
     """One transaction as ``ctx.user_id``: owned and system tables."""
-    # Duck-typed on purpose: naming the class here would be a reference the AST guard refuses.
-    if not isinstance(getattr(ctx, "user_id", None), UUID):
-        raise TypeError("user_session needs a UserContext, not a raw user id")
+    require_context(ctx)  # exactly a UserContext: no look-alike, subclass, UUID or dict
     async with _owned_session(sessionmaker, str(ctx.user_id)) as session:
         yield session
 

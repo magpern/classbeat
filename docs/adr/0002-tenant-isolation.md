@@ -44,8 +44,13 @@ class UserContext:
     `type(x)(...)`.
 
   These stop accidental misuse and make misuse visible in review. Deliberately malicious code
-  inside our own process (reflection, mutating a frozen instance, ctypes) is out of scope for
-  runtime checks; the review gate catches it. API handlers get the context through one FastAPI
+  inside our own process is out of scope for runtime checks and is caught by the review gate;
+  examples: `object.__setattr__` on a frozen instance, `object.__new__` plus slot descriptors,
+  `ctypes`, patching `classbeat.context` itself. What the runtime barrier does cover: building
+  or copying without the token, re-calling `ctx.__init__` on an existing context (refused
+  before any field changes), pickling (`__reduce__` and `__setstate__` refuse), and
+  `require_context(ctx)`, which every function that takes a context uses and which accepts the
+  exact class only (no look-alike with a `user_id`, no subclass instance, no UUID, no dict). API handlers get the context through one FastAPI
   dependency; they never take a user ID from a path, query, body, header or model output.
 - Every service and repository function that touches owned data takes `ctx: UserContext`
   explicitly. IDs from the browser or a model are looked up *within* the owner's rows; not
@@ -59,7 +64,9 @@ Every table holding per-user data, the job queue and job events included (roadma
 - `owner_id uuid NOT NULL`, referencing `users(id)` once `users` exists (M1; before that only
   test tables are owned).
 - `id uuid` primary key with a **server-generated** default; owned rows never take an `id`
-  from the client or a model.
+  from the client or a model. The app role can still insert an explicit `id` (the grants
+  allow `INSERT`); that is accepted, because ids are random UUIDs and carry no authority,
+  and every lookup is owner-scoped anyway.
 - `UNIQUE (owner_id, id)` (alongside the primary key on `id`), so children can reference it.
   The primary key on `id` and this constraint are the only unique constraints without the
   owner rule below.
@@ -145,8 +152,12 @@ Postgres has no way to grant them without it. A stuck lock is a denial-of-servic
 data leak. `statement_timeout` (30 s), `lock_timeout` (5 s) and
 `idle_in_transaction_session_timeout` (60 s) are **role defaults** of `classbeat_app`
 (`ALTER ROLE … SET`), so every connection has them, not only sessions that set them. Injected
-SQL could still lower them, so this limits accidents, not attacks; T26 in the threat model
-covers the injection path.
+SQL could lower them, even persistently: a role may run `ALTER ROLE classbeat_app SET
+statement_timeout = 0` for itself and Postgres cannot forbid it. So this limits accidents,
+not attacks; the change would persist until repaired, and is **detected** two ways: web and
+worker check at startup (and on every new connection) that the role's `pg_db_role_setting`
+rows are exactly these three at role level, and refuse to start otherwise, and guard 2 checks
+the same. T26 in the threat model covers the injection path.
 
 - `PUBLIC` also loses `CONNECT` on the `postgres` and `template1` databases, so the app role
   connects to its own database only.
@@ -210,7 +221,8 @@ async with system_session(sessionmaker) as session:
    fails), with `ON DELETE` as in §2, `id` of type `uuid` with the server default
    `gen_random_uuid()`. No table in `public` is partitioned or takes part in inheritance
    (any `pg_inherits` row naming one fails), no foreign key goes from a system table into an
-   owned table, and `public` holds no views.
+   owned table, no exclusion constraint on an owned table lacks `owner_id WITH =`, and
+   `public` holds no views.
 2. `classbeat_app`'s privileges equal the allowlist in §4 (checked as an allowlist against
    `pg_roles`, `pg_auth_members`, `information_schema` and `aclexplode`, so a new privilege
    kind fails the test), and nothing is granted to `PUBLIC` beyond Postgres' built-in

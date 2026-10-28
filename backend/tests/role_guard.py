@@ -8,6 +8,7 @@ a privilege of a kind nobody thought of still fails.
 from sqlalchemy import text
 from sqlalchemy.engine import Connection
 
+from classbeat.db.role_check import EXPECTED_ROLE_SETTINGS
 from classbeat.db.tables import NO_APP_ACCESS
 
 APP, OWNER = "classbeat_app", "classbeat_owner"
@@ -15,11 +16,7 @@ TABLE_PRIVILEGES = {"SELECT", "INSERT", "UPDATE", "DELETE"}
 SEQUENCE_PRIVILEGES = {"USAGE", "SELECT"}
 # Built-in languages that PUBLIC may use (Postgres' own default).
 BUILTIN_LANGUAGES = {"plpgsql", "sql", "internal", "c"}
-EXPECTED_TIMEOUTS = {
-    "statement_timeout": "30s",
-    "lock_timeout": "5s",
-    "idle_in_transaction_session_timeout": "60s",
-}
+EXPECTED_TIMEOUTS = EXPECTED_ROLE_SETTINGS
 GRANTEE = "CASE WHEN a.grantee = 0 THEN 'PUBLIC' ELSE a.grantee::regrole::text END"
 Acl = list[tuple[str, str, str, bool]]
 

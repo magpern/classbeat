@@ -75,7 +75,10 @@ def check_tables(conn: Connection, system_tables: Mapping[str, str]) -> list[str
     for c in _rows(
         conn,
         """SELECT conrelid, conname, contype, conkey, confrelid, confkey, confdeltype,
-                  confdelsetcols FROM pg_constraint WHERE contype IN ('f', 'x')""",
+                  confdelsetcols,
+                  ARRAY(SELECT o.oprname FROM unnest(conexclop) WITH ORDINALITY u(op, i)
+                          JOIN pg_operator o ON o.oid = u.op ORDER BY u.i) AS exclusion_ops
+             FROM pg_constraint WHERE contype IN ('f', 'x')""",
     ):
         constraints[c["conrelid"]].append(c)
 
@@ -165,8 +168,9 @@ def _check_owned(
 
     for c in table_constraints:
         if c["contype"] == "x":
-            if "owner_id" not in col_names(oid, c["conkey"]):
-                bad(f"exclusion constraint {c['conname']} does not include owner_id")
+            pairs = list(zip(col_names(oid, c["conkey"]), c["exclusion_ops"], strict=True))
+            if ("owner_id", "=") not in pairs:
+                bad(f"exclusion constraint {c['conname']} must include owner_id WITH =")
             continue
         target_oid = c["confrelid"]
         child = col_names(oid, c["conkey"])

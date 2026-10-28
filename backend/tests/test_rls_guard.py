@@ -62,6 +62,12 @@ def good(extra: str = "") -> str:
     return GOOD.format(extra=extra)
 
 
+def test_an_exclusion_constraint_with_owner_id_passes(scratch: Connection) -> None:
+    exec_all(scratch, good(", EXCLUDE USING btree (owner_id WITH =, name WITH =)"))
+    run_rls_helper(scratch, "t_bad")
+    assert violations(scratch) == []
+
+
 def test_a_good_table_with_a_restrictive_extra_policy_and_set_null_columns_passes(
     scratch: Connection,
 ) -> None:
@@ -139,6 +145,10 @@ CASES = {
             "RLS",
         ],
         "id must be uuid with the server default",
+    ),
+    "exclusion constraint without owner_id": (
+        [good(", EXCLUDE USING btree (name WITH =)"), "RLS"],
+        "must include owner_id WITH =",
     ),
     "no owner_id": (
         ["CREATE TABLE t_bad (id uuid PRIMARY KEY DEFAULT gen_random_uuid())"],

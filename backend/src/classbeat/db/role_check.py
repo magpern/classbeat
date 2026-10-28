@@ -36,8 +36,19 @@ SELECT
     EXISTS (SELECT 1 FROM pg_namespace n WHERE n.nspowner = (SELECT oid FROM me)),
     EXISTS (SELECT 1 FROM pg_roles x JOIN reachable r ON r.oid = x.oid
              WHERE x.rolname IN ('pg_execute_server_program', 'pg_read_server_files',
-                                 'pg_write_server_files'))
+                                 'pg_write_server_files')),
+    ARRAY(SELECT s.setdatabase::text || ':' || c FROM pg_db_role_setting s, unnest(s.setconfig) c
+           WHERE s.setrole = (SELECT oid FROM me))
 """
+# The role's own settings must be exactly these, at role level (database 0). A role can change
+# its own settings (ALTER ROLE ... SET) and Postgres cannot forbid it, so this detects it.
+EXPECTED_ROLE_SETTINGS = {
+    "statement_timeout": "30s",
+    "lock_timeout": "5s",
+    "idle_in_transaction_session_timeout": "60s",
+}
+SETTINGS_PROBLEM = "has role settings other than the expected three timeouts"
+FLAG_COUNT = 7
 PROBLEMS = (
     "is a superuser",
     "has BYPASSRLS",
@@ -54,7 +65,13 @@ class DatabaseRoleError(RuntimeError):
 
 
 def problems_for(row: Any) -> list[str]:
-    return [problem for problem, flag in zip(PROBLEMS, row, strict=True) if flag]
+    """Problems for one ``ROLE_QUERY`` row (a row of only the seven flags skips the settings)."""
+    found = [problem for problem, flag in zip(PROBLEMS, row[:FLAG_COUNT], strict=True) if flag]
+    if len(row) > FLAG_COUNT:
+        expected = {f"0:{key}={value}" for key, value in EXPECTED_ROLE_SETTINGS.items()}
+        if set(row[FLAG_COUNT]) != expected:
+            found.append(SETTINGS_PROBLEM)
+    return found
 
 
 def _raise_if_unsafe(row: Any) -> None:

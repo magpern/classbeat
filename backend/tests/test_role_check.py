@@ -12,7 +12,12 @@ from sqlalchemy import text
 
 from classbeat.config import Settings
 from classbeat.db import DatabaseRoleError, create_engine, verify_database_role
-from classbeat.db.role_check import PROBLEMS, problems_for
+from classbeat.db.role_check import (
+    EXPECTED_ROLE_SETTINGS,
+    PROBLEMS,
+    SETTINGS_PROBLEM,
+    problems_for,
+)
 from classbeat.web import create_app
 from classbeat.worker.__main__ import _run  # pyright: ignore[reportPrivateUsage]
 from conftest import url_for
@@ -70,6 +75,9 @@ def probe_roles(database_url: str) -> Iterator[None]:
             f"CREATE ROLE guard_schema LOGIN PASSWORD '{PASSWORD}'",
             "CREATE SCHEMA guard_s AUTHORIZATION guard_schema",
             f"CREATE ROLE guard_plain LOGIN PASSWORD '{PASSWORD}'",
+            "ALTER ROLE guard_plain SET statement_timeout = '30s'",
+            "ALTER ROLE guard_plain SET lock_timeout = '5s'",
+            "ALTER ROLE guard_plain SET idle_in_transaction_session_timeout = '60s'",
         )
         for role in PROBE_ROLES:
             run(f"GRANT CONNECT ON DATABASE {db} TO {role}")
@@ -282,3 +290,43 @@ async def test_a_database_that_comes_up_later_is_still_checked_on_first_connecti
             await server.wait_closed()
     finally:
         await engine.dispose()
+
+
+@pytest.mark.parametrize(
+    ("change", "undo"),
+    [
+        ("SET statement_timeout = 0", "SET statement_timeout = '30s'"),
+        ("SET session_replication_role = replica", "RESET session_replication_role"),
+        ("RESET lock_timeout", "SET lock_timeout = '5s'"),
+    ],
+)
+async def test_a_role_that_changed_its_own_settings_is_refused(
+    database_url: str, probe_roles: None, change: str, undo: str
+) -> None:
+    """ALTER ROLE ... SET by the role itself persists and Postgres cannot forbid it."""
+    admin = create_sync_engine(database_url, isolation_level="AUTOCOMMIT")
+    settings = settings_for(database_url, "guard_plain")
+    engine = create_engine(settings)
+    try:
+        with admin.connect() as connection:
+            connection.execute(text(f"ALTER ROLE guard_plain {change}"))
+        with pytest.raises(DatabaseRoleError, match="role settings other than"):
+            await verify_database_role(engine)
+        with pytest.raises(DatabaseRoleError, match="role settings other than"):
+            async with engine.connect() as connection:
+                await connection.execute(text("SELECT 1"))
+        with admin.connect() as connection:
+            connection.execute(text(f"ALTER ROLE guard_plain {undo}"))
+        await verify_database_role(engine)
+    finally:
+        await engine.dispose()
+        admin.dispose()
+
+
+def test_settings_drift_is_a_problem_of_its_own() -> None:
+    good = [f"0:{k}={v}" for k, v in EXPECTED_ROLE_SETTINGS.items()]
+    flags = (False,) * 7
+    assert problems_for((*flags, good)) == []
+    assert problems_for((*flags, good[:2])) == [SETTINGS_PROBLEM]
+    assert problems_for((*flags, [*good, "0:search_path=x"])) == [SETTINGS_PROBLEM]
+    assert problems_for((*flags, ["1:" + g[2:] for g in good])) == [SETTINGS_PROBLEM]
