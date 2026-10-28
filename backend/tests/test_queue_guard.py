@@ -235,7 +235,7 @@ async def test_objects_in_public_cannot_shadow_built_ins_and_are_refused(
             startup, connection_check = await startup_and_connection_problems(app_database_url)
             assert "cardinality(text[])" in startup
             assert "job queue does not match ADR 0005" in connection_check
-            with pytest.raises(Exception, match="schema public holds"):
+            with pytest.raises(Exception, match="the database holds function cardinality"):
                 install_queue(database_url)
             # The bodies resolve built-ins in pg_catalog only: no shadow runs (a plain app-role
             # engine, without the startup check, calls them).
