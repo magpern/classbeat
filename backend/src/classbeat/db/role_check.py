@@ -9,7 +9,7 @@ import logging
 from typing import Any
 
 from sqlalchemy import event, text
-from sqlalchemy.exc import OperationalError
+from sqlalchemy.exc import DisconnectionError, OperationalError
 from sqlalchemy.ext.asyncio import AsyncEngine
 
 logger = logging.getLogger(__name__)
@@ -49,6 +49,16 @@ EXPECTED_ROLE_SETTINGS = {
 }
 SETTINGS_PROBLEM = "has role settings other than the expected three timeouts"
 FLAG_COUNT = 7
+CHECKOUT_QUERY = "SELECT current_setting('app.user_id', true)"
+SETTINGS_MS_QUERY = (
+    "SELECT name, setting FROM pg_settings WHERE name IN "
+    "('statement_timeout', 'lock_timeout', 'idle_in_transaction_session_timeout')"
+)
+EXPECTED_TIMEOUTS_MS = {
+    "statement_timeout": "30000",
+    "lock_timeout": "5000",
+    "idle_in_transaction_session_timeout": "60000",
+}
 PROBLEMS = (
     "is a superuser",
     "has BYPASSRLS",
@@ -65,12 +75,13 @@ class DatabaseRoleError(RuntimeError):
 
 
 def problems_for(row: Any) -> list[str]:
-    """Problems for one ``ROLE_QUERY`` row (a row of only the seven flags skips the settings)."""
+    """Problems for one ``ROLE_QUERY`` row: the seven flags, then the role's settings."""
+    if row is None or len(row) != FLAG_COUNT + 1:
+        raise ValueError("the role query must return the seven flags and the settings")
     found = [problem for problem, flag in zip(PROBLEMS, row[:FLAG_COUNT], strict=True) if flag]
-    if len(row) > FLAG_COUNT:
-        expected = {f"0:{key}={value}" for key, value in EXPECTED_ROLE_SETTINGS.items()}
-        if set(row[FLAG_COUNT]) != expected:
-            found.append(SETTINGS_PROBLEM)
+    expected = {f"0:{key}={value}" for key, value in EXPECTED_ROLE_SETTINGS.items()}
+    if set(row[FLAG_COUNT]) != expected:
+        found.append(SETTINGS_PROBLEM)
     return found
 
 
@@ -86,6 +97,23 @@ def _raise_if_unsafe(row: Any) -> None:
 
 def refuse_privileged_roles(engine: AsyncEngine) -> None:
     """Check every new connection of ``engine``; a privileged role is refused with an error."""
+
+    @event.listens_for(engine.sync_engine, "checkout")
+    def check_checkout(dbapi_connection: Any, _record: object, _proxy: object) -> None:
+        # A pooled connection must come back exactly as the role defaults leave it: no
+        # session-level app.user_id left by a committed SET, and the role's timeouts. Otherwise
+        # it is invalidated and the pool opens a fresh one.
+        cursor = dbapi_connection.cursor()
+        try:
+            cursor.execute(CHECKOUT_QUERY)
+            (user_id,) = cursor.fetchone()
+            cursor.execute(SETTINGS_MS_QUERY)
+            actual = dict(cursor.fetchall())
+        finally:
+            cursor.close()
+        dbapi_connection.rollback()
+        if user_id not in (None, "") or actual != EXPECTED_TIMEOUTS_MS:
+            raise DisconnectionError("a pooled connection carries state from an earlier use")
 
     @event.listens_for(engine.sync_engine, "connect")
     def check_connection(dbapi_connection: Any, _record: object) -> None:

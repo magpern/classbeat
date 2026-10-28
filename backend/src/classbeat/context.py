@@ -17,7 +17,7 @@ Everything else receives the context as the ``ctx`` parameter.
 """
 
 from dataclasses import dataclass
-from typing import Literal, NoReturn
+from typing import Any, Literal, NoReturn
 from uuid import UUID
 
 ROLES = ("user", "admin")
@@ -83,6 +83,13 @@ class UserContext:
         object.__setattr__(self, "role", role)
         object.__setattr__(self, "entitlements", entitlements)
         object.__setattr__(self, "connections", connections)
+
+    @classmethod
+    def __get_pydantic_core_schema__(cls, source: Any, handler: Any) -> NoReturn:
+        # Pydantic (and so FastAPI) would otherwise build a real UserContext from request data
+        # without calling __init__, so a handler parameter ``ctx: UserContext`` would take the
+        # user from the body. Any model, TypeAdapter or route that tries fails right here.
+        raise TypeError("UserContext can't be validated from data; use the auth dependency")
 
     def __reduce__(self) -> NoReturn:
         raise TypeError("a UserContext cannot be pickled or copied by value")

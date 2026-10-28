@@ -277,3 +277,35 @@ async def test_only_the_exact_user_context_opens_a_session(
     with pytest.raises(TypeError, match="UserContext is required"):
         async with user_session(sessions, fake):  # pyright: ignore[reportArgumentType]
             pytest.fail("a session must not open for anything but a UserContext")
+
+
+async def test_a_pooled_connection_with_leftover_session_state_is_replaced(
+    app_database_url: str,
+) -> None:
+    engine = create_engine(
+        settings_for(app_database_url), poolclass=AsyncAdaptedQueuePool, pool_size=1, max_overflow=0
+    )
+    sessions = create_session_factory(engine)
+    try:
+        await add_parent(sessions, B, "b1")
+        for leftover in ("SET statement_timeout = 0", f"SET app.user_id = '{B.user_id}'"):
+            async with sessions() as session:
+                first_pid = (await session.execute(text("SELECT pg_backend_pid()"))).scalar_one()
+                await session.execute(text(leftover))  # session-level, not transaction-local
+                await session.commit()  # the SET now outlives the transaction
+            async with sessions() as session:  # the pool must not hand that connection out
+                row = (
+                    await session.execute(
+                        text(
+                            "SELECT pg_backend_pid(), current_setting('statement_timeout'), "
+                            "current_setting('app.user_id', true), "
+                            "(SELECT count(*) FROM t_parent)"
+                        )
+                    )
+                ).one()
+            assert row[0] != first_pid
+            assert row[1] == "30s"
+            assert row[2] in (None, "")
+            assert row[3] == 0
+    finally:
+        await engine.dispose()

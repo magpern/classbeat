@@ -49,9 +49,14 @@ class UserContext:
   `ctypes`, patching `classbeat.context` itself. What the runtime barrier does cover: building
   or copying without the token, re-calling `ctx.__init__` on an existing context (refused
   before any field changes), pickling (`__reduce__` and `__setstate__` refuse), and
-  `require_context(ctx)`, which every function that takes a context uses and which accepts the
-  exact class only (no look-alike with a `user_id`, no subclass instance, no UUID, no dict). API handlers get the context through one FastAPI
-  dependency; they never take a user ID from a path, query, body, header or model output.
+  `require_context(ctx)`, which every function that opens database access with a context calls
+  (today `user_session`) and which accepts the exact class only (no look-alike with a
+  `user_id`, no subclass instance, no UUID, no dict). Pydantic, and so FastAPI, would build a
+  real `UserContext` from request data without calling `__init__`; `UserContext` therefore
+  defines `__get_pydantic_core_schema__` to raise, and a model field, `TypeAdapter` or route
+  parameter of that type fails at definition time. API handlers get the context through one
+  FastAPI dependency (`Depends(...)`); they never take a user ID from a path, query, body,
+  header or model output.
 - Every service and repository function that touches owned data takes `ctx: UserContext`
   explicitly. IDs from the browser or a model are looked up *within* the owner's rows; not
   found and not owned are the same answer (404).
@@ -203,7 +208,10 @@ async with system_session(sessionmaker) as session:
   setting is gone, so later statements see no rows and cannot write owned rows. Committing
   through the connection or a raw `COMMIT` would commit partial work; that is forbidden by
   convention and the review gate, not enforced.
-- Never a session-level `SET app.user_id`. The pool resets connections on return (rollback).
+- Never a session-level `SET app.user_id`. The pool resets connections on return (rollback),
+  and rollback does not undo a session-level `SET` that was committed. So every pool checkout
+  also checks that `app.user_id` is unset and the three timeouts equal the role defaults, and
+  invalidates the connection otherwise.
 - One transaction per `user_session`; a function needing two users' data is a design error.
 - Long-lived work holds no session: a server-sent events stream opens a short `user_session`
   per read. `LISTEN` uses its own dedicated connection, which never runs queries on owned

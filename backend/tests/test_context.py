@@ -3,8 +3,12 @@ import dataclasses
 import pickle
 import uuid
 from types import SimpleNamespace
+from typing import Annotated
 
+import httpx
 import pytest
+from fastapi import Body, Depends, FastAPI, Query
+from pydantic import BaseModel, TypeAdapter
 
 from classbeat.context import (  # pyright: ignore[reportPrivateUsage]
     _ISSUER,
@@ -139,3 +143,61 @@ def test_require_context_accepts_only_the_exact_class() -> None:
 def test_invalid_contexts_are_refused(kwargs: dict[str, object], error: type[Exception]) -> None:
     with pytest.raises(error):
         UserContext(issuer=_ISSUER, **kwargs)  # pyright: ignore[reportArgumentType]
+
+
+def test_pydantic_cannot_build_a_context_from_data() -> None:
+    body = {"user_id": str(uuid.uuid4()), "role": "admin"}
+    with pytest.raises(TypeError, match="use the auth dependency"):
+        TypeAdapter(UserContext)
+    with pytest.raises(TypeError, match="use the auth dependency"):
+        TypeAdapter(UserContext).validate_python(body)  # pragma: no cover - never reached
+
+    with pytest.raises(TypeError, match="use the auth dependency"):
+
+        class Model(BaseModel):
+            ctx: UserContext
+
+    with pytest.raises(TypeError, match="use the auth dependency"):
+        TypeAdapter(list[UserContext])
+
+
+def test_a_route_cannot_take_a_context_from_the_request() -> None:
+    app = FastAPI()
+    with pytest.raises(TypeError, match="use the auth dependency"):
+
+        @app.post("/x")
+        async def bare(ctx: UserContext) -> dict[str, str]:  # pragma: no cover
+            return {"user": str(ctx.user_id)}
+
+    with pytest.raises(TypeError, match="use the auth dependency"):
+
+        @app.post("/y")
+        async def body(ctx: Annotated[UserContext, Body()]) -> None:  # pragma: no cover
+            ...
+
+    with pytest.raises(TypeError, match="use the auth dependency"):
+
+        @app.get("/z")
+        async def query(ctx: Annotated[UserContext, Query()]) -> None:  # pragma: no cover
+            ...
+
+    assert not [r for r in app.routes if getattr(r, "path", "") in ("/x", "/y", "/z")]
+
+
+async def test_a_dependency_is_the_way_to_get_a_context() -> None:
+    ctx = build()
+    app = FastAPI()
+
+    def current() -> UserContext:
+        return ctx  # stands in for the auth dependency (M1)
+
+    @app.get("/me")
+    async def me(who: Annotated[UserContext, Depends(current)]) -> dict[str, str]:
+        return {"user": str(who.user_id)}
+
+    # The body is ignored: the context comes from the dependency only.
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://test"
+    ) as client:
+        response = await client.get("/me", params={"who": str(uuid.uuid4())})
+    assert response.json() == {"user": str(USER)}

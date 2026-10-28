@@ -195,13 +195,20 @@ async def test_the_web_app_starts_with_the_app_role(app_database_url: str) -> No
 
 
 def test_every_problem_has_a_flag_and_the_messages_are_distinct() -> None:
+    good = [f"0:{k}={v}" for k, v in EXPECTED_ROLE_SETTINGS.items()]
     assert len(set(PROBLEMS)) == len(PROBLEMS) == 7
-    assert problems_for((False,) * 7) == []
-    assert problems_for((True, False, False, False, True, False, True)) == [
+    assert problems_for((*(False,) * 7, good)) == []
+    assert problems_for((True, False, False, False, True, False, True, good)) == [
         PROBLEMS[0],
         PROBLEMS[4],
         PROBLEMS[6],
     ]
+
+
+@pytest.mark.parametrize("row", [None, (), (False,) * 7, (False,) * 9, ([],)])
+def test_a_malformed_role_row_raises(row: object) -> None:
+    with pytest.raises(ValueError, match="seven flags"):
+        problems_for(row)
 
 
 async def test_the_worker_does_not_start_with_a_privileged_role(database_url: str) -> None:
