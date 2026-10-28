@@ -218,8 +218,8 @@ async with system_session(sessionmaker) as session:
   session settings; a rollback alone leaves those, so a held cursor opened as user A could be
   fetched by user B on the same connection. If the reset fails, the connection is
   invalidated. A rollback does not undo a session-level `SET` that was committed either, so
-  every pool checkout also checks that `app.user_id` is unset and the three timeouts equal the role defaults, and
-  invalidates the connection otherwise.
+  every pool checkout also checks that `app.user_id` is unset and the three timeouts equal the
+  role defaults, and invalidates the connection otherwise.
 - One transaction per `user_session`; a function needing two users' data is a design error.
 - Long-lived work holds no session: a server-sent events stream opens a short `user_session`
   per read. `LISTEN` uses its own dedicated connection, which never runs queries on owned

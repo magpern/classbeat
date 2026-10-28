@@ -3,9 +3,10 @@
 import uuid
 from collections.abc import AsyncIterator
 from types import SimpleNamespace
+from typing import Any
 
 import pytest
-from sqlalchemy import text
+from sqlalchemy import event, text
 from sqlalchemy.exc import DBAPIError, IntegrityError, ProgrammingError
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 from sqlalchemy.pool import AsyncAdaptedQueuePool
@@ -287,7 +288,15 @@ async def test_a_pooled_connection_with_leftover_session_state_is_replaced(
     engine = create_engine(
         settings_for(app_database_url), poolclass=AsyncAdaptedQueuePool, pool_size=1, max_overflow=0
     )
-    engine.sync_engine.pool.dispatch.reset.clear()
+    for listener in list(engine.sync_engine.pool.dispatch.reset):
+        event.remove(engine.sync_engine, "reset", listener)  # also from SQLAlchemy's registry
+
+    @event.listens_for(engine.sync_engine, "reset")
+    def rollback_only(dbapi_connection: Any, _record: object, reset_state: Any) -> None:
+        # What a real engine does without DISCARD ALL: the pool's own rollback on return.
+        if not (reset_state.terminate_only or not reset_state.asyncio_safe):
+            dbapi_connection.rollback()
+
     sessions = create_session_factory(engine)
     try:
         await add_parent(sessions, B, "b1")
@@ -333,7 +342,15 @@ async def test_a_holdable_cursor_survives_the_return_without_the_reset(
     engine = create_engine(
         settings_for(app_database_url), poolclass=AsyncAdaptedQueuePool, pool_size=1, max_overflow=0
     )
-    engine.sync_engine.pool.dispatch.reset.clear()
+    for listener in list(engine.sync_engine.pool.dispatch.reset):
+        event.remove(engine.sync_engine, "reset", listener)  # also from SQLAlchemy's registry
+
+    @event.listens_for(engine.sync_engine, "reset")
+    def rollback_only(dbapi_connection: Any, _record: object, reset_state: Any) -> None:
+        # What a real engine does without DISCARD ALL: the pool's own rollback on return.
+        if not (reset_state.terminate_only or not reset_state.asyncio_safe):
+            dbapi_connection.rollback()
+
     try:
         assert await held_cursor_read_by_a(engine) == ["b1"]
     finally:
@@ -351,22 +368,43 @@ async def test_a_holdable_cursor_does_not_survive_the_return(app_database_url: s
         await engine.dispose()
 
 
+PREPARE_THRESHOLD = 5  # psycopg's default: the 6th run of the same text is prepared
+PREPARED_NAMES = text("SELECT name FROM pg_prepared_statements WHERE left(name, 5) = '_pg3_'")
+
+
+async def run_until_prepared(session: AsyncSession, ctx: UserContext) -> int:
+    """Run one statement more often than psycopg's threshold; return the backend pid."""
+    pid = (await session.execute(text("SELECT pg_backend_pid()"))).scalar_one()
+    for _ in range(PREPARE_THRESHOLD + 2):
+        await session.execute(
+            text("SELECT count(*) FROM t_parent WHERE owner_id = :owner"),
+            {"owner": ctx.user_id},
+        )
+    # psycopg prepared it server side, on this backend.
+    assert (await session.execute(PREPARED_NAMES)).scalars().all(), "nothing was prepared"
+    return pid
+
+
 async def test_the_reset_keeps_one_connection_working_across_many_uses(
     app_database_url: str,
 ) -> None:
-    # Past psycopg's prepare threshold the same statements are prepared server side; DISCARD ALL
-    # drops them, and psycopg must notice instead of failing with "prepared statement ... does
-    # not exist".
+    # Past psycopg's prepare threshold the same statement is prepared server side; DISCARD ALL
+    # drops it, and psycopg must notice instead of failing with "prepared statement ... does
+    # not exist" (see discard_session_state).
     engine = create_engine(
         settings_for(app_database_url), poolclass=AsyncAdaptedQueuePool, pool_size=1, max_overflow=0
     )
     sessions = create_session_factory(engine)
     try:
         pids = set()
-        for i in range(20):
+        for i in range(4):
             await add_parent(sessions, A, f"a{i}")
             async with user_session(sessions, A) as session:
+                pids.add(await run_until_prepared(session, A))
+            # Returned to the pool and reset: the server holds no prepared statement now.
+            async with user_session(sessions, A) as session:
                 pids.add((await session.execute(text("SELECT pg_backend_pid()"))).scalar_one())
+                assert not (await session.execute(PREPARED_NAMES)).scalars().all()
                 assert (
                     await session.execute(text("SELECT count(*) FROM t_parent"))
                 ).scalar_one() == i + 1

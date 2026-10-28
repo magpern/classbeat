@@ -8,6 +8,10 @@ from user_context_scan import DEFINITION, ISSUER_PACKAGES, scan_source
 
 DEPENDS = "from fastapi import Depends"
 ANNOTATED = "from typing import Annotated"
+SECURITY = "from fastapi import Security"
+DEPENDS_AS_D = "from fastapi import Depends as D"
+SECURITY_AS_S = "from fastapi import Security as S"
+ANNOTATED_AS_A = "from typing import Annotated as A"
 
 
 def lines(*parts: str) -> str:
@@ -48,6 +52,36 @@ ALLOWED = [
     ),
     lines(DEPENDS, "def h(x: int = Depends()): ..."),
     lines(ANNOTATED, DEPENDS, IMPORT, "def h(x: Annotated[int, Depends()]): ..."),
+    # A named dependency is fine, with either function and under any spelling.
+    lines(SECURITY, IMPORT, "def get(): ...", "async def h(ctx: UserContext = Security(get)): ..."),
+    lines(
+        SECURITY,
+        IMPORT,
+        "def get(): ...",
+        "async def h(ctx: UserContext = Security(get, scopes=['me'])): ...",
+    ),
+    lines(DEPENDS_AS_D, IMPORT, "def get(): ...", "async def h(ctx: UserContext = D(get)): ..."),
+    lines(SECURITY_AS_S, IMPORT, "def get(): ...", "async def h(ctx: UserContext = S(get)): ..."),
+    lines(
+        ANNOTATED_AS_A,
+        SECURITY,
+        IMPORT,
+        "def get(): ...",
+        "async def h(ctx: A[UserContext, Security(get)]): ...",
+    ),
+    lines(
+        ANNOTATED,
+        DEPENDS,
+        IMPORT,
+        "def get(): ...",
+        "async def h(ctx: 'Annotated[UserContext, Depends(get)]'): ...",
+    ),
+    lines(
+        DEPENDS,
+        IMPORT,
+        "def get(): ...",
+        "async def h(ctx: UserContext = Depends(dependency=get)): ...",
+    ),
 ]
 REFUSED = {
     "call": IMPORT + "ctx = UserContext(user_id=1, role='user')",
@@ -111,6 +145,66 @@ REFUSED = {
     ),
     "bare Depends() with a string annotation": lines(
         DEPENDS, IMPORT, "async def h(ctx: 'UserContext' = Depends()): ..."
+    ),
+    # The cases below name UserContext only inside annotations or strings, so the plain
+    # reference rule does not see them: only the Depends/Security/Annotated rules refuse them.
+    "bare Depends() under an import alias": lines(
+        DEPENDS_AS_D, IMPORT, "async def h(ctx: UserContext = D()): ..."
+    ),
+    "bare Depends() under an assigned alias": lines(
+        DEPENDS, IMPORT, "D = Depends", "async def h(ctx: UserContext = D()): ..."
+    ),
+    "bare Security() default": lines(
+        SECURITY, IMPORT, "async def h(ctx: UserContext = Security()): ..."
+    ),
+    "bare Security() under an import alias": lines(
+        SECURITY_AS_S, IMPORT, "async def h(ctx: UserContext = S()): ..."
+    ),
+    "Security() with only scopes": lines(
+        SECURITY, IMPORT, "async def h(ctx: UserContext = Security(scopes=['me'])): ..."
+    ),
+    "bare Security() in Annotated": lines(
+        ANNOTATED, SECURITY, IMPORT, "async def h(ctx: Annotated[UserContext, Security()]): ..."
+    ),
+    "Security() naming the class in a string": lines(
+        SECURITY, "async def h(ctx=Security('classbeat.context.UserContext')): ..."
+    ),
+    "Depends(None) default": lines(
+        DEPENDS, IMPORT, "async def h(ctx: UserContext = Depends(None)): ..."
+    ),
+    "Depends(dependency=None) default": lines(
+        DEPENDS, IMPORT, "async def h(ctx: UserContext = Depends(dependency=None)): ..."
+    ),
+    "Depends(None) in Annotated": lines(
+        ANNOTATED, DEPENDS, IMPORT, "async def h(ctx: Annotated[UserContext, Depends(None)]): ..."
+    ),
+    "bare Depends() in an aliased Annotated": lines(
+        ANNOTATED_AS_A, DEPENDS, IMPORT, "async def h(ctx: A[UserContext, Depends()]): ..."
+    ),
+    "bare Depends() in an Annotated alias assignment": lines(
+        ANNOTATED,
+        DEPENDS,
+        IMPORT,
+        "Ann = Annotated",
+        "async def h(ctx: Ann[UserContext, Depends()]): ...",
+    ),
+    "bare Depends() in a typing_extensions Annotated": lines(
+        "from typing_extensions import Annotated as X",
+        DEPENDS,
+        IMPORT,
+        "async def h(ctx: X[UserContext, Depends()]): ...",
+    ),
+    "whole-string Annotated annotation": lines(
+        ANNOTATED, DEPENDS, IMPORT, "async def h(ctx: 'Annotated[UserContext, Depends()]'): ..."
+    ),
+    "whole-string Annotated annotation with Security": lines(
+        ANNOTATED, SECURITY, IMPORT, "async def h(ctx: 'Annotated[UserContext, Security()]'): ..."
+    ),
+    "whole-string Annotated variable annotation": lines(
+        ANNOTATED, DEPENDS, IMPORT, "ctx: 'Annotated[UserContext, Depends(None)]' = None"
+    ),
+    "whole-string Annotated annotation with aliases": lines(
+        ANNOTATED_AS_A, DEPENDS_AS_D, IMPORT, "async def h(ctx: 'A[UserContext, D()]'): ..."
     ),
     "issuer private token": "from classbeat.context import _ISSUER\nx = _ISSUER",
 }
