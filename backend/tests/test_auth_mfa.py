@@ -151,8 +151,8 @@ async def test_a_pending_blob_of_another_user_or_a_forged_one_is_refused(
 async def test_the_pending_blob_expires(env: Env, monkeypatch: pytest.MonkeyPatch) -> None:
     keys = Keys.from_secret(b"k" * 48)
     user_id = await env.user()
-    sealed = seal_pending(keys, user_id, "SECRET")
-    assert open_pending(keys, user_id, sealed) == "SECRET"
+    sealed = seal_pending(keys, user_id, "SECRET", "-")
+    assert open_pending(keys, user_id, sealed) == ("SECRET", "-")
     real = time.time()
     monkeypatch.setattr("classbeat.auth.mfa.time.time", lambda: real + 601)
     assert open_pending(keys, user_id, sealed) is None

@@ -27,7 +27,13 @@ from classbeat.auth.events import record_event
 from classbeat.auth.keys import Keys
 from classbeat.auth.notices import notify_mfa_failures, notify_totp_enrolled
 from classbeat.auth.ratelimit import RateLimited, RateLimiter, mfa_buckets
-from classbeat.auth.sessions import SessionGone, SessionInfo, rotate_session
+from classbeat.auth.sessions import (
+    SessionGone,
+    SessionInfo,
+    clear_mfa,
+    revoke_user_sessions,
+    rotate_session,
+)
 from classbeat.context import UserContext
 from classbeat.db import system_session
 
@@ -104,17 +110,15 @@ async def _reserve(request: Request, info: SessionInfo):
 
 
 async def _rotate(request: Request, response: Response, info: SessionInfo, **flags: bool) -> None:
+    """Rotate the session. Raises ``SessionGone`` when it was revoked meanwhile."""
     async with system_session(_factory(request)) as db:
-        try:
-            issued = await rotate_session(
-                db,
-                info,
-                user_agent=request.headers.get("user-agent"),
-                ip=request_ip(request),
-                **flags,
-            )
-        except SessionGone:
-            raise _refuse(401, "not_authenticated") from None
+        issued = await rotate_session(
+            db,
+            info,
+            user_agent=request.headers.get("user-agent"),
+            ip=request_ip(request),
+            **flags,
+        )
     set_session_cookie(response, issued)
 
 
@@ -154,11 +158,13 @@ async def start_enrollment(
     is stored until ``confirm``."""
     secret = totp.new_secret()
     uri = totp.provisioning_uri(secret, _session(info).email)
+    async with system_session(_factory(request)) as db:
+        generation = await mfa.current_generation(db, ctx.user_id)
     return EnrollmentStart(
         secret=secret,
         otpauth_uri=uri,
         qr_svg=totp.qr_svg(uri),
-        pending=mfa.seal_pending(_keys(request), ctx.user_id, secret),
+        pending=mfa.seal_pending(_keys(request), ctx.user_id, secret, generation),
     )
 
 
@@ -175,14 +181,22 @@ async def confirm_enrollment(
     user, and the session counts as having passed TOTP and step-up."""
     session = _session(info)
     attempt = await _reserve(request, session)
-    secret = mfa.open_pending(_keys(request), ctx.user_id, body.pending)
+    pending = mfa.open_pending(_keys(request), ctx.user_id, body.pending)
     codes: list[str] | None = None
     mail = False
     async with system_session(_factory(request)) as db:
-        if secret is not None:
-            codes = await mfa.confirm_enrollment(
-                db, _keys(request), ctx.user_id, secret, body.code, replacing=session.totp_enabled
-            )
+        if pending is not None:
+            secret, generation = pending
+            # The step-up rule was applied for the TOTP state the session saw; the blob must
+            # have been started against the same state.
+            if (generation != mfa.NO_TOTP) != session.totp_enabled:
+                raise _refuse(409, "totp_changed")
+            try:
+                codes = await mfa.confirm_enrollment(
+                    db, _keys(request), ctx.user_id, secret, generation, body.code
+                )
+            except mfa.EnrollmentConflict:
+                raise _refuse(409, "totp_changed") from None
         if codes is None:
             mail = await mfa.record_failure(db, ctx.user_id, request_ip(request), "enroll")
         else:
@@ -193,8 +207,22 @@ async def confirm_enrollment(
             background.add_task(notify_mfa_failures, session.user_id, session.email)
         return _invalid_code(background)
     await attempt.succeed()
-    await _rotate(request, response, session, mfa=True, stepup=True)
+    # The enrollment is committed: mail the user now, whatever happens to the session.
     background.add_task(notify_totp_enrolled, session.user_id, session.email)
+    try:
+        await _rotate(request, response, session, mfa=True, stepup=True)
+    except SessionGone:
+        # Revoked meanwhile. The user proved the factor, so the codes are not lost: they come
+        # back in this body, and the client signs in again.
+        return JSONResponse(
+            {
+                "detail": {"reason": "not_authenticated"},
+                "enrolled": True,
+                "recovery_codes": codes,
+            },
+            status_code=401,
+            background=background,
+        )
     return RecoveryCodes(recovery_codes=codes)
 
 
@@ -203,9 +231,12 @@ async def remove_totp(
     request: Request, ctx: Annotated[UserContext, Depends(require_stepup)], info: Info
 ) -> None:
     """Removing TOTP needs step-up: a password-only re-auth is not enough."""
-    _need_totp(_session(info))
+    session = _session(info)
+    _need_totp(session)
     async with system_session(_factory(request)) as db:
         await mfa.remove_totp(db, ctx.user_id)
+        await clear_mfa(db, session.id)
+        await revoke_user_sessions(db, ctx.user_id, except_id=session.id)
         await record_event(db, "totp_removed", user_id=ctx.user_id, ip=request_ip(request))
 
 
@@ -216,6 +247,8 @@ async def regenerate_recovery_codes(
     _need_totp(_session(info))
     async with system_session(_factory(request)) as db:
         codes = await mfa.regenerate_recovery_codes(db, _keys(request), ctx.user_id)
+        if codes is None:
+            raise _refuse(409, "totp_not_enabled")
         await record_event(
             db, "recovery_codes_regenerated", user_id=ctx.user_id, ip=request_ip(request)
         )
@@ -236,7 +269,10 @@ async def _second_factor_endpoint(
         refused := await _verify_code(request, background, session, body.code, purpose)
     ) is not None:
         return refused
-    await _rotate(request, response, session, **flags)
+    try:
+        await _rotate(request, response, session, **flags)
+    except SessionGone:
+        raise _refuse(401, "not_authenticated") from None
     return {"ok": True}
 
 

@@ -287,6 +287,11 @@ async def rotate_session(
     return IssuedSession(row.id, token, row.expires_at, max(int(row.remaining), 0))
 
 
+async def clear_mfa(db: AsyncSession, session_id: UUID) -> None:
+    """The session no longer counts as having passed TOTP (after TOTP was removed)."""
+    await db.execute(update(sessions).where(sessions.c.id == session_id).values(mfa_at=None))
+
+
 async def revoke_session(db: AsyncSession, user_id: UUID, session_id: UUID) -> bool:
     """Delete one of the user's own sessions. False for an unknown id and for another user's,
     which the caller answers with the same 404."""

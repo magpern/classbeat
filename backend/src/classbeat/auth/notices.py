@@ -35,8 +35,8 @@ async def notify_totp_enrolled(user_id: UUID, email: str) -> None:
         return
     try:
         await _notifier.totp_enrolled(user_id, email)
-    except Exception:
-        logger.exception("sending the TOTP enrollment notice failed")
+    except Exception as exc:  # the class only: the text may name the recipient
+        logger.error("sending the TOTP enrollment notice failed: %s", type(exc).__name__)
 
 
 async def notify_mfa_failures(user_id: UUID, email: str) -> None:
@@ -45,5 +45,5 @@ async def notify_mfa_failures(user_id: UUID, email: str) -> None:
         return
     try:
         await _notifier.mfa_failures(user_id, email)
-    except Exception:
-        logger.exception("sending the MFA failure notice failed")
+    except Exception as exc:
+        logger.error("sending the MFA failure notice failed: %s", type(exc).__name__)

@@ -45,25 +45,47 @@ def _pending_aad(user_id: UUID) -> bytes:
     return f"{user_id}|totp-pending".encode()
 
 
-def seal_pending(keys: Keys, user_id: UUID, secret: str) -> str:
-    """The not-yet-confirmed secret, encrypted for the client to send back with the first code."""
+NO_TOTP = "-"  # the generation of an account without a confirmed TOTP
+
+
+class EnrollmentConflict(Exception):
+    """The account's TOTP changed since ``start`` (another enrollment won, or it was replaced)."""
+
+
+def seal_pending(keys: Keys, user_id: UUID, secret: str, generation: str) -> str:
+    """The not-yet-confirmed secret, encrypted (own HKDF key ``totp-pending``) for the client to
+    send back with the first code. ``generation`` ties it to the TOTP the account had at
+    ``start``, so a blob cannot be replayed after the TOTP changed."""
     nonce = secrets.token_bytes(NONCE_LENGTH)
-    plain = f"{int(time.time()) + PENDING_LIFETIME}|{secret}".encode()
-    blob = AESGCM(keys.totp).encrypt(nonce, plain, _pending_aad(user_id))
+    plain = f"{int(time.time()) + PENDING_LIFETIME}|{generation}|{secret}".encode()
+    blob = AESGCM(keys.totp_pending).encrypt(nonce, plain, _pending_aad(user_id))
     return base64.urlsafe_b64encode(nonce + blob).decode()
 
 
-def open_pending(keys: Keys, user_id: UUID, sealed: str) -> str | None:
-    """The secret, or ``None`` when the blob is not this user's, was altered or has expired."""
+def open_pending(keys: Keys, user_id: UUID, sealed: str) -> tuple[str, str] | None:
+    """``(secret, generation)``, or ``None`` when the blob is not this user's, was altered or
+    has expired."""
     try:
         raw = base64.urlsafe_b64decode(sealed.encode())
-        plain = AESGCM(keys.totp).decrypt(
+        plain = AESGCM(keys.totp_pending).decrypt(
             raw[:NONCE_LENGTH], raw[NONCE_LENGTH:], _pending_aad(user_id)
         )
-        expires, secret = plain.decode().split("|", 1)
-        return secret if int(expires) > time.time() else None
+        expires, generation, secret = plain.decode().split("|", 2)
+        return (secret, generation) if int(expires) > time.time() else None
     except (InvalidTag, ValueError):
         return None
+
+
+async def current_generation(db: AsyncSession, user_id: UUID) -> str:
+    """Identifies the confirmed TOTP (its nonce changes with every replacement)."""
+    nonce = (
+        await db.execute(
+            select(mfa_totp.c.nonce).where(
+                mfa_totp.c.user_id == user_id, mfa_totp.c.confirmed_at.is_not(None)
+            )
+        )
+    ).scalar_one_or_none()
+    return bytes(nonce).hex() if nonce is not None else NO_TOTP
 
 
 async def recovery_codes_left(db: AsyncSession, user_id: UUID) -> int:
@@ -80,8 +102,16 @@ def _recovery_hash(keys: Keys, user_id: UUID, code: str) -> bytes:
     return hmac_digest(keys.recovery_codes, str(user_id), totp.normalize_recovery_code(code))
 
 
-async def regenerate_recovery_codes(db: AsyncSession, keys: Keys, user_id: UUID) -> list[str]:
-    """Ten new codes; the old ones stop working. Shown once, stored as an HMAC."""
+async def regenerate_recovery_codes(
+    db: AsyncSession, keys: Keys, user_id: UUID
+) -> list[str] | None:
+    """Ten new codes; the old ones stop working. Shown once, stored as an HMAC. The TOTP row
+    is locked first, so concurrent regenerations leave exactly ten. ``None`` without a TOTP."""
+    locked = await db.execute(
+        select(mfa_totp.c.id).where(mfa_totp.c.user_id == user_id).with_for_update()
+    )
+    if locked.first() is None:
+        return None
     codes = totp.new_recovery_codes()
     await db.execute(delete(mfa_recovery_codes).where(mfa_recovery_codes.c.user_id == user_id))
     await db.execute(
@@ -92,22 +122,16 @@ async def regenerate_recovery_codes(db: AsyncSession, keys: Keys, user_id: UUID)
 
 
 async def confirm_enrollment(
-    db: AsyncSession, keys: Keys, user_id: UUID, secret: str, code: str, *, replacing: bool
+    db: AsyncSession, keys: Keys, user_id: UUID, secret: str, generation: str, code: str
 ) -> list[str] | None:
     """Store the secret (AES-256-GCM) once ``code`` is valid for it, and issue recovery codes.
 
-    ``replacing`` is what the caller's step-up check assumed: whether a confirmed TOTP exists.
-    If that changed meanwhile, nothing is stored (``None``), as for a wrong code.
+    A first enrollment (``generation == NO_TOTP``) inserts and does nothing if a row appeared
+    meanwhile; a replacement updates only the row it was started against. Either way a lost
+    race raises ``EnrollmentConflict`` and nothing is stored. A wrong code returns ``None``.
     """
     step = totp.match_step(secret, code)
     if step is None:
-        return None
-    current = (
-        await db.execute(
-            select(mfa_totp.c.confirmed_at).where(mfa_totp.c.user_id == user_id).with_for_update()
-        )
-    ).first()
-    if (current is not None and current.confirmed_at is not None) != replacing:
         return None
     ciphertext, nonce, key_id = encrypt_totp_secret(keys, user_id, secret.encode())
     values = {
@@ -117,11 +141,26 @@ async def confirm_enrollment(
         "confirmed_at": func.now(),
         "last_step": step,
     }
-    await db.execute(
-        pg_insert(mfa_totp)
-        .values(user_id=user_id, **values)
-        .on_conflict_do_update(index_elements=[mfa_totp.c.user_id], set_=values)
-    )
+    if generation == NO_TOTP:
+        stored = await db.execute(
+            pg_insert(mfa_totp)
+            .values(user_id=user_id, **values)
+            .on_conflict_do_nothing(index_elements=[mfa_totp.c.user_id])
+            .returning(mfa_totp.c.id)
+        )
+    else:
+        stored = await db.execute(
+            update(mfa_totp)
+            .where(
+                mfa_totp.c.user_id == user_id,
+                mfa_totp.c.confirmed_at.is_not(None),
+                mfa_totp.c.nonce == bytes.fromhex(generation),
+            )
+            .values(**values)
+            .returning(mfa_totp.c.id)
+        )
+    if stored.first() is None:
+        raise EnrollmentConflict
     return await regenerate_recovery_codes(db, keys, user_id)
 
 
@@ -190,7 +229,9 @@ async def check_second_factor(
 
 
 async def record_failure(db: AsyncSession, user_id: UUID, ip: str | None, purpose: str) -> bool:
-    """Write ``mfa_failed``. True when this is the fifth in the last hour (mail the user)."""
+    """Write ``mfa_failed``. True when this is the fifth in the last hour (mail the user).
+    Serialized per user, so exactly one of several concurrent failures sees the fifth."""
+    await db.execute(select(func.pg_advisory_xact_lock(func.hashtextextended(str(user_id), 0))))
     await db.execute(
         insert(auth_events).values(
             kind="mfa_failed", user_id=user_id, ip=ip, detail={"purpose": purpose}

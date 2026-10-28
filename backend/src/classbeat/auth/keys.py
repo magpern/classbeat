@@ -34,13 +34,14 @@ def derive_key(secret: bytes, info: str) -> bytes:
 
 @dataclass(frozen=True, slots=True, repr=False)
 class Keys:
-    """The five derived keys. ``repr`` never shows key material."""
+    """The six derived keys. ``repr`` never shows key material."""
 
     csrf: bytes
     rate_limit: bytes
     device: bytes
     recovery_codes: bytes
     totp: bytes
+    totp_pending: bytes
 
     def __repr__(self) -> str:
         return "Keys(...)"
@@ -55,6 +56,7 @@ class Keys:
             device=derive_key(secret, "device"),
             recovery_codes=derive_key(secret, "recovery-codes"),
             totp=derive_key(secret, "totp-v1"),
+            totp_pending=derive_key(secret, "totp-pending"),
         )
 
     @classmethod
