@@ -8,7 +8,8 @@ The roadmap separates technical completion (tests against fakes) from live activ
 MOWL, Spotify and model calls, owner-controlled; roadmap "Verification"). Live use of some
 features needs a provider's permission first (§10, track F). This ADR is the single place the
 live activation gate reads. The questions themselves are in
-[docs/providers/questions.md](../providers/questions.md).
+[docs/providers/questions.md](../providers/questions.md) (written for track F, which was closed
+unsent on 2026-10-28; the research below is kept as the record of what the terms say).
 
 What the desk research found (2026-10-27, public pages only):
 
@@ -34,8 +35,8 @@ What the desk research found (2026-10-27, public pages only):
 **Owner decision (2026-10-28): the providers are not contacted.** classbeat starts as a
 small personal app for the owner and friends the owner invites: invite-only, free,
 non-commercial. For that circle the owner accepts the provider-terms risks below instead of
-waiting for answers, so every feature's live path may be switched on once it is technically
-complete. The testers are the owner's friends and are told directly; the app shows no
+waiting for answers, so every feature's live path except Swedebeat may be switched on once it
+is technically complete. The testers are the owner's friends and are told directly; the app shows no
 separate risk notice.
 
 Accepted risks (also in the threat model):
@@ -48,8 +49,10 @@ Accepted risks (also in the threat model):
 - **Spotify, business use and storage:** commercial use is not permitted for developer apps
   and the policy restricts products for businesses (§III 10, §IV 2), and Spotify Content may not
   be stored indefinitely (§IV 3.1(a)). The beta is free and non-commercial; testers play
-  Spotify music only where their own Spotify terms allow it (not publicly in a gym); track lists
-  and timing are kept only with the class and deleted with it or the account.
+  Spotify music only where their own Spotify terms allow it (not publicly in a gym); a user's
+  own track lists and timing are deleted with their class or account, and a shared music
+  analysis is deleted once no class of any user refers to it, so nothing Spotify-derived is
+  kept indefinitely.
 - **MOWL:** the API is unofficial and undocumented. MOWL may block an account or change the
   API without notice, breaking the app until it is adapted.
 
@@ -66,7 +69,7 @@ agent-run test against a real account, the owner's authorization for that specif
 | Spotify sign-in with the user's own Client ID (BYOK) | Allowed | Needs Spotify S1 |
 | Claude choosing songs from Spotify metadata and MOWL analysis | Allowed | Needs Spotify S2, S3 |
 | Creating the pool and final playlists in a user's Spotify account (private) | Allowed | Needs Spotify S1, S2, S3 |
-| Keeping track lists and timing for saved classes | Allowed, deleted with the class or account | Needs Spotify S4 |
+| Keeping track lists, timing and shared analyses for saved classes | Allowed while a class refers to them, then deleted | Needs Spotify S4 |
 | Any paid or public use, or users the owner doesn't know | Not allowed | Needs all of the above, S5, MOWL M3, and agreements (M7) |
 | Swedebeat features | Disabled flag; fakes only (its app key isn't used, see the threat model) | Needs Swedebeat |
 

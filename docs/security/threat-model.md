@@ -71,7 +71,7 @@ responses and model output alike.
 | T19 | SSRF through user-supplied links (playlists, mixes) | Parse provider IDs only, never fetch user URLs; outbound allowlists for worker (MOWL, Spotify, Swedebeat, model APIs) and web (sign-in providers, Spotify OAuth, MOWL and Swedebeat sign-in, mail relay) | M3a, M4 |
 | T20 | XSS through user, model or upstream text in the SPA | React escaping only, no raw HTML rendering; strict CSP | M1, M6 |
 | T21 | Exposed services or container breakout | Non-root image; local ports bound to 127.0.0.1; only Caddy public on the VPS; Postgres never published there | M0, M6 |
-| T22 | Keeping data longer than allowed, or no way to delete it | GDPR export and delete; Spotify-derived track lists and timing kept only with the class and deleted with it or the account (ADR 0010; roadmap Amendment 1) | F, M6 |
+| T22 | Keeping data longer than allowed, or no way to delete it | GDPR export and delete; a user's Spotify-derived track lists and timing deleted with their class or account; a shared music analysis deleted once no class of any user refers to it (ADR 0010; roadmap Amendment 1) | M3b, M6 |
 | T23 | A MOWL or Swedebeat password captured or kept | Typed on our page over TLS, used once for a token, never stored, logged, put in a URL or sent to a model | M2 |
 | T24 | Email abuse: sign-up spam, reset flooding | Invite codes; rate limits on sign-up, verification and reset mail | M1 |
 | T25 | Playlist links shown to other users | Never displayed outside the owner's pages; privacy wording explains what Spotify's non-public setting means | M4 |
@@ -99,7 +99,7 @@ responses and model output alike.
   forbids, and BYOK's fit with the one-Client-ID rule is unconfirmed. Accepted by the owner for
   the beta circle; a developer app or account may be disabled, borne by each tester for their
   own. The beta is free and non-commercial, testers don't play Spotify music publicly in a gym,
-  and track lists and timing are deleted with the class or account (§III 10, §IV 2, §IV 3.1(a)).
+  and nothing Spotify-derived is kept once no class refers to it (§III 10, §IV 2, §IV 3.1(a)).
   Public or paid use needs Spotify first (ADR 0010).
 - Swedebeat sign-in needs Swedebeat's app key, which the `mowl-workouts` wheel carries and
   which can be extracted from it. AGENTS.md forbids using credentials embedded in third-party
