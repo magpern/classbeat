@@ -286,14 +286,23 @@ Playwright (Chromium only) in `e2e/`, run against a running compose stack. The b
 so from a worktree no setup is needed:
 
 ```bash
-docker compose up -d --build --wait      # the worktree's own stack (see above)
+# The OAuth specs need the test-only fake OpenID provider (compose.e2e.yaml, profile `e2e`):
+alias dc='docker compose -f compose.yaml -f compose.e2e.yaml --profile e2e'
+dc up -d --build --wait                  # the worktree's own stack plus the fake provider
 cd e2e
 npm ci
 npx playwright install chromium          # once (CI: --with-deps)
 npm test                                 # or E2E_BASE_URL=http://127.0.0.1:20007 npm test
 npx playwright show-report               # HTML report after a failure
-docker compose down -v
+cd .. && dc down -v
 ```
+
+The fake (`e2e/fake-oidc/server.py`) answers the providers' real back-channel hostnames inside the
+compose network and issues ID tokens for Google and Microsoft; Playwright plays the browser's visit
+to the provider. It uses public test values only and is never part of the default stack. The e2e
+stack trusts the docker network as proxy so each test presents its own `X-Forwarded-For` address
+(separate rate limits). Sign-up is limited to 5 per IP and hour: use `down -v` between full runs
+of a stack that is not given per-test addresses.
 
 CI runs the same in the `e2e` job and uploads `playwright-report` only on failure.
 

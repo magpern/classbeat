@@ -1,0 +1,64 @@
+# TEST ONLY. Adds a fake OpenID Connect provider to the stack and switches Google and
+# Microsoft sign-in on against it, for the Playwright E2E tests (e2e/tests/oauth.spec.ts).
+#
+#   docker compose -f compose.yaml -f compose.e2e.yaml --profile e2e up -d --build --wait
+#   (or COMPOSE_FILE=compose.yaml:compose.e2e.yaml COMPOSE_PROFILES=e2e in the environment)
+#
+# The secret files hold the public test value in e2e/fake-oidc/client-secret.txt.
+#
+# Never part of the default stack: without this file, no provider is enabled. Nothing here is a
+# real credential; the client ids and secret are public test values, and the CA is created by the
+# fake at start and trusted only by the web container (SSL_CERT_FILE).
+#
+# The fake answers the providers' real hostnames (compose network aliases), so classbeat needs no
+# test-only setting and its provider endpoints stay hard-coded (ADR 0003 section 5).
+
+services:
+  oidc-fake:
+    profiles: [e2e]
+    build: .
+    image: ${COMPOSE_PROJECT_NAME:-classbeat}:local
+    restart: "no"
+    user: "0:0" # writes the CA to a shared volume and binds :443 (test-only service)
+    command: ["python", "/fake/server.py"]
+    environment:
+      FAKE_OIDC_CLIENT_SECRET: e2e-fake-client-secret
+    volumes:
+      - ./e2e/fake-oidc:/fake:ro
+      - oidc-ca:/ca
+    networks:
+      default:
+        aliases:
+          - oauth2.googleapis.com
+          - www.googleapis.com
+          - login.microsoftonline.com
+    healthcheck:
+      test: ["CMD", "test", "-s", "/ca/ca.pem"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  web:
+    environment:
+      CLASSBEAT_OAUTH_GOOGLE_CLIENT_ID: e2e-fake-google-client
+      CLASSBEAT_OAUTH_MICROSOFT_CLIENT_ID: e2e-fake-microsoft-client
+      SSL_CERT_FILE: /oidc-ca/ca.pem
+      # Each E2E test presents its own client address in X-Forwarded-For (own rate limits).
+      CLASSBEAT_TRUSTED_PROXIES: 10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,127.0.0.0/8
+    secrets:
+      - oauth_google_client_secret
+      - oauth_microsoft_client_secret
+    volumes:
+      - oidc-ca:/oidc-ca:ro
+    depends_on:
+      oidc-fake:
+        condition: service_healthy
+
+secrets:
+  oauth_google_client_secret:
+    file: ./e2e/fake-oidc/client-secret.txt
+  oauth_microsoft_client_secret:
+    file: ./e2e/fake-oidc/client-secret.txt
+
+volumes:
+  oidc-ca:
