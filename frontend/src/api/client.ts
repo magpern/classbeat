@@ -81,8 +81,11 @@ export interface RequestOptions {
 
 /**
  * One API call. Unsafe methods carry `X-CSRF-Token`; a 403 that blames the token is retried
- * once with a fresh one (the session may have rotated). Returns the parsed JSON, or
- * `undefined` for an empty answer. Anything but 2xx throws an `ApiError`.
+ * once with a fresh one (the session may have rotated). A 401 (a request in flight while the
+ * session rotated, ADR 0003 section 3) is repeated once after refetching the session, for safe
+ * methods only: some 401s of unsafe requests come after the server acted (second-factor routes,
+ * /reauth), and an unsafe request across a rotation gets the CSRF 403 handled above. Returns the parsed JSON, or `undefined` for an
+ * empty answer. Anything but 2xx throws an `ApiError`.
  */
 export async function request(
   method: string,
@@ -90,7 +93,9 @@ export async function request(
   options: RequestOptions = {},
 ): Promise<unknown> {
   const unsafe = !SAFE_METHODS.has(method)
-  for (let attempt = 0; ; attempt++) {
+  let csrfRetried = false
+  let sessionRetried = false
+  for (;;) {
     const headers: Record<string, string> = { Accept: 'application/json' }
     if (options.body !== undefined) headers['Content-Type'] = 'application/json'
     if (unsafe) headers[CSRF_HEADER] = await currentCsrfToken()
@@ -106,9 +111,24 @@ export async function request(
       return body
     }
     const reason = reasonOf(body)
-    if (unsafe && attempt === 0 && response.status === 403 && reason?.startsWith('csrf_token')) {
+    if (unsafe && !csrfRetried && response.status === 403 && reason?.startsWith('csrf_token')) {
+      csrfRetried = true
       csrfToken = null
       continue
+    }
+    if (
+      response.status === 401 &&
+      !unsafe &&
+      !sessionRetried &&
+      !options.signal?.aborted
+    ) {
+      sessionRetried = true
+      try {
+        await fetchSessionJson(options.signal)
+        continue
+      } catch {
+        // The session cannot be read: report the original 401.
+      }
     }
     throw new ApiError(response.status, reason, retryAfterOf(response), body)
   }

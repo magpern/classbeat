@@ -1,4 +1,4 @@
-import { fireEvent, screen } from '@testing-library/react'
+import { fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
 import { SIGNED_IN, fakeApi, reason } from '../test/fakeApi'
 import { renderAt } from '../test/render'
@@ -143,6 +143,29 @@ describe('reset page', () => {
       remove_methods: ['m1'],
     })
     expect(api.to('POST', '/api/auth/login')).toHaveLength(0)
+  })
+
+  it('refreshes the session after a completed reset so the nav updates', async () => {
+    let reset = false
+    const api = fakeApi({
+      'GET /api/auth/session': () => (reset ? { authenticated: false, csrf_token: 'a' } : SIGNED_IN),
+      'POST /api/auth/password/reset/info': { methods: [] },
+      'POST /api/auth/password/reset/complete': () => {
+        reset = true
+        return { status: 'ok' }
+      },
+    })
+    renderAt('/reset#token=reset-token')
+    expect(await screen.findByRole('link', { name: 'ann@example.test' })).toBeInTheDocument()
+    type('New password', 'a brand new passphrase')
+    fireEvent.click(screen.getByRole('button', { name: 'Change password' }))
+    expect(await screen.findByText('Password changed')).toBeInTheDocument()
+    await waitFor(() => {
+      expect(screen.queryByRole('link', { name: 'ann@example.test' })).toBeNull()
+    })
+    const nav = screen.getByRole('navigation', { name: 'Account' })
+    expect(within(nav).getByRole('link', { name: 'Sign in' })).toBeInTheDocument()
+    expect(api.to('GET', '/api/auth/session').length).toBeGreaterThanOrEqual(2)
   })
 
   it('reports a dead link', async () => {

@@ -16,8 +16,9 @@
 services:
   oidc-fake:
     profiles: [e2e]
-    build: .
+    # The image web, worker and migrate build (compose.yaml); not built a second time here.
     image: ${COMPOSE_PROJECT_NAME:-classbeat}:local
+    pull_policy: never
     restart: "no"
     user: "0:0" # writes the CA to a shared volume and binds :443 (test-only service)
     command: ["python", "/fake/server.py"]

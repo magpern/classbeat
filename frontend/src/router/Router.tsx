@@ -92,12 +92,24 @@ export function Link({ to, onClick, children, ...rest }: LinkProps) {
 
 /** `return_to` is honoured only as a relative path (ADR 0003 section 4). */
 export function safeReturnTo(value: string | null): string | null {
-  if (value === null || !value.startsWith('/')) return null
-  if (value.startsWith('//') || value.includes('\\')) return null
-  for (const char of value) {
-    if (char.charCodeAt(0) < 0x20) return null
+  if (value === null || !isPlainPath(value)) return null
+  // Also refuse what a decoder further along would turn into `//host` or a backslash.
+  let decoded: string
+  try {
+    decoded = decodeURIComponent(value)
+  } catch {
+    return null
   }
-  return value
+  return isPlainPath(decoded) ? value : null
+}
+
+function isPlainPath(value: string): boolean {
+  if (!value.startsWith('/') || value.startsWith('//')) return false
+  if (value.includes('\\') || value.includes('://')) return false
+  for (const char of value) {
+    if (char.charCodeAt(0) < 0x20 || char.charCodeAt(0) === 0x7f) return false
+  }
+  return true
 }
 
 /**
