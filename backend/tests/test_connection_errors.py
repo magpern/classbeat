@@ -9,6 +9,7 @@ from urllib.error import HTTPError, URLError
 import pytest
 
 from classbeat.connections import ConnectionFailure, classify, run_library_call
+from classbeat.egress import OutboundBlocked
 
 TICKET = "LT-7f3a9c2e-ticket-from-the-sign-in"
 PASSWORD = "correct horse battery staple"
@@ -161,3 +162,60 @@ async def test_a_successful_call_returns_its_value_from_a_worker_thread() -> Non
 
 def test_an_unknown_category_becomes_unknown() -> None:
     assert ConnectionFailure("made-up").args == ("unknown",)
+
+
+async def test_an_allowlist_refusal_stays_outbound_blocked_without_a_chain(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """ADR 0006 §9: not a connection category; host only, no chain, no URL."""
+
+    def call() -> None:
+        raise OutboundBlocked("evil.example")
+
+    with caplog.at_level(logging.WARNING), pytest.raises(OutboundBlocked) as raised:
+        await run_library_call(call, library_error=FakeMowlError, sign_in=False)
+    assert raised.value.host == "evil.example"
+    assert raised.value.__cause__ is None
+    assert raised.value.__context__ is None
+    assert not [r for r in caplog.records if r.getMessage() == "provider call failed"]
+
+
+async def test_an_allowlist_refusal_wrapped_by_the_library_is_still_outbound_blocked() -> None:
+    def call() -> None:
+        error = FakeMowlError(f"GET v1/x failed: {TOKEN}")
+        error.__cause__ = OutboundBlocked("evil.example")
+        raise error
+
+    with pytest.raises(OutboundBlocked) as raised:
+        await run_library_call(call, library_error=FakeMowlError, sign_in=False)
+    assert raised.value.__cause__ is None
+    assert raised.value.__context__ is None
+    assert TOKEN not in str(raised.value)
+
+
+async def test_a_refusal_anywhere_in_the_chain_is_found() -> None:
+    """Both links (``__cause__`` and ``__context__``) are followed, at any depth."""
+
+    def call() -> None:
+        inner = RuntimeError("inner")
+        inner.__context__ = OutboundBlocked("deep.example")
+        middle = ValueError("middle")
+        middle.__cause__ = KeyError("decoy")  # a cause without the refusal ...
+        middle.__context__ = inner  # ... and the refusal behind the context
+        outer = FakeMowlError(TOKEN)
+        outer.__cause__ = middle
+        raise outer
+
+    with pytest.raises(OutboundBlocked) as raised:
+        await run_library_call(call, library_error=FakeMowlError, sign_in=False)
+    assert raised.value.host == "deep.example"
+
+
+async def test_a_cyclic_chain_without_a_refusal_is_a_connection_failure() -> None:
+    def call() -> None:
+        a, b = RuntimeError("a"), RuntimeError("b")
+        a.__context__, b.__context__ = b, a
+        raise a
+
+    with pytest.raises(ConnectionFailure, match="unknown"):
+        await run_library_call(call, library_error=FakeMowlError, sign_in=False)

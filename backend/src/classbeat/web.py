@@ -13,7 +13,7 @@ from pydantic import BaseModel
 from sqlalchemy import text
 
 from classbeat import __version__, auth
-from classbeat.config import Settings
+from classbeat.config import Settings, check_web_has_no_model_key
 from classbeat.connections.routes import router as connections_router
 from classbeat.crypto.keks import load_keyring
 from classbeat.db import create_engine, create_session_factory, verify_database_role
@@ -79,6 +79,7 @@ def _add_single_page_app(app: FastAPI, static_dir: Path) -> None:
 def create_app(settings: Settings | None = None) -> FastAPI:
     """Build the app. The database engine is created in the lifespan, not here."""
     settings = settings if settings is not None else Settings()
+    check_web_has_no_model_key(settings)  # the model key is the worker's only (ADR 0006 §9)
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:

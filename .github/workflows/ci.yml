@@ -315,7 +315,16 @@ jobs:
 
       - name: Create .env and secrets
         working-directory: .
-        run: scripts/worktree.sh init
+        run: |
+          set -euo pipefail
+          scripts/worktree.sh init
+          # init leaves the model key empty (ADR 0006 section 9). A random canary, never a real
+          # key, lets the checks below prove where the value goes. The worker stays on `fake`.
+          if [ ! -f secrets/anthropic_api_key ] || [ -s secrets/anthropic_api_key ]; then
+            echo "::error::init must create an empty secrets/anthropic_api_key"
+            exit 1
+          fi
+          printf 'ci-canary-not-a-key-%s' "$(openssl rand -hex 16)" > secrets/anthropic_api_key
 
       - name: Start the stack
         working-directory: .
@@ -358,9 +367,44 @@ jobs:
             fi
           done
           [ "$checked" -gt 0 ] || { echo "::error::no secret files were checked"; exit 1; }
-          # The connection KEK (ADR 0004 section 7) must exist and so was among them.
+          # The connection KEK (ADR 0004 section 7) and the model key canary (ADR 0006 section 9)
+          # must exist and so were among them.
           [ -s secrets/connection_kek ] || { echo "::error::secrets/connection_kek is missing"; exit 1; }
+          [ -s secrets/anthropic_api_key ] || { echo "::error::secrets/anthropic_api_key is empty"; exit 1; }
           rm -f "$RUNNER_TEMP/inspect.json"
+
+      # ADR 0006 section 9: the model key is a file on the worker only, never an env variable.
+      - name: Check the model key is mounted on the worker only
+        working-directory: .
+        run: |
+          set -euo pipefail
+          worker="$(docker compose ps -q worker)"
+          [ -n "$worker" ] || { echo "::error::no worker container"; exit 1; }
+          if ! docker compose exec -T worker test -s /run/secrets/anthropic_api_key; then
+            echo "::error::the worker does not have the anthropic_api_key secret"
+            exit 1
+          fi
+          provider="$(docker compose exec -T worker printenv CLASSBEAT_MODEL_PROVIDER)"
+          if [ "$provider" != "fake" ]; then
+            echo "::error::the stack's worker must run the fake model provider"
+            exit 1
+          fi
+          mapfile -t containers < <(docker compose ps -aq)
+          [ "${#containers[@]}" -gt 1 ] || { echo "::error::too few containers"; exit 1; }
+          for c in "${containers[@]}"; do
+            name="$(docker inspect --format '{{.Name}}' "$c")"
+            if [ "$c" != "$worker" ] && docker inspect \
+              --format '{{range .Mounts}}{{println .Source .Destination}}{{end}}' "$c" \
+              | grep -q anthropic_api_key; then
+              echo "::error::$name mounts anthropic_api_key; only the worker may"
+              exit 1
+            fi
+            if docker inspect --format '{{range .Config.Env}}{{println .}}{{end}}' "$c" \
+              | grep -qiE '^[a-z_]*(anthropic|api_key)[a-z_]*='; then
+              echo "::error::$name has a model key variable in its environment"
+              exit 1
+            fi
+          done
 
       # The image the running stack was built from (never pushed). Fails on HIGH and CRITICAL
       # findings that have a fix available (--ignore-unfixed): an accepted risk, see AGENTS.md.

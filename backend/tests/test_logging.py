@@ -66,3 +66,20 @@ def test_configure_logging_replaces_handlers_and_sets_level(
     logging.getLogger("classbeat.test").warning("to stdout")
     out = capsys.readouterr().out
     assert json.loads(out)["message"] == "to stdout"
+
+
+@pytest.mark.usefixtures("restore_logging")
+def test_a_model_api_key_is_redacted_everywhere() -> None:
+    """ADR 0006 §9: the key never reaches a log line, whatever carries it."""
+    key = "sk-ant-api03-planted-test-value-0123456789abcdef"
+    stream = io.StringIO()
+    configure_logging("INFO", stream)
+    logger = logging.getLogger("classbeat.test")
+    logger.warning("request failed with %s", key)
+    logger.warning("headers", extra={"headers": f"x-api-key: {key}"})
+    logger.warning("fields", extra={"api_key": key, "nested": {"anthropic_api_key": key}})
+    logger.warning("header map", extra={"sent": {"X-Api-Key": key}})
+    output = stream.getvalue()
+    assert key not in output
+    assert "planted-test-value" not in output
+    assert len(output.splitlines()) == 4

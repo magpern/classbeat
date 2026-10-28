@@ -18,6 +18,7 @@ from dataclasses import dataclass
 from email.message import EmailMessage
 
 from classbeat.config import Settings
+from classbeat.egress import refuse_in_worker
 
 logger = logging.getLogger(__name__)
 
@@ -64,6 +65,7 @@ class Mailer:
     def _send_blocking(self, message: MailMessage) -> None:
         if self._host is None:
             raise MailError("smtp_host is not configured")
+        refuse_in_worker(self._host)
         built = self._build(message)
         context = ssl.create_default_context()
         if self._tls == "tls":
@@ -83,6 +85,7 @@ class Mailer:
         """Deliver one message; raises ``MailError`` (without details) when that fails."""
         if not self.configured:
             raise MailError("smtp_host is not configured")
+        refuse_in_worker(self._host)  # web only: the worker never sends mail (ADR 0006 section 9)
         try:
             await asyncio.to_thread(self._send_blocking, message)
         except (OSError, smtplib.SMTPException, ValueError) as exc:
