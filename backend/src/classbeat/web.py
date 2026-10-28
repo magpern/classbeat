@@ -14,6 +14,7 @@ from sqlalchemy import text
 
 from classbeat import __version__, auth
 from classbeat.config import Settings
+from classbeat.connections.routes import router as connections_router
 from classbeat.crypto.keks import load_keyring
 from classbeat.db import create_engine, create_session_factory, verify_database_role
 
@@ -109,6 +110,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.settings = settings
     app.include_router(api)
     auth.install(app)
+    app.include_router(connections_router)
 
     if settings.static_dir is not None:
         if settings.static_dir.is_dir():

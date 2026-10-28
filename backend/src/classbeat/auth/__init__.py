@@ -39,6 +39,7 @@ from classbeat.auth.deps import (
 )
 from classbeat.auth.devices import forget_devices, is_known_device, remember_device
 from classbeat.auth.events import record_event
+from classbeat.auth.flowtools import EmailAddress
 from classbeat.auth.hooks import register_reset_link_sender, send_reset_link
 from classbeat.auth.keys import (
     Keys,
@@ -69,6 +70,7 @@ from classbeat.auth.ratelimit import (
     Bucket,
     RateLimited,
     RateLimiter,
+    connect_buckets,
     mfa_buckets,
     password_buckets,
 )
@@ -100,6 +102,7 @@ __all__ = [
     "AccountError",
     "Attempt",
     "Bucket",
+    "EmailAddress",
     "IssuedSession",
     "Keys",
     "PasswordHashBusy",
@@ -118,6 +121,7 @@ __all__ = [
     "bucket_ip",
     "clear_session_cookie",
     "client_ip",
+    "connect_buckets",
     "create_invite",
     "create_user",
     "current_context",

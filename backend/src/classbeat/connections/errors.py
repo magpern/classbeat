@@ -19,6 +19,8 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from urllib.error import HTTPError, URLError
 
+from mowl.errors import MowlError
+
 logger = logging.getLogger(__name__)
 
 CATEGORIES = (
@@ -104,7 +106,9 @@ def _classify(exc: BaseException, library_error: type[BaseException], sign_in: b
     return Outcome("unknown", name)
 
 
-def classify(exc: BaseException, *, library_error: type[BaseException], sign_in: bool) -> Outcome:
+def classify(
+    exc: BaseException, *, library_error: type[BaseException] = MowlError, sign_in: bool
+) -> Outcome:
     """The category of ``exc``. Never raises: any error while classifying gives ``unknown``."""
     try:
         return _classify(exc, library_error, sign_in)
@@ -126,12 +130,12 @@ def log_outcome(outcome: Outcome, action: str) -> None:
 
 
 async def run_library_call[T](
-    call: Callable[[], T], *, library_error: type[BaseException], sign_in: bool
+    call: Callable[[], T], *, library_error: type[BaseException] = MowlError, sign_in: bool
 ) -> T:
     """Run a synchronous library call in a worker thread (``asyncio.to_thread``).
 
-    ``library_error`` is the library's own error class (``mowl.errors.MowlError`` once #66 pins
-    the wheel). Any ``Exception`` becomes ``ConnectionFailure(category)`` with no chain.
+    ``library_error`` is the library's own error class, ``mowl.errors.MowlError`` (tests pass
+    their own). Any ``Exception`` becomes ``ConnectionFailure(category)`` with no chain.
     """
     outcome: Outcome | None = None
     try:

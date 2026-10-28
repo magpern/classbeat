@@ -133,14 +133,16 @@ jobs:
 
       # pip-audit itself comes from the hash-locked `audit` group of backend/uv.lock.
       # It audits exactly what uv.lock pins: production dependencies, then every group
-      # (dev and audit) too.
+      # (dev and audit) too. mowl-workouts is our own library, vendored as a wheel built from its
+      # tag (scripts/build-mowl-wheel.sh) and not on PyPI, so pip-audit can't look it up; it is
+      # left out of the export, and its dependencies are still audited.
       - name: pip-audit
         working-directory: backend
         run: |
           set -euo pipefail
           uv sync --frozen --only-group audit
-          uv export -q --frozen --no-dev --no-emit-project -o "$RUNNER_TEMP/requirements-prod.txt"
-          uv export -q --frozen --no-emit-project --all-groups -o "$RUNNER_TEMP/requirements-all.txt"
+          uv export -q --frozen --no-dev --no-emit-project --no-emit-package mowl-workouts             -o "$RUNNER_TEMP/requirements-prod.txt"
+          uv export -q --frozen --no-emit-project --no-emit-package mowl-workouts --all-groups             -o "$RUNNER_TEMP/requirements-all.txt"
           for f in requirements-prod requirements-all; do
             uv run --frozen --only-group audit pip-audit \
               --require-hashes --disable-pip --strict \

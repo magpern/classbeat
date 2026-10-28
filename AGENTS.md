@@ -200,6 +200,13 @@ docker compose --profile maint run --rm maint python -m classbeat keys wipe --co
 uv run alembic upgrade head    # migrations as the owner role, CLASSBEAT_MIGRATIONS_DATABASE_URL
 ```
 
+The domain library `mowl` (`mowl-workouts`) is pinned as `backend/vendor/mowl_workouts-0.4.0-py3-none-any.whl`,
+built from the v0.4.0 tag **without** the bundled Swedebeat app key by `scripts/build-mowl-wheel.sh`
+(needs `gh` access to the private repo; it checks the tag's commit, the missing key file and that
+every other file matches the release wheel). After a rebuild run `uv lock`. classbeat leaves out
+the library's `mcp` dependency (`exclude-dependencies`): it never runs the MCP server, and `mcp`'s
+`httpx2` would replace httpx inside Authlib. Backend tests fake MOWL in-process (`tests/mowlfake.py`).
+
 Database tests need a throwaway Postgres whose application database has the roles of
 `docker/postgres/init/10-roles.sql` (ADR 0002 section 4). Give it a name and port of its own
 (one per worktree), create the roles, point `CLASSBEAT_TEST_DATABASE_URL` (the superuser, used
@@ -311,7 +318,9 @@ cd .. && dc down -v
 
 The fake (`e2e/fake-oidc/server.py`) answers the providers' real back-channel hostnames inside the
 compose network and issues ID tokens for Google and Microsoft; Playwright plays the browser's visit
-to the provider. It uses public test values only and is never part of the default stack. The e2e
+to the provider. The fake MOWL (`e2e/fake-mowl/server.py`) answers as `api.mowl.com` (the
+`mowl-workouts` base URL) for the MOWL sign-in; web trusts one bundle of both fakes' throwaway CAs.
+They use public test values only and are never part of the default stack. The e2e
 stack trusts the docker network as proxy so each test presents its own `X-Forwarded-For` address
 (separate rate limits). Sign-up is limited to 5 per IP and hour: use `down -v` between full runs
 of a stack that is not given per-test addresses.

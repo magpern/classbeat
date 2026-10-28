@@ -1,5 +1,6 @@
-"""The connections repository against Postgres (ADR 0004 sections 1 to 5, 7). No connect route
-exists yet (#66): the repository is driven directly, with fake credentials and a fake library."""
+"""The connections repository against Postgres (ADR 0004 sections 1 to 5, 7), driven directly
+with fake credentials and a fake library error. The MOWL connect route and the real library are
+tested in ``test_mowl_connect.py``."""
 
 import asyncio
 import logging

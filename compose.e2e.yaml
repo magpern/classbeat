@@ -1,5 +1,6 @@
 # TEST ONLY. Adds a fake OpenID Connect provider to the stack and switches Google and
-# Microsoft sign-in on against it, for the Playwright E2E tests (e2e/tests/oauth.spec.ts).
+# Microsoft sign-in on against it, for the Playwright E2E tests (e2e/tests/oauth.spec.ts), and a
+# fake MOWL API for MOWL connect (e2e/tests/mowl.spec.ts).
 #
 #   docker compose -f compose.yaml -f compose.e2e.yaml --profile e2e up -d --build --wait
 #   (or COMPOSE_FILE=compose.yaml:compose.e2e.yaml COMPOSE_PROFILES=e2e in the environment)
@@ -10,8 +11,9 @@
 # real credential; the client ids and secret are public test values, and the CA is created by the
 # fake at start and trusted only by the web container (SSL_CERT_FILE).
 #
-# The fake answers the providers' real hostnames (compose network aliases), so classbeat needs no
-# test-only setting and its provider endpoints stay hard-coded (ADR 0003 section 5).
+# The fakes answer the providers' real hostnames (compose network aliases), so classbeat needs no
+# test-only setting and its provider endpoints stay hard-coded (ADR 0003 section 5; the MOWL base
+# URL is the mowl-workouts library's own). Web trusts one bundle of both fakes' throwaway CAs.
 
 services:
   oidc-fake:
@@ -39,20 +41,47 @@ services:
       timeout: 3s
       retries: 30
 
+  mowl-fake:
+    profiles: [e2e]
+    image: ${COMPOSE_PROJECT_NAME:-classbeat}:local
+    pull_policy: never
+    restart: "no"
+    user: "0:0" # writes the CA bundle to a shared volume and binds :443 (test-only service)
+    command: ["python", "/fake/server.py"]
+    volumes:
+      - ./e2e/fake-mowl:/fake:ro
+      - oidc-ca:/oidc-ca:ro
+      - mowl-ca:/ca
+    networks:
+      default:
+        aliases:
+          - api.mowl.com
+    depends_on:
+      oidc-fake:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "test", "-s", "/ca/bundle.pem"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
   web:
     environment:
       CLASSBEAT_OAUTH_GOOGLE_CLIENT_ID: e2e-fake-google-client
       CLASSBEAT_OAUTH_MICROSOFT_CLIENT_ID: e2e-fake-microsoft-client
-      SSL_CERT_FILE: /oidc-ca/ca.pem
+      # The fake OIDC provider's CA and the fake MOWL's CA (written by mowl-fake).
+      SSL_CERT_FILE: /fake-ca/bundle.pem
       # Each E2E test presents its own client address in X-Forwarded-For (own rate limits).
       CLASSBEAT_TRUSTED_PROXIES: 10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,127.0.0.0/8
     secrets:
       - oauth_google_client_secret
       - oauth_microsoft_client_secret
     volumes:
-      - oidc-ca:/oidc-ca:ro
+      - mowl-ca:/fake-ca:ro
     depends_on:
       oidc-fake:
+        condition: service_healthy
+      mowl-fake:
         condition: service_healthy
 
 secrets:
@@ -63,3 +92,4 @@ secrets:
 
 volumes:
   oidc-ca:
+  mowl-ca:

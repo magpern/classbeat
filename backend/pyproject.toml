@@ -11,6 +11,9 @@ dependencies = [
     "fastapi>=0.115",
     "httpx==0.28.1",
     "joserfc==1.7.7",
+    # The domain library (ADR 0001): v0.4.0 built from its tag WITHOUT the bundled Swedebeat app
+    # key (scripts/build-mowl-wheel.sh; threat model, accepted risks). Pinned by uv.lock's hash.
+    "mowl-workouts==0.4.0",
     "psycopg[binary]>=3.2",
     "pydantic>=2.10",
     "pydantic-settings>=2.7",
@@ -31,6 +34,15 @@ dev = [
 audit = [
     "pip-audit==2.10.1",
 ]
+
+[tool.uv]
+# mowl-workouts depends on `mcp` for its own MCP server (mowl.server), which classbeat never runs.
+# `mcp` brings `httpx2`, which Authlib then prefers over httpx (it broke the OAuth client), so it
+# is left out of classbeat's environment and image.
+exclude-dependencies = ["mcp"]
+
+[tool.uv.sources]
+mowl-workouts = { path = "vendor/mowl_workouts-0.4.0-py3-none-any.whl" }
 
 [build-system]
 requires = ["hatchling"]

@@ -27,6 +27,8 @@ RUN groupadd --system --gid 10001 classbeat \
 WORKDIR /app
 # Dependencies first so this layer is cached until the lockfile changes.
 COPY backend/pyproject.toml backend/uv.lock ./
+# The pinned mowl-workouts wheel, built without the Swedebeat app key (scripts/build-mowl-wheel.sh).
+COPY backend/vendor ./vendor
 RUN --mount=from=uv,source=/uv,target=/usr/local/bin/uv \
     --mount=type=cache,target=/root/.cache/uv \
     uv sync --locked --no-dev --no-install-project

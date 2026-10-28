@@ -1,6 +1,7 @@
 import { logout, logoutAll } from '../api/auth'
 import { oauthOutcomeMessage } from '../api/messages'
 import { useSession } from '../auth/SessionContext'
+import { Connections } from '../components/account/Connections'
 import { ChangeEmail, ChangePassword } from '../components/account/Credentials'
 import { SignInMethods } from '../components/account/SignInMethods'
 import { TwoFactor } from '../components/account/TwoFactor'
@@ -46,6 +47,7 @@ function Account() {
           <Notice kind="error">{oauthOutcomeMessage(outcome)}</Notice>
         )
       ) : null}
+      <Connections />
       <SignInMethods />
       <ChangeEmail current={email} />
       <ChangePassword />

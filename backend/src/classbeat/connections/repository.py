@@ -25,6 +25,7 @@ from datetime import datetime
 from typing import Any
 from uuid import UUID
 
+from mowl.errors import MowlError
 from sqlalchemy import delete, func, insert, select, text, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncSession, async_sessionmaker
@@ -329,7 +330,7 @@ async def use[T](
     provider: str,
     call: Callable[[Credentials], T],
     *,
-    library_error: type[BaseException],
+    library_error: type[BaseException] = MowlError,
 ) -> T:
     """Run one library call with the user's credentials (in a worker thread). A 401 or 403
     flips the connection to ``needs_reconnect``; any failure is a ``ConnectionFailure``."""
@@ -359,7 +360,7 @@ async def connect(
     provider: str,
     sign_in: Callable[[], Mapping[str, Any]],
     *,
-    library_error: type[BaseException],
+    library_error: type[BaseException] = MowlError,
     public: Mapping[str, Any] | None = None,
     expires_at: datetime | None = None,
 ) -> UUID:
