@@ -339,12 +339,31 @@ jobs:
             --severity HIGH,CRITICAL --ignore-unfixed --exit-code 1 \
             classbeat:ci
 
+  shellcheck:
+    name: Shell scripts
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: bash -n
+        run: for f in scripts/*.sh; do bash -n "$f"; done
+
+      # koalaman/shellcheck v0.11.0, pinned by its index digest. Dependabot does not track an
+      # image used in a `run:` step: bump the tag and digest here by hand.
+      - name: shellcheck
+        run: |
+          docker run --rm -v "$PWD:/mnt:ro" -w /mnt \
+            koalaman/shellcheck@sha256:61862eba1fcf09a484ebcc6feea46f1782532571a34ed51fedf90dd25f925a8d \
+            scripts/*.sh
+
   # The one required check. Every job above is listed in `needs`; a skipped job passes,
   # anything else fails the gate.
   ci:
     name: ci
     if: always()
-    needs: [secrets, frontend, backend, compose, e2e, pip-audit, npm-audit, trivy-fs, trivy-image]
+    needs: [secrets, frontend, backend, compose, e2e, shellcheck, pip-audit, npm-audit, trivy-fs, trivy-image]
     runs-on: ubuntu-24.04
     steps:
       - name: All jobs passed
