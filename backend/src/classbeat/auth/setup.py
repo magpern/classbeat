@@ -2,20 +2,30 @@
 
 import logging
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, Response
+from fastapi.encoders import jsonable_encoder
+from fastapi.exception_handlers import request_validation_exception_handler
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from classbeat.auth.admin_routes import router as admin_router
+from classbeat.auth.email_routes import router as email_router
 from classbeat.auth.keys import Keys
 from classbeat.auth.mfa_routes import router as mfa_router
 from classbeat.auth.middleware import AuthMiddleware
+from classbeat.auth.notices import register_security_notifier
+from classbeat.auth.notifier import MailNotifier
 from classbeat.auth.passwords import PasswordHashBusy, PasswordHasher
 from classbeat.auth.ratelimit import RateLimited, RateLimiter
+from classbeat.auth.reset_routes import router as reset_router
 from classbeat.auth.routes import router
+from classbeat.auth.signin_routes import router as signin_router
+from classbeat.auth.signup_routes import router as signup_router
 from classbeat.config import Settings
 from classbeat.log import describe_database_error
+from classbeat.mail import Mailer
 
 logger = logging.getLogger(__name__)
 
@@ -23,6 +33,8 @@ logger = logging.getLogger(__name__)
 def install(app: FastAPI) -> None:
     """Routes, the Origin/CSRF middleware and the 429 and 503 handlers."""
     app.include_router(router)
+    for flow in (signup_router, signin_router, reset_router, email_router):
+        app.include_router(flow)
     app.include_router(mfa_router)
     app.include_router(admin_router)
     app.add_middleware(AuthMiddleware)
@@ -43,6 +55,19 @@ def install(app: FastAPI) -> None:
         logger.error("database error: %s", text)
         return JSONResponse({"detail": "Internal Server Error"}, status_code=500)
 
+    @app.exception_handler(RequestValidationError)
+    async def validation_failed(request: Request, exc: Exception) -> Response:
+        if not isinstance(exc, RequestValidationError):
+            raise exc
+        if not request.url.path.startswith("/api/auth/"):
+            return await request_validation_exception_handler(request, exc)
+        # FastAPI's default echoes ``input`` (a password or token); drop it on auth routes.
+        errors = [
+            {key: value for key, value in error.items() if key not in ("input", "ctx", "url")}
+            for error in exc.errors()
+        ]
+        return JSONResponse({"detail": jsonable_encoder(errors)}, status_code=422)
+
     @app.exception_handler(PasswordHashBusy)
     async def hashing_busy(_: Request, __: Exception) -> JSONResponse:
         return JSONResponse(
@@ -59,9 +84,13 @@ def attach_state(
     app.state.keys = keys
     app.state.limiter = RateLimiter(factory, keys)
     app.state.password_hasher = PasswordHasher(settings.password_hash_workers)
+    app.state.mailer = Mailer(settings)
+    # #39's security notices (TOTP enrolled, repeated MFA failures) go out as mail.
+    register_security_notifier(MailNotifier(app.state.mailer))
 
 
 def detach_state(app: FastAPI) -> None:
+    register_security_notifier(None)
     hasher: PasswordHasher | None = getattr(app.state, "password_hasher", None)
     if hasher is not None:
         hasher.close()

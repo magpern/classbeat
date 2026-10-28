@@ -30,6 +30,8 @@ _PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
     ),
     (re.compile(r"(?i)\bbearer\s+[\w.~+/=-]+"), f"Bearer {_REDACTED}"),
     (re.compile(r"(/oauth/[^\s?\"'#]*)\?[^\s\"'#]*"), r"\1"),
+    # Mail links carry their token in the fragment (section 5): ``/reset#token=...``.
+    (re.compile(r"(?i)([#?&]token=)[\w.~%-]+"), rf"\1{_REDACTED}"),
 )
 
 
@@ -56,6 +58,26 @@ def describe_database_error(error: DBAPIError) -> str:
     return f"{type(error).__name__} (SQLSTATE {state})"
 
 
+def find_database_error(error: BaseException | None) -> DBAPIError | None:
+    """The first ``DBAPIError`` in ``error``'s ``__cause__``/``__context__`` chain or among the
+    members of an ``ExceptionGroup`` (Starlette re-raises an error after the response started as
+    a ``RuntimeError`` from the original)."""
+    seen: set[int] = set()
+    pending: list[BaseException | None] = [error]
+    while pending:
+        current = pending.pop()
+        if current is None or id(current) in seen:
+            continue
+        seen.add(id(current))
+        if isinstance(current, DBAPIError):
+            return current
+        pending.append(current.__cause__)
+        pending.append(current.__context__)
+        if isinstance(current, BaseExceptionGroup):
+            pending.extend(current.exceptions)  # pyright: ignore[reportUnknownMemberType]
+    return None
+
+
 class JsonFormatter(logging.Formatter):
     """Formats a record as a single-line JSON object.
 
@@ -74,10 +96,13 @@ class JsonFormatter(logging.Formatter):
                 payload.setdefault(key, value)
         if record.exc_info:
             error = record.exc_info[1]
-            if isinstance(error, DBAPIError):
+            database_error = find_database_error(error)
+            if database_error is not None:
                 # The message and chained driver error hold row values (DETAIL of a unique or
-                # check violation: emails, hashes): class and SQLSTATE only.
-                payload["exc"] = describe_database_error(error)
+                # check violation: emails, hashes): class and SQLSTATE only, wherever the error
+                # sits in the chain.
+                outer = f"{type(error).__name__} caused by " if error is not database_error else ""
+                payload["exc"] = outer + describe_database_error(database_error)
             else:
                 payload["exc"] = self.formatException(record.exc_info)
         if record.stack_info:
