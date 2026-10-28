@@ -9,7 +9,9 @@ Every table here is owned (ADR 0002 section 2): ``owner_id`` referencing ``users
 ``owner_id``, and ``enable_owner_rls``. ``class_revisions`` also gets the restrictive
 ``revisions_immutable`` policy, so no role (the owner included, RLS is forced) can update a
 revision; referential actions run without row security, so deleting a class still cascades and
-deleting a job still sets ``job_id`` to NULL.
+deleting a job still sets ``job_id`` to NULL. ``job_events`` is append-only the same way
+(restrictive ``events_no_update`` and ``events_no_delete``); deleting a job or an account still
+removes its events through the cascade.
 
 The queue's ``SECURITY DEFINER`` functions are not created here: the superuser script
 ``docker/postgres/queue/20-queue.sql`` owns them (ADR 0005 section 3). A later migration that
@@ -169,6 +171,13 @@ JOB_INDEXES = (
     "CREATE INDEX class_revisions_owner_job ON public.class_revisions (owner_id, job_id)",
 )
 
+EVENTS_APPEND_ONLY = (
+    "CREATE POLICY events_no_update ON public.job_events AS RESTRICTIVE FOR UPDATE TO PUBLIC "
+    "USING (false)",
+    "CREATE POLICY events_no_delete ON public.job_events AS RESTRICTIVE FOR DELETE TO PUBLIC "
+    "USING (false)",
+)
+
 JOB_EVENTS = f"""
     CREATE TABLE public.job_events ({_owner_columns()}
         job_id uuid NOT NULL,
@@ -288,7 +297,7 @@ def upgrade() -> None:
     ):
         op.execute(ddl)
         enable_owner_rls(table)
-    for statement in OTHER_INDEXES:
+    for statement in (*EVENTS_APPEND_ONLY, *OTHER_INDEXES):
         op.execute(statement)
 
 

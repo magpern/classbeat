@@ -209,7 +209,8 @@ per-user job limit (ADR 0005 §2) bounds concurrency; quotas are M5's.
 `jobs` (`ON DELETE CASCADE`), `stage`, `attempt`, `provider`, `model` (configured),
 `model_answered`, `effort`, `prompt_version`, `turns`, `tool_calls`, `input_tokens`,
 `output_tokens`, `cache_read_tokens`, `cache_write_tokens`, `cost_micros bigint`, `outcome`
-(check: `submitted`, the ADR 0005 §4 categories, `cancelled`, `lease_lost`), `started_at`,
+(check: `submitted`, the ADR 0005 §4 categories, `cancelled`, `lease_lost`; NULL while the run is
+in progress, with `(outcome IS NULL) = (finished_at IS NULL)`, amended in J1, #84), `started_at`,
 `finished_at NULL`. Counters are updated after every turn, so a crashed run still shows its cost.
 A turn that finishes after its worker lost the lease can't be recorded (the fence refuses it), so
 the cost across attempts may **undercount by that one turn per lost lease**; the next holder does

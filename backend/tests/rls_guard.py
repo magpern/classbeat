@@ -15,6 +15,12 @@ from sqlalchemy.engine import Connection
 EXPECTED_EXPRESSION = (
     "(owner_id = (NULLIF(current_setting('app.user_id'::text, true), ''::text))::uuid)"
 )
+# Restrictive ``USING (false)`` policies some owned tables must have (ADR 0005 section 1):
+# immutable revisions, append-only job events.
+REQUIRED_DENY_POLICIES = {
+    "class_revisions": {"UPDATE"},
+    "job_events": {"UPDATE", "DELETE"},
+}
 SAFE_DELETE_ACTIONS = {"a": "NO ACTION", "r": "RESTRICT", "c": "CASCADE"}
 SET_ACTIONS = {"n": "SET NULL", "d": "SET DEFAULT"}
 
@@ -150,6 +156,15 @@ def _check_owned(
             bad(f"policy {p['policyname']!r} must be FOR ALL TO PUBLIC")
         if p["qual"] != EXPECTED_EXPRESSION or p["with_check"] != EXPECTED_EXPRESSION:
             bad(f"policy {p['policyname']!r} has the wrong USING or WITH CHECK expression")
+
+    denied = {
+        p["cmd"]
+        for p in table_policies
+        if p["permissive"] == "RESTRICTIVE" and p["qual"] == "false" and p["with_check"] is None
+        and list(p["roles"]) == ["public"]
+    }  # fmt: skip
+    for cmd in sorted(REQUIRED_DENY_POLICIES.get(name, set()) - denied):
+        bad(f"needs a restrictive FOR {cmd} TO PUBLIC USING (false) policy")
 
     found_owner_id_unique = False
     for index in table_indexes:

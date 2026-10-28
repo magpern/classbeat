@@ -13,7 +13,7 @@ from classbeat.db.queue_check import QUEUE_FUNCTIONS, QUEUE_VERSION
 from classbeat.db.queue_digests import QUEUE_DIGESTS
 
 QUEUE, APP = "classbeat_queue", "classbeat_app"
-SEARCH_PATH = ["search_path=pg_catalog, public, pg_temp"]
+SEARCH_PATH = ["search_path=pg_catalog, pg_temp"]
 ACL = {f"{QUEUE}=X/{QUEUE}", f"{APP}=X/{QUEUE}"}
 TABLES = {
     "jobs": {"SELECT", "UPDATE"},
@@ -107,6 +107,26 @@ def check_queue(conn: Connection) -> list[str]:
         text("SELECT count(*) FROM pg_policy WHERE :oid = ANY(polroles)"), {"oid": role.oid}
     ).scalar_one()
     need(policies == 0, f"{QUEUE} must be named in no policy")
+
+    # Nothing that could shadow a built-in called by a function body: no other function,
+    # procedure, aggregate or operator in public, nothing added to pg_catalog (the search_path).
+    shadows = (
+        conn.execute(
+            text(
+                "SELECT p.oid::regprocedure::text FROM pg_proc p "
+                "JOIN pg_namespace n ON n.oid = p.pronamespace "
+                "WHERE (n.nspname = 'public' AND NOT p.proname = ANY(:names)) "
+                "OR (n.nspname = 'pg_catalog' AND p.oid >= 16384) "
+                "UNION ALL SELECT o.oid::regoperator::text FROM pg_operator o "
+                "JOIN pg_namespace n ON n.oid = o.oprnamespace "
+                "WHERE n.nspname = 'public' OR (n.nspname = 'pg_catalog' AND o.oid >= 16384)"
+            ),
+            {"names": list(QUEUE_FUNCTIONS)},
+        )
+        .scalars()
+        .all()
+    )
+    need(not shadows, f"functions or operators besides the queue's in public: {shadows}")
 
     # Ownership: exactly the five functions.
     owned = conn.execute(

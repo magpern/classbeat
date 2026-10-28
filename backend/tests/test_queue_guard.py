@@ -94,7 +94,7 @@ DRIFT = [
     ("ALTER FUNCTION public.queue_expire(integer) OWNER TO classbeat_owner", "queue_expire"),
     (
         "CREATE OR REPLACE FUNCTION public.queue_stats() RETURNS TABLE (metric text, total bigint)"
-        " LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, public, pg_temp"
+        " LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, pg_temp"
         " AS $$ BEGIN RETURN QUERY SELECT 'x', 0::bigint; END $$",
         "queue_stats",
     ),
@@ -136,11 +136,11 @@ async def test_drift_is_found_refused_and_repaired(
 
 
 async def test_the_check_reports_a_missing_role_and_a_malformed_row() -> None:
-    missing = queue_problems((None, 0, 0, [], [], []))
+    missing = queue_problems((None, 0, 0, [], [], [], []))
     assert missing == [
         "the role classbeat_queue does not exist (run docker/postgres/queue/20-queue.sql)"
     ]
-    with pytest.raises(ValueError, match="six columns"):
+    with pytest.raises(ValueError, match="seven columns"):
         queue_problems((None,))
     assert "classbeat_queue" in QUEUE_QUERY
 
@@ -183,3 +183,123 @@ async def test_web_and_worker_refuse_to_start_on_a_drifted_queue(
             await _run(app_settings(app_database_url))
     finally:
         install_queue(database_url)
+
+
+# Exact-type matches for built-ins the function bodies call (review finding B1). With public on
+# the functions' search_path they would beat pg_catalog's versions and run as classbeat_queue.
+SHADOWS = (
+    "CREATE FUNCTION public.t_shadow() RETURNS int LANGUAGE plpgsql "
+    "AS $$ BEGIN RAISE EXCEPTION 'shadow ran as %', current_user; END $$",
+    "CREATE FUNCTION public.cardinality(text[]) RETURNS int LANGUAGE sql "
+    "AS 'SELECT public.t_shadow()'",
+    "CREATE FUNCTION public.make_interval(secs integer) RETURNS interval LANGUAGE sql "
+    "AS 'SELECT public.t_shadow() * interval ''1 second'''",
+    "CREATE FUNCTION public.power(integer, integer) RETURNS integer LANGUAGE sql "
+    "AS 'SELECT public.t_shadow()'",
+    "CREATE FUNCTION public.jsonb_build_object(text, integer) RETURNS jsonb LANGUAGE sql "
+    "AS 'SELECT to_jsonb(public.t_shadow())'",
+    "CREATE FUNCTION public.t_lt(timestamptz, timestamptz) RETURNS boolean LANGUAGE sql "
+    "AS 'SELECT public.t_shadow() > 0'",
+    "CREATE OPERATOR public.< "
+    "(LEFTARG = timestamptz, RIGHTARG = timestamptz, FUNCTION = public.t_lt)",
+)
+UNSHADOW = (
+    "DROP OPERATOR IF EXISTS public.< (timestamptz, timestamptz)",
+    "DROP FUNCTION IF EXISTS public.t_lt(timestamptz, timestamptz)",
+    "DROP FUNCTION IF EXISTS public.cardinality(text[])",
+    "DROP FUNCTION IF EXISTS public.make_interval(integer)",
+    "DROP FUNCTION IF EXISTS public.power(integer, integer)",
+    "DROP FUNCTION IF EXISTS public.jsonb_build_object(text, integer)",
+    "DROP FUNCTION IF EXISTS public.t_shadow()",
+)
+
+
+async def test_objects_in_public_cannot_shadow_built_ins_and_are_refused(
+    clean_auth: None,
+    admin: Connection,
+    database_url: str,
+    owner_database_url: str,
+    app_database_url: str,
+) -> None:
+    from jobtools import new_job, new_user
+
+    owner = new_user(admin)
+    job_id = new_job(admin, owner)
+    with engine_for(owner_database_url, isolation_level="AUTOCOMMIT") as engine:
+        with engine.connect() as connection:  # as a migration would create them
+            for statement in SHADOWS:
+                connection.execute(text(statement))
+        try:
+            found = check_queue(admin)
+            assert any("cardinality(text[])" in p for p in found), found
+            startup, connection_check = await startup_and_connection_problems(app_database_url)
+            assert "cardinality(text[])" in startup
+            assert "job queue does not match ADR 0005" in connection_check
+            with pytest.raises(Exception, match="schema public holds"):
+                install_queue(database_url)
+            # The bodies resolve built-ins in pg_catalog only: no shadow runs (a plain app-role
+            # engine, without the startup check, calls them).
+            with engine_for(app_database_url) as app, app.begin() as tx:
+                [row] = tx.execute(
+                    text("SELECT * FROM public.queue_claim('w1', 60, ARRAY['test_kind'])")
+                ).all()
+                assert row.job_id == job_id
+            admin.execute(
+                text("UPDATE jobs SET lease_expires_at = now() - interval '1 s' WHERE id = :id"),
+                {"id": job_id},
+            )
+            with engine_for(app_database_url) as app, app.begin() as tx:
+                assert tx.execute(text("SELECT public.queue_reap(10)")).scalar_one() == 1
+                assert tx.execute(text("SELECT count(*) FROM public.queue_stats()")).scalar() == 8
+                assert tx.execute(text("SELECT public.queue_expire(10)")).scalar_one() == 0
+        finally:
+            with engine.connect() as connection:
+                for statement in UNSHADOW:
+                    connection.execute(text(statement))
+    install_queue(database_url)
+    assert check_queue(admin) == []
+    assert await startup_and_connection_problems(app_database_url) == ("", "")
+
+
+DEFAULT_EXECUTE, Q = "EXECUTE ON FUNCTIONS", "classbeat_queue"
+
+
+@pytest.mark.parametrize(
+    ("plant", "undo", "message"),
+    [
+        (
+            [
+                "CREATE TABLE public.t_queue_owned (id int)",
+                "ALTER TABLE public.t_queue_owned OWNER TO classbeat_queue",
+            ],
+            ["DROP TABLE public.t_queue_owned"],
+            "classbeat_queue owns table t_queue_owned",
+        ),
+        (
+            [f"ALTER DEFAULT PRIVILEGES FOR ROLE {Q} REVOKE {DEFAULT_EXECUTE} FROM PUBLIC"],
+            [f"ALTER DEFAULT PRIVILEGES FOR ROLE {Q} GRANT {DEFAULT_EXECUTE} TO PUBLIC"],
+            "classbeat_queue owns default privileges on new functions",
+        ),
+    ],
+)
+async def test_the_script_stops_on_what_it_must_not_repair(
+    admin: Connection,
+    database_url: str,
+    app_database_url: str,
+    plant: list[str],
+    undo: list[str],
+    message: str,
+) -> None:
+    for statement in plant:
+        admin.execute(text(statement))
+    try:
+        assert check_queue(admin) != []
+        startup, _ = await startup_and_connection_problems(app_database_url)
+        assert "job queue does not match ADR 0005" in startup
+        with pytest.raises(Exception, match=message):
+            install_queue(database_url)
+    finally:
+        for statement in undo:
+            admin.execute(text(statement))
+    install_queue(database_url)
+    assert check_queue(admin) == []

@@ -76,9 +76,65 @@ def test_the_job_tables_meet_guards_1_and_2(admin: Connection) -> None:
         ),
         {"t": list(JOB_TABLES)},
     ).all()
-    assert [tuple(p) for p in policies] == [
-        ("class_revisions", "revisions_immutable", "RESTRICTIVE", "UPDATE", ["public"], "false")
+    assert sorted(tuple(p) for p in policies) == [
+        ("class_revisions", "revisions_immutable", "RESTRICTIVE", "UPDATE", ["public"], "false"),
+        ("job_events", "events_no_delete", "RESTRICTIVE", "DELETE", ["public"], "false"),
+        ("job_events", "events_no_update", "RESTRICTIVE", "UPDATE", ["public"], "false"),
     ]
+
+
+@pytest.mark.parametrize(
+    ("table", "policy", "cmd"),
+    [
+        ("class_revisions", "revisions_immutable", "UPDATE"),
+        ("job_events", "events_no_update", "UPDATE"),
+        ("job_events", "events_no_delete", "DELETE"),
+    ],
+)
+def test_guard_1_requires_the_deny_policies(
+    admin: Connection, table: str, policy: str, cmd: str
+) -> None:
+    admin.execute(text(f"DROP POLICY {policy} ON public.{table}"))
+    try:
+        found = check_tables(admin, SYSTEM_TABLES)
+        assert found == [f"{table}: needs a restrictive FOR {cmd} TO PUBLIC USING (false) policy"]
+    finally:
+        admin.execute(
+            text(
+                f"CREATE POLICY {policy} ON public.{table} AS RESTRICTIVE FOR {cmd} TO PUBLIC "
+                "USING (false)"
+            )
+        )
+    assert check_tables(admin, SYSTEM_TABLES) == []
+
+
+def _event(conn: Connection, owner: uuid.UUID, job_id: uuid.UUID, seq: int = 1) -> None:
+    conn.execute(
+        text(
+            "INSERT INTO job_events (owner_id, job_id, seq, kind, lease_version) "
+            "VALUES (:o, :j, :s, 'queued', 0)"
+        ),
+        {"o": owner, "j": job_id, "s": seq},
+    )
+
+
+def test_job_events_are_append_only_but_cascade_with_job_and_account(
+    admin: Connection, app: Engine
+) -> None:
+    owner = new_user(admin)
+    first, second = new_job(admin, owner), new_job(admin, owner)
+    with app.begin() as connection:  # the app role, as the owner, under RLS
+        as_user(connection, owner)
+        _event(connection, owner, first)
+        _event(connection, owner, second)
+        assert connection.execute(text("UPDATE job_events SET seq = 9")).rowcount == 0
+        assert connection.execute(text("DELETE FROM job_events")).rowcount == 0
+        assert connection.execute(text("SELECT count(*) FROM job_events")).scalar_one() == 2
+        connection.execute(text("DELETE FROM jobs WHERE id = :j"), {"j": first})
+        assert connection.execute(text("SELECT job_id FROM job_events")).scalars().all() == [second]
+    with app.begin() as connection:  # account deletion, as classbeat.auth does it
+        connection.execute(text("DELETE FROM users WHERE id = :o"), {"o": owner})
+    assert admin.execute(text("SELECT count(*) FROM job_events")).scalar_one() == 0
 
 
 def test_revisions_are_immutable_for_every_role(
@@ -306,20 +362,35 @@ def test_a_failed_operation_is_taken_over_by_exactly_one_job(
         as_user(connection, owner)
         _insert_operation(connection, owner, jobs[0])
         connection.execute(text("UPDATE external_operations SET state = 'failed'"))
-    counts: list[int] = []
-    for job_id in jobs:
-        with app.begin() as connection:
-            as_user(connection, owner)
-            counts.append(
-                connection.execute(
+    barrier = threading.Barrier(len(jobs))
+    counts: dict[uuid.UUID, int] = {}
+    errors: list[BaseException] = []
+
+    def take_over(job_id: uuid.UUID) -> None:
+        try:
+            with app.begin() as connection:  # one pooled connection per thread
+                as_user(connection, owner)
+                barrier.wait()
+                counts[job_id] = connection.execute(
                     text(
                         "UPDATE external_operations SET state = 'pending', job_id = :j, "
                         "lease_version = 2 WHERE state = 'failed'"
                     ),
                     {"j": job_id},
                 ).rowcount
-            )
-    assert counts == [1, 0]
+        except BaseException as exc:
+            errors.append(exc)
+
+    threads = [threading.Thread(target=take_over, args=(j,)) for j in jobs]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    assert errors == []
+    assert sorted(counts.values()) == [0, 1]
+    winner = next(j for j, n in counts.items() if n == 1)
+    row = admin.execute(text("SELECT job_id, state FROM external_operations")).one()
+    assert (row.job_id, row.state) == (winner, "pending")
 
 
 def test_the_operation_key_is_per_owner(admin: Connection, app: Engine) -> None:
