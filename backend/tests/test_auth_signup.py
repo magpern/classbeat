@@ -239,3 +239,44 @@ async def test_a_failing_mail_server_does_not_change_the_answer_or_log_the_addre
     assert response.status_code == 202
     assert "mail not sent" in caplog.text
     assert EMAIL not in caplog.text
+
+
+async def test_the_existing_address_branch_hashes_too_and_a_bad_invite_does_not(
+    menv: Env,
+) -> None:
+    calls: list[str] = []
+    hasher = menv.app.state.password_hasher
+    original = hasher.hash
+
+    async def spy(password: str) -> str:
+        calls.append(password)
+        return await original(password)
+
+    hasher.hash = spy
+    code = await invite(menv)
+    await menv.user(EMAIL)
+    assert (await sign_up(Browser(menv), code)).status_code == 202  # existing address
+    assert len(calls) == 1
+    refused = await sign_up(Browser(menv), "bad-invite", "other@example.com")
+    assert reason(refused) == "invalid_invite"
+    assert len(calls) == 1  # refused before hashing
+
+
+async def test_a_pending_signup_stays_confirmable_after_a_switch_to_closed(
+    app_database_url: str, clean_auth: None, smtp: SmtpFake
+) -> None:
+    mail = {"smtp_host": "127.0.0.1", "smtp_port": smtp.port, "smtp_tls": "none"}
+    async with running_env(app_database_url, **mail) as env:
+        await sign_up(Browser(env), await invite(env))
+    token = smtp.to(EMAIL)[0].token()
+    async with running_env(app_database_url, signup_mode="closed", **mail) as env:
+        assert (await confirm(Browser(env), token)).status_code == 200
+
+
+async def test_validation_errors_on_auth_routes_do_not_echo_the_input(menv: Env) -> None:
+    response = await Browser(menv).post(
+        "/api/auth/signup", {"email": "not-an-address", "password": "secret-pass-phrase-1"}
+    )
+    assert response.status_code == 422
+    assert "not-an-address" not in response.text
+    assert "secret-pass-phrase-1" not in response.text

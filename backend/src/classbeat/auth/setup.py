@@ -2,7 +2,10 @@
 
 import logging
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, Response
+from fastapi.encoders import jsonable_encoder
+from fastapi.exception_handlers import request_validation_exception_handler
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -45,6 +48,19 @@ def install(app: FastAPI) -> None:
         text = describe_database_error(exc) if isinstance(exc, DBAPIError) else "database error"
         logger.error("database error: %s", text)
         return JSONResponse({"detail": "Internal Server Error"}, status_code=500)
+
+    @app.exception_handler(RequestValidationError)
+    async def validation_failed(request: Request, exc: Exception) -> Response:
+        if not isinstance(exc, RequestValidationError):
+            raise exc
+        if not request.url.path.startswith("/api/auth/"):
+            return await request_validation_exception_handler(request, exc)
+        # FastAPI's default echoes ``input`` (a password or token); drop it on auth routes.
+        errors = [
+            {key: value for key, value in error.items() if key not in ("input", "ctx", "url")}
+            for error in exc.errors()
+        ]
+        return JSONResponse({"detail": jsonable_encoder(errors)}, status_code=422)
 
     @app.exception_handler(PasswordHashBusy)
     async def hashing_busy(_: Request, __: Exception) -> JSONResponse:

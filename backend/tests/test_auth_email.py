@@ -186,3 +186,15 @@ async def test_deleting_leaves_other_users_alone(menv: Env) -> None:
 
 async def test_anonymous_deletion_is_401(menv: Env) -> None:
     assert (await Browser(menv).request("DELETE", "/api/auth/account")).status_code == 401
+
+
+async def test_email_change_requests_also_count_per_account_and_record_the_ip(menv: Env) -> None:
+    from classbeat.auth.ratelimit import MAIL_ACCOUNT
+
+    browser = await signed_in(menv)
+    user_id = await only_user_id(menv)
+    assert (await change(browser)).status_code == 202
+    digest = menv.app.state.limiter.bucket_hash(MAIL_ACCOUNT, f"user:{user_id}")
+    assert await menv.scalar("SELECT count FROM rate_limits WHERE bucket_hash = :h", h=digest) == 1
+    ip = await menv.scalar("SELECT ip FROM auth_events WHERE kind = 'email_change_requested'")
+    assert ip == "127.0.0.1"

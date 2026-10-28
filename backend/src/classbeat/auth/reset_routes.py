@@ -157,8 +157,15 @@ async def complete_reset(body: ResetCompleteIn, request: Request) -> Done:
         password = normalize_password(body.password)
     except PasswordRuleError:
         raise refuse(400, "password_rule") from None
-    password_hash = await request.app.state.password_hasher.hash(password)
     ip = request_ip(request)
+    # ADR 0003 section 9: take the per-IP slot first (released on success), and hash only for
+    # a live token, so junk requests never occupy the bounded hashing pool.
+    attempt = await reserve(request, [Bucket(SIGN_IN_IP, bucket_ip(ip))])
+    async with system_session(factory(request)) as db:
+        live = await peek_token(db, PURPOSE, body.token)
+    if live is None:
+        raise refuse(400, "invalid_token")
+    password_hash = await request.app.state.password_hasher.hash(password)
     wanted = set(body.remove_methods)
     async with system_session(factory(request)) as db:
         token = await consume_token(db, PURPOSE, body.token)
@@ -194,7 +201,8 @@ async def complete_reset(body: ResetCompleteIn, request: Request) -> Done:
                 detail={"methods_removed": len(wanted)},
             )
     if token is None:
-        raise await _invalid(request)
+        raise refuse(400, "invalid_token")  # a parallel request consumed it
+    await attempt.succeed()
     return Done()
 
 

@@ -252,3 +252,51 @@ async def test_no_password_token_or_link_reaches_the_logs(
     await Browser(menv).sign_in(EMAIL, NEW)
     for secret in (PASSWORD, NEW, token, f"token={token}"):
         assert secret not in caplog.text
+
+
+def spy_on_hashing(env: Env) -> list[str]:
+    calls: list[str] = []
+    hasher = env.app.state.password_hasher
+    original = hasher.hash
+
+    async def spy(password: str) -> str:
+        calls.append(password)
+        return await original(password)
+
+    hasher.hash = spy
+    return calls
+
+
+async def trip_ip_limit(env: Env) -> None:
+    from classbeat.auth.clientip import bucket_ip
+    from classbeat.auth.ratelimit import SIGN_IN_IP, Bucket
+
+    for _ in range(SIGN_IN_IP.max_count + 1):
+        await env.app.state.limiter.begin([Bucket(SIGN_IN_IP, bucket_ip("127.0.0.1"))])
+
+
+async def test_complete_never_hashes_for_a_tripped_limit_or_a_junk_token(
+    menv: Env, smtp: SmtpFake
+) -> None:
+    await user_with_password(menv)
+    await ask(Browser(menv))
+    token = smtp.messages[0].token()
+    calls = spy_on_hashing(menv)
+    junk = await complete(Browser(menv), "junk-token")
+    assert (junk.status_code, reason(junk)) == (400, "invalid_token")
+    assert calls == []
+    await trip_ip_limit(menv)
+    limited = await complete(Browser(menv), token)
+    assert limited.status_code == 429
+    assert "retry-after" in limited.headers
+    assert calls == []
+
+
+async def test_a_successful_complete_releases_its_ip_slot(menv: Env, smtp: SmtpFake) -> None:
+    await user_with_password(menv)
+    await ask(Browser(menv))
+    assert (await complete(Browser(menv), smtp.messages[0].token())).status_code == 200
+    from classbeat.auth.ratelimit import SIGN_IN_IP
+
+    digest = menv.app.state.limiter.bucket_hash(SIGN_IN_IP, "127.0.0.1")
+    assert await menv.scalar("SELECT count FROM rate_limits WHERE bucket_hash = :h", h=digest) == 0

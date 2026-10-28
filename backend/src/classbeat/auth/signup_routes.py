@@ -89,14 +89,16 @@ async def sign_up(body: SignUpIn, request: Request, background: BackgroundTasks)
     )
     if settings.signup_mode == "closed":
         raise refuse(403, "signups_closed")
+    invite_id = None
+    if settings.signup_mode == "invite":
+        # Checked before hashing, so a bad invite never occupies the hashing pool.
+        async with system_session(factory(request)) as db:
+            invite_id = await _valid_invite(db, body.invite_code)
+        if invite_id is None:
+            raise refuse(400, "invalid_invite")  # its own error (section 5)
     password_hash = await request.app.state.password_hasher.hash(password)  # both branches
     message: MailMessage
     async with system_session(factory(request)) as db:
-        invite_id = None
-        if settings.signup_mode == "invite":
-            invite_id = await _valid_invite(db, body.invite_code)
-            if invite_id is None:
-                raise refuse(400, "invalid_invite")  # its own error (section 5)
         if await find_user(db, body.email) is not None:
             message = mails.account_exists(settings, body.email)  # nothing is stored
         else:
@@ -124,6 +126,9 @@ class _Refused(Exception):
 
 @router.post("/signup/confirm")
 async def confirm_sign_up(body: ConfirmIn, request: Request) -> Created:
+    # Deliberately ignores signup_mode: a pending sign-up made while sign-ups were open (or
+    # invited) stays confirmable until it expires, even after a switch to "closed"; its invite
+    # was valid when it was made and is still consumed at confirmation.
     ip = request_ip(request)
     digest = token_hash(body.token)
     async with system_session(factory(request)) as db:

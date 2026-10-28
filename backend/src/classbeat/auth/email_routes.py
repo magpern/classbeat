@@ -75,6 +75,7 @@ async def request_email_change(
         [
             Bucket(MAIL_PAIR, f"{normalized}|{ip}"),
             Bucket(MAIL_ACCOUNT, normalized),
+            Bucket(MAIL_ACCOUNT, f"user:{ctx.user_id}"),
             Bucket(MAIL_IP, ip),
         ],
     )
@@ -95,7 +96,9 @@ async def request_email_change(
                 email_at_issue=current,
             )
             message = mails.email_change_confirmation(settings, body.new_email, token)
-        await record_event(db, "email_change_requested", user_id=ctx.user_id)
+        await record_event(
+            db, "email_change_requested", user_id=ctx.user_id, ip=request_ip(request)
+        )
     background.add_task(send_logged, mailer(request), message)
     return Accepted()
 
