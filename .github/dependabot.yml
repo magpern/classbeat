@@ -1,3 +1,5 @@
+# One grouped PR per ecosystem per week for minor/patch, and a separate one for majors, so a
+# breaking major does not hold back the rest, to keep the number of CI runs down (issue #62).
 # Runtime versions are fixed by ADR 0001: Python 3.12, Postgres 17, Node 24 LTS. Upgrading
 # one of them is a deliberate change with its own issue, so Dependabot only offers patch
 # updates for Python and minor/patch for Postgres and Node. @types/node follows the Node major.
@@ -11,11 +13,14 @@ updates:
       prefix: build(deps)
       prefix-development: build(deps-dev)
     groups:
-      python-minor-patch:
+      python:
         update-types: [minor, patch]
+      python-major:
+        update-types: [major]
 
+  # One npm PR per week for both projects.
   - package-ecosystem: npm
-    directory: /frontend
+    directories: [/frontend, /e2e]
     schedule:
       interval: weekly
     commit-message:
@@ -25,22 +30,10 @@ updates:
       - dependency-name: "@types/node"
         update-types: ["version-update:semver-major"]
     groups:
-      npm-minor-patch:
+      npm:
         update-types: [minor, patch]
-
-  - package-ecosystem: npm
-    directory: /e2e
-    schedule:
-      interval: weekly
-    commit-message:
-      prefix: build(deps)
-      prefix-development: build(deps-dev)
-    ignore:
-      - dependency-name: "@types/node"
-        update-types: ["version-update:semver-major"]
-    groups:
-      npm-minor-patch:
-        update-types: [minor, patch]
+      npm-major:
+        update-types: [major]
 
   - package-ecosystem: github-actions
     directory: /
@@ -50,7 +43,9 @@ updates:
       prefix: ci(deps)
     groups:
       actions:
-        patterns: ["*"]
+        update-types: [minor, patch]
+      actions-major:
+        update-types: [major]
 
   - package-ecosystem: docker
     directory: /
@@ -63,6 +58,11 @@ updates:
         update-types: ["version-update:semver-major", "version-update:semver-minor"]
       - dependency-name: node
         update-types: ["version-update:semver-major"]
+    groups:
+      docker:
+        update-types: [minor, patch]
+      docker-major:
+        update-types: [major]
 
   - package-ecosystem: docker-compose
     directory: /
@@ -73,3 +73,8 @@ updates:
     ignore:
       - dependency-name: postgres
         update-types: ["version-update:semver-major"]
+    groups:
+      docker-compose:
+        update-types: [minor, patch]
+      docker-compose-major:
+        update-types: [major]
