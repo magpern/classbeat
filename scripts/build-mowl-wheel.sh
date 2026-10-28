@@ -4,7 +4,7 @@
 # on GitHub carries mowl/_swedebeat_app.json (written by that repo's release workflow from a
 # secret); the source never does, so a wheel built from the tagged source has no key file.
 #
-#   scripts/build-mowl-wheel.sh            # v0.4.0 into backend/vendor/
+#   scripts/build-mowl-wheel.sh            # v0.4.1 into backend/vendor/
 #
 # Needs `gh` signed in with read access to magpern/mowl-workouts (private) and `uv`. It never
 # prints a token. Then refresh the lock: `cd backend && uv lock`.
@@ -15,9 +15,9 @@
 set -euo pipefail
 
 REPO=magpern/mowl-workouts
-TAG=v0.4.0
-COMMIT=dbc0c168cb8b0ce919e4e6112b2381f483039dd4
-WHEEL=mowl_workouts-0.4.0-py3-none-any.whl
+TAG=v0.4.1
+COMMIT=f2d64dc691d704b218b772c9984efe04bc8163d7
+WHEEL=mowl_workouts-0.4.1-py3-none-any.whl
 KEY_FILE=mowl/_swedebeat_app.json
 
 PYTHON="$(command -v python3 || command -v python || true)"
