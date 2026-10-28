@@ -53,6 +53,11 @@ class SessionInfo:
         return "user"
 
     @property
+    def recent_mfa(self) -> bool:
+        """TOTP passed within the 12-hour window."""
+        return _within(self.mfa_at, self.now, ADMIN_MFA_WINDOW)
+
+    @property
     def recent_auth(self) -> bool:
         return _within(self.reauth_at, self.now, RECENT_AUTH_WINDOW)
 
@@ -163,7 +168,10 @@ async def start_session(
     """
     inherited = None
     if replacing_token:
-        inherited = (
+        # Only a session that is still valid passes anything on: not absolute-expired, not
+        # idle-expired, and its user not disabled. The old row is deleted either way.
+        idle = timedelta(days=settings.session_idle_days)
+        old = (
             await db.execute(
                 delete(sessions)
                 .where(sessions.c.token_hash == token_hash(replacing_token))
@@ -172,10 +180,24 @@ async def start_session(
                     sessions.c.expires_at,
                     sessions.c.mfa_at,
                     sessions.c.stepup_at,
+                    (sessions.c.expires_at > func.now()).label("absolute_ok"),
+                    (sessions.c.last_seen_at > func.now() - idle).label("idle_ok"),
+                    select(users.c.disabled_at.is_(None))
+                    .where(users.c.id == sessions.c.user_id)
+                    .scalar_subquery()
+                    .label("enabled"),
                 )
             )
         ).first()
-    same_user = inherited is not None and inherited.user_id == user_id
+        if (
+            old is not None
+            and old.user_id == user_id
+            and old.absolute_ok
+            and old.idle_ok
+            and old.enabled
+        ):
+            inherited = old
+    same_user = inherited is not None  # only this user's own, still valid session passes on
     token = new_token()
     now = func.now()
     row = (

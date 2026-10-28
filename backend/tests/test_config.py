@@ -22,6 +22,7 @@ def test_defaults() -> None:
 
 def test_reads_environment_with_prefix(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     monkeypatch.setenv("CLASSBEAT_ENVIRONMENT", "prod")
+    monkeypatch.setenv("CLASSBEAT_PUBLIC_BASE_URL", "https://classbeat.example")
     monkeypatch.setenv("CLASSBEAT_LOG_LEVEL", "debug")
     monkeypatch.setenv("CLASSBEAT_DATABASE_URL", URL)
     monkeypatch.setenv("CLASSBEAT_STATIC_DIR", str(tmp_path))
@@ -235,3 +236,23 @@ def test_trusted_proxies_and_numeric_settings_are_validated() -> None:
     ):
         with pytest.raises(ValidationError):
             Settings(**{name: value})  # pyright: ignore[reportArgumentType]
+
+
+def test_default_ports_are_dropped_from_the_public_origin() -> None:
+    assert Settings(public_base_url="https://classbeat.example:443").public_base_url == (
+        "https://classbeat.example"
+    )
+    assert Settings(public_base_url="http://localhost:80/").public_base_url == "http://localhost"
+    assert Settings(public_base_url="https://x.example:80").public_base_url == (
+        "https://x.example:80"
+    )
+
+
+def test_prod_needs_an_https_public_base_url() -> None:
+    with pytest.raises(ValidationError, match="https"):
+        Settings(environment="prod")  # the default is the http loopback
+    with pytest.raises(ValidationError, match="https"):
+        Settings(environment="prod", public_base_url="http://classbeat.example")
+    assert Settings(environment="prod", public_base_url="https://classbeat.example")
+    for environment in ("dev", "test"):
+        assert Settings(environment=environment, public_base_url="http://127.0.0.1:8000")  # pyright: ignore[reportArgumentType]

@@ -114,7 +114,9 @@ async def test_api_docs_live_under_api_and_are_off_in_prod(
         assert (await client.get("/api/openapi.json")).status_code == 200
         assert (await client.get("/openapi.json")).status_code == 404
         assert (await client.get("/docs")).status_code == 404
-    async with make_client(unreachable_database_url, environment="prod") as client:
+    async with make_client(
+        unreachable_database_url, environment="prod", public_base_url="https://classbeat.example"
+    ) as client:
         assert (await client.get("/api/openapi.json")).status_code == 404
         assert (await client.get("/api/docs")).status_code == 404
 

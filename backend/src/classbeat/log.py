@@ -17,6 +17,8 @@ _STANDARD_ATTRIBUTES = frozenset(vars(logging.makeLogRecord({}))) | {"message", 
 _REDACTED = "[redacted]"
 _PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
     (re.compile(r"(__Host-classbeat_\w+)\s*=\s*[^;\s\"',]+"), rf"\1={_REDACTED}"),
+    # A dict or JSON repr: {'__Host-classbeat_session': 'value'} or "name": "value".
+    (re.compile(r"(__Host-classbeat_\w+[\"']?\s*:\s*[\"']?)[^\"',;}\s]+"), rf"\1{_REDACTED}"),
     (
         re.compile(
             r"(?i)\b(authorization|x-csrf-token|cookie|set-cookie)\b"

@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Any, Literal
 from urllib.parse import urlsplit
 
-from pydantic import SecretStr, ValidationInfo, field_validator
+from pydantic import SecretStr, ValidationInfo, field_validator, model_validator
 from pydantic.fields import FieldInfo
 from pydantic_settings import BaseSettings, PydanticBaseSettingsSource, SettingsConfigDict
 from sqlalchemy.engine import URL, make_url
@@ -179,6 +179,12 @@ class Settings(BaseSettings):
             raise ValueError("public_base_url must be an http(s) origin without a path")
         return public_origin(value)
 
+    @model_validator(mode="after")
+    def _prod_needs_https(self) -> "Settings":
+        if self.environment == "prod" and not self.public_base_url.startswith("https://"):
+            raise ValueError("public_base_url must be https:// when environment is prod")
+        return self
+
     @field_validator("trusted_proxies")
     @classmethod
     def _check_trusted_proxies(cls, value: str) -> str:
@@ -223,7 +229,8 @@ def public_origin(url: str) -> str:
     host = parts.hostname or ""
     if ":" in host:
         host = f"[{host}]"
-    port = f":{parts.port}" if parts.port is not None else ""
+    default = {"http": 80, "https": 443}.get(parts.scheme.lower())
+    port = f":{parts.port}" if parts.port is not None and parts.port != default else ""
     return f"{parts.scheme.lower()}://{host.lower()}{port}"
 
 

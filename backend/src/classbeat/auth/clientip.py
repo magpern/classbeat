@@ -12,7 +12,7 @@ def parse_address(value: str | None) -> Address | None:
     if not value:
         return None
     try:
-        address = ipaddress.ip_address(value.strip())
+        address = ipaddress.ip_address(value.strip().partition("%")[0])  # drop an IPv6 scope id
     except ValueError:
         return None
     if isinstance(address, ipaddress.IPv6Address) and address.ipv4_mapped is not None:

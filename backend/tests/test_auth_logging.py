@@ -129,3 +129,72 @@ async def test_requests_and_session_handling_log_no_token_hash_cookie_or_body(en
     access = [json.loads(line) for line in out.splitlines() if '"classbeat.access"' in line]
     assert any(entry["path"] == "/oauth/google/callback" for entry in access)
     assert all("?" not in entry["path"] for entry in access)
+
+
+@pytest.mark.parametrize(
+    "line",
+    [
+        f"{{'__Host-classbeat_session': '{SESSION}', '__Host-classbeat_device': '{DEVICE}'}}",
+        f'{{"__Host-classbeat_csrf": "{CSRF}", "__Host-classbeat_oauth": "{OAUTH}"}}',
+        f"{{'__Host-classbeat_pending':'{PENDING}'}}",
+    ],
+)
+def test_redact_catches_dict_repr_cookie_values(line: str) -> None:
+    assert leaked(redact(line)) == []
+
+
+@pytest.mark.usefixtures("restore_logging")
+async def test_database_errors_do_not_put_hashes_or_emails_in_the_logs(
+    env: Env, database_url: str
+) -> None:
+    from sqlalchemy import create_engine, text
+    from sqlalchemy.exc import SQLAlchemyError
+
+    stream = io.StringIO()
+    configure_logging("DEBUG", stream)
+    log = logging.getLogger("classbeat.test")
+    # Built at run time so the traceback's source lines do not contain the needles.
+    email = "private" + ".person@example.org"
+    email2 = "private" + ".person2@example.org"
+    issued = await env.login(await env.user(email))
+    digest = auth.token_hash(issued.token)
+    # (1) a broken statement on the path that carries the token hash.
+    admin = create_engine(database_url, isolation_level="AUTOCOMMIT")
+    try:
+        with admin.connect() as connection:
+            connection.execute(text("ALTER TABLE sessions RENAME COLUMN last_seen_at TO seen"))
+        try:
+            with pytest.raises(SQLAlchemyError) as hidden:
+                await auth.resolve_session(env.factory, env.settings, issued.token)
+            log.exception("resolve failed", exc_info=hidden.value)
+            assert "hide_parameters" in str(hidden.value)  # the statement is there, values not
+        finally:
+            with admin.connect() as connection:
+                connection.execute(text("ALTER TABLE sessions RENAME COLUMN seen TO last_seen_at"))
+    finally:
+        admin.dispose()
+    # (2) a failing statement that carries an email as a parameter. (A unique violation is not
+    # used: Postgres itself puts the key value in the error's DETAIL, which #37 must catch.)
+    admin = create_engine(database_url, isolation_level="AUTOCOMMIT")
+    try:
+        with admin.connect() as connection:
+            connection.execute(text("ALTER TABLE users RENAME COLUMN email TO mail"))
+        try:
+            with pytest.raises(SQLAlchemyError) as failing:
+                await env.user(email2)
+            log.exception("create user failed", exc_info=failing.value)
+        finally:
+            with admin.connect() as connection:
+                connection.execute(text("ALTER TABLE users RENAME COLUMN mail TO email"))
+    finally:
+        admin.dispose()
+
+    out = stream.getvalue()
+    assert "resolve failed" in out
+    assert "create user failed" in out
+    escaped = json.dumps(repr(digest))[1:-1]
+    for needle in (digest.hex(), repr(digest), escaped, email, email2):
+        assert needle not in out, (
+            needle,
+            out[max(out.find(needle) - 300, 0) : out.find(needle) + 200],
+        )

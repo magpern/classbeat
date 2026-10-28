@@ -85,7 +85,7 @@ async def get_session(
                 id=info.id,
                 expires_at=info.expires_at,
                 recent_auth=info.recent_auth,
-                mfa=info.mfa_at is not None,
+                mfa=info.recent_mfa,
                 stepup=info.recent_stepup,
             ),
         )

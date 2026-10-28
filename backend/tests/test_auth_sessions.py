@@ -342,3 +342,40 @@ async def test_session_endpoint_reports_the_user(env: Env) -> None:
     assert datetime.fromisoformat(
         body["session"]["expires_at"]
     ) > datetime.now().astimezone() + timedelta(days=29)
+
+
+async def test_sign_in_inherits_nothing_from_an_old_session_that_is_no_longer_valid(
+    env: Env,
+) -> None:
+    user_id = await env.user()
+    cases = {
+        "absolute": "UPDATE sessions SET expires_at = now() - interval '1 second'",
+        "idle": "UPDATE sessions SET last_seen_at = now() - interval '8 days'",
+        "disabled": "UPDATE users SET disabled_at = now()",
+    }
+    for name, breakage in cases.items():
+        old = await env.login(user_id, mfa=True)
+        await env.run("UPDATE sessions SET stepup_at = now()")
+        await env.run(breakage)
+        async with env.db() as db:
+            new = await auth.start_session(
+                db, env.settings, user_id, user_agent="b", ip=None, replacing_token=old.token
+            )
+        assert abs(new.max_age - 30 * 24 * 3600) < 5, name  # a fresh 30 days
+        assert await env.scalar("SELECT count(*) FROM sessions") == 1, name  # old one gone
+        assert await env.scalar("SELECT mfa_at IS NULL FROM sessions") is True, name
+        assert await env.scalar("SELECT stepup_at IS NULL FROM sessions") is True, name
+        await env.run("DELETE FROM sessions")
+        await env.run("UPDATE users SET disabled_at = NULL")
+
+
+async def test_the_session_endpoint_reports_mfa_only_inside_the_12_hour_window(
+    env: Env,
+) -> None:
+    issued = await env.login(await env.user(), mfa=True)
+    headers = session_cookie(issued.token)
+    body = (await env.client.get("/api/auth/session", headers=headers)).json()
+    assert body["session"]["mfa"] is True
+    await env.run("UPDATE sessions SET mfa_at = now() - interval '13 hours'")
+    body = (await env.client.get("/api/auth/session", headers=headers)).json()
+    assert body["session"]["mfa"] is False

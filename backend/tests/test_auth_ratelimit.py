@@ -136,6 +136,12 @@ async def test_ipv6_addresses_share_a_bucket_per_64(env: Env) -> None:
     assert results.count(True) == 30  # SIGN_IN_IP: 30 per 15 minutes
 
 
+def test_an_ipv6_scope_id_is_dropped() -> None:
+    assert bucket_ip("fe80::1%eth0") == bucket_ip("fe80::1")
+    assert bucket_ip("fe80::1%eth0") == "fe80::/64"
+    assert client_ip("fe80::2%12", [], []) == "fe80::2"
+
+
 def test_an_ipv4_mapped_address_is_unmapped_before_bucketing() -> None:
     assert bucket_ip("::ffff:192.0.2.9") == "192.0.2.9"
     assert client_ip("::ffff:192.0.2.9", [], []) == "192.0.2.9"
