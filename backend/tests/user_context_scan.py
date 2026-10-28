@@ -7,7 +7,11 @@
 - any reference to the issuer token (``issuer_token``, ``_ISSUER``);
 - ``dataclasses.replace`` (also imported as ``replace``), ``object.__setattr__`` and
   ``object.__new__``, ``x.__class__(...)`` and ``type(x)(...)``, in any module, whether or not
-  it mentions ``UserContext``; ``functools.partial`` in a module that does.
+  it mentions ``UserContext``; ``functools.partial`` in a module that does;
+- ``Depends(UserContext)``, ``Depends()`` on a ``UserContext`` parameter (default value or
+  ``Annotated[UserContext, Depends()]``), so FastAPI would try to build one from the request:
+  the mistake fails in tests, not at request time. A context reaches a handler from the
+  authentication dependency, which returns one built by its issuer.
 
 This layer and the runtime barrier in ``classbeat.context`` stop accidental misuse. Deliberately
 malicious code inside the process is out of scope; the review gate catches it.
@@ -53,6 +57,64 @@ def _spellings(tree: ast.AST, functions: dict[str, str]) -> set[str]:
     return names
 
 
+def _is_depends(node: ast.AST) -> bool:
+    return isinstance(node, ast.Call) and (_dotted(node.func) or "").split(".")[-1] == "Depends"
+
+
+def _is_bare_depends(node: ast.AST) -> bool:
+    """``Depends()``: FastAPI would call the annotated class itself."""
+    return (
+        _is_depends(node)
+        and isinstance(node, ast.Call)
+        and not node.args
+        and all(k.arg != "dependency" for k in node.keywords)
+    )
+
+
+def _mentions(node: ast.AST, aliases: set[str]) -> bool:
+    """True when the subtree names the class (also as a string annotation)."""
+    for sub in ast.walk(node):
+        if isinstance(sub, ast.Name) and sub.id in aliases:
+            return True
+        if isinstance(sub, ast.Attribute) and sub.attr == NAME:
+            return True
+        if isinstance(sub, ast.Constant) and isinstance(sub.value, str) and NAME in sub.value:
+            return True
+    return False
+
+
+def _depends_findings(tree: ast.AST, aliases: set[str]) -> list[tuple[int, str]]:
+    found: list[tuple[int, str]] = []
+    for node in ast.walk(tree):
+        if _is_depends(node):
+            assert isinstance(node, ast.Call)
+            if any(
+                _mentions(arg, aliases) for arg in [*node.args, *(k.value for k in node.keywords)]
+            ):
+                found.append((node.lineno, "Depends(UserContext)"))
+        elif isinstance(node, ast.arguments):
+            params = [*node.posonlyargs, *node.args, *node.kwonlyargs]
+            defaults = [*([None] * (len(node.posonlyargs + node.args) - len(node.defaults))),
+                        *node.defaults, *node.kw_defaults]  # fmt: skip
+            for param, default in zip(params, defaults, strict=True):
+                if (
+                    param.annotation is not None
+                    and default is not None
+                    and _is_bare_depends(default)
+                    and _mentions(param.annotation, aliases)
+                ):
+                    found.append((param.lineno, "Depends() on a UserContext parameter"))
+        elif isinstance(node, ast.Subscript) and (_dotted(node.value) or "").endswith("Annotated"):
+            if (
+                isinstance(node.slice, ast.Tuple)
+                and node.slice.elts
+                and _mentions(node.slice.elts[0], aliases)
+                and any(_is_bare_depends(sub) for sub in node.slice.elts[1:])
+            ):
+                found.append((node.lineno, "Annotated[UserContext, Depends()]"))
+    return found
+
+
 def _forging_call(node: ast.Call) -> str | None:
     func = node.func
     if isinstance(func, ast.Attribute) and func.attr == "__class__":
@@ -93,6 +155,7 @@ def scan_source(source: str) -> list[tuple[int, str]]:
                 elif alias.name in TOKEN_NAMES:
                     found.append((node.lineno, f"import of {alias.name}"))
 
+    found += _depends_findings(tree, aliases)
     refused = _spellings(tree, ALWAYS_REFUSED) | (
         _spellings(tree, REFUSED_WITH_CONTEXT) if NAME in source else set()
     )

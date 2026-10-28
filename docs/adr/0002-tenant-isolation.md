@@ -33,13 +33,17 @@ class UserContext:
   tests build one.
 - Two layers keep other code from forging one, and each does a different thing:
   - **A runtime barrier**: construction requires a module-private issuer token (a keyword-only
-    `dataclasses.InitVar` checked in `__post_init__`) that only `classbeat.auth` and
+    `issuer` argument of the class's own `__init__`, a frozen dataclass with `init=False`; it
+    is compared by identity before any field is set, and a repeated `ctx.__init__(...)` is
+    refused too) that only `classbeat.auth` and
     `classbeat.jobs` obtain (tests use a test-only helper). `UserContext(...)`,
     `type(ctx)(...)`, `ctx.__class__(...)` and `dataclasses.replace(ctx, ...)` raise without it.
   - **An AST guard test** scans the source outside those two packages and the tests. It fails
     on any reference to `UserContext` other than a type annotation or an import used only for
     annotations (calls, also through an alias, and subclassing are refused), on any reference
-    to the token, and, in any module whether or not it names `UserContext`, on
+    to the token, on `Depends(UserContext)` and on a bare `Depends()` for a `UserContext`
+    parameter (default value or inside `Annotated[...]`; `Depends(some_dependency)` is fine),
+    and, in any module whether or not it names `UserContext`, on
     `dataclasses.replace`, `object.__setattr__`, `object.__new__`, `x.__class__(...)` and
     `type(x)(...)`.
 
@@ -208,9 +212,13 @@ async with system_session(sessionmaker) as session:
   setting is gone, so later statements see no rows and cannot write owned rows. Committing
   through the connection or a raw `COMMIT` would commit partial work; that is forbidden by
   convention and the review gate, not enforced.
-- Never a session-level `SET app.user_id`. The pool resets connections on return (rollback),
-  and rollback does not undo a session-level `SET` that was committed. So every pool checkout
-  also checks that `app.user_id` is unset and the three timeouts equal the role defaults, and
+- Never a session-level `SET app.user_id`. The pool resets connections on return with a
+  rollback followed by `DISCARD ALL` (the engine's `reset` event, `pool_reset_on_return=None`),
+  which also drops `WITH HOLD` cursors, temp tables, prepared statements, advisory locks and
+  session settings; a rollback alone leaves those, so a held cursor opened as user A could be
+  fetched by user B on the same connection. If the reset fails, the connection is
+  invalidated. A rollback does not undo a session-level `SET` that was committed either, so
+  every pool checkout also checks that `app.user_id` is unset and the three timeouts equal the role defaults, and
   invalidates the connection otherwise.
 - One transaction per `user_session`; a function needing two users' data is a design error.
 - Long-lived work holds no session: a server-sent events stream opens a short `user_session`
@@ -245,7 +253,8 @@ async with system_session(sessionmaker) as session:
    user B's rows; A can't create a child pointing at B's parent; a session without a context
    sees no rows; `classbeat_app` can't disable RLS or alter the table; a global-looking
    unique value of B's can't be detected or blocked by A.
-4. A pooled connection reused after a `user_session` carries no `app.user_id`; `commit()`
+4. A pooled connection reused after a `user_session` carries no `app.user_id`; a `WITH HOLD`
+   cursor opened by one user cannot be fetched by the next user of the connection; `commit()`
    inside `user_session` raises.
 5. The AST check of §1.
 6. The startup refusal of §4.
