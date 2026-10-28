@@ -9,7 +9,7 @@ GitHub hold the detail.
 |---|---|---|
 | M0 | Repo, protocol, CI, skeleton, compose, worktrees | done (milestone closed 2026-10-28) |
 | F | Provider-permission questions (ADR 0010) | questions ready; waiting for the owner to send them |
-| M1 | Accounts | in progress (4 of 8 issues closed) |
+| M1 | Accounts | in progress (open: #38, #40, #47) |
 | M2 | `mowl-workouts` v0.4.0, isolation, encryption, connect MOWL | not started |
 | M3a | Jobs, Anthropic loop, design on existing music | not started |
 | M3b | Class page, revisions, save to MOWL, usage and cost | not started |
@@ -37,7 +37,7 @@ GitHub hold the detail.
   - #46: account tables, server-side sessions, CSRF, rate limits, CLI (`invite create`,
     `admin grant|revoke|mfa-reset`), guard 8.
   - #48: TOTP MFA, recovery codes, step-up, `GET /api/admin/whoami`.
-  - #49: email and password sign-up (pending until confirmed), sign-in, reset, email change,
+  - #49 (closes #37): email and password sign-up (pending until confirmed), sign-in, reset, email change,
     account deletion, SMTP mail (mailpit in compose).
 - **M1 open:** #38 (Google, GitHub and Microsoft sign-in, in progress), #40 (frontend pages
   and E2E), #47 (guard and session follow-ups).
