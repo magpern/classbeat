@@ -4,9 +4,10 @@ from pathlib import Path
 
 import pytest
 
-from auth_tables_scan import scan_source
+from auth_tables_scan import scan_source, scan_source_with_exemptions
 
 SRC = Path(__file__).resolve().parent.parent / "src"
+EXPECTED_EXEMPTIONS = 0  # strings marked "# guard8: prose" (raise it only with a reason in review)
 
 
 def test_nothing_outside_classbeat_auth_touches_the_account_tables() -> None:
@@ -47,6 +48,12 @@ ALLOWED = [
     "import importlib\nimportlib.import_module('classbeat.auth').purge_expired",
     "import pkgutil\npkgutil.resolve_name('classbeat.context:UserContext')",
     "x = vars(object())",
+    "x = 'select the data copied from sessions_archive'",  # a different name
+    "x = 'Showing ' + str(n) + ' users'",
+    "x = 1 + 2",
+    "x = 'the table sessions is described in the docs'",
+    "__import__('classbeat.context').context",
+    "__import__('classbeat.auth').auth.create_invite",
 ]
 REFUSED = {
     "import module": "import classbeat.auth.tables",
@@ -125,6 +132,73 @@ REFUSED = {
     "lock": "q = 'LOCK TABLE auth_tokens'",
     "recovery": "q = 'delete from mfa_recovery_codes'",
     "identities": "q = 'select 1 from identities'",
+    "__import__ then auth.tables": "__import__('classbeat.auth').auth.tables",
+    "__import__ then auth.sessions": "__import__('classbeat.auth').auth.sessions",
+    "__import__ assigned": "c = __import__('classbeat.auth')\nc.auth.users",
+    "__import__ classbeat": "__import__('classbeat').auth.tables",
+    "import_module classbeat": (
+        "import importlib\nimportlib.import_module('classbeat').auth.metadata"
+    ),
+    "truncate without TABLE": "q = 'TRUNCATE users, sessions'",
+    "only modifier": "q = 'DELETE FROM ONLY users'",
+    "drop if exists": "q = 'DROP TABLE IF EXISTS invites'",
+    "from list with alias": "q = 'select 1 from a x, b as y, auth_events'",
+    "keyword then comment": "q = 'select 1 from /* c */ users'",
+    # verb and table in different pieces (review of #55)
+    "f-string column list": 'q = text(f"SELECT {cols} FROM users WHERE id = :id")',
+    "f-string from list": 'q = f"SELECT {c} FROM a, users"',
+    "f-string delete": 'q = f"DELETE {x} FROM users"',
+    "plus chain from": 'q = "SELECT * " + "FROM users"',
+    "plus chain into": 'q = "INSERT " + "INTO invites VALUES (1)"',
+    "plus chain join": 'q = "SELECT * FROM a " + "JOIN sessions ON true"',
+    "plus chain with a name": 'q = "SELECT " + cols + " FROM users"',
+    "plus chain in a call": 'q = text("SELECT * " + "FROM " + "users")',
+    "bare fragment": 'q = " FROM users WHERE id = :id"',
+    "bare fragment start": 'q = "FROM sessions"',
+    "bare join fragment": 'q = " JOIN identities i ON i.user_id = u.id"',
+    "bare update fragment": 'q = "UPDATE users SET role = 1"',
+    "bare fragment with alias": 'q = " FROM users u WHERE u.id = 1"',
+    "bare fragment semicolon": 'q = "x FROM users;"',
+    "fragment in an f-string": 'q = f" FROM users WHERE id = {i}"',
+    # narrowed in the first version (review of #55)
+    "grant on": "q = 'GRANT SELECT ON users TO x'",
+    "revoke on": "q = 'REVOKE ALL ON sessions FROM x'",
+    "grant on table": "q = 'GRANT ALL ON TABLE invites TO x'",
+    "any schema": "q = 'select * from classbeat.users'",
+    "any quoted schema": 'q = \'select * from "app"."users"\'',
+    "quoted without space": "q = 'SELECT count(*) FROM\"users\"'",
+    "join quoted without space": "q = 'select 1 from x join\"sessions\" on true'",
+    # shapes main refused that the first rewrite lost (second review of #55)
+    "truncate list": "q = 'TRUNCATE a, users'",
+    "truncate table list": "q = 'TRUNCATE TABLE a, users'",
+    "lock table list": "q = 'LOCK TABLE a, users IN ACCESS EXCLUSIVE MODE'",
+    "using list": "q = 'DELETE FROM a USING b, users WHERE true'",
+    "grant on list": "q = 'GRANT SELECT ON a, users TO x'",
+    "revoke on table list": "q = 'REVOKE ALL ON TABLE a, sessions FROM x'",
+    "only in a from list": "q = 'select 1 from a, ONLY users'",
+    "column alias list": "q = 'select 1 from a x(c1), users'",
+    "join then comma": "q = 'select 1 from a join b on a.id = b.id, users'",
+    "parenthesised join": "q = 'select 1 from (users join x on true)'",
+    "lateral": "q = 'select 1 from a, lateral (select 1) l, users'",
+    "subquery before the table": "q = 'select 1 from a, (select 1) b, users'",
+    "join in parentheses": "q = 'select 1 from a join (users) on true'",
+    "builder left join": "sql = 'SELECT c.id FROM classes c'\nsql += ' LEFT JOIN users u'",
+    "builder on clause": "sql += ' ON u.id = c.owner_id'\nq = ' LEFT JOIN users u'",
+    "builder inner join": "sql += ' INNER JOIN sessions s'",
+    "builder base plus list": "q = base + ' FROM a, users'",
+    "builder f-string list": "q = f'{base} FROM a, users'",
+    "builder columns": "q = ' u.id, u.email FROM users'",
+    # prose is refused unless marked (the exemption is the way out, see below)
+    "prose copied from": "x = 'copied from sessions'",
+    "prose in a longer sentence": "x = 'files copied from sessions of the old host'",
+    "prose without adjacency": "x = 'Rows are copied from the sessions of the user into a report'",
+    "prose update": "x = 'update the sessions after a select of users'",
+    "prose delete": "x = 'delete the invites of the group'",
+    "prose in an f-string": "x = f'{n} rows copied from sessions of {u}'",
+    "prose in a plus chain": "x = 'rows ' + 'copied from sessions'",
+    "marker on another line": "# guard8: prose\nx = 'copied from sessions'",
+    "marker inside the string": "x = 'copied from sessions # guard8: prose'",
+    "marker on a docstring-like second string": '"""doc."""\nx = """copied from sessions"""',
 }
 
 
@@ -147,3 +221,51 @@ def test_the_auth_package_does_not_re_export_a_table_object() -> None:
     for name in dir(package):
         assert not isinstance(getattr(package, name), Table | MetaData), name
     assert not {"metadata", *TABLE_NAMES} & set(package.__all__)
+
+
+# --- exemptions: docstrings and the marked line ------------------------------------------------
+
+EXEMPT_SOURCES = [
+    '"""Rows are copied from sessions."""',
+    'def f():\n    """Copied from sessions of the user."""\n    return 1',
+    'class C:\n    """Delete the rows from users."""',
+    'async def f():\n    """select 1 from users"""',
+    "x = 'copied from sessions'  # guard8: prose",
+    "x = f'{n} copied from sessions'  # guard8: prose",
+    "x = 'rows ' + 'copied from sessions'  # guard8: prose",
+    "x = 'copied from sessions'  # guard8:prose",
+    "x = (\n    'copied from sessions'  # guard8: prose\n)",
+]
+
+
+@pytest.mark.parametrize("source", EXEMPT_SOURCES)
+def test_docstrings_and_marked_lines_are_exempt(source: str) -> None:
+    assert scan_source_with_exemptions(source)[0] == []
+
+
+def test_the_scanner_counts_the_exemptions() -> None:
+    marked = "a = 'copied from sessions'  # guard8: prose\nb = 'delete from users'  # guard8: prose"
+    assert scan_source_with_exemptions(marked) == ([], 2)
+    docstring = '"""copied from sessions"""'
+    assert scan_source_with_exemptions(docstring) == ([], 0)  # docstrings are not counted
+    assert scan_source_with_exemptions("x = 'nothing'  # guard8: prose")[1] == 0
+
+
+def test_a_docstring_is_only_the_first_statement() -> None:
+    later = "def f():\n    x = 1\n    'copied from sessions'\n"
+    assert scan_source(later) != []  # not a docstring: it is not the first statement
+
+
+def test_a_marker_does_not_exempt_real_sql_elsewhere() -> None:
+    source = "a = 'prose'  # guard8: prose\nq = 'select 1 from users'"
+    assert scan_source(source) != []
+
+
+def test_the_whole_tree_needs_no_exemption() -> None:
+    """The number of ``# guard8: prose`` exemptions in the source tree is pinned (none today)."""
+    total = 0
+    for path in sorted((SRC / "classbeat").rglob("*.py")):
+        if path.relative_to(SRC).as_posix().startswith("classbeat/auth/"):
+            continue
+        total += scan_source_with_exemptions(path.read_text("utf-8"))[1]
+    assert total == EXPECTED_EXEMPTIONS

@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from user_context_scan import DEFINITION, ISSUER_PACKAGES, scan_source
+from user_context_scan import ISSUER_MODULES, scan_source
 
 DEPENDS = "from fastapi import Depends"
 ANNOTATED = "from typing import Annotated"
@@ -26,7 +26,7 @@ def test_no_module_outside_the_issuers_builds_or_copies_a_user_context() -> None
     violations = []
     for path in sorted((SRC / "classbeat").rglob("*.py")):
         relative = path.relative_to(SRC).as_posix()
-        if relative == DEFINITION or relative.startswith(ISSUER_PACKAGES):
+        if relative in ISSUER_MODULES:
             continue
         violations += [(relative, line, why) for line, why in scan_source(path.read_text("utf-8"))]
     assert violations == []
@@ -207,6 +207,67 @@ REFUSED = {
         ANNOTATED_AS_A, DEPENDS_AS_D, IMPORT, "async def h(ctx: 'A[UserContext, D()]'): ..."
     ),
     "issuer private token": "from classbeat.context import _ISSUER\nx = _ISSUER",
+    "bare Depends() through import fastapi as f": lines(
+        "import fastapi as f", IMPORT, "async def h(ctx: UserContext = f.Depends()): ..."
+    ),
+    "bare Security() through import fastapi as f": lines(
+        "import fastapi as f", IMPORT, "async def h(ctx: UserContext = f.Security()): ..."
+    ),
+    "bare Depends() in Annotated through import fastapi as f": lines(
+        "import typing as t",
+        "import fastapi as f",
+        IMPORT,
+        "async def h(ctx: t.Annotated[UserContext, f.Depends()]): ...",
+    ),
+    "Depends(UserContext) through import fastapi as f": lines(
+        "import fastapi as f", IMPORT, "async def h(ctx=f.Depends(UserContext)): ..."
+    ),
+    "bare Depends() under an annotated alias assignment": lines(
+        DEPENDS,
+        "from typing import Any",
+        IMPORT,
+        "D: Any = Depends",
+        "async def h(ctx: UserContext = D()): ...",
+    ),
+    "bare Depends() under a chain of annotated aliases": lines(
+        DEPENDS,
+        "from typing import Any",
+        IMPORT,
+        "D: Any = Depends",
+        "E: Any = D",
+        "async def h(ctx: UserContext = E()): ...",
+    ),
+    "Annotated alias assigned with an annotation": lines(
+        ANNOTATED,
+        "from typing import Any",
+        DEPENDS,
+        IMPORT,
+        "Ann: Any = Annotated",
+        "async def h(ctx: Ann[UserContext, Depends()]): ...",
+    ),
+    "string TypeAlias value": lines(
+        "from typing import Annotated, TypeAlias",
+        DEPENDS,
+        IMPORT,
+        "Ctx: TypeAlias = 'Annotated[UserContext, Depends()]'",
+    ),
+    "string TypeAlias value with typing.TypeAlias": lines(
+        "import typing",
+        ANNOTATED,
+        DEPENDS,
+        IMPORT,
+        "Ctx: typing.TypeAlias = 'Annotated[UserContext, Security()]'",
+    ),
+    "string TypeAlias value with aliases": lines(
+        "from typing import TypeAlias",
+        ANNOTATED_AS_A,
+        DEPENDS_AS_D,
+        IMPORT,
+        "Ctx: TypeAlias = 'A[UserContext, D()]'",
+    ),
+    "type statement": lines(
+        ANNOTATED, DEPENDS, IMPORT, "type Ctx = Annotated[UserContext, Depends()]"
+    ),
 }
 
 
@@ -218,6 +279,26 @@ def test_annotations_are_allowed(source: str) -> None:
 @pytest.mark.parametrize("source", REFUSED.values(), ids=REFUSED.keys())
 def test_every_other_use_is_refused(source: str) -> None:
     assert scan_source(source) != []
+
+
+def test_the_issuer_exemption_is_two_modules_not_the_auth_package() -> None:
+    assert set(ISSUER_MODULES) == {"classbeat/auth/deps.py", "classbeat/context.py"}
+    route = "classbeat/auth/routes.py"
+    assert route not in ISSUER_MODULES
+    forged = IMPORT + "ctx = UserContext(user_id=1, role='user')"
+    assert scan_source(forged) != []  # what the scan would say about a route module that did this
+
+
+def test_a_type_alias_to_a_plain_annotated_context_is_fine() -> None:
+    allowed = lines(
+        "from typing import Annotated, TypeAlias",
+        DEPENDS,
+        IMPORT,
+        "def require_user(): ...",
+        "Ctx: TypeAlias = 'Annotated[UserContext, Depends(require_user)]'",
+        "D: TypeAlias = Depends",
+    )
+    assert scan_source(allowed) == []
 
 
 def test_a_handler_cannot_pass_a_raw_user_id_to_a_session() -> None:

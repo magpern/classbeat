@@ -132,8 +132,9 @@ so the SPA can prompt.
 
   The new row keeps the old `expires_at` (rotation never extends a session past its 30 days)
   and carries over `mfa_at` and `reauth_at` unless the rotation sets them. There is no grace
-  period: a request in flight with the old token gets 401 and the SPA retries once after
-  refetching the session.
+  period: a request in flight with the old token gets 401. The SPA repeats only safe requests
+  (GET, HEAD, OPTIONS), once, after refetching the session; an unsafe one never, on a 401 (across
+  a rotation it gets the CSRF 403 instead, which the SPA retries once).
 - **Revocation:**
   - A password change or an email change revokes every other session of the user.
   - A reset, and a role change (CLI or the `ADMIN_EMAILS` grant at sign-in), revoke **all** of
@@ -275,11 +276,11 @@ is no Starlette session middleware.
   - The callback is refused unless the flow exists and the `state` and `provider` match. The
     flow cookie is cleared.
   - For `link` and `reauth`, the request's current session must belong to `flow.user_id`.
-- **ID tokens (OIDC):** checked against the provider's JWKS (cached; refetched at most once a
-  minute on an unknown `kid`), RS256 only (`none` and HS* refused), with `iss`, `aud`, `exp`,
-  `iat` (60 s leeway) and `nonce`.
-  - **Google:** the subject is `sub`. The email counts as verified only if `email_verified` is
-    true.
+- **ID tokens (OIDC):** checked against the provider's JWKS (cached for its `max-age`: default 1 h,
+  `0` and `no-cache` 1 min, max 24 h; refetched on an unknown `kid` or expiry, at most once a minute
+  per URL, under a lock; a failed refetch keeps unexpired keys), RS256 only (`none`, HS* refused),
+  with `iss`, `aud` (+ `azp` = our client id if several), `exp`, `iat` (60 s leeway), `nonce`.
+  - **Google:** the subject is `sub`. The email counts as verified only if `email_verified` is true.
   - **Microsoft** (`common` endpoint): `iss` must equal
     `https://login.microsoftonline.com/{tid}/v2.0` for the token's own `tid`. The subject is
     `{tid}/{oid}`. The email is **always treated as unverified**, because anyone can create a
@@ -289,12 +290,12 @@ is no Starlette session middleware.
 - **Re-authentication:**
   - **OIDC providers:** a `reauth` flow sends `max_age=0` (and `prompt=login` to Microsoft) and
     requires `auth_time` within the last 5 minutes. A missing or older `auth_time` fails
-    closed. The Microsoft app registration adds `auth_time` as an optional claim.
+    closed. Google omits `auth_time` unless asked, so it also gets `claims={"id_token":{"auth_time":
+    {"essential":true}}}`; Microsoft's app registration adds it as an optional claim.
   - **GitHub:** it can't force a re-login, so a GitHub re-authentication only proves a live
     GitHub session (an accepted risk).
   - **Order and fallback:** users with a password are offered it first. A user whose provider
-    re-authentication keeps failing can set a password through a reset and re-authenticate
-    with it.
+    re-authentication keeps failing can set a password through a reset and re-authenticate with it.
 - **Enabling a provider:** a provider is on only when both its client id setting and its
   `oauth_<provider>_client_secret` secret file exist. Client secrets are never logged.
 - **Outbound hosts:** only the provider endpoints (T19).
@@ -384,9 +385,9 @@ sign-in only for the admin role (§7).
     pages, but whoever enrolls first owns the factor. The owner enrolls right after the grant;
     an unexpected enrollment is visible in `auth_events` and mailed to the user.
   - **Lost authenticator:** use a recovery code, or `python -m classbeat admin mfa-reset
-    <email>`. That removes the user's TOTP and recovery codes, writes `auth_events`, revokes all
-    sessions, and mails the user a password-reset link. The owner resets and re-enrolls before
-    anything else, because the account is back in the "whoever enrolls first" state.
+    <email>`. That removes the user's TOTP, recovery codes and known devices, writes `auth_events`,
+    revokes all sessions, and mails the user a reset link. The owner resets and re-enrolls before
+    anything else: the account is back in the "whoever enrolls first" state.
 - **TOTP** (RFC 6238 via `pyotp`):
   - **Parameters:** SHA-1, 6 digits, a 30 s period, ±1 step of tolerance, and a 160-bit secret.
   - **Enrollment:** shows a QR code (an SVG rendered server-side, no third-party host) and the
@@ -407,7 +408,7 @@ sign-in only for the admin role (§7).
 - **The secret:** one secret file, `app_secret_key` (at least 32 random bytes, created by
   `scripts/worktree.sh init`).
 - **Derived keys:** HKDF-SHA256 (fixed salt `classbeat-v1`) derives separate 32-byte keys with
-  the info strings `csrf`, `rate-limit`, `device`, `recovery-codes` and `totp-v1`.
+  the info strings `csrf`, `rate-limit`, `device`, `recovery-codes`, `totp-v1`, `totp-pending`.
 - **TOTP secrets:** encrypted with AES-256-GCM (`cryptography`), a random 96-bit nonce per
   encryption stored alongside, AAD `user_id|totp`, and `key_id = "app-v1"`.
   - M2's envelope encryption (§7 of the roadmap) re-encrypts them under its scheme, and
@@ -490,8 +491,7 @@ in-process SMTP fake in unit tests.
 - **The M1 split stands** (#36 to #40); each issue's scope and acceptance criteria follow this
   ADR. In particular, isolation inside `classbeat.auth` is tested through user-scoped queries
   and 404s for foreign ids (§1), and TOTP secrets are protected by AES-GCM at rest (§8), not by
-  RLS. Before #38 merges, Google's and Microsoft's `auth_time` and `max_age` behaviour is
-  checked against their current documentation (no live calls).
+  RLS. Live activation confirms the providers' `auth_time` and `max_age` behaviour.
 - **New dependencies** (pinned and audited): `argon2-cffi`, `authlib`, `httpx`, `pyotp`,
   `cryptography`, a QR-code SVG generator.
 - **Threat model:** T1, T3, T4 and T33 cite this ADR; T34 to T39 are new.

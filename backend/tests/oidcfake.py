@@ -3,7 +3,8 @@
 An httpx ``MockTransport`` with its own RSA signing keys and JWKS. ``complete(url, ...)`` plays
 the user's browser at the provider: it reads the authorization URL our start endpoint returned
 (checking state, nonce, PKCE and response_mode are present), registers a code and returns the
-callback path. It can issue every bad token: wrong signature, ``none`` and HS256, wrong
+callback path. Google only includes ``auth_time`` when the request asked for it with the OIDC
+``claims`` parameter. It can issue every bad token: wrong signature, ``none`` and HS256, wrong
 ``aud``/``iss`` (incl. Microsoft tenant mismatch), ``nonce``, ``auth_time``, expiry and
 ``iat``, and unverified or missing emails. Nothing here touches a network.
 """
@@ -30,6 +31,15 @@ def _b64(data: bytes) -> str:
     return base64.urlsafe_b64encode(data).rstrip(b"=").decode()
 
 
+def _asks_for_auth_time(query: dict[str, list[str]]) -> bool:
+    """True when the ``claims`` parameter requests ``auth_time`` in the ID token."""
+    try:
+        requested = json.loads(query.get("claims", ["{}"])[0])
+        return "auth_time" in requested.get("id_token", {})
+    except (ValueError, AttributeError, TypeError):
+        return False
+
+
 class FakeProviders:
     def __init__(
         self,
@@ -44,6 +54,8 @@ class FakeProviders:
         self.published: list[RSAKey] = [self.key]
         self.codes: dict[str, dict[str, Any]] = {}
         self.jwks_fetches = 0
+        self.jwks_cache_control: str | None = None  # header the JWKS endpoints send
+        self.jwks_status = 200
         self.token_requests = 0
         self.github_emails: dict[str, list[dict[str, Any]]] = {}
         self.transport = httpx.MockTransport(self._handle)
@@ -54,8 +66,11 @@ class FakeProviders:
         url = str(request.url)
         if url in (GOOGLE_JWKS, MICROSOFT_JWKS):
             self.jwks_fetches += 1
+            headers = {"Cache-Control": self.jwks_cache_control} if self.jwks_cache_control else {}
             return httpx.Response(
-                200, json={"keys": [k.as_dict(private=False) for k in self.published]}
+                self.jwks_status,
+                json={"keys": [k.as_dict(private=False) for k in self.published]},
+                headers=headers,
             )
         if request.method == "POST" and url.split("?")[0] in (
             "https://oauth2.googleapis.com/token",
@@ -130,6 +145,9 @@ class FakeProviders:
             "sub": "sub-1",
         }
         if provider == "google":
+            # Like the real Google: no auth_time unless the request asked for it (OIDC "claims").
+            if not _asks_for_auth_time(query):
+                claims.pop("auth_time")
             claims |= {
                 "iss": "https://accounts.google.com",
                 "email": "g@example.com",

@@ -226,7 +226,9 @@ the derived keys of ADR 0003 section 8; `smtp_password` (optional) is the SMTP l
 `CLASSBEAT_DATABASE_PASSWORD` and `CLASSBEAT_DATABASE_OWNER_PASSWORD` variables are ignored.
 OAuth sign-in (ADR 0003 section 5): `CLASSBEAT_OAUTH_<PROVIDER>_CLIENT_ID` and the
 `oauth_<provider>_client_secret` secret file switch on `google`, `github` or `microsoft`; a provider
-with only one of them is off.
+with only one of them is off. Microsoft setup: add the `auth_time` optional claim (ID token) to
+the app registration, or re-authentication with Microsoft always fails closed (ADR 0003 section 5);
+Google needs no registration change (the app asks for `auth_time` itself).
 Web and worker refuse to start as a superuser, a `BYPASSRLS` role or a table owner (no
 override). In CI (`CI=true`) a missing
 `CLASSBEAT_TEST_DATABASE_URL` or missing roles fail the database tests instead of skipping them.

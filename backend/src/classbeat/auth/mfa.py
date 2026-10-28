@@ -165,11 +165,14 @@ async def confirm_enrollment(
 
 
 async def remove_totp(db: AsyncSession, user_id: UUID) -> bool:
-    await db.execute(delete(mfa_recovery_codes).where(mfa_recovery_codes.c.user_id == user_id))
+    """Delete the TOTP and the recovery codes. The ``mfa_totp`` row goes first (it is locked),
+    the same order as ``regenerate_recovery_codes``, so the two cannot deadlock."""
     result = await db.execute(
         delete(mfa_totp).where(mfa_totp.c.user_id == user_id).returning(mfa_totp.c.id)
     )
-    return result.first() is not None
+    removed = result.first() is not None
+    await db.execute(delete(mfa_recovery_codes).where(mfa_recovery_codes.c.user_id == user_id))
+    return removed
 
 
 async def _verify_totp(db: AsyncSession, keys: Keys, user_id: UUID, code: str) -> bool:

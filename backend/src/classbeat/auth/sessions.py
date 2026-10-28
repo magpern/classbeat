@@ -288,8 +288,10 @@ async def rotate_session(
 
 
 async def clear_mfa(db: AsyncSession, session_id: UUID) -> None:
-    """The session no longer counts as having passed TOTP (after TOTP was removed)."""
-    await db.execute(update(sessions).where(sessions.c.id == session_id).values(mfa_at=None))
+    """The session no longer counts as having passed TOTP or a step-up (after TOTP was removed)."""
+    await db.execute(
+        update(sessions).where(sessions.c.id == session_id).values(mfa_at=None, stepup_at=None)
+    )
 
 
 async def revoke_session(db: AsyncSession, user_id: UUID, session_id: UUID) -> bool:
@@ -324,8 +326,16 @@ class SessionSummary:
     ip: str | None
 
 
-async def list_sessions(db: AsyncSession, user_id: UUID) -> list[SessionSummary]:
-    """The user's own sessions, newest first. Never the token or its hash."""
+async def list_sessions(
+    db: AsyncSession, settings: Settings, user_id: UUID
+) -> list[SessionSummary]:
+    """The user's own live sessions, newest first. Never the token or its hash.
+
+    Absolute- and idle-expired rows that the purge has not removed yet are left out, the same
+    rule as ``resolve_session`` (a row whose ``expires_at`` has passed, or whose ``last_seen_at``
+    is ``session_idle_days`` or more ago, is not a session).
+    """
+    idle = timedelta(days=settings.session_idle_days)
     rows = await db.execute(
         select(
             sessions.c.id,
@@ -335,7 +345,11 @@ async def list_sessions(db: AsyncSession, user_id: UUID) -> list[SessionSummary]
             sessions.c.user_agent,
             sessions.c.ip,
         )
-        .where(sessions.c.user_id == user_id)
+        .where(
+            sessions.c.user_id == user_id,
+            sessions.c.expires_at > func.now(),
+            sessions.c.last_seen_at > func.now() - idle,
+        )
         .order_by(sessions.c.created_at.desc())
     )
     return [SessionSummary(*row) for row in rows.all()]
