@@ -9,4 +9,5 @@ Reviewer reviews each in its PR (AGENTS.md, "Decisions and ADRs").
 | [0001](0001-stack-and-layout.md) | Stack and repository layout | Accepted |
 | [0002](0002-tenant-isolation.md) | Tenant isolation with UserContext and Postgres RLS | Accepted |
 | [0003](0003-accounts-and-sessions.md) | Accounts, sessions and sign-in | Accepted |
+| [0004](0004-connections-and-encryption.md) | Provider connections and envelope encryption | Accepted |
 | [0010](0010-live-activation-permissions.md) | Provider permissions for live activation | Accepted |
