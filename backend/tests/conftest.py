@@ -38,6 +38,18 @@ def _isolated_environment(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 @pytest.fixture(autouse=True)
+def _no_worker_allowlist_leak(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A test that installs the worker's allowlist (ADR 0006 section 9) leaves neither its
+    process-wide opener nor its worker flag to the tests after it."""
+    import urllib.request
+
+    from classbeat import egress
+
+    monkeypatch.setattr(urllib.request, "_opener", None)
+    monkeypatch.setattr(egress, "_worker_process", False)
+
+
+@pytest.fixture(autouse=True)
 def kek_dir(
     _isolated_environment: None,
     tmp_path_factory: pytest.TempPathFactory,

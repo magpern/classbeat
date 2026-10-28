@@ -1,10 +1,11 @@
 """``python -m classbeat.worker``: run the worker until SIGTERM or SIGINT."""
 
 import asyncio
+import logging
 import signal
 import sys
 
-from classbeat.config import Settings
+from classbeat.config import ModelProviderRefused, Settings, check_worker_model_provider
 from classbeat.crypto.keks import load_keyring
 from classbeat.db import (
     create_engine,
@@ -12,6 +13,7 @@ from classbeat.db import (
     event_loop_factory,
     verify_database_role,
 )
+from classbeat.egress import install_worker_allowlist
 from classbeat.log import configure_logging
 from classbeat.worker.loop import run_worker
 
@@ -38,9 +40,20 @@ async def _run(settings: Settings) -> None:
     await run_worker(settings, stop)
 
 
+logger = logging.getLogger("classbeat.worker")
+
+
 def main() -> int:
+    # Before anything else: every urllib request of the process (the provider library's) goes
+    # through the outbound allowlist (ADR 0006 §9).
+    install_worker_allowlist()
     settings = Settings()
     configure_logging(settings.log_level)
+    try:
+        check_worker_model_provider(settings)
+    except ModelProviderRefused as refused:
+        logger.error("worker refused to start", extra={"reason": str(refused)})
+        return 2
     asyncio.run(_run(settings), loop_factory=event_loop_factory())
     return 0
 

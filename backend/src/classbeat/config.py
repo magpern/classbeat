@@ -26,6 +26,7 @@ SECRET_FILE_FIELDS = (
     "oauth_google_client_secret",
     "oauth_github_client_secret",
     "oauth_microsoft_client_secret",
+    "anthropic_api_key",
 )
 # Hosts where unencrypted SMTP (``smtp_tls = none``) is allowed: loopback and the compose service.
 PLAIN_SMTP_HOSTS = frozenset({"localhost", "mailpit"})
@@ -155,6 +156,15 @@ class Settings(BaseSettings):
     oauth_github_client_secret: SecretStr | None = None
     oauth_microsoft_client_secret: SecretStr | None = None
 
+    # The model provider of the worker (ADR 0006 §9): ``anthropic`` (the default) needs the
+    # ``anthropic_api_key`` secret file; ``fake`` (the dev stack and CI) is refused in ``prod``.
+    # ``check_worker_model_provider`` enforces both at worker start.
+    model_provider: Literal["anthropic", "fake"] = "anthropic"
+    # From the file ``anthropic_api_key`` (never the environment), mounted on the worker only;
+    # the web app refuses to start when it can read it. An empty file counts as no key
+    # (``scripts/worktree.sh init`` creates an empty one; it is never a real key).
+    anthropic_api_key: SecretStr | None = None
+
     @classmethod
     def settings_customise_sources(
         cls,
@@ -198,6 +208,19 @@ class Settings(BaseSettings):
     def _check_app_secret_key(cls, value: SecretStr | None) -> SecretStr | None:
         if value is not None and len(value.get_secret_value().encode()) < MIN_APP_SECRET_BYTES:
             raise ValueError(f"app_secret_key must be at least {MIN_APP_SECRET_BYTES} bytes long")
+        return value
+
+    @field_validator("anthropic_api_key")
+    @classmethod
+    def _check_anthropic_api_key(cls, value: SecretStr | None) -> SecretStr | None:
+        if value is None:
+            return None
+        key = value.get_secret_value()
+        if not key.strip():
+            return None  # the empty placeholder: no key
+        # It goes into an HTTP header: no whitespace or control characters anywhere.
+        if not key.isascii() or any(c.isspace() or not c.isprintable() for c in key):
+            raise ValueError("anthropic_api_key has whitespace, control or non-ASCII characters")
         return value
 
     @field_validator("connection_kek_id")
@@ -325,3 +348,25 @@ def _with_password(url: SecretStr, password: SecretStr | None) -> URL:
     if password is not None:
         result = result.set(password=password.get_secret_value())
     return result
+
+
+class ModelProviderRefused(Exception):
+    """The worker's model-provider settings are not allowed; the message names the rule only."""
+
+
+def check_worker_model_provider(settings: Settings) -> None:
+    """ADR 0006 §9: ``anthropic`` needs the ``anthropic_api_key`` file; ``fake`` never in prod."""
+    if settings.model_provider == "anthropic" and settings.anthropic_api_key is None:
+        raise ModelProviderRefused(
+            "model_provider is anthropic but the anthropic_api_key secret file is missing or empty"
+        )
+    if settings.model_provider == "fake" and settings.environment == "prod":
+        raise ModelProviderRefused("model_provider fake is not allowed when environment is prod")
+
+
+def check_web_has_no_model_key(settings: Settings) -> None:
+    """The web app never calls a model, so it never holds the key (ADR 0006 §9)."""
+    if settings.anthropic_api_key is not None:
+        raise ModelProviderRefused(
+            "the web app must not see the anthropic_api_key secret file (worker only)"
+        )

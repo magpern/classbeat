@@ -13,6 +13,7 @@ import re
 import warnings
 from dataclasses import dataclass, field
 from typing import Any
+from urllib.parse import urlsplit
 
 import httpx
 
@@ -29,6 +30,7 @@ from classbeat.auth.oauth_idtoken import (
     verify_id_token,
 )
 from classbeat.auth.oauth_providers import GITHUB, GOOGLE, MICROSOFT, Provider
+from classbeat.egress import refuse_in_worker
 
 TIMEOUT = httpx.Timeout(10.0)
 GITHUB_API = "https://api.github.com"
@@ -59,6 +61,7 @@ def _max_age(cache_control: str | None) -> float | None:
 
 
 async def _fetch_jwks_with(transport: httpx.AsyncBaseTransport | None, url: str) -> Jwks:
+    refuse_in_worker(urlsplit(url).hostname)  # web only (ADR 0006 section 9)
     async with httpx.AsyncClient(transport=transport, timeout=TIMEOUT) as client:
         response = await client.get(url)
         response.raise_for_status()
@@ -81,6 +84,7 @@ class OAuthRuntime:
 
 
 def _client(provider: Provider, redirect_uri: str, transport: Any) -> Any:
+    refuse_in_worker(urlsplit(provider.token_url).hostname)  # web only (ADR 0006 section 9)
     return AsyncOAuth2Client(
         client_id=provider.client_id,
         client_secret=provider.client_secret,

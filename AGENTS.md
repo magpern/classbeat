@@ -200,8 +200,8 @@ docker compose --profile maint run --rm maint python -m classbeat keys wipe --co
 uv run alembic upgrade head    # migrations as the owner role, CLASSBEAT_MIGRATIONS_DATABASE_URL
 ```
 
-The domain library `mowl` (`mowl-workouts`) is pinned as `backend/vendor/mowl_workouts-0.4.0-py3-none-any.whl`,
-built from the v0.4.0 tag **without** the bundled Swedebeat app key by `scripts/build-mowl-wheel.sh`
+The domain library `mowl` (`mowl-workouts`) is pinned as `backend/vendor/mowl_workouts-0.4.1-py3-none-any.whl`,
+built from the v0.4.1 tag **without** the bundled Swedebeat app key by `scripts/build-mowl-wheel.sh`
 (needs `gh` access to the private repo; it checks the tag's commit, the missing key file and that
 every other file matches the release wheel). After a rebuild run `uv lock`. classbeat leaves out
 the library's `mcp` dependency (`exclude-dependencies`): it never runs the MCP server, and `mcp`'s
@@ -245,6 +245,15 @@ and retired ones are `connection_kek_<id>`; `smtp_password` (optional) is the SM
 (`CLASSBEAT_SMTP_HOST`, `_PORT`, `_SENDER`, `_USERNAME` and `_TLS` = `starttls`, `tls` or `none`;
 `none` only for loopback or the compose `mailpit`; compose points them at mailpit); the matching
 `CLASSBEAT_DATABASE_PASSWORD` and `CLASSBEAT_DATABASE_OWNER_PASSWORD` variables are ignored.
+The model (ADR 0006 section 9): `CLASSBEAT_MODEL_PROVIDER` is `anthropic` (the default) or `fake`
+(compose takes `MODEL_PROVIDER` from `.env`, `fake` in `.env.example`, so the dev stack and CI never
+call a model). `anthropic` needs the `anthropic_api_key` secret file, mounted on the **worker only**
+(an empty file counts as none; `scripts/worktree.sh init` creates it empty and it is never a real
+key); the worker refuses to start with `anthropic` and no key and with `fake` when
+`CLASSBEAT_ENVIRONMENT=prod`, and the web app refuses to start when it can read the key. The
+worker's outbound requests go only to `https://api.mowl.com` and `https://api.anthropic.com`
+(`classbeat.egress`, the only module allowed to build an HTTP client or `urllib` opener; guarded by
+`tests/test_egress_guard.py`).
 OAuth sign-in (ADR 0003 section 5): `CLASSBEAT_OAUTH_<PROVIDER>_CLIENT_ID` and the
 `oauth_<provider>_client_secret` secret file switch on `google`, `github` or `microsoft`; a provider
 with only one of them is off. Microsoft setup: add the `auth_time` optional claim (ID token) to
@@ -371,7 +380,7 @@ The `checks` job runs these as steps; the image scan is a step of `e2e`:
 | pip-audit | `uv export --frozen` (production, then all groups) through `pip-audit` (pinned) |
 | npm audit | `npm audit --audit-level=high` in `frontend/` and `e2e/` |
 | Trivy repository scan | Trivy on the repository (vulnerabilities, Dockerfile misconfiguration; compose is not scanned) |
-| `e2e`: stack checks | builds the stack once: `/api/ready` and the SPA answer, `web` and `worker` run as non-root, no secret value appears in `docker inspect`, `postgres_password` is mounted on `db` and `db-functions` only (never web, worker, migrate or maint) |
+| `e2e`: stack checks | builds the stack once: `/api/ready` and the SPA answer, `web` and `worker` run as non-root, no secret value appears in `docker inspect` (the empty model key is replaced by a random canary first), only `worker` mounts `anthropic_api_key` and runs `fake`, no container has a model key variable, and `postgres_password` is mounted on `db` and `db-functions` only (never web, worker, migrate or maint) |
 | `e2e`: Trivy image scan | Trivy on the image the running stack was built from (never pushed); then Playwright runs |
 
 Trivy and gitleaks are checksum-verified release binaries. `pip-audit` (exact version) lives in
