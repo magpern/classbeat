@@ -225,33 +225,25 @@ async def test_the_heartbeat_extends_with_greatest_and_sees_a_cancel(jenv: JobsE
 
 
 async def test_a_lost_lease_abandons_the_pipeline_but_not_a_call_in_flight(jenv: JobsEnv) -> None:
+    """Deterministic: the run is marked lost (what the heartbeat does on 0 rows; the heartbeat
+    itself is covered by the stale-worker test) while an external call is in flight."""
     _, job_id = jenv.job()
     reached: list[str] = []
-    gate = asyncio.Event()
 
     async def run(job_run: JobRun) -> Complete:
-        job_run.lease_seconds = 0.06
         async with job_run.external_call(5):
             jenv.sql("UPDATE jobs SET lease_version = lease_version + 1 WHERE id = :id", id=job_id)
-            await gate.wait()  # the heartbeat finds the lease gone meanwhile
+            job_run.mark_lost()
+            await asyncio.sleep(0.2)  # still in the call: not abandoned
             reached.append("call returned")
-        await asyncio.sleep(5)  # abandoned here
+        await asyncio.sleep(5)  # abandoned here, once the call is over
         reached.append("after")
         return Complete()
 
-    async def release() -> None:
-        for _ in range(200):
-            await asyncio.sleep(0.02)
-            if execution.run is not None and execution.run.lost:
-                break
-        gate.set()
-
     execution = await claim(jenv)
-    releaser = asyncio.ensure_future(release())
     await asyncio.wait_for(
         execute(execution, jenv.factory, registry_for(run), RunConfig(), asyncio.Event()), 5
     )
-    await releaser
     assert reached == ["call returned"]
     assert (execution.result, execution.settled) == ("lost", True)
     assert jenv.row(job_id).state == "running"  # the reaper's, once the lease expires

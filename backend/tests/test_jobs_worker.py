@@ -90,7 +90,7 @@ async def test_a_notification_wakes_the_worker_before_its_poll(jenv: JobsEnv) ->
         jenv.sql("SELECT pg_notify('jobs_queued', '')")
         await until(lambda: jenv.row(job_id).state == "completed", seconds=10)
         assert time.monotonic() - started < 10  # well before the 30 s poll
-        assert not worker.running
+        await until(lambda: not worker.running)  # the task ends just after its commit
 
 
 async def test_a_poison_row_does_not_block_other_users_and_is_failed(jenv: JobsEnv) -> None:
