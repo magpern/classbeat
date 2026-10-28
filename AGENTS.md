@@ -200,8 +200,8 @@ docker compose --profile maint run --rm maint python -m classbeat keys wipe --co
 uv run alembic upgrade head    # migrations as the owner role, CLASSBEAT_MIGRATIONS_DATABASE_URL
 ```
 
-The domain library `mowl` (`mowl-workouts`) is pinned as `backend/vendor/mowl_workouts-0.4.1-py3-none-any.whl`,
-built from the v0.4.1 tag **without** the bundled Swedebeat app key by `scripts/build-mowl-wheel.sh`
+The domain library `mowl` (`mowl-workouts`) is pinned as `backend/vendor/mowl_workouts-0.5.0-py3-none-any.whl`,
+built from the v0.5.0 tag **without** the bundled Swedebeat app key by `scripts/build-mowl-wheel.sh`
 (needs `gh` access to the private repo; it checks the tag's commit, the missing key file and that
 every other file matches the release wheel). After a rebuild run `uv lock`. classbeat leaves out
 the library's `mcp` dependency (`exclude-dependencies`): it never runs the MCP server, and `mcp`'s
