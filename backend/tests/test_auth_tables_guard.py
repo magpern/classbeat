@@ -251,6 +251,24 @@ def test_the_scanner_counts_the_exemptions() -> None:
     assert scan_source_with_exemptions("x = 'nothing'  # guard8: prose")[1] == 0
 
 
+def test_a_marker_inside_a_multi_line_string_exempts_nothing() -> None:
+    inside = "x = '''\ncopied from sessions\n# guard8: prose\n'''"
+    assert scan_source_with_exemptions(inside) == ([(1, "raw SQL naming table sessions")], 0)
+    first_line = "x = '''copied from sessions # guard8: prose\nmore'''"
+    assert scan_source_with_exemptions(first_line)[1] == 0
+    assert scan_source_with_exemptions(first_line)[0] != []
+    # a real comment after the string, on the line where it starts, still exempts
+    real = "x = ('''copied from sessions''')  # guard8: prose"
+    assert scan_source_with_exemptions(real) == ([], 1)
+
+
+def test_exemptions_are_counted_per_string() -> None:
+    two = "f('copied from sessions', 'delete from users')  # guard8: prose"
+    assert scan_source_with_exemptions(two) == ([], 2)
+    chain = "x = 'rows ' + 'copied from sessions'  # guard8: prose"
+    assert scan_source_with_exemptions(chain) == ([], 1)
+
+
 def test_a_docstring_is_only_the_first_statement() -> None:
     later = "def f():\n    x = 1\n    'copied from sessions'\n"
     assert scan_source(later) != []  # not a docstring: it is not the first statement
