@@ -12,21 +12,27 @@ from classbeat.config import read_secret_files
 
 SCRIPT = Path(__file__).resolve().parents[2] / "docker" / "postgres" / "init" / "10-roles.sql"
 OWNER, APP = "owner-pw with space", "app-pw"
-# The text editors and `echo` leave: LF, CRLF, nothing. Only that one terminator is dropped.
-ENDINGS = ["\n", "\r\n", ""]
+# Terminators and look-alikes: exactly one LF is dropped, then exactly one CR; nothing else.
+ENDINGS = ["\n", "\r\n", "", "\n\n", "\r\r\n"]
+ENDING_IDS = ["lf", "crlf", "none", "lf-lf", "cr-crlf"]
 pytestmark = pytest.mark.usefixtures("role_urls")  # skips (or fails in CI) without a database
 
 
 def password_lines() -> list[str]:
+    """The part of the script that reads the two secret files, up to the last ``unset``."""
     lines = SCRIPT.read_text("utf-8").splitlines()
     backslash = chr(92)  # psql meta-commands start with it
-    prefixes = tuple(f"{backslash}set {name}_password" for name in ("owner", "app"))
-    wanted = [ln for ln in lines if ln.startswith(prefixes)]
-    assert len(wanted) == 2
-    return wanted
+    start = next(i for i, ln in enumerate(lines) if ln.startswith(f"{backslash}set owner_raw"))
+    end = next(i for i, ln in enumerate(lines) if ln.startswith(f"{backslash}unset app_raw"))
+    return lines[start : end + 1]
 
 
-@pytest.mark.parametrize("ending", ENDINGS, ids=["lf", "crlf", "none"])
+def sql_text(value: str) -> str:
+    """``value`` as a SQL expression that needs no quoting (hex of its UTF-8 bytes)."""
+    return f"convert_from(decode('{value.encode().hex()}', 'hex'), 'UTF8')"
+
+
+@pytest.mark.parametrize("ending", ENDINGS, ids=ENDING_IDS)
 def test_a_password_file_with_any_line_ending_gives_the_same_password(
     tmp_path: Path, ending: str
 ) -> None:
@@ -35,14 +41,17 @@ def test_a_password_file_with_any_line_ending_gives_the_same_password(
         pytest.skip("psql is not installed")
     (tmp_path / "owner").write_bytes((OWNER + ending).encode())
     (tmp_path / "app").write_bytes((APP + ending).encode())
-    # Same reading as config.py, so both agree.
+    # Same reading as config.py, so both agree: one LF, then one CR, nothing else.
     secrets_ = read_secret_files(tmp_path, ("owner", "app"))
-    assert secrets_ == {"owner": OWNER, "app": APP}
+    rest = ending.removesuffix(chr(10)).removesuffix(chr(13))
+    expected_owner, expected_app = OWNER + rest, APP + rest
+    assert secrets_ == {"owner": expected_owner, "app": expected_app}
 
     script = tmp_path / "check.sql"
     script.write_text(
         "\n".join(password_lines())
-        + f"\nSELECT CASE WHEN :'owner_password' = '{OWNER}' AND :'app_password' = '{APP}'"
+        + f"\nSELECT CASE WHEN :'owner_password' = {sql_text(expected_owner)}"
+        + f" AND :'app_password' = {sql_text(expected_app)}"
         + " THEN 'same' ELSE 'different' END;\n",
         "utf-8",
     )
