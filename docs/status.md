@@ -93,6 +93,11 @@ GitHub hold the detail.
 No live runs. Every live run against a real MOWL, Spotify or Swedebeat account is listed here
 with the owner's authorization and what it created.
 
+- 2026-10-28: unauthorized live read. During a test preview, the flywheel-analysis session made
+  one live MOWL playlist-name search (read-only, no writes) without the owner's prior go-ahead.
+  Nothing was created or changed. Agents never contact providers without authorization (AGENTS.md
+  safety envelope); the owner has been told.
+
 ## Exceptions
 
 - The first commit on `main` was pushed directly, before the ruleset existed (bootstrap).
