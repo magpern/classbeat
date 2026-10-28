@@ -306,7 +306,9 @@ Trivy and gitleaks are checksum-verified release binaries. `pip-audit` (exact ve
 the `audit` dependency group of `backend/pyproject.toml`, so its own dependencies are hash-locked in
 `uv.lock` and CI installs it with `uv sync --frozen --only-group audit`; the runtime image
 (`uv sync --locked --no-dev`) never contains it. The audited requirements are exported with hashes
-and checked with `--require-hashes`, for every group (`--all-groups`, so `audit` itself too). `setup-uv` is pinned to the same uv version as the Dockerfile; the `workflows` job fails if they differ.
+and checked with `--require-hashes`, for every group (`--all-groups`, so `audit` itself too).
+`setup-uv` is pinned to the same uv version as the Dockerfile; the `workflows` job fails if they
+differ.
 
 Trivy fails on HIGH and CRITICAL findings that have a fix available (`--ignore-unfixed`).
 **Accepted risk:** unfixed HIGH/CRITICAL findings are not gated. They are revisited at the M6
