@@ -317,7 +317,7 @@ picks up new advisories) and on `workflow_dispatch`; the last two run everything
 
 | Job | Runs | What it does |
 |---|---|---|
-| `changes` | always | `scripts/ci-changes.sh`: `git diff` against the PR base gives the outputs `backend` (`backend/`, `docker/postgres/`), `frontend` (`frontend/`), `stack` (`backend/`, `frontend/`, `e2e/`, `docker/`, `Dockerfile`, `compose*.yaml`, `.dockerignore`, `.env.example`, `scripts/worktree.sh`) and `all`. Renames count at both paths; names are read NUL-separated; if the diff cannot be computed everything runs. `all` is true on schedule/dispatch and when `.github/`, `.gitattributes` or `scripts/ci-changes.sh`, `ci-gate.sh` or `test-ci-gate.sh` change (CI changes test themselves) and makes the others true |
+| `changes` | always | `scripts/ci-changes.sh`: `git diff` against the PR base gives the outputs `backend` (`backend/`, `docker/postgres/`), `frontend` (`frontend/`), `stack` (`backend/`, `frontend/`, `e2e/`, `docker/`, `Dockerfile`, `compose*.yaml`, `.dockerignore`, `.env.example`, `.trivyignore`, `scripts/worktree.sh`) and `all`. Renames count at both paths; names are read NUL-separated; if the diff cannot be computed everything runs. `all` is true on schedule/dispatch and when `.github/`, `.gitattributes` or `scripts/ci-changes.sh`, `ci-gate.sh` or `test-ci-gate.sh` change (CI changes test themselves) and makes the others true |
 | `checks` | always | the cheap checks as steps of one job (below) |
 | `backend` | `backend` | ruff, format, pyright, pytest against Postgres |
 | `frontend` | `frontend` | lint, typecheck, Vitest, build |
@@ -362,7 +362,7 @@ security review, and once a fix appears Trivy starts failing on them. The reposi
 the Dockerfile (misconfiguration); it does not cover `compose.yaml`.
 
 Every GitHub Action is pinned by full commit SHA with the version in a trailing comment.
-Dependabot (`.github/dependabot.yml`, weekly, one grouped PR per ecosystem) keeps Actions, uv, npm and the Dockerfile and compose
+Dependabot (`.github/dependabot.yml`, weekly, two groups per ecosystem: one PR for minor/patch updates and a separate one for majors) keeps Actions, uv, npm and the Dockerfile and compose
 images current, with `build(deps)` and `ci(deps)` commit prefixes. It does not track Debian packages
 inside the base image: when Trivy fails on one, bump the base image tag in the Dockerfile.
 

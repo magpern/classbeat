@@ -8,7 +8,12 @@
 # `changes` and `checks` must have succeeded. Every other job must have succeeded, or have
 # been skipped while the `changes` output that gates it is "false". A job that is skipped,
 # cancelled or failed while its filter is true fails the gate, and so does a missing job.
-# Fails closed: any malformed input or failing jq call fails the gate.
+#
+# Fails closed. jq validates the values, not only the shape, before it decides anything: exactly
+# one JSON document; exactly the five expected jobs; every result one of success, failure,
+# cancelled or skipped; every filter output the string "true" or "false". Only then does it
+# emit one verdict line per job, built from those validated values. Bash never splits or
+# interprets the raw input.
 set -euo pipefail
 
 : "${NEEDS:?NEEDS is required}"
@@ -17,58 +22,54 @@ echo "results: $RESULTS"
 
 die() { echo "::error::$*"; exit 1; }
 
-# NEEDS must be an object of objects.
-jq -e 'type == "object" and all(.[]; type == "object")' <<< "$NEEDS" > /dev/null 2>&1 \
-  || die "NEEDS is not a JSON object of jobs"
+# shellcheck disable=SC2016  # jq program, not shell
+program='
+  def fail($m): error($m);
+  [inputs] as $in
+  | if ($in | length) != 1 then fail("NEEDS must be exactly one JSON document") else $in[0] end
+  | . as $n
+  | if type != "object" then fail("NEEDS must be a JSON object") else . end
+  | if (keys | map(select(test("^[A-Za-z0-9_-]+$") | not)) | length) > 0
+      then fail("a job name has unexpected characters") else . end
+  | if keys != ["backend", "changes", "checks", "e2e", "frontend"]
+      then fail("NEEDS must hold exactly the jobs changes, checks, backend, frontend, e2e") else . end
+  | if all(.[]; type == "object"
+        and (.result | type) == "string"
+        and (.result | IN("success", "failure", "cancelled", "skipped")))
+      then . else fail("every job needs a result of success, failure, cancelled or skipped") end
+  | if (.changes.outputs | type) != "object" then fail("changes has no outputs object") else . end
+  | if (["backend", "frontend", "stack"]
+        | all(. as $f | $n.changes.outputs[$f] | type == "string" and IN("true", "false")))
+      then . else fail("every filter output must be the string true or false") end
+  | {backend: "backend", frontend: "frontend", e2e: "stack"} as $filter
+  | to_entries[]
+  | .key as $j
+  | .value.result as $r
+  | if $r == "success" then "ok \($j) succeeded"
+    elif $j == "changes" or $j == "checks" then "err \($j) finished as \($r)"
+    elif $r == "skipped" and $n.changes.outputs[$filter[$j]] == "false"
+      then "ok \($j) skipped: its filter (\($filter[$j])) is false"
+    else "err \($j) finished as \($r) (filter \($filter[$j]) is \($n.changes.outputs[$filter[$j]]))"
+    end'
+
+# A failing or erroring jq fails the gate (plain assignment, so set -e sees its exit status).
+if ! verdict="$(jq -r -n "$program" <<< "$NEEDS" 2>&1)"; then
+  echo "$verdict" | tr -d '\r'
+  die "NEEDS is malformed"
+fi
+verdict="$(tr -d '\r' <<< "$verdict")"
 
 # An empty or short result list must not pass vacuously.
-want="$(jq 'length' <<< "$NEEDS" | tr -d '\r')"
 got="$(wc -w <<< "$RESULTS")"
-[ "$want" -gt 0 ] && [ "$got" -eq "$want" ] || die "expected $want results, got $got"
-
-# The `changes` output that gates a job; empty for jobs that always run.
-filter_of() {
-  case "$1" in
-    backend) echo backend ;;
-    frontend) echo frontend ;;
-    e2e) echo stack ;;
-    *) echo "" ;;
-  esac
-}
-
-# One jq call, one line per job: job, result, and the three filter outputs (backend, frontend,
-# stack). Absent values are "missing", empty ones "empty". A failing jq fails the gate: this is a
-# plain assignment, so set -e sees its exit status.
-table="$(jq -r '
-  def v: if . == null then "missing" elif . == "" then "empty" else tostring end;
-  (.changes.outputs // {}) as $o
-  | to_entries[]
-  | [.key, (.value.result | v), ($o.backend | v), ($o.frontend | v), ($o.stack | v)]
-  | join(" ")' <<< "$NEEDS" | tr -d '\r')"
+[ "$got" -eq 5 ] || die "expected 5 results, got $got"
 
 fail=0
-for job in changes checks backend frontend e2e; do
-  if ! grep -q "^$job " <<< "$table"; then
-    echo "::error::job $job is not in needs"
-    fail=1
-  fi
-done
-
-while read -r job result fb ff fs; do
-  [ "$result" != success ] || continue
-  filter="$(filter_of "$job")"
-  case "$filter" in
-    backend) value="$fb" ;;
-    frontend) value="$ff" ;;
-    stack) value="$fs" ;;
-    *) value="" ;;
+while IFS= read -r line; do
+  case "$line" in
+    "ok "*) echo "${line#ok }" ;;
+    "err "*) echo "::error::${line#err }"; fail=1 ;;
+    *) echo "::error::unexpected verdict line"; fail=1 ;;
   esac
-  if [ -n "$filter" ] && [ "$result" = skipped ] && [ "$value" = false ]; then
-    echo "$job skipped: its filter ($filter) is false"
-  else
-    echo "::error::$job finished as $result${filter:+ (filter $filter is $value)}"
-    fail=1
-  fi
-done <<< "$table"
+done <<< "$verdict"
 
 exit "$fail"
