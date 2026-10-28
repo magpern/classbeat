@@ -6,13 +6,18 @@ neither clears the cookie (the token may have just been rotated). A known sessio
 expired, idle or belongs to a disabled user is deleted and the cookie is cleared.
 """
 
-from typing import Annotated, Any, NoReturn
+from typing import Annotated, Any, Literal, NoReturn
+from uuid import UUID
 
 from fastapi import Depends, HTTPException, Request
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from classbeat import connections
 from classbeat.auth.clientip import client_ip
 from classbeat.auth.cookies import DEVICE_COOKIE, SESSION_COOKIE
 from classbeat.auth.sessions import Resolution, SessionInfo, resolve_session
+from classbeat.auth.tables import users
 from classbeat.config import Settings
 from classbeat.context import UserContext, issuer_token
 
@@ -54,9 +59,26 @@ async def current_context(
         return None
     cached: UserContext | None = getattr(request.state, _CONTEXT, None)
     if cached is None:
-        cached = UserContext(user_id=info.user_id, role=info.role, issuer=issuer_token())
+        cached = await issue_context(request.app.state.session_factory, info.user_id, info.role)
         setattr(request.state, _CONTEXT, cached)
     return cached
+
+
+async def issue_context(
+    factory: async_sessionmaker[AsyncSession], user_id: UUID, role: Literal["user", "admin"]
+) -> UserContext:
+    """Two steps (ADR 0004 section 1): a context without connections, to read the user's
+    ``(provider, id)`` pairs in their own session, then the final context with them."""
+    bare = UserContext(user_id=user_id, role=role, issuer=issuer_token())
+    refs = await connections.connection_refs(factory, bare)
+    return UserContext(user_id=user_id, role=role, connections=refs, issuer=issuer_token())
+
+
+async def operator_contexts(db: AsyncSession) -> list[UserContext]:
+    """For the CLI only (``keys rewrap``, ``keys wipe``; ADR 0004 section 1): a context per user
+    (role ``user``, no connections), oldest first, for per-owner work with ``app.user_id`` set."""
+    ids = (await db.execute(select(users.c.id).order_by(users.c.created_at, users.c.id))).scalars()
+    return [UserContext(user_id=user_id, role="user", issuer=issuer_token()) for user_id in ids]
 
 
 def _refuse(status: int, reason: str) -> NoReturn:

@@ -6,6 +6,7 @@ from types import MappingProxyType
 # Every other table in ``public`` is owned; the guard test in ``tests/test_rls_guard.py``
 # holds both sides to the contract. The M1 account tables (ADR 0003 section 1) are reached only
 # through ``classbeat.auth`` (guard 8); shared music analysis arrives with M2.
+# ``connections`` (ADR 0004) is owned and therefore not listed.
 SYSTEM_TABLES: MappingProxyType[str, str] = MappingProxyType(
     {
         "alembic_version": "Alembic migration bookkeeping; no app access",
@@ -21,6 +22,8 @@ SYSTEM_TABLES: MappingProxyType[str, str] = MappingProxyType(
         "mfa_recovery_codes": "TOTP recovery codes (HMAC only), read during sign-in",
         "rate_limits": "counters keyed by an HMAC of the bucket, before any user is known",
         "auth_events": "security event log; keeps a null user_id after the user is deleted",
+        "connection_keks": "check values of the KEK ids (ADR 0004), read at startup before "
+        "any user; reached only through classbeat.crypto.keks",
     }
 )
 # System tables the app role must have no privilege on at all (the rest get DML).

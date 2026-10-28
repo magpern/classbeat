@@ -10,9 +10,11 @@ from fastapi import Depends
 from authtools import Env
 from classbeat import auth
 from classbeat.auth import totp
-from classbeat.auth.keys import Keys, decrypt_totp_secret
+from classbeat.auth.keys import Keys
 from classbeat.auth.mfa import open_pending, seal_pending
 from classbeat.context import UserContext
+from classbeat.crypto.envelope import DecryptFailed, open_sealed, totp_aad, totp_wrap_aad
+from classbeat.crypto.keks import KeyRing
 from mfatools import FakeNotifier, admin_with_totp, step_of
 
 
@@ -246,18 +248,35 @@ async def test_regenerating_recovery_codes_invalidates_the_old_ones(
 async def test_totp_secrets_are_encrypted_and_bound_to_their_user(
     env: Env, make_actor: Any, clock: list[float]
 ) -> None:
+    # New enrollments write the v2 envelope form (ADR 0004 section 2).
     _, secret, _, user_id = await admin_with_totp(env, make_actor)
-    ciphertext = await env.scalar("SELECT secret_ciphertext FROM mfa_totp")
-    nonce = await env.scalar("SELECT nonce FROM mfa_totp")
-    assert await env.scalar("SELECT key_id FROM mfa_totp") == "app-v1"
-    ciphertext, nonce = bytes(ciphertext), bytes(nonce)  # pyright: ignore[reportArgumentType]
-    assert len(nonce) == 12
-    assert secret.encode() not in ciphertext
-    keys: Keys = env.app.state.keys
-    assert decrypt_totp_secret(keys, user_id, ciphertext, nonce, "app-v1") == secret.encode()
+    row = await env.row(
+        "SELECT secret_ciphertext, nonce, key_id, wrapped_dek, dek_nonce FROM mfa_totp"
+    )
+    assert row.key_id == "kek-1"
+    assert len(bytes(row.nonce)) == 12
+    assert len(bytes(row.wrapped_dek)) == 48
+    assert len(bytes(row.dek_nonce)) == 12
+    assert secret.encode() not in bytes(row.secret_ciphertext)
+    ring: KeyRing = env.app.state.keyring
+    async with env.db() as db:
+        kek = await ring.current(db)
+
+    def opened(user: Any) -> bytes:
+        return open_sealed(
+            row.secret_ciphertext,
+            row.nonce,
+            row.wrapped_dek,
+            row.dek_nonce,
+            kek,
+            totp_aad(user),
+            totp_wrap_aad(kek.key_id, user),
+        )
+
+    assert opened(user_id) == secret.encode()
     other_id = await env.user("other@example.com")
-    with pytest.raises(ValueError, match="does not decrypt"):
-        decrypt_totp_secret(keys, other_id, ciphertext, nonce, "app-v1")
+    with pytest.raises(DecryptFailed):
+        opened(other_id)
 
 
 async def test_a_row_moved_to_another_user_does_not_verify(

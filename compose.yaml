@@ -19,9 +19,14 @@ x-app: &app
     CLASSBEAT_SMTP_PORT: "1025"
     CLASSBEAT_SMTP_TLS: none
     CLASSBEAT_SMTP_SENDER: classbeat@classbeat.test
+    # The id of the current key-encryption key, the secret file connection_kek (ADR 0004
+    # section 2). On rotation: a new id in .env, the old file kept as connection_kek_<old id> and
+    # listed under secrets of web and worker until `keys rewrap` reports zero rows for it.
+    CLASSBEAT_CONNECTION_KEK_ID: ${CONNECTION_KEK_ID:-kek-1}
   secrets:
     - database_password
     - app_secret_key
+    - connection_kek
   depends_on:
     migrate:
       condition: service_completed_successfully
@@ -83,6 +88,23 @@ services:
     restart: unless-stopped
     command: ["python", "-m", "classbeat.worker"]
 
+  # Maintenance after a suspected KEK compromise (ADR 0004 section 2), never started by default:
+  #   docker compose stop web worker
+  #   docker compose --profile maint run --rm maint python -m classbeat keys wipe --confirm
+  # It connects as the owner role (web and worker never get its password) and has no KEK. With no
+  # command it only prints the usage. Outside the dev stack also give it the smtp_password secret.
+  maint:
+    <<: *app
+    profiles: [maint]
+    restart: "no"
+    command: ["python", "-m", "classbeat", "keys", "--help"]
+    environment:
+      <<: *app-env
+      CLASSBEAT_MIGRATIONS_DATABASE_URL: postgresql+psycopg://classbeat_owner@db:5432/classbeat
+    secrets:
+      - source: database_owner_password
+        target: database_owner_password
+
   mailpit:
     image: axllent/mailpit:v1.32.0
     restart: unless-stopped
@@ -103,6 +125,8 @@ secrets:
     file: ./secrets/database_password
   app_secret_key:
     file: ./secrets/app_secret_key
+  connection_kek:
+    file: ./secrets/connection_kek
 
 volumes:
   db-data:

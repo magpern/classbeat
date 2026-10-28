@@ -4,6 +4,8 @@ All functions take the caller's ``AsyncSession`` (a ``system_session``) and filt
 ``user_id`` of the request's own session. Replay protection and recovery-code single use are
 conditional ``UPDATE`` statements, so concurrent submissions of one code let exactly one win.
 
+Secrets are stored in the v2 envelope form (``totp_keys``, ADR 0004 section 2).
+
 A pending enrollment is not stored: ``seal_pending`` returns the new secret encrypted
 (AES-256-GCM, AAD ``user_id|totp-pending``, 10 minutes) for the client to send back with the
 first code. So replacing a confirmed TOTP never leaves the account half-enrolled, and a
@@ -24,14 +26,10 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from classbeat.auth import totp
-from classbeat.auth.keys import (
-    NONCE_LENGTH,
-    Keys,
-    decrypt_totp_secret,
-    encrypt_totp_secret,
-    hmac_digest,
-)
+from classbeat.auth.keys import NONCE_LENGTH, Keys, hmac_digest
 from classbeat.auth.tables import auth_events, mfa_recovery_codes, mfa_totp
+from classbeat.auth.totp_keys import open_totp_secret, seal_totp_secret
+from classbeat.crypto.keks import KeyRing
 
 logger = logging.getLogger(__name__)
 
@@ -122,9 +120,16 @@ async def regenerate_recovery_codes(
 
 
 async def confirm_enrollment(
-    db: AsyncSession, keys: Keys, user_id: UUID, secret: str, generation: str, code: str
+    db: AsyncSession,
+    keys: Keys,
+    ring: KeyRing,
+    user_id: UUID,
+    secret: str,
+    generation: str,
+    code: str,
 ) -> list[str] | None:
-    """Store the secret (AES-256-GCM) once ``code`` is valid for it, and issue recovery codes.
+    """Store the secret (the v2 envelope form, ADR 0004 section 2) once ``code`` is valid for
+    it, and issue recovery codes.
 
     A first enrollment (``generation == NO_TOTP``) inserts and does nothing if a row appeared
     meanwhile; a replacement updates only the row it was started against. Either way a lost
@@ -133,11 +138,8 @@ async def confirm_enrollment(
     step = totp.match_step(secret, code)
     if step is None:
         return None
-    ciphertext, nonce, key_id = encrypt_totp_secret(keys, user_id, secret.encode())
     values = {
-        "secret_ciphertext": ciphertext,
-        "nonce": nonce,
-        "key_id": key_id,
+        **(await seal_totp_secret(db, ring, user_id, secret.encode())),
         "confirmed_at": func.now(),
         "last_step": step,
     }
@@ -175,23 +177,24 @@ async def remove_totp(db: AsyncSession, user_id: UUID) -> bool:
     return removed
 
 
-async def _verify_totp(db: AsyncSession, keys: Keys, user_id: UUID, code: str) -> bool:
+async def _verify_totp(
+    db: AsyncSession, keys: Keys, ring: KeyRing, user_id: UUID, code: str
+) -> bool:
+    """Raises ``TotpUnreadable`` when the stored secret cannot be decrypted (fails closed)."""
     row = (
         await db.execute(
-            select(mfa_totp.c.secret_ciphertext, mfa_totp.c.nonce, mfa_totp.c.key_id).where(
-                mfa_totp.c.user_id == user_id, mfa_totp.c.confirmed_at.is_not(None)
-            )
+            select(
+                mfa_totp.c.secret_ciphertext,
+                mfa_totp.c.nonce,
+                mfa_totp.c.key_id,
+                mfa_totp.c.wrapped_dek,
+                mfa_totp.c.dek_nonce,
+            ).where(mfa_totp.c.user_id == user_id, mfa_totp.c.confirmed_at.is_not(None))
         )
     ).first()
     if row is None:
         return False
-    try:
-        secret = decrypt_totp_secret(
-            keys, user_id, row.secret_ciphertext, row.nonce, row.key_id
-        ).decode()
-    except ValueError:
-        logger.error("a stored TOTP secret does not decrypt for its user")
-        return False
+    secret = (await open_totp_secret(db, keys, ring, user_id, row)).decode()
     step = totp.match_step(secret, code)
     if step is None:
         return False
@@ -220,12 +223,13 @@ async def _use_recovery_code(db: AsyncSession, keys: Keys, user_id: UUID, code: 
 
 
 async def check_second_factor(
-    db: AsyncSession, keys: Keys, user_id: UUID, code: str
+    db: AsyncSession, keys: Keys, ring: KeyRing, user_id: UUID, code: str
 ) -> Method | None:
-    """A TOTP code (six digits) or a recovery code, consumed on success. ``None`` otherwise."""
+    """A TOTP code (six digits) or a recovery code, consumed on success. ``None`` otherwise.
+    ``TotpUnreadable`` when a TOTP code meets a secret that cannot be decrypted."""
     code = code.strip()
     if totp.is_totp_code(code):
-        return "totp" if await _verify_totp(db, keys, user_id, code) else None
+        return "totp" if await _verify_totp(db, keys, ring, user_id, code) else None
     if await _use_recovery_code(db, keys, user_id, code):
         return "recovery"
     return None

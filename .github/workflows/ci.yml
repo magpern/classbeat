@@ -356,6 +356,8 @@ jobs:
             fi
           done
           [ "$checked" -gt 0 ] || { echo "::error::no secret files were checked"; exit 1; }
+          # The connection KEK (ADR 0004 section 7) must exist and so was among them.
+          [ -s secrets/connection_kek ] || { echo "::error::secrets/connection_kek is missing"; exit 1; }
           rm -f "$RUNNER_TEMP/inspect.json"
 
       # The image the running stack was built from (never pushed). Fails on HIGH and CRITICAL

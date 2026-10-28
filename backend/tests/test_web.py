@@ -1,5 +1,5 @@
 import logging
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Iterator
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import NoReturn
@@ -14,6 +14,7 @@ from classbeat import __version__
 from classbeat.config import Settings
 from classbeat.db import DatabaseRoleError
 from classbeat.web import create_app
+from dbtools import migrated
 
 
 def make_app(database_url: str, **overrides: object) -> FastAPI:
@@ -68,6 +69,14 @@ async def test_health_does_not_touch_the_database(unreachable_database_url: str)
     assert response.json() == {"status": "ok", "version": __version__}
 
 
+@pytest.fixture
+def schema(owner_database_url: str) -> Iterator[None]:
+    """The migrated schema: the KEK check of ADR 0004 reads ``connection_keks`` at startup."""
+    with migrated(owner_database_url):
+        yield
+
+
+@pytest.mark.usefixtures("schema")
 async def test_ready_is_200_with_a_real_database(app_database_url: str) -> None:
     async with make_client(app_database_url) as client:
         response = await client.get("/api/ready")
@@ -75,6 +84,7 @@ async def test_ready_is_200_with_a_real_database(app_database_url: str) -> None:
     assert response.json() == {"status": "ready"}
 
 
+@pytest.mark.usefixtures("schema")
 async def test_ready_uses_database_password_instead_of_the_url_password(
     app_database_url: str,
 ) -> None:

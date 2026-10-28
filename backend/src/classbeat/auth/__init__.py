@@ -28,6 +28,7 @@ from classbeat.auth.cookies import (
 from classbeat.auth.deps import (
     current_context,
     current_session,
+    operator_contexts,
     request_device_token,
     request_ip,
     request_session_token,
@@ -48,6 +49,14 @@ from classbeat.auth.keys import (
     token_hash,
 )
 from classbeat.auth.notices import SecurityNotifier, register_security_notifier
+from classbeat.auth.operator import (
+    WipeEvent,
+    mark_wipe_mailed,
+    pending_wipe_mails,
+    vacuum_wiped_tables,
+    wipe_mail,
+    wipe_user,
+)
 from classbeat.auth.passwords import (
     PasswordHashBusy,
     PasswordHasher,
@@ -77,6 +86,12 @@ from classbeat.auth.sessions import (
     start_session,
 )
 from classbeat.auth.setup import attach_state, detach_state, install
+from classbeat.auth.totp_keys import (
+    TotpUnreadable,
+    migrate_v1_secrets,
+    rewrap_v2_secrets,
+    totp_rows_by_key,
+)
 
 __all__ = [
     "CSRF_COOKIE",
@@ -96,7 +111,9 @@ __all__ = [
     "SecurityNotifier",
     "SessionGone",
     "SessionInfo",
+    "TotpUnreadable",
     "UserRow",
+    "WipeEvent",
     "attach_state",
     "bucket_ip",
     "clear_session_cookie",
@@ -118,9 +135,13 @@ __all__ = [
     "is_known_device",
     "list_sessions",
     "make_reset_link_sender",
+    "mark_wipe_mailed",
     "mfa_buckets",
+    "migrate_v1_secrets",
     "normalize_password",
+    "operator_contexts",
     "password_buckets",
+    "pending_wipe_mails",
     "purge_expired",
     "record_event",
     "register_reset_link_sender",
@@ -138,10 +159,15 @@ __all__ = [
     "revoke_admin",
     "revoke_session",
     "revoke_user_sessions",
+    "rewrap_v2_secrets",
     "rotate_session",
     "send_reset_link",
     "set_device_cookie",
     "set_session_cookie",
     "start_session",
     "token_hash",
+    "totp_rows_by_key",
+    "vacuum_wiped_tables",
+    "wipe_mail",
+    "wipe_user",
 ]

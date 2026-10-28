@@ -34,7 +34,9 @@ from classbeat.auth.sessions import (
     revoke_user_sessions,
     rotate_session,
 )
+from classbeat.auth.totp_keys import TotpUnreadable
 from classbeat.context import UserContext
+from classbeat.crypto.keks import KeyRing
 from classbeat.db import system_session
 
 router = APIRouter(prefix="/api/auth", tags=["mfa"])
@@ -79,6 +81,10 @@ def _factory(request: Request) -> async_sessionmaker[AsyncSession]:
 
 def _keys(request: Request) -> Keys:
     return request.app.state.keys
+
+
+def _ring(request: Request) -> KeyRing:
+    return request.app.state.keyring
 
 
 def _session(info: SessionInfo | None) -> SessionInfo:
@@ -128,10 +134,19 @@ async def _verify_code(
     """A TOTP or recovery code, rate limited. The 400 response for a bad one, else ``None``."""
     _need_totp(info)
     attempt = await _reserve(request, info)
+    unreadable: TotpUnreadable | None = None
     async with system_session(_factory(request)) as db:
-        method = await mfa.check_second_factor(db, _keys(request), info.user_id, code)
+        try:
+            method = await mfa.check_second_factor(
+                db, _keys(request), _ring(request), info.user_id, code
+            )
+        except TotpUnreadable as error:
+            unreadable, method = error, None
         mail = False
-        if method is None:
+        if unreadable is not None:
+            # Fails closed with the generic error; not an mfa_failed (ADR 0004 section 2).
+            await record_event(db, unreadable.kind, user_id=info.user_id, ip=request_ip(request))
+        elif method is None:
             mail = await mfa.record_failure(db, info.user_id, request_ip(request), purpose)
     if method is None:
         if mail:
@@ -193,7 +208,7 @@ async def confirm_enrollment(
                 raise _refuse(409, "totp_changed")
             try:
                 codes = await mfa.confirm_enrollment(
-                    db, _keys(request), ctx.user_id, secret, generation, body.code
+                    db, _keys(request), _ring(request), ctx.user_id, secret, generation, body.code
                 )
             except mfa.EnrollmentConflict:
                 raise _refuse(409, "totp_changed") from None

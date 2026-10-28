@@ -3,6 +3,7 @@
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
+from typing import Any
 from uuid import UUID
 
 import httpx
@@ -18,6 +19,9 @@ from classbeat.web import create_app
 ORIGIN = "https://classbeat.test"
 APP_SECRET = "test-app-secret-key-0123456789abcdef0123456789abcdef"
 ADMIN_EMAIL = "Owner@Example.com"
+# A fixed, public test KEK (ADR 0004 section 2), built at run time; never a real key. The autouse
+# ``kek_dir`` fixture (conftest) writes it as ``connection_kek``.
+TEST_KEK = bytes(range(32))
 
 
 def make_settings(database_url: str, **overrides: object) -> Settings:
@@ -59,6 +63,10 @@ class Env:
     async def scalar(self, sql: str, **params: object) -> object:
         async with self.db() as db:
             return (await db.execute(text(sql), params)).scalar_one_or_none()
+
+    async def row(self, sql: str, **params: object) -> Any:
+        async with self.db() as db:
+            return (await db.execute(text(sql), params)).one()
 
     async def run(self, sql: str, **params: object) -> None:
         async with self.db() as db:

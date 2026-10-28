@@ -5,7 +5,13 @@ import signal
 import sys
 
 from classbeat.config import Settings
-from classbeat.db import create_engine, event_loop_factory, verify_database_role
+from classbeat.crypto.keks import load_keyring
+from classbeat.db import (
+    create_engine,
+    create_session_factory,
+    event_loop_factory,
+    verify_database_role,
+)
 from classbeat.log import configure_logging
 from classbeat.worker.loop import run_worker
 
@@ -22,6 +28,8 @@ async def _run(settings: Settings) -> None:
     engine = create_engine(settings)
     try:
         await verify_database_role(engine)  # refuses to start on a privileged role
+        # The KEK check of ADR 0004 section 2: no valid connection_kek, no worker.
+        await load_keyring(create_session_factory(engine), settings.connection_kek_id)
     finally:
         await engine.dispose()
     stop = asyncio.Event()
