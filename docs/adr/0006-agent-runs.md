@@ -24,6 +24,15 @@ with a readable message for anything the MOWL app would refuse; `workout.tss(spe
 has no cached analysis **and** link, then reads tracks, availability and Spotify's sections
 through MOWL; `music.MAP_VERSION` versions the analysis.
 
+Amendment (#105): the design pipeline is built against `mowl-workouts` **v0.5.0**, which adds
+to the above: Spotify maps model MOWL's Spotify crossfade (`spotify.CROSSFADE_SEC` = 9 s of
+overlap; `spotify.with_crossfade(map, sec)` converts a stored map without a `crossfade` key,
+whose tracks are back to back); `library.spotify_analysis` re-reads tracks for up to
+`library.BPM_WAIT_SEC` (120 s) while MOWL reports a BPM of 0, and `spotify.unknown_bpm(map)`
+names the tracks still lacking one; `quality.report(wanted, fitted, map, timeline)` is a pure
+ride-quality report; `workout.save(..., program_id=...)` raises `MowlError` if MOWL answers with
+another program id. `music.MAP_VERSION` stays 12 on purpose.
+
 ## Decision
 
 ### 1. The loop and the `ModelProvider` interface
@@ -118,7 +127,7 @@ M4 specifies its two stages in its own ADR within this contract.
 1. **Music** (backend, before any model call). Look up the user's link in `mowl_playlist_links`;
    if there is none, attach the Spotify playlist in MOWL as the external operation
    `mowl_attach_spotify_playlist` (ADR 0005 §7) and store the link. Then build the analysis with
-   **read-only** calls through `classbeat.connections`: a new `mowl-workouts` v0.4.1 function
+   **read-only** calls through `classbeat.connections`: a new `mowl-workouts` function (v0.4.1)
    `library.spotify_analysis(creds, playlist_id, spotify_id)` (the read half of `spotify_map`,
    which then calls it, so the CLI keeps working). Each library read (tracks, availability, one
    per track's sections) is a cancellation checkpoint (ADR 0005 §4). The analysis lives in memory
@@ -151,10 +160,28 @@ id, because a reconnect keeps the row id (ADR 0004 §4).
   simply absent). Tracks are referred to by their **index** in that list, never by an id.
 - `preview_draft(draft)`: §4's validation, then `sync.fit_to_music(spec, map)`, then returns the
   fitted timeline (segments and intervals with start times and the track under each), the warnings
-  `service.prepare` would give for a Spotify source, the total duration and the TSS, or the list
-  of errors to fix. Pure: no network, no credentials, no database.
+  `service.prepare` would give for a Spotify source, the total duration and the TSS, and the
+  **quality report** `quality.report(wanted, fitted, map, timeline)` (changes on the music, the
+  longest run in one zone, and issues: standing over 90 s, standing outside 60-80 rpm, cadence
+  changes of more than 15 rpm inside a song, `"beat"` cadences that fell back off the beat), or
+  the list of errors to fix. Pure: no network, no credentials, no database. The report's issues
+  are warnings, never refusals: they let the model fix the draft before submitting and never block
+  `submit_draft`. The library's Spotify warning text that tells the user to set `"crossfade": 0`
+  is reworded or dropped before it reaches the model or the UI, because a classbeat user has no
+  such setting.
 - `submit_draft(draft)`: the same checks; on success the stage ends with that draft (after
-  `fit_to_music`), on failure the errors come back and count as a correction round (§5).
+  `fit_to_music`), on failure the errors come back and count as a correction round (§5). It also
+  returns the quality report, as a warning only.
+
+**Crossfade.** The map's crossfade is the library default, `spotify.CROSSFADE_SEC` = 9 s, for the
+10 s Spotify crossfade MOWL's how-to asks riders to set. In the beta it is a **constant default**,
+not a setting: a per-user setting (for a rider whose device has crossfade off, which would use
+`spotify.with_crossfade(map, 0)` before fitting) is deferred until a tester needs it. A stored
+analysis without a `crossfade` key (made under v0.4.1) is converted with
+`spotify.with_crossfade(map, spotify.CROSSFADE_SEC)` wherever a stored map is used (`get_music`,
+`preview_draft`, `submit_draft`). Analyses with BPM still 0 for some tracks
+(`spotify.unknown_bpm(map)` not empty) are not stored as shared: the next job analyses again, and
+the user is told which tracks have no BPM yet.
 
 TSS, duration and the fitted timing are always computed by the backend from the draft; a number
 the model states is never stored. `workout.validate()` runs again server-side before the revision
@@ -222,8 +249,9 @@ the roadmap §6 purge.)
 
 **`class_revisions.provenance`** (ADR 0005 §1), validated by a Pydantic model: `provider`,
 `model`, `model_answered`, `effort`, `prompt_version` (SHA-256 of the stage's system prompt and
-tool schemas), `classbeat_version`, `mowl_version`, `map_version` (`music.MAP_VERSION`), the
-`agent_runs` ids and summed usage and cost. **`class_revisions.music`**: `{source:
+tool schemas), `classbeat_version`, `mowl_version`, `map_version` (`music.MAP_VERSION`), the map's `crossfade`
+in seconds (`MAP_VERSION` stays 12 across v0.5.0, so `map_version` alone no longer tells a back to
+back map from an overlapped one), the `agent_runs` ids and summed usage and cost. **`class_revisions.music`**: `{source:
 "mowl_spotify_playlist", link_id, fingerprint}`, where the fingerprint is SHA-256 of the analysed
 track list (MOWL track ids and lengths), so a later revision can tell whether the music changed.
 Revisions are deleted with their class or account (Amendment 1).
@@ -237,6 +265,8 @@ only:
 - the music summary: playlist name, per track its index, title, artist, BPM, start and length, and
   the drops and breakdowns with times (Spotify-derived metadata and MOWL's analysis, allowed for
   the beta circle by Amendment 1 and ADR 0010);
+- the quality report of `preview_draft` and `submit_draft` (clock times, rpm, counts and issue
+  codes only: `quality.report` is pure and carries no ids, titles or credentials);
 - the current draft, when revising (M3b).
 
 **Never:** tokens or credentials, the user's email, name or ids, connection data, MOWL or Spotify
@@ -276,7 +306,10 @@ a synthetic music fixture (no real Spotify data: invented titles and BPMs in the
 format), and checks on the stored draft: `validate()` passes, duration within 5 % of the asked
 length and not longer than the music, one cooldown of at least 60 s, the asked sprints, climbs,
 race or FTP test present, zone shares within bounds for the asked intensity, TSS in a range,
-interval starts on downbeats after fitting, cost and turns under the limits. Cases cover the
+interval starts on downbeats after fitting, cost and turns under the limits. S1 uses
+`quality.report` for the checks it covers instead of re-implementing them (interval starts on
+downbeats as `changes_on_music`, standing and cadence limits as its issues), and as an input to
+the M3c eval. Cases cover the
 guided options, missing or too short music, a long free-text brief, and adversarial tool output.
 - **In CI**, every case runs against `FakeProvider` with a recorded script, which tests the
   harness, the tools and the checks (no network).
@@ -328,7 +361,8 @@ guided options, missing or too short music, a long free-text brief, and adversar
 
 - M3a ships one stage; M4 adds two within this contract, and M3c adds adapters behind the same
   interface. A new model is enabled for a tier only after the §11 suite passes.
-- `mowl-workouts` v0.4.1 is needed before the design pipeline (`library.spotify_analysis`).
+- `mowl-workouts` v0.5.0 is needed before the design pipeline (`library.spotify_analysis`, the
+  crossfade and `quality.report`).
 - New dependency: `anthropic` (pinned, audited). New secret: `anthropic_api_key`, worker only.
 - Threat model T54 to T57 follow from this ADR.
 
@@ -339,7 +373,7 @@ Opus Developer (AGENTS.md); every PR gets a fresh Opus Reviewer.
 
 | # | Issue | Owner | Depends on |
 |---|---|---|---|
-| E1 | `mowl-workouts` v0.4.1: `library.spotify_analysis` (read-only half of `spotify_map`, which then uses it); release, rebuild the classbeat wheel | Sonnet | none |
+| E1 | `mowl-workouts` v0.4.1 (adopted at v0.5.0, #105): `library.spotify_analysis` (read-only half of `spotify_map`, which then uses it); release, rebuild the classbeat wheel | Sonnet | none |
 | J1 | Jobs schema: migration for `classes`, `class_revisions` (immutable policy), `jobs` (one open job per class), `job_events`, `external_operations`, `mowl_playlist_links`, `agent_runs`; `20-queue.sql` (single transaction, superuser-only, role attributes, revoke-then-grant) with `classbeat_queue` and the five functions (claim skips spent rows, reap fails them); `db-functions` compose service (password through a run-time `PGPASSFILE`), worktree and CI wiring, a CI step regenerating the expected function `md5` against the pinned image; startup and per-connection queue check (`md5(pg_get_functiondef)`, ACL with the owner's entry); guard 1, guard 2 allowing `classbeat_queue` exactly its table privileges and `USAGE` on `public` (grantee check kept), new guard 9; stack check that `postgres_password` is absent from web, worker, migrate and maint; double-claim, poison-row, racing insert on one operation key (`ON CONFLICT DO NOTHING`, no unique-violation error) and cascade (`job_id` set to `NULL` on immutable revisions) tests | **Opus** | none |
 | J2 | Jobs core: the `classbeat.jobs` issuer, kind registry, transitions with phases (`attempt` reset on approve), `fenced_session` and `LeaseLost` with the AST allowlist guard (the `classbeat.connections` status-write exemption), worker loop (claim only after the queue check passed, `LISTEN jobs_queued`, heartbeat with `GREATEST`, reap, expire, settle), retry classes and backoff, cancellation checkpoints and cancel-on-requeue, lease extension when writing `pending`, shutdown hand-back (`stop_grace_period: 30s`, no new call after SIGTERM, fenced requeue without an attempt under the 5 s `lock_timeout`; a call still in flight after 25 s left `pending`), `operation_busy` requeue without an attempt, `CreditLedger` seam with `UnmeteredLedger`; stale-worker, crash, lease-expiry, resume after a retried pre-approval phase, poison row not blocking other users, cancellation, shutdown and settle-once tests | **Opus** | J1 |
 | J3 | Jobs API: `POST /api/jobs` with idempotency keys, the per-user limit and `class_busy`, `GET /api/jobs/{id}`, cancel, approve (all checks of ADR 0005 §2 including the per-user limit and connection status read through `classbeat.connections`, tested with the test-only kind); 404 tests | **Opus** | J2 |

@@ -28,7 +28,7 @@ from mowlfake import EMAIL, PASSWORD, TICKET, TOKEN, FakeMowl
 
 CONNECT = "/api/connections/mowl"
 SECRETS = (PASSWORD, TICKET, TOKEN)
-VENDORED = Path(__file__).parents[1] / "vendor" / "mowl_workouts-0.4.1-py3-none-any.whl"
+VENDORED = Path(__file__).parents[1] / "vendor" / "mowl_workouts-0.5.0-py3-none-any.whl"
 
 
 class Everything(logging.Handler):
@@ -172,7 +172,7 @@ def test_the_vendored_wheel_has_no_swedebeat_key() -> None:
     names = zipfile.ZipFile(VENDORED).namelist()
     assert "mowl/api.py" in names
     assert not [n for n in names if "swedebeat_app" in n]
-    assert metadata.version("mowl-workouts") == "0.4.1"
+    assert metadata.version("mowl-workouts") == "0.5.0"
     assert not resources.files("mowl").joinpath("_swedebeat_app.json").is_file()
 
 
