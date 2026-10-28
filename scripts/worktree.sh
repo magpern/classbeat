@@ -97,21 +97,34 @@ find_worktree() {
 }
 
 cmd_rm() {
-  local issue="${1:-}" dir branch
+  local issue="${1:-}" dir branch project
   check_issue "$issue"
   dir="$(find_worktree "$issue")" || die "no worktree for issue $issue under $(wt_base)"
-  branch="$(git -C "$dir" rev-parse --abbrev-ref HEAD)"
-  [ -z "$(git -C "$dir" status --porcelain)" ] \
-    || die "$dir has uncommitted or untracked work; commit or discard it first (nothing was changed)"
-  if [ -f "$dir/compose.yaml" ] && [ -f "$dir/.env" ]; then
-    (cd "$dir" && docker compose down -v --remove-orphans --rmi local) \
-      || die "docker compose down failed in $dir; fix that first (nothing was removed)"
+  # Empty on a detached HEAD.
+  branch="$(git -C "$dir" symbolic-ref --short -q HEAD || true)"
+  project="classbeat-$issue"
+  [ -z "$(git -C "$dir" status --porcelain)" ]     || die "$dir has uncommitted or untracked work; commit or discard it first (nothing was changed)"
+  if [ -f "$dir/compose.yaml" ]; then
+    if [ -f "$dir/.env" ]; then
+      project="$(env_value "$dir" COMPOSE_PROJECT_NAME)"
+      project="${project:-classbeat-$issue}"
+    else
+      echo "warning: $dir has no .env; trying project $project anyway so a stack started there is not orphaned" >&2
+    fi
+    if ! (cd "$dir" && docker compose -p "$project" down -v --remove-orphans --rmi local); then
+      echo "worktree.sh: docker compose down failed in $dir; the worktree and branch were kept." >&2
+      echo "  Some containers, networks, volumes or images of project $project may already be gone and some may remain." >&2
+      echo "  Inspect: docker ps -a --filter label=com.docker.compose.project=$project" >&2
+      echo "  Clean up: (cd $dir && docker compose -p $project down -v --remove-orphans --rmi local), then run rm again." >&2
+      exit 1
+    fi
   fi
   # No --force: git refuses a worktree with uncommitted or untracked work (ignored .env and
   # secrets/ do not count).
-  git worktree remove "$dir" \
-    || die "git refused to remove $dir (uncommitted work?). Commit or discard it, then run rm again"
-  if git branch -d "$branch" 2>/dev/null; then
+  git worktree remove "$dir"     || die "git refused to remove $dir (uncommitted work?). Commit or discard it, then run rm again"
+  if [ -z "$branch" ]; then
+    echo "worktree was on a detached HEAD; no branch to delete"
+  elif git branch -d "$branch" 2>/dev/null; then
     echo "deleted branch $branch"
   else
     echo "kept branch $branch: git does not see it as merged (squash merges never are)."

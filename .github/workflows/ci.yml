@@ -265,12 +265,28 @@ jobs:
             --severity HIGH,CRITICAL --ignore-unfixed --exit-code 1 \
             classbeat:ci
 
+  shellcheck:
+    name: Shell scripts
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: bash -n
+        run: for f in scripts/*.sh; do bash -n "$f"; done
+
+      # koalaman/shellcheck v0.10.0, pinned by digest.
+      - name: shellcheck
+        run: |
+          docker run --rm -v "$PWD:/mnt:ro" -w /mnt             koalaman/shellcheck@sha256:2097951f02e735b613f4a34de20c40f937a6c8f18ecb170612c88c34517221fb             scripts/*.sh
+
   # The one required check. Every job above is listed in `needs`; a skipped job passes,
   # anything else fails the gate.
   ci:
     name: ci
     if: always()
-    needs: [secrets, frontend, backend, compose, pip-audit, npm-audit, trivy-fs, trivy-image]
+    needs: [secrets, frontend, backend, compose, shellcheck, pip-audit, npm-audit, trivy-fs, trivy-image]
     runs-on: ubuntu-24.04
     steps:
       - name: All jobs passed
