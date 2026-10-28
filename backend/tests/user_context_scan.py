@@ -29,10 +29,10 @@ NAME = "UserContext"
 TOKEN_NAMES = {"issuer_token", "_ISSUER"}
 CONTEXT_MODULE = "classbeat.context"
 # The only modules whose own source may build a context (ADR 0002 section 1): the issuer in the
-# auth package and the class's own module. The rest of ``classbeat.auth`` (route modules
-# included) is scanned like any other code. The job runner's issuer joins this list when it exists.
+# auth package, the job issuer (ADR 0005 section 3) and the class's own module. The rest of
+# ``classbeat.auth`` and ``classbeat.jobs`` is scanned like any other code.
 DEFINITION = "classbeat/context.py"
-ISSUER_MODULES = ("classbeat/auth/deps.py", DEFINITION)
+ISSUER_MODULES = ("classbeat/auth/deps.py", "classbeat/jobs/issuer.py", DEFINITION)
 # module -> function: refused everywhere / refused where the module handles a UserContext.
 ALWAYS_REFUSED = {"dataclasses": "replace"}
 REFUSED_WITH_CONTEXT = {"functools": "partial"}

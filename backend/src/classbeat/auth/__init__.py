@@ -68,6 +68,7 @@ if TYPE_CHECKING:
         wipe_mail,
         wipe_user,
     )
+    from classbeat.auth.owners import owner_active
     from classbeat.auth.passwords import (
         PasswordHashBusy,
         PasswordHasher,
@@ -150,6 +151,7 @@ _EXPORTS: dict[str, str] = {
     "token_hash": "keys",
     "SecurityNotifier": "notices",
     "register_security_notifier": "notices",
+    "owner_active": "owners",
     "WipeEvent": "operator",
     "mark_wipe_mailed": "operator",
     "pending_wipe_mails": "operator",
@@ -249,6 +251,7 @@ __all__ = [
     "migrate_v1_secrets",
     "normalize_password",
     "operator_contexts",
+    "owner_active",
     "password_buckets",
     "pending_wipe_mails",
     "purge_expired",

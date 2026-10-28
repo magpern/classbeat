@@ -22,7 +22,7 @@ from sqlalchemy.engine import make_url
 from authtools import TEST_KEK, Env
 from smtpfake import SmtpFake
 
-pytest_plugins = ["mfatools", "oauthtools", "mowlfake", "isofake"]  # MFA, OAuth, MOWL fixtures
+pytest_plugins = ["mfatools", "oauthtools", "mowlfake", "isofake", "jobcore"]  # + jobs core
 
 if sys.platform == "win32":
     # psycopg's async mode does not run on the default Windows (proactor) event loop.

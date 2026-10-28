@@ -16,7 +16,7 @@ def test_defaults() -> None:
     assert settings.log_level == "INFO"
     assert settings.database_password is None
     assert settings.static_dir is None
-    assert settings.worker_heartbeat_seconds == 30
+    assert settings.worker_poll_seconds == 2
     assert settings.sqlalchemy_url().drivername == "postgresql+psycopg"
 
 
@@ -26,14 +26,14 @@ def test_reads_environment_with_prefix(monkeypatch: pytest.MonkeyPatch, tmp_path
     monkeypatch.setenv("CLASSBEAT_LOG_LEVEL", "debug")
     monkeypatch.setenv("CLASSBEAT_DATABASE_URL", URL)
     monkeypatch.setenv("CLASSBEAT_STATIC_DIR", str(tmp_path))
-    monkeypatch.setenv("CLASSBEAT_WORKER_HEARTBEAT_SECONDS", "0.5")
+    monkeypatch.setenv("CLASSBEAT_WORKER_POLL_SECONDS", "0.5")
     monkeypatch.setenv("ENVIRONMENT", "dev")  # unprefixed names are ignored
     settings = Settings()
     assert settings.environment == "prod"
     assert settings.log_level == "DEBUG"
     assert settings.database_url.get_secret_value() == URL
     assert settings.static_dir == tmp_path
-    assert settings.worker_heartbeat_seconds == 0.5
+    assert settings.worker_poll_seconds == 0.5
 
 
 def test_empty_environment_value_means_unset(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -46,8 +46,8 @@ def test_empty_environment_value_means_unset(monkeypatch: pytest.MonkeyPatch) ->
     [
         ("environment", "staging"),
         ("log_level", "LOUD"),
-        ("worker_heartbeat_seconds", 0),
-        ("worker_heartbeat_seconds", -1),
+        ("worker_poll_seconds", 0),
+        ("worker_poll_seconds", -1),
     ],
 )
 def test_rejects_invalid_values(name: str, value: object) -> None:

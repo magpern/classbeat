@@ -99,7 +99,7 @@ async def test_the_worker_runs_the_purge_on_its_interval(env: Env) -> None:
     settings = make_settings(
         env.settings.database_url.get_secret_value(),
         purge_interval_seconds=0.05,
-        worker_heartbeat_seconds=0.05,
+        worker_poll_seconds=0.05,
     )
     stop = asyncio.Event()
     task = asyncio.create_task(run_worker(settings, stop))
@@ -119,7 +119,7 @@ async def test_a_failing_purge_does_not_stop_the_worker(unreachable_database_url
     from authtools import make_settings
 
     settings = make_settings(
-        unreachable_database_url, purge_interval_seconds=0.02, worker_heartbeat_seconds=0.02
+        unreachable_database_url, purge_interval_seconds=0.02, worker_poll_seconds=0.02
     )
     stop = asyncio.Event()
     task = asyncio.create_task(run_worker(settings, stop))
