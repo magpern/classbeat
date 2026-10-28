@@ -1,4 +1,4 @@
-import { fireEvent, screen, waitFor, within } from '@testing-library/react'
+import { cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 import { SIGNED_IN, fakeApi, reason } from '../test/fakeApi'
 import { renderAt } from '../test/render'
@@ -155,6 +155,36 @@ describe('account page', () => {
     expect(api.to('POST', '/api/auth/reauth')[0]?.body).toEqual({ password: 'old password here' })
     expect(api.to('POST', '/api/auth/password/change')).toHaveLength(2)
     expect(screen.queryByRole('dialog')).toBeNull()
+  })
+
+  it('returns from a provider re-authentication to a page that says to repeat the change', async () => {
+    goToProvider.mockClear()
+    const api = fakeApi({
+      ...base,
+      'POST /api/auth/password/change': reason(403, 'reauth_required'),
+      'POST /api/auth/oauth/github/start': { authorization_url: 'https://idp.example/a' },
+    })
+    renderAt('/account')
+    await screen.findByRole('button', { name: 'Unlink GitHub' })
+    type('New password', 'a brand new passphrase')
+    type('Repeat the new password', 'a brand new passphrase')
+    fireEvent.click(screen.getByRole('button', { name: 'Save password' }))
+    const dialog = await screen.findByRole('dialog')
+    fireEvent.click(await within(dialog).findByRole('button', { name: 'Confirm with GitHub' }))
+    await waitFor(() => {
+      expect(goToProvider).toHaveBeenCalledWith('https://idp.example/a')
+    })
+    const sent = api.to('POST', '/api/auth/oauth/github/start')[0]?.body as {
+      purpose: string
+      return_to: string
+    }
+    expect(sent.purpose).toBe('reauth')
+    expect(sent.return_to).toBe('/account?oauth=reauthed')
+
+    // The page the provider sends the user back to shows the hint.
+    cleanup()
+    renderAt(sent.return_to)
+    expect(await screen.findByText(/Repeat the change you were making/)).toBeInTheDocument()
   })
 
   it('prompts for a two-factor code on stepup_required', async () => {

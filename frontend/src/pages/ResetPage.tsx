@@ -6,6 +6,7 @@ import {
   type LinkedMethod,
 } from '../api/auth'
 import { errorMessage, providerName } from '../api/messages'
+import { useSession } from '../auth/SessionContext'
 import { Card, Field, Notice, useAction } from '../components/forms'
 import { Link, useMailToken } from '../router/Router'
 
@@ -76,6 +77,7 @@ function ChoosePassword({ token }: { token: string }) {
   const [password, setPassword] = useState('')
   const [done, setDone] = useState(false)
   const action = useAction()
+  const { refresh } = useSession()
 
   useEffect(() => {
     let current = true
@@ -105,6 +107,8 @@ function ChoosePassword({ token }: { token: string }) {
     event.preventDefault()
     void action.run(async () => {
       await completeReset(token, password, [...remove])
+      // A reset revokes every session: update the nav without a reload.
+      await refresh()
       setDone(true)
     })
   }

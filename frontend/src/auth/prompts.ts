@@ -21,3 +21,11 @@ export function useGuard(): Guard {
   if (guard === null) throw new Error('useGuard needs a GuardProvider')
   return guard
 }
+
+/** Appended to the return address of a provider re-authentication; AccountPage shows the hint. */
+export function reauthReturnTo(path: string, search: string): string {
+  const params = new URLSearchParams(search)
+  params.set('oauth', 'reauthed')
+  return `${path}?${params.toString()}`
+}
+

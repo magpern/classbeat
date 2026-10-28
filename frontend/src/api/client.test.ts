@@ -61,6 +61,68 @@ describe('API client', () => {
     expect(errorMessage(error)).toBe('Too many attempts. Try again in 2 minutes.')
   })
 
+  describe('401 after the session rotated (ADR 0003 section 3)', () => {
+    it('repeats a GET once after refetching the session', async () => {
+      let gets = 0
+      const api = fakeApi({
+        'GET /api/x': () => (++gets === 1 ? reason(401, 'not_authenticated') : { ok: true }),
+      })
+      expect(await get('/api/x')).toEqual({ ok: true })
+      expect(api.to('GET', '/api/x')).toHaveLength(2)
+      expect(api.to('GET', '/api/auth/session')).toHaveLength(1)
+    })
+
+    it('gives up after one repeat', async () => {
+      const api = fakeApi({ 'GET /api/x': reason(401, 'not_authenticated') })
+      await expect(get('/api/x')).rejects.toMatchObject({ status: 401 })
+      expect(api.to('GET', '/api/x')).toHaveLength(2)
+    })
+
+    it('repeats a refused POST with the new CSRF token', async () => {
+      let tokens = 0
+      let posts = 0
+      const api = fakeApi({
+        'GET /api/auth/session': () => ({ authenticated: true, csrf_token: `t${String(++tokens)}` }),
+        'POST /api/x': (_b: unknown, headers: Headers) =>
+          ++posts === 1 ? reason(401, 'not_authenticated') : { seen: headers.get('X-CSRF-Token') },
+      })
+      expect(await post('/api/x')).toEqual({ seen: 't2' })
+      expect(api.to('POST', '/api/x')).toHaveLength(2)
+    })
+
+    it('never repeats wrong credentials', async () => {
+      const api = fakeApi({ 'POST /api/auth/login': reason(401, 'invalid_credentials') })
+      await expect(post('/api/auth/login')).rejects.toMatchObject({ reason: 'invalid_credentials' })
+      expect(api.to('POST', '/api/auth/login')).toHaveLength(1)
+    })
+
+    it('never repeats a POST whose 401 carries the result of work already done', async () => {
+      const api = fakeApi({
+        'POST /api/x': json(
+          { detail: { reason: 'not_authenticated' }, enrolled: true, recovery_codes: ['a'] },
+          401,
+        ),
+      })
+      await expect(post('/api/x')).rejects.toMatchObject({ status: 401 })
+      expect(api.to('POST', '/api/x')).toHaveLength(1)
+    })
+
+    it('never repeats a POST 401 without the not_authenticated reason', async () => {
+      const api = fakeApi({ 'POST /api/x': json({}, 401) })
+      await expect(post('/api/x')).rejects.toMatchObject({ status: 401 })
+      expect(api.to('POST', '/api/x')).toHaveLength(1)
+    })
+
+    it('reports the original 401 when the session cannot be refetched', async () => {
+      const api = fakeApi({
+        'GET /api/x': reason(401, 'not_authenticated'),
+        'GET /api/auth/session': reason(500, 'boom'),
+      })
+      await expect(get('/api/x')).rejects.toMatchObject({ status: 401, reason: 'not_authenticated' })
+      expect(api.to('GET', '/api/x')).toHaveLength(1)
+    })
+  })
+
   it('returns undefined for an empty 204 answer', async () => {
     fakeApi({ 'POST /api/x': new Response(null, { status: 204 }) })
     expect(await post('/api/x')).toBeUndefined()

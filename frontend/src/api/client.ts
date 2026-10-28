@@ -80,9 +80,24 @@ export interface RequestOptions {
 }
 
 /**
+ * Whether a 401 may be repeated after refetching the session (ADR 0003 section 3: a request in
+ * flight while the session rotated carries the old token and gets 401). Safe methods can always
+ * be repeated. An unsafe request only when the server refused it before acting: the plain
+ * `not_authenticated` answer of the auth dependency, whose body is exactly `{detail: {reason}}`.
+ * Wrong credentials (`invalid_credentials`) are never repeated, nor is a 401 that carries data
+ * of work already done (the TOTP confirmation returns its recovery codes next to it).
+ */
+function mayRetryUnauthorized(unsafe: boolean, reason: string | null, body: unknown): boolean {
+  if (!unsafe) return true
+  if (reason !== 'not_authenticated') return false
+  return typeof body === 'object' && body !== null && Object.keys(body).join() === 'detail'
+}
+
+/**
  * One API call. Unsafe methods carry `X-CSRF-Token`; a 403 that blames the token is retried
- * once with a fresh one (the session may have rotated). Returns the parsed JSON, or
- * `undefined` for an empty answer. Anything but 2xx throws an `ApiError`.
+ * once with a fresh one (the session may have rotated), and a 401 once after refetching the
+ * session when `mayRetryUnauthorized` allows it. Returns the parsed JSON, or `undefined` for an
+ * empty answer. Anything but 2xx throws an `ApiError`.
  */
 export async function request(
   method: string,
@@ -90,7 +105,9 @@ export async function request(
   options: RequestOptions = {},
 ): Promise<unknown> {
   const unsafe = !SAFE_METHODS.has(method)
-  for (let attempt = 0; ; attempt++) {
+  let csrfRetried = false
+  let sessionRetried = false
+  for (;;) {
     const headers: Record<string, string> = { Accept: 'application/json' }
     if (options.body !== undefined) headers['Content-Type'] = 'application/json'
     if (unsafe) headers[CSRF_HEADER] = await currentCsrfToken()
@@ -106,9 +123,24 @@ export async function request(
       return body
     }
     const reason = reasonOf(body)
-    if (unsafe && attempt === 0 && response.status === 403 && reason?.startsWith('csrf_token')) {
+    if (unsafe && !csrfRetried && response.status === 403 && reason?.startsWith('csrf_token')) {
+      csrfRetried = true
       csrfToken = null
       continue
+    }
+    if (
+      response.status === 401 &&
+      !sessionRetried &&
+      !options.signal?.aborted &&
+      mayRetryUnauthorized(unsafe, reason, body)
+    ) {
+      sessionRetried = true
+      try {
+        await fetchSessionJson(options.signal)
+        continue
+      } catch {
+        // The session cannot be read: report the original 401.
+      }
     }
     throw new ApiError(response.status, reason, retryAfterOf(response), body)
   }
