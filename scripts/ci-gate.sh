@@ -8,16 +8,23 @@
 # `changes` and `checks` must have succeeded. Every other job must have succeeded, or have
 # been skipped while the `changes` output that gates it is "false". A job that is skipped,
 # cancelled or failed while its filter is true fails the gate, and so does a missing job.
+# Fails closed: any malformed input or failing jq call fails the gate.
 set -euo pipefail
 
 : "${NEEDS:?NEEDS is required}"
 RESULTS="${RESULTS:-}"
 echo "results: $RESULTS"
 
+die() { echo "::error::$*"; exit 1; }
+
+# NEEDS must be an object of objects.
+jq -e 'type == "object" and all(.[]; type == "object")' <<< "$NEEDS" > /dev/null 2>&1 \
+  || die "NEEDS is not a JSON object of jobs"
+
 # An empty or short result list must not pass vacuously.
 want="$(jq 'length' <<< "$NEEDS" | tr -d '\r')"
 got="$(wc -w <<< "$RESULTS")"
-[ "$want" -gt 0 ] && [ "$got" -eq "$want" ] || { echo "::error::expected $want results, got $got"; exit 1; }
+[ "$want" -gt 0 ] && [ "$got" -eq "$want" ] || die "expected $want results, got $got"
 
 # The `changes` output that gates a job; empty for jobs that always run.
 filter_of() {
@@ -29,31 +36,39 @@ filter_of() {
   esac
 }
 
-result_of() { jq -r --arg j "$1" '.[$j].result // "missing"' <<< "$NEEDS" | tr -d '\r'; }
-filter_value() { jq -r --arg f "$1" '.changes.outputs[$f] // "missing"' <<< "$NEEDS" | tr -d '\r'; }
+# One jq call, one line per job: job, result, and the three filter outputs (backend, frontend,
+# stack). Absent values are "missing", empty ones "empty". A failing jq fails the gate: this is a
+# plain assignment, so set -e sees its exit status.
+table="$(jq -r '
+  def v: if . == null then "missing" elif . == "" then "empty" else tostring end;
+  (.changes.outputs // {}) as $o
+  | to_entries[]
+  | [.key, (.value.result | v), ($o.backend | v), ($o.frontend | v), ($o.stack | v)]
+  | join(" ")' <<< "$NEEDS" | tr -d '\r')"
 
 fail=0
 for job in changes checks backend frontend e2e; do
-  if [ "$(result_of "$job")" = missing ]; then
+  if ! grep -q "^$job " <<< "$table"; then
     echo "::error::job $job is not in needs"
     fail=1
   fi
 done
 
-while read -r job; do
-  result="$(result_of "$job")"
+while read -r job result fb ff fs; do
+  [ "$result" != success ] || continue
   filter="$(filter_of "$job")"
-  if [ "$result" = success ]; then
-    continue
-  elif [ "$result" = skipped ] && [ -n "$filter" ] && [ "$(filter_value "$filter")" = false ]; then
+  case "$filter" in
+    backend) value="$fb" ;;
+    frontend) value="$ff" ;;
+    stack) value="$fs" ;;
+    *) value="" ;;
+  esac
+  if [ -n "$filter" ] && [ "$result" = skipped ] && [ "$value" = false ]; then
     echo "$job skipped: its filter ($filter) is false"
-  elif [ -n "$filter" ]; then
-    echo "::error::$job finished as $result (filter $filter is $(filter_value "$filter"))"
-    fail=1
   else
-    echo "::error::$job finished as $result"
+    echo "::error::$job finished as $result${filter:+ (filter $filter is $value)}"
     fail=1
   fi
-done < <(jq -r 'keys[]' <<< "$NEEDS" | tr -d '\r')
+done <<< "$table"
 
 exit "$fail"

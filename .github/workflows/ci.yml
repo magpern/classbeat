@@ -176,7 +176,11 @@ jobs:
 
       - name: Trivy repository scan
         run: |
-          "$RUNNER_TEMP/trivy" fs             --scanners vuln,misconfig             --severity HIGH,CRITICAL --ignore-unfixed --exit-code 1             --skip-dirs node_modules --skip-dirs .venv             .
+          "$RUNNER_TEMP/trivy" fs \
+            --scanners vuln,misconfig \
+            --severity HIGH,CRITICAL --ignore-unfixed --exit-code 1 \
+            --skip-dirs node_modules --skip-dirs .venv \
+            .
 
   frontend:
     name: Frontend
@@ -254,7 +258,7 @@ jobs:
 
       - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
         with:
-          # Must equal the ghcr.io/astral-sh/uv tag in the Dockerfile (checked by `workflows`).
+          # Must equal the ghcr.io/astral-sh/uv tag in the Dockerfile (checked by the `checks` job).
           version: 0.13.6
 
       - name: Install dependencies
@@ -361,7 +365,9 @@ jobs:
         run: |
           set -euo pipefail
           image="$(docker inspect --format '{{.Image}}' "$(docker compose ps -q web)")"
-          "$RUNNER_TEMP/trivy" image             --severity HIGH,CRITICAL --ignore-unfixed --exit-code 1             "$image"
+          "$RUNNER_TEMP/trivy" image \
+            --severity HIGH,CRITICAL --ignore-unfixed --exit-code 1 \
+            "$image"
 
       - run: npm ci
       - run: npm run typecheck

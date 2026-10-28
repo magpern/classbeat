@@ -317,7 +317,7 @@ picks up new advisories) and on `workflow_dispatch`; the last two run everything
 
 | Job | Runs | What it does |
 |---|---|---|
-| `changes` | always | `scripts/ci-changes.sh`: `git diff` against the PR base gives the outputs `backend` (`backend/`, `docker/postgres/`), `frontend` (`frontend/`), `stack` (`backend/`, `frontend/`, `e2e/`, `docker/`, `Dockerfile`, `compose*.yaml`, `.dockerignore`, `scripts/worktree.sh`) and `all`. `all` is true on schedule/dispatch and when `.github/` changes (CI changes test themselves) and makes the others true |
+| `changes` | always | `scripts/ci-changes.sh`: `git diff` against the PR base gives the outputs `backend` (`backend/`, `docker/postgres/`), `frontend` (`frontend/`), `stack` (`backend/`, `frontend/`, `e2e/`, `docker/`, `Dockerfile`, `compose*.yaml`, `.dockerignore`, `.env.example`, `scripts/worktree.sh`) and `all`. Renames count at both paths; names are read NUL-separated; if the diff cannot be computed everything runs. `all` is true on schedule/dispatch and when `.github/`, `.gitattributes` or `scripts/ci-changes.sh`, `ci-gate.sh` or `test-ci-gate.sh` change (CI changes test themselves) and makes the others true |
 | `checks` | always | the cheap checks as steps of one job (below) |
 | `backend` | `backend` | ruff, format, pyright, pytest against Postgres |
 | `frontend` | `frontend` | lint, typecheck, Vitest, build |
@@ -329,7 +329,7 @@ A docs-only PR therefore runs `changes`, `checks` and `ci` (plus `pr-title`).
 **The `ci` gate** (`scripts/ci-gate.sh`, tested by `scripts/test-ci-gate.sh` in `checks`) fails
 unless `changes` and `checks` succeeded and every other job either succeeded or was skipped while
 its filter output is `false`. A job that is needed (filter `true`) but skipped, cancelled or failed
-fails the gate, and so does a job missing from `needs` or a short result list. Add a new job to
+fails the gate, and so does a job missing from `needs`, a short result list or malformed input (it fails closed). Add a new job to
 `needs` of `ci`, to `ci-gate.sh` (and its filter) and to the tests.
 
 ### Security checks (CI)

@@ -5,35 +5,47 @@
 #   EVENT_NAME  github.event_name; anything but pull_request means "run everything"
 #   BASE_SHA    pull request base commit    HEAD_SHA  pull request head commit
 #
-# Local try-out: EVENT_NAME=pull_request BASE_SHA=origin/main HEAD_SHA=HEAD scripts/ci-changes.sh
+# When the changed files cannot be determined, everything runs. Local try-out:
+#   EVENT_NAME=pull_request BASE_SHA=origin/main HEAD_SHA=HEAD scripts/ci-changes.sh
 set -euo pipefail
 
 : "${EVENT_NAME:?EVENT_NAME is required}"
 out="${GITHUB_OUTPUT:-/dev/stdout}"
 
-files=""
-if [ "$EVENT_NAME" = pull_request ]; then
-  : "${BASE_SHA:?BASE_SHA is required}" "${HEAD_SHA:?HEAD_SHA is required}"
-  # Three dots: what the branch changed since it left the base, not what the base gained.
-  files="$(git diff --name-only "${BASE_SHA}...${HEAD_SHA}")"
-  echo "changed files:" >&2
-  echo "  ${files//$'\n'/$'\n'  }" >&2
-fi
+# Path filters (extended regexes, matched against each whole path).
+re_all='^(\.github/|\.gitattributes$|scripts/(ci-changes|ci-gate|test-ci-gate)\.sh$)'
+re_backend='^(backend/|docker/postgres/)'
+re_frontend='^frontend/'
+re_stack='^((backend|frontend|e2e|docker)/|scripts/worktree\.sh$|Dockerfile$|compose[^/]*\.ya?ml$|\.dockerignore$|\.env\.example$)'
 
-# matches <extended regex>: true when any changed file matches.
-matches() {
-  if grep -Eq "$1" <<< "$files"; then echo true; else echo false; fi
-}
+backend=false
+frontend=false
+stack=false
+all=false
 
-if [ "$EVENT_NAME" != pull_request ] || [ "$(matches '^\.github/')" = true ]; then
+if [ "$EVENT_NAME" != pull_request ]; then
   all=true
 else
-  all=false
+  : "${BASE_SHA:?BASE_SHA is required}" "${HEAD_SHA:?HEAD_SHA is required}"
+  # Three dots: what the branch changed since it left the base, not what the base gained.
+  # --no-renames: a moved file counts at its old and its new path. -z and quotePath=false:
+  # names are NUL-separated and never quoted, whatever characters they hold.
+  list="$(mktemp)"
+  trap 'rm -f "$list"' EXIT
+  if git -c core.quotePath=false diff --name-only --no-renames -z "${BASE_SHA}...${HEAD_SHA}" > "$list"; then
+    echo "changed files:" >&2
+    while IFS= read -r -d '' f; do
+      printf '  %q\n' "$f" >&2
+      [[ $f =~ $re_all ]] && all=true
+      [[ $f =~ $re_backend ]] && backend=true
+      [[ $f =~ $re_frontend ]] && frontend=true
+      [[ $f =~ $re_stack ]] && stack=true
+    done < "$list"
+  else
+    echo "::warning::could not diff ${BASE_SHA}...${HEAD_SHA}; running everything" >&2
+    all=true
+  fi
 fi
-
-backend="$(matches '^(backend/|docker/postgres/)')"
-frontend="$(matches '^frontend/')"
-stack="$(matches '^((backend|frontend|e2e|docker)/|scripts/worktree\.sh$|Dockerfile$|compose[^/]*\.ya?ml$|\.dockerignore$)')"
 
 if [ "$all" = true ]; then
   backend=true
