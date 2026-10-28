@@ -1,5 +1,30 @@
 # classbeat roadmap: a class designer for Intelligent Cycling (MOWL) as a web app
 
+## Amendment 1 (2026-10-28, owner decisions)
+
+Revision 6 below stays as written; where it differs, this amendment wins. Recorded in
+[ADR 0010](adr/0010-live-activation-permissions.md) and issue #61.
+
+- **Providers not contacted; beta on the owner's risk acceptance.** The beta circle is the
+  owner and friends the owner invites (invite-only, free, non-commercial). For it:
+  - **A5** ("permitted by the terms of every provider") is replaced by the owner's acceptance
+    of the risks listed in ADR 0010. A1 to A4 are unchanged. A5 applies again to anything
+    beyond the circle and to M7.
+  - **Verification, live activation gate:** condition (2) reads ADR 0010 as amended, which
+    allows every feature for the circle once technically complete. Condition (1), the owner's
+    authorization of each agent-run live test, is unchanged, and the owner switches features on
+    for the testers.
+  - **§5 model data:** for the circle, Spotify-derived track metadata and MOWL's analysis may
+    be sent to the model; tokens, emails and account data never are.
+  - **§10, track F, milestone F:** the questions are not sent; F is closed as not pursued.
+    The questions are kept for a later public or paid phase.
+  - **§6 retention:** Spotify-derived track lists and timing are kept only with the class and
+    deleted with it or the account (ADR 0010).
+- **Developers by risk.** Security-critical PRs (encryption and keys, jobs with leases and
+  fencing, Spotify OAuth, approvals and external writes) get an Opus Developer; the rest a
+  Sonnet Developer ("Development process", Roles). The Reviewer is a fresh Opus context
+  either way.
+
 *Revision 6 — frozen for implementation. Song picking is a **core** feature with Claude
 choosing the final songs from real BPM and sections (the pool stage from `mowl-workouts`);
 the instructor approves once, then the class is created hands-off. **Spotify is

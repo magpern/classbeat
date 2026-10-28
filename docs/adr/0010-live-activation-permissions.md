@@ -45,17 +45,24 @@ Accepted risks (also in the threat model):
   developer app (BYOK), whose fit with the one-Client-ID-per-application rule (§VI 1(b)) is
   unconfirmed. The likely consequence is Spotify disabling a developer app or, less likely,
   an account; each tester carries it for their own app and account.
+- **Spotify, business use and storage:** commercial use is not permitted for developer apps
+  and the policy restricts products for businesses (§III 10, §IV 2), and Spotify Content may not
+  be stored indefinitely (§IV 3.1(a)). The beta is free and non-commercial; testers play
+  Spotify music only where their own Spotify terms allow it (not publicly in a gym); track lists
+  and timing are kept only with the class and deleted with it or the account.
 - **MOWL:** the API is unofficial and undocumented. MOWL may block an account or change the
   API without notice, breaking the app until it is adapted.
 
-The live activation gate still requires, for every agent-run test against a real account, the
-owner's authorization for that specific run (AGENTS.md, safety envelope). Anything beyond the
-circle needs the providers first:
+Features are switched on for the testers by the owner (the deploy and its settings); agents
+never switch a live path on themselves. The live activation gate still requires, for every
+agent-run test against a real account, the owner's authorization for that specific run
+(AGENTS.md, safety envelope). Anything beyond the circle needs the providers first:
 
 | Feature | Beta circle (now) | Beyond the circle |
 |---|---|---|
 | Save and update a class in the user's own MOWL account | Allowed | Needs MOWL M1, M3 |
-| Design on music in MOWL, from Spotify or not, with Claude | Allowed | Needs MOWL M1, Spotify S2, S3 |
+| Design on music in MOWL that comes from Spotify, with Claude | Allowed | Needs MOWL M1, Spotify S2, S3 |
+| Design on music in MOWL that doesn't come from Spotify, with Claude | Allowed | Needs MOWL M1 |
 | Spotify sign-in with the user's own Client ID (BYOK) | Allowed | Needs Spotify S1 |
 | Claude choosing songs from Spotify metadata and MOWL analysis | Allowed | Needs Spotify S2, S3 |
 | Creating the pool and final playlists in a user's Spotify account (private) | Allowed | Needs Spotify S1, S2, S3 |

@@ -5,7 +5,7 @@ songs and designs it, and the class is saved to their Intelligent Cycling (MOWL)
 It is built autonomously by agents. The owner (`@magpern`) makes product decisions and gives
 external approvals; agents do everything else.
 
-**[docs/roadmap.md](docs/roadmap.md) is the frozen plan (Revision 6). If this file and the
+**[docs/roadmap.md](docs/roadmap.md) is the frozen plan (Revision 6, with its dated amendments at the top). If this file and the
 roadmap differ, the roadmap wins.** Section numbers (§1, §4, M2 …) refer to it.
 
 ## Roles
