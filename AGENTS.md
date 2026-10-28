@@ -306,37 +306,63 @@ stack trusts the docker network as proxy so each test presents its own `X-Forwar
 (separate rate limits). Sign-up is limited to 5 per IP and hour: use `down -v` between full runs
 of a stack that is not given per-test addresses.
 
-CI runs the same in the `e2e` job and uploads `playwright-report` only on failure.
+CI runs the same in the `e2e` job (when the stack changed) and uploads `playwright-report` only on failure.
+
+### CI: what runs, and when
+
+CI is expensive (every job bills at least a minute, ~15 minutes for a full run), so a pull request
+only runs what its change needs. `ci.yml` has no `push` trigger: `main` only receives squashes of
+an up-to-date, already-tested branch. It runs on `pull_request`, weekly (Monday 04:00 UTC, which
+picks up new advisories) and on `workflow_dispatch`; the last two run everything.
+
+| Job | Runs | What it does |
+|---|---|---|
+| `changes` | always | `scripts/ci-changes.sh`: `git diff` against the PR base gives the outputs `backend` (`backend/`, `docker/postgres/`), `frontend` (`frontend/`), `stack` (`backend/`, `frontend/`, `e2e/`, `docker/`, `Dockerfile`, `compose*.yaml`, `.dockerignore`, `scripts/worktree.sh`) and `all`. `all` is true on schedule/dispatch and when `.github/` changes (CI changes test themselves) and makes the others true |
+| `checks` | always | the cheap checks as steps of one job (below) |
+| `backend` | `backend` | ruff, format, pyright, pytest against Postgres |
+| `frontend` | `frontend` | lint, typecheck, Vitest, build |
+| `e2e` | `stack` | the stack, the checks below, the Trivy image scan, then Playwright |
+| `ci` | always | the required check; see the gate below |
+
+A docs-only PR therefore runs `changes`, `checks` and `ci` (plus `pr-title`).
+
+**The `ci` gate** (`scripts/ci-gate.sh`, tested by `scripts/test-ci-gate.sh` in `checks`) fails
+unless `changes` and `checks` succeeded and every other job either succeeded or was skipped while
+its filter output is `false`. A job that is needed (filter `true`) but skipped, cancelled or failed
+fails the gate, and so does a job missing from `needs` or a short result list. Add a new job to
+`needs` of `ci`, to `ci-gate.sh` (and its filter) and to the tests.
 
 ### Security checks (CI)
 
-Each is its own job in `ci.yml` and in the `ci` gate:
+The `checks` job runs these as steps; the image scan is a step of `e2e`:
 
-| Job | What it checks |
+| Step | What it checks |
 |---|---|
-| `secrets` | gitleaks over the whole history |
-| `pip-audit` | `uv export --frozen` (production, then all groups) through `pip-audit` (pinned) |
-| `npm-audit` | `npm audit --audit-level=high` in `frontend/` and `e2e/` |
-| `trivy-fs` | Trivy on the repository (vulnerabilities, Dockerfile misconfiguration; compose is not scanned) |
-| `trivy-image` | Trivy on the image built in the job (never pushed) |
-| `e2e` | builds the stack once: `/api/ready` and the SPA answer, `web` and `worker` run as non-root, no secret value appears in `docker inspect`; then Playwright runs |
-| `workflows` | actionlint (with shellcheck) on every workflow; `setup-uv`'s version equals the Dockerfile's uv tag |
+| Secret scan | gitleaks over the whole history |
+| bash -n, shellcheck | every `scripts/*.sh` |
+| CI gate and change-filter tests | `scripts/test-ci-gate.sh` |
+| uv version, actionlint | `setup-uv`'s version equals the Dockerfile's uv tag; actionlint (with shellcheck) on every workflow |
+| pip-audit | `uv export --frozen` (production, then all groups) through `pip-audit` (pinned) |
+| npm audit | `npm audit --audit-level=high` in `frontend/` and `e2e/` |
+| Trivy repository scan | Trivy on the repository (vulnerabilities, Dockerfile misconfiguration; compose is not scanned) |
+| `e2e`: stack checks | builds the stack once: `/api/ready` and the SPA answer, `web` and `worker` run as non-root, no secret value appears in `docker inspect` |
+| `e2e`: Trivy image scan | Trivy on the image the running stack was built from (never pushed); then Playwright runs |
 
 Trivy and gitleaks are checksum-verified release binaries. `pip-audit` (exact version) lives in
 the `audit` dependency group of `backend/pyproject.toml`, so its own dependencies are hash-locked in
 `uv.lock` and CI installs it with `uv sync --frozen --only-group audit`; the runtime image
 (`uv sync --locked --no-dev`) never contains it. The audited requirements are exported with hashes
 and checked with `--require-hashes`, for every group (`--all-groups`, so `audit` itself too).
-`setup-uv` is pinned to the same uv version as the Dockerfile; the `workflows` job fails if they
+`setup-uv` is pinned to the same uv version as the Dockerfile; the `checks` job fails if they
 differ.
 
 Trivy fails on HIGH and CRITICAL findings that have a fix available (`--ignore-unfixed`).
 **Accepted risk:** unfixed HIGH/CRITICAL findings are not gated. They are revisited at the M6
-security review, and once a fix appears Trivy starts failing on them. `trivy-fs` scans lockfiles and
+security review, and once a fix appears Trivy starts failing on them. The repository scan covers lockfiles and
 the Dockerfile (misconfiguration); it does not cover `compose.yaml`.
 
 Every GitHub Action is pinned by full commit SHA with the version in a trailing comment.
-Dependabot (`.github/dependabot.yml`, weekly) keeps Actions, uv, npm and the Dockerfile and compose
+Dependabot (`.github/dependabot.yml`, weekly, one grouped PR per ecosystem) keeps Actions, uv, npm and the Dockerfile and compose
 images current, with `build(deps)` and `ci(deps)` commit prefixes. It does not track Debian packages
 inside the base image: when Trivy fails on one, bump the base image tag in the Dockerfile.
 
