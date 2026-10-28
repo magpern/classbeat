@@ -1,18 +1,29 @@
 """Guard 8 of ADR 0003 section 1: only ``classbeat.auth`` touches the account tables.
 
+Purpose and limits. Like ADR 0002's AST guard for ``UserContext``, this catches *accidental*
+misuse and makes misuse visible in review; it does not stop deliberately malicious or
+obfuscated code. Known limits: rebinding through arbitrary variables or containers, computed
+``getattr`` names, ``sys.modules`` lookups, ``exec``/``eval``, SQL assembled from pieces at run
+time, and anything else a static scan of one file cannot follow. The review gate (AGENTS.md)
+catches those.
+
 ``scan_source`` parses Python source (a module outside ``classbeat/auth/``) and returns what it
 refuses. Outside the package only the public API of ``classbeat.auth`` itself may be used:
 
 - any import of a ``classbeat.auth`` submodule (``from classbeat.auth.sessions import ...``,
   ``import classbeat.auth.purge as p``, relative forms, ``importlib.import_module`` and
-  ``__import__`` of one, absolute or relative with ``package``);
+  ``__import__`` of one, absolute or relative with a package);
 - any imported name that is a table, ``metadata``, a submodule name or ``*`` from
-  ``classbeat.auth``; attribute access to such a name on an alias of ``classbeat.auth`` (or on
-  ``classbeat.auth`` itself); ``getattr(<alias>, "<such a name>")``;
-- ``table("<auth table>")`` and ``Table("<auth table>", ...)`` (sqlalchemy);
-- any string that is raw SQL naming one of the tables after ``FROM``, ``JOIN``, ``INTO``,
-  ``UPDATE``, ``TABLE``, ``TRUNCATE``, ``ONLY`` or ``LOCK`` (optionally schema-qualified or
-  quoted).
+  ``classbeat.auth``; attribute access to such a name on ``classbeat.auth``, on an alias of it,
+  on ``<alias of classbeat>.auth`` (``import classbeat as c; c.auth.tables``), or directly on
+  ``importlib.import_module("classbeat.auth")`` (also when assigned to a name); and
+  ``getattr(<such a root>, "<such a name>")``;
+- ``vars(<root>)``, ``<root>.__dict__`` and ``pkgutil.resolve_name("classbeat.auth...")``;
+- ``table(...)`` and ``Table(...)`` (sqlalchemy) naming an auth table, as first argument or as
+  ``name=``;
+- any string constant (also the literal parts of f-strings) that contains an SQL verb as a whole
+  word (select, insert, update, delete, copy, truncate, alter, merge, with, lock, from, join,
+  into) and an auth table name as a whole word, optionally double-quoted and schema-qualified.
 
 The worker's purge and the CLI call functions in ``classbeat.auth``; they never get here.
 """
@@ -57,9 +68,13 @@ SUBMODULES = frozenset(
     }
 )
 FORBIDDEN_NAMES = frozenset(TABLE_NAMES) | {"metadata"} | SUBMODULES
-SQL_NAMING_TABLE = re.compile(
-    r"\b(?:from|join|into|update|table|truncate|only|lock|delete\s+from)\s+"
-    r"(?:public\s*\.\s*)?[\"`]?(" + "|".join(TABLE_NAMES) + r")\b",
+SQL_VERBS = re.compile(
+    r"\b(?:select|insert|update|delete|copy|truncate|alter|merge|with|lock|from|join|into)\b",
+    re.IGNORECASE,
+)
+# A table name as a whole word, optionally quoted and schema-qualified ("public"."users").
+SQL_TABLE = re.compile(
+    r"(?<![\w$])(?:\"?public\"?\s*\.\s*)?\"?(" + "|".join(TABLE_NAMES) + r")\"?(?![\w$])",
     re.IGNORECASE,
 )
 
@@ -86,17 +101,69 @@ def _module_of(node: ast.ImportFrom) -> str:
     return module
 
 
+def _is_import_call(node: ast.AST, target: str = AUTH_PACKAGE) -> bool:
+    """``importlib.import_module("classbeat.auth")`` or ``__import__("classbeat.auth", ...)``."""
+    if not isinstance(node, ast.Call) or not node.args:
+        return False
+    name = (_dotted(node.func) or "").rsplit(".", 1)[-1]
+    first = node.args[0]
+    return (
+        name in ("import_module", "__import__")
+        and isinstance(first, ast.Constant)
+        and first.value == target
+    )
+
+
+class _Roots:
+    """Local names bound to the ``classbeat`` package and to ``classbeat.auth``."""
+
+    def __init__(self, tree: ast.AST) -> None:
+        self.package: set[str] = set()
+        self.auth: set[str] = set()
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                for alias in node.names:
+                    if alias.name == "classbeat":
+                        self.package.add(alias.asname or "classbeat")
+                    elif alias.name == AUTH_PACKAGE and alias.asname:
+                        self.auth.add(alias.asname)
+            elif isinstance(node, ast.ImportFrom):
+                module = _module_of(node)
+                from_package = module == "classbeat" or bool(node.level and not module)
+                for alias in node.names:
+                    if alias.name == "classbeat" and (node.level or not module):
+                        self.package.add(alias.asname or "classbeat")
+                    elif alias.name == "auth" and from_package:
+                        self.auth.add(alias.asname or "auth")
+            elif isinstance(node, ast.Assign):
+                names = [t.id for t in node.targets if isinstance(t, ast.Name)]
+                if _is_import_call(node.value):
+                    self.auth.update(names)
+                elif _is_import_call(node.value, "classbeat"):
+                    self.package.update(names)
+
+    def is_auth(self, node: ast.AST) -> bool:
+        """True when ``node`` evaluates to the ``classbeat.auth`` package."""
+        if _is_import_call(node):
+            return True
+        dotted = _dotted(node)
+        if dotted is None:
+            return False
+        head, _, rest = dotted.partition(".")
+        if head in self.package:
+            dotted = "classbeat" + ("." + rest if rest else "")
+        return dotted == AUTH_PACKAGE or dotted in self.auth
+
+
 def scan_source(source: str) -> list[tuple[int, str]]:
     tree = ast.parse(source)
     found: list[tuple[int, str]] = []
-    aliases: set[str] = set()  # local names bound to the classbeat.auth package
+    roots = _Roots(tree)
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):
             for alias in node.names:
                 if _is_auth_submodule(alias.name):
                     found.append((node.lineno, f"import of {alias.name}"))
-                elif alias.name == AUTH_PACKAGE and alias.asname:
-                    aliases.add(alias.asname)
         elif isinstance(node, ast.ImportFrom):
             module = _module_of(node)
             if _is_auth_submodule(module):
@@ -105,23 +172,17 @@ def scan_source(source: str) -> list[tuple[int, str]]:
                 for alias in node.names:
                     if alias.name == "*" or alias.name in FORBIDDEN_NAMES:
                         found.append((node.lineno, f"import of {alias.name} from {AUTH_PACKAGE}"))
-            elif module == "classbeat" or (node.level and not module):
-                for alias in node.names:
-                    if alias.name == "auth":
-                        aliases.add(alias.asname or "auth")
-    roots = aliases | {AUTH_PACKAGE}
-    for node in ast.walk(tree):
-        if isinstance(node, ast.Attribute) and node.attr in FORBIDDEN_NAMES:
-            dotted = _dotted(node)
-            if dotted is not None and dotted.rsplit(".", 1)[0] in roots:
-                found.append((node.lineno, f"reference to {dotted}"))
+        elif isinstance(node, ast.Attribute):
+            if node.attr in FORBIDDEN_NAMES and roots.is_auth(node.value):
+                found.append((node.lineno, f"reference to {node.attr} on classbeat.auth"))
+            elif node.attr == "__dict__" and roots.is_auth(node.value):
+                found.append((node.lineno, "__dict__ of classbeat.auth"))
         elif isinstance(node, ast.Call):
             found += _call_findings(node, roots)
         elif isinstance(node, ast.Constant) and isinstance(node.value, str):
             if node.value == TABLES_MODULE or _is_auth_submodule(node.value):
                 found.append((node.lineno, f"string reference to {node.value}"))
-            match = SQL_NAMING_TABLE.search(node.value)
-            if match is not None:
+            if SQL_VERBS.search(node.value) and (match := SQL_TABLE.search(node.value)):
                 found.append((node.lineno, f"raw SQL naming table {match.group(1)}"))
     return sorted(set(found))
 
@@ -131,7 +192,13 @@ def _str_args(node: ast.Call) -> list[str]:
     return [v.value for v in values if isinstance(v, ast.Constant) and isinstance(v.value, str)]
 
 
-def _call_findings(node: ast.Call, roots: set[str]) -> list[tuple[int, str]]:
+def _table_name_arg(node: ast.Call) -> ast.AST | None:
+    if node.args:
+        return node.args[0]
+    return next((k.value for k in node.keywords if k.arg == "name"), None)
+
+
+def _call_findings(node: ast.Call, roots: _Roots) -> list[tuple[int, str]]:
     callee = _dotted(node.func) or ""
     name = callee.rsplit(".", 1)[-1]
     strings = _str_args(node)
@@ -139,11 +206,15 @@ def _call_findings(node: ast.Call, roots: set[str]) -> list[tuple[int, str]]:
     if (
         name == "getattr"
         and len(node.args) > 1
-        and (_dotted(node.args[0]) or "") in roots
+        and roots.is_auth(node.args[0])
         and isinstance(node.args[1], ast.Constant)
         and node.args[1].value in FORBIDDEN_NAMES
     ):
         found.append((node.lineno, f"getattr of {node.args[1].value} on classbeat.auth"))
+    elif name == "vars" and node.args and roots.is_auth(node.args[0]):
+        found.append((node.lineno, "vars() of classbeat.auth"))
+    elif name == "resolve_name" and any(v.startswith(AUTH_PACKAGE) for v in strings):
+        found.append((node.lineno, "pkgutil.resolve_name of classbeat.auth"))
     elif name in ("import_module", "__import__"):
         first = strings[0] if strings else ""
         package = strings[1] if len(strings) > 1 else ""
@@ -151,8 +222,8 @@ def _call_findings(node: ast.Call, roots: set[str]) -> list[tuple[int, str]]:
             first.startswith(".") and package.startswith(AUTH_PACKAGE)
         ):
             found.append((node.lineno, f"dynamic import of {first}"))
-    elif name in ("table", "Table") and node.args:
-        first_arg = node.args[0]
-        if isinstance(first_arg, ast.Constant) and first_arg.value in TABLE_NAMES:
-            found.append((node.lineno, f"sqlalchemy {name}({first_arg.value!r})"))
+    elif name in ("table", "Table"):
+        arg = _table_name_arg(node)
+        if isinstance(arg, ast.Constant) and arg.value in TABLE_NAMES:
+            found.append((node.lineno, f"sqlalchemy {name}({arg.value!r})"))
     return found

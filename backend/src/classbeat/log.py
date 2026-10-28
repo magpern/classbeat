@@ -7,6 +7,8 @@ import sys
 from datetime import UTC, datetime
 from typing import IO, Any
 
+from sqlalchemy.exc import DBAPIError
+
 _STANDARD_ATTRIBUTES = frozenset(vars(logging.makeLogRecord({}))) | {"message", "asctime"}
 
 
@@ -48,6 +50,12 @@ def _redact_any(value: Any) -> Any:
     return value
 
 
+def describe_database_error(error: DBAPIError) -> str:
+    """``IntegrityError (SQLSTATE 23505)``: never the message, statement or parameters."""
+    state = getattr(error.orig, "sqlstate", None) or "unknown"
+    return f"{type(error).__name__} (SQLSTATE {state})"
+
+
 class JsonFormatter(logging.Formatter):
     """Formats a record as a single-line JSON object.
 
@@ -65,7 +73,13 @@ class JsonFormatter(logging.Formatter):
             if key not in _STANDARD_ATTRIBUTES and not key.startswith("_"):
                 payload.setdefault(key, value)
         if record.exc_info:
-            payload["exc"] = self.formatException(record.exc_info)
+            error = record.exc_info[1]
+            if isinstance(error, DBAPIError):
+                # The message and chained driver error hold row values (DETAIL of a unique or
+                # check violation: emails, hashes): class and SQLSTATE only.
+                payload["exc"] = describe_database_error(error)
+            else:
+                payload["exc"] = self.formatException(record.exc_info)
         if record.stack_info:
             payload["stack"] = self.formatStack(record.stack_info)
         return json.dumps(

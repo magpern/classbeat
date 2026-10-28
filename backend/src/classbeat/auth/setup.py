@@ -1,7 +1,10 @@
 """Wiring: what ``create_app`` adds for accounts and sessions."""
 
+import logging
+
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
+from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from classbeat.auth.keys import Keys
@@ -10,6 +13,9 @@ from classbeat.auth.passwords import PasswordHashBusy, PasswordHasher
 from classbeat.auth.ratelimit import RateLimited, RateLimiter
 from classbeat.auth.routes import router
 from classbeat.config import Settings
+from classbeat.log import describe_database_error
+
+logger = logging.getLogger(__name__)
 
 
 def install(app: FastAPI) -> None:
@@ -25,6 +31,13 @@ def install(app: FastAPI) -> None:
             status_code=429,
             headers={"Retry-After": str(retry_after)},
         )
+
+    @app.exception_handler(DBAPIError)
+    async def database_error(_: Request, exc: Exception) -> JSONResponse:
+        # Class and SQLSTATE only: the message carries row values (emails, hashes).
+        text = describe_database_error(exc) if isinstance(exc, DBAPIError) else "database error"
+        logger.error("database error: %s", text)
+        return JSONResponse({"detail": "Internal Server Error"}, status_code=500)
 
     @app.exception_handler(PasswordHashBusy)
     async def hashing_busy(_: Request, __: Exception) -> JSONResponse:

@@ -198,3 +198,31 @@ async def test_database_errors_do_not_put_hashes_or_emails_in_the_logs(
             needle,
             out[max(out.find(needle) - 300, 0) : out.find(needle) + 200],
         )
+
+
+@pytest.mark.usefixtures("restore_logging")
+async def test_a_unique_violation_reaching_the_app_is_logged_as_class_and_sqlstate(
+    env: Env,
+) -> None:
+    stream = io.StringIO()
+    configure_logging("DEBUG", stream)
+    email = "dup" + ".person@example.org"
+    await env.user(email)
+
+    @env.app.get("/api/test/duplicate")
+    async def duplicate() -> None:  # pyright: ignore[reportUnusedFunction]
+        await env.user(email)  # a unique violation whose DETAIL names the email
+
+    response = await env.client.get("/api/test/duplicate")
+    assert response.status_code == 500
+    assert response.json() == {"detail": "Internal Server Error"}
+    # A DBAPIError logged by anything else is scrubbed by the formatter too.
+    with pytest.raises(Exception, match="duplicate key") as caught:
+        await env.user(email)
+    logging.getLogger("classbeat.test").error("failed", exc_info=caught.value)
+
+    out = stream.getvalue()
+    assert "IntegrityError (SQLSTATE 23505)" in out
+    assert out.count("IntegrityError (SQLSTATE 23505)") >= 2
+    assert email not in out
+    assert "dup" + ".person" not in out

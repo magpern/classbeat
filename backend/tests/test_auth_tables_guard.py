@@ -38,6 +38,15 @@ ALLOWED = [
     "def f(users, sessions): return users",
     "from classbeat.db.tables import SYSTEM_TABLES",
     "s = 'SELECT 1 FROM alembic_version'",
+    "x = 'purge of expired sessions finished'",  # log messages and docstrings: no SQL verb
+    "x = 'all users are listed in the account page'",
+    "import classbeat\nclassbeat.auth.create_invite",
+    "import classbeat as c\nc.auth.purge_expired\nc.cli.run_command",
+    "from .. import classbeat\nclassbeat.auth.require_user",
+    "from sqlalchemy import table\ntable('other', name='users_view_cache_x')",
+    "import importlib\nimportlib.import_module('classbeat.auth').purge_expired",
+    "import pkgutil\npkgutil.resolve_name('classbeat.context:UserContext')",
+    "x = vars(object())",
 ]
 REFUSED = {
     "import module": "import classbeat.auth.tables",
@@ -66,6 +75,39 @@ REFUSED = {
     "sqlalchemy table": "from sqlalchemy import table\ntable('sessions')",
     "sqlalchemy Table": "import sqlalchemy as sa\nsa.Table('users', sa.MetaData())",
     "star import": "from classbeat.auth import *",
+    "classbeat alias": "import classbeat as c\nc.auth.tables",
+    "classbeat alias table": "import classbeat as c\nc.auth.sessions",
+    "classbeat package": "import classbeat\nclassbeat.auth.sessions",
+    "classbeat relative root": "from .. import classbeat\nclassbeat.auth.users",
+    "import_module attribute": (
+        "import importlib\nimportlib.import_module('classbeat.auth').tables"
+    ),
+    "import_module assigned": (
+        "import importlib\na = importlib.import_module('classbeat.auth')\na.users"
+    ),
+    "__import__ attribute": "__import__('classbeat.auth').metadata",
+    "getattr on import_module": (
+        "import importlib\ngetattr(importlib.import_module('classbeat.auth'), 'tables')"
+    ),
+    "getattr on classbeat alias": "import classbeat as c\ngetattr(c.auth, 'users')",
+    "table keyword": "from sqlalchemy import table\ntable(name='users')",
+    "Table keyword": "import sqlalchemy as sa\nsa.Table(name='sessions', metadata=m)",
+    "vars": "from classbeat import auth\nvars(auth)",
+    "__dict__": "from classbeat import auth\nauth.__dict__",
+    "__dict__ via classbeat": "import classbeat as c\nc.auth.__dict__",
+    "resolve_name": "import pkgutil\npkgutil.resolve_name('classbeat.auth:tables')",
+    "comma join": "q = 'SELECT 1 FROM a, users'",
+    "quoted schema": 'q = \'select 1 from "public"."users"\'',
+    "using": "q = 'DELETE FROM other USING sessions WHERE other.id = sessions.id'",
+    "copy": "q = 'COPY users TO STDOUT'",
+    "parentheses": "q = 'select * from (select id from invites) i'",
+    "comments": "q = '-- note\\nSELECT 1 /* c */ FROM /* c */ auth_tokens'",
+    "alter": "q = 'ALTER TABLE mfa_totp ADD COLUMN x int'",
+    "merge": "q = 'MERGE INTO known_devices USING t ON true'",
+    "with cte": "q = 'WITH x AS (SELECT 1) SELECT * FROM oauth_flows'",
+    "f-string": "q = f'SELECT * FROM users WHERE id = {i}'",
+    "text keyword": "q = text(statement='select 1 from identities')",
+    "schema": "q = 'select 1 from public.pending_signups'",
     "attribute": "import classbeat.auth\nclassbeat.auth.tables.users",
     "alias attribute": "from classbeat import auth\nauth.tables.sessions",
     "as alias attribute": "import classbeat.auth as a\na.tables.users",
