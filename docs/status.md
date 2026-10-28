@@ -57,9 +57,17 @@ GitHub hold the detail.
 
 - Nothing to decide now. (2026-10-28: the providers are not contacted; the beta runs on the
   owner's risk acceptance, [ADR 0010](adr/0010-live-activation-permissions.md).)
-- **Later, after MOWL connect (#66) merges: an owner-authorized check** of the MOWL token's
-  lifetime against the owner's own account (M2 "done when"; [ADR 0004](adr/0004-connections-and-encryption.md) §6).
-  Agents only run it with the owner's go-ahead for that run.
+- **After MOWL connect (#66) merges: an owner-authorized check of the MOWL token's lifetime**
+  against the owner's own account (M2 "done when"; [ADR 0004](adr/0004-connections-and-encryption.md) §6).
+  What is known (#66): the token is a 36-character GUID, not a JWT, so it carries no expiry
+  claim; MOWL sends no lifetime with it, and `mowl-workouts` (v0.4.0, `docs/mowl-api.md`) knows
+  none either. **The lifetime is unknown.** classbeat keeps `expires_at` `NULL` and flips the
+  connection to `needs_reconnect` on the first 401 or 403 (a reconnect prompt on the account
+  page). The proposed check, read-only: the owner connects their own MOWL account on a local
+  stack; once a day an agent runs one read-only call (`list_workouts`) with the stored token
+  and records the date of the first 401 or 403 (or that none came within 30 days); no write to
+  the account, nothing else signed in. Agents run it only with the owner's go-ahead for that run,
+  logged under "Live activation log".
 
 ## Live activation log
 
