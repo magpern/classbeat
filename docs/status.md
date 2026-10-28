@@ -55,8 +55,11 @@ GitHub hold the detail.
 
 ## Waiting for the owner
 
-- Nothing open. (2026-10-28: the providers are not contacted; the beta runs on the owner's risk
-  acceptance, [ADR 0010](adr/0010-live-activation-permissions.md).)
+- Nothing to decide now. (2026-10-28: the providers are not contacted; the beta runs on the
+  owner's risk acceptance, [ADR 0010](adr/0010-live-activation-permissions.md).)
+- **Later, after MOWL connect (#66) merges: an owner-authorized check** of the MOWL token's
+  lifetime against the owner's own account (M2 "done when"; [ADR 0004](adr/0004-connections-and-encryption.md) §6).
+  Agents only run it with the owner's go-ahead for that run.
 
 ## Live activation log
 

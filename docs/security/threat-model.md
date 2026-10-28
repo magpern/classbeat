@@ -84,11 +84,16 @@ responses and model output alike.
 | T32 | User data sent to model providers beyond need | Only the class brief, the music data (for the beta circle Spotify-derived track metadata and MOWL analysis, roadmap Amendment 1), and the draft are sent; no tokens, emails or account data; provider data-retention terms checked before enabling a provider (§5) | M3a, M3c |
 | T33 | Account enumeration through sign-in, sign-up, reset or timing | One generic message per flow; sign-up hashes the password and answers "check your inbox" whether or not the email exists, with the difference only in the mail; a dummy argon2 verification for unknown emails and password-less users; mail sent after the response (ADR 0003 §5) | M1 |
 | T34 | A reset or verification token leaking through logs, referrers or reuse | 32 random bytes, stored as SHA-256 only, single-use, short-lived (reset 30 min); carried in the URL fragment so it never reaches server or proxy logs; a reset signs out every session (ADR 0003 §5) | M1 |
-| T35 | TOTP secrets read from the database | AES-256-GCM with a key derived from `app_secret_key` outside the database, AAD bound to the user; M2's envelope encryption takes them over (ADR 0003 §8) | M1, M2 |
+| T35 | TOTP secrets read from the database | AES-256-GCM with a key derived from `app_secret_key` outside the database, AAD bound to the user; moved onto the envelope scheme in M2 (ADR 0003 §8, ADR 0004 §2) | M1, M2 |
 | T36 | Open redirect after sign-in | `return_to` only as a relative path starting with a single `/`, checked again before use (ADR 0003 §4) | M1 |
 | T37 | Host-header poisoning of links in mail | Links built only from `CLASSBEAT_PUBLIC_BASE_URL`, never from request headers (ADR 0003 §5) | M1 |
 | T38 | OAuth mix-up between providers, or a forged ID token | One callback path per provider; the flow row records the provider and is taken atomically; ID tokens RS256 only, checked for signature (provider JWKS), `iss`, `aud`, `exp`, `nonce`; Microsoft's per-tenant issuer checked against the token's `tid` (ADR 0003 §5) | M1 |
 | T39 | Account pre-hijacking: registering a victim's address first (by password or an unverified provider email) and keeping access after the victim takes it over | No unverified accounts: an account exists only after a mail link proves the address (and, for a password sign-up, the chosen password is typed again at confirmation), or a provider states it verified it; Microsoft emails count as unverified; a verified provider email matching an existing user creates and links nothing; provider sign-ups with an unverified email confirm only in the browser that started them; email-change confirmation needs the requesting user's session; every link is mailed; a reset clears known devices and offers to remove linked methods (ADR 0003 §1, §3, §5) | M1 |
+| T40 | Provider tokens read from the database or a backup | Envelope encryption: a random data key per row and write, AES-256-GCM, wrapped by a KEK kept in a secret file outside the database; ciphertext bound by AAD to owner, provider and row; backups hold ciphertext only; a startup check value catches a swapped KEK; rewrap re-wraps keys but doesn't re-encrypt payloads, so any suspected KEK compromise wipes every connection and resets every TOTP with the services stopped, and older backups are treated as compromised (ADR 0004 §2) | M2 |
+| T41 | A token leaking through logs, errors, job rows, events or model input | Only `classbeat.connections` decrypts; secrets travel only as a redacting `Credentials` object built per request or job; jobs store the connection id; the log formatter masks secret keys; caplog, `repr` and `pg_dump` tests (ADR 0004 §3, §7) | M2 |
+| T42 | One user's credentials used for another user's work | Owned table under RLS read through `UserContext`; the worker rebuilds credentials from the job's owner; AAD makes ciphertext moved between rows fail; concurrent two-user test with fake upstreams recording each call's token (ADR 0004 §2, §3; #67) | M2 |
+| T43 | Password guessing against MOWL through our connect page | Recent auth and CSRF on connect; 5 attempts per user, 20 per IP and 5 per MOWL email per 15 minutes (ADR 0004 §4) | M2 |
+| T44 | A MOWL password kept after connect | Used once for the library's sign-in, never stored, logged, put in a URL, kept in an exception (classbeat raises its own error after the `except` block, so the library's exception is neither cause nor context) or sent to a model; the route's bodies are excluded from request logging; tests check logs (ADR 0004 §4) | M2 |
 
 ## Accepted risks (beta)
 
@@ -122,3 +127,10 @@ responses and model output alike.
   could enroll TOTP first; the enrollment mail warns the owner, who runs `mfa-reset` again
   (ADR 0003 §7).
 - Users behind one NAT (a gym network, for example) share the per-IP buckets (ADR 0003 §9).
+- Disconnecting MOWL is local only (no known revoke endpoint): the token stays valid at MOWL
+  until it expires, and older backups keep it wrapped until they age out (ADR 0004 §4).
+- During the beta the KEK file lives on the same host as the database; encryption protects
+  database dumps and backups, not a compromise of the host itself. Revisited at M6 (ADR 0004).
+- After a suspected KEK compromise the wipe removes every stored MOWL and Spotify token and
+  mails each affected user, but MOWL tokens can't be revoked and may stay valid at MOWL until
+  they expire; users are told to end sessions or change their MOWL password (ADR 0004 §2).
