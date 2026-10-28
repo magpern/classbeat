@@ -255,6 +255,24 @@ scripts/worktree.sh rm 7                 # compose down -v, remove the worktree 
 `secrets/` and `.env` are git-ignored. Passwords are mounted as Docker secret files, never
 passed as environment variables.
 
+### End-to-end tests
+
+Playwright (Chromium only) in `e2e/`, run against a running compose stack. The base URL is
+`E2E_BASE_URL`, else `http://127.0.0.1:$WEB_PORT`; `WEB_PORT` is read from the worktree's `.env`,
+so from a worktree no setup is needed:
+
+```bash
+docker compose up -d --build --wait      # the worktree's own stack (see above)
+cd e2e
+npm ci
+npx playwright install chromium          # once (CI: --with-deps)
+npm test                                 # or E2E_BASE_URL=http://127.0.0.1:20007 npm test
+npx playwright show-report               # HTML report after a failure
+docker compose down -v
+```
+
+CI runs the same in the `e2e` job and uploads `playwright-report` only on failure.
+
 ### Security checks (CI)
 
 Each is its own job in `ci.yml` and in the `ci` gate:
@@ -263,7 +281,7 @@ Each is its own job in `ci.yml` and in the `ci` gate:
 |---|---|
 | `secrets` | gitleaks over the whole history |
 | `pip-audit` | `uv export --frozen` (production, then with dev) through `pip-audit` (pinned) |
-| `npm-audit` | `npm audit --audit-level=high` in `frontend/` |
+| `npm-audit` | `npm audit --audit-level=high` in `frontend/` and `e2e/` |
 | `trivy-fs` | Trivy on the repository (vulnerabilities, Dockerfile/compose misconfiguration) |
 | `trivy-image` | Trivy on the image built in the job (never pushed) |
 | `compose` | `web` and `worker` run as non-root; no secret value appears in `docker inspect` |
