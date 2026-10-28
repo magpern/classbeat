@@ -232,7 +232,8 @@ Every state-changing request (`POST`, `PUT`, `PATCH`, `DELETE`) must pass two ch
 - **Reset (sessions):** completing a reset signs the user out everywhere.
 - **Reset:** completing a reset also deletes the user's known devices. The reset page lists the
   linked sign-in methods (provider names) and lets the user remove any of them in the same
-  step, so an identity someone else linked doesn't survive the reset.
+  step (no recent auth or step-up needed: the reset is the proof), so an identity someone
+  else linked doesn't survive the reset.
 - **Email change:**
   - **Request:** gives the same answer whether or not the new address is in use. Only the mail
     differs: "confirm" for a free address, "an account with this address exists" for a taken
