@@ -2,7 +2,11 @@
 
 from collections.abc import Iterator
 from contextlib import contextmanager
+from pathlib import Path
 
+import pytest
+from alembic import command
+from alembic.config import Config
 from alembic.operations import Operations
 from alembic.runtime.migration import MigrationContext
 from sqlalchemy import create_engine, text
@@ -48,3 +52,38 @@ def drop_tables(owner_url: str, *tables: str) -> None:
     with owner_connection(owner_url) as connection:
         for table in tables:
             connection.execute(text(f'DROP TABLE IF EXISTS public."{table}" CASCADE'))
+
+
+BACKEND_DIR = Path(__file__).resolve().parent.parent
+AUTH_TABLES = (
+    "users, identities, invites, sessions, known_devices, pending_signups, auth_tokens, "
+    "oauth_flows, mfa_totp, mfa_recovery_codes, rate_limits, auth_events"
+)
+
+
+def alembic_config() -> Config:
+    return Config(str(BACKEND_DIR / "alembic.ini"))
+
+
+@contextmanager
+def migrated(owner_url: str, revision: str = "head") -> Iterator[None]:
+    """The schema at ``revision`` (as the owner, like ``alembic upgrade``); removed afterwards."""
+    patch = pytest.MonkeyPatch()
+    patch.setenv("CLASSBEAT_MIGRATIONS_DATABASE_URL", owner_url)
+    try:
+        command.downgrade(alembic_config(), "base")
+        command.upgrade(alembic_config(), revision)
+        yield
+    finally:
+        command.downgrade(alembic_config(), "base")
+        patch.undo()
+
+
+def truncate_auth(admin_url: str) -> None:
+    """Empty every auth table (test setup, as the superuser)."""
+    engine = create_engine(admin_url, isolation_level="AUTOCOMMIT")
+    try:
+        with engine.connect() as connection:
+            connection.execute(text(f"TRUNCATE {AUTH_TABLES} CASCADE"))
+    finally:
+        engine.dispose()

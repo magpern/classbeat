@@ -11,12 +11,14 @@ import os
 import secrets
 import socket
 import sys
-from collections.abc import Iterator
+from collections.abc import AsyncIterator, Iterator
 from dataclasses import dataclass
 
 import pytest
 from sqlalchemy import create_engine, text
 from sqlalchemy.engine import make_url
+
+from authtools import Env
 
 if sys.platform == "win32":
     # psycopg's async mode does not run on the default Windows (proactor) event loop.
@@ -158,3 +160,29 @@ def owned_tables(owner_database_url: str) -> Iterator[None]:
         yield
     finally:
         drop_tables(owner_database_url, CHILD, PARENT)
+
+
+@pytest.fixture(scope="module")
+def auth_schema(role_urls: RoleUrls) -> Iterator[None]:
+    """The migrated schema (all revisions) for the tests of one module."""
+    from dbtools import migrated
+
+    with migrated(role_urls.owner):
+        yield
+
+
+@pytest.fixture
+def clean_auth(auth_schema: None, database_url: str) -> None:
+    """The migrated schema with every auth table empty."""
+    from dbtools import truncate_auth
+
+    truncate_auth(database_url)
+
+
+@pytest.fixture
+async def env(clean_auth: None, app_database_url: str) -> AsyncIterator["Env"]:
+    """A running app on the app role over an empty, migrated database."""
+    from authtools import running_env
+
+    async with running_env(app_database_url) as running:
+        yield running

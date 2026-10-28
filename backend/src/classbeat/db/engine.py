@@ -58,6 +58,9 @@ def create_engine(settings: Settings, **kwargs: Any) -> AsyncEngine:
     engine = create_async_engine(
         settings.sqlalchemy_url(),
         pool_pre_ping=True,
+        # Statement errors would otherwise carry the bound parameters (token hashes, emails)
+        # into logs and tracebacks (ADR 0003 section 10).
+        hide_parameters=True,
         connect_args={"connect_timeout": CONNECT_TIMEOUT_SECONDS},
         **kwargs,
     )
@@ -70,6 +73,7 @@ def create_migrations_engine(settings: Settings, **kwargs: Any) -> AsyncEngine:
     """The owner role's engine, for Alembic only. Never used by web or worker."""
     return create_async_engine(
         settings.migrations_sqlalchemy_url(),
+        hide_parameters=True,
         connect_args={"connect_timeout": CONNECT_TIMEOUT_SECONDS},
         **kwargs,
     )

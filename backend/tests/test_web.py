@@ -9,6 +9,7 @@ import pytest
 from fastapi import FastAPI
 from sqlalchemy.engine import make_url
 
+from authtools import APP_SECRET
 from classbeat import __version__
 from classbeat.config import Settings
 from classbeat.db import DatabaseRoleError
@@ -16,7 +17,12 @@ from classbeat.web import create_app
 
 
 def make_app(database_url: str, **overrides: object) -> FastAPI:
-    values: dict[str, object] = {"environment": "test", "database_url": database_url, **overrides}
+    values: dict[str, object] = {
+        "environment": "test",
+        "database_url": database_url,
+        "app_secret_key": APP_SECRET,
+        **overrides,
+    }
     return create_app(Settings(**values))  # pyright: ignore[reportArgumentType]
 
 
@@ -108,7 +114,9 @@ async def test_api_docs_live_under_api_and_are_off_in_prod(
         assert (await client.get("/api/openapi.json")).status_code == 200
         assert (await client.get("/openapi.json")).status_code == 404
         assert (await client.get("/docs")).status_code == 404
-    async with make_client(unreachable_database_url, environment="prod") as client:
+    async with make_client(
+        unreachable_database_url, environment="prod", public_base_url="https://classbeat.example"
+    ) as client:
         assert (await client.get("/api/openapi.json")).status_code == 404
         assert (await client.get("/api/docs")).status_code == 404
 
@@ -172,3 +180,14 @@ async def test_static_dir_without_index_html_is_a_404_not_an_error(
 ) -> None:
     async with make_client(unreachable_database_url, static_dir=tmp_path) as client:
         assert (await client.get("/classes/1")).status_code == 404
+
+
+async def test_the_app_refuses_to_start_without_the_app_secret_key(
+    unreachable_database_url: str,
+) -> None:
+    app = create_app(
+        Settings(environment="test", database_url=unreachable_database_url)  # pyright: ignore[reportArgumentType]
+    )
+    with pytest.raises(RuntimeError, match="app_secret_key"):
+        async with running(app):
+            pytest.fail("the app must not start")
