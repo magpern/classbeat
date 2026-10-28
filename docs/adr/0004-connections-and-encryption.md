@@ -82,8 +82,7 @@ the CLI.
   pattern names the file to open, and no other input ever builds a file name. Every KEK file,
   current and retired, is a compose `secrets:` entry on both web and worker.
 - **Key check:** a system table `connection_keks (key_id primary key, check_value bytea,
-  created_at, compromised_at timestamptz NULL)`, listed in `SYSTEM_TABLES` and reached only
-  through `classbeat.crypto.keks`,
+  created_at)`, listed in `SYSTEM_TABLES` and reached only through `classbeat.crypto.keks`,
   stores `HMAC-SHA256(KEK, "classbeat-kek-check-v1")`, first 16 bytes. On startup web and
   worker run `INSERT … ON CONFLICT (key_id) DO NOTHING` for the current KEK, then read the row
   back and compare, so whichever starts first records it and both check the same value. They
@@ -104,22 +103,26 @@ the CLI.
   new `CLASSBEAT_CONNECTION_KEK_ID`, keep the old one as `connection_kek_<old id>`, restart,
   run `python -m classbeat keys rewrap`, and delete the old file (and every copy of it) only
   after rewrap reports zero rows for that `key_id` in both connections and TOTP.
-- **After a KEK compromise** (instead of the routine runbook, never after it): rewrap
-  re-wraps DEKs only; it doesn't re-encrypt payloads, and the tokens inside stay valid at the
-  provider. The operator:
-  1. installs a new KEK as `connection_kek` with a new id and restarts, keeping the old file;
-  2. runs `python -m classbeat keys revoke --key-id <old id>`, which first sets
-     `compromised_at` on that key (from then on rewrap refuses to move rows off it, and nothing
-     decrypts with it), then deletes every connection row and resets every TOTP row still
-     wrapped by it, per owner as rewrap does;
-  3. deletes the old file and every copy of it once revoke reports zero rows left.
-  Resetting a TOTP row does what `admin mfa-reset` does (ADR 0003 §7): removes the TOTP row and
-  recovery codes, forgets known devices, revokes sessions, writes `auth_events` and mails the
-  user. The affected users see their connections as gone, reconnect and re-enroll TOTP; they
-  are told to end other sessions at the provider (MOWL has no revoke endpoint; Spotify users
-  remove the app's access in their Spotify account). A #65 test: revoke deletes the rows still
-  on the old id and spares a row reconnected under the new one, and rewrap refuses a
-  compromised key.
+- **After a suspected KEK compromise, everything goes.** Rewrap changes only the wrap: a row
+  moved to a new KEK keeps its data key and ciphertext, so an old KEK plus any old dump or
+  backup can still read it, and the tokens inside stay valid at the provider. Working out
+  which rows a leaked key exposes is therefore not attempted. Any suspected compromise of any
+  KEK, current or retired, is treated as exposing every connection and every TOTP secret:
+  1. stop web and worker (no traffic, no key held in memory);
+  2. install a new KEK as `connection_kek` with a new id;
+  3. run `python -m classbeat keys wipe --confirm`, which needs no KEK at all: it deletes every
+     row of `connections` and of `connection_keks`, and resets every TOTP row the way
+     `admin mfa-reset` does (ADR 0003 §7: removes the TOTP row and recovery codes, forgets
+     known devices, revokes sessions, writes `auth_events`, mails the user), per owner;
+  4. delete every old KEK file and every copy of it, and treat backups taken before the wipe
+     as compromised (destroy them, or re-run the wipe after restoring one: M6 restore drill);
+  5. start web and worker; the new KEK gets its check row on startup.
+  Users then see their connections as gone, reconnect and re-enroll TOTP; they are told to end
+  other sessions at the provider (MOWL has no revoke endpoint; Spotify users remove the app's
+  access in their Spotify account). For a beta of a handful of users this costs a few
+  reconnects and is the only response that can't miss a row. A #65 test: after
+  rotate → rewrap → wipe, no connection row, no `connection_keks` row and no v2 TOTP secret is
+  left, and a fresh connect works under the new KEK.
 - **Rewrap mechanics:** it runs per owner (ADR 0002 §4): it gets the user ids from a
   `classbeat.auth` function (guard 8), sets `app.user_id`, and processes that owner's rows as
   `classbeat_app`, so it needs no RLS bypass. Each row is re-wrapped in its own transaction:
@@ -278,7 +281,7 @@ degrades to a reconnect prompt, never to a failure that loses work.
 ## Consequences
 
 - #65 adds the table, `classbeat.crypto.envelope`, `classbeat.connections`, the KEK file and
-  check, the `keys rewrap` and `keys revoke` CLI, the log-formatter fix and the TOTP move;
+  check, the `keys rewrap` and `keys wipe` CLI, the log-formatter fix and the TOTP move;
   #66 adds MOWL connect and pins the `mowl-workouts` v0.4.0 wheel; #67 proves isolation with
   two concurrent users.
 - Backups hold ciphertext only; restoring one needs the KEK files of its time, which are backed
