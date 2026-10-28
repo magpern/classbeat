@@ -54,21 +54,21 @@ responses and model output alike.
 | T2 | Login CSRF, OAuth state or code injection | State, nonce (OIDC) and PKCE; single-use, short-lived callbacks bound to the browser session | M1 |
 | T3 | Credential stuffing and brute force | argon2id; failure-only rate limits per (account, IP), per IP, and a per-account cap with a known-device exemption; no permanent lockout; invite-only beta. Residual: an attacker who knows the email can exhaust the per-account cap from many IPs, so the victim signs in from a known device or by OAuth for up to an hour (accepted for the beta, revisited at M6; ADR 0003 §9) | M1 |
 | T4 | Session theft or fixation | Server-side sessions stored as token hashes; `__Host-` cookie, HttpOnly, Secure, SameSite=Lax; rotation on sign-in, MFA and re-auth; all sessions revoked on a reset or role change; idle 7 days and absolute 30 days; Origin check and CSRF tokens on writes (ADR 0003 §3, §4) | M1 |
-| T5 | Cross-tenant read or write (IDOR), including through a background job | `UserContext` everywhere, repository filters, Postgres RLS (ADR 0002), guard tests, 404 tests for foreign IDs | M0 contract, M2 |
+| T5 | Cross-tenant read or write (IDOR), including through a background job | `UserContext` everywhere, repository filters, Postgres RLS (ADR 0002), guard tests, 404 tests for foreign IDs; a job's context is issued only from its claimed row, always with role `user` (ADR 0005 §3) | M0 contract, M2, M3a |
 | T6 | Token theft from a database dump or backup | Envelope encryption, AES-256-GCM with AAD `user_id\|provider`, keys outside the database, `key_id` rotation; encrypted backups | M2, M6 |
 | T7 | Secrets in logs, errors or traces | `SecretStr`; secrets only from files; no exception text in API responses; log redaction and tests that grep logs for planted tokens | M0, M2 |
 | T8 | Prompt injection through upstream content steering the agent into writes or leaks | The model has no write tools; per-stage tool allowlists; writes only by the backend after the user's approval and server-side revalidation; tool output marked as data; tokens never sent to a model | M3a, M4 |
 | T9 | A model-supplied ID that belongs to another user | Tool handlers resolve IDs within `ctx`'s rows only; tests | M3a |
 | T10 | Writes to a user's accounts they didn't approve | Write categories (§2); approval carries the revision ID and content hash; only the latest list for the class; managed playlists by ID with an ownership check | M3b, M4 |
-| T11 | Duplicate or half-done external writes after a crash | `external_operations` with idempotency keys; `uncertain` writes are reconciled and never retried automatically | M3b |
-| T12 | A stale worker committing after losing its lease | Leases with heartbeat; fencing token (`lease_version`) checked on every write | M3a |
-| T13 | Cost exhaustion: many or huge jobs, or a runaway agent loop | Invite-only beta; quotas reserved before work; per-job limits on turns, tool calls, time and cost; per-user concurrency limit; rate limits | M3a, M5 |
+| T11 | Duplicate or half-done external writes after a crash | `external_operations` with deterministic keys and request hashes; a `pending` row from an older lease counts as `uncertain`; `uncertain` writes are reconciled once and never retried automatically (ADR 0005 §7) | M3a, M3b |
+| T12 | A stale worker committing after losing its lease | Leases with heartbeat; fencing token (`lease_version`) checked as the first statement of every worker transaction, which then holds the job row lock until commit; stale-worker tests (ADR 0005 §3) | M3a |
+| T13 | Cost exhaustion: many or huge jobs, or a runaway agent loop | Invite-only beta; quotas reserved before work; per-job limits on turns, tool calls, time and cost, cost counted across retries (ADR 0006 §5); per-user job limit (ADR 0005 §2); rate limits | M3a, M5 |
 | T14 | A Spotify OAuth callback connecting the wrong account or Client ID | State and PKCE verifier stored server-side, bound to user, Client ID and redirect URI, single-use; mismatch rejected | M4 |
 | T15 | Admin account compromise | TOTP MFA mandatory; step-up for sensitive actions; admin routes 403 for others; audit log | M1, M5 |
 | T16 | Admin misuse | Admins never see tokens; every admin action audited; admin reads through the separate audited role | M5 |
 | T17 | Compromised dependency, base image or Action | Lockfiles; exact versions; checksum-verified tool downloads; pip-audit, npm audit, Trivy; Dependabot; least-privilege workflow `permissions`; no `pull_request_target`; `persist-credentials: false` | M0 |
 | T18 | An agent committing a secret or weakening a check | gitleaks on the whole history in CI; fresh-Opus review gate; ruleset with required checks; agents can't bypass | M0 |
-| T19 | SSRF through user-supplied links (playlists, mixes) | Parse provider IDs only, never fetch user URLs; outbound allowlists for worker (MOWL, Spotify, Swedebeat, model APIs) and web (sign-in providers, Spotify OAuth, MOWL and Swedebeat sign-in, mail relay) | M3a, M4 |
+| T19 | SSRF through user-supplied links (playlists, mixes) | Parse provider IDs only, never fetch user URLs; outbound allowlists for worker (MOWL, Spotify, Swedebeat, model APIs; in-process from M3a, ADR 0005 §8) and web (sign-in providers, Spotify OAuth, MOWL and Swedebeat sign-in, mail relay) | M3a, M4 |
 | T20 | XSS through user, model or upstream text in the SPA | React escaping only, no raw HTML rendering; strict CSP | M1, M6 |
 | T21 | Exposed services or container breakout | Non-root image; local ports bound to 127.0.0.1; only Caddy public on the VPS; Postgres never published there | M0, M6 |
 | T22 | Keeping data longer than allowed, or no way to delete it | GDPR export and delete; a user's Spotify-derived track lists and timing deleted with their class or account; a shared music analysis deleted once no class of any user refers to it (ADR 0010; roadmap Amendment 1) | M3b, M6 |
@@ -79,7 +79,7 @@ responses and model output alike.
 | T27 | A stolen but still valid session changing the account's identities, email, password or connections | Recent authentication (10 min) required for those actions (§3) | M1 |
 | T28 | Taking over the first admin through `ADMIN_EMAILS` with an unverified email | The bootstrap grants admin only to an account whose email is verified, then requires TOTP setup | M1 |
 | T29 | Shared music analysis leaking one user's sources to another | Reuse only after an access check with the requester's own credentials; the analysis holds no playlist links or owner data (§6) | M2, M4 |
-| T30 | `NOTIFY` payloads read by any listener on the database | Payloads carry only IDs; data is read afterwards in a user session (ADR 0002 §5) | M3a |
+| T30 | `NOTIFY` payloads read by any listener on the database | Payloads carry only IDs; data is read afterwards in a user session (ADR 0002 §5, ADR 0005 §6) | M3a |
 | T31 | Prompt injection of the development agents through issue, PR or upstream text | Agents treat repository and web content as data; the review gate and ruleset apply to every merge; secrets are never in the repository or agent prompts | M0 |
 | T32 | User data sent to model providers beyond need | Only the class brief, the music data (for the beta circle Spotify-derived track metadata and MOWL analysis, roadmap Amendment 1), and the draft are sent; no tokens, emails or account data; provider data-retention terms checked before enabling a provider (§5) | M3a, M3c |
 | T33 | Account enumeration through sign-in, sign-up, reset or timing | One generic message per flow; sign-up hashes the password and answers "check your inbox" whether or not the email exists, with the difference only in the mail; a dummy argon2 verification for unknown emails and password-less users; mail sent after the response (ADR 0003 §5) | M1 |
@@ -94,6 +94,19 @@ responses and model output alike.
 | T42 | One user's credentials used for another user's work | Owned table under RLS read through `UserContext`; the worker rebuilds credentials from the job's owner; AAD makes ciphertext moved between rows fail; concurrent two-user test with fake upstreams recording each call's token (ADR 0004 §2, §3; #67) | M2 |
 | T43 | Password guessing against MOWL through our connect page | Recent auth and CSRF on connect; 5 attempts per user, 20 per IP and 5 per MOWL email per 15 minutes (ADR 0004 §4) | M2 |
 | T44 | A MOWL password kept after connect | Used once for the library's sign-in, never stored, logged, put in a URL, kept in an exception (classbeat raises its own error after the `except` block, so the library's exception is neither cause nor context) or sent to a model; the route's bodies are excluded from request logging; tests check logs (ADR 0004 §4) | M2 |
+| T45 | The queue's `SECURITY DEFINER` functions used to read or change other users' jobs | Five functions owned by `NOLOGIN` `classbeat_queue` with only the privileges they need; fixed `search_path`, schema-qualified names, no caller-supplied ids, only `(job_id, owner_id, lease_version)` or counts returned; created and handed over by a superuser script, never by migrations; web and worker refuse to start on any drift; guard 9 (ADR 0005 §3) | M3a |
+| T46 | A repeated or replayed browser request creating duplicate jobs, reservations or approvals | `Idempotency-Key` with the request hash, `UNIQUE (owner_id, idempotency_key)`, 409 on a different body; approve and cancel idempotent by target state (ADR 0005 §2) | M3a |
+| T47 | Approving a song list other than the one shown (a stale tab, a superseded or expired list) | Approval carries revision id and content hash, checked under a row lock against the job's waiting list and the newest list of the class; expiry after 7 days; a refused approval starts nothing (ADR 0005 §2, §4) | M3a, M4 |
+| T48 | Job events or SSE leaking another user's progress, secrets or provider data | Owned `job_events` read per request in a user session; 404 for foreign ids; per-kind payload models allow only enums, own ids, counts and times, never error text, model text or provider data; `NOTIFY` carries a job id only (ADR 0005 §6) | M3a |
+| T49 | The worker used to reach arbitrary hosts (SSRF, exfiltration through the model or the library) | Process-wide outbound allowlist on `urllib` and `httpx` (https, listed hosts, port 443, every redirect hop); guard test on HTTP client construction; no fetch of user-supplied URLs (ADR 0005 §8) | M3a |
+| T50 | A poison job retried forever, or retries multiplying model cost | `max_attempts` (default 3), capped exponential backoff, non-retryable categories fail at once, the cost ceiling counts every attempt (ADR 0005 §4, ADR 0006 §5) | M3a |
+| T51 | A worker that lost its lease mid-call recording or repeating an external write | Outcomes recorded only under the token that wrote `pending`; a `pending` row from an older token is `uncertain` and never re-sent; the user decides (ADR 0005 §7) | M3a |
+| T52 | The model API key leaking or used by the web process | Secret file mounted on the worker only, `SecretStr`, never logged; `docker inspect` check; the fake provider refused in `prod` (ADR 0005 §8) | M3a |
+| T53 | A job continuing for a disabled or deleted user | Owner checked after each claim through `classbeat.auth`; jobs cascade with the user and class, so the fence fails on the next write (ADR 0005 §3) | M3a |
+| T54 | Model-supplied identifiers reaching another user's or an unintended resource | Extends T9: the model sees and names only indexes into data loaded for this job; no provider or row ids in model input; the dispatcher validates indexes (ADR 0006 §3, §7) | M3a, M4 |
+| T55 | Malformed, oversized or out-of-range model output stored or saved | Strict Pydantic schemas with bounds, 32 KB caps on tool input and results, `workout.validate()` before storing and before any save, TSS and timing computed by the backend (ADR 0006 §3, §4) | M3a |
+| T56 | Prompt injection through song titles, playlist names or the brief | Extends T8: no write or network tools, index-only references, fixed-shape tool results, validation and limits; adversarial fake scripts and smoke cases (ADR 0006 §7, §8) | M3a |
+| T57 | Data beyond the allowed fields reaching the model provider | Extends T32: one allowlisted model-input builder; planted-value test over every forbidden field (tokens, emails, ids, URLs, provider errors) (ADR 0006 §7) | M3a |
 
 ## Accepted risks (beta)
 
@@ -134,3 +147,11 @@ responses and model output alike.
 - After a suspected KEK compromise the wipe removes every stored MOWL and Spotify token and
   mails each affected user, but MOWL tokens can't be revoked and may stay valid at MOWL until
   they expire; users are told to end sessions or change their MOWL password (ADR 0004 §2).
+- The worker's outbound allowlist is enforced inside the process; code running in the worker could
+  open a socket around it. A network-level egress rule follows at M6 (ADR 0005 §8).
+- The worker holds the KEK and the model API key on the same host as the database; revisited at
+  M6 with the KEK (ADR 0004).
+- An uncertain MOWL attach that the user resolves with **Do it anyway** may leave a second MOWL
+  playlist wrapper in their own account; no read can rule it out (ADR 0005 §7).
+- A model turn already running when the user cancels finishes and is billed (ADR 0005 §4).
+- Lost `NOTIFY` wake-ups delay progress by up to 5 s and claims by up to 2 s (ADR 0005 §3, §6).
