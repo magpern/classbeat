@@ -128,10 +128,11 @@ Cross-user operations on owned tables go through narrow **`SECURITY DEFINER` fun
 broad table access:
 
 - Each function is owned by a dedicated `NOLOGIN` role with `BYPASSRLS` and only the table
-  privileges it needs, sets `search_path = pg_catalog, public, pg_temp` and schema-qualifies
-  what it touches, takes and returns the minimum (for the job queue: claim the next job and
-  return its `id`, `owner_id` and `lease_version`), and `classbeat_app` gets only `EXECUTE`
-  on it.
+  privileges it needs, sets `search_path = pg_catalog, public, pg_temp` (amended by
+  [ADR 0005 §3](0005-jobs-and-leases.md): `pg_catalog, pg_temp`, `public` left out) and
+  schema-qualifies what it touches, takes and returns the minimum (for the job queue: claim
+  the next job and return its `id`, `owner_id` and `lease_version`), and `classbeat_app` gets
+  only `EXECUTE` on it.
 - Handing a function to its owner role needs membership in that role, and membership would
   give `classbeat_owner` `BYPASSRLS` through `SET ROLE`. So the superuser runs that step
   (a privileged migration step the M3a ADR defines), and `classbeat_owner` is never a member

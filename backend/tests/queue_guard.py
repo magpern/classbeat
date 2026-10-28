@@ -20,6 +20,8 @@ TABLES = {
     "job_events": {"SELECT", "INSERT"},
     "external_operations": {"SELECT"},
 }
+# Schemas whose functions and operators below FirstNormalObjectId (16384) are initdb's built-ins.
+SYSTEM_SCHEMAS = ("pg_catalog", "information_schema", "pg_toast")
 # Every catalog with an ACL column (name, ACL column, how to name the object).
 ACL_CATALOGS = (
     ("pg_database", "datacl", "datname"),
@@ -108,25 +110,37 @@ def check_queue(conn: Connection) -> list[str]:
     ).scalar_one()
     need(policies == 0, f"{QUEUE} must be named in no policy")
 
-    # Nothing that could shadow a built-in called by a function body: no other function,
-    # procedure, aggregate or operator in public, nothing added to pg_catalog (the search_path).
-    shadows = (
+    # Nothing that could shadow a built-in called by a function body, and nothing a function body
+    # fires that could run user code as classbeat_queue (review finding B2, #102): no user-defined
+    # function, procedure, aggregate or operator in any schema besides the five, no trigger but
+    # the internal ones of foreign keys, no rule but the _RETURN rules of views.
+    hooks = (
         conn.execute(
             text(
-                "SELECT p.oid::regprocedure::text FROM pg_proc p "
+                "SELECT n.nspname || '.' || p.proname "
+                "|| '(' || oidvectortypes(p.proargtypes) || ')' FROM pg_proc p "
                 "JOIN pg_namespace n ON n.oid = p.pronamespace "
-                "WHERE (n.nspname = 'public' AND NOT p.proname = ANY(:names)) "
-                "OR (n.nspname = 'pg_catalog' AND p.oid >= 16384) "
-                "UNION ALL SELECT o.oid::regoperator::text FROM pg_operator o "
+                "WHERE NOT (n.nspname = 'public' AND p.proname = ANY(:names)) "
+                "AND (p.oid >= 16384 OR NOT n.nspname = ANY(:system)) "
+                "UNION ALL SELECT 'operator ' || o.oid::regoperator::text "
+                "FROM pg_operator o "
                 "JOIN pg_namespace n ON n.oid = o.oprnamespace "
-                "WHERE n.nspname = 'public' OR (n.nspname = 'pg_catalog' AND o.oid >= 16384)"
+                "WHERE o.oid >= 16384 OR NOT n.nspname = ANY(:system) "
+                "UNION ALL SELECT 'trigger ' || tgname || ' on ' || tgrelid::regclass::text "
+                "FROM pg_trigger WHERE NOT tgisinternal "
+                "UNION ALL SELECT 'rule ' || rulename || ' on ' || ev_class::regclass::text "
+                "FROM pg_rewrite WHERE rulename <> '_RETURN' AND oid >= 16384"
             ),
-            {"names": list(QUEUE_FUNCTIONS)},
+            {"names": list(QUEUE_FUNCTIONS), "system": list(SYSTEM_SCHEMAS)},
         )
         .scalars()
         .all()
     )
-    need(not shadows, f"functions or operators besides the queue's in public: {shadows}")
+    # Temp schemas (pg_temp_N) hold no built-ins, so any function there is >= 16384 and found.
+    need(
+        not hooks,
+        f"user-defined functions, operators, triggers or rules besides the queue's: {hooks}",
+    )
 
     # Ownership: exactly the five functions.
     owned = conn.execute(
