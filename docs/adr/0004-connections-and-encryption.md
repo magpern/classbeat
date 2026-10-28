@@ -76,11 +76,14 @@ the CLI.
   `classbeat-dek-v1|<key_id>|<owner_id>|<provider>|<id>`.
 - **KEK files:** a new secret file `connection_kek`, created by `scripts/worktree.sh init`,
   holding exactly 64 lowercase hexadecimal characters (32 bytes), optionally followed by one
-  newline. Its id comes from `CLASSBEAT_CONNECTION_KEK_ID` (default `kek-1`, matching the
-  `key_id` pattern). Retired KEKs are files `connection_kek_<key_id>`, read for decryption only;
-  a file name is built only from a `key_id` that matches the pattern, never from other input.
+  newline. Its id comes from `CLASSBEAT_CONNECTION_KEK_ID` (default `kek-1`); web and worker
+  refuse to start if the id doesn't match the `key_id` pattern. Retired KEKs are files
+  `connection_kek_<key_id>`, read for decryption only: a row's `key_id` that matches the
+  pattern names the file to open, and no other input ever builds a file name. Every KEK file,
+  current and retired, is a compose `secrets:` entry on both web and worker.
 - **Key check:** a system table `connection_keks (key_id primary key, check_value bytea,
-  created_at)`, listed in `SYSTEM_TABLES` and reached only through `classbeat.crypto.keks`,
+  created_at, compromised_at timestamptz NULL)`, listed in `SYSTEM_TABLES` and reached only
+  through `classbeat.crypto.keks`,
   stores `HMAC-SHA256(KEK, "classbeat-kek-check-v1")`, first 16 bytes. On startup web and
   worker run `INSERT … ON CONFLICT (key_id) DO NOTHING` for the current KEK, then read the row
   back and compare, so whichever starts first records it and both check the same value. They
@@ -93,19 +96,30 @@ the CLI.
   file fixes it. A GCM authentication failure (wrap or payload) gives `decrypt_failed`: the
   row's status flips to `needs_reconnect` with a conditional update (§4). Either way the
   category and the row id are logged, never key material or ciphertext, and no other key is
-  tried. A TOTP row that fails to decrypt fails MFA closed with the generic error, writes the
-  auth event `totp_decrypt_failed`, and is fixed by `admin mfa-reset` (ADR 0003 §7).
-- **Rotation runbook:** add the new KEK as `connection_kek` with a new
-  `CLASSBEAT_CONNECTION_KEK_ID`, keep the old one as `connection_kek_<old id>`, restart, run
-  `python -m classbeat keys rewrap`, and delete the old file (and every copy of it) only after
-  rewrap reports zero rows for that `key_id` in both connections and TOTP.
-- **After a KEK compromise:** rewrap re-wraps DEKs only; it doesn't re-encrypt payloads, and
-  the tokens inside stay valid at the provider. So the operator rotates the KEK as above and
-  runs `python -m classbeat keys revoke --key-id <id>`, which deletes every connection row and
-  resets every TOTP row wrapped by that key (per owner, as rewrap). The affected users then
-  see their connections as gone and reconnect, and re-enroll TOTP; they are told to sign out
-  other sessions at the provider (MOWL has no revoke endpoint; Spotify users remove the app's
-  access in their Spotify account).
+  tried. A TOTP row fails MFA closed with the generic error either way, and the attempt does
+  not count toward `mfa_failed`. With `key_unavailable` it writes the auth event
+  `totp_key_unavailable` and the operator restores the file; with `decrypt_failed` it writes
+  `totp_decrypt_failed` and is fixed by `admin mfa-reset` (ADR 0003 §7).
+- **Rotation runbook** (routine, no compromise): add the new KEK as `connection_kek` with a
+  new `CLASSBEAT_CONNECTION_KEK_ID`, keep the old one as `connection_kek_<old id>`, restart,
+  run `python -m classbeat keys rewrap`, and delete the old file (and every copy of it) only
+  after rewrap reports zero rows for that `key_id` in both connections and TOTP.
+- **After a KEK compromise** (instead of the routine runbook, never after it): rewrap
+  re-wraps DEKs only; it doesn't re-encrypt payloads, and the tokens inside stay valid at the
+  provider. The operator:
+  1. installs a new KEK as `connection_kek` with a new id and restarts, keeping the old file;
+  2. runs `python -m classbeat keys revoke --key-id <old id>`, which first sets
+     `compromised_at` on that key (from then on rewrap refuses to move rows off it, and nothing
+     decrypts with it), then deletes every connection row and resets every TOTP row still
+     wrapped by it, per owner as rewrap does;
+  3. deletes the old file and every copy of it once revoke reports zero rows left.
+  Resetting a TOTP row does what `admin mfa-reset` does (ADR 0003 §7): removes the TOTP row and
+  recovery codes, forgets known devices, revokes sessions, writes `auth_events` and mails the
+  user. The affected users see their connections as gone, reconnect and re-enroll TOTP; they
+  are told to end other sessions at the provider (MOWL has no revoke endpoint; Spotify users
+  remove the app's access in their Spotify account). A #65 test: revoke deletes the rows still
+  on the old id and spares a row reconnected under the new one, and rewrap refuses a
+  compromised key.
 - **Rewrap mechanics:** it runs per owner (ADR 0002 §4): it gets the user ids from a
   `classbeat.auth` function (guard 8), sets `app.user_id`, and processes that owner's rows as
   `classbeat_app`, so it needs no RLS bypass. Each row is re-wrapped in its own transaction:
@@ -113,9 +127,10 @@ the CLI.
   `UPDATE … WHERE id = :id AND key_id = :old_key_id`. It prints counts per `key_id` only.
   Rows can't lack an owner (cascade).
 - **TOTP:** #65 moves `mfa_totp` onto the same primitive. New nullable columns `wrapped_dek`
-  and `dek_nonce`; `key_id` stays, with a check that tells the forms apart:
-  `(key_id = 'app-v1' AND wrapped_dek IS NULL AND dek_nonce IS NULL) OR (key_id ~ '^kek-' AND
-  wrapped_dek IS NOT NULL AND dek_nonce IS NOT NULL)`. TOTP payload AAD
+  and `dek_nonce`; `key_id` stays `NOT NULL`, with a check that tells the forms apart:
+  `(key_id = 'app-v1' AND wrapped_dek IS NULL AND dek_nonce IS NULL) OR
+  (key_id ~ '^kek-[a-z0-9-]{1,28}$' AND octet_length(wrapped_dek) = 48 AND
+  octet_length(dek_nonce) = 12)`. TOTP payload AAD
   `classbeat-totp-v2|<user_id>`, wrap AAD `classbeat-totp-dek-v1|<key_id>|<user_id>`. From #65
   on, new enrollments write the v2 form.
   Rows with `key_id = 'app-v1'` keep decrypting under ADR 0003 §8 until migrated by
@@ -206,9 +221,22 @@ new error's `args` hold only the category. Nothing logs, stores or returns `str(
 `exc.args`, the response body, the `HTTPError`'s URL or a traceback of a library exception;
 logs get the category, the class name and the status only. This matters because a failed
 sign-in can put the MOWL login ticket, which can be exchanged for a token, into the error text
-and the URL, and the sign-in's frames hold the password. The log formatter
-(`classbeat/log.py`) is changed in #65 to stop walking `__context__` when
-`__suppress_context__` is set.
+and the URL, and the sign-in's frames hold the password.
+
+- **The `except` block can't raise.** Working out the category reads only attributes that
+  always exist (`isinstance` checks, `getattr(cause, "code", None)`), parses `Retry-After` only
+  as an integer (anything else, such as an HTTP date, means no hint), and is itself wrapped so
+  any error inside it falls back to `unknown`. Otherwise the library's exception would become
+  the `__context__` of that error.
+- **Type checks go most specific first:** `HTTPError` is a subclass of `URLError`, so an
+  unwrapped `HTTPError` is classified by its status, not as `upstream_unavailable`.
+- **No frame locals anywhere.** `ConnectionFailure.__traceback__` still holds the wrapper's
+  frame, which held the password during connect. No error reporter, debugger page or logging
+  option that captures frame locals (`capture_locals`, Sentry's `include_local_variables` and
+  the like) is ever enabled; the log formatter prints class, message and line numbers only.
+- **The log formatter** (`classbeat/log.py`) is changed in #65 to stop following `__context__`
+  when `__suppress_context__` is set, while still following `__cause__`, so a `DBAPIError`
+  raised `from` keeps being found and reduced to its SQLSTATE (ADR 0003 §10).
 
 ### 6. Token lifetime
 
