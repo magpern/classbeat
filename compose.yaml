@@ -1,4 +1,4 @@
-# Local stack: db, migrate (one-shot), web, worker, mailpit.
+# Local stack: db, migrate and db-functions (one-shot), web, worker, mailpit.
 # Ports bind 127.0.0.1 only and come from .env (scripts/worktree.sh init writes it).
 # Passwords are files under secrets/ mounted as Docker secrets, never environment variables.
 
@@ -28,7 +28,7 @@ x-app: &app
     - app_secret_key
     - connection_kek
   depends_on:
-    migrate:
+    db-functions:
       condition: service_completed_successfully
 
 services:
@@ -67,6 +67,25 @@ services:
     depends_on:
       db:
         condition: service_healthy
+
+  # The job queue's role and SECURITY DEFINER functions (ADR 0005 section 3), run as the superuser
+  # after the migrations, in one transaction. Besides `db`, this is the only service that gets the
+  # postgres_password secret; the password goes into a PGPASSFILE on a tmpfs built at run time,
+  # never into the environment or the command line, so it is not in `docker inspect`.
+  db-functions:
+    image: postgres:17.11
+    restart: "no"
+    user: postgres
+    entrypoint: ["sh", "/queue/db-functions.sh"]
+    secrets:
+      - postgres_password
+    tmpfs:
+      - /run/pgpass:mode=0700,uid=999,gid=999
+    volumes:
+      - ./docker/postgres/queue:/queue:ro
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
 
   web:
     <<: *app

@@ -12,6 +12,14 @@ from sqlalchemy import event, text
 from sqlalchemy.exc import DisconnectionError, OperationalError
 from sqlalchemy.ext.asyncio import AsyncEngine
 
+from classbeat.db.queue_check import (
+    QUEUE_QUERY,
+    mark_queue_verified,
+    queue_check_enabled,
+    queue_problems,
+    track_queue_check,
+)
+
 logger = logging.getLogger(__name__)
 
 # One row of booleans for the connected role. Memberships are followed transitively, because a
@@ -95,8 +103,23 @@ def _raise_if_unsafe(row: Any) -> None:
         )
 
 
-def refuse_privileged_roles(engine: AsyncEngine) -> None:
-    """Check every new connection of ``engine``; a privileged role is refused with an error."""
+def _raise_if_queue_drifted(row: Any) -> None:
+    found = queue_problems(row)
+    if found:
+        raise DatabaseRoleError(
+            "the job queue does not match ADR 0005 section 3: " + "; ".join(found)
+        )
+
+
+def refuse_privileged_roles(engine: AsyncEngine, *, check_queue: bool = True) -> None:
+    """Check every new connection of ``engine``; a privileged role is refused with an error.
+
+    With ``check_queue`` (web, worker and the CLI) every new connection also runs the queue check
+    of ADR 0005 section 3 (``classbeat.db.queue_check``), and ``queue_verified(engine)`` turns
+    true once one passed. Only tests that work on a database without the job tables turn it off.
+    """
+    if check_queue:
+        track_queue_check(engine)
 
     @event.listens_for(engine.sync_engine, "checkout")
     def check_checkout(dbapi_connection: Any, _record: object, _proxy: object) -> None:
@@ -121,10 +144,17 @@ def refuse_privileged_roles(engine: AsyncEngine) -> None:
         try:
             cursor.execute(ROLE_QUERY)
             row = cursor.fetchone()
+            queue_row = None
+            if check_queue:
+                cursor.execute(QUEUE_QUERY)
+                queue_row = cursor.fetchone()
         finally:
             cursor.close()
         dbapi_connection.rollback()
         _raise_if_unsafe(row)
+        if check_queue:
+            _raise_if_queue_drifted(queue_row)
+            mark_queue_verified(engine.sync_engine)
 
 
 def _is_authentication_failure(exc: OperationalError) -> bool:
@@ -137,11 +167,16 @@ def _is_authentication_failure(exc: OperationalError) -> bool:
 
 
 async def verify_database_role(engine: AsyncEngine) -> None:
-    """Refuse to start when the role is privileged. An unreachable database is not an error here:
-    the per-connection check still applies to every connection made later."""
+    """Refuse to start when the role is privileged or the job queue drifted (ADR 0005 section 3).
+
+    An unreachable database is not an error here: the per-connection checks still apply to every
+    connection made later, and ``queue_verified(engine)`` stays false until one passed."""
+    queue_row = None
     try:
         async with engine.connect() as connection:
             row = (await connection.execute(text(ROLE_QUERY))).one()
+            if queue_check_enabled(engine):
+                queue_row = (await connection.execute(text(QUEUE_QUERY))).one()
     except OperationalError as exc:
         if _is_authentication_failure(exc):
             # Fatal: a wrong password or role is a configuration error, not a database that is
@@ -153,3 +188,6 @@ async def verify_database_role(engine: AsyncEngine) -> None:
         logger.debug("database unreachable at startup; role checked on first connection")
         return
     _raise_if_unsafe(row)
+    if queue_check_enabled(engine):
+        _raise_if_queue_drifted(queue_row)
+        mark_queue_verified(engine.sync_engine)

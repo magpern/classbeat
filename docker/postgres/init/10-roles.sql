@@ -13,8 +13,8 @@
 -- Idempotent: running it again repairs drift in what it manages (attributes, passwords,
 -- memberships, role settings, grants and default privileges of the two roles). ACL kinds it
 -- does not manage (large objects, types, parameters) are not touched.
--- Roles for SECURITY DEFINER functions (M3a) and classbeat_maint (M5) are created by the
--- milestones that need them.
+-- The job queue's function owner classbeat_queue is created by docker/postgres/queue/20-queue.sql
+-- (after the migrations, ADR 0005 section 3); classbeat_maint (M5) by the milestone that needs it.
 
 \set ON_ERROR_STOP on
 -- Same bytes as config.py: strip exactly one trailing LF, then one trailing CR, nothing else.

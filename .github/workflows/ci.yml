@@ -78,6 +78,19 @@ jobs:
       - name: CI gate and change-filter tests
         run: scripts/test-ci-gate.sh
 
+      # The queue functions' expected md5 (backend/src/classbeat/db/queue_digests.py) is computed
+      # on one Postgres image: compose's db and db-functions and the backend job's service must
+      # all run that same exact tag.
+      - name: Postgres image pinned alike
+        run: |
+          set -euo pipefail
+          db="$(yq -r '.services.db.image' compose.yaml)"
+          fn="$(yq -r '.services["db-functions"].image' compose.yaml)"
+          ci="$(yq -r '.jobs.backend.services.postgres.image' .github/workflows/ci.yml)"
+          echo "db=$db db-functions=$fn backend=$ci"
+          [[ "$db" =~ ^postgres:[0-9]+\.[0-9]+$ ]] || { echo "::error::compose db image must be an exact postgres tag"; exit 1; }
+          [ "$fn" = "$db" ] && [ "$ci" = "$db" ] || { echo "::error::db, db-functions and the backend job must use the same postgres image"; exit 1; }
+
       # The `with.version` of every setup-uv step in any workflow or composite action must equal
       # the Dockerfile's uv tag; Dependabot only bumps the Dockerfile. A missing or computed
       # (`${{ }}`) version fails, and so does finding no setup-uv step at all.
@@ -219,7 +232,8 @@ jobs:
         working-directory: backend
     services:
       postgres:
-        image: postgres:17
+        # The same exact tag as compose's db (checked in `checks`): the queue md5 depends on it.
+        image: postgres:17.11
         env:
           # Throwaway database of this job only; not a secret.
           POSTGRES_PASSWORD: test
@@ -265,6 +279,25 @@ jobs:
 
       - name: Install dependencies
         run: uv sync --locked
+
+      # Regenerates the expected md5 of the queue functions (ADR 0005 section 3) on the pinned
+      # image and fails when the committed queue_digests.py is stale (README: how to refresh it).
+      # The database goes back to base afterwards; the tests migrate it themselves.
+      - name: Queue functions match their shipped md5
+        env:
+          PGHOST: 127.0.0.1
+          PGUSER: postgres
+          PGPASSWORD: test
+          CLASSBEAT_MIGRATIONS_DATABASE_URL: postgresql+psycopg://classbeat_owner@127.0.0.1:5432/classbeat
+        run: |
+          set -euo pipefail
+          export CLASSBEAT_SECRETS_DIR="$RUNNER_TEMP/secrets"
+          uv run alembic upgrade head
+          psql --single-transaction -v ON_ERROR_STOP=1 -q -d classbeat -f ../docker/postgres/queue/20-queue.sql
+          # Idempotent: a second run must succeed too.
+          psql --single-transaction -v ON_ERROR_STOP=1 -q -d classbeat -f ../docker/postgres/queue/20-queue.sql
+          uv run python tests/queue_digests.py --check
+          uv run alembic downgrade base
 
       - name: Lint
         run: uv run ruff check
@@ -372,6 +405,30 @@ jobs:
           [ -s secrets/connection_kek ] || { echo "::error::secrets/connection_kek is missing"; exit 1; }
           [ -s secrets/anthropic_api_key ] || { echo "::error::secrets/anthropic_api_key is empty"; exit 1; }
           rm -f "$RUNNER_TEMP/inspect.json"
+
+      # The superuser password (ADR 0005 section 3, amending ADR 0002 section 4) is mounted on db
+      # and db-functions only: never on web, worker, migrate or maint (all profiles enabled).
+      - name: Check postgres_password is mounted on db and db-functions only
+        working-directory: .
+        run: |
+          set -euo pipefail
+          config="$(docker compose --profile '*' config --format json)"
+          holders="$(jq -r '[.services | to_entries[]
+            | select((.value.secrets // []) | map(.source) | index("postgres_password")) | .key]
+            | sort | join(" ")' <<< "$config")"
+          echo "postgres_password is mounted on: $holders"
+          [ "$holders" = "db db-functions" ] \
+            || { echo "::error::postgres_password must be mounted on db and db-functions only"; exit 1; }
+          for svc in web worker migrate maint; do
+            jq -e --arg s "$svc" '.services | has($s)' <<< "$config" > /dev/null \
+            || { echo "::error::service $svc not found in the compose config"; exit 1; }
+          done
+          for svc in web worker; do
+            docker compose exec -T "$svc" sh -c '! test -e /run/secrets/postgres_password' \
+            || { echo "::error::$svc can read postgres_password"; exit 1; }
+          done
+          [ "$(docker inspect --format '{{.State.ExitCode}}' "$(docker compose ps -aq db-functions)")" = 0 ] \
+            || { echo "::error::db-functions did not succeed"; exit 1; }
 
       # ADR 0006 section 9: the model key is a file on the worker only, never an env variable.
       - name: Check the model key is mounted on the worker only

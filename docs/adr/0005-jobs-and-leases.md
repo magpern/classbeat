@@ -79,7 +79,8 @@ accepts it).
 **`job_events`**: `id`, `owner_id`, `job_id` → `jobs` (`ON DELETE CASCADE`), `seq bigint`
 (`UNIQUE (owner_id, job_id, seq)`), `kind text` (check on §6's list), `payload jsonb`
 (`octet_length(payload::text) <= 2048`), `lease_version bigint` (the token the writer held, 0 for
-user writes), `created_at`. Rows are never updated.
+user writes), `created_at`. Rows are never updated or deleted, enforced by restrictive
+`USING (false)` policies for `UPDATE` and `DELETE` (amended in J1, #84); cascades still remove them.
 
 **`external_operations`** (§7): `id`, `owner_id`, `job_id uuid NULL` → `jobs` (`ON DELETE SET NULL
 (job_id)`), `kind text` (check on a list; M3a: `mowl_attach_spotify_playlist`; M3b adds the MOWL
@@ -176,8 +177,12 @@ state `queued`, event `approved`. A refused approval starts nothing.
 **The queue role and functions.** A role `classbeat_queue` (`NOLOGIN NOSUPERUSER NOCREATEDB
 NOCREATEROLE NOREPLICATION BYPASSRLS NOINHERIT`, member of no role, nobody a member of it)
 owns five `SECURITY DEFINER` functions (ADR 0002 §3). Each sets
-`search_path = pg_catalog, public, pg_temp`, schema-qualifies every name, takes no id from a
-caller, and returns only `(job_id, owner_id, lease_version)` or counts:
+`search_path = pg_catalog, pg_temp`, schema-qualifies every table, takes no id from a
+caller, and returns only `(job_id, owner_id, lease_version)` or counts. (Amended in J1, #84: `public`
+is left off the path so no object there can shadow a built-in, and the queue check refuses any other
+function or operator in `public`. `queue_claim` and `queue_unsettled` return
+`(job_id, owner_id, lease_version)` rows, `queue_reap` and `queue_expire` an integer count,
+`queue_stats` `(metric, total)` rows; a `p_limit` outside 1 to 100 raises.)
 
 | Function | Does |
 |---|---|

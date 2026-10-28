@@ -127,7 +127,7 @@ async def test_startup_and_every_connection_refuse_a_privileged_role(
 
 async def test_a_role_that_is_fine_passes(database_url: str, probe_roles: None) -> None:
     settings = settings_for(database_url, "guard_plain")
-    engine = create_engine(settings)
+    engine = create_engine(settings, check_queue=False)  # role check only; no job tables
     try:
         await verify_database_role(engine)
         async with engine.connect() as connection:
@@ -138,7 +138,7 @@ async def test_a_role_that_is_fine_passes(database_url: str, probe_roles: None) 
 
 async def test_the_app_role_passes(app_database_url: str) -> None:
     settings = Settings(database_url=app_database_url, environment="test")  # pyright: ignore[reportArgumentType]
-    engine = create_engine(settings)
+    engine = create_engine(settings, check_queue=False)  # role check only; no job tables
     try:
         await verify_database_role(engine)
     finally:
@@ -328,7 +328,7 @@ async def test_a_role_that_changed_its_own_settings_is_refused(
     """ALTER ROLE ... SET by the role itself persists and Postgres cannot forbid it."""
     admin = create_sync_engine(database_url, isolation_level="AUTOCOMMIT")
     settings = settings_for(database_url, "guard_plain")
-    engine = create_engine(settings)
+    engine = create_engine(settings, check_queue=False)  # role check only; no job tables
     try:
         with admin.connect() as connection:
             connection.execute(text(f"ALTER ROLE guard_plain {change}"))

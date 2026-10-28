@@ -8,10 +8,25 @@ a privilege of a kind nobody thought of still fails.
 from sqlalchemy import text
 from sqlalchemy.engine import Connection
 
+from classbeat.db.queue_check import QUEUE_FUNCTIONS
 from classbeat.db.role_check import EXPECTED_ROLE_SETTINGS
 from classbeat.db.tables import NO_APP_ACCESS
 
-APP, OWNER = "classbeat_app", "classbeat_owner"
+APP, OWNER, QUEUE = "classbeat_app", "classbeat_owner", "classbeat_queue"
+# ADR 0005 section 3: exactly these for the queue functions' owner, and USAGE on public.
+QUEUE_TABLE_PRIVILEGES = {
+    "jobs": {"SELECT", "UPDATE"},
+    "job_events": {"SELECT", "INSERT"},
+    "external_operations": {"SELECT"},
+}
+# The SECURITY DEFINER functions classbeat_app may execute (regprocedure, as rendered).
+QUEUE_SIGNATURES = {
+    "queue_claim(text,integer,text[])",
+    "queue_reap(integer)",
+    "queue_expire(integer)",
+    "queue_unsettled(integer)",
+    "queue_stats()",
+}
 TABLE_PRIVILEGES = {"SELECT", "INSERT", "UPDATE", "DELETE"}
 SEQUENCE_PRIVILEGES = {"USAGE", "SELECT"}
 # Built-in languages that PUBLIC may use (Postgres' own default).
@@ -152,10 +167,17 @@ def check_roles(conn: Connection) -> list[str]:
         {"USAGE", "CREATE"} <= _privileges(schemas, OWNER, "public"),
         "classbeat_owner needs USAGE and CREATE on public",
     )
-    need(_grantees(schemas) <= {APP, OWNER}, "unexpected grantee on a schema")
+    queue_exists = bool(
+        conn.execute(text("SELECT 1 FROM pg_roles WHERE rolname = :q"), {"q": QUEUE}).first()
+    )
     need(
-        not [1 for o, g, _, _ in schemas if o != "public" and g in (APP, "PUBLIC")],
-        "no privilege for PUBLIC or classbeat_app on another schema",
+        _privileges(schemas, QUEUE, "public") == ({"USAGE"} if queue_exists else set()),
+        "classbeat_queue: USAGE only on public",
+    )
+    need(_grantees(schemas) <= {APP, OWNER, QUEUE}, "unexpected grantee on a schema")
+    need(
+        not [1 for o, g, _, _ in schemas if o != "public" and g in (APP, QUEUE, "PUBLIC")],
+        "no privilege for PUBLIC, classbeat_app or classbeat_queue on another schema",
     )
     schema_owner = conn.execute(
         text("SELECT pg_get_userbyid(nspowner) FROM pg_namespace WHERE nspname = 'public'")
@@ -181,7 +203,13 @@ def check_roles(conn: Connection) -> list[str]:
             f"{obj}: classbeat_app privileges must be exactly {sorted(expected)}",
         )
         need(not _privileges(relations, "PUBLIC", obj), f"{obj}: PUBLIC must have no privilege")
-        need(_grantees(relations, obj) <= {APP, OWNER}, f"{obj}: unexpected grantee")
+        name, kind = obj.split(":")
+        queue_expected = QUEUE_TABLE_PRIVILEGES.get(name, set()) if kind == "r" else set()
+        need(
+            _privileges(relations, QUEUE, obj) == (queue_expected if queue_exists else set()),
+            f"{obj}: classbeat_queue privileges must be exactly {sorted(queue_expected)}",
+        )
+        need(_grantees(relations, obj) <= {APP, OWNER, QUEUE}, f"{obj}: unexpected grantee")
     need(
         not [1 for *_, grantable in relations if grantable], "no grantable privilege on a relation"
     )
@@ -203,18 +231,29 @@ def check_roles(conn: Connection) -> list[str]:
     ).scalar_one()
     need(column_acls == 0, "no column-level privileges in public")
 
-    # Functions: none is SECURITY DEFINER yet (M3a), so neither PUBLIC nor the app may call any.
+    # Functions: PUBLIC may call none; classbeat_app only the queue's SECURITY DEFINER functions
+    # owned by classbeat_queue (ADR 0005 section 3; guard 9 checks them in full).
     functions = _acl(
         conn,
-        "SELECT p.oid::regprocedure::text, {G}, a.privilege_type, a.is_grantable "
+        "SELECT p.oid::regprocedure::text || ':' || pg_get_userbyid(p.proowner) || ':' "
+        "|| p.prosecdef::text, {G}, a.privilege_type, a.is_grantable "
         "FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace, "
         "aclexplode(coalesce(p.proacl, acldefault(CAST('f' AS \"char\"), p.proowner))) a "
         "WHERE n.nspname = 'public'",
     )
     need(
-        not _grantees(functions) & {"PUBLIC", APP},
-        "functions in public must not be executable by PUBLIC or classbeat_app",
+        "PUBLIC" not in _grantees(functions), "functions in public must not be executable by PUBLIC"
     )
+    queue_callable = {f"{sig}:{QUEUE}:true" for sig in QUEUE_SIGNATURES}
+    for obj in sorted({o for o, *_ in functions}):
+        allowed = {"EXECUTE"} if obj in queue_callable else set()
+        need(
+            _privileges(functions, APP, obj) == allowed
+            or (obj in queue_callable and not _privileges(functions, APP, obj)),
+            f"{obj}: classbeat_app may execute only the queue functions",
+        )
+        need(_grantees(functions, obj) <= {APP, OWNER, QUEUE}, f"{obj}: unexpected grantee")
+    need(len(QUEUE_SIGNATURES) == len(QUEUE_FUNCTIONS), "QUEUE_SIGNATURES must list each function")
     languages = _acl(
         conn,
         "SELECT l.lanname, {G}, a.privilege_type, a.is_grantable FROM pg_language l, "
