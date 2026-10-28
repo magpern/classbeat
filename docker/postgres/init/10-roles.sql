@@ -17,8 +17,10 @@
 -- milestones that need them.
 
 \set ON_ERROR_STOP on
-\set owner_password `cat "${DATABASE_OWNER_PASSWORD_FILE:-/run/secrets/database_owner_password}"`
-\set app_password `cat "${DATABASE_PASSWORD_FILE:-/run/secrets/database_password}"`
+-- psql drops trailing newlines; the extra step drops one trailing CR, so a file with Windows
+-- line endings gives the same password as config.py reads (and nothing else is stripped).
+\set owner_password `v=$(cat "${DATABASE_OWNER_PASSWORD_FILE:-/run/secrets/database_owner_password}"); printf '%s' "${v%$(printf '\015')}"`
+\set app_password `v=$(cat "${DATABASE_PASSWORD_FILE:-/run/secrets/database_password}"); printf '%s' "${v%$(printf '\015')}"`
 
 SELECT (:'owner_password' = '' OR :'app_password' = '') AS empty_password,
        NOT (SELECT rolsuper FROM pg_roles WHERE rolname = current_user) AS not_superuser \gset

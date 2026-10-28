@@ -7,7 +7,7 @@ from types import SimpleNamespace
 import pytest
 from sqlalchemy import text
 from sqlalchemy.exc import DBAPIError, IntegrityError, ProgrammingError
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 from sqlalchemy.pool import AsyncAdaptedQueuePool
 
 from classbeat.config import Settings
@@ -282,9 +282,12 @@ async def test_only_the_exact_user_context_opens_a_session(
 async def test_a_pooled_connection_with_leftover_session_state_is_replaced(
     app_database_url: str,
 ) -> None:
+    # The checkout check is the second line of defence, behind DISCARD ALL: switch the reset off
+    # to prove that a connection that still carries state is replaced.
     engine = create_engine(
         settings_for(app_database_url), poolclass=AsyncAdaptedQueuePool, pool_size=1, max_overflow=0
     )
+    engine.sync_engine.pool.dispatch.reset.clear()
     sessions = create_session_factory(engine)
     try:
         await add_parent(sessions, B, "b1")
@@ -307,5 +310,89 @@ async def test_a_pooled_connection_with_leftover_session_state_is_replaced(
             assert row[1] == "30s"
             assert row[2] in (None, "")
             assert row[3] == 0
+    finally:
+        await engine.dispose()
+
+
+async def held_cursor_read_by_a(engine: AsyncEngine) -> list[str]:
+    """B opens a WITH HOLD cursor over B's rows; then A, on the same connection, fetches it."""
+    sessions = create_session_factory(engine)
+    await add_parent(sessions, B, "b1")
+    async with user_session(sessions, B) as session:
+        first_pid = (await session.execute(text("SELECT pg_backend_pid()"))).scalar_one()
+        await session.execute(text("DECLARE leak CURSOR WITH HOLD FOR SELECT name FROM t_parent"))
+    async with user_session(sessions, A) as session:
+        assert (await session.execute(text("SELECT pg_backend_pid()"))).scalar_one() == first_pid
+        return list((await session.execute(text("FETCH ALL FROM leak"))).scalars())
+
+
+async def test_a_holdable_cursor_survives_the_return_without_the_reset(
+    app_database_url: str,
+) -> None:
+    # Documents the hole DISCARD ALL closes (the reviewer's case on PR #16).
+    engine = create_engine(
+        settings_for(app_database_url), poolclass=AsyncAdaptedQueuePool, pool_size=1, max_overflow=0
+    )
+    engine.sync_engine.pool.dispatch.reset.clear()
+    try:
+        assert await held_cursor_read_by_a(engine) == ["b1"]
+    finally:
+        await engine.dispose()
+
+
+async def test_a_holdable_cursor_does_not_survive_the_return(app_database_url: str) -> None:
+    engine = create_engine(
+        settings_for(app_database_url), poolclass=AsyncAdaptedQueuePool, pool_size=1, max_overflow=0
+    )
+    try:
+        with pytest.raises(DBAPIError, match='cursor "leak" does not exist'):
+            await held_cursor_read_by_a(engine)
+    finally:
+        await engine.dispose()
+
+
+async def test_the_reset_keeps_one_connection_working_across_many_uses(
+    app_database_url: str,
+) -> None:
+    # Past psycopg's prepare threshold the same statements are prepared server side; DISCARD ALL
+    # drops them, and psycopg must notice instead of failing with "prepared statement ... does
+    # not exist".
+    engine = create_engine(
+        settings_for(app_database_url), poolclass=AsyncAdaptedQueuePool, pool_size=1, max_overflow=0
+    )
+    sessions = create_session_factory(engine)
+    try:
+        pids = set()
+        for i in range(20):
+            await add_parent(sessions, A, f"a{i}")
+            async with user_session(sessions, A) as session:
+                pids.add((await session.execute(text("SELECT pg_backend_pid()"))).scalar_one())
+                assert (
+                    await session.execute(text("SELECT count(*) FROM t_parent"))
+                ).scalar_one() == i + 1
+        assert len(pids) == 1, "the test must reuse the same connection"
+    finally:
+        await engine.dispose()
+
+
+async def test_the_reset_clears_temp_tables_and_session_settings(app_database_url: str) -> None:
+    engine = create_engine(
+        settings_for(app_database_url), poolclass=AsyncAdaptedQueuePool, pool_size=1, max_overflow=0
+    )
+    sessions = create_session_factory(engine)
+    try:
+        async with sessions() as session:
+            pid = (await session.execute(text("SELECT pg_backend_pid()"))).scalar_one()
+            # TEMP is revoked from the app role: the settings are what it can leave behind.
+            await session.execute(text("SET app.note = 'left'"))
+            await session.commit()
+        async with sessions() as session:
+            row = (
+                await session.execute(
+                    text("SELECT pg_backend_pid(), current_setting('app.note', true)")
+                )
+            ).one()
+        assert row[0] == pid
+        assert row[1] in (None, "")
     finally:
         await engine.dispose()
