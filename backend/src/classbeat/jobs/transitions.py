@@ -41,6 +41,7 @@ _WAIT = text(
     "next_seq = next_seq + 1, updated_at = now(), "
     "leased_by = NULL, lease_expires_at = NULL, heartbeat_at = NULL "
     "WHERE id = :job_id AND owner_id = :owner_id AND lease_version = :v AND state = 'running' "
+    "AND approved_at IS NULL "  # a job waits for approval at most once
     "RETURNING next_seq, expires_at"
 )
 _ATTEMPTS = text(
@@ -59,6 +60,10 @@ _BUSY_COUNT = text(
     "AND a.job_id = :job_id AND a.kind = 'approved'), 0)"
 )
 _NOTIFY_QUEUED = text("SELECT pg_notify('jobs_queued', '')")
+
+
+class WaitedBefore(Exception):
+    """The job was approved already: it waits for approval at most once (ADR 0005 section 2)."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -122,7 +127,9 @@ async def wait_for_approval(
         )
     ).first()
     if row is None:
-        raise LeaseLost
+        if not (await attempts(fs)).approved:  # raises LeaseLost when the lease is gone
+            raise LeaseLost
+        raise WaitedBefore
     await insert_event(
         fs.db,
         fs.lease,

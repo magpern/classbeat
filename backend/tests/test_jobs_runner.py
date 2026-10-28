@@ -173,6 +173,26 @@ async def test_a_failing_store_rolls_back_and_fails_internal(jenv: JobsEnv) -> N
     assert jenv.counts(job_id)[1] == 0  # the revision was rolled back with the store
 
 
+async def test_a_database_blip_while_storing_retries_the_attempt(jenv: JobsEnv) -> None:
+    from sqlalchemy.exc import OperationalError
+
+    _, job_id = jenv.job()
+
+    async def blip(fs):
+        await store_draft(fs)
+        raise OperationalError("COMMIT", {}, ConnectionError())
+
+    async def run(job_run: JobRun) -> Complete:
+        return Complete(blip)
+
+    await run_next(jenv, registry_for(run))
+    row = jenv.row(job_id)
+    assert (row.state, row.attempt) == ("queued", 1)
+    [*_, (_, kind, payload, _)] = jenv.events(job_id)
+    assert (kind, payload["category"]) == ("retry_scheduled", "upstream_unavailable")
+    assert jenv.counts(job_id)[1] == 0  # the revision was rolled back
+
+
 async def test_operation_busy_requeues_without_an_attempt_up_to_the_cap(jenv: JobsEnv) -> None:
     _, job_id = jenv.job(max_attempts=2)
 

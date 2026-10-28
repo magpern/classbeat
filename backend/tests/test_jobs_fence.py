@@ -16,7 +16,7 @@ from classbeat.jobs import (
     queue,
     transitions,
 )
-from classbeat.jobs.fence import CALL_LEASE_MARGIN_SECONDS
+from classbeat.jobs.fence import CALL_LEASE_MARGIN_SECONDS, Lease
 from classbeat.jobs.issuer import issue
 from classbeat.jobs.run import RunStopped
 from classbeat.jobs.runner import Execution, RunConfig, execute
@@ -255,3 +255,46 @@ async def test_a_lost_lease_abandons_the_pipeline_but_not_a_call_in_flight(jenv:
     assert reached == ["call returned"]
     assert (execution.result, execution.settled) == ("lost", True)
     assert jenv.row(job_id).state == "running"  # the reaper's, once the lease expires
+
+
+async def test_a_stale_write_racing_a_concurrent_reaper_never_lands_after_it(
+    jenv: JobsEnv,
+) -> None:
+    """A real race on separate connections: A's fenced write and the reaper start together.
+    Either A's write commits first (the reaper skips the locked row and reaps it next time) or
+    the reaper bumps the token first and A gets ``LeaseLost``; never an A event after the reap."""
+    outcomes: set[str] = set()
+    for _ in range(20):
+        _, job_id = jenv.job()
+        lease = await _lease(jenv, await claim(jenv, "worker-a"))
+        jenv.expire_lease(job_id)
+        go = asyncio.Event()
+
+        async def write_a(lease: Lease = lease, go: asyncio.Event = go) -> str:
+            await go.wait()
+            try:
+                async with fenced_session(jenv.factory, lease) as fs:
+                    await fs.event("stage_started", {"stage": "pick"})
+                    await asyncio.sleep(0.01)  # hold the row lock a moment
+            except LeaseLost:
+                return "lost"
+            return "written"
+
+        async def reap(go: asyncio.Event = go) -> int:
+            await go.wait()
+            return await queue.reap(jenv.factory)
+
+        tasks = asyncio.gather(write_a(), reap())
+        go.set()
+        outcome, reaped = await tasks
+        outcomes.add(outcome)
+        if not reaped:
+            assert await queue.reap(jenv.factory) == 1  # the lock is gone now
+        events = jenv.events(job_id)
+        reap_seq = next(seq for seq, kind, _, _ in events if kind == "retry_scheduled")
+        assert all(seq < reap_seq for seq, _, _, v in events if v == lease.lease_version)
+        with pytest.raises(LeaseLost):
+            async with fenced_session(jenv.factory, lease):
+                pass
+        assert jenv.row(job_id).state == "queued"
+    assert outcomes  # both orders are fine; each run checked the invariant

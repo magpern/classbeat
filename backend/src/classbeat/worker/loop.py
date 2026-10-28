@@ -22,6 +22,7 @@ import secrets
 import socket
 import time
 from collections.abc import Awaitable, Callable
+from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
@@ -40,7 +41,20 @@ from classbeat.worker.listen import listen
 
 logger = logging.getLogger(__name__)
 
+CHECK_BACKOFF_MAX_SECONDS = 30.0
+
 Factory = async_sessionmaker[AsyncSession]
+
+
+def worker_pool(settings: Settings) -> dict[str, Any]:
+    """The worker engine's pool: per run one pipeline and one heartbeat connection, plus the
+    ``LISTEN`` connection and one for claims, maintenance and the queue check; an overflow of
+    one per run covers a run that opens a second transaction while its first is open. With the
+    cap of 16 runs that is at most 50 connections."""
+    return {
+        "pool_size": 2 * settings.worker_concurrency + 2,
+        "max_overflow": settings.worker_concurrency,
+    }
 
 
 def worker_id() -> str:
@@ -94,7 +108,12 @@ class Worker:
         self.shutdown = asyncio.Event()  # set on SIGTERM: runs stop at their next checkpoint
         self.wake = asyncio.Event()
         self.running: dict[asyncio.Task[None], Execution] = {}
+        self.stop = asyncio.Event()  # the caller's stop (SIGTERM), once ``run`` started
         self._verify: asyncio.Task[None] | None = None
+        self._next_check = 0.0  # monotonic time of the next queue-check attempt
+        self._check_delay = settings.worker_poll_seconds
+        self.passes = 0  # loop passes, for tests and diagnostics
+        self.checks = 0  # queue-check attempts started
 
     async def maintain(self) -> None:
         """Reap, expire and settle once (ADR 0005 sections 3 and 5)."""
@@ -105,19 +124,28 @@ class Worker:
     def verified(self) -> bool:
         """The queue check passed on a connection of this engine (ADR 0005 section 3). Until it
         has, a check runs in the background (so a database that is down never blocks the loop or
-        its shutdown); a drift raises ``DatabaseRoleError`` and stops the worker."""
+        its shutdown), at most one at a time and with backoff between attempts (from
+        ``worker_poll_seconds``, doubling up to ``CHECK_BACKOFF_MAX_SECONDS``); a drift raises
+        ``DatabaseRoleError`` and stops the worker."""
         if queue_verified(self.engine):
             return True
         check = self._verify
-        if check is not None and check.done():
+        if check is not None:
+            if not check.done():
+                return False
             self._verify = None
             error = None if check.cancelled() else check.exception()
             if isinstance(error, DatabaseRoleError):
                 raise error
             if error is not None:
                 logger.warning("queue check failed", extra={"error_type": type(error).__name__})
-            return queue_verified(self.engine)
-        if check is None:
+            if queue_verified(self.engine):
+                return True
+            self._next_check = time.monotonic() + self._check_delay
+            self._check_delay = min(self._check_delay * 2, CHECK_BACKOFF_MAX_SECONDS)
+            return False
+        if time.monotonic() >= self._next_check:
+            self.checks += 1
             self._verify = asyncio.ensure_future(verify_database_role(self.engine))
         return False
 
@@ -141,7 +169,11 @@ class Worker:
     async def claim_free_slots(self) -> int:
         claimed = 0
         kinds = self.registry.names()
-        while not self.shutdown.is_set() and len(self.running) < self.settings.worker_concurrency:
+        while (
+            not self.shutdown.is_set()
+            and not self.stop.is_set()
+            and len(self.running) < self.settings.worker_concurrency
+        ):
             row = await queue.claim(self.factory, self.id, self.settings.job_lease_seconds, kinds)
             if row is None:
                 break
@@ -161,6 +193,7 @@ class Worker:
             logger.warning("job claim failed", extra={"error_type": type(exc).__name__})
 
     async def run(self, stop: asyncio.Event) -> None:
+        self.stop = stop
         listen_stop = asyncio.Event()
         listener = asyncio.ensure_future(listen(self.engine, self.wake, listen_stop))
         stopper = asyncio.ensure_future(self._wake_on(stop))
@@ -169,19 +202,26 @@ class Worker:
         next_purge = now + self.settings.purge_interval_seconds
         try:
             while not stop.is_set():
+                self.passes += 1
                 await self._claim_step()
-                now = time.monotonic()
-                if now >= next_maintenance and queue_verified(self.engine):
-                    await self.maintain()
-                    next_maintenance = time.monotonic() + self.settings.worker_maintenance_seconds
-                if now >= next_purge:
-                    await purge_once(self.factory, self.settings)
-                    next_purge = time.monotonic() + self.settings.purge_interval_seconds
-                timeout = min(
-                    self.settings.worker_poll_seconds,
-                    max(next_maintenance - time.monotonic(), 0),
-                    max(next_purge - time.monotonic(), 0),
-                )
+                timeout = self.settings.worker_poll_seconds
+                if queue_verified(self.engine) and not stop.is_set():
+                    # Maintenance and the purge run only on a verified queue, so their timers
+                    # never shorten the wait while the database is down (no hot loop).
+                    now = time.monotonic()
+                    if now >= next_maintenance:
+                        await self.maintain()
+                        next_maintenance = (
+                            time.monotonic() + self.settings.worker_maintenance_seconds
+                        )
+                    if now >= next_purge:
+                        await purge_once(self.factory, self.settings)
+                        next_purge = time.monotonic() + self.settings.purge_interval_seconds
+                    timeout = min(
+                        timeout,
+                        max(next_maintenance - time.monotonic(), 0.01),
+                        max(next_purge - time.monotonic(), 0.01),
+                    )
                 with contextlib.suppress(TimeoutError):
                     await asyncio.wait_for(self.wake.wait(), timeout=timeout)
                 self.wake.clear()
@@ -195,6 +235,7 @@ class Worker:
 
     async def _wake_on(self, stop: asyncio.Event) -> None:
         await stop.wait()
+        self.shutdown.set()  # at once: runs stop at their next checkpoint, nothing more is claimed
         self.wake.set()
 
     async def stop_runs(self) -> None:
@@ -225,7 +266,7 @@ async def run_worker(
     ledger: CreditLedger | None = None,
 ) -> None:
     """Run until ``stop`` is set, then hand back what is still running."""
-    engine = create_engine(settings)  # connects lazily
+    engine = create_engine(settings, **worker_pool(settings))  # connects lazily
     try:
         logger.info("worker started")
         await Worker(settings, engine, registry=registry, ledger=ledger).run(stop)

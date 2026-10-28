@@ -26,13 +26,12 @@ def test_only_allowlisted_modules_open_a_user_session() -> None:
 
 
 def test_the_allowlist_is_exactly_the_reviewed_one() -> None:
-    assert ALLOWED_PREFIXES == (
-        "classbeat.jobs",
-        "classbeat.connections",
-        "classbeat.auth",
-        "classbeat.db",
+    assert ALLOWED_PREFIXES == ("classbeat.connections", "classbeat.auth", "classbeat.db")
+    assert ALLOWED_MODULES == (
+        "classbeat.jobs.fence",
+        "classbeat.jobs.credits",
+        "classbeat.keys_cli",
     )
-    assert ALLOWED_MODULES == ("classbeat.keys_cli",)
 
 
 @pytest.mark.parametrize(
@@ -45,16 +44,29 @@ def test_the_allowlist_is_exactly_the_reviewed_one() -> None:
         "classbeat.jobsx",
         "classbeat.cli",
         "classbeat.dbtools",
+        "classbeat.jobs",
+        "classbeat.jobs.runner",
+        "classbeat.jobs.run",
+        "classbeat.jobs.design_draft",  # a job kind under classbeat.jobs gets no exemption
+        "classbeat.jobs.fence.extra",
+        "classbeat.keys_cli.sub",
     ],
 )
-def test_worker_agent_and_other_code_is_not_allowlisted(module: str) -> None:
+def test_worker_agent_kind_and_other_code_is_not_allowlisted(module: str) -> None:
     assert not allowed(module)
 
 
 @pytest.mark.parametrize(
-    "module", ["classbeat.jobs", "classbeat.jobs.fence", "classbeat.connections.repository"]
+    "module",
+    [
+        "classbeat.jobs.fence",
+        "classbeat.jobs.credits",
+        "classbeat.keys_cli",
+        "classbeat.connections.repository",
+        "classbeat.auth.deps",
+    ],
 )
-def test_the_owning_packages_are_allowlisted(module: str) -> None:
+def test_the_owning_modules_are_allowlisted(module: str) -> None:
     assert allowed(module)
 
 

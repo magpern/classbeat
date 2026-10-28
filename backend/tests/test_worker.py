@@ -65,3 +65,41 @@ def test_worker_process_exits_0_on_a_signal(
             assert all(entry["level"] != "ERROR" for entry in rest)
         finally:
             process.kill()
+
+
+async def test_with_the_database_down_the_loop_waits_its_poll_and_backs_off_its_checks(
+    unreachable_database_url: str,
+) -> None:
+    from classbeat.db import create_engine
+    from classbeat.worker.loop import Worker
+
+    settings = Settings(database_url=unreachable_database_url, worker_poll_seconds=0.1)  # pyright: ignore[reportArgumentType]
+    engine = create_engine(settings)
+    worker = Worker(settings, engine)
+    stop = asyncio.Event()
+    task = asyncio.create_task(worker.run(stop))
+    try:
+        await asyncio.sleep(1.5)
+        assert not task.done()
+    finally:
+        stop.set()
+        await asyncio.wait_for(task, timeout=10)
+        await engine.dispose()
+    # A poll of 0.1 s gives about 15 passes; the old loop spun tens of thousands of times.
+    assert worker.passes <= 30
+    # One check at a time, with backoff (0.1, 0.2, 0.4, 0.8 s ...): only a handful in 1.5 s.
+    assert 1 <= worker.checks <= 6
+
+
+def test_the_worker_pool_fits_its_concurrency() -> None:
+    from pydantic import ValidationError
+
+    from classbeat.worker.loop import worker_pool
+
+    for n in (1, 2, 16):
+        pool = worker_pool(Settings(worker_concurrency=n))
+        # a pipeline and a heartbeat per run, the listener and the claim/maintenance connection
+        assert pool["pool_size"] == 2 * n + 2
+        assert pool["pool_size"] + pool["max_overflow"] <= 50
+    with pytest.raises(ValidationError):
+        Settings(worker_concurrency=17)

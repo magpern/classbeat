@@ -4,7 +4,10 @@ Every write a worker makes for a job goes through ``classbeat.jobs.fenced_sessio
 ``user_session`` whose first statement is the fence. So ``user_session`` itself may be used only
 by the packages that own data and their own transactions:
 
-- ``classbeat.jobs`` (the fence, the issuer, the settle step, the user's cancel and approve);
+- two modules of ``classbeat.jobs``, exactly: ``classbeat.jobs.fence`` (``fenced_session``) and
+  ``classbeat.jobs.credits`` (the settle step). The rest of the package, and every job kind, is
+  scanned like any other code: **job kinds live outside ``classbeat.jobs``** (X1, D1 and M4 put
+  theirs in their own packages) and write through ``fenced_session``;
 - ``classbeat.connections`` (ADR 0004; during a run, its status, ``last_error`` and
   ``last_used_at`` writes are the one exemption from the fence: they are conditional on
   ``wrapped_dek`` and touch no job data);
@@ -22,13 +25,13 @@ rest visible in review; it cannot stop obfuscated code.
 
 import ast
 
+# Packages (the package and everything under it) and exact modules.
 ALLOWED_PREFIXES = (
-    "classbeat.jobs",
     "classbeat.connections",
     "classbeat.auth",
     "classbeat.db",
 )
-ALLOWED_MODULES = ("classbeat.keys_cli",)
+ALLOWED_MODULES = ("classbeat.jobs.fence", "classbeat.jobs.credits", "classbeat.keys_cli")
 NAMES = frozenset({"user_session", "_owned_session"})
 SESSION_MODULE = "classbeat.db.session"
 

@@ -164,7 +164,8 @@ class Settings(BaseSettings):
 
     # Jobs (ADR 0005 sections 3 and 4).
     job_lease_seconds: int = Field(default=120, ge=30, le=600)
-    worker_concurrency: int = Field(default=2, ge=1, le=32)
+    # The worker's engine pool follows it (classbeat.worker.loop.worker_pool: 3 * n + 2 at most).
+    worker_concurrency: int = Field(default=2, ge=1, le=16)
     # Reap, expire and settle (ADR 0005 section 3: every 30 s).
     worker_maintenance_seconds: float = Field(default=30.0, gt=0)
     # On SIGTERM, how long runs may take to reach a checkpoint or return from a call before

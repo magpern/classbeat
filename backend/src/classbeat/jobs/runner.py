@@ -21,6 +21,7 @@ from typing import Any
 
 from pydantic import ValidationError
 from sqlalchemy import text
+from sqlalchemy.exc import DisconnectionError, OperationalError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from classbeat.jobs import transitions
@@ -31,6 +32,10 @@ from classbeat.jobs.kinds import AwaitApproval, Complete, KindRegistry, Outcome
 from classbeat.jobs.run import JobRun
 
 logger = logging.getLogger(__name__)
+
+# A transient error of our own database while storing a result. ADR 0005 section 4 has no
+# category of its own for it; the closest retryable one is used (no migration needed).
+DATABASE_RETRY_CATEGORY = "upstream_unavailable"
 
 Factory = async_sessionmaker[AsyncSession]
 
@@ -206,9 +211,13 @@ async def execute(
         return
     try:
         await _finish(execution, factory, run, outcome, config)
-    except Exception as exc:  # storing the result failed: rolled back, so fail the attempt
+    except Exception as exc:  # storing the result failed and was rolled back
         logger.warning("job store failed", extra={"error_type": type(exc).__name__})
-        await _record(execution, factory, lambda fs: transitions.fail(fs, "internal"))
+        if isinstance(exc, OperationalError | DisconnectionError):
+            # The database blinked (connection lost, timeout): retry the attempt, fenced.
+            await _failed(execution, factory, run, JobFailure(DATABASE_RETRY_CATEGORY), config)
+        else:
+            await _record(execution, factory, lambda fs: transitions.fail(fs, "internal"))
     _log(execution, "job attempt ended", state=execution.result)
 
 

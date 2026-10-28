@@ -205,3 +205,18 @@ async def test_a_job_waits_for_approval_at_most_once(jenv: JobsEnv) -> None:
     await run_next(jenv, registry_for(run))
     row = jenv.row(job_id)
     assert (row.state, row.error_category) == ("failed", "internal")
+
+
+async def test_the_database_also_refuses_a_second_wait(jenv: JobsEnv) -> None:
+    """Past the Python check: the wait's own UPDATE carries ``approved_at IS NULL``."""
+    from datetime import UTC, datetime
+
+    from classbeat.jobs import fenced_session, transitions
+    from classbeat.jobs.issuer import issue
+
+    _, job_id = jenv.job(approved_at=datetime.now(UTC))
+    lease = (await issue(jenv.factory, (await claim(jenv)).claimed)).lease
+    with pytest.raises(transitions.WaitedBefore):
+        async with fenced_session(jenv.factory, lease) as fs:
+            await transitions.wait_for_approval(fs, uuid.uuid4(), b"z" * 32, 1)
+    assert jenv.row(job_id).state == "running"

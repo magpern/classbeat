@@ -13,9 +13,10 @@ reaper bumped the token) or was handed back cannot add an event, a revision, an 
 row or an external-operation outcome, nor move the job. The fence's row lock is held until the
 commit, so the reaper (which skips locked rows) cannot bump the token in between.
 
-Only ``classbeat.jobs``, ``classbeat.connections`` and ``classbeat.auth`` may call
-``user_session`` directly (``tests/test_session_guard.py``); worker and agent code write through
-this helper.
+Only this module, ``classbeat.jobs.credits`` (the settle step), ``classbeat.keys_cli`` and the
+``classbeat.connections``, ``classbeat.auth`` and ``classbeat.db`` packages may call
+``user_session`` directly (``tests/test_session_guard.py``); worker, agent and job-kind code
+write through this helper.
 """
 
 import json

@@ -228,3 +228,32 @@ async def test_a_cancel_requested_before_the_hand_back_ends_the_job_cancelled(
         await asyncio.wait_for(task, 30)
     row = jenv.row(job_id)
     assert (row.state, row.finished_at is not None) == ("cancelled", True)
+
+
+async def test_sigterm_during_a_claim_claims_nothing_more_and_calls_nothing(
+    jenv: JobsEnv, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    jobs = [jenv.job()[1] for _ in range(2)]
+    upstream = Upstream()
+    real_claim = worker_loop.queue.claim
+    holder: dict[str, asyncio.Event] = {}
+
+    async def claim_then_sigterm(*args: Any, **kwargs: Any) -> Any:
+        holder["stop"].set()  # SIGTERM arrives while this claim is in flight
+        await asyncio.sleep(0.05)  # the signal path runs before the claim returns
+        return await real_claim(*args, **kwargs)
+
+    async def run(job_run: JobRun) -> Complete:
+        async with job_run.external_call(10):
+            await upstream.call()
+        return Complete()
+
+    monkeypatch.setattr(worker_loop.queue, "claim", claim_then_sigterm)
+    async with running(jenv, registry_for(run), worker_concurrency=2) as (worker, stop, task):
+        holder["stop"] = stop
+        await asyncio.wait_for(task, 30)
+        assert worker.shutdown.is_set()
+    rows = [jenv.row(j) for j in jobs]
+    assert upstream.calls == 0
+    assert sorted(r.lease_version for r in rows) == [0, 2]  # one claimed then handed back
+    assert all((r.state, r.attempt) == ("queued", 0) for r in rows)
