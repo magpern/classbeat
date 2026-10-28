@@ -42,7 +42,9 @@ reference and fingerprint, ADR 0006 §6), `provenance jsonb` (ADR 0006 §6), `jo
 `jobs` (`ON DELETE SET NULL (job_id)`), `parent_id uuid NULL` → `class_revisions`
 (`ON DELETE SET NULL (parent_id)`), `created_at`. A restrictive policy
 `revisions_immutable AS RESTRICTIVE FOR UPDATE TO PUBLIC USING (false)` makes rows
-un-updatable for every role, the owner included (FORCE); deleting the class still cascades.
+un-updatable for every role, the owner included (FORCE). Referential actions run without row
+security, so deleting a class still cascades and deleting a job still sets `job_id` to `NULL`
+(J1 tests both).
 
 **`jobs`**:
 
@@ -55,7 +57,7 @@ un-updatable for every role, the owner included (FORCE); deleting the class stil
 | `class_id uuid` | → `classes`, `ON DELETE CASCADE` |
 | `input jsonb` | the validated job input (§2); `octet_length(input::text) <= 16384`; never secrets |
 | `idempotency_key text`, `request_hash bytea` | from the browser (§2); key check `^[A-Za-z0-9_-]{16,64}$`; `UNIQUE (owner_id, idempotency_key)` |
-| `attempt int`, `max_attempts int` | `0 <= attempt <= max_attempts`, `1 <= max_attempts <= 10` (default 3) |
+| `attempt int`, `max_attempts int` | attempts of the current **phase**; `0 <= attempt <= max_attempts`, `1 <= max_attempts <= 10` (default 3). **Approve** starts a new phase and resets `attempt` to 0 (§2); the cost ceiling still spans the whole job (ADR 0006 §5) |
 | `available_at timestamptz` | a queued job is claimable from then on (backoff, §4) |
 | `lease_version bigint` | the fencing token (§3), default 0, only ever increases |
 | `leased_by text NULL`, `lease_expires_at timestamptz NULL`, `heartbeat_at timestamptz NULL` | set exactly while `running`: check `(state = 'running') = (leased_by IS NOT NULL AND lease_expires_at IS NOT NULL)`; `leased_by` ≤ 100 characters |
@@ -69,7 +71,9 @@ un-updatable for every role, the owner included (FORCE); deleting the class stil
 
 Partial indexes (not unique): `(available_at) WHERE state = 'queued'`, `(lease_expires_at) WHERE
 state = 'running'`, `(expires_at) WHERE state = 'waiting_for_approval'`, and
-`(owner_id, created_at)`.
+`(owner_id, created_at)`. **One open job per class:** a unique index on `(owner_id, class_id)
+WHERE state IN ('queued', 'running', 'waiting_for_approval')` (it includes `owner_id`, so guard 1
+accepts it).
 
 **`job_events`**: `id`, `owner_id`, `job_id` → `jobs` (`ON DELETE CASCADE`), `seq bigint`
 (`UNIQUE (owner_id, job_id, seq)`), `kind text` (check on §6's list), `payload jsonb`
@@ -79,18 +83,22 @@ user writes), `created_at`. Rows are never updated.
 **`external_operations`** (§7): `id`, `owner_id`, `job_id uuid NULL` → `jobs`
 (`ON DELETE SET NULL (job_id)`), `kind text` (check on a list; M3a:
 `mowl_attach_spotify_playlist`; M3b adds the MOWL saves, M4 the Spotify writes),
-`idempotency_key text` (≤ 120 characters; `UNIQUE (owner_id, kind, idempotency_key)`),
+`idempotency_key text` (≤ 120 characters, built per kind, §7; `UNIQUE (owner_id, kind,
+idempotency_key)`),
 `request_hash bytea`, `state text` check `IN ('pending', 'succeeded', 'failed', 'uncertain')`,
 `external_id text NULL` (≤ 200; check `state <> 'succeeded' OR external_id IS NOT NULL`),
 `result jsonb` (default `'{}'`, ≤ 4096 bytes, non-secret), `error_category text NULL`,
 `lease_version bigint` (the job's token when the call was made), `resolved_by text NULL` check
-`IN ('worker', 'user', 'admin')`, `created_at`, `updated_at`, `resolved_at NULL`.
+`IN ('worker', 'user', 'admin')`, `created_at`, `updated_at`, `resolved_at NULL`. A row
+outlives its job and class (`job_id` becomes `NULL`) and is deleted with the account; #71 decides
+whether `result` (a MOWL id and name) must go earlier.
 
 **`mowl_playlist_links`** (the per-user MOWL playlist link of roadmap §6, never shared): `id`,
 `owner_id`, `source text` check `IN ('spotify')`, `source_id text` check `~ '^[0-9A-Za-z]{22}$'`,
 `playlist_id bigint` (MOWL's `PlaylistID`, > 0), `UNIQUE (owner_id, source, source_id)`,
-`created_at`. It holds no track data; it is deleted with the account, and the purge design of
-#71 decides whether it also goes when no class refers to it.
+`created_at`. Inserted with `ON CONFLICT (owner_id, source, source_id) DO NOTHING` (no secret
+in the row, so ADR 0004 §4's rule against upserts doesn't apply). It holds no track data; it is
+deleted with the account, and #71 decides whether it also goes when no class refers to it.
 
 M3a adds no music-analysis table: the worker builds the analysis in memory for each job (ADR 0006
 §2). Shared analysis and its purge come with #71 (before M3b/M4).
@@ -107,12 +115,14 @@ queued ──claim──> running ──> completed | failed | cancelled
 | From → to | By | When / how |
 |---|---|---|
 | (new) → `queued` | user session | `POST /api/jobs` (below); `credit_state = 'reserved'` in the same transaction |
-| `queued` → `running` | claimer (§3) | `queue_claim`; `attempt + 1`, new lease |
+| `queued` → `running` | claimer (§3) | `queue_claim`, only while `attempt < max_attempts`; `attempt + 1`, new lease |
 | `running` → `running` | worker | heartbeat, fenced (§3) |
-| `running` → `queued` | worker | retryable error and `attempt < max_attempts`; `available_at` = backoff (§4) |
+| `running` → `queued` | worker | retryable error and `attempt < max_attempts`; `available_at` = backoff (§4). With `cancel_requested_at` set it goes to `cancelled` instead |
+| `running` → `queued` | worker | shutdown hand-back (§3): fenced, `attempt - 1` (it doesn't count), `lease_version + 1` |
+| `queued` → `failed` | reaper | a queued row with `attempt >= max_attempts` (should not exist): `internal`, so it never blocks the queue |
 | `running` → `queued` / `failed` / `cancelled` | reaper | lease expired (§3): requeue, `lease_lost` when attempts are spent, or `cancelled` if a cancel was requested |
 | `running` → `waiting_for_approval` | worker | fenced; writes the `song_list` revision, `approval_hash`, `expires_at` (§4); lease cleared |
-| `waiting_for_approval` → `queued` | user session | **Approve** (below); the next claim makes it `running`. This is roadmap §4's `waiting_for_approval → running`: the job goes back through the queue so it takes a slot and a fresh lease |
+| `waiting_for_approval` → `queued` | user session | **Approve** (below): a new phase, `attempt = 0`, `available_at = now()`; the next claim makes it `running`. This is roadmap §4's `waiting_for_approval → running`: the job goes back through the queue so it takes a slot and a fresh lease |
 | `running` → `completed` / `failed` / `cancelled` | worker | fenced; `cancelled` only after `cancel_requested_at` (§4) |
 | `queued`, `waiting_for_approval` → `cancelled` | user session | **Cancel**, immediately |
 | `running` → (cancel requested) | user session | **Cancel** sets `cancel_requested_at`; the worker stops at its next checkpoint (§4) |
@@ -135,7 +145,8 @@ register a test-only kind whose fake stage ends with a song list, to exercise ap
 64 URL-safe characters, made by the browser per user action). In one transaction under
 `pg_advisory_xact_lock` on the owner: look up `(owner_id, idempotency_key)`; the same key with the
 same `request_hash` (canonical JSON of the validated body) returns the existing job (200), a
-different hash is 409 `idempotency_mismatch`; otherwise check the per-user limit
+different hash is 409 `idempotency_mismatch`; a class that already has an open job is 409
+`class_busy` (the unique index of §1); otherwise check the per-user limit
 (`CLASSBEAT_JOBS_PER_USER`, default 2, counts `queued` and `running`; 429 above it), create the
 class if none was named, reserve credit (§5), insert the job and its `queued` event, and
 `pg_notify('jobs_queued', '')`. The MOWL connection id must equal `ctx.connection("mowl")`.
@@ -150,20 +161,22 @@ the job, then refuse with 409 and a reason unless: the job is `waiting_for_appro
 `expires_at > now()` (`expired`), `revision_id = approval_revision_id` and it is the newest
 `song_list` revision of the class (`superseded`), `content_hash = approval_hash`
 (`hash_mismatch`), the needed connections are in `ctx.connections` with status `connected`
-(`not_connected`), and the credit seam allows it (`quota`). Accepted: `approved_at = now()`,
-state `queued`, event `approved`. A refused approval starts nothing.
+(`not_connected`), and the credit seam allows it (`quota`). With one open job per class, no
+other job can add a list meanwhile, so the `superseded` check needs no lock beyond the job row.
+Accepted: `approved_at = now()`, `attempt = 0`, state `queued`, event `approved`. A refused
+approval starts nothing.
 
 ### 3. Claiming, leases and fencing
 
-**The queue role and functions.** A role `classbeat_queue` (`NOLOGIN BYPASSRLS NOINHERIT`, member
-of no role, nobody a member of it) owns five `SECURITY DEFINER` functions (ADR 0002 §3). Each sets
+**The queue role and functions.** A role `classbeat_queue` (`NOLOGIN NOSUPERUSER NOCREATEDB
+NOCREATEROLE NOREPLICATION BYPASSRLS NOINHERIT`, member of no role, nobody a member of it) owns five `SECURITY DEFINER` functions (ADR 0002 §3). Each sets
 `search_path = pg_catalog, public, pg_temp`, schema-qualifies every name, takes no id from a
 caller, and returns only `(job_id, owner_id, lease_version)` or counts:
 
 | Function | Does |
 |---|---|
-| `queue_claim(p_worker text, p_lease_seconds int, p_kinds text[])` | checks `p_worker ~ '^[A-Za-z0-9._:-]{1,100}$'` and 30 ≤ `p_lease_seconds` ≤ 600; `SELECT id … WHERE state = 'queued' AND available_at <= now() AND kind = ANY(p_kinds) ORDER BY available_at, created_at LIMIT 1 FOR UPDATE SKIP LOCKED`; sets `running`, `attempt + 1`, `lease_version + 1`, `leased_by`, `lease_expires_at = now() + lease`, `heartbeat_at`, `started_at` (first time); inserts the `claimed` event; returns the row or nothing |
-| `queue_reap(p_limit int)` | for up to `p_limit` (≤ 100) `running` jobs with `lease_expires_at < now()`, `FOR UPDATE SKIP LOCKED`: `lease_version + 1` (fences the old holder), then `cancelled` if a cancel was requested, else `queued` with backoff if `attempt < max_attempts`, else `failed` with `lease_lost`; inserts the event |
+| `queue_claim(p_worker text, p_lease_seconds int, p_kinds text[])` | checks `p_worker ~ '^[A-Za-z0-9._:-]{1,100}$'` and 30 ≤ `p_lease_seconds` ≤ 600; `SELECT id … WHERE state = 'queued' AND available_at <= now() AND attempt < max_attempts AND kind = ANY(p_kinds) ORDER BY available_at, created_at LIMIT 1 FOR UPDATE SKIP LOCKED`; sets `running`, `attempt + 1`, `lease_version + 1`, `leased_by`, `lease_expires_at = now() + lease`, `heartbeat_at`, `started_at` (first time); inserts the `claimed` event; returns the row or nothing |
+| `queue_reap(p_limit int)` | for up to `p_limit` (≤ 100) `running` jobs with `lease_expires_at < now()`, `FOR UPDATE SKIP LOCKED`: `lease_version + 1` (fences the old holder), then `cancelled` if a cancel was requested, else `queued` with backoff if `attempt < max_attempts`, else `failed` with `lease_lost`; also fails any `queued` row with `attempt >= max_attempts` as `internal`; inserts the events. A bad row is skipped, never raised on, so one row cannot stall other users' claims |
 | `queue_expire(p_limit int)` | for `waiting_for_approval` jobs with `expires_at < now()`, `FOR UPDATE SKIP LOCKED`: `expired`, event |
 | `queue_unsettled(p_limit int)` | lists terminal jobs with `credit_state = 'reserved'` (for §5); no update |
 | `queue_stats()` | counts per state and of `uncertain` external operations, for the operator CLI and the admin seam (§7); no ids |
@@ -174,11 +187,15 @@ caller, and returns only `(job_id, owner_id, lease_version)` or counts:
 never a worker clock.
 
 **The privileged step** (ADR 0002 §3 leaves it to this ADR). Handing a function to
-`classbeat_queue` needs a superuser, so the role, its grants and the functions live in one
-idempotent script, `docker/postgres/queue/20-queue.sql`, run **as the superuser** by a one-shot
-compose service `db-functions` (image `postgres:17.11`, `psql -v ON_ERROR_STOP=1`, secret
+`classbeat_queue` needs a superuser (Alembic as `classbeat_owner` can't: it would need membership
+in a `BYPASSRLS` role), so the role, its grants and the functions live in one idempotent script,
+`docker/postgres/queue/20-queue.sql`, run **as the superuser** by a one-shot compose service
+`db-functions` (image `postgres:17.11`, `psql --single-transaction -v ON_ERROR_STOP=1`, secret
 `postgres_password` only), which depends on `migrate` completing and which web and worker depend
-on. The script creates or repairs the role, re-grants exactly the list above, runs
+on. **This amends ADR 0002 §4's role table:** the superuser is used by the db container's init
+script **and** by `db-functions`, nothing else. The script refuses to run unless `current_user`
+is a superuser, creates or repairs the role with the attributes above, revokes every privilege
+`classbeat_queue` holds before re-granting exactly the list above, runs
 `CREATE OR REPLACE FUNCTION … ; ALTER FUNCTION … OWNER TO classbeat_queue; REVOKE ALL … FROM
 PUBLIC; GRANT EXECUTE … TO classbeat_app`, and sets `COMMENT ON FUNCTION … IS 'classbeat-queue
 v<N>'`. Migrations never create these functions. A migration that changes a column the functions
@@ -187,9 +204,14 @@ VPS (M6) the same service runs on deploy.
 
 **Startup check.** Web and worker extend `verify_database_role` (ADR 0002 §4): each function
 exists once, is `SECURITY DEFINER`, is owned by `classbeat_queue`, has exactly that `search_path`
-in `proconfig`, an ACL of exactly `classbeat_app=X`, and the expected version comment;
-`classbeat_queue` has `rolbypassrls`, `NOT rolcanlogin`, no memberships either way, and exactly the
-privileges above. Any difference refuses to start (no override).
+in `proconfig`, the expected version comment, an `md5(pg_get_functiondef(oid))` equal to the one
+the code ships, and an ACL of exactly `{classbeat_queue=X/classbeat_queue,
+classbeat_app=X/classbeat_queue}` (the owner's own entry included); `classbeat_queue` has the
+attributes above, no memberships either way, and exactly the privileges above. Like the role check
+it runs again on every new pooled connection, and because that check returns early while the
+database is down, the worker additionally **claims nothing until the queue check has passed**
+once. Any difference refuses to start (no override). Guard 2 allows `classbeat_queue` exactly
+its listed privileges on the three tables, keeping its grantee check for every other role.
 
 **From claim to `UserContext`.** `classbeat.jobs` is the job issuer of ADR 0002 §1. After a
 claim it:
@@ -203,8 +225,11 @@ claim it:
 The claim functions return no data beyond the id, owner and token, so there is no ambient
 authority: everything else is read under RLS as the owner.
 
-**Fencing.** The worker keeps `(job_id, lease_version)` for the run. **Every** write it makes is
-in a `user_session` whose first statement is the fence:
+**Fencing.** The worker keeps `(job_id, lease_version)` for the run. **Every** write it makes
+goes through one helper, `fenced_session(factory, job)`: a `user_session` whose first statement
+is the fence. An AST guard fails if code under `classbeat.worker` or `classbeat.agent` calls
+`user_session` directly (only `classbeat.jobs` may). A restrictive insert policy comparing
+`lease_version` is not added; the helper and the guard carry the rule.
 
 ```sql
 UPDATE jobs SET updated_at = now()
@@ -223,15 +248,22 @@ result, nor move the job.
 `lease_expires_at` every lease/3 with a fenced update in its own short transaction. A failed
 heartbeat (0 rows or 3 database errors in a row) marks the run lost: it stops at the next
 checkpoint, starts no further model, library or external call, and abandons any in-flight model
-request. No transaction is ever open across a model or provider call (ADR 0002 §5,
-`idle_in_transaction_session_timeout`).
+request. The fenced transaction that writes an external operation's `pending` row (§7) also
+extends `lease_expires_at` to at least `now()` + the call's timeout + 30 s, so a slow provider
+call never outlives the lease. No transaction is ever open across a model or provider call
+(ADR 0002 §5, `idle_in_transaction_session_timeout`).
 
 **The worker loop** replaces today's heartbeat log: up to `CLASSBEAT_WORKER_CONCURRENCY` (default
 2) runs as asyncio tasks; when a slot is free it calls `queue_claim`, woken by `LISTEN
 jobs_queued` on its own connection or a 2 s poll; every 30 s it runs `queue_reap`, `queue_expire`
 and the settle step (§5); the hourly auth purge stays. Several workers are safe: `SKIP LOCKED`
-gives each job to one claimer, and the fence makes a lost lease harmless. On SIGTERM it stops
-claiming and lets runs reach a checkpoint for up to 20 s; whatever is left is reaped later.
+gives each job to one claimer, and the fence makes a lost lease harmless.
+
+**Shutdown.** Compose gives the worker `stop_grace_period: 30s`. On SIGTERM the worker stops
+claiming, starts no new model turn or external call, waits up to 25 s for calls in flight to
+return and record their outcome, then hands each lease back with a fenced requeue (`state =
+'queued'`, `attempt - 1`, `lease_version + 1`, event `requeued`), so a deploy costs no attempt.
+Anything it couldn't hand back is reaped when the lease expires.
 
 ### 4. Retries, cancellation and expiry
 
@@ -242,7 +274,9 @@ Every failure maps to one category (the same words as ADR 0004 §5 where they ov
 | `upstream_unavailable`, `rate_limited` | yes | `ConnectionFailure` of those categories (ADR 0004 §5); `rate_limited` waits at least its `Retry-After` |
 | `model_unavailable` | yes | model API 429, 5xx, overload, timeout or connection error after the SDK's own retries (ADR 0006 §2) |
 | `lease_lost` | yes (reaper) | §3 |
-| `not_connected`, `needs_reconnect`, `key_unavailable`, `decrypt_failed` | no | ADR 0004 §3, §5 |
+| `operation_busy` | yes | another running job holds the same external operation (§7) |
+| `not_connected` | no | the connection is gone, or its status is already `needs_reconnect`, before any provider call (ADR 0004 §3) |
+| `needs_reconnect`, `key_unavailable`, `decrypt_failed` | no | during the run: a 401 or 403 (the status flips), or a key failure (ADR 0004 §2, §5) |
 | `invalid_input`, `account_disabled` | no | §2, §3 |
 | `model_refused`, `model_config`, `invalid_output`, `limit_exceeded` | no | ADR 0006 §2, §5 |
 | `uncertain_write` | no | §7 |
@@ -256,8 +290,9 @@ spent: `failed` with the category. The user sees a plain sentence per category, 
 text.
 
 **Cancellation.** The worker checks at its **checkpoints**: before each model request, before
-each tool call, before each external operation and at each heartbeat (the fence returns
-`cancel_requested_at`). A model turn or tool call already running finishes; its cost is recorded.
+each tool call, before each external operation, between the library reads of the music step
+(ADR 0006 §3), and at each heartbeat (the fence returns `cancel_requested_at`). A requeue (retry,
+reap or hand-back) of a job with a cancel requested ends it `cancelled` instead. A model turn or tool call already running finishes; its cost is recorded.
 Then the worker writes `cancelled` (fenced). A cancel never interrupts an external call between
 its `pending` row and its outcome.
 
@@ -288,10 +323,10 @@ live in `agent_runs` (ADR 0006 §6); M3b turns them into usage records.
 ### 6. Progress: events and SSE
 
 **Event kinds and payloads.** `queued`, `claimed {attempt}`, `stage_started {stage}`,
-`tool_called {tool, ok, error?}`, `revision_created {revision_id, kind, number}`,
+`tool_called {tool, ok, error?}` (`error` an enum code, never text), `revision_created {revision_id, kind, number}`,
 `waiting_for_approval {revision_id, expires_at}`, `approved`, `retry_scheduled {category,
 available_at}`, `cancel_requested`, `cancelled`, `completed {revision_id}`, `failed {category}`,
-`expired`, `external_operation {kind, state}`. Each kind has a Pydantic model with
+`expired`, `requeued`, `external_operation {kind, state}`. Each kind has a Pydantic model with
 `extra="forbid"`; payloads hold only enum values, ids of the owner's own rows, counts and
 timestamps. **Never** in a payload: tokens or credentials, error or exception texts, model text,
 tool arguments or results, track titles, artists or any other provider-derived data (Amendment 1
@@ -316,17 +351,19 @@ Lost notifications only add latency.
 ### 7. External operations
 
 Every write to a user's account goes through `external_operations` (roadmap §2, §4). The key is
-deterministic: `<job_id>:<step>` for job steps, so a retried attempt finds the same row.
-Protocol for one call:
+deterministic and defined per kind: `<job_id>:<step>` for a job's own steps (M3b's saves), and
+`spotify:<source_id>` for `mowl_attach_spotify_playlist`, so every job of the user on that
+playlist finds the same row. Protocol for one call:
 
 1. **Fenced transaction.** Load `(owner_id, kind, key)`. `succeeded` with the same `request_hash`:
    reuse `external_id` and `result`, no call. A different hash for the same key: `internal` (a bug,
-   never a second write). `uncertain`, or `pending` written under an **older** `lease_version`
-   (a worker died or lost its lease mid-call): treat as `uncertain` (step 4). `failed`, or no row:
-   write `pending` with the current `lease_version`.
+   never a second write). `pending` held by another job that is still `running` under that row's
+   `lease_version`: `operation_busy` (retry later). `uncertain`, or any other `pending` (its
+   holder died or lost its lease mid-call): treat as `uncertain` (step 4). `failed`, or no row:
+   write `pending` with this `job_id` and `lease_version`, and extend the lease (§3).
 2. **The call**, outside any transaction, through `classbeat.connections` (ADR 0004 §5).
 3. **Fenced transaction** recording the outcome, conditional on `state = 'pending' AND
-   lease_version = :v`: `succeeded` with the external id; `failed` when the provider refused
+   job_id = :job AND lease_version = :v`: `succeeded` with the external id; `failed` when the provider refused
    (4xx) or the request provably never left (DNS, connection refused); `uncertain` when it may
    have taken effect (timeout or connection loss after sending, 5xx). If the fence fails here, the
    row stays `pending` under the old token and the next holder treats it as uncertain.
@@ -336,6 +373,8 @@ Protocol for one call:
    **An uncertain write is never retried automatically.** The user sees what may or may not have
    happened, and can **Check again** (reconcile once more) or **Do it anyway** (their explicit
    decision: `failed`, `resolved_by = 'user'`, then a new job). Both are CSRF-checked user actions.
+   Whatever marks an attach `succeeded` (the worker or **Check again**) also writes its
+   `mowl_playlist_links` row in the same transaction.
 
 M3a's one kind, `mowl_attach_spotify_playlist`, wraps a Spotify playlist in a MOWL playlist (the
 library's `attach_spotify`; ADR 0006 §2). The user's choice of that playlist in the new-class form
@@ -354,7 +393,8 @@ the audit log (ADR 0002 §4); M3a adds no cross-user listing.
 - **KEK.** The worker already loads the key ring at start (ADR 0004 §2: `connection_kek` and the
   retired files as compose secrets; the check value must match). A run opens the MOWL connection
   with `classbeat.connections.open_connection(factory, ctx, keyring, "mowl")` when it first needs
-  it, after checking the job's `mowl_connection_id` equals `ctx.connection("mowl")`, and drops
+  it, after checking the job's `mowl_connection_id` equals `ctx.connection("mowl")` and its
+  status is `connected` (otherwise `not_connected`, ADR 0004 §3), and drops
   the `Credentials` when the run ends. They never reach job rows, events, SSE, model input, tool
   results or logs (ADR 0004 §3). `key_unavailable` and `decrypt_failed` fail the job (§4).
 - **Model key.** A new secret file `anthropic_api_key`, mounted on **worker only** (web never
@@ -364,7 +404,8 @@ the audit log (ADR 0002 §4); M3a adds no cross-user listing.
 - **Outbound allowlist** (roadmap §7, T19). The worker installs, before anything else, a
   process-wide `urllib` opener whose handler refuses any request (including every redirect hop)
   that is not `https` to an allowlisted host on port 443, and builds the model client on an
-  `httpx.AsyncClient` whose transport applies the same check. M3a's list: `api.mowl.com`,
+  `httpx.AsyncClient` (`trust_env=False`) whose transport applies the same check; the opener has
+  an empty `ProxyHandler`, so no proxy setting in the environment reroutes a call. M3a's list: `api.mowl.com`,
   `api.anthropic.com`; M4 adds the Spotify hosts. A refused request raises, logs the host only and
   fails the run with `outbound_blocked`. A guard test fails on any other HTTP client construction
   or `urlopen` in `classbeat` outside the allowlist module. The E2E fakes answer under these same
@@ -386,6 +427,12 @@ with this ADR; T5, T11, T12, T13, T19 and T30 cite it.
   the reaper requeues; the retry reuses succeeded operations and turns a `pending` one from the
   old token into `uncertain`, which fails the job and is never re-sent to the fake upstream.
 - **Lease expiry with attempts spent:** `failed`/`lease_lost`, credit released exactly once.
+- **Phases:** a pre-approval phase that was retried (attempt 2 of 3) waits, is approved, and the
+  post-approval phase runs with a fresh `attempt` and completes. A **poison row** (`queued` with
+  `attempt = max_attempts`, written by the test) does not stop other users' jobs from being
+  claimed, and `queue_reap` fails it as `internal`.
+- **Shutdown:** SIGTERM during a run hands the lease back without counting an attempt and starts
+  no new call; a cancel requested before a requeue ends the job `cancelled`.
 - **Cancellation:** queued and waiting jobs cancel at once; a running job stops at the next
   checkpoint (between model turns and between tool calls) with no further fake-model or
   fake-MOWL call; a cancel racing completion ends in exactly one terminal state.
@@ -394,13 +441,17 @@ with this ADR; T5, T11, T12, T13, T19 and T30 cite it.
   `expires_at` in the past (the database clock is not faked) and check `queue_expire`, the
   refused approval and the released credit.
 - **Uncertain write:** fake MOWL times out after accepting the attach; the job fails with
-  `uncertain_write`; no second attach; **Check again** and **Do it anyway** behave as §7.
+  `uncertain_write`; no second attach; **Check again** and **Do it anyway** behave as §7, and a
+  **Check again** that succeeds writes the link. Two jobs on the same playlist share one attach
+  (`operation_busy` for the second while the first runs).
 - **Idempotency:** the same key and body returns the same job; the same key with another body is
   409; two keys create two jobs up to the per-user limit.
 - **Isolation:** guards 1 and 2 cover the new tables and grants; new **guard 9** checks the queue
   role and functions as §3's startup check does; events, SSE and job endpoints give 404 for
   another user's ids; a `NOTIFY` carries only an id; event payload models refuse extra fields and
-  a planted secret never appears in events, logs or SSE output.
+  a planted secret never appears in events, logs or SSE output; the stack check finds
+  `postgres_password` mounted on `db` and `db-functions` only, never on web, worker, migrate or
+  maint.
 - **Outbound:** a request to a host off the list (and a redirect to one) is refused.
 
 ## Alternatives
@@ -423,8 +474,9 @@ with this ADR; T5, T11, T12, T13, T19 and T30 cite it.
 ## Consequences
 
 - The M3a issues (ADR 0006, last section) implement this. The schema and queue functions, the
-  jobs core and fencing, the jobs API with approval, external operations and the worker's secrets
-  and allowlist get an Opus Developer (AGENTS.md, security-critical).
+  jobs core and fencing, the jobs API with approval, external operations, the first external write
+  (the design pipeline) and the worker's secrets and allowlist get an Opus Developer (AGENTS.md).
+- ADR 0002 §4's role table is amended: the superuser also runs `db-functions` (§3).
 - Compose gains `db-functions`; the worktree script and CI run `20-queue.sql` after migrations.
   The superuser password is used by that service only, never by web, worker or `maint`.
 - Every later job kind reuses the lease, fence, event and external-operation rules unchanged; M4

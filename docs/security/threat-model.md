@@ -99,7 +99,7 @@ responses and model output alike.
 | T47 | Approving a song list other than the one shown (a stale tab, a superseded or expired list) | Approval carries revision id and content hash, checked under a row lock against the job's waiting list and the newest list of the class; expiry after 7 days; a refused approval starts nothing (ADR 0005 §2, §4) | M3a, M4 |
 | T48 | Job events or SSE leaking another user's progress, secrets or provider data | Owned `job_events` read per request in a user session; 404 for foreign ids; per-kind payload models allow only enums, own ids, counts and times, never error text, model text or provider data; `NOTIFY` carries a job id only (ADR 0005 §6) | M3a |
 | T49 | The worker used to reach arbitrary hosts (SSRF, exfiltration through the model or the library) | Process-wide outbound allowlist on `urllib` and `httpx` (https, listed hosts, port 443, every redirect hop); guard test on HTTP client construction; no fetch of user-supplied URLs (ADR 0005 §8) | M3a |
-| T50 | A poison job retried forever, or retries multiplying model cost | `max_attempts` (default 3), capped exponential backoff, non-retryable categories fail at once, the cost ceiling counts every attempt (ADR 0005 §4, ADR 0006 §5) | M3a |
+| T50 | A poison job retried forever, or retries multiplying model cost | `max_attempts` per phase (default 3), capped exponential backoff, non-retryable categories fail at once, the cost ceiling counts every attempt of the whole job; the claim skips a row with spent attempts and the reaper fails it, so one bad row can't stall other users' jobs (ADR 0005 §2, §3, §4, ADR 0006 §5) | M3a |
 | T51 | A worker that lost its lease mid-call recording or repeating an external write | Outcomes recorded only under the token that wrote `pending`; a `pending` row from an older token is `uncertain` and never re-sent; the user decides (ADR 0005 §7) | M3a |
 | T52 | The model API key leaking or used by the web process | Secret file mounted on the worker only, `SecretStr`, never logged; `docker inspect` check; the fake provider refused in `prod` (ADR 0005 §8) | M3a |
 | T53 | A job continuing for a disabled or deleted user | Owner checked after each claim through `classbeat.auth`; jobs cascade with the user and class, so the fence fails on the next write (ADR 0005 §3) | M3a |
@@ -155,3 +155,5 @@ responses and model output alike.
   playlist wrapper in their own account; no read can rule it out (ADR 0005 §7).
 - A model turn already running when the user cancels finishes and is billed (ADR 0005 §4).
 - Lost `NOTIFY` wake-ups delay progress by up to 5 s and claims by up to 2 s (ADR 0005 §3, §6).
+- A model turn that finishes after its worker lost the lease isn't recorded, so a job's cost can
+  undercount by one turn per lost lease (ADR 0006 §6).
