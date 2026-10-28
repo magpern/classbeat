@@ -152,7 +152,7 @@ responses and model output alike.
 - The worker holds the KEK and the model API key on the same host as the database; revisited at
   M6 with the KEK (ADR 0004).
 - An uncertain MOWL attach that the user resolves with **Do it anyway** may leave a second MOWL
-  playlist wrapper in their own account; no read can rule it out (ADR 0005 §7).
+  playlist wrapper in their own account; no read can rule it out (ADR 0005 §7, ADR 0006 §3).
 - A model turn already running when the user cancels finishes and is billed (ADR 0005 §4).
 - Lost `NOTIFY` wake-ups delay progress by up to 5 s and claims by up to 2 s (ADR 0005 §3, §6).
 - A model turn that finishes after its worker lost the lease isn't recorded, so a job's cost can

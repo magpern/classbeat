@@ -104,8 +104,10 @@ def test_on_delete_rules(admin: Connection) -> None:
             "SELECT conrelid::regclass::text, a.attname, confrelid::regclass::text, confdeltype "
             "FROM pg_constraint c JOIN pg_attribute a "
             "ON a.attrelid = c.conrelid AND a.attnum = c.conkey[1] "
-            "WHERE contype = 'f' AND connamespace = 'public'::regnamespace"
-        )
+            "WHERE contype = 'f' AND connamespace = 'public'::regnamespace "
+            "AND conrelid::regclass::text = ANY(:tables)"
+        ),
+        {"tables": [*metadata.tables, "connections"]},
     ).all()
     rules = {(r[0], r[1]): (r[2], r[3]) for r in rows}
     set_null = {("invites", "created_by"), ("invites", "used_by"), ("auth_events", "user_id")}

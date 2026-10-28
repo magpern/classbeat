@@ -13,3 +13,20 @@ Swedebeat.
 
 Getting started locally is described in AGENTS.md under "Developer commands" once the
 skeleton lands.
+
+## Refreshing the queue functions' md5
+
+Web and worker refuse to start unless each job queue function matches the `md5` in
+`backend/src/classbeat/db/queue_digests.py` (ADR 0005 section 3). After changing
+`docker/postgres/queue/20-queue.sql` (or the pinned Postgres image in `compose.yaml`), regenerate
+it against a throwaway Postgres of that same image where the migrations and the script have run
+(the database test setup in AGENTS.md):
+
+```bash
+cd backend
+uv run python tests/queue_digests.py --write   # CLASSBEAT_TEST_DATABASE_URL = the superuser URL
+```
+
+Commit the result. CI runs `--check` on the pinned image and fails with a diff when it is stale.
+A change that alters what the functions read also bumps the version (`classbeat-queue vN`) in the
+script and `QUEUE_VERSION` in `classbeat/db/queue_check.py`.

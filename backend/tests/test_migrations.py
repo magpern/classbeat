@@ -9,7 +9,7 @@ from sqlalchemy.exc import ProgrammingError
 
 from classbeat.auth.tables import metadata
 from classbeat.db import SYSTEM_TABLES
-from dbtools import migrated
+from dbtools import install_queue, migrated
 from rls_guard import check_tables
 from role_guard import check_roles
 
@@ -32,7 +32,7 @@ def applied_revisions(database_url: str) -> list[str]:
 
 def test_the_revisions_form_one_line() -> None:
     script = ScriptDirectory.from_config(alembic_config())
-    assert script.get_heads() == ["0003_connections"]
+    assert script.get_heads() == ["0004_jobs"]
     assert script.get_base() == "0001_baseline"
 
 
@@ -53,7 +53,7 @@ def test_upgrade_head_then_downgrade_base(
     config = alembic_config()
     try:
         command.upgrade(config, "head")
-        assert applied_revisions(database_url) == ["0003_connections"]
+        assert applied_revisions(database_url) == ["0004_jobs"]
         command.downgrade(config, "base")
         assert applied_revisions(database_url) == []
     finally:
@@ -70,6 +70,7 @@ def test_the_app_role_has_no_access_to_the_migration_table(
     config = alembic_config()
     try:
         command.upgrade(config, "head")
+        install_queue(database_url)  # compose's db-functions step
         app = create_engine(app_database_url)
         admin = create_engine(database_url)
         try:
@@ -110,11 +111,13 @@ def test_0002_auth_up_and_down(owner_database_url: str, database_url: str) -> No
             command.downgrade(alembic_config(), "0001_baseline")
             assert tables() == {"alembic_version"}
             command.upgrade(alembic_config(), "head")
+            assert tables() == {"alembic_version", *AUTH, *CONNECTIONS, *JOBS}
+            command.downgrade(alembic_config(), "0003_connections")
             assert tables() == {"alembic_version", *AUTH, *CONNECTIONS}
             command.downgrade(alembic_config(), "0002_auth")
             assert tables() == {"alembic_version", *AUTH}
             command.upgrade(alembic_config(), "head")
-            assert tables() == {"alembic_version", *AUTH, *CONNECTIONS}
+            assert tables() == {"alembic_version", *AUTH, *CONNECTIONS, *JOBS}
         assert tables() <= {"alembic_version"}
     finally:
         engine.dispose()
@@ -122,3 +125,12 @@ def test_0002_auth_up_and_down(owner_database_url: str, database_url: str) -> No
 
 AUTH = sorted(metadata.tables)
 CONNECTIONS = ["connection_keks", "connections"]
+JOBS = [
+    "classes",
+    "class_revisions",
+    "jobs",
+    "job_events",
+    "external_operations",
+    "mowl_playlist_links",
+    "agent_runs",
+]

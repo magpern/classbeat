@@ -60,12 +60,13 @@ def discard_session_state(engine: AsyncEngine) -> None:
             dbapi_connection.autocommit = False
 
 
-def create_engine(settings: Settings, **kwargs: Any) -> AsyncEngine:
+def create_engine(settings: Settings, *, check_queue: bool = True, **kwargs: Any) -> AsyncEngine:
     """Build the app role's async engine (web and worker). It connects lazily, on first use.
 
     Every new connection is checked: a role that is a superuser, has BYPASSRLS or owns tables
-    is refused (ADR 0002 section 4). Every connection returned to the pool is wiped with
-    ``DISCARD ALL``.
+    is refused (ADR 0002 section 4), and so is a drifted job queue (ADR 0005 section 3;
+    ``check_queue=False`` only for tests on a database without the job tables). Every
+    connection returned to the pool is wiped with ``DISCARD ALL``.
     """
     kwargs["pool_reset_on_return"] = None  # discard_session_state does the rollback itself
     engine = create_async_engine(
@@ -77,7 +78,7 @@ def create_engine(settings: Settings, **kwargs: Any) -> AsyncEngine:
         connect_args={"connect_timeout": CONNECT_TIMEOUT_SECONDS},
         **kwargs,
     )
-    refuse_privileged_roles(engine)
+    refuse_privileged_roles(engine, check_queue=check_queue)
     discard_session_state(engine)
     return engine
 

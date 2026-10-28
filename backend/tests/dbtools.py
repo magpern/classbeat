@@ -1,5 +1,6 @@
 """Helpers for tests that create tables as the owner role, the way migrations do."""
 
+import os
 from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
@@ -55,6 +56,7 @@ def drop_tables(owner_url: str, *tables: str) -> None:
 
 
 BACKEND_DIR = Path(__file__).resolve().parent.parent
+QUEUE_SCRIPT = BACKEND_DIR.parent / "docker" / "postgres" / "queue" / "20-queue.sql"
 AUTH_TABLES = (
     "users, identities, invites, sessions, known_devices, pending_signups, auth_tokens, "
     "oauth_flows, mfa_totp, mfa_recovery_codes, rate_limits, auth_events"
@@ -74,6 +76,9 @@ def migrated(owner_url: str, revision: str = "head") -> Iterator[None]:
         _forget_v2_totp(owner_url)
         command.downgrade(alembic_config(), "base")
         command.upgrade(alembic_config(), revision)
+        if revision == "head":
+            # compose's db-functions step: the queue role, grants and functions (ADR 0005 s. 3).
+            install_queue(os.environ["CLASSBEAT_TEST_DATABASE_URL"])
         yield
     finally:
         _forget_v2_totp(owner_url)
@@ -101,5 +106,24 @@ def truncate_auth(admin_url: str) -> None:
     try:
         with engine.connect() as connection:
             connection.execute(text(f"TRUNCATE {AUTH_TABLES}, connection_keks CASCADE"))
+    finally:
+        engine.dispose()
+
+
+def install_queue(admin_url: str) -> None:
+    """Run ``docker/postgres/queue/20-queue.sql`` as the superuser in one transaction, as the
+    ``db-functions`` service does with ``psql --single-transaction``. Plain SQL, no parameters
+    (psycopg sends it as one simple query)."""
+    engine = create_engine(admin_url)
+    try:
+        with engine.connect() as connection:
+            raw = connection.connection.dbapi_connection
+            assert raw is not None
+            cursor = raw.cursor()
+            try:
+                cursor.execute(QUEUE_SCRIPT.read_text(encoding="utf-8"))
+            finally:
+                cursor.close()
+            raw.commit()
     finally:
         engine.dispose()

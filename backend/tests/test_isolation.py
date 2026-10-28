@@ -38,7 +38,7 @@ def settings_for(app_url: str) -> Settings:
 
 @pytest.fixture
 async def sessions(app_database_url: str) -> AsyncIterator[Sessions]:
-    engine = create_engine(settings_for(app_database_url))
+    engine = create_engine(settings_for(app_database_url), check_queue=False)
     try:
         yield create_session_factory(engine)
     finally:
@@ -173,7 +173,11 @@ async def test_the_owner_is_also_bound_by_the_policy(owner_database_url: str) ->
 
 async def test_a_pooled_connection_carries_no_user_id_afterwards(app_database_url: str) -> None:
     engine = create_engine(
-        settings_for(app_database_url), poolclass=AsyncAdaptedQueuePool, pool_size=1, max_overflow=0
+        settings_for(app_database_url),
+        check_queue=False,
+        poolclass=AsyncAdaptedQueuePool,
+        pool_size=1,
+        max_overflow=0,
     )
     sessions = create_session_factory(engine)
     try:
@@ -286,7 +290,11 @@ async def test_a_pooled_connection_with_leftover_session_state_is_replaced(
     # The checkout check is the second line of defence, behind DISCARD ALL: switch the reset off
     # to prove that a connection that still carries state is replaced.
     engine = create_engine(
-        settings_for(app_database_url), poolclass=AsyncAdaptedQueuePool, pool_size=1, max_overflow=0
+        settings_for(app_database_url),
+        check_queue=False,
+        poolclass=AsyncAdaptedQueuePool,
+        pool_size=1,
+        max_overflow=0,
     )
     for listener in list(engine.sync_engine.pool.dispatch.reset):
         event.remove(engine.sync_engine, "reset", listener)  # also from SQLAlchemy's registry
@@ -340,7 +348,11 @@ async def test_a_holdable_cursor_survives_the_return_without_the_reset(
 ) -> None:
     # Documents the hole DISCARD ALL closes (the reviewer's case on PR #16).
     engine = create_engine(
-        settings_for(app_database_url), poolclass=AsyncAdaptedQueuePool, pool_size=1, max_overflow=0
+        settings_for(app_database_url),
+        check_queue=False,
+        poolclass=AsyncAdaptedQueuePool,
+        pool_size=1,
+        max_overflow=0,
     )
     for listener in list(engine.sync_engine.pool.dispatch.reset):
         event.remove(engine.sync_engine, "reset", listener)  # also from SQLAlchemy's registry
@@ -359,7 +371,11 @@ async def test_a_holdable_cursor_survives_the_return_without_the_reset(
 
 async def test_a_holdable_cursor_does_not_survive_the_return(app_database_url: str) -> None:
     engine = create_engine(
-        settings_for(app_database_url), poolclass=AsyncAdaptedQueuePool, pool_size=1, max_overflow=0
+        settings_for(app_database_url),
+        check_queue=False,
+        poolclass=AsyncAdaptedQueuePool,
+        pool_size=1,
+        max_overflow=0,
     )
     try:
         with pytest.raises(DBAPIError, match='cursor "leak" does not exist'):
@@ -392,7 +408,11 @@ async def test_the_reset_keeps_one_connection_working_across_many_uses(
     # drops it, and psycopg must notice instead of failing with "prepared statement ... does
     # not exist" (see discard_session_state).
     engine = create_engine(
-        settings_for(app_database_url), poolclass=AsyncAdaptedQueuePool, pool_size=1, max_overflow=0
+        settings_for(app_database_url),
+        check_queue=False,
+        poolclass=AsyncAdaptedQueuePool,
+        pool_size=1,
+        max_overflow=0,
     )
     sessions = create_session_factory(engine)
     try:
@@ -415,7 +435,11 @@ async def test_the_reset_keeps_one_connection_working_across_many_uses(
 
 async def test_the_reset_clears_temp_tables_and_session_settings(app_database_url: str) -> None:
     engine = create_engine(
-        settings_for(app_database_url), poolclass=AsyncAdaptedQueuePool, pool_size=1, max_overflow=0
+        settings_for(app_database_url),
+        check_queue=False,
+        poolclass=AsyncAdaptedQueuePool,
+        pool_size=1,
+        max_overflow=0,
     )
     sessions = create_session_factory(engine)
     try:

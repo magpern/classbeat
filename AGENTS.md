@@ -214,7 +214,7 @@ for test setup only) at it and stop it when done:
 
 ```bash
 export MSYS_NO_PATHCONV=1   # Git Bash on Windows only
-docker run -d --rm --name classbeat-5-pg -e POSTGRES_PASSWORD=test -p 127.0.0.1:55405:5432 postgres:17
+docker run -d --rm --name classbeat-5-pg -e POSTGRES_PASSWORD=test -p 127.0.0.1:55405:5432 postgres:17.11
 docker exec classbeat-5-pg psql -U postgres -c 'CREATE DATABASE classbeat'
 docker exec classbeat-5-pg sh -c 'echo owner-pw > /tmp/owner; echo app-pw > /tmp/app'
 docker cp ../docker/postgres/init/10-roles.sql classbeat-5-pg:/tmp/10-roles.sql
@@ -226,7 +226,11 @@ docker stop classbeat-5-pg
 ```
 
 The tests give `classbeat_owner` and `classbeat_app` random passwords for the run, connect as
-them, and create their own test-only owned tables. The script is idempotent.
+them, and create their own test-only owned tables. The script is idempotent. Tests that migrate
+to head also run `docker/postgres/queue/20-queue.sql` as the superuser, as `db-functions` does;
+use the image tag compose pins (`postgres:17.11`), because the queue check compares each
+function's `md5(pg_get_functiondef(oid))` with `classbeat/db/queue_digests.py` (README.md says
+how to refresh it). Web, worker and the CLI also refuse to start on a drifted job queue.
 
 Settings come from `CLASSBEAT_*` environment variables. Secrets come only from files named
 after the field, without the prefix, in `CLASSBEAT_SECRETS_DIR` (default `/run/secrets`):
@@ -274,7 +278,9 @@ npm run build        # typecheck, then Vite writes frontend/dist
 ### Stack and worktrees
 
 Docker Desktop (or Docker Engine with Compose v2) runs the whole stack: `db` (Postgres 17),
-`migrate` (one-shot `alembic upgrade head`), `web`, `worker` and `mailpit`, all from one image
+`migrate` (one-shot `alembic upgrade head`), `db-functions` (one-shot: the job queue's role and
+`SECURITY DEFINER` functions, `docker/postgres/queue/20-queue.sql`, as the superuser; ADR 0005
+section 3), `web`, `worker` and `mailpit`; web, worker, migrate and maint from one image
 (`Dockerfile`, `compose.yaml`). Ports bind `127.0.0.1` and come from `.env`.
 
 ```bash
@@ -338,7 +344,7 @@ picks up new advisories) and on `workflow_dispatch`; the last two run everything
 |---|---|---|
 | `changes` | always | `scripts/ci-changes.sh`: `git diff` against the PR base gives the outputs `backend` (`backend/`, `docker/postgres/`), `frontend` (`frontend/`), `stack` (`backend/`, `frontend/`, `e2e/`, `docker/`, `Dockerfile`, `compose*.yaml`, `.dockerignore`, `.env.example`, `.trivyignore`, `scripts/worktree.sh`) and `all`. Renames count at both paths; names are read NUL-separated; if the diff cannot be computed everything runs. `all` is true on schedule/dispatch and when `.github/`, `.gitattributes` or `scripts/ci-changes.sh`, `ci-gate.sh` or `test-ci-gate.sh` change (CI changes test themselves) and makes the others true |
 | `checks` | always | the cheap checks as steps of one job (below) |
-| `backend` | `backend` | ruff, format, pyright, pytest against Postgres |
+| `backend` | `backend` | ruff, format, pyright, the queue functions' md5 regenerated on the pinned image (fails when `queue_digests.py` is stale), pytest against Postgres |
 | `frontend` | `frontend` | lint, typecheck, Vitest, build |
 | `e2e` | `stack` | the stack, the checks below, the Trivy image scan, then Playwright |
 | `ci` | always | the required check; see the gate below |
@@ -360,11 +366,12 @@ The `checks` job runs these as steps; the image scan is a step of `e2e`:
 | Secret scan | gitleaks over the whole history |
 | bash -n, shellcheck | every `scripts/*.sh` |
 | CI gate and change-filter tests | `scripts/test-ci-gate.sh` |
+| Postgres image pinned alike | compose's `db` and `db-functions` and the `backend` job's service use the same exact `postgres` tag (the queue functions' md5 depends on it) |
 | uv version, actionlint | `setup-uv`'s version equals the Dockerfile's uv tag; actionlint (with shellcheck) on every workflow |
 | pip-audit | `uv export --frozen` (production, then all groups) through `pip-audit` (pinned) |
 | npm audit | `npm audit --audit-level=high` in `frontend/` and `e2e/` |
 | Trivy repository scan | Trivy on the repository (vulnerabilities, Dockerfile misconfiguration; compose is not scanned) |
-| `e2e`: stack checks | builds the stack once: `/api/ready` and the SPA answer, `web` and `worker` run as non-root, no secret value appears in `docker inspect` |
+| `e2e`: stack checks | builds the stack once: `/api/ready` and the SPA answer, `web` and `worker` run as non-root, no secret value appears in `docker inspect`, `postgres_password` is mounted on `db` and `db-functions` only (never web, worker, migrate or maint) |
 | `e2e`: Trivy image scan | Trivy on the image the running stack was built from (never pushed); then Playwright runs |
 
 Trivy and gitleaks are checksum-verified release binaries. `pip-audit` (exact version) lives in
