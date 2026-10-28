@@ -7,10 +7,8 @@ Status: Accepted
 M1 adds accounts (roadmap §3, P0): email and password, Google, GitHub and Microsoft sign-in,
 server-side sessions, CSRF protection, rate limits, recent authentication, and admin TOTP MFA.
 Sign-in happens before a `UserContext` exists, so the account data must be readable before
-the user is known. That is the case ADR 0002 §3 anticipated: users, identities and sessions are
-**system tables**, reached only through `classbeat.auth`. This ADR fixes the tables, the request
-pipeline, the cookie and CSRF rules, the flows and their limits, so issues #36 to #40 can
-implement them without design decisions of their own.
+the user is known, as ADR 0002 §3 anticipated (system tables reached only through
+`classbeat.auth`). This ADR fixes the design so #36 to #40 need no decisions of their own.
 
 ## Decision
 
@@ -52,11 +50,10 @@ Why not owned tables with `SECURITY DEFINER` lookups:
 There is no unverified-account state, so nobody can create or claim an account for an address
 they don't control (T39).
 
-| Table | Holds | Secrets stored as |
-|---|---|---|
 Every table has an `id uuid` primary key (server default) unless a key is named. Foreign keys to
 `users(id)` are `ON DELETE CASCADE`, except those marked *set null*, which are
-`ON DELETE SET NULL`.
+`ON DELETE SET NULL`. The `invite_id` foreign keys of `pending_signups` and `oauth_flows` are
+`ON DELETE CASCADE`.
 
 | Table | Holds | Secrets stored as |
 |---|---|---|
@@ -64,7 +61,7 @@ Every table has an `id uuid` primary key (server default) unless a key is named.
 | `identities` | `user_id`, `provider`, `subject`, `email_at_link`, `created_at`; `UNIQUE (provider, subject)` | none |
 | `sessions` | `user_id`, `token_hash` (unique), `created_at`, `last_seen_at`, `expires_at` (absolute), `reauth_at`, `mfa_at`, `stepup_at`, `user_agent` (truncated), `ip` | SHA-256 of the token |
 | `known_devices` | `user_id`, `device_hash` (unique), `created_at`, `last_used_at` | HMAC (`device` key, §8) |
-| `pending_signups` | `token_hash` (unique), `email`, `email_normalized`, `password_hash` (nullable), `provider`, `subject`, `browser_hash` (all three set together or null), `invite_id` → `invites`, `expires_at` | SHA-256; argon2id |
+| `pending_signups` | `token_hash` (unique; null until the email is entered), `email`, `email_normalized` (both null until then), `password_hash` (nullable), `provider`, `subject`, `browser_hash` (all three set together or null), `invite_id` → `invites`, `expires_at` | SHA-256; argon2id |
 | `auth_tokens` | `purpose` (`reset_password`, `change_email`), `token_hash` (unique), `user_id`, `new_email`, `email_at_issue`, `expires_at`, `used_at` | SHA-256 |
 | `oauth_flows` | `flow_hash` (unique), `provider`, `purpose` (`sign_in`, `link`, `reauth`), `state_hash`, `nonce`, `pkce_verifier`, `user_id` (for `link`/`reauth`), `invite_id` → `invites`, `return_to`, `expires_at` | the flow id and state as SHA-256; the verifier and nonce are kept as given, live ≤ 10 min and are deleted on use |
 | `invites` | `code_hash` (unique), `created_by` (*set null*; null for the CLI), `used_by` (*set null*), `expires_at`, `used_at` | SHA-256 |
@@ -73,11 +70,14 @@ Every table has an `id uuid` primary key (server default) unless a key is named.
 | `rate_limits` | key `(bucket_hash, window_start)`, `count` | HMAC of the bucket key |
 | `auth_events` | `user_id` (*set null*), `kind`, `ip`, `at`, `detail` (no secrets) | none |
 
-Deleting a user (§6) thus removes all their auth rows. Cascades into owned tables work under
-`FORCE` RLS, because Postgres runs referential actions without row security.
+Deleting a user (§6) thus removes all their auth rows except `auth_events`, which keep a null
+`user_id` until the 30-day purge. Cascades into owned tables work under `FORCE` RLS, because
+Postgres runs referential actions without row security.
 
-- **Email normalization:** `email_normalized` is the Unicode case-fold of the whole address
-  after trimming. It's used for lookup and uniqueness only; mail goes to `email` as typed.
+- **Email normalization:** `email_normalized` is the address after trimming, with ASCII letters
+  lowercased and everything else kept as typed. Full Unicode case folding would merge distinct
+  addresses (`ß` and `ss`). It's used for lookup and uniqueness only; mail goes to `email` as
+  typed. `CLASSBEAT_ADMIN_EMAILS` entries are compared in the same normalized form, exactly.
 - **Purge:** an hourly task in the worker deletes expired or used rows:
   - `sessions`, both idle-expired and absolute-expired;
   - `pending_signups`, `auth_tokens`, `oauth_flows` and `rate_limits` windows;
@@ -141,7 +141,9 @@ so the SPA can prompt.
 
   "Sign out everywhere" deletes them all, and sign-out deletes the row and clears the cookie.
 - **Known devices:** a successful sign-in sets `__Host-classbeat_device` (`HttpOnly`, 32 random
-  bytes, kept for 1 year), stored as an HMAC per user. It is used only to exempt the user from
+  bytes, kept for 1 year), stored per user as `HMAC(device_key, user_id || token)`. A browser
+  shared by several users holds one token, which can be a known device for each of them. It is
+  used only to exempt the user from
   the per-account rate cap (§9): a stolen one grants nothing else. A reset deletes all of the
   user's known devices.
 
@@ -197,13 +199,21 @@ Every state-changing request (`POST`, `PUT`, `PATCH`, `DELETE`) must pass two ch
   - **Existing email:** nothing is stored, and the mail says the account exists and links to
     sign-in and reset.
   - No account exists yet, and the invite isn't consumed (T33).
-- **Confirmation** (`POST /api/auth/signup/confirm` with the token), in one transaction:
+- **Confirmation** (`POST /api/auth/signup/confirm` with the token; for a password sign-up
+  also **the chosen password**, typed again on the confirmation page, while a provider sign-up
+  is bound to its browser instead, below). The password is checked against the row's hash
+  first.
+  A wrong password, like a confirmation in the wrong browser for a provider sign-up, leaves the
+  row and the token untouched and counts as a sign-in failure (§9). So a victim who clicks a
+  link for a sign-up someone else started can't confirm it, and an attacker can't confirm
+  without the mailbox. Then, in one transaction:
   1. Consume the pending row.
   2. Consume the invite (`UPDATE invites SET used_at … WHERE used_at IS NULL AND expires_at > now()
      RETURNING`).
   3. Create the user with `email_verified_at = now()`.
 
-  If the email was taken in the meantime, nothing is created and the page says to sign in. If
+  If the email was taken in the meantime, or the provider identity was linked elsewhere in the
+  meantime (`UNIQUE (provider, subject)`), nothing is created and the page says to sign in. If
   step 2 fails (the invite was used by another sign-up, or expired), the transaction rolls
   back, the pending row stays, and the page says the invite is no longer valid. The browser is
   not signed in (§4).
@@ -288,17 +298,35 @@ is no Starlette session middleware.
   `oauth_<provider>_client_secret` secret file exist. Client secrets are never logged.
 - **Outbound hosts:** only the provider endpoints (T19).
 
-**Callback outcomes** (identity key `(provider, subject)`, never email, T1):
+**Callback outcomes** (identity key `(provider, subject)`, never email, T1). The flow purpose
+is evaluated first, then the rows for `sign_in` from the top:
 
 | Situation | Result |
 |---|---|
-| Identity exists | Sign in to its user (unless the user is disabled: the generic failure) |
 | Flow purpose `link` | Link to the flow's user (who passed recent auth before the start); an identity already on another user is refused |
 | Flow purpose `reauth` | The identity must belong to the flow's user; then `reauth_at = now()` and the session rotates |
+| `sign_in`, identity exists | Sign in to its user (unless the user is disabled: the generic failure) |
 | New identity, the provider verified the email, and it matches an existing user | **Nothing is created or linked.** The page says an account with this email exists: sign in to it and link from the account page. Only someone in control of that mailbox can get here, so nothing leaks |
 | New identity, sign-up mode `closed`, or `invite` without a valid invite in the flow | **Nothing is created.** The page says an invite is needed (in `invite` mode, with a field to enter one and start again) |
 | New identity, the provider verified the email, and no user has it | Create the user (verified) and the identity, consuming the invite with the same conditional `UPDATE` as a password sign-up, in one transaction; if the invite is gone by then, the transaction rolls back and the page says the invite is no longer valid |
-| New identity, the email is unverified or missing (always Microsoft) | The page asks for an email address and treats it like a password sign-up (same responses, limits and invite rules), with `provider` and `subject` in the `pending_signups` row. The row is **bound to this browser**: a random `__Host-classbeat_pending` cookie (`HttpOnly`, 24 h), stored as `browser_hash`. The confirmation link creates the account and the identity only in that browser; in any other, it creates nothing and says to start the sign-in with the provider again from this device. So an unsolicited mail can't attach someone else's identity to the reader's address |
+| New identity, the email is unverified or missing (always Microsoft) | See the hand-off below |
+
+**Hand-off for an unverified or missing provider email.** The provider identity never passes
+through the client:
+1. **At the callback**, the server creates a `pending_signups` row with `provider`, `subject`,
+   `invite_id` and `browser_hash`. `email` and `token_hash` stay empty, and the row expires in
+   15 minutes. It sets a random `__Host-classbeat_pending` cookie (`HttpOnly`, 24 h) whose hash
+   is `browser_hash`. A second pending sign-up in the same browser replaces the first.
+2. **The email page** posts only an address. The server takes `provider`, `subject` and the
+   invite **only from the row the cookie points to**, never from the request body. It fills in
+   the email and token, extends the expiry to 24 h, and from then on treats it like a password
+   sign-up (same responses, limits and invite rules).
+3. **The confirmation link** creates the account and the identity only in the browser holding
+   that cookie. In any other browser it creates nothing, leaves the token unused, and says to
+   finish on the device where the sign-in started.
+
+So an unsolicited mail can't attach someone else's identity to the reader's address, and a
+client can't submit someone else's `subject`.
 
 - **Link notice:** every new link (sign-up with a provider, or `link`) mails the account's
   address, naming the provider.
@@ -319,9 +347,14 @@ Re-authentication is one of the following, and each rotates the session:
 - an OAuth `reauth` flow (§5);
 - for admins, a TOTP code.
 
-Once TOTP is confirmed, **removing or replacing it, or regenerating recovery codes, needs
-step-up** (a current TOTP or recovery code within 5 minutes, §7), not only recent
-authentication. Otherwise a stolen password alone could swap in the attacker's own TOTP.
+**Step-up** means a TOTP or recovery code within 5 minutes (`stepup_at`). For a user whose
+TOTP is confirmed, step-up is needed **in addition to** recent authentication for every action
+in the list above, and for removing or replacing TOTP and regenerating recovery codes.
+Otherwise a stolen password alone could swap in the attacker's TOTP, or move the account's
+email to the attacker and reset it away from the owner.
+
+TOTP is open to every user. For a non-admin it only adds this step-up protection; it gates
+sign-in only for the admin role (§7).
 
 ### 7. Admins and MFA
 
@@ -334,7 +367,8 @@ authentication. Otherwise a stolen password alone could swap in the attacker's o
   1. `python -m classbeat invite create [--expires 7d]` prints one invite code (16 random bytes,
      128 bits, shown once; `created_by` is null). This is the only way to make invites before
      the M5 admin area.
-  2. The owner signs up with an address in `CLASSBEAT_ADMIN_EMAILS` and confirms it.
+  2. The owner signs up with an address in `CLASSBEAT_ADMIN_EMAILS` and confirms it (with the
+     password, in the same browser as the sign-up for a provider sign-up, §5).
   3. At the next sign-in, that address gets `role = admin`.
      `python -m classbeat admin grant <email>` does the same for an existing user.
   4. Every admin route answers `mfa_required` until TOTP is enrolled.
@@ -349,7 +383,8 @@ authentication. Otherwise a stolen password alone could swap in the attacker's o
     an unexpected enrollment is visible in `auth_events` and mailed to the user.
   - **Lost authenticator:** use a recovery code, or `python -m classbeat admin mfa-reset
     <email>`. That removes the user's TOTP and recovery codes, writes `auth_events`, revokes all
-    sessions and mails the user.
+    sessions, and mails the user a password-reset link. The owner resets and re-enrolls before
+    anything else, because the account is back in the "whoever enrolls first" state.
 - **TOTP** (RFC 6238 via `pyotp`):
   - **Parameters:** SHA-1, 6 digits, a 30 s period, ±1 step of tolerance, and a 160-bit secret.
   - **Enrollment:** shows a QR code (an SVG rendered server-side, no third-party host) and the
@@ -361,8 +396,8 @@ authentication. Otherwise a stolen password alone could swap in the attacker's o
   - Each is used once, by an atomic conditional `UPDATE … WHERE used_at IS NULL RETURNING`, and
     works in place of a TOTP code.
   - Every failed MFA attempt writes `mfa_failed`. Five in an hour mail the user.
-- **Step-up:** sensitive admin actions (from M5: grants, codes, flags, disabling users) need a
-  TOTP code within **5 minutes** (`stepup_at`).
+- **Step-up:** sensitive admin actions (from M5: grants, codes, flags, disabling users) need
+  step-up as defined in §6 (a TOTP or recovery code within **5 minutes**).
 - M1 ships `GET /api/admin/whoami` to prove the gate; the admin area itself is M5.
 
 ### 8. Keys
@@ -388,9 +423,15 @@ Fixed windows are counted in `rate_limits` with one upsert per check. There is n
   limits count requests.
 - **Reserve first:** every attempt first takes a slot with
   `INSERT … ON CONFLICT DO UPDATE SET count = rate_limits.count + 1 RETURNING count`, and is
-  refused above the limit before any password check runs. A success then deletes its
-  (account, IP) bucket and gives back its per-account and per-IP slots, so only failures stay
-  counted and parallel attempts can't overshoot.
+  refused above the limit before any password check runs, so parallel attempts can't overshoot.
+- **Release on success,** so only failures stay counted:
+  - The success deletes its own (account, IP) bucket.
+  - It decrements, by one, the exact per-account and per-IP rows it reserved (the same
+    `window_start`), with `GREATEST(count - 1, 0)`. It never touches a newer window, so
+    attempts that straddle a boundary gain nothing.
+  - An attempt from a known device reserves no per-account slot at all.
+- **IPv6:** IPv6 addresses are bucketed by their /64 prefix, so rotating addresses within one
+  allocation doesn't escape the per-IP limits.
 - **Bounded hashing:** argon2 runs in a bounded thread pool (`CLASSBEAT_PASSWORD_HASH_WORKERS`,
   default 4). A request that waits more than 5 s for a worker gets 503.
 - **When a limit trips:** the request gets 429 with `Retry-After`. There is no permanent lockout.
@@ -413,70 +454,45 @@ invited; the M6 security review revisits it.
 
 ### 10. Logging
 
-- **Never logged:**
-  - the session, device, CSRF and OAuth cookies;
-  - the `Authorization` and `X-CSRF-Token` headers;
-  - query strings on `/oauth/*` (uvicorn's access log is replaced by our own, which drops
-    them);
-  - request bodies on `/api/auth/*`.
+- **Never logged:** the session, device, CSRF and OAuth cookies; the `Authorization` and
+  `X-CSRF-Token` headers; query strings on `/oauth/*` (our own access log replaces uvicorn's);
+  request bodies on `/api/auth/*`.
 - **`auth_events`** record the kind (`sign_in`, `sign_in_failed`, `mfa_failed`,
-  `admin_granted`, …) and never a password, token or code.
-- **Redaction test:** a log-redaction test plants each kind of secret and greps the captured
-  logs (T7).
+  `admin_granted`, …), never a password, token or code. A log-redaction test plants each kind
+  of secret and greps the captured logs (T7).
 
 ### 11. Tests and fakes
 
-- **No test reaches the network.**
-- **Unit and integration tests** run the providers through an in-process fake: an httpx
-  `MockTransport` with its own signing key and JWKS. The fake can issue every bad token the
-  tests need: wrong signature or algorithm, `aud`, `iss`, `nonce`, `auth_time`, expiry, and
-  unverified or missing emails.
-- **E2E tests** add a small fake OIDC provider service under the compose profile `test`.
-  - Its endpoints are configured only when `CLASSBEAT_ENVIRONMENT=test`.
-  - In any other environment, provider endpoints are the real ones and can't be overridden.
-- **Mail** is read from mailpit's API in E2E, and from an in-process SMTP fake in unit tests.
+No test reaches the network. Unit and integration tests run the providers through an
+in-process fake (an httpx `MockTransport` with its own signing key and JWKS) that can issue
+every bad token the tests need: wrong signature or algorithm, `aud`, `iss`, `nonce`,
+`auth_time`, expiry, unverified or missing emails. E2E adds a fake OIDC provider service under
+the compose profile `test`, configurable only when `CLASSBEAT_ENVIRONMENT=test`; elsewhere the
+provider endpoints are the real ones. Mail is read from mailpit's API in E2E and from an
+in-process SMTP fake in unit tests.
 
 ## Alternatives
 
-- **Owned account tables with `SECURITY DEFINER` lookups.** Rejected for now (§1). It needs the
-  privileged migration step, and against injection it adds nothing beyond hashing. It remains an
-  option if a later need makes it worthwhile.
-- **Unverified accounts that are verified later.** Rejected. They allow an account to be
-  pre-hijacked by whoever registers the address first, and they leak which emails exist when a
-  second sign-up collides (T39, T33).
-- **Signed stateless session cookies (JWT).** Rejected:
-  - A session couldn't be revoked.
-  - Idle expiry and "sign out everywhere" would need a server table anyway.
-  - A leaked signing key would expose every session, not one.
-- **Starlette `SessionMiddleware` for OAuth state.** Rejected: it keeps the state in a signed
-  client-side cookie, which the server can't make single-use.
-- **Linking accounts by verified email automatically.** Rejected by the roadmap (T1).
-- **Lockout after N failures.** Rejected: an attacker could use it to lock a victim out. Instead,
-  failure-only windows per account and IP, and a capped per-account limit with a known-device
-  exemption.
+- **Owned account tables with `SECURITY DEFINER` lookups:** rejected for now (§1). It needs the
+  privileged migration step and adds nothing beyond hashing against injection.
+- **Unverified accounts, verified later:** rejected. Whoever registers an address first could
+  pre-hijack it, and a colliding second sign-up leaks which emails exist (T39, T33).
+- **Signed stateless session cookies (JWT):** rejected. They can't be revoked, idle expiry
+  and "sign out everywhere" need a server table anyway, and a leaked key exposes every session.
+- **Starlette `SessionMiddleware` for OAuth state:** rejected. A signed client-side cookie can't
+  be made single-use.
+- **Linking by verified email automatically:** rejected by the roadmap (T1).
+- **Lockout after N failures:** rejected, because it lets an attacker lock a victim out (§9).
 
 ## Consequences
 
-- **The M1 split, with these acceptance criteria:**
-  - **#36:** tables and migration, guard 8, sessions and known devices, `current_context`, CSRF,
-    rate limits (reserve-first, bounded hashing pool), the purge task, the `invite create`,
-    `admin grant`, `admin revoke` and `admin mfa-reset` commands, and `app_secret_key` in
-    `worktree.sh init`.
-    - Isolation between users is tested through user-scoped queries and the 404 tests for
-      foreign session ids (§1), not through RLS.
-  - **#37:** email and password, pending sign-ups, reset, email change, account deletion, mail.
-  - **#38:** OAuth with the fake provider, including the invite gate and the browser-bound
-    pending-sign-up path for unverified emails. Before #38 merges, the `auth_time` and
-    `max_age` behaviour of Google and Microsoft is checked against their current documentation
-    (no live calls).
-  - **#39:** TOTP, recovery codes, step-up (also for changing TOTP) and recent auth.
-    - TOTP secrets are protected by AES-GCM at rest from M1 (§8), not by RLS.
-  - **#40:** frontend pages, and E2E with the fake OIDC service. Invites for E2E come from
-    `invite create`.
-- **New dependencies:** `argon2-cffi`, `authlib`, `httpx`, `pyotp`, `cryptography`, and a
-  QR-code SVG generator. They are pinned and audited like the rest.
-- **Threat model:** T1, T3, T4 and T33 cite this ADR, and T34 to T39 are added. T2, T24, T27 and
-  T28 already state what §3 to §9 implement.
-- **For later milestones:** M2's encryption takes over the TOTP secrets (§8), and its connect
-  flows reuse `require_recent_auth`. The M6 security review revisits the per-account
-  denial-of-service risk (§9).
+- **The M1 split stands** (#36 to #40); each issue's scope and acceptance criteria follow this
+  ADR. In particular, isolation inside `classbeat.auth` is tested through user-scoped queries
+  and 404s for foreign ids (§1), and TOTP secrets are protected by AES-GCM at rest (§8), not by
+  RLS. Before #38 merges, Google's and Microsoft's `auth_time` and `max_age` behaviour is
+  checked against their current documentation (no live calls).
+- **New dependencies** (pinned and audited): `argon2-cffi`, `authlib`, `httpx`, `pyotp`,
+  `cryptography`, a QR-code SVG generator.
+- **Threat model:** T1, T3, T4 and T33 cite this ADR; T34 to T39 are new.
+- **Later:** M2's encryption takes over the TOTP secrets (§8) and its connect flows reuse
+  `require_recent_auth`; M6 revisits the per-account denial-of-service risk (§9).
