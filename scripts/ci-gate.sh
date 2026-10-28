@@ -22,6 +22,10 @@ echo "results: $RESULTS"
 
 die() { echo "::error::$*"; exit 1; }
 
+# toJSON(needs) is an object that starts with a brace; anything before it (a BOM, blanks) is
+# not what the workflow produces.
+[[ $NEEDS == "{"* ]] || die "NEEDS does not start with a JSON object"
+
 # shellcheck disable=SC2016  # jq program, not shell
 program='
   def fail($m): error($m);
