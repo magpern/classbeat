@@ -32,13 +32,14 @@ export const SIGNED_IN = {
 /**
  * Stubs `fetch` with a table of `"METHOD /path"` handlers. A handler returns a Response or any
  * JSON value (answered 200); a missing route fails the test loudly. `/api/auth/session`
- * defaults to anonymous.
+ * defaults to anonymous and `/api/connections` to none.
  */
 export function fakeApi(routes: Record<string, Handler | object | string>) {
   rememberCsrfToken(null)
   const calls: Call[] = []
   const table: Record<string, Handler | object | string> = {
     'GET /api/auth/session': ANONYMOUS,
+    'GET /api/connections': { connections: [] },
     ...routes,
   }
   const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {

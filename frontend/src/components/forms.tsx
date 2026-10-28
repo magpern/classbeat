@@ -73,8 +73,11 @@ interface Action {
   busy: boolean
   error: string | null
   clear: () => void
-  /** Runs `task`; resolves to its value, or `undefined` after an error or a cancelled prompt. */
-  run: <T>(task: () => Promise<T>) => Promise<T | undefined>
+  /**
+   * Runs `task`; resolves to its value, or `undefined` after an error or a cancelled prompt.
+   * `describe` turns an error into its text (default `errorMessage`).
+   */
+  run: <T>(task: () => Promise<T>, describe?: (error: unknown) => string) => Promise<T | undefined>
 }
 
 /** Busy flag and error text around an async action. Only the latest call may set state. */
@@ -83,21 +86,27 @@ export function useAction(): Action {
   const [error, setError] = useState<string | null>(null)
   const latest = useRef(0)
 
-  const run = useCallback(async <T,>(task: () => Promise<T>): Promise<T | undefined> => {
-    const mine = ++latest.current
-    setBusy(true)
-    setError(null)
-    try {
-      return await task()
-    } catch (caught) {
-      if (mine === latest.current && !(caught instanceof PromptCancelled)) {
-        setError(errorMessage(caught))
+  const run = useCallback(
+    async <T,>(
+      task: () => Promise<T>,
+      describe: (error: unknown) => string = errorMessage,
+    ): Promise<T | undefined> => {
+      const mine = ++latest.current
+      setBusy(true)
+      setError(null)
+      try {
+        return await task()
+      } catch (caught) {
+        if (mine === latest.current && !(caught instanceof PromptCancelled)) {
+          setError(describe(caught))
+        }
+        return undefined
+      } finally {
+        if (mine === latest.current) setBusy(false)
       }
-      return undefined
-    } finally {
-      if (mine === latest.current) setBusy(false)
-    }
-  }, [])
+    },
+    [],
+  )
 
   const clear = useCallback(() => {
     setError(null)
