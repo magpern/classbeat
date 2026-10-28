@@ -10,8 +10,8 @@ GitHub hold the detail.
 | M0 | Repo, protocol, CI, skeleton, compose, worktrees | done (milestone closed 2026-10-28) |
 | F | Provider-permission questions (ADR 0010) | closed, not pursued (owner's risk acceptance, 2026-10-28) |
 | M1 | Accounts | done (milestone closed 2026-10-28) |
-| M2 | `mowl-workouts` v0.4.0, isolation, encryption, connect MOWL | next |
-| M3a | Jobs, Anthropic loop, design on existing music | not started |
+| M2 | `mowl-workouts` v0.4.0, isolation, encryption, connect MOWL | done, except the token-lifetime check (waits for the owner) |
+| M3a | Jobs, Anthropic loop, design on existing music | next |
 | M3b | Class page, revisions, save to MOWL, usage and cost | not started |
 | M4 | Song picking (beta), Spotify BYOK | not started |
 | M3c | Eval suite, OpenAI and DeepSeek adapters | not started |
@@ -48,16 +48,35 @@ GitHub hold the detail.
     repeated) and the E2E flows.
   - #55: follow-ups (JWKS cache and refetch, `azp`, Google `auth_time` request, guard 8 as a
     superset of its first version with explicit exemptions, MFA and session fixes).
-- **Next: M2** (isolation and MOWL), split into issues per [roadmap.md](roadmap.md) §1 and M2.
-  Open in M2 so far: #58 (guard 8 marker and count) and #59 (this update).
-- Releases: v0.1.0 (cut partway through M0); v0.2.0 follows this update (end of M1). Image
+- **M2 done technically, except the token-lifetime fact.** Its "done when" (roadmap: concurrent
+  two-user isolation test green; ciphertext only; no tokens in logs; MOWL token lifetime known)
+  holds for the first three. **The MOWL token lifetime is not known**; the owner-authorized
+  check is under "Waiting for the owner". It does not block M3a.
+- **M2, what merged:**
+  - Design: [ADR 0004](adr/0004-connections-and-encryption.md) (#69). #70: ADR 0010 and
+    roadmap Amendment 1 (beta on the owner's risk acceptance). #68: CI runs only what a change
+    needs, no CI on push to `main`.
+  - `mowl-workouts` v0.4.0 (#64, closed; delivered in the `mowl-workouts` repo).
+  - #74 (closes #65): connections table, envelope encryption, log redaction.
+  - #76 (closes #66): connect MOWL, backend and page.
+  - #78 (closes #67): concurrent two-user isolation test with fake upstreams.
+  - #72 (closes #58): guard 8 marker as a comment token, count per string.
+- **Follow-ups** (open, non-blocking review findings):
+  - #75: hardening from #74 (`connection_keks` privileges, deferred KEK check, dump test hex,
+    `keys rewrap` exit code). Items 3 and 4 should be done before the beta is used by testers.
+  - #77: hardening and test gaps from #76.
+  - #79: app-layer owner filter and isolation test follow-ups from #78.
+  - #73: guard 8 f-string marker edge cases.
+  - #71: design of the purge of Spotify-derived data (roadmap Amendment 1, §6); due before M3b/M4.
+- **Next: M3a** (jobs, Anthropic loop, design on existing music).
+- Releases: v0.1.0 (cut partway through M0); v0.2.0 is not cut yet (deferred to save Actions quota). Image
   `ghcr.io/magpern/classbeat`, private.
 
 ## Waiting for the owner
 
 - Nothing to decide now. (2026-10-28: the providers are not contacted; the beta runs on the
   owner's risk acceptance, [ADR 0010](adr/0010-live-activation-permissions.md).)
-- **After MOWL connect (#66) merges: an owner-authorized check of the MOWL token's lifetime**
+- **MOWL connect (#66) has merged, so the owner can now authorize: a check of the MOWL token's lifetime**
   against the owner's own account (M2 "done when"; [ADR 0004](adr/0004-connections-and-encryption.md) §6).
   What is known (#66): the token is a 36-character GUID, not a JWT, so it carries no expiry
   claim; MOWL sends no lifetime with it, and `mowl-workouts` (v0.4.0, `docs/mowl-api.md`) knows
