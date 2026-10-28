@@ -31,10 +31,21 @@ class UserContext:
 - Built **only** by two issuers: `classbeat.auth` from the authenticated server-side session
   (M1) and `classbeat.jobs` from the job row the worker claimed (M3a). Until those exist, only
   tests build one.
-- A guard test scans the source (AST) outside those two packages and the tests, and fails on
-  any reference to `UserContext` other than a type annotation or an import used only for
-  annotations: calls (including through an alias), `dataclasses.replace`, `functools.partial`
-  and subclassing are all refused. API handlers get the context through one FastAPI
+- Two layers keep other code from forging one, and each does a different thing:
+  - **A runtime barrier**: construction requires a module-private issuer token (a keyword-only
+    `dataclasses.InitVar` checked in `__post_init__`) that only `classbeat.auth` and
+    `classbeat.jobs` obtain (tests use a test-only helper). `UserContext(...)`,
+    `type(ctx)(...)`, `ctx.__class__(...)` and `dataclasses.replace(ctx, ...)` raise without it.
+  - **An AST guard test** scans the source outside those two packages and the tests. It fails
+    on any reference to `UserContext` other than a type annotation or an import used only for
+    annotations (calls, also through an alias, and subclassing are refused), on any reference
+    to the token, and, in any module whether or not it names `UserContext`, on
+    `dataclasses.replace`, `object.__setattr__`, `object.__new__`, `x.__class__(...)` and
+    `type(x)(...)`.
+
+  These stop accidental misuse and make misuse visible in review. Deliberately malicious code
+  inside our own process (reflection, mutating a frozen instance, ctypes) is out of scope for
+  runtime checks; the review gate catches it. API handlers get the context through one FastAPI
   dependency; they never take a user ID from a path, query, body, header or model output.
 - Every service and repository function that touches owned data takes `ctx: UserContext`
   explicitly. IDs from the browser or a model are looked up *within* the owner's rows; not
@@ -85,7 +96,9 @@ CREATE POLICY owner_isolation ON <t>
   Further policies must be `AS RESTRICTIVE`, which can only narrow it.
 - Repositories still filter `owner_id = ctx.user_id` themselves; RLS is the second layer, not
   the only one.
-- Owned tables live in the `public` schema and are not partitioned; anything else needs an ADR.
+- Owned tables live in the `public` schema, neither partitioned nor in an inheritance
+  hierarchy (a query on a parent reads its children's rows under the parent's policies only);
+  anything else needs an ADR.
 
 ### 3. System tables
 
@@ -135,6 +148,8 @@ data leak. `statement_timeout` (30 s), `lock_timeout` (5 s) and
 SQL could still lower them, so this limits accidents, not attacks; T26 in the threat model
 covers the injection path.
 
+- `PUBLIC` also loses `CONNECT` on the `postgres` and `template1` databases, so the app role
+  connects to its own database only.
 - `PUBLIC` loses `CONNECT` and `TEMP` on the database and `USAGE` and `CREATE` on schema
   `public`, and
   `ALTER DEFAULT PRIVILEGES FOR ROLE classbeat_owner REVOKE EXECUTE ON FUNCTIONS FROM PUBLIC`
@@ -146,9 +161,12 @@ covers the injection path.
 - Web and worker use `CLASSBEAT_DATABASE_URL` + `database_password`; `migrate` uses
   `CLASSBEAT_MIGRATIONS_DATABASE_URL` + `database_owner_password`.
 - **Web and worker refuse to start** if their database role is a superuser, has `BYPASSRLS`,
-  is a member of such a role, or owns any table or the database. The check runs at startup
+  is a member of such a role or of `pg_execute_server_program`, `pg_read_server_files` or
+  `pg_write_server_files`, or owns any table, schema or the database. The check runs at startup
   and again on every new pooled connection, so a database that was down at startup cannot
-  let a privileged connection through later. There is no override.
+  let a privileged connection through later. A refused login (wrong password or role) is a
+  fatal startup error with a clear message and no credentials in it, not "database down". There
+  is no override.
 - Data migrations on owned tables see no rows under `FORCE` (an `UPDATE` reports 0 rows). They
   either run per owner with `app.user_id` set, or as `classbeat_maint` with an audit row; the
   migration states which.
@@ -167,8 +185,13 @@ async with system_session(sessionmaker) as session:
 - `user_session` begins a transaction, runs
   `SELECT set_config('app.user_id', :user_id, true)` (transaction-local), yields the session,
   commits on success and rolls back on an exception. **It owns the transaction**: calling
-  `commit()` or `rollback()` inside it raises, because a new transaction would run without
-  the setting.
+  `session.commit()` or `session.rollback()` inside it raises, because a new transaction would
+  run without the setting. Savepoints (`begin_nested()`) are allowed, and `app.user_id` survives
+  a rolled-back savepoint. Ending the transaction through another path (`run_sync`, the
+  connection's own `rollback()`, a raw `ROLLBACK`) is not intercepted, and fails closed: the
+  setting is gone, so later statements see no rows and cannot write owned rows. Committing
+  through the connection or a raw `COMMIT` would commit partial work; that is forbidden by
+  convention and the review gate, not enforced.
 - Never a session-level `SET app.user_id`. The pool resets connections on return (rollback).
 - One transaction per `user_session`; a function needing two users' data is a design error.
 - Long-lived work holds no session: a server-sent events stream opens a short `user_session`
@@ -184,15 +207,19 @@ async with system_session(sessionmaker) as session:
    `with_check`), any other policy restrictive, `UNIQUE (owner_id, id)`, every other unique
    constraint or index including `owner_id`, and every foreign key to another owned table
    mapping `owner_id` to the parent's `owner_id` (column pairs compared, so a swapped key
-   fails), with `ON DELETE` as in §2. No owned table is partitioned, no foreign key goes
-   from a system table into an owned table, and `public` holds no views.
+   fails), with `ON DELETE` as in §2, `id` of type `uuid` with the server default
+   `gen_random_uuid()`. No table in `public` is partitioned or takes part in inheritance
+   (any `pg_inherits` row naming one fails), no foreign key goes from a system table into an
+   owned table, and `public` holds no views.
 2. `classbeat_app`'s privileges equal the allowlist in §4 (checked as an allowlist against
    `pg_roles`, `pg_auth_members`, `information_schema` and `aclexplode`, so a new privilege
    kind fails the test), and nothing is granted to `PUBLIC` beyond Postgres' built-in
    catalog access (`pg_catalog`, `information_schema`, the `plpgsql` and `sql` languages). The
    ACLs checked are those on the database, schema `public` and its tables, sequences,
-   columns and functions, the default privileges, and the `classbeat_app` role defaults
-   (the three timeouts); `classbeat_owner` has `rolbypassrls` false and is a member of no
+   columns and functions, the default privileges, `CONNECT` on every other database, and the
+   `classbeat_app` role settings (exactly the three timeouts at role level, nothing per
+   database and nothing else, such as `session_replication_role` or `search_path`). Other ACL
+   kinds (large objects, types) are out of scope. `classbeat_owner` has `rolbypassrls` false and is a member of no
    `BYPASSRLS` role.
 3. On test-only owned parent and child tables: user A never sees, updates, deletes or inserts
    user B's rows; A can't create a child pointing at B's parent; a session without a context

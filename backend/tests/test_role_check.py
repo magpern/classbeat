@@ -1,6 +1,8 @@
 """Guard 6 of ADR 0002 section 6: web and worker refuse to run as a role that bypasses RLS."""
 
+import asyncio
 import secrets
+import socket
 from collections.abc import Iterator
 
 import httpx
@@ -12,10 +14,21 @@ from classbeat.config import Settings
 from classbeat.db import DatabaseRoleError, create_engine, verify_database_role
 from classbeat.db.role_check import PROBLEMS, problems_for
 from classbeat.web import create_app
+from classbeat.worker.__main__ import _run  # pyright: ignore[reportPrivateUsage]
 from conftest import url_for
 
 PASSWORD = secrets.token_hex(8)
-PROBE_ROLES = ("guard_super", "guard_bypass", "guard_member", "guard_table_owner", "guard_plain")
+PROBE_ROLES = (
+    "guard_super",
+    "guard_bypass",
+    "guard_member",
+    "guard_table_owner",
+    "guard_prog",
+    "guard_read",
+    "guard_write",
+    "guard_schema",
+    "guard_plain",
+)
 
 
 @pytest.fixture
@@ -30,7 +43,7 @@ def probe_roles(database_url: str) -> Iterator[None]:
                 connection.execute(text(statement))
 
         def cleanup() -> None:
-            run("DROP TABLE IF EXISTS t_probe_owned")
+            run("DROP TABLE IF EXISTS t_probe_owned", "DROP SCHEMA IF EXISTS guard_s CASCADE")
             for role in (*PROBE_ROLES, "guard_target"):
                 exists = connection.execute(
                     text("SELECT 1 FROM pg_roles WHERE rolname = :r"), {"r": role}
@@ -48,15 +61,17 @@ def probe_roles(database_url: str) -> Iterator[None]:
             f"CREATE ROLE guard_table_owner LOGIN PASSWORD '{PASSWORD}'",
             "CREATE TABLE t_probe_owned (id int)",
             "ALTER TABLE t_probe_owned OWNER TO guard_table_owner",
+            f"CREATE ROLE guard_prog LOGIN PASSWORD '{PASSWORD}'",
+            "GRANT pg_execute_server_program TO guard_prog",
+            f"CREATE ROLE guard_read LOGIN PASSWORD '{PASSWORD}'",
+            "GRANT pg_read_server_files TO guard_read",
+            f"CREATE ROLE guard_write LOGIN PASSWORD '{PASSWORD}'",
+            "GRANT pg_write_server_files TO guard_write",
+            f"CREATE ROLE guard_schema LOGIN PASSWORD '{PASSWORD}'",
+            "CREATE SCHEMA guard_s AUTHORIZATION guard_schema",
             f"CREATE ROLE guard_plain LOGIN PASSWORD '{PASSWORD}'",
         )
-        for role in (
-            "guard_super",
-            "guard_bypass",
-            "guard_member",
-            "guard_table_owner",
-            "guard_plain",
-        ):
+        for role in PROBE_ROLES:
             run(f"GRANT CONNECT ON DATABASE {db} TO {role}")
         try:
             yield
@@ -78,6 +93,10 @@ def settings_for(database_url: str, role: str, **overrides: object) -> Settings:
         ("guard_bypass", "has BYPASSRLS"),
         ("guard_member", "member of a superuser or BYPASSRLS role"),
         ("guard_table_owner", "owns tables"),
+        ("guard_prog", "pg_execute_server_program"),
+        ("guard_read", "pg_read_server_files"),
+        ("guard_write", "pg_write_server_files"),
+        ("guard_schema", "owns a schema"),
     ],
 )
 async def test_startup_and_every_connection_refuse_a_privileged_role(
@@ -168,6 +187,98 @@ async def test_the_web_app_starts_with_the_app_role(app_database_url: str) -> No
 
 
 def test_every_problem_has_a_flag_and_the_messages_are_distinct() -> None:
-    assert len(set(PROBLEMS)) == len(PROBLEMS) == 5
-    assert problems_for((False,) * 5) == []
-    assert problems_for((True, False, False, False, True)) == [PROBLEMS[0], PROBLEMS[4]]
+    assert len(set(PROBLEMS)) == len(PROBLEMS) == 7
+    assert problems_for((False,) * 7) == []
+    assert problems_for((True, False, False, False, True, False, True)) == [
+        PROBLEMS[0],
+        PROBLEMS[4],
+        PROBLEMS[6],
+    ]
+
+
+async def test_the_worker_does_not_start_with_a_privileged_role(database_url: str) -> None:
+    settings = Settings(database_url=database_url, environment="test")  # pyright: ignore[reportArgumentType]
+    with pytest.raises(DatabaseRoleError, match="is a superuser"):
+        await _run(settings)
+
+
+async def test_the_worker_starts_with_the_app_role(app_database_url: str) -> None:
+    settings = Settings(
+        database_url=app_database_url,  # pyright: ignore[reportArgumentType]
+        environment="test",
+        worker_heartbeat_seconds=0.01,
+    )
+    task = asyncio.create_task(_run(settings))
+    await asyncio.sleep(0.5)
+    assert not task.done()  # running; it only stops on a signal
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+
+
+async def test_a_refused_login_is_fatal_with_a_clear_message_and_no_password(
+    database_url: str,
+) -> None:
+    wrong = "wrong-" + secrets.token_hex(6)
+    settings = Settings(
+        database_url=url_for(database_url, "classbeat_app", wrong),  # pyright: ignore[reportArgumentType]
+        environment="test",
+    )
+    engine = create_engine(settings)
+    try:
+        with pytest.raises(DatabaseRoleError, match="refused the configured credentials") as err:
+            await verify_database_role(engine)
+        assert wrong not in str(err.value)
+    finally:
+        await engine.dispose()
+    with pytest.raises(DatabaseRoleError, match="refused the configured credentials"):
+        await _run(settings)
+    app = create_app(settings)
+    with pytest.raises(DatabaseRoleError, match="refused the configured credentials"):
+        async with app.router.lifespan_context(app):
+            pytest.fail("the app must not start")
+
+
+async def _pipe(reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
+    try:
+        while data := await reader.read(65536):
+            writer.write(data)
+            await writer.drain()
+    except ConnectionError:
+        pass
+    finally:
+        writer.close()
+
+
+async def test_a_database_that_comes_up_later_is_still_checked_on_first_connection(
+    database_url: str,
+) -> None:
+    from sqlalchemy.engine import make_url
+
+    real = make_url(database_url)
+    with socket.socket() as sock:
+        sock.bind(("127.0.0.1", 0))
+        port = sock.getsockname()[1]
+    # A superuser URL, but nothing listens on the port yet: startup cannot check it.
+    settings = Settings(
+        database_url=real.set(host="127.0.0.1", port=port).render_as_string(hide_password=False),  # pyright: ignore[reportArgumentType]
+        environment="test",
+    )
+    engine = create_engine(settings)
+
+    async def forward(client_r: asyncio.StreamReader, client_w: asyncio.StreamWriter) -> None:
+        server_r, server_w = await asyncio.open_connection(real.host, real.port)
+        await asyncio.gather(_pipe(client_r, server_w), _pipe(server_r, client_w))
+
+    try:
+        await verify_database_role(engine)  # no error: the database is down
+        server = await asyncio.start_server(forward, "127.0.0.1", port)  # now it "comes up"
+        try:
+            with pytest.raises(DatabaseRoleError, match="is a superuser"):
+                async with engine.connect() as connection:
+                    await connection.execute(text("SELECT 1"))
+        finally:
+            server.close()
+            await server.wait_closed()
+    finally:
+        await engine.dispose()

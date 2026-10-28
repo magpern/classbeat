@@ -19,11 +19,12 @@ from classbeat.db import (
     system_session,
     user_session,
 )
+from ctx import make_context
 
 pytestmark = pytest.mark.usefixtures("owned_tables")
 
-A = UserContext(user_id=uuid.uuid4(), role="user")
-B = UserContext(user_id=uuid.uuid4(), role="user")
+A = make_context()
+B = make_context()
 Sessions = async_sessionmaker[AsyncSession]
 INSERT_PARENT = text("INSERT INTO t_parent (owner_id, name) VALUES (:o, :n) RETURNING id")
 INSERT_CHILD = text("INSERT INTO t_child (owner_id, parent_id) VALUES (:o, :p)")
@@ -225,3 +226,29 @@ async def test_a_raw_user_id_is_not_a_context(sessions: Sessions) -> None:
     with pytest.raises(TypeError, match="UserContext"):
         async with user_session(sessions, A.user_id):  # pyright: ignore[reportArgumentType]
             pytest.fail("a raw user id must not open a session")
+
+
+async def test_savepoints_work_and_keep_the_user_id(sessions: Sessions) -> None:
+    async with user_session(sessions, A) as session:
+        await session.execute(INSERT_PARENT, {"o": A.user_id, "n": "kept"})
+        with pytest.raises(IntegrityError):  # the "insert, catch the unique violation" pattern
+            async with session.begin_nested():
+                await session.execute(INSERT_PARENT, {"o": A.user_id, "n": "kept"})
+        user = (await session.execute(text("SELECT current_setting('app.user_id')"))).scalar_one()
+        assert user == str(A.user_id)  # survived the rolled-back savepoint
+        async with session.begin_nested():  # a savepoint that ends normally is fine too
+            await session.execute(INSERT_PARENT, {"o": A.user_id, "n": "second"})
+        with pytest.raises(TransactionOwnedError):  # but the transaction is still not ours to end
+            await session.commit()
+        assert (await session.execute(text("SELECT count(*) FROM t_parent"))).scalar_one() == 2
+    assert await names(sessions, A) == ["kept", "second"]
+
+
+async def test_rolling_back_through_another_path_fails_closed(sessions: Sessions) -> None:
+    async with user_session(sessions, A) as session:
+        await session.execute(INSERT_PARENT, {"o": A.user_id, "n": "x"})
+        await session.run_sync(lambda sync_session: sync_session.rollback())
+        # The transaction (and with it app.user_id) is gone: no rows, and no owned writes.
+        assert (await session.execute(text("SELECT count(*) FROM t_parent"))).scalar_one() == 0
+        with pytest.raises(DBAPIError, match="row-level security"):
+            await session.execute(INSERT_PARENT, {"o": A.user_id, "n": "y"})

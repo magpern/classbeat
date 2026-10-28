@@ -116,6 +116,30 @@ CASES = {
         ],
         "owner_id must be uuid NOT NULL",
     ),
+    "id is text": (
+        [
+            "CREATE TABLE t_bad (id text PRIMARY KEY, owner_id uuid NOT NULL, "
+            "UNIQUE (owner_id, id))",
+            "RLS",
+        ],
+        "id must be uuid with the server default",
+    ),
+    "id without a server default": (
+        [
+            "CREATE TABLE t_bad (id uuid PRIMARY KEY, owner_id uuid NOT NULL, "
+            "UNIQUE (owner_id, id))",
+            "RLS",
+        ],
+        "id must be uuid with the server default",
+    ),
+    "id with another default": (
+        [
+            "CREATE TABLE t_bad (id uuid PRIMARY KEY DEFAULT (md5(random()::text))::uuid, "
+            "owner_id uuid NOT NULL, UNIQUE (owner_id, id))",
+            "RLS",
+        ],
+        "id must be uuid with the server default",
+    ),
     "no owner_id": (
         ["CREATE TABLE t_bad (id uuid PRIMARY KEY DEFAULT gen_random_uuid())"],
         "no owner_id column",
@@ -313,7 +337,38 @@ def admin_problems(database_url: str, *statements: str, undo: tuple[str, ...] = 
         (
             ["ALTER ROLE classbeat_app SET lock_timeout = '1h'"],
             ["ALTER ROLE classbeat_app SET lock_timeout = '5s'"],
-            "lock_timeout must be 5s",
+            "role settings must be exactly",
+        ),
+        (
+            ["ALTER ROLE classbeat_app IN DATABASE {db} SET statement_timeout = 0"],
+            ["ALTER ROLE classbeat_app IN DATABASE {db} RESET ALL"],
+            "none per database",
+        ),
+        (
+            ["ALTER ROLE classbeat_app SET session_replication_role = replica"],
+            ["ALTER ROLE classbeat_app RESET session_replication_role"],
+            "role settings must be exactly",
+        ),
+        (
+            ["ALTER ROLE classbeat_app SET search_path = pg_temp"],
+            ["ALTER ROLE classbeat_app RESET search_path"],
+            "role settings must be exactly",
+        ),
+        (
+            ["GRANT CONNECT ON DATABASE postgres TO PUBLIC"],
+            ["REVOKE CONNECT ON DATABASE postgres FROM PUBLIC"],
+            "must not connect to",
+        ),
+        (
+            [
+                "ALTER DEFAULT PRIVILEGES FOR ROLE classbeat_owner "
+                "GRANT MAINTAIN ON TABLES TO classbeat_app"
+            ],
+            [
+                "ALTER DEFAULT PRIVILEGES FOR ROLE classbeat_owner "
+                "REVOKE MAINTAIN ON TABLES FROM classbeat_app"
+            ],
+            "unexpected default privileges",
         ),
         (
             [
@@ -394,3 +449,32 @@ def test_public_cannot_connect_to_the_database(database_url: str) -> None:
                 exec_all(connection, "DROP ROLE guard_probe")
     finally:
         engine.dispose()
+
+
+def test_inheritance_leaks_rows_across_users_and_the_guard_refuses_it(
+    owner_database_url: str, app_database_url: str, owned_tables: None
+) -> None:
+    """The review's case: an owned child inherits a system table; A reads B through the parent."""
+    user_a, user_b = "00000000-0000-0000-0000-00000000000a", "00000000-0000-0000-0000-00000000000b"
+    drop_tables(owner_database_url, "t_bad", "t_sys")
+    with owner_connection(owner_database_url) as connection:
+        exec_all(connection, "CREATE TABLE t_sys (name text)", good() + " INHERITS (t_sys)")
+        run_rls_helper(connection, "t_bad")
+    app = create_engine(app_database_url)
+    try:
+        with app.begin() as connection:
+            connection.execute(text("SELECT set_config('app.user_id', :u, true)"), {"u": user_b})
+            connection.execute(
+                text("INSERT INTO t_bad (owner_id, name) VALUES (:o, 'B-secret')"), {"o": user_b}
+            )
+        with app.begin() as connection:
+            connection.execute(text("SELECT set_config('app.user_id', :u, true)"), {"u": user_a})
+            own = connection.execute(text("SELECT name FROM t_bad")).scalars().all()
+            via_parent = connection.execute(text("SELECT name FROM t_sys")).scalars().all()
+        assert own == []
+        assert via_parent == ["B-secret"], "the hole: Postgres applies only the parent's policy"
+        found = problems_of(owner_database_url, {"t_sys": "test"})
+        assert any("inheritance hierarchy" in p for p in found), found
+    finally:
+        app.dispose()
+        drop_tables(owner_database_url, "t_bad", "t_sys")

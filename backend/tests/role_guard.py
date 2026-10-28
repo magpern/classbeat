@@ -90,13 +90,37 @@ def check_roles(conn: Connection) -> list[str]:
         {"oid": roles[APP].oid},
     ).scalar_one()
     need(owned_by_app == 0, "classbeat_app must own nothing")
-    config = conn.execute(
-        text("SELECT setconfig FROM pg_db_role_setting WHERE setrole = :oid AND setdatabase = 0"),
+    # Role settings: exactly the three timeouts, at role level. A per-database setting would take
+    # precedence over them, and anything else (session_replication_role, search_path...) changes
+    # how the app role's sessions behave.
+    setting_rows = conn.execute(
+        text("SELECT setdatabase, setconfig FROM pg_db_role_setting WHERE setrole = :oid"),
         {"oid": roles[APP].oid},
-    ).scalar()
-    found = dict(item.split("=", 1) for item in (config or []))
-    for key, value in EXPECTED_TIMEOUTS.items():
-        need(found.get(key) == value, f"classbeat_app role default {key} must be {value}")
+    ).all()
+    need(
+        [row.setdatabase for row in setting_rows] in ([], [0]),
+        "classbeat_app may have role-level settings only, none per database",
+    )
+    found = dict(item.split("=", 1) for row in setting_rows for item in row.setconfig)
+    need(
+        found == EXPECTED_TIMEOUTS,
+        f"classbeat_app role settings must be exactly {EXPECTED_TIMEOUTS}, are {found}",
+    )
+
+    # The app role can connect to its own database and no other.
+    other_databases = (
+        conn.execute(
+            text(
+                "SELECT datname FROM pg_database WHERE datallowconn "
+                "AND datname <> current_database() "
+                "AND has_database_privilege(:app, oid, 'CONNECT')"
+            ),
+            {"app": APP},
+        )
+        .scalars()
+        .all()
+    )
+    need(not other_databases, f"classbeat_app must not connect to {other_databases}")
 
     # The database.
     db = conn.execute(text("SELECT current_database()")).scalar_one()

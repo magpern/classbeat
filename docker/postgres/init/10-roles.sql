@@ -10,7 +10,9 @@
 --   $DATABASE_PASSWORD_FILE        (default /run/secrets/database_password)
 -- The superuser's own password (postgres_password) is the image's POSTGRES_PASSWORD_FILE.
 --
--- Idempotent: running it again repairs drift (attributes, passwords, memberships, grants).
+-- Idempotent: running it again repairs drift in what it manages (attributes, passwords,
+-- memberships, role settings, grants and default privileges of the two roles). ACL kinds it
+-- does not manage (large objects, types, parameters) are not touched.
 -- Roles for SECURITY DEFINER functions (M3a) and classbeat_maint (M5) are created by the
 -- milestones that need them.
 
@@ -48,9 +50,17 @@ SELECT format('REVOKE %I FROM %I GRANTED BY %I', r.rolname, m.rolname, g.rolname
 
 -- Role defaults, so every connection of the app role has them. They limit accidents (a stuck
 -- lock, a runaway query); injected SQL could still lower them (threat model T26).
+-- Everything else set for the role (also per database) is dropped first, so a re-run repairs it.
+ALTER ROLE classbeat_app RESET ALL;
+SELECT format('ALTER ROLE classbeat_app IN DATABASE %I RESET ALL', current_database()) \gexec
 ALTER ROLE classbeat_app SET statement_timeout = '30s';
 ALTER ROLE classbeat_app SET lock_timeout = '5s';
 ALTER ROLE classbeat_app SET idle_in_transaction_session_timeout = '60s';
+
+-- The other databases of the server: PUBLIC cannot connect to them (classbeat_app only gets
+-- CONNECT on this one).
+REVOKE CONNECT ON DATABASE postgres FROM PUBLIC;
+REVOKE CONNECT ON DATABASE template1 FROM PUBLIC;
 
 -- The database. PUBLIC loses CONNECT and TEMP; both roles get CONNECT explicitly.
 SELECT format('ALTER DATABASE %I OWNER TO classbeat_owner', current_database()) \gexec
@@ -77,6 +87,13 @@ ALTER DEFAULT PRIVILEGES FOR ROLE classbeat_owner IN SCHEMA public
 ALTER DEFAULT PRIVILEGES FOR ROLE classbeat_owner IN SCHEMA public
   GRANT USAGE, SELECT ON SEQUENCES TO classbeat_app;
 ALTER DEFAULT PRIVILEGES FOR ROLE classbeat_owner REVOKE EXECUTE ON FUNCTIONS FROM PUBLIC;
+-- Global defaults (no IN SCHEMA) granted to the app role or PUBLIC are dropped too. PUBLIC keeps
+-- its built-in USAGE on types, which the app needs for the owner's enum types.
+ALTER DEFAULT PRIVILEGES FOR ROLE classbeat_owner REVOKE ALL ON TABLES FROM classbeat_app, PUBLIC;
+ALTER DEFAULT PRIVILEGES FOR ROLE classbeat_owner REVOKE ALL ON SEQUENCES FROM classbeat_app, PUBLIC;
+ALTER DEFAULT PRIVILEGES FOR ROLE classbeat_owner REVOKE ALL ON FUNCTIONS FROM classbeat_app;
+ALTER DEFAULT PRIVILEGES FOR ROLE classbeat_owner REVOKE ALL ON TYPES FROM classbeat_app;
+ALTER DEFAULT PRIVILEGES FOR ROLE classbeat_owner REVOKE ALL ON SCHEMAS FROM classbeat_app, PUBLIC;
 
 -- The same for objects that already exist (this script may run again later).
 REVOKE ALL ON ALL TABLES IN SCHEMA public FROM PUBLIC, classbeat_app;

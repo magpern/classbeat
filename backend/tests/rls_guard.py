@@ -36,10 +36,30 @@ def check_tables(conn: Connection, system_tables: Mapping[str, str]) -> list[str
     columns: dict[int, dict[int, Any]] = defaultdict(dict)
     for a in _rows(
         conn,
-        """SELECT attrelid, attnum, attname, attnotnull, format_type(atttypid, atttypmod) AS type
-             FROM pg_attribute WHERE attnum > 0 AND NOT attisdropped""",
+        """SELECT a.attrelid, a.attnum, a.attname, a.attnotnull,
+                  format_type(a.atttypid, a.atttypmod) AS type,
+                  pg_get_expr(d.adbin, d.adrelid) AS default
+             FROM pg_attribute a
+             LEFT JOIN pg_attrdef d ON d.adrelid = a.attrelid AND d.adnum = a.attnum
+            WHERE a.attnum > 0 AND NOT a.attisdropped""",
     ):
         columns[a["attrelid"]][a["attnum"]] = a
+    # Inheritance (and partitioning, which is built on it): a query on the parent reads the
+    # children's rows under the parent's policies only, so no table in public may take part.
+    for link in _rows(
+        conn,
+        """SELECT pc.relname AS parent, cc.relname AS child, pc.relnamespace = pn.oid AS p_public,
+                  cc.relnamespace = pn.oid AS c_public
+             FROM pg_inherits i
+             JOIN pg_class pc ON pc.oid = i.inhparent
+             JOIN pg_class cc ON cc.oid = i.inhrelid
+             JOIN pg_namespace pn ON pn.nspname = 'public'
+            WHERE pc.relnamespace = pn.oid OR cc.relnamespace = pn.oid""",
+    ):
+        problems.append(
+            f"{link['child']}: inherits from {link['parent']}; tables in public must be "
+            "neither partitioned nor in an inheritance hierarchy"
+        )
     policies: dict[str, list[Any]] = defaultdict(list)
     for p in _rows(conn, "SELECT * FROM pg_policies WHERE schemaname = 'public'"):
         policies[p["tablename"]].append(p)
@@ -104,6 +124,9 @@ def _check_owned(
 
     if rel["relkind"] == "p" or rel["relispartition"]:
         bad("owned tables must not be partitioned")
+    row_id = names.get("id")
+    if row_id is None or row_id["type"] != "uuid" or row_id["default"] != "gen_random_uuid()":
+        bad("id must be uuid with the server default gen_random_uuid()")
     owner = names.get("owner_id")
     if owner is None:
         bad("no owner_id column (add it, or list the table in SYSTEM_TABLES with a reason)")

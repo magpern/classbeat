@@ -1,8 +1,17 @@
 """Transaction-owning sessions (ADR 0002 section 5).
 
 ``user_session`` is the only way to reach owned tables: it sets ``app.user_id`` for exactly one
-transaction. It owns that transaction, so ``commit()`` and ``rollback()`` inside it raise (a
-new transaction would run without the setting).
+transaction. It owns that transaction, so ``session.commit()`` and ``session.rollback()`` inside
+it raise (a new transaction would run without the setting). What this does and does not do:
+
+- Savepoints (``session.begin_nested()``) are allowed, and rolling one back keeps
+  ``app.user_id`` (it is a transaction-level setting, not a savepoint-level one).
+- Ending the transaction through any other path (``run_sync``, the connection's own
+  ``rollback()``, a raw ``ROLLBACK``) is not intercepted. Rolling back **fails closed**: the
+  setting is gone, so later statements on that session see no rows and cannot write owned rows.
+- Committing through the connection (``(await session.connection()).commit()``) or a raw
+  ``COMMIT`` would commit the partial work. That is forbidden by convention and the review gate,
+  not enforced here.
 """
 
 from collections.abc import AsyncIterator
@@ -43,8 +52,9 @@ class _Guard:
         # Also catches a commit that bypasses the async facade, for example through run_sync.
         event.listen(session.sync_session, "before_commit", self._before_commit)
 
-    def _before_commit(self, _session: object) -> None:
-        if not self.closing:
+    def _before_commit(self, session: Any) -> None:
+        # Leaving a savepoint also fires before_commit; that is not the end of the transaction.
+        if not self.closing and not session.in_nested_transaction():
             raise TransactionOwnedError(
                 "commit is not allowed here: the session owns the transaction"
             )
