@@ -92,8 +92,8 @@ responses and model output alike.
 | T40 | Provider tokens read from the database or a backup | Envelope encryption: a random data key per row and write, AES-256-GCM, wrapped by a KEK kept in a secret file outside the database; ciphertext bound by AAD to owner, provider and row; backups hold ciphertext only; a startup check value catches a swapped KEK; rewrap re-wraps keys but doesn't re-encrypt payloads, so after a KEK compromise users reconnect (ADR 0004 §2) | M2 |
 | T41 | A token leaking through logs, errors, job rows, events or model input | Only `classbeat.connections` decrypts; secrets travel only as a redacting `Credentials` object built per request or job; jobs store the connection id; the log formatter masks secret keys; caplog, `repr` and `pg_dump` tests (ADR 0004 §3, §7) | M2 |
 | T42 | One user's credentials used for another user's work | Owned table under RLS read through `UserContext`; the worker rebuilds credentials from the job's owner; AAD makes ciphertext moved between rows fail; concurrent two-user test with fake upstreams recording each call's token (ADR 0004 §2, §3; #67) | M2 |
-| T43 | Password guessing against MOWL through our connect page | Recent auth and CSRF on connect; 5 attempts per user and 20 per IP per 15 minutes (ADR 0004 §4) | M2 |
-| T44 | A MOWL password kept after connect | Used once for the library's sign-in, never stored, logged, put in a URL, kept in an exception or sent to a model; the route's bodies are excluded from request logging; tests check logs (ADR 0004 §4) | M2 |
+| T43 | Password guessing against MOWL through our connect page | Recent auth and CSRF on connect; 5 attempts per user, 20 per IP and 5 per MOWL email per 15 minutes (ADR 0004 §4) | M2 |
+| T44 | A MOWL password kept after connect | Used once for the library's sign-in, never stored, logged, put in a URL, kept in an exception (classbeat raises its own error after the `except` block, so the library's exception is neither cause nor context) or sent to a model; the route's bodies are excluded from request logging; tests check logs (ADR 0004 §4) | M2 |
 
 ## Accepted risks (beta)
 
