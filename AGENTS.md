@@ -295,17 +295,18 @@ Each is its own job in `ci.yml` and in the `ci` gate:
 | Job | What it checks |
 |---|---|
 | `secrets` | gitleaks over the whole history |
-| `pip-audit` | `uv export --frozen` (production, then with dev) through `pip-audit` (pinned) |
+| `pip-audit` | `uv export --frozen` (production, then all groups) through `pip-audit` (pinned) |
 | `npm-audit` | `npm audit --audit-level=high` in `frontend/` and `e2e/` |
-| `trivy-fs` | Trivy on the repository (vulnerabilities, Dockerfile/compose misconfiguration) |
+| `trivy-fs` | Trivy on the repository (vulnerabilities, Dockerfile misconfiguration; compose is not scanned) |
 | `trivy-image` | Trivy on the image built in the job (never pushed) |
-| `compose` | `web` and `worker` run as non-root; no secret value appears in `docker inspect` |
+| `e2e` | builds the stack once: `/api/ready` and the SPA answer, `web` and `worker` run as non-root, no secret value appears in `docker inspect`; then Playwright runs |
+| `workflows` | actionlint (with shellcheck) on every workflow; `setup-uv`'s version equals the Dockerfile's uv tag |
 
 Trivy and gitleaks are checksum-verified release binaries. `pip-audit` (exact version) lives in
 the `audit` dependency group of `backend/pyproject.toml`, so its own dependencies are hash-locked in
 `uv.lock` and CI installs it with `uv sync --frozen --only-group audit`; the runtime image
 (`uv sync --locked --no-dev`) never contains it. The audited requirements are exported with hashes
-and checked with `--require-hashes`. `setup-uv` is pinned to the same uv version as the Dockerfile.
+and checked with `--require-hashes`, for every group (`--all-groups`, so `audit` itself too). `setup-uv` is pinned to the same uv version as the Dockerfile; the `workflows` job fails if they differ.
 
 Trivy fails on HIGH and CRITICAL findings that have a fix available (`--ignore-unfixed`).
 **Accepted risk:** unfixed HIGH/CRITICAL findings are not gated. They are revisited at the M6
