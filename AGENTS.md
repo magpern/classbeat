@@ -107,6 +107,29 @@ allow-lists, Paddle, Google/GitHub/Microsoft OAuth apps); emails to real people;
 against a live account; anything that writes to a real MOWL, Spotify or Swedebeat account;
 contacting providers.
 
+## Releasing
+
+Agents may cut releases without the owner (safety envelope above). Deploying is not part of
+a release and still needs the owner's authorization.
+
+1. `main` is green and holds everything the release should contain. Pick the next SemVer
+   version `vX.Y.Z` (a pre-release is `vX.Y.Z-rc.1`).
+2. Tag the current tip of `main` and push the tag:
+
+   ```bash
+   git fetch origin main
+   git tag -a vX.Y.Z -m "vX.Y.Z" origin/main
+   git push origin vX.Y.Z
+   ```
+
+3. `.github/workflows/release.yml` then verifies the tag is SemVer and on `main`, builds
+   `linux/amd64` and `linux/arm64`, pushes `ghcr.io/magpern/classbeat` with tags `X.Y.Z`,
+   `X.Y` (not for pre-releases) and `sha-<short>` plus provenance and SBOM attestations, and
+   creates the GitHub Release with generated notes (marked pre-release if the tag has a
+   hyphen). There is no `latest` tag; deployments pin a version.
+4. Check the run with `gh run list --workflow release.yml`. The package stays private; never
+   change its visibility. Never move or delete a pushed tag: fix forward with a new version.
+
 ## Security rules
 
 - Never commit, print or log secrets: API keys, OAuth client secrets, session cookies, MOWL,
