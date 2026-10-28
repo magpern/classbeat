@@ -80,11 +80,32 @@ jobs:
           --health-timeout 5s
           --health-retries 10
     env:
-      CLASSBEAT_TEST_DATABASE_URL: postgresql+psycopg://postgres:test@127.0.0.1:5432/postgres
+      CLASSBEAT_TEST_DATABASE_URL: postgresql+psycopg://postgres:test@127.0.0.1:5432/classbeat
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+
+      - name: Create the application database and its roles
+        # The script the compose db container runs (docker/postgres/init), against the service
+        # container. The test fixtures replace the role passwords with random ones.
+        working-directory: .
+        env:
+          PGHOST: 127.0.0.1
+          PGUSER: postgres
+          PGPASSWORD: test
+        run: |
+          set -euo pipefail
+          psql -v ON_ERROR_STOP=1 -d postgres -c 'CREATE DATABASE classbeat'
+          secrets="$RUNNER_TEMP/secrets"
+          mkdir -p "$secrets"
+          openssl rand -hex 16 > "$secrets/database_owner_password"
+          openssl rand -hex 16 > "$secrets/database_password"
+          export DATABASE_OWNER_PASSWORD_FILE="$secrets/database_owner_password"
+          export DATABASE_PASSWORD_FILE="$secrets/database_password"
+          psql -v ON_ERROR_STOP=1 -d classbeat -f docker/postgres/init/10-roles.sql
+          # Idempotent: a second run must succeed too.
+          psql -v ON_ERROR_STOP=1 -d classbeat -f docker/postgres/init/10-roles.sql
 
       - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
         with:

@@ -14,7 +14,7 @@ from sqlalchemy import text
 
 from classbeat import __version__
 from classbeat.config import Settings
-from classbeat.db import create_engine, create_session_factory
+from classbeat.db import create_engine, create_session_factory, verify_database_role
 
 logger = logging.getLogger(__name__)
 
@@ -81,9 +81,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         engine = create_engine(settings)
-        app.state.engine = engine
-        app.state.session_factory = create_session_factory(engine)
         try:
+            await verify_database_role(engine)  # refuses to start on a privileged role
+            app.state.engine = engine
+            app.state.session_factory = create_session_factory(engine)
             yield
         finally:
             await engine.dispose()

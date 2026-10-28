@@ -4,7 +4,7 @@ import os
 from pathlib import Path
 from typing import Any, Literal
 
-from pydantic import SecretStr, field_validator
+from pydantic import SecretStr, ValidationInfo, field_validator
 from pydantic.fields import FieldInfo
 from pydantic_settings import BaseSettings, PydanticBaseSettingsSource, SettingsConfigDict
 from sqlalchemy.engine import URL, make_url
@@ -13,7 +13,7 @@ from sqlalchemy.exc import ArgumentError
 DATABASE_DRIVER = "postgresql+psycopg"
 DEFAULT_SECRETS_DIR = "/run/secrets"
 # Fields read from secret files, and never from the environment.
-SECRET_FILE_FIELDS = ("database_password",)
+SECRET_FILE_FIELDS = ("database_password", "database_owner_password")
 
 
 def secrets_dir() -> Path:
@@ -80,10 +80,19 @@ class Settings(BaseSettings):
     environment: Literal["dev", "test", "prod"] = "dev"
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = "INFO"
     # May embed a password, so it is a secret too.
-    database_url: SecretStr = SecretStr(f"{DATABASE_DRIVER}://classbeat@127.0.0.1:5432/classbeat")
+    # The app role (``classbeat_app``): web and worker. ADR 0002 section 4.
+    database_url: SecretStr = SecretStr(
+        f"{DATABASE_DRIVER}://classbeat_app@127.0.0.1:5432/classbeat"
+    )
     # From the file ``database_password`` in the secrets dir (never the environment).
     # When set, replaces the password in ``database_url``.
     database_password: SecretStr | None = None
+    # The owner role (``classbeat_owner``): Alembic only, never web or worker.
+    migrations_database_url: SecretStr = SecretStr(
+        f"{DATABASE_DRIVER}://classbeat_owner@127.0.0.1:5432/classbeat"
+    )
+    # From the file ``database_owner_password``; replaces the password in the URL above.
+    database_owner_password: SecretStr | None = None
     static_dir: Path | None = None
     worker_heartbeat_seconds: float = 30.0
 
@@ -107,15 +116,15 @@ class Settings(BaseSettings):
     def _upper_log_level(cls, value: object) -> object:
         return value.upper() if isinstance(value, str) else value
 
-    @field_validator("database_url")
+    @field_validator("database_url", "migrations_database_url")
     @classmethod
-    def _check_database_url(cls, value: SecretStr) -> SecretStr:
+    def _check_database_url(cls, value: SecretStr, info: ValidationInfo) -> SecretStr:
         try:
             url = make_url(value.get_secret_value())
         except ArgumentError:
-            raise ValueError("database_url is not a valid database URL") from None
+            raise ValueError(f"{info.field_name} is not a valid database URL") from None
         if url.drivername != DATABASE_DRIVER:
-            raise ValueError(f"database_url must use the {DATABASE_DRIVER}:// scheme")
+            raise ValueError(f"{info.field_name} must use the {DATABASE_DRIVER}:// scheme")
         return value
 
     @field_validator("worker_heartbeat_seconds")
@@ -126,8 +135,16 @@ class Settings(BaseSettings):
         return value
 
     def sqlalchemy_url(self) -> URL:
-        """The database URL, with ``database_password`` substituted when it is set."""
-        url = make_url(self.database_url.get_secret_value())
-        if self.database_password is not None:
-            url = url.set(password=self.database_password.get_secret_value())
-        return url
+        """The app role's URL, with ``database_password`` substituted when it is set."""
+        return _with_password(self.database_url, self.database_password)
+
+    def migrations_sqlalchemy_url(self) -> URL:
+        """The owner role's URL, with ``database_owner_password`` substituted when it is set."""
+        return _with_password(self.migrations_database_url, self.database_owner_password)
+
+
+def _with_password(url: SecretStr, password: SecretStr | None) -> URL:
+    result = make_url(url.get_secret_value())
+    if password is not None:
+        result = result.set(password=password.get_secret_value())
+    return result

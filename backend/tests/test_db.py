@@ -11,8 +11,8 @@ def test_engine_is_lazy_and_uses_psycopg(unreachable_database_url: str) -> None:
     assert "not-a-real-password" not in repr(engine.url)
 
 
-async def test_session_factory_runs_a_query(database_url: str) -> None:
-    settings = Settings(database_url=database_url)  # pyright: ignore[reportArgumentType]
+async def test_session_factory_runs_a_query(app_database_url: str) -> None:
+    settings = Settings(database_url=app_database_url)  # pyright: ignore[reportArgumentType]
     engine = create_engine(settings)
     try:
         async with create_session_factory(engine)() as session:

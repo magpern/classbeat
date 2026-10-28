@@ -188,24 +188,39 @@ uv run pyright                 # types
 uv run pytest                  # tests; the database tests skip unless the Postgres below is up
 uv run python -m classbeat     # the API on http://127.0.0.1:8000 (--host, --port); try /api/health
 uv run python -m classbeat.worker   # the worker; stops on Ctrl+C or SIGTERM
-uv run alembic upgrade head    # migrations, against the database in CLASSBEAT_DATABASE_URL
+uv run alembic upgrade head    # migrations as the owner role, CLASSBEAT_MIGRATIONS_DATABASE_URL
 ```
 
-Database tests need a throwaway Postgres. Give it a name and port of its own (one per
-worktree), point `CLASSBEAT_TEST_DATABASE_URL` at it and stop it when done:
+Database tests need a throwaway Postgres whose application database has the roles of
+`docker/postgres/init/10-roles.sql` (ADR 0002 section 4). Give it a name and port of its own
+(one per worktree), create the roles, point `CLASSBEAT_TEST_DATABASE_URL` (the superuser, used
+for test setup only) at it and stop it when done:
 
 ```bash
-docker run -d --rm --name classbeat-2-pg -e POSTGRES_PASSWORD=test -p 127.0.0.1:55402:5432 postgres:17
-export CLASSBEAT_TEST_DATABASE_URL=postgresql+psycopg://postgres:test@127.0.0.1:55402/postgres
+export MSYS_NO_PATHCONV=1   # Git Bash on Windows only
+docker run -d --rm --name classbeat-5-pg -e POSTGRES_PASSWORD=test -p 127.0.0.1:55405:5432 postgres:17
+docker exec classbeat-5-pg psql -U postgres -c 'CREATE DATABASE classbeat'
+docker exec classbeat-5-pg sh -c 'echo owner-pw > /tmp/owner; echo app-pw > /tmp/app'
+docker cp ../docker/postgres/init/10-roles.sql classbeat-5-pg:/tmp/10-roles.sql
+docker exec -e DATABASE_OWNER_PASSWORD_FILE=/tmp/owner -e DATABASE_PASSWORD_FILE=/tmp/app \
+  classbeat-5-pg psql -v ON_ERROR_STOP=1 -U postgres -d classbeat -f /tmp/10-roles.sql
+export CLASSBEAT_TEST_DATABASE_URL=postgresql+psycopg://postgres:test@127.0.0.1:55405/classbeat
 uv run pytest
-docker stop classbeat-2-pg
+docker stop classbeat-5-pg
 ```
+
+The tests give `classbeat_owner` and `classbeat_app` random passwords for the run, connect as
+them, and create their own test-only owned tables. The script is idempotent.
 
 Settings come from `CLASSBEAT_*` environment variables. Secrets come only from files named
 after the field, without the prefix, in `CLASSBEAT_SECRETS_DIR` (default `/run/secrets`):
-`database_password` replaces the password in `CLASSBEAT_DATABASE_URL`
-(`postgresql+psycopg://...`); `CLASSBEAT_DATABASE_PASSWORD` is ignored. In CI (`CI=true`) a
-missing `CLASSBEAT_TEST_DATABASE_URL` fails the database tests instead of skipping them.
+`database_password` replaces the password in `CLASSBEAT_DATABASE_URL` (the app role, for web
+and worker) and `database_owner_password` replaces the one in
+`CLASSBEAT_MIGRATIONS_DATABASE_URL` (the owner role, for Alembic); the matching
+`CLASSBEAT_DATABASE_PASSWORD` and `CLASSBEAT_DATABASE_OWNER_PASSWORD` variables are ignored.
+Web and worker refuse to start as a superuser, a `BYPASSRLS` role or a table owner (no
+override). In CI (`CI=true`) a missing
+`CLASSBEAT_TEST_DATABASE_URL` or missing roles fail the database tests instead of skipping them.
 
 ### Frontend
 
