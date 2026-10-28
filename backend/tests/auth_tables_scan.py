@@ -50,6 +50,7 @@ TABLE_NAMES = (
 SUBMODULES = frozenset(
     {
         "accounts",
+        "admin_routes",
         "clientip",
         "cookies",
         "deps",
@@ -57,7 +58,10 @@ SUBMODULES = frozenset(
         "events",
         "hooks",
         "keys",
+        "mfa",
+        "mfa_routes",
         "middleware",
+        "notices",
         "passwords",
         "purge",
         "ratelimit",
@@ -65,6 +69,7 @@ SUBMODULES = frozenset(
         "sessions",
         "setup",
         "tables",
+        "totp",
     }
 )
 FORBIDDEN_NAMES = frozenset(TABLE_NAMES) | {"metadata"} | SUBMODULES
