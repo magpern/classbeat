@@ -184,6 +184,18 @@ function or operator in `public`. `queue_claim` and `queue_unsettled` return
 `(job_id, owner_id, lease_version)` rows, `queue_reap` and `queue_expire` an integer count,
 `queue_stats` `(metric, total)` rows; a `p_limit` outside 1 to 100 raises.)
 
+**No user code runs as `classbeat_queue`** (amended in #102, finding B2 of #99): a trigger fires
+without `EXECUTE` and, inside a queue function, runs as `classbeat_queue`, so the queue tables
+carry no triggers or rules and the database holds no user-defined function, procedure, aggregate
+or operator besides the five. The queue check, guard 9 and `20-queue.sql` (naming each object)
+refuse any `pg_proc`/`pg_operator` row at OID ≥ 16384 or outside `pg_catalog`,
+`information_schema`, `pg_toast` and the temp schemas (the five in `public` excepted), any
+non-internal trigger (foreign-key triggers are internal) and any rule but a view's `_RETURN`, on
+any table; defaults, `CHECK`s and index expressions then reach only built-ins. Guard 2 refuses
+`PUBLIC` `EXECUTE` on any user function. Write `updated_at` in the statement, not by trigger.
+Extensions need their own schema (never `public` or `pg_catalog`), and adding one, or any user
+function, needs an amendment here that allows that schema.
+
 | Function | Does |
 |---|---|
 | `queue_claim(p_worker text, p_lease_seconds int, p_kinds text[])` | checks `p_worker ~ '^[A-Za-z0-9._:-]{1,100}$'` and 30 ≤ `p_lease_seconds` ≤ 600; `SELECT id … WHERE state = 'queued' AND available_at <= now() AND attempt < max_attempts AND kind = ANY(p_kinds) ORDER BY available_at, created_at LIMIT 1 FOR UPDATE SKIP LOCKED`; sets `running`, `attempt + 1`, `lease_version + 1`, `leased_by`, `lease_expires_at = now() + lease`, `heartbeat_at`, `started_at` (first time); inserts the `claimed` event; returns the row or nothing |

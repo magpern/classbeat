@@ -8,8 +8,11 @@ refuses on any difference (no override): each function exists once, owned by
 comment, the shipped ``md5(pg_get_functiondef(oid))`` and the ACL
 ``{classbeat_queue=X/classbeat_queue, classbeat_app=X/classbeat_queue}``; the role has exactly
 its attributes, no memberships either way, no settings, and exactly its privileges; and no other
-function, procedure, aggregate or operator exists in ``public`` or was added to ``pg_catalog``
-(the functions' search_path), so nothing can shadow a built-in a function body calls.
+user-defined function, procedure, aggregate or operator exists in any schema, and no table has a
+trigger (other than the internal ones of foreign keys) or a rule (review finding B2, #102). So
+nothing can shadow a built-in a function body calls, and nothing a function fires (a trigger, a
+rule, a default, a CHECK, a generated column, an index expression) can reach code other than the
+built-ins while running as ``classbeat_queue``.
 
 Every grant or ownership naming a role is recorded in ``pg_shdepend``, so comparing that list
 with the expected one catches a privilege of any kind, in any database of the cluster.
@@ -117,18 +120,35 @@ SELECT
                ('queue_claim', 'queue_reap', 'queue_expire', 'queue_unsettled', 'queue_stats')
          ORDER BY 1),
     ARRAY(
-        SELECT 'function ' || p.oid::regprocedure::text
+        SELECT 'function ' || n.nspname || '.' || p.proname || '('
+               || pg_catalog.pg_get_function_identity_arguments(p.oid) || ')'
           FROM pg_catalog.pg_proc p JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
-         WHERE (n.nspname = 'public' AND p.proname NOT IN
-                  ('queue_claim', 'queue_reap', 'queue_expire', 'queue_unsettled', 'queue_stats'))
-            OR (n.nspname = 'pg_catalog' AND p.oid >= 16384)
+         WHERE NOT (n.nspname = 'public' AND p.proname IN ('queue_claim', 'queue_reap',
+                    'queue_expire', 'queue_unsettled', 'queue_stats'))
+           AND (p.oid >= 16384 OR n.nspname = 'public'
+                OR (n.nspname NOT IN ('pg_catalog', 'information_schema', 'pg_toast')
+                    AND n.nspname !~ '^pg_(toast_)?temp_[0-9]+$'))
         UNION ALL
-        SELECT 'operator ' || o.oid::regoperator::text
+        SELECT 'operator ' || n.nspname || '.' || o.oprname || '(' || o.oprleft::regtype::text
+               || ', ' || o.oprright::regtype::text || ')'
           FROM pg_catalog.pg_operator o JOIN pg_catalog.pg_namespace n ON n.oid = o.oprnamespace
-         WHERE n.nspname = 'public' OR (n.nspname = 'pg_catalog' AND o.oid >= 16384)
+         WHERE o.oid >= 16384 OR n.nspname = 'public'
+            OR (n.nspname NOT IN ('pg_catalog', 'information_schema', 'pg_toast')
+                AND n.nspname !~ '^pg_(toast_)?temp_[0-9]+$')
+        UNION ALL
+        SELECT 'trigger ' || t.tgname || ' on ' || n.nspname || '.' || c.relname
+          FROM pg_catalog.pg_trigger t JOIN pg_catalog.pg_class c ON c.oid = t.tgrelid
+          JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+         WHERE NOT t.tgisinternal
+        UNION ALL
+        SELECT 'rule ' || r.rulename || ' on ' || n.nspname || '.' || c.relname
+          FROM pg_catalog.pg_rewrite r JOIN pg_catalog.pg_class c ON c.oid = r.ev_class
+          JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+         WHERE r.oid >= 16384 AND r.rulename <> '_RETURN'
         ORDER BY 1)
 """
-# 16384 is FirstNormalObjectId: below it, pg_catalog holds only what initdb created.
+# 16384 is FirstNormalObjectId: below it is only what initdb created (pg_catalog, information_schema
+# and the two rules of the pg_settings view). Anything at or above it, in any schema, is user-made.
 COLUMN_COUNT = 7
 
 
@@ -155,8 +175,8 @@ def queue_problems(row: Sequence[Any] | None) -> list[str]:
         found.append(f"{QUEUE_ROLE} must have exactly its table privileges and USAGE on public")
     if foreign:
         found.append(
-            "functions or operators other than the queue's exist in public or pg_catalog: "
-            + ", ".join(foreign)
+            "user-defined functions, operators, triggers or rules exist besides the queue "
+            "functions (ADR 0005 section 3): " + ", ".join(foreign)
         )
     by_name: dict[str, list[list[str]]] = {}
     for item in functions:

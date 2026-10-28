@@ -231,18 +231,20 @@ def check_roles(conn: Connection) -> list[str]:
     ).scalar_one()
     need(column_acls == 0, "no column-level privileges in public")
 
-    # Functions: PUBLIC may call none; classbeat_app only the queue's SECURITY DEFINER functions
-    # owned by classbeat_queue (ADR 0005 section 3; guard 9 checks them in full).
+    # Functions (in public, and user-made ones anywhere): PUBLIC may call none; classbeat_app
+    # only the queue's SECURITY DEFINER functions owned by classbeat_queue (ADR 0005 section 3;
+    # guard 9 checks them in full). 16384 is FirstNormalObjectId (review finding B2, #102).
     functions = _acl(
         conn,
         "SELECT p.oid::regprocedure::text || ':' || pg_get_userbyid(p.proowner) || ':' "
         "|| p.prosecdef::text, {G}, a.privilege_type, a.is_grantable "
         "FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace, "
         "aclexplode(coalesce(p.proacl, acldefault(CAST('f' AS \"char\"), p.proowner))) a "
-        "WHERE n.nspname = 'public'",
+        "WHERE n.nspname = 'public' OR p.oid >= 16384",
     )
     need(
-        "PUBLIC" not in _grantees(functions), "functions in public must not be executable by PUBLIC"
+        "PUBLIC" not in _grantees(functions),
+        "functions in public or made by a user must not be executable by PUBLIC",
     )
     queue_callable = {f"{sig}:{QUEUE}:true" for sig in QUEUE_SIGNATURES}
     for obj in sorted({o for o, *_ in functions}):
