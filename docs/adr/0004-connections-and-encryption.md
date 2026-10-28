@@ -114,22 +114,31 @@ the CLI.
   2. install a new KEK as `connection_kek` with a new id, and remove the old KEK files and
      their compose `secrets:` entries; if the leak came through the secrets directory, also
      rotate `app_secret_key` (ADR 0003 §8) and the database passwords;
-  3. run `docker compose run --rm web python -m classbeat keys wipe --confirm` (`run`, since
-     web is stopped). It needs no KEK and runs as the owner role (the migrations URL), so the
-     app role never gets `DELETE` on `connection_keks`. It refuses to start if any session of
-     the app role is connected (`pg_stat_activity`), or if the configured KEK id already has a
-     check row (the leaked key wasn't replaced). Then, per owner:
-     - it **mails each user who had a connection, before deleting it**: which providers were
+  3. run `docker compose --profile maint run --rm maint python -m classbeat keys wipe
+     --confirm`. `maint` is a compose service under the `maint` profile, never started by
+     default, that has the owner role's URL and `database_owner_password` plus the SMTP
+     settings; it has no KEK. **Web and worker never get the owner password** (an owner can
+     turn off forced RLS, ADR 0002 §4), so the wipe can't run from them. It refuses to start if
+     any session of the app role is connected (`pg_stat_activity`), or if the configured KEK
+     id already has a check row (the leaked key wasn't replaced). It takes the user ids from
+     the same `classbeat.auth` function as rewrap and, for each user, in one transaction with
+     `app.user_id` set:
+     - writes an `auth_events` row `connections_wiped` listing the affected providers (nothing
+       else), deletes that user's `connections` rows, and, only if the user has a TOTP row,
+       resets it the way `admin mfa-reset` does (ADR 0003 §7: removes the TOTP row and
+       recovery codes, forgets known devices, revokes sessions, writes `auth_events`), through
+       `classbeat.auth` (guard 8);
+     - after the commit it mails the user, built from that event: which providers were
        affected, that classbeat removed them, and what to do (end sessions or change the
        password at MOWL, whose tokens can't be revoked and may stay valid until they expire;
-       remove the app's access in the Spotify account), and writes an `auth_events` row
-       `connections_wiped`;
-     - it deletes that user's `connections` rows and resets their TOTP the way
-       `admin mfa-reset` does (ADR 0003 §7: removes the TOTP row and recovery codes, forgets
-       known devices, revokes sessions, writes `auth_events`, mails the user);
-     then it deletes every `connection_keks` row and runs `VACUUM (FULL)` on the affected
-     tables. It prints counts only and is safe to re-run after a failure (already-wiped users
-     are skipped; a user who was mailed but not yet wiped is mailed again);
+       remove the app's access in the Spotify account), plus the TOTP reset link if reset. The
+       mail holds no token, id or account detail. A sent mail is marked on the event; a failed
+       one is counted and left unmarked.
+     Then it deletes every `connection_keks` row, runs `VACUUM (FULL)` on the affected tables
+     (outside a transaction) and a `CHECKPOINT`. It prints counts only, including unsent
+     mails. Re-running is safe: wiped users are skipped, and `keys wipe --resend` retries every
+     unmarked mail; an address the relay permanently refuses is reported by `--resend` and
+     never blocks the wipe itself;
   4. treat backups taken before the wipe as compromised, including WAL or PITR archives:
      destroy them, or, after restoring one, run the wipe again before web and worker start
      (M6 restore drill);
@@ -297,7 +306,8 @@ degrades to a reconnect prompt, never to a failure that loses work.
 ## Consequences
 
 - #65 adds the table, `classbeat.crypto.envelope`, `classbeat.connections`, the KEK file and
-  check, the `keys rewrap` and `keys wipe` CLI, the log-formatter fix and the TOTP move;
+  check, the `keys rewrap` and `keys wipe` CLI with the `maint` compose service, the
+  log-formatter fix and the TOTP move;
   #66 adds MOWL connect and pins the `mowl-workouts` v0.4.0 wheel; #67 proves isolation with
   two concurrent users.
 - Backups hold ciphertext only; restoring one needs the KEK files of its time, which are backed
