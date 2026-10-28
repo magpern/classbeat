@@ -3,11 +3,19 @@
 Purpose and limits. Like ADR 0002's AST guard for ``UserContext``, this catches *accidental*
 misuse and makes misuse visible in review; it does not stop deliberately malicious or
 obfuscated code. Known limits: rebinding through arbitrary variables or containers, computed
-``getattr`` names, ``sys.modules`` lookups, ``exec``/``eval``, SQL assembled from pieces at run
-time or read from a file, config or the database (runtime SQL), SQL in ``bytes`` literals (only
-``str`` constants are scanned), and anything else a static scan of one file cannot follow. The
-review gate (AGENTS.md) catches those. A subquery before the table in a FROM list
-(``FROM a, (select 1) b, users``) and ``JOIN (users)`` are not followed either.
+``getattr`` names, ``sys.modules`` lookups, ``exec``/``eval``, SQL assembled at run time from
+non-constant parts (a name, a call, a file, config or the database: only the constant pieces of
+an f-string or ``+`` chain are read), SQL in ``bytes`` literals (only ``str`` constants are
+scanned), the two exemptions below, and anything else a static scan of one file cannot follow.
+The review gate (AGENTS.md) catches those.
+
+Exemptions, the only way to pass a string the matcher flags:
+
+- docstrings (a string constant that is the first statement of a module, class or function body)
+  are not scanned;
+- any other string is exempt when the line where it starts ends with the comment
+  ``# guard8: prose``. ``scan_source_with_exemptions`` also returns how many strings were exempted
+  this way, and the whole-tree test pins that number, so a new exemption is visible in review.
 
 ``scan_source`` parses Python source (a module outside ``classbeat/auth/``) and returns what it
 refuses. Outside the package only the public API of ``classbeat.auth`` itself may be used:
@@ -102,6 +110,19 @@ SUBMODULES = frozenset(
     }
 )
 FORBIDDEN_NAMES = frozenset(TABLE_NAMES) | {"metadata"} | SUBMODULES
+# The matcher of the first version of this guard, unchanged: an SQL word (statement verb, FROM,
+# JOIN or INTO) and an auth table name as whole words anywhere in the same text. Everything it
+# flagged stays flagged; the rules below only add to it. It also flags prose such as "copied from
+# sessions": such a string is exempted with ``# guard8: prose`` (see the module docstring).
+BASE_VERBS = re.compile(
+    r"\b(?:select|insert|update|delete|copy|truncate|alter|merge|with|lock|from|join|into)\b",
+    re.IGNORECASE,
+)
+BASE_TABLE = re.compile(
+    r"(?<![\w$])(?:\"?public\"?\s*\.\s*)?\"?(?P<name>" + "|".join(TABLE_NAMES) + r")\"?(?![\w$])",
+    re.IGNORECASE,
+)
+# Added rules: a statement verb and the table right after a keyword or in a list; GRANT/REVOKE.
 SQL_VERBS = re.compile(
     r"\b(?:select|insert|update|delete|copy|truncate|alter|merge|with|lock|drop|create|grant"
     r"|revoke)\b",
@@ -143,6 +164,8 @@ def sql_table_in(text: str) -> str | None:
     ``text`` is a whole string: one constant, an f-string with a placeholder for each
     expression, or a ``+`` chain of strings joined the same way.
     """
+    if BASE_VERBS.search(text) and (base := BASE_TABLE.search(text)):
+        return base.group("name")
     text = _SQL_COMMENT.sub(" ", text)
     if SQL_VERBS.search(text):
         match = SQL_AFTER_KEYWORD.search(text) or SQL_IN_FROM_LIST.search(text)
@@ -263,8 +286,35 @@ class _Roots:
         return dotted == AUTH_PACKAGE or dotted in self.auth
 
 
+EXEMPTION = re.compile(r"#\s*guard8:\s*prose\s*$")
+
+
+def _docstrings(tree: ast.AST) -> set[int]:
+    """``id()`` of every docstring constant: the first statement of a module, class or def."""
+    found: set[int] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Module | ast.ClassDef | ast.FunctionDef | ast.AsyncFunctionDef):
+            first = node.body[0] if node.body else None
+            if (
+                isinstance(first, ast.Expr)
+                and isinstance(first.value, ast.Constant)
+                and isinstance(first.value.value, str)
+            ):
+                found.add(id(first.value))
+    return found
+
+
 def scan_source(source: str) -> list[tuple[int, str]]:
+    return scan_source_with_exemptions(source)[0]
+
+
+def scan_source_with_exemptions(source: str) -> tuple[list[tuple[int, str]], int]:
+    """``(findings, exemptions)``: what is refused, and how many strings the matcher flagged
+    that a ``# guard8: prose`` comment exempted."""
     tree = ast.parse(source)
+    lines = source.splitlines()
+    docstrings = _docstrings(tree)
+    exempted: set[int] = set()
     found: list[tuple[int, str]] = []
     roots = _Roots(tree)
     for node in ast.walk(tree):
@@ -293,11 +343,18 @@ def scan_source(source: str) -> list[tuple[int, str]]:
             and (node.value == TABLES_MODULE or _is_auth_submodule(node.value))
         ):
             found.append((node.lineno, f"string reference to {node.value}"))
-        if isinstance(node, ast.Constant | ast.JoinedStr | ast.BinOp):
+        if (
+            isinstance(node, ast.Constant | ast.JoinedStr | ast.BinOp)
+            and id(node) not in docstrings
+        ):
             text, has_string = _string_text(node)
             if has_string and (table := sql_table_in(text)):
-                found.append((node.lineno, f"raw SQL naming table {table}"))
-    return sorted(set(found))
+                line = lines[node.lineno - 1] if node.lineno <= len(lines) else ""
+                if EXEMPTION.search(line):
+                    exempted.add(node.lineno)
+                else:
+                    found.append((node.lineno, f"raw SQL naming table {table}"))
+    return sorted(set(found)), len(exempted)
 
 
 def _str_args(node: ast.Call) -> list[str]:
