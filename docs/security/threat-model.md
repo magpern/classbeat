@@ -53,7 +53,7 @@ responses and model output alike.
 | T1 | Account takeover by OAuth email matching (an attacker's provider account with the victim's email) | Identity key is `(provider, subject)`, never email; linking needs a signed-in confirmation; unverified emails never link; Microsoft emails always count as unverified (ADR 0003 §5) | M1 |
 | T2 | Login CSRF, OAuth state or code injection | State, nonce (OIDC) and PKCE; single-use, short-lived callbacks bound to the browser session | M1 |
 | T3 | Credential stuffing and brute force | argon2id; failure-only rate limits per (account, IP), per IP, and a per-account cap with a known-device exemption; no permanent lockout; invite-only beta. Residual: an attacker who knows the email can exhaust the per-account cap from many IPs, so the victim signs in from a known device or by OAuth for up to an hour (accepted for the beta, revisited at M6; ADR 0003 §9) | M1 |
-| T4 | Session theft or fixation | Server-side sessions stored as token hashes; `__Host-` cookie, HttpOnly, Secure, SameSite=Lax; rotation on sign-in, MFA, role change and re-auth; idle 7 days and absolute 30 days; Origin check and CSRF tokens on writes (ADR 0003 §3, §4) | M1 |
+| T4 | Session theft or fixation | Server-side sessions stored as token hashes; `__Host-` cookie, HttpOnly, Secure, SameSite=Lax; rotation on sign-in, MFA and re-auth; all sessions revoked on a reset or role change; idle 7 days and absolute 30 days; Origin check and CSRF tokens on writes (ADR 0003 §3, §4) | M1 |
 | T5 | Cross-tenant read or write (IDOR), including through a background job | `UserContext` everywhere, repository filters, Postgres RLS (ADR 0002), guard tests, 404 tests for foreign IDs | M0 contract, M2 |
 | T6 | Token theft from a database dump or backup | Envelope encryption, AES-256-GCM with AAD `user_id\|provider`, keys outside the database, `key_id` rotation; encrypted backups | M2, M6 |
 | T7 | Secrets in logs, errors or traces | `SecretStr`; secrets only from files; no exception text in API responses; log redaction and tests that grep logs for planted tokens | M0, M2 |
@@ -88,7 +88,7 @@ responses and model output alike.
 | T36 | Open redirect after sign-in | `return_to` only as a relative path starting with a single `/`, checked again before use (ADR 0003 §4) | M1 |
 | T37 | Host-header poisoning of links in mail | Links built only from `CLASSBEAT_PUBLIC_BASE_URL`, never from request headers (ADR 0003 §5) | M1 |
 | T38 | OAuth mix-up between providers, or a forged ID token | One callback path per provider; the flow row records the provider and is taken atomically; ID tokens RS256 only, checked for signature (provider JWKS), `iss`, `aud`, `exp`, `nonce`; Microsoft's per-tenant issuer checked against the token's `tid` (ADR 0003 §5) | M1 |
-| T39 | Account pre-hijacking: registering a victim's address first (by password or an unverified provider email) and keeping access after the victim takes it over | No unverified accounts: an account exists only after a mail link proves the address, or a provider states it verified it; Microsoft emails count as unverified; a verified provider email matching an existing user creates and links nothing (ADR 0003 §1, §5) | M1 |
+| T39 | Account pre-hijacking: registering a victim's address first (by password or an unverified provider email) and keeping access after the victim takes it over | No unverified accounts: an account exists only after a mail link proves the address, or a provider states it verified it; Microsoft emails count as unverified; a verified provider email matching an existing user creates and links nothing; provider sign-ups with an unverified email confirm only in the browser that started them; email-change confirmation needs the requesting user's session; every link is mailed; a reset clears known devices and offers to remove linked methods (ADR 0003 §1, §3, §5) | M1 |
 
 ## Accepted risks (beta)
 
@@ -102,3 +102,10 @@ responses and model output alike.
   fakes until Swedebeat authorizes server-side use, and the classbeat image never contains it:
   it installs a `mowl-workouts` wheel built without the bundled key file (M2).
 - Images on GHCR are private; making a package public is an owner decision.
+- Per-account denial of service: an attacker who knows a user's email can exhaust the
+  per-account sign-in cap from many IPs; the user then signs in from a known device or by OAuth
+  for up to an hour (ADR 0003 §9). Revisited at M6.
+- No breached-password check during the beta (it needs a new outbound host); revisited at M6
+  (ADR 0003 §5).
+- GitHub can't force a re-login, so re-authentication through GitHub only proves a live GitHub
+  session (ADR 0003 §5).
