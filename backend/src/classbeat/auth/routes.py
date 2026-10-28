@@ -103,7 +103,7 @@ async def list_own_sessions(
     info: Annotated[SessionInfo | None, Depends(current_session)],
 ) -> list[SessionItem]:
     async with system_session(_factory(request)) as db:
-        rows = await list_sessions(db, ctx.user_id)
+        rows = await list_sessions(db, request.app.state.settings, ctx.user_id)
     return [
         SessionItem(
             id=row.id,

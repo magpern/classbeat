@@ -1,12 +1,16 @@
 """ID-token validation (ADR 0003 section 5, "ID tokens (OIDC)").
 
 RS256 only: ``none``, HS* and every other algorithm are refused before any key is looked at.
-The signature is checked against the provider's JWKS, which is cached and refetched at most
-once a minute when a token names an unknown ``kid``. Claims: ``iss``, ``aud``, ``exp``, ``iat``
-(60 s leeway) and ``nonce``. Microsoft's issuer must equal ``.../{tid}/v2.0`` for the token's own
-``tid`` and its subject is ``{tid}/{oid}``; its email is always unverified.
+The signature is checked against the provider's JWKS. The keys are cached per URL for the
+``Cache-Control: max-age`` the provider sent (default one hour, at least a minute, at most 24 h),
+so a key the provider retired stops being accepted; a token naming an unknown ``kid`` triggers
+one refetch, at most once a minute per URL, and concurrent sign-ins share that fetch. Claims:
+``iss``, ``aud`` (with ``azp`` equal to our client id when ``aud`` has several values), ``exp``,
+``iat`` (60 s leeway) and ``nonce``. Microsoft's issuer must equal ``.../{tid}/v2.0`` for the
+token's own ``tid`` and its subject is ``{tid}/{oid}``; its email is always unverified.
 """
 
+import asyncio
 import base64
 import binascii
 import hmac
@@ -24,6 +28,9 @@ from classbeat.auth.oauth_providers import MICROSOFT, MICROSOFT_ISSUER, Provider
 
 LEEWAY = 60  # seconds
 JWKS_REFETCH_INTERVAL = 60.0  # seconds
+JWKS_DEFAULT_TTL = 3600.0  # seconds, when the provider sends no max-age
+JWKS_MIN_TTL = JWKS_REFETCH_INTERVAL
+JWKS_MAX_TTL = 24 * 3600.0
 ALGORITHM = "RS256"
 
 
@@ -39,38 +46,68 @@ class IdentityClaims:
     auth_time: int | None
 
 
-JwksFetcher = Callable[[str], Awaitable[dict[str, Any]]]
+@dataclass(frozen=True, slots=True)
+class Jwks:
+    """A fetched key set document and the ``max-age`` (seconds) the provider allowed, if any."""
+
+    document: dict[str, Any]
+    max_age: float | None = None
+
+
+JwksFetcher = Callable[[str], Awaitable[Jwks]]
+
+
+def _ttl(max_age: float | None) -> float:
+    if max_age is None or max_age <= 0:
+        return JWKS_DEFAULT_TTL
+    return min(max(max_age, JWKS_MIN_TTL), JWKS_MAX_TTL)
 
 
 class JwksCache:
-    """Keys per JWKS URL. A hit on a known ``kid`` never fetches; an unknown ``kid`` triggers
-    one refetch, and no more than one per ``JWKS_REFETCH_INTERVAL`` for that URL."""
+    """Keys per JWKS URL, kept for the provider's ``max-age`` (capped, see the module doc).
+
+    A hit on a known ``kid`` never fetches; an unknown ``kid`` or an expired entry triggers one
+    refetch, and no more than one per ``JWKS_REFETCH_INTERVAL`` for that URL. A per-URL lock
+    makes concurrent requests for the same new ``kid`` share one fetch: the others re-check the
+    cache once they hold the lock instead of being refused by the rate limit.
+    """
 
     def __init__(self, fetch: JwksFetcher, clock: Callable[[], float] = time.monotonic) -> None:
         self._fetch = fetch
         self._clock = clock
         self._keys: dict[str, KeySet] = {}
+        self._expires_at: dict[str, float] = {}
         self._fetched_at: dict[str, float] = {}
+        self._locks: dict[str, asyncio.Lock] = {}
 
     def _known(self, url: str, kid: str) -> bool:
         keys = self._keys.get(url)
-        return keys is not None and any(key.kid == kid for key in keys.keys)
+        if keys is None or self._clock() >= self._expires_at[url]:
+            return False
+        return any(key.kid == kid for key in keys.keys)
 
     async def key_set(self, url: str, kid: str) -> KeySet:
-        if not self._known(url, kid):
+        if self._known(url, kid):
+            return self._keys[url]
+        async with self._locks.setdefault(url, asyncio.Lock()):
+            if self._known(url, kid):  # another request fetched it while this one waited
+                return self._keys[url]
             last = self._fetched_at.get(url)
-            now = self._clock()
-            if last is not None and now - last < JWKS_REFETCH_INTERVAL:
+            if last is not None and self._clock() - last < JWKS_REFETCH_INTERVAL:
                 raise IdTokenError("unknown key id (refetch rate limit)")
-            self._fetched_at[url] = now  # counted even when the fetch fails
             try:
-                document = await self._fetch(url)
-                self._keys[url] = KeySet.import_key_set(document)  # pyright: ignore[reportArgumentType]
+                fetched = await self._fetch(url)
+                keys = KeySet.import_key_set(fetched.document)  # pyright: ignore[reportArgumentType]
             except Exception:
+                self._keys.pop(url, None)  # no stale keys after a failed refresh
                 raise IdTokenError("the signing keys could not be fetched") from None
+            finally:
+                self._fetched_at[url] = self._clock()  # counted when the fetch is over, also failed
+            self._keys[url] = keys
+            self._expires_at[url] = self._clock() + _ttl(fetched.max_age)
             if not self._known(url, kid):
                 raise IdTokenError("unknown key id")
-        return self._keys[url]
+            return keys
 
 
 def _header(token: str) -> dict[str, Any]:
@@ -126,6 +163,8 @@ async def verify_id_token(
     audiences = audience if isinstance(audience, list) else [audience]
     if provider.client_id not in audiences:
         raise IdTokenError("wrong audience")
+    if len(audiences) > 1 and claims.get("azp") != provider.client_id:
+        raise IdTokenError("authorized party is not this client")  # OIDC Core 3.1.3.7 rule 4
     supplied = claims.get("nonce")
     if not isinstance(supplied, str) or not hmac.compare_digest(supplied.encode(), nonce.encode()):
         raise IdTokenError("nonce mismatch")

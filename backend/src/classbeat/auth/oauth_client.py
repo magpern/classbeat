@@ -2,11 +2,14 @@
 
 The authorization URL carries ``response_mode=query`` (a POST callback would not carry the Lax
 flow cookie) and PKCE S256. A re-authentication also sends ``max_age=0`` and, for Microsoft,
-``prompt=login`` (ADR 0003 section 5). The code exchange and the GitHub API calls go through
+``prompt=login``; for Google it also asks for ``auth_time`` explicitly with the OIDC ``claims``
+parameter (ADR 0003 section 5). The code exchange and the GitHub API calls go through
 ``OAuthRuntime.transport``, which tests replace with an in-process fake; no code path here logs a
 code, token, secret or query string.
 """
 
+import json
+import re
 import warnings
 from dataclasses import dataclass, field
 from typing import Any
@@ -18,22 +21,40 @@ with warnings.catch_warnings():
     warnings.simplefilter("ignore")
     from authlib.integrations.httpx_client import AsyncOAuth2Client
 
-from classbeat.auth.oauth_idtoken import IdentityClaims, IdTokenError, JwksCache, verify_id_token
-from classbeat.auth.oauth_providers import GITHUB, MICROSOFT, Provider
+from classbeat.auth.oauth_idtoken import (
+    IdentityClaims,
+    IdTokenError,
+    Jwks,
+    JwksCache,
+    verify_id_token,
+)
+from classbeat.auth.oauth_providers import GITHUB, GOOGLE, MICROSOFT, Provider
 
 TIMEOUT = httpx.Timeout(10.0)
 GITHUB_API = "https://api.github.com"
+# OIDC Core 5.5: ask for the auth_time claim in the ID token (Google does not add it by default).
+AUTH_TIME_CLAIMS = json.dumps(
+    {"id_token": {"auth_time": {"essential": True}}}, separators=(",", ":")
+)
 
 
 class ProviderError(Exception):
     """The provider refused or answered nonsense. Never carries a token or response body."""
 
 
-async def _fetch_jwks_with(transport: httpx.AsyncBaseTransport | None, url: str) -> dict[str, Any]:
+_MAX_AGE = re.compile(r"(?:^|[\s,])max-age=(\d+)", re.IGNORECASE)
+
+
+def _max_age(cache_control: str | None) -> float | None:
+    match = _MAX_AGE.search(cache_control or "")
+    return float(match.group(1)) if match else None
+
+
+async def _fetch_jwks_with(transport: httpx.AsyncBaseTransport | None, url: str) -> Jwks:
     async with httpx.AsyncClient(transport=transport, timeout=TIMEOUT) as client:
         response = await client.get(url)
         response.raise_for_status()
-        return response.json()
+        return Jwks(response.json(), _max_age(response.headers.get("cache-control")))
 
 
 @dataclass(slots=True)
@@ -47,7 +68,7 @@ class OAuthRuntime:
     def __post_init__(self) -> None:
         self.jwks = JwksCache(self._fetch)
 
-    async def _fetch(self, url: str) -> dict[str, Any]:
+    async def _fetch(self, url: str) -> Jwks:
         return await _fetch_jwks_with(self.transport, url)
 
 
@@ -80,6 +101,8 @@ def authorization_url(
         extra["max_age"] = "0"
         if provider.name == MICROSOFT:
             extra["prompt"] = "login"
+        elif provider.name == GOOGLE:
+            extra["claims"] = AUTH_TIME_CLAIMS
     url, _ = _client(provider, redirect_uri, None).create_authorization_url(
         provider.authorize_url, state=state, code_verifier=verifier, **extra
     )

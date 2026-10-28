@@ -47,6 +47,14 @@ ALLOWED = [
     "import importlib\nimportlib.import_module('classbeat.auth').purge_expired",
     "import pkgutil\npkgutil.resolve_name('classbeat.context:UserContext')",
     "x = vars(object())",
+    "x = 'files copied from sessions of the old host'",  # no statement verb
+    "x = 'Rows are copied from the sessions of the user into a report'",  # no adjacency
+    "x = 'update the sessions after a select of users'",  # keyword not followed by a table
+    "x = 'select the data copied from sessions_archive'",  # a different name
+    "x = 'delete the invites of the group'",
+    "x = 'copied from sessions'",
+    "__import__('classbeat.context').context",
+    "__import__('classbeat.auth').auth.create_invite",
 ]
 REFUSED = {
     "import module": "import classbeat.auth.tables",
@@ -125,6 +133,18 @@ REFUSED = {
     "lock": "q = 'LOCK TABLE auth_tokens'",
     "recovery": "q = 'delete from mfa_recovery_codes'",
     "identities": "q = 'select 1 from identities'",
+    "__import__ then auth.tables": "__import__('classbeat.auth').auth.tables",
+    "__import__ then auth.sessions": "__import__('classbeat.auth').auth.sessions",
+    "__import__ assigned": "c = __import__('classbeat.auth')\nc.auth.users",
+    "__import__ classbeat": "__import__('classbeat').auth.tables",
+    "import_module classbeat": (
+        "import importlib\nimportlib.import_module('classbeat').auth.metadata"
+    ),
+    "truncate without TABLE": "q = 'TRUNCATE users, sessions'",
+    "only modifier": "q = 'DELETE FROM ONLY users'",
+    "drop if exists": "q = 'DROP TABLE IF EXISTS invites'",
+    "from list with alias": "q = 'select 1 from a x, b as y, auth_events'",
+    "keyword then comment": "q = 'select 1 from /* c */ users'",
 }
 
 

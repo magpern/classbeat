@@ -3,7 +3,8 @@
 An httpx ``MockTransport`` with its own RSA signing keys and JWKS. ``complete(url, ...)`` plays
 the user's browser at the provider: it reads the authorization URL our start endpoint returned
 (checking state, nonce, PKCE and response_mode are present), registers a code and returns the
-callback path. It can issue every bad token: wrong signature, ``none`` and HS256, wrong
+callback path. Google only includes ``auth_time`` when the request asked for it with the OIDC
+``claims`` parameter. It can issue every bad token: wrong signature, ``none`` and HS256, wrong
 ``aud``/``iss`` (incl. Microsoft tenant mismatch), ``nonce``, ``auth_time``, expiry and
 ``iat``, and unverified or missing emails. Nothing here touches a network.
 """
@@ -28,6 +29,15 @@ TENANT = "tenant-1111"
 
 def _b64(data: bytes) -> str:
     return base64.urlsafe_b64encode(data).rstrip(b"=").decode()
+
+
+def _asks_for_auth_time(query: dict[str, list[str]]) -> bool:
+    """True when the ``claims`` parameter requests ``auth_time`` in the ID token."""
+    try:
+        requested = json.loads(query.get("claims", ["{}"])[0])
+        return "auth_time" in requested.get("id_token", {})
+    except (ValueError, AttributeError, TypeError):
+        return False
 
 
 class FakeProviders:
@@ -130,6 +140,9 @@ class FakeProviders:
             "sub": "sub-1",
         }
         if provider == "google":
+            # Like the real Google: no auth_time unless the request asked for it (OIDC "claims").
+            if not _asks_for_auth_time(query):
+                claims.pop("auth_time")
             claims |= {
                 "iss": "https://accounts.google.com",
                 "email": "g@example.com",

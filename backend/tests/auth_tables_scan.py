@@ -4,8 +4,9 @@ Purpose and limits. Like ADR 0002's AST guard for ``UserContext``, this catches 
 misuse and makes misuse visible in review; it does not stop deliberately malicious or
 obfuscated code. Known limits: rebinding through arbitrary variables or containers, computed
 ``getattr`` names, ``sys.modules`` lookups, ``exec``/``eval``, SQL assembled from pieces at run
-time, and anything else a static scan of one file cannot follow. The review gate (AGENTS.md)
-catches those.
+time or read from a file, config or the database (runtime SQL), SQL in ``bytes`` literals (only
+``str`` constants are scanned), and anything else a static scan of one file cannot follow. The
+review gate (AGENTS.md) catches those.
 
 ``scan_source`` parses Python source (a module outside ``classbeat/auth/``) and returns what it
 refuses. Outside the package only the public API of ``classbeat.auth`` itself may be used:
@@ -21,9 +22,15 @@ refuses. Outside the package only the public API of ``classbeat.auth`` itself ma
 - ``vars(<root>)``, ``<root>.__dict__`` and ``pkgutil.resolve_name("classbeat.auth...")``;
 - ``table(...)`` and ``Table(...)`` (sqlalchemy) naming an auth table, as first argument or as
   ``name=``;
-- any string constant (also the literal parts of f-strings) that contains an SQL verb as a whole
-  word (select, insert, update, delete, copy, truncate, alter, merge, with, lock, from, join,
-  into) and an auth table name as a whole word, optionally double-quoted and schema-qualified.
+- ``__import__("classbeat.auth")`` returns the top-level ``classbeat`` package, so
+  ``__import__("classbeat.auth").auth.tables`` is followed like ``import classbeat``;
+- any string constant (also the literal parts of f-strings) that contains an SQL statement verb
+  (select, insert, update, delete, copy, truncate, alter, merge, with, lock, drop, create, grant)
+  as a whole word and an auth table name (optionally double-quoted and schema-qualified) right
+  after an SQL keyword (from, join, into, update, table, copy, using, truncate, lock; comments
+  skipped; ``ONLY`` and ``IF EXISTS`` allowed) or later in a ``FROM a, b`` list. Prose such as
+  "copied from the sessions of the user" or "copied from sessions" (no statement verb) is not
+  flagged; "update the sessions" is not either (the table does not follow the keyword).
 
 The worker's purge and the CLI call functions in ``classbeat.auth``; they never get here.
 """
@@ -90,14 +97,29 @@ SUBMODULES = frozenset(
 )
 FORBIDDEN_NAMES = frozenset(TABLE_NAMES) | {"metadata"} | SUBMODULES
 SQL_VERBS = re.compile(
-    r"\b(?:select|insert|update|delete|copy|truncate|alter|merge|with|lock|from|join|into)\b",
+    r"\b(?:select|insert|update|delete|copy|truncate|alter|merge|with|lock|drop|create|grant)\b",
     re.IGNORECASE,
 )
-# A table name as a whole word, optionally quoted and schema-qualified ("public"."users").
-SQL_TABLE = re.compile(
-    r"(?<![\w$])(?:\"?public\"?\s*\.\s*)?\"?(" + "|".join(TABLE_NAMES) + r")\"?(?![\w$])",
+_TABLE = r"(?:\"?public\"?\s*\.\s*)?\"?(?P<name>" + "|".join(TABLE_NAMES) + r")\"?(?![\w$])"
+_KEYWORD = r"(?<![\w$])(?:from|join|into|update|table|copy|using|truncate|lock)"
+_MODIFIERS = r"(?:(?:only|if\s+exists)\s+)*"
+# A table name right after an SQL keyword, optionally quoted and schema-qualified.
+SQL_AFTER_KEYWORD = re.compile(_KEYWORD + r"\s+" + _MODIFIERS + _TABLE, re.IGNORECASE)
+# A table name later in a FROM list: ``FROM a, b x, users``.
+SQL_IN_FROM_LIST = re.compile(
+    r"(?<![\w$])from\s+(?:[\w\".$]+(?:\s+(?:as\s+)?[\w\"]+)?\s*,\s*)+" + _TABLE,
     re.IGNORECASE,
 )
+_SQL_COMMENT = re.compile(r"/\*.*?\*/|--[^\n]*", re.DOTALL)
+
+
+def sql_table_in(text: str) -> str | None:
+    """The auth table an SQL-looking string names, or None."""
+    if not SQL_VERBS.search(text):
+        return None
+    text = _SQL_COMMENT.sub(" ", text)
+    match = SQL_AFTER_KEYWORD.search(text) or SQL_IN_FROM_LIST.search(text)
+    return match.group("name") if match else None
 
 
 def _dotted(node: ast.AST) -> str | None:
@@ -122,17 +144,22 @@ def _module_of(node: ast.ImportFrom) -> str:
     return module
 
 
-def _is_import_call(node: ast.AST, target: str = AUTH_PACKAGE) -> bool:
-    """``importlib.import_module("classbeat.auth")`` or ``__import__("classbeat.auth", ...)``."""
+def _import_target(node: ast.AST) -> tuple[str, str] | None:
+    """``(function, module)`` of ``import_module("m")`` / ``__import__("m", ...)``, else None."""
     if not isinstance(node, ast.Call) or not node.args:
-        return False
+        return None
     name = (_dotted(node.func) or "").rsplit(".", 1)[-1]
     first = node.args[0]
-    return (
-        name in ("import_module", "__import__")
-        and isinstance(first, ast.Constant)
-        and first.value == target
-    )
+    is_import = name in ("import_module", "__import__")
+    if is_import and isinstance(first, ast.Constant) and isinstance(first.value, str):
+        return name, first.value
+    return None
+
+
+def _is_import_call(node: ast.AST, target: str = AUTH_PACKAGE) -> bool:
+    """``importlib.import_module("classbeat.auth")`` or ``__import__("classbeat.auth", ...)``."""
+    found = _import_target(node)
+    return found is not None and found[1] == target
 
 
 class _Roots:
@@ -156,16 +183,28 @@ class _Roots:
                         self.package.add(alias.asname or "classbeat")
                     elif alias.name == "auth" and from_package:
                         self.auth.add(alias.asname or "auth")
-            elif isinstance(node, ast.Assign):
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Assign):
                 names = [t.id for t in node.targets if isinstance(t, ast.Name)]
-                if _is_import_call(node.value):
+                if self.is_auth(node.value):
                     self.auth.update(names)
-                elif _is_import_call(node.value, "classbeat"):
+                if self.is_package(node.value):
                     self.package.update(names)
+
+    def is_package(self, node: ast.AST) -> bool:
+        """True when ``node`` evaluates to the top-level ``classbeat`` package."""
+        found = _import_target(node)
+        if found is not None:
+            function, module = found
+            # __import__("a.b") without a fromlist returns the top-level package "a".
+            return module == "classbeat" or (function == "__import__" and module == AUTH_PACKAGE)
+        return isinstance(node, ast.Name) and node.id in self.package
 
     def is_auth(self, node: ast.AST) -> bool:
         """True when ``node`` evaluates to the ``classbeat.auth`` package."""
-        if _is_import_call(node):
+        if _is_import_call(node):  # __import__ is also kept here: conservative
+            return True
+        if isinstance(node, ast.Attribute) and node.attr == "auth" and self.is_package(node.value):
             return True
         dotted = _dotted(node)
         if dotted is None:
@@ -203,8 +242,8 @@ def scan_source(source: str) -> list[tuple[int, str]]:
         elif isinstance(node, ast.Constant) and isinstance(node.value, str):
             if node.value == TABLES_MODULE or _is_auth_submodule(node.value):
                 found.append((node.lineno, f"string reference to {node.value}"))
-            if SQL_VERBS.search(node.value) and (match := SQL_TABLE.search(node.value)):
-                found.append((node.lineno, f"raw SQL naming table {match.group(1)}"))
+            if table := sql_table_in(node.value):
+                found.append((node.lineno, f"raw SQL naming table {table}"))
     return sorted(set(found))
 
 

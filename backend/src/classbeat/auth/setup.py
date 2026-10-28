@@ -98,7 +98,10 @@ def attach_state(
     # httpx logs each request URL at INFO; the OAuth ones are not worth a log line.
     for noisy in ("httpx", "httpcore"):
         logging.getLogger(noisy).setLevel(logging.WARNING)
-    # #39's security notices (TOTP enrolled, repeated MFA failures) go out as mail.
+    # #39's security notices (TOTP enrolled, repeated MFA failures) go out as mail. The notifier
+    # is process-global (``auth.notices``): the last app created in a process wins, and
+    # ``detach_state`` clears it. Fine for one app per process; tests that build several apps
+    # must not rely on which mailer a notice goes through.
     register_security_notifier(MailNotifier(app.state.mailer))
 
 

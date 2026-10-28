@@ -2,8 +2,10 @@
 
 One secret file, ``app_secret_key``, feeds HKDF-SHA256 (fixed salt ``classbeat-v1``); each use
 gets its own 32-byte key through its own info string, so a key for one purpose is useless for
-another. Rotating ``app_secret_key`` invalidates CSRF tokens, rate-limit buckets and recovery
-codes; TOTP secrets then need re-enrolling until M2's envelope encryption takes them over.
+another. Rotating ``app_secret_key`` invalidates CSRF tokens, rate-limit buckets, known devices
+(the ``device`` key: the cookies stop matching, so every sign-in looks like a new device and
+mails the user once more) and recovery codes; TOTP secrets then need re-enrolling until M2's
+envelope encryption takes them over.
 """
 
 import hashlib

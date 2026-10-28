@@ -13,7 +13,9 @@
   or ``Annotated[UserContext, Depends()]``), so FastAPI would try to build one from the
   request: the mistake fails in tests, not at request time. ``Depends``, ``Security`` and
   ``Annotated`` are found under any import alias (``from fastapi import Depends as D``,
-  ``import fastapi as f``, ``D = Depends``), and whole-string annotations are parsed.
+  ``import fastapi as f``, ``D = Depends``, ``D: Any = Depends``), and whole-string annotations
+  and string ``TypeAlias`` values (``Ctx: TypeAlias = "Annotated[UserContext, Depends()]"``)
+  are parsed.
   ``Depends(some_dependency)`` and ``Security(some_dependency)`` are fine: a context reaches
   a handler from the authentication dependency, which returns one built by its issuer.
 
@@ -26,9 +28,11 @@ import ast
 NAME = "UserContext"
 TOKEN_NAMES = {"issuer_token", "_ISSUER"}
 CONTEXT_MODULE = "classbeat.context"
-# Modules whose own source may build a context: the two issuers (ADR 0002 section 1).
-ISSUER_PACKAGES = ("classbeat/auth/", "classbeat/jobs/")
+# The only modules whose own source may build a context (ADR 0002 section 1): the issuer in the
+# auth package and the class's own module. The rest of ``classbeat.auth`` (route modules
+# included) is scanned like any other code. The job runner's issuer joins this list when it exists.
 DEFINITION = "classbeat/context.py"
+ISSUER_MODULES = ("classbeat/auth/deps.py", DEFINITION)
 # module -> function: refused everywhere / refused where the module handles a UserContext.
 ALWAYS_REFUSED = {"dataclasses": "replace"}
 REFUSED_WITH_CONTEXT = {"functools": "partial"}
@@ -87,10 +91,14 @@ class _Spellings:
                         self.dependencies.add(bound)
                     if node.module in TYPING_MODULES and alias.name == "Annotated":
                         self.annotated.add(bound)
-        for _ in range(3):  # `D = Depends`, `E = D`: follow simple assignments
+        # `D = Depends`, `E = D`, `D: Any = Depends`: follow simple (annotated) assignments.
+        for _ in range(3):
             for node in ast.walk(tree):
-                if isinstance(node, ast.Assign) and len(node.targets) == 1:
-                    target, value = node.targets[0], _dotted(node.value)
+                if isinstance(node, ast.Assign | ast.AnnAssign) and node.value is not None:
+                    targets = node.targets if isinstance(node, ast.Assign) else [node.target]
+                    if len(targets) != 1:
+                        continue
+                    target, value = targets[0], _dotted(node.value)
                     if isinstance(target, ast.Name) and value is not None:
                         if self._is(value, self.dependencies, DEPENDENCY_CALLS):
                             self.dependencies.add(target.id)
@@ -199,6 +207,13 @@ def _depends_findings(tree: ast.AST, aliases: set[str]) -> list[tuple[int, str]]
             annotation = node.annotation if isinstance(node, ast.AnnAssign) else node.returns
             if annotation is not None:
                 found += _annotated_findings(_parsed(annotation), aliases, spellings)
+            if (
+                isinstance(node, ast.AnnAssign)
+                and node.value is not None
+                and (_dotted(node.annotation) or "").split(".")[-1] == "TypeAlias"
+            ):
+                # ``Ctx: TypeAlias = "Annotated[UserContext, Depends()]"``: the string is a type.
+                found += _annotated_findings(_parsed(node.value), aliases, spellings)
     return found
 
 

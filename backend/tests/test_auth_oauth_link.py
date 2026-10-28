@@ -1,6 +1,7 @@
 """Linking, unlinking and OAuth re-authentication (ADR 0003 sections 5 and 6)."""
 
 import asyncio
+import json
 import time
 from urllib.parse import parse_qs, urlsplit
 from uuid import uuid4
@@ -214,6 +215,8 @@ async def test_oidc_reauth_sets_reauth_at_and_rotates_the_session(
     query = parse_qs(urlsplit(started.json()["authorization_url"]).query)
     assert query["max_age"] == ["0"]
     assert "prompt" not in query  # Google does not document prompt=login
+    # auth_time is requested explicitly: Google only adds it to the ID token when asked.
+    assert json.loads(query["claims"][0]) == {"id_token": {"auth_time": {"essential": True}}}
     callback = fake.complete(started.json()["authorization_url"])
     assert location(await browser.get(callback)) == "/account?oauth=reauthed"
     assert browser.cookies[auth.SESSION_COOKIE] != old
@@ -228,8 +231,31 @@ async def test_microsoft_reauth_adds_prompt_login(oenv: Env, fake: FakeProviders
     started = await start(browser, "microsoft", "reauth")
     query = parse_qs(urlsplit(started.json()["authorization_url"]).query)
     assert (query["max_age"], query["prompt"]) == (["0"], ["login"])
+    assert "claims" not in query  # Microsoft gets auth_time from the app registration
     callback = fake.complete(started.json()["authorization_url"], sub="ignored")
     assert location(await browser.get(callback)) == "/account?oauth=reauthed"
+
+
+async def test_google_without_the_claims_request_sends_no_auth_time_and_reauth_fails_closed(
+    oenv: Env, fake: FakeProviders
+) -> None:
+    """The fake behaves like Google: no auth_time unless the claims parameter asks for it."""
+    browser = await linked_browser(oenv, fake)
+    await age_reauth(oenv)
+    started = await start(browser, "google", "reauth")
+    url = started.json()["authorization_url"]
+    without = url.replace("claims=", "unrelated=")
+    callback = fake.complete(without)
+    assert location(await browser.get(callback)) == "/account?oauth=reauth_stale"
+    assert await oenv.scalar("SELECT reauth_at < now() - interval '5 minutes' FROM sessions")
+
+
+async def test_google_sign_in_and_link_do_not_ask_for_auth_time(
+    oenv: Env, fake: FakeProviders
+) -> None:
+    browser = await signed_in(oenv, "me@example.com")
+    started = await start(browser, "google", "link")
+    assert "claims" not in parse_qs(urlsplit(started.json()["authorization_url"]).query)
 
 
 @pytest.mark.parametrize(

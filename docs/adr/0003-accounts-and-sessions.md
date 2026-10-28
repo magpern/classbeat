@@ -20,11 +20,9 @@ All M1 tables are system tables (ADR 0002 §3): no `owner_id`, no RLS, listed in
 - **Who may touch them:** only `classbeat.auth` (and migrations and tests). The worker's purge
   task and the CLI call functions in `classbeat.auth`; they never touch the tables directly.
 - **Guard 8** (new, next to guards 1 to 7 of ADR 0002 §6) fails on any other import of that
-  module or of its table objects, and on raw SQL that names those tables outside
-  `classbeat.auth`.
+  module or of its table objects, and on raw SQL that names those tables outside `classbeat.auth`.
 - **Foreign keys:** owned tables later reference `users(id)`
-  (`owner_id … REFERENCES users (id) ON DELETE CASCADE`). No system table references an owned
-  one.
+  (`owner_id … REFERENCES users (id) ON DELETE CASCADE`). No system table references an owned one.
 
 Without RLS, isolation between users inside `classbeat.auth` rests on two rules, both tested:
 - **User-scoped queries.** Every query made for a signed-in user filters on the `user_id` of
@@ -190,8 +188,7 @@ Every state-changing request (`POST`, `PUT`, `PATCH`, `DELETE`) must pass two ch
 
 **Sign-up with a password (pending until the email is proven)**
 - **Invite gate:** sign-up is invite-only while `CLASSBEAT_SIGNUP_MODE=invite` (the default;
-  `closed` and `open` also exist). The invite is checked first, and a bad invite gets its own
-  error.
+  `closed` and `open` also exist). The invite is checked first, and a bad invite gets its own error.
 - **Response:** with a valid invite, both branches hash the password, answer "check your inbox"
   and send one mail after the response:
   - **New email:** a `pending_signups` row is stored, and the mail holds a confirmation link
@@ -201,8 +198,7 @@ Every state-changing request (`POST`, `PUT`, `PATCH`, `DELETE`) must pass two ch
   - No account exists yet, and the invite isn't consumed (T33).
 - **Confirmation** (`POST /api/auth/signup/confirm` with the token; for a password sign-up
   also **the chosen password**, typed again on the confirmation page, while a provider sign-up
-  is bound to its browser instead, below). The password is checked against the row's hash
-  first.
+  is bound to its browser instead, below). The password is checked against the row's hash first.
   A wrong password, like a confirmation in the wrong browser for a provider sign-up, leaves the
   row and the token untouched and counts as a sign-in failure (§9). So a victim who clicks a
   link for a sign-up someone else started can't confirm it, and an attacker can't confirm
@@ -236,8 +232,7 @@ Every state-changing request (`POST`, `PUT`, `PATCH`, `DELETE`) must pass two ch
   else linked doesn't survive the reset.
 - **Email change:**
   - **Request:** gives the same answer whether or not the new address is in use. Only the mail
-    differs: "confirm" for a free address, "an account with this address exists" for a taken
-    one.
+    differs: "confirm" for a free address, "an account with this address exists" for a taken one.
   - **Confirmation:** needs a signed-in session of `auth_tokens.user_id`, so a victim clicking
     a link from someone else's account changes nothing. It rechecks that the new address is
     still free and that `users.email` still equals `email_at_issue`.
@@ -251,8 +246,7 @@ Every state-changing request (`POST`, `PUT`, `PATCH`, `DELETE`) must pass two ch
   host is loopback or the compose `mailpit` service.
 - **Links:** built from `CLASSBEAT_PUBLIC_BASE_URL`, never from the `Host` header (T37).
 - **Timing:** mail is sent after the response (FastAPI background task), so the response timing
-  doesn't depend on whether a mail was sent. A failed send is logged without the recipient or
-  body.
+  doesn't depend on whether a mail was sent. A failed send is logged without the recipient or body.
 
 **OAuth (Google, GitHub, Microsoft)**
 
@@ -275,11 +269,13 @@ is no Starlette session middleware.
   - The callback is refused unless the flow exists and the `state` and `provider` match. The
     flow cookie is cleared.
   - For `link` and `reauth`, the request's current session must belong to `flow.user_id`.
-- **ID tokens (OIDC):** checked against the provider's JWKS (cached; refetched at most once a
-  minute on an unknown `kid`), RS256 only (`none` and HS* refused), with `iss`, `aud`, `exp`,
-  `iat` (60 s leeway) and `nonce`.
-  - **Google:** the subject is `sub`. The email counts as verified only if `email_verified` is
-    true.
+- **ID tokens (OIDC):** checked against the provider's JWKS, RS256 only (`none` and HS* refused),
+  with `iss`, `aud` (plus `azp` = our client id if `aud` has several values), `exp`, `iat` (60 s
+  leeway) and `nonce`. The JWKS is cached per URL for the response's `max-age` (default 1 h,
+  within 1 min to 24 h), so a retired key stops being accepted. An unknown `kid` or an expired
+  entry refetches at most once a minute per URL, under a per-URL lock (shared by concurrent
+  sign-ins).
+  - **Google:** the subject is `sub`. The email counts as verified only if `email_verified` is true.
   - **Microsoft** (`common` endpoint): `iss` must equal
     `https://login.microsoftonline.com/{tid}/v2.0` for the token's own `tid`. The subject is
     `{tid}/{oid}`. The email is **always treated as unverified**, because anyone can create a
@@ -289,12 +285,14 @@ is no Starlette session middleware.
 - **Re-authentication:**
   - **OIDC providers:** a `reauth` flow sends `max_age=0` (and `prompt=login` to Microsoft) and
     requires `auth_time` within the last 5 minutes. A missing or older `auth_time` fails
-    closed. The Microsoft app registration adds `auth_time` as an optional claim.
+    closed. Google adds `auth_time` only when asked, so its flow also sends
+    `claims={"id_token":{"auth_time":{"essential":true}}}` (OIDC Core 5.5); it doesn't document
+    `max_age`/`prompt=login`, so live activation confirms the behaviour. The Microsoft app
+    registration adds `auth_time` as an optional claim (setup note in AGENTS.md).
   - **GitHub:** it can't force a re-login, so a GitHub re-authentication only proves a live
     GitHub session (an accepted risk).
   - **Order and fallback:** users with a password are offered it first. A user whose provider
-    re-authentication keeps failing can set a password through a reset and re-authenticate
-    with it.
+    re-authentication keeps failing can set a password through a reset and re-authenticate with it.
 - **Enabling a provider:** a provider is on only when both its client id setting and its
   `oauth_<provider>_client_secret` secret file exist. Client secrets are never logged.
 - **Outbound hosts:** only the provider endpoints (T19).
@@ -384,9 +382,10 @@ sign-in only for the admin role (§7).
     pages, but whoever enrolls first owns the factor. The owner enrolls right after the grant;
     an unexpected enrollment is visible in `auth_events` and mailed to the user.
   - **Lost authenticator:** use a recovery code, or `python -m classbeat admin mfa-reset
-    <email>`. That removes the user's TOTP and recovery codes, writes `auth_events`, revokes all
-    sessions, and mails the user a password-reset link. The owner resets and re-enrolls before
-    anything else, because the account is back in the "whoever enrolls first" state.
+    <email>`. That removes the user's TOTP and recovery codes and known devices, writes
+    `auth_events`, revokes all sessions, and mails the user a password-reset link. The owner
+    resets and re-enrolls before anything else, because the account is back in the "whoever
+    enrolls first" state.
 - **TOTP** (RFC 6238 via `pyotp`):
   - **Parameters:** SHA-1, 6 digits, a 30 s period, ±1 step of tolerance, and a 160-bit secret.
   - **Enrollment:** shows a QR code (an SVG rendered server-side, no third-party host) and the
@@ -407,7 +406,8 @@ sign-in only for the admin role (§7).
 - **The secret:** one secret file, `app_secret_key` (at least 32 random bytes, created by
   `scripts/worktree.sh init`).
 - **Derived keys:** HKDF-SHA256 (fixed salt `classbeat-v1`) derives separate 32-byte keys with
-  the info strings `csrf`, `rate-limit`, `device`, `recovery-codes` and `totp-v1`.
+  the info strings `csrf`, `rate-limit`, `device`, `recovery-codes`, `totp-v1` and
+  `totp-pending` (the key for the client-held pending enrollment blob).
 - **TOTP secrets:** encrypted with AES-256-GCM (`cryptography`), a random 96-bit nonce per
   encryption stored alongside, AAD `user_id|totp`, and `key_id = "app-v1"`.
   - M2's envelope encryption (§7 of the roadmap) re-encrypts them under its scheme, and
@@ -490,8 +490,7 @@ in-process SMTP fake in unit tests.
 - **The M1 split stands** (#36 to #40); each issue's scope and acceptance criteria follow this
   ADR. In particular, isolation inside `classbeat.auth` is tested through user-scoped queries
   and 404s for foreign ids (§1), and TOTP secrets are protected by AES-GCM at rest (§8), not by
-  RLS. Before #38 merges, Google's and Microsoft's `auth_time` and `max_age` behaviour is
-  checked against their current documentation (no live calls).
+  RLS. Providers' `auth_time` and `max_age` behaviour is confirmed at live activation (§5).
 - **New dependencies** (pinned and audited): `argon2-cffi`, `authlib`, `httpx`, `pyotp`,
   `cryptography`, a QR-code SVG generator.
 - **Threat model:** T1, T3, T4 and T33 cite this ADR; T34 to T39 are new.
