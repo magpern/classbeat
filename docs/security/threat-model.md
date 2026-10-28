@@ -50,10 +50,10 @@ responses and model output alike.
 
 | # | Threat | Mitigation | Milestone |
 |---|---|---|---|
-| T1 | Account takeover by OAuth email matching (an attacker's provider account with the victim's email) | Identity key is `(provider, subject)`, never email; linking needs a signed-in confirmation; unverified emails never link | M1 |
+| T1 | Account takeover by OAuth email matching (an attacker's provider account with the victim's email) | Identity key is `(provider, subject)`, never email; linking needs a signed-in confirmation; unverified emails never link; Microsoft emails always count as unverified (ADR 0003 §5) | M1 |
 | T2 | Login CSRF, OAuth state or code injection | State, nonce (OIDC) and PKCE; single-use, short-lived callbacks bound to the browser session | M1 |
 | T3 | Credential stuffing and brute force | argon2id; rate limits per IP and account; email verification; invite-only beta | M1 |
-| T4 | Session theft or fixation | Server-side sessions; HttpOnly, Secure, SameSite=Lax cookie; rotation on login; idle and absolute expiry; CSRF tokens on writes | M1 |
+| T4 | Session theft or fixation | Server-side sessions stored as token hashes; `__Host-` cookie, HttpOnly, Secure, SameSite=Lax; rotation on sign-in, MFA, role change and re-auth; idle 7 days and absolute 30 days; Origin check and CSRF tokens on writes (ADR 0003 §3, §4) | M1 |
 | T5 | Cross-tenant read or write (IDOR), including through a background job | `UserContext` everywhere, repository filters, Postgres RLS (ADR 0002), guard tests, 404 tests for foreign IDs | M0 contract, M2 |
 | T6 | Token theft from a database dump or backup | Envelope encryption, AES-256-GCM with AAD `user_id\|provider`, keys outside the database, `key_id` rotation; encrypted backups | M2, M6 |
 | T7 | Secrets in logs, errors or traces | `SecretStr`; secrets only from files; no exception text in API responses; log redaction and tests that grep logs for planted tokens | M0, M2 |
@@ -82,6 +82,12 @@ responses and model output alike.
 | T30 | `NOTIFY` payloads read by any listener on the database | Payloads carry only IDs; data is read afterwards in a user session (ADR 0002 §5) | M3a |
 | T31 | Prompt injection of the development agents through issue, PR or upstream text | Agents treat repository and web content as data; the review gate and ruleset apply to every merge; secrets are never in the repository or agent prompts | M0 |
 | T32 | User data sent to model providers beyond need | Only the class brief, the music data track F allows, and the draft are sent; no tokens, emails or account data; provider data-retention terms checked before enabling a provider (§5) | M3a, M3c |
+| T33 | Account enumeration through sign-in, sign-up, reset or timing | One generic message per flow; sign-up and reset answer the same whether the email exists; a dummy argon2 verification for unknown emails; mail sent after the response (ADR 0003 §5) | M1 |
+| T34 | A reset or verification token leaking through logs, referrers or reuse | 32 random bytes, stored as SHA-256 only, single-use, short-lived (reset 30 min); carried in the URL fragment so it never reaches server or proxy logs; a reset signs out every session (ADR 0003 §5) | M1 |
+| T35 | TOTP secrets read from the database | AES-256-GCM with a key derived from `app_secret_key` outside the database, AAD bound to the user; M2's envelope encryption takes them over (ADR 0003 §8) | M1, M2 |
+| T36 | Open redirect after sign-in | `return_to` only as a relative path starting with a single `/`, checked again before use (ADR 0003 §4) | M1 |
+| T37 | Host-header poisoning of links in mail | Links built only from `CLASSBEAT_PUBLIC_BASE_URL`, never from request headers (ADR 0003 §5) | M1 |
+| T38 | OAuth mix-up between providers, or a forged ID token | One callback path per provider; the flow row records the provider; ID tokens checked for signature (provider JWKS), `iss`, `aud`, `exp`, `nonce`; Microsoft's per-tenant issuer checked against the token's `tid` (ADR 0003 §5) | M1 |
 
 ## Accepted risks (beta)
 
