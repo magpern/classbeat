@@ -22,6 +22,7 @@ from classbeat.db.role_check import (
 from classbeat.web import create_app
 from classbeat.worker.__main__ import _run  # pyright: ignore[reportPrivateUsage]
 from conftest import url_for
+from dbtools import migrated
 
 PASSWORD = secrets.token_hex(8)
 PROBE_ROLES = (
@@ -186,6 +187,14 @@ async def test_the_web_app_does_not_start_with_a_privileged_role(database_url: s
             pytest.fail("the app must not start")
 
 
+@pytest.fixture
+def schema(owner_database_url: str) -> Iterator[None]:
+    """The migrated schema: the KEK check of ADR 0004 needs it (compose runs `migrate` first)."""
+    with migrated(owner_database_url):
+        yield
+
+
+@pytest.mark.usefixtures("schema")
 async def test_the_web_app_starts_with_the_app_role(app_database_url: str) -> None:
     settings = Settings(
         database_url=app_database_url,  # pyright: ignore[reportArgumentType]
@@ -222,6 +231,7 @@ async def test_the_worker_does_not_start_with_a_privileged_role(database_url: st
         await _run(settings)
 
 
+@pytest.mark.usefixtures("schema")
 async def test_the_worker_starts_with_the_app_role(app_database_url: str) -> None:
     settings = Settings(
         database_url=app_database_url,  # pyright: ignore[reportArgumentType]

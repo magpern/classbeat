@@ -123,8 +123,9 @@ the CLI.
      id already has a check row (the leaked key wasn't replaced). It takes the user ids from
      the same `classbeat.auth` function as rewrap and, for each user, in one transaction with
      `app.user_id` set:
-     - writes an `auth_events` row `connections_wiped` listing the affected providers (nothing
-       else), deletes that user's `connections` rows, and, only if the user has a TOTP row,
+     - writes an `auth_events` row `connections_wiped` whose `detail` is exactly
+       `{"providers": [...], "totp_reset": bool}` (plus `"mailed": true` once the mail is sent),
+       deletes that user's `connections` rows, and, only if the user has a TOTP row,
        resets it the way `admin mfa-reset` does (ADR 0003 §7: removes the TOTP row and
        recovery codes, forgets known devices, revokes sessions, writes `auth_events`), through
        `classbeat.auth` (guard 8);
@@ -135,7 +136,10 @@ the CLI.
        mail holds no token, id or account detail. A sent mail is marked on the event; a failed
        one is counted and left unmarked.
      Then it deletes every `connection_keks` row, runs `VACUUM (FULL)` on the affected tables
-     (outside a transaction) and a `CHECKPOINT`. It prints counts only, including unsent
+     (outside a transaction) and a `CHECKPOINT`; the owner role may not run `CHECKPOINT` (it is
+     a member of no role, ADR 0002 §4), so when refused the wipe prints the step
+     `docker compose exec db psql -U postgres -d classbeat -c CHECKPOINT` for the operator and
+     still exits 0 once every user is processed. It prints counts only, including unsent
      mails. Re-running is safe: wiped users are skipped, and `keys wipe --resend` retries every
      unmarked mail; an address the relay permanently refuses is reported by `--resend` and
      never blocks the wipe itself;
@@ -157,8 +161,9 @@ the CLI.
 - **TOTP:** #65 moves `mfa_totp` onto the same primitive. New nullable columns `wrapped_dek`
   and `dek_nonce`; `key_id` stays `NOT NULL`, with a check that tells the forms apart:
   `(key_id = 'app-v1' AND wrapped_dek IS NULL AND dek_nonce IS NULL) OR
-  (key_id ~ '^kek-[a-z0-9-]{1,28}$' AND octet_length(wrapped_dek) = 48 AND
-  octet_length(dek_nonce) = 12)`. TOTP payload AAD
+  (key_id ~ '^kek-[a-z0-9-]{1,28}$' AND wrapped_dek IS NOT NULL AND dek_nonce IS NOT NULL AND
+  octet_length(wrapped_dek) = 48 AND octet_length(dek_nonce) = 12)` (the `IS NOT NULL`s matter:
+  a check passes on NULL). TOTP payload AAD
   `classbeat-totp-v2|<user_id>`, wrap AAD `classbeat-totp-dek-v1|<key_id>|<user_id>`. From #65
   on, new enrollments write the v2 form.
   Rows with `key_id = 'app-v1'` keep decrypting under ADR 0003 §8 until migrated by

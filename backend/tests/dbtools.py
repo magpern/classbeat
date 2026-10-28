@@ -71,19 +71,35 @@ def migrated(owner_url: str, revision: str = "head") -> Iterator[None]:
     patch = pytest.MonkeyPatch()
     patch.setenv("CLASSBEAT_MIGRATIONS_DATABASE_URL", owner_url)
     try:
+        _forget_v2_totp(owner_url)
         command.downgrade(alembic_config(), "base")
         command.upgrade(alembic_config(), revision)
         yield
     finally:
+        _forget_v2_totp(owner_url)
         command.downgrade(alembic_config(), "base")
         patch.undo()
 
 
+def _forget_v2_totp(owner_url: str) -> None:
+    """0003's downgrade refuses while v2 (envelope) TOTP rows exist; tests drop them first."""
+    with owner_connection(owner_url) as connection:
+        exists = connection.execute(
+            text(
+                "SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' "
+                "AND table_name = 'mfa_totp' AND column_name = 'wrapped_dek'"
+            )
+        ).first()
+        if exists is not None:
+            connection.execute(text("DELETE FROM public.mfa_totp WHERE key_id <> 'app-v1'"))
+
+
 def truncate_auth(admin_url: str) -> None:
-    """Empty every auth table (test setup, as the superuser)."""
+    """Empty every auth table, and so every ``connections`` row (cascade), and the KEK check rows
+    (test setup, as the superuser)."""
     engine = create_engine(admin_url, isolation_level="AUTOCOMMIT")
     try:
         with engine.connect() as connection:
-            connection.execute(text(f"TRUNCATE {AUTH_TABLES} CASCADE"))
+            connection.execute(text(f"TRUNCATE {AUTH_TABLES}, connection_keks CASCADE"))
     finally:
         engine.dispose()

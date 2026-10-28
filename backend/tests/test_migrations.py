@@ -32,7 +32,7 @@ def applied_revisions(database_url: str) -> list[str]:
 
 def test_the_revisions_form_one_line() -> None:
     script = ScriptDirectory.from_config(alembic_config())
-    assert script.get_heads() == ["0002_auth"]
+    assert script.get_heads() == ["0003_connections"]
     assert script.get_base() == "0001_baseline"
 
 
@@ -53,7 +53,7 @@ def test_upgrade_head_then_downgrade_base(
     config = alembic_config()
     try:
         command.upgrade(config, "head")
-        assert applied_revisions(database_url) == ["0002_auth"]
+        assert applied_revisions(database_url) == ["0003_connections"]
         command.downgrade(config, "base")
         assert applied_revisions(database_url) == []
     finally:
@@ -105,15 +105,20 @@ def test_0002_auth_up_and_down(owner_database_url: str, database_url: str) -> No
     try:
         with migrated(owner_database_url, "0001_baseline"):
             assert tables() == {"alembic_version"}
-            command.upgrade(alembic_config(), "head")
+            command.upgrade(alembic_config(), "0002_auth")
             assert tables() == {"alembic_version", *AUTH}
             command.downgrade(alembic_config(), "0001_baseline")
             assert tables() == {"alembic_version"}
             command.upgrade(alembic_config(), "head")
+            assert tables() == {"alembic_version", *AUTH, *CONNECTIONS}
+            command.downgrade(alembic_config(), "0002_auth")
             assert tables() == {"alembic_version", *AUTH}
+            command.upgrade(alembic_config(), "head")
+            assert tables() == {"alembic_version", *AUTH, *CONNECTIONS}
         assert tables() <= {"alembic_version"}
     finally:
         engine.dispose()
 
 
 AUTH = sorted(metadata.tables)
+CONNECTIONS = ["connection_keks", "connections"]

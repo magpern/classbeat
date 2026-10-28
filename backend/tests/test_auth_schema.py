@@ -116,7 +116,8 @@ def test_on_delete_rules(admin: Connection) -> None:
     assert set_null <= set(rules)
     assert ("pending_signups", "invite_id") in rules
     assert ("oauth_flows", "invite_id") in rules
-    assert len(rules) == 12
+    assert rules[("connections", "owner_id")] == ("users", "c")  # ADR 0004 section 1
+    assert len(rules) == 13
 
 
 def test_deleting_a_user_cascades_except_events_and_invites(admin: Connection) -> None:
@@ -133,7 +134,7 @@ def test_deleting_a_user_cascades_except_events_and_invites(admin: Connection) -
         "INSERT INTO auth_tokens (user_id, purpose, token_hash, expires_at) "
         "VALUES (:u, 'reset_password', 't', now())",
         "INSERT INTO mfa_totp (user_id, secret_ciphertext, nonce, key_id) "
-        "VALUES (:u, 'c', 'n', 'k')",
+        "VALUES (:u, 'c', 'n', 'app-v1')",
         "INSERT INTO mfa_recovery_codes (user_id, code_hash) VALUES (:u, 'r')",
         "INSERT INTO oauth_flows (flow_hash, provider, purpose, state_hash, pkce_verifier, "
         "user_id, expires_at) VALUES ('f', 'github', 'link', 's', 'v', :u, now())",

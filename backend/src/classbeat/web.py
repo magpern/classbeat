@@ -14,6 +14,7 @@ from sqlalchemy import text
 
 from classbeat import __version__, auth
 from classbeat.config import Settings
+from classbeat.crypto.keks import load_keyring
 from classbeat.db import create_engine, create_session_factory, verify_database_role
 
 logger = logging.getLogger(__name__)
@@ -85,6 +86,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             await verify_database_role(engine)  # refuses to start on a privileged role
             app.state.engine = engine
             app.state.session_factory = create_session_factory(engine)
+            # Refuses to start without a valid connection_kek, or with a key swapped under an
+            # unchanged id (ADR 0004 section 2).
+            app.state.keyring = await load_keyring(
+                app.state.session_factory, settings.connection_kek_id
+            )
             auth.attach_state(app, settings, app.state.session_factory)
             yield
         finally:

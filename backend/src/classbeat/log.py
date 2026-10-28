@@ -35,6 +35,35 @@ _PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
 )
 
 
+# ADR 0004 section 7: values under these keys are masked wherever they appear in a record
+# (``extra`` fields, nested dicts): provider tokens, passwords, tickets, cookies and anything under
+# ``public`` or ``secret`` of a connection row, plus the row's key material columns.
+SECRET_KEYS = frozenset(
+    {
+        "token",
+        "access_token",
+        "refresh_token",
+        "password",
+        "secret",
+        "authorization",
+        "cookie",
+        "ticket",
+        "public",
+        "secret_nonce",
+        "wrapped_dek",
+        "dek_nonce",
+        "mowl_token",
+        "swedebeat_token",
+        "swedebeat_device_id",
+        "spotify_access_token",
+        "spotify_refresh_token",
+    }
+)
+
+
+QUIET_LOGGERS = ("mowl", "httpx", "httpcore", "urllib3")
+
+
 def redact(value: str) -> str:
     """Remove cookie values, credential headers and OAuth query strings from ``value``."""
     for pattern, replacement in _PATTERNS:
@@ -46,7 +75,10 @@ def _redact_any(value: Any) -> Any:
     if isinstance(value, str):
         return redact(value)
     if isinstance(value, dict):
-        return {k: _redact_any(v) for k, v in value.items()}  # pyright: ignore[reportUnknownVariableType]
+        return {  # pyright: ignore[reportUnknownVariableType]
+            k: _REDACTED if isinstance(k, str) and k.lower() in SECRET_KEYS else _redact_any(v)
+            for k, v in value.items()  # pyright: ignore[reportUnknownVariableType]
+        }
     if isinstance(value, list | tuple):
         return [_redact_any(v) for v in value]  # pyright: ignore[reportUnknownVariableType]
     return value
@@ -72,7 +104,11 @@ def find_database_error(error: BaseException | None) -> DBAPIError | None:
         if isinstance(current, DBAPIError):
             return current
         pending.append(current.__cause__)
-        pending.append(current.__context__)
+        # ``raise ... from None`` (or ``from x``) sets __suppress_context__: the context was
+        # hidden on purpose (ADR 0004 section 5), so it is not followed. __cause__ still is, so a
+        # DBAPIError raised ``from`` keeps being found and reduced to its SQLSTATE.
+        if not current.__suppress_context__:
+            pending.append(current.__context__)
         if isinstance(current, BaseExceptionGroup):
             pending.extend(current.exceptions)  # pyright: ignore[reportUnknownMemberType]
     return None
@@ -125,3 +161,7 @@ def configure_logging(level: str = "INFO", stream: IO[str] | None = None) -> Non
     # never logged (ADR 0003 section 10).
     for noisy in ("sqlalchemy.engine", "sqlalchemy.pool"):
         logging.getLogger(noisy).setLevel(logging.WARNING)
+    # The provider library and HTTP clients never log at INFO or below in classbeat (ADR 0004
+    # section 7): request URLs can carry the MOWL login ticket.
+    for library in QUIET_LOGGERS:
+        logging.getLogger(library).setLevel(logging.WARNING)

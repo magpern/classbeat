@@ -13,12 +13,13 @@ import socket
 import sys
 from collections.abc import AsyncIterator, Iterator
 from dataclasses import dataclass
+from pathlib import Path
 
 import pytest
 from sqlalchemy import create_engine, text
 from sqlalchemy.engine import make_url
 
-from authtools import Env
+from authtools import TEST_KEK, Env
 from smtpfake import SmtpFake
 
 pytest_plugins = ["mfatools", "oauthtools"]  # fixtures of the MFA and OAuth tests
@@ -34,6 +35,20 @@ def _isolated_environment(monkeypatch: pytest.MonkeyPatch) -> None:
     for name in list(os.environ):
         if name.startswith("CLASSBEAT_") and name != "CLASSBEAT_TEST_DATABASE_URL":
             monkeypatch.delenv(name)
+
+
+@pytest.fixture(autouse=True)
+def kek_dir(
+    _isolated_environment: None,
+    tmp_path_factory: pytest.TempPathFactory,
+    monkeypatch: pytest.MonkeyPatch,
+) -> Path:
+    """A secrets directory holding only ``connection_kek`` (the test KEK), so web, worker and the
+    CLI find a valid current KEK. Tests that need other key files write them here."""
+    directory = tmp_path_factory.mktemp("secrets")
+    (directory / "connection_kek").write_bytes(TEST_KEK.hex().encode() + b"\n")
+    monkeypatch.setenv("CLASSBEAT_SECRETS_DIR", str(directory))
+    return directory
 
 
 def _unavailable(reason: str) -> None:

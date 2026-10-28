@@ -195,6 +195,8 @@ uv run python -m classbeat     # the API on http://127.0.0.1:8000 (--host, --por
 uv run python -m classbeat.worker   # the worker; stops on Ctrl+C or SIGTERM
 uv run python -m classbeat invite create [--expires 7d]    # operator commands (ADR 0003 section 7);
 uv run python -m classbeat admin grant|revoke|mfa-reset EMAIL   # in the stack: docker compose exec web ...
+uv run python -m classbeat keys rewrap [--totp]   # after a KEK rotation (ADR 0004 section 2); --totp once
+docker compose --profile maint run --rm maint python -m classbeat keys wipe --confirm|--resend   # KEK compromise only
 uv run alembic upgrade head    # migrations as the owner role, CLASSBEAT_MIGRATIONS_DATABASE_URL
 ```
 
@@ -225,7 +227,10 @@ after the field, without the prefix, in `CLASSBEAT_SECRETS_DIR` (default `/run/s
 and worker) and `database_owner_password` replaces the one in
 `CLASSBEAT_MIGRATIONS_DATABASE_URL` (the owner role, for Alembic); `app_secret_key` (at least
 32 bytes, created by `scripts/worktree.sh init`; the web app refuses to start without it) feeds
-the derived keys of ADR 0003 section 8; `smtp_password` (optional) is the SMTP login password
+the derived keys of ADR 0003 section 8; `connection_kek` (exactly 64 lowercase hex characters, created by `scripts/worktree.sh init`;
+web and worker refuse to start without it) is the current key-encryption key of ADR 0004 section 2,
+its id `CLASSBEAT_CONNECTION_KEK_ID` (default `kek-1`; compose takes `CONNECTION_KEK_ID` from `.env`),
+and retired ones are `connection_kek_<id>`; `smtp_password` (optional) is the SMTP login password
 (`CLASSBEAT_SMTP_HOST`, `_PORT`, `_SENDER`, `_USERNAME` and `_TLS` = `starttls`, `tls` or `none`;
 `none` only for loopback or the compose `mailpit`; compose points them at mailpit); the matching
 `CLASSBEAT_DATABASE_PASSWORD` and `CLASSBEAT_DATABASE_OWNER_PASSWORD` variables are ignored.

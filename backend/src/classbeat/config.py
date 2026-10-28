@@ -2,6 +2,7 @@
 
 import ipaddress
 import os
+import re
 from pathlib import Path
 from typing import Any, Literal
 from urllib.parse import urlsplit
@@ -29,6 +30,8 @@ SECRET_FILE_FIELDS = (
 # Hosts where unencrypted SMTP (``smtp_tls = none``) is allowed: loopback and the compose service.
 PLAIN_SMTP_HOSTS = frozenset({"localhost", "mailpit"})
 MIN_APP_SECRET_BYTES = 32
+# ADR 0004 section 2: the id of the current KEK (the ``connection_kek`` secret file).
+CONNECTION_KEK_ID = re.compile(r"kek-[a-z0-9-]{1,28}")
 
 
 def secrets_dir() -> Path:
@@ -127,6 +130,10 @@ class Settings(BaseSettings):
     session_idle_days: int = 7
     session_absolute_days: int = 30
     password_hash_workers: int = 4
+    # The id of the current key-encryption key (ADR 0004 section 2). The key itself is the
+    # secret file ``connection_kek`` (read by ``classbeat.crypto.keks``, never the environment);
+    # retired keys are ``connection_kek_<id>``.
+    connection_kek_id: str = "kek-1"
     # Who may create an account (section 5): ``invite`` (default), ``closed`` or ``open``.
     signup_mode: Literal["invite", "closed", "open"] = "invite"
 
@@ -191,6 +198,13 @@ class Settings(BaseSettings):
     def _check_app_secret_key(cls, value: SecretStr | None) -> SecretStr | None:
         if value is not None and len(value.get_secret_value().encode()) < MIN_APP_SECRET_BYTES:
             raise ValueError(f"app_secret_key must be at least {MIN_APP_SECRET_BYTES} bytes long")
+        return value
+
+    @field_validator("connection_kek_id")
+    @classmethod
+    def _check_connection_kek_id(cls, value: str) -> str:
+        if CONNECTION_KEK_ID.fullmatch(value) is None:
+            raise ValueError("connection_kek_id must match ^kek-[a-z0-9-]{1,28}$")
         return value
 
     @field_validator("public_base_url")

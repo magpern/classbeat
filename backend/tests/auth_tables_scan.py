@@ -88,6 +88,7 @@ SUBMODULES = frozenset(
         "middleware",
         "notices",
         "notifier",
+        "operator",
         "oauth_client",
         "oauth_handoff",
         "oauth_idtoken",
@@ -107,6 +108,7 @@ SUBMODULES = frozenset(
         "tables",
         "tokens",
         "totp",
+        "totp_keys",
     }
 )
 FORBIDDEN_NAMES = frozenset(TABLE_NAMES) | {"metadata"} | SUBMODULES

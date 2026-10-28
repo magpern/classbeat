@@ -196,6 +196,15 @@ mfa_totp = Table(
     Column("key_id", Text, nullable=False),
     _ts("confirmed_at"),
     Column("last_step", BigInteger, nullable=False, server_default="0"),
+    # The v2 (envelope) form, ADR 0004 section 2; NULL for ``app-v1`` rows (migration 0003).
+    Column("wrapped_dek", LargeBinary),
+    Column("dek_nonce", LargeBinary),
+    CheckConstraint(
+        "(key_id = 'app-v1' AND wrapped_dek IS NULL AND dek_nonce IS NULL) OR "
+        "(key_id ~ '^kek-[a-z0-9-]{1,28}$' AND wrapped_dek IS NOT NULL AND dek_nonce IS NOT "
+        "NULL AND octet_length(wrapped_dek) = 48 AND octet_length(dek_nonce) = 12)",
+        name="mfa_totp_key_form",
+    ),
 )
 
 mfa_recovery_codes = Table(

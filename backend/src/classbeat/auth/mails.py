@@ -110,3 +110,49 @@ def identity_linked_notice(to: str, provider: str) -> MailMessage:
         "If this wasn't you, sign in, remove it from your account page and change your "
         "password.\n",
     )
+
+
+_PROVIDER_NAMES = {
+    "mowl": "Intelligent Cycling (MOWL)",
+    "spotify": "Spotify",
+    "swedebeat": "Swedebeat",
+}
+_PROVIDER_STEPS = {
+    "mowl": "Intelligent Cycling (MOWL): end your other sessions or change your password there. "
+    "MOWL tokens cannot be revoked and may stay valid until they expire.",
+    "spotify": "Spotify: remove classbeat's access (your own developer app) in your Spotify "
+    "account settings.",
+    "swedebeat": "Swedebeat: change your Swedebeat password.",
+}
+
+
+def connections_wiped_notice(
+    settings: Settings, to: str, providers: tuple[str, ...], reset_token: str | None
+) -> MailMessage:
+    """After ``keys wipe`` (ADR 0004 section 2): which providers were affected, that classbeat
+    removed them, what to do, and the reset link if the TOTP was reset. No token, id or account
+    detail (the reset link carries only its own single-use token)."""
+    lines = [
+        "As a precaution after a security incident, classbeat removed the stored sign-ins of "
+        "your account.",
+        "",
+    ]
+    if providers:
+        names = ", ".join(_PROVIDER_NAMES.get(p, p) for p in providers)
+        lines += [
+            f"Removed connections: {names}. Connect them again from your account page.",
+            "",
+            "What to do:",
+            *(f"- {_PROVIDER_STEPS[p]}" for p in providers if p in _PROVIDER_STEPS),
+            "",
+        ]
+    if reset_token is not None:
+        lines += [
+            "Two-factor authentication was removed and you were signed out everywhere. Choose a "
+            "new password with this link (valid for 30 minutes), then set up two-factor "
+            "authentication again:",
+            link(settings, "/reset", reset_token),
+            "",
+        ]
+    lines.append("If you have questions, contact the operator.")
+    return MailMessage(to, "Your classbeat connections were removed", "\n".join(lines) + "\n")

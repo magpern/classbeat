@@ -7,7 +7,7 @@
 set -euo pipefail
 
 SELF="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/$(basename "${BASH_SOURCE[0]}")"
-SECRETS=(postgres_password database_owner_password database_password app_secret_key)
+SECRETS=(postgres_password database_owner_password database_password app_secret_key connection_kek)
 
 die() { echo "worktree.sh: $*" >&2; exit 1; }
 
@@ -59,6 +59,7 @@ cmd_init() {
   for name in "${SECRETS[@]}"; do
     if [ ! -f "secrets/$name" ]; then
       # app_secret_key feeds the HKDF of ADR 0003 section 8 (at least 32 bytes); 64 here.
+      # connection_kek (ADR 0004 section 2) is exactly 32 bytes: 64 lowercase hex characters.
       if [ "$name" = "app_secret_key" ]; then bytes=64; else bytes=32; fi
       printf '%s' "$(random_secret "$bytes")" > "secrets/$name"
       # The container user (uid 10001) must read the bind-mounted file; secrets/ itself is 0700.
