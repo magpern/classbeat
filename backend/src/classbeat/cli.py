@@ -22,6 +22,7 @@ from classbeat.db import (
     system_session,
     verify_database_role,
 )
+from classbeat.mail import Mailer, MailError
 
 _DURATION = re.compile(r"(\d+)([dhm])")
 _UNITS = {"d": "days", "h": "hours", "m": "minutes"}
@@ -82,14 +83,20 @@ async def _admin(args: argparse.Namespace, settings: Settings, out: TextIO, err:
                 )
                 return 0
             user = await auth.reset_mfa(db, args.email)
-        sent = await auth.send_reset_link(user.id, user.email)
+        auth.register_reset_link_sender(
+            auth.make_reset_link_sender(settings, factory, Mailer(settings))
+        )
+        try:
+            sent = await auth.send_reset_link(user.id, user.email)
+        except MailError as exc:
+            print(
+                f"TOTP and recovery codes removed; sessions revoked; reset link NOT mailed: {exc}",
+                file=err,
+            )
+            return 1
         print(
             "TOTP and recovery codes removed; all sessions revoked; "
-            + (
-                "reset link mailed"
-                if sent
-                else "reset link NOT mailed: mail sending is not wired up yet"
-            ),
+            + ("reset link mailed" if sent else "reset link NOT mailed: no sender is registered"),
             file=err,
         )
         return 0

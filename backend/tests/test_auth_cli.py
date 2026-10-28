@@ -134,10 +134,12 @@ async def test_admin_revoke_refuses_while_the_address_is_in_admin_emails(
     assert await env.scalar("SELECT role FROM users") == "admin"
 
 
-async def test_mfa_reset_removes_totp_and_recovery_codes_and_revokes_sessions(
-    env: Env, cli: Any
+async def test_mfa_reset_removes_totp_and_recovery_codes_revokes_sessions_and_mails_a_link(
+    env: Env, cli: Any, app_database_url: str
 ) -> None:
     import asyncio
+
+    from smtpfake import SmtpFake
 
     user_id = await env.user("lost@example.com", role="admin")
     other = await env.user("other@example.com")
@@ -149,9 +151,18 @@ async def test_mfa_reset_removes_totp_and_recovery_codes_and_revokes_sessions(
     await env.run("INSERT INTO mfa_recovery_codes (user_id, code_hash) SELECT id, 'h' FROM users")
     async with env.db() as db:
         await auth.remember_device(db, env.app.state.keys, user_id, None)
-    code, _, err = await asyncio.to_thread(cli, "admin", "mfa-reset", "lost@example.com")
+    async with SmtpFake() as smtp:
+        settings = make_settings(
+            app_database_url, smtp_host="127.0.0.1", smtp_port=smtp.port, smtp_tls="none"
+        )
+        code, _, err = await asyncio.to_thread(
+            cli, "admin", "mfa-reset", "lost@example.com", settings=settings
+        )
     assert code == 0
-    assert "NOT mailed" in err  # the sender arrives with #37
+    assert "reset link mailed" in err
+    [mail] = smtp.to("lost@example.com")  # the registered sender mailed the reset link
+    assert "/reset#token=" in mail.text
+    assert await env.scalar("SELECT purpose FROM auth_tokens") == "reset_password"
     assert await env.scalar("SELECT count(*) FROM mfa_totp WHERE user_id = :u", u=user_id) == 0
     assert (
         await env.scalar("SELECT count(*) FROM mfa_recovery_codes WHERE user_id = :u", u=user_id)
@@ -166,9 +177,17 @@ async def test_mfa_reset_removes_totp_and_recovery_codes_and_revokes_sessions(
     assert await env.scalar("SELECT role FROM users WHERE id = :u", u=other) == "user"
 
 
-async def test_mfa_reset_calls_the_registered_reset_link_sender(env: Env, cli: Any) -> None:
+async def test_mfa_reset_says_so_when_the_link_cannot_be_mailed(env: Env, cli: Any) -> None:
     import asyncio
 
+    await env.user("lost@example.com")
+    code, _, err = await asyncio.to_thread(cli, "admin", "mfa-reset", "lost@example.com")
+    assert code == 1  # no smtp_host: the database part is done, the mail is not
+    assert "NOT mailed" in err
+    assert "lost@example.com" not in err
+
+
+async def test_send_reset_link_calls_a_registered_sender(env: Env) -> None:
     sent: list[tuple[object, str]] = []
 
     async def sender(user_id: Any, email: str) -> None:
@@ -177,11 +196,9 @@ async def test_mfa_reset_calls_the_registered_reset_link_sender(env: Env, cli: A
     user_id = await env.user("lost@example.com")
     auth.register_reset_link_sender(sender)
     try:
-        code, _, err = await asyncio.to_thread(cli, "admin", "mfa-reset", "lost@example.com")
+        assert await auth.send_reset_link(user_id, "lost@example.com") is True
     finally:
         auth.register_reset_link_sender(None)
-    assert code == 0
-    assert "reset link mailed" in err
     assert sent == [(user_id, "lost@example.com")]
 
 

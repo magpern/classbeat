@@ -1,8 +1,8 @@
-"""Hooks that later issues wire up.
+"""Hooks between the CLI and the mail flows.
 
-Mail sending does not exist yet. ``python -m classbeat admin mfa-reset`` does the database part
-and then calls ``send_reset_link``; #37 (password reset) registers the real sender, which
-creates the ``reset_password`` token and mails the link.
+``python -m classbeat admin mfa-reset`` does the database part and then calls
+``send_reset_link``. The CLI registers the real sender (``make_reset_link_sender``), which creates
+the ``reset_password`` token and mails the link.
 """
 
 import logging
@@ -11,7 +11,7 @@ from uuid import UUID
 
 logger = logging.getLogger(__name__)
 
-# (user_id, email) -> None. #37 registers it.
+# (user_id, email) -> None. The CLI registers it.
 ResetLinkSender = Callable[[UUID, str], Awaitable[None]]
 
 _reset_link_sender: ResetLinkSender | None = None

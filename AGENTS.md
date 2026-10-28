@@ -220,7 +220,9 @@ after the field, without the prefix, in `CLASSBEAT_SECRETS_DIR` (default `/run/s
 and worker) and `database_owner_password` replaces the one in
 `CLASSBEAT_MIGRATIONS_DATABASE_URL` (the owner role, for Alembic); `app_secret_key` (at least
 32 bytes, created by `scripts/worktree.sh init`; the web app refuses to start without it) feeds
-the derived keys of ADR 0003 section 8; the matching
+the derived keys of ADR 0003 section 8; `smtp_password` (optional) is the SMTP login password
+(`CLASSBEAT_SMTP_HOST`, `_PORT`, `_SENDER`, `_USERNAME` and `_TLS` = `starttls`, `tls` or `none`;
+`none` only for loopback or the compose `mailpit`; compose points them at mailpit); the matching
 `CLASSBEAT_DATABASE_PASSWORD` and `CLASSBEAT_DATABASE_OWNER_PASSWORD` variables are ignored.
 Web and worker refuse to start as a superuser, a `BYPASSRLS` role or a table owner (no
 override). In CI (`CI=true`) a missing

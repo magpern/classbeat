@@ -45,6 +45,7 @@ MAIL_PAIR = Limit("mail", "pair", 3, 3600)
 MAIL_ACCOUNT = Limit("mail", "account", 10, 3600)
 MAIL_IP = Limit("mail", "ip", 10, 3600)
 OAUTH_IP = Limit("oauth", "ip", 30, 15 * 60)
+PASSWORD_CHANGE = Limit("password-change", "account", 10, 3600)
 
 OnSuccess = Literal["decrement", "delete"]
 
