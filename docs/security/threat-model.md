@@ -71,7 +71,7 @@ responses and model output alike.
 | T19 | SSRF through user-supplied links (playlists, mixes) | Parse provider IDs only, never fetch user URLs; outbound allowlists for worker (MOWL, Spotify, Swedebeat, model APIs) and web (sign-in providers, Spotify OAuth, MOWL and Swedebeat sign-in, mail relay) | M3a, M4 |
 | T20 | XSS through user, model or upstream text in the SPA | React escaping only, no raw HTML rendering; strict CSP | M1, M6 |
 | T21 | Exposed services or container breakout | Non-root image; local ports bound to 127.0.0.1; only Caddy public on the VPS; Postgres never published there | M0, M6 |
-| T22 | Keeping data longer than allowed, or no way to delete it | GDPR export and delete; retention of Spotify-derived data per track F answers | F, M6 |
+| T22 | Keeping data longer than allowed, or no way to delete it | GDPR export and delete; a user's Spotify-derived track lists and timing deleted with their class or account; a shared music analysis deleted once no class of any user refers to it (ADR 0010; roadmap Amendment 1) | M3b, M6 |
 | T23 | A MOWL or Swedebeat password captured or kept | Typed on our page over TLS, used once for a token, never stored, logged, put in a URL or sent to a model | M2 |
 | T24 | Email abuse: sign-up spam, reset flooding | Invite codes; rate limits on sign-up, verification and reset mail | M1 |
 | T25 | Playlist links shown to other users | Never displayed outside the owner's pages; privacy wording explains what Spotify's non-public setting means | M4 |
@@ -81,7 +81,7 @@ responses and model output alike.
 | T29 | Shared music analysis leaking one user's sources to another | Reuse only after an access check with the requester's own credentials; the analysis holds no playlist links or owner data (§6) | M2, M4 |
 | T30 | `NOTIFY` payloads read by any listener on the database | Payloads carry only IDs; data is read afterwards in a user session (ADR 0002 §5) | M3a |
 | T31 | Prompt injection of the development agents through issue, PR or upstream text | Agents treat repository and web content as data; the review gate and ruleset apply to every merge; secrets are never in the repository or agent prompts | M0 |
-| T32 | User data sent to model providers beyond need | Only the class brief, the music data track F allows, and the draft are sent; no tokens, emails or account data; provider data-retention terms checked before enabling a provider (§5) | M3a, M3c |
+| T32 | User data sent to model providers beyond need | Only the class brief, the music data (for the beta circle Spotify-derived track metadata and MOWL analysis, roadmap Amendment 1), and the draft are sent; no tokens, emails or account data; provider data-retention terms checked before enabling a provider (§5) | M3a, M3c |
 | T33 | Account enumeration through sign-in, sign-up, reset or timing | One generic message per flow; sign-up hashes the password and answers "check your inbox" whether or not the email exists, with the difference only in the mail; a dummy argon2 verification for unknown emails and password-less users; mail sent after the response (ADR 0003 §5) | M1 |
 | T34 | A reset or verification token leaking through logs, referrers or reuse | 32 random bytes, stored as SHA-256 only, single-use, short-lived (reset 30 min); carried in the URL fragment so it never reaches server or proxy logs; a reset signs out every session (ADR 0003 §5) | M1 |
 | T35 | TOTP secrets read from the database | AES-256-GCM with a key derived from `app_secret_key` outside the database, AAD bound to the user; M2's envelope encryption takes them over (ADR 0003 §8) | M1, M2 |
@@ -92,10 +92,15 @@ responses and model output alike.
 
 ## Accepted risks (beta)
 
-- MOWL's API is undocumented and may change or be refused; the beta uses each tester's own
-  account and wider use needs MOWL's authorization (track F).
-- Spotify BYOK is not confirmed compliant for a hosted service; live use waits for the
-  permission assessment (ADR 0010).
+- MOWL's API is unofficial and undocumented: MOWL may block an account or change the API
+  without notice. The beta (owner and invited friends) uses each tester's own account on the
+  owner's risk acceptance; wider use needs MOWL's authorization (ADR 0010).
+- Spotify: song picking sends Spotify-derived metadata to Claude, which the Developer Policy
+  forbids, and BYOK's fit with the one-Client-ID rule is unconfirmed. Accepted by the owner for
+  the beta circle; a developer app or account may be disabled, borne by each tester for their
+  own. The beta is free and non-commercial, testers don't play Spotify music publicly in a gym,
+  and nothing Spotify-derived is kept once no class refers to it (§III 10, §IV 2, §IV 3.1(a)).
+  Public or paid use needs Spotify first (ADR 0010).
 - Swedebeat sign-in needs Swedebeat's app key, which the `mowl-workouts` wheel carries and
   which can be extracted from it. AGENTS.md forbids using credentials embedded in third-party
   apps, so classbeat doesn't use that key: Swedebeat features stay behind a disabled flag with

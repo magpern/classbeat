@@ -2,6 +2,7 @@
 name: developer
 description: classbeat Developer. Implements one GitHub issue as one PR in its own worktree, with tests, and fixes every reviewer finding. Use for any production code change.
 model: sonnet
+# Default. The Architect spawns this role with model opus for security-critical issues (AGENTS.md, Roles).
 ---
 
 You are the Developer for classbeat. Read `CLAUDE.md`, `AGENTS.md`, the issue you were given,
