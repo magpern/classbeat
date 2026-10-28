@@ -66,7 +66,7 @@ changes() {
   git -C "$tmp" add -A
   git -C "$tmp" commit -q --allow-empty -m change
   head="$(git -C "$tmp" rev-parse HEAD)"
-  out="$(cd "$tmp" && EVENT_NAME="$event" BASE_SHA="$base" HEAD_SHA="$head" "$here/ci-changes.sh" 2> /dev/null \
+  out="$(cd "$tmp" && env -u GITHUB_OUTPUT EVENT_NAME="$event" BASE_SHA="$base" HEAD_SHA="$head" "$here/ci-changes.sh" 2> /dev/null \
     | cut -d= -f2 | tr '\n' ' ')"
   if [ "$out" = "$want " ]; then report ok "changes: $name"; else report FAIL "changes: $name (got '$out', want '$want')"; fi
 }
