@@ -5,7 +5,7 @@ import signal
 import sys
 
 from classbeat.config import Settings
-from classbeat.db import event_loop_factory
+from classbeat.db import create_engine, event_loop_factory, verify_database_role
 from classbeat.log import configure_logging
 from classbeat.worker.loop import run_worker
 
@@ -19,6 +19,11 @@ def _install_signal_handlers(loop: asyncio.AbstractEventLoop, stop: asyncio.Even
 
 
 async def _run(settings: Settings) -> None:
+    engine = create_engine(settings)
+    try:
+        await verify_database_role(engine)  # refuses to start on a privileged role
+    finally:
+        await engine.dispose()
     stop = asyncio.Event()
     # Before "worker started" is logged, so a signal after that line is always handled.
     _install_signal_handlers(asyncio.get_running_loop(), stop)

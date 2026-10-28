@@ -8,14 +8,11 @@ x-app: &app
   restart: "no"
   environment: &app-env
     CLASSBEAT_ENVIRONMENT: dev
-    # The password comes from the database_password secret file (Settings reads it).
-    # TODO(#5): switch to the classbeat_app role here and give migrate
-    # CLASSBEAT_MIGRATIONS_DATABASE_URL + database_owner_password. Until then everyone
-    # connects as the postgres superuser with postgres_password.
-    CLASSBEAT_DATABASE_URL: postgresql+psycopg://postgres@db:5432/classbeat
+    # Web and worker connect as the app role; the password comes from the database_password
+    # secret file (Settings reads it). Migrations use the owner role (see `migrate`).
+    CLASSBEAT_DATABASE_URL: postgresql+psycopg://classbeat_app@db:5432/classbeat
   secrets:
-    - source: postgres_password # TODO(#5): database_password for web and worker
-      target: database_password
+    - database_password
   depends_on:
     migrate:
       condition: service_completed_successfully
@@ -29,9 +26,13 @@ services:
       POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
     secrets:
       - postgres_password
+      - database_owner_password
+      - database_password
     volumes:
       - db-data:/var/lib/postgresql/data
-      # TODO(#5): mount ./docker/postgres/init here to create the roles.
+      # Creates classbeat_owner and classbeat_app on the first start of an empty volume
+      # (`docker compose down -v` to get them on an older volume).
+      - ./docker/postgres/init:/docker-entrypoint-initdb.d:ro
     ports:
       - "127.0.0.1:${DB_PORT:-55432}:5432"
     healthcheck:
@@ -43,6 +44,12 @@ services:
   migrate:
     <<: *app
     command: ["alembic", "upgrade", "head"]
+    environment:
+      <<: *app-env
+      CLASSBEAT_MIGRATIONS_DATABASE_URL: postgresql+psycopg://classbeat_owner@db:5432/classbeat
+    secrets:
+      - source: database_owner_password
+        target: database_owner_password
     depends_on:
       db:
         condition: service_healthy
