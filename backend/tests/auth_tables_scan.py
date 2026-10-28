@@ -14,8 +14,11 @@ Exemptions, the only way to pass a string the matcher flags:
 - docstrings (a string constant that is the first statement of a module, class or function body)
   are not scanned;
 - any other string is exempt when the line where it starts ends with the comment
-  ``# guard8: prose``. ``scan_source_with_exemptions`` also returns how many strings were exempted
-  this way, and the whole-tree test pins that number, so a new exemption is visible in review.
+  ``# guard8: prose``. The marker counts only as a real comment token (found with ``tokenize``):
+  text inside a string literal, however many lines it spans, exempts nothing.
+  ``scan_source_with_exemptions`` also returns how many strings were exempted this way (each
+  string expression counts once, so two on one marked line are 2), and the whole-tree test pins
+  that number, so a new exemption is visible in review.
 
 ``scan_source`` parses Python source (a module outside ``classbeat/auth/``) and returns what it
 refuses. Outside the package only the public API of ``classbeat.auth`` itself may be used:
@@ -50,7 +53,9 @@ The worker's purge and the CLI call functions in ``classbeat.auth``; they never 
 """
 
 import ast
+import io
 import re
+import tokenize
 
 TABLES_MODULE = "classbeat.auth.tables"
 AUTH_PACKAGE = "classbeat.auth"
@@ -291,6 +296,15 @@ class _Roots:
 EXEMPTION = re.compile(r"#\s*guard8:\s*prose\s*$")
 
 
+def _marked_lines(source: str) -> set[int]:
+    """Line numbers that end with a real ``# guard8: prose`` comment token."""
+    found: set[int] = set()
+    for token in tokenize.generate_tokens(io.StringIO(source).readline):
+        if token.type == tokenize.COMMENT and EXEMPTION.match(token.string):
+            found.add(token.start[0])
+    return found
+
+
 def _docstrings(tree: ast.AST) -> set[int]:
     """``id()`` of every docstring constant: the first statement of a module, class or def."""
     found: set[int] = set()
@@ -314,9 +328,9 @@ def scan_source_with_exemptions(source: str) -> tuple[list[tuple[int, str]], int
     """``(findings, exemptions)``: what is refused, and how many strings the matcher flagged
     that a ``# guard8: prose`` comment exempted."""
     tree = ast.parse(source)
-    lines = source.splitlines()
+    marked = _marked_lines(source)
     docstrings = _docstrings(tree)
-    exempted: set[int] = set()
+    exempted: list[ast.AST] = []
     found: list[tuple[int, str]] = []
     roots = _Roots(tree)
     for node in ast.walk(tree):
@@ -351,12 +365,13 @@ def scan_source_with_exemptions(source: str) -> tuple[list[tuple[int, str]], int
         ):
             text, has_string = _string_text(node)
             if has_string and (table := sql_table_in(text)):
-                line = lines[node.lineno - 1] if node.lineno <= len(lines) else ""
-                if EXEMPTION.search(line):
-                    exempted.add(node.lineno)
+                if node.lineno in marked:
+                    exempted.append(node)
                 else:
                     found.append((node.lineno, f"raw SQL naming table {table}"))
-    return sorted(set(found)), len(exempted)
+    # One count per string expression: skip parts nested inside another exempted string.
+    nested = {id(sub) for node in exempted for sub in ast.walk(node) if sub is not node}
+    return sorted(set(found)), sum(1 for node in exempted if id(node) not in nested)
 
 
 def _str_args(node: ast.Call) -> list[str]:
