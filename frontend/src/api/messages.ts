@@ -41,7 +41,8 @@ const OAUTH_OUTCOMES: Record<string, string> = {
 }
 
 export function oauthOutcomeMessage(code: string): string {
-  return OAUTH_OUTCOMES[code] ?? 'The sign-in could not be completed. Try again.'
+  const known = Object.hasOwn(OAUTH_OUTCOMES, code) ? OAUTH_OUTCOMES[code] : undefined
+  return known ?? 'The sign-in could not be completed. Try again.'
 }
 
 function waitText(seconds: number): string {
@@ -56,7 +57,8 @@ export function errorMessage(error: unknown): string {
         ? 'Too many attempts. Wait a little and try again.'
         : `Too many attempts. Try again in ${waitText(error.retryAfter)}.`
     }
-    const known = error.reason === null ? undefined : REASONS[error.reason]
+    const known =
+      error.reason !== null && Object.hasOwn(REASONS, error.reason) ? REASONS[error.reason] : undefined
     if (known !== undefined) return known
     if (error.status === 422) return 'Check the fields and try again.'
     if (error.status >= 500) return 'Something went wrong on the server. Try again in a moment.'

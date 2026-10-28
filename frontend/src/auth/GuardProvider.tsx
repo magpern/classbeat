@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react'
 import {
   getIdentities,
   reauthWithPassword,
@@ -11,15 +11,23 @@ import { ApiError } from '../api/client'
 import { providerName } from '../api/messages'
 import { Field, Notice, useAction } from '../components/forms'
 import { goToProvider } from '../lib/navigation'
-import { PromptCancelled, GuardContext, type Guard } from './prompts'
+import { PromptCancelled, GuardContext, reauthReturnTo, type Guard } from './prompts'
 import { useSession } from './SessionContext'
 
 type Kind = 'reauth' | 'stepup'
 
-interface Pending {
-  kind: Kind
+interface Waiter {
   resolve: () => void
   reject: (reason: unknown) => void
+}
+
+interface Pending {
+  kind: Kind
+  /** Every guarded action waiting on this prompt (the first and any that came in meanwhile). */
+  waiters: Waiter[]
+  /** Resolves once the prompt is closed, however it ended. */
+  settled: Promise<void>
+  settle: () => void
 }
 
 const MAX_PROMPTS = 3
@@ -28,13 +36,43 @@ export function GuardProvider({ children }: { children: ReactNode }) {
   const [pending, setPending] = useState<Pending | null>(null)
   const { refresh } = useSession()
 
-  const ask = useCallback(
-    (kind: Kind) =>
-      new Promise<void>((resolve, reject) => {
-        setPending({ kind, resolve, reject })
-      }),
-    [],
-  )
+  const open = useRef<Pending | null>(null)
+  const unmounted = useRef(false)
+
+  // One prompt at a time. A second request for the same kind joins the open prompt; one for the
+  // other kind waits until it is closed. No promise is left unresolved.
+  const ask = useCallback(function askFor(kind: Kind): Promise<void> {
+    if (unmounted.current) return Promise.reject(new PromptCancelled())
+    const current = open.current
+    if (current !== null && current.kind === kind) {
+      return new Promise<void>((resolve, reject) => {
+        current.waiters.push({ resolve, reject })
+      })
+    }
+    if (current !== null) return current.settled.then(() => askFor(kind))
+    return new Promise<void>((resolve, reject) => {
+      let settle!: () => void
+      const settled = new Promise<void>((done) => {
+        settle = done
+      })
+      const next: Pending = { kind, waiters: [{ resolve, reject }], settled, settle }
+      open.current = next
+      setPending(next)
+    })
+  }, [])
+
+  useEffect(() => {
+    unmounted.current = false
+    return () => {
+      unmounted.current = true
+      const current = open.current
+      open.current = null
+      current?.waiters.forEach((waiter) => {
+        waiter.reject(new PromptCancelled())
+      })
+      current?.settle()
+    }
+  }, [])
 
   const guard = useCallback<Guard>(
     async (action) => {
@@ -55,17 +93,23 @@ export function GuardProvider({ children }: { children: ReactNode }) {
 
   const finish = useCallback(
     async (done: boolean) => {
-      const current = pending
-      setPending(null)
+      const current = open.current
       if (current === null) return
+      open.current = null
+      setPending(null)
       if (done) {
         await refresh()
-        current.resolve()
+        current.waiters.forEach((waiter) => {
+          waiter.resolve()
+        })
       } else {
-        current.reject(new PromptCancelled())
+        current.waiters.forEach((waiter) => {
+          waiter.reject(new PromptCancelled())
+        })
       }
+      current.settle()
     },
-    [pending, refresh],
+    [refresh],
   )
 
   const value = useMemo(() => guard, [guard])
@@ -124,7 +168,7 @@ function ReauthPrompt({ onDone }: PromptProps) {
   const viaProvider = (provider: string) => {
     void action.run(async () => {
       const url = await startOAuth(provider, 'reauth', {
-        returnTo: window.location.pathname + window.location.search,
+        returnTo: reauthReturnTo(window.location.pathname, window.location.search),
       })
       goToProvider(url)
     })

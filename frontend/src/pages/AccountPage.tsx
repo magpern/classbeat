@@ -40,7 +40,7 @@ function Account() {
     <div className="stack">
       <h1>Your account</h1>
       {outcome ? (
-        outcome in OAUTH_NOTES ? (
+        Object.hasOwn(OAUTH_NOTES, outcome) ? (
           <Notice kind="success">{OAUTH_NOTES[outcome]}</Notice>
         ) : (
           <Notice kind="error">{oauthOutcomeMessage(outcome)}</Notice>

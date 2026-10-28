@@ -2,6 +2,7 @@ import { logout } from './api/auth'
 import { GuardProvider } from './auth/GuardProvider'
 import { SessionProvider, useSession } from './auth/SessionContext'
 import { ApiStatus } from './components/ApiStatus'
+import { useAction } from './components/forms'
 import { Logo } from './components/Logo'
 import { AccountPage } from './pages/AccountPage'
 import { AdminPage } from './pages/AdminPage'
@@ -50,6 +51,7 @@ function Routes() {
 function Nav() {
   const { status, session, refresh } = useSession()
   const { navigate } = useRouter()
+  const action = useAction()
   if (status !== 'ready' || session === null) return null
   if (!session.authenticated) {
     return (
@@ -60,18 +62,19 @@ function Nav() {
     )
   }
   const signOut = () => {
-    void logout()
-      .then(refresh)
-      .then(() => {
-        navigate('/signin')
-      })
+    void action.run(async () => {
+      await logout()
+      await refresh()
+      navigate('/signin')
+    })
   }
   return (
     <nav className="nav" aria-label="Account">
       <Link to="/account">{session.user?.email}</Link>
-      <button type="button" className="button button--link" onClick={signOut}>
+      <button type="button" className="button button--link" disabled={action.busy} onClick={signOut}>
         Sign out
       </button>
+      {action.error ? <span role="alert">{action.error}</span> : null}
     </nav>
   )
 }

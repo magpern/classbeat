@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { fakeApi, json, reason } from '../test/fakeApi'
-import { ApiError, get, post } from './client'
+import { ApiError, del, get, post } from './client'
 import { errorMessage } from './messages'
 
 describe('API client', () => {
@@ -59,6 +59,49 @@ describe('API client', () => {
     expect(error).toBeInstanceOf(ApiError)
     expect(error).toMatchObject({ status: 429, reason: 'rate_limited', retryAfter: 120 })
     expect(errorMessage(error)).toBe('Too many attempts. Try again in 2 minutes.')
+  })
+
+  describe('401 after the session rotated (ADR 0003 section 3)', () => {
+    it('repeats a GET once after refetching the session', async () => {
+      let gets = 0
+      const api = fakeApi({
+        'GET /api/x': () => (++gets === 1 ? reason(401, 'not_authenticated') : { ok: true }),
+      })
+      expect(await get('/api/x')).toEqual({ ok: true })
+      expect(api.to('GET', '/api/x')).toHaveLength(2)
+      expect(api.to('GET', '/api/auth/session')).toHaveLength(1)
+    })
+
+    it('gives up after one repeat', async () => {
+      const api = fakeApi({ 'GET /api/x': reason(401, 'not_authenticated') })
+      await expect(get('/api/x')).rejects.toMatchObject({ status: 401 })
+      expect(api.to('GET', '/api/x')).toHaveLength(2)
+    })
+
+    it.each([
+      ['/api/auth/mfa/stepup', 'not_authenticated'],
+      ['/api/auth/reauth', 'not_authenticated'],
+      ['/api/auth/login', 'invalid_credentials'],
+    ])('sends a POST to %s exactly once when it gets 401 %s', async (path, why) => {
+      const api = fakeApi({ [`POST ${path}`]: reason(401, why) })
+      await expect(post(path)).rejects.toMatchObject({ status: 401, reason: why })
+      expect(api.to('POST', path)).toHaveLength(1)
+    })
+
+    it('never repeats a DELETE or a bodyless 401 either', async () => {
+      const api = fakeApi({ 'DELETE /api/x': json({}, 401) })
+      await expect(del('/api/x')).rejects.toMatchObject({ status: 401 })
+      expect(api.to('DELETE', '/api/x')).toHaveLength(1)
+    })
+
+    it('reports the original 401 when the session cannot be refetched', async () => {
+      const api = fakeApi({
+        'GET /api/x': reason(401, 'not_authenticated'),
+        'GET /api/auth/session': reason(500, 'boom'),
+      })
+      await expect(get('/api/x')).rejects.toMatchObject({ status: 401, reason: 'not_authenticated' })
+      expect(api.to('GET', '/api/x')).toHaveLength(1)
+    })
   })
 
   it('returns undefined for an empty 204 answer', async () => {
