@@ -28,7 +28,20 @@ def discard_session_state(engine: AsyncEngine) -> None:
     from as user B). The engine is built with ``pool_reset_on_return=None`` so this handler is
     the whole reset: it rolls back first (``DISCARD ALL`` cannot run in a transaction block),
     then discards. If either step fails the pool invalidates the connection, so it is closed and
-    never reused. psycopg clears its own prepared-statement cache when it sees ``DISCARD ALL``.
+    never reused.
+
+    Prepared statements: psycopg prepares a statement server side after it ran
+    ``prepare_threshold`` times and remembers the names it prepared. ``DISCARD ALL`` drops them
+    on the server, so psycopg's record must go too, or it would run a name the server no longer
+    has. psycopg only looks at a command's status for that (``DISCARD ALL``, ``ROLLBACK``, ...)
+    the first time it sees a query text, so the ``DISCARD ALL`` sent here is not reliably
+    noticed. What reliably clears the record is ``Connection.rollback()`` while a transaction is
+    open: it forgets the names and has the server deallocate them. That is the ``ROLLBACK`` that
+    ``refuse_privileged_roles`` (``role_check``) runs after its query on every pool checkout.
+    This handler's own ``rollback()`` is a no-op when the session already ended its transaction.
+    So the safety of prepared statements after the reset depends on that checkout ``ROLLBACK``:
+    do not remove it, or change the reset, without re-running
+    ``test_the_reset_keeps_one_connection_working_across_many_uses``.
     """
 
     @event.listens_for(engine.sync_engine, "reset")

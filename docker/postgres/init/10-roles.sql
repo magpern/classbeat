@@ -17,10 +17,18 @@
 -- milestones that need them.
 
 \set ON_ERROR_STOP on
--- psql drops trailing newlines; the extra step drops one trailing CR, so a file with Windows
--- line endings gives the same password as config.py reads (and nothing else is stripped).
-\set owner_password `v=$(cat "${DATABASE_OWNER_PASSWORD_FILE:-/run/secrets/database_owner_password}"); printf '%s' "${v%$(printf '\015')}"`
-\set app_password `v=$(cat "${DATABASE_PASSWORD_FILE:-/run/secrets/database_password}"); printf '%s' "${v%$(printf '\015')}"`
+-- Same bytes as config.py: strip exactly one trailing LF, then one trailing CR, nothing else.
+-- psql's backtick drops exactly one trailing LF of the command output (a shell `$(...)` would
+-- drop them all); the CR is dropped below. The shell only expands the file name; the secret is
+-- never interpreted by it, and reaches SQL only as a psql-quoted literal (:'name').
+\set owner_raw `cat "${DATABASE_OWNER_PASSWORD_FILE:-/run/secrets/database_owner_password}"`
+\set app_raw `cat "${DATABASE_PASSWORD_FILE:-/run/secrets/database_password}"`
+SELECT CASE WHEN right(:'owner_raw', 1) = E'\r' THEN left(:'owner_raw', -1) ELSE :'owner_raw' END
+         AS owner_password,
+       CASE WHEN right(:'app_raw', 1) = E'\r' THEN left(:'app_raw', -1) ELSE :'app_raw' END
+         AS app_password \gset
+\unset owner_raw
+\unset app_raw
 
 SELECT (:'owner_password' = '' OR :'app_password' = '') AS empty_password,
        NOT (SELECT rolsuper FROM pg_roles WHERE rolname = current_user) AS not_superuser \gset
