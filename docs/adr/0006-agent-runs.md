@@ -66,7 +66,7 @@ order and answered together in one message.
 ### 2. `AnthropicProvider`
 
 - **SDK:** the official `anthropic` package (pinned, audited), `AsyncAnthropic(api_key=<secret
-  file>, http_client=<the allowlisted httpx.AsyncClient of ADR 0005 §8>, max_retries=2,
+  file>, http_client=<the allowlisted httpx.AsyncClient of §9>, max_retries=2,
   timeout=120)`. API keys only; no CLI, shell, file, web or code-execution tools are ever
   declared.
 - **Request:** streamed (`messages.stream(...)` then `get_final_message()`), so long turns don't
@@ -127,6 +127,23 @@ M4 specifies its two stages in its own ADR within this contract.
 3. **Store** (fenced): the final `WorkoutDraft` as a `draft` revision with music and provenance;
    job `completed`.
 
+**The attach operation.** M3a's one external-operation kind, `mowl_attach_spotify_playlist`, wraps
+a Spotify playlist in a MOWL playlist (the library's `attach_spotify`). The user's choice of that
+playlist in the new-class form is the user write's authorization (roadmap §2's write table: the
+form says classbeat will add the playlist to their MOWL music). Its result goes to
+`mowl_playlist_links`, so later jobs on the same playlist need no write. Its reconciler has no
+read that maps a Spotify id to a MOWL playlist, so it always returns inconclusive: an uncertain
+attach waits for the user, and at worst **Do it anyway** adds a second wrapper to their own MOWL
+music. Whatever marks an attach `succeeded` (the worker or **Check again**) also writes its
+`mowl_playlist_links` row in the same transaction. M3b adds the MOWL saves with real reconcilers.
+
+**MOWL disconnect** deletes the user's `mowl_playlist_links` rows and their
+`mowl_attach_spotify_playlist` operations in the disconnect transaction (classbeat's local data
+about that MOWL account goes with the connection, as Amendment 1 has Spotify-derived data go
+with its class or account), so reconnecting as another MOWL account never reuses a link or an
+`external_id` from the old one. The delete is the mechanism; rows are not scoped by connection
+id, because a reconnect keeps the row id (ADR 0004 §4).
+
 **The tools in `design`:**
 - `get_music()`: the music summary again (so the model can re-read it after corrections).
   `model_input` builds it by **projecting** `library.summary` down to §7's fields: its
@@ -134,8 +151,8 @@ M4 specifies its two stages in its own ADR within this contract.
   simply absent). Tracks are referred to by their **index** in that list, never by an id.
 - `preview_draft(draft)`: §4's validation, then `sync.fit_to_music(spec, map)`, then returns the
   fitted timeline (segments and intervals with start times and the track under each), the warnings
-  `service.prepare` would give for a Spotify source, the total duration and the TSS, or the list of
-  errors to fix. Pure: no network, no credentials, no database.
+  `service.prepare` would give for a Spotify source, the total duration and the TSS, or the list
+  of errors to fix. Pure: no network, no credentials, no database.
 - `submit_draft(draft)`: the same checks; on success the stage ends with that draft (after
   `fit_to_music`), on failure the errors come back and count as a correction round (§5).
 
@@ -183,9 +200,8 @@ turns; with the reserve a turn can overshoot the ceiling by at most `max_tokens`
 about six to eight turns before the cost check stops it, which the fake scripts' usage numbers
 exercise. S1's live smoke runs measure the real cost per run, and the defaults (ceiling, reserve,
 turns) are set from them before live activation; until then these numbers stand. A run stopped
-by a limit
-stores nothing but its `agent_runs` row and the failure; the user may start again. The per-user
-job limit (ADR 0005 §2) bounds concurrency; quotas are M5's.
+by a limit stores nothing but its `agent_runs` row and the failure; the user may start again. The
+per-user job limit (ADR 0005 §2) bounds concurrency; quotas are M5's.
 
 ### 6. Records and provenance
 
@@ -197,10 +213,11 @@ job limit (ADR 0005 §2) bounds concurrency; quotas are M5's.
 `finished_at NULL`. Counters are updated after every turn, so a crashed run still shows its cost.
 A turn that finishes after its worker lost the lease can't be recorded (the fence refuses it), so
 the cost across attempts may **undercount by that one turn per lost lease**; the next holder does
-not guess it. Accepted: leases are lost rarely, the overshoot is bounded by one turn, and M3b's
-usage records read the provider's own usage totals when it reconciles cost at live activation.
+not guess it. Accepted: leases are lost rarely and the gap is bounded by one turn; real cost
+per class is measured against the provider's own figures at live activation (roadmap M3b).
 No transcript is stored in M3a: model text, tool arguments and results stay in memory and are
-never logged. (A debug transcript store, if ever needed, gets its own decision and falls under the roadmap §6 purge.)
+never logged. (A debug transcript store, if ever needed, gets its own decision and falls under
+the roadmap §6 purge.)
 
 **`class_revisions.provenance`** (ADR 0005 §1), validated by a Pydantic model: `provider`,
 `model`, `model_answered`, `effort`, `prompt_version` (SHA-256 of the stage's system prompt and
@@ -223,8 +240,9 @@ only:
 
 **Never:** tokens or credentials, the user's email, name or ids, connection data, MOWL or Spotify
 ids (playlist, track, program), playlist URLs, MOWL's availability texts, anything from another
-user, error texts from providers. A test builds a request with planted values in every one of those places (the fake MOWL
-returns them) and asserts none appears in what the provider adapter would send.
+user, error texts from providers. A test builds a request with planted values in every one of
+those places (the fake MOWL returns them) and asserts none appears in what the provider adapter
+would send.
 
 **Stance.** Song titles, artist names, playlist names and the user's free text are untrusted
 (T8). Consequences, each tested with an adversarial fake script:
@@ -245,11 +263,11 @@ each either a list of tool calls (with inputs, which may reference the previous 
 small template, for example "the draft from the last error, with `sec` fixed") or `end_turn`, or
 `refusal`, or an error to raise (`overloaded`, `timeout`, `auth`), with fixed usage numbers per
 turn. It checks each tool result against the script's expectations when given and fails loudly on
-a mismatch, so a script is also a test of the tools. Scripts live in `backend/tests/agent_scripts/`
-and cover: a good first draft, a draft fixed after `validate()` errors, an unknown tool, an
-out-of-range track index, an oversized input, a missing final call, a refusal, an overload then
-success, a turn or cost limit, and injection text in a song title. The worker uses it when
-`CLASSBEAT_MODEL_PROVIDER=fake` (never in `prod`, ADR 0005 §8) with
+a mismatch, so a script is also a test of the tools. Scripts live in
+`backend/tests/agent_scripts/` and cover: a good first draft, a draft fixed after `validate()`
+errors, an unknown tool, an out-of-range track index, an oversized input, a missing final call, a
+refusal, an overload then success, a turn or cost limit, and injection text in a song title. The
+worker uses it when `CLASSBEAT_MODEL_PROVIDER=fake` (never in `prod`, §9) with
 `CLASSBEAT_FAKE_MODEL_SCRIPT`; the E2E stack runs that way.
 
 **Smoke set** (`backend/evals/smoke/`, roadmap §11), about 15 cases, each a YAML file: the brief,
@@ -266,6 +284,29 @@ guided options, missing or too short music, a long free-text brief, and adversar
   the loop, and the results table (pass per case, cost, turns, prompt version) goes in the PR.
   It needs an Anthropic API key, which the owner provides (roadmap "Before M0"); until then live
   runs wait and the PR says so. Synthetic data and our own key touch no user account.
+
+### 9. Worker secrets and outbound calls
+
+- **KEK.** The worker already loads the key ring at start (ADR 0004 §2: `connection_kek` and the
+  retired files as compose secrets; the check value must match). A run opens the MOWL connection
+  with `classbeat.connections.open_connection(factory, ctx, keyring, "mowl")` when it first needs
+  it, after checking the job's `mowl_connection_id` equals `ctx.connection("mowl")` and its status
+  is `connected` (otherwise `not_connected`, ADR 0004 §3), and drops the `Credentials` when the
+  run ends. They never reach job rows, events, SSE, model input, tool results or logs (ADR 0004
+  §3). `key_unavailable` and `decrypt_failed` fail the job (ADR 0005 §4).
+- **Model key.** A new secret file `anthropic_api_key`, mounted on **worker only** (web never
+  calls a model), read as `SecretStr`, never logged. `CLASSBEAT_MODEL_PROVIDER` is `anthropic`
+  (the default) or `fake`; the worker refuses to start with `anthropic` and no key file, and with
+  `fake` when `CLASSBEAT_ENVIRONMENT` is `prod`.
+- **Outbound allowlist** (roadmap §7, T19). The worker installs, before anything else, a
+  process-wide `urllib` opener whose handler refuses any request (including every redirect hop)
+  that is not `https` to an allowlisted host on port 443, and builds the model client on an
+  `httpx.AsyncClient` (`trust_env=False`) whose transport applies the same check; the opener has
+  an empty `ProxyHandler`, so no proxy setting in the environment reroutes a call. M3a's list:
+  `api.mowl.com`, `api.anthropic.com`; M4 adds the Spotify hosts. A refused request raises, logs
+  the host only and fails the run with `outbound_blocked`. A guard test fails on any other HTTP
+  client construction or `urlopen` in `classbeat` outside the allowlist module. The E2E fakes
+  answer under these same names inside the compose network (as today's fake MOWL does).
 
 ## Alternatives
 
@@ -298,17 +339,17 @@ Opus Developer (AGENTS.md); every PR gets a fresh Opus Reviewer.
 | # | Issue | Owner | Depends on |
 |---|---|---|---|
 | E1 | `mowl-workouts` v0.4.1: `library.spotify_analysis` (read-only half of `spotify_map`, which then uses it); release, rebuild the classbeat wheel | Sonnet | none |
-| J1 | Jobs schema: migration for `classes`, `class_revisions` (immutable policy), `jobs` (one open job per class), `job_events`, `external_operations`, `mowl_playlist_links`, `agent_runs`; `20-queue.sql` (single transaction, superuser-only, role attributes, revoke-then-grant) with `classbeat_queue` and the five functions (claim skips spent rows, reap fails them); `db-functions` compose service, worktree and CI wiring; startup and per-connection queue check (`md5(pg_get_functiondef)`, ACL with the owner's entry); guard 1, guard 2 allowing `classbeat_queue` exactly its privileges (grantee check kept), new guard 9; stack check that `postgres_password` is absent from web, worker, migrate and maint; double-claim, poison-row and cascade (`job_id` set to `NULL` on immutable revisions) tests | **Opus** | none |
-| J2 | Jobs core: the `classbeat.jobs` issuer, kind registry, transitions with phases (`attempt` reset on approve), `fenced_session` and `LeaseLost` with the AST guard, worker loop (claim only after the queue check passed, `LISTEN jobs_queued`, heartbeat, reap, expire, settle), retry classes and backoff, cancellation checkpoints and cancel-on-requeue, lease extension when writing `pending`, shutdown hand-back (`stop_grace_period: 30s`, no new call after SIGTERM, fenced requeue without an attempt), `CreditLedger` seam with `UnmeteredLedger`; stale-worker, crash, lease-expiry, resume after a retried pre-approval phase, poison row not blocking other users, cancellation, shutdown and settle-once tests | **Opus** | J1 |
-| J3 | Jobs API: `POST /api/jobs` with idempotency keys, the per-user limit and `class_busy`, `GET /api/jobs/{id}`, cancel, approve (all checks of ADR 0005 §2, tested with the test-only kind); 404 tests | **Opus** | J2 |
+| J1 | Jobs schema: migration for `classes`, `class_revisions` (immutable policy), `jobs` (one open job per class), `job_events`, `external_operations`, `mowl_playlist_links`, `agent_runs`; `20-queue.sql` (single transaction, superuser-only, role attributes, revoke-then-grant) with `classbeat_queue` and the five functions (claim skips spent rows, reap fails them); `db-functions` compose service (password through a run-time `PGPASSFILE`), worktree and CI wiring, a CI step regenerating the expected function `md5` against the pinned image; startup and per-connection queue check (`md5(pg_get_functiondef)`, ACL with the owner's entry); guard 1, guard 2 allowing `classbeat_queue` exactly its table privileges and `USAGE` on `public` (grantee check kept), new guard 9; stack check that `postgres_password` is absent from web, worker, migrate and maint; double-claim, poison-row, racing insert on one operation key (`ON CONFLICT DO NOTHING`, no unique-violation error) and cascade (`job_id` set to `NULL` on immutable revisions) tests | **Opus** | none |
+| J2 | Jobs core: the `classbeat.jobs` issuer, kind registry, transitions with phases (`attempt` reset on approve), `fenced_session` and `LeaseLost` with the AST allowlist guard (the `classbeat.connections` status-write exemption), worker loop (claim only after the queue check passed, `LISTEN jobs_queued`, heartbeat with `GREATEST`, reap, expire, settle), retry classes and backoff, cancellation checkpoints and cancel-on-requeue, lease extension when writing `pending`, shutdown hand-back (`stop_grace_period: 30s`, no new call after SIGTERM, fenced requeue without an attempt under the 5 s `lock_timeout`; a call still in flight after 25 s left `pending`), `operation_busy` requeue without an attempt, `CreditLedger` seam with `UnmeteredLedger`; stale-worker, crash, lease-expiry, resume after a retried pre-approval phase, poison row not blocking other users, cancellation, shutdown and settle-once tests | **Opus** | J1 |
+| J3 | Jobs API: `POST /api/jobs` with idempotency keys, the per-user limit and `class_busy`, `GET /api/jobs/{id}`, cancel, approve (all checks of ADR 0005 §2 including the per-user limit and connection status read through `classbeat.connections`, tested with the test-only kind); 404 tests | **Opus** | J2 |
 | J4 | Progress: event payload models (`tool_called.error` an enum code), `pg_notify` on insert, the web `LISTEN` hub with polling fallback, `GET /api/jobs/{id}/events` SSE with `Last-Event-ID`, stream limits; payload-leak and foreign-id tests | Sonnet | J2 |
-| X1 | External operations: the protocol of ADR 0005 §7 (per-kind keys, `spotify:<source_id>` for the attach, `operation_busy`), `Reconciler` seam, `mowl_attach_spotify_playlist` with `mowl_playlist_links` (`ON CONFLICT DO NOTHING`, also written by a successful **Check again**), **Check again** / **Do it anyway** endpoints, `queue_stats` CLI; uncertain-write, stale-pending and shared-attach tests with the fake MOWL | **Opus** | J2 |
+| X1 | External operations: the protocol of ADR 0005 §7 (per-kind keys and request hashes, `spotify:<source_id>` and `{kind, source, source_id}` for the attach, `SELECT … FOR UPDATE`, `INSERT … ON CONFLICT DO NOTHING` then re-load, conditional `failed → pending`, `operation_busy`), `Reconciler` seam, `mowl_attach_spotify_playlist` with `mowl_playlist_links` (`ON CONFLICT DO NOTHING`, also written by a successful **Check again**), **Check again** / **Do it anyway** endpoints (409 on a `succeeded` row), MOWL disconnect deleting links and attach operations, `queue_stats` CLI; tests with the fake MOWL: uncertain write, stale pending, two jobs claimed at the same moment on one playlist (no row and a `failed` row) giving exactly one attach and no `internal`, and an account switch (disconnect, reconnect as another fake account: no stale link or reused `external_id`) | **Opus** | J2 |
 | W1 | Worker outbound allowlist (urllib opener with an empty `ProxyHandler`, httpx transport with `trust_env=False`, guard test), `anthropic_api_key` secret (compose worker only, worktree init, `docker inspect` check), `CLASSBEAT_MODEL_PROVIDER` startup rules | **Opus** | none |
 | A1 | Agent loop core: `ModelProvider`/`Conversation`, stage runner with checkpoints and limits (cost reserve of §5, undercount after `LeaseLost` documented), dispatcher with allowlists and caps, `WorkoutDraft`, `model_input` builder projecting `library.summary` (no `spotify_id`, `playlist_id` or `unavailable` texts) with the planted-value test, `agent_runs` writes (fenced), provenance; `FakeProvider` and the adversarial scripts | **Opus** | J2 |
 | A2 | `AnthropicProvider`: request shape of §2, caching stability test, error mapping, usage and price table (the cost arithmetic of §5 checked against it); tests with an `httpx.MockTransport` (no network) | **Opus** | A1, W1 |
 | D1 | `design_draft` pipeline: the music step (link or attach through X1, then `spotify_analysis` with a checkpoint per read), `get_music`, `preview_draft`, `submit_draft` with `validate()`, `fit_to_music` and TSS, revision storage; `GET /api/music/mowl-playlists` (the user's Spotify playlists as MOWL lists them, names only; opens MOWL credentials in a web route); fake MOWL extended with playlists, tracks and sections | **Opus** | A1, X1, E1 |
 | U1 | Frontend: new-class form (brief options, playlist choice with the "classbeat adds it to your MOWL music" line), Designing… page on SSE with resume, a read-only draft summary, failure and uncertain-write messages with their two actions | Sonnet | J3, J4, D1 |
-| T1 | E2E with fakes: draft from a MOWL playlist (fake MOWL and `FakeProvider` in the worker), cancel while running, uncertain attach path | Sonnet | U1 |
+| T1 | E2E with fakes: draft from a MOWL playlist (fake MOWL and `FakeProvider` in the worker), cancel while running, uncertain attach path | Sonnet | U1, W1 |
 | S1 | Smoke set: 15 cases, synthetic music fixtures, the checks of §8, the fake-provider CI run and the `--live` command (live runs wait for the owner's key; their cost per run sets §5's defaults) | Sonnet | D1 |
 
 Order: E1, J1 and W1 in parallel; then J2; then J3, J4, X1 and A1 in parallel; A2 and D1; U1 and

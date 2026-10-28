@@ -68,7 +68,7 @@ responses and model output alike.
 | T16 | Admin misuse | Admins never see tokens; every admin action audited; admin reads through the separate audited role | M5 |
 | T17 | Compromised dependency, base image or Action | Lockfiles; exact versions; checksum-verified tool downloads; pip-audit, npm audit, Trivy; Dependabot; least-privilege workflow `permissions`; no `pull_request_target`; `persist-credentials: false` | M0 |
 | T18 | An agent committing a secret or weakening a check | gitleaks on the whole history in CI; fresh-Opus review gate; ruleset with required checks; agents can't bypass | M0 |
-| T19 | SSRF through user-supplied links (playlists, mixes) | Parse provider IDs only, never fetch user URLs; outbound allowlists for worker (MOWL, Spotify, Swedebeat, model APIs; in-process from M3a, ADR 0005 §8) and web (sign-in providers, Spotify OAuth, MOWL and Swedebeat sign-in, mail relay) | M3a, M4 |
+| T19 | SSRF through user-supplied links (playlists, mixes) | Parse provider IDs only, never fetch user URLs; outbound allowlists for worker (MOWL, Spotify, Swedebeat, model APIs; in-process from M3a, ADR 0006 §9) and web (sign-in providers, Spotify OAuth, MOWL and Swedebeat sign-in, mail relay) | M3a, M4 |
 | T20 | XSS through user, model or upstream text in the SPA | React escaping only, no raw HTML rendering; strict CSP | M1, M6 |
 | T21 | Exposed services or container breakout | Non-root image; local ports bound to 127.0.0.1; only Caddy public on the VPS; Postgres never published there | M0, M6 |
 | T22 | Keeping data longer than allowed, or no way to delete it | GDPR export and delete; a user's Spotify-derived track lists and timing deleted with their class or account; a shared music analysis deleted once no class of any user refers to it (ADR 0010; roadmap Amendment 1) | M3b, M6 |
@@ -98,10 +98,10 @@ responses and model output alike.
 | T46 | A repeated or replayed browser request creating duplicate jobs, reservations or approvals | `Idempotency-Key` with the request hash, `UNIQUE (owner_id, idempotency_key)`, 409 on a different body; approve and cancel idempotent by target state (ADR 0005 §2) | M3a |
 | T47 | Approving a song list other than the one shown (a stale tab, a superseded or expired list) | Approval carries revision id and content hash, checked under a row lock against the job's waiting list and the newest list of the class; expiry after 7 days; a refused approval starts nothing (ADR 0005 §2, §4) | M3a, M4 |
 | T48 | Job events or SSE leaking another user's progress, secrets or provider data | Owned `job_events` read per request in a user session; 404 for foreign ids; per-kind payload models allow only enums, own ids, counts and times, never error text, model text or provider data; `NOTIFY` carries a job id only (ADR 0005 §6) | M3a |
-| T49 | The worker used to reach arbitrary hosts (SSRF, exfiltration through the model or the library) | Process-wide outbound allowlist on `urllib` and `httpx` (https, listed hosts, port 443, every redirect hop); guard test on HTTP client construction; no fetch of user-supplied URLs (ADR 0005 §8) | M3a |
+| T49 | The worker used to reach arbitrary hosts (SSRF, exfiltration through the model or the library) | Process-wide outbound allowlist on `urllib` and `httpx` (https, listed hosts, port 443, every redirect hop); guard test on HTTP client construction; no fetch of user-supplied URLs (ADR 0006 §9) | M3a |
 | T50 | A poison job retried forever, or retries multiplying model cost | `max_attempts` per phase (default 3), capped exponential backoff, non-retryable categories fail at once, the cost ceiling counts every attempt of the whole job; the claim skips a row with spent attempts and the reaper fails it, so one bad row can't stall other users' jobs (ADR 0005 §2, §3, §4, ADR 0006 §5) | M3a |
 | T51 | A worker that lost its lease mid-call recording or repeating an external write | Outcomes recorded only under the token that wrote `pending`; a `pending` row from an older token is `uncertain` and never re-sent; the user decides (ADR 0005 §7) | M3a |
-| T52 | The model API key leaking or used by the web process | Secret file mounted on the worker only, `SecretStr`, never logged; `docker inspect` check; the fake provider refused in `prod` (ADR 0005 §8) | M3a |
+| T52 | The model API key leaking or used by the web process | Secret file mounted on the worker only, `SecretStr`, never logged; `docker inspect` check; the fake provider refused in `prod` (ADR 0006 §9) | M3a |
 | T53 | A job continuing for a disabled or deleted user | Owner checked after each claim through `classbeat.auth`; jobs cascade with the user and class, so the fence fails on the next write (ADR 0005 §3) | M3a |
 | T54 | Model-supplied identifiers reaching another user's or an unintended resource | Extends T9: the model sees and names only indexes into data loaded for this job; no provider or row ids in model input; the dispatcher validates indexes (ADR 0006 §3, §7) | M3a, M4 |
 | T55 | Malformed, oversized or out-of-range model output stored or saved | Strict Pydantic schemas with bounds, 32 KB caps on tool input and results, `workout.validate()` before storing and before any save, TSS and timing computed by the backend (ADR 0006 §3, §4) | M3a |
@@ -148,7 +148,7 @@ responses and model output alike.
   mails each affected user, but MOWL tokens can't be revoked and may stay valid at MOWL until
   they expire; users are told to end sessions or change their MOWL password (ADR 0004 §2).
 - The worker's outbound allowlist is enforced inside the process; code running in the worker could
-  open a socket around it. A network-level egress rule follows at M6 (ADR 0005 §8).
+  open a socket around it. A network-level egress rule follows at M6 (ADR 0006 §9).
 - The worker holds the KEK and the model API key on the same host as the database; revisited at
   M6 with the KEK (ADR 0004).
 - An uncertain MOWL attach that the user resolves with **Do it anyway** may leave a second MOWL
