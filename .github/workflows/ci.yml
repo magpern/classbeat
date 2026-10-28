@@ -130,6 +130,10 @@ jobs:
   e2e:
     name: Stack and E2E (Playwright)
     runs-on: ubuntu-24.04
+    env:
+      # The test-only fake OpenID provider (compose.e2e.yaml); never part of the default stack.
+      COMPOSE_FILE: compose.yaml:compose.e2e.yaml
+      COMPOSE_PROFILES: e2e
     defaults:
       run:
         working-directory: e2e

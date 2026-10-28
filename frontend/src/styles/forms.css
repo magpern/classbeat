@@ -1,0 +1,214 @@
+/* Forms, cards, notices and dialogs for the account pages. Tokens only (tokens.css). */
+
+a {
+  color: var(--cb-color-primary);
+}
+
+.brand {
+  color: inherit;
+  text-decoration: none;
+}
+
+.nav {
+  display: flex;
+  align-items: center;
+  gap: var(--cb-space-4);
+  margin-left: auto;
+  font-size: var(--cb-text-sm);
+}
+
+.card {
+  max-width: 28rem;
+  padding: var(--cb-space-5);
+  border: 1px solid var(--cb-color-border);
+  border-radius: var(--cb-radius-md);
+  background: var(--cb-color-surface);
+}
+
+.card--wide {
+  max-width: 40rem;
+}
+
+.card__title,
+.stack > h1 {
+  margin: 0 0 var(--cb-space-4);
+  font-size: var(--cb-text-xl);
+  line-height: var(--cb-leading-tight);
+}
+
+.card__links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--cb-space-4);
+  margin: var(--cb-space-4) 0 0;
+  font-size: var(--cb-text-sm);
+}
+
+.stack {
+  display: grid;
+  gap: var(--cb-space-5);
+  max-width: 40rem;
+}
+
+.panel {
+  display: grid;
+  gap: var(--cb-space-3);
+  padding: var(--cb-space-5);
+  border: 1px solid var(--cb-color-border);
+  border-radius: var(--cb-radius-md);
+  background: var(--cb-color-surface);
+}
+
+.panel__title {
+  margin: 0;
+  font-size: var(--cb-text-lg);
+}
+
+.panel p {
+  margin: 0;
+}
+
+.field {
+  display: grid;
+  gap: var(--cb-space-1);
+  margin-bottom: var(--cb-space-4);
+}
+
+.field label {
+  font-weight: var(--cb-weight-medium);
+}
+
+.field input {
+  padding: var(--cb-space-2) var(--cb-space-3);
+  border: 1px solid var(--cb-color-border);
+  border-radius: var(--cb-radius-sm);
+  background: var(--cb-color-bg);
+  color: var(--cb-color-text);
+  font: inherit;
+}
+
+.field__hint,
+.muted {
+  margin: 0;
+  color: var(--cb-color-text-muted);
+  font-size: var(--cb-text-sm);
+}
+
+.fieldset {
+  margin: 0 0 var(--cb-space-4);
+  padding: var(--cb-space-3);
+  border: 1px solid var(--cb-color-border);
+  border-radius: var(--cb-radius-sm);
+}
+
+.check {
+  display: flex;
+  align-items: center;
+  gap: var(--cb-space-2);
+}
+
+.button {
+  display: inline-block;
+  margin: 0 var(--cb-space-2) var(--cb-space-2) 0;
+  padding: var(--cb-space-2) var(--cb-space-4);
+  border: 1px solid var(--cb-color-primary);
+  border-radius: var(--cb-radius-sm);
+  background: var(--cb-color-primary);
+  color: var(--cb-color-on-primary);
+  font: inherit;
+  font-weight: var(--cb-weight-medium);
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.button:disabled {
+  opacity: 0.6;
+  cursor: progress;
+}
+
+.button--secondary {
+  background: transparent;
+  color: var(--cb-color-primary);
+}
+
+.button--link {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--cb-color-primary);
+  text-decoration: underline;
+}
+
+.notice {
+  margin: 0 0 var(--cb-space-4);
+  padding: var(--cb-space-3);
+  border: 1px solid var(--cb-color-border);
+  border-radius: var(--cb-radius-sm);
+  background: var(--cb-color-surface-sunken);
+}
+
+.notice[data-kind='error'] {
+  border-color: var(--cb-color-danger);
+  color: var(--cb-color-danger);
+}
+
+.notice[data-kind='success'] {
+  border-color: var(--cb-color-success);
+}
+
+.divider {
+  margin: var(--cb-space-5) 0 var(--cb-space-3);
+  color: var(--cb-color-text-muted);
+  text-align: center;
+}
+
+.rows {
+  display: grid;
+  gap: var(--cb-space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.rows li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--cb-space-3);
+}
+
+.codes ul {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(9rem, 1fr));
+  gap: var(--cb-space-2);
+  padding: 0;
+  list-style: none;
+  font-family: var(--cb-font-mono);
+}
+
+.qr {
+  width: 12rem;
+  height: 12rem;
+  background: #ffffff;
+}
+
+.overlay {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: var(--cb-space-4);
+  background: rgb(0 0 0 / 0.5);
+}
+
+.dialog {
+  width: min(28rem, 100%);
+  padding: var(--cb-space-5);
+  border: 1px solid var(--cb-color-border);
+  border-radius: var(--cb-radius-md);
+  background: var(--cb-color-surface);
+}
+
+.dialog h2 {
+  margin-top: 0;
+}
