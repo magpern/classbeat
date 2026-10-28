@@ -13,6 +13,12 @@ x-app: &app
     CLASSBEAT_DATABASE_URL: postgresql+psycopg://classbeat_app@db:5432/classbeat
     # The origin the browser uses (ADR 0003 section 4); the Origin check compares against it.
     CLASSBEAT_PUBLIC_BASE_URL: http://127.0.0.1:${WEB_PORT:-8000}
+    # Mail goes to mailpit (ADR 0003 section 5); plain SMTP is allowed only for this service.
+    # Outside the dev stack: CLASSBEAT_SMTP_HOST/PORT/SENDER/TLS and the smtp_password secret.
+    CLASSBEAT_SMTP_HOST: mailpit
+    CLASSBEAT_SMTP_PORT: "1025"
+    CLASSBEAT_SMTP_TLS: none
+    CLASSBEAT_SMTP_SENDER: classbeat@classbeat.test
   secrets:
     - database_password
     - app_secret_key

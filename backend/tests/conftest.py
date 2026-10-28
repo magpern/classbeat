@@ -19,6 +19,7 @@ from sqlalchemy import create_engine, text
 from sqlalchemy.engine import make_url
 
 from authtools import Env
+from smtpfake import SmtpFake
 
 if sys.platform == "win32":
     # psycopg's async mode does not run on the default Windows (proactor) event loop.
@@ -185,4 +186,24 @@ async def env(clean_auth: None, app_database_url: str) -> AsyncIterator["Env"]:
     from authtools import running_env
 
     async with running_env(app_database_url) as running:
+        yield running
+
+
+@pytest.fixture
+async def smtp() -> AsyncIterator["SmtpFake"]:
+    """An in-process SMTP server that keeps every message (ADR 0003 section 11)."""
+    from smtpfake import SmtpFake
+
+    async with SmtpFake() as fake:
+        yield fake
+
+
+@pytest.fixture
+async def menv(clean_auth: None, app_database_url: str, smtp: "SmtpFake") -> AsyncIterator["Env"]:
+    """A running app whose mail goes to the SMTP fake."""
+    from authtools import running_env
+
+    async with running_env(
+        app_database_url, smtp_host="127.0.0.1", smtp_port=smtp.port, smtp_tls="none"
+    ) as running:
         yield running

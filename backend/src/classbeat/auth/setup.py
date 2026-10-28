@@ -7,13 +7,18 @@ from fastapi.responses import JSONResponse
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from classbeat.auth.email_routes import router as email_router
 from classbeat.auth.keys import Keys
 from classbeat.auth.middleware import AuthMiddleware
 from classbeat.auth.passwords import PasswordHashBusy, PasswordHasher
 from classbeat.auth.ratelimit import RateLimited, RateLimiter
+from classbeat.auth.reset_routes import router as reset_router
 from classbeat.auth.routes import router
+from classbeat.auth.signin_routes import router as signin_router
+from classbeat.auth.signup_routes import router as signup_router
 from classbeat.config import Settings
 from classbeat.log import describe_database_error
+from classbeat.mail import Mailer
 
 logger = logging.getLogger(__name__)
 
@@ -21,6 +26,8 @@ logger = logging.getLogger(__name__)
 def install(app: FastAPI) -> None:
     """Routes, the Origin/CSRF middleware and the 429 and 503 handlers."""
     app.include_router(router)
+    for flow in (signup_router, signin_router, reset_router, email_router):
+        app.include_router(flow)
     app.add_middleware(AuthMiddleware)
 
     @app.exception_handler(RateLimited)
@@ -55,6 +62,7 @@ def attach_state(
     app.state.keys = keys
     app.state.limiter = RateLimiter(factory, keys)
     app.state.password_hasher = PasswordHasher(settings.password_hash_workers)
+    app.state.mailer = Mailer(settings)
 
 
 def detach_state(app: FastAPI) -> None:

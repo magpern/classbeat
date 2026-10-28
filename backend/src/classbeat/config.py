@@ -17,7 +17,14 @@ from classbeat.emailnorm import normalize_email
 DATABASE_DRIVER = "postgresql+psycopg"
 DEFAULT_SECRETS_DIR = "/run/secrets"
 # Fields read from secret files, and never from the environment.
-SECRET_FILE_FIELDS = ("database_password", "database_owner_password", "app_secret_key")
+SECRET_FILE_FIELDS = (
+    "database_password",
+    "database_owner_password",
+    "app_secret_key",
+    "smtp_password",
+)
+# Hosts where unencrypted SMTP (``smtp_tls = none``) is allowed: loopback and the compose service.
+PLAIN_SMTP_HOSTS = frozenset({"localhost", "mailpit"})
 MIN_APP_SECRET_BYTES = 32
 
 
@@ -117,6 +124,17 @@ class Settings(BaseSettings):
     session_idle_days: int = 7
     session_absolute_days: int = 30
     password_hash_workers: int = 4
+    # Who may create an account (section 5): ``invite`` (default), ``closed`` or ``open``.
+    signup_mode: Literal["invite", "closed", "open"] = "invite"
+
+    # Mail (section 5). Unset ``smtp_host``: no mail is sent (a warning is logged instead).
+    smtp_host: str | None = None
+    smtp_port: int = 587
+    smtp_sender: str = "classbeat@localhost"
+    smtp_tls: Literal["starttls", "tls", "none"] = "starttls"
+    smtp_username: str | None = None
+    # From the file ``smtp_password`` (never the environment).
+    smtp_password: SecretStr | None = None
 
     @classmethod
     def settings_customise_sources(
@@ -180,6 +198,25 @@ class Settings(BaseSettings):
         return public_origin(value)
 
     @model_validator(mode="after")
+    def _plain_smtp_only_locally(self) -> "Settings":
+        if (
+            self.smtp_tls == "none"
+            and self.smtp_host is not None
+            and not _is_local_host(self.smtp_host)
+        ):
+            raise ValueError(
+                "smtp_tls=none is only allowed for a loopback host or the mailpit service"
+            )
+        return self
+
+    @field_validator("smtp_port")
+    @classmethod
+    def _check_smtp_port(cls, value: int) -> int:
+        if not 1 <= value <= 65535:
+            raise ValueError("smtp_port must be between 1 and 65535")
+        return value
+
+    @model_validator(mode="after")
     def _prod_needs_https(self) -> "Settings":
         if self.environment == "prod" and not self.public_base_url.startswith("https://"):
             raise ValueError("public_base_url must be https:// when environment is prod")
@@ -221,6 +258,15 @@ class Settings(BaseSettings):
     def migrations_sqlalchemy_url(self) -> URL:
         """The owner role's URL, with ``database_owner_password`` substituted when it is set."""
         return _with_password(self.migrations_database_url, self.database_owner_password)
+
+
+def _is_local_host(host: str) -> bool:
+    if host.lower() in PLAIN_SMTP_HOSTS:
+        return True
+    try:
+        return ipaddress.ip_address(host.strip("[]")).is_loopback
+    except ValueError:
+        return False
 
 
 def public_origin(url: str) -> str:

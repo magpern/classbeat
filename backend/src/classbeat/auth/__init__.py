@@ -62,6 +62,7 @@ from classbeat.auth.ratelimit import (
     mfa_buckets,
     password_buckets,
 )
+from classbeat.auth.reset_routes import make_reset_link_sender
 from classbeat.auth.sessions import (
     IssuedSession,
     Resolution,
@@ -114,6 +115,7 @@ __all__ = [
     "install",
     "is_known_device",
     "list_sessions",
+    "make_reset_link_sender",
     "mfa_buckets",
     "normalize_password",
     "password_buckets",
