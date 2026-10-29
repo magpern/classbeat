@@ -1,0 +1,21 @@
+{
+ "name": "music_unknown_bpm",
+ "about": "MOWL has no BPM yet for three tracks; their bars are a guess.",
+ "brief": {
+  "length_min": 30,
+  "intensity": "moderate",
+  "climbs": 1,
+  "sprints": 2
+ },
+ "music": {
+  "tracks": 9,
+  "no_bpm": [
+   1,
+   2,
+   5
+  ]
+ },
+ "expect": {
+  "changes_on_music_min": 0.6
+ }
+}

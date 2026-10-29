@@ -313,7 +313,9 @@ refusal, an overload then success, a turn or cost limit, and injection text in a
 worker uses it when `CLASSBEAT_MODEL_PROVIDER=fake` (never in `prod`, §9) with
 `CLASSBEAT_FAKE_MODEL_SCRIPT`; the E2E stack runs that way.
 
-**Smoke set** (`backend/evals/smoke/`, roadmap §11), about 15 cases, each a YAML file: the brief,
+**Smoke set** (`classbeat.evals`, cases in `backend/src/classbeat/evals/smoke/`, roadmap §11),
+15 cases, each a JSON file (amended in S1, #95: in the package so the image carries them, and JSON
+because the project has no YAML dependency): the brief,
 a synthetic music fixture (no real Spotify data: invented titles and BPMs in the analysis
 format), and checks on the stored draft: `validate()` passes, duration within 5 % of the asked
 length and not longer than the music, one cooldown of at least 60 s, the asked sprints, climbs,
@@ -322,14 +324,27 @@ interval starts on downbeats after fitting, cost and turns under the limits. S1 
 `quality.report` for the checks it covers instead of re-implementing them (interval starts on
 downbeats as `changes_on_music`, standing and cadence limits as its issues), and as an input to
 the M3c eval. Cases cover the
-guided options, missing or too short music, a long free-text brief, and adversarial tool output.
+guided options, too short music, missing BPM or sections, a long free-text brief, and adversarial tool output. There is no
+missing-music case: D1 fails a job without music before the stage runs.
 - **In CI**, every case runs against `FakeProvider` with a recorded script, which tests the
   harness, the tools and the checks (no network).
-- **Against Claude**, `python -m classbeat.evals smoke --live` runs the cases with the real
-  provider on synthetic music only, outside CI, on every PR that touches prompts, tool schemas or
-  the loop, and the results table (pass per case, cost, turns, prompt version) goes in the PR.
-  It needs an Anthropic API key, which the owner provides (roadmap "Before M0"); until then live
-  runs wait and the PR says so. Synthetic data and our own key touch no user account.
+- **Against Claude**, the owner runs `docker compose exec worker python -m classbeat.evals smoke
+  --live` (the worker is the only container with the key) with the real provider on synthetic
+  music only, outside CI, on every PR that touches prompts, tool schemas or the loop; the results
+  table (pass per case, cost, turns, prompt version) goes in the PR. Neither CI nor an agent runs
+  it. It refuses (exit 2, no key in any output) unless `--live` is passed, `CI` is unset (even empty), the
+  provider is `anthropic`, the `anthropic_api_key` secret is present and the model is priced; it
+  then prints its plan, the §5 limits and the **cost ceiling** (every case at the per-job ceiling
+  plus one turn's over-run, $29.70 for 15 cases at the defaults) and stops, unless `--max-usd N`
+  is also passed. `N` is a budget: each case runs with the money left as its job ceiling (what a
+  case spent counts even if it ended in an error) and the run stops when none is left. The total
+  can exceed `N` by one turn's over-run (up to $0.48 at the defaults), which the printed ceiling
+  includes. `--case NAME` runs a subset, `--out FILE` writes the results as
+  JSON (outcome, turns, cost, prompt version and check names; no model text, ids or secrets). It
+  installs the worker's outbound allowlist before building the provider, and lives in
+  `classbeat.evals`, which the web process never imports. It needs an Anthropic API key, which
+  the owner provides (roadmap "Before M0"); until then live runs wait and the PR says so.
+  Synthetic data and our own key touch no user account.
 
 ### 9. Worker secrets and outbound calls
 

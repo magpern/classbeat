@@ -197,6 +197,8 @@ def test_the_web_process_never_loads_the_provider_or_the_sdk() -> None:
     # Since D1 (#92) the web imports the design_draft kind to validate its input, which loads
     # classbeat.agent's schemas and pure tools; the provider adapters and the SDK stay out.
     assert [m for m in loaded if m.startswith("classbeat.agent.providers")] == []
+    # Nor the worker, nor the smoke set and its live command (#95, #122): worker-side code.
+    assert [m for m in loaded if m.startswith(("classbeat.worker", "classbeat.evals"))] == []
     assert "classbeat.design.kind" in loaded  # the check above runs with the kind loaded
 
 

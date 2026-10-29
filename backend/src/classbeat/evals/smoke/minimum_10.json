@@ -1,0 +1,12 @@
+{
+ "name": "minimum_10",
+ "about": "The shortest class, 10 minutes.",
+ "brief": {
+  "length_min": 10,
+  "intensity": "easy"
+ },
+ "music": {
+  "tracks": 4
+ },
+ "expect": {}
+}

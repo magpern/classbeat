@@ -1,0 +1,13 @@
+{
+ "name": "races_40",
+ "about": "Hard 40 minutes with two races.",
+ "brief": {
+  "length_min": 40,
+  "intensity": "hard",
+  "races": 2
+ },
+ "music": {
+  "tracks": 11
+ },
+ "expect": {}
+}

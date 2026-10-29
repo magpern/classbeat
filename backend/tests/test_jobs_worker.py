@@ -67,16 +67,16 @@ async def test_nothing_is_claimed_before_the_queue_check_passed(
     jenv: JobsEnv, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     _, job_id = jenv.job()
-    monkeypatch.setattr(worker_loop, "queue_verified", lambda engine: False)
 
     async def no_verify(engine: object) -> None:
         return None
 
-    monkeypatch.setattr(worker_loop, "verify_database_role", no_verify)
-    async with running(jenv, registry_for(done_run())):
-        await asyncio.sleep(0.5)
-        assert jenv.row(job_id).state == "queued"
-    monkeypatch.undo()
+    with monkeypatch.context() as patched:  # not undo(): that would also undo the test guards
+        patched.setattr(worker_loop, "queue_verified", lambda engine: False)
+        patched.setattr(worker_loop, "verify_database_role", no_verify)
+        async with running(jenv, registry_for(done_run())):
+            await asyncio.sleep(0.5)
+            assert jenv.row(job_id).state == "queued"
     async with running(jenv, registry_for(done_run())):
         await until(lambda: jenv.row(job_id).state == "completed")
 

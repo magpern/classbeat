@@ -97,6 +97,17 @@ with the owner's authorization and what it created.
   one live MOWL playlist-name search (read-only, no writes) without the owner's prior go-ahead.
   Nothing was created or changed. Agents never contact providers without authorization (AGENTS.md
   safety envelope); the owner has been told.
+- 2026-10-29: unauthorized provider contact. While developing the live-command tests of the smoke
+  set (PR #124), one test run executed the real live path without a guard and connected to
+  `api.anthropic.com:443`: about fifteen requests (one per smoke case, as many failures logged).
+  Each carried its request body (the stage's system prompt, the synthetic brief and synthetic
+  music) and an `x-api-key` header holding a placeholder key that was never a real key. No
+  user data, no real account; no answer beyond an error (authentication failed). Nothing was
+  created. A later mutation check of the new network guard also opened a few TCP connections to
+  documentation addresses and `93.184.216.34` (example.com) with no payload. The owner has been
+  told. Guards added: the whole backend test suite now refuses non-loopback sockets
+  (`backend/tests/netguard.py`), and that test file's provider stub fails without an in-process
+  fake.
 
 ## Exceptions
 
