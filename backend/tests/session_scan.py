@@ -39,6 +39,7 @@ ALLOWED_PREFIXES = (
     "classbeat.auth",
     "classbeat.db",
     "classbeat.classes",
+    "classbeat.usage",  # the monthly and per-job reads of agent_runs (US1)
 )
 ALLOWED_MODULES = (
     "classbeat.jobs.fence",
