@@ -7,7 +7,8 @@ points here and the web container trusts a bundle of the fake OIDC provider's CA
 process's throwaway CA (written to /ca/bundle.pem at start, the health signal). Nothing leaves
 the stack.
 
-It speaks only the sign-in (`login` in mowl/api.py): Authenticate (form Email, Password) gives a
+It speaks the sign-in (`login` in mowl/api.py) and the Spotify playlist list (`spotify_playlists`,
+for the new-class form, U1): Authenticate (form Email, Password) gives a
 login ticket, and the ticket exchange gives the token. The account is a public test value:
 EMAIL with PASSWORD. Any other pair gets MOWL's own refusal (HTTP 200 with an `Error`). It never
 logs a request: no password, ticket or token reaches its output.
@@ -38,6 +39,11 @@ OIDC_CA = os.environ.get("FAKE_MOWL_OIDC_CA", "/oidc-ca/ca.pem")
 BUNDLE = os.environ.get("FAKE_MOWL_BUNDLE", "/ca/bundle.pem")
 
 TICKETS: set[str] = set()
+# Spotify playlists as MOWL lists them (22-character Spotify ids): public test data.
+PLAYLISTS = [
+    {"ID": "0aBcDeFgHiJkLmNoPqRsTu", "Name": "E2E Hill Climb", "TrackCount": 12, "HasUnavailableTracks": False},
+    {"ID": "1zYxWvUtSrQpOnMlKjIhGf", "Name": "E2E Sprints", "TrackCount": 9, "HasUnavailableTracks": False},
+]
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -50,6 +56,10 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(raw)
 
     def do_POST(self) -> None:  # noqa: N802
+        if urlsplit(self.path).path == "/v1/Spotify/Playlists":
+            # The new-class form's playlist list (U1): public test data, any caller.
+            self.reply(200, {"Data": PLAYLISTS, "Error": None})
+            return
         if urlsplit(self.path).path != f"/v1/Authentication/Authenticate/{APP_GUID}":
             self.reply(404, {"Error": "not found"})
             return

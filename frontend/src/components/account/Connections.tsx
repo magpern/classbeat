@@ -9,6 +9,7 @@ import {
 import { errorMessage } from '../../api/messages'
 import { useGuard } from '../../auth/prompts'
 import { Field, Notice, Section, useAction } from '../forms'
+import { FORGET_WARNING } from './mowlWarning'
 
 // Plain words for the ADR 0004 section 5 categories. The raw code is never shown.
 const CONNECT_ERRORS: Record<string, string> = {
@@ -50,6 +51,7 @@ export function Connections() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [note, setNote] = useState<string | null>(null)
+  const [confirmingDisconnect, setConfirmingDisconnect] = useState(false)
   const action = useAction()
 
   const load = useCallback(async () => {
@@ -89,6 +91,7 @@ export function Connections() {
 
   const disconnect = () => {
     setNote(null)
+    setConfirmingDisconnect(false)
     void action.run(async () => {
       await guard(() => disconnectMowl())
       await load()
@@ -125,6 +128,11 @@ export function Connections() {
       ) : null}
       {needsForm ? (
         <form onSubmit={connect}>
+          {mowl ? (
+            <p className="notice" data-kind="info" data-testid="reconnect-warning">
+              Connecting again replaces the stored sign-in. {FORGET_WARNING}
+            </p>
+          ) : null}
           <p>
             Sign in with your Intelligent Cycling (MOWL) account. classbeat uses your password once
             to get a sign-in token and does not keep it.
@@ -160,14 +168,34 @@ export function Connections() {
             Disconnecting deletes the token classbeat holds. MOWL has no way for classbeat to end
             the sign-in on its side; change your MOWL password to end it there.
           </p>
-          <button
-            className="button button--secondary"
-            type="button"
-            disabled={action.busy}
-            onClick={disconnect}
-          >
-            Disconnect MOWL
-          </button>
+          {confirmingDisconnect ? (
+            <div className="notice" role="group" aria-label="Confirm disconnect">
+              <p>{FORGET_WARNING}</p>
+              <button className="button" type="button" disabled={action.busy} onClick={disconnect}>
+                Yes, disconnect MOWL
+              </button>
+              <button
+                className="button button--secondary"
+                type="button"
+                onClick={() => {
+                  setConfirmingDisconnect(false)
+                }}
+              >
+                Keep it connected
+              </button>
+            </div>
+          ) : (
+            <button
+              className="button button--secondary"
+              type="button"
+              disabled={action.busy}
+              onClick={() => {
+                setConfirmingDisconnect(true)
+              }}
+            >
+              Disconnect MOWL
+            </button>
+          )}
         </>
       ) : null}
     </Section>

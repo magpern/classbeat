@@ -189,7 +189,9 @@ async def test_expiry_refuses_the_approval_and_releases_the_credit(jenv: JobsEnv
     assert (await user_approve(jenv, owner, job_id, revision, good)).reason == "expired"
     assert await queue.expire(jenv.factory) == 1
     assert jenv.row(job_id).state == "expired"
-    assert (await user_approve(jenv, owner, job_id, revision, good)).reason == "not_waiting"
+    assert (
+        await user_approve(jenv, owner, job_id, revision, good)
+    ).reason == "expired"  # #115 item 1: the reason stays expired after the sweep
     ledger = CountingLedger()
     assert await settle(jenv.factory, ledger) == 1
     assert ledger.calls == [("release", job_id)]

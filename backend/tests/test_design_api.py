@@ -10,6 +10,7 @@ from uuid import UUID
 
 import pytest
 
+from classbeat.agent import WorkoutDraft
 from classbeat.design import DESIGN_DRAFT, KIND
 from classbeat.jobs import KINDS
 from designtools import BRIEF, PLAYLIST_NAME, DesignEnv, FakeMowlMusic
@@ -58,6 +59,21 @@ async def test_a_job_created_through_the_api_is_designed_by_the_worker(
     shown = await browser.get(f"/api/jobs/{job_id}")
     assert (shown.json()["state"], shown.json()["error_category"]) == ("completed", None)
     assert len(denv.revisions(job_id)) == 1
+
+    # U1: the draft the worker stored (through design.revision.build) reads back through the
+    # web API as the same WorkoutDraft, with only the allowed keys.
+    [stored] = denv.revisions(job_id)
+    read = await browser.get(f"/api/jobs/{job_id}/revision")
+    assert read.status_code == 200, read.text
+    answer = read.json()
+    assert set(answer) == {"revision_id", "number", "kind", "content", "unknown_bpm", "created_at"}
+    assert (answer["revision_id"], answer["number"], answer["kind"]) == (str(stored.id), 1, "draft")
+    assert WorkoutDraft.model_validate(answer["content"]) == WorkoutDraft.model_validate(
+        stored.content
+    )
+    assert answer["unknown_bpm"] == stored.music["unknown_bpm"]
+    assert stored.music["fingerprint"] not in read.text  # no fingerprint or link id
+    assert stored.music["link_id"] not in read.text
 
 
 @pytest.mark.parametrize(

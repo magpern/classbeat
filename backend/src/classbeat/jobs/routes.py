@@ -7,6 +7,11 @@
   ``idempotency_mismatch``. Also 409 ``class_busy``, ``not_connected``, ``quota``; 404
   ``class_not_found``; 429 ``busy`` (the per-user limit); 400 for the header; 422 for the body.
 - ``GET /api/jobs/{id}``: the job's state.
+- ``GET /api/jobs/{id}/revision``: the draft the job stored, for the draft summary: 409
+  ``no_revision`` while it has none. Answers only ``{revision_id, number, kind, content,
+  unknown_bpm, created_at}``: ``content`` is re-read through ``WorkoutDraft`` (so a field that
+  schema does not name is never shown), ``unknown_bpm`` is ``[{index, title}]`` (the user's own
+  track titles, shown back to them). No provenance, link id, fingerprint or hash.
 - ``POST /api/jobs/{id}/cancel``: 200 with the state (idempotent); 409 ``not_cancellable`` for a
   job that ended otherwise.
 - ``POST /api/jobs/{id}/approve`` with ``{revision_id, content_hash}`` (64 hex characters): 200
@@ -30,11 +35,13 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from classbeat import auth
+from classbeat.agent.schemas import WorkoutDraft
 from classbeat.context import UserContext
 from classbeat.jobs import service
 from classbeat.jobs.credits import CreditLedger, UnmeteredLedger
 from classbeat.jobs.inputs import JobInput
 from classbeat.jobs.kinds import KIND_NAME, KINDS, KindRegistry
+from classbeat.jobs.progress import read_revision
 from classbeat.jobs.user import NewJob
 
 router = APIRouter(prefix="/api/jobs", tags=["jobs"])
@@ -85,6 +92,20 @@ class JobOut(BaseModel):
     @classmethod
     def of(cls, view: service.JobView) -> "JobOut":
         return cls.model_validate(view, from_attributes=True)
+
+
+class UnknownBpmOut(BaseModel):
+    index: int
+    title: str
+
+
+class RevisionOut(BaseModel):
+    revision_id: UUID
+    number: int
+    kind: str
+    content: dict[str, Any]
+    unknown_bpm: list[UnknownBpmOut]
+    created_at: datetime
 
 
 def _refuse(reason: str, status: int | None = None) -> JSONResponse:
@@ -180,6 +201,36 @@ async def get_job(
 ) -> JobOut | JSONResponse:
     view = await service.get(request.app.state.session_factory, ctx, job_id)
     return _refuse("not_found") if view is None else JobOut.of(view)
+
+
+@router.get("/{job_id}/revision", response_model=RevisionOut, responses={404: {}, 409: {}})
+async def get_revision(
+    job_id: str, request: Request, ctx: Annotated[UserContext, Depends(auth.require_user)]
+) -> RevisionOut | JSONResponse:
+    try:
+        wanted = UUID(job_id)
+    except ValueError:
+        return _refuse("not_found")  # a malformed id is the same 404 as an unknown one
+    found = await read_revision(request.app.state.session_factory, ctx, wanted)
+    if found is None:
+        return _refuse("not_found")
+    stored = found.revision
+    if stored is None:
+        return _refuse("no_revision")
+    try:
+        draft = WorkoutDraft.model_validate(stored.content)
+        raw: Any = stored.music.get("unknown_bpm", [])
+        unknown = [UnknownBpmOut(index=int(u["index"]), title=str(u["title"])) for u in raw]
+    except (ValidationError, KeyError, TypeError, ValueError):
+        return JSONResponse({"detail": {"reason": "internal"}}, status_code=500)
+    return RevisionOut(
+        revision_id=stored.id,
+        number=stored.number,
+        kind=stored.kind,
+        content=draft.model_dump(mode="json", exclude_none=True),
+        unknown_bpm=unknown,
+        created_at=stored.created_at,
+    )
 
 
 @router.post("/{job_id}/cancel", response_model=JobOut, responses={404: {}, 409: {}})
