@@ -245,6 +245,8 @@ async def approve(
     if row.state != "waiting_for_approval":
         if row.approved_at is not None and same:
             return Approval(True, row.state)  # a repeated approval: no second event
+        if row.state == "expired":  # the sweep got there first: same reason as a late approval
+            return Approval(False, row.state, "expired")
         return Approval(False, row.state, "not_waiting")
     if not row.live:
         return Approval(False, row.state, "expired")

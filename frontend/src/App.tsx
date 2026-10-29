@@ -7,7 +7,9 @@ import { Logo } from './components/Logo'
 import { AccountPage } from './pages/AccountPage'
 import { AdminPage } from './pages/AdminPage'
 import { EmailChangePage } from './pages/EmailChangePage'
+import { JobPage } from './pages/JobPage'
 import { LandingPage } from './pages/LandingPage'
+import { NewClassPage } from './pages/NewClassPage'
 import { ProviderEmailPage } from './pages/ProviderEmailPage'
 import { ResetPage } from './pages/ResetPage'
 import { SignInPage } from './pages/SignInPage'
@@ -17,7 +19,10 @@ import { Link, RouterProvider, useRouter } from './router/Router'
 
 function Routes() {
   const { pathname } = useRouter()
-  switch (pathname.replace(/\/+$/, '') || '/') {
+  const path = pathname.replace(/\/+$/, '') || '/'
+  const job = /^\/jobs\/([0-9a-fA-F-]{36})$/.exec(path)
+  if (job?.[1] !== undefined) return <JobPage key={job[1]} jobId={job[1]} />
+  switch (path) {
     case '/':
       return <LandingPage />
     case '/signin':
@@ -32,6 +37,8 @@ function Routes() {
       return <ResetPage />
     case '/email-change':
       return <EmailChangePage />
+    case '/classes/new':
+      return <NewClassPage />
     case '/account':
       return <AccountPage />
     case '/admin':
@@ -70,6 +77,7 @@ function Nav() {
   }
   return (
     <nav className="nav" aria-label="Account">
+      <Link to="/classes/new">New class</Link>
       <Link to="/account">{session.user?.email}</Link>
       <button type="button" className="button button--link" disabled={action.busy} onClick={signOut}>
         Sign out

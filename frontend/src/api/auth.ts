@@ -1,3 +1,4 @@
+import { clearSubmittedInputs } from '../lib/submittedInput'
 import { del, fetchSessionJson, get, post } from './client'
 import {
   count,
@@ -74,10 +75,12 @@ export async function login(email: string, password: string): Promise<{ role: st
 
 export async function logout(): Promise<void> {
   await post('/api/auth/logout')
+  clearSubmittedInputs()
 }
 
 export async function logoutAll(): Promise<void> {
   await post('/api/auth/logout-all')
+  clearSubmittedInputs()
 }
 
 export async function reauthWithPassword(password: string): Promise<void> {

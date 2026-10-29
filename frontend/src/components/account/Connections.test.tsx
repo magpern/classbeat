@@ -9,6 +9,7 @@ const ACCOUNT_ROUTES = {
   'GET /api/auth/mfa': { totp_enabled: false, recovery_codes_left: 0 },
 }
 const CONNECTED = {
+  id: 'c0000000-0000-4000-8000-000000000001',
   provider: 'mowl',
   status: 'connected',
   last_error: null,
@@ -108,6 +109,8 @@ describe('MOWL connection on the account page', () => {
     expect(await mowl.findByTestId('mowl-status')).toHaveTextContent('Needs to be connected again')
     expect(mowl.getByText(/no longer accepts the stored sign-in/)).toBeInTheDocument()
     expect(mowl.getByRole('button', { name: 'Connect MOWL again' })).toBeInTheDocument()
+    // Connecting again in place forgets the playlists classbeat added (ADR 0006 section 3).
+    expect(mowl.getByTestId('reconnect-warning')).toHaveTextContent(/undecided.*second time/)
   })
 
   it('disconnects and offers the form again', async () => {
@@ -123,11 +126,25 @@ describe('MOWL connection on the account page', () => {
     renderAt('/account')
     const mowl = await mowlSection()
     fireEvent.click(await mowl.findByRole('button', { name: 'Disconnect MOWL' }))
+    fireEvent.click(mowl.getByRole('button', { name: 'Yes, disconnect MOWL' }))
     expect(await mowl.findByText(/MOWL is disconnected/)).toBeInTheDocument()
     await waitFor(() => {
       expect(mowl.getByRole('button', { name: 'Connect MOWL' })).toBeInTheDocument()
     })
     expect(api.to('DELETE', '/api/connections/mowl')).toHaveLength(1)
+  })
+
+  it('warns before disconnecting that undecided attaches are forgotten and asks first', async () => {
+    const api = fakeApi({ ...ACCOUNT_ROUTES, 'GET /api/connections': { connections: [CONNECTED] } })
+    renderAt('/account')
+    const mowl = await mowlSection()
+    fireEvent.click(await mowl.findByRole('button', { name: 'Disconnect MOWL' }))
+    expect(mowl.getByText(/any adding that was left undecided/)).toBeInTheDocument()
+    expect(mowl.getByText(/a second time/)).toBeInTheDocument()
+    expect(api.to('DELETE', '/api/connections/mowl')).toHaveLength(0)
+    fireEvent.click(mowl.getByRole('button', { name: 'Keep it connected' }))
+    expect(mowl.getByRole('button', { name: 'Disconnect MOWL' })).toBeInTheDocument()
+    expect(api.to('DELETE', '/api/connections/mowl')).toHaveLength(0)
   })
 
   it('never shows an unknown category code', async () => {
