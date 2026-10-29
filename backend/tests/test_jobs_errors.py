@@ -120,8 +120,10 @@ def test_invalid_kinds_are_refused(
         JobKind(name, model, stages, _run)
 
 
-def test_the_worker_ships_exactly_the_design_draft_kind() -> None:
-    import classbeat.design  # noqa: F401 - registers design_draft (D1)
+def test_the_worker_ships_exactly_the_reviewed_kinds() -> None:
+    import classbeat.design  # registers design_draft (D1)
+    import classbeat.saving  # noqa: F401 - registers save_workout (SV1)
     from classbeat.jobs import KINDS
 
-    assert KINDS.names() == ["design_draft"]  # M4 adds the song-picking kinds
+    # R1 adds revise_draft, SV2 update_workout, M4 the song-picking kinds
+    assert KINDS.names() == ["design_draft", "save_workout"]

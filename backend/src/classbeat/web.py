@@ -12,7 +12,7 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from sqlalchemy import text
 
-from classbeat import __version__, auth
+from classbeat import __version__, auth, saving  # saving registers save_workout (SV1)
 from classbeat.classes.routes import router as classes_router
 from classbeat.config import Settings, check_web_has_no_model_key
 from classbeat.connections.routes import router as connections_router
@@ -88,6 +88,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     """Build the app. The database engine is created in the lifespan, not here."""
     settings = settings if settings is not None else Settings()
     check_web_has_no_model_key(settings)  # the model key is the worker's only (ADR 0006 §9)
+    # The save reconciler of the user's Check again (ADR 0007 section 8).
+    saving.configure_listing_lag(settings.mowl_listing_lag_seconds)
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:

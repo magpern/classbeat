@@ -5,7 +5,7 @@ import logging
 import signal
 import sys
 
-from classbeat import design
+from classbeat import design, saving
 from classbeat.config import ModelProviderRefused, Settings, check_worker_model_provider
 from classbeat.crypto.keks import load_keyring
 from classbeat.db import (
@@ -37,6 +37,9 @@ async def _run(settings: Settings) -> None:
         await engine.dispose()
     # The job kinds' runtime (design_draft, D1): the key ring and a new model provider per run.
     design.configure(design.runtime_from_settings(settings, keyring))
+    # save_workout (SV1): the key ring, and the listing lag its reconciler may rely on.
+    saving.configure(saving.Runtime(keyring))
+    saving.configure_listing_lag(settings.mowl_listing_lag_seconds)
     stop = asyncio.Event()
     # Before "worker started" is logged, so a signal after that line is always handled.
     _install_signal_handlers(asyncio.get_running_loop(), stop)
