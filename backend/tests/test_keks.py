@@ -128,10 +128,13 @@ async def test_a_rolled_back_caller_does_not_undo_the_deferred_check(
     class Rollback(Exception):
         pass
 
-    with pytest.raises(Rollback):
+    async def use_then_roll_back() -> None:
         async with env.db() as db:
             await ring.current(db)
             raise Rollback
+
+    with pytest.raises(Rollback):
+        await use_then_roll_back()
     assert ring.verified
     assert await env.scalar("SELECT count(*) FROM connection_keks") == 1
 

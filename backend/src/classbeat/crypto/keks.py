@@ -110,9 +110,8 @@ class KeyRing:
             raise ValueError("an unverified KeyRing needs a session factory for its first check")
         self._current = current
         self._directory = directory
-        self._factory = factory
+        self._unchecked = None if verified else factory  # kept only until the check is done
         self._retired: dict[str, Kek] = {}
-        self._verified = verified
 
     @property
     def current_id(self) -> str:
@@ -120,7 +119,7 @@ class KeyRing:
 
     @property
     def verified(self) -> bool:
-        return self._verified
+        return self._unchecked is None
 
     def __repr__(self) -> str:
         return f"KeyRing(current={self._current.key_id!r})"
@@ -131,11 +130,10 @@ class KeyRing:
     async def current(self, db: AsyncSession) -> Kek:
         """The current KEK, for writes. Checked against its row first if not done yet (in a
         session of its own; ``db`` is not used for it)."""
-        if not self._verified:
-            assert self._factory is not None  # guaranteed by __init__
-            async with system_session(self._factory) as own:
+        if self._unchecked is not None:
+            async with system_session(self._unchecked) as own:
                 await _record_and_compare(own, self._current)
-            self._verified = True  # only after the check row's transaction committed
+            self._unchecked = None  # only after the check row's transaction committed
         return self._current
 
     async def kek_for(self, db: AsyncSession, key_id: str) -> Kek:
