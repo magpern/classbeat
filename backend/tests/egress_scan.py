@@ -36,6 +36,8 @@ WORKER_ENTRYPOINTS = (
     "classbeat.jobs",
     "classbeat.jobs.runner",
     "classbeat.jobs.user",
+    "classbeat.agent",
+    "classbeat.agent.providers",
 )
 
 _CALLS = frozenset(

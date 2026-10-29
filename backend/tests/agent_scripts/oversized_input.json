@@ -1,0 +1,238 @@
+{
+ "drafts": {
+  "good": {
+   "name": "Invented Tuesday climb",
+   "description": "A 30 minute ride with one climb and two sprints.",
+   "segments": [
+    {
+     "name": "Warm-up",
+     "kind": "warmup",
+     "intervals": [
+      {
+       "sec": 180,
+       "zone": 2,
+       "rpm": "beat",
+       "standing": false
+      },
+      {
+       "sec": 120,
+       "zone": 3,
+       "rpm": "beat",
+       "standing": false
+      }
+     ]
+    },
+    {
+     "name": "Climb",
+     "kind": "main",
+     "intervals": [
+      {
+       "sec": 240,
+       "zone": 4,
+       "rpm": "beat",
+       "standing": false
+      },
+      {
+       "sec": 30,
+       "zone": 5,
+       "rpm": [
+        65,
+        75
+       ],
+       "standing": true
+      },
+      {
+       "sec": 30,
+       "zone": 4,
+       "rpm": "beat",
+       "standing": false
+      },
+      {
+       "sec": 30,
+       "zone": 5,
+       "rpm": [
+        65,
+        75
+       ],
+       "standing": true
+      },
+      {
+       "sec": 60,
+       "zone": 4,
+       "rpm": "beat",
+       "standing": false
+      }
+     ]
+    },
+    {
+     "name": "Easy",
+     "kind": "recovery",
+     "intervals": [
+      {
+       "sec": 60,
+       "zone": 1,
+       "rpm": [
+        80,
+        90
+       ],
+       "standing": false
+      }
+     ]
+    },
+    {
+     "name": "Sprints",
+     "kind": "main",
+     "intervals": [
+      {
+       "sec": 120,
+       "zone": 3,
+       "rpm": "beat",
+       "standing": false
+      },
+      {
+       "sec": 30,
+       "zone": 6,
+       "rpm": [
+        100,
+        110
+       ],
+       "standing": false,
+       "cue": "Go!"
+      },
+      {
+       "sec": 60,
+       "zone": 2,
+       "rpm": [
+        85,
+        95
+       ],
+       "standing": false
+      },
+      {
+       "sec": 30,
+       "zone": 6,
+       "rpm": [
+        100,
+        110
+       ],
+       "standing": false
+      },
+      {
+       "sec": 60,
+       "zone": 2,
+       "rpm": [
+        85,
+        95
+       ],
+       "standing": false
+      }
+     ]
+    },
+    {
+     "name": "Easy again",
+     "kind": "recovery",
+     "intervals": [
+      {
+       "sec": 90,
+       "zone": 1,
+       "rpm": [
+        80,
+        90
+       ],
+       "standing": false
+      }
+     ]
+    },
+    {
+     "name": "Tempo",
+     "kind": "main",
+     "intervals": [
+      {
+       "sec": 240,
+       "zone": 3,
+       "rpm": "beat",
+       "standing": false
+      },
+      {
+       "sec": 30,
+       "zone": 5,
+       "rpm": [
+        70,
+        78
+       ],
+       "standing": true
+      },
+      {
+       "sec": 120,
+       "zone": 4,
+       "rpm": "beat",
+       "standing": false
+      }
+     ]
+    },
+    {
+     "name": "Cooldown",
+     "kind": "cooldown",
+     "intervals": [
+      {
+       "sec": 270,
+       "zone": 1,
+       "rpm": [
+        80,
+        90
+       ],
+       "standing": false
+      }
+     ]
+    }
+   ]
+  }
+ },
+ "turns": [
+  {
+   "calls": [
+    {
+     "name": "preview_draft",
+     "input": {
+      "draft": {
+       "$draft": "good"
+      },
+      "padding": {
+       "$repeat": "x",
+       "times": 40000
+      }
+     },
+     "expect": {
+      "ok": false,
+      "error": "too_large"
+     }
+    },
+    {
+     "name": "preview_draft",
+     "input": {
+      "draft": {
+       "$draft": "good"
+      },
+      "padding": "x"
+     },
+     "expect": {
+      "ok": false,
+      "error": "invalid_input"
+     }
+    }
+   ]
+  },
+  {
+   "calls": [
+    {
+     "name": "submit_draft",
+     "input": {
+      "draft": {
+       "$draft": "good"
+      }
+     }
+    }
+   ]
+  }
+ ]
+}
