@@ -17,21 +17,29 @@ from classbeat.operations.kinds import (
     BOUND_KEY,
     CALL_MAY_RUN_MARGIN_SECONDS,
     CLASS_WRITE_KINDS,
+    FALLBACK_BOUND_SECONDS,
     MAX_CONTEXT_BYTES,
     context_size,
 )
 
-# ADR 0007 section 8: until when a stale multi-request call may still be sending requests. NULL
-# when nothing waits: no bound (a single-request kind), or the current attempt's call returned.
+# ADR 0007 section 8: until when a stale multi-request call may still be sending requests. The
+# one definition of ``actionable_at`` (the protocol, the user's actions, the operation view and
+# the class delete all use it). NULL when nothing waits: the current attempt's call returned, or
+# the row is no class write and has no bound (the attach, a single-request kind). A class write
+# whose context carries no usable bound (the protocol never writes one) waits
+# ``FALLBACK_BOUND_SECONDS``: a row of unknown bound is never actionable early.
 # ``pending_at`` is set by every transition into ``pending``; ``updated_at`` (later) only stands
 # in for a row that predates it.
+_CLASS_KINDS_SQL: Final = ", ".join(f"'{name}'" for name in sorted(CLASS_WRITE_KINDS))
+_HAS_BOUND_SQL: Final = "jsonb_typeof(request_context -> 'bound_seconds') = 'number'"
 WAITING_SQL: Final = (
-    "(jsonb_typeof(request_context -> 'bound_seconds') = 'number' "
+    f"(({_HAS_BOUND_SQL} OR kind IN ({_CLASS_KINDS_SQL})) "
     "AND NOT coalesce(call_ended_at >= pending_at, false))"
 )
 ACTIONABLE_AT_SQL: Final = (
     f"CASE WHEN {WAITING_SQL} THEN coalesce(pending_at, updated_at) + make_interval(secs => "
-    f"(request_context ->> 'bound_seconds')::float8 + {CALL_MAY_RUN_MARGIN_SECONDS}) END"
+    f"CASE WHEN {_HAS_BOUND_SQL} THEN (request_context ->> 'bound_seconds')::float8 "
+    f"ELSE {FALLBACK_BOUND_SECONDS} END + {CALL_MAY_RUN_MARGIN_SECONDS}) END"
 )
 # True while a stale call may still be running: no reconciliation, no user action.
 NOT_ACTIONABLE_SQL: Final = f"coalesce(({ACTIONABLE_AT_SQL}) > now(), false)"

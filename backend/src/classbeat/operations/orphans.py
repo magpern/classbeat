@@ -7,9 +7,10 @@ cancel request), or the job expires, completes or is deleted, nobody else would 
 row (#117 item 7). The queue functions do not change; instead:
 
 - ``resolve(db, ctx)`` marks every such row of the user ``uncertain``, conditional on ``state =
-  'pending'`` and on the job being terminal or gone (a row of an open job is its holder's), with
-  the job's error category when it has one. It writes in the caller's transaction, under the
-  user's own row security: in the web process a ``user_session`` (``resolve_now`` opens one; this
+  'pending'`` and on the job being terminal or gone (``job_id`` NULL; a row of an open job is its
+  holder's), with the job's error category when it has one. It writes in the caller's
+  transaction, under the user's own row security: in the web process a ``user_session``
+  (``resolve_now`` opens one; this
   module is on the session guard's allowlist for that), on the worker path **the job's fenced
   session** (``fs.db``), never a session of its own. It runs before the class and operation
   views, Save and Update admit, class delete, Check again and Do it anyway, and in a worker's
@@ -38,6 +39,8 @@ Factory = async_sessionmaker[AsyncSession]
 # migration 0004's terminal job states
 TERMINAL_JOB_STATES: Final = ("completed", "failed", "cancelled", "expired")
 
+# A deleted job leaves ``job_id`` NULL (migration 0004: ``ON DELETE SET NULL (job_id)``), so "the
+# job is gone" is ``o.job_id IS NULL``; a row can't name a job that does not exist.
 _RESOLVE = text(
     "UPDATE external_operations AS o SET state = 'uncertain', "
     "error_category = coalesce((SELECT j.error_category FROM jobs j "
@@ -45,7 +48,6 @@ _RESOLVE = text(
     "WHERE o.owner_id = :owner_id AND o.state = 'pending' "
     "AND o.kind IN ('mowl_save_workout', 'mowl_update_workout') "
     "AND (o.job_id IS NULL "
-    "OR NOT EXISTS (SELECT 1 FROM jobs j WHERE j.owner_id = o.owner_id AND j.id = o.job_id) "
     "OR EXISTS (SELECT 1 FROM jobs j WHERE j.owner_id = o.owner_id AND j.id = o.job_id "
     "AND j.state IN ('completed', 'failed', 'cancelled', 'expired'))) "
     "RETURNING o.id"

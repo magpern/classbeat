@@ -16,10 +16,12 @@ check of migrations 0004 and 0005.
 
 import hashlib
 import json
+import math
 from collections.abc import Awaitable, Callable, Iterator, Mapping
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any, Final, Literal
+from decimal import Decimal
+from typing import Any, Final, Literal, cast
 from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -40,6 +42,8 @@ MAX_CONTEXT_BYTES: Final = 2048  # the external_operations.request_context check
 # ADR 0007 section 8: a stale call of a multi-request write may still be sending requests for up
 # to its bound; the user's actions and the automatic reconciliation wait this long past it.
 CALL_MAY_RUN_MARGIN_SECONDS: Final = 30
+# The bound taken for a class write whose stored context has none (``requests.ACTIONABLE_AT_SQL``).
+FALLBACK_BOUND_SECONDS: Final = 3600
 BOUND_KEY: Final = "bound_seconds"  # where the protocol stores the bound in the context
 
 
@@ -166,13 +170,39 @@ def bound_of(context: Mapping[str, Any]) -> float | None:
 
 
 def context_size(context: Mapping[str, Any]) -> int:
-    """The size the table's check measures (``octet_length(request_context::text)``): jsonb
-    prints ``", "`` and ``": "`` between items. Raises ``TypeError`` on a value JSON can't hold."""
-    return len(
-        json.dumps(
-            dict(context), separators=(", ", ": "), ensure_ascii=False, allow_nan=False
-        ).encode("utf-8")
-    )
+    """The size the table's check measures (``octet_length(request_context::text)``), counted the
+    way jsonb prints a value: ``", "`` and ``": "`` between items and numbers in full (``1e16``
+    is ``10000000000000000``). Raises ``ValueError`` on what Postgres refuses (a NUL character
+    in a string or key, a non-finite number, text that is not UTF-8) and ``TypeError`` on a
+    value JSON can't hold."""
+    return len(_jsonb_text(dict(context)).encode("utf-8"))
+
+
+def _jsonb_text(value: Any) -> str:
+    if value is None:
+        return "null"
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if isinstance(value, int):
+        return str(value)
+    if isinstance(value, float):
+        if not math.isfinite(value):
+            raise ValueError("jsonb holds no NaN or infinity")
+        return format(Decimal(repr(value)), "f")  # numeric prints no exponent
+    if isinstance(value, str):
+        if "\x00" in value:
+            raise ValueError("jsonb holds no NUL character")
+        return json.dumps(value, ensure_ascii=False)
+    if isinstance(value, Mapping):
+        items: list[str] = []
+        for key, item in cast(Mapping[Any, Any], value).items():
+            if not isinstance(key, str):
+                raise TypeError("a JSON key is a string")
+            items.append(f"{_jsonb_text(key)}: {_jsonb_text(item)}")
+        return "{" + ", ".join(items) + "}"
+    if isinstance(value, list | tuple):
+        return "[" + ", ".join(_jsonb_text(item) for item in cast(list[Any], value)) + "]"
+    raise TypeError("not a JSON value")
 
 
 def canonical(value: Mapping[str, str]) -> bytes:
