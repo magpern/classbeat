@@ -161,6 +161,20 @@ class Settings(BaseSettings):
     # ``anthropic_api_key`` secret file; ``fake`` (the dev stack and CI) is refused in ``prod``.
     # ``check_worker_model_provider`` enforces both at worker start.
     model_provider: Literal["anthropic", "fake"] = "anthropic"
+    # Agent runs (ADR 0006 sections 2, 5 and 8; classbeat.agent). The model and its request.
+    agent_model: str = Field(default="claude-opus-5-5", pattern=r"^[A-Za-z0-9._:-]{1,100}$")
+    agent_effort: Literal["low", "medium", "high", "xhigh", "max"] = "medium"
+    agent_max_tokens: int = Field(default=32_000, ge=1_000, le=128_000)
+    # Limits per stage run, and the cost ceiling per job across stages and attempts.
+    agent_max_turns: int = Field(default=12, ge=1, le=100)
+    agent_max_tool_calls: int = Field(default=40, ge=1, le=500)
+    agent_max_corrections: int = Field(default=3, ge=0, le=20)
+    agent_stage_seconds: float = Field(default=300.0, gt=0, le=3600)
+    agent_job_cost_micros: int = Field(default=1_500_000, ge=0, le=100_000_000)  # $1.50
+    # Output tokens reserved per turn by the cost check (thinking included).
+    agent_turn_output_reserve: int = Field(default=8_000, ge=0, le=128_000)
+    # The FakeProvider's script (a JSON file) when model_provider is fake.
+    fake_model_script: Path | None = None
 
     # Jobs (ADR 0005 sections 3 and 4).
     job_lease_seconds: int = Field(default=120, ge=30, le=600)

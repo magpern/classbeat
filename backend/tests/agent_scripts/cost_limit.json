@@ -1,0 +1,172 @@
+{
+ "turns": [
+  {
+   "calls": [
+    {
+     "name": "get_music",
+     "input": {}
+    }
+   ],
+   "usage": {
+    "input": 10000,
+    "output": 5000,
+    "cache_read": 0,
+    "cache_write": 0
+   }
+  },
+  {
+   "calls": [
+    {
+     "name": "get_music",
+     "input": {}
+    }
+   ],
+   "usage": {
+    "input": 16000,
+    "output": 5000,
+    "cache_read": 0,
+    "cache_write": 0
+   }
+  },
+  {
+   "calls": [
+    {
+     "name": "get_music",
+     "input": {}
+    }
+   ],
+   "usage": {
+    "input": 22000,
+    "output": 5000,
+    "cache_read": 0,
+    "cache_write": 0
+   }
+  },
+  {
+   "calls": [
+    {
+     "name": "get_music",
+     "input": {}
+    }
+   ],
+   "usage": {
+    "input": 28000,
+    "output": 5000,
+    "cache_read": 0,
+    "cache_write": 0
+   }
+  },
+  {
+   "calls": [
+    {
+     "name": "get_music",
+     "input": {}
+    }
+   ],
+   "usage": {
+    "input": 34000,
+    "output": 5000,
+    "cache_read": 0,
+    "cache_write": 0
+   }
+  },
+  {
+   "calls": [
+    {
+     "name": "get_music",
+     "input": {}
+    }
+   ],
+   "usage": {
+    "input": 40000,
+    "output": 5000,
+    "cache_read": 0,
+    "cache_write": 0
+   }
+  },
+  {
+   "calls": [
+    {
+     "name": "get_music",
+     "input": {}
+    }
+   ],
+   "usage": {
+    "input": 46000,
+    "output": 5000,
+    "cache_read": 0,
+    "cache_write": 0
+   }
+  },
+  {
+   "calls": [
+    {
+     "name": "get_music",
+     "input": {}
+    }
+   ],
+   "usage": {
+    "input": 52000,
+    "output": 5000,
+    "cache_read": 0,
+    "cache_write": 0
+   }
+  },
+  {
+   "calls": [
+    {
+     "name": "get_music",
+     "input": {}
+    }
+   ],
+   "usage": {
+    "input": 58000,
+    "output": 5000,
+    "cache_read": 0,
+    "cache_write": 0
+   }
+  },
+  {
+   "calls": [
+    {
+     "name": "get_music",
+     "input": {}
+    }
+   ],
+   "usage": {
+    "input": 64000,
+    "output": 5000,
+    "cache_read": 0,
+    "cache_write": 0
+   }
+  },
+  {
+   "calls": [
+    {
+     "name": "get_music",
+     "input": {}
+    }
+   ],
+   "usage": {
+    "input": 70000,
+    "output": 5000,
+    "cache_read": 0,
+    "cache_write": 0
+   }
+  },
+  {
+   "calls": [
+    {
+     "name": "get_music",
+     "input": {}
+    }
+   ],
+   "usage": {
+    "input": 76000,
+    "output": 5000,
+    "cache_read": 0,
+    "cache_write": 0
+   }
+  }
+ ]
+}
