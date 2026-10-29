@@ -29,6 +29,23 @@ Revision 6 below stays as written; where it differs, this amendment wins. Record
   Sonnet Developer ("Development process", Roles). The Reviewer is a fresh Opus context
   either way.
 
+## Amendment 2 (2026-10-29, owner decision: review cost)
+
+Where it differs, this amendment wins over Revision 6's review gate ("Development process").
+
+- **Merge-only updates** need no new review: when the only change since a reviewed head is a
+  merge of `main` with no hand-resolved conflict, and CI is green, the Architect's mechanical
+  merge check carries the verdict. A scoped fresh review is needed if `main` changed a module
+  the PR changes or calls, or a conflict was resolved by hand.
+- **Fix rounds** after a `FAIL` get a fresh **delta review**: the diff since the last reviewed
+  head, each earlier finding verified, and whatever the delta touches.
+- **Reviewers rely on CI** for the full suite; they run targeted tests and mutation checks of
+  the guarantees that changed.
+- **Follow-up findings are batched** into few hardening PRs, one review each.
+- **Reviewer model by risk:** security-critical PRs (the Opus-Developer list in Amendment 1,
+  plus auth and sessions, tenant isolation, guards, egress and model keys) keep a fresh Opus
+  Reviewer; other PRs (UI, tests, docs, tooling) may have a fresh Sonnet Reviewer.
+
 *Revision 6 — frozen for implementation. Song picking is a **core** feature with Claude
 choosing the final songs from real BPM and sections (the pool stage from `mowl-workouts`);
 the instructor approves once, then the class is created hands-off. **Spotify is
