@@ -55,11 +55,18 @@ class FakeMowlAttach(urllib.request.BaseHandler):
     requests: list[str] = field(default_factory=lambda: list[str]())
     gate: threading.Event | None = None  # when set up, each call waits for it
     entered: threading.Event = field(default_factory=threading.Event)
+    finished: threading.Event = field(default_factory=threading.Event)  # an answer went back
 
     def __hash__(self) -> int:  # urllib keeps handlers in lists and sorts them
         return id(self)
 
     def https_open(self, req: urllib.request.Request) -> Any:
+        try:
+            return self._serve(req)
+        finally:
+            self.finished.set()
+
+    def _serve(self, req: urllib.request.Request) -> Any:
         self.requests.append(f"{req.get_method()} {req.full_url}")
         self.entered.set()
         if self.gate is not None and not self.gate.wait(10):

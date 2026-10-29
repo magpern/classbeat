@@ -2,12 +2,14 @@
 
 ``perform(run, request, call)`` runs the four steps through the job's ``JobRun``:
 
-1. **Decide** (one fenced transaction, serialized on the operation row): ``SELECT ... FOR
-   UPDATE`` on ``(owner_id, kind, key)``. No row: ``INSERT ... ON CONFLICT DO NOTHING
-   RETURNING id`` as ``pending`` (no row back means another job got there first: re-load and
-   decide again). ``succeeded`` with the same hash: reuse it, no call. Another hash:
-   ``internal``. ``pending`` held by another job still ``running`` under that row's
-   ``lease_version``: ``operation_busy`` (the runner requeues without an attempt). Any other
+1. **Decide** (one fenced transaction, serialized on the operation row): the kind's connection
+   ``guard`` first (the attach share-locks the MOWL connection it opened; gone or changed:
+   ``not_connected``, no row), then ``SELECT ... FOR UPDATE`` on ``(owner_id, kind, key)``.
+   No row: ``INSERT ... ON CONFLICT DO NOTHING RETURNING id`` as ``pending`` (no row back
+   means another job got there first: re-load and decide again). ``succeeded`` with the same
+   hash: reuse it, no call. Another hash: ``internal``. ``pending`` held by another job still
+   ``running`` under that row's ``lease_version``: ``operation_busy`` (the runner requeues
+   without an attempt). Any other
    ``pending`` (its holder died or lost its lease mid-call): marked ``uncertain`` with a
    conditional ``UPDATE ... WHERE state = 'pending' AND job_id = :old AND lease_version =
    :old``, then step 4. ``uncertain``: step 4. ``failed``: taken over with ``UPDATE ... WHERE
@@ -40,6 +42,7 @@ from typing import Any, Final
 from uuid import UUID
 
 from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from classbeat.connections import ConnectionFailure
 from classbeat.crypto.keks import KeyRing
@@ -109,15 +112,23 @@ RESOLVE = text(
 )
 
 
+# Runs first in step 1's transaction (before the operation row is locked): False ends the job
+# ``not_connected`` before any row is written. The attach share-locks the MOWL connection it
+# opened (``classbeat.connections.hold``), so a disconnect or reconnect in between cannot let a
+# call go out with the old account's credentials.
+Guard = Callable[[AsyncSession], Awaitable[bool]]
+
+
 @dataclass(frozen=True, slots=True)
 class OperationRequest:
-    """One write: its kind, its deterministic key and request hash (built by the kind's module)
-    and the call's timeout (the lease is extended past it)."""
+    """One write: its kind, its deterministic key and request hash (built by the kind's module),
+    the call's timeout (the lease is extended past it) and the connection ``guard``."""
 
     kind: str
     idempotency_key: str
     request_hash: bytes
     timeout_seconds: float
+    guard: Guard | None = field(default=None, compare=False)
 
     def __post_init__(self) -> None:
         if not 1 <= len(self.idempotency_key) <= 120:  # the table's check
@@ -199,6 +210,8 @@ async def _decide(
 ) -> Done | _Call | _Uncertain:
     lease = run.lease
     async with run.fenced() as fs:
+        if request.guard is not None and not await request.guard(fs.db):
+            raise JobFailure("not_connected")
         keyed = {"owner_id": lease.owner_id, "kind": request.kind, "key": request.idempotency_key}
         for _ in range(DECIDE_ROUNDS):
             row = (await fs.db.execute(_LOCK, keyed)).first()

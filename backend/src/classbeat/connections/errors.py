@@ -191,7 +191,11 @@ def _outbound_blocked(exc: BaseException) -> OutboundBlocked | None:
 
 
 async def run_library_call[T](
-    call: Callable[[], T], *, library_error: type[BaseException] = MowlError, sign_in: bool
+    call: Callable[[], T],
+    *,
+    library_error: type[BaseException] = MowlError,
+    sign_in: bool,
+    single_request: bool = False,
 ) -> T:
     """Run a synchronous library call in a worker thread (``asyncio.to_thread``).
 
@@ -200,6 +204,11 @@ async def run_library_call[T](
     a request the worker's outbound allowlist refused (ADR 0006 §9): that is raised again as a
     fresh ``OutboundBlocked`` (host only, no chain), so the job fails ``outbound_blocked`` and the
     connection's ``last_error`` is not touched (the refusal is not the connection's fault).
+
+    ``single_request``: the call is exactly one HTTP request (``mowl.api.attach_spotify``), so a
+    refusal or a request that never left proves it had no effect (``not_applied``). A call made
+    of several requests (``workout.save``) may have written with an earlier one, so its failures
+    are never ``not_applied``.
     """
     outcome: Outcome | None = None
     blocked_host: str | None = None
@@ -212,7 +221,7 @@ async def run_library_call[T](
             blocked_host = found.host
         else:
             outcome = classify(exc, library_error=library_error, sign_in=sign_in)
-            refused = not_applied(exc, library_error=library_error)
+            refused = single_request and not_applied(exc, library_error=library_error)
     # Outside the except block: no __context__. ``exc`` is already unbound here.
     if blocked_host is not None:
         raise OutboundBlocked(blocked_host)

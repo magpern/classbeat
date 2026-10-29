@@ -19,6 +19,7 @@ the stored link if there is one, else the attach.
 """
 
 import re
+from dataclasses import replace
 from typing import Any, Final
 from uuid import UUID
 
@@ -26,7 +27,7 @@ from mowl import api as mowl_api
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from classbeat.connections import call_opened, open_connection
+from classbeat.connections import OpenConnection, call_opened, hold, open_connection
 from classbeat.crypto.keks import KeyRing
 from classbeat.jobs import JobFailure, JobRun
 from classbeat.operations.kinds import (
@@ -132,6 +133,13 @@ async def linked_playlist(run: JobRun, source_id: str) -> int | None:
         ).scalar_one_or_none()
 
 
+def _still(run: JobRun, opened: OpenConnection) -> Any:
+    async def guard(db: AsyncSession) -> bool:
+        return await hold(db, run.ctx, opened)
+
+    return guard
+
+
 async def attach_spotify_playlist(
     run: JobRun, keyring: KeyRing, source_id: str, *, connection_id: UUID
 ) -> int:
@@ -158,8 +166,10 @@ async def attach_spotify_playlist(
             run.ctx,
             opened,
             lambda creds: mowl_api.attach_spotify(creds, source_id),
+            single_request=True,  # one PUT: a refusal proves it had no effect
         )
         return CallResult(str(_answered_playlist_id(answer)))
 
-    done = await perform(run, attach_request(source_id), call, keyring=keyring)
+    request = replace(attach_request(source_id), guard=_still(run, opened))
+    done = await perform(run, request, call, keyring=keyring)
     return playlist_id_of(done.external_id)

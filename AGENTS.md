@@ -265,7 +265,8 @@ and maintenance, so at most 50), `CLASSBEAT_WORKER_POLL_SECONDS` (2; the claim p
 requeues per phase without an attempt). Worker and agent code write job data only through
 `classbeat.jobs.fenced_session`; only `classbeat.jobs.fence`, `classbeat.jobs.credits`,
 `classbeat.operations.user` (the user's Check again / Do it anyway), `classbeat.keys_cli` and the
-`classbeat.connections`, `classbeat.auth` and `classbeat.db` packages may open a `user_session` (`tests/test_session_guard.py`); job kinds live outside `classbeat.jobs`.
+`classbeat.connections`, `classbeat.auth` and `classbeat.db` packages may open a `user_session`
+(`tests/test_session_guard.py`); job kinds live outside `classbeat.jobs`.
 OAuth sign-in (ADR 0003 section 5): `CLASSBEAT_OAUTH_<PROVIDER>_CLIENT_ID` and the
 `oauth_<provider>_client_secret` secret file switch on `google`, `github` or `microsoft`; a provider
 with only one of them is off. Microsoft setup: add the `auth_time` optional claim (ID token) to

@@ -150,7 +150,7 @@ async def test_a_stale_pending_row_from_a_crashed_holder_becomes_uncertain(
     assert (row.state, row.error_category, row.lease_version) == ("failed", "uncertain_write", 3)
     [op] = xenv.operations(owner)
     assert (op.state, op.lease_version) == ("uncertain", 1)
-    await asyncio.sleep(0.2)  # the dead worker's thread has finished
+    assert await asyncio.to_thread(fake_attach.finished.wait, 10)  # the dead worker's call
     assert len(fake_attach.attaches) == 1  # never re-sent
 
 
