@@ -38,6 +38,12 @@ def no_retry_sleep(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 @pytest.fixture(autouse=True)
+def not_in_ci(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The command refuses when CI is set; the tests that exercise the rest start without it."""
+    monkeypatch.delenv("CI", raising=False)
+
+
+@pytest.fixture(autouse=True)
 def no_network(monkeypatch: pytest.MonkeyPatch) -> None:
     """Nothing in this file may open a socket: a provider is only ever the in-process fake."""
 
