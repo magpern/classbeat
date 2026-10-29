@@ -162,7 +162,7 @@ dialogs say so.
 lease_version)` names a holder only while the row is `pending`. A job that marks a stale `pending`
 row `uncertain`, or meets an `uncertain` row, sets its `job_id` to itself in the same fenced
 transaction, so the job that fails `uncertain_write` lists the decision; `lease_version` keeps the
-token of the call. For `uncertain` rows, and rows resolved after a take-over, `job_id` therefore no
+token of the call. For `uncertain` rows, and rows resolved after another job adopted them, `job_id` therefore no
 longer names the job that made the call.
 
 **The tools in `design`:**

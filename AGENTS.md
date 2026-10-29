@@ -63,8 +63,10 @@ the end of a milestone. It escalates only genuine blockers (see "Escalation" bel
      CI is green. The Architect records `Agent review (merge check): PASS <head SHA> (carries
      <reviewed SHA>)`. If `main` changed a module the PR changes or calls, or a conflict was
      resolved by hand, a fresh reviewer checks the merge (scoped review).
-   - *Fix round after a `FAIL`:* a fresh **delta review** of the diff since the last reviewed
-     head, verifying each earlier finding and whatever the delta touches.
+   - *Fix round after a `FAIL`:* a **delta review** of the diff since the last reviewed head,
+     verifying each earlier finding and whatever the delta touches. The same Reviewer is resumed
+     for it on non-security PRs and for test-only fixes on security-critical PRs; a fresh Opus
+     Reviewer when a security fix changes behaviour, or after a second `FAIL` (owner, 2026-10-29).
    Reviewers rely on CI for the full suite and run targeted tests and mutation checks of the
    guarantees that changed. Non-blocking findings are batched into few hardening PRs.
 4. Not a `PASS`: the implementing session's own check, a review skill run in the same context,

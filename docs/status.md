@@ -11,8 +11,8 @@ GitHub hold the detail.
 | F | Provider-permission questions (ADR 0010) | closed, not pursued (owner's risk acceptance, 2026-10-28) |
 | M1 | Accounts | done (milestone closed 2026-10-28) |
 | M2 | `mowl-workouts` v0.4.0, isolation, encryption, connect MOWL | done, except the token-lifetime check (waits for the owner) |
-| M3a | Jobs, Anthropic loop, design on existing music | next |
-| M3b | Class page, revisions, save to MOWL, usage and cost | not started |
+| M3a | Jobs, Anthropic loop, design on existing music | done technically on fakes (2026-10-29); live smoke waits for the owner |
+| M3b | Class page, revisions, save to MOWL, usage and cost | next |
 | M4 | Song picking (beta), Spotify BYOK | not started |
 | M3c | Eval suite, OpenAI and DeepSeek adapters | not started |
 | M5 | Tiers, quotas, codes, admin | not started |
@@ -68,14 +68,31 @@ GitHub hold the detail.
   - #79: app-layer owner filter and isolation test follow-ups from #78.
   - #73: guard 8 f-string marker edge cases.
   - #71: design of the purge of Spotify-derived data (roadmap Amendment 1, §6); due before M3b/M4.
-- **Next: M3a** (jobs, Anthropic loop, design on existing music).
+- **M3a done technically** (2026-10-29, on fakes). Its "done when": crash, lease and
+  stale-worker tests green (J2 #103); E2E with fakes, a draft from a MOWL playlist, plus cancel
+  and an uncertain attach (T1 #129). What merged: ADR 0005/0006 (#82); E1 egress allowlist
+  (#96); mowl-workouts 0.5.0 wheel (#106, closes #105 with A1/D1/S1); J1 queue (#99) and its
+  hardening (#104); J2 jobs core (#103); J3 jobs API (#111); J4 events and SSE (#112); X1
+  external operations (#113) and the uncertain row following its job (#126); A1 agent core
+  (#110); A2 AnthropicProvider (#118, `anthropic==0.125.0`); D1 `design_draft` (#119); U1 web
+  pages (#123); S1 smoke set and the owner-run live command (#124); review gate scaled by risk
+  (#128, roadmap Amendment 2). Not done: the live smoke run (needs the owner's key and go-ahead).
+- **M3a follow-ups** (open, non-blocking, to be batched into few hardening PRs): #107 and #98
+  (flaky auth tests), #108 (queue check residual paths), #109 (J2), #114 (A1, gitleaks scope),
+  #115 (J3), #116 (J4), #117 (X1), #120 (anthropic SDK 0.x and httpx2), #121 (A2,
+  `SSLKEYLOGFILE`), #122 (D1), #127 (U1). #121 and #120 before live activation.
+- **Next: M3b** (class page, revisions, save and update to MOWL, usage and cost) and the
+  batched hardening PRs.
 - Releases: v0.1.0 (cut partway through M0); v0.2.0 is not cut yet (deferred to save Actions quota). Image
   `ghcr.io/magpern/classbeat`, private.
 
 ## Waiting for the owner
 
-- Nothing to decide now. (2026-10-28: the providers are not contacted; the beta runs on the
-  owner's risk acceptance, [ADR 0010](adr/0010-live-activation-permissions.md).)
+- An Anthropic API key (the owner adds it as the worker's `anthropic_api_key` Docker secret,
+  never in chat) and a go-ahead for the S1 live smoke run (`python -m classbeat.evals smoke
+  --live --max-usd N`; ceiling about $29.70 for 15 cases on `claude-opus-5-5`, prices still to
+  verify). (2026-10-28: the providers are not contacted; the beta runs on the owner's risk
+  acceptance, [ADR 0010](adr/0010-live-activation-permissions.md).)
 - **MOWL connect (#66) has merged, so the owner can now authorize: a check of the MOWL token's lifetime**
   against the owner's own account (M2 "done when"; [ADR 0004](adr/0004-connections-and-encryption.md) §6).
   What is known (#66): the token is a 36-character GUID, not a JWT, so it carries no expiry
