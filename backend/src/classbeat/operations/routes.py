@@ -8,7 +8,9 @@ an uncertain one (ADR 0005 section 7).
 
 Signed in; the ``POST``s are CSRF-checked by the middleware. Recent authentication is not
 needed (the user's own write, like approving a list). A refusal is 409 with a reason:
-``final`` (a ``succeeded`` row) or ``not_uncertain``. No provider id, key or result is shown.
+``final`` (a ``succeeded`` row), ``not_uncertain`` or ``call_may_be_running`` (a stale
+multi-request call may still be sending requests until ``actionable_at``, ADR 0007 section 8).
+No provider id, key, context or result is shown.
 """
 
 from datetime import datetime
@@ -36,6 +38,10 @@ class OperationOut(BaseModel):
     created_at: datetime
     updated_at: datetime
     resolved_at: datetime | None
+    class_id: UUID | None
+    pending_at: datetime | None
+    call_ended_at: datetime | None
+    actionable_at: datetime | None
 
     @classmethod
     def of(cls, view: OperationView) -> "OperationOut":
@@ -48,6 +54,10 @@ class OperationOut(BaseModel):
             created_at=view.created_at,
             updated_at=view.updated_at,
             resolved_at=view.resolved_at,
+            class_id=view.class_id,
+            pending_at=view.pending_at,
+            call_ended_at=view.call_ended_at,
+            actionable_at=view.actionable_at,
         )
 
 

@@ -2,20 +2,26 @@
 
 A kind names its ``Reconciler`` (the read-only check of step 4: did an uncertain write take
 effect?) and, optionally, what must be written in the same transaction as a ``succeeded`` row
-(``on_succeeded``, for the attach its ``mowl_playlist_links`` row). The key and the request hash
-are built by the kind's own module (``classbeat.operations.attach``) and never name the job,
-class or connection that asks for the write, so every job of the user on the same target finds
-the same row.
+(``on_succeeded``, for the attach its ``mowl_playlist_links`` row). Both get the ``Operation``,
+with the ``context`` the kind stored at the ``pending`` insert (ADR 0007 section 8: the baseline,
+hashes and ids a reconciler needs) and its call timestamps. The key and the request hash are built
+by the kind's own module (``classbeat.operations.attach``) and never name the connection that asks
+for the write; the attach's never name the job or class either, so every job of the user on the
+same target finds the same row.
 
-M3a registers one kind, ``mowl_attach_spotify_playlist``; M3b adds the MOWL saves, M4 the
-Spotify writes. The names are the ``external_operations.kind`` check of migration 0004.
+M3a registers ``mowl_attach_spotify_playlist``; M3b adds the MOWL saves (``mowl_save_workout``,
+``mowl_update_workout``), M4 the Spotify writes. The names are the ``external_operations.kind``
+check of migrations 0004 and 0005.
 """
 
 import hashlib
 import json
+import math
 from collections.abc import Awaitable, Callable, Iterator, Mapping
 from dataclasses import dataclass, field
-from typing import Any, Final, Literal
+from datetime import datetime
+from decimal import Decimal
+from typing import Any, Final, Literal, cast
 from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -25,10 +31,20 @@ from classbeat.crypto.keks import KeyRing
 
 Factory = async_sessionmaker[AsyncSession]
 
-# The external_operations.kind check of migration 0004.
-KIND_NAMES: Final = frozenset({"mowl_attach_spotify_playlist"})
+ATTACH_KIND: Final = "mowl_attach_spotify_playlist"
+# The multi-request MOWL writes of a class (ADR 0007 sections 6 and 7): their rows carry the class.
+CLASS_WRITE_KINDS: Final = frozenset({"mowl_save_workout", "mowl_update_workout"})
+# The external_operations.kind check of migrations 0004 and 0005.
+KIND_NAMES: Final = frozenset({ATTACH_KIND, *CLASS_WRITE_KINDS})
 STATES: Final = ("pending", "succeeded", "failed", "uncertain")
 MAX_EXTERNAL_ID = 200  # the external_operations.external_id check
+MAX_CONTEXT_BYTES: Final = 2048  # the external_operations.request_context check
+# ADR 0007 section 8: a stale call of a multi-request write may still be sending requests for up
+# to its bound; the user's actions and the automatic reconciliation wait this long past it.
+CALL_MAY_RUN_MARGIN_SECONDS: Final = 30
+# The bound taken for a class write whose stored context has none (``requests.ACTIONABLE_AT_SQL``).
+FALLBACK_BOUND_SECONDS: Final = 3600
+BOUND_KEY: Final = "bound_seconds"  # where the protocol stores the bound in the context
 
 
 @dataclass(frozen=True, slots=True)
@@ -43,6 +59,27 @@ class Operation:
     external_id: str | None
     job_id: UUID | None
     result: Mapping[str, Any] = field(default_factory=dict[str, Any])
+    class_id: UUID | None = None
+    # What the kind stored with this attempt's ``pending`` row (non-secret, at most 2048 bytes).
+    context: Mapping[str, Any] = field(default_factory=dict[str, Any])
+    pending_at: datetime | None = None
+    call_ended_at: datetime | None = None
+
+    @property
+    def call_returned(self) -> bool:
+        """The current attempt's call came back (ADR 0007 section 1): ``call_ended_at >=
+        pending_at``. A take-over of a ``failed`` row clears ``call_ended_at``, so a timestamp
+        of an earlier attempt never counts (the save's listing-lag rule relies on it)."""
+        return (
+            self.pending_at is not None
+            and self.call_ended_at is not None
+            and self.call_ended_at >= self.pending_at
+        )
+
+    @property
+    def bound_seconds(self) -> float | None:
+        """The call's total bound for a multi-request write, as stored in the context."""
+        return bound_of(self.context)
 
 
 @dataclass(frozen=True, slots=True)
@@ -77,8 +114,9 @@ class ReconcileInput:
 
 
 Reconciler = Callable[[ReconcileInput], Awaitable[Reconciliation]]
-# (the owner's open transaction, the owner, the operation's key, its external id)
-OnSucceeded = Callable[[AsyncSession, UUID, str, str], Awaitable[None]]
+# (the owner's open transaction, the owner, the ``succeeded`` operation with its external id
+# and context)
+OnSucceeded = Callable[[AsyncSession, UUID, Operation], Awaitable[None]]
 
 
 @dataclass(frozen=True, slots=True)
@@ -122,6 +160,49 @@ class OperationKinds:
 
 
 OPERATION_KINDS = OperationKinds()
+
+
+def bound_of(context: Mapping[str, Any]) -> float | None:
+    value = context.get(BOUND_KEY)
+    if isinstance(value, bool) or not isinstance(value, int | float) or value <= 0:
+        return None
+    return float(value)
+
+
+def context_size(context: Mapping[str, Any]) -> int:
+    """The size the table's check measures (``octet_length(request_context::text)``), counted the
+    way jsonb prints a value: ``", "`` and ``": "`` between items and numbers in full (``1e16``
+    is ``10000000000000000``). Raises ``ValueError`` on what Postgres refuses (a NUL character
+    in a string or key, a non-finite number, text that is not UTF-8) and ``TypeError`` on a
+    value JSON can't hold."""
+    return len(_jsonb_text(dict(context)).encode("utf-8"))
+
+
+def _jsonb_text(value: Any) -> str:
+    if value is None:
+        return "null"
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if isinstance(value, int):
+        return str(value)
+    if isinstance(value, float):
+        if not math.isfinite(value):
+            raise ValueError("jsonb holds no NaN or infinity")
+        return format(Decimal(repr(value)), "f")  # numeric prints no exponent
+    if isinstance(value, str):
+        if "\x00" in value:
+            raise ValueError("jsonb holds no NUL character")
+        return json.dumps(value, ensure_ascii=False)
+    if isinstance(value, Mapping):
+        items: list[str] = []
+        for key, item in cast(Mapping[Any, Any], value).items():
+            if not isinstance(key, str):
+                raise TypeError("a JSON key is a string")
+            items.append(f"{_jsonb_text(key)}: {_jsonb_text(item)}")
+        return "{" + ", ".join(items) + "}"
+    if isinstance(value, list | tuple):
+        return "[" + ", ".join(_jsonb_text(item) for item in cast(list[Any], value)) + "]"
+    raise TypeError("not a JSON value")
 
 
 def canonical(value: Mapping[str, str]) -> bytes:

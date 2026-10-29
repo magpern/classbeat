@@ -40,6 +40,7 @@ def test_the_allowlist_is_exactly_the_reviewed_one() -> None:
         "classbeat.jobs.service",
         "classbeat.jobs.progress",
         "classbeat.operations.user",
+        "classbeat.operations.orphans",
         "classbeat.keys_cli",
     )
 

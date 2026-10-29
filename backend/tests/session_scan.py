@@ -19,6 +19,9 @@ by the packages that own data and their own transactions:
 - ``classbeat.operations.user`` (the user's **Check again** and **Do it anyway** on their own
   external operations, ADR 0005 section 7: user actions in the web process, never worker writes;
   the rest of ``classbeat.operations`` writes through the fence);
+- ``classbeat.operations.orphans`` (ADR 0007 section 8: marks the user's orphaned ``pending``
+  class writes ``uncertain`` before a view or action in the web process; on the worker path it
+  is handed the job's fenced session and opens none);
 - ``classbeat.classes`` (ADR 0007 section 1, C2: the user's own reads of their classes, the
   current-revision pick and the class delete in a web request, never the worker);
 - ``classbeat.keys_cli`` (the operator's ``keys wipe``, which predates this guard: it runs as the
@@ -47,6 +50,7 @@ ALLOWED_MODULES = (
     "classbeat.jobs.service",  # the jobs API: the user's own writes in a web request (J3)
     "classbeat.jobs.progress",
     "classbeat.operations.user",
+    "classbeat.operations.orphans",  # ADR 0007 section 8 (X2)
     "classbeat.keys_cli",
 )
 NAMES = frozenset({"user_session", "_owned_session"})

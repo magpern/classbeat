@@ -4,8 +4,6 @@ test runs as ``classbeat_app`` through the web app. Fakes only."""
 
 import hashlib
 import json
-import sys
-import types
 import uuid
 from datetime import UTC, datetime, timedelta
 from typing import Any
@@ -518,19 +516,61 @@ async def test_delete_is_refused_while_a_call_may_be_running(
     assert mine.count("external_operations") == 1
 
 
-async def test_a_pending_row_refuses_even_long_after_its_bound(two: tuple[Plant, Plant]) -> None:
+@pytest.mark.parametrize("job_state", ["queued", "running"])
+async def test_a_pending_row_refuses_even_long_after_its_bound(
+    two: tuple[Plant, Plant], job_state: str
+) -> None:
+    """A row of an open job is its holder's (``resolve`` leaves it ``pending``), and a ``pending``
+    row refuses the delete whatever its age. The job is of another class, so ``class_busy``
+    does not answer first: this is the delete's own check of ``pending``."""
     mine, _ = two
-    operation(
+    lease: dict[str, Any] = {
+        "attempt": 1,
+        "leased_by": "other-worker",
+        "lease_expires_at": datetime.now(UTC) + timedelta(minutes=5),
+    }
+    holder = new_job(
+        mine.admin, mine.owner, state=job_state, **(lease if job_state == "running" else {})
+    )
+    row = operation(
+        mine.admin,
+        mine.owner,
+        mine.class_id,
+        "pending",
+        job_id=holder,
+        pending_at=datetime.now(UTC) - timedelta(days=2),
+    )
+    path = f"/api/classes/{mine.class_id}"
+    assert reason(await delete(mine.browser, path)) == (409, "call_may_be_running")
+    assert reason(await delete(mine.browser, path + "?confirm_uncertain=true")) == (
+        409,
+        "call_may_be_running",
+    )
+    state = mine.sql("SELECT state FROM external_operations WHERE id = :i", i=row).scalar_one()
+    assert state == "pending"
+
+
+async def test_a_pending_row_without_a_job_past_its_bound_needs_confirmation(
+    two: tuple[Plant, Plant],
+) -> None:
+    """No job (it was deleted, migration 0004 sets ``job_id`` NULL): the row is an orphan,
+    ``resolve`` marks it ``uncertain`` (ADR 0007 section 8), and past its bound the delete needs
+    the user's confirmation."""
+    mine, _ = two
+    row = operation(
         mine.admin,
         mine.owner,
         mine.class_id,
         "pending",
         pending_at=datetime.now(UTC) - timedelta(days=2),
     )
-    assert reason(await delete(mine.browser, f"/api/classes/{mine.class_id}")) == (
-        409,
-        "call_may_be_running",
-    )
+    path = f"/api/classes/{mine.class_id}"
+    assert reason(await delete(mine.browser, path)) == (409, "uncertain_write")
+    state = mine.sql("SELECT state FROM external_operations WHERE id = :i", i=row).scalar_one()
+    assert state == "uncertain"
+    done = await delete(mine.browser, path + "?confirm_uncertain=true")
+    assert done.status_code == 200, done.text
+    assert mine.count("class_revisions") == 0
 
 
 async def test_an_uncertain_write_past_its_bound_needs_confirmation(
@@ -601,48 +641,55 @@ async def test_succeeded_and_failed_writes_do_not_block_a_delete(two: tuple[Plan
 async def test_orphans_are_resolved_before_the_checks(
     two: tuple[Plant, Plant], monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """The hook for #143's ``orphans.resolve`` runs first (class view and delete), under the
+    """``classbeat.operations.orphans.resolve`` runs first (class view and delete), under the
     user's session, and what it marks stays marked when the delete is refused."""
-    mine, _ = two
-    finished_job(mine.admin, mine.owner, mine.class_id)
+    mine, theirs = two
+    done = finished_job(mine.admin, mine.owner, mine.class_id)
     orphan = operation(
         mine.admin,
         mine.owner,
         mine.class_id,
         "pending",
+        job_id=done,
+        pending_at=datetime.now(UTC) - timedelta(hours=2),
+    )
+    other = operation(
+        theirs.admin,
+        theirs.owner,
+        theirs.class_id,
+        "pending",
         pending_at=datetime.now(UTC) - timedelta(hours=2),
     )
     calls: list[UUID] = []
+    real = seams.resolve_orphans
 
-    async def resolve(db: Any, ctx: Any) -> None:
+    async def resolve(db: Any, ctx: Any) -> int:
         calls.append(ctx.user_id)
-        await db.execute(
-            text(
-                "UPDATE external_operations SET state = 'uncertain' WHERE state = 'pending' "
-                "AND owner_id = :o"
-            ),
-            {"o": ctx.user_id},
-        )
+        return await real(db, ctx)
 
-    fake = types.ModuleType(seams.ORPHANS_MODULE)
-    fake.resolve = resolve  # type: ignore[attr-defined]
-    monkeypatch.setitem(sys.modules, seams.ORPHANS_MODULE, fake)
+    monkeypatch.setattr(seams, "resolve_orphans", resolve)
+
+    def state(row: UUID) -> str:
+        found = mine.sql("SELECT state FROM external_operations WHERE id = :i", i=row)
+        return found.scalar_one()
 
     assert (await mine.browser.get(f"/api/classes/{mine.class_id}")).status_code == 200
     assert calls == [mine.owner]  # the class view
+    assert state(orphan) == "uncertain"
+    assert state(other) == "pending"  # only the caller's rows
+    mine.sql("UPDATE external_operations SET state = 'pending' WHERE id = :i", i=orphan)
     path = f"/api/classes/{mine.class_id}"
     assert reason(await delete(mine.browser, path)) == (409, "uncertain_write")
     assert calls == [mine.owner, mine.owner]
-    state = mine.sql("SELECT state FROM external_operations WHERE id = :i", i=orphan).scalar_one()
-    assert state == "uncertain"  # the refusal did not roll the marking back
+    assert state(orphan) == "uncertain"  # the refusal did not roll the marking back
 
 
-async def test_the_hook_does_nothing_until_the_module_exists(
-    two: tuple[Plant, Plant], monkeypatch: pytest.MonkeyPatch
-) -> None:
-    mine, _ = two
-    monkeypatch.setitem(sys.modules, seams.ORPHANS_MODULE, None)  # the import fails: absent
-    assert (await mine.browser.get(f"/api/classes/{mine.class_id}")).status_code == 200
+def test_the_seams_are_the_operations_modules_own() -> None:
+    """No shim: class delete uses X2's ``resolve`` and its one ``actionable_at`` rule."""
+    from classbeat.operations import orphans, requests
+
+    assert seams.resolve_orphans is orphans.resolve
+    assert seams.NOT_ACTIONABLE_SQL is requests.NOT_ACTIONABLE_SQL
 
 
 async def test_users_without_classes_get_an_empty_list(browsers: Any) -> None:

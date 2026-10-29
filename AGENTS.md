@@ -308,8 +308,10 @@ requeues per phase without an attempt) and `CLASSBEAT_JOBS_PER_USER` (2 queued o
 the jobs API answers 429 above it). Worker and agent code write job data only through
 `classbeat.jobs.fenced_session`; only `classbeat.jobs.fence`, `classbeat.jobs.credits`,
 `classbeat.jobs.service` (the jobs API), `classbeat.jobs.progress` (the SSE stream's reads),
-`classbeat.operations.user` (the user's Check again / Do it anyway), `classbeat.keys_cli` and the
-`classbeat.connections`, `classbeat.auth`, `classbeat.usage` (the usage reads, US1) and `classbeat.db` packages may open a `user_session`
+`classbeat.operations.user` (the user's Check again / Do it anyway), `classbeat.operations.orphans`
+(marking orphaned class writes `uncertain` before a view or action), `classbeat.keys_cli` and the
+`classbeat.connections`, `classbeat.auth`, `classbeat.classes` (the class API), `classbeat.usage`
+(the usage reads, US1) and `classbeat.db` packages may open a `user_session`
 (`tests/test_session_guard.py`); job kinds live outside `classbeat.jobs`.
 Progress (ADR 0005 section 6): `GET /api/jobs/{id}/events` streams a job's events as SSE (`Last-Event-ID`,
 5 open streams per user and web process); each web process keeps one `LISTEN job_events` connection.
