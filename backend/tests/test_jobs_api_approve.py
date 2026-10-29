@@ -123,6 +123,10 @@ async def test_superseded_by_a_newer_list_and_expired(jenv: JobsEnv, browsers: A
     jenv.sql("UPDATE jobs SET expires_at = now() - interval '1 second' WHERE id = :i", i=job_id)
     refused(await alice.approve(job_id, revision, LIST_HASH), "expired")
     await nothing_started(jenv, job_id, kinds)
+    # Once the sweep moved the job to `expired` the reason stays `expired` (#115 item 1).
+    assert jenv.sql("SELECT public.queue_expire(10)").scalar_one() >= 1
+    assert jenv.row(job_id).state == "expired"
+    refused(await alice.approve(job_id, revision, LIST_HASH), "expired")
 
 
 async def test_the_per_user_limit_and_the_credit_seam(
