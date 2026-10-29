@@ -11,6 +11,8 @@ found, the same as an unknown one. Writes:
   ``UNIQUE (owner_id, provider)`` (a parallel connect) rolls back and is retried once from the
   start in a new transaction. Never ``INSERT ... ON CONFLICT DO UPDATE`` (it would keep the old
   ``id`` with a payload encrypted for a new one).
+  A MOWL reconnect also forgets the user's MOWL playlist links and attach operations in the
+  same transaction, as a disconnect does (the token may belong to another MOWL account).
 - **status changes** (``needs_reconnect``, ``last_error``, ``last_used_at``) are conditional on
   the version that was read: ``WHERE id = :id AND wrapped_dek = :read_wrapped_dek``. They never
   touch ``secret``, ``wrapped_dek`` or ``key_id``.
@@ -196,6 +198,11 @@ async def _write(
         "updated_at": func.now(),
     }
     if existing is not None:
+        if provider == "mowl":
+            # A reconnect in place may be another MOWL account, and the row records no account
+            # identity: it forgets the old account's links and attach operations exactly as a
+            # disconnect then connect would (ADR 0006 section 3), after the row lock above.
+            await _forget_mowl_account(db, ctx)
         await db.execute(
             update(connections).where(_C.id == row_id, _C.owner_id == ctx.user_id).values(**values)
         )

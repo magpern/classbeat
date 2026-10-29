@@ -41,11 +41,17 @@ _LOGGED_HOST_MAX = 253  # the longest DNS name
 
 class OutboundBlocked(Exception):
     """A request the allowlist refused. ``args == ("outbound request blocked",)``; ``host`` is
-    the refused host (lower case, printable, at most 253 characters), never the URL."""
+    the refused host (lower case, printable, at most 253 characters), never the URL.
 
-    def __init__(self, host: str) -> None:
+    ``after_request`` is True when the refusal came on a redirect hop: the first request had
+    already been sent, so whatever it asked the provider to do may have happened (an external
+    operation is then ``uncertain``, never ``failed``). False only for a refusal before
+    anything left the process."""
+
+    def __init__(self, host: str, *, after_request: bool = False) -> None:
         super().__init__("outbound request blocked")
         self.host = host
+        self.after_request = after_request
 
 
 def _printable_host(host: str | None) -> str:
@@ -113,21 +119,26 @@ def refuse_in_worker(host: str | None) -> None:
         raise blocked(host)
 
 
-def blocked(host: str | None) -> OutboundBlocked:
+def blocked(host: str | None, *, after_request: bool = False) -> OutboundBlocked:
     """Log the refusal (host only) and return the exception to raise."""
     shown = _printable_host(host)
     logger.warning("outbound request blocked", extra={"host": shown})
-    return OutboundBlocked(shown)
+    return OutboundBlocked(shown, after_request=after_request)
 
 
 # --- urllib --------------------------------------------------------------------------------
 
 
 def _check_urllib_request(allowlist: Allowlist, req: urllib.request.Request) -> None:
-    host = allowlist.check_url(req.full_url)
-    # What http.client will actually connect to (``Request.host``), and never through a proxy.
-    if req.has_proxy() or req.host.lower() not in (host, f"{host}:{HTTPS_PORT}"):
-        raise blocked(req.host)
+    try:
+        host = allowlist.check_url(req.full_url)
+        # What http.client will actually connect to (``Request.host``), never through a proxy.
+        if req.has_proxy() or req.host.lower() not in (host, f"{host}:{HTTPS_PORT}"):
+            raise blocked(req.host)
+    except OutboundBlocked as refused:
+        # urllib's redirect handler gives every hop after the first a ``redirect_dict``.
+        refused.after_request = hasattr(req, "redirect_dict")
+        raise
 
 
 class _AllowlistGuard(urllib.request.BaseHandler):
@@ -163,7 +174,9 @@ class _SameHostRedirectHandler(urllib.request.HTTPRedirectHandler):
         newurl: str,
     ) -> urllib.request.Request | None:
         if not _same_host(req.full_url, newurl):
-            raise blocked(urlsplit(newurl).hostname if "://" in newurl else None)
+            raise blocked(
+                urlsplit(newurl).hostname if "://" in newurl else None, after_request=True
+            )
         return super().redirect_request(req, fp, code, msg, headers, newurl)
 
 
@@ -243,7 +256,7 @@ class AllowlistTransport(httpx.AsyncBaseTransport):
             if target is None or target.raw_host.lower() != url.raw_host.lower():
                 await response.aclose()
                 shown = None if target is None else target.raw_host.decode("ascii", "replace")
-                raise blocked(shown)
+                raise blocked(shown, after_request=True)
         return response
 
     async def aclose(self) -> None:

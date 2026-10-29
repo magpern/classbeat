@@ -82,6 +82,7 @@ def attach_request(source_id: str, guard: Guard | None = None) -> OperationReque
         request_hash=request_hash(KIND, source=SOURCE, source_id=source_id),
         timeout_seconds=ATTACH_TIMEOUT_SECONDS,
         guard=guard,
+        single_request=True,  # one PUT (mowl.api.attach_spotify)
     )
 
 

@@ -212,6 +212,7 @@ async def run_library_call[T](
     """
     outcome: Outcome | None = None
     blocked_host: str | None = None
+    blocked_after_request = False
     refused = False
     try:
         return await asyncio.to_thread(call)
@@ -219,12 +220,13 @@ async def run_library_call[T](
         found = _outbound_blocked(exc)
         if found is not None:
             blocked_host = found.host
+            blocked_after_request = found.after_request
         else:
             outcome = classify(exc, library_error=library_error, sign_in=sign_in)
             refused = single_request and not_applied(exc, library_error=library_error)
     # Outside the except block: no __context__. ``exc`` is already unbound here.
     if blocked_host is not None:
-        raise OutboundBlocked(blocked_host)
+        raise OutboundBlocked(blocked_host, after_request=blocked_after_request)
     assert outcome is not None  # noqa: S101 - set in the except block
     log_outcome(outcome, "sign_in" if sign_in else "use")
     raise ConnectionFailure(outcome.category, outcome.retry_after, not_applied=refused)

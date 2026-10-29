@@ -48,7 +48,8 @@ KIND = "test_kind"
 class FakeMowlAttach(urllib.request.BaseHandler):
     """``mode``: ``ok``; ``timeout_after_accept`` (attaches, then the read times out);
     ``refused`` (connection refused: never left); ``status:<n>`` (an HTTP status, nothing
-    attached); ``garbled`` (attaches, answers without a ``PlaylistID``)."""
+    attached); ``garbled`` (attaches, answers without a ``PlaylistID``); ``redirect:<url>``
+    (attaches, then answers 302 to ``url``)."""
 
     mode: str = "ok"
     attaches: list[tuple[str, str]] = field(default_factory=lambda: list[tuple[str, str]]())
@@ -84,15 +85,21 @@ class FakeMowlAttach(urllib.request.BaseHandler):
         if self.mode == "timeout_after_accept":
             raise TimeoutError("timed out")
         playlist_id = ACCOUNT_BASE.get(token, 9000) + len(self.attaches)
+        if self.mode.startswith("redirect:"):
+            return self._answer(req, 302, {}, location=self.mode.removeprefix("redirect:"))
         if self.mode == "garbled":
             return self._answer(req, 200, {"Data": {"Name": "x"}, "Error": None})
         return self._answer(
             req, 200, {"Data": {"PlaylistID": playlist_id, "PlaylistName": "Ride"}, "Error": None}
         )
 
-    def _answer(self, req: urllib.request.Request, status: int, body: Any) -> Any:
+    def _answer(
+        self, req: urllib.request.Request, status: int, body: Any, location: str | None = None
+    ) -> Any:
         headers = Message()
         headers["Content-Type"] = "application/json"
+        if location is not None:
+            headers["Location"] = location
         response = urllib.response.addinfourl(
             io.BytesIO(json.dumps(body).encode()), headers, req.full_url, status
         )

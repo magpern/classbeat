@@ -129,6 +129,9 @@ class OperationRequest:
     request_hash: bytes
     timeout_seconds: float
     guard: Guard | None = field(default=None, compare=False)
+    # The call is exactly one HTTP request: a refusal of that request before it left the
+    # process proves no effect. For any other call an allowlist refusal is ``uncertain``.
+    single_request: bool = False
 
     def __post_init__(self) -> None:
         if not 1 <= len(self.idempotency_key) <= 120:  # the table's check
@@ -284,15 +287,21 @@ def _checked(answer: object) -> CallResult:
     return answer
 
 
-async def _invoke(call: Callable[[], Awaitable[CallResult]], kind: str) -> _Outcome:
+async def _invoke(
+    call: Callable[[], Awaitable[CallResult]], kind: str, request: OperationRequest
+) -> _Outcome:
     """Step 2. A ``ConnectionFailure`` is ``failed`` only when it proves there was no effect."""
     try:
         answer = _checked(await call())
     except ConnectionFailure as failure:
         state = "failed" if failure.not_applied else "uncertain"
         return _Outcome(state, failure=failure_of(failure))
-    except OutboundBlocked:  # refused before it left the process
-        return _Outcome("failed", failure=JobFailure("outbound_blocked"))
+    except OutboundBlocked as refused:
+        # ``failed`` only when the one request was refused before it left; a refusal on a
+        # redirect hop comes after the provider got the request (ADR 0005 section 7).
+        never_sent = request.single_request and not refused.after_request
+        state = "failed" if never_sent else "uncertain"
+        return _Outcome(state, failure=JobFailure("outbound_blocked"))
     except UncertainAnswer:
         logger.warning("external operation answer unreadable", extra={"kind": kind})
         return _Outcome("uncertain", failure=JobFailure("upstream_unavailable"))
@@ -410,7 +419,7 @@ async def perform(
         if isinstance(decision, Done):
             return decision
         if isinstance(decision, _Call):
-            outcome = await _invoke(call, kind.name)
+            outcome = await _invoke(call, kind.name, request)
             done = await _record(run, kind, decision.operation_id, outcome)
             if done is not None:
                 return done
