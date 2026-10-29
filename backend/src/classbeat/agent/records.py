@@ -8,6 +8,10 @@ or an event (``LeaseLost``, the run stops). One row per stage run: inserted when
 when it ends. A turn that finishes after the lease was lost can't be recorded, so the job's cost
 across attempts may undercount by that one turn per lost lease (accepted in ADR 0006 section 6).
 
+A shutdown hand-back or a lost lease leaves ``outcome`` and ``finished_at`` NULL for good (and
+``lease_lost`` is never written; the fence and ADR 0005 say so). A query for runs in progress
+must therefore look at the job's state, not at ``outcome IS NULL``.
+
 ``Provenance`` is what a revision records about how its content was made; ``provenance(...)``
 builds it from the stage runs and the music map. Besides ``map_version`` it records the map's
 ``crossfade``: ``music.MAP_VERSION`` stayed 12 across ``mowl-workouts`` 0.5.0, so ``map_version``

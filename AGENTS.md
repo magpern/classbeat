@@ -426,7 +426,7 @@ The `checks` job runs these as steps; the image scan is a step of `e2e`:
 
 | Step | What it checks |
 |---|---|
-| Secret scan | gitleaks over the whole history |
+| Secret scan | gitleaks over the PR's own range (base to merge commit); the whole history of `main` on the weekly and manual runs, so one branch's string never fails another PR |
 | bash -n, shellcheck | every `scripts/*.sh` |
 | CI gate and change-filter tests | `scripts/test-ci-gate.sh` |
 | Postgres image pinned alike | compose's `db` and `db-functions` and the `backend` job's service use the same exact `postgres` tag (the queue functions' md5 depends on it) |

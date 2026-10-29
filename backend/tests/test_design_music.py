@@ -7,6 +7,7 @@ interval and wait are shortened for the test. Never the network.
 """
 
 import asyncio
+import threading
 import uuid
 from typing import Any
 
@@ -222,6 +223,20 @@ async def test_the_thread_checkpoint_stops_on_each_flag_and_otherwise_runs_the_f
     assert isinstance(lost, RunStopped)
     assert lost.reason == "lost"
     assert run.checked == 1  # the flags stop it before any fence
+
+
+async def test_the_thread_checkpoint_stops_once_the_task_stopped_waiting() -> None:
+    abandoned = threading.Event()
+    run: Any = _Run()
+    check = design_music._thread_checkpoint(  # pyright: ignore[reportPrivateUsage]
+        run, asyncio.get_running_loop(), 10.0, lambda: 0.0, abandoned
+    )
+    await asyncio.to_thread(check)
+    abandoned.set()
+    with pytest.raises(design_music._Halt) as stop:  # pyright: ignore[reportPrivateUsage]
+        await asyncio.to_thread(check)
+    assert isinstance(stop.value.cause, JobFailure)
+    assert run.checked == 1
 
 
 async def test_a_stop_passes_the_connection_wrapper_as_itself() -> None:

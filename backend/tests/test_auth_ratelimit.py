@@ -3,6 +3,7 @@
 import asyncio
 import dataclasses
 import ipaddress
+import threading
 import time
 from datetime import timedelta
 
@@ -207,16 +208,33 @@ async def test_bucket_keys_hold_no_email_or_ip_in_the_clear(env: Env) -> None:
 
 
 async def test_a_busy_hashing_pool_answers_503_after_the_wait() -> None:
+    """The first hash holds the only worker until the test releases it, so the slot is busy for
+    exactly as long as the test needs (no race between a real Argon2id run and a fixed delay).
+    The pool, the semaphore and the wait are the production ones."""
     hasher = PasswordHasher(workers=1, wait_seconds=0.01)
+    inside = threading.Event()
+    release = threading.Event()
+
+    class Blocking:
+        def hash(self, password: str) -> str:
+            inside.set()
+            assert release.wait(30)
+            return "$argon2id$stub"
+
+    hasher._argon2 = Blocking()  # type: ignore[assignment]  # pyright: ignore[reportPrivateUsage]
     try:
         slow = asyncio.create_task(hasher.hash("a long enough password"))
-        await asyncio.sleep(0.005)
+        assert await asyncio.to_thread(inside.wait, 30)  # the worker is now held
         started = time.monotonic()
         with pytest.raises(PasswordHashBusy):
             await hasher.hash("another long password")
         assert time.monotonic() - started < 1
-        assert (await slow).startswith("$argon2id$")
+        assert not slow.done()
+        release.set()
+        assert await slow == "$argon2id$stub"
+        assert await hasher.hash("a third long password") == "$argon2id$stub"  # the slot came back
     finally:
+        release.set()
         hasher.close()
 
 

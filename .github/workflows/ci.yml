@@ -61,8 +61,22 @@ jobs:
           echo "${SHA256}  gitleaks.tgz" | sha256sum --check
           tar -xzf gitleaks.tgz gitleaks
 
-      - name: Secret scan (whole history)
-        run: '"$RUNNER_TEMP/gitleaks" git --redact --verbose --exit-code 1 .'
+      # `fetch-depth: 0` fetches every branch, and `gitleaks git` scans all refs by default, so a
+      # secret-looking string on one in-flight branch would fail every other PR. A pull request
+      # scans its own range (the base it was opened against to the merge commit); the weekly run,
+      # a manual run and main scan the whole history of the checked-out branch.
+      - name: Secret scan
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT_NAME" = pull_request ]; then
+            range="${BASE_SHA}..HEAD"
+          else
+            range="HEAD"
+          fi
+          "$RUNNER_TEMP/gitleaks" git --redact --verbose --exit-code 1 --log-opts "$range" .
 
       - name: bash -n
         run: for f in scripts/*.sh; do bash -n "$f"; done

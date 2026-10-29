@@ -1,7 +1,9 @@
 """``agent_runs`` and events through the job runner, fenced (ADR 0006 section 6, ADR 0005
 section 3): a stage run inside the test-only kind, against Postgres as ``classbeat_app``."""
 
+import asyncio
 import json
+import logging
 import uuid
 from typing import Any
 
@@ -235,3 +237,63 @@ async def test_provenance_records_the_run_and_the_crossfade(
         type(made).model_validate({**data, "extra": 1})
     with pytest.raises(ValueError, match="at least one"):
         provenance([], ctx.map)
+
+
+async def test_a_run_stopped_after_its_second_turn_keeps_its_counters(
+    jenv: JobsEnv, ctx: DesignContext
+) -> None:
+    """``JobStageHost.record`` is what writes a turn's counters before the run ends: a shutdown
+    hand-back after turn 2 leaves no outcome (``finish`` never ran), but ``turns`` and
+    ``cost_micros`` are those of the two turns."""
+    _, job_id = jenv.job()
+    shutdown = asyncio.Event()
+
+    class Stopping(FakeProvider):
+        def next_turn(self, results: Any) -> Any:
+            turn = super().next_turn(results)
+            if self.cursor == 2:
+                shutdown.set()  # the worker is told to stop during turn 2
+            return turn
+
+    fake = Stopping(provider("good_first_draft").script)
+    registry = design_kind(ctx, fake, [])
+    await run_next(jenv, registry, shutdown=shutdown)
+    assert jenv.row(job_id).state == "queued"  # handed back
+    [run] = runs(jenv, job_id)
+    assert (run.turns, run.tool_calls) == (2, 1)  # turn 2's calls were never dispatched
+    assert (run.input_tokens, run.output_tokens) == (2000, 400)
+    assert run.cost_micros == 2 * (1000 * 4 + 200 * 20)
+    assert (run.outcome, run.finished_at) == (None, None)
+    assert fake.remaining == 1
+
+
+async def test_a_provider_error_text_and_ids_reach_no_row_event_or_log(
+    jenv: JobsEnv, ctx: DesignContext, caplog: pytest.LogCaptureFixture
+) -> None:
+    planted = Planted()
+    _, job_id = jenv.job()
+
+    class Failing(FakeProvider):
+        def next_turn(self, results: Any) -> Any:
+            if self.cursor == 1:
+                raise RuntimeError(
+                    f"{planted.provider_error} user {planted.user_id} "
+                    f"connection {planted.connection_id} token {planted.token}"
+                )
+            return super().next_turn(results)
+
+    caplog.set_level(logging.DEBUG)
+    await run_next(jenv, design_kind(ctx, Failing(provider("good_first_draft").script), []))
+    row = jenv.row(job_id)
+    assert (row.state, row.error_category) == ("failed", "internal")
+    [run] = runs(jenv, job_id)
+    assert run.outcome == "internal"
+    stored = json.dumps([p for _, _, p, _ in jenv.events(job_id)])
+    stored += json.dumps([dict(r._mapping) for r in runs(jenv, job_id)], default=str)
+    stored += json.dumps(dict(jenv.row(job_id)._mapping), default=str)
+    formatter = logging.Formatter()
+    logged = "\n".join(formatter.format(r) for r in caplog.records)  # with any traceback
+    logged += "".join(str(getattr(r, "__dict__", "")) for r in caplog.records)
+    for value in [planted.provider_error, planted.user_id, planted.connection_id, planted.token]:
+        assert value not in stored
+        assert value not in logged

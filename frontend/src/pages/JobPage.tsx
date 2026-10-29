@@ -233,7 +233,15 @@ function useDesignAgain(job: Job) {
         music: input.music,
         mowl_connection_id: input.mowl_connection_id,
       }
-      const created = await createDesignJob(next, designAgainKey(job.id))
+      let created: Job
+      try {
+        created = await createDesignJob(next, designAgainKey(job.id))
+      } catch (error) {
+        // The old connection id is gone for good (MOWL was connected again): drop the remembered
+        // form so the page offers the form, which picks the current connection.
+        if (error instanceof ApiError && error.reason === 'not_connected') forgetInput(job.id)
+        throw error
+      }
       rememberInput(created.id, next)
       forgetInput(job.id)
       navigate(`/jobs/${created.id}`)
@@ -242,10 +250,19 @@ function useDesignAgain(job: Job) {
   return { again, action, remembered: input !== null }
 }
 
+/**
+ * The words for a failed Design again. `not_connected` also happens when MOWL was disconnected
+ * and connected again since: the remembered form names the old connection, which is gone for
+ * good (see `useDesignAgain`, which then drops it).
+ */
 function againError(error: unknown): string {
   if (error instanceof ApiError && error.reason === 'not_connected') {
-    return 'MOWL is not connected. Connect it on your account page first.'
+    return 'MOWL is not connected, or was connected again since this design started. Connect it on your account page if needed, then start a new design.'
   }
+  return againMessage(error)
+}
+
+function againMessage(error: unknown): string {
   if (error instanceof ApiError && error.reason === 'class_busy') {
     return 'This class already has a design running, perhaps from another tab. Wait for it to finish, then try again.'
   }

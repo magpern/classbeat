@@ -10,7 +10,9 @@ names, shown back to them).
 
 A failure answers with its category only, as the connection routes do: ``not_connected``,
 ``needs_reconnect`` and ``decrypt_failed`` 409, ``rate_limited`` 429 with ``Retry-After``,
-``upstream_unavailable`` and ``key_unavailable`` 503, anything else 502.
+``upstream_unavailable`` and ``key_unavailable`` 503, anything else 502. A request the web's
+outbound allowlist refuses (none is installed yet; threat model T19) answers 502
+``outbound_blocked``.
 
 **A GET writes no state** (Architect decision on #119): a 401 or 403 answers ``needs_reconnect``
 without flipping the connection, and no ``last_used_at`` or ``last_error`` is recorded (the
@@ -31,6 +33,7 @@ from classbeat import auth
 from classbeat.agent.schemas import clean_text
 from classbeat.connections import ConnectionFailure, open_connection, run_library_call
 from classbeat.context import UserContext
+from classbeat.egress import OutboundBlocked
 
 router = APIRouter(prefix="/api/music", tags=["music"])
 
@@ -96,6 +99,8 @@ async def mowl_playlists(
         answer = await run_library_call(lambda: mowl_api.spotify_playlists(creds), sign_in=False)
     except ConnectionFailure as error:
         failure = error
+    except OutboundBlocked:  # the host only is known; nothing of it goes back
+        return JSONResponse({"detail": {"reason": "outbound_blocked"}}, status_code=502)
     if failure is not None:
         headers: dict[str, str] = {}
         if failure.category == "rate_limited":

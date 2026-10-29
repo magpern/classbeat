@@ -7,6 +7,9 @@ sites, before the first read (``_held_link``) and in the transaction that stores
   tells the opened credentials (A's) are no longer the connection;
 - a connection flipped to ``needs_reconnect`` with its link still present.
 
+The link re-reads themselves (defence in depth: every path that deletes a link also changes the
+connection row, so ``hold`` fails first) are tested by changing only the link row.
+
 Also: a read that never ends is cut off by the step's budget, and a ``JobFailure`` raised by a
 kind's ``store`` ends the job with that category (rolled back), not ``internal``.
 """
@@ -174,3 +177,76 @@ async def test_a_job_failure_from_a_store_ends_the_job_with_its_category(jenv: J
     assert (row.state, row.error_category) == ("failed", "not_connected")
     assert jenv.counts(job_id)[1] == 0  # no revision
     assert "revision_created" not in jenv.kinds(job_id)
+
+
+def drop_link(denv: DesignEnv, owner: uuid.UUID) -> None:
+    """Only the link goes; the connection row (and so ``hold``) is untouched."""
+    denv.ops.sql("DELETE FROM mowl_playlist_links WHERE owner_id = :o", o=owner)
+
+
+def move_link(denv: DesignEnv, owner: uuid.UUID) -> None:
+    denv.ops.sql(
+        "UPDATE mowl_playlist_links SET playlist_id = playlist_id + 1 WHERE owner_id = :o", o=owner
+    )
+
+
+async def test_a_missing_link_before_the_first_read_is_not_connected_not_internal(
+    denv: DesignEnv, fake_mowl: FakeMowlMusic, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    owner, conn = await owner_with_mowl(denv)
+    real_open = design_music.open_connection
+
+    async def open_then_drop(*args: Any, **kwargs: Any) -> Any:
+        opened = await real_open(*args, **kwargs)
+        drop_link(denv, owner)
+        return opened
+
+    monkeypatch.setattr(design_music, "open_connection", open_then_drop)
+    job_id = denv.job(owner, conn)
+    await denv.run_next()
+    row = denv.ops.row(job_id)
+    assert (row.state, row.error_category) == ("failed", "not_connected")
+    assert fake_mowl.reads == []
+    assert denv.providers[0].sent == []
+
+
+@pytest.mark.parametrize("change", [drop_link, move_link])
+async def test_in_the_store_a_link_that_is_gone_or_moved_stores_nothing(
+    denv: DesignEnv,
+    fake_mowl: FakeMowlMusic,
+    monkeypatch: pytest.MonkeyPatch,
+    change: Callable[[DesignEnv, uuid.UUID], None],
+) -> None:
+    owner, conn = await owner_with_mowl(denv)
+    real_run_stage = design_kind.run_stage
+
+    async def change_then_run(*args: Any, **kwargs: Any) -> Any:
+        change(denv, owner)  # the connection row stays as it was: hold passes
+        return await real_run_stage(*args, **kwargs)
+
+    monkeypatch.setattr(design_kind, "run_stage", change_then_run)
+    job_id = denv.job(owner, conn)
+    await denv.run_next()
+    row = denv.ops.row(job_id)
+    assert (row.state, row.error_category) == ("failed", "not_connected")
+    assert denv.revisions(job_id) == []
+    assert "revision_created" not in denv.kinds(job_id)
+
+
+async def test_a_retryable_job_failure_from_a_store_requeues_the_job_without_a_revision(
+    jenv: JobsEnv,
+) -> None:
+    async def unavailable(fs: FencedSession) -> uuid.UUID | None:
+        await store_draft(fs)  # written, then rolled back
+        raise JobFailure("upstream_unavailable")
+
+    async def run(job_run: JobRun) -> Complete:
+        return Complete(unavailable)
+
+    _, job_id = jenv.job()
+    await run_next(jenv, registry_for(run))
+    row = jenv.row(job_id)
+    assert (row.state, row.attempt) == ("queued", 1)  # the attempt is counted
+    assert jenv.counts(job_id)[1] == 0  # no revision
+    assert "revision_created" not in jenv.kinds(job_id)
+    assert "retry_scheduled" in jenv.kinds(job_id)

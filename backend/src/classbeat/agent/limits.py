@@ -20,7 +20,9 @@ The conversation's size is estimated from what the loop knows without a tokenize
 request's prompt tokens as the provider reported them, plus its output, plus the characters added
 since (tool results, the reminder) at one token per ``CHARS_PER_TOKEN`` characters; the first
 request is estimated from its characters alone. Three characters per token overestimates English
-and JSON, so the estimate errs towards stopping early.
+and JSON, so the estimate errs towards stopping early for them; text in scripts that need more
+tokens per character (Chinese, Japanese, Korean) can be underestimated (negligible: from the
+second request on, the provider's own count replaces the estimate for everything but the new text).
 
 **Undercount after a lost lease.** A turn that finishes after its worker lost the lease cannot be
 recorded (the fence refuses the ``agent_runs`` update), so the job's cost across attempts may

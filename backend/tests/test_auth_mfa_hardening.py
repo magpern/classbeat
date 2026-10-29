@@ -71,8 +71,37 @@ async def test_concurrent_first_enrollments_let_exactly_one_win(
             for a, b in zip(actors, bodies, strict=True)
         )
     )
-    assert sorted(r.status_code for r in results) == [200, 409, 409, 409]
-    assert {reason(r) for r in results if r.status_code == 409} == {"totp_changed"}
+    # A loser is refused either in the route (409 totp_changed: its session was resolved before the
+    # winner committed) or by ``require_recent_auth`` (403 stepup_required: it was resolved after,
+    # and the user then has a confirmed TOTP and the session no step-up). Which one depends on
+    # timing; both write nothing, and the first is tested without a race below.
+    refusals = {(409, "totp_changed"), (403, "stepup_required")}
+    assert [r.status_code for r in results].count(200) == 1
+    assert {(r.status_code, reason(r)) for r in results if r.status_code != 200} <= refusals
+    assert len([r for r in results if r.status_code != 200]) == 3
+    assert await env.scalar("SELECT count(*) FROM mfa_totp") == 1
+    assert await env.scalar("SELECT count(*) FROM mfa_recovery_codes") == 10
+    assert notifier.enrolled == [user_id]
+
+
+async def test_a_first_enrollment_that_lost_to_another_is_refused_totp_changed(
+    env: Env, make_actor: Any, clock: list[float], notifier: FakeNotifier
+) -> None:
+    """The race of the test above without the race: the loser's session passes
+    ``require_recent_auth`` (it has a step-up) and the route finds the TOTP changed."""
+    user_id = await env.user("a@example.com")
+    winner, loser = [await make_actor(user_id) for _ in range(2)]
+    won = await start_and_code(winner, clock)
+    lost = await start_and_code(loser, clock)
+    first = await winner.post(CONFIRM, {"pending": won["pending"], "code": won["code"]})
+    assert first.status_code == 200
+    await env.run(
+        "UPDATE sessions SET stepup_at = now()"
+    )  # every session, so the dependency passes
+    nonce = await env.scalar("SELECT nonce FROM mfa_totp")
+    second = await loser.post(CONFIRM, {"pending": lost["pending"], "code": lost["code"]})
+    assert (second.status_code, reason(second)) == (409, "totp_changed")
+    assert await env.scalar("SELECT nonce FROM mfa_totp") == nonce
     assert await env.scalar("SELECT count(*) FROM mfa_totp") == 1
     assert await env.scalar("SELECT count(*) FROM mfa_recovery_codes") == 10
     assert notifier.enrolled == [user_id]
