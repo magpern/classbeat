@@ -55,3 +55,17 @@ export function strings(source: JsonObject, key: string): string[] {
     return item
   })
 }
+
+export function optionalCount(source: JsonObject, key: string): number | null {
+  const value = source[key]
+  if (value === undefined || value === null) return null
+  if (typeof value !== 'number') throw new DecodeError(key)
+  return value
+}
+
+export function optionalFlag(source: JsonObject, key: string): boolean | null {
+  const value = source[key]
+  if (value === undefined || value === null) return null
+  if (typeof value !== 'boolean') throw new DecodeError(key)
+  return value
+}

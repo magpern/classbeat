@@ -137,19 +137,48 @@ function decodeSegment(value: unknown): DraftSegment {
   }
 }
 
-export async function getDraftSummary(id: string): Promise<DraftSummary> {
-  const body = object(await get(`/api/jobs/${encodeURIComponent(id)}/revision`), 'revision')
-  const content = object(body.content, 'content')
+export interface DraftContent {
+  name: string
+  description: string
+  segments: DraftSegment[]
+}
+
+export function decodeDraftContent(value: unknown): DraftContent {
+  const content = object(value, 'content')
   return {
-    number: count(body, 'number'),
     name: text(content, 'name'),
     description: optionalText(content, 'description') ?? '',
     segments: list(content, 'segments').map(decodeSegment),
-    unknownBpm: list(body, 'unknown_bpm').map((entry) => {
-      const item: JsonObject = isObject(entry) ? entry : {}
-      return { index: count(item, 'index'), title: text(item, 'title') }
-    }),
   }
+}
+
+export function decodeUnknownBpm(source: JsonObject): { index: number; title: string }[] {
+  return list(source, 'unknown_bpm').map((entry) => {
+    const item: JsonObject = isObject(entry) ? entry : {}
+    return { index: count(item, 'index'), title: text(item, 'title') }
+  })
+}
+
+export async function getDraftSummary(id: string): Promise<DraftSummary> {
+  const body = object(await get(`/api/jobs/${encodeURIComponent(id)}/revision`), 'revision')
+  return {
+    number: count(body, 'number'),
+    ...decodeDraftContent(body.content),
+    unknownBpm: decodeUnknownBpm(body),
+  }
+}
+
+/** What `POST /api/jobs` takes for `revise_draft` (ADR 0007 section 3). */
+export interface ReviseInput {
+  class_id: string
+  base_revision_id: string
+  request: string
+  mowl_connection_id: string
+}
+
+export async function createReviseJob(input: ReviseInput, idempotencyKey: string): Promise<Job> {
+  const body = { kind: 'revise_draft', input }
+  return decodeJob(await post('/api/jobs', body, { 'Idempotency-Key': idempotencyKey }))
 }
 
 // The user's Spotify playlists as MOWL lists them (backend/src/classbeat/design/routes.py).

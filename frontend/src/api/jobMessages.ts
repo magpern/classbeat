@@ -81,6 +81,20 @@ const FAILURES: Record<string, FailureText> = {
     title: 'Something went wrong on our side',
     detail: 'Try again later.',
   },
+  // ADR 0007 section 12: not retryable.
+  program_changed: {
+    title: 'This workout was changed in MOWL',
+    detail: 'This workout was changed in MOWL after classbeat saved it.',
+  },
+  program_missing: {
+    title: 'This workout is gone from MOWL',
+    detail: 'This workout is no longer in your MOWL account.',
+  },
+  music_unlinked: {
+    title: 'The music of this version is not in your MOWL account',
+    detail:
+      'The music of this version is not in your connected MOWL account. Change it and save the new version.',
+  },
 }
 
 const FALLBACK: FailureText = {
@@ -96,6 +110,7 @@ export function failureText(category: string | null): FailureText {
 const STAGES: Record<string, string> = {
   music: 'Reading your playlist',
   design: 'Designing the class',
+  revise: 'Changing the class',
 }
 
 export function stageLabel(stage: string | null): string {
@@ -112,4 +127,36 @@ export function retryLabel(category: string | null): string {
   return category !== null && Object.hasOwn(RETRIES, category)
     ? RETRIES[category]!
     : 'Something went wrong. Trying again shortly.'
+}
+
+// Failure sentences for a change requested in the chat (`revise_draft`). The class keeps the
+// version it had; the request stays in the conversation.
+const REVISE_FAILURES: Record<string, string> = {
+  upstream_unavailable: 'MOWL could not be reached. Nothing changed. Try again in a few minutes.',
+  rate_limited: 'MOWL asked classbeat to slow down. Nothing changed. Wait a few minutes and try again.',
+  model_unavailable: 'The designer is busy. Nothing changed. Try again in a few minutes.',
+  lease_lost: 'The change was interrupted too many times. Nothing changed. Try again.',
+  operation_busy: 'Another design of yours was still using the same playlist. Nothing changed. Try again in a moment.',
+  not_connected: 'MOWL is not connected. Connect it on your account page, then ask again.',
+  needs_reconnect: 'MOWL no longer accepts the stored sign-in. Connect it again on your account page, then ask again.',
+  key_unavailable: 'The stored MOWL sign-in could not be read. Connect MOWL again on your account page.',
+  decrypt_failed: 'The stored MOWL sign-in could not be read. Connect MOWL again on your account page.',
+  invalid_input: 'That request could not be used. Nothing changed. Ask in different words.',
+  account_disabled: 'Your account cannot change classes right now. Contact the person who invited you.',
+  model_refused: 'The designer declined this request. Nothing changed. Ask in different words.',
+  model_config: 'classbeat cannot change classes right now. This is a problem on our side. Try again later.',
+  invalid_output: 'The designer did not produce a usable change, or one that changes nothing. Nothing changed. Try again, or ask in different words.',
+  limit_exceeded: 'This request needed more work than one change may use. Nothing changed. Ask for something smaller.',
+  outbound_blocked: 'Something went wrong on our side. Nothing changed. Try again later.',
+  internal: 'Something went wrong on our side. Nothing changed. Try again later.',
+  music_unlinked: 'The music of this version is not in your connected MOWL account. Change it and save the new version.',
+  program_changed: 'This workout was changed in MOWL after classbeat saved it.',
+  program_missing: 'This workout is no longer in your MOWL account.',
+}
+
+/** The sentence for a failed change request; the category code is never shown. */
+export function reviseFailureText(category: string | null): string {
+  return category !== null && Object.hasOwn(REVISE_FAILURES, category)
+    ? REVISE_FAILURES[category]!
+    : 'The change did not finish. Nothing changed. Try again later.'
 }
