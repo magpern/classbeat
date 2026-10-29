@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { ApiError } from '../../api/client'
 import {
   checkAgain,
@@ -59,6 +59,13 @@ export function UncertainAttach({
   const [outcome, setOutcome] = useState<Outcome | null>(null)
   const [confirming, setConfirming] = useState(false)
   const action = useAction()
+  const confirmRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    // The confirm group appears below the buttons: move the focus into it for keyboard and
+    // screen reader users.
+    if (confirming) confirmRef.current?.focus()
+  }, [confirming])
 
   const apply = useCallback(
     (next: Listing) => {
@@ -93,6 +100,21 @@ export function UncertainAttach({
     }
   }, [jobId, apply])
 
+  // After a decision the list is read again, so a decided row is gone; if that read fails the
+  // decided row is dropped from what is shown.
+  const refresh = async (decided: Operation | null) => {
+    try {
+      apply(await readListing(jobId))
+    } catch {
+      if (decided === null) return
+      setListing((now) =>
+        now.status === 'ready'
+          ? { ...now, operations: now.operations.filter((o) => o.id !== decided.id) }
+          : now,
+      )
+    }
+  }
+
   // The user's two actions answer 409 when the row is final or no longer undecided: look again.
   const describe = (error: unknown): string => {
     if (error instanceof ApiError && error.status === 409) {
@@ -109,6 +131,7 @@ export function UncertainAttach({
         setOutcome(next)
         setConfirming(false)
         if (next !== 'still_unsure') onResolved()
+        await refresh(next === 'still_unsure' ? null : operation)
       } catch (error) {
         if (error instanceof ApiError && error.status === 409) {
           setConfirming(false)
@@ -149,20 +172,20 @@ export function UncertainAttach({
           </p>
         </>
       ) : null}
-      {listing.status === 'ready' && first === undefined ? (
-        <div className="notice" data-testid="no-undecided">
+      {listing.status === 'ready' && first === undefined && outcome === null ? (
+        <div className="notice" role="status" data-testid="no-undecided">
           <p>
             classbeat has no step left for you to decide here, so it cannot offer Check again or
             Do it anyway. If you want to be sure the playlist is not added twice, look in your
             MOWL music. To clear classbeat's record of it, disconnect MOWL and connect it again on{' '}
-            <Link to="/account">your account page</Link>.
+            <Link to="/account">your account page</Link>, then start a new design from the form.
           </p>
           <p>{FORGET_WARNING}</p>
         </div>
       ) : null}
       {listing.status === 'ready' && listing.scope === 'account' && first !== undefined ? (
         <p className="muted" data-testid="account-scope">
-          This step comes from an earlier design of yours on the same playlist.
+          This step comes from an earlier design of yours.
         </p>
       ) : null}
       {first !== undefined && !confirming ? (
@@ -190,7 +213,7 @@ export function UncertainAttach({
         </p>
       ) : null}
       {first !== undefined && confirming ? (
-        <div className="notice" role="group" aria-label="Confirm">
+        <div className="notice" role="group" aria-label="Confirm" tabIndex={-1} ref={confirmRef}>
           <p>
             Do it anyway means you decide the playlist was not added. The next design adds it to
             your MOWL music again. If it was added after all, you will have two copies of it there.

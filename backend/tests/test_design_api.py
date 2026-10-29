@@ -12,6 +12,8 @@ import pytest
 
 from classbeat.agent import WorkoutDraft
 from classbeat.design import DESIGN_DRAFT, KIND
+from classbeat.design import routes as design_routes
+from classbeat.egress import OutboundBlocked
 from classbeat.jobs import KINDS
 from designtools import BRIEF, PLAYLIST_NAME, DesignEnv, FakeMowlMusic
 from jobapi import Browser
@@ -164,3 +166,21 @@ async def test_a_token_mowl_refuses_answers_needs_reconnect_and_writes_nothing(
     assert (after.status, after.last_error) == ("connected", None)
     assert fake_mowl.tokens_read == [UNKNOWN_TOKEN]
     assert UNKNOWN_TOKEN not in json.dumps(response.json())
+
+
+async def test_a_blocked_outbound_request_answers_502_with_its_reason_only(
+    browsers: Any, denv: DesignEnv, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    browser: Browser = await browsers(mowl=False)
+    await denv.ops.connect(browser.user_id, TOKEN_A)
+
+    async def blocked(*args: Any, **kwargs: Any) -> Any:
+        raise OutboundBlocked("evil.example")
+
+    monkeypatch.setattr(design_routes, "run_library_call", blocked)
+    response = await browser.get("/api/music/mowl-playlists")
+    assert (response.status_code, response.json()) == (
+        502,
+        {"detail": {"reason": "outbound_blocked"}},
+    )
+    assert "evil.example" not in response.text

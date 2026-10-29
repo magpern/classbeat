@@ -13,11 +13,11 @@ from pydantic import ValidationError
 from agentfake import analysed, brief, good_draft
 from classbeat.agent import DesignContext, design_stage
 from classbeat.agent.design import SYSTEM_PROMPT, check
-from classbeat.agent.dispatcher import MAX_INPUT_BYTES, dispatch
+from classbeat.agent.dispatcher import MAX_INPUT_BYTES, MAX_RESULT_BYTES, dispatch
 from classbeat.agent.model_input import MusicData, music_map
 from classbeat.agent.provider import ToolCall
 from classbeat.agent.schemas import Brief, Game, Interval, WorkoutDraft, clean_text
-from classbeat.agent.stage import Stage, Tool, ToolAnswer
+from classbeat.agent.stage import Stage, Tool, ToolAnswer, ToolError
 
 
 @pytest.fixture
@@ -165,6 +165,41 @@ def test_an_unknown_tool_is_an_error_result_with_no_model_text(stage: Stage) -> 
 def test_an_input_over_32_kb_is_refused_before_parsing(stage: Stage) -> None:
     body, done = call(stage, "preview_draft", {"draft": "x" * MAX_INPUT_BYTES})
     assert (done.error, body["error"]) == ("too_large", "too_large")
+
+
+def test_a_result_over_32_kb_is_result_too_large(stage: Stage) -> None:
+    """About 360 intervals fit the 32 KB input (here 19 KB) but their fitted timeline does not."""
+    draft = good_draft()
+    first, last = draft["segments"][0], draft["segments"][-1]
+    main = [
+        {
+            "name": f"Main {j}",
+            "kind": "main",
+            "intervals": [
+                {"sec": 3, "zone": 3, "rpm": [90, 100], "standing": bool(k % 2)} for k in range(60)
+            ],
+        }
+        for j in range(6)
+    ]
+    draft["segments"] = [first, *main, last]
+    assert len(json.dumps(draft, separators=(",", ":"))) < MAX_INPUT_BYTES
+    body, done = call(stage, "preview_draft", {"draft": draft})
+    assert (done.error, body) == (
+        "result_too_large",
+        {"ok": False, "error": "result_too_large", "messages": []},
+    )
+    assert len(done.result.content) < MAX_RESULT_BYTES
+
+
+def test_an_error_result_over_32_kb_keeps_its_code_and_loses_its_messages() -> None:
+    def refuse(_: Any) -> ToolAnswer:
+        raise ToolError("invalid_draft", ["x" * 5000] * 10)  # 50 KB of messages
+
+    tool = Tool("check", "compute", "", Brief, refuse)
+    small = Stage("s", "system", (tool,), "check")
+    body, done = call(small, "check", brief().model_dump())
+    assert (done.error, done.final) == ("invalid_draft", True)
+    assert body == {"ok": False, "error": "invalid_draft", "messages": []}
 
 
 @pytest.mark.parametrize("args", [[], "draft", 3, None, {"draft": good_draft(), "extra": 1}])

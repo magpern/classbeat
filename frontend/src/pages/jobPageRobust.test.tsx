@@ -53,7 +53,9 @@ describe('an uncertain attach whose list is empty or unreadable', () => {
       [`POST /api/external-operations/${OPERATION_ID}/check-again`]: { ...uncertain, state: 'succeeded' },
     })
     renderAt(`/jobs/${JOB_ID}`)
-    expect(await screen.findByTestId('account-scope')).toBeInTheDocument()
+    const scope = await screen.findByTestId('account-scope')
+    expect(scope).toHaveTextContent('from an earlier design of yours.')
+    expect(scope).not.toHaveTextContent('same playlist')
     fireEvent.click(await screen.findByRole('button', { name: 'Check again' }))
     expect(await screen.findByText(/playlist is in your MOWL music/)).toBeInTheDocument()
     expect(api.to('POST', `/api/external-operations/${OPERATION_ID}/check-again`)).toHaveLength(1)
@@ -69,6 +71,7 @@ describe('an uncertain attach whose list is empty or unreadable', () => {
     })
     renderAt(`/jobs/${JOB_ID}`)
     const note = await screen.findByTestId('no-undecided')
+    expect(note).toHaveAttribute('role', 'status')
     expect(note).toHaveTextContent('disconnect MOWL and connect it again')
     expect(note).toHaveTextContent('a second time')
     expect(note).not.toHaveTextContent('checks the playlist once more')
@@ -92,6 +95,64 @@ describe('an uncertain attach whose list is empty or unreadable', () => {
     expect(screen.queryByRole('button', { name: /Design again|Start a new design/ })).toBeNull()
     fireEvent.click(screen.getByRole('button', { name: 'Try again' }))
     expect(await screen.findByRole('button', { name: 'Check again' })).toBeInTheDocument()
+  })
+})
+
+describe('after a decision', () => {
+  it('reads the list again, so the decided row is gone', async () => {
+    let decided = false
+    let reads = 0
+    fakeApi({
+      ...SESSION_ROUTES,
+      [`GET ${JOB}`]: failed,
+      [OWN]: () => {
+        reads += 1
+        return { operations: decided ? [] : [{ ...uncertain, job_id: JOB_ID }] }
+      },
+      [`POST /api/external-operations/${OPERATION_ID}/check-again`]: () => {
+        decided = true
+        return { ...uncertain, state: 'succeeded' }
+      },
+    })
+    renderAt(`/jobs/${JOB_ID}`)
+    fireEvent.click(await screen.findByRole('button', { name: 'Check again' }))
+    expect(await screen.findByText(/playlist is in your MOWL music/)).toBeInTheDocument()
+    await waitFor(() => {
+      expect(screen.queryByRole('button', { name: 'Check again' })).toBeNull()
+    })
+    expect(reads).toBe(2)
+    expect(screen.queryByTestId('no-undecided')).toBeNull() // the outcome says it already
+    expect(screen.getByRole('button', { name: /Design again|Start a new design/ })).toBeInTheDocument()
+  })
+
+  it('drops the decided row even when the second read fails', async () => {
+    let reads = 0
+    fakeApi({
+      ...SESSION_ROUTES,
+      [`GET ${JOB}`]: failed,
+      [OWN]: () => {
+        reads += 1
+        return reads === 1 ? { operations: [{ ...uncertain, job_id: JOB_ID }] } : json({}, 500)
+      },
+      [`POST /api/external-operations/${OPERATION_ID}/check-again`]: { ...uncertain, state: 'succeeded' },
+    })
+    renderAt(`/jobs/${JOB_ID}`)
+    fireEvent.click(await screen.findByRole('button', { name: 'Check again' }))
+    expect(await screen.findByText(/playlist is in your MOWL music/)).toBeInTheDocument()
+    await waitFor(() => {
+      expect(screen.queryByRole('button', { name: 'Check again' })).toBeNull()
+    })
+  })
+
+  it('moves the focus into the Do it anyway confirmation', async () => {
+    fakeApi({
+      ...SESSION_ROUTES,
+      [`GET ${JOB}`]: failed,
+      [OWN]: { operations: [{ ...uncertain, job_id: JOB_ID }] },
+    })
+    renderAt(`/jobs/${JOB_ID}`)
+    fireEvent.click(await screen.findByRole('button', { name: 'Do it anyway' }))
+    expect(screen.getByRole('group', { name: 'Confirm' })).toHaveFocus()
   })
 })
 
@@ -174,6 +235,27 @@ describe('Design again', () => {
     // The attempt worked: its key and the old input are gone from storage.
     expect(window.sessionStorage.getItem(`classbeat.design-again-key.${JOB_ID}`)).toBeNull()
     expect(window.sessionStorage.getItem(`classbeat.design-input.${JOB_ID}`)).toBeNull()
+  })
+})
+
+describe('Design again after MOWL was connected again', () => {
+  it('drops the remembered form on not_connected and offers the form', async () => {
+    remember()
+    fakeApi({
+      ...SESSION_ROUTES,
+      [`GET ${JOB}`]: jobBody('failed', { error_category: 'model_unavailable' }),
+      'POST /api/jobs': reason(409, 'not_connected'),
+    })
+    renderAt(`/jobs/${JOB_ID}`)
+    fireEvent.click(await screen.findByRole('button', { name: 'Design again' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('connected again since')
+    expect(window.sessionStorage.getItem(`classbeat.design-input.${JOB_ID}`)).toBeNull()
+    expect(window.sessionStorage.getItem(`classbeat.design-again-key.${JOB_ID}`)).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Design again' })).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'Start a new design' }))
+    await waitFor(() => {
+      expect(window.location.pathname).toBe('/classes/new')
+    })
   })
 })
 

@@ -8,7 +8,8 @@
    (location and message only, never the input values);
 4. the handler: its answer, or its ``ToolError`` (for example ``out_of_range`` for a track index
    outside the list, or ``invalid_draft`` when a draft has errors to fix);
-5. a result over 32 KB: ``result_too_large``.
+5. a result over 32 KB: ``result_too_large``; an error result over 32 KB loses its messages and
+   keeps its code.
 
 Results are JSON of a fixed shape: ``{"ok": true, ...payload}`` or ``{"ok": false, "error":
 <code>, "messages": [...]}``. The tool name in a result or an event is the stage's own name, or
@@ -53,7 +54,10 @@ def compact(value: Any) -> str:
 
 def _error(call: ToolCall, tool: str, code: str, messages: Any = (), *, final: bool = False):
     body = {"ok": False, "error": code, "messages": [str(m) for m in messages][:MAX_MESSAGES]}
-    return Dispatched(ToolResult(call.call_id, compact(body), True), tool, code, final)
+    content = compact(body)
+    if len(content.encode()) > MAX_RESULT_BYTES:  # the same cap as a success; the code stays
+        content = compact({**body, "messages": []})
+    return Dispatched(ToolResult(call.call_id, content, True), tool, code, final)
 
 
 def _schema_messages(exc: ValidationError) -> list[str]:

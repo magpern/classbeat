@@ -311,6 +311,12 @@ every hand-back is by the connect and lock timeouts; beyond the grace period the
 what is left (#109). A `DatabaseRoleError` (drifted queue, privileged role) from any connection
 of the worker, a run's included, stops it the same way; it is never a job's failure.
 
+**Orphaned threads.** A blocking library call runs in the event loop's default executor. One that
+is stuck in a trickling read (urllib's per-operation timeout does not bound it) keeps its thread
+after its task stopped waiting (the design music step cuts it off at its budget and the thread
+stops at its next checkpoint); at shutdown `asyncio.run` may wait for such a thread beyond the
+30 s grace period. The reaper covers the job when the lease expires, as for any call left in flight.
+
 ### 4. Retries, cancellation and expiry
 
 Every failure maps to one category (the same words as ADR 0004 §5 where they overlap):

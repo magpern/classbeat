@@ -32,8 +32,9 @@ the thread, which then stops at its next checkpoint. A stop (cancel, lost lease,
 raised inside the thread stops the library at once, with no further read; it travels out of the
 connection wrapper as ``_Halt`` (a ``BaseException``, so the wrapper neither turns it into a
 ``ConnectionFailure`` nor records it as the connection's ``last_error``) and is raised again as
-itself here. A run that was abandoned (its task cancelled after a lost lease or at shutdown) stops
-at the thread's next checkpoint.
+itself here. ``abandoned`` is set when the task stops waiting for the thread, so the thread also
+stops at its next checkpoint when the task was cancelled for a reason the other checks do not see;
+in the other cases (budget, lost lease, shutdown) those checks already stop it. Defence in depth.
 
 **Never stored as shared.** M3a has no shared analysis store (ADR 0005 section 1; #71 adds it): the
 analysis lives in memory for this run only, so every job analyses again. When the store comes, an
@@ -142,7 +143,7 @@ class MusicStep:
                 },
             )
         ).first()
-        if row is None or row.playlist_id != self.data.playlist_id:
+        if row is None or row.playlist_id != self.data.playlist_id:  # defence in depth, as above
             raise JobFailure("not_connected")
 
     def close(self) -> None:
@@ -182,7 +183,8 @@ def _thread_checkpoint(
     abandoned: threading.Event | None = None,
 ) -> Callable[[], None]:
     """The checkpoint the library calls (in its thread) before each read. ``abandoned`` is set
-    when the task stopped waiting for the thread."""
+    when the task stopped waiting for the thread (defence in depth: the deadline, ``lost`` and
+    ``shutdown`` stop it in the usual cases)."""
 
     def check() -> None:
         if abandoned is not None and abandoned.is_set():
@@ -230,7 +232,7 @@ async def _held_link(run: JobRun, opened: OpenConnection, source_id: str) -> tup
                 {"owner_id": run.lease.owner_id, "source": SOURCE, "source_id": source_id},
             )
         ).first()
-        if row is None:
+        if row is None:  # defence in depth: hold passes unless a path changed only the link
             raise JobFailure("not_connected")
         await fs.extend_lease(MUSIC_BUDGET_SECONDS + CALL_LEASE_MARGIN_SECONDS)
         return row.id, int(row.playlist_id)
