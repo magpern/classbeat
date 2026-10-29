@@ -26,6 +26,10 @@ from typing import Final
 
 from classbeat.agent.provider import Usage
 
+# Bump when any price below changes: each agent_runs row keeps the version it was priced with
+# (ADR 0007 section 10), and no stored row is re-priced.
+PRICES_VERSION: Final = "2026-10-29"
+
 ANY_MODEL: Final = "*"
 
 

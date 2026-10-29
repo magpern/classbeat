@@ -51,6 +51,7 @@ async def test_create_queues_a_job_on_a_new_class_with_its_event_and_credit(
         "created_at",
         "updated_at",
         "finished_at",
+        "usage",
     }  # fmt: skip  (no input, key, hash, lease or worker name)
     job_id = UUID(shown["id"])
     row = jenv.row(job_id)

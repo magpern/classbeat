@@ -30,6 +30,7 @@ from sqlalchemy import text
 
 from classbeat import __version__ as classbeat_version
 from classbeat.agent.loop import Counters, RunInfo, StageOutcome
+from classbeat.agent.prices import PRICES_VERSION
 from classbeat.jobs.run import JobRun
 
 _SPENT = text(
@@ -37,9 +38,9 @@ _SPENT = text(
     "WHERE owner_id = :owner_id AND job_id = :job_id"
 )
 _INSERT = text(
-    "INSERT INTO agent_runs (id, owner_id, job_id, stage, attempt, provider, model, effort, "
-    "prompt_version) VALUES (:id, :owner_id, :job_id, :stage, :attempt, :provider, :model, "
-    ":effort, :prompt_version)"
+    "INSERT INTO agent_runs (id, owner_id, job_id, job_kind, price_version, stage, attempt, "
+    "provider, model, effort, prompt_version) VALUES (:id, :owner_id, :job_id, :job_kind, "
+    ":price_version, :stage, :attempt, :provider, :model, :effort, :prompt_version)"
 )
 _SET_COUNTERS = (
     "UPDATE agent_runs SET turns = :turns, tool_calls = :tool_calls, "
@@ -87,6 +88,8 @@ class JobStageHost:
                 {
                     **self._ids(),
                     "id": run_id,
+                    "job_kind": self.run.kind,
+                    "price_version": PRICES_VERSION,
                     "stage": info.stage,
                     "attempt": self.run.attempt,
                     "provider": info.provider,
