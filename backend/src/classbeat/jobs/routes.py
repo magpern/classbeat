@@ -1,0 +1,220 @@
+"""``/api/jobs``: create a job, read it, cancel it, approve its song list (ADR 0005 section 2).
+
+- ``POST /api/jobs`` (signed in; CSRF by the middleware) with an ``Idempotency-Key`` header (16
+  to 64 of ``A-Za-z0-9_-``, made by the browser per user action) and ``{kind, input}``. The input
+  is validated by the kind's model (a ``classbeat.jobs.inputs.JobInput``). 201 with the new job;
+  the same key and body again is 200 with the same job; the same key with another body is 409
+  ``idempotency_mismatch``. Also 409 ``class_busy``, ``not_connected``, ``quota``; 404
+  ``class_not_found``; 429 ``busy`` (the per-user limit); 400 for the header; 422 for the body.
+- ``GET /api/jobs/{id}``: the job's state.
+- ``POST /api/jobs/{id}/cancel``: 200 with the state (idempotent); 409 ``not_cancellable`` for a
+  job that ended otherwise.
+- ``POST /api/jobs/{id}/approve`` with ``{revision_id, content_hash}`` (64 hex characters): 200
+  with the state (a repeated approval too); 409 with ``not_waiting``, ``expired``,
+  ``superseded``, ``hash_mismatch``, ``not_connected``, ``invalid_input`` or ``quota``; 429
+  ``busy``. Recent authentication is not required (ADR 0005 section 2).
+
+Another user's job id is 404 ``not_found``, the same body as an unknown id. Errors carry a
+reason code only: validation errors of the create body never echo the submitted input.
+"""
+
+import hashlib
+import json
+import re
+from datetime import datetime
+from typing import Annotated, Any
+from uuid import UUID
+
+from fastapi import APIRouter, Depends, Header, Request
+from fastapi.responses import JSONResponse
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
+
+from classbeat import auth
+from classbeat.context import UserContext
+from classbeat.jobs import service
+from classbeat.jobs.credits import CreditLedger, UnmeteredLedger
+from classbeat.jobs.inputs import JobInput
+from classbeat.jobs.kinds import KIND_NAME, KINDS, KindRegistry
+from classbeat.jobs.user import NewJob
+
+router = APIRouter(prefix="/api/jobs", tags=["jobs"])
+
+IDEMPOTENCY_KEY = re.compile(r"^[A-Za-z0-9_-]{16,64}$")
+INPUT_MAX_BYTES = 16384  # jobs.input's check (migration 0004), measured as jsonb prints it
+
+_STATUS = {"not_found": 404, "class_not_found": 404, "busy": 429, "too_large": 422}
+
+
+def job_kinds() -> KindRegistry:
+    """The kinds the API accepts: the worker's registry (tests override this dependency)."""
+    return KINDS
+
+
+def credit_ledger() -> CreditLedger:
+    """The credit seam (ADR 0005 section 5); M5 replaces it."""
+    return UnmeteredLedger()
+
+
+class CreateIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    kind: str = Field(pattern=KIND_NAME.pattern)
+    input: dict[str, Any]
+
+
+class ApproveIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    revision_id: UUID
+    content_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+
+
+class JobOut(BaseModel):
+    id: UUID
+    kind: str
+    state: str
+    stage: str | None
+    class_id: UUID
+    cancel_requested: bool
+    approval_revision_id: UUID | None
+    expires_at: datetime | None
+    approved_at: datetime | None
+    error_category: str | None
+    created_at: datetime
+    updated_at: datetime
+    finished_at: datetime | None
+
+    @classmethod
+    def of(cls, view: service.JobView) -> "JobOut":
+        return cls.model_validate(view, from_attributes=True)
+
+
+def _refuse(reason: str, status: int | None = None) -> JSONResponse:
+    return JSONResponse(
+        {"detail": {"reason": reason}}, status_code=status or _STATUS.get(reason, 409)
+    )
+
+
+def _invalid(error: ValidationError | None = None) -> JSONResponse:
+    """422 without the submitted values (``input``, ``ctx`` and ``url`` are left out)."""
+    errors = (
+        []
+        if error is None
+        else [
+            {"loc": list(e["loc"]), "type": e["type"]}
+            for e in error.errors(include_url=False, include_context=False, include_input=False)
+        ]
+    )
+    return JSONResponse({"detail": {"reason": "invalid_input", "errors": errors}}, status_code=422)
+
+
+def canonical_json(value: Any) -> bytes:
+    """The canonical JSON of ADR 0004 section 2 (sorted keys, no spaces, UTF-8): the stored
+    input and the request hash. Not imported from ``classbeat.crypto`` (guarded there)."""
+    return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode()
+
+
+def _jsonb_size(value: Any) -> int:
+    # jsonb's text form separates with ", " and ": "; the database check stays the backstop.
+    return len(json.dumps(value, ensure_ascii=False, separators=(", ", ": ")).encode("utf-8"))
+
+
+@router.post(
+    "",
+    status_code=201,
+    response_model=JobOut,
+    responses={200: {"model": JobOut}, 400: {}, 404: {}, 409: {}, 422: {}, 429: {}},
+)
+async def create_job(
+    request: Request,
+    ctx: Annotated[UserContext, Depends(auth.require_user)],
+    kinds: Annotated[KindRegistry, Depends(job_kinds)],
+    ledger: Annotated[CreditLedger, Depends(credit_ledger)],
+    idempotency_key: Annotated[str | None, Header()] = None,
+) -> JobOut | JSONResponse:
+    if idempotency_key is None:
+        return _refuse("idempotency_key_missing", 400)
+    if not IDEMPOTENCY_KEY.fullmatch(idempotency_key):
+        return _refuse("idempotency_key_invalid", 400)
+    try:
+        body = CreateIn.model_validate_json(await request.body())
+    except ValidationError as error:
+        return _invalid(error)
+    kind = kinds.get(body.kind)
+    if kind is None or not issubclass(kind.input_model, JobInput):
+        return _refuse("unknown_kind", 422)
+    try:
+        parsed = kind.parse_input(body.input)
+    except ValidationError as error:
+        return _invalid(error)
+    assert isinstance(parsed, JobInput)  # noqa: S101 - parse_input returns input_model
+    stored = parsed.model_dump(mode="json")
+    if _jsonb_size(stored) > INPUT_MAX_BYTES:
+        return _refuse("too_large")
+    new = NewJob(
+        kind=kind.name,
+        input=canonical_json(stored).decode("utf-8"),
+        class_id=parsed.class_id,
+        title=parsed.title,
+        connection_ids=parsed.connection_ids(),
+        idempotency_key=idempotency_key,
+        request_hash=hashlib.sha256(canonical_json({"kind": kind.name, "input": stored})).digest(),
+    )
+    settings = request.app.state.settings
+    result = await service.create(
+        request.app.state.session_factory,
+        ctx,
+        new,
+        limit=settings.jobs_per_user,
+        ledger=ledger,
+    )
+    if result.job is None:
+        return _refuse(result.reason or "invalid_input")
+    out = JobOut.of(result.job)
+    if not result.created:
+        return JSONResponse(out.model_dump(mode="json"), status_code=200)
+    return out
+
+
+@router.get("/{job_id}", response_model=JobOut, responses={404: {}})
+async def get_job(
+    job_id: UUID, request: Request, ctx: Annotated[UserContext, Depends(auth.require_user)]
+) -> JobOut | JSONResponse:
+    view = await service.get(request.app.state.session_factory, ctx, job_id)
+    return _refuse("not_found") if view is None else JobOut.of(view)
+
+
+@router.post("/{job_id}/cancel", response_model=JobOut, responses={404: {}, 409: {}})
+async def cancel_job(
+    job_id: UUID, request: Request, ctx: Annotated[UserContext, Depends(auth.require_user)]
+) -> JobOut | JSONResponse:
+    view = await service.cancel(request.app.state.session_factory, ctx, job_id)
+    if view is None:
+        return _refuse("not_found")
+    if view.state in ("completed", "failed", "expired"):
+        return _refuse("not_cancellable")
+    return JobOut.of(view)
+
+
+@router.post("/{job_id}/approve", response_model=JobOut, responses={404: {}, 409: {}, 429: {}})
+async def approve_job(
+    job_id: UUID,
+    body: ApproveIn,
+    request: Request,
+    ctx: Annotated[UserContext, Depends(auth.require_user)],
+    kinds: Annotated[KindRegistry, Depends(job_kinds)],
+    ledger: Annotated[CreditLedger, Depends(credit_ledger)],
+) -> JobOut | JSONResponse:
+    result = await service.approve(
+        request.app.state.session_factory,
+        ctx,
+        job_id,
+        body.revision_id,
+        bytes.fromhex(body.content_hash),
+        kinds=kinds,
+        limit=request.app.state.settings.jobs_per_user,
+        ledger=ledger,
+    )
+    if result.job is None:
+        return _refuse(result.reason or "not_found")
+    if not result.accepted:
+        return _refuse(result.reason or "not_waiting")
+    return JobOut.of(result.job)

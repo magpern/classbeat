@@ -265,10 +265,11 @@ an overflow of `n`: a pipeline and a heartbeat per run, the `LISTEN` connection 
 and maintenance, so at most 50), `CLASSBEAT_WORKER_POLL_SECONDS` (2; the claim poll behind
 `LISTEN jobs_queued`), `CLASSBEAT_WORKER_MAINTENANCE_SECONDS` (30; reap, expire, settle),
 `CLASSBEAT_WORKER_SHUTDOWN_WAIT_SECONDS` (25, inside compose's `stop_grace_period: 30s`),
-`CLASSBEAT_APPROVAL_TTL_HOURS` (168) and `CLASSBEAT_JOB_BUSY_REQUEUE_LIMIT` (5 `operation_busy`
-requeues per phase without an attempt). Worker and agent code write job data only through
+`CLASSBEAT_APPROVAL_TTL_HOURS` (168), `CLASSBEAT_JOB_BUSY_REQUEUE_LIMIT` (5 `operation_busy`
+requeues per phase without an attempt) and `CLASSBEAT_JOBS_PER_USER` (2 queued or running jobs;
+the jobs API answers 429 above it). Worker and agent code write job data only through
 `classbeat.jobs.fenced_session`; only `classbeat.jobs.fence`, `classbeat.jobs.credits`,
-`classbeat.keys_cli` and the `classbeat.connections`, `classbeat.auth` and `classbeat.db` packages
+`classbeat.jobs.service` (the jobs API), `classbeat.keys_cli` and the `classbeat.connections`, `classbeat.auth` and `classbeat.db` packages
 may open a `user_session` (`tests/test_session_guard.py`); job kinds live outside `classbeat.jobs`.
 OAuth sign-in (ADR 0003 section 5): `CLASSBEAT_OAUTH_<PROVIDER>_CLIENT_ID` and the
 `oauth_<provider>_client_secret` secret file switch on `google`, `github` or `microsoft`; a provider
