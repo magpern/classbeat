@@ -1,4 +1,4 @@
-import { useEffect, useReducer, useState } from 'react'
+import { useCallback, useEffect, useReducer, useState } from 'react'
 import { ApiError } from '../api/client'
 import { readJobEvents, type JobEvent } from '../api/jobEvents'
 import { getJob, isTerminal, type Job } from '../api/jobs'
@@ -74,8 +74,8 @@ export interface JobProgress {
   job: Job | null
   progress: Progress
   /** `not_found` for an unknown or foreign id, `failed` when the job cannot be read. */
-  problem: 'not_found' | 'failed' | null
-  /** Replaces the shown job (after the page cancelled it, say). */
+  problem: 'not_found' | 'signed_out' | 'failed' | null
+  /** Replaces the shown job (after the page cancelled it, say), unless it is already over. */
   setJob: (job: Job) => void
 }
 
@@ -86,7 +86,7 @@ export interface JobProgress {
  * unmounts. A broken stream is retried with a growing pause; the job state is the truth.
  */
 export function useJobProgress(jobId: string): JobProgress {
-  const [job, setJob] = useState<Job | null>(null)
+  const [job, setJobState] = useState<Job | null>(null)
   const [problem, setProblem] = useState<JobProgress['problem']>(null)
   const [progress, dispatch] = useReducer(foldEvent, INITIAL)
 
@@ -106,13 +106,17 @@ export function useJobProgress(jobId: string): JobProgress {
             setProblem('not_found')
             return
           }
+          if (error instanceof ApiError && error.status === 401) {
+            setProblem('signed_out')
+            return
+          }
           setProblem('failed')
           await pause(wait, signal)
           wait = Math.min(wait * 2, MAX_WAIT_MS)
           continue
         }
         setProblem(null)
-        setJob(current)
+        setJobState(current)
         if (isTerminal(current.state) || current.state === 'waiting_for_approval') return
         let received = 0
         let ended: boolean
@@ -126,6 +130,10 @@ export function useJobProgress(jobId: string): JobProgress {
           if (signal.aborted) return
           if (error instanceof ApiError && error.status === 404) {
             setProblem('not_found')
+            return
+          }
+          if (error instanceof ApiError && error.status === 401) {
+            setProblem('signed_out')
             return
           }
           // A 429 or a dropped connection: wait, then read the state and try again.
@@ -148,6 +156,11 @@ export function useJobProgress(jobId: string): JobProgress {
       abort.abort()
     }
   }, [jobId])
+
+  // A late answer (the cancel call, say) never replaces a state the stream already settled.
+  const setJob = useCallback((next: Job) => {
+    setJobState((previous) => (previous !== null && isTerminal(previous.state) ? previous : next))
+  }, [])
 
   return { job, progress, problem, setJob }
 }

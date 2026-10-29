@@ -9,6 +9,7 @@ import {
 import { errorMessage } from '../../api/messages'
 import { useGuard } from '../../auth/prompts'
 import { Field, Notice, Section, useAction } from '../forms'
+import { FORGET_WARNING } from './mowlWarning'
 
 // Plain words for the ADR 0004 section 5 categories. The raw code is never shown.
 const CONNECT_ERRORS: Record<string, string> = {
@@ -36,14 +37,6 @@ function lastErrorText(category: string): string {
   const known = Object.hasOwn(LAST_ERRORS, category) ? LAST_ERRORS[category] : undefined
   return known ?? 'The last use of this connection failed.'
 }
-
-/**
- * classbeat's local record of the playlists it added to this MOWL account goes with the
- * connection, whether it is disconnected or connected again in place, and with it any adding
- * that was left undecided (ADR 0006 section 3, #117 item 7).
- */
-const FORGET_WARNING =
-  'classbeat forgets which playlists it has added to your MOWL music, and any adding that was left undecided. The next class you design from one of those playlists may add it to your MOWL music a second time, so you could see two copies there.'
 
 function since(iso: string): string {
   const date = new Date(iso)

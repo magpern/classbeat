@@ -185,8 +185,12 @@ function decodeOperation(value: unknown): Operation {
   }
 }
 
-export async function listUncertainOperations(jobId: string): Promise<Operation[]> {
-  const path = `/api/external-operations?job_id=${encodeURIComponent(jobId)}`
+/** The undecided operations of one job, or of the whole account without `jobId`. */
+export async function listUncertainOperations(jobId?: string): Promise<Operation[]> {
+  const path =
+    jobId === undefined
+      ? '/api/external-operations'
+      : `/api/external-operations?job_id=${encodeURIComponent(jobId)}`
   return list(object(await get(path), 'operations'), 'operations').map(decodeOperation)
 }
 

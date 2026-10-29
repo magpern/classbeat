@@ -308,6 +308,7 @@ describe('an uncertain playlist attach', () => {
       ...SESSION_ROUTES,
       [`GET ${JOB}`]: failed,
       [OPS]: listed([]),
+      'GET /api/external-operations': listed([]),
     })
     renderAt(`/jobs/${JOB_ID}`)
     expect(await screen.findByTestId('no-undecided')).toBeInTheDocument()

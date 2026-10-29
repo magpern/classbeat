@@ -8,6 +8,7 @@ import {
   type ReactNode,
 } from 'react'
 import { getSession, type SessionState } from '../api/auth'
+import { clearSubmittedInputs } from '../lib/submittedInput'
 
 type Status = 'loading' | 'ready' | 'error'
 
@@ -27,6 +28,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const refresh = useCallback(async () => {
     try {
       const next = await getSession()
+      if (!next.authenticated) clearSubmittedInputs()
       setSession(next)
       setStatus('ready')
       return next
@@ -41,6 +43,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     getSession().then(
       (next) => {
         if (!current) return
+        if (!next.authenticated) clearSubmittedInputs()
         setSession(next)
         setStatus('ready')
       },

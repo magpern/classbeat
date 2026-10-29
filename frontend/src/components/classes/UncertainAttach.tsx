@@ -6,6 +6,8 @@ import {
   listUncertainOperations,
   type Operation,
 } from '../../api/jobs'
+import { FORGET_WARNING } from '../account/mowlWarning'
+import { Link } from '../../router/Router'
 import { Notice, useAction } from '../forms'
 
 type Outcome = 'found' | 'absent' | 'still_unsure' | 'decided'
@@ -24,10 +26,27 @@ function outcomeOf(operation: Operation): Outcome {
   return 'still_unsure'
 }
 
+type Listing =
+  | { status: 'loading' }
+  | { status: 'error' }
+  | { status: 'ready'; operations: Operation[]; scope: 'job' | 'account' }
+
+/**
+ * The undecided operations of the failed job; when its own list is empty, the account's (the
+ * row may still belong to an earlier job). An empty answer from both is the honest "nothing".
+ */
+async function readListing(jobId: string): Promise<Listing> {
+  const own = await listUncertainOperations(jobId)
+  if (own.length > 0) return { status: 'ready', operations: own, scope: 'job' }
+  const account = await listUncertainOperations()
+  return { status: 'ready', operations: account, scope: 'account' }
+}
+
 /**
  * The failure `uncertain_write` (ADR 0005 section 7): classbeat asked MOWL to add the playlist
  * and did not get a clear answer. Check again, or Do it anyway. Nothing is retried on its own.
- * `onResolved` is called once the user can design again.
+ * `onResolved` is called whenever the user can design again: a decision was made, or nothing is
+ * left to decide.
  */
 export function UncertainAttach({
   jobId,
@@ -36,37 +55,43 @@ export function UncertainAttach({
   jobId: string
   onResolved: () => void
 }) {
-  const [operations, setOperations] = useState<Operation[] | null>(null)
+  const [listing, setListing] = useState<Listing>({ status: 'loading' })
   const [outcome, setOutcome] = useState<Outcome | null>(null)
   const [confirming, setConfirming] = useState(false)
   const action = useAction()
 
-  const load = useCallback(
-    async () => {
-      const found = await listUncertainOperations(jobId)
-      setOperations(found)
-      return found
+  const apply = useCallback(
+    (next: Listing) => {
+      setListing(next)
+      // Nothing undecided is listed: the user may design again, whatever else the page says.
+      if (next.status === 'ready' && next.operations.length === 0) onResolved()
     },
-    [jobId],
+    [onResolved],
   )
+
+  const load = useCallback(async () => {
+    setListing({ status: 'loading' })
+    try {
+      apply(await readListing(jobId))
+    } catch {
+      setListing({ status: 'error' })
+    }
+  }, [jobId, apply])
 
   useEffect(() => {
     let current = true
-    listUncertainOperations(jobId).then(
-      (found) => {
-        if (!current) return
-        setOperations(found)
-        // Nothing undecided is listed (a stale row is hidden, #117): the user may design again.
-        if (found.length === 0) onResolved()
+    readListing(jobId).then(
+      (next) => {
+        if (current) apply(next)
       },
       () => {
-        if (current) setOperations([])
+        if (current) setListing({ status: 'error' })
       },
     )
     return () => {
       current = false
     }
-  }, [jobId, onResolved])
+  }, [jobId, apply])
 
   // The user's two actions answer 409 when the row is final or no longer undecided: look again.
   const describe = (error: unknown): string => {
@@ -77,22 +102,24 @@ export function UncertainAttach({
   }
 
   const decide = (kind: 'check' | 'anyway', operation: Operation) => {
-    void action
-      .run(async () => {
-        try {
-          const result = await (kind === 'check' ? checkAgain(operation.id) : doItAnyway(operation.id))
-          const next = outcomeOf(result)
-          setOutcome(next)
+    void action.run(async () => {
+      try {
+        const result = await (kind === 'check' ? checkAgain(operation.id) : doItAnyway(operation.id))
+        const next = outcomeOf(result)
+        setOutcome(next)
+        setConfirming(false)
+        if (next !== 'still_unsure') onResolved()
+      } catch (error) {
+        if (error instanceof ApiError && error.status === 409) {
           setConfirming(false)
-          if (next !== 'still_unsure') onResolved()
-        } catch (error) {
-          if (error instanceof ApiError && error.status === 409) await load().catch(() => undefined)
-          throw error
+          await load()
         }
-      }, describe)
+        throw error
+      }
+    }, describe)
   }
 
-  const first = operations?.[0]
+  const first = listing.status === 'ready' ? listing.operations[0] : undefined
   return (
     <div className="stack" data-testid="uncertain-attach">
       <h2>classbeat could not tell whether your playlist was added</h2>
@@ -101,13 +128,41 @@ export function UncertainAttach({
         MOWL did not answer clearly, so the playlist may or may not be there now. classbeat does
         not try again on its own, so you do not end up with two copies by accident.
       </p>
-      {outcome ? <Notice kind={outcome === 'still_unsure' ? 'info' : 'success'}>{OUTCOMES[outcome]}</Notice> : null}
+      {outcome ? (
+        <Notice kind={outcome === 'still_unsure' ? 'info' : 'success'}>{OUTCOMES[outcome]}</Notice>
+      ) : null}
       {action.error ? <Notice kind="error">{action.error}</Notice> : null}
-      {operations === null ? <p>Loading</p> : null}
-      {operations !== null && first === undefined && outcome === null ? (
-        <p className="muted" data-testid="no-undecided">
-          There is nothing to decide here right now. If you design again, classbeat checks the
-          playlist once more.
+      {listing.status === 'loading' ? <p>Loading</p> : null}
+      {listing.status === 'error' ? (
+        <>
+          <Notice kind="error">What is left to decide could not be loaded.</Notice>
+          <p>
+            <button
+              type="button"
+              className="button"
+              onClick={() => {
+                void load()
+              }}
+            >
+              Try again
+            </button>
+          </p>
+        </>
+      ) : null}
+      {listing.status === 'ready' && first === undefined ? (
+        <div className="notice" data-testid="no-undecided">
+          <p>
+            classbeat has no step left for you to decide here, so it cannot offer Check again or
+            Do it anyway. If you want to be sure the playlist is not added twice, look in your
+            MOWL music. To clear classbeat's record of it, disconnect MOWL and connect it again on{' '}
+            <Link to="/account">your account page</Link>.
+          </p>
+          <p>{FORGET_WARNING}</p>
+        </div>
+      ) : null}
+      {listing.status === 'ready' && listing.scope === 'account' && first !== undefined ? (
+        <p className="muted" data-testid="account-scope">
+          This step comes from an earlier design of yours on the same playlist.
         </p>
       ) : null}
       {first !== undefined && !confirming ? (

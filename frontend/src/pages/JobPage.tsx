@@ -14,7 +14,7 @@ import { DraftSummaryView } from '../components/classes/DraftSummaryView'
 import { UncertainAttach } from '../components/classes/UncertainAttach'
 import { RequireAuth } from '../components/RequireAuth'
 import { useJobProgress, type Progress } from '../hooks/useJobProgress'
-import { newIdempotencyKey, recallInput, rememberInput } from '../lib/submittedInput'
+import { designAgainKey, forgetInput, recallInput, rememberInput } from '../lib/submittedInput'
 import { Link, useRouter } from '../router/Router'
 
 export function JobPage({ jobId }: { jobId: string }) {
@@ -33,6 +33,18 @@ function JobView({ jobId }: { jobId: string }) {
         <p>This design does not exist, or it is not yours.</p>
         <p>
           <Link to="/classes/new">Design a class</Link>
+        </p>
+      </Card>
+    )
+  }
+  if (problem === 'signed_out') {
+    return (
+      <Card title="You are signed out">
+        <p>Sign in again to see this design. It carries on meanwhile.</p>
+        <p>
+          <Link className="button" to={`/signin?return_to=${encodeURIComponent(`/jobs/${jobId}`)}`}>
+            Sign in
+          </Link>
         </p>
       </Card>
     )
@@ -88,6 +100,12 @@ function JobBody({
   }
 }
 
+function cancelError(error: unknown): string {
+  // 409: the design ended on its own meanwhile; the page switches to the result by itself.
+  if (error instanceof ApiError && error.status === 409) return 'This design has just finished.'
+  return 'That did not work. Try again.'
+}
+
 function Designing({
   job,
   progress,
@@ -102,7 +120,7 @@ function Designing({
   const stop = () => {
     void action.run(async () => {
       onJob(await cancelJob(job.id))
-    })
+    }, cancelError)
   }
   const waiting = job.state === 'queued' && progress.stage === null
   return (
@@ -145,6 +163,10 @@ function Completed({ job }: { job: Job }) {
   const [draft, setDraft] = useState<DraftSummary | null>(null)
   const [state, setState] = useState<'loading' | 'none' | 'failed' | 'ready'>('loading')
   const [attempt, setAttempt] = useState(0)
+
+  useEffect(() => {
+    forgetInput(job.id) // the design is done: the remembered form is not needed any more
+  }, [job.id])
 
   useEffect(() => {
     let current = true
@@ -211,8 +233,9 @@ function useDesignAgain(job: Job) {
         music: input.music,
         mowl_connection_id: input.mowl_connection_id,
       }
-      const created = await createDesignJob(next, newIdempotencyKey())
+      const created = await createDesignJob(next, designAgainKey(job.id))
       rememberInput(created.id, next)
+      forgetInput(job.id)
       navigate(`/jobs/${created.id}`)
     }, againError)
   }
@@ -222,6 +245,9 @@ function useDesignAgain(job: Job) {
 function againError(error: unknown): string {
   if (error instanceof ApiError && error.reason === 'not_connected') {
     return 'MOWL is not connected. Connect it on your account page first.'
+  }
+  if (error instanceof ApiError && error.reason === 'class_busy') {
+    return 'This class already has a design running, perhaps from another tab. Wait for it to finish, then try again.'
   }
   if (error instanceof ApiError && error.status === 429) {
     return 'You already have designs running. Wait for one to finish.'
