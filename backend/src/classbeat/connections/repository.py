@@ -11,6 +11,8 @@ found, the same as an unknown one. Writes:
   ``UNIQUE (owner_id, provider)`` (a parallel connect) rolls back and is retried once from the
   start in a new transaction. Never ``INSERT ... ON CONFLICT DO UPDATE`` (it would keep the old
   ``id`` with a payload encrypted for a new one).
+  A MOWL reconnect also forgets the user's MOWL playlist links and attach operations in the
+  same transaction, as a disconnect does (the token may belong to another MOWL account).
 - **status changes** (``needs_reconnect``, ``last_error``, ``last_used_at``) are conditional on
   the version that was read: ``WHERE id = :id AND wrapped_dek = :read_wrapped_dek``. They never
   touch ``secret``, ``wrapped_dek`` or ``key_id``.
@@ -196,6 +198,11 @@ async def _write(
         "updated_at": func.now(),
     }
     if existing is not None:
+        if provider == "mowl":
+            # A reconnect in place may be another MOWL account, and the row records no account
+            # identity: it forgets the old account's links and attach operations exactly as a
+            # disconnect then connect would (ADR 0006 section 3), after the row lock above.
+            await _forget_mowl_account(db, ctx)
         await db.execute(
             update(connections).where(_C.id == row_id, _C.owner_id == ctx.user_id).values(**values)
         )
@@ -338,10 +345,28 @@ async def use[T](
     """Run one library call with the user's credentials (in a worker thread). A 401 or 403
     flips the connection to ``needs_reconnect``; any failure is a ``ConnectionFailure``."""
     opened = await open_connection(factory, ring, ctx, provider)
+    return await call_opened(factory, ctx, opened, call, library_error=library_error)
+
+
+async def call_opened[T](
+    factory: Factory,
+    ctx: UserContext,
+    opened: OpenConnection,
+    call: Callable[[Credentials], T],
+    *,
+    library_error: type[BaseException] = MowlError,
+    single_request: bool = False,
+) -> T:
+    """``use`` with a connection the caller opened already (an external operation opens it
+    before writing its ``pending`` row, so ``not_connected`` costs no row, ADR 0005 section 7).
+    Never inside another transaction."""
     failure: ConnectionFailure | None = None
     try:
         result = await run_library_call(
-            lambda: call(opened.credentials), library_error=library_error, sign_in=False
+            lambda: call(opened.credentials),
+            library_error=library_error,
+            sign_in=False,
+            single_request=single_request,
         )
     except ConnectionFailure as error:
         failure = error
@@ -373,10 +398,39 @@ async def connect(
     return await save(factory, ring, ctx, provider, secret, public=public, expires_at=expires_at)
 
 
+# ADR 0006 section 3: classbeat's local data about a MOWL account goes with its connection, so a
+# reconnect as another MOWL account never reuses a link or an ``external_id`` of the old one. The
+# operations go first: a worker recording an attach locks the operation row and then writes the
+# link, so taking the same order here cannot deadlock with it.
+_FORGET_MOWL = (
+    text(
+        "DELETE FROM external_operations WHERE owner_id = :owner_id "
+        "AND kind = 'mowl_attach_spotify_playlist'"
+    ),
+    text("DELETE FROM mowl_playlist_links WHERE owner_id = :owner_id"),
+)
+
+
+async def _forget_mowl_account(db: AsyncSession, ctx: UserContext) -> None:
+    for statement in _FORGET_MOWL:
+        await db.execute(statement, {"owner_id": ctx.user_id})
+
+
 async def disconnect(factory: Factory, ctx: UserContext, provider: str) -> bool:
-    """Delete the row (local only: MOWL has no known revoke endpoint)."""
+    """Delete the row (local only: MOWL has no known revoke endpoint). For MOWL, the user's
+    playlist links and attach operations go in the same transaction (ADR 0006 section 3)."""
     _check_provider(provider)
     async with user_session(factory, ctx) as db:
+        # The row lock first: a job's external operation holds it (``hold``) while it writes
+        # its ``pending`` row, so a disconnect either waits for that write (and then deletes
+        # the row) or commits first (and the job sees the connection gone before any call).
+        await db.execute(
+            select(_C.id)
+            .where(_C.owner_id == ctx.user_id, _C.provider == provider)
+            .with_for_update()
+        )
+        if provider == "mowl":
+            await _forget_mowl_account(db, ctx)
         result = await db.execute(
             delete(connections)
             .where(_C.owner_id == ctx.user_id, _C.provider == provider)
@@ -385,9 +439,34 @@ async def disconnect(factory: Factory, ctx: UserContext, provider: str) -> bool:
         return result.first() is not None
 
 
+async def hold(db: AsyncSession, ctx: UserContext, opened: OpenConnection) -> bool:
+    """In the caller's transaction (a job's fenced step 1 of an external operation, ADR 0005
+    section 7): share-lock the connection row the job opened, if it is still that version and
+    ``connected``. False when it was disconnected, reconnected (another ``wrapped_dek``, maybe
+    another account) or flipped meanwhile, so no call goes out with credentials that are no
+    longer the user's connection. The lock lasts until the caller commits; ``disconnect``
+    takes the row lock first, so the two never deadlock."""
+    row = (
+        await db.execute(
+            select(_C.id)
+            .where(
+                _C.id == opened.id,
+                _C.owner_id == ctx.user_id,
+                _C.wrapped_dek == opened.version,
+                _C.status == "connected",
+            )
+            .with_for_update(read=True)
+        )
+    ).first()
+    return row is not None
+
+
 async def delete_all_in(db: AsyncSession, ctx: UserContext) -> list[str]:
     """For ``keys wipe``: delete every row of the user in the caller's transaction. Returns the
-    affected providers (sorted)."""
+    affected providers (sorted). The MOWL links and attach operations go too, as on a
+    disconnect (the connection rows locked first, as ``disconnect`` does)."""
+    await db.execute(select(_C.id).where(_C.owner_id == ctx.user_id).with_for_update())
+    await _forget_mowl_account(db, ctx)
     result = await db.execute(
         delete(connections).where(_C.owner_id == ctx.user_id).returning(_C.provider)
     )

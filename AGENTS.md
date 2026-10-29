@@ -195,6 +195,7 @@ uv run python -m classbeat     # the API on http://127.0.0.1:8000 (--host, --por
 uv run python -m classbeat.worker   # the worker; stops on Ctrl+C or SIGTERM
 uv run python -m classbeat invite create [--expires 7d]    # operator commands (ADR 0003 section 7);
 uv run python -m classbeat admin grant|revoke|mfa-reset EMAIL   # in the stack: docker compose exec web ...
+uv run python -m classbeat jobs stats   # job counts per state, uncertain external operations (no ids)
 uv run python -m classbeat keys rewrap [--totp]   # after a KEK rotation (ADR 0004 section 2); --totp once
 docker compose --profile maint run --rm maint python -m classbeat keys wipe --confirm|--resend   # KEK compromise only
 uv run alembic upgrade head    # migrations as the owner role, CLASSBEAT_MIGRATIONS_DATABASE_URL
@@ -270,8 +271,9 @@ requeues per phase without an attempt) and `CLASSBEAT_JOBS_PER_USER` (2 queued o
 the jobs API answers 429 above it). Worker and agent code write job data only through
 `classbeat.jobs.fenced_session`; only `classbeat.jobs.fence`, `classbeat.jobs.credits`,
 `classbeat.jobs.service` (the jobs API), `classbeat.jobs.progress` (the SSE stream's reads),
-`classbeat.keys_cli` and the `classbeat.connections`, `classbeat.auth` and `classbeat.db` packages
-may open a `user_session` (`tests/test_session_guard.py`); job kinds live outside `classbeat.jobs`.
+`classbeat.operations.user` (the user's Check again / Do it anyway), `classbeat.keys_cli` and the
+`classbeat.connections`, `classbeat.auth` and `classbeat.db` packages may open a `user_session`
+(`tests/test_session_guard.py`); job kinds live outside `classbeat.jobs`.
 Progress (ADR 0005 section 6): `GET /api/jobs/{id}/events` streams a job's events as SSE (`Last-Event-ID`,
 5 open streams per user and web process); each web process keeps one `LISTEN job_events` connection.
 OAuth sign-in (ADR 0003 section 5): `CLASSBEAT_OAUTH_<PROVIDER>_CLIENT_ID` and the
