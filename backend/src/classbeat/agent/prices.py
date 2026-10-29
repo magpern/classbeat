@@ -37,27 +37,51 @@ class Price:
     output: Decimal
     cache_write: Decimal
     cache_read: Decimal
+    # A tiered model (Haiku 5.5): a request whose whole prompt (input, cache read and cache write)
+    # is more than ``above_tokens`` is billed at the ``above`` rates instead.
+    above_tokens: int = 0
+    above: "Price | None" = None
 
     def __post_init__(self) -> None:
         if min(self.input, self.output, self.cache_write, self.cache_read) < 0:
             raise ValueError("a price is at least 0")
+        if (self.above is None) != (self.above_tokens == 0) or self.above_tokens < 0:
+            raise ValueError("a tier needs both its token bound and its rates")
+        if self.above is not None and self.above.above is not None:
+            raise ValueError("a price has at most two tiers")
+
+    def tier_for(self, prompt_tokens: int) -> "Price":
+        """The rates one request is billed at, by the size of its prompt."""
+        if self.above is not None and prompt_tokens > self.above_tokens:
+            return self.above
+        return self
+
+    @property
+    def dearest(self) -> "Price":
+        """The dearest tier: what an estimate or a ceiling uses unless the prompt is known to stay
+        in the lower one (a tokenizer can count more than our estimate)."""
+        return self.above or self
 
     def cost_micros(self, usage: Usage) -> int:
+        rates = self.tier_for(usage.prompt_tokens)
         micros = (
-            usage.input_tokens * self.input
-            + usage.output_tokens * self.output
-            + usage.cache_write_tokens * self.cache_write
-            + usage.cache_read_tokens * self.cache_read
+            usage.input_tokens * rates.input
+            + usage.output_tokens * rates.output
+            + usage.cache_write_tokens * rates.cache_write
+            + usage.cache_read_tokens * rates.cache_read
         )
         return math.ceil(micros)
 
     def prompt_micros(self, tokens: int) -> int:
         """``tokens`` sent as input, at the dearest input rate (an estimate never undershoots)."""
-        return math.ceil(tokens * max(self.input, self.cache_write))
+        rates = self.dearest
+        return math.ceil(tokens * max(rates.input, rates.cache_write))
 
     def output_micros(self, tokens: int) -> int:
-        return math.ceil(tokens * self.output)
+        return math.ceil(tokens * self.dearest.output)
 
+
+HAIKU_TIER_TOKENS: Final = 100_000  # "at most 100K" prompt tokens bills at the lower tier
 
 FAKE_PRICE: Final = Price(Decimal(4), Decimal(20), Decimal(5), Decimal("0.4"))
 
@@ -74,6 +98,22 @@ class PriceTable:
 ANTHROPIC_PRICES: Final = {
     ("anthropic", "claude-opus-5-5"): Price(
         input=Decimal(4), output=Decimal(20), cache_write=Decimal(5), cache_read=Decimal("0.2")
+    ),
+    ("anthropic", "claude-sonnet-5-5"): Price(
+        input=Decimal(2), output=Decimal(10), cache_write=Decimal("2.5"), cache_read=Decimal("0.2")
+    ),
+    ("anthropic", "claude-haiku-5-5"): Price(
+        input=Decimal("0.1"),
+        output=Decimal("0.5"),
+        cache_write=Decimal("0.125"),
+        cache_read=Decimal("0.01"),
+        above_tokens=HAIKU_TIER_TOKENS,
+        above=Price(
+            input=Decimal("0.5"),
+            output=Decimal("2.5"),
+            cache_write=Decimal("0.625"),
+            cache_read=Decimal("0.05"),
+        ),
     ),
 }
 

@@ -126,6 +126,12 @@ def _between(value: float, bounds: Range) -> bool:
     return bounds[0] <= value <= bounds[1]
 
 
+def tss_bounds_for(case: Case, total_sec: float) -> Range:
+    """The TSS the draft must land in: the case's own, else the intensity's per hour of class."""
+    per_hour = TSS_PER_HOUR[case.brief.intensity]
+    return case.expect.tss or (per_hour[0] * total_sec / 3600, per_hour[1] * total_sec / 3600)
+
+
 def run_checks(
     case: Case,
     result: DesignResult,
@@ -193,8 +199,7 @@ def run_checks(
     bounds = expect.hard_share or HARD_SHARE[brief.intensity]
     add("zones", _between(share, bounds), f"zone {HARD_ZONE}+ share {share:.2f}, bounds {bounds}")
 
-    per_hour = TSS_PER_HOUR[brief.intensity]
-    tss_bounds = expect.tss or (per_hour[0] * total / 3600, per_hour[1] * total / 3600)
+    tss_bounds = tss_bounds_for(case, total)
     add(
         "tss",
         _between(result.tss, tss_bounds),
