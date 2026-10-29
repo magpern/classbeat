@@ -260,8 +260,10 @@ async def test_results_hold_numbers_and_names_only() -> None:
     data = json.loads(body)["results"]
     assert [r["case"] for r in data] == ["easy_30", "adversarial_brief"]
     assert set(data[0]) == {
-        "case", "passed", "outcome", "turns", "tool_calls", "cost_micros", "prompt_version",
-        "model_answered", "duration_sec", "tss", "checks",
+        "case", "repeat", "model", "effort", "model_answered", "prompt_version", "passed",
+        "outcome", "turns", "tool_calls", "corrections", "cost_micros", "wall_sec",
+        "input_tokens", "output_tokens", "cache_read_tokens", "cache_write_tokens",
+        "duration_sec", "tss", "tss_bounds", "changes_on_music", "checks", "timeline",
     }  # fmt: skip
 
 
@@ -295,3 +297,15 @@ def test_a_long_zone_run_is_only_excused_when_it_holds_the_ftp_test() -> None:
     )
     _, ok = evaluate(case, long_run)
     assert ok["quality_issues"] is False  # a long run without the test is reported
+
+
+async def test_a_result_counts_the_corrections_tokens_and_the_class_it_drew() -> None:
+    case = BY_NAME["long_60"]  # its script submits a 30 s cooldown first and is refused once
+    result = await run_case(case, provider_for_case(case), CONFIG, repeat=2)
+    assert (result.corrections, result.repeat, result.model) == (1, 2, CONFIG.model)
+    assert result.usage.input_tokens > 0
+    assert result.wall_sec >= 0
+    assert result.tss_bounds is not None
+    assert result.tss_bounds[0] < result.tss_bounds[1]
+    assert sum(i["sec"] for s in result.timeline for i in s["intervals"]) == result.duration_sec
+    assert set(result.timeline[0]) == {"name", "kind", "intervals"}  # no cues

@@ -18,6 +18,7 @@ from agentfake import from_dict
 from anthropicfake import (
     PLANTED_KEY,
     FakeAnthropic,
+    Reply,
     message,
     stream,
     tool_use,
@@ -29,7 +30,9 @@ from classbeat.agent.providers.fake import FakeProvider
 from classbeat.config import Settings
 from classbeat.evals import live
 from classbeat.evals.cases import load_cases
+from classbeat.evals.checks import Check
 from classbeat.evals.live import main_live, plan_text
+from classbeat.evals.runner import CaseResult
 from smokescripts import good_draft
 
 CASES = {c.name: c for c in load_cases()}
@@ -75,6 +78,9 @@ def run(
     max_usd: str | None = "5",
     cases: list[str] | None = None,
     out_path: Path | None = None,
+    model: str | None = None,
+    effort: str | None = None,
+    repeat: int = 1,
 ) -> tuple[int, str, str]:
     out, err = io.StringIO(), io.StringIO()
     code = main_live(
@@ -83,6 +89,9 @@ def run(
         max_usd=max_usd,
         case_names=cases,
         out_path=out_path,
+        model=model,
+        effort=effort,
+        repeat=repeat,
         out=out,
         err=err,
         provider_factory=spy.provider,
@@ -327,9 +336,9 @@ def _watch_ceilings(monkeypatch: pytest.MonkeyPatch) -> list[int]:
     seen: list[int] = []
     real = live.run_case
 
-    async def spy(case: Any, provider: Any, config: Any) -> Any:
+    async def spy(case: Any, provider: Any, config: Any, **kwargs: Any) -> Any:
         seen.append(config.limits.job_cost_micros)
-        return await real(case, provider, config)
+        return await real(case, provider, config, **kwargs)
 
     monkeypatch.setattr(live, "run_case", spy)
     return seen
@@ -365,3 +374,198 @@ async def test_a_case_that_raises_still_counts_what_it_spent(
     assert results[0].cost_micros == 200_000  # 50 000 input tokens at $4 per million
     assert seen == [1_000_000, 800_000]
     assert "planted detail" not in out.getvalue()
+
+
+# --- --model, --effort, --repeat (issue #134) ----------------------------------------------------
+
+
+@pytest.mark.usefixtures("key")
+@pytest.mark.parametrize(
+    ("model", "ceiling"),
+    [("claude-sonnet-5-5", "$26.10"), ("claude-haiku-5-5", "$23.40")],
+)
+def test_the_plan_and_ceiling_use_the_chosen_models_prices(model: str, ceiling: str) -> None:
+    spy = Spy()
+    code, out, _ = run(spy, max_usd=None, model=model, effort="high")
+    assert code == 2
+    assert f"model {model}, effort high" in out
+    # 15 x ($1.50 + 24 000 output tokens at $10 (Sonnet) or at Haiku's upper tier, $2.50).
+    assert f"estimated cost ceiling for this run: {ceiling}" in out
+    assert nothing_ran(spy)
+
+
+@pytest.mark.usefixtures("key")
+def test_repeat_multiplies_the_runs_and_the_ceiling() -> None:
+    spy = Spy()
+    code, out, _ = run(spy, max_usd=None, model="claude-sonnet-5-5", repeat=3)
+    assert code == 2
+    assert "15 cases x 3 repeats = 45 runs" in out
+    assert "estimated cost ceiling for this run: $78.30" in out
+    assert nothing_ran(spy)
+
+
+@pytest.mark.usefixtures("key")
+def test_the_effort_defaults_to_the_configured_one(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("CLASSBEAT_AGENT_EFFORT", "low")
+    code, out, _ = run(Spy(), max_usd=None, model="claude-haiku-5-5")
+    assert code == 2
+    assert "effort low" in out
+
+
+@pytest.mark.usefixtures("key")
+@pytest.mark.parametrize(
+    ("kwargs", "message"),
+    [
+        ({"model": "claude-unpriced-1"}, "no price"),
+        ({"model": "claude-haiku-5-5-20990101"}, "no price"),
+        ({"model": "not a model!"}, "--model"),
+        ({"effort": "extreme"}, "--effort"),
+        ({"repeat": 0}, "--repeat"),
+        ({"repeat": 11}, "--repeat"),
+    ],
+)
+def test_it_refuses_a_bad_option_before_installing_or_building_anything(
+    kwargs: dict[str, Any], message: str
+) -> None:
+    spy = Spy()
+    code, out, err = run(spy, **kwargs)
+    assert code == 2
+    assert message in err
+    assert out == ""
+    assert nothing_ran(spy)
+
+
+@pytest.mark.usefixtures("key")
+def test_the_other_refusals_stay_with_the_new_options(monkeypatch: pytest.MonkeyPatch) -> None:
+    spy = Spy()
+    assert run(spy, live=False, model="claude-sonnet-5-5")[0] == 2
+    assert "--max-usd" in run(spy, max_usd=None, model="claude-sonnet-5-5")[2]
+    monkeypatch.setenv("CI", "1")
+    assert run(spy, model="claude-sonnet-5-5")[0] == 2
+    assert nothing_ran(spy)
+
+
+def _submit_replies(case_name: str, model: str, usage: tuple[int, int, int, int]) -> list[Reply]:
+    case = CASES[case_name]
+    return [
+        stream(message(tool_use("t1", "get_music", {}), stop="tool_use", model=model)),
+        stream(
+            message(
+                tool_use("t2", "submit_draft", {"draft": good_draft(case)}),
+                stop="tool_use",
+                model=model,
+                usage=usage,
+            )
+        ),
+    ]
+
+
+@pytest.mark.usefixtures("key")
+async def test_a_sonnet_run_sends_its_model_and_effort_prices_it_and_records_the_metrics(
+    tmp_path: Path,
+) -> None:
+    replies = [
+        *_submit_replies("minimum_10", "claude-sonnet-5-5", (5000, 2000, 0, 0)),
+        *_submit_replies("minimum_10", "claude-sonnet-5-5", (5000, 2000, 0, 0)),
+    ]
+    spy = Spy(FakeAnthropic(replies))
+    results = tmp_path / "results.json"
+    code, out, err = await _in_thread(
+        run,
+        spy,
+        cases=["minimum_10"],
+        out_path=results,
+        model="claude-sonnet-5-5",
+        effort="high",
+        repeat=2,
+    )
+    assert code == 0, (out, err)
+    assert spy.fake is not None
+    assert {b["model"] for b in spy.fake.bodies} == {"claude-sonnet-5-5"}
+    assert {json.dumps(b["output_config"]) for b in spy.fake.bodies} == {'{"effort": "high"}'}
+    assert "minimum_10 #1: pass (submitted)" in out
+    assert "minimum_10 #2: pass" in out
+    assert "2 of 2 passed" in out
+    data = json.loads(results.read_text("utf-8"))["results"]
+    assert [r["repeat"] for r in data] == [0, 1]
+    first = data[0]
+    assert (first["model"], first["effort"]) == ("claude-sonnet-5-5", "high")
+    assert first["model_answered"] == "claude-sonnet-5-5"
+    # (1200 + 5000) input at $2 and (300 + 2000) output at $10 per million, over two turns.
+    assert first["cost_micros"] == (1200 + 5000) * 2 + (300 + 2000) * 10
+    assert (first["input_tokens"], first["output_tokens"]) == (6200, 2300)
+    assert (first["turns"], first["tool_calls"], first["corrections"]) == (2, 2, 0)
+    assert first["wall_sec"] >= 0
+    assert first["prompt_version"]
+    assert first["tss_bounds"]
+    assert first["tss"] > 0
+    assert first["changes_on_music"]
+    assert [c["name"] for c in first["checks"]][:2] == ["structure", "validate"]
+    assert first["timeline"]
+    assert PLANTED_KEY not in results.read_text("utf-8")
+
+
+@pytest.mark.usefixtures("key")
+async def test_a_haiku_turn_over_100000_prompt_tokens_is_billed_at_the_upper_tier(
+    tmp_path: Path,
+) -> None:
+    spy = Spy(FakeAnthropic(_submit_replies("minimum_10", "claude-haiku-5-5", (5000, 2000, 0, 0))))
+    results = tmp_path / "r.json"
+    # The first turn (1200 in, 300 out) is in the lower tier, the second (5000 in) too.
+    code, _, _ = await _in_thread(
+        run, spy, cases=["minimum_10"], out_path=results, model="claude-haiku-5-5"
+    )
+    assert code == 0
+    row = json.loads(results.read_text("utf-8"))["results"][0]
+    assert row["cost_micros"] == 6200 * 0.1 + 2300 * 0.5
+    big = [
+        stream(
+            message(
+                tool_use("t1", "get_music", {}),
+                stop="tool_use",
+                model="claude-haiku-5-5",
+                usage=(150_000, 100, 0, 0),
+            )
+        ),
+        *_submit_replies("minimum_10", "claude-haiku-5-5", (5000, 2000, 0, 0))[1:],
+    ]
+    spy = Spy(FakeAnthropic(big))
+    code, _, _ = await _in_thread(
+        run, spy, cases=["minimum_10"], out_path=results, model="claude-haiku-5-5"
+    )
+    row = json.loads(results.read_text("utf-8"))["results"][0]
+    assert row["cost_micros"] == 150_000 * 0.5 + 100 * 2.5 + 5000 * 0.1 + 2000 * 0.5
+
+
+async def test_each_failed_check_is_printed_with_its_detail(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def failing(case: Any, provider: Any, config: Any, **kwargs: Any) -> CaseResult:
+        checks = [
+            Check("duration", True, "1800 s for 1800 s asked"),
+            Check("tss", False, "TSS 38.2, bounds 40 to 75"),
+        ]
+        return CaseResult(case.name, "submitted", checks, repeat=kwargs["repeat"])
+
+    monkeypatch.setattr(live, "run_case", failing)
+    out = io.StringIO()
+    await live.run_live([CASES["long_60"]], lambda: _script(1), AgentConfig(), 5_000_000, out)
+    text = out.getvalue()
+    assert "long_60: FAIL (submitted)" in text
+    assert "  long_60 failed tss: TSS 38.2, bounds 40 to 75" in text
+    assert "duration" not in text  # a passed check prints nothing
+
+
+async def test_repeats_run_all_cases_once_before_any_case_again() -> None:
+    out = io.StringIO()
+    cases = [CASES["easy_30"], CASES["minimum_10"]]
+    results = await live.run_live(
+        cases, lambda: _script(10), AgentConfig(model="fake-model"), 5_000_000, out, repeat=2
+    )
+    assert [(r.name, r.repeat) for r in results] == [
+        ("easy_30", 0),
+        ("minimum_10", 0),
+        ("easy_30", 1),
+        ("minimum_10", 1),
+    ]
+    assert {r.model for r in results} == {"fake-model"}

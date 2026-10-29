@@ -51,7 +51,7 @@ def test_the_default_model_is_priced_from_the_published_list() -> None:
     expected = Price(Decimal(4), Decimal(20), Decimal(5), Decimal("0.2"))
     assert DEFAULT_PRICES.lookup("anthropic", "claude-opus-5-5") == expected
     # Nothing else: an unlisted model is not priced by a wildcard.
-    assert DEFAULT_PRICES.lookup("anthropic", "claude-sonnet-5-5") is None
+    assert DEFAULT_PRICES.lookup("anthropic", "claude-unpriced-1") is None
     assert DEFAULT_PRICES.lookup("anthropic", "claude-opus-5-5-20990101") is None
 
 
@@ -130,7 +130,7 @@ async def test_an_unpriced_model_is_model_config_before_any_request(ctx: DesignC
     p, fake = anthropic_provider(stream(message(text("never"))))
     host = MemoryHost()
     with pytest.raises(JobFailure) as caught:
-        await run(ctx, p, host, model="claude-sonnet-5-5")
+        await run(ctx, p, host, model="claude-unpriced-1")
     assert caught.value.category == "model_config"
     assert fake.requests == []
 
