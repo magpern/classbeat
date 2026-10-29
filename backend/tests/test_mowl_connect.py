@@ -58,12 +58,14 @@ async def test_connect_stores_the_token_encrypted_and_shows_the_status(
     assert (shown["provider"], shown["status"], shown["last_error"]) == ("mowl", "connected", None)
     assert shown["expires_at"] is None  # the token's lifetime is unknown (ADR 0004 section 6)
     assert set(shown) == {
-        "provider", "status", "last_error", "connected_at", "last_used_at", "expires_at"
+        "id", "provider", "status", "last_error", "connected_at", "last_used_at", "expires_at"
     }  # fmt: skip
     assert mowl_api.requests == ["POST " + mowl_api_path("auth"), "GET " + mowl_api_path("ticket")]
 
     listed = (await actor.get("/api/connections")).json()["connections"]
     assert [(c["provider"], c["status"]) for c in listed] == [("mowl", "connected")]
+    # The id is the caller's own credential row (what a job input names), the same in both answers.
+    assert shown["id"] == listed[0]["id"] == str(await owned(env, "SELECT id FROM connections"))
     secret = await owned(env, "SELECT secret FROM connections")
     assert isinstance(secret, bytes) and TOKEN.encode() not in secret  # noqa: PT018
     ctx = await user_ctx(env)

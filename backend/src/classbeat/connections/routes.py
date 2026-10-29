@@ -15,6 +15,7 @@ handler, ``auth.setup``); failures answer with the category alone.
 
 from datetime import datetime
 from typing import Annotated
+from uuid import UUID
 
 from fastapi import APIRouter, Depends, Request, Response
 from fastapi.responses import JSONResponse
@@ -52,6 +53,7 @@ class MowlConnectIn(BaseModel):
 
 
 class ConnectionOut(BaseModel):
+    id: UUID  # the caller's own credential row id: the id a job input names (ADR 0005 s. 2)
     provider: str
     status: str
     last_error: str | None
@@ -62,6 +64,7 @@ class ConnectionOut(BaseModel):
     @classmethod
     def of(cls, info: ConnectionInfo) -> "ConnectionOut":
         return cls(
+            id=info.id,
             provider=info.provider,
             status=info.status,
             last_error=info.last_error,
