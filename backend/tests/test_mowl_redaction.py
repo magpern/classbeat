@@ -27,7 +27,8 @@ from ctx import make_context
 from mowlfake import EMAIL, PASSWORD, TICKET, TOKEN, FakeMowl
 
 CONNECT = "/api/connections/mowl"
-SECRETS = (PASSWORD, TICKET, TOKEN)
+WRONG_PASSWORD = "wrong-mowl-password-Hv4"  # a typo'd password is a secret too: searched for
+SECRETS = (PASSWORD, WRONG_PASSWORD, TICKET, TOKEN)
 VENDORED = Path(__file__).parents[1] / "vendor" / "mowl_workouts-0.5.0-py3-none-any.whl"
 
 
@@ -86,7 +87,7 @@ def chain(error: BaseException | None) -> list[BaseException]:
     ("setup", "status"),
     [
         ({}, 200),
-        ({"password": "wrong"}, 400),
+        ({"password": WRONG_PASSWORD}, 400),
         ({"authenticate": 401}, 400),
         ({"authenticate": 429}, 429),
         ({"exchange": 401}, 400),
@@ -127,7 +128,9 @@ async def test_no_secret_in_logs_access_log_events_or_responses(
     assert EMAIL not in str(rows)  # the MOWL email is not stored
 
 
-@pytest.mark.parametrize("setup", [{"password": "wrong"}, {"exchange": 401}, {"exchange": 503}])
+@pytest.mark.parametrize(
+    "setup", [{"password": WRONG_PASSWORD}, {"exchange": 401}, {"exchange": 503}]
+)
 async def test_the_failure_has_no_chain_and_holds_no_secret(
     env: Env, mowl_api: FakeMowl, captured: Everything, setup: dict[str, Any]
 ) -> None:
@@ -183,3 +186,31 @@ def test_the_search_finds_a_planted_leak(captured: Everything) -> None:
         assert_records_clean(captured)
     with pytest.raises(AssertionError):
         assert_clean(repr(ValueError(TICKET)))
+
+
+@pytest.mark.parametrize("password", [PASSWORD, WRONG_PASSWORD])
+async def test_the_search_finds_a_leak_planted_in_the_route(
+    env: Env,
+    make_actor: Any,
+    mowl_api: FakeMowl,
+    captured: Everything,
+    monkeypatch: pytest.MonkeyPatch,
+    password: str,
+) -> None:
+    """The same request as the route test above, with a leak planted on its path (the library
+    call the route makes logs the password): the search must fail, for the right password and
+    for a wrong one."""
+    from mowl import api
+
+    real_login = api.login
+
+    def leaking_login(email: str, secret: str) -> str:
+        logging.getLogger("classbeat.planted").warning("login for %s with %s", email, secret)
+        return real_login(email, secret)
+
+    monkeypatch.setattr(api, "login", leaking_login)
+    actor = await make_actor(await env.user("user@example.com"))
+    await actor.post(CONNECT, {"email": EMAIL, "password": password})
+    assert any(r.name == "classbeat.planted" for r in captured.records)  # the plant ran
+    with pytest.raises(AssertionError, match="leaked"):
+        assert_records_clean(captured)

@@ -219,9 +219,12 @@ uv run alembic upgrade head    # migrations as the owner role, CLASSBEAT_MIGRATI
 The domain library `mowl` (`mowl-workouts`) is pinned as `backend/vendor/mowl_workouts-0.5.0-py3-none-any.whl`,
 built from the v0.5.0 tag **without** the bundled Swedebeat app key by `scripts/build-mowl-wheel.sh`
 (needs `gh` access to the private repo; it checks the tag's commit, the missing key file and that
-every other file matches the release wheel). After a rebuild run `uv lock`. classbeat leaves out
+every other file and the `Requires-Dist` lines match the release wheel). After a rebuild run `uv lock`. classbeat leaves out
 the library's `mcp` dependency (`exclude-dependencies`): it never runs the MCP server, and `mcp`'s
 `httpx2` would replace httpx inside Authlib. Backend tests fake MOWL in-process (`tests/mowlfake.py`).
+Because `mcp` is left out, the image's `mowl` and `mowl-mcp` console scripts fail on import: use only the library's modules `api`, `service`, `library`, `spotify_web`
+and `swedebeat` (never the CLI or MCP entry points). The tag commit, the release asset's digest and
+the vendored wheel's SHA-256 are recorded in the header of `scripts/build-mowl-wheel.sh`.
 
 Database tests need a throwaway Postgres whose application database has the roles of
 `docker/postgres/init/10-roles.sql` (ADR 0002 section 4). Give it a name and port of its own

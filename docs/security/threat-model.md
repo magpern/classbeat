@@ -124,6 +124,12 @@ responses and model output alike.
   apps, so classbeat doesn't use that key: Swedebeat features stay behind a disabled flag with
   fakes until Swedebeat authorizes server-side use, and the classbeat image never contains it:
   it installs a `mowl-workouts` wheel built without the bundled key file (M2).
+- MOWL connect has a per-email limit (5 per normalized MOWL email per 15 minutes, T43, ADR 0004
+  §4) that counts across users: a signed-in user who submits another person's MOWL email five
+  times blocks that person's connect for 15 minutes (their own per-user and per-IP slots are
+  spent too). It is the trade-off for stopping password guessing through our page, it denies
+  nothing but a new connect (an existing connection keeps working), and it needs an invited
+  account; revisited at M6 with the other per-account limits.
 - Images on GHCR are private; making a package public is an owner decision.
 - Per-account denial of service: an attacker who knows a user's email can exhaust the
   per-account sign-in cap from many IPs; the user then signs in from a known device or by OAuth
