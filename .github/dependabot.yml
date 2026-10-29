@@ -12,6 +12,12 @@ updates:
     commit-message:
       prefix: build(deps)
       prefix-development: build(deps-dev)
+    ignore:
+      # anthropic 1.x and 2.x require httpx2, which the worker's egress allowlist and its guard
+      # (classbeat.egress) are not built on: we stay on 0.125.0, the last 0.x (ADR 0006 section 2,
+      # issue #120). Review by 2027-01-31, or earlier on a pip-audit advisory against 0.125.0.
+      - dependency-name: anthropic
+        update-types: ["version-update:semver-major"]
     groups:
       python:
         update-types: [minor, patch]

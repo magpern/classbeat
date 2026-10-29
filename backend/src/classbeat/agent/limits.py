@@ -25,9 +25,13 @@ and JSON, so the estimate errs towards stopping early.
 **Undercount after a lost lease.** A turn that finishes after its worker lost the lease cannot be
 recorded (the fence refuses the ``agent_runs`` update), so the job's cost across attempts may
 undercount by that one turn per lost lease; the next holder does not guess it (ADR 0006 section 6,
-accepted there). **And after a failed request:** a turn whose request fails after the provider
-started billing it (an error mid-stream, a timeout) returns no usage, so it isn't counted either:
-at most one turn per failed attempt, so up to the job's ``max_attempts`` turns (same section).
+accepted there). **And after a failed request:** a request that fails after the provider
+started billing it (an error mid-stream, a timeout) returns no usage, so it isn't counted either.
+The SDK also retries silently inside a turn (``max_retries=2``: a connection error or a timeout
+before the response headers, 408, 409, 429, 5xx; never once the stream has started), and only the
+attempt that answers reports usage, so a billed earlier attempt is lost even when the turn
+succeeds: at most two uncounted attempts per turn, three for the turn that ends a failed attempt
+(same section).
 """
 
 import math

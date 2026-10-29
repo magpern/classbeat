@@ -99,7 +99,7 @@ def test_anthropic_with_the_key_starts(kek_dir: Path, environment: str) -> None:
     check_worker_model_provider(settings)
 
 
-@pytest.mark.parametrize("name", ["ANTHROPIC_LOG", "ANTHROPIC_CUSTOM_HEADERS"])
+@pytest.mark.parametrize("name", ["ANTHROPIC_LOG", "ANTHROPIC_CUSTOM_HEADERS", "SSLKEYLOGFILE"])
 def test_anthropic_with_sdk_environment_is_refused_at_start(
     kek_dir: Path, monkeypatch: pytest.MonkeyPatch, name: str
 ) -> None:
@@ -127,6 +127,18 @@ def test_the_worker_process_refuses_anthropic_with_sdk_logging(kek_dir: Path) ->
     assert result.returncode == 2
     assert "ANTHROPIC_LOG" in json.loads(result.stdout.splitlines()[-1])["reason"]
     assert PLANTED_KEY not in result.stdout + result.stderr
+
+
+def test_the_worker_process_refuses_anthropic_with_a_tls_key_log(
+    kek_dir: Path, tmp_path: Path
+) -> None:
+    _key_file(kek_dir, PLANTED_KEY)
+    key_log = tmp_path / "keys.log"
+    result = _run_worker({"CLASSBEAT_MODEL_PROVIDER": "anthropic", "SSLKEYLOGFILE": str(key_log)})
+    assert result.returncode == 2
+    assert "SSLKEYLOGFILE" in json.loads(result.stdout.splitlines()[-1])["reason"]
+    assert str(key_log) not in result.stdout + result.stderr
+    assert not key_log.exists()  # the allowlist's TLS context, built first, never opened it
 
 
 @pytest.mark.parametrize("environment", ["dev", "test"])

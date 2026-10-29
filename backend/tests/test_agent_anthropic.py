@@ -358,7 +358,7 @@ async def test_the_environment_cannot_move_the_client(monkeypatch: pytest.Monkey
     assert "authorization" not in request.headers
 
 
-@pytest.mark.parametrize("name", ["ANTHROPIC_LOG", "ANTHROPIC_CUSTOM_HEADERS"])
+@pytest.mark.parametrize("name", ["ANTHROPIC_LOG", "ANTHROPIC_CUSTOM_HEADERS", "SSLKEYLOGFILE"])
 def test_sdk_environment_that_changes_requests_or_logging_is_refused(
     monkeypatch: pytest.MonkeyPatch, name: str
 ) -> None:
