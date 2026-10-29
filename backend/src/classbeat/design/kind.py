@@ -9,8 +9,9 @@ mowl_connection_id}`` (``DesignDraftInput``). Stages:
    ``preview_draft``, ``submit_draft``, built in A1) over the brief and the music summary, on a
    **new provider for every run** (``Runtime.provider``; a provider is never shared between
    jobs, #114 item 4);
-3. store: the connection guard once more, then the ``draft`` revision
-   (``classbeat.design.revision``) in the final fenced transaction; the job ends ``completed``.
+3. store, in the final fenced transaction: the connection guard once more
+   (``MusicStep.still_current``; ``not_connected`` rolls it back and fails the job), then the
+   ``draft`` revision (``classbeat.design.revision``); the job ends ``completed``.
 
 The kind is registered in ``classbeat.jobs.KINDS`` when this package is imported: by the worker
 (which runs it) and by the web app (the jobs API validates the input with the same registry,
@@ -31,12 +32,11 @@ from pydantic import BaseModel, ConfigDict, StringConstraints
 from classbeat.agent import AgentConfig, Brief, DesignContext, JobStageHost, design_stage, run_stage
 from classbeat.agent.design import DesignResult
 from classbeat.agent.provider import ModelProvider
-from classbeat.agent.providers import provider_for
 from classbeat.config import Settings
 from classbeat.crypto.keks import KeyRing
 from classbeat.design import revision
 from classbeat.design.music import load_music
-from classbeat.jobs import KINDS, Complete, JobFailure, JobKind, JobRun
+from classbeat.jobs import KINDS, Complete, FencedSession, JobFailure, JobKind, JobRun
 from classbeat.jobs.inputs import JobInput
 
 KIND: Final = "design_draft"
@@ -80,6 +80,10 @@ def configure(runtime: Runtime | None) -> None:
 
 
 def runtime_from_settings(settings: Settings, keyring: KeyRing) -> Runtime:
+    # Imported here, in the worker only: the web app imports this module (to register the kind)
+    # and must never load a provider adapter or the model SDK.
+    from classbeat.agent.providers import provider_for
+
     return Runtime(
         keyring=keyring,
         provider=lambda: provider_for(settings),
@@ -118,10 +122,20 @@ async def run(job_run: JobRun) -> Complete:
         if not isinstance(outcome.output, DesignResult):
             raise JobFailure("internal")
         draft = revision.build(outcome.output, outcome, ctx.map, step)
-        await step.still_current(job_run)
-    finally:
+    except BaseException:
         step.close()
-    return Complete(draft.store)
+        raise
+
+    async def store(fs: FencedSession) -> UUID:
+        """In the final fenced transaction: the connection guard, then the revision. A
+        ``not_connected`` here rolls it back and ends the job with that category."""
+        try:
+            await step.still_current(fs)
+            return await draft.store(fs)
+        finally:
+            step.close()
+
+    return Complete(store)
 
 
 DESIGN_DRAFT: Final = KINDS.register(JobKind(KIND, DesignDraftInput, STAGES, run))

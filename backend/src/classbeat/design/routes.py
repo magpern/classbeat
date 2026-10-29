@@ -1,16 +1,22 @@
 """``GET /api/music/mowl-playlists``: the user's Spotify playlists as MOWL lists them, for the
 new-class form's playlist choice (ADR 0006 section 3, D1). Web only.
 
-Signed in. Opens the user's MOWL connection through ``classbeat.connections.use`` (a read:
-``mowl.api.spotify_playlists``) and answers per playlist only its Spotify id (what the job input
-names, ``music.spotify_playlist_id``) and its name: no track counts, MOWL ids, URLs or texts. An
-entry whose id is not a Spotify playlist id is left out; names lose control characters and are
-cut to 200 characters (they are the user's own playlist names, shown back to them).
+Signed in. Opens the user's MOWL connection through ``classbeat.connections.open_connection`` and
+makes one read, ``mowl.api.spotify_playlists``, through ``run_library_call``; it answers per
+playlist only its Spotify id (what the job input names, ``music.spotify_playlist_id``) and its name:
+no track counts, MOWL ids, URLs or texts. An entry whose id is not a Spotify playlist id is left
+out; names lose control characters and are cut to 200 characters (they are the user's own playlist
+names, shown back to them).
 
 A failure answers with its category only, as the connection routes do: ``not_connected``,
-``needs_reconnect`` and ``decrypt_failed`` 409 (a 401 or 403 from MOWL flips the connection to
-``needs_reconnect``), ``rate_limited`` 429 with ``Retry-After``, ``upstream_unavailable`` and
-``key_unavailable`` 503, anything else 502.
+``needs_reconnect`` and ``decrypt_failed`` 409, ``rate_limited`` 429 with ``Retry-After``,
+``upstream_unavailable`` and ``key_unavailable`` 503, anything else 502.
+
+**A GET writes no state** (Architect decision on #119): a 401 or 403 answers ``needs_reconnect``
+without flipping the connection, and no ``last_used_at`` or ``last_error`` is recorded (the
+job's own reads do that). The one write left is ``open_connection``'s own: a row whose secret no
+longer decrypts flips to ``needs_reconnect`` (ADR 0004 section 5, a key-integrity event). No
+CSRF (a GET, no state) and no rate limit yet (M6).
 """
 
 import re
@@ -23,7 +29,7 @@ from pydantic import BaseModel
 
 from classbeat import auth
 from classbeat.agent.schemas import clean_text
-from classbeat.connections import ConnectionFailure, Credentials, use
+from classbeat.connections import ConnectionFailure, open_connection, run_library_call
 from classbeat.context import UserContext
 
 router = APIRouter(prefix="/api/music", tags=["music"])
@@ -72,10 +78,6 @@ def _listed(answer: object) -> list[PlaylistOut]:
     return out
 
 
-def _read(creds: Credentials) -> object:
-    return mowl_api.spotify_playlists(creds)
-
-
 @router.get(
     "/mowl-playlists",
     response_model=PlaylistsOut,
@@ -87,9 +89,11 @@ async def mowl_playlists(
     failure: ConnectionFailure | None = None
     answer: object = None
     try:
-        answer = await use(
-            request.app.state.session_factory, request.app.state.keyring, ctx, "mowl", _read
+        opened = await open_connection(
+            request.app.state.session_factory, request.app.state.keyring, ctx, "mowl"
         )
+        creds = opened.credentials
+        answer = await run_library_call(lambda: mowl_api.spotify_playlists(creds), sign_in=False)
     except ConnectionFailure as error:
         failure = error
     if failure is not None:

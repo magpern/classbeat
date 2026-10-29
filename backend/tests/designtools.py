@@ -6,7 +6,8 @@ network handler of the worker's real allowlist opener, the reads ``library.spoti
 makes (``GET v1/Playlists/<id>/tracks``, ``.../sessiondesigner/availability``,
 ``v1/Spotify/Tracks/<id>/AudioAnalysis``) and ``POST v1/Spotify/Playlists`` (the user's playlists),
 so the analysis goes through the vendored library and the allowlist guard and never the network.
-A fake account (its token) reads only the MOWL playlists its own attaches handed out. The music is
+A fake account (its token) lists only its own playlists (``names``) and reads only the MOWL
+playlists its own attaches handed out. The music is
 invented (``agentfake.synthetic_tracks``). Public test values only.
 """
 
@@ -52,7 +53,10 @@ class FakeMowlMusic(FakeMowlAttach):
     library's thread) before it is answered."""
 
     music: FakeLibrary = field(default_factory=synthetic_tracks)
-    names: dict[str, str] = field(default_factory=lambda: {PLAYLIST: PLAYLIST_NAME})
+    # Per account (token): its Spotify playlists as MOWL lists them, id -> name.
+    names: dict[str, dict[str, str]] = field(
+        default_factory=lambda: {t: {PLAYLIST: PLAYLIST_NAME} for t in ACCOUNT_BASE}
+    )
     bpm_zero_reads: int = 0
     bpm_never: set[int] = field(default_factory=lambda: set[int]())
     on_read: Callable[[str], None] | None = None
@@ -86,7 +90,7 @@ class FakeMowlMusic(FakeMowlAttach):
         if path == "/v1/Spotify/Playlists" and req.get_method() == "POST":
             listed = [
                 {"ID": sid, "Name": name, "TrackCount": len(self.music.tracks), "Url": "x"}
-                for sid, name in self.names.items()
+                for sid, name in self.names.get(token, {}).items()
             ]
             return self._ok(req, listed)
         if (m := _TRACKS.match(path)) and owns(token, int(m[1])):

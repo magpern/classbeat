@@ -14,7 +14,7 @@ from classbeat.design import DESIGN_DRAFT, KIND
 from classbeat.jobs import KINDS
 from designtools import BRIEF, PLAYLIST_NAME, DesignEnv, FakeMowlMusic
 from jobapi import Browser
-from optools import PLAYLIST, TOKEN_A
+from optools import PLAYLIST, TOKEN_A, TOKEN_B
 
 pytestmark = pytest.mark.usefixtures("jenv")
 
@@ -83,16 +83,25 @@ async def test_an_invalid_design_input_is_refused_by_the_api(
     assert "not-a-spotify-id" not in response.text
 
 
+def connection_row(denv: DesignEnv, owner: UUID) -> Any:
+    return denv.ops.sql(
+        "SELECT status, last_error, last_used_at, updated_at FROM connections WHERE owner_id = :o",
+        o=owner,
+    ).one()
+
+
 async def test_the_playlists_are_listed_with_ids_and_names_only(
     browsers: Any, denv: DesignEnv, fake_mowl: FakeMowlMusic
 ) -> None:
     browser: Browser = await browsers(mowl=False)
     await denv.ops.connect(browser.user_id, TOKEN_A)
-    fake_mowl.names = {
+    fake_mowl.names[TOKEN_A] = {
         PLAYLIST: PLAYLIST_NAME,
-        "4hOKQuZbraPDIfaGbM3lKI": "Ride‮\x00 two",
+        "4hOKQuZbraPDIfaGbM3lKI": "Ride\u202e\x00 two",
         "not a spotify id": "left out",
     }
+    fake_mowl.names[TOKEN_B] = {"7xGfFoTpQ2E7fRF5lN10tr": "another account's list"}
+    before = connection_row(denv, browser.user_id)
     response = await browser.get("/api/music/mowl-playlists")
     assert response.status_code == 200, response.text
     assert response.json() == {
@@ -105,6 +114,7 @@ async def test_the_playlists_are_listed_with_ids_and_names_only(
     assert fake_mowl.tokens_read == [TOKEN_A]
     assert TOKEN_A not in response.text
     assert "TrackCount" not in response.text
+    assert connection_row(denv, browser.user_id) == before  # a GET writes nothing
 
 
 async def test_the_playlists_need_a_signed_in_user_and_a_mowl_connection(
@@ -121,19 +131,20 @@ async def test_the_playlists_need_a_signed_in_user_and_a_mowl_connection(
     assert fake_mowl.requests == []
 
 
-async def test_a_token_mowl_refuses_flips_the_connection(
+async def test_a_token_mowl_refuses_answers_needs_reconnect_and_writes_nothing(
     browsers: Any, denv: DesignEnv, fake_mowl: FakeMowlMusic
 ) -> None:
+    """Architect decision on #119: the GET does not flip the connection (the job path does)."""
     browser: Browser = await browsers(mowl=False)
     await denv.ops.connect(browser.user_id, UNKNOWN_TOKEN)  # the fake answers it 401
+    before = connection_row(denv, browser.user_id)
     response = await browser.get("/api/music/mowl-playlists")
     assert (response.status_code, response.json()) == (
         409,
         {"detail": {"reason": "needs_reconnect"}},
     )
-    status = denv.ops.sql(
-        "SELECT status FROM connections WHERE owner_id = :o", o=browser.user_id
-    ).scalar_one()
-    assert status == "needs_reconnect"
+    after = connection_row(denv, browser.user_id)
+    assert after == before
+    assert (after.status, after.last_error) == ("connected", None)
     assert fake_mowl.tokens_read == [UNKNOWN_TOKEN]
     assert UNKNOWN_TOKEN not in json.dumps(response.json())

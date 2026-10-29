@@ -11,25 +11,29 @@ the chosen Spotify playlist, then its analysis with read-only calls. Runs before
    (``classbeat.connections.hold``: the same row version, still ``connected``) and reads the link
    again. A reconnect deletes the links under the connection's row lock, so if both hold, the id
    belongs to the account whose credentials were opened; otherwise ``not_connected`` and no read
-   is made. ``MusicStep.still_current`` repeats the check before the revision is stored.
+   is made. The version check matters on its own: after a reconnect in place the new account may
+   have attached the same playlist again, so a link exists, but with its playlist id.
+   ``MusicStep.still_current`` repeats the check inside the transaction that stores the revision.
 3. **The analysis**: ``mowl.library.spotify_analysis`` (tracks, availability, one read of Spotify's
    sections per track), plus one read of MOWL's playlist list for the playlist's name, all through
    ``classbeat.connections.call_opened`` in a worker thread. While MOWL still reports a BPM of 0
    the library reads the tracks again every ``BPM_POLL_SEC`` (3 s) for up to ``BPM_WAIT_SEC``
    (120 s).
 
-**Checkpoints and the budget.** Every library read is preceded by a checkpoint (ADR 0005
-section 4). The library is synchronous and runs in a thread, so the checkpoint it calls checks the
-run's flags at once (lost lease, shutdown) and then runs ``JobRun.checkpoint`` (the fence: lease
-and cancel) on the event loop. The step has a time budget of ``MUSIC_BUDGET_SECONDS`` (the BPM
-wait plus two minutes of reads); the lease is extended to cover it before the first read (the
-heartbeat keeps extending it too), and a checkpoint past the budget stops the analysis with the
-retryable ``upstream_unavailable``. A stop (cancel, lost lease, shutdown, budget) raised inside the
-thread stops the library at once, with no further read; it travels out of the connection wrapper
-as ``_Halt`` (a ``BaseException``, so the wrapper neither turns it into a ``ConnectionFailure`` nor
-records it as the connection's ``last_error``) and is raised again as itself here. A run that was
-abandoned (its task cancelled after a lost lease or at shutdown) stops at the thread's next
-checkpoint.
+**Checkpoints and the budget.** Every library read is preceded by a checkpoint (ADR 0005 section 4).
+The library is synchronous and runs in a thread, so the checkpoint it calls checks the run's flags
+at once (lost lease, shutdown) and then runs ``JobRun.checkpoint`` (the fence: lease and cancel) on
+the event loop. The step has a time budget of ``MUSIC_BUDGET_SECONDS`` (the BPM wait plus two
+minutes of reads); the lease is extended to cover it before the first read (the heartbeat keeps
+extending it too), and a checkpoint past the budget stops the analysis with the retryable
+``upstream_unavailable``; a read that never ends (bytes trickling in, which urllib's per-operation
+timeout does not bound) is cut off by waiting at most the budget plus ``READ_MARGIN_SECONDS`` for
+the thread, which then stops at its next checkpoint. A stop (cancel, lost lease, shutdown, budget)
+raised inside the thread stops the library at once, with no further read; it travels out of the
+connection wrapper as ``_Halt`` (a ``BaseException``, so the wrapper neither turns it into a
+``ConnectionFailure`` nor records it as the connection's ``last_error``) and is raised again as
+itself here. A run that was abandoned (its task cancelled after a lost lease or at shutdown) stops
+at the thread's next checkpoint.
 
 **Never stored as shared.** M3a has no shared analysis store (ADR 0005 section 1; #71 adds it): the
 analysis lives in memory for this run only, so every job analyses again. When the store comes, an
@@ -48,6 +52,7 @@ import asyncio
 import hashlib
 import json
 import logging
+import threading
 import time
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
@@ -63,7 +68,7 @@ from classbeat.agent.model_input import MusicData
 from classbeat.agent.schemas import clean_text
 from classbeat.connections import Credentials, OpenConnection, call_opened, hold, open_connection
 from classbeat.crypto.keks import KeyRing
-from classbeat.jobs import JobFailure, JobRun, RunStopped
+from classbeat.jobs import FencedSession, JobFailure, JobRun, RunStopped
 from classbeat.jobs.fence import CALL_LEASE_MARGIN_SECONDS
 from classbeat.operations import attach_spotify_playlist
 from classbeat.operations.attach import SOURCE, check_source_id
@@ -74,6 +79,10 @@ logger = logging.getLogger(__name__)
 MUSIC_BUDGET_SECONDS: Final = float(library.BPM_WAIT_SEC + 120)
 BUDGET_CATEGORY: Final = "upstream_unavailable"  # MOWL too slow: retried with backoff
 CHECKPOINT_TIMEOUT_SECONDS: Final = 30.0  # one fenced checkpoint from the library's thread
+# The task waits for the thread at most the budget plus this (a read urllib's per-operation
+# timeout never ends, bytes trickling in): then the step ends and the thread stops at its next
+# checkpoint.
+READ_MARGIN_SECONDS: Final = 30.0
 MAX_TITLE: Final = 200
 
 _LINK = text(
@@ -112,26 +121,27 @@ class MusicStep:
     unknown_bpm: tuple[UnknownBpm, ...]
     _opened: OpenConnection | None
 
-    async def still_current(self, run: JobRun) -> None:
-        """Before the revision is stored: the connection is still the one the music was read
-        with, and the link still exists (a reconnect or disconnect meanwhile deleted it)."""
+    async def still_current(self, fs: FencedSession) -> None:
+        """In the transaction that stores the revision: the connection is still the one the
+        music was read with (``hold``: same version, ``connected``, share-locked until the
+        commit), and the link still exists with the same playlist (a reconnect or disconnect
+        meanwhile deleted it). ``not_connected`` otherwise, and nothing is stored."""
         opened = self._opened
         if opened is None:
             raise JobFailure("not_connected")
-        async with run.fenced() as fs:
-            if not await hold(fs.db, run.ctx, opened):
-                raise JobFailure("not_connected")
-            row = (
-                await fs.db.execute(
-                    _LINK_BY_ID,
-                    {
-                        "id": self.link_id,
-                        "owner_id": run.lease.owner_id,
-                        "source": SOURCE,
-                        "source_id": self.source_id,
-                    },
-                )
-            ).first()
+        if not await hold(fs.db, fs.lease.ctx, opened):
+            raise JobFailure("not_connected")
+        row = (
+            await fs.db.execute(
+                _LINK_BY_ID,
+                {
+                    "id": self.link_id,
+                    "owner_id": fs.lease.owner_id,
+                    "source": SOURCE,
+                    "source_id": self.source_id,
+                },
+            )
+        ).first()
         if row is None or row.playlist_id != self.data.playlist_id:
             raise JobFailure("not_connected")
 
@@ -169,10 +179,14 @@ def _thread_checkpoint(
     loop: asyncio.AbstractEventLoop,
     deadline: float,
     clock: Callable[[], float],
+    abandoned: threading.Event | None = None,
 ) -> Callable[[], None]:
-    """The checkpoint the library calls (in its thread) before each read."""
+    """The checkpoint the library calls (in its thread) before each read. ``abandoned`` is set
+    when the task stopped waiting for the thread."""
 
     def check() -> None:
+        if abandoned is not None and abandoned.is_set():
+            raise _Halt(JobFailure(BUDGET_CATEGORY))
         if run.lost:
             raise _Halt(RunStopped("lost"))
         if run.shutdown.is_set():
@@ -229,9 +243,9 @@ async def _analyse(
     source_id: str,
     clock: Callable[[], float],
 ) -> tuple[list[str], dict[str, Any]]:
-    check = _thread_checkpoint(
-        run, asyncio.get_running_loop(), clock() + MUSIC_BUDGET_SECONDS, clock
-    )
+    abandoned = threading.Event()
+    budget = MUSIC_BUDGET_SECONDS
+    check = _thread_checkpoint(run, asyncio.get_running_loop(), clock() + budget, clock, abandoned)
 
     def read(creds: Credentials) -> tuple[list[str], dict[str, Any] | None]:
         check()
@@ -239,9 +253,15 @@ async def _analyse(
         return library.spotify_analysis(creds, playlist_id, source_id, name, checkpoint=check)
 
     try:
-        unavailable, analysis = await call_opened(run.factory, run.ctx, opened, read)
+        unavailable, analysis = await asyncio.wait_for(
+            call_opened(run.factory, run.ctx, opened, read), budget + READ_MARGIN_SECONDS
+        )
     except _Halt as halt:
         raise halt.cause from None
+    except TimeoutError:  # a read that never ends: the thread stops at its next checkpoint
+        raise JobFailure(BUDGET_CATEGORY) from None
+    finally:
+        abandoned.set()
     if analysis is None or not analysis["map"]["tracks"]:
         raise JobFailure("invalid_input")  # nothing playable in the playlist
     return unavailable, analysis
