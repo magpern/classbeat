@@ -38,9 +38,9 @@ def test_the_allowlist_is_exactly_the_reviewed_one() -> None:
     )
 
 
-def test_the_jobs_api_service_is_reached_only_from_its_routes() -> None:
-    """``classbeat.jobs.service`` opens plain user sessions on jobs (the user's own writes); no
-    worker, job-kind or core module may import it, only the web routes (J3, #87)."""
+def importers(module: str) -> set[str]:
+    """The source modules that import ``module`` (``import m``, ``from m import x``, ``from
+    parent import name``)."""
     users = set()
     for path in sorted((SRC / "classbeat").rglob("*.py")):
         tree = ast.parse(path.read_text("utf-8"))
@@ -50,9 +50,24 @@ def test_the_jobs_api_service_is_reached_only_from_its_routes() -> None:
                 names = [node.module] + [f"{node.module}.{a.name}" for a in node.names]
             elif isinstance(node, ast.Import):
                 names = [a.name for a in node.names]
-            if "classbeat.jobs.service" in names:
+            if module in names:
                 users.add(_module(path))
-    assert users == {"classbeat.jobs.routes"}
+    return users
+
+
+def test_the_jobs_api_service_is_reached_only_from_its_routes() -> None:
+    """``classbeat.jobs.service`` opens plain user sessions on jobs (the user's own writes); no
+    worker, job-kind or core module may import it, only the web routes (J3, #87); and those
+    routes only from the web app (#115 item 6)."""
+    assert importers("classbeat.jobs.service") == {"classbeat.jobs.routes"}
+    assert importers("classbeat.jobs.routes") == {"classbeat.web"}
+
+
+def test_the_users_operation_actions_are_reached_only_from_their_routes() -> None:
+    """``classbeat.operations.user`` opens plain user sessions (Check again, Do it anyway): only
+    its web routes import it, and those only the web app (#117 item 3)."""
+    assert importers("classbeat.operations.user") == {"classbeat.operations.routes"}
+    assert importers("classbeat.operations.routes") == {"classbeat.web"}
 
 
 @pytest.mark.parametrize(

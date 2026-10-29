@@ -34,8 +34,9 @@ from classbeat.mail import Mailer
 
 logger = logging.getLogger(__name__)
 
-# Routes whose request bodies can hold a password or token.
-SECRET_INPUT_PATHS = ("/api/auth/", "/api/connections")
+# Routes whose request bodies can hold a password or token, and the jobs API (its bodies are the
+# user's own text; its routes validate them themselves, this is the backstop, #115 item 2).
+SECRET_INPUT_PATHS = ("/api/auth/", "/api/connections", "/api/jobs")
 
 
 def install(app: FastAPI) -> None:

@@ -1,13 +1,16 @@
 """Failure categories, retry classes and backoff of a job (ADR 0005 section 4).
 
 A kind's code fails a run by raising ``JobFailure(category)``; anything else it raises is mapped
-here (a ``ConnectionFailure`` by its category, ``OutboundBlocked`` to ``outbound_blocked``, any
-other exception to ``internal``). Only the category is ever kept: no exception text reaches a job
+here (a ``ConnectionFailure`` by its category, ``OutboundBlocked`` to ``outbound_blocked``, a
+transient error of our own database to ``DATABASE_RETRY_CATEGORY``, any other exception to
+``internal``). Only the category is ever kept: no exception text reaches a job
 row, an event or a log.
 """
 
 import random
 from typing import Final
+
+from sqlalchemy.exc import DisconnectionError, OperationalError
 
 from classbeat.connections import ConnectionFailure
 from classbeat.egress import OutboundBlocked
@@ -36,6 +39,12 @@ CATEGORIES: Final = (
 # Retried by the worker (a new attempt with backoff). ``lease_lost`` is retried by the reaper and
 # ``operation_busy`` is requeued without an attempt (``classbeat.jobs.transitions``).
 RETRYABLE: Final = frozenset({"upstream_unavailable", "rate_limited", "model_unavailable"})
+
+# A transient error of our own database (connection lost, a statement or lock timeout) during a
+# checkpoint, a stage write, a kind's own fenced write or the store of a result. ADR 0005 section 4
+# has no category of its own for it; the closest retryable one is used (no migration needed), the
+# same everywhere (#109 item 3).
+DATABASE_RETRY_CATEGORY: Final = "upstream_unavailable"
 
 BACKOFF_BASE_SECONDS: Final = 30.0
 BACKOFF_CAP_SECONDS: Final = 900.0  # 15 minutes
@@ -88,6 +97,8 @@ def failure_of(exc: BaseException) -> JobFailure:
         return JobFailure(category, exc.retry_after)
     if isinstance(exc, OutboundBlocked):
         return JobFailure("outbound_blocked")
+    if isinstance(exc, OperationalError | DisconnectionError):
+        return JobFailure(DATABASE_RETRY_CATEGORY)
     return JobFailure("internal")
 
 

@@ -2,10 +2,11 @@
 
 Signed in only (401). A job that is not the caller's, an unknown one and a malformed id are the
 same 404. ``Last-Event-ID`` (or ``?after=`` for the first connect) names the last ``seq`` the
-browser has. At most ``MAX_STREAMS_PER_USER`` open streams per user and web process (429
-beyond). The stream itself is ``classbeat.jobs.stream``. Each 15 s check of the session goes
-through ``resolve_session``, which refreshes ``last_seen_at`` (throttled), so an open stream keeps
-the session alive.
+browser has. A job that has ended and has no event after that id answers 204 (#116 item 4): an
+``EventSource`` stops reconnecting on it, and nothing is left to send. At most
+``MAX_STREAMS_PER_USER`` open streams per user and web process (429 beyond). The stream itself
+is ``classbeat.jobs.stream``. Each 15 s check of the session goes through ``resolve_session``,
+which refreshes ``last_seen_at`` (throttled), so an open stream keeps the session alive.
 """
 
 import time
@@ -14,7 +15,7 @@ from typing import Annotated, Final
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Request
-from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi.responses import JSONResponse, Response, StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from classbeat import auth
@@ -96,13 +97,16 @@ async def job_events(
     request: Request,
     ctx: Annotated[UserContext, Depends(auth.require_user)],
     after: str | None = None,
-) -> StreamingResponse | JSONResponse:
+) -> StreamingResponse | JSONResponse | Response:
     uid = _parse_job_id(job_id)
     start = _parse_after(request, after)
     app = request.app
     factory = app.state.session_factory
-    if await read_page(factory, ctx, uid, start, 1) is None:
+    first = await read_page(factory, ctx, uid, start, 1)
+    if first is None:
         raise _not_found()  # before the limit, so a foreign id never meets a 429
+    if first.state in stream.TERMINAL_STATES and not first.events:
+        return Response(status_code=204)  # over, and the browser has every event
     limiter: StreamLimiter = app.state.stream_limiter
     slot = limiter.acquire(ctx.user_id)
     if slot is None:

@@ -191,36 +191,71 @@ BEGIN
   END LOOP;
 END $$;
 
--- No user code may run as classbeat_queue (ADR 0005 section 3, review finding B2): the functions'
--- search_path leaves public out and every table is schema-qualified, and besides the five there
--- is no user-defined function, procedure, aggregate or operator in any schema (OID 16384 and up,
--- or outside the system schemas), no trigger but the internal ones of foreign keys and no rule but
--- the _RETURN rules of views. A trigger, default, CHECK or index expression on a queue table can
--- then reach only built-ins. The queue check refuses the same, so stop here with its name.
+-- No user code may run as classbeat_queue (ADR 0005 section 3, #108): no other user function,
+-- operator, trigger or rule, and no expression calling a built-in that runs SQL text or changes
+-- settings. The queue check refuses the same: stop here, naming each object as it and guard 9 do.
 DO $$
 DECLARE
   v_found text;
 BEGIN
   SELECT string_agg(x.what, ', ' ORDER BY x.what) INTO v_found FROM (
-           SELECT 'function ' || p.oid::regprocedure::text AS what
-             FROM pg_catalog.pg_proc p JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
-            WHERE NOT (n.nspname = 'public' AND p.proname IN ('queue_claim', 'queue_reap',
-                         'queue_expire', 'queue_unsettled', 'queue_stats'))
-              AND (p.oid >= 16384 OR n.nspname = 'public'
-                   OR (n.nspname NOT IN ('pg_catalog', 'information_schema', 'pg_toast')
-                       AND n.nspname !~ '^pg_(toast_)?temp_[0-9]+$'))
-           UNION ALL
-           SELECT 'operator ' || o.oid::regoperator::text
-             FROM pg_catalog.pg_operator o JOIN pg_catalog.pg_namespace n ON n.oid = o.oprnamespace
-            WHERE o.oid >= 16384 OR n.nspname = 'public'
-               OR (n.nspname NOT IN ('pg_catalog', 'information_schema', 'pg_toast')
-                   AND n.nspname !~ '^pg_(toast_)?temp_[0-9]+$')
-           UNION ALL
-           SELECT format('trigger %I on %s', t.tgname, t.tgrelid::regclass)
-             FROM pg_catalog.pg_trigger t WHERE NOT t.tgisinternal
-           UNION ALL
-           SELECT format('rule %I on %s', w.rulename, w.ev_class::regclass)
-             FROM pg_catalog.pg_rewrite w WHERE w.oid >= 16384 AND w.rulename <> '_RETURN') x;
+    SELECT 'function ' || n.nspname || '.' || p.proname || '('
+           || pg_catalog.oidvectortypes(p.proargtypes) || ')' AS what
+      FROM pg_catalog.pg_proc p JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+     WHERE NOT (n.nspname = 'public' AND p.proname IN ('queue_claim', 'queue_reap',
+                  'queue_expire', 'queue_unsettled', 'queue_stats'))
+       AND (p.oid >= 16384 OR n.nspname = 'public'
+            OR (n.nspname NOT IN ('pg_catalog', 'information_schema', 'pg_toast')
+                AND n.nspname !~ '^pg_(toast_)?temp_[0-9]+$'))
+    UNION ALL
+    SELECT 'operator ' || n.nspname || '.' || o.oprname || '('
+           || CASE WHEN o.oprleft = 0 THEN 'NONE' ELSE o.oprleft::regtype::text END || ', '
+           || CASE WHEN o.oprright = 0 THEN 'NONE' ELSE o.oprright::regtype::text END || ')'
+      FROM pg_catalog.pg_operator o JOIN pg_catalog.pg_namespace n ON n.oid = o.oprnamespace
+     WHERE o.oid >= 16384 OR n.nspname = 'public'
+        OR (n.nspname NOT IN ('pg_catalog', 'information_schema', 'pg_toast')
+            AND n.nspname !~ '^pg_(toast_)?temp_[0-9]+$')
+    UNION ALL
+    SELECT 'trigger ' || t.tgname || ' on ' || n.nspname || '.' || c.relname
+      FROM pg_catalog.pg_trigger t JOIN pg_catalog.pg_class c ON c.oid = t.tgrelid
+      JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace WHERE NOT t.tgisinternal
+    UNION ALL
+    SELECT 'rule ' || w.rulename || ' on ' || n.nspname || '.' || c.relname
+      FROM pg_catalog.pg_rewrite w JOIN pg_catalog.pg_class c ON c.oid = w.ev_class
+      JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+     WHERE w.oid >= 16384 AND w.rulename <> '_RETURN'
+    UNION SELECT 'built-in ' || f.proname || ' in ' || e.what FROM (
+      SELECT 'the default of ' || n.nspname || '.' || c.relname || '.' || a.attname AS what,
+             d.adbin::text AS tree
+        FROM pg_catalog.pg_attrdef d JOIN pg_catalog.pg_class c ON c.oid = d.adrelid
+        JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+        JOIN pg_catalog.pg_attribute a ON a.attrelid = d.adrelid AND a.attnum = d.adnum
+      UNION ALL
+      SELECT 'constraint ' || k.conname || ' on ' || n.nspname || '.'
+             || coalesce(c.relname, y.typname), k.conbin::text
+        FROM pg_catalog.pg_constraint k JOIN pg_catalog.pg_namespace n ON n.oid = k.connamespace
+        LEFT JOIN pg_catalog.pg_class c ON c.oid = k.conrelid
+        LEFT JOIN pg_catalog.pg_type y ON y.oid = k.contypid WHERE k.conbin IS NOT NULL
+      UNION ALL
+      SELECT 'index ' || n.nspname || '.' || c.relname, concat(i.indexprs::text, i.indpred::text)
+        FROM pg_catalog.pg_index i JOIN pg_catalog.pg_class c ON c.oid = i.indexrelid
+        JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+      UNION ALL
+      SELECT 'the default of type ' || n.nspname || '.' || y.typname, y.typdefaultbin::text
+        FROM pg_catalog.pg_type y JOIN pg_catalog.pg_namespace n ON n.oid = y.typnamespace
+      UNION ALL
+      SELECT 'the partition key of ' || n.nspname || '.' || c.relname, x.partexprs::text
+        FROM pg_catalog.pg_partitioned_table x JOIN pg_catalog.pg_class c ON c.oid = x.partrelid
+        JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+    ) e
+    CROSS JOIN LATERAL pg_catalog.regexp_matches(e.tree, '[:]funcid ([0-9]+)', 'g') m
+    JOIN pg_catalog.pg_proc f ON f.oid = m[1]::oid
+    WHERE f.pronamespace = 'pg_catalog'::regnamespace AND f.proname IN ('query_to_xml',
+      'query_to_xmlschema', 'query_to_xml_and_xmlschema', 'cursor_to_xml', 'cursor_to_xmlschema',
+      'table_to_xml', 'table_to_xmlschema', 'table_to_xml_and_xmlschema', 'schema_to_xml',
+      'schema_to_xmlschema', 'schema_to_xml_and_xmlschema', 'database_to_xml',
+      'database_to_xmlschema', 'database_to_xml_and_xmlschema', 'ts_stat', 'ts_rewrite',
+      'set_config')) x;
   IF v_found IS NOT NULL THEN
     RAISE EXCEPTION 'the database holds % besides the queue functions; drop them by hand '
       '(ADR 0005 section 3)', v_found;

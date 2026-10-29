@@ -14,8 +14,9 @@ row or an external-operation outcome, nor move the job. The fence's row lock is 
 commit, so the reaper (which skips locked rows) cannot bump the token in between.
 
 Only this module, ``classbeat.jobs.credits`` (the settle step), ``classbeat.jobs.service``
-(the jobs API, web only), ``classbeat.operations.user`` (the user's Check again and Do it
-anyway, web only), ``classbeat.keys_cli`` and the
+(the jobs API, web only), ``classbeat.jobs.progress`` (the SSE stream's owner-scoped reads, web
+only), ``classbeat.operations.user`` (the user's Check again and Do it anyway, web only),
+``classbeat.keys_cli`` and the
 ``classbeat.connections``, ``classbeat.auth`` and ``classbeat.db`` packages may call
 ``user_session`` directly (``tests/test_session_guard.py``); worker, agent and job-kind code
 write through this helper.

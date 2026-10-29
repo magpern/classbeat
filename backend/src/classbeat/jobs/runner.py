@@ -23,9 +23,9 @@ from typing import Any
 
 from pydantic import ValidationError
 from sqlalchemy import text
-from sqlalchemy.exc import DisconnectionError, OperationalError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from classbeat.db import DatabaseRoleError
 from classbeat.jobs import transitions
 from classbeat.jobs.errors import JobFailure, LeaseLost, RunStopped, backoff_seconds, failure_of
 from classbeat.jobs.fence import Lease, fenced_session
@@ -34,10 +34,6 @@ from classbeat.jobs.kinds import AwaitApproval, Complete, KindRegistry, Outcome
 from classbeat.jobs.run import JobRun
 
 logger = logging.getLogger(__name__)
-
-# A transient error of our own database while storing a result. ADR 0005 section 4 has no
-# category of its own for it; the closest retryable one is used (no migration needed).
-DATABASE_RETRY_CATEGORY = "upstream_unavailable"
 
 Factory = async_sessionmaker[AsyncSession]
 
@@ -195,6 +191,8 @@ async def execute(
     except LeaseLost:
         execution.settled, execution.result = True, "lost"
         return
+    except DatabaseRoleError:
+        raise  # not the job's failure: the worker stops and hands the lease back (#109 item 2)
     except asyncio.CancelledError:
         if run.lost and not shutdown.is_set():
             execution.settled, execution.result = True, "lost"
@@ -215,13 +213,13 @@ async def execute(
         await _finish(execution, factory, run, outcome, config)
     except JobFailure as failure:  # the kind's store refused (rolled back): its category
         await _failed(execution, factory, run, failure, config)
+    except DatabaseRoleError:
+        raise  # a drifted queue or a privileged role: the worker stops (#109 item 2)
     except Exception as exc:  # storing the result failed and was rolled back
         logger.warning("job store failed", extra={"error_type": type(exc).__name__})
-        if isinstance(exc, OperationalError | DisconnectionError):
-            # The database blinked (connection lost, timeout): retry the attempt, fenced.
-            await _failed(execution, factory, run, JobFailure(DATABASE_RETRY_CATEGORY), config)
-        else:
-            await _record(execution, factory, lambda fs: transitions.fail(fs, "internal"))
+        # A database blip (connection lost, timeout) retries the attempt, fenced; anything else
+        # is ``internal`` (failure_of).
+        await _failed(execution, factory, run, failure_of(exc), config)
     _log(execution, "job attempt ended", state=execution.result)
 
 
