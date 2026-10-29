@@ -77,8 +77,14 @@ def test_the_job_tables_meet_guards_1_and_2(admin: Connection) -> None:
         {"t": list(JOB_TABLES)},
     ).all()
     assert sorted(tuple(p) for p in policies) == [
-        ("agent_runs", "agent_runs_finished_immutable", "RESTRICTIVE", "UPDATE", ["public"],
-         "(outcome IS NULL)"),
+        (
+            "agent_runs",
+            "agent_runs_finished_immutable",
+            "RESTRICTIVE",
+            "UPDATE",
+            ["public"],
+            "(outcome IS NULL)",
+        ),
         ("agent_runs", "agent_runs_no_delete", "RESTRICTIVE", "DELETE", ["public"], "false"),
         ("class_revisions", "revisions_immutable", "RESTRICTIVE", "UPDATE", ["public"], "false"),
         ("job_events", "events_no_delete", "RESTRICTIVE", "DELETE", ["public"], "false"),
