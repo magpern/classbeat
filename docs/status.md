@@ -11,7 +11,7 @@ GitHub hold the detail.
 | F | Provider-permission questions (ADR 0010) | closed, not pursued (owner's risk acceptance, 2026-10-28) |
 | M1 | Accounts | done (milestone closed 2026-10-28) |
 | M2 | `mowl-workouts` v0.4.0, isolation, encryption, connect MOWL | done, except the token-lifetime check (waits for the owner) |
-| M3a | Jobs, Anthropic loop, design on existing music | done technically on fakes (2026-10-29); live smoke waits for the owner |
+| M3a | Jobs, Anthropic loop, design on existing music | done (2026-10-29); live smoke run once: 14 of 15 passed |
 | M3b | Class page, revisions, save to MOWL, usage and cost | next |
 | M4 | Song picking (beta), Spotify BYOK | not started |
 | M3c | Eval suite, OpenAI and DeepSeek adapters | not started |
@@ -76,8 +76,10 @@ GitHub hold the detail.
   external operations (#113) and the uncertain row following its job (#126); A1 agent core
   (#110); A2 AnthropicProvider (#118, `anthropic==0.125.0`); D1 `design_draft` (#119); U1 web
   pages (#123); S1 smoke set and the owner-run live command (#124); review gate scaled by risk
-  (#128, roadmap Amendment 2). Not done: the live smoke run (needs the owner's key and go-ahead).
-- **M3a follow-ups** (open, non-blocking, to be batched into few hardening PRs): #107 and #98
+  (#128, roadmap Amendment 2). The live smoke run (2026-10-29, owner-authorized): 14 of 15
+  passed, $2.59 in total; `long_60` failed its TSS check (#131).
+- **M3a follow-ups** (open, non-blocking, to be batched into few hardening PRs): #131 (live smoke
+  output, `long_60`), #107 and #98
   (flaky auth tests), #108 (queue check residual paths), #109 (J2), #114 (A1, gitleaks scope),
   #115 (J3), #116 (J4), #117 (X1), #120 (anthropic SDK 0.x and httpx2), #121 (A2,
   `SSLKEYLOGFILE`), #122 (D1), #127 (U1). #121 and #120 before live activation.
@@ -88,11 +90,8 @@ GitHub hold the detail.
 
 ## Waiting for the owner
 
-- An Anthropic API key (the owner adds it as the worker's `anthropic_api_key` Docker secret,
-  never in chat) and a go-ahead for the S1 live smoke run (`python -m classbeat.evals smoke
-  --live --max-usd N`; ceiling about $29.70 for 15 cases on `claude-opus-5-5`, prices still to
-  verify). (2026-10-28: the providers are not contacted; the beta runs on the owner's risk
-  acceptance, [ADR 0010](adr/0010-live-activation-permissions.md).)
+- Each further live smoke run needs the owner's go-ahead for that run (2026-10-29: "do not run
+  live test every time").
 - **MOWL connect (#66) has merged, so the owner can now authorize: a check of the MOWL token's lifetime**
   against the owner's own account (M2 "done when"; [ADR 0004](adr/0004-connections-and-encryption.md) §6).
   What is known (#66): the token is a 36-character GUID, not a JWT, so it carries no expiry
@@ -107,7 +106,7 @@ GitHub hold the detail.
 
 ## Live activation log
 
-No live runs. Every live run against a real MOWL, Spotify or Swedebeat account is listed here
+Every live run against a real MOWL, Spotify or Swedebeat account is listed here
 with the owner's authorization and what it created.
 
 - 2026-10-28: unauthorized live read. During a test preview, the flywheel-analysis session made
@@ -125,6 +124,14 @@ with the owner's authorization and what it created.
   told. Guards added: the whole backend test suite now refuses non-loopback sockets
   (`backend/tests/netguard.py`), and that test file's provider stub fails without an in-process
   fake.
+- 2026-10-29: owner-authorized live smoke run, once ("do not run live test every time, just
+  now"). `python -m classbeat.evals smoke --live --max-usd 10` in the owner's local worker,
+  the key from the worker's `anthropic_api_key` secret (added by the owner, never seen by
+  agents), `claude-opus-5-5` at effort medium, synthetic briefs and music only, no user account.
+  Prices checked against Anthropic's list first ($4 in, $20 out, $0.20 cache read per million
+  tokens). 15 cases, 14 passed, $2.59 in total; `long_60` failed its TSS check (#131). Nothing
+  was created anywhere. It ran before #121 and #120 merged; the worker's environment was
+  checked first and had no `SSLKEYLOGFILE`, `ANTHROPIC_*` or `CI` variable.
 
 ## Exceptions
 
