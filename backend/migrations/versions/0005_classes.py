@@ -168,7 +168,8 @@ EXTERNAL_OPERATIONS_ALTER = (
     "FOREIGN KEY (owner_id, class_id) REFERENCES public.classes (owner_id, id) ON DELETE CASCADE",
     # A save or update operation always belongs to a class, so it goes with the class (section 11).
     f"ALTER TABLE public.external_operations ADD CONSTRAINT external_operations_class "
-    f"CHECK (kind IN ({OLD_KINDS}) OR class_id IS NOT NULL)",
+    "CHECK (kind NOT IN ('mowl_save_workout', 'mowl_update_workout') "
+    "OR class_id IS NOT NULL)",
 )
 
 
