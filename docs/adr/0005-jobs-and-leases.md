@@ -184,17 +184,21 @@ function or operator in `public`. `queue_claim` and `queue_unsettled` return
 `(job_id, owner_id, lease_version)` rows, `queue_reap` and `queue_expire` an integer count,
 `queue_stats` `(metric, total)` rows; a `p_limit` outside 1 to 100 raises.)
 
-**No user code runs as `classbeat_queue`** (amended in #102, finding B2 of #99): a trigger fires
-without `EXECUTE` and, inside a queue function, runs as `classbeat_queue`, so the queue tables
-carry no triggers or rules and the database holds no user-defined function, procedure, aggregate
-or operator besides the five. The queue check, guard 9 and `20-queue.sql` (naming each object)
-refuse any `pg_proc`/`pg_operator` row at OID ≥ 16384 or outside `pg_catalog`,
-`information_schema`, `pg_toast` and the temp schemas (the five in `public` excepted), any
-non-internal trigger (foreign-key triggers are internal) and any rule but a view's `_RETURN`, on
-any table; defaults, `CHECK`s and index expressions then reach only built-ins. Guard 2 refuses
-`PUBLIC` `EXECUTE` on any user function. Write `updated_at` in the statement, not by trigger.
-Extensions need their own schema (never `public` or `pg_catalog`), and adding one, or any user
-function, needs an amendment here that allows that schema.
+**No user code runs as `classbeat_queue`** (amended in #102, finding B2 of #99, and #108): a
+trigger fires without `EXECUTE` and, inside a queue function, runs as `classbeat_queue`, so no
+table carries a trigger or rule and the database holds no user-defined function, procedure,
+aggregate or operator besides the five. The queue check, guard 9 and `20-queue.sql` (each naming
+the object the same way) refuse any `pg_proc`/`pg_operator` row at OID ≥ 16384 or outside
+`pg_catalog`, `information_schema`, `pg_toast` and the temp schemas (the five in `public`
+excepted), any non-internal trigger (foreign-key triggers are internal) and any rule but a view's
+`_RETURN`, on **any** table. Defaults, `CHECK`s, index and partition expressions then reach only
+built-ins, and some built-ins run SQL text read-only (`query_to_xml` and its family, `ts_stat`,
+`ts_rewrite(tsquery, text)`) or change the running function's settings (`set_config`): the three
+checks also refuse any such expression, on any table or domain, that calls one of them (found by
+the function OIDs in the stored expression trees). Guard 2 refuses `PUBLIC` `EXECUTE` on any user
+function. Write `updated_at` in the statement, not by trigger. Extensions need their own schema
+(never `public` or `pg_catalog`); adding one, or any user function, needs an amendment here that
+allows that schema, and the same change in all three checks.
 
 | Function | Does |
 |---|---|
@@ -300,7 +304,12 @@ requested), so a deploy costs no attempt. These transactions run under the role'
 `lock_timeout`, inside the grace period. An external call still in flight after 25 s is left
 `pending` under the old token, so the next holder treats it as `uncertain` and the user resolves
 it (§7); acceptable for a rare slow call during a deploy. Anything not handed back is reaped
-when the lease expires.
+when the lease expires. A reap, expiry, settle or auth purge in progress at SIGTERM is cancelled
+(one transaction each, run again later); a claim is not (cancelled after its commit, its job
+would wait for the reaper), and is bounded by the 5 s connect and 30 s statement timeouts, as
+every hand-back is by the connect and lock timeouts; beyond the grace period the reaper covers
+what is left (#109). A `DatabaseRoleError` (drifted queue, privileged role) from any connection
+of the worker, a run's included, stops it the same way; it is never a job's failure.
 
 ### 4. Retries, cancellation and expiry
 
@@ -308,7 +317,7 @@ Every failure maps to one category (the same words as ADR 0004 §5 where they ov
 
 | Category | Retry | From |
 |---|---|---|
-| `upstream_unavailable`, `rate_limited` | yes | `ConnectionFailure` of those categories (ADR 0004 §5); `rate_limited` waits at least its `Retry-After` |
+| `upstream_unavailable`, `rate_limited` | yes | `ConnectionFailure` of those categories (ADR 0004 §5); `rate_limited` waits at least its `Retry-After`; `upstream_unavailable` also for our own database's transient errors anywhere in a run (#109) |
 | `model_unavailable` | yes | model API 429, 5xx, overload, timeout or connection error after the SDK's own retries (ADR 0006 §2) |
 | `lease_lost` | yes (reaper) | §3 |
 | `operation_busy` | yes, without an attempt | another running job holds the same external operation (§7); requeued like a hand-back, with backoff |
@@ -332,6 +341,8 @@ each tool call, before each external operation, between the library reads of the
 reap or hand-back) of a job with a cancel requested ends it `cancelled` instead. A model turn or
 tool call already running finishes; its cost is recorded. Then the worker writes `cancelled`
 (fenced). A cancel never interrupts an external call between its `pending` row and its outcome.
+Kind code never nests a checkpoint, stage or second fenced transaction inside a fenced one: it
+would wait on the fence's own row lock until `lock_timeout`.
 
 **Expiry.** Entering `waiting_for_approval` sets `expires_at = now() +
 CLASSBEAT_APPROVAL_TTL_HOURS` (default 168, 7 days; at least 1). `queue_expire` moves it to
@@ -375,12 +386,15 @@ content from revisions, through owned endpoints.
 the first connect) replays events with a larger `seq`, then the stream waits. Every read is a
 short `user_session` (ADR 0002 §5); none is held open. A comment line every 15 s keeps proxies
 open; the server ends a stream after 10 minutes, after a terminal event and after
-`waiting_for_approval`, and the browser reconnects with its last id. At most 5 open streams per
-user (429 beyond). `GET /api/jobs/{id}` returns the state for clients without SSE.
+`waiting_for_approval`, and the browser reconnects with its last id; a reconnect to an ended job
+with nothing after that id is a 204, so an `EventSource` stops (#116). At most 5 open streams per
+user (429 beyond). On SIGTERM the hub ends every open stream and uvicorn gives requests 5 s.
+`GET /api/jobs/{id}` returns the state for clients without SSE.
 
 **Wake-up.** The transaction that inserts an event also runs `pg_notify('job_events',
 <job id>)`: only the id, as ADR 0002 §5 and T30 require. Each web process has one dedicated
-`LISTEN` connection, which never queries owned tables, and wakes its local streams for that id;
+`LISTEN` connection (one slot of the web pool for the process's life), which never queries owned
+tables, and wakes its local streams for that id;
 the stream then reads in a user session, so a notification for someone else's job reveals
 nothing. If the listener is down, streams poll every 5 s, and the listener reconnects with
 backoff. Lost notifications only add latency.
@@ -409,7 +423,10 @@ Protocol for one call:
 3. **Fenced transaction** recording the outcome, conditional on `state = 'pending' AND job_id =
    :job AND lease_version = :v`: `succeeded` with the external id; `failed` when the provider
    refused (4xx) or the request provably never left (DNS, connection refused); `uncertain` when it
-   may have taken effect (timeout or connection loss after sending, 5xx). If the fence fails here,
+   may have taken effect (timeout or connection loss after sending, 5xx). A library error raised
+   on MOWL's own answer (no HTTP or network cause, e.g. 200 with an `Error` field) counts as a
+   refusal: an assumption not yet checked against real MOWL, to verify in track F before M3b's
+   saves rely on it (#117). If the fence fails here,
    the row stays `pending` under the old token and the next holder treats it as uncertain.
 4. **Uncertain.** One automatic reconciliation through the kind's `Reconciler` (a read-only check
    with the user's credentials): `succeeded` if it finds the effect, `failed` if it proves there
@@ -430,44 +447,23 @@ with this ADR; T5, T11, T12, T13, T19 and T30 cite it.
 
 **Tests** (database tests against Postgres, in CI; every one named in an issue's criteria):
 
-- **Double claim:** many concurrent `queue_claim` calls on one job give it to exactly one; with N
-  jobs and M claimers each job is claimed once.
-- **Stale worker:** worker A claims, its lease expires, the reaper requeues, worker B claims;
-  every write A then tries (event, revision, `agent_runs`, external-operation outcome, state
-  change, heartbeat) fails with `LeaseLost` and changes nothing; B's run completes.
-- **Crash:** a worker killed (task cancelled, connection dropped) mid-stage and mid-external-call;
-  the reaper requeues; the retry reuses succeeded operations and turns a `pending` one from the
-  old token into `uncertain`, which fails the job and is never re-sent to the fake upstream.
-- **Lease expiry with attempts spent:** `failed`/`lease_lost`, credit released exactly once.
-- **Phases:** a pre-approval phase that was retried (attempt 2 of 3) waits, is approved, and the
-  post-approval phase runs with a fresh `attempt` and completes. A **poison row** (`queued` with
-  `attempt = max_attempts`, written by the test) does not stop other users' jobs from being
-  claimed, and `queue_reap` fails it as `internal`.
-- **Shutdown:** SIGTERM during a run hands the lease back without counting an attempt and starts
-  no new call; a cancel requested before a requeue ends the job `cancelled`.
-- **Cancellation:** queued and waiting jobs cancel at once; a running job stops at the next
-  checkpoint (between model turns and between tool calls) with no further fake-model or
-  fake-MOWL call; a cancel racing completion ends in exactly one terminal state.
-- **Approval:** wrong hash, superseded list, expired list, not-waiting job, another user's job
-  (404), a missing connection, and a repeated approval; none starts a stage. Expiry: tests set
-  `expires_at` in the past (the database clock is not faked) and check `queue_expire`, the
-  refused approval and the released credit.
-- **Racing attach:** two jobs claimed at the same moment on the same playlist (no row, and a
-  `failed` row) give exactly one fake-MOWL attach and no `internal` failure; the other job gets
-  `operation_busy` without losing an attempt, then reuses the result.
-- **Account switch:** disconnect MOWL, reconnect as a different fake account; no stale link or
-  reused `external_id`, and a new attach happens.
-- **Uncertain write:** fake MOWL times out after accepting the attach; the job fails with
-  `uncertain_write`; no second attach; **Check again** and **Do it anyway** behave as §7, and a
-  **Check again** that succeeds writes the link.
-- **Idempotency:** the same key and body returns the same job; the same key with another body is
-  409; two keys create two jobs up to the per-user limit.
-- **Isolation:** guards 1 and 2 cover the new tables and grants; new **guard 9** checks the queue
-  role and functions as §3's startup check does; events, SSE and job endpoints give 404 for
-  another user's ids; a `NOTIFY` carries only an id; event payload models refuse extra fields and
-  a planted secret never appears in events, logs or SSE output; the stack check finds
-  `postgres_password` mounted on `db` and `db-functions` only, never on web, worker, migrate or
-  maint.
+- **Double claim:** concurrent claims give a job to exactly one claimer. **Stale worker:** after a
+  reap and a new claim, every write the old holder tries fails with `LeaseLost`.
+- **Crash** mid-stage and mid-call: the reaper requeues; the retry reuses succeeded operations and
+  turns an old-token `pending` one into `uncertain`, never re-sent.
+- **Lease expiry with attempts spent:** `failed`/`lease_lost`, credit released once. **Phases:** a
+  retried pre-approval phase waits, is approved and completes with a fresh `attempt`. A **poison
+  row** does not stop other users' claims and is failed `internal`.
+- **Shutdown** hands the lease back without an attempt or a new call. **Cancellation** stops a
+  running job at its next checkpoint; a cancel racing completion ends in one terminal state.
+- **Approval:** every refusal of §2 (expiry by `expires_at` in the past) starts no stage.
+- **Racing attach:** two jobs on one playlist give one fake-MOWL attach; the other gets
+  `operation_busy` without an attempt, then reuses it. **Account switch:** no stale link.
+- **Uncertain write:** no second attach; **Check again** and **Do it anyway** behave as §7.
+- **Idempotency:** the same key and body is the same job; another body is 409.
+- **Isolation:** guards 1, 2 and **9** (the queue role and functions, as §3's startup check);
+  404 for another user's ids; a `NOTIFY` carries only an id; no planted secret in events, logs or
+  SSE; `postgres_password` mounted on `db` and `db-functions` only.
 - **Outbound** (ADR 0006 §9): a host off the list, or a redirect to one, is refused.
 
 ## Alternatives

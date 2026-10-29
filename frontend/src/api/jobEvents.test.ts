@@ -52,7 +52,13 @@ describe('readJobEvents', () => {
     )
   })
 
-  it('treats an empty 200 after the end as no events, not as an error', async () => {
+  it('treats a 204 after the end as an ended stream with no events (#116)', async () => {
+    const { events, ended } = await read(new Response(null, { status: 204 }), 9)
+    expect(events).toEqual([])
+    expect(ended).toBe(true)
+  })
+
+  it('treats an empty 200 as no events, not as an error or the end', async () => {
     const { events, ended } = await read(new Response('', { status: 200 }), 9)
     expect(events).toEqual([])
     expect(ended).toBe(false)

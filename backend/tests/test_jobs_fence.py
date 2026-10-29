@@ -1,6 +1,7 @@
 """The issuer, the fence, the heartbeat and the stale worker (ADR 0005 section 3)."""
 
 import asyncio
+import time
 import uuid
 
 import pytest
@@ -236,14 +237,17 @@ async def test_a_lost_lease_abandons_the_pipeline_but_not_a_call_in_flight(jenv:
             job_run.mark_lost()
             await asyncio.sleep(0.2)  # still in the call: not abandoned
             reached.append("call returned")
-        await asyncio.sleep(5)  # abandoned here, once the call is over
+        await asyncio.sleep(60)  # abandoned here, once the call is over (#109 item 1)
         reached.append("after")
         return Complete()
 
     execution = await claim(jenv)
+    started = time.monotonic()
     await asyncio.wait_for(
-        execute(execution, jenv.factory, registry_for(run), RunConfig(), asyncio.Event()), 5
+        execute(execution, jenv.factory, registry_for(run), RunConfig(), asyncio.Event()), 10
     )
+    # Far below the pipeline's sleep: only the on_lost cancel can end the run this early.
+    assert time.monotonic() - started < 2
     assert reached == ["call returned"]
     assert (execution.result, execution.settled) == ("lost", True)
     assert jenv.row(job_id).state == "running"  # the reaper's, once the lease expires
@@ -290,3 +294,50 @@ async def test_a_stale_write_racing_a_concurrent_reaper_never_lands_after_it(
                 pass
         assert jenv.row(job_id).state == "queued"
     assert outcomes  # both orders are fine; each run checked the invariant
+
+
+class _Undo(Exception):
+    """Rolls a test transaction back."""
+
+
+async def test_the_stage_and_attempts_statements_carry_their_own_fence(jenv: JobsEnv) -> None:
+    """#109 item 5: ``_SET_STAGE`` and ``_ATTEMPTS`` match nothing for a stale token or a job no
+    longer ``running``, even inside a transaction whose fence passed (each condition mutated)."""
+    _, job_id = jenv.job()
+    execution = await claim(jenv)
+    lease = await _lease(jenv, execution)
+    async with fenced_session(jenv.factory, lease) as fs:
+        assert (await transitions.attempts(fs)).attempt == 1  # the real lease passes
+        await transitions.set_stage(fs, "pick")
+    assert jenv.row(job_id).stage == "pick"
+
+    async def stale_writes() -> None:
+        async with fenced_session(jenv.factory, lease) as fs:
+            for version in (lease.lease_version - 1, lease.lease_version + 1):
+                stale = FencedSession(fs.db, Lease(job_id, version, lease.ctx), False)
+                with pytest.raises(LeaseLost):
+                    await transitions.set_stage(stale, "design")
+                with pytest.raises(LeaseLost):
+                    await transitions.attempts(stale)
+            await fs.db.execute(
+                text(
+                    "UPDATE jobs SET state = 'queued', leased_by = NULL, lease_expires_at = NULL, "
+                    "heartbeat_at = NULL WHERE id = :id"
+                ),
+                {"id": job_id},
+            )
+            with pytest.raises(LeaseLost):
+                await transitions.set_stage(fs, "design")
+            with pytest.raises(LeaseLost):
+                await transitions.attempts(fs)
+            # The stage statement itself changed nothing (not only the event after it).
+            stage = await fs.db.execute(
+                text("SELECT stage FROM jobs WHERE id = :id"), {"id": job_id}
+            )
+            assert stage.scalar_one() == "pick"
+            raise _Undo
+
+    with pytest.raises(_Undo):
+        await stale_writes()
+    row = jenv.row(job_id)
+    assert (row.state, row.stage) == ("running", "pick")

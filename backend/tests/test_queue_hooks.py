@@ -105,6 +105,58 @@ HOOK_DRIFT = [
         "rule zz_rule on",
         id="rule",
     ),
+    pytest.param(  # #108 item 2: a user-defined operator outside public, over a built-in
+        [SCHEMA, "CREATE OPERATOR t_evil.=== (LEFTARG = int, RIGHTARG = int, FUNCTION = int4eq)"],
+        [DROP_SCHEMA],
+        "operator t_evil.===(integer, integer)",
+        "operator t_evil.===(integer, integer)",
+        id="operator-outside-public",
+    ),
+    # #108 item 1: built-ins that run SQL text, reachable from an expression a queue write
+    # evaluates as classbeat_queue (read-only, but past RLS).
+    pytest.param(
+        [
+            "ALTER TABLE public.job_events ALTER created_at SET DEFAULT now() + "
+            "length(query_to_xml('SELECT count(*) FROM public.jobs', true, false, '')::text) "
+            "* interval '0 seconds'"
+        ],
+        [RESTORE_DEFAULT],
+        "built-in query_to_xml in the default of",
+        "built-in query_to_xml in the default of public.job_events.created_at",
+        id="default-runs-sql-text",
+    ),
+    pytest.param(
+        [
+            "ALTER TABLE public.jobs ADD CONSTRAINT zz_sql CHECK "
+            "(ts_rewrite('a'::tsquery, 'SELECT ''a''::tsquery, ''b''::tsquery') IS NOT NULL) "
+            "NOT VALID"
+        ],
+        ["ALTER TABLE public.jobs DROP CONSTRAINT zz_sql"],
+        "built-in ts_rewrite in constraint zz_sql",
+        "built-in ts_rewrite in constraint zz_sql on public.jobs",
+        id="check-runs-sql-text",
+    ),
+    pytest.param(
+        [
+            SCHEMA,
+            "CREATE DOMAIN t_evil.d AS text "
+            "DEFAULT table_to_xml('public.jobs', true, false, '')::text",
+        ],
+        [DROP_SCHEMA],
+        "built-in table_to_xml in the default of type t_evil.d",
+        "built-in table_to_xml in the default of type t_evil.d",
+        id="domain-default-reads-a-table",
+    ),
+    pytest.param(
+        [
+            "ALTER TABLE public.job_events ALTER created_at SET DEFAULT "
+            "now() + length(set_config('search_path', 'public', true)) * interval '0 seconds'"
+        ],
+        [RESTORE_DEFAULT],
+        "built-in set_config in the default of",
+        "built-in set_config in the default of public.job_events.created_at",
+        id="default-changes-settings",
+    ),
 ]
 
 

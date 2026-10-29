@@ -6,6 +6,8 @@ read through the superuser so it can also see ``pg_authid``; only the shipped co
 digests, search_path) are shared.
 """
 
+import re
+
 from sqlalchemy import text
 from sqlalchemy.engine import Connection
 
@@ -36,6 +38,53 @@ ACL_CATALOGS = (
     ("pg_tablespace", "spcacl", "spcname"),
     ("pg_parameter_acl", "paracl", "parname"),
 )
+
+
+# Built-ins that run SQL text, read whole tables or change settings (#108 item 1), by name in
+# pg_catalog (every overload); written apart from classbeat.db.queue_check's list on purpose.
+SQL_TEXT_BUILTINS = frozenset(
+    {f"{prefix}_to_{suffix}" for prefix in ("query", "table", "cursor", "schema", "database")
+     for suffix in ("xml", "xmlschema", "xml_and_xmlschema")}
+    - {"cursor_to_xml_and_xmlschema"}
+    | {"ts_stat", "ts_rewrite", "set_config"}
+)  # fmt: skip
+# Every catalog column holding an expression tree a write or a type can evaluate.
+EXPRESSION_SOURCES = (
+    "SELECT 'the default of ' || adrelid::regclass::text || '.' || "
+    "(SELECT attname FROM pg_attribute WHERE attrelid = adrelid AND attnum = adnum), "
+    "adbin::text FROM pg_attrdef",
+    "SELECT 'constraint ' || conname, conbin::text FROM pg_constraint WHERE conbin IS NOT NULL",
+    "SELECT 'index ' || indexrelid::regclass::text, indexprs::text FROM pg_index "
+    "WHERE indexprs IS NOT NULL",
+    "SELECT 'index ' || indexrelid::regclass::text, indpred::text FROM pg_index "
+    "WHERE indpred IS NOT NULL",
+    "SELECT 'the default of type ' || oid::regtype::text, typdefaultbin::text FROM pg_type "
+    "WHERE typdefaultbin IS NOT NULL",
+    "SELECT 'the partition key of ' || partrelid::regclass::text, partexprs::text "
+    "FROM pg_partitioned_table WHERE partexprs IS NOT NULL",
+)
+FUNCID = re.compile(r":funcid ([0-9]+)")
+
+
+def expression_calls(conn: Connection) -> list[str]:
+    """``built-in <name> in <where>`` for each stored expression calling one of
+    ``SQL_TEXT_BUILTINS``."""
+    refused = dict(
+        conn.execute(
+            text(
+                "SELECT p.oid, p.proname FROM pg_proc p WHERE p.proname = ANY(:names) "
+                "AND p.pronamespace = 'pg_catalog'::regnamespace"
+            ),
+            {"names": sorted(SQL_TEXT_BUILTINS)},
+        ).all()
+    )
+    found: set[str] = set()
+    for source in EXPRESSION_SOURCES:
+        for where, tree in conn.execute(text(source)).all():
+            for oid in FUNCID.findall(tree):
+                if int(oid) in refused:
+                    found.add(f"built-in {refused[int(oid)]} in {where}")
+    return sorted(found)
 
 
 def check_queue(conn: Connection) -> list[str]:
@@ -113,23 +162,30 @@ def check_queue(conn: Connection) -> list[str]:
     # Nothing that could shadow a built-in called by a function body, and nothing a function body
     # fires that could run user code as classbeat_queue (review finding B2, #102): no user-defined
     # function, procedure, aggregate or operator in any schema besides the five, no trigger but
-    # the internal ones of foreign keys, no rule but the _RETURN rules of views.
+    # the internal ones of foreign keys, no rule but the _RETURN rules of views. Named as the
+    # startup check and the script name them (#108 item 4).
     hooks = (
         conn.execute(
             text(
-                "SELECT n.nspname || '.' || p.proname "
+                "SELECT 'function ' || n.nspname || '.' || p.proname "
                 "|| '(' || oidvectortypes(p.proargtypes) || ')' FROM pg_proc p "
                 "JOIN pg_namespace n ON n.oid = p.pronamespace "
                 "WHERE NOT (n.nspname = 'public' AND p.proname = ANY(:names)) "
                 "AND (p.oid >= 16384 OR NOT n.nspname = ANY(:system)) "
-                "UNION ALL SELECT 'operator ' || o.oid::regoperator::text "
-                "FROM pg_operator o "
+                "UNION ALL SELECT 'operator ' || n.nspname || '.' || o.oprname || '(' "
+                "|| CASE WHEN o.oprleft = 0 THEN 'NONE' ELSE format_type(o.oprleft, NULL) END "
+                "|| ', ' "
+                "|| CASE WHEN o.oprright = 0 THEN 'NONE' ELSE format_type(o.oprright, NULL) END "
+                "|| ')' FROM pg_operator o "
                 "JOIN pg_namespace n ON n.oid = o.oprnamespace "
                 "WHERE o.oid >= 16384 OR NOT n.nspname = ANY(:system) "
-                "UNION ALL SELECT 'trigger ' || tgname || ' on ' || tgrelid::regclass::text "
-                "FROM pg_trigger WHERE NOT tgisinternal "
-                "UNION ALL SELECT 'rule ' || rulename || ' on ' || ev_class::regclass::text "
-                "FROM pg_rewrite WHERE rulename <> '_RETURN' AND oid >= 16384"
+                "UNION ALL SELECT 'trigger ' || t.tgname || ' on ' || n.nspname || '.' "
+                "|| c.relname FROM pg_trigger t JOIN pg_class c ON c.oid = t.tgrelid "
+                "JOIN pg_namespace n ON n.oid = c.relnamespace WHERE NOT t.tgisinternal "
+                "UNION ALL SELECT 'rule ' || r.rulename || ' on ' || n.nspname || '.' "
+                "|| c.relname FROM pg_rewrite r JOIN pg_class c ON c.oid = r.ev_class "
+                "JOIN pg_namespace n ON n.oid = c.relnamespace "
+                "WHERE r.rulename <> '_RETURN' AND r.oid >= 16384"
             ),
             {"names": list(QUEUE_FUNCTIONS), "system": list(SYSTEM_SCHEMAS)},
         )
@@ -141,6 +197,10 @@ def check_queue(conn: Connection) -> list[str]:
         not hooks,
         f"user-defined functions, operators, triggers or rules besides the queue's: {hooks}",
     )
+    # Built-ins that run SQL text (or change settings) called from any stored expression (#108
+    # item 1): read every expression tree and look for the functions' OIDs in Python.
+    calls = expression_calls(conn)
+    need(not calls, f"expressions call a built-in that runs SQL text: {calls}")
 
     # Ownership: exactly the five functions.
     owned = conn.execute(

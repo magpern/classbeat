@@ -3,6 +3,8 @@ key, the test-only kind as a ``JobInput`` that uses the MOWL connection, a fake 
 row (a public test token, never a real one) and waiting jobs made by running the worker side.
 """
 
+import asyncio
+import contextlib
 import secrets
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
@@ -16,6 +18,7 @@ import pytest
 from authtools import ORIGIN, Env, session_cookie
 from classbeat import connections
 from classbeat.jobs import AwaitApproval, Complete, JobKind, JobRun, KindRegistry, Outcome
+from classbeat.jobs.credits import UnmeteredLedger
 from classbeat.jobs.inputs import JobInput
 from classbeat.jobs.routes import job_kinds
 from classbeat.jobs.user import OWNER_LOCK_NAMESPACE
@@ -44,6 +47,47 @@ def api_registry() -> KindRegistry:
     registry = KindRegistry()
     registry.register(JobKind(KIND, ApiInput, ("pick", "design"), two_phases))
     return registry
+
+
+async def until_waiting_on_the_owner_lock(env: JobsEnv, seconds: float = 10) -> None:
+    """Until an app-role backend waits for an advisory lock (the owner lock): polled in
+    ``pg_stat_activity``, never a fixed sleep (#115 item 4)."""
+    loop = asyncio.get_running_loop()
+    deadline = loop.time() + seconds
+    while not env.sql(
+        "SELECT count(*) FROM pg_stat_activity WHERE usename = 'classbeat_app' "
+        "AND wait_event_type = 'Lock' AND wait_event = 'advisory'"
+    ).scalar_one():
+        assert loop.time() < deadline, "no request waits for the owner lock"
+        await asyncio.sleep(0.02)
+
+
+class Barrier(UnmeteredLedger):
+    """A ledger that holds each request at the point after the per-user limit was counted
+    (``reserve`` on create, ``allows`` on approve) until a second request gets there too, or
+    ``wait`` seconds pass. With the owner lock the second one never gets there while the first
+    waits (``together`` stays false); without it both would pass the limit (#115 item 5)."""
+
+    def __init__(self, wait: float = 1.5) -> None:
+        self.wait = wait
+        self.arrived = 0
+        self.together = False
+        self._both = asyncio.Event()
+
+    async def _meet(self) -> None:
+        self.arrived += 1
+        if self.arrived >= 2:
+            self.together = True
+            self._both.set()
+        with contextlib.suppress(TimeoutError):
+            await asyncio.wait_for(self._both.wait(), self.wait)
+
+    async def reserve(self, db: Any, ctx: Any, job_id: UUID) -> None:
+        await self._meet()
+
+    async def allows(self, db: Any, ctx: Any, job_id: UUID) -> bool:
+        await self._meet()
+        return True
 
 
 def new_key() -> str:

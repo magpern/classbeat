@@ -142,6 +142,9 @@ class OperationRequest:
     guard: Guard | None = field(default=None, compare=False)
     # The call is exactly one HTTP request: a refusal of that request before it left the
     # process proves no effect. For any other call an allowlist refusal is ``uncertain``.
+    # Only for a ``urllib`` call through ``classbeat.egress``'s opener: its redirect handler
+    # sets ``OutboundBlocked.after_request``, and an httpx-based call has no such guarantee, so
+    # it must leave this False (#117 item 5; M3b).
     single_request: bool = False
 
     def __post_init__(self) -> None:
