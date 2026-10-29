@@ -31,6 +31,7 @@ WORKER_PACKAGES = (
     "classbeat.agent",
     "classbeat.jobs",
     "classbeat.design",
+    "classbeat.saving",
     "classbeat.evals",
 )
 # What the worker process imports at start. Add each new worker entry point here (A1, D1:
@@ -46,6 +47,7 @@ WORKER_ENTRYPOINTS = (
     "classbeat.agent.providers",
     "classbeat.agent.providers.anthropic",
     "classbeat.design",
+    "classbeat.saving",
     "classbeat.evals.__main__",
 )
 
