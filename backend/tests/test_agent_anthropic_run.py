@@ -158,7 +158,7 @@ def test_provider_for_refuses_anthropic_without_a_key(kek_dir: Path) -> None:
         provider_for(Settings(model_provider="anthropic"))
 
 
-@pytest.mark.parametrize("name", ["ANTHROPIC_LOG", "ANTHROPIC_CUSTOM_HEADERS"])
+@pytest.mark.parametrize("name", ["ANTHROPIC_LOG", "ANTHROPIC_CUSTOM_HEADERS", "SSLKEYLOGFILE"])
 def test_provider_for_refuses_sdk_environment(
     kek_dir: Path, monkeypatch: pytest.MonkeyPatch, name: str
 ) -> None:
