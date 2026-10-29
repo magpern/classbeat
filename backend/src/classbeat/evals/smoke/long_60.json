@@ -1,0 +1,14 @@
+{
+ "name": "long_60",
+ "about": "One hour, moderate, with climbs and sprints.",
+ "brief": {
+  "length_min": 60,
+  "intensity": "moderate",
+  "climbs": 2,
+  "sprints": 3
+ },
+ "music": {
+  "tracks": 17
+ },
+ "expect": {}
+}

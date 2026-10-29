@@ -1,6 +1,7 @@
 # TEST ONLY. Adds a fake OpenID Connect provider to the stack and switches Google and
 # Microsoft sign-in on against it, for the Playwright E2E tests (e2e/tests/oauth.spec.ts), and a
-# fake MOWL API for MOWL connect (e2e/tests/mowl.spec.ts).
+# fake MOWL API for MOWL connect (e2e/tests/mowl.spec.ts), the new-class form and the design run
+# (e2e/tests/new-class.spec.ts, design-draft.spec.ts).
 #
 #   docker compose -f compose.yaml -f compose.e2e.yaml --profile e2e up -d --build --wait
 #   (or COMPOSE_FILE=compose.yaml:compose.e2e.yaml COMPOSE_PROFILES=e2e in the environment)
@@ -81,6 +82,23 @@ services:
     depends_on:
       oidc-fake:
         condition: service_healthy
+      mowl-fake:
+        condition: service_healthy
+
+  # The worker drafts classes against the same fake MOWL, with the FakeProvider replaying a
+  # recorded script (ADR 0006 section 8): no model API and no real MOWL is ever contacted. The
+  # worker's own outbound allowlist (ADR 0006 section 9) still applies; it lets api.mowl.com
+  # through, which resolves to mowl-fake inside this network.
+  worker:
+    environment:
+      # Explicit, so a `.env` that says `anthropic` cannot reach a model from the e2e stack.
+      CLASSBEAT_MODEL_PROVIDER: fake
+      CLASSBEAT_FAKE_MODEL_SCRIPT: /fake-scripts/good_first_draft.json
+      SSL_CERT_FILE: /fake-ca/bundle.pem
+    volumes:
+      - mowl-ca:/fake-ca:ro
+      - ./backend/tests/agent_scripts:/fake-scripts:ro
+    depends_on:
       mowl-fake:
         condition: service_healthy
 

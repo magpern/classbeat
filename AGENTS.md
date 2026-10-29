@@ -15,7 +15,7 @@ roadmap differ, the roadmap wins.** Section numbers (§1, §4, M2 …) refer to 
 | Architect / Orchestrator | Opus | The next milestone, its PR split and acceptance criteria, dependencies, scheduling, merge order, ADRs, track F, `docs/status.md` | Normally write production code |
 | Developer | Sonnet; Opus for security-critical PRs (below) | One PR in its own branch and worktree: code, tests, CI fixes, **all** reviewer findings | Change architecture or acceptance criteria without the Architect |
 | Explorer | Haiku | Bounded work: searches, evidence, fixtures, docs, extra tests | Own security, auth, isolation, crypto or billing decisions |
-| Reviewer | a **fresh** Opus context per review, sharing no context with the Architect or Developer | The diff, the acceptance criteria, tests, CI output, ADR compliance → `PASS` or `FAIL` with findings | Fix its own findings; review an ADR it wrote |
+| Reviewer | a **fresh** context per review (Opus; Sonnet for non-security PRs, see the review gate), sharing no context with the Architect or Developer | The diff, the acceptance criteria, tests, CI output, ADR compliance → `PASS` or `FAIL` with findings | Fix its own findings; review an ADR it wrote |
 
 Model *classes*, not versions: use the current generation of each tier. A model substitution
 never widens a role's authority. Agent definitions live in `.claude/agents/`.
@@ -23,7 +23,8 @@ never widens a role's authority. Agent definitions live in `.claude/agents/`.
 **Security-critical PRs get an Opus Developer** (owner decision, 2026-10-28): encryption and key
 handling, jobs with leases and fencing, Spotify OAuth, and approvals and external writes. The
 issue says so in its "Owner:" line; everything else keeps a Sonnet Developer. The Reviewer is a
-fresh Opus context either way, never the Developer's.
+fresh context either way, never the Developer's: Opus for those PRs and the others listed in
+the review gate.
 
 ## Unit of work: one issue, one PR
 
@@ -37,8 +38,8 @@ fresh Opus context either way, never the Developer's.
 
 ```
 issue → Developer (+ Explorer) in its own worktree → PR → CI
-      → fresh Opus Reviewer → PASS → agent merges
-                            → FAIL → Developer fixes every blocking finding → CI → new fresh Reviewer
+      → fresh Reviewer → PASS → agent merges
+                       → FAIL → Developer fixes every blocking finding → CI → fresh delta Reviewer
 ```
 
 If the same blocking finding survives three cycles, the Architect re-assesses the root cause,
@@ -50,13 +51,22 @@ the end of a milestone. It escalates only genuine blockers (see "Escalation" bel
 ## Review gate (mandatory for every PR an agent merges)
 
 1. The PR has a Reviewer `PASS` for its **current head commit**, recorded on the PR as a
-   comment that starts `Agent review (Opus): PASS <head SHA>` followed by the non-blocking
-   findings. A `FAIL` is recorded the same way: `Agent review (Opus): FAIL <head SHA>`.
-2. The Reviewer was a fresh Opus context. A fresh Sonnet context may add a supplementary
-   light review (`Agent review (Sonnet, supplementary): …`); it never replaces the Opus `PASS`.
-3. **Any change of the head SHA needs a new full review.** No carry-over, including after a
-   branch update. The Orchestrator orders merges so a PR is brought up to date *before* it is
-   reviewed.
+   comment that starts `Agent review (<model>): PASS <head SHA>` followed by the non-blocking
+   findings. A `FAIL` is recorded the same way: `Agent review (<model>): FAIL <head SHA>`.
+2. The Reviewer was a fresh context: **Opus** for security-critical PRs (encryption and keys,
+   auth and sessions, tenant isolation and RLS, guards and roles, jobs with leases and fencing
+   and the queue SQL, approvals and external writes, Spotify OAuth, egress and model keys,
+   billing); **Sonnet** is enough for the rest (UI, tests, docs, tooling). When in doubt, Opus.
+3. **A new head SHA needs a new review**, scoped as follows (roadmap Amendment 2):
+   - *Merge-only update:* the only change since the reviewed head is a merge of `main` with
+     no hand-resolved conflict (`git diff <reviewed>..<head>` equals `main`'s own change), and
+     CI is green. The Architect records `Agent review (merge check): PASS <head SHA> (carries
+     <reviewed SHA>)`. If `main` changed a module the PR changes or calls, or a conflict was
+     resolved by hand, a fresh reviewer checks the merge (scoped review).
+   - *Fix round after a `FAIL`:* a fresh **delta review** of the diff since the last reviewed
+     head, verifying each earlier finding and whatever the delta touches.
+   Reviewers rely on CI for the full suite and run targeted tests and mutation checks of the
+   guarantees that changed. Non-blocking findings are batched into few hardening PRs.
 4. Not a `PASS`: the implementing session's own check, a review skill run in the same context,
    green CI, passing tests, or "it's fine" in chat. A human saying so in chat doesn't replace
    the review for an agent merge either.
@@ -150,6 +160,9 @@ a release and still needs the owner's authorization.
   `collaborative: false`; MOWL workouts private.
 - Tests and CI never touch the network or real accounts: they use fakes for MOWL, Spotify,
   Swedebeat and model APIs.
+  The backend test suite enforces it: an autouse fixture (`tests/netguard.py`) makes every
+  non-loopback `connect` and name lookup raise before anything is sent; only a test marked
+  `allow_network` (none today) is exempt.
 - Every owned row carries `owner_id` and is read through `UserContext` (§1, ADR 0002).
 
 ## Decisions and ADRs
@@ -264,6 +277,7 @@ The agent loop (`classbeat.agent`, ADR 0006 sections 2, 5 and 8): `CLASSBEAT_AGE
 `_MAX_TOOL_CALLS` (40), `_MAX_CORRECTIONS` (3), `_STAGE_SECONDS` (300), the per-job ceiling
 `_JOB_COST_MICROS` (1500000, $1.50) and `CLASSBEAT_AGENT_TURN_OUTPUT_RESERVE` (8000);
 `CLASSBEAT_FAKE_MODEL_SCRIPT` is the `FakeProvider` script with `fake` (`backend/tests/agent_scripts/`).
+The smoke set (ADR 0006 section 8) runs in CI against `FakeProvider` (`backend/tests/test_evals_smoke.py`); the owner's live run is `docker compose exec worker python -m classbeat.evals smoke --live` (it prints its cost ceiling and stops unless `--max-usd N` is also given; agents and CI never run it).
 Jobs (ADR 0005 sections 3 and 4): `CLASSBEAT_JOB_LEASE_SECONDS` (default 120, 30 to 600),
 `CLASSBEAT_WORKER_CONCURRENCY` (2, at most 16; the worker's pool is `2n + 2` connections plus
 an overflow of `n`: a pipeline and a heartbeat per run, the `LISTEN` connection and one for claims
@@ -360,7 +374,12 @@ cd .. && dc down -v
 The fake (`e2e/fake-oidc/server.py`) answers the providers' real back-channel hostnames inside the
 compose network and issues ID tokens for Google and Microsoft; Playwright plays the browser's visit
 to the provider. The fake MOWL (`e2e/fake-mowl/server.py`) answers as `api.mowl.com` (the
-`mowl-workouts` base URL) for the MOWL sign-in; web trusts one bundle of both fakes' throwaway CAs.
+`mowl-workouts` base URL) for the MOWL sign-in, the playlist list, the attach and the reads of a design run
+(invented music; test playlists that hold a read or lose an attach answer, steered by `/__e2e/` calls the
+tests make from the web container); web and worker trust one bundle of both fakes' throwaway CAs, and the
+worker replays `backend/tests/agent_scripts/good_first_draft.json` with the `fake` model provider
+(`design-draft.spec.ts`: draft, cancel while running, uncertain attach). The Playwright context blocks
+every origin but the stack's.
 They use public test values only and are never part of the default stack. The e2e
 stack trusts the docker network as proxy so each test presents its own `X-Forwarded-For` address
 (separate rate limits). Sign-up is limited to 5 per IP and hour: use `down -v` between full runs

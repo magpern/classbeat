@@ -1,0 +1,13 @@
+{
+ "name": "ftp_5_45",
+ "about": "45 minutes with a 5 minute FTP test, fixed after the first fit.",
+ "brief": {
+  "length_min": 45,
+  "intensity": "moderate",
+  "ftp_test": 5
+ },
+ "music": {
+  "tracks": 13
+ },
+ "expect": {}
+}

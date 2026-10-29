@@ -1,0 +1,17 @@
+{
+ "name": "music_no_sections",
+ "about": "Spotify gave no sections: only track changes and a guessed grid.",
+ "brief": {
+  "length_min": 30,
+  "intensity": "moderate",
+  "climbs": 1,
+  "sprints": 2
+ },
+ "music": {
+  "tracks": 9,
+  "sections": "none"
+ },
+ "expect": {
+  "changes_on_music_min": 0.6
+ }
+}

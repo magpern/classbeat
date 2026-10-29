@@ -1,0 +1,12 @@
+{
+ "name": "easy_30",
+ "about": "Easy 30 minute class, no extras.",
+ "brief": {
+  "length_min": 30,
+  "intensity": "easy"
+ },
+ "music": {
+  "tracks": 9
+ },
+ "expect": {}
+}
