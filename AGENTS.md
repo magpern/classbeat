@@ -251,7 +251,10 @@ call a model). `anthropic` needs the `anthropic_api_key` secret file, mounted on
 (an empty file counts as none; `scripts/worktree.sh init` creates it empty and it is never a real
 key); the worker refuses to start with `anthropic` and no key and with `fake` when
 `CLASSBEAT_ENVIRONMENT=prod`, and the web app refuses to start when it can read the key. The
-worker's outbound requests go only to `https://api.mowl.com` and `https://api.anthropic.com`
+`anthropic` provider (`classbeat.agent.providers.anthropic`, the official `anthropic` SDK pinned at
+0.125.0, the last release on `httpx`) refuses to build when `ANTHROPIC_LOG` or
+`ANTHROPIC_CUSTOM_HEADERS` is set; its price entries in `classbeat.agent.prices` are to be
+verified before live use. The worker's outbound requests go only to `https://api.mowl.com` and `https://api.anthropic.com`
 (`classbeat.egress`, the only module allowed to build an HTTP client or `urllib` opener; guarded by
 `tests/test_egress_guard.py`).
 The agent loop (`classbeat.agent`, ADR 0006 sections 2, 5 and 8): `CLASSBEAT_AGENT_MODEL` (default

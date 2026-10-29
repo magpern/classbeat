@@ -66,7 +66,7 @@ SECRET_KEYS = frozenset(
 )
 
 
-QUIET_LOGGERS = ("mowl", "httpx", "httpcore", "urllib3")
+QUIET_LOGGERS = ("mowl", "anthropic", "httpx", "httpcore", "urllib3")
 
 
 def redact(value: str) -> str:
@@ -166,7 +166,8 @@ def configure_logging(level: str = "INFO", stream: IO[str] | None = None) -> Non
     # never logged (ADR 0003 section 10).
     for noisy in ("sqlalchemy.engine", "sqlalchemy.pool"):
         logging.getLogger(noisy).setLevel(logging.WARNING)
-    # The provider library and HTTP clients never log at INFO or below in classbeat (ADR 0004
-    # section 7): request URLs can carry the MOWL login ticket.
+    # The provider libraries and HTTP clients never log at INFO or below in classbeat (ADR 0004
+    # section 7): request URLs can carry the MOWL login ticket, and the model SDK's debug log
+    # holds request bodies (the brief and music, ADR 0006 section 6).
     for library in QUIET_LOGGERS:
         logging.getLogger(library).setLevel(logging.WARNING)

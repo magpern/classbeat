@@ -10,8 +10,9 @@ A turn ending ``end_turn`` without the stage's final tool gets one tool-less use
 loop passes it as ``reminder`` with no results (ADR 0006 section 1).
 
 An adapter reports a failed request by raising ``ProviderError`` with one category of ADR 0005
-section 4 (``model_unavailable``, ``model_config`` or ``internal``), never with the provider's
-message or a request or response body.
+section 4 (``model_unavailable``, ``model_config``, ``outbound_blocked`` when the worker's
+allowlist refused the request, or ``internal``), never with the provider's message or a request
+or response body.
 """
 
 from collections.abc import Mapping, Sequence
@@ -19,7 +20,9 @@ from dataclasses import dataclass
 from typing import Any, Final, Literal, Protocol
 
 StopReason = Literal["tool_use", "end_turn", "max_tokens", "refusal", "other"]
-PROVIDER_CATEGORIES: Final = frozenset({"model_unavailable", "model_config", "internal"})
+PROVIDER_CATEGORIES: Final = frozenset(
+    {"model_unavailable", "model_config", "outbound_blocked", "internal"}
+)
 
 
 @dataclass(frozen=True, slots=True)
