@@ -16,10 +16,19 @@ EXPECTED_EXPRESSION = (
     "(owner_id = (NULLIF(current_setting('app.user_id'::text, true), ''::text))::uuid)"
 )
 # Restrictive ``USING (false)`` policies some owned tables must have (ADR 0005 section 1):
-# immutable revisions, append-only job events.
+# immutable revisions, append-only job events and class messages, usage rows that are never deleted
+# (ADR 0007 section 1).
 REQUIRED_DENY_POLICIES = {
     "class_revisions": {"UPDATE"},
     "job_events": {"UPDATE", "DELETE"},
+    "class_messages": {"UPDATE", "DELETE"},
+    "agent_runs": {"DELETE"},
+}
+# Restrictive policies with their own expressions: a finished usage row can't be updated, and the
+# update that finishes a run is not refused (``WITH CHECK (true)``; without it the USING
+# expression would apply to the new row too).
+REQUIRED_POLICIES = {
+    "agent_runs": {("UPDATE", "(outcome IS NULL)", "true")},
 }
 SAFE_DELETE_ACTIONS = {"a": "NO ACTION", "r": "RESTRICT", "c": "CASCADE"}
 SET_ACTIONS = {"n": "SET NULL", "d": "SET DEFAULT"}
@@ -165,6 +174,14 @@ def _check_owned(
     }  # fmt: skip
     for cmd in sorted(REQUIRED_DENY_POLICIES.get(name, set()) - denied):
         bad(f"needs a restrictive FOR {cmd} TO PUBLIC USING (false) policy")
+
+    present = {
+        (p["cmd"], p["qual"], p["with_check"])
+        for p in table_policies
+        if p["permissive"] == "RESTRICTIVE" and list(p["roles"]) == ["public"]
+    }
+    for cmd, qual, check in sorted(REQUIRED_POLICIES.get(name, set()) - present):
+        bad(f"needs a restrictive FOR {cmd} TO PUBLIC USING ({qual}) WITH CHECK ({check}) policy")
 
     found_owner_id_unique = False
     for index in table_indexes:

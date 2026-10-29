@@ -24,8 +24,8 @@ from classbeat.jobs.errors import BACKOFF_CAP_SECONDS, RATE_LIMIT_CAP_SECONDS
 
 
 def migration_categories() -> set[str]:
-    path = Path(__file__).resolve().parent.parent / "migrations" / "versions" / "0004_jobs.py"
-    spec = importlib.util.spec_from_file_location("migration_0004", path)
+    path = Path(__file__).resolve().parent.parent / "migrations" / "versions" / "0005_classes.py"
+    spec = importlib.util.spec_from_file_location("migration_0005", path)
     assert spec is not None
     assert spec.loader is not None
     module = importlib.util.module_from_spec(spec)

@@ -15,7 +15,8 @@ from sqlalchemy.exc import DisconnectionError, OperationalError
 from classbeat.connections import ConnectionFailure
 from classbeat.egress import OutboundBlocked
 
-# ADR 0005 section 4; the same list as the ``jobs.error_category`` check of migration 0004.
+# ADR 0005 section 4 and ADR 0007 section 1; the same list as the ``jobs.error_category`` check of
+# migration 0005.
 CATEGORIES: Final = (
     "upstream_unavailable",
     "rate_limited",
@@ -35,6 +36,9 @@ CATEGORIES: Final = (
     "uncertain_write",
     "outbound_blocked",
     "internal",
+    "program_changed",
+    "program_missing",
+    "music_unlinked",
 )
 # Retried by the worker (a new attempt with backoff). ``lease_lost`` is retried by the reaper and
 # ``operation_busy`` is requeued without an attempt (``classbeat.jobs.transitions``).
