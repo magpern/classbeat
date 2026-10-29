@@ -13,7 +13,8 @@ together or not at all:
   revision id and its content hash). A job waits at most once; the approved phase sees
   ``job_run.approved`` and must end with ``Complete``.
 
-It fails a run by raising ``JobFailure(category)``.
+It fails a run by raising ``JobFailure(category)``, also from inside ``store`` (a last check
+in the final transaction): the store is rolled back and the attempt ends with that category.
 """
 
 import re

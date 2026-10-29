@@ -17,6 +17,7 @@ from classbeat.config import Settings, check_web_has_no_model_key
 from classbeat.connections.routes import router as connections_router
 from classbeat.crypto.keks import load_keyring
 from classbeat.db import create_engine, create_session_factory, verify_database_role
+from classbeat.design.routes import router as music_router  # registers design_draft (J3)
 from classbeat.jobs.events_routes import StreamLimiter
 from classbeat.jobs.events_routes import router as job_events_router
 from classbeat.jobs.hub import EventHub
@@ -126,6 +127,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(job_events_router)
     app.include_router(jobs_router)
     app.include_router(operations_router)
+    app.include_router(music_router)
 
     if settings.static_dir is not None:
         if settings.static_dir.is_dir():

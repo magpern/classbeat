@@ -8,7 +8,9 @@ the attempt ended, exactly once and fenced:
   transaction (``cancelled`` instead when a cancel was requested meanwhile);
 - ``RunStopped``: ``cancelled``, a hand-back on shutdown (the attempt not counted), or nothing
   when the lease is lost (the reaper owns the job then);
-- a failure: retried with backoff, requeued for ``operation_busy``, or ``failed``.
+- a failure: retried with backoff, requeued for ``operation_busy``, or ``failed``; a
+  ``JobFailure`` raised by the outcome's ``store`` rolls the store back and counts the same way
+  (any other exception there is ``internal``).
 
 Only categories and exception type names are logged, never texts.
 """
@@ -211,6 +213,8 @@ async def execute(
         return
     try:
         await _finish(execution, factory, run, outcome, config)
+    except JobFailure as failure:  # the kind's store refused (rolled back): its category
+        await _failed(execution, factory, run, failure, config)
     except Exception as exc:  # storing the result failed and was rolled back
         logger.warning("job store failed", extra={"error_type": type(exc).__name__})
         if isinstance(exc, OperationalError | DisconnectionError):

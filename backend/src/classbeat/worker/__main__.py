@@ -5,6 +5,7 @@ import logging
 import signal
 import sys
 
+from classbeat import design
 from classbeat.config import ModelProviderRefused, Settings, check_worker_model_provider
 from classbeat.crypto.keks import load_keyring
 from classbeat.db import (
@@ -31,9 +32,11 @@ async def _run(settings: Settings) -> None:
     try:
         await verify_database_role(engine)  # refuses to start on a privileged role
         # The KEK check of ADR 0004 section 2: no valid connection_kek, no worker.
-        await load_keyring(create_session_factory(engine), settings.connection_kek_id)
+        keyring = await load_keyring(create_session_factory(engine), settings.connection_kek_id)
     finally:
         await engine.dispose()
+    # The job kinds' runtime (design_draft, D1): the key ring and a new model provider per run.
+    design.configure(design.runtime_from_settings(settings, keyring))
     stop = asyncio.Event()
     # Before "worker started" is logged, so a signal after that line is always handled.
     _install_signal_handlers(asyncio.get_running_loop(), stop)

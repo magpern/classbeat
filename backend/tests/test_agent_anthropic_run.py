@@ -194,7 +194,10 @@ def test_the_web_process_never_loads_the_provider_or_the_sdk() -> None:
     )
     loaded = json.loads(result.stdout.splitlines()[-1])
     assert [m for m in loaded if m == "anthropic" or m.startswith("anthropic.")] == []
-    assert [m for m in loaded if m.startswith("classbeat.agent")] == []
+    # Since D1 (#92) the web imports the design_draft kind to validate its input, which loads
+    # classbeat.agent's schemas and pure tools; the provider adapters and the SDK stay out.
+    assert [m for m in loaded if m.startswith("classbeat.agent.providers")] == []
+    assert "classbeat.design.kind" in loaded  # the check above runs with the kind loaded
 
 
 def test_only_the_provider_module_imports_the_sdk() -> None:

@@ -260,8 +260,12 @@ the roadmap §6 purge.)
 tool schemas), `classbeat_version`, `mowl_version`, `map_version` (`music.MAP_VERSION`), the map's `crossfade`
 in seconds (`MAP_VERSION` stays 12 across v0.5.0, so `map_version` alone no longer tells a back to
 back map from an overlapped one), the `agent_runs` ids and summed usage and cost. **`class_revisions.music`**: `{source:
-"mowl_spotify_playlist", link_id, fingerprint}`, where the fingerprint is SHA-256 of the analysed
-track list (MOWL track ids and lengths), so a later revision can tell whether the music changed.
+"mowl_spotify_playlist", link_id, fingerprint, unknown_bpm}`, where the fingerprint is SHA-256 of
+the analysed track list (per track in play order its Spotify track id and length; amended in D1,
+#92: the library's map keeps no MOWL track ids), so a later revision can tell whether the music
+changed, and `unknown_bpm` is `[{index, title}]`, the tracks MOWL had no BPM for yet (0-based, the
+same index as in the model's music summary), so the user is told their bars were a guess; the
+titles are the user's own track list and go with the class (ADR 0010).
 Revisions are deleted with their class or account (Amendment 1).
 
 ### 7. What the model sees, and prompt injection
