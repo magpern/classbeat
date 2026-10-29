@@ -25,7 +25,7 @@ from classbeat.egress import WORKER_ALLOWLIST, OutboundBlocked, build_allowlist_
 from classbeat.jobs import Complete, JobKind, JobRun, KindRegistry
 from classbeat.jobs.runner import RunConfig, execute
 from classbeat.operations import CallResult, OperationRequest, attach, perform
-from classbeat.operations.protocol import _MARK_UNCERTAIN, _RECORD  # pyright: ignore[reportPrivateUsage]
+from classbeat.operations.protocol import _ADOPT_UNCERTAIN, _MARK_UNCERTAIN, _RECORD  # pyright: ignore[reportPrivateUsage]
 from ctx import make_context
 from optools import KIND, PLAYLIST, TOKEN_A, TOKEN_B, AttachInput, FakeMowlAttach, OpsEnv
 from test_operations import ATTACH, hash_for, owner_with_job
@@ -182,11 +182,42 @@ async def test_treating_as_uncertain_needs_the_same_holder_and_token(
     connection = await xenv.connect(owner)
     holder, other = xenv.job(owner, connection), xenv.job(owner, connection)
     op = await plant(xenv, owner, holder, "pending")
-    assert not await matched(xenv, owner, _MARK_UNCERTAIN, id=op, old_job=other, old_v=1)
-    assert not await matched(xenv, owner, _MARK_UNCERTAIN, id=op, old_job=holder, old_v=2)
-    assert [o.state for o in xenv.operations(owner)] == ["pending"]
-    assert await matched(xenv, owner, _MARK_UNCERTAIN, id=op, old_job=holder, old_v=1)
-    assert [o.state for o in xenv.operations(owner)] == ["uncertain"]
+    mark = {"id": op, "job_id": other}  # ``other`` is the job that meets the stale row
+    assert not await matched(xenv, owner, _MARK_UNCERTAIN, **mark, old_job=other, old_v=1)
+    assert not await matched(xenv, owner, _MARK_UNCERTAIN, **mark, old_job=holder, old_v=2)
+    assert [(o.state, o.job_id) for o in xenv.operations(owner)] == [("pending", holder)]
+    assert await matched(xenv, owner, _MARK_UNCERTAIN, **mark, old_job=holder, old_v=1)
+    # It follows the job that marked it (#125); the call's token stays.
+    assert [(o.state, o.job_id, o.lease_version) for o in xenv.operations(owner)] == [
+        ("uncertain", other, 1)
+    ]
+
+
+@pytest.mark.parametrize("state", ["uncertain", "failed"])
+async def test_treating_as_uncertain_matches_only_a_pending_row(
+    xenv: OpsEnv, fake_attach: FakeMowlAttach, state: str
+) -> None:
+    owner = await xenv.user()
+    connection = await xenv.connect(owner)
+    holder, later = xenv.job(owner, connection), xenv.job(owner, connection)
+    op = await plant(xenv, owner, holder, state)
+    marks = {"id": op, "job_id": later, "old_job": holder, "old_v": 1}
+    assert not await matched(xenv, owner, _MARK_UNCERTAIN, **marks)
+    assert [(o.state, o.job_id) for o in xenv.operations(owner)] == [(state, holder)]
+
+
+async def test_adopting_an_uncertain_row_matches_only_that_row(
+    xenv: OpsEnv, fake_attach: FakeMowlAttach
+) -> None:
+    owner = await xenv.user()
+    connection = await xenv.connect(owner)
+    first, later = xenv.job(owner, connection), xenv.job(owner, connection)
+    op = await plant(xenv, owner, first, "uncertain")
+    keyed = {"kind": ATTACH, "key": f"spotify:{PLAYLIST}", "job_id": later}
+    assert not await matched(xenv, owner, _ADOPT_UNCERTAIN, id=uuid.uuid4(), **keyed)
+    assert [o.job_id for o in xenv.operations(owner)] == [first]
+    assert await matched(xenv, owner, _ADOPT_UNCERTAIN, id=op, **keyed)
+    assert [o.job_id for o in xenv.operations(owner)] == [later]
 
 
 async def test_recording_an_outcome_needs_a_pending_row_of_this_job_and_token(

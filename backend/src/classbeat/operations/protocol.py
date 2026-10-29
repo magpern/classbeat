@@ -12,8 +12,10 @@
    without an attempt). Any other
    ``pending`` (its holder died or lost its lease mid-call): marked ``uncertain`` with a
    conditional ``UPDATE ... WHERE state = 'pending' AND job_id = :old AND lease_version =
-   :old``, then step 4. ``uncertain``: step 4. ``failed``: taken over with ``UPDATE ... WHERE
-   state = 'failed'``. Writing ``pending`` also extends the lease past the call's timeout.
+   :old`` that also sets ``job_id`` to this job, then step 4. ``uncertain``: its ``job_id``
+   becomes this job (the row follows the job that fails on it, #125), then step 4.
+   ``failed``: taken over with ``UPDATE ... WHERE state = 'failed'``. Writing ``pending``
+   also extends the lease past the call's timeout.
 2. **The call**, outside any transaction (``JobRun.external_call``: no call starts after a
    cancel or SIGTERM, and once started a cancel does not interrupt it).
 3. **Record** (fenced, conditional on ``state = 'pending' AND job_id AND lease_version``):
@@ -90,10 +92,19 @@ _TAKE_FAILED = text(
     "error_category = NULL, resolved_by = NULL, resolved_at = NULL, updated_at = now() "
     "WHERE id = :id AND owner_id = :owner_id AND state = 'failed' RETURNING id"
 )
+# An ``uncertain`` row follows the job that meets it (#125): its ``job_id`` becomes that job, so
+# the job that fails ``uncertain_write`` lists it for the user's decision. ``job_id`` of an
+# ``uncertain`` row is no holder: only a ``pending`` row's ``(job_id, lease_version)`` is one,
+# and ``lease_version`` keeps the token of the call that may have taken effect.
 _MARK_UNCERTAIN = text(
-    "UPDATE external_operations SET state = 'uncertain', updated_at = now() "
+    "UPDATE external_operations SET state = 'uncertain', job_id = :job_id, updated_at = now() "
     "WHERE id = :id AND owner_id = :owner_id AND state = 'pending' "
     "AND job_id IS NOT DISTINCT FROM :old_job AND lease_version = :old_v RETURNING id"
+)
+_ADOPT_UNCERTAIN = text(
+    "UPDATE external_operations SET job_id = :job_id, updated_at = now() "
+    "WHERE id = :id AND owner_id = :owner_id AND kind = :kind AND idempotency_key = :key "
+    "AND state = 'uncertain' RETURNING id"
 )
 _RECORD = text(
     "UPDATE external_operations SET state = :state, external_id = :external_id, "
@@ -268,13 +279,26 @@ async def _decide(
                     if holder.first() is not None:
                         raise JobFailure("operation_busy")
                 marked = await fs.db.execute(
-                    _MARK_UNCERTAIN, {**ids, "old_job": row.job_id, "old_v": row.lease_version}
+                    _MARK_UNCERTAIN,
+                    {
+                        **ids,
+                        "job_id": lease.job_id,
+                        "old_job": row.job_id,
+                        "old_v": row.lease_version,
+                    },
                 )
                 if marked.first() is None:
                     continue
                 await _event(fs, request.kind, "uncertain")
                 return _Uncertain(row.id)
-            return _Uncertain(row.id)  # uncertain already
+            # Uncertain already: it now follows this job, which fails on it (#125).
+            adopted = await fs.db.execute(
+                _ADOPT_UNCERTAIN, {**ids, **keyed, "job_id": lease.job_id}
+            )
+            if adopted.first() is None:
+                continue
+            await _event(fs, request.kind, "uncertain")
+            return _Uncertain(row.id)
     logger.warning("external operation kept changing", extra={"kind": request.kind})
     raise JobFailure("internal")
 

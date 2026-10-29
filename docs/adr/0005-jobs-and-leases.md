@@ -404,7 +404,7 @@ Protocol for one call:
    or any other `pending` (its holder died or lost its lease mid-call): treat as `uncertain` (step
    4). `failed`: `UPDATE … SET state = 'pending', job_id = :job, lease_version = :v WHERE id = :id
    AND state = 'failed'`, and 0 rows means decide again. Writing `pending` also extends the lease
-   (§3). Of two jobs racing on one playlist, exactly one calls the provider.
+   (§3). Of two racing jobs exactly one calls the provider. Holder rule: ADR 0006 §3 (#125).
 2. **The call**, outside any transaction, through `classbeat.connections` (ADR 0004 §5).
 3. **Fenced transaction** recording the outcome, conditional on `state = 'pending' AND job_id =
    :job AND lease_version = :v`: `succeeded` with the external id; `failed` when the provider
