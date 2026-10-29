@@ -6,6 +6,7 @@ from pathlib import Path
 
 import pytest
 from pydantic import BaseModel, ConfigDict
+from sqlalchemy.exc import DisconnectionError, OperationalError
 
 from classbeat.connections import ConnectionFailure
 from classbeat.egress import OutboundBlocked
@@ -66,6 +67,9 @@ def test_a_rate_limit_waits_at_least_its_hint_capped_at_an_hour() -> None:
         (JobFailure("no such category"), "internal", None),
         (JobFailure("upstream_unavailable", 9), "upstream_unavailable", None),  # hint ignored
         (KeyError("secret"), "internal", None),
+        # #109 item 3: our own database blinking is retryable wherever it happens.
+        (OperationalError("SELECT 1", {}, ConnectionError()), "upstream_unavailable", None),
+        (DisconnectionError("gone"), "upstream_unavailable", None),
     ],
 )
 def test_every_exception_maps_to_one_category(

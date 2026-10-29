@@ -231,8 +231,11 @@ async def approve(
     job_id: UUID,
     revision_id: UUID,
     content_hash: bytes,
-    admit: Admit | None = None,
+    *,
+    admit: Admit,
 ) -> Approval:
+    """``admit`` is required (#115 item 7): it holds the connection, per-user limit and credit
+    checks, and leaving it out would skip them."""
     require_context(ctx)
     params = {"job_id": job_id, "owner_id": ctx.user_id}
     await lock_owner(db, ctx)  # before anything is counted (ADR 0005 section 2, #87)
@@ -257,10 +260,9 @@ async def approve(
         return Approval(False, row.state, "superseded")
     if not same:
         return Approval(False, row.state, "hash_mismatch")
-    if admit is not None:
-        reason = await admit(db, Waiting(job_id, row.kind, row.input))
-        if reason is not None:
-            return Approval(False, row.state, reason)
+    reason = await admit(db, Waiting(job_id, row.kind, row.input))
+    if reason is not None:
+        return Approval(False, row.state, reason)
     seq = (await db.execute(_APPROVE, params)).scalar_one()
     await _event(db, ctx, job_id, seq, "approved")
     await db.execute(_NOTIFY_QUEUED)

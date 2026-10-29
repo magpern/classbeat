@@ -10,7 +10,15 @@ and the credit settle; the hourly auth purge stays.
 checkpoint (no new model turn or external call) and hands its lease back; runs still busy after
 ``worker_shutdown_wait_seconds`` (25 s) are cancelled, leaving a call in flight ``pending`` under
 the old token, and their leases are handed back too. Each hand-back is one fenced requeue under
-the role's 5 s ``lock_timeout``; what is not handed back is reaped when its lease expires.
+the role's 5 s ``lock_timeout``; what is not handed back is reaped when its lease expires. A
+maintenance step or auth purge in progress at SIGTERM is cancelled (each is one transaction, rolled
+back and run again later); a claim is left to finish (5 s ``connect_timeout``, 30 s
+``statement_timeout``), since a claim cancelled after its commit would strand its job until the
+reaper.
+
+**A drifted queue or a privileged role** (``DatabaseRoleError``) stops the worker wherever it is
+raised: the background queue check, a claim, a run's or a maintenance step's new connection
+(#109 item 2). The running jobs are then handed back as on SIGTERM, and ``run`` raises it.
 """
 
 import asyncio
@@ -64,9 +72,12 @@ def worker_id() -> str:
 
 
 async def purge_once(factory: Factory, settings: Settings) -> None:
-    """Run the hourly purge of expired auth rows. A failure is logged and retried next hour."""
+    """Run the hourly purge of expired auth rows. A failure is logged and retried next hour;
+    ``DatabaseRoleError`` stops the worker."""
     try:
         counts = await auth.purge_expired(factory, settings)
+    except DatabaseRoleError:
+        raise
     except Exception as exc:  # the worker must outlive a database blip
         logger.warning("auth purge failed", extra={"error_type": type(exc).__name__})
         return
@@ -76,6 +87,8 @@ async def purge_once(factory: Factory, settings: Settings) -> None:
 async def _quietly(name: str, step: Callable[[], Awaitable[int]]) -> None:
     try:
         count = await step()
+    except DatabaseRoleError:
+        raise
     except Exception as exc:
         logger.warning(
             "job maintenance failed", extra={"step": name, "error_type": type(exc).__name__}
@@ -112,6 +125,8 @@ class Worker:
         self._verify: asyncio.Task[None] | None = None
         self._next_check = 0.0  # monotonic time of the next queue-check attempt
         self._check_delay = settings.worker_poll_seconds
+        self.fatal: DatabaseRoleError | None = None  # stops the loop (#109 item 2)
+        self.stranded: list[Execution] = []  # ended by it, handed back with the rest
         self.passes = 0  # loop passes, for tests and diagnostics
         self.checks = 0  # queue-check attempts started
 
@@ -163,6 +178,11 @@ class Worker:
             await execute(execution, self.factory, self.registry, self.config, self.shutdown)
         except asyncio.CancelledError:
             raise
+        except DatabaseRoleError as exc:  # the loop stops and hands the lease back
+            if self.fatal is None:
+                self.fatal = exc
+            self.stranded.append(execution)
+            self.wake.set()
         except Exception as exc:  # left to the reaper when its lease expires
             logger.warning("job run failed", extra={"error_type": type(exc).__name__})
 
@@ -203,6 +223,8 @@ class Worker:
         try:
             while not stop.is_set():
                 self.passes += 1
+                if self.fatal is not None:
+                    raise self.fatal
                 await self._claim_step()
                 timeout = self.settings.worker_poll_seconds
                 if queue_verified(self.engine) and not stop.is_set():
@@ -210,12 +232,12 @@ class Worker:
                     # never shorten the wait while the database is down (no hot loop).
                     now = time.monotonic()
                     if now >= next_maintenance:
-                        await self.maintain()
+                        await self._unless_stopped(self.maintain(), stop)
                         next_maintenance = (
                             time.monotonic() + self.settings.worker_maintenance_seconds
                         )
                     if now >= next_purge:
-                        await purge_once(self.factory, self.settings)
+                        await self._unless_stopped(purge_once(self.factory, self.settings), stop)
                         next_purge = time.monotonic() + self.settings.purge_interval_seconds
                     timeout = min(
                         timeout,
@@ -233,6 +255,22 @@ class Worker:
             await asyncio.gather(*background, return_exceptions=True)
             await self.stop_runs()
 
+    @staticmethod
+    async def _unless_stopped(step: Awaitable[None], stop: asyncio.Event) -> None:
+        """Run ``step``; cancel it when ``stop`` is set first (shutdown is bounded, #109 item 8)."""
+        task = asyncio.ensure_future(step)
+        stopped = asyncio.ensure_future(stop.wait())
+        try:
+            await asyncio.wait({task, stopped}, return_when=asyncio.FIRST_COMPLETED)
+        finally:
+            for pending in (task, stopped):
+                if not pending.done():
+                    pending.cancel()
+            await asyncio.gather(task, stopped, return_exceptions=True)
+        error = None if task.cancelled() else task.exception()
+        if error is not None:
+            raise error
+
     async def _wake_on(self, stop: asyncio.Event) -> None:
         await stop.wait()
         self.shutdown.set()  # at once: runs stop at their next checkpoint, nothing more is claimed
@@ -241,15 +279,15 @@ class Worker:
     async def stop_runs(self) -> None:
         """The shutdown hand-back of ADR 0005 section 3."""
         self.shutdown.set()
-        if not self.running:
-            return
         tasks = list(self.running)
         executions = [self.running[t] for t in tasks]
-        _, busy = await asyncio.wait(tasks, timeout=self.settings.worker_shutdown_wait_seconds)
-        for task in busy:
-            task.cancel()
-        await asyncio.gather(*tasks, return_exceptions=True)
-        pending = [e for e in executions if e.needs_hand_back()]
+        if tasks:
+            _, busy = await asyncio.wait(tasks, timeout=self.settings.worker_shutdown_wait_seconds)
+            for task in busy:
+                task.cancel()
+            await asyncio.gather(*tasks, return_exceptions=True)
+        pending = [e for e in [*self.stranded, *executions] if e.needs_hand_back()]
+        self.stranded = []
         results = await asyncio.gather(
             *(hand_back(e, self.factory) for e in pending), return_exceptions=True
         )

@@ -293,7 +293,10 @@ async def test_the_endpoint_replays_the_owners_events_and_resumes(
     assert first.text.startswith("id: 3\n")
     both = await env.client.get(url + "?after=0", headers={**cookie, "Last-Event-ID": "3"})
     assert both.text.startswith("id: 4\n")  # the header wins
-    assert (await env.client.get(url, headers={**cookie, "Last-Event-ID": "4"})).text == ""
+    # After the end, a reconnect is a 204: an EventSource stops reconnecting (#116 item 4).
+    over = await env.client.get(url, headers={**cookie, "Last-Event-ID": "4"})
+    assert (over.status_code, over.text) == (204, "")
+    assert (await env.client.get(url + "?after=99", headers=cookie)).status_code == 204
 
 
 @pytest.mark.parametrize("bad", ["abc", "-1", "1.5", "99999999999999999999", " 1"])
@@ -373,3 +376,43 @@ async def test_a_user_session_of_one_job_cannot_read_another_owners_events(
     page = await read_page(jenv.factory, make_context(owner), job_id, 0, 10)
     assert page is not None
     assert [e.seq for e in page.events] == [1]
+
+
+async def test_rls_alone_hides_another_owners_job_and_events(jenv: JobsEnv) -> None:
+    """#116 item 1: the reads of ``progress`` without their ``owner_id`` filter, in the other
+    owner's user session, still see nothing: RLS refuses on its own (and the same statements
+    see the rows in the owner's session, so the query itself works)."""
+    from sqlalchemy import text
+
+    from classbeat.db import user_session
+
+    owner, job_id = jenv.job()
+    other = jenv.user()
+    jenv.sql(
+        "INSERT INTO job_events (owner_id, job_id, seq, kind, payload, lease_version) "
+        "VALUES (:o, :j, 1, 'queued', '{}', 0)",
+        o=owner,
+        j=job_id,
+    )
+    unfiltered = (
+        text("SELECT state FROM jobs WHERE id = :job_id"),
+        text("SELECT seq FROM job_events WHERE job_id = :job_id"),
+    )
+    seen = {}
+    for who in (other, owner):
+        async with user_session(jenv.factory, make_context(who)) as db:
+            seen[who] = [len((await db.execute(q, {"job_id": job_id})).all()) for q in unfiltered]
+    assert seen == {other: [0, 0], owner: [1, 1]}
+
+
+async def test_closing_the_hub_ends_every_open_stream(env: Env, jobs_admin: Connection) -> None:
+    """#116 item 3: shutdown (``EventHub.close``) ends a stream that would otherwise wait."""
+    owner = await env.user()
+    job_id = seeded(jobs_admin, owner)  # running: the stream would wait for more
+    hub = env.app.state.event_hub
+    task = asyncio.ensure_future(collect(env, owner, job_id))
+    await until(lambda: job_id in hub._subscriptions)  # the stream is waiting
+    hub.close()
+    frames = await asyncio.wait_for(task, 5)
+    assert [k for _, k, _ in parse(frames)] == ["queued", "claimed", "stage_started"]
+    assert await asyncio.wait_for(collect(env, owner, job_id, after=3), 5) == []  # ends at once

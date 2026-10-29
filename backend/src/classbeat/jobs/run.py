@@ -16,6 +16,11 @@ A kind's pipeline gets a ``JobRun`` and reaches the database only through it:
   transaction writing its ``pending`` row extends the lease (``FencedSession.
   extend_lease_for_call``).
 
+**For kind authors: never nest them.** No ``checkpoint()``, ``stage()`` or second ``fenced()``
+inside an open ``fenced()`` block (#109 item 7): each opens its own transaction, whose fence waits
+for the row lock the outer one holds, and fails after the role's 5 s ``lock_timeout``. Do the
+fenced write, leave the block, then checkpoint.
+
 The heartbeat extends the lease every lease/3 with ``GREATEST`` (it never shortens an extension
 made for a call) in its own short fenced transaction. Lost (0 rows, or 3 database errors in a
 row), it marks the run lost and abandons whatever is not an external call in flight.

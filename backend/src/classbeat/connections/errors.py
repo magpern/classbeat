@@ -142,7 +142,10 @@ def _not_applied(exc: BaseException, library_error: type[BaseException]) -> bool
     if isinstance(exc, library_error):
         cause = exc.__cause__
         if cause is None:
-            return True  # the library's own refusal, raised on the provider's answer
+            # The library's own refusal, raised on the provider's answer (e.g. HTTP 200 with a
+            # non-empty ``Error``): assumed to mean MOWL did nothing. Not yet checked against
+            # real MOWL (ADR 0005 section 7, #117 item 2); verify before M3b relies on it.
+            return True
         exc = cause
     if isinstance(exc, HTTPError):
         status = getattr(exc, "code", None)

@@ -22,10 +22,12 @@ from ctx import make_context
 from jobapi import (
     FAKE_TOKEN,
     LIST_HASH,
+    Barrier,
     Browser,
     api_registry,
     owner_lock_key,
     plant_running,
+    until_waiting_on_the_owner_lock,
     waiting_job,
 )
 from jobcore import KIND, JobsEnv, run_next
@@ -150,28 +152,38 @@ async def test_the_per_user_limit_and_the_credit_seam(
     await nothing_started(jenv, job_id, kinds)
 
 
-async def test_two_concurrent_approvals_cannot_pass_the_limit(jenv: JobsEnv, browsers: Any) -> None:
+async def test_two_concurrent_approvals_cannot_pass_the_limit(
+    jenv: JobsEnv, browsers: Any, env: Env
+) -> None:
+    """Both approvals are held after counting the limit (``Barrier``) until the other gets there:
+    without the owner lock both would count one active job and pass (#115 item 5)."""
     alice: Browser = await browsers()
     one, one_rev = await waiting_job(jenv, alice)
     two, two_rev = await waiting_job(jenv, alice)
     plant_running(jenv, alice.user_id)  # one slot of two left
+    barrier = Barrier()
+    env.app.dependency_overrides[credit_ledger] = lambda: barrier
     responses = await asyncio.gather(
         alice.approve(one, one_rev, LIST_HASH), alice.approve(two, two_rev, LIST_HASH)
     )
+    assert (barrier.arrived, barrier.together) == (1, False)  # the second was refused as busy
     assert sorted(r.status_code for r in responses) == [200, 429]
     states = sorted(jenv.row(j).state for j in (one, two))
     assert states == ["queued", "waiting_for_approval"]
 
 
 async def test_an_approval_racing_a_create_cannot_pass_the_limit(
-    jenv: JobsEnv, browsers: Any
+    jenv: JobsEnv, browsers: Any, env: Env
 ) -> None:
     alice: Browser = await browsers()
     job_id, revision = await waiting_job(jenv, alice)
     plant_running(jenv, alice.user_id)  # one slot of two left
+    barrier = Barrier()
+    env.app.dependency_overrides[credit_ledger] = lambda: barrier
     approved, created = await asyncio.gather(
         alice.approve(job_id, revision, LIST_HASH), alice.create()
     )
+    assert (barrier.arrived, barrier.together) == (1, False)
     assert sorted((approved.status_code, created.status_code)) in ([200, 429], [201, 429])
     active = jenv.sql(
         "SELECT count(*) FROM jobs WHERE owner_id = :o AND state IN ('queued', 'running')",
@@ -194,7 +206,7 @@ async def test_approve_counts_the_limit_only_after_the_owner_lock(
             {"k": owner_lock_key(alice.user_id)},
         )
         task = asyncio.create_task(alice.approve(job_id, revision, LIST_HASH))
-        await asyncio.sleep(0.5)
+        await until_waiting_on_the_owner_lock(jenv)
         assert not task.done()
         plant_running(jenv, alice.user_id)  # the limit (2) is now reached
         holder.commit()
