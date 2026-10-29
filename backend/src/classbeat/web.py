@@ -17,6 +17,9 @@ from classbeat.config import Settings, check_web_has_no_model_key
 from classbeat.connections.routes import router as connections_router
 from classbeat.crypto.keks import load_keyring
 from classbeat.db import create_engine, create_session_factory, verify_database_role
+from classbeat.jobs.events_routes import StreamLimiter
+from classbeat.jobs.events_routes import router as job_events_router
+from classbeat.jobs.hub import EventHub
 from classbeat.jobs.routes import router as jobs_router
 from classbeat.operations.routes import router as operations_router
 
@@ -96,8 +99,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 app.state.session_factory, settings.connection_kek_id
             )
             auth.attach_state(app, settings, app.state.session_factory)
+            app.state.stream_limiter = StreamLimiter()
+            app.state.event_hub = EventHub(engine)
+            app.state.event_hub.start()  # LISTEN job_events (ADR 0005 section 6)
             yield
         finally:
+            hub = getattr(app.state, "event_hub", None)
+            if hub is not None:
+                await hub.stop()
             auth.detach_state(app)
             await engine.dispose()
 
@@ -114,6 +123,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(api)
     auth.install(app)
     app.include_router(connections_router)
+    app.include_router(job_events_router)
     app.include_router(jobs_router)
     app.include_router(operations_router)
 

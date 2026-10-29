@@ -105,13 +105,13 @@ _INSERT_REVISION = text(
     "SELECT :id, j.owner_id, j.class_id, coalesce((SELECT max(r.number) FROM class_revisions r "
     "WHERE r.owner_id = j.owner_id AND r.class_id = j.class_id), 0) + 1, :kind, "
     "CAST(:content AS jsonb), :hash, '{}'::jsonb, '{}'::jsonb, j.id "
-    "FROM jobs j WHERE j.id = :job_id AND j.owner_id = :owner_id"
+    "FROM jobs j WHERE j.id = :job_id AND j.owner_id = :owner_id RETURNING number"
 )
 
 
 async def store_revision(fs: FencedSession, kind: str, content: dict[str, Any]) -> UUID:
     revision_id = uuid.uuid4()
-    await fs.db.execute(
+    number = await fs.db.execute(
         _INSERT_REVISION,
         {
             "id": revision_id,
@@ -122,7 +122,10 @@ async def store_revision(fs: FencedSession, kind: str, content: dict[str, Any]) 
             "owner_id": fs.lease.owner_id,
         },
     )
-    await fs.event("revision_created", {"revision_id": revision_id, "kind": kind})
+    await fs.event(
+        "revision_created",
+        {"revision_id": revision_id, "kind": kind, "number": number.scalar_one()},
+    )
     return revision_id
 
 
