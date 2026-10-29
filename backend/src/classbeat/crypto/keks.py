@@ -92,12 +92,25 @@ class KeyRing:
 
     The current KEK is used only once its check row matched (``verified``). Normally that
     happens at startup; when the database was unreachable then, the first use checks it, and a
-    mismatch refuses every use (``KekError``), the same as a refused start.
+    mismatch refuses every use (``KekError``), the same as a refused start. That check runs in
+    its own ``system_session`` (``factory``, required when ``verified`` is false), so a caller's
+    transaction that rolls back afterwards can never leave the ring marked verified while the
+    check row was never committed.
     """
 
-    def __init__(self, current: Kek, directory: Path, *, verified: bool = True) -> None:
+    def __init__(
+        self,
+        current: Kek,
+        directory: Path,
+        *,
+        verified: bool = True,
+        factory: async_sessionmaker[AsyncSession] | None = None,
+    ) -> None:
+        if not verified and factory is None:
+            raise ValueError("an unverified KeyRing needs a session factory for its first check")
         self._current = current
         self._directory = directory
+        self._factory = factory
         self._retired: dict[str, Kek] = {}
         self._verified = verified
 
@@ -116,10 +129,13 @@ class KeyRing:
         raise TypeError("a KeyRing cannot be pickled")
 
     async def current(self, db: AsyncSession) -> Kek:
-        """The current KEK, for writes. Checked against its row first if not done yet."""
+        """The current KEK, for writes. Checked against its row first if not done yet (in a
+        session of its own; ``db`` is not used for it)."""
         if not self._verified:
-            await _record_and_compare(db, self._current)
-            self._verified = True
+            assert self._factory is not None  # guaranteed by __init__
+            async with system_session(self._factory) as own:
+                await _record_and_compare(own, self._current)
+            self._verified = True  # only after the check row's transaction committed
         return self._current
 
     async def kek_for(self, db: AsyncSession, key_id: str) -> Kek:
@@ -207,7 +223,7 @@ async def load_keyring(
             await _record_and_compare(db, kek)
     except OperationalError:
         logger.debug("database unreachable at startup; the KEK is checked on first use")
-        return KeyRing(kek, directory, verified=False)
+        return KeyRing(kek, directory, verified=False, factory=factory)
     return KeyRing(kek, directory)
 
 
