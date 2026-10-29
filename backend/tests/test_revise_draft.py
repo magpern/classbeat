@@ -78,9 +78,8 @@ async def test_a_revision_is_stored_as_a_child_becomes_current_and_adds_two_mess
         "SELECT j.kind FROM agent_runs a JOIN jobs j ON j.id = a.job_id WHERE a.id = :i", i=run.id
     ).scalar_one()
     assert kind == "revise_draft"
-    # job_kind is written from JobRun.kind by records.py in #159 (US1); until it merges the
-    # column holds its default.
-    assert run.job_kind in ("unknown", "revise_draft")
+    # job_kind is written from JobRun.kind by records.py (US1, #159).
+    assert run.job_kind == "revise_draft"
 
 
 async def test_the_model_hears_the_base_and_the_request_and_the_stage_is_its_own(
