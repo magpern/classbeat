@@ -4,10 +4,12 @@ Every write a worker makes for a job goes through ``classbeat.jobs.fenced_sessio
 ``user_session`` whose first statement is the fence. So ``user_session`` itself may be used only
 by the packages that own data and their own transactions:
 
-- two modules of ``classbeat.jobs``, exactly: ``classbeat.jobs.fence`` (``fenced_session``) and
-  ``classbeat.jobs.credits`` (the settle step). The rest of the package, and every job kind, is
-  scanned like any other code: **job kinds live outside ``classbeat.jobs``** (X1, D1 and M4 put
-  theirs in their own packages) and write through ``fenced_session``;
+- three modules of ``classbeat.jobs``, exactly: ``classbeat.jobs.fence`` (``fenced_session``),
+  ``classbeat.jobs.credits`` (the settle step) and ``classbeat.jobs.service`` (the jobs API: the
+  user's own create, cancel and approve in a web request, never imported by the worker). The
+  rest of the package, and every job kind, is scanned like any other code: **job kinds live
+  outside ``classbeat.jobs``** (X1, D1 and M4 put theirs in their own packages) and write
+  through ``fenced_session``;
 - ``classbeat.connections`` (ADR 0004; during a run, its status, ``last_error`` and
   ``last_used_at`` writes are the one exemption from the fence: they are conditional on
   ``wrapped_dek`` and touch no job data);
@@ -37,6 +39,7 @@ ALLOWED_PREFIXES = (
 ALLOWED_MODULES = (
     "classbeat.jobs.fence",
     "classbeat.jobs.credits",
+    "classbeat.jobs.service",  # the jobs API: the user's own writes in a web request (J3)
     "classbeat.operations.user",
     "classbeat.keys_cli",
 )

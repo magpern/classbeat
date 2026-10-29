@@ -1,5 +1,6 @@
 """The fence guard of ADR 0005 section 3 (``session_scan``), and proof that it can fail."""
 
+import ast
 from pathlib import Path
 
 import pytest
@@ -30,9 +31,27 @@ def test_the_allowlist_is_exactly_the_reviewed_one() -> None:
     assert ALLOWED_MODULES == (
         "classbeat.jobs.fence",
         "classbeat.jobs.credits",
+        "classbeat.jobs.service",
         "classbeat.operations.user",
         "classbeat.keys_cli",
     )
+
+
+def test_the_jobs_api_service_is_reached_only_from_its_routes() -> None:
+    """``classbeat.jobs.service`` opens plain user sessions on jobs (the user's own writes); no
+    worker, job-kind or core module may import it, only the web routes (J3, #87)."""
+    users = set()
+    for path in sorted((SRC / "classbeat").rglob("*.py")):
+        tree = ast.parse(path.read_text("utf-8"))
+        for node in ast.walk(tree):
+            names: list[str] = []
+            if isinstance(node, ast.ImportFrom) and node.module:
+                names = [node.module] + [f"{node.module}.{a.name}" for a in node.names]
+            elif isinstance(node, ast.Import):
+                names = [a.name for a in node.names]
+            if "classbeat.jobs.service" in names:
+                users.add(_module(path))
+    assert users == {"classbeat.jobs.routes"}
 
 
 @pytest.mark.parametrize(

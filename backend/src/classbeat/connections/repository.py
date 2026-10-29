@@ -118,12 +118,15 @@ async def list_connections(factory: Factory, ctx: UserContext) -> list[Connectio
 async def find(factory: Factory, ctx: UserContext, connection_id: UUID) -> ConnectionInfo | None:
     """The user's connection with this id; another user's id is not found (a 404)."""
     async with user_session(factory, ctx) as db:
-        row = (
-            await db.execute(
-                select(*_INFO).where(_C.id == connection_id, _C.owner_id == ctx.user_id)
-            )
-        ).first()
-        return None if row is None else ConnectionInfo(*row)
+        return await find_in(db, ctx, connection_id)
+
+
+async def find_in(db: AsyncSession, ctx: UserContext, connection_id: UUID) -> ConnectionInfo | None:
+    """``find`` inside the caller's ``user_session`` (the jobs API's approve transaction)."""
+    row = (
+        await db.execute(select(*_INFO).where(_C.id == connection_id, _C.owner_id == ctx.user_id))
+    ).first()
+    return None if row is None else ConnectionInfo(*row)
 
 
 async def save(
