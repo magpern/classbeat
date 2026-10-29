@@ -12,7 +12,7 @@ GitHub hold the detail.
 | M1 | Accounts | done (milestone closed 2026-10-28) |
 | M2 | `mowl-workouts` v0.4.0, isolation, encryption, connect MOWL | done, except the token-lifetime check (waits for the owner) |
 | M3a | Jobs, Anthropic loop, design on existing music | done (2026-10-29); live smoke run once: 14 of 15 passed |
-| M3b | Class page, revisions, save to MOWL, usage and cost | next |
+| M3b | Class page, revisions, save to MOWL, usage and cost | design in review: [ADR 0007](adr/0007-classes-revisions-and-saving.md), issues #141 to #151 |
 | M4 | Song picking (beta), Spotify BYOK | not started |
 | M3c | Eval suite, OpenAI and DeepSeek adapters | not started |
 | M5 | Tiers, quotas, codes, admin | not started |
@@ -83,7 +83,8 @@ GitHub hold the detail.
   (flaky auth tests), #108 (queue check residual paths), #109 (J2), #114 (A1, gitleaks scope),
   #115 (J3), #116 (J4), #117 (X1), #120 (anthropic SDK 0.x and httpx2), #121 (A2,
   `SSLKEYLOGFILE`), #122 (D1), #127 (U1). #121 and #120 before live activation.
-- **Next: M3b** (class page, revisions, save and update to MOWL, usage and cost) and the
+- **Next: M3b** (class page, revisions, save and update to MOWL, usage and cost): ADR 0007 is
+  drafted and awaits its review (it also covers #71); issues #141 to #151 follow it. Then the
   batched hardening PRs.
 - Releases: v0.1.0 (cut partway through M0); v0.2.0 is not cut yet (deferred to save Actions quota). Image
   `ghcr.io/magpern/classbeat`, private.

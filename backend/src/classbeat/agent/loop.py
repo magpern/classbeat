@@ -82,6 +82,7 @@ class Counters:
     usage: Usage = field(default_factory=Usage)
     cost_micros: int = 0
     model_answered: str = ""
+    corrections: int = 0  # final-tool calls the stage refused (the model corrected its draft)
 
 
 class StageHost(Protocol):
@@ -111,6 +112,7 @@ class StageOutcome:
     usage: Usage
     cost_micros: int
     model_answered: str
+    corrections: int = 0
 
 
 class _Stop(Exception):
@@ -175,6 +177,7 @@ async def run_stage(
         counters.usage,
         counters.cost_micros,
         counters.model_answered,
+        counters.corrections,
     )
 
 
@@ -196,7 +199,6 @@ async def _loop(
     reminder: str | None = None
     pending_chars = _spec_chars(spec)
     last_prompt = last_output = 0
-    corrections = 0
     reminded = False
 
     def out_of_time() -> bool:
@@ -248,8 +250,8 @@ async def _loop(
             if done.final:
                 if done.ok:
                     return done.output
-                corrections += 1
-                if corrections > limits.max_corrections:
+                counters.corrections += 1
+                if counters.corrections > limits.max_corrections:
                     raise _Stop("invalid_output")
             results.append(done.result)
             pending_chars += len(done.result.content)

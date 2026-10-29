@@ -373,7 +373,18 @@ missing-music case: D1 fails a job without music before the stage runs.
   case spent counts even if it ended in an error) and the run stops when none is left. The total
   can exceed `N` by one turn's over-run (up to $0.48 at the defaults), which the printed ceiling
   includes. `--case NAME` runs a subset, `--out FILE` writes the results as
-  JSON (outcome, turns, cost, prompt version and check names; no model text, ids or secrets). It
+  JSON (per run: model, effort, prompt version and repeat index; outcome, turns, tool calls,
+  corrections, tokens, cost and wall time; TSS with its bounds and `changes_on_music`; every check
+  with its detail; the shape of the class, segment names and per interval seconds, zone and track
+  index; no cues, song titles, ids or secrets). Each failed check is printed with its detail.
+  `--model` picks the model (Opus, Sonnet or Haiku 5.5, the priced ones; the printed plan and
+  ceiling use its prices, Haiku's at the upper tier above 100 000 prompt tokens), `--effort`
+  overrides `CLASSBEAT_AGENT_EFFORT` and `--repeat N` (1 to 10) runs each case N times, all cases
+  once before any twice. The request is the same for the three models (no sampling parameters, no
+  forced tool choice, adaptive thinking, the effort as configured; `tests/test_agent_anthropic_models.py`).
+  **A model comparison run needs the owner's go-ahead for each run**; `python -m classbeat.evals
+  compare RESULT.json ... --out DIR` reads the saved JSON files offline and writes `compare.md` and
+  a self-contained, escaped `compare.html` (issue #134). It
   installs the worker's outbound allowlist before building the provider, and lives in
   `classbeat.evals`, which the web process never imports. It needs an Anthropic API key, which
   the owner provides (roadmap "Before M0"); until then live runs wait and the PR says so.
