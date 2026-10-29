@@ -11,7 +11,14 @@ from sqlalchemy import text
 
 from authtools import ORIGIN, Env, session_cookie
 from classbeat.jobs.routes import canonical_json
-from jobapi import UNKNOWN, Browser, new_key, owner_lock_key, plant_running
+from jobapi import (
+    UNKNOWN,
+    Browser,
+    new_key,
+    owner_lock_key,
+    plant_running,
+    until_waiting_on_the_owner_lock,
+)
 from jobcore import JobsEnv
 from jobtools import engine_for
 
@@ -141,7 +148,7 @@ async def test_create_counts_the_limit_only_after_the_owner_lock(
             {"k": owner_lock_key(alice.user_id)},
         )
         task = asyncio.create_task(alice.create())
-        await asyncio.sleep(0.5)
+        await until_waiting_on_the_owner_lock(jenv)
         assert not task.done()
         plant_running(jenv, alice.user_id)  # the limit (2) is now reached
         holder.commit()
@@ -189,7 +196,44 @@ async def test_header_and_body_refusals(jenv: JobsEnv, browsers: Any) -> None:
         assert response.status_code == 422, response.text
         assert planted not in response.text
         assert response.json()["detail"]["reason"] in ("invalid_input", "too_large")
+    # An extra key's name is the client's text too: its error points at the parent (#115 item 3).
+    secret_key = "PLANTED-KEY-kkkkkkkkkkkkkkkk"
+    for broken in (
+        {**body, secret_key: 1},
+        {"kind": "test_kind", "input": {**body["input"], secret_key: 1}},  # the kind's model
+    ):
+        response = await alice.post("/api/jobs", broken, {"Idempotency-Key": new_key()})
+        assert response.status_code == 422, response.text
+        assert secret_key not in response.text
+        assert {"loc": [], "type": "extra_forbidden"} in response.json()["detail"]["errors"]
     assert jenv.sql("SELECT count(*) FROM jobs").scalar() == 0
+
+
+async def test_malformed_ids_and_approve_bodies_echo_nothing(jenv: JobsEnv, browsers: Any) -> None:
+    """#115 item 2: a malformed path id is the 404 of an unknown one; a bad approve body is a 422
+    that names neither the submitted values nor unknown keys."""
+    alice: Browser = await browsers()
+    planted = "PLANTED-VALUE-pppppppppppppppp"
+    for path in (f"/api/jobs/{planted}", f"/api/jobs/{planted}/revision"):
+        response = await alice.get(path)
+        assert (response.status_code, response.json()) == (
+            404, {"detail": {"reason": "not_found"}}
+        )  # fmt: skip
+    for path in (f"/api/jobs/{planted}/cancel", f"/api/jobs/{planted}/approve"):
+        response = await alice.post(path, {"revision_id": UNKNOWN, "content_hash": "0" * 64})
+        assert (response.status_code, response.json()) == (
+            404, {"detail": {"reason": "not_found"}}
+        )  # fmt: skip
+    for body in (
+        {"revision_id": planted, "content_hash": "0" * 64},
+        {"revision_id": UNKNOWN, "content_hash": planted},
+        {"revision_id": UNKNOWN, "content_hash": "0" * 64, planted: planted},
+        [planted],
+    ):
+        response = await alice.post(f"/api/jobs/{UNKNOWN}/approve", body)
+        assert response.status_code == 422, response.text
+        assert planted not in response.text
+        assert response.json()["detail"]["reason"] == "invalid_input"
 
 
 async def test_anonymous_and_cross_site_requests_are_refused(env: Env, browsers: Any) -> None:
@@ -257,3 +301,21 @@ async def test_cancel_queued_running_and_ended_jobs(jenv: JobsEnv, browsers: Any
     )
     ended = await alice.post(f"/api/jobs/{running}/cancel")
     assert (ended.status_code, ended.json()) == (409, {"detail": {"reason": "not_cancellable"}})
+
+
+async def test_a_body_over_the_cap_is_refused_before_it_is_read(
+    jenv: JobsEnv, browsers: Any
+) -> None:
+    """#115 item 8: the jobs API reads at most ``BODY_MAX_BYTES`` of a body (413 beyond)."""
+    from classbeat.jobs.routes import BODY_MAX_BYTES
+
+    alice: Browser = await browsers()
+    huge = alice.body(note="x" * BODY_MAX_BYTES)
+    response = await alice.post("/api/jobs", huge, {"Idempotency-Key": new_key()})
+    assert (response.status_code, response.json()) == (413, {"detail": {"reason": "too_large"}})
+    approve = await alice.post(
+        f"/api/jobs/{UNKNOWN}/approve", {"revision_id": UNKNOWN, "content_hash": "0" * 64,
+                                         "pad": "x" * BODY_MAX_BYTES},
+    )  # fmt: skip
+    assert approve.status_code == 413
+    assert jenv.sql("SELECT count(*) FROM jobs").scalar() == 0

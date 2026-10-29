@@ -2,8 +2,9 @@ import { ApiError } from './client'
 
 // The job's progress as server-sent events (ADR 0005 section 6). Read with `fetch` rather than
 // `EventSource`: the page needs the HTTP status (404, 429) and must decide itself when to stop
-// reconnecting. A reconnect after a terminal event gets an empty 200 (#116), so the caller
-// stops after an event that ends the stream and checks the job state before it opens another.
+// reconnecting. A reconnect after a terminal event gets a 204 (#116 item 4): nothing more will
+// come, so it counts as an ended stream. The caller also stops after an event that ends the
+// stream and checks the job state before it opens another.
 
 export interface JobEvent {
   seq: number
@@ -49,7 +50,8 @@ function parseFrame(block: string): JobEvent | null {
 
 /**
  * Reads one stream connection from the event after `after` until the server closes it, calling
- * `onEvent` per event. Resolves to whether an event that ends the stream arrived. Throws an
+ * `onEvent` per event. Resolves to whether an event that ends the stream arrived (or the server
+ * answered 204: the job is over and nothing is left to send). Throws an
  * `ApiError` for a non-2xx answer and rethrows an abort.
  */
 export async function readJobEvents(
@@ -73,6 +75,7 @@ export async function readJobEvents(
       undefined,
     )
   }
+  if (response.status === 204) return true // the job is over and every event was seen
   if (response.body === null) return false
   const reader = response.body.getReader()
   const decoder = new TextDecoder()

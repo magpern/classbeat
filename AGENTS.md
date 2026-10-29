@@ -426,11 +426,11 @@ The `checks` job runs these as steps; the image scan is a step of `e2e`:
 
 | Step | What it checks |
 |---|---|
-| Secret scan | gitleaks over the PR's own range (base to merge commit); the whole history of `main` on the weekly and manual runs, so one branch's string never fails another PR |
+| Secret scan | gitleaks over the pull request's own commits; the weekly and manual runs scan the whole history |
 | bash -n, shellcheck | every `scripts/*.sh` |
 | CI gate and change-filter tests | `scripts/test-ci-gate.sh` |
 | Postgres image pinned alike | compose's `db` and `db-functions` and the `backend` job's service use the same exact `postgres` tag (the queue functions' md5 depends on it) |
-| uv version, actionlint | `setup-uv`'s version equals the Dockerfile's uv tag; actionlint (with shellcheck) on every workflow |
+| uv version, actionlint | `setup-uv`'s version equals the Dockerfile's uv tag (`scripts/ci-uv-version.sh`); actionlint (with shellcheck) on every workflow |
 | pip-audit | `uv export --frozen` (production, then all groups) through `pip-audit` (pinned) |
 | npm audit | `npm audit --audit-level=high` in `frontend/` and `e2e/` |
 | Trivy repository scan | Trivy on the repository (vulnerabilities, Dockerfile misconfiguration; compose is not scanned) |

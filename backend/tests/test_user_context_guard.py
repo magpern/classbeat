@@ -1,5 +1,6 @@
 """Guard 5 of ADR 0002 section 6, and the 'no raw user id' criterion of issue #5."""
 
+import ast
 from pathlib import Path
 
 import pytest
@@ -318,3 +319,49 @@ def test_a_handler_cannot_pass_a_raw_user_id_to_a_session() -> None:
         "    async with user_session(request.app.state.session_factory, ctx): ...\n"
     )
     assert scan_source(handler) != []
+
+
+# ``classbeat.jobs.issuer.owner_context`` builds a bare context for any UUID (#109 item 6). Only the
+# runner (the account-disabled failure and the shutdown hand-back) and the credit settle use it.
+OWNER_CONTEXT_USERS = {
+    "classbeat/jobs/issuer.py",
+    "classbeat/jobs/runner.py",
+    "classbeat/jobs/credits.py",
+}
+
+
+def owner_context_references(source: str) -> list[int]:
+    """Lines naming ``owner_context`` by any name, attribute, import or string."""
+    lines = set()
+    for node in ast.walk(ast.parse(source)):
+        named = (
+            (isinstance(node, ast.Name) and node.id == "owner_context")
+            or (isinstance(node, ast.Attribute) and node.attr == "owner_context")
+            or (isinstance(node, ast.alias) and node.name == "owner_context")
+            or (isinstance(node, ast.Constant) and node.value == "owner_context")
+        )
+        if named:
+            lines.add(getattr(node, "lineno", 0))
+    return sorted(lines)
+
+
+def test_only_the_runner_and_the_settle_use_the_bare_owner_context() -> None:
+    users = {
+        path.relative_to(SRC).as_posix()
+        for path in sorted((SRC / "classbeat").rglob("*.py"))
+        if owner_context_references(path.read_text("utf-8"))
+    }
+    assert users == OWNER_CONTEXT_USERS
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "from classbeat.jobs.issuer import owner_context",
+        "from classbeat.jobs.issuer import owner_context as oc",
+        "from classbeat.jobs import issuer\nissuer.owner_context(x)",
+        "import classbeat.jobs.issuer as i\ngetattr(i, 'owner_context')",
+    ],
+)
+def test_the_owner_context_scan_finds_every_spelling(source: str) -> None:
+    assert owner_context_references(source)

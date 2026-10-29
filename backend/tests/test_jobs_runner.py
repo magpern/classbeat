@@ -2,6 +2,7 @@
 expiry, settle exactly once (ADR 0005 sections 2 to 5)."""
 
 import asyncio
+import contextlib
 import uuid
 from datetime import UTC, datetime
 
@@ -20,6 +21,7 @@ from jobcore import (
     CountingLedger,
     JobsEnv,
     Upstream,
+    admit_all,
     claim,
     content_hash,
     registry_for,
@@ -63,7 +65,9 @@ async def test_a_retried_pre_approval_phase_waits_is_approved_and_completes(jenv
     assert row.expires_at is not None
     ctx = make_context(owner)
     async with user_session(jenv.factory, ctx) as db:
-        result = await approve(db, ctx, job_id, row.approval_revision_id, content_hash(SONG_LIST))
+        result = await approve(
+            db, ctx, job_id, row.approval_revision_id, content_hash(SONG_LIST), admit=admit_all
+        )
     assert result.accepted
     row = jenv.row(job_id)
     assert (row.state, row.attempt) == ("queued", 0)  # a new phase
@@ -191,6 +195,46 @@ async def test_a_database_blip_while_storing_retries_the_attempt(jenv: JobsEnv) 
     [*_, (_, kind, payload, _)] = jenv.events(job_id)
     assert (kind, payload["category"]) == ("retry_scheduled", "upstream_unavailable")
     assert jenv.counts(job_id)[1] == 0  # the revision was rolled back
+
+
+@pytest.mark.parametrize("where", ["checkpoint", "stage", "fenced"])
+async def test_a_database_blip_inside_the_pipeline_retries_the_attempt(
+    jenv: JobsEnv, monkeypatch: pytest.MonkeyPatch, where: str
+) -> None:
+    """#109 item 3: a blip during a checkpoint, a stage write or a kind's own fenced write is the
+    same retryable category as one while storing (not ``internal``)."""
+    from sqlalchemy.exc import OperationalError
+
+    from classbeat.jobs import run as run_module
+
+    _, job_id = jenv.job()
+    real = run_module.fenced_session
+    calls = {"n": 0}
+
+    @contextlib.asynccontextmanager
+    async def blinking(factory, lease):
+        calls["n"] += 1
+        if calls["n"] == (2 if where == "stage" else 1):  # a stage is a checkpoint, then its write
+            raise OperationalError("UPDATE jobs", {}, ConnectionError())
+        async with real(factory, lease) as fs:
+            yield fs
+
+    async def run(job_run: JobRun) -> Complete:
+        if where == "checkpoint":
+            await job_run.checkpoint()
+        elif where == "stage":
+            await job_run.stage("pick")
+        else:
+            async with job_run.fenced():
+                pass
+        return Complete()
+
+    monkeypatch.setattr(run_module, "fenced_session", blinking)
+    await run_next(jenv, registry_for(run))
+    row = jenv.row(job_id)
+    assert (row.state, row.attempt, row.error_category) == ("queued", 1, None)
+    [*_, (_, kind, payload, _)] = jenv.events(job_id)
+    assert (kind, payload["category"]) == ("retry_scheduled", "upstream_unavailable")
 
 
 async def test_operation_busy_requeues_without_an_attempt_up_to_the_cap(jenv: JobsEnv) -> None:

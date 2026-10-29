@@ -141,6 +141,11 @@ async def store_draft(fs: FencedSession) -> UUID | None:
     return await store_revision(fs, "draft", DRAFT)
 
 
+async def admit_all(db: AsyncSession, waiting: Any) -> str | None:
+    """An ``admit`` that accepts (tests of ``classbeat.jobs.user.approve`` alone)."""
+    return None
+
+
 def registry_for(run: Callable[[JobRun], Awaitable[Outcome]]) -> KindRegistry:
     registry = KindRegistry()
     registry.register(JobKind(KIND, KindInput, ("pick", "design"), run))
