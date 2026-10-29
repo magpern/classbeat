@@ -289,6 +289,11 @@ write runs inside `call_deadline_until` of an instant taken before its `pending`
 default, at most 86400) lets the reconciler mark an uncertain save `failed` when a covered listing
 shows no new program and the call returned at least that long ago; leave it unset until the owner
 has measured MOWL's listing delay at live activation.
+Update saved (`update_workout`, `classbeat.saving.update`, ADR 0007 sections 7 and 8): the program id
+comes only from the user's own live `saved_workouts` row of the class; the program is read first
+(`program_changed` / `program_missing`, nothing written, unless the page sends `overwrite`), and its
+reconciler marks an uncertain update `failed` only when the target is unchanged (`before_hash`) and a
+covered listing shows no new program since the baseline (no lag setting involved).
 The agent loop (`classbeat.agent`, ADR 0006 sections 2, 5 and 8): `CLASSBEAT_AGENT_MODEL` (default
 `claude-opus-5-5`), `_EFFORT` (`medium`), `_MAX_TOKENS` (32000), the per-stage limits `_MAX_TURNS` (12),
 `_MAX_TOOL_CALLS` (40), `_MAX_CORRECTIONS` (3), `_STAGE_SECONDS` (300), the per-job ceiling
@@ -317,7 +322,7 @@ the jobs API answers 429 above it). Worker and agent code write job data only th
 `classbeat.jobs.service` (the jobs API), `classbeat.jobs.progress` (the SSE stream's reads),
 `classbeat.operations.user` (the user's Check again / Do it anyway), `classbeat.operations.orphans`
 (marking orphaned class writes `uncertain` before a view or action), `classbeat.saving.reads` (the
-save reconciler's read-only read of the saved revision, SV1), `classbeat.keys_cli` and the
+save and update reconcilers' read-only read of the saved revision, SV1), `classbeat.keys_cli` and the
 `classbeat.connections`, `classbeat.auth`, `classbeat.classes` (the class API), `classbeat.usage`
 (the usage reads, US1) and `classbeat.db` packages may open a `user_session`
 (`tests/test_session_guard.py`); job kinds live outside `classbeat.jobs`.

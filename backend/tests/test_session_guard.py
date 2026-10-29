@@ -165,7 +165,10 @@ def test_an_allowlisted_module_may_use_it() -> None:
     assert scan_source(REFUSED["import"], "classbeat.jobs.fence") == []
 
 
-def test_the_save_reconcilers_read_is_reached_only_from_the_reconciler() -> None:
-    """``classbeat.saving.reads`` opens a read-only user session (SV1): only the save
-    operation's reconciler imports it."""
-    assert importers("classbeat.saving.reads") == {"classbeat.saving.operation"}
+def test_the_save_reconcilers_read_is_reached_only_from_the_reconcilers() -> None:
+    """``classbeat.saving.reads`` opens a read-only user session (SV1): only the save and update
+    operations' reconcilers import it (SV2)."""
+    assert importers("classbeat.saving.reads") == {
+        "classbeat.saving.operation",
+        "classbeat.saving.update_operation",
+    }

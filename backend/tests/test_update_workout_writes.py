@@ -261,3 +261,47 @@ async def test_after_a_crash_the_next_attempt_never_calls_and_check_again_resolv
     saved_row = uenv.saved_row(live.saved_workout_id)
     assert (saved_row.revision_id, saved_row.state_hash) == (revision, None)  # not verified
     assert fake_programs.write_count == writes
+
+
+async def test_a_deferred_refusal_holds_when_the_own_row_turned_failed_before_the_write(
+    uenv: UpdateEnv, fake_programs: FakeMowlPrograms, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The read refused, but the job's own crashed attempt left a ``pending`` row, so the
+    refusal was deferred to the guard. If that row is ``failed`` by the time of the decide
+    transaction (Do it anyway on it meanwhile), ``perform`` would take it over and call: the
+    guard refuses with the deferred category instead, before anything is sent."""
+    from classbeat.saving import update as update_kind
+
+    live = await uenv.live()
+    revision = uenv.revision(live)
+    start = fake_programs.write_count
+    job_id = uenv.job(live, revision, DRAFT_2)
+    task = await hold_mid_call(uenv, start + WRITES)  # everything but the segment list
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    fake_programs.fail = {start + WRITES: "refuse"}
+    fake_programs.release.set()
+    await asyncio.sleep(0.1)
+    fake_programs.edit(live.program_id, Name="Edited by the user")  # the read will refuse
+    uenv.s.lose_lease(job_id)
+    assert await queue.reap(uenv.s.ops.factory) == 1
+    real = update_kind.perform
+
+    async def failed_then_perform(run: Any, request: Any, call: Any, **kwargs: Any) -> Any:
+        uenv.sql(
+            "UPDATE external_operations SET state = 'failed', resolved_by = 'user' "
+            "WHERE kind = 'mowl_update_workout' AND job_id = :j",
+            j=job_id,
+        )
+        return await real(run, request, call, **kwargs)
+
+    monkeypatch.setattr(update_kind, "perform", failed_then_perform)
+    writes = fake_programs.write_count
+    uenv.ready(job_id)
+    await uenv.run_next()
+    row = uenv.row(job_id)
+    assert (row.state, row.error_category) == ("failed", "program_changed")
+    assert fake_programs.write_count == writes  # never called
+    [op] = uenv.operations(live.saved.owner)
+    assert op.state == "failed"
