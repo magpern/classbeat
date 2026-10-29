@@ -38,6 +38,20 @@ def design_kind(ctx: DesignContext) -> Any:
     return registry_for(run)
 
 
+def finish(
+    jenv: JobsEnv, job_id: UUID, state: str = "completed", category: str | None = None
+) -> None:
+    """End a job as the worker would: ``failed`` takes the category (``not_connected`` is one)."""
+    jenv.sql(
+        "UPDATE jobs SET state = :s, finished_at = now(), error_category = :c WHERE id = :j",
+        s=state, c=category, j=job_id,
+    )  # fmt: skip
+
+
+def complete(jenv: JobsEnv, job_id: UUID) -> None:
+    finish(jenv, job_id)
+
+
 def plant(
     jenv: JobsEnv,
     owner: UUID,
@@ -106,6 +120,7 @@ async def test_two_attempts_and_an_open_crashed_run_all_count(jenv: JobsEnv, bro
     plant(jenv, alice.user_id, job_id, outcome="model_unavailable", cost=500, attempt=1)
     plant(jenv, alice.user_id, job_id, outcome=None, tokens=(7, 0, 0, 0), cost=300, attempt=2)
     plant(jenv, alice.user_id, job_id, tokens=(1, 2, 3, 4), cost=200, attempt=3)
+    complete(jenv, job_id)
     shown = (await alice.get(f"/api/jobs/{job_id}")).json()
     assert shown["usage"] == {
         "runs": 3, "input_tokens": 108, "output_tokens": 22, "cache_read_tokens": 33,
@@ -130,6 +145,7 @@ async def test_usage_survives_deleting_the_class_and_goes_with_the_account(
     created = (await alice.create()).json()
     job_id = UUID(created["id"])
     plant(jenv, alice.user_id, job_id, cost=900)
+    complete(jenv, job_id)
     jenv.sql("DELETE FROM classes WHERE id = :c", c=UUID(created["class_id"]))
     assert jenv.sql("SELECT count(*) FROM jobs WHERE id = :j", j=job_id).scalar_one() == 0
     month = (await alice.get("/api/usage")).json()
@@ -150,6 +166,7 @@ async def test_another_users_usage_and_other_months_are_not_included(
     a_job = UUID((await alice.create()).json()["id"])
     b_job = UUID((await bob.create()).json()["id"])
     plant(jenv, alice.user_id, a_job, cost=100)
+    complete(jenv, a_job)
     plant(jenv, bob.user_id, b_job, cost=7000)
     last_month = datetime.now(UTC).replace(day=1) - timedelta(days=1)
     plant(jenv, alice.user_id, a_job, cost=50000, started=last_month, attempt=2)
@@ -192,6 +209,8 @@ async def test_per_kind_and_model_breakdown(jenv: JobsEnv, browsers: Any) -> Non
     plant(jenv, alice.user_id, first, model="m1", cost=10)
     plant(jenv, alice.user_id, second, model="m2", cost=20)
     plant(jenv, alice.user_id, second, kind="revise_draft", model="m2", cost=30, attempt=2)
+    complete(jenv, first)
+    complete(jenv, second)
     month = (await alice.get("/api/usage")).json()
     got = {(r["job_kind"], r["model"]): r["cost_micros"] for r in month["by_kind_model"]}
     assert got == {
@@ -201,3 +220,61 @@ async def test_per_kind_and_model_breakdown(jenv: JobsEnv, browsers: Any) -> Non
     }
     assert (month["classes_designed"], month["revisions"]) == (2, 1)
     assert month["total"]["cost_micros"] == 60
+    for job, cost in ((first, 10), (second, 50)):  # each job's usage is its own runs only
+        assert (await alice.get(f"/api/jobs/{job}")).json()["usage"]["cost_micros"] == cost
+
+
+async def test_only_completed_jobs_count_as_classes_designed(jenv: JobsEnv, browsers: Any) -> None:
+    alice: Browser = await browsers()
+    ids = []
+    for state, category in (
+        ("cancelled", None),
+        ("failed", "not_connected"),
+        ("failed", "model_unavailable"),
+        ("expired", None),
+    ):
+        job = UUID((await alice.create()).json()["id"])  # the per-user limit: finish each first
+        plant(jenv, alice.user_id, job)
+        finish(jenv, job, state, category)
+        ids.append(job)
+    assert (await alice.get("/api/usage")).json()["classes_designed"] == 0
+    done = UUID((await alice.create()).json()["id"])
+    plant(jenv, alice.user_id, done)
+    complete(jenv, done)
+    assert (await alice.get("/api/usage")).json()["classes_designed"] == 1
+    cancelled = ids[0]
+    # a revision of a cancelled job does not count either
+    plant(jenv, alice.user_id, cancelled, kind="revise_draft", attempt=2)
+    month = (await alice.get("/api/usage")).json()
+    assert (month["classes_designed"], month["revisions"]) == (1, 0)
+
+
+async def test_a_deleted_completed_job_still_counts(jenv: JobsEnv, browsers: Any) -> None:
+    alice: Browser = await browsers()
+    created = (await alice.create()).json()
+    job_id = UUID(created["id"])
+    plant(jenv, alice.user_id, job_id)
+    complete(jenv, job_id)
+    jenv.sql("DELETE FROM classes WHERE id = :c", c=UUID(created["class_id"]))
+    assert (await alice.get("/api/usage")).json()["classes_designed"] == 1
+
+
+async def test_the_owner_filter_holds_without_rls(jenv: JobsEnv, browsers: Any) -> None:
+    alice: Browser = await browsers()
+    bob: Browser = await browsers()
+    job_id = UUID((await alice.create()).json()["id"])
+    plant(jenv, alice.user_id, job_id)
+    assert await job_usage(jenv.factory, make_context(bob.user_id), job_id) is None
+
+
+async def test_the_month_boundary_is_half_open(jenv: JobsEnv, browsers: Any) -> None:
+    alice: Browser = await browsers()
+    job_id = UUID((await alice.create()).json()["id"])
+    start = datetime(2026, 3, 1, tzinfo=UTC)
+    plant(jenv, alice.user_id, job_id, cost=1, started=start - timedelta(microseconds=1))
+    plant(jenv, alice.user_id, job_id, cost=10, started=start, attempt=2)
+    plant(
+        jenv, alice.user_id, job_id, cost=100, started=datetime(2026, 4, 1, tzinfo=UTC), attempt=3
+    )
+    march = (await alice.get("/api/usage?month=2026-03")).json()
+    assert march["total"]["cost_micros"] == 10

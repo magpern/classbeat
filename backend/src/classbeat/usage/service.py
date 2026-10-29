@@ -6,8 +6,11 @@ re-priced. A run that never finished (a crash) counts with whatever it recorded.
 
 A deleted class takes its job with it (``agent_runs.job_id`` becomes NULL), so a row without a
 job counts as a job of its own: the ``jobs`` figure can then be higher than the real count when
-a deleted job had several attempts. Classes designed and revisions count jobs that submitted a
-draft (a run with outcome ``submitted``).
+a deleted job had several attempts. Classes designed and revisions count completed jobs: a job that
+still exists must be ``completed`` and have a run with outcome ``submitted`` in the month (a job
+cancelled or failed after the stage submitted does not count). A deleted job (``job_id`` NULL)
+can no longer be checked and its identity is gone, so each of its ``submitted`` runs stands in
+as one job; a deleted job with several submitted attempts is over-counted (residue, accepted).
 """
 
 from dataclasses import dataclass, fields
@@ -20,9 +23,10 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from classbeat.context import UserContext
 from classbeat.db import user_session
+from classbeat.design import KIND
 
 NOTES: Final = ("estimate_at_list_prices", "sdk_retries", "lost_lease_turn", "failed_stream_turn")
-DESIGN_KIND: Final = "design_draft"
+DESIGN_KIND: Final = KIND
 REVISE_KIND: Final = "revise_draft"
 
 _SUMS = (
@@ -43,9 +47,11 @@ _BY = text(
     "GROUP BY job_kind, model ORDER BY job_kind, model"
 )
 _SUBMITTED = text(
-    "SELECT job_kind, count(DISTINCT coalesce(job_id, id)) AS n FROM agent_runs "  # noqa: S608
-    f"WHERE {_WINDOW} AND outcome = 'submitted' "
-    f"AND job_kind IN ('{DESIGN_KIND}', '{REVISE_KIND}') GROUP BY job_kind"
+    "SELECT r.job_kind, count(DISTINCT coalesce(r.job_id, r.id)) AS n FROM agent_runs r "  # noqa: S608
+    "LEFT JOIN jobs j ON j.id = r.job_id AND j.owner_id = r.owner_id "
+    "WHERE r.owner_id = :owner_id AND r.started_at >= :start AND r.started_at < :end "
+    "AND r.outcome = 'submitted' AND (j.state = 'completed' OR r.job_id IS NULL) "
+    f"AND r.job_kind IN ('{DESIGN_KIND}', '{REVISE_KIND}') GROUP BY r.job_kind"
 )
 
 
