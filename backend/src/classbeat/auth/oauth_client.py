@@ -30,7 +30,7 @@ from classbeat.auth.oauth_idtoken import (
     verify_id_token,
 )
 from classbeat.auth.oauth_providers import GITHUB, GOOGLE, MICROSOFT, Provider
-from classbeat.egress import refuse_in_worker
+from classbeat.egress import OutboundBlocked, refuse_in_worker
 
 TIMEOUT = httpx.Timeout(10.0)
 GITHUB_API = "https://api.github.com"
@@ -162,6 +162,8 @@ async def identify(
             return await _github_identity(client)
     except (IdTokenError, ProviderError) as exc:
         raise ProviderError(str(exc)) from None
+    except OutboundBlocked:
+        raise  # the worker's refusal keeps its own category (``outbound_blocked``), not "provider"
     except Exception as exc:  # httpx, Authlib: the text can hold URLs or bodies; keep the class
         raise ProviderError(f"provider call failed ({type(exc).__name__})") from None
 

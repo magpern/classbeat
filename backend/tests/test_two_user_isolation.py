@@ -1,8 +1,9 @@
 """Roadmap section 1 and M2 done-when: two users at once, nothing crosses (issue #67).
 
 Two users run concurrently (asyncio) through the real FastAPI app (an async client), on a real
-Postgres as the app role under RLS, connecting and using MOWL with different fake credentials
-against a fake upstream (``isofake``) that records whose credential each call carried. ``verify``
+Postgres as the app role under RLS, connecting with different fake credentials and using MOWL
+(``connections.use``, and the real route ``GET /api/music/mowl-playlists``) against a fake
+upstream (``isofake``) that records whose credential each call carried. ``verify``
 asserts that nothing crossed: upstream calls, rows, decryption, events and logs. Rate limits and
 owned endpoints have their own tests. The check fails if a token or a row crosses users:
 ``test_the_check_detects_*`` run the same scenario against deliberately broken test doubles and
@@ -12,6 +13,7 @@ require ``verify`` to fail. Nothing broken exists in production code.
 import asyncio
 import io
 import logging
+import sys
 from collections.abc import Iterator
 from dataclasses import dataclass, field
 from typing import Any
@@ -30,7 +32,8 @@ from ctx import make_context
 from isofake import ACCOUNTS, ALICE, BOB, Account, TwoMowl
 
 CONNECT = "/api/connections/mowl"
-USES = 4  # library calls per user through ``connections.use``
+USES = 4  # library calls per user through ``connections.use``, and route reads per user
+TIMEOUT = 60  # seconds for the whole scenario: a user failing early must not hang the other
 BAD_ATTEMPTS = 2  # wrong-password connects per user (their own rate-limit slots)
 pytestmark = pytest.mark.usefixtures("two_mowl")
 
@@ -74,6 +77,7 @@ class Rider:
     user_id: UUID
     actor: Any
     seen: list[list[str]] = field(default_factory=lambda: list[list[str]]())
+    playlists: list[Any] = field(default_factory=lambda: list[Any]())
     statuses: dict[str, int] = field(default_factory=lambda: dict[str, int]())
     connection_id: UUID | None = None
 
@@ -100,6 +104,14 @@ def creds(account: Account, password: str | None = None) -> dict[str, str]:
 
 async def flow(env: Env, rider: Rider, barrier: asyncio.Barrier) -> None:
     """One user's session: wrong passwords, connect, use MOWL repeatedly, read the status."""
+    try:
+        await session(env, rider, barrier)
+    except BaseException:
+        await barrier.abort()  # the other user stops waiting for a partner that failed before it
+        raise
+
+
+async def session(env: Env, rider: Rider, barrier: asyncio.Barrier) -> None:
     ring = env.app.state.keyring
     for _ in range(BAD_ATTEMPTS):
         refused = await rider.actor.post(CONNECT, creds(rider.account, "not-the-password"))
@@ -112,6 +124,9 @@ async def flow(env: Env, rider: Rider, barrier: asyncio.Barrier) -> None:
             env.factory, ring, rider.ctx, "mowl", lambda c: names(library_api.list_workouts(c))
         )
         rider.seen.append(found)
+        music = await rider.actor.get("/api/music/mowl-playlists")  # the real route
+        rider.statuses["playlists"] = music.status_code
+        rider.playlists.append(music.json())
         listed = await rider.actor.get("/api/connections")
         rider.statuses["list"] = listed.status_code
         assert [c["provider"] for c in listed.json()["connections"]] == ["mowl"]
@@ -120,7 +135,15 @@ async def flow(env: Env, rider: Rider, barrier: asyncio.Barrier) -> None:
 async def run_scenario(env: Env, make_actor: Any) -> list[Rider]:
     people = await riders(env, make_actor)
     barrier = asyncio.Barrier(len(people))
-    await asyncio.gather(*(flow(env, p, barrier) for p in people))
+    async with asyncio.timeout(TIMEOUT):
+        outcomes = await asyncio.gather(
+            *(flow(env, p, barrier) for p in people), return_exceptions=True
+        )
+    failures = [o for o in outcomes if isinstance(o, BaseException)]
+    if failures:  # the user that failed, not the one that found the barrier broken
+        raise next(
+            (f for f in failures if not isinstance(f, asyncio.BrokenBarrierError)), failures[0]
+        )
     for p in people:
         async with user_session(env.factory, p.ctx) as db:
             p.connection_id = (await db.execute(text("SELECT id FROM connections"))).scalar_one()
@@ -153,10 +176,26 @@ async def verify(
         expected[("authenticate", label, True)] = 1
         expected[("exchange", label, True)] = 1
         expected[("programs", label, True)] = USES
-    assert dict(fake.counts()) == expected, f"upstream calls crossed users: {fake.counts()}"
+        expected[("playlists", label, True)] = USES
+    # The counts are per account and cannot see a symmetric swap (each account's token used by
+    # the other user as often as its own): the data each user saw, below, does.
+    assert dict(fake.counts()) == expected, f"upstream call counts are off: {fake.counts()}"
     for p in people:  # what each user saw is its own account's data
-        assert p.statuses == {"connect": 200, "list": 200}
-        assert p.seen == [[f"{p.account.label} workout"]] * USES
+        assert p.statuses == {"connect": 200, "list": 200, "playlists": 200}
+        assert p.seen == [[f"{p.account.label} workout"]] * USES, (
+            f"{p.account.label} was shown another account's data"
+        )
+        own = {
+            "playlists": [
+                {
+                    "spotify_playlist_id": p.account.playlist_id,
+                    "name": f"{p.account.label} playlist",
+                }
+            ]
+        }
+        assert p.playlists == [own] * USES, (
+            f"{p.account.label} was shown another account's playlists"
+        )
 
     # 2. Decryption through A's context yields A's token, never B's (and the reverse).
     for p, other in ((alice, bob), (bob, alice)):
@@ -250,13 +289,28 @@ async def test_one_users_rate_limit_does_not_throttle_the_other(
     assert ("authenticate", "alice", True) not in calls
 
 
+async def test_a_user_failing_before_the_barrier_fails_the_run_cleanly(
+    env: Env, make_actor: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    real = session
+
+    async def broken(env_: Env, rider: Rider, barrier: asyncio.Barrier) -> None:
+        if rider.account is ALICE:
+            raise RuntimeError("alice failed before the barrier")
+        await real(env_, rider, barrier)
+
+    monkeypatch.setattr(sys.modules[__name__], "session", broken)
+    with pytest.raises(RuntimeError, match="alice failed before the barrier"):
+        await asyncio.wait_for(run_scenario(env, make_actor), timeout=TIMEOUT / 2)
+
+
 async def test_the_check_detects_a_token_swapped_upstream(
     env: Env, make_actor: Any, two_mowl: TwoMowl, logs: Everything, database_url: str
 ) -> None:
     """A deliberately broken upstream hands each user the other's token: ``verify`` must fail."""
     two_mowl.swap_tokens = True
     people = await run_scenario(env, make_actor)
-    with pytest.raises(AssertionError):
+    with pytest.raises(AssertionError, match="was shown another account's data"):
         await verify(env, people, two_mowl, logs, database_url)
 
 
@@ -275,7 +329,7 @@ async def test_the_check_detects_a_row_that_crossed_users(
         a=alice.user_id,
         b=bob.user_id,
     )
-    with pytest.raises(AssertionError):
+    with pytest.raises(AssertionError, match="own token does not decrypt"):
         await verify(env, people, two_mowl, logs, database_url)
 
 
@@ -286,5 +340,5 @@ async def test_the_check_detects_a_secret_in_the_logs(
     people = await run_scenario(env, make_actor)
     await verify(env, people, two_mowl, logs, database_url)  # clean first
     logging.getLogger("leaky.double").warning("using token %s", BOB.token)
-    with pytest.raises(AssertionError):
+    with pytest.raises(AssertionError, match="bob's secret is in the logs"):
         await verify(env, people, two_mowl, logs, database_url)

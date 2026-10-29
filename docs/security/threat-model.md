@@ -98,7 +98,7 @@ responses and model output alike.
 | T46 | A repeated or replayed browser request creating duplicate jobs, reservations or approvals | `Idempotency-Key` with the request hash, `UNIQUE (owner_id, idempotency_key)`, 409 on a different body; approve and cancel idempotent by target state (ADR 0005 §2) | M3a |
 | T47 | Approving a song list other than the one shown (a stale tab, a superseded or expired list) | Approval carries revision id and content hash, checked under a row lock against the job's waiting list and the newest list of the class; expiry after 7 days; a refused approval starts nothing (ADR 0005 §2, §4) | M3a, M4 |
 | T48 | Job events or SSE leaking another user's progress, secrets or provider data | Owned `job_events` read per request in a user session; 404 for foreign ids; per-kind payload models allow only enums, own ids, counts and times, never error text, model text or provider data; `NOTIFY` carries a job id only (ADR 0005 §6) | M3a |
-| T49 | The worker used to reach arbitrary hosts (SSRF, exfiltration through the model or the library) | Process-wide outbound allowlist on `urllib` and `httpx` (https, listed hosts, port 443, every redirect hop); guard test on HTTP client construction; no fetch of user-supplied URLs (ADR 0006 §9) | M3a |
+| T49 | The worker used to reach arbitrary hosts (SSRF, exfiltration through the model or the library) | Process-wide outbound allowlist on `urllib` and `httpx` (https, listed hosts, port 443, every redirect hop); guard test on HTTP client construction; no fetch of user-supplied URLs; TLS contexts that never write a key log (`SSLKEYLOGFILE` is ignored, and the model provider refuses to start with it set) (ADR 0006 §9) | M3a |
 | T50 | A poison job retried forever, or retries multiplying model cost | `max_attempts` per phase (default 3), capped exponential backoff, non-retryable categories fail at once, the cost ceiling counts every attempt of the whole job; the claim skips a row with spent attempts and the reaper fails it, so one bad row can't stall other users' jobs (ADR 0005 §2, §3, §4, ADR 0006 §5) | M3a |
 | T51 | A worker that lost its lease mid-call recording or repeating an external write | Outcomes recorded only under the token that wrote `pending`; a `pending` row from an older token is `uncertain` and never re-sent; the user decides (ADR 0005 §7) | M3a |
 | T52 | The model API key leaking or used by the web process | Secret file mounted on the worker only, `SecretStr`, never logged; `docker inspect` check; the fake provider refused in `prod` (ADR 0006 §9) | M3a |
@@ -132,6 +132,12 @@ responses and model output alike.
   apps, so classbeat doesn't use that key: Swedebeat features stay behind a disabled flag with
   fakes until Swedebeat authorizes server-side use, and the classbeat image never contains it:
   it installs a `mowl-workouts` wheel built without the bundled key file (M2).
+- MOWL connect has a per-email limit (5 per normalized MOWL email per 15 minutes, T43, ADR 0004
+  §4) that counts across users: a signed-in user who submits another person's MOWL email five
+  times blocks that person's connect for 15 minutes (their own per-user and per-IP slots are
+  spent too). It is the trade-off for stopping password guessing through our page, it denies
+  nothing but a new connect (an existing connection keeps working), and it needs an invited
+  account; revisited at M6 with the other per-account limits.
 - Images on GHCR are private; making a package public is an owner decision.
 - Per-account denial of service: an attacker who knows a user's email can exhaust the
   per-account sign-in cap from many IPs; the user then signs in from a known device or by OAuth

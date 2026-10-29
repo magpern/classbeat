@@ -138,3 +138,50 @@ def test_submodules_and_unknown_names() -> None:
     assert auth.tables.__name__ == "classbeat.auth.tables"  # pyright: ignore[reportAttributeAccessIssue]
     with pytest.raises(AttributeError):
         _ = auth.no_such_name  # pyright: ignore[reportAttributeAccessIssue]
+
+
+def test_dotted_and_private_names_answer_attribute_error_not_import_error() -> None:
+    for name in ("tables.metadata", "no.such.module", "_private", "no_such_name"):
+        assert not hasattr(auth, name), name
+        with pytest.raises(AttributeError):
+            getattr(auth, name)
+
+
+def test_dir_lists_the_lazy_exports() -> None:
+    exports: dict[str, str] = auth._EXPORTS
+    assert set(exports) <= set(dir(auth))
+    assert "tables" not in exports  # a submodule stays found by name, not listed
+
+
+async def test_identify_keeps_an_outbound_refusal_out_of_provider_error() -> None:
+    """``_client`` refuses first in the worker today; this pins the category if a refusal ever
+    comes from inside the exchange (a JWKS fetch): it is not turned into ``ProviderError``."""
+    from types import SimpleNamespace
+
+    from classbeat.egress import OutboundBlocked
+
+    class Refused:
+        async def __aenter__(self) -> "Refused":
+            return self
+
+        async def __aexit__(self, *exc: object) -> None:
+            return None
+
+        async def fetch_token(self, *args: object, **kwargs: object) -> dict[str, object]:
+            raise OutboundBlocked("oauth2.googleapis.com")
+
+    runtime = SimpleNamespace(transport=None, jwks=None)
+    real = oauth_client._client  # pyright: ignore[reportPrivateUsage]
+    oauth_client._client = lambda *args: Refused()  # pyright: ignore[reportPrivateUsage]
+    try:
+        with pytest.raises(OutboundBlocked):
+            await oauth_client.identify(
+                runtime,  # pyright: ignore[reportArgumentType]
+                PROVIDER,
+                "https://classbeat.example/cb",
+                code="c",
+                verifier="v",
+                nonce="n",
+            )
+    finally:
+        oauth_client._client = real  # pyright: ignore[reportPrivateUsage]

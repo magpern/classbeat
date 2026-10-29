@@ -28,7 +28,9 @@ undercount by that one turn per lost lease; the next holder does not guess it (A
 accepted there). **And after a failed request:** a request that fails after the provider
 started billing it (an error mid-stream, a timeout) returns no usage, so it isn't counted either.
 The SDK also retries silently inside a turn (``max_retries=2``: a connection error or a timeout
-before the response headers, 408, 409, 429, 5xx; never once the stream has started), and only the
+before the response headers, 408, 409, 429, 5xx; never once the stream has started; the
+provider's ``x-should-retry`` header can override that list for one answer, which leaves the
+bound below unchanged), and only the
 attempt that answers reports usage, so a billed earlier attempt is lost even when the turn
 succeeds: at most two uncounted attempts per turn, three for the turn that ends a failed attempt
 (same section).

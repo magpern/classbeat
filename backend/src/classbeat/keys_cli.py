@@ -80,12 +80,22 @@ def _print_counts(title: str, counts: Counter[str], out: TextIO) -> None:
         print(f"  {key}: {counts[key]}", file=out)
 
 
+_OK_OUTCOMES = (" rewrapped", " migrated", " skipped")
+
+
+def _failures(counts: Counter[str]) -> int:
+    """Rows whose outcome is not a move or a harmless skip (``decrypt_failed``,
+    ``key_unavailable``): the operator must look at them, so the command exits non-zero."""
+    return sum(n for key, n in counts.items() if not key.endswith(_OK_OUTCOMES))
+
+
 async def rewrap(args: argparse.Namespace, settings: Settings, out: TextIO, err: TextIO) -> int:
     engine = create_engine(settings)
     try:
         await verify_database_role(engine)
         factory = create_session_factory(engine)
         ring = await keks.load_keyring(factory, settings.connection_kek_id)
+        migrated: Counter[str] = Counter()
         if args.totp:
             migrated = await auth.migrate_v1_secrets(factory, Keys.from_settings(settings), ring)
             _print_counts("TOTP app-v1 -> v2:", migrated, out)
@@ -97,15 +107,17 @@ async def rewrap(args: argparse.Namespace, settings: Settings, out: TextIO, err:
             moved += await connections.rewrap_owner(factory, ring, ctx)
             remaining += await connections.rows_by_key(factory, ctx)
         _print_counts("connections rewrapped (old key_id outcome):", moved, out)
-        _print_counts(
-            "TOTP rewrapped (old key_id outcome):", await auth.rewrap_v2_secrets(factory, ring), out
-        )
+        totp_moved = await auth.rewrap_v2_secrets(factory, ring)
+        _print_counts("TOTP rewrapped (old key_id outcome):", totp_moved, out)
         _print_counts("connections per key_id now:", remaining, out)
         _print_counts("TOTP per key_id now:", await auth.totp_rows_by_key(factory), out)
-        failed = sum(n for key, n in moved.items() if not key.endswith((" rewrapped", " skipped")))
+        failed = _failures(moved)
         if failed:
             print(f"{failed} connection rows could not be rewrapped", file=err)
-        return 1 if failed else 0
+        totp_failed = _failures(migrated) + _failures(totp_moved)
+        if totp_failed:
+            print(f"{totp_failed} TOTP rows could not be migrated or rewrapped", file=err)
+        return 1 if failed or totp_failed else 0
     finally:
         await engine.dispose()
 
@@ -189,13 +201,16 @@ async def wipe(args: argparse.Namespace, settings: Settings, out: TextIO, err: T
         async with system_session(factory) as db:
             contexts = await auth.operator_contexts(db)
         counts: Counter[str] = Counter()
+        kinds: Counter[str] = Counter()
         for ctx in contexts:
             try:
                 async with user_session(factory, ctx) as db:
                     providers = await connections.delete_all_in(db, ctx)
                     event = await auth.wipe_user(db, ctx.user_id, providers)
-            except DBAPIError:
+            except Exception as error:
+                # Only the class: the message of a database error can hold row values.
                 counts["failed"] += 1
+                kinds[type(error).__name__] += 1
                 continue
             if event is None:
                 counts["nothing to wipe"] += 1
@@ -203,10 +218,18 @@ async def wipe(args: argparse.Namespace, settings: Settings, out: TextIO, err: T
             counts["wiped"] += 1
             counts["connections deleted"] += len(event.providers)
             counts["TOTP reset"] += event.totp_reset
-            counts["mails sent" if await _send(settings, factory, event) else "mails unsent"] += 1
+            try:
+                sent = await _send(settings, factory, event)
+            except Exception:
+                sent = False
+            counts["mails sent" if sent else "mails unsent"] += 1
         _print_counts("wipe:", counts, out)
         if counts["failed"]:
-            print(f"{counts['failed']} accounts were not processed; run it again", file=err)
+            causes = ", ".join(f"{kind}: {n}" for kind, n in sorted(kinds.items()))
+            print(
+                f"{counts['failed']} accounts were not processed ({causes}); run it again",
+                file=err,
+            )
             return 1
         await _finish(engine, out)
         if counts["mails unsent"]:

@@ -15,7 +15,10 @@ Create Date: 2026-10-28
   ``IS NOT NULL``: ``octet_length(NULL) = 48`` is NULL, and a CHECK passes on NULL, so without
   it a ``kek-`` row with no wrapped key would be accepted.
 
-The default privileges of ``classbeat_owner`` give ``classbeat_app`` DML on both new tables.
+The default privileges of ``classbeat_owner`` give ``classbeat_app`` DML on both new tables,
+except that this migration takes UPDATE and DELETE on ``connection_keks`` away again: the app
+role records a check value and reads it, never changes or forgets one (``keys wipe`` deletes
+them as the owner role; ``10-roles.sql`` keeps the same grant when it runs again).
 This migration moves no data (``python -m classbeat keys rewrap --totp`` does, per row, as the
 app role), so it needs no RLS bypass.
 """
@@ -85,6 +88,7 @@ def upgrade() -> None:
     op.execute(CONNECTIONS)
     enable_owner_rls("connections")
     op.execute(CONNECTION_KEKS)
+    op.execute("REVOKE UPDATE, DELETE ON TABLE public.connection_keks FROM classbeat_app")
     op.execute(TOTP_FORMS)
 
 

@@ -321,6 +321,25 @@ def test_a_handler_cannot_pass_a_raw_user_id_to_a_session() -> None:
     assert scan_source(handler) != []
 
 
+def test_operator_contexts_is_reached_only_by_the_cli() -> None:
+    """``auth.operator_contexts`` builds a context per user (ADR 0004 section 1): it is for
+    ``keys rewrap`` and ``keys wipe`` only. Its definition, the lazy export table of
+    ``classbeat.auth`` and ``keys_cli`` are the only sources that may name it."""
+    allowed = {
+        "classbeat/auth/deps.py",
+        "classbeat/auth/__init__.py",
+        "classbeat/auth/operator.py",  # documents it
+        "classbeat/keys_cli.py",
+    }
+    users = sorted(
+        path.relative_to(SRC).as_posix()
+        for path in (SRC / "classbeat").rglob("*.py")
+        if "operator_contexts" in path.read_text("utf-8")
+    )
+    assert set(users) <= allowed, users
+    assert "classbeat/keys_cli.py" in users
+
+
 # ``classbeat.jobs.issuer.owner_context`` builds a bare context for any UUID (#109 item 6). Only the
 # runner (the account-disabled failure and the shutdown hand-back) and the credit settle use it.
 OWNER_CONTEXT_USERS = {

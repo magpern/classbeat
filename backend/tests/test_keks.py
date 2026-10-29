@@ -3,7 +3,8 @@
 from pathlib import Path
 
 import pytest
-from sqlalchemy import text
+from sqlalchemy import create_engine, text
+from sqlalchemy.exc import DBAPIError
 
 from authtools import TEST_KEK, Env, make_settings
 from classbeat.config import Settings
@@ -106,10 +107,41 @@ async def test_an_unreachable_database_defers_the_check_to_first_use(
         assert unreachable.state.keyring.verified is False
     # On a reachable database with a swapped key the first use refuses.
     write_key(kek_dir, "connection_kek", OTHER_KEY.hex().encode())
-    ring = keks.KeyRing(keks.read_current("kek-1"), kek_dir, verified=False)
+    ring = keks.KeyRing(keks.read_current("kek-1"), kek_dir, verified=False, factory=env.factory)
     async with env.db() as db:
         with pytest.raises(keks.KekError):
             await ring.current(db)
+    assert ring.verified is False
+
+
+async def test_a_rolled_back_caller_does_not_undo_the_deferred_check(
+    env: Env, kek_dir: Path, database_url: str
+) -> None:
+    """The first-use check runs in its own transaction: the check row is committed and the ring
+    verified even when the caller's transaction rolls back afterwards."""
+    engine = create_engine(database_url)
+    with engine.begin() as admin:  # the superuser: the app role may not delete check rows
+        admin.execute(text("DELETE FROM connection_keks"))
+    engine.dispose()
+    ring = keks.KeyRing(keks.read_current("kek-1"), kek_dir, verified=False, factory=env.factory)
+
+    class Rollback(Exception):
+        pass
+
+    async def use_then_roll_back() -> None:
+        async with env.db() as db:
+            await ring.current(db)
+            raise Rollback
+
+    with pytest.raises(Rollback):
+        await use_then_roll_back()
+    assert ring.verified
+    assert await env.scalar("SELECT count(*) FROM connection_keks") == 1
+
+
+def test_an_unverified_ring_needs_a_factory(kek_dir: Path) -> None:
+    with pytest.raises(ValueError, match="session factory"):
+        keks.KeyRing(keks.read_current("kek-1"), kek_dir, verified=False)
 
 
 async def test_retired_keys_load_only_with_a_matching_check_row(env: Env, kek_dir: Path) -> None:
@@ -145,3 +177,22 @@ async def test_the_app_role_cannot_alter_the_check_table(env: Env) -> None:
     async with env.db() as db:
         with pytest.raises(ProgrammingError, match=r"must be owner|permission denied"):
             await db.execute(text("TRUNCATE connection_keks"))
+
+
+async def test_the_app_role_may_record_and_read_check_rows_but_not_change_or_forget_them(
+    env: Env,
+) -> None:
+    """Migration 0003 grants classbeat_app SELECT and INSERT on connection_keks only."""
+    await env.run(
+        "INSERT INTO connection_keks (key_id, check_value) VALUES ('kek-9', :v)",
+        v=check_value(OTHER_KEY),
+    )
+    assert await env.scalar("SELECT count(*) FROM connection_keks WHERE key_id = 'kek-9'") == 1
+    for statement in (
+        "UPDATE connection_keks SET check_value = :v WHERE key_id = 'kek-9'",
+        "DELETE FROM connection_keks WHERE key_id = 'kek-9'",
+        "DELETE FROM connection_keks",
+    ):
+        with pytest.raises(DBAPIError, match="permission denied"):
+            await env.run(statement, v=check_value(TEST_KEK))
+    assert await env.scalar("SELECT count(*) FROM connection_keks WHERE key_id = 'kek-9'") == 1

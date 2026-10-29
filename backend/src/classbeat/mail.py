@@ -13,12 +13,11 @@ with the exception class only: never the recipient, the subject, the body or the
 import asyncio
 import logging
 import smtplib
-import ssl
 from dataclasses import dataclass
 from email.message import EmailMessage
 
 from classbeat.config import Settings
-from classbeat.egress import refuse_in_worker
+from classbeat.egress import refuse_in_worker, tls_client_context
 
 logger = logging.getLogger(__name__)
 
@@ -67,7 +66,7 @@ class Mailer:
             raise MailError("smtp_host is not configured")
         refuse_in_worker(self._host)
         built = self._build(message)
-        context = ssl.create_default_context()
+        context = tls_client_context()  # verifying, and never a TLS key log (SSLKEYLOGFILE)
         if self._tls == "tls":
             client: smtplib.SMTP = smtplib.SMTP_SSL(
                 self._host, self._port, timeout=SMTP_TIMEOUT_SECONDS, context=context

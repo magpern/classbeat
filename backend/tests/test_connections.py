@@ -18,12 +18,26 @@ from classbeat.auth.deps import issue_context
 from classbeat.connections import ConnectionFailure, Credentials
 from classbeat.db import create_session_factory, system_session, user_session
 from classbeat.egress import OutboundBlocked
+from classbeat.log import JsonFormatter
 from ctx import make_context
+from keystools import TOTP_SECRET, add_totp
 from test_connection_errors import TICKET, FakeMowlError, http_error
 
 TOKEN = "11111111-2222-3333-4444-555555555555"
 NEW_TOKEN = "66666666-7777-8888-9999-000000000000"
 PASSWORD = "hunter2-correct-horse"
+
+
+def logged(caplog: pytest.LogCaptureFixture) -> str:
+    """Everything logged, the way production writes it (``extra`` fields included, which
+    ``caplog.text`` leaves out), plus each record's raw attributes: the formatter masks values
+    under secret-looking keys, and a leak under another key must still show."""
+    formatter = JsonFormatter()
+    return "\n".join(
+        [caplog.text]
+        + [formatter.format(record) for record in caplog.records]
+        + [repr(record.__dict__) for record in caplog.records]
+    )
 
 
 async def connected(env: Env, email: str = "a@example.com", token: str = TOKEN) -> Any:
@@ -232,7 +246,7 @@ async def test_use_maps_a_401_to_needs_reconnect_and_records_success(
         await connections.use(env.factory, ring, ctx, "mowl", ok, library_error=FakeMowlError)
     assert seen == [TOKEN]  # no provider call once it needs a reconnect
     for secret in (TOKEN, TICKET):
-        assert secret not in caplog.text
+        assert secret not in logged(caplog)
 
 
 async def test_an_allowlist_refusal_in_use_leaves_the_connection_untouched(env: Env) -> None:
@@ -291,7 +305,7 @@ async def test_connect_signs_in_first_and_never_keeps_the_password(
     )
     assert (await connections.list_connections(env.factory, ctx))[0].id == row_id
     for secret in (TOKEN, TICKET, PASSWORD):
-        assert secret not in caplog.text
+        assert secret not in logged(caplog)
 
 
 async def test_disconnect_and_account_deletion_remove_the_row(env: Env, database_url: str) -> None:
@@ -379,10 +393,25 @@ async def test_a_dump_of_the_database_holds_ciphertext_only(env: Env, database_u
         "spotify",
         {"access_token": "at-" + NEW_TOKEN, "refresh_token": "rt-" + NEW_TOKEN, "expires_at": 1},
     )
+    await add_totp(env, env.app.state.keyring, ctx.user_id)
     dsn = make_url(database_url).set(drivername="postgresql").render_as_string(hide_password=False)
     tables, copied, dumped = await asyncio.to_thread(dump_database, dsn)
     assert "connections" in tables
     assert copied  # the rows are there, as ciphertext
+    plain = (
+        TOKEN,
+        NEW_TOKEN,
+        "at-" + NEW_TOKEN,
+        "rt-" + NEW_TOKEN,
+        TOKEN.replace("-", ""),
+        TOTP_SECRET.decode(),
+        bytes(range(32)).hex(),
+    )
+    # A bytea column is dumped as ``\x`` followed by hex, so a plaintext value would show as the
+    # hex of its bytes (any case), not as itself.
+    forms = [value.encode() for value in plain]
+    forms += [value.encode().hex().encode() for value in plain]
+    forms += [value.encode().hex().upper().encode() for value in plain]
     for output in (copied, dumped or b""):
-        for secret in (TOKEN, NEW_TOKEN, TOKEN.replace("-", ""), bytes(range(32)).hex()):
-            assert secret.encode() not in output
+        for form in forms:
+            assert form not in output

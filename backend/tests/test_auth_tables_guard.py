@@ -198,6 +198,16 @@ REFUSED = {
     "prose in a plus chain": "x = 'rows ' + 'copied from sessions'",
     "marker on another line": "# guard8: prose\nx = 'copied from sessions'",
     "marker inside the string": "x = 'copied from sessions # guard8: prose'",
+    # the marker inside f-string text, or as a comment inside a replacement field, is not after it
+    "marker in f-string text": "x = f'copied from sessions {n} # guard8: prose'",
+    "marker in f-string text, multi-line": "x = f'''copied from sessions {n}\n# guard8: prose'''",
+    "marker in a replacement field": "x = f'{ # guard8: prose\n n} copied from sessions'",
+    "marker in a nested replacement field": (
+        "x = f'{ f\"{ # guard8: prose\n n}\" } copied from sessions'"
+    ),
+    "marker after a multi-line f-string": (
+        "x = f'''{\n n  # note\n} copied from sessions'''  # guard8: prose"
+    ),
     "marker on a docstring-like second string": '"""doc."""\nx = """copied from sessions"""',
 }
 
@@ -260,6 +270,24 @@ def test_a_marker_inside_a_multi_line_string_exempts_nothing() -> None:
     # a real comment after the string, on the line where it starts, still exempts
     real = "x = ('''copied from sessions''')  # guard8: prose"
     assert scan_source_with_exemptions(real) == ([], 1)
+
+
+def test_a_marker_inside_an_fstring_exempts_nothing_and_counts_nothing() -> None:
+    """Issue #73: the decision is that only a comment *after* the string exempts it."""
+    for source in (
+        "x = f'copied from sessions {n} # guard8: prose'",
+        "x = f'{ # guard8: prose\n n} copied from sessions'",
+    ):
+        findings, exempted = scan_source_with_exemptions(source)
+        assert findings != [] and exempted == 0, source  # noqa: PT018
+    # The same f-string with the marker after it still exempts (and counts once).
+    assert scan_source_with_exemptions("x = f'{n} copied from sessions'  # guard8: prose") == (
+        [],
+        1,
+    )
+    # A replacement-field comment elsewhere in the source does not disturb a real marker.
+    both = "a = f'{ # note\n n}'\nb = 'copied from sessions'  # guard8: prose"
+    assert scan_source_with_exemptions(both) == ([], 1)
 
 
 def test_exemptions_are_counted_per_string() -> None:

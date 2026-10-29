@@ -15,7 +15,9 @@ Exemptions, the only way to pass a string the matcher flags:
   are not scanned;
 - any other string is exempt when the line where it starts ends with the comment
   ``# guard8: prose``. The marker counts only as a real comment token (found with ``tokenize``):
-  text inside a string literal, however many lines it spans, exempts nothing.
+  text inside a string literal, however many lines it spans, exempts nothing, and neither does a
+  comment inside an f-string's replacement field (``f"{ # guard8: prose\n x }"``, legal since
+  Python 3.12): that comment sits inside the string, not after it, so it is ignored.
   ``scan_source_with_exemptions`` also returns how many strings were exempted this way (each
   string expression counts once, so two on one marked line are 2), and the whole-tree test pins
   that number, so a new exemption is visible in review.
@@ -299,8 +301,15 @@ EXEMPTION = re.compile(r"#\s*guard8:\s*prose\s*$")
 def _marked_lines(source: str) -> set[int]:
     """Line numbers that end with a real ``# guard8: prose`` comment token."""
     found: set[int] = set()
+    inside_fstring = 0  # f-strings nest through their replacement fields
     for token in tokenize.generate_tokens(io.StringIO(source).readline):
-        if token.type == tokenize.COMMENT and EXEMPTION.match(token.string):
+        if token.type == tokenize.FSTRING_START:
+            inside_fstring += 1
+        elif token.type == tokenize.FSTRING_END:
+            inside_fstring -= 1
+        elif (
+            token.type == tokenize.COMMENT and not inside_fstring and EXEMPTION.match(token.string)
+        ):
             found.add(token.start[0])
     return found
 

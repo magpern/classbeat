@@ -313,7 +313,12 @@ def exempt_calls_used(source: str, module: str) -> set[str]:
 
 def loaded_exempt_modules(entry_modules: tuple[str, ...]) -> list[str]:
     """Import ``entry_modules`` in a fresh interpreter; the exempt modules (and their client
-    libraries) that end up in ``sys.modules``."""
+    libraries) that end up in ``sys.modules``.
+
+    This sees import-time loads only. A deferred import inside a function, or a lazy export of
+    ``classbeat.auth`` resolved at call time, is not seen: at today's exempt sites only the
+    runtime flag covers it (``test_egress_runtime.py``). Any new web-only outbound call site
+    must therefore call ``classbeat.egress.refuse_in_worker`` itself, and get a runtime test."""
     import json
     import subprocess
     import sys
