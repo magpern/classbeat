@@ -32,6 +32,7 @@ def test_the_allowlist_is_exactly_the_reviewed_one() -> None:
         "classbeat.jobs.fence",
         "classbeat.jobs.credits",
         "classbeat.jobs.service",
+        "classbeat.jobs.progress",
         "classbeat.keys_cli",
     )
 

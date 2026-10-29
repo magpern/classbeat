@@ -5,9 +5,9 @@ pinned Postgres image; CI regenerates it and fails when it is stale. Do not edit
 """
 
 QUEUE_DIGESTS: dict[str, str] = {
-    "queue_claim": "0875c56606f77ebeabfc153aca89c5cc",
-    "queue_reap": "d0fb2793871a81dfdacfcb0c2b2a122a",
-    "queue_expire": "0b26f9333060501a2c0cdd8a666816cf",
+    "queue_claim": "69231edd289adadc0091ec7ae65f330d",
+    "queue_reap": "255c04d1036ab30116000b24d26a0218",
+    "queue_expire": "224841070d8492c469cc188d3ced1998",
     "queue_unsettled": "d10ba360a070524788e466b18e35460a",
     "queue_stats": "e55e920eddc871afbb4d5b0780770158",
 }

@@ -34,29 +34,13 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from classbeat.context import UserContext
 from classbeat.db import user_session
 from classbeat.jobs.errors import LeaseLost
+from classbeat.jobs.events import MODELS, notify_event, validated_payload
 
 Factory = async_sessionmaker[AsyncSession]
 
-# ADR 0005 section 6 (the ``job_events.kind`` check of migration 0004).
-EVENT_KINDS: Final = frozenset(
-    {
-        "queued",
-        "claimed",
-        "stage_started",
-        "tool_called",
-        "revision_created",
-        "waiting_for_approval",
-        "approved",
-        "retry_scheduled",
-        "cancel_requested",
-        "cancelled",
-        "completed",
-        "failed",
-        "expired",
-        "requeued",
-        "external_operation",
-    }
-)
+# ADR 0005 section 6 (the ``job_events.kind`` check of migration 0004); the payload models are
+# in ``classbeat.jobs.events``.
+EVENT_KINDS: Final = frozenset(MODELS)
 # Extra seconds a lease must outlive a provider call by (ADR 0005 section 3).
 CALL_LEASE_MARGIN_SECONDS: Final = 30
 
@@ -101,20 +85,6 @@ class Lease:
         return {"job_id": self.job_id, "owner_id": self.ctx.user_id, "v": self.lease_version}
 
 
-def _payload(payload: Mapping[str, Any] | None) -> str:
-    """Flat JSON of enum values, ids, counts and timestamps (ADR 0005 section 6). J4 adds a
-    model per kind; here nested values and texts longer than 100 characters are refused."""
-    values = dict(payload or {})
-    for key, value in values.items():
-        if not isinstance(key, str) or not (
-            value is None or isinstance(value, bool | int | float | str | UUID)
-        ):
-            raise ValueError("an event payload holds only flat scalar values")
-        if isinstance(value, str) and len(value) > 100:
-            raise ValueError("an event payload value is too long")
-    return json.dumps({k: str(v) if isinstance(v, UUID) else v for k, v in values.items()})
-
-
 async def insert_event(
     db: AsyncSession,
     lease: Lease,
@@ -124,8 +94,7 @@ async def insert_event(
 ) -> None:
     """Insert the event with ``seq`` (taken from ``jobs.next_seq`` by the caller's fenced
     update), recording the token the writer held."""
-    if kind not in EVENT_KINDS:
-        raise ValueError("unknown event kind")
+    stored = validated_payload(kind, payload)  # ValueError: unknown kind or a payload off-model
     await db.execute(
         INSERT_EVENT,
         {
@@ -133,9 +102,10 @@ async def insert_event(
             "id": uuid.uuid4(),
             "seq": seq,
             "kind": kind,
-            "payload": _payload(payload),
+            "payload": json.dumps(stored),
         },
     )
+    await notify_event(db, lease.job_id)
 
 
 class FencedSession:

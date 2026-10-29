@@ -274,6 +274,7 @@ BEGIN
       INSERT INTO public.job_events (owner_id, job_id, seq, kind, payload, lease_version)
       VALUES (v_owner, v_id, v_seq, 'claimed', jsonb_build_object('attempt', v_attempt),
               v_version);
+      PERFORM pg_notify('job_events', v_id::text);
     EXCEPTION WHEN OTHERS THEN
       v_skipped := v_skipped || v_id;
       CONTINUE;
@@ -333,6 +334,7 @@ BEGIN
                 WHEN 'failed' THEN jsonb_build_object('category', 'lease_lost')
                 ELSE '{}'::jsonb END,
               v_version);
+      PERFORM pg_notify('job_events', r.id::text);
       v_done := v_done + 1;
     EXCEPTION WHEN OTHERS THEN
       NULL; -- skipped; it cannot block other rows
@@ -353,6 +355,7 @@ BEGIN
       INSERT INTO public.job_events (owner_id, job_id, seq, kind, payload, lease_version)
       VALUES (r.owner_id, r.id, v_seq, 'failed', jsonb_build_object('category', 'internal'),
               v_version);
+      PERFORM pg_notify('job_events', r.id::text);
       v_done := v_done + 1;
     EXCEPTION WHEN OTHERS THEN
       NULL;
@@ -388,6 +391,7 @@ BEGIN
       RETURNING j.lease_version, j.next_seq INTO v_version, v_seq;
       INSERT INTO public.job_events (owner_id, job_id, seq, kind, payload, lease_version)
       VALUES (r.owner_id, r.id, v_seq, 'expired', '{}'::jsonb, v_version);
+      PERFORM pg_notify('job_events', r.id::text);
       v_done := v_done + 1;
     EXCEPTION WHEN OTHERS THEN
       NULL;

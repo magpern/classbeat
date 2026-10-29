@@ -30,6 +30,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from classbeat.context import UserContext, require_context
 from classbeat.jobs.credits import CreditLedger
+from classbeat.jobs.events import notify_event, validated_payload
 
 USER_LEASE_VERSION: Final = 0
 # The owner lock's key namespace, so it never shares a key with another advisory lock.
@@ -105,10 +106,11 @@ async def _event(db: AsyncSession, ctx: UserContext, job_id: UUID, seq: int, kin
             "job_id": job_id,
             "seq": seq,
             "kind": kind,
-            "payload": json.dumps({}),
+            "payload": json.dumps(validated_payload(kind, {})),
             "v": USER_LEASE_VERSION,
         },
     )
+    await notify_event(db, job_id)
 
 
 @dataclass(frozen=True, slots=True)
