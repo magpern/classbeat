@@ -70,10 +70,29 @@ function randomClientIp(): string {
   return `203.0.${octet()}.${octet()}`
 }
 
-export const test = base.extend({
+// The browser may only talk to the stack under test: any other origin is blocked and fails the
+// test (the fakes are compose-internal; a page asking for a real host is a bug). Routes a test
+// sets on its page (the OAuth provider's) answer first and never reach this guard.
+export const test = base.extend<{ networkGuard: void }>({
   extraHTTPHeaders: async ({}, use) => {
     await use({ 'X-Forwarded-For': randomClientIp() })
   },
+  networkGuard: [
+    async ({ context, baseURL }, use) => {
+      const allowed = new URL(baseURL ?? 'http://127.0.0.1').origin
+      const blocked: string[] = []
+      await context.route(
+        (url) => url.origin !== allowed,
+        async (route) => {
+          blocked.push(new URL(route.request().url()).origin)
+          await route.abort('blockedbyclient')
+        },
+      )
+      await use()
+      expect(blocked, 'the browser asked for hosts outside the stack').toEqual([])
+    },
+    { auto: true },
+  ],
 })
 
 export { expect }

@@ -360,7 +360,12 @@ cd .. && dc down -v
 The fake (`e2e/fake-oidc/server.py`) answers the providers' real back-channel hostnames inside the
 compose network and issues ID tokens for Google and Microsoft; Playwright plays the browser's visit
 to the provider. The fake MOWL (`e2e/fake-mowl/server.py`) answers as `api.mowl.com` (the
-`mowl-workouts` base URL) for the MOWL sign-in; web trusts one bundle of both fakes' throwaway CAs.
+`mowl-workouts` base URL) for the MOWL sign-in, the playlist list, the attach and the reads of a design run
+(invented music; test playlists that hold a read or lose an attach answer, steered by `/__e2e/` calls the
+tests make from the web container); web and worker trust one bundle of both fakes' throwaway CAs, and the
+worker replays `backend/tests/agent_scripts/good_first_draft.json` with the `fake` model provider
+(`design-draft.spec.ts`: draft, cancel while running, uncertain attach). The Playwright context blocks
+every origin but the stack's.
 They use public test values only and are never part of the default stack. The e2e
 stack trusts the docker network as proxy so each test presents its own `X-Forwarded-For` address
 (separate rate limits). Sign-up is limited to 5 per IP and hour: use `down -v` between full runs
