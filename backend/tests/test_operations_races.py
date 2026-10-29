@@ -145,7 +145,7 @@ async def test_a_pending_row_whose_job_is_gone_becomes_uncertain(
         "failed", "uncertain_write"
     )  # fmt: skip
     [op] = xenv.operations(owner)
-    assert (op.state, op.job_id) == ("uncertain", None)
+    assert (op.state, op.job_id) == ("uncertain", job_id)  # it follows the job (#125)
     assert fake_attach.requests == []
 
 

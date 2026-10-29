@@ -182,11 +182,15 @@ async def test_treating_as_uncertain_needs_the_same_holder_and_token(
     connection = await xenv.connect(owner)
     holder, other = xenv.job(owner, connection), xenv.job(owner, connection)
     op = await plant(xenv, owner, holder, "pending")
-    assert not await matched(xenv, owner, _MARK_UNCERTAIN, id=op, old_job=other, old_v=1)
-    assert not await matched(xenv, owner, _MARK_UNCERTAIN, id=op, old_job=holder, old_v=2)
-    assert [o.state for o in xenv.operations(owner)] == ["pending"]
-    assert await matched(xenv, owner, _MARK_UNCERTAIN, id=op, old_job=holder, old_v=1)
-    assert [o.state for o in xenv.operations(owner)] == ["uncertain"]
+    mark = {"id": op, "job_id": other}  # ``other`` is the job that meets the stale row
+    assert not await matched(xenv, owner, _MARK_UNCERTAIN, **mark, old_job=other, old_v=1)
+    assert not await matched(xenv, owner, _MARK_UNCERTAIN, **mark, old_job=holder, old_v=2)
+    assert [(o.state, o.job_id) for o in xenv.operations(owner)] == [("pending", holder)]
+    assert await matched(xenv, owner, _MARK_UNCERTAIN, **mark, old_job=holder, old_v=1)
+    # It follows the job that marked it (#125); the call's token stays.
+    assert [(o.state, o.job_id, o.lease_version) for o in xenv.operations(owner)] == [
+        ("uncertain", other, 1)
+    ]
 
 
 async def test_recording_an_outcome_needs_a_pending_row_of_this_job_and_token(
