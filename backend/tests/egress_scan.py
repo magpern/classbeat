@@ -26,7 +26,13 @@ import ast
 
 EGRESS = "classbeat.egress"
 # Packages that run in the worker: they may never import an exempt module.
-WORKER_PACKAGES = ("classbeat.worker", "classbeat.agent", "classbeat.jobs", "classbeat.design")
+WORKER_PACKAGES = (
+    "classbeat.worker",
+    "classbeat.agent",
+    "classbeat.jobs",
+    "classbeat.design",
+    "classbeat.evals",
+)
 # What the worker process imports at start. Add each new worker entry point here (A1, D1:
 # ``classbeat.agent`` ...); the reachability test imports them all in a fresh interpreter and
 # fails if an exempt module, or a client library they use, is loaded.
@@ -40,6 +46,7 @@ WORKER_ENTRYPOINTS = (
     "classbeat.agent.providers",
     "classbeat.agent.providers.anthropic",
     "classbeat.design",
+    "classbeat.evals.__main__",
 )
 
 _CALLS = frozenset(

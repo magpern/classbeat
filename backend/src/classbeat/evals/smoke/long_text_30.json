@@ -1,0 +1,16 @@
+{
+ "name": "long_text_30",
+ "about": "A 2000 character free-text brief.",
+ "brief": {
+  "length_min": 30,
+  "intensity": "moderate",
+  "climbs": 1,
+  "sprints": 1,
+  "style": "rolling hills",
+  "text": "I teach a friendly morning class for riders who like rolling hills and a steady build. I teach a friendly morning class for riders who like rolling hills and a steady build. I teach a friendly morning class for riders who like rolling hills and a steady build. I teach a friendly morning class for riders who like rolling hills and a steady build. I teach a friendly morning class for riders who like rolling hills and a steady build. I teach a friendly morning class for riders who like rolling hills and a steady build. I teach a friendly morning class for riders who like rolling hills and a steady build. I teach a friendly morning class for riders who like rolling hills and a steady build. I teach a friendly morning class for riders who like rolling hills and a steady build. I teach a friendly morning class for riders who like rolling hills and a steady build. I teach a friendly morning class for riders who like rolling hills and a steady build. I teach a friendly morning class for riders who like rolling hills and a steady build. I teach a friendly morning class for riders who like rolling hills and a steady build. I teach a friendly morning class for riders who like rolling hills and a steady build. I teach a friendly morning class for riders who like rolling hills and a steady build. I teach a friendly morning class for riders who like rolling hills and a steady build. I teach a friendly morning class for riders who like rolling hills and a steady build. I teach a friendly morning class for riders who like rolling hills and a steady build. I teach a friendly morning class for riders who like rolling hills and a steady build. I teach a friendly morning class for riders who like rolling hills and a steady build. I teach a friendly morning class for riders who like rolling hills and a steady build. I teach a friendly morning class for riders who like rolling hills and a steady build. I teach a friendly morning class for riders who like rolling hills and a steady build."
+ },
+ "music": {
+  "tracks": 9
+ },
+ "expect": {}
+}

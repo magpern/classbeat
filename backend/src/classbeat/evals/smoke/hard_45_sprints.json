@@ -1,0 +1,13 @@
+{
+ "name": "hard_45_sprints",
+ "about": "Hard 45 minutes with four sprints.",
+ "brief": {
+  "length_min": 45,
+  "intensity": "hard",
+  "sprints": 4
+ },
+ "music": {
+  "tracks": 13
+ },
+ "expect": {}
+}

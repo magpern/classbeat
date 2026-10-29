@@ -264,6 +264,7 @@ The agent loop (`classbeat.agent`, ADR 0006 sections 2, 5 and 8): `CLASSBEAT_AGE
 `_MAX_TOOL_CALLS` (40), `_MAX_CORRECTIONS` (3), `_STAGE_SECONDS` (300), the per-job ceiling
 `_JOB_COST_MICROS` (1500000, $1.50) and `CLASSBEAT_AGENT_TURN_OUTPUT_RESERVE` (8000);
 `CLASSBEAT_FAKE_MODEL_SCRIPT` is the `FakeProvider` script with `fake` (`backend/tests/agent_scripts/`).
+The smoke set (ADR 0006 section 8) runs in CI against `FakeProvider` (`backend/tests/test_evals_smoke.py`); the owner's live run is `docker compose exec worker python -m classbeat.evals smoke --live` (it prints its cost ceiling and stops unless `--max-usd N` is also given; agents and CI never run it).
 Jobs (ADR 0005 sections 3 and 4): `CLASSBEAT_JOB_LEASE_SECONDS` (default 120, 30 to 600),
 `CLASSBEAT_WORKER_CONCURRENCY` (2, at most 16; the worker's pool is `2n + 2` connections plus
 an overflow of `n`: a pipeline and a heartbeat per run, the `LISTEN` connection and one for claims

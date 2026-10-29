@@ -1,0 +1,14 @@
+{
+ "name": "climbs_45",
+ "about": "Moderate 45 minutes with three climbs.",
+ "brief": {
+  "length_min": 45,
+  "intensity": "moderate",
+  "climbs": 3
+ },
+ "music": {
+  "tracks": 13,
+  "bpm": 100
+ },
+ "expect": {}
+}

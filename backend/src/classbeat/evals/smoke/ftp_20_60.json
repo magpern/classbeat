@@ -1,0 +1,21 @@
+{
+ "name": "ftp_20_60",
+ "about": "One hour with a 20 minute FTP test (the test itself is one long zone 5 run).",
+ "brief": {
+  "length_min": 60,
+  "intensity": "hard",
+  "ftp_test": 20
+ },
+ "music": {
+  "tracks": 17
+ },
+ "expect": {
+  "hard_share": [
+   0.1,
+   0.45
+  ],
+  "allow_issues": [
+   "zone_run_too_long"
+  ]
+ }
+}
