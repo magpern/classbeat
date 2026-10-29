@@ -116,7 +116,8 @@ def test_invalid_kinds_are_refused(
         JobKind(name, model, stages, _run)
 
 
-def test_the_worker_ships_no_real_kind_yet() -> None:
+def test_the_worker_ships_exactly_the_design_draft_kind() -> None:
+    import classbeat.design  # noqa: F401 - registers design_draft (D1)
     from classbeat.jobs import KINDS
 
-    assert KINDS.names() == []  # design_draft comes with D1
+    assert KINDS.names() == ["design_draft"]  # M4 adds the song-picking kinds
