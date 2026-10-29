@@ -150,6 +150,9 @@ a release and still needs the owner's authorization.
   `collaborative: false`; MOWL workouts private.
 - Tests and CI never touch the network or real accounts: they use fakes for MOWL, Spotify,
   Swedebeat and model APIs.
+  The backend test suite enforces it: an autouse fixture (`tests/netguard.py`) makes every
+  non-loopback `connect` and name lookup raise before anything is sent; only a test marked
+  `allow_network` (none today) is exempt.
 - Every owned row carries `owner_id` and is read through `UserContext` (§1, ADR 0002).
 
 ## Decisions and ADRs

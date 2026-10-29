@@ -19,6 +19,7 @@ import pytest
 from sqlalchemy import create_engine, text
 from sqlalchemy.engine import make_url
 
+import netguard
 from authtools import TEST_KEK, Env
 from smtpfake import SmtpFake
 
@@ -44,6 +45,17 @@ def _isolated_environment(monkeypatch: pytest.MonkeyPatch) -> None:
     for name in list(os.environ):
         if name.startswith("CLASSBEAT_") and name != "CLASSBEAT_TEST_DATABASE_URL":
             monkeypatch.delenv(name)
+
+
+def pytest_configure(config: pytest.Config) -> None:
+    config.addinivalue_line("markers", "allow_network: may reach non-loopback hosts (unused)")
+
+
+@pytest.fixture(autouse=True)
+def _loopback_only(request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch) -> None:
+    """No test sends a packet beyond loopback (``netguard``) unless it is marked allow_network."""
+    if request.node.get_closest_marker("allow_network") is None:
+        netguard.install(monkeypatch)
 
 
 @pytest.fixture(autouse=True)

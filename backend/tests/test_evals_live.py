@@ -6,7 +6,6 @@ and never prints the key. Nothing here contacts a provider: the one full run goe
 import io
 import json
 import os
-import socket
 import subprocess
 import sys
 from pathlib import Path
@@ -41,29 +40,6 @@ def no_retry_sleep(monkeypatch: pytest.MonkeyPatch) -> None:
 def not_in_ci(monkeypatch: pytest.MonkeyPatch) -> None:
     """The command refuses when CI is set; the tests that exercise the rest start without it."""
     monkeypatch.delenv("CI", raising=False)
-
-
-@pytest.fixture(autouse=True)
-def no_network(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Nothing in this file may open a socket: a provider is only ever the in-process fake."""
-
-    real_connect, real_connect_ex = socket.socket.connect, socket.socket.connect_ex
-
-    def local_only(address: Any) -> None:
-        # asyncio's own self-pipe connects on loopback (Windows); anything else is a leak.
-        if not (isinstance(address, tuple) and str(address[0]) in ("127.0.0.1", "::1")):
-            raise AssertionError("a test tried to open a network connection")
-
-    def connect(self: socket.socket, address: Any) -> None:
-        local_only(address)
-        real_connect(self, address)
-
-    def connect_ex(self: socket.socket, address: Any) -> int:
-        local_only(address)
-        return real_connect_ex(self, address)
-
-    monkeypatch.setattr(socket.socket, "connect", connect)
-    monkeypatch.setattr(socket.socket, "connect_ex", connect_ex)
 
 
 @pytest.fixture
