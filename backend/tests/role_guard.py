@@ -29,8 +29,14 @@ QUEUE_SIGNATURES = {
 }
 TABLE_PRIVILEGES = {"SELECT", "INSERT", "UPDATE", "DELETE"}
 # Tables where the app role gets less than full DML: the KEK check values are recorded and read,
-# never changed or forgotten by the app (migration 0003; ``keys wipe`` deletes as the owner).
-RESTRICTED_APP_PRIVILEGES = {"connection_keks": {"SELECT", "INSERT"}}
+# never changed or forgotten by the app (migration 0003; ``keys wipe`` deletes as the owner);
+# class messages are append-only and usage rows are never deleted (migration 0005; cascades run
+# as the table owner).
+RESTRICTED_APP_PRIVILEGES = {
+    "connection_keks": {"SELECT", "INSERT"},
+    "class_messages": {"SELECT", "INSERT"},
+    "agent_runs": {"SELECT", "INSERT", "UPDATE"},
+}
 SEQUENCE_PRIVILEGES = {"USAGE", "SELECT"}
 # Built-in languages that PUBLIC may use (Postgres' own default).
 BUILTIN_LANGUAGES = {"plpgsql", "sql", "internal", "c"}

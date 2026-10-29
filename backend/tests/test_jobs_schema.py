@@ -77,6 +77,15 @@ def test_the_job_tables_meet_guards_1_and_2(admin: Connection) -> None:
         {"t": list(JOB_TABLES)},
     ).all()
     assert sorted(tuple(p) for p in policies) == [
+        (
+            "agent_runs",
+            "agent_runs_finished_immutable",
+            "RESTRICTIVE",
+            "UPDATE",
+            ["public"],
+            "(outcome IS NULL)",
+        ),
+        ("agent_runs", "agent_runs_no_delete", "RESTRICTIVE", "DELETE", ["public"], "false"),
         ("class_revisions", "revisions_immutable", "RESTRICTIVE", "UPDATE", ["public"], "false"),
         ("job_events", "events_no_delete", "RESTRICTIVE", "DELETE", ["public"], "false"),
         ("job_events", "events_no_update", "RESTRICTIVE", "UPDATE", ["public"], "false"),
@@ -187,7 +196,9 @@ def test_deleting_a_job_sets_job_id_null_on_immutable_revisions_and_operations(
         assert [tuple(r) for r in rows] == [(revision, None, None), (child, None, revision)]
         operation = connection.execute(text("SELECT job_id FROM external_operations")).one()
         assert operation.job_id is None  # the operation outlives its job
-        assert connection.execute(text("SELECT count(*) FROM agent_runs")).scalar_one() == 0
+        # Usage outlives its job (migration 0005, ADR 0007 section 10).
+        run = connection.execute(text("SELECT job_id FROM agent_runs")).one()
+        assert run.job_id is None
 
 
 def test_deleting_a_revision_sets_parent_and_approval_null(admin: Connection) -> None:
