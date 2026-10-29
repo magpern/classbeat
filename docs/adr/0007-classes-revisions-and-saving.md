@@ -304,8 +304,9 @@ Model output is a proposal and the model has no write tool; the writes below are
      (ADR 0005 §4). **The bound assumes a total deadline of 30 s per request.** The library's
      `urlopen(timeout=30)` is only a socket timeout per blocking operation, so a slow-drip response
      could outlast it. SV1 therefore enforces the total deadline in the request function the call
-     goes through (the connection's egress-checked transport), tested with a slow-drip fake; where it
-     cannot, `bound_seconds` uses 60 s per request. `call_may_be_running` (§8) rests on this;
+     goes through (the connection's egress-checked transport), tested with a slow-drip fake. A
+     per-request socket timeout is not a bound, so if SV1 cannot enforce the total deadline it is
+     blocked rather than given a larger figure. `call_may_be_running` (§8) rests on this;
    - **the effect**: MOWL's `ProgramID` becomes the operation's `external_id` and `result`
      `{segments: n}`. In the same transaction as the `succeeded` row, `on_succeeded` inserts the
      `saved_workouts` row (`ON CONFLICT DO NOTHING` on the live-program index), so whoever marks the
@@ -417,7 +418,9 @@ the request can create a *different* resource (§7), so `failed` also needs a co
 
 An update that is `failed` by proof is retried by the job as the protocol already does
 (`NO_EFFECT_CATEGORY`); the retry's own `prepare` takes a fresh baseline and its `read` step
-compares again, so it can't overwrite an edit the user made meanwhile. A retry therefore only
+compares again, so it can't overwrite an edit the user made meanwhile. Every attempt of
+`save_workout` and `update_workout` starts at `prepare`, never at `save` (as `design/kind.py`'s
+`run` restarts from the top), so the read-first check (T59) runs on each retry. A retry therefore only
 follows a proof that nothing, neither a change nor a new program, resulted from the last attempt.
 
 **The user's two actions** (`classbeat.operations.user`, kind-agnostic, CSRF) behave as ADR 0005
@@ -449,7 +452,8 @@ expires or is deleted, nobody would ever resolve the row: both user actions answ
 `not_uncertain`, and a later Save would add a second workout (#117 item 7 notes the hidden-pending
 gap). It is closed in two parts, without touching the queue functions:
 
-1. **Who resolves it.** `classbeat.operations.orphans.resolve(db, ctx)` marks every `pending`
+1. **Who resolves it.** `classbeat.operations.orphans.resolve(db, ctx)` (a new module, added to
+   the session-guard allowlist; on the worker path it writes through the job's fenced session) marks every `pending`
    `mowl_save_workout` / `mowl_update_workout` row of the user whose job is terminal (`failed`,
    `cancelled`, `expired`, `completed`) or gone `uncertain`, under the same conditional update
    (`WHERE state = 'pending'`) and the job's error category when it has one. It runs under the
@@ -549,7 +553,7 @@ is kept indefinitely. #71 asks what that means for M3b, in four parts.
 analysis lives in memory for the run), and **M3b adds none** (§3's music step analyses again for
 every revise). So M3b has no cross-user reference count to make and builds no purge job; the
 roadmap's "a periodic purge, M3b" is moved to the first milestone that stores a shared analysis
-(proposed as a dated amendment to the roadmap by the Architect when this ADR is accepted). Every
+([roadmap Amendment 3](../roadmap.md)). Every
 Spotify-derived byte classbeat keeps is in an owned row that a class or the account owns. What M3b
 stores, and how each goes:
 
