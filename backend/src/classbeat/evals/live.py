@@ -78,7 +78,7 @@ def check_preconditions(settings: Settings, args_live: bool) -> None:
             "pass --live to run the smoke set against the real model; "
             "the offline set runs in the backend tests (tests/test_evals_smoke.py)"
         )
-    if os.environ.get("CI"):
+    if "CI" in os.environ:
         raise LiveRefused("refusing to run live when CI is set")
     if settings.model_provider != "anthropic":
         raise LiveRefused("refusing: CLASSBEAT_MODEL_PROVIDER is not anthropic")
@@ -102,6 +102,7 @@ def select(names: Sequence[str] | None) -> list[Case]:
 def plan_text(config: AgentConfig, cases: Sequence[Case], budget_micros: int | None) -> str:
     limits = config.limits
     ceiling = run_ceiling_micros(config, len(cases), budget_micros)
+    over = case_ceiling_micros(config) - limits.job_cost_micros
     return "\n".join(
         [
             f"classbeat smoke set, LIVE: {len(cases)} cases, model {config.model}, "
@@ -110,7 +111,8 @@ def plan_text(config: AgentConfig, cases: Sequence[Case], budget_micros: int | N
             f"{limits.max_tool_calls} tool calls, {limits.max_corrections} corrections, "
             f"{limits.stage_seconds:.0f} s, {usd(limits.job_cost_micros)} job ceiling",
             f"estimated cost ceiling for this run: {usd(ceiling)} "
-            f"(worst case; the budget is {usd(budget_micros) if budget_micros else 'not set'})",
+            f"(worst case; the budget is {usd(budget_micros) if budget_micros else 'not set'}; "
+            f"the total can exceed it by one turn's over-run, up to {usd(over)})",
             "synthetic music only; no user account is touched",
         ]
     )

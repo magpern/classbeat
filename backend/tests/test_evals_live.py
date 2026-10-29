@@ -14,6 +14,7 @@ from typing import Any
 import anthropic
 import pytest
 
+from agentfake import from_dict
 from anthropicfake import (
     PLANTED_KEY,
     FakeAnthropic,
@@ -22,8 +23,11 @@ from anthropicfake import (
     tool_use,
 )
 from classbeat.agent.loop import AgentConfig
+from classbeat.agent.provider import StageSpec, ToolCall, Turn, Usage
 from classbeat.agent.providers import AnthropicProvider
+from classbeat.agent.providers.fake import FakeProvider
 from classbeat.config import Settings
+from classbeat.evals import live
 from classbeat.evals.cases import load_cases
 from classbeat.evals.live import main_live, plan_text
 from smokescripts import good_draft
@@ -262,3 +266,102 @@ def test_the_module_refuses_without_live_when_run_as_a_command(tmp_path: Path) -
     )
     assert result.returncode == 2
     assert "--live" in result.stderr
+
+
+@pytest.mark.usefixtures("key")
+def test_it_refuses_when_ci_is_set_even_if_empty(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("CI", "")
+    spy = Spy()
+    code, _, err = run(spy)
+    assert code == 2
+    assert "CI" in err
+    assert nothing_ran(spy)
+
+
+@pytest.mark.usefixtures("key")
+def test_it_refuses_an_unpriced_model_before_installing_or_building_anything(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("CLASSBEAT_AGENT_MODEL", "claude-unpriced-1")
+    spy = Spy()
+    code, out, err = run(spy)
+    assert code == 2
+    assert "no price" in err
+    assert out == ""
+    assert nothing_ran(spy)
+
+
+def _script(cost_input: int) -> FakeProvider:
+    """get_music, then a refusal: one turn of ``cost_input`` input tokens at $4 per million."""
+    return from_dict(
+        {
+            "turns": [
+                {
+                    "calls": [{"name": "get_music", "input": {}}],
+                    "usage": {"input": cost_input, "output": 0},
+                },
+                {"refusal": True},
+            ]
+        }
+    )
+
+
+class Exploding:
+    """A provider whose second turn raises something that is not a ``ProviderError``."""
+
+    name = "fake"
+
+    def start(self, spec: StageSpec) -> "Exploding":
+        self.turns = 0
+        return self
+
+    async def turn(self, results: Any, *, reminder: str | None = None) -> Turn:
+        self.turns += 1
+        if self.turns > 1:
+            raise RuntimeError("planted detail that must not be printed")
+        call = ToolCall("c1", "get_music", {})
+        return Turn("tool_use", "", (call,), Usage(input_tokens=50_000), "fake-model")
+
+
+def _watch_ceilings(monkeypatch: pytest.MonkeyPatch) -> list[int]:
+    seen: list[int] = []
+    real = live.run_case
+
+    async def spy(case: Any, provider: Any, config: Any) -> Any:
+        seen.append(config.limits.job_cost_micros)
+        return await real(case, provider, config)
+
+    monkeypatch.setattr(live, "run_case", spy)
+    return seen
+
+
+async def test_the_budget_is_a_running_total_across_cases(monkeypatch: pytest.MonkeyPatch) -> None:
+    seen = _watch_ceilings(monkeypatch)
+    out = io.StringIO()
+    cases = [CASES[n] for n in ("easy_30", "default_30", "minimum_10")]
+    # Each case spends $0.60 (150 000 input tokens); the budget is $1.00.
+    results = await live.run_live(
+        cases, lambda: _script(150_000), AgentConfig(model="fake-model"), 1_000_000, out
+    )
+    assert seen == [1_000_000, 400_000]  # the second case gets what is left
+    assert [r.cost_micros for r in results] == [600_000, 600_000]
+    assert "budget used up; minimum_10 and the rest not run" in out.getvalue()
+
+
+async def test_a_case_that_raises_still_counts_what_it_spent(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    seen = _watch_ceilings(monkeypatch)
+    out = io.StringIO()
+    providers = iter([Exploding(), _script(10_000)])
+    results = await live.run_live(
+        [CASES["easy_30"], CASES["default_30"]],
+        lambda: next(providers),
+        AgentConfig(model="fake-model"),
+        1_000_000,
+        out,
+    )
+    assert results[0].outcome == "error:RuntimeError"
+    assert results[0].cost_micros == 200_000  # 50 000 input tokens at $4 per million
+    assert seen == [1_000_000, 800_000]
+    assert "planted detail" not in out.getvalue()

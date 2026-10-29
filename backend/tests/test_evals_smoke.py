@@ -273,3 +273,25 @@ async def test_the_eval_host_needs_no_database_and_stores_nothing() -> None:
         host, provider_for_case(case), design_stage(ctx), ctx.first_message(), CONFIG
     )
     assert host.counters.turns == done.turns == 3
+
+
+def test_a_draft_longer_than_the_music_fails_the_duration_check() -> None:
+    # 45 minutes asked and drafted, but the music runs 23: within 5 % of the ask, over the music.
+    case = BY_NAME["music_too_short"].model_copy(
+        update={"expect": BY_NAME["default_30"].expect, "brief": BY_NAME["races_40"].brief}
+    )
+    case = case.model_copy(update={"brief": case.brief.model_copy(update={"length_min": 40})})
+    _, ok = evaluate(case, make_draft(2400, intensity="hard", races=2))
+    assert ok["duration"] is False
+
+
+def test_a_long_zone_run_is_only_excused_when_it_holds_the_ftp_test() -> None:
+    ftp = BY_NAME["ftp_20_60"]
+    _, ok = evaluate(ftp, good_draft(ftp))
+    assert ok["quality_issues"]  # the 20 minute test is one long run, excused
+    case = BY_NAME["default_30"]
+    long_run = broken(
+        case, lambda d: [i.update(zone=3) for s in d["segments"][1:-1] for i in s["intervals"]]
+    )
+    _, ok = evaluate(case, long_run)
+    assert ok["quality_issues"] is False  # a long run without the test is reported

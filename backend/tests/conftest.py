@@ -52,10 +52,16 @@ def pytest_configure(config: pytest.Config) -> None:
 
 
 @pytest.fixture(autouse=True)
-def _loopback_only(request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch) -> None:
-    """No test sends a packet beyond loopback (``netguard``) unless it is marked allow_network."""
-    if request.node.get_closest_marker("allow_network") is None:
-        netguard.install(monkeypatch)
+def _loopback_only(request: pytest.FixtureRequest) -> Iterator[None]:
+    """No test sends a packet beyond loopback (``netguard``) unless it is marked allow_network.
+
+    Its own ``MonkeyPatch``: a test calling ``monkeypatch.undo()`` cannot lift the guard."""
+    if request.node.get_closest_marker("allow_network") is not None:
+        yield
+        return
+    with pytest.MonkeyPatch.context() as guard:
+        netguard.install(guard)
+        yield
 
 
 @pytest.fixture(autouse=True)

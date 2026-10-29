@@ -72,21 +72,31 @@ class CaseResult:
 async def run_case(case: Case, provider: ModelProvider, config: AgentConfig) -> CaseResult:
     ctx = DesignContext.build(case.brief, build_music(case.music))
     host = EvalHost()
-    try:
-        done = await run_stage(host, provider, design_stage(ctx), ctx.first_message(), config)
-    except JobFailure as failure:
+
+    def failed(outcome: str) -> CaseResult:
+        # What the run spent still counts against the budget, whatever stopped it.
         c = host.counters
         return CaseResult(
             case.name,
-            failure.category,
+            outcome,
             turns=c.turns,
             tool_calls=c.tool_calls,
             cost_micros=c.cost_micros,
             prompt_version=host.info.prompt_version if host.info else "",
             model_answered=c.model_answered,
         )
+
+    try:
+        done = await run_stage(host, provider, design_stage(ctx), ctx.first_message(), config)
+    except JobFailure as failure:
+        return failed(failure.category)
+    except Exception as exc:  # the class name only: a message could hold request data
+        return failed(f"error:{type(exc).__name__}")
     result: DesignResult = done.output
-    checks = run_checks(case, result, done, config.limits, float(ctx.map["duration"]))
+    try:
+        checks = run_checks(case, result, done, config.limits, float(ctx.map["duration"]))
+    except Exception as exc:
+        return failed(f"error:{type(exc).__name__}")
     return CaseResult(
         case.name,
         "submitted",

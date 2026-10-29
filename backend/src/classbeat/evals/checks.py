@@ -95,6 +95,24 @@ def _climbs(spec: dict[str, Any]) -> int:
     return count + (run >= CLIMB_MIN_SEC)
 
 
+def _clock(text: str) -> int:
+    minutes, _, seconds = text.partition(":")
+    return int(minutes) * 60 + int(seconds)
+
+
+def _run_holds_ftp_test(spec: dict[str, Any], quality: dict[str, Any]) -> bool:
+    """Whether the longest zone run ``quality.report`` names is the one with the FTP test in it
+    (the report names only the longest run, so a second long run elsewhere is not seen)."""
+    run = quality["longest_zone_run"]
+    start = _clock(str(run["from"]))
+    t = 0
+    for _, i in _intervals(spec):
+        if "ftp_test" in i:
+            return i["zone"] == run["zone"] and start <= t < start + int(run["sec"])
+        t += i["sec"]
+    return False
+
+
 def _texts(result: DesignResult) -> list[str]:
     draft = result.draft
     out = [draft.name, draft.description]
@@ -192,7 +210,10 @@ def run_checks(
         f"{moved} interval starts on the music, at least {expect.changes_on_music_min:.2f}",
     )
     allowed = TOLERATED_ISSUES | set(expect.allow_issues)
-    codes = sorted({str(i["code"]) for i in result.quality["issues"]} - allowed)
+    codes = {str(i["code"]) for i in result.quality["issues"]} - allowed
+    if "zone_run_too_long" in codes and _run_holds_ftp_test(spec, result.quality):
+        codes.discard("zone_run_too_long")  # a 20 minute test is one long run by definition
+    codes = sorted(codes)
     add("quality_issues", not codes, f"issues left: {codes}")
 
     lowered = [t.lower() for t in _texts(result)]

@@ -34,9 +34,9 @@ async def test_an_unexpected_error_after_mowl_accepted_is_uncertain_and_never_re
     async def blinked(*_: Any, **__: Any) -> bool:
         raise RuntimeError("the database blinked")  # after the attach went through
 
-    monkeypatch.setattr(connection_repository, "record_result", blinked)
-    await xenv.run_next()
-    monkeypatch.undo()
+    with monkeypatch.context() as patched:  # not undo(): that would also undo the test guards
+        patched.setattr(connection_repository, "record_result", blinked)
+        await xenv.run_next()
     assert fake_attach.attaches == [(TOKEN_A, PLAYLIST)]
     row = xenv.row(job_id)
     assert (row.state, row.error_category) == ("failed", "uncertain_write")
