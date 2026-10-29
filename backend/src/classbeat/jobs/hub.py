@@ -10,6 +10,15 @@ already answered 404 for a job that is not the caller's.)
 If the listener is down, ``listening`` is false and streams poll every few seconds; the listener
 reconnects with backoff, and every subscriber is woken when it goes down and when it is back (a
 notification may have been missed in between). A lost notification only adds latency.
+
+The listener holds one connection of the web engine's pool for the life of the process (#116
+item 5): of the default ``pool_size`` 5 plus ``max_overflow`` 10, requests share the other 14.
+Each stream holds none between its short reads.
+
+**Shutdown** (#116 item 3): ``close()`` (``close_threadsafe()`` from uvicorn's signal handler)
+sets ``closing`` and wakes every stream, which then ends; the browser reconnects to the next
+process with its last id. Without it an open stream (up to 10 minutes) would hold uvicorn's
+graceful shutdown, and the lifespan's ``stop()`` and engine disposal would never run.
 """
 
 import asyncio
@@ -50,7 +59,9 @@ class EventHub:
         self._subscriptions: dict[UUID, set[Subscription]] = {}
         self._task: asyncio.Task[None] | None = None
         self.listening = False
+        self.closing = False
         self._delay = RECONNECT_MIN_SECONDS
+        self._loop: asyncio.AbstractEventLoop | None = None
 
     @contextmanager
     def subscribe(self, job_id: UUID) -> Iterator[Subscription]:
@@ -115,11 +126,25 @@ class EventHub:
             await asyncio.sleep(self._delay)
             self._delay = min(self._delay * 2, RECONNECT_MAX_SECONDS)
 
+    def close(self) -> None:
+        """Shutdown has begun: every stream ends at its next wake-up, which is now."""
+        self.closing = True
+        self.wake_all()
+
+    def close_threadsafe(self) -> None:
+        """``close`` from outside the hub's event loop (a signal handler); a no-op before
+        ``start``."""
+        loop = self._loop
+        if loop is not None and not loop.is_closed():
+            loop.call_soon_threadsafe(self.close)
+
     def start(self) -> None:
         if self._task is None:
+            self._loop = asyncio.get_running_loop()
             self._task = asyncio.ensure_future(self.run())
 
     async def stop(self) -> None:
+        self.close()
         task, self._task = self._task, None
         if task is not None:
             task.cancel()

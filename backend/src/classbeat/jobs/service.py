@@ -152,7 +152,7 @@ async def approve(
         return None
 
     async with user_session(factory, ctx) as db:
-        done = await user.approve(db, ctx, job_id, revision_id, content_hash, admit)
+        done = await user.approve(db, ctx, job_id, revision_id, content_hash, admit=admit)
         if done.state is None:
             return ApproveResult(False, None, done.reason)
         return ApproveResult(done.accepted, await _view(db, ctx, job_id), done.reason)

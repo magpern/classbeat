@@ -12,7 +12,7 @@ import pytest
 from sqlalchemy import text
 
 from authtools import make_settings
-from classbeat.db import create_engine
+from classbeat.db import DatabaseRoleError, create_engine
 from classbeat.jobs import Complete, JobRun, KindRegistry
 from classbeat.worker import loop as worker_loop
 from classbeat.worker.loop import Worker, worker_id
@@ -35,7 +35,11 @@ async def running(
         yield worker, stop, task
     finally:
         stop.set()
-        await asyncio.wait_for(task, 40)
+        stopped_by_drift = (
+            task.done() and not task.cancelled() and isinstance(task.exception(), DatabaseRoleError)
+        )
+        if not stopped_by_drift:  # a drift the test expected was raised to it already
+            await asyncio.wait_for(task, 40)
         await engine.dispose()
 
 
@@ -81,10 +85,19 @@ async def test_nothing_is_claimed_before_the_queue_check_passed(
         await until(lambda: jenv.row(job_id).state == "completed")
 
 
+def listening(env: JobsEnv) -> int:
+    """Backends of the app role whose last statement was the worker's ``LISTEN``."""
+    return env.sql(
+        "SELECT count(*) FROM pg_stat_activity WHERE usename = 'classbeat_app' "
+        "AND query = 'LISTEN jobs_queued' AND state = 'idle'"
+    ).scalar_one()
+
+
 async def test_a_notification_wakes_the_worker_before_its_poll(jenv: JobsEnv) -> None:
     owner = jenv.user()
+    before = listening(jenv)
     async with running(jenv, registry_for(done_run()), worker_poll_seconds=30) as (worker, _, _):
-        await asyncio.sleep(1.0)  # the first claim found nothing; the listener is up
+        await until(lambda: listening(jenv) > before)  # the listener is up (#109 item 4)
         _, job_id = jenv.job(owner)
         started = time.monotonic()
         jenv.sql("SELECT pg_notify('jobs_queued', '')")
@@ -257,3 +270,88 @@ async def test_sigterm_during_a_claim_claims_nothing_more_and_calls_nothing(
     assert upstream.calls == 0
     assert sorted(r.lease_version for r in rows) == [0, 2]  # one claimed then handed back
     assert all((r.state, r.attempt) == ("queued", 0) for r in rows)
+
+
+DRIFT = "the job queue does not match ADR 0005 section 3: planted by the test"
+
+
+async def test_a_drift_found_by_the_background_check_stops_the_worker(
+    jenv: JobsEnv, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """#109 item 2: the background queue check raising ``DatabaseRoleError`` ends ``run``."""
+    _, job_id = jenv.job()
+
+    async def drifted(engine: object) -> None:
+        raise DatabaseRoleError(DRIFT)
+
+    monkeypatch.setattr(worker_loop, "queue_verified", lambda engine: False)
+    monkeypatch.setattr(worker_loop, "verify_database_role", drifted)
+    async with running(jenv, registry_for(done_run())) as (worker, _, task):
+        with pytest.raises(DatabaseRoleError, match="planted"):
+            await asyncio.wait_for(task, 10)
+        assert worker.checks == 1
+    assert jenv.row(job_id).state == "queued"
+
+
+async def test_a_drift_met_by_a_run_stops_the_worker_and_hands_the_leases_back(
+    jenv: JobsEnv,
+) -> None:
+    """#109 item 2: a ``DatabaseRoleError`` on a new connection inside a run (here raised where
+    the run would open one) is not the job's failure: the worker stops, no attempt counted."""
+    _, refused = jenv.job()
+    _, other = jenv.job()
+    in_turn = asyncio.Event()
+
+    async def run(job_run: JobRun) -> Complete:
+        if job_run.lease.job_id == refused:
+            await until(in_turn.is_set)
+            raise DatabaseRoleError(DRIFT)
+        in_turn.set()
+        await asyncio.sleep(60)  # stops at shutdown
+        return Complete()
+
+    async with running(jenv, registry_for(run)) as (_, _, task):
+        with pytest.raises(DatabaseRoleError, match="planted"):
+            await asyncio.wait_for(task, 30)
+    for job_id in (refused, other):
+        row = jenv.row(job_id)
+        assert (row.state, row.attempt, row.error_category) == ("queued", 0, None)
+        assert jenv.kinds(job_id)[-1] == "requeued"
+
+
+async def test_a_drift_met_by_maintenance_stops_the_worker(
+    jenv: JobsEnv, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    async def drifted(factory: object) -> int:
+        raise DatabaseRoleError(DRIFT)
+
+    monkeypatch.setattr(worker_loop.queue, "reap", drifted)
+    async with running(jenv, registry_for(done_run())) as (_, _, task):
+        with pytest.raises(DatabaseRoleError, match="planted"):
+            await asyncio.wait_for(task, 10)
+
+
+async def test_sigterm_cancels_a_maintenance_step_in_progress(
+    jenv: JobsEnv, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """#109 item 8: a slow maintenance step does not hold the shutdown."""
+    in_step = asyncio.Event()
+    cancelled: list[bool] = []
+
+    async def slow(factory: object) -> int:
+        in_step.set()
+        try:
+            await asyncio.sleep(60)
+        except asyncio.CancelledError:
+            cancelled.append(True)
+            raise
+        return 0
+
+    monkeypatch.setattr(worker_loop.queue, "reap", slow)
+    async with running(jenv, registry_for(done_run())) as (_, stop, task):
+        await asyncio.wait_for(in_step.wait(), 10)
+        started = time.monotonic()
+        stop.set()
+        await asyncio.wait_for(task, 10)
+        assert time.monotonic() - started < 2
+    assert cancelled == [True]

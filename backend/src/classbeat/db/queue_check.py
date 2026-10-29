@@ -9,10 +9,13 @@ comment, the shipped ``md5(pg_get_functiondef(oid))`` and the ACL
 ``{classbeat_queue=X/classbeat_queue, classbeat_app=X/classbeat_queue}``; the role has exactly
 its attributes, no memberships either way, no settings, and exactly its privileges; and no other
 user-defined function, procedure, aggregate or operator exists in any schema, and no table has a
-trigger (other than the internal ones of foreign keys) or a rule (review finding B2, #102). So
-nothing can shadow a built-in a function body calls, and nothing a function fires (a trigger, a
-rule, a default, a CHECK, a generated column, an index expression) can reach code other than the
-built-ins while running as ``classbeat_queue``.
+trigger (other than the internal ones of foreign keys) or a rule (review finding B2, #102); and
+no default, CHECK, index or partition expression of any table or domain calls one of the
+built-ins of ``SQL_TEXT_BUILTINS`` (#108). So nothing can shadow a built-in a function body
+calls, and nothing a function fires (a trigger, a rule, a default, a CHECK, a generated column, an
+index expression) can reach code other than the built-ins while running as ``classbeat_queue``,
+and none of those runs SQL text. Objects are named alike here, in guard 9 and in ``20-queue.sql``
+(``function schema.name(types)``, ``trigger name on schema.table``, ...).
 
 Every grant or ownership naming a role is recorded in ``pg_shdepend``, so comparing that list
 with the expected one catches a privilege of any kind, in any database of the cluster.
@@ -60,6 +63,32 @@ EXPECTED_PRIVILEGES = frozenset(
         "table:public.job_events:INSERT",
         "table:public.external_operations:SELECT",
     }
+)
+
+# Built-ins that run SQL text or read whole tables, schemas or databases (``query_to_xml`` and its
+# family, ``ts_stat``, ``ts_rewrite(tsquery, text)``) or change the running function's settings
+# (``set_config``, e.g. its search_path): reachable from a default, CHECK, index or partition
+# expression on a table a queue function writes, they would run read-only SQL as classbeat_queue
+# (#108 item 1). No expression in any table, domain or index may call one; found by the OIDs in
+# the stored expression trees (``:funcid``), not by text.
+SQL_TEXT_BUILTINS = (
+    "query_to_xml",
+    "query_to_xmlschema",
+    "query_to_xml_and_xmlschema",
+    "cursor_to_xml",
+    "cursor_to_xmlschema",
+    "table_to_xml",
+    "table_to_xmlschema",
+    "table_to_xml_and_xmlschema",
+    "schema_to_xml",
+    "schema_to_xmlschema",
+    "schema_to_xml_and_xmlschema",
+    "database_to_xml",
+    "database_to_xmlschema",
+    "database_to_xml_and_xmlschema",
+    "ts_stat",
+    "ts_rewrite",
+    "set_config",
 )
 
 QUEUE_QUERY = """
@@ -121,7 +150,7 @@ SELECT
          ORDER BY 1),
     ARRAY(
         SELECT 'function ' || n.nspname || '.' || p.proname || '('
-               || pg_catalog.pg_get_function_identity_arguments(p.oid) || ')'
+               || pg_catalog.oidvectortypes(p.proargtypes) || ')'
           FROM pg_catalog.pg_proc p JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
          WHERE NOT (n.nspname = 'public' AND p.proname IN ('queue_claim', 'queue_reap',
                     'queue_expire', 'queue_unsettled', 'queue_stats'))
@@ -129,8 +158,9 @@ SELECT
                 OR (n.nspname NOT IN ('pg_catalog', 'information_schema', 'pg_toast')
                     AND n.nspname !~ '^pg_(toast_)?temp_[0-9]+$'))
         UNION ALL
-        SELECT 'operator ' || n.nspname || '.' || o.oprname || '(' || o.oprleft::regtype::text
-               || ', ' || o.oprright::regtype::text || ')'
+        SELECT 'operator ' || n.nspname || '.' || o.oprname || '('
+               || CASE WHEN o.oprleft = 0 THEN 'NONE' ELSE o.oprleft::regtype::text END || ', '
+               || CASE WHEN o.oprright = 0 THEN 'NONE' ELSE o.oprright::regtype::text END || ')'
           FROM pg_catalog.pg_operator o JOIN pg_catalog.pg_namespace n ON n.oid = o.oprnamespace
          WHERE o.oid >= 16384 OR n.nspname = 'public'
             OR (n.nspname NOT IN ('pg_catalog', 'information_schema', 'pg_toast')
@@ -145,8 +175,45 @@ SELECT
           FROM pg_catalog.pg_rewrite r JOIN pg_catalog.pg_class c ON c.oid = r.ev_class
           JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
          WHERE r.oid >= 16384 AND r.rulename <> '_RETURN'
+        UNION ALL
+        SELECT DISTINCT 'built-in ' || f.proname || ' in ' || e.what
+          FROM (
+            SELECT 'the default of ' || n.nspname || '.' || c.relname || '.' || a.attname AS what,
+                   d.adbin::text AS tree
+              FROM pg_catalog.pg_attrdef d JOIN pg_catalog.pg_class c ON c.oid = d.adrelid
+              JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+              JOIN pg_catalog.pg_attribute a ON a.attrelid = d.adrelid AND a.attnum = d.adnum
+            UNION ALL
+            SELECT 'constraint ' || k.conname || ' on ' || n.nspname || '.'
+                   || coalesce(c.relname, y.typname), k.conbin::text
+              FROM pg_catalog.pg_constraint k JOIN pg_catalog.pg_namespace n
+                ON n.oid = k.connamespace
+              LEFT JOIN pg_catalog.pg_class c ON c.oid = k.conrelid
+              LEFT JOIN pg_catalog.pg_type y ON y.oid = k.contypid
+             WHERE k.conbin IS NOT NULL
+            UNION ALL
+            SELECT 'index ' || n.nspname || '.' || c.relname,
+                   coalesce(i.indexprs::text, '') || coalesce(i.indpred::text, '')
+              FROM pg_catalog.pg_index i JOIN pg_catalog.pg_class c ON c.oid = i.indexrelid
+              JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+             WHERE i.indexprs IS NOT NULL OR i.indpred IS NOT NULL
+            UNION ALL
+            SELECT 'the default of type ' || n.nspname || '.' || y.typname, y.typdefaultbin::text
+              FROM pg_catalog.pg_type y JOIN pg_catalog.pg_namespace n ON n.oid = y.typnamespace
+             WHERE y.typdefaultbin IS NOT NULL
+            UNION ALL
+            SELECT 'the partition key of ' || n.nspname || '.' || c.relname, x.partexprs::text
+              FROM pg_catalog.pg_partitioned_table x JOIN pg_catalog.pg_class c
+                ON c.oid = x.partrelid
+              JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+             WHERE x.partexprs IS NOT NULL
+          ) e
+          CROSS JOIN LATERAL pg_catalog.regexp_matches(e.tree, '[:]funcid ([0-9]+)', 'g') m
+          JOIN pg_catalog.pg_proc f ON f.oid = m[1]::oid
+         WHERE f.pronamespace = 'pg_catalog'::regnamespace
+           AND f.proname IN (__SQL_TEXT_BUILTINS__)
         ORDER BY 1)
-"""
+""".replace("__SQL_TEXT_BUILTINS__", ", ".join(f"'{name}'" for name in SQL_TEXT_BUILTINS))
 # 16384 is FirstNormalObjectId: below it is only what initdb created (pg_catalog, information_schema
 # and the two rules of the pg_settings view). Anything at or above it, in any schema, is user-made.
 COLUMN_COUNT = 7
@@ -175,8 +242,9 @@ def queue_problems(row: Sequence[Any] | None) -> list[str]:
         found.append(f"{QUEUE_ROLE} must have exactly its table privileges and USAGE on public")
     if foreign:
         found.append(
-            "user-defined functions, operators, triggers or rules exist besides the queue "
-            "functions (ADR 0005 section 3): " + ", ".join(foreign)
+            "user-defined functions, operators, triggers or rules, or expressions calling a "
+            "built-in that runs SQL text, exist besides the queue functions (ADR 0005 section 3): "
+            + ", ".join(foreign)
         )
     by_name: dict[str, list[list[str]]] = {}
     for item in functions:

@@ -15,6 +15,7 @@ from jobcore import (
     CountingLedger,
     JobsEnv,
     Upstream,
+    admit_all,
     claim,
     content_hash,
     registry_for,
@@ -37,7 +38,7 @@ async def user_approve(
 ) -> Approval:
     ctx = make_context(owner)
     async with user_session(env.factory, ctx) as db:
-        return await approve(db, ctx, job_id, revision, digest)
+        return await approve(db, ctx, job_id, revision, digest, admit=admit_all)
 
 
 async def waiting_job(env: JobsEnv) -> tuple[uuid.UUID, uuid.UUID, uuid.UUID]:

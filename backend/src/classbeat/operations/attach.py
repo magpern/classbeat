@@ -16,6 +16,13 @@ playlist, the one external-operation kind of M3a.
 
 ``attach_spotify_playlist`` is what the ``design_draft`` pipeline (D1) calls for its music step:
 the stored link if there is one, else the attach.
+
+**The id it returns is not guarded** (#117 item 1): the stored link is read without the
+connection's share lock, so a reconnect in place as another MOWL account right after the read
+(which deletes the links, ADR 0006 section 3) leaves the caller with the old account's playlist
+id. No write is duplicated by that, but a caller must re-read the link under ``hold`` in the
+transaction that uses it for a read or write against MOWL, as D1's ``design.music._held_link``
+does; M3b's saves must do the same.
 """
 
 import re
@@ -150,7 +157,8 @@ async def attach_spotify_playlist(
 
     ``connection_id`` is the job's ``mowl_connection_id``: it must be the context's MOWL
     connection and still ``connected`` before any call (``not_connected`` otherwise, ADR 0006
-    section 9). Raises ``JobFailure`` with the category, and what ``perform`` raises.
+    section 9). Raises ``JobFailure`` with the category, and what ``perform`` raises. The id is
+    read unguarded: re-read the link under ``hold`` before using it (module docstring).
     """
     source_id = check_source_id(source_id)
     linked = await linked_playlist(run, source_id)

@@ -5,7 +5,8 @@
   is validated by the kind's model (a ``classbeat.jobs.inputs.JobInput``). 201 with the new job;
   the same key and body again is 200 with the same job; the same key with another body is 409
   ``idempotency_mismatch``. Also 409 ``class_busy``, ``not_connected``, ``quota``; 404
-  ``class_not_found``; 429 ``busy`` (the per-user limit); 400 for the header; 422 for the body.
+  ``class_not_found``; 429 ``busy`` (the per-user limit); 400 for the header; 422 for the body;
+  413 ``too_large`` for a body over ``BODY_MAX_BYTES`` (also on approve).
 - ``GET /api/jobs/{id}``: the job's state.
 - ``GET /api/jobs/{id}/revision``: the draft the job stored, for the draft summary: 409
   ``no_revision`` while it has none. Answers only ``{revision_id, number, kind, content,
@@ -19,8 +20,10 @@
   ``superseded``, ``hash_mismatch``, ``not_connected``, ``invalid_input`` or ``quota``; 429
   ``busy``. Recent authentication is not required (ADR 0005 section 2).
 
-Another user's job id is 404 ``not_found``, the same body as an unknown id. Errors carry a
-reason code only: validation errors of the create body never echo the submitted input.
+Another user's job id is 404 ``not_found``, the same body as an unknown id or a malformed one.
+Errors carry a reason code only: the create and approve bodies are validated here, and their
+422 never echoes a submitted value, nor the name of a key the model does not know (#115 items 2
+and 3); ``/api/jobs`` is also in ``SECRET_INPUT_PATHS``, so FastAPI's own 422 drops ``input``.
 """
 
 import hashlib
@@ -48,6 +51,8 @@ router = APIRouter(prefix="/api/jobs", tags=["jobs"])
 
 IDEMPOTENCY_KEY = re.compile(r"^[A-Za-z0-9_-]{16,64}$")
 INPUT_MAX_BYTES = 16384  # jobs.input's check (migration 0004), measured as jsonb prints it
+# A request body of the jobs API is read only up to this (#115 item 8; an app-wide cap is M6's).
+BODY_MAX_BYTES = 65536
 
 _STATUS = {"not_found": 404, "class_not_found": 404, "busy": 429, "too_large": 422}
 
@@ -114,17 +119,42 @@ def _refuse(reason: str, status: int | None = None) -> JSONResponse:
     )
 
 
+def _loc(error: Any) -> list[Any]:
+    """Where an error is; for an extra key, its parent only (the key is the client's text)."""
+    loc = list(error["loc"])
+    return loc[:-1] if error["type"] == "extra_forbidden" else loc
+
+
 def _invalid(error: ValidationError | None = None) -> JSONResponse:
     """422 without the submitted values (``input``, ``ctx`` and ``url`` are left out)."""
     errors = (
         []
         if error is None
         else [
-            {"loc": list(e["loc"]), "type": e["type"]}
+            {"loc": _loc(e), "type": e["type"]}
             for e in error.errors(include_url=False, include_context=False, include_input=False)
         ]
     )
     return JSONResponse({"detail": {"reason": "invalid_input", "errors": errors}}, status_code=422)
+
+
+class _TooLarge(Exception):
+    pass
+
+
+async def _body(request: Request) -> bytes:
+    """The request body, at most ``BODY_MAX_BYTES`` (read in chunks, never more than that)."""
+    declared = request.headers.get("content-length", "")
+    if declared.isdigit() and int(declared) > BODY_MAX_BYTES:
+        raise _TooLarge
+    chunks: list[bytes] = []
+    size = 0
+    async for chunk in request.stream():
+        size += len(chunk)
+        if size > BODY_MAX_BYTES:
+            raise _TooLarge
+        chunks.append(chunk)
+    return b"".join(chunks)
 
 
 def canonical_json(value: Any) -> bytes:
@@ -142,7 +172,7 @@ def _jsonb_size(value: Any) -> int:
     "",
     status_code=201,
     response_model=JobOut,
-    responses={200: {"model": JobOut}, 400: {}, 404: {}, 409: {}, 422: {}, 429: {}},
+    responses={200: {"model": JobOut}, 400: {}, 404: {}, 409: {}, 413: {}, 422: {}, 429: {}},
 )
 async def create_job(
     request: Request,
@@ -156,7 +186,9 @@ async def create_job(
     if not IDEMPOTENCY_KEY.fullmatch(idempotency_key):
         return _refuse("idempotency_key_invalid", 400)
     try:
-        body = CreateIn.model_validate_json(await request.body())
+        body = CreateIn.model_validate_json(await _body(request))
+    except _TooLarge:
+        return _refuse("too_large", 413)
     except ValidationError as error:
         return _invalid(error)
     kind = kinds.get(body.kind)
@@ -195,11 +227,22 @@ async def create_job(
     return out
 
 
+def _job_id(raw: str) -> UUID | None:
+    """The path's job id; ``None`` for a malformed one (answered like an unknown id)."""
+    try:
+        return UUID(raw)
+    except ValueError:
+        return None
+
+
 @router.get("/{job_id}", response_model=JobOut, responses={404: {}})
 async def get_job(
-    job_id: UUID, request: Request, ctx: Annotated[UserContext, Depends(auth.require_user)]
+    job_id: str, request: Request, ctx: Annotated[UserContext, Depends(auth.require_user)]
 ) -> JobOut | JSONResponse:
-    view = await service.get(request.app.state.session_factory, ctx, job_id)
+    wanted = _job_id(job_id)
+    if wanted is None:
+        return _refuse("not_found")
+    view = await service.get(request.app.state.session_factory, ctx, wanted)
     return _refuse("not_found") if view is None else JobOut.of(view)
 
 
@@ -207,9 +250,8 @@ async def get_job(
 async def get_revision(
     job_id: str, request: Request, ctx: Annotated[UserContext, Depends(auth.require_user)]
 ) -> RevisionOut | JSONResponse:
-    try:
-        wanted = UUID(job_id)
-    except ValueError:
+    wanted = _job_id(job_id)
+    if wanted is None:
         return _refuse("not_found")  # a malformed id is the same 404 as an unknown one
     found = await read_revision(request.app.state.session_factory, ctx, wanted)
     if found is None:
@@ -235,9 +277,12 @@ async def get_revision(
 
 @router.post("/{job_id}/cancel", response_model=JobOut, responses={404: {}, 409: {}})
 async def cancel_job(
-    job_id: UUID, request: Request, ctx: Annotated[UserContext, Depends(auth.require_user)]
+    job_id: str, request: Request, ctx: Annotated[UserContext, Depends(auth.require_user)]
 ) -> JobOut | JSONResponse:
-    view = await service.cancel(request.app.state.session_factory, ctx, job_id)
+    wanted = _job_id(job_id)
+    if wanted is None:
+        return _refuse("not_found")
+    view = await service.cancel(request.app.state.session_factory, ctx, wanted)
     if view is None:
         return _refuse("not_found")
     if view.state in ("completed", "failed", "expired"):
@@ -245,19 +290,31 @@ async def cancel_job(
     return JobOut.of(view)
 
 
-@router.post("/{job_id}/approve", response_model=JobOut, responses={404: {}, 409: {}, 429: {}})
+@router.post(
+    "/{job_id}/approve",
+    response_model=JobOut,
+    responses={404: {}, 409: {}, 413: {}, 422: {}, 429: {}},
+)
 async def approve_job(
-    job_id: UUID,
-    body: ApproveIn,
+    job_id: str,
     request: Request,
     ctx: Annotated[UserContext, Depends(auth.require_user)],
     kinds: Annotated[KindRegistry, Depends(job_kinds)],
     ledger: Annotated[CreditLedger, Depends(credit_ledger)],
 ) -> JobOut | JSONResponse:
+    wanted = _job_id(job_id)
+    if wanted is None:
+        return _refuse("not_found")
+    try:
+        body = ApproveIn.model_validate_json(await _body(request))
+    except _TooLarge:
+        return _refuse("too_large", 413)
+    except ValidationError as error:
+        return _invalid(error)
     result = await service.approve(
         request.app.state.session_factory,
         ctx,
-        job_id,
+        wanted,
         body.revision_id,
         bytes.fromhex(body.content_hash),
         kinds=kinds,

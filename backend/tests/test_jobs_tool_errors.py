@@ -16,7 +16,8 @@ from classbeat.jobs.events import TOOL_ERROR_CODES
 from classbeat.jobs.issuer import issue
 from jobcore import KIND, JobsEnv, registry_for, run_next, store_draft
 
-pytestmark = pytest.mark.usefixtures("jenv")
+# Only the database tests need jenv; the two static scans run without a database (#116 item 6).
+DATABASE = pytest.mark.usefixtures("jenv")
 
 AGENT = Path(__file__).resolve().parent.parent / "src" / "classbeat" / "agent"
 DISPATCHER_CODES = {
@@ -30,21 +31,68 @@ DISPATCHER_CODES = {
 }
 
 
-def emitted_codes() -> set[str]:
-    """Every error code the agent package names in source: ``_error(call, tool, "code", ...)``
-    in the dispatcher and ``ToolError("code", ...)`` anywhere."""
+# The one reviewed non-literal code: the dispatcher passes on a tool's ``exc.code`` after checking
+# it against ERROR_CODES (``internal`` otherwise).
+DYNAMIC_ALLOWED = {("dispatcher.py", "_error", "code")}
+
+
+def _code_argument(node: ast.Call, index: int) -> ast.expr | None:
+    """The code argument of ``ToolError(code, ...)`` / ``_error(call, tool, code, ...)``,
+    positional or ``code=``; ``None`` when the call has none."""
+    for keyword in node.keywords:
+        if keyword.arg == "code":
+            return keyword.value
+        if keyword.arg is None:  # ``**kwargs`` hides it
+            return keyword.value
+    if any(isinstance(arg, ast.Starred) for arg in node.args[: index + 1]):
+        return node.args[0]
+    return node.args[index] if len(node.args) > index else None
+
+
+def scanned_codes(root: Path = AGENT) -> tuple[set[str], set[tuple[str, str, str]]]:
+    """Every error code the agent package names in source (``_error(call, tool, "code", ...)``
+    in the dispatcher and ``ToolError("code", ...)`` anywhere, also as ``code=`` and through an
+    attribute such as ``stage.ToolError``), and every call whose code is not a literal."""
     found: set[str] = set()
-    for path in sorted(AGENT.rglob("*.py")):
+    dynamic: set[tuple[str, str, str]] = set()
+    for path in sorted(root.rglob("*.py")):
         for node in ast.walk(ast.parse(path.read_text("utf-8"))):
             if not isinstance(node, ast.Call):
                 continue
-            index = {"ToolError": 0, "_error": 2}.get(getattr(node.func, "id", ""))
-            if index is None or len(node.args) <= index:
+            func = node.func
+            name = func.id if isinstance(func, ast.Name) else getattr(func, "attr", "")
+            index = {"ToolError": 0, "_error": 2}.get(name)
+            if index is None:
                 continue
-            arg = node.args[index]
+            arg = _code_argument(node, index)
             if isinstance(arg, ast.Constant) and isinstance(arg.value, str):
                 found.add(arg.value)
-    return found
+            else:
+                dynamic.add((path.name, name, ast.unparse(arg) if arg is not None else ""))
+    return found, dynamic
+
+
+def emitted_codes() -> set[str]:
+    return scanned_codes()[0]
+
+
+def test_no_code_is_computed_except_the_reviewed_one() -> None:
+    assert scanned_codes()[1] == DYNAMIC_ALLOWED
+
+
+def test_the_scan_reads_keyword_attribute_and_variable_forms(tmp_path: Path) -> None:
+    lines = [
+        "ToolError(code='kw_code')",
+        "stage.ToolError('attr_code')",
+        "ToolError(name)",
+        "ToolError(**kw)",
+        "_error(c, t, code=v)",
+    ]
+    (tmp_path / "x.py").write_text(chr(10).join(lines), "utf-8")
+    found, dynamic = scanned_codes(tmp_path)
+    assert found == {"kw_code", "attr_code"}
+    assert dynamic == {("x.py", "ToolError", "name"), ("x.py", "ToolError", "kw"),
+                       ("x.py", "_error", "v")}  # fmt: skip
 
 
 def test_the_dispatcher_uses_the_one_vocabulary() -> None:
@@ -60,6 +108,7 @@ def test_every_code_the_agent_can_emit_is_one_an_event_may_carry() -> None:
     assert set(TOOL_ERROR_CODES) >= DISPATCHER_CODES
 
 
+@DATABASE
 @pytest.mark.parametrize("code", [*TOOL_ERROR_CODES, None])
 async def test_every_code_is_written_through_the_real_fenced_path(
     jenv: JobsEnv, code: str | None
@@ -76,6 +125,7 @@ async def test_every_code_is_written_through_the_real_fenced_path(
     assert [p for _, k, p, _ in jenv.events(job_id) if k == "tool_called"] == [payload]
 
 
+@DATABASE
 @pytest.mark.parametrize(
     ("script", "codes"),
     [
