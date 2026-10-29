@@ -74,6 +74,23 @@ describe('the new-class form', () => {
     expect(await screen.findByRole('heading', { name: 'Designing your class…' })).toBeInTheDocument()
   })
 
+  it('refuses a brief over 4096 bytes before sending, counting bytes and not characters', async () => {
+    const api = fakeApi({ ...READY, ...CREATED })
+    renderAt('/classes/new')
+    await fill()
+    // 2000 characters (the field's limit), but 4000 bytes of text plus the rest of the brief: over the limit.
+    fireEvent.change(screen.getByLabelText('Anything else'), { target: { value: 'å'.repeat(2000) } })
+    fireEvent.click(screen.getByRole('button', { name: 'Design the class' }))
+    expect(await screen.findByText(/too long for one class \(the limit is 4096 bytes/)).toBeInTheDocument()
+    expect(api.to('POST', '/api/jobs')).toHaveLength(0)
+    // The same number of characters in plain letters is 2000 bytes and goes through.
+    fireEvent.change(screen.getByLabelText('Anything else'), { target: { value: 'a'.repeat(2000) } })
+    fireEvent.click(screen.getByRole('button', { name: 'Design the class' }))
+    await waitFor(() => {
+      expect(api.to('POST', '/api/jobs')).toHaveLength(1)
+    })
+  })
+
   it('says classbeat adds the playlist to the MOWL music, and shows playlist names as text', async () => {
     fakeApi(READY)
     renderAt('/classes/new')
