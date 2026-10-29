@@ -26,7 +26,12 @@ no effect never resumes at ``save``, so the read-first check runs again):
 2. ``read`` (outside any operation): ``get_workout(program_id)``. Not there, or not served to
    this account: ``program_missing``. Public, not normalizable, or its normalized state not the
    saved row's ``state_hash`` (or that is NULL): ``program_changed``, unless ``overwrite``.
-   Nothing is written in either case. Its normalized hash is the write's ``before_hash``.
+   Nothing is written in either case. Its normalized hash is the write's ``before_hash``. One
+   exception keeps a crashed attempt's write from being reported as the user's edit: when this
+   job's own operation row (key ``<job_id>:update``) is ``pending``, ``uncertain`` or
+   ``succeeded``, the refusal is deferred to the decide guard, ``perform`` meets the row and
+   never calls (it reconciles, waits for the user or reuses the success), and the guard refuses
+   with the deferred category if the row became ``failed`` meanwhile.
 3. ``save``: ``perform`` of ``mowl_update_workout`` (``classbeat.saving.update_operation``), the
    call being ``workout.save(spec, creds, playlist_id, program_id=program_id)`` inside
    ``call_deadline_until`` of an instant taken before ``pending`` is written,
@@ -44,6 +49,7 @@ from uuid import UUID
 
 from mowl import api as mowl_api
 from pydantic import BaseModel, StrictBool, model_validator
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from classbeat import connections, mowl_state
@@ -183,27 +189,60 @@ async def prepare(run: JobRun, keyring: KeyRing, given: UpdateWorkoutInput) -> P
     return Plan(revision, playlist_id, target, opened, baseline)
 
 
-def _check_read(program: object, plan: Plan, overwrite: bool) -> str | None:
-    """The read-first rule on a read program; returns ``before_hash`` (hex, or None when the
-    program can't be normalized and ``overwrite`` lets it through)."""
+@dataclass(frozen=True)
+class Read:
+    """What the read found: ``before_hash`` (hex; None when the program can't be normalized)
+    and ``refusal`` (``program_changed`` or ``program_missing``) when the read-first rule refused
+    but this job's own earlier attempt left its operation row undecided or ``succeeded``. The
+    write then goes ahead only into ``perform``, which never calls for such a row, and the guard
+    refuses with ``refusal`` if the row became ``failed`` (or went) meanwhile."""
+
+    before_hash: str | None
+    refusal: str | None = None
+
+
+def _refusal(program: object, plan: Plan, overwrite: bool) -> tuple[str | None, str | None]:
+    """The read-first rule on a read program: ``(before_hash, refusal)``."""
     if mowl_state.program_id_of(program) != plan.target.program_id:
-        raise JobFailure("program_missing")  # an empty answer, or another program
+        return None, "program_missing"  # an empty answer, or another program
     try:
         normal = mowl_state.normalized_program(program)
     except ValueError:
         normal = None
     before = None if normal is None else mowl_state.state_hash(normal).hex()
     if overwrite:
-        return before
+        return before, None
     if normal is None or normal["public"] is not False:
-        raise JobFailure("program_changed")  # the library writes it private: changed in MOWL
+        return before, "program_changed"  # the library writes it private: changed in MOWL
     recorded = plan.target.state_hash
     if recorded is None or before is None or bytes.fromhex(before) != recorded:
-        raise JobFailure("program_changed")
-    return before
+        return before, "program_changed"
+    return before, None
 
 
-async def read_first(run: JobRun, plan: Plan, overwrite: bool) -> str | None:
+# This job's own operation row (its key is per job): an earlier attempt's write.
+_OWN_ROW = text(
+    "SELECT state FROM external_operations "
+    "WHERE owner_id = :owner_id AND kind = :kind AND idempotency_key = :key"
+)
+_OWN_ROW_LOCKED = text(
+    "SELECT state FROM external_operations "
+    "WHERE owner_id = :owner_id AND kind = :kind AND idempotency_key = :key FOR UPDATE"
+)
+# An own row in these states is never sent again by ``perform`` (it is reused, reconciled or
+# left to the user): only a ``failed`` row (proved no effect) or no row leads to a call.
+NO_CALL_STATES: Final = frozenset({"pending", "uncertain", "succeeded"})
+
+
+def _own_key(run: JobRun) -> dict[str, object]:
+    return {
+        "owner_id": run.lease.owner_id,
+        "kind": update_operation.KIND,
+        "key": update_operation.idempotency_key(run.lease.job_id),
+    }
+
+
+async def read_first(run: JobRun, plan: Plan, overwrite: bool) -> Read:
     """Stage ``read``: ``get_workout`` of the saved program, outside any operation."""
     await run.checkpoint()
     program_id = plan.target.program_id
@@ -215,14 +254,21 @@ async def read_first(run: JobRun, plan: Plan, overwrite: bool) -> str | None:
         )
     except ConnectionFailure as error:
         failure = error
-    if failure is not None:
-        if failure.category in MISSING_CATEGORIES:
-            raise JobFailure("program_missing")
+    if failure is not None and failure.category not in MISSING_CATEGORIES:
         raise failure  # an outage, a rate limit, a token MOWL refused: the usual retry classes
-    return _check_read(program, plan, overwrite)
+    before, refusal = (None, "program_missing") if failure else _refusal(program, plan, overwrite)
+    if refusal is None:
+        return Read(before)
+    # A crash or lost lease mid-call left this job's own row: the program may differ because of
+    # that very write. ``perform`` decides it without a call (ADR 0007 section 8).
+    async with run.fenced() as fs:
+        state = (await fs.db.execute(_OWN_ROW, _own_key(run))).scalar_one_or_none()
+    if state not in NO_CALL_STATES:
+        raise JobFailure(refusal)  # nothing written
+    return Read(before, refusal)
 
 
-async def save(run: JobRun, keyring: KeyRing, plan: Plan, before_hash: str | None) -> int:
+async def save(run: JobRun, keyring: KeyRing, plan: Plan, read: Read) -> int:
     """Stage ``save``: the update as an external operation; returns the ProgramID."""
     revision, opened, playlist_id = plan.revision, plan.opened, plan.playlist_id
     target = plan.target
@@ -237,11 +283,19 @@ async def save(run: JobRun, keyring: KeyRing, plan: Plan, before_hash: str | Non
         target_now = await approval.saved_target(
             db, run.ctx, revision.class_id, target.saved_workout_id
         )
-        return (
+        if not (
             playlist_now == playlist_id
             and target_now is not None
             and target_now.program_id == target.program_id
-        )
+        ):
+            return False
+        if read.refusal is not None:
+            # Locked here, before ``perform`` locks it again: Do it anyway can't turn it
+            # ``failed`` (which ``perform`` would take over and call) after this check.
+            state = (await db.execute(_OWN_ROW_LOCKED, _own_key(run))).scalar_one_or_none()
+            if state not in NO_CALL_STATES:
+                raise JobFailure(read.refusal)
+        return True
 
     async def call() -> CallResult:
         answer = await call_opened(
@@ -272,7 +326,7 @@ async def save(run: JobRun, keyring: KeyRing, plan: Plan, before_hash: str | Non
             revision.content_hash_hex,
             playlist_id,
             target.program_id,
-            before_hash,
+            read.before_hash,
             plan.baseline,
         ),
         bound_seconds=bound,
@@ -293,9 +347,9 @@ async def run(job_run: JobRun) -> Complete:
     await job_run.stage("prepare")
     plan = await prepare(job_run, runtime.keyring, given)
     await job_run.stage("read")
-    before_hash = await read_first(job_run, plan, given.overwrite)
+    read = await read_first(job_run, plan, given.overwrite)
     await job_run.stage("save")
-    program_id = await save(job_run, runtime.keyring, plan, before_hash)
+    program_id = await save(job_run, runtime.keyring, plan, read)
     await job_run.stage("verify")
     await verify_program(
         job_run,

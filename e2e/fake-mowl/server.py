@@ -22,11 +22,14 @@ first attach of an account is applied but answered with HTTP 500, so classbeat c
 It also keeps **programs** per account (token), for Save (SV1, `mowl.workout.save`): `PUT
 v1/programs`, `PUT v1/segments`, `DELETE v1/segments/<id>/intervals`, `PUT
 v1/segments/<id>/intervals/multiple`, `PUT v1/programs/<id>/segments`, and the reads `POST
-v1/programs` (My Workouts, newest first, paged) and `GET v1/programs/<id>`. **Failure injection per
-write request number** (counted from the last `save-arm`; 1 is the program, then three per
-segment, then the segment list): `refuse` (not applied; the connection is closed without an
-answer), `drop` (applied, then closed without an answer), `noid` (applied, answered without its
-id).
+v1/programs` (My Workouts, newest first, paged) and `GET v1/programs/<id>`; and for Update (SV2)
+`PUT v1/programs/<id>`, the re-save in place of the caller's own program (its header; new segment
+copies then replace its list). **Failure injection per write request number** (counted from the
+last `save-arm`; 1 is the program, then three per segment, then the segment list): `refuse` (not
+applied; the connection is closed without an answer), `drop` (applied, then closed without an
+answer), `noid` (applied, answered without its id), `copy` (an update's `PUT v1/programs/<id>`
+answered as MOWL making a copy: a new, empty program with the header, the original untouched).
+`save-edit?program=<id>` changes a program's name as the user would in the MOWL app.
 
 `/__e2e/...` is the test control, reached from the compose network only (the tests call it with
 `docker compose exec web`): `arm`, `release` and `state` take `?playlist=<spotify id>`;
@@ -71,7 +74,7 @@ PROGRAMS: dict[int, dict[str, object]] = {}
 SEGMENTS: dict[int, dict[str, object]] = {}
 SAVE = {"writes": 0, "next_program": 800_000, "next_segment": 950_000}
 FAIL: dict[int, str] = {}
-FAIL_MODES = ("refuse", "drop", "noid")
+FAIL_MODES = ("refuse", "drop", "noid", "copy")
 POSITION_NAMES = {1: "Seated", 2: "Standing"}
 CYCLE_NAMES = {1: "SB", 4: "ACC"}
 TOKENS: set[str] = set()
@@ -148,14 +151,28 @@ def is_program_write(method: str, path: str) -> bool:
         return INTERVALS_PATH.match(path) is not None
     return method == "PUT" and (
         path in ("/v1/programs", "/v1/segments")
+        or PROGRAM_PATH.match(path) is not None
         or PROGRAM_SEGMENTS_PATH.match(path) is not None
         or INTERVALS_MULTIPLE_PATH.match(path) is not None
     )
 
 
-def apply_write(token: str, method: str, path: str, body: object) -> object:
+def apply_write(token: str, method: str, path: str, body: object, copy: bool = False) -> object:
     """One write of `mowl.workout.save`, with the LOCK held; None when the target is unknown."""
     data = body if isinstance(body, dict) else {}
+    update = PROGRAM_PATH.match(path)
+    if update is not None:
+        header = {k: v for k, v in data.items() if k != "ProgramID"}
+        if copy:  # MOWL made a new program instead of updating this one
+            SAVE["next_program"] += 1
+            made = SAVE["next_program"]
+            PROGRAMS[made] = {"token": token, "body": header, "segments": []}
+            return {"ProgramID": made, "Name": header.get("Name")}
+        program = PROGRAMS.get(int(update[1]))
+        if program is None or program["token"] != token:
+            return None
+        program["body"].update(header)  # type: ignore[union-attr]
+        return {"ProgramID": int(update[1]), "Name": header.get("Name")}
     if path == "/v1/programs":
         SAVE["next_program"] += 1
         program_id = SAVE["next_program"]
@@ -333,7 +350,8 @@ class Handler(BaseHTTPRequestHandler):
         with LOCK:
             SAVE["writes"] += 1
             mode = FAIL.get(SAVE["writes"], "ok")
-            data = None if mode == "refuse" else apply_write(token, method, path, body)
+            copy = mode == "copy"
+            data = None if mode == "refuse" else apply_write(token, method, path, body, copy)
         if mode in ("refuse", "drop"):
             self.close_connection = True  # no answer: classbeat can't tell what happened
             with contextlib.suppress(OSError):
@@ -416,6 +434,9 @@ class Handler(BaseHTTPRequestHandler):
         if action in ("save-arm", "save-state"):
             self.save_control(action, (query.get("fail") or [""])[0])
             return
+        if action == "save-edit":
+            self.save_edit((query.get("program") or [""])[0])
+            return
         playlist = BY_SPOTIFY.get((query.get("playlist") or [""])[0])
         if playlist is None:
             self.reply(404, {"Error": "unknown playlist"})
@@ -434,13 +455,21 @@ class Handler(BaseHTTPRequestHandler):
         state["reads"] = dict(playlist.reads)
         self.reply(200, state)
 
+    def save_edit(self, program: str) -> None:
+        """The user renames a program in the MOWL app (Update then reports `program_changed`)."""
+        with LOCK:
+            found = PROGRAMS.get(int(program)) if program.isdigit() else None
+            if found is not None:
+                found["body"]["Name"] = "Renamed in the MOWL app"  # type: ignore[index]
+        self.reply(200 if found is not None else 404, {"edited": found is not None})
+
     def save_control(self, action: str, fail: str) -> None:
         if action == "save-arm":
             wanted: dict[int, str] = {}
             for item in filter(None, fail.split(",")):
                 number, _, mode = item.partition(":")
                 if not number.isdigit() or mode not in FAIL_MODES:
-                    self.reply(400, {"Error": "fail is <n>:<refuse|drop|noid>,..."})
+                    self.reply(400, {"Error": "fail is <n>:<refuse|drop|noid|copy>,..."})
                     return
                 wanted[int(number)] = mode
             with LOCK:
