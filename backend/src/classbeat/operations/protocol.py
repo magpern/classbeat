@@ -15,12 +15,18 @@
    :old`` that also sets ``job_id`` to this job, then step 4. ``uncertain``: its ``job_id``
    becomes this job (the row follows the job that fails on it, #125), then step 4.
    ``failed``: taken over with ``UPDATE ... WHERE state = 'failed'``. Writing ``pending``
-   also extends the lease past the call's timeout.
+   also extends the lease past the call's timeout (or its total bound, below). **Every
+   transition into ``pending``** (the insert and the take-over) sets ``pending_at = now()``,
+   ``call_ended_at = NULL`` and this attempt's ``request_context``, so nothing of an earlier
+   attempt survives (ADR 0007 section 1). A row carries its class (``class_id``) exactly when
+   its kind is a class write; a request for another class than the row's is ``internal``.
 2. **The call**, outside any transaction (``JobRun.external_call``: no call starts after a
    cancel or SIGTERM, and once started a cancel does not interrupt it).
 3. **Record** (fenced, conditional on ``state = 'pending' AND job_id AND lease_version``):
    ``succeeded``, ``failed`` (``ConnectionFailure.not_applied``: refused, or never left) or
-   ``uncertain``. A lost fence leaves the row ``pending`` under the old token. A row that is
+   ``uncertain``, and ``call_ended_at = now()`` with any of them ("the call returned" is
+   ``call_ended_at >= pending_at``). A lost fence leaves the row ``pending`` under the old
+   token, without ``call_ended_at``. A row that is
    gone (a MOWL disconnect deleted it during the call) writes nothing and ends the job
    ``not_connected``.
 4. **Uncertain**: one reconciliation through the kind's ``Reconciler``. ``succeeded`` is
@@ -28,6 +34,10 @@
    takes the ``failed`` row over and calls again; otherwise the row stays ``uncertain`` and the
    job fails ``uncertain_write``. An uncertain write is never sent again by a job: the user
    decides (**Check again** or **Do it anyway**, ``classbeat.operations.user``).
+   **A stale call may still be running** (ADR 0007 section 8): for a multi-request write
+   (``bound_seconds`` set) whose call has not returned, nothing is reconciled before
+   ``actionable_at = pending_at + bound_seconds + 30 s``; the job fails ``uncertain_write``
+   without a read, and the user's Check again after that time does the reconciliation.
 
 Every write the worker makes here goes through ``JobRun.fenced`` and records an
 ``external_operation {kind, state}`` event. The transactions are never nested (a second fenced
@@ -44,7 +54,6 @@ from typing import Any, Final
 from uuid import UUID
 
 from sqlalchemy import text
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from classbeat.connections import ConnectionFailure
 from classbeat.crypto.keks import KeyRing
@@ -59,6 +68,7 @@ from classbeat.operations.kinds import (
     ReconcileInput,
     Reconciliation,
 )
+from classbeat.operations.requests import NOT_ACTIONABLE_SQL, OperationRequest
 
 logger = logging.getLogger(__name__)
 
@@ -67,8 +77,10 @@ DECIDE_ROUNDS: Final = 3  # re-loads after a lost insert or take-over race; more
 # the next one takes the ``failed`` row over (ADR 0005 section 4's closest retryable category).
 NO_EFFECT_CATEGORY: Final = "upstream_unavailable"
 
+
 _COLUMNS = (
-    "id, kind, idempotency_key, state, request_hash, external_id, result, job_id, lease_version"
+    "id, kind, idempotency_key, state, request_hash, external_id, result, job_id, lease_version, "
+    f"class_id, request_context, pending_at, call_ended_at, {NOT_ACTIONABLE_SQL} AS waiting"
 )
 _LOCK = text(
     f"SELECT {_COLUMNS} FROM external_operations "  # noqa: S608 - constant column list
@@ -80,17 +92,23 @@ _BY_ID = text(
 )
 _INSERT = text(
     "INSERT INTO external_operations (id, owner_id, job_id, kind, idempotency_key, request_hash, "
-    "state, lease_version) VALUES (:id, :owner_id, :job_id, :kind, :key, :hash, 'pending', :v) "
+    "state, lease_version, class_id, request_context, pending_at, call_ended_at) "
+    "VALUES (:id, :owner_id, :job_id, :kind, :key, :hash, 'pending', :v, :class_id, "
+    "CAST(:context AS jsonb), now(), NULL) "
     "ON CONFLICT (owner_id, kind, idempotency_key) DO NOTHING RETURNING id"
 )
 _HOLDER_RUNNING = text(
     "SELECT 1 FROM jobs WHERE id = :holder AND owner_id = :owner_id AND state = 'running' "
     "AND lease_version = :holder_v"
 )
+# A new attempt: nothing of the earlier one survives (its context, its call timestamps).
 _TAKE_FAILED = text(
     "UPDATE external_operations SET state = 'pending', job_id = :job_id, lease_version = :v, "
+    "request_context = CAST(:context AS jsonb), pending_at = now(), call_ended_at = NULL, "
+    "external_id = NULL, result = '{}'::jsonb, "
     "error_category = NULL, resolved_by = NULL, resolved_at = NULL, updated_at = now() "
-    "WHERE id = :id AND owner_id = :owner_id AND state = 'failed' RETURNING id"
+    "WHERE id = :id AND owner_id = :owner_id AND state = 'failed' "
+    "AND class_id IS NOT DISTINCT FROM :class_id RETURNING id"
 )
 # An ``uncertain`` row follows the job that meets it (#125): its ``job_id`` becomes that job, so
 # the job that fails ``uncertain_write`` lists it for the user's decision. ``job_id`` of an
@@ -108,52 +126,23 @@ _ADOPT_UNCERTAIN = text(
 )
 _RECORD = text(
     "UPDATE external_operations SET state = :state, external_id = :external_id, "
-    "result = CAST(:result AS jsonb), error_category = :category, "
+    "result = CAST(:result AS jsonb), error_category = :category, call_ended_at = now(), "
     "resolved_by = CASE WHEN :state = 'uncertain' THEN NULL ELSE 'worker' END, "
     "resolved_at = CASE WHEN :state = 'uncertain' THEN NULL ELSE now() END, updated_at = now() "
     "WHERE id = :id AND owner_id = :owner_id AND state = 'pending' AND job_id = :job_id "
     "AND lease_version = :v RETURNING id"
 )
-# Step 4's outcome and the user's Check again / Do it anyway: only an ``uncertain`` row moves.
+# Step 4's outcome and the user's Check again / Do it anyway: only an ``uncertain`` row moves,
+# only the attempt that was read (``pending_at``: a row that went through ``failed`` and a new
+# ``pending`` meanwhile is another attempt), and never while its stale call may still be running.
 RESOLVE = text(
-    "UPDATE external_operations SET state = :state, "
+    "UPDATE external_operations SET state = :state, "  # noqa: S608 - constant expressions
     "external_id = coalesce(:external_id, external_id), resolved_by = :by, resolved_at = now(), "
     "updated_at = now() "
-    "WHERE id = :id AND owner_id = :owner_id AND state = 'uncertain' RETURNING id"
+    "WHERE id = :id AND owner_id = :owner_id AND state = 'uncertain' "
+    "AND pending_at IS NOT DISTINCT FROM :pending_at "
+    f"AND NOT {NOT_ACTIONABLE_SQL} RETURNING id"
 )
-
-
-# Runs first in step 1's transaction (before the operation row is locked): False ends the job
-# ``not_connected`` before any row is written. The attach share-locks the MOWL connection it
-# opened (``classbeat.connections.hold``), so a disconnect or reconnect in between cannot let a
-# call go out with the old account's credentials.
-Guard = Callable[[AsyncSession], Awaitable[bool]]
-
-
-@dataclass(frozen=True, slots=True)
-class OperationRequest:
-    """One write: its kind, its deterministic key and request hash (built by the kind's module),
-    the call's timeout (the lease is extended past it) and the connection ``guard``."""
-
-    kind: str
-    idempotency_key: str
-    request_hash: bytes
-    timeout_seconds: float
-    guard: Guard | None = field(default=None, compare=False)
-    # The call is exactly one HTTP request: a refusal of that request before it left the
-    # process proves no effect. For any other call an allowlist refusal is ``uncertain``.
-    # Only for a ``urllib`` call through ``classbeat.egress``'s opener: its redirect handler
-    # sets ``OutboundBlocked.after_request``, and an httpx-based call has no such guarantee, so
-    # it must leave this False (#117 item 5; M3b).
-    single_request: bool = False
-
-    def __post_init__(self) -> None:
-        if not 1 <= len(self.idempotency_key) <= 120:  # the table's check
-            raise ValueError("an operation key is 1 to 120 characters")
-        if len(self.request_hash) != 32:
-            raise ValueError("a request hash is SHA-256")
-        if self.timeout_seconds <= 0:
-            raise ValueError("a provider call needs a positive timeout")
 
 
 @dataclass(frozen=True, slots=True)
@@ -209,6 +198,10 @@ def operation_of(row: Any) -> Operation:
         external_id=row.external_id,
         job_id=row.job_id,
         result=dict(row.result or {}),
+        class_id=row.class_id,
+        context=dict(row.request_context or {}),
+        pending_at=row.pending_at,
+        call_ended_at=row.call_ended_at,
     )
 
 
@@ -219,7 +212,7 @@ async def _event(fs: FencedSession, kind: str, state: str) -> None:
 async def succeeded(db: Any, kind: OperationKind, owner_id: UUID, row: Operation) -> None:
     """What the kind writes with a ``succeeded`` row (the attach's link), same transaction."""
     if kind.on_succeeded is not None and row.external_id is not None:
-        await kind.on_succeeded(db, owner_id, row.idempotency_key, row.external_id)
+        await kind.on_succeeded(db, owner_id, row)
 
 
 async def _decide(
@@ -230,6 +223,7 @@ async def _decide(
         if request.guard is not None and not await request.guard(fs.db):
             raise JobFailure("not_connected")
         keyed = {"owner_id": lease.owner_id, "kind": request.kind, "key": request.idempotency_key}
+        attempt = {"context": json.dumps(request.stored_context()), "class_id": request.class_id}
         for _ in range(DECIDE_ROUNDS):
             row = (await fs.db.execute(_LOCK, keyed)).first()
             if row is None:
@@ -239,6 +233,7 @@ async def _decide(
                         _INSERT,
                         {
                             **keyed,
+                            **attempt,
                             "id": operation_id,
                             "job_id": lease.job_id,
                             "hash": request.request_hash,
@@ -248,10 +243,10 @@ async def _decide(
                 ).first()
                 if inserted is None:
                     continue  # another job inserted it first: re-load and decide again
-                await fs.extend_lease_for_call(request.timeout_seconds)
+                await fs.extend_lease_for_call(request.lease_seconds)
                 await _event(fs, request.kind, "pending")
                 return _Call(operation_id)
-            if bytes(row.request_hash) != request.request_hash:
+            if bytes(row.request_hash) != request.request_hash or row.class_id != request.class_id:
                 logger.warning("external operation hash mismatch", extra={"kind": request.kind})
                 raise JobFailure("internal")
             ids = {"id": row.id, "owner_id": lease.owner_id}
@@ -261,11 +256,12 @@ async def _decide(
                 return Done(row.id, str(row.external_id), reused=True)
             if row.state == "failed":
                 taken = await fs.db.execute(
-                    _TAKE_FAILED, {**ids, "job_id": lease.job_id, "v": lease.lease_version}
+                    _TAKE_FAILED,
+                    {**ids, **attempt, "job_id": lease.job_id, "v": lease.lease_version},
                 )
                 if taken.first() is None:
                     continue
-                await fs.extend_lease_for_call(request.timeout_seconds)
+                await fs.extend_lease_for_call(request.lease_seconds)
                 await _event(fs, request.kind, "pending")
                 return _Call(row.id)
             if row.state == "pending":
@@ -397,7 +393,8 @@ async def reconcile(kind: OperationKind, check: ReconcileInput) -> Reconciliatio
 async def _reconcile_once(
     run: JobRun, kind: OperationKind, operation_id: UUID, keyring: KeyRing | None
 ) -> Done:
-    """Step 4, once per job that meets the uncertain row."""
+    """Step 4, once per job that meets the uncertain row; not while a stale call may still be
+    running (ADR 0007 section 8): the row stays ``uncertain`` for the user and nothing is read."""
     lease = run.lease
     await run.checkpoint()  # a read-only call is next
     async with run.fenced() as fs:
@@ -406,14 +403,23 @@ async def _reconcile_once(
         ).first()
     if row is None:
         raise JobFailure("not_connected")
-    found = await reconcile(kind, ReconcileInput(run.factory, keyring, run.ctx, operation_of(row)))
+    if row.waiting:
+        raise JobFailure("uncertain_write")
+    read = operation_of(row)
+    found = await reconcile(kind, ReconcileInput(run.factory, keyring, run.ctx, read))
     if found.outcome == "inconclusive":
         raise JobFailure("uncertain_write")
     ids = {"id": operation_id, "owner_id": lease.owner_id}
     async with run.fenced() as fs:
         moved = await fs.db.execute(
             RESOLVE,
-            {**ids, "state": found.outcome, "external_id": found.external_id, "by": "worker"},
+            {
+                **ids,
+                "state": found.outcome,
+                "external_id": found.external_id,
+                "by": "worker",
+                "pending_at": read.pending_at,
+            },
         )
         resolved_here = moved.first() is not None
         now = (await fs.db.execute(_BY_ID, ids)).first()
@@ -441,7 +447,7 @@ async def perform(
     """One external write for ``run`` (the module docstring). Raises ``JobFailure`` (its
     category says why), ``RunStopped`` at the checkpoints and ``LeaseLost`` from the fence."""
     kind = kinds.require(request.kind)
-    async with run.external_call(request.timeout_seconds):
+    async with run.external_call(request.lease_seconds):
         decision = await _decide(run, request, kind)
         if isinstance(decision, Done):
             return decision

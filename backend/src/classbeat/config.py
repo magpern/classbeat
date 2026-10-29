@@ -196,6 +196,11 @@ class Settings(BaseSettings):
     revisions_per_class: int = Field(default=25, ge=1, le=200)
     chat_max_requests: int = Field(default=50, ge=1, le=200)
     chat_context_requests: int = Field(default=10, ge=1, le=30)
+    # ADR 0007 section 8: how long a new MOWL workout may take to appear in My Workouts. Unset
+    # (the default), an uncertain save that left no new program stays uncertain for the user;
+    # set (by the owner, after measuring it at live activation), such a save whose call returned
+    # at least this long ago is ``failed``. A day at most.
+    mowl_listing_lag_seconds: float | None = Field(default=None, gt=0, le=86400)
     # From the file ``anthropic_api_key`` (never the environment), mounted on the worker only;
     # the web app refuses to start when it can read it. An empty file counts as no key
     # (``scripts/worktree.sh init`` creates an empty one; it is never a real key).

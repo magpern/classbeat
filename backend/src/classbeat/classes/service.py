@@ -91,7 +91,7 @@ _SET_CURRENT = text(
     "WHERE id = :class_id AND owner_id = :owner_id"
 )
 _WRITES = text(
-    f"SELECT state, (state = 'uncertain' AND now() < {seams.ACTIONABLE_AT_SQL}) AS inside_bound "  # noqa: S608 - constants only
+    f"SELECT state, (state = 'uncertain' AND {seams.NOT_ACTIONABLE_SQL}) AS inside_bound "  # noqa: S608 - constants only
     "FROM external_operations WHERE owner_id = :owner_id AND class_id = :class_id "
     "AND kind IN ('mowl_save_workout', 'mowl_update_workout') "
     "AND state IN ('pending', 'uncertain')"

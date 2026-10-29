@@ -32,6 +32,7 @@ def test_the_allowlist_is_exactly_the_reviewed_one() -> None:
         "classbeat.auth",
         "classbeat.db",
         "classbeat.classes",
+        "classbeat.usage",
     )
     assert ALLOWED_MODULES == (
         "classbeat.jobs.fence",
@@ -39,6 +40,8 @@ def test_the_allowlist_is_exactly_the_reviewed_one() -> None:
         "classbeat.jobs.service",
         "classbeat.jobs.progress",
         "classbeat.operations.user",
+        "classbeat.operations.orphans",
+        "classbeat.saving.reads",
         "classbeat.keys_cli",
     )
 
@@ -96,6 +99,11 @@ def test_the_users_operation_actions_are_reached_only_from_their_routes() -> Non
         "classbeat.operations.attach",
         "classbeat.operations.routes",
         "classbeat.operations.user.extra",
+        "classbeat.saving",
+        "classbeat.saving.kind",
+        "classbeat.saving.operation",
+        "classbeat.saving.approval",
+        "classbeat.saving.reads.extra",
     ],
 )
 def test_worker_agent_kind_and_other_code_is_not_allowlisted(module: str) -> None:
@@ -109,6 +117,7 @@ def test_worker_agent_kind_and_other_code_is_not_allowlisted(module: str) -> Non
         "classbeat.jobs.credits",
         "classbeat.keys_cli",
         "classbeat.operations.user",
+        "classbeat.saving.reads",
         "classbeat.connections.repository",
         "classbeat.auth.deps",
     ],
@@ -154,3 +163,9 @@ def test_refused_sources(source: str) -> None:
 
 def test_an_allowlisted_module_may_use_it() -> None:
     assert scan_source(REFUSED["import"], "classbeat.jobs.fence") == []
+
+
+def test_the_save_reconcilers_read_is_reached_only_from_the_reconciler() -> None:
+    """``classbeat.saving.reads`` opens a read-only user session (SV1): only the save
+    operation's reconciler imports it."""
+    assert importers("classbeat.saving.reads") == {"classbeat.saving.operation"}

@@ -281,7 +281,14 @@ must stay clean. With `anthropic` the worker refuses to start (and the provider 
 live use. The worker's outbound requests go only to `https://api.mowl.com` and
 `https://api.anthropic.com` (`classbeat.egress`, the only module allowed to build an HTTP client
 or `urllib` opener; guarded by `tests/test_egress_guard.py`); its TLS contexts never write a key
-log (`egress.tls_client_context`).
+log (`egress.tls_client_context`). Every worker urllib request has a **total** deadline (its timeout,
+60 s without one, never past the thread's `egress.call_deadline`): a watchdog cuts a response that
+trickles in, and a request due after the deadline is never sent (ADR 0007 section 6).
+Save (`save_workout`, `classbeat.saving`, ADR 0007 sections 5, 6 and 8): no credit, no model; the
+write runs inside `call_deadline_until` of an instant taken before its `pending` row, plus `bound_seconds`. `CLASSBEAT_MOWL_LISTING_LAG_SECONDS` (unset by
+default, at most 86400) lets the reconciler mark an uncertain save `failed` when a covered listing
+shows no new program and the call returned at least that long ago; leave it unset until the owner
+has measured MOWL's listing delay at live activation.
 The agent loop (`classbeat.agent`, ADR 0006 sections 2, 5 and 8): `CLASSBEAT_AGENT_MODEL` (default
 `claude-opus-5-5`), `_EFFORT` (`medium`), `_MAX_TOKENS` (32000), the per-stage limits `_MAX_TURNS` (12),
 `_MAX_TOOL_CALLS` (40), `_MAX_CORRECTIONS` (3), `_STAGE_SECONDS` (300), the per-job ceiling
@@ -308,8 +315,11 @@ requeues per phase without an attempt) and `CLASSBEAT_JOBS_PER_USER` (2 queued o
 the jobs API answers 429 above it). Worker and agent code write job data only through
 `classbeat.jobs.fenced_session`; only `classbeat.jobs.fence`, `classbeat.jobs.credits`,
 `classbeat.jobs.service` (the jobs API), `classbeat.jobs.progress` (the SSE stream's reads),
-`classbeat.operations.user` (the user's Check again / Do it anyway), `classbeat.keys_cli` and the
-`classbeat.connections`, `classbeat.auth` and `classbeat.db` packages may open a `user_session`
+`classbeat.operations.user` (the user's Check again / Do it anyway), `classbeat.operations.orphans`
+(marking orphaned class writes `uncertain` before a view or action), `classbeat.saving.reads` (the
+save reconciler's read-only read of the saved revision, SV1), `classbeat.keys_cli` and the
+`classbeat.connections`, `classbeat.auth`, `classbeat.classes` (the class API), `classbeat.usage`
+(the usage reads, US1) and `classbeat.db` packages may open a `user_session`
 (`tests/test_session_guard.py`); job kinds live outside `classbeat.jobs`.
 Revising by chat (ADR 0007 section 4): `CLASSBEAT_REVISIONS_PER_CLASS` (25 chat revisions per class, the first
 design not counted), `CLASSBEAT_CHAT_MAX_REQUESTS` (50 user requests per class) and
@@ -399,7 +409,9 @@ compose network and issues ID tokens for Google and Microsoft; Playwright plays 
 to the provider. The fake MOWL (`e2e/fake-mowl/server.py`) answers as `api.mowl.com` (the
 `mowl-workouts` base URL) for the MOWL sign-in, the playlist list, the attach and the reads of a design run
 (invented music; test playlists that hold a read or lose an attach answer, steered by `/__e2e/` calls the
-tests make from the web container); web and worker trust one bundle of both fakes' throwaway CAs, and the
+tests make from the web container), and keeps programs for Save (create, segments, intervals, My
+Workouts and one program; `/__e2e/save-arm?fail=<n>:<refuse|drop|noid>` injects a failure at a write
+request number, `/__e2e/save-state` reports the counts); web and worker trust one bundle of both fakes' throwaway CAs, and the
 worker replays `backend/tests/agent_scripts/good_first_draft.json` with the `fake` model provider
 (`design-draft.spec.ts`: draft, cancel while running, uncertain attach). The Playwright context blocks
 every origin but the stack's.

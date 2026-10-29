@@ -19,14 +19,28 @@ Each test playlist has a behaviour (see PLAYLISTS): `ok`; `hold` (its first trac
 the test releases it, so a run can be cancelled while it is certainly in flight); `uncertain` (the
 first attach of an account is applied but answered with HTTP 500, so classbeat cannot tell).
 
+It also keeps **programs** per account (token), for Save (SV1, `mowl.workout.save`): `PUT
+v1/programs`, `PUT v1/segments`, `DELETE v1/segments/<id>/intervals`, `PUT
+v1/segments/<id>/intervals/multiple`, `PUT v1/programs/<id>/segments`, and the reads `POST
+v1/programs` (My Workouts, newest first, paged) and `GET v1/programs/<id>`. **Failure injection per
+write request number** (counted from the last `save-arm`; 1 is the program, then three per
+segment, then the segment list): `refuse` (not applied; the connection is closed without an
+answer), `drop` (applied, then closed without an answer), `noid` (applied, answered without its
+id).
+
 `/__e2e/...` is the test control, reached from the compose network only (the tests call it with
-`docker compose exec web`): `arm`, `release` and `state` take `?playlist=<spotify id>`.
+`docker compose exec web`): `arm`, `release` and `state` take `?playlist=<spotify id>`;
+`save-arm?fail=<n>:<mode>,...` (zero the write counter and set the injections; no `fail` clears
+them) and `save-state` (the counter, the injections, the number of programs per account, no
+tokens) are for the programs.
 """
 
+import contextlib
 import datetime
 import json
 import os
 import re
+import socket
 import ssl
 import tempfile
 import threading
@@ -52,6 +66,14 @@ BUNDLE = os.environ.get("FAKE_MOWL_BUNDLE", "/ca/bundle.pem")
 CONTROL = "/__e2e/"
 
 TICKETS: set[str] = set()
+# Programs and segments by id, each with the token of the account that wrote it.
+PROGRAMS: dict[int, dict[str, object]] = {}
+SEGMENTS: dict[int, dict[str, object]] = {}
+SAVE = {"writes": 0, "next_program": 800_000, "next_segment": 950_000}
+FAIL: dict[int, str] = {}
+FAIL_MODES = ("refuse", "drop", "noid")
+POSITION_NAMES = {1: "Seated", 2: "Standing"}
+CYCLE_NAMES = {1: "SB", 4: "ACC"}
 TOKENS: set[str] = set()
 LOCK = threading.Lock()
 HOLD_SECONDS = 25  # a held read answers after this at the latest (urllib's read timeout is 30 s)
@@ -115,6 +137,83 @@ SECTIONS = [  # a drop and a breakdown in every song
 ]
 SECTION_PATH = re.compile(r"^/v1/Spotify/Tracks/([0-9A-Za-z]{22})/AudioAnalysis$")
 PLAYLIST_PATH = re.compile(r"^/v1/Playlists/(\d+)/(tracks|sessiondesigner/availability)$")
+PROGRAM_PATH = re.compile(r"^/v1/programs/(\d+)$")
+PROGRAM_SEGMENTS_PATH = re.compile(r"^/v1/programs/(\d+)/segments$")
+INTERVALS_PATH = re.compile(r"^/v1/segments/(\d+)/intervals$")
+INTERVALS_MULTIPLE_PATH = re.compile(r"^/v1/segments/(\d+)/intervals/multiple$")
+
+
+def is_program_write(method: str, path: str) -> bool:
+    if method == "DELETE":
+        return INTERVALS_PATH.match(path) is not None
+    return method == "PUT" and (
+        path in ("/v1/programs", "/v1/segments")
+        or PROGRAM_SEGMENTS_PATH.match(path) is not None
+        or INTERVALS_MULTIPLE_PATH.match(path) is not None
+    )
+
+
+def apply_write(token: str, method: str, path: str, body: object) -> object:
+    """One write of `mowl.workout.save`, with the LOCK held; None when the target is unknown."""
+    data = body if isinstance(body, dict) else {}
+    if path == "/v1/programs":
+        SAVE["next_program"] += 1
+        program_id = SAVE["next_program"]
+        PROGRAMS[program_id] = {"token": token, "body": dict(data), "segments": []}
+        return {"ProgramID": program_id, "Name": data.get("Name")}
+    if path == "/v1/segments":
+        SAVE["next_segment"] += 1
+        segment_id = SAVE["next_segment"]
+        SEGMENTS[segment_id] = {"token": token, "body": dict(data), "intervals": []}
+        return {"SegmentID": segment_id}
+    for pattern, key, target in (
+        (PROGRAM_SEGMENTS_PATH, "segments", PROGRAMS),
+        (INTERVALS_MULTIPLE_PATH, "intervals", SEGMENTS),
+        (INTERVALS_PATH, "intervals", SEGMENTS),
+    ):
+        found = pattern.match(path)
+        if found is None:
+            continue
+        item = target.get(int(found[1]))
+        if item is None or item["token"] != token:
+            return None
+        if pattern is PROGRAM_SEGMENTS_PATH:
+            item[key] = [int(i) for i in data.get("SegmentIDs", [])]
+            return {"ProgramID": int(found[1])}
+        item[key] = list(data.get("Intervals", [])) if method == "PUT" else []
+        return {"Count": len(item[key])}
+    return None
+
+
+def read_program(program_id: int, program: dict[str, object]) -> dict[str, object]:
+    """`GET v1/programs/<id>` in the shape `mowl.workout.summarize` reads."""
+    body = program["body"]
+    assert isinstance(body, dict)
+    segments, total = [], 0
+    for segment_id in program["segments"]:  # type: ignore[union-attr]
+        segment = SEGMENTS[segment_id]
+        intervals = []
+        for interval in segment["intervals"]:  # type: ignore[union-attr]
+            shown = dict(interval)
+            shown["PositionTypeName"] = POSITION_NAMES.get(shown.get("PositionTypeID"), "Seated")
+            shown["CycleName"] = CYCLE_NAMES.get(shown.get("CycleID"), "SB")
+            intervals.append(shown)
+        seg_body = segment["body"]
+        assert isinstance(seg_body, dict)
+        total += int(seg_body.get("TotalDuration") or 0)
+        segments.append({"SegmentID": segment_id, **seg_body, "Intervals": intervals})
+    return {
+        "ProgramID": program_id,
+        "Name": body.get("Name"),
+        "Description": body.get("Description"),
+        "ShortDescription": body.get("ShortDescription"),
+        "IsPublic": bool(body.get("IsPublic")),
+        "PlaylistID": body.get("PlaylistID"),
+        "Playlist": {"PlaylistType": "Spotify", "PlaylistName": "E2E"},
+        "TotalDuration": total,
+        "TSS": body.get("TSS"),
+        "Segments": segments,
+    }
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -142,6 +241,9 @@ class Handler(BaseHTTPRequestHandler):
         if path.startswith(CONTROL):
             self.control(path.removeprefix(CONTROL), parse_qs(urlsplit(self.path).query))
             return
+        if path == "/v1/programs":
+            self.list_programs()
+            return
         if path == "/v1/Spotify/Playlists":
             # The new-class form's playlist list (U1): public test data, any caller.
             listed = [
@@ -161,7 +263,13 @@ class Handler(BaseHTTPRequestHandler):
         TICKETS.add(ticket)
         self.ok(ticket)
 
+    def do_DELETE(self) -> None:  # noqa: N802
+        self.program_write("DELETE", urlsplit(self.path).path)
+
     def do_PUT(self) -> None:  # noqa: N802
+        if is_program_write("PUT", urlsplit(self.path).path):
+            self.program_write("PUT", urlsplit(self.path).path)
+            return
         if urlsplit(self.path).path != "/v1/Spotify/Playlist":
             self.reply(404, {"Error": "not found"})
             return
@@ -207,11 +315,76 @@ class Handler(BaseHTTPRequestHandler):
             return
         self.read(path)
 
+    def program_write(self, method: str, path: str) -> None:
+        """One write of a save, with the failure injected for its number, if any."""
+        if not is_program_write(method, path):
+            self.reply(404, {"Error": "not found"})
+            return
+        token = self.token()
+        raw = self.body()
+        if token is None:
+            self.reply(401, {"Error": "unauthorized"})
+            return
+        try:
+            body = json.loads(raw) if raw else {}
+        except ValueError:
+            self.reply(400, {"Error": "bad request"})
+            return
+        with LOCK:
+            SAVE["writes"] += 1
+            mode = FAIL.get(SAVE["writes"], "ok")
+            data = None if mode == "refuse" else apply_write(token, method, path, body)
+        if mode in ("refuse", "drop"):
+            self.close_connection = True  # no answer: classbeat can't tell what happened
+            with contextlib.suppress(OSError):
+                self.connection.shutdown(socket.SHUT_RDWR)
+            return
+        if data is None:
+            self.reply(200, {"Data": None, "Error": "not found"})
+            return
+        if mode == "noid" and isinstance(data, dict):
+            data = {k: v for k, v in data.items() if not k.endswith("ID")}
+        self.ok(data)
+
+    def list_programs(self) -> None:
+        """My Workouts of the caller, newest first, one page."""
+        token = self.token()
+        form = {k: v[0] for k, v in parse_qs(self.body().decode()).items()}
+        if token is None:
+            self.reply(401, {"Error": "unauthorized"})
+            return
+        try:
+            page, per_page = int(form.get("PageNumber", "0")), int(form.get("itemsPerPage", "50"))
+        except ValueError:
+            self.reply(400, {"Error": "bad request"})
+            return
+        with LOCK:
+            mine = sorted((i for i, p in PROGRAMS.items() if p["token"] == token), reverse=True)
+            shown = mine[page * per_page : (page + 1) * per_page]
+            listed = [
+                {"ProgramID": i, "Name": PROGRAMS[i]["body"].get("Name"), "IsPublic": False}  # type: ignore[union-attr]
+                for i in shown
+            ]
+        self.ok(listed)
+
     def read(self, path: str) -> None:
-        """The reads of `library.spotify_analysis`; only for a playlist the caller attached."""
+        """The reads of `library.spotify_analysis`; only for a playlist the caller attached.
+        And `GET v1/programs/<id>`, only for the caller's own program."""
         token = self.token()
         if token is None:
             self.reply(401, {"Error": "unauthorized"})
+            return
+        program = PROGRAM_PATH.match(path)
+        if program is not None:
+            with LOCK:
+                found = PROGRAMS.get(int(program[1]))
+                shown = None if found is None or found["token"] != token else read_program(
+                    int(program[1]), found
+                )
+            if shown is None:
+                self.reply(200, {"Data": None, "Error": "No program found"})
+            else:
+                self.ok(shown)
             return
         if SECTION_PATH.match(path):
             for p in PLAYLISTS:
@@ -239,7 +412,10 @@ class Handler(BaseHTTPRequestHandler):
 
     def control(self, action: str, query: dict[str, list[str]]) -> None:
         """Test control: `arm` (zero the counters, close the gate), `release` (open the gate) and
-        `state` of one playlist."""
+        `state` of one playlist; `save-arm` and `save-state` for the programs."""
+        if action in ("save-arm", "save-state"):
+            self.save_control(action, (query.get("fail") or [""])[0])
+            return
         playlist = BY_SPOTIFY.get((query.get("playlist") or [""])[0])
         if playlist is None:
             self.reply(404, {"Error": "unknown playlist"})
@@ -256,6 +432,28 @@ class Handler(BaseHTTPRequestHandler):
             return
         state = {"attaches": playlist.attaches, "held": playlist.held}
         state["reads"] = dict(playlist.reads)
+        self.reply(200, state)
+
+    def save_control(self, action: str, fail: str) -> None:
+        if action == "save-arm":
+            wanted: dict[int, str] = {}
+            for item in filter(None, fail.split(",")):
+                number, _, mode = item.partition(":")
+                if not number.isdigit() or mode not in FAIL_MODES:
+                    self.reply(400, {"Error": "fail is <n>:<refuse|drop|noid>,..."})
+                    return
+                wanted[int(number)] = mode
+            with LOCK:
+                SAVE["writes"] = 0
+                FAIL.clear()
+                FAIL.update(wanted)
+        with LOCK:
+            accounts = Counter(str(p["token"]) for p in PROGRAMS.values())
+            state = {
+                "writes": SAVE["writes"],
+                "fail": {str(k): v for k, v in sorted(FAIL.items())},
+                "programs": sorted(accounts.values()),  # per account, no tokens
+            }
         self.reply(200, state)
 
     def log_message(self, format: str, *args: object) -> None:  # noqa: A002

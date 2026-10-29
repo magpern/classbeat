@@ -37,22 +37,19 @@ from classbeat.connections import OpenConnection, call_opened, hold, open_connec
 from classbeat.crypto.keks import KeyRing
 from classbeat.jobs import JobFailure, JobRun
 from classbeat.operations.kinds import (
+    ATTACH_KIND,
     INCONCLUSIVE,
     OPERATION_KINDS,
+    Operation,
     OperationKind,
     ReconcileInput,
     Reconciliation,
     request_hash,
 )
-from classbeat.operations.protocol import (
-    CallResult,
-    Guard,
-    OperationRequest,
-    UncertainAnswer,
-    perform,
-)
+from classbeat.operations.protocol import CallResult, UncertainAnswer, perform
+from classbeat.operations.requests import Guard, OperationRequest
 
-KIND: Final = "mowl_attach_spotify_playlist"
+KIND: Final = ATTACH_KIND
 SOURCE: Final = "spotify"
 KEY_PREFIX: Final = f"{SOURCE}:"
 SPOTIFY_ID: Final = re.compile(r"^[0-9A-Za-z]{22}$")  # the mowl_playlist_links.source_id check
@@ -109,9 +106,10 @@ def _answered_playlist_id(answer: object) -> int:
     return value
 
 
-async def _write_link(db: AsyncSession, owner_id: UUID, key: str, external_id: str) -> None:
-    if not key.startswith(KEY_PREFIX):
-        raise ValueError("not an attach key")
+async def _write_link(db: AsyncSession, owner_id: UUID, operation: Operation) -> None:
+    key, external_id = operation.idempotency_key, operation.external_id
+    if not key.startswith(KEY_PREFIX) or external_id is None:
+        raise ValueError("not a succeeded attach")
     await db.execute(
         _INSERT_LINK,
         {
