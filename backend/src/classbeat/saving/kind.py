@@ -111,9 +111,13 @@ _runtime: Runtime | None = None
 
 
 def configure(runtime: Runtime | None) -> None:
-    """Set (or clear, with None) the worker's runtime."""
+    """Set (or clear, with None) the worker's runtime (Save's and Update's)."""
     global _runtime
     _runtime = runtime
+
+
+def current_runtime() -> Runtime | None:
+    return _runtime
 
 
 async def admit(db: AsyncSession, ctx: UserContext, parsed: BaseModel) -> Admitted | Refused:
@@ -146,7 +150,7 @@ class Plan:
     baseline: list[int]
 
 
-_JOB_CLASS = text("SELECT class_id FROM jobs WHERE id = :job_id AND owner_id = :owner_id")
+JOB_CLASS = text("SELECT class_id FROM jobs WHERE id = :job_id AND owner_id = :owner_id")
 
 
 async def _approved(run: JobRun, given: SaveWorkoutInput, opened: OpenConnection) -> Plan:
@@ -155,7 +159,7 @@ async def _approved(run: JobRun, given: SaveWorkoutInput, opened: OpenConnection
         # Its own transaction, so the marking stays when the save is refused below.
         await orphans.resolve(fs.db, run.ctx)
     async with run.fenced() as fs:
-        job_class = (await fs.db.execute(_JOB_CLASS, lease.params())).scalar_one_or_none()
+        job_class = (await fs.db.execute(JOB_CLASS, lease.params())).scalar_one_or_none()
         if job_class != given.the_class:
             raise JobFailure("internal")  # the API stores the input's class: a bug, never a save
         if await orphans.write_unresolved(fs.db, run.ctx, given.the_class, lease.job_id):
@@ -173,8 +177,8 @@ async def _approved(run: JobRun, given: SaveWorkoutInput, opened: OpenConnection
     return Plan(found, playlist_id, opened, [])
 
 
-async def _preflight(run: JobRun, opened: OpenConnection) -> list[int]:
-    """My Workouts' first page, outside any operation: the baseline."""
+async def preflight(run: JobRun, opened: OpenConnection) -> list[int]:
+    """My Workouts' first page, outside any operation: the baseline (Save and Update)."""
     await run.checkpoint()
     listing = await call_opened(
         run.factory, run.ctx, opened, lambda c: mowl_api.list_workouts(c, page=0)
@@ -192,7 +196,7 @@ async def prepare(run: JobRun, keyring: KeyRing, given: SaveWorkoutInput) -> Pla
     if opened.id != given.mowl_connection_id:
         raise JobFailure("not_connected")
     plan = await _approved(run, given, opened)
-    baseline = await _preflight(run, opened)
+    baseline = await preflight(run, opened)
     return Plan(plan.revision, plan.playlist_id, opened, baseline)
 
 
@@ -202,7 +206,7 @@ _LINK_STILL = text(
 )
 
 
-def _program_id(answer: object) -> int:
+def program_id_of_answer(answer: object) -> int:
     value: Any = None
     if isinstance(answer, dict):
         value = cast(dict[str, Any], answer).get("program_id")
@@ -212,13 +216,20 @@ def _program_id(answer: object) -> int:
 
 
 def write_program(
-    spec: dict[str, Any], creds: Credentials, playlist_id: int, deadline_at: float
+    spec: dict[str, Any],
+    creds: Credentials,
+    playlist_id: int,
+    deadline_at: float,
+    program_id: int | None = None,
 ) -> Any:
     """The library's save in the call's thread: every request it makes ends by ``deadline_at``
     (a ``time.monotonic()`` instant taken before the ``pending`` row was written, so a thread
-    that starts late uses up the bound instead of extending it)."""
+    that starts late uses up the bound instead of extending it). With ``program_id`` (Update,
+    ``classbeat.saving.update``) the library re-saves that program in place."""
     with egress.call_deadline_until(deadline_at):
-        return workout.save(spec, creds, playlist_id)
+        if program_id is None:
+            return workout.save(spec, creds, playlist_id)
+        return workout.save(spec, creds, playlist_id, program_id=program_id)
 
 
 async def save(run: JobRun, keyring: KeyRing, plan: Plan) -> int:
@@ -247,7 +258,7 @@ async def save(run: JobRun, keyring: KeyRing, plan: Plan) -> int:
             opened,
             lambda creds: write_program(revision.spec, creds, playlist_id, deadline_at),
         )
-        return CallResult(str(_program_id(answer)), {"segments": revision.segments})
+        return CallResult(str(program_id_of_answer(answer)), {"segments": revision.segments})
 
     request = OperationRequest(
         kind=operation.KIND,
@@ -275,14 +286,33 @@ _STATE = text(
 
 async def verify(run: JobRun, plan: Plan, program_id: int) -> bool:
     """Stage ``verify``: best effort. True when the read-back matched and was recorded."""
+    return await verify_program(
+        run, plan.opened, plan.revision.spec, plan.playlist_id, plan.revision.class_id, program_id
+    )
+
+
+async def verify_program(
+    run: JobRun,
+    opened: OpenConnection,
+    spec: dict[str, Any],
+    playlist_id: int,
+    class_id: UUID,
+    program_id: int,
+) -> bool:
+    """Read the written program back and, when it holds exactly ``spec`` with ``playlist_id``,
+    record its normalized state on the live saved row of ``class_id`` whose state is not yet
+    recorded (Save's new row; Update's row, whose state ``on_succeeded`` cleared). Best effort:
+    any failure leaves the row "saved, not checked"."""
     try:
         program = await call_opened(
             run.factory,
             run.ctx,
-            plan.opened,
+            opened,
             lambda c: mowl_api.get_workout(c, program_id),
         )
-        if not mowl_state.matches(plan.revision.spec, program, playlist_id=plan.playlist_id):
+        if mowl_state.program_id_of(program) != program_id:
+            return False
+        if not mowl_state.matches(spec, program, playlist_id=playlist_id):
             return False
         digest = mowl_state.state_hash(mowl_state.normalized_program(program))
     except Exception as exc:  # a failed read leaves the row "saved, not checked"
@@ -294,7 +324,7 @@ async def verify(run: JobRun, plan: Plan, program_id: int) -> bool:
             {
                 "state_hash": digest,
                 "owner_id": run.lease.owner_id,
-                "class_id": plan.revision.class_id,
+                "class_id": class_id,
                 "program_id": program_id,
             },
         )

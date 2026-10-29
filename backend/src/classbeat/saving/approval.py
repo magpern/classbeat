@@ -1,4 +1,4 @@
-"""The approval of a Save and its revalidation (ADR 0007 section 5).
+"""The approval of a Save or an Update and its revalidation (ADR 0007 section 5).
 
 The approval is the user's click on Save for one revision: ``{class_id, revision_id,
 content_hash}`` with the MOWL connection the page shows. Nothing written to MOWL comes from the
@@ -15,6 +15,10 @@ against the authenticated user and failing closed:
 - the content is a ``WorkoutDraft`` whose spec passes ``workout.validate`` (``invalid_input``);
 - the revision's ``music.link_id`` names a ``mowl_playlist_links`` row of the user
   (``music_unlinked``: the MOWL account changed since the revision was designed, section 9).
+
+For an Update (``classbeat.saving.update``) also ``saved_target``: the saved row is the user's
+own live row of that class (``invalid_input`` otherwise, section 9: a detached row is never
+written to), and its program id is the only program an Update may write.
 
 The connection checks (``not_connected``) and the unresolved-write rule (``write_unresolved``,
 ``classbeat.operations.orphans``) are made by the callers next to these, in the same transaction.
@@ -39,6 +43,7 @@ from classbeat.operations.attach import SOURCE
 
 HEX_SHA256: Final = r"^[0-9a-f]{64}$"
 MAX_PLAYLIST_ID: Final = 2**63 - 1
+MAX_PROGRAM_ID: Final = 2**63 - 1
 
 _REVISION = text(
     "SELECT r.id, r.class_id, r.number, r.kind, r.content, r.content_hash, r.music "
@@ -134,3 +139,48 @@ async def linked_playlist(db: AsyncSession, ctx: UserContext, link_id: UUID) -> 
     if not isinstance(playlist_id, int) or not 0 < playlist_id <= MAX_PLAYLIST_ID:
         return None
     return playlist_id
+
+
+# Update's target (ADR 0007 section 7): the user's own **live** saved row **of this class**, and
+# its creating operation, when it still names one, of the same class too (the foreign key is
+# owner-inclusive, not class-inclusive: #156 review). The program id is read only from here.
+_SAVED_TARGET = text(
+    "SELECT s.id, s.program_id, s.state_hash FROM saved_workouts s "
+    "WHERE s.owner_id = :owner_id AND s.id = :saved_workout_id AND s.class_id = :class_id "
+    "AND s.detached_at IS NULL "
+    "AND (s.operation_id IS NULL OR EXISTS (SELECT 1 FROM external_operations o "
+    "WHERE o.owner_id = s.owner_id AND o.id = s.operation_id AND o.class_id = s.class_id))"
+)
+
+
+@dataclass(frozen=True, slots=True)
+class SavedTarget:
+    """The program an Update may write, from the user's own live saved row."""
+
+    saved_workout_id: UUID
+    program_id: int
+    state_hash: bytes | None
+
+
+async def saved_target(
+    db: AsyncSession, ctx: UserContext, class_id: UUID, saved_workout_id: UUID
+) -> SavedTarget | None:
+    """The live saved row ``saved_workout_id`` of the user's class ``class_id``, else None (another
+    user's, another class's, a detached or an unknown row: all the same answer)."""
+    row = (
+        await db.execute(
+            _SAVED_TARGET,
+            {
+                "owner_id": ctx.user_id,
+                "saved_workout_id": saved_workout_id,
+                "class_id": class_id,
+            },
+        )
+    ).first()
+    if row is None:
+        return None
+    program_id = row.program_id
+    if not isinstance(program_id, int) or not 0 < program_id <= MAX_PROGRAM_ID:
+        return None
+    state = None if row.state_hash is None else bytes(row.state_hash)
+    return SavedTarget(row.id, program_id, state)
