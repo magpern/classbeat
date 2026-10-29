@@ -7,14 +7,16 @@ beyond). The stream itself is ``classbeat.jobs.stream``.
 """
 
 import time
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Awaitable, Callable
 from typing import Annotated, Final
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse, StreamingResponse
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from classbeat import auth
+from classbeat.config import Settings
 from classbeat.context import UserContext
 from classbeat.jobs import stream
 from classbeat.jobs.progress import read_page
@@ -50,6 +52,18 @@ class StreamLimiter:
             slots.pop(token, None)
             if not slots:
                 del self._slots[user_id]
+
+
+def session_probe(
+    factory: async_sessionmaker[AsyncSession], settings: Settings, token: str | None, user_id: UUID
+) -> Callable[[], Awaitable[bool]]:
+    """Whether the session the stream was opened with is still valid for the same user."""
+
+    async def still_signed_in() -> bool:
+        resolution = await auth.resolve_session(factory, settings, token)
+        return resolution.info is not None and resolution.info.user_id == user_id
+
+    return still_signed_in
 
 
 def _not_found() -> HTTPException:
@@ -98,10 +112,6 @@ async def job_events(
     token = auth.request_session_token(request)
     settings = app.state.settings
 
-    async def still_signed_in() -> bool:
-        resolution = await auth.resolve_session(factory, settings, token)
-        return resolution.info is not None and resolution.info.user_id == ctx.user_id
-
     async def frames() -> AsyncIterator[str]:
         try:
             async for chunk in stream.event_stream(
@@ -110,7 +120,7 @@ async def job_events(
                 ctx,
                 uid,
                 start,
-                still_signed_in=still_signed_in,
+                still_signed_in=session_probe(factory, settings, token, ctx.user_id),
             ):
                 yield chunk
         finally:

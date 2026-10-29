@@ -49,6 +49,7 @@ class EventHub:
         self._subscriptions: dict[UUID, set[Subscription]] = {}
         self._task: asyncio.Task[None] | None = None
         self.listening = False
+        self._delay = RECONNECT_MIN_SECONDS
 
     @contextmanager
     def subscribe(self, job_id: UUID) -> Iterator[Subscription]:
@@ -90,6 +91,7 @@ class EventHub:
                 await driver.set_autocommit(True)
                 await driver.execute(f"LISTEN {CHANNEL}")
                 self._set_listening(True)
+                self._delay = RECONNECT_MIN_SECONDS  # a good connection resets the backoff
                 while True:
                     async for notification in driver.notifies(timeout=NOTIFY_TIMEOUT_SECONDS):
                         self.notify(notification.payload)
@@ -100,7 +102,6 @@ class EventHub:
 
     async def run(self) -> None:
         """Listen until cancelled, reconnecting with backoff."""
-        delay = RECONNECT_MIN_SECONDS
         while True:
             try:
                 await self._listen_once()
@@ -110,8 +111,8 @@ class EventHub:
                 logger.info(
                     "job event listener unavailable", extra={"error_type": type(exc).__name__}
                 )
-            await asyncio.sleep(delay)
-            delay = min(delay * 2, RECONNECT_MAX_SECONDS)
+            await asyncio.sleep(self._delay)
+            self._delay = min(self._delay * 2, RECONNECT_MAX_SECONDS)
 
     def start(self) -> None:
         if self._task is None:

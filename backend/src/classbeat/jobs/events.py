@@ -27,6 +27,7 @@ from pydantic import (
     StringConstraints,
     ValidationError,
     field_validator,
+    model_validator,
 )
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -72,6 +73,12 @@ class ToolCalled(Payload):
     tool: Name
     ok: bool
     error: ToolError | None = None
+
+    @model_validator(mode="after")
+    def _error_only_on_failure(self) -> "ToolCalled":
+        if self.ok and self.error is not None:
+            raise ValueError("a successful call has no error")
+        return self
 
 
 class RevisionCreated(Payload):
@@ -142,8 +149,11 @@ def validated_payload(kind: str, payload: Mapping[str, Any] | None) -> dict[str,
     model = MODELS.get(kind)
     if model is None:
         raise ValueError("unknown event kind")
+    values: Any = {} if payload is None else payload
+    if not isinstance(values, Mapping):  # a stored scalar or list is no payload
+        raise ValueError(f"the payload of a {kind!r} event does not match its model")
     try:
-        return model.model_validate(dict(payload or {})).model_dump(mode="json", exclude_none=True)
+        return model.model_validate(dict(values)).model_dump(mode="json", exclude_none=True)
     except ValidationError:
         raise ValueError(f"the payload of a {kind!r} event does not match its model") from None
 
