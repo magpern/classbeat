@@ -27,7 +27,12 @@ def test_only_allowlisted_modules_open_a_user_session() -> None:
 
 
 def test_the_allowlist_is_exactly_the_reviewed_one() -> None:
-    assert ALLOWED_PREFIXES == ("classbeat.connections", "classbeat.auth", "classbeat.db")
+    assert ALLOWED_PREFIXES == (
+        "classbeat.connections",
+        "classbeat.auth",
+        "classbeat.db",
+        "classbeat.classes",
+    )
     assert ALLOWED_MODULES == (
         "classbeat.jobs.fence",
         "classbeat.jobs.credits",

@@ -13,6 +13,7 @@ from pydantic import BaseModel
 from sqlalchemy import text
 
 from classbeat import __version__, auth
+from classbeat.classes.routes import router as classes_router
 from classbeat.config import Settings, check_web_has_no_model_key
 from classbeat.connections.routes import router as connections_router
 from classbeat.crypto.keks import load_keyring
@@ -128,6 +129,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(jobs_router)
     app.include_router(operations_router)
     app.include_router(music_router)
+    app.include_router(classes_router)
 
     if settings.static_dir is not None:
         if settings.static_dir.is_dir():
