@@ -16,6 +16,9 @@ The only place in ``classbeat`` that builds an HTTP client or an ``urllib`` open
   ``internal`` after one attempt (intended: the API never redirects). ``refused`` lets the SDK
   see a refusal as an error it does not retry (``classbeat.agent.providers.anthropic``).
 
+Both paths verify TLS with a context from ``tls_client_context()``, which never writes a TLS key
+log (``SSLKEYLOGFILE`` is ignored, threat model T19).
+
 A refused request raises ``OutboundBlocked`` (the job fails ``outbound_blocked``, ADR 0005 §4)
 and logs the host only, never the URL, its path or query, or a header.
 
@@ -32,6 +35,7 @@ from dataclasses import dataclass
 from typing import Any
 from urllib.parse import urlsplit
 
+import certifi
 import httpx
 
 logger = logging.getLogger(__name__)
@@ -60,6 +64,22 @@ class OutboundBlocked(Exception):
         super().__init__("outbound request blocked")
         self.host = host
         self.after_request = after_request
+
+
+def tls_client_context(*, cafile: str | None = None) -> ssl.SSLContext:
+    """A verifying TLS client context, as ``ssl.create_default_context()`` builds it on Python
+    3.12 (``PROTOCOL_TLS_CLIENT``: hostname check, ``CERT_REQUIRED``; ``cafile`` or the default
+    trust store), but without the key log. ``create_default_context`` sets ``keylog_filename``
+    from ``SSLKEYLOGFILE``, which opens that file at once and then appends every session's
+    secrets to it, enough to decrypt a capture of the traffic (the model key, MOWL tokens). This
+    context never opens one; the worker also refuses to start with ``anthropic`` while
+    ``SSLKEYLOGFILE`` is set (``classbeat.config.MODEL_SDK_REFUSED_ENVIRONMENT``)."""
+    context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+    if cafile is None:
+        context.load_default_certs(ssl.Purpose.SERVER_AUTH)
+    else:
+        context.load_verify_locations(cafile=cafile)
+    return context
 
 
 def _printable_host(host: str | None) -> str:
@@ -192,7 +212,7 @@ class _AllowlistHTTPSHandler(urllib.request.HTTPSHandler):
     """The network handler; checks again right before connecting."""
 
     def __init__(self, allowlist: Allowlist) -> None:
-        super().__init__(context=ssl.create_default_context())
+        super().__init__(context=tls_client_context())
         self._allowlist = allowlist
 
     def https_open(self, req: urllib.request.Request) -> Any:
@@ -285,6 +305,13 @@ class AllowlistTransport(httpx.AsyncBaseTransport):
         await self._inner.aclose()
 
 
+def model_network_transport() -> httpx.AsyncHTTPTransport:
+    """The network transport under the allowlist: no environment, no TLS key log."""
+    return httpx.AsyncHTTPTransport(
+        trust_env=False, verify=tls_client_context(cafile=certifi.where())
+    )
+
+
 def allowlisted_async_client(
     allowlist: Allowlist = WORKER_ALLOWLIST,
     *,
@@ -295,12 +322,13 @@ def allowlisted_async_client(
     """The ``httpx.AsyncClient`` for the model SDK (``AsyncAnthropic(http_client=...)``).
 
     ``trust_env=False`` on the client and the transport: no proxy, ``NETRC`` or ``SSL_CERT_*``
-    from the environment. ``inner`` replaces the network transport in tests (an
+    from the environment. TLS uses ``tls_client_context`` with httpx's own trust store
+    (``certifi``), so no key log either. ``inner`` replaces the network transport in tests (an
     ``httpx.MockTransport``, no network); the check still runs. ``refused`` turns an
     ``OutboundBlocked`` into the exception the caller's library does not retry (raised ``from``
     it, so the refusal stays its cause).
     """
-    network = inner if inner is not None else httpx.AsyncHTTPTransport(trust_env=False)
+    network = inner if inner is not None else model_network_transport()
     return httpx.AsyncClient(
         transport=AllowlistTransport(allowlist, network, refused),
         trust_env=False,

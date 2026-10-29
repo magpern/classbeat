@@ -386,7 +386,10 @@ class ModelProviderRefused(Exception):
 
 # The model SDK reads these even with an explicit key and base URL: debug logging of request
 # bodies (at import) and extra headers on every request. The worker never sets them (A2).
-MODEL_SDK_REFUSED_ENVIRONMENT = ("ANTHROPIC_LOG", "ANTHROPIC_CUSTOM_HEADERS")
+# ``SSLKEYLOGFILE`` makes ``ssl.create_default_context()`` write TLS session secrets to a file
+# (enough to decrypt the model key in a capture); the worker's own TLS contexts ignore it
+# (``classbeat.egress.tls_client_context``), and it is refused too in case any other does (#121).
+MODEL_SDK_REFUSED_ENVIRONMENT = ("ANTHROPIC_LOG", "ANTHROPIC_CUSTOM_HEADERS", "SSLKEYLOGFILE")
 
 
 def model_sdk_environment_problems() -> list[str]:

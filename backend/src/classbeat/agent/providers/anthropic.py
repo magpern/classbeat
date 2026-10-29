@@ -5,6 +5,7 @@
   ``httpx.AsyncClient`` (``classbeat.egress``: ``https`` to ``api.anthropic.com`` on 443 only,
   every redirect hop checked, ``trust_env=False``, no redirect followed), ``max_retries=2``,
   ``timeout=120`` per attempt; each turn, retries included, is bounded by ``turn_seconds`` too.
+  Only the attempt that answers reports usage (the gap this leaves: ADR 0006 section 6).
   A request the allowlist refuses is never retried: the transport raises it as
   ``ModelOutboundBlocked`` (an ``anthropic.AnthropicError``, which the SDK passes through
   unwrapped and does not retry) with the ``OutboundBlocked`` as its cause.
