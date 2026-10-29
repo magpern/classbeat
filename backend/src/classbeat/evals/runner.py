@@ -21,6 +21,7 @@ from typing import Any
 from classbeat.agent import DesignContext, DesignResult, design_stage, run_stage
 from classbeat.agent.loop import AgentConfig, Counters, RunInfo
 from classbeat.agent.provider import ModelProvider, Usage
+from classbeat.agent.revise import ReviseContext, ReviseResult, revise_stage
 from classbeat.evals.cases import Case
 from classbeat.evals.checks import Check, run_checks, tss_bounds_for
 from classbeat.evals.music import build_music
@@ -115,7 +116,19 @@ async def run_case(
     repeat: int = 0,
     clock: Callable[[], float] = time.monotonic,
 ) -> CaseResult:
-    ctx = DesignContext.build(case.brief, build_music(case.music))
+    music = build_music(case.music)
+    ctx = DesignContext.build(case.brief, music)
+    stage, first = design_stage(ctx), ctx.first_message()
+    if case.revise is not None:
+        revise = ReviseContext.build(
+            case.brief,
+            music,
+            case.revise.base,
+            tuple(case.revise.earlier_requests),
+            case.revise.request,
+            music_changed=False,
+        )
+        stage, first = revise_stage(revise), revise.first_message()
     host = EvalHost()
     started = clock()
 
@@ -139,15 +152,20 @@ async def run_case(
         )
 
     try:
-        done = await run_stage(host, provider, design_stage(ctx), ctx.first_message(), config)
+        done = await run_stage(host, provider, stage, first, config)
     except JobFailure as failure:
         return failed(failure.category)
     except Exception as exc:  # the class name only: a message could hold request data
         return failed(f"error:{type(exc).__name__}")
     wall = clock() - started
-    result: DesignResult = done.output
+    output, note = done.output, ""
+    if isinstance(output, ReviseResult):
+        output, note = output.result, output.note
+    if not isinstance(output, DesignResult):
+        return failed("error:BadOutput")
+    result = output
     try:
-        checks = run_checks(case, result, done, config.limits, float(ctx.map["duration"]))
+        checks = run_checks(case, result, done, config.limits, float(ctx.map["duration"]), note)
     except Exception as exc:
         return failed(f"error:{type(exc).__name__}")
     return CaseResult(

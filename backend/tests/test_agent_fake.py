@@ -27,6 +27,13 @@ COVERED = {
     "cost_limit",
     "corrections_limit",
     "injection_title",
+    # revise_draft (ADR 0007 section 3), used by tests/test_revise_draft.py
+    "revise_good",
+    "revise_second",
+    "revise_injected_note",
+    "revise_unchanged",
+    "revise_overloaded",
+    "revise_note_too_long",
 }
 
 SPEC = StageSpec("design", "s", (), "m", "fake-model", "medium", 32_000, "submit_draft")

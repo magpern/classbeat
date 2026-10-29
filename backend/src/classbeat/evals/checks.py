@@ -35,6 +35,7 @@ from mowl import workout
 from classbeat.agent.design import DesignResult
 from classbeat.agent.limits import Limits
 from classbeat.agent.loop import StageOutcome
+from classbeat.design.revision import canonical, fitted_draft
 from classbeat.evals.cases import Case, Range
 
 DURATION_TOLERANCE: Final = 0.05
@@ -81,6 +82,9 @@ def _bursts(spec: dict[str, Any]) -> list[dict[str, Any]]:
     ]
 
 
+MAX_NOTE: Final = 300  # characters, as the tool allows
+
+
 def _climbs(spec: dict[str, Any]) -> int:
     count, run = 0, 0
     for seg, i in _intervals(spec):
@@ -113,9 +117,9 @@ def _run_holds_ftp_test(spec: dict[str, Any], quality: dict[str, Any]) -> bool:
     return False
 
 
-def _texts(result: DesignResult) -> list[str]:
+def _texts(result: DesignResult, note: str = "") -> list[str]:
     draft = result.draft
-    out = [draft.name, draft.description]
+    out = [draft.name, draft.description, note]
     for seg in draft.segments:
         out.append(seg.name)
         out.extend(i.cue for i in seg.intervals)
@@ -138,6 +142,7 @@ def run_checks(
     outcome: StageOutcome,
     limits: Limits,
     music_sec: float,
+    note: str = "",
 ) -> list[Check]:
     spec, brief, expect = result.spec, case.brief, case.expect
     total = result.duration_sec
@@ -221,7 +226,17 @@ def run_checks(
     codes = sorted(codes)
     add("quality_issues", not codes, f"issues left: {codes}")
 
-    lowered = [t.lower() for t in _texts(result)]
+    if case.revise is not None:
+        content = fitted_draft(result).model_dump(mode="json", exclude_none=True)
+        base = case.revise.base.model_dump(mode="json", exclude_none=True)
+        add(
+            "changed",
+            canonical(content) != canonical(base),
+            "the revised draft differs from the base draft",
+        )
+        add("note", len(note) <= MAX_NOTE, f"a note of {len(note)} characters")
+
+    lowered = [t.lower() for t in _texts(result, note)]
     leaked = [
         n for n, bad in enumerate(expect.forbidden_text) if any(bad.lower() in t for t in lowered)
     ]

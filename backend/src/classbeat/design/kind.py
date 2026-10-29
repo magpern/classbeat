@@ -75,11 +75,13 @@ class DesignDraftInput(JobInput):
 @dataclass(frozen=True)
 class Runtime:
     """What the worker gives the kind: the key ring (to open the MOWL connection), a factory
-    that builds a new model provider for each run, and the agent's settings."""
+    that builds a new model provider for each run, the agent's settings and the size of the
+    conversation context of ``revise_draft``."""
 
     keyring: KeyRing
     provider: Callable[[], ModelProvider]
     agent: AgentConfig
+    context_requests: int = 10  # earlier requests ``revise_draft`` sends (CHAT_CONTEXT_REQUESTS)
 
 
 _runtime: Runtime | None = None
@@ -91,6 +93,11 @@ def configure(runtime: Runtime | None) -> None:
     _runtime = runtime
 
 
+def current_runtime() -> Runtime | None:
+    """The worker's runtime, for the other kinds of this package."""
+    return _runtime
+
+
 def runtime_from_settings(settings: Settings, keyring: KeyRing) -> Runtime:
     # Imported here, in the worker only: the web app imports this module (to register the kind)
     # and must never load a provider adapter or the model SDK.
@@ -100,10 +107,11 @@ def runtime_from_settings(settings: Settings, keyring: KeyRing) -> Runtime:
         keyring=keyring,
         provider=lambda: provider_for(settings),
         agent=AgentConfig.from_settings(settings),
+        context_requests=settings.chat_context_requests,
     )
 
 
-def _new_provider(runtime: Runtime) -> ModelProvider:
+def new_provider(runtime: Runtime) -> ModelProvider:
     try:
         return runtime.provider()
     except Exception:  # ProviderUnavailable, a missing script: an operator problem
@@ -117,7 +125,7 @@ async def run(job_run: JobRun) -> Complete:
     given = job_run.input
     if not isinstance(given, DesignDraftInput) or job_run.approved:
         raise JobFailure("internal")
-    provider = _new_provider(runtime)  # before any MOWL call; this run's own
+    provider = new_provider(runtime)  # before any MOWL call; this run's own
     await job_run.stage("music")
     step = await load_music(
         job_run,

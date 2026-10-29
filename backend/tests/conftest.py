@@ -32,6 +32,7 @@ pytest_plugins = [
     "jobapi",
     "optools",
     "designtools",
+    "revisetools",
     "savetools",
 ]  # + jobs core, jobs API, external operations
 

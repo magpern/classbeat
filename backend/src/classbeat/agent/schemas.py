@@ -50,6 +50,7 @@ Description = Annotated[str, _bounded(500, required=False), AfterValidator(clean
 Cue = Annotated[str, _bounded(120, required=False), AfterValidator(clean_text)]
 Style = Annotated[str, _bounded(60, required=False), AfterValidator(clean_text)]
 BriefText = Annotated[str, _bounded(2000, required=False), AfterValidator(clean_text)]
+Note = Annotated[str, _bounded(300, required=False), AfterValidator(clean_text)]
 
 # The library's GAMES (a test checks they match).
 Game = Literal["racetrack", "power_pull", "fast_lane", "overflow", "ghost_target"]
@@ -128,6 +129,13 @@ class DraftInput(BaseModel):
     model_config = STRICT
 
     draft: WorkoutDraft
+
+
+class ReviseInput(DraftInput):
+    """``submit_draft`` of the ``revise`` stage: the draft and, optionally, one sentence on what
+    changed. The note is shown to the user as plain text and never sent back to a model."""
+
+    note: Note = Field(default="", description="One sentence on what you changed (optional).")
 
 
 class MusicInput(BaseModel):
