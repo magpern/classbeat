@@ -21,6 +21,7 @@ from classbeat.jobs.events_routes import StreamLimiter
 from classbeat.jobs.events_routes import router as job_events_router
 from classbeat.jobs.hub import EventHub
 from classbeat.jobs.routes import router as jobs_router
+from classbeat.operations.routes import router as operations_router
 
 logger = logging.getLogger(__name__)
 
@@ -124,6 +125,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(connections_router)
     app.include_router(job_events_router)
     app.include_router(jobs_router)
+    app.include_router(operations_router)
 
     if settings.static_dir is not None:
         if settings.static_dir.is_dir():

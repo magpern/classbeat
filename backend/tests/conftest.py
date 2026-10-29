@@ -29,7 +29,8 @@ pytest_plugins = [
     "isofake",
     "jobcore",
     "jobapi",
-]  # + jobs core
+    "optools",
+]  # + jobs core, jobs API, external operations
 
 if sys.platform == "win32":
     # psycopg's async mode does not run on the default Windows (proactor) event loop.

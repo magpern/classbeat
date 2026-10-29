@@ -2,6 +2,9 @@
 
 ``keys rewrap`` and ``keys wipe`` (ADR 0004) live in ``classbeat.keys_cli``.
 
+``jobs stats`` prints the queue's counts (``queue_stats()``, ADR 0005 section 7's admin seam: per
+job state and of ``uncertain`` external operations, no ids).
+
 ``invite create``, ``admin grant``, ``admin revoke`` and ``admin mfa-reset`` run as the app role
 through the functions of ``classbeat.auth``; they never touch the tables. In the stack:
 ``docker compose exec web python -m classbeat admin grant owner@example.com``. With no
@@ -24,6 +27,7 @@ from classbeat.db import (
     system_session,
     verify_database_role,
 )
+from classbeat.jobs import queue
 from classbeat.keys_cli import add_keys_subcommands
 from classbeat.keys_cli import run as run_keys
 from classbeat.mail import Mailer, MailError
@@ -61,7 +65,20 @@ def add_subcommands(parser: argparse.ArgumentParser) -> None:
         ("mfa-reset", "remove the user's TOTP and recovery codes and mail a reset link"),
     ):
         admin.add_parser(name, help=text).add_argument("email")
+    jobs = sub.add_parser("jobs", help="the job queue").add_subparsers(dest="action", required=True)
+    jobs.add_parser("stats", help="count jobs per state and uncertain external operations")
     add_keys_subcommands(sub)
+
+
+async def _jobs(args: argparse.Namespace, settings: Settings, out: TextIO, err: TextIO) -> int:
+    engine = create_engine(settings)
+    try:
+        await verify_database_role(engine)
+        for metric, total in await queue.stats(create_session_factory(engine)):
+            print(f"{metric} {total}", file=out)
+        return 0
+    finally:
+        await engine.dispose()
 
 
 async def _admin(args: argparse.Namespace, settings: Settings, out: TextIO, err: TextIO) -> int:
@@ -119,7 +136,7 @@ def run_command(
     err: TextIO | None = None,
 ) -> int:
     """Run an operator subcommand; the exit code is 0, or 1 for a refusal."""
-    command = run_keys if args.command == "keys" else _admin
+    command = {"keys": run_keys, "jobs": _jobs}.get(args.command, _admin)
     return asyncio.run(
         command(args, settings, out or sys.stdout, err or sys.stderr),
         loop_factory=event_loop_factory(),

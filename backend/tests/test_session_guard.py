@@ -33,6 +33,7 @@ def test_the_allowlist_is_exactly_the_reviewed_one() -> None:
         "classbeat.jobs.credits",
         "classbeat.jobs.service",
         "classbeat.jobs.progress",
+        "classbeat.operations.user",
         "classbeat.keys_cli",
     )
 
@@ -70,6 +71,11 @@ def test_the_jobs_api_service_is_reached_only_from_its_routes() -> None:
         "classbeat.jobs.design_draft",  # a job kind under classbeat.jobs gets no exemption
         "classbeat.jobs.fence.extra",
         "classbeat.keys_cli.sub",
+        "classbeat.operations",
+        "classbeat.operations.protocol",
+        "classbeat.operations.attach",
+        "classbeat.operations.routes",
+        "classbeat.operations.user.extra",
     ],
 )
 def test_worker_agent_kind_and_other_code_is_not_allowlisted(module: str) -> None:
@@ -82,6 +88,7 @@ def test_worker_agent_kind_and_other_code_is_not_allowlisted(module: str) -> Non
         "classbeat.jobs.fence",
         "classbeat.jobs.credits",
         "classbeat.keys_cli",
+        "classbeat.operations.user",
         "classbeat.connections.repository",
         "classbeat.auth.deps",
     ],

@@ -49,3 +49,15 @@ async def unsettled(factory: Factory, limit: int = 100) -> list[Claimed]:
     async with system_session(factory) as db:
         rows = (await db.execute(_UNSETTLED, {"n": limit})).all()
     return [Claimed(r.job_id, r.owner_id, r.lease_version) for r in rows]
+
+
+_STATS = text("SELECT metric, total FROM public.queue_stats()")
+
+
+async def stats(factory: Factory) -> list[tuple[str, int]]:
+    """``queue_stats()``: counts per job state and of ``uncertain`` external operations, across
+    all users and without ids (ADR 0005 section 7's admin seam; ``python -m classbeat jobs
+    stats``)."""
+    async with system_session(factory) as db:
+        rows = (await db.execute(_STATS)).all()
+    return [(str(r.metric), int(r.total)) for r in rows]
