@@ -1,7 +1,7 @@
 import { expect, signInThroughUi, signUpThroughUi, test, uniqueEmail } from './helpers'
 
 // The new-class form against the fake MOWL (e2e/fake-mowl: public test playlists), up to the page
-// of the job it starts. The design run itself, with the fake model and the attach, is #94's.
+// of the job it starts. The design run itself is design-draft.spec.ts.
 const MOWL_EMAIL = 'rider@example.test'
 const MOWL_PASSWORD = 'e2e-fake-mowl-password'
 
