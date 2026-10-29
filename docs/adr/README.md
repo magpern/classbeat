@@ -12,4 +12,5 @@ Reviewer reviews each in its PR (AGENTS.md, "Decisions and ADRs").
 | [0004](0004-connections-and-encryption.md) | Provider connections and envelope encryption | Accepted |
 | [0005](0005-jobs-and-leases.md) | Jobs, leases and external operations | Proposed |
 | [0006](0006-agent-runs.md) | Agent runs: provider interface, stages, limits and provenance | Proposed |
+| [0007](0007-classes-revisions-and-saving.md) | Classes, revisions and saving to MOWL | Proposed |
 | [0010](0010-live-activation-permissions.md) | Provider permissions for live activation | Accepted |

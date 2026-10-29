@@ -12,7 +12,7 @@ from mowl.credentials import Credentials as LibraryCredentials
 from mowl.errors import MowlError
 from sqlalchemy import text
 
-from authtools import Env
+from authtools import ORIGIN, Env
 from classbeat import connections
 from classbeat.connections import ConnectionFailure
 from classbeat.db import user_session
@@ -163,6 +163,57 @@ async def test_anonymous_and_cross_site_requests_are_refused(env: Env, mowl_api:
     no_csrf = await env.client.post(CONNECT, json=body(), headers={"Origin": "https://evil.test"})
     assert no_csrf.status_code == 403
     assert mowl_api.requests == []
+
+
+async def test_anonymous_post_with_a_valid_origin_is_refused_before_mowl(
+    env: Env, mowl_api: FakeMowl
+) -> None:
+    from classbeat.auth.cookies import CSRF_COOKIE
+
+    origin = {"Origin": ORIGIN}
+    # Right origin but no CSRF token: refused by the CSRF check.
+    assert (await env.client.post(CONNECT, json=body(), headers=origin)).status_code == 403
+    # Right origin and a matching double-submit token (what a signed-out browser can present):
+    # the CSRF check passes and the route's own authentication refuses.
+    csrf = {**origin, "X-CSRF-Token": "t" * 32, "Cookie": f"{CSRF_COOKIE}={'t' * 32}"}
+    assert (await env.client.post(CONNECT, json=body(), headers=csrf)).status_code == 401
+    assert (await env.client.request("DELETE", CONNECT, headers=csrf)).status_code == 401
+    env.client.cookies.clear()
+    assert mowl_api.requests == []  # the password never left for MOWL
+    assert await env.scalar("SELECT count(*) FROM auth_events WHERE kind LIKE 'connection_%'") == 0
+
+
+async def test_disconnect_needs_a_step_up_for_a_user_with_totp(env: Env, make_actor: Any) -> None:
+    actor = await actor_for(env, make_actor)
+    assert (await actor.post(CONNECT, body())).status_code == 200
+    await actor.enroll()
+    await env.run("UPDATE sessions SET stepup_at = NULL")
+    response = await actor.call("DELETE", CONNECT)
+    assert (response.status_code, response.json()["detail"]["reason"]) == (403, "stepup_required")
+    assert await owned(env, "SELECT count(*) FROM connections") == 1  # still there
+
+
+async def test_a_user_reads_and_deletes_only_their_own_connection_through_the_routes(
+    env: Env, make_actor: Any
+) -> None:
+    alice = await actor_for(env, make_actor, "alice@example.com")
+    bob = await actor_for(env, make_actor, "bob@example.com")
+    assert (await alice.post(CONNECT, body())).status_code == 200
+    alice_id = (await alice.get("/api/connections")).json()["connections"][0]["id"]
+    # Bob has no connection: he sees none of Alice's, and deleting "his" changes nothing of hers.
+    assert (await bob.get("/api/connections")).json() == {"connections": []}
+    assert (await bob.call("DELETE", CONNECT)).status_code == 204
+    assert await owned(env, "SELECT count(*) FROM connections", "alice@example.com") == 1
+    # With a connection of his own, each sees and loses only theirs.
+    assert (await bob.post(CONNECT, body())).status_code == 200
+    bob_listed = (await bob.get("/api/connections")).json()["connections"]
+    assert [c["id"] for c in bob_listed] == [bob_listed[0]["id"]]
+    assert bob_listed[0]["id"] != alice_id
+    assert (await bob.call("DELETE", CONNECT)).status_code == 204
+    assert await owned(env, "SELECT count(*) FROM connections", "bob@example.com") == 0
+    kept = (await alice.get("/api/connections")).json()["connections"]
+    assert [c["id"] for c in kept] == [alice_id]
+    assert await owned(env, "SELECT id FROM connections", "alice@example.com") == UUID(alice_id)
 
 
 async def test_disconnect_deletes_the_token(env: Env, make_actor: Any) -> None:

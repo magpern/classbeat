@@ -98,7 +98,7 @@ responses and model output alike.
 | T46 | A repeated or replayed browser request creating duplicate jobs, reservations or approvals | `Idempotency-Key` with the request hash, `UNIQUE (owner_id, idempotency_key)`, 409 on a different body; approve and cancel idempotent by target state (ADR 0005 §2) | M3a |
 | T47 | Approving a song list other than the one shown (a stale tab, a superseded or expired list) | Approval carries revision id and content hash, checked under a row lock against the job's waiting list and the newest list of the class; expiry after 7 days; a refused approval starts nothing (ADR 0005 §2, §4) | M3a, M4 |
 | T48 | Job events or SSE leaking another user's progress, secrets or provider data | Owned `job_events` read per request in a user session; 404 for foreign ids; per-kind payload models allow only enums, own ids, counts and times, never error text, model text or provider data; `NOTIFY` carries a job id only (ADR 0005 §6) | M3a |
-| T49 | The worker used to reach arbitrary hosts (SSRF, exfiltration through the model or the library) | Process-wide outbound allowlist on `urllib` and `httpx` (https, listed hosts, port 443, every redirect hop); guard test on HTTP client construction; no fetch of user-supplied URLs (ADR 0006 §9) | M3a |
+| T49 | The worker used to reach arbitrary hosts (SSRF, exfiltration through the model or the library) | Process-wide outbound allowlist on `urllib` and `httpx` (https, listed hosts, port 443, every redirect hop); guard test on HTTP client construction; no fetch of user-supplied URLs; TLS contexts that never write a key log (`SSLKEYLOGFILE` is ignored, and the model provider refuses to start with it set) (ADR 0006 §9) | M3a |
 | T50 | A poison job retried forever, or retries multiplying model cost | `max_attempts` per phase (default 3), capped exponential backoff, non-retryable categories fail at once, the cost ceiling counts every attempt of the whole job; the claim skips a row with spent attempts and the reaper fails it, so one bad row can't stall other users' jobs (ADR 0005 §2, §3, §4, ADR 0006 §5) | M3a |
 | T51 | A worker that lost its lease mid-call recording or repeating an external write | Outcomes recorded only under the token that wrote `pending`; a `pending` row from an older token is `uncertain` and never re-sent; the user decides (ADR 0005 §7) | M3a |
 | T52 | The model API key leaking or used by the web process | Secret file mounted on the worker only, `SecretStr`, never logged; `docker inspect` check; the fake provider refused in `prod` (ADR 0006 §9) | M3a |
@@ -107,6 +107,14 @@ responses and model output alike.
 | T55 | Malformed, oversized or out-of-range model output stored or saved | Strict Pydantic schemas with bounds, 32 KB caps on tool input and results, `workout.validate()` before storing and before any save, TSS and timing computed by the backend (ADR 0006 §3, §4) | M3a |
 | T56 | Prompt injection through song titles, playlist names or the brief | Extends T8: no write or network tools, index-only references, fixed-shape tool results, validation and limits; adversarial fake scripts and smoke cases (ADR 0006 §7, §8) | M3a |
 | T57 | Data beyond the allowed fields reaching the model provider | Extends T32: one allowlisted model-input builder; planted-value test over every forbidden field (tokens, emails, ids, URLs, provider errors) (ADR 0006 §7) | M3a |
+| T58 | A Save or Update writing something other than the revision the user approved (stale tab, replay, tampered body) | The browser names rows by id and hash only; revalidated at creation, in the worker and in the operation's decide transaction against the authenticated user and the stored revision; the request hash covers content hash and target (ADR 0007 §5) | M3b |
+| T59 | An Update overwriting a MOWL program that is not the user's saved one, or one they edited in MOWL | The program id is read from the user's own live `saved_workouts` row, never from input; the program is read first and a changed, public or missing one stops the job unless the user confirms an overwrite (ADR 0007 §7) | M3b |
+| T60 | Duplicate or half-written workouts after a failed multi-request write | Every failure of the write is `uncertain`, never retried by a job; reconciled by a listing baseline (Save and Update) and the full content; an update whose target is unchanged but that left a new program is inconclusive, so strays cannot pile up through retries; absence is no proof until the listing lag is measured; an orphaned `pending` row becomes `uncertain` and Save/Update/class delete refuse until it is resolved; the user's Check again / Do it anyway (ADR 0007 §6 to §8) | M3b |
+| T61 | A repair interleaving with a stale call that is still sending requests | `call_may_be_running`: no user action, no automatic reconciliation and no class delete on such a row until the call's bound (a total per-request deadline) has passed; every return to `pending` resets `call_ended_at` and the context (ADR 0007 §1, §6, §8) | M3b |
+| T62 | A write landing in a different MOWL account after a reconnect, or an old saved row pointing into the new account | The link, `hold` and credentials come from one connection generation; reconnect deletes links and write operations and detaches saved rows; Save refuses a revision whose link is gone (ADR 0007 §9) | M3b |
+| T63 | Model text or an injected title persisting in the stored conversation and steering later revisions | Only the user's requests go back to the model; the model's note is shown as plain text and never read back; the change summary is computed by the backend (ADR 0007 §3) | M3b |
+| T64 | Usage and cost misreported, lost with a class, or edited | Usage lives in `agent_runs`, immutable once finished and not deletable by the app role, kept past class deletion; estimates carry stated gaps (ADR 0007 §10) | M3b |
+| T65 | Spotify-derived data surviving the deletion of its class or account, or a shared analysis deleted while in use | Owned rows cascade; guard 10 (retention registry) and a plant-and-delete test; a shared store needs its own `SECURITY DEFINER` purge with open-job protection before it exists (ADR 0007 §11) | M3b |
 
 ## Accepted risks (beta)
 
@@ -124,6 +132,12 @@ responses and model output alike.
   apps, so classbeat doesn't use that key: Swedebeat features stay behind a disabled flag with
   fakes until Swedebeat authorizes server-side use, and the classbeat image never contains it:
   it installs a `mowl-workouts` wheel built without the bundled key file (M2).
+- MOWL connect has a per-email limit (5 per normalized MOWL email per 15 minutes, T43, ADR 0004
+  §4) that counts across users: a signed-in user who submits another person's MOWL email five
+  times blocks that person's connect for 15 minutes (their own per-user and per-IP slots are
+  spent too). It is the trade-off for stopping password guessing through our page, it denies
+  nothing but a new connect (an existing connection keeps working), and it needs an invited
+  account; revisited at M6 with the other per-account limits.
 - Images on GHCR are private; making a package public is an owner decision.
 - Per-account denial of service: an attacker who knows a user's email can exhaust the
   per-account sign-in cap from many IPs; the user then signs in from a known device or by OAuth

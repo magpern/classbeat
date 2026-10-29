@@ -106,8 +106,8 @@ if TYPE_CHECKING:
         totp_rows_by_key,
     )
 
-# Exported name -> its module in this package. ``tests/test_auth_lazy.py`` checks it matches the
-# ``TYPE_CHECKING`` imports above and ``__all__``.
+# Exported name -> its module in this package. ``tests/test_egress_runtime.py`` checks it matches
+# the ``TYPE_CHECKING`` imports above and ``__all__``.
 _EXPORTS: dict[str, str] = {
     "AccountError": "accounts",
     "UserRow": "accounts",
@@ -197,9 +197,22 @@ def __getattr__(name: str) -> Any:
         value = getattr(import_module(f"{__name__}.{module}"), name)
         globals()[name] = value
         return value
-    if not name.startswith("_") and find_spec(f"{__name__}.{name}") is not None:
+    if not name.startswith("_") and "." not in name and _is_submodule(name):
         return import_module(f"{__name__}.{name}")  # a submodule, as ``auth.tables``
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
+
+def _is_submodule(name: str) -> bool:
+    try:
+        return find_spec(f"{__name__}.{name}") is not None
+    except (
+        ImportError
+    ):  # not a package below ``name``: an attribute lookup answers "no", never raises
+        return False
+
+
+def __dir__() -> list[str]:
+    return sorted({*globals(), *_EXPORTS})
 
 
 __all__ = [

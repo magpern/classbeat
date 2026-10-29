@@ -12,7 +12,7 @@ GitHub hold the detail.
 | M1 | Accounts | done (milestone closed 2026-10-28) |
 | M2 | `mowl-workouts` v0.4.0, isolation, encryption, connect MOWL | done, except the token-lifetime check (waits for the owner) |
 | M3a | Jobs, Anthropic loop, design on existing music | done (2026-10-29); live smoke run once: 14 of 15 passed |
-| M3b | Class page, revisions, save to MOWL, usage and cost | next |
+| M3b | Class page, revisions, save to MOWL, usage and cost | in progress: [ADR 0007](adr/0007-classes-revisions-and-saving.md) merged (#152), issues #141 to #151 |
 | M4 | Song picking (beta), Spotify BYOK | not started |
 | M3c | Eval suite, OpenAI and DeepSeek adapters | not started |
 | M5 | Tiers, quotas, codes, admin | not started |
@@ -67,7 +67,6 @@ GitHub hold the detail.
   - #77: hardening and test gaps from #76.
   - #79: app-layer owner filter and isolation test follow-ups from #78.
   - #73: guard 8 f-string marker edge cases.
-  - #71: design of the purge of Spotify-derived data (roadmap Amendment 1, §6); due before M3b/M4.
 - **M3a done technically** (2026-10-29, on fakes). Its "done when": crash, lease and
   stale-worker tests green (J2 #103); E2E with fakes, a draft from a MOWL playlist, plus cancel
   and an uncertain attach (T1 #129). What merged: ADR 0005/0006 (#82); E1 egress allowlist
@@ -78,13 +77,15 @@ GitHub hold the detail.
   pages (#123); S1 smoke set and the owner-run live command (#124); review gate scaled by risk
   (#128, roadmap Amendment 2). The live smoke run (2026-10-29, owner-authorized): 14 of 15
   passed, $2.59 in total; `long_60` failed its TSS check (#131).
-- **M3a follow-ups** (open, non-blocking, to be batched into few hardening PRs): #131 (live smoke
-  output, `long_60`), #107 and #98
-  (flaky auth tests), #108 (queue check residual paths), #109 (J2), #114 (A1, gitleaks scope),
-  #115 (J3), #116 (J4), #117 (X1), #120 (anthropic SDK 0.x and httpx2), #121 (A2,
-  `SSLKEYLOGFILE`), #122 (D1), #127 (U1). #121 and #120 before live activation.
-- **Next: M3b** (class page, revisions, save and update to MOWL, usage and cost) and the
-  batched hardening PRs.
+- **M3a follow-ups.** Merged in hardening batches: #132 (#120, #121), #138 (#108, #109, #115,
+  #116), #136 (model comparison, #134); live smoke findings #131 closed. Still open: #107 and #98
+  (flaky auth tests), #114 (A1), #117 (X1, items 2 and 7), #122 (D1, item 4), #127 (U1), #135,
+  #140 (from #138), #153 (from #136); #137 (UI and tests) and #139 (connections and egress) are in
+  review.
+- **M3b in progress** (class page, revisions, save and update to MOWL, usage and cost):
+  [ADR 0007](adr/0007-classes-revisions-and-saving.md) merged (#152, closes #71); roadmap
+  Amendment 3 moves the periodic purge to the first milestone that stores a shared analysis.
+  Issues #141 to #151 are built in dependency order.
 - Releases: v0.1.0 (cut partway through M0); v0.2.0 is not cut yet (deferred to save Actions quota). Image
   `ghcr.io/magpern/classbeat`, private.
 

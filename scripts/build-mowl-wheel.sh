@@ -10,8 +10,17 @@
 # prints a token. Then refresh the lock: `cd backend && uv lock`.
 #
 # Checks before writing: the tag still points at the pinned commit; the built wheel has no
-# _swedebeat_app.json; every other file in it has the same SHA-256 as in the release wheel's
-# RECORD (so it is the released code, minus the key).
+# _swedebeat_app.json; every other file outside the dist-info has the same SHA-256 as in the
+# release wheel's RECORD (so it is the released code, minus the key); and METADATA (in the
+# dist-info, so not in that comparison) declares the same Requires-Dist lines, because those
+# decide what `uv lock` installs.
+#
+# What was pinned (a rebuild must print the same release digest; the vendored wheel's hash is
+# what uv.lock verifies at install time):
+#   tag v0.5.0 commit        e5a81699da1cd79044aa698f097db205177a8abf
+#   release asset sha256     f2f660d6... (full digest: printed by this script, see below)
+#   vendored wheel sha256    e2a660103407b847eabd6fd8cfa2a626253c58c5a602c5ded9b413a93dbb9cdb
+# The two wheels differ (the release one has the key file), so their digests differ too.
 set -euo pipefail
 
 REPO=magpern/mowl-workouts
@@ -51,8 +60,11 @@ names = zipfile.ZipFile(sys.argv[1]).namelist()
 sys.exit(1 if any(n.endswith("_swedebeat_app.json") for n in names) else 0)
 PY
 
-# Same code as the release: compare every RECORD hash except the key file and the dist-info.
+# Same code as the release: compare every RECORD hash except the key file and the dist-info,
+# then the dependency declarations in METADATA.
 gh release download "$TAG" -R "$REPO" -p "$WHEEL" -D "$work/release"
+echo "release asset:"
+sha256sum "$work/release/$WHEEL"
 "$PYTHON" - "$built" "$work/release/$WHEEL" "$KEY_FILE" <<'PY' || die "the built wheel differs from the release"
 import sys, zipfile
 
@@ -65,6 +77,17 @@ def record(path):
 built, release, key = record(sys.argv[1]), record(sys.argv[2]), sys.argv[3]
 code = lambda rec: {k: v for k, v in rec.items() if ".dist-info/" not in k and k != key}
 if code(built) != code(release):
+    sys.exit(1)
+
+def requires(path):
+    wheel = zipfile.ZipFile(path)
+    name = next(n for n in wheel.namelist() if n.endswith(".dist-info/METADATA"))
+    return sorted(
+        line.strip() for line in wheel.read(name).decode().splitlines()
+        if line.startswith("Requires-Dist:")
+    )
+
+if requires(sys.argv[1]) != requires(sys.argv[2]):
     sys.exit(1)
 PY
 

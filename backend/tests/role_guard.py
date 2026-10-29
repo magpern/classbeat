@@ -28,6 +28,9 @@ QUEUE_SIGNATURES = {
     "queue_stats()",
 }
 TABLE_PRIVILEGES = {"SELECT", "INSERT", "UPDATE", "DELETE"}
+# Tables where the app role gets less than full DML: the KEK check values are recorded and read,
+# never changed or forgotten by the app (migration 0003; ``keys wipe`` deletes as the owner).
+RESTRICTED_APP_PRIVILEGES = {"connection_keks": {"SELECT", "INSERT"}}
 SEQUENCE_PRIVILEGES = {"USAGE", "SELECT"}
 # Built-in languages that PUBLIC may use (Postgres' own default).
 BUILTIN_LANGUAGES = {"plpgsql", "sql", "internal", "c"}
@@ -196,6 +199,7 @@ def check_roles(conn: Connection) -> list[str]:
     )
     for obj in sorted({o for o, *_ in relations}):
         expected = SEQUENCE_PRIVILEGES if obj.endswith(":S") else TABLE_PRIVILEGES
+        expected = RESTRICTED_APP_PRIVILEGES.get(obj.split(":")[0], expected)
         if obj.split(":")[0] in NO_APP_ACCESS:
             expected = set()
         need(

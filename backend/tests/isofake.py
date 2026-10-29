@@ -35,6 +35,7 @@ class Account:
     password: str
     ticket: str
     token: str
+    playlist_id: str  # 22 characters: a Spotify playlist id, as the music route requires
 
     @property
     def secrets(self) -> tuple[str, str, str]:
@@ -47,6 +48,7 @@ ALICE = Account(
     "alice-fake-mowl-password-Qw3",
     "a11ce000-0000-4000-8000-00000000a001",
     "a11ce111-1111-4111-8111-11111111a002",
+    "AliceListAAAAAAAAAAAA1",
 )
 BOB = Account(
     "bob",
@@ -54,9 +56,11 @@ BOB = Account(
     "bob-fake-mowl-password-Rt7",
     "b0b00000-0000-4000-8000-00000000b001",
     "b0b00111-1111-4111-8111-11111111b002",
+    "BobsListBBBBBBBBBBBBB2",
 )
 ACCOUNTS = (ALICE, BOB)
 assert all(len(v) == 36 for a in ACCOUNTS for v in (a.ticket, a.token))  # the library checks this
+assert all(len(a.playlist_id) == 22 for a in ACCOUNTS)  # a Spotify playlist id
 
 
 @dataclass(frozen=True)
@@ -108,6 +112,15 @@ class TwoMowl:
             if who is None:
                 return 401, {"Error": "unauthorized"}
             return 200, {"Data": [{"ProgramID": 1, "Name": f"{who.label} workout"}], "Error": None}
+        if parts == ["v1", "Spotify", "Playlists"]:
+            who = self._by(token=authorization)
+            self.record("playlists", who, who is not None)
+            if who is None:
+                return 401, {"Error": "unauthorized"}
+            return 200, {
+                "Data": [{"ID": who.playlist_id, "Name": f"{who.label} playlist"}],
+                "Error": None,
+            }
         return 404, {"Error": "not found"}
 
 

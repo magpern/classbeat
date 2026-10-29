@@ -130,8 +130,10 @@ jobs:
         run: |
           set -euo pipefail
           uv sync --frozen --only-group audit
-          uv export -q --frozen --no-dev --no-emit-project --no-emit-package mowl-workouts             -o "$RUNNER_TEMP/requirements-prod.txt"
-          uv export -q --frozen --no-emit-project --no-emit-package mowl-workouts --all-groups             -o "$RUNNER_TEMP/requirements-all.txt"
+          uv export -q --frozen --no-dev --no-emit-project --no-emit-package mowl-workouts \
+            -o "$RUNNER_TEMP/requirements-prod.txt"
+          uv export -q --frozen --no-emit-project --no-emit-package mowl-workouts --all-groups \
+            -o "$RUNNER_TEMP/requirements-all.txt"
           for f in requirements-prod requirements-all; do
             uv run --frozen --only-group audit pip-audit \
               --require-hashes --disable-pip --strict \

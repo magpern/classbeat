@@ -246,3 +246,42 @@ async def test_the_owner_role_without_a_context_sees_no_connection_rows(
             assert (await session.execute(text("SELECT count(*) FROM connections"))).scalar() == 0
     finally:
         await engine.dispose()
+
+
+async def test_a_failing_account_does_not_stop_the_others_and_is_reported(
+    env: Env, wipe_settings: Any, smtp: SmtpFake, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from classbeat import keys_cli
+
+    alice = await env.user("a@example.com")
+    bob = await env.user("b@example.com")
+    for email, user_id in (("a@example.com", alice), ("b@example.com", bob)):
+        await connect(env.factory, env.app.state.keyring, user_id, TOKENS[email])
+    await stop_app(env)
+    real = keys_cli.auth.wipe_user
+
+    async def flaky(db: Any, user_id: Any, providers: Any) -> Any:
+        if user_id == alice:
+            raise ValueError("not a database error: row values must not be printed")
+        return await real(db, user_id, providers)
+
+    monkeypatch.setattr(keys_cli.auth, "wipe_user", flaky)
+    code, out, err = await cli(wipe_settings(), "keys", "wipe", "--confirm")
+    assert code == 1
+    assert "failed: 1" in out
+    assert "wiped: 1" in out  # Bob's account was still processed
+    assert "1 accounts were not processed (ValueError: 1)" in err
+    assert "row values" not in err + out
+    assert "KEK check rows deleted" not in out  # nothing is forgotten while an account failed
+    assert await owner_count_of(wipe_settings(), bob) == 0
+    assert await owner_count_of(wipe_settings(), alice) == 1  # rolled back, to be run again
+    assert len(smtp.to("b@example.com")) == 1
+    assert smtp.to("a@example.com") == []
+
+
+async def owner_count_of(settings: Any, user_id: Any) -> int:
+    admin = create_migrations_engine(settings)
+    try:
+        return await owner_count(create_session_factory(admin), user_id)
+    finally:
+        await admin.dispose()

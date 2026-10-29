@@ -193,3 +193,53 @@ async def test_a_tampered_v2_totp_row_is_unreadable_not_rewrapped(
         assert await rewrap_v2_secrets(env.factory, ring) == {"kek-1 decrypt_failed": 1}
     finally:
         await engine.dispose()
+
+
+async def test_rewrap_exits_non_zero_when_a_totp_row_cannot_be_rewrapped(
+    env: Env, app_database_url: str, kek_dir: Path
+) -> None:
+    user_id = await env.user()
+    await add_totp(env, env.app.state.keyring, user_id)
+    await env.run("UPDATE mfa_totp SET wrapped_dek = decode(repeat('00', 48), 'hex')")
+    rotate(kek_dir, "kek-2", KEY_2, old_id="kek-1")
+    code, out, err = await cli(settings_for(app_database_url, "kek-2"), "keys", "rewrap")
+    assert code == 1
+    assert "kek-1 decrypt_failed: 1" in out
+    assert "1 TOTP rows could not be migrated or rewrapped" in err
+    assert "connection rows" not in err
+
+
+async def test_rewrap_totp_exits_non_zero_when_a_v1_row_cannot_be_migrated(
+    env: Env, app_database_url: str
+) -> None:
+    user_id = await env.user()
+    await add_totp(env, env.app.state.keyring, user_id, v1=True)
+    await env.run("UPDATE mfa_totp SET secret_ciphertext = secret_ciphertext || '\\x00'::bytea")
+    code, out, err = await cli(settings_for(app_database_url, "kek-1"), "keys", "rewrap", "--totp")
+    assert code == 1
+    assert "app-v1 decrypt_failed: 1" in out
+    assert "1 TOTP rows could not be migrated or rewrapped" in err
+    assert await env.scalar("SELECT key_id FROM mfa_totp") == "app-v1"  # untouched
+
+
+async def test_a_decrypt_failed_flip_bumps_updated_at(
+    env: Env, app_database_url: str, kek_dir: Path
+) -> None:
+    user_id = await env.user("a@example.com")
+    await connect(env.factory, env.app.state.keyring, user_id, TOKENS["a@example.com"])
+    ctx = make_context(user_id)
+    async with user_session(env.factory, ctx) as db:
+        await db.execute(
+            text("UPDATE connections SET wrapped_dek = decode(repeat('00', 48), 'hex')")
+        )
+        before = (await db.execute(text("SELECT updated_at FROM connections"))).scalar_one()
+    rotate(kek_dir, "kek-2", KEY_2, old_id="kek-1")
+    code, out, _ = await cli(settings_for(app_database_url, "kek-2"), "keys", "rewrap")
+    assert code == 1
+    assert "kek-1 decrypt_failed: 1" in out
+    async with user_session(env.factory, ctx) as db:
+        row = (
+            await db.execute(text("SELECT status, last_error, updated_at FROM connections"))
+        ).one()
+    assert (row.status, row.last_error) == ("needs_reconnect", "decrypt_failed")
+    assert row.updated_at > before

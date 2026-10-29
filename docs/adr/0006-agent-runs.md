@@ -276,7 +276,8 @@ not guess it. Likewise a request that fails after the provider started billing i
 mid-stream, a timeout) returns no usage, so nothing is recorded for it (amended in A2, #91). And
 the SDK retries silently inside one turn (§2, `max_retries=2`: a connection error or a timeout
 before the response headers, and 408, 409, 429 and 5xx answers; never once the stream has
-started); only the attempt that answers reports usage, so an earlier attempt the provider billed
+started; the provider's `x-should-retry` response header can override that list for one answer,
+forcing or forbidding a retry, which leaves the bound below unchanged); only the attempt that answers reports usage, so an earlier attempt the provider billed
 (a timeout or a dropped connection after the request was sent) is lost **even when the turn
 succeeds** (amended for #121). Bound: **at most two uncounted attempts per turn, and three for
 the turn that ends a failed attempt**, each at most the conversation's input plus `max_tokens`.

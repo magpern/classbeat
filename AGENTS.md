@@ -219,9 +219,12 @@ uv run alembic upgrade head    # migrations as the owner role, CLASSBEAT_MIGRATI
 The domain library `mowl` (`mowl-workouts`) is pinned as `backend/vendor/mowl_workouts-0.5.0-py3-none-any.whl`,
 built from the v0.5.0 tag **without** the bundled Swedebeat app key by `scripts/build-mowl-wheel.sh`
 (needs `gh` access to the private repo; it checks the tag's commit, the missing key file and that
-every other file matches the release wheel). After a rebuild run `uv lock`. classbeat leaves out
+every other file and the `Requires-Dist` lines match the release wheel). After a rebuild run `uv lock`. classbeat leaves out
 the library's `mcp` dependency (`exclude-dependencies`): it never runs the MCP server, and `mcp`'s
 `httpx2` would replace httpx inside Authlib. Backend tests fake MOWL in-process (`tests/mowlfake.py`).
+Because `mcp` is left out, the image's `mowl` and `mowl-mcp` console scripts fail on import: use only the library's modules `api`, `service`, `library`, `spotify_web`
+and `swedebeat` (never the CLI or MCP entry points). The tag commit, the release asset's digest and
+the vendored wheel's SHA-256 are recorded in the header of `scripts/build-mowl-wheel.sh`.
 
 Database tests need a throwaway Postgres whose application database has the roles of
 `docker/postgres/init/10-roles.sql` (ADR 0002 section 4). Give it a name and port of its own
@@ -267,13 +270,14 @@ call a model). `anthropic` needs the `anthropic_api_key` secret file, mounted on
 (an empty file counts as none; `scripts/worktree.sh init` creates it empty and it is never a real
 key); the worker refuses to start with `anthropic` and no key and with `fake` when
 `CLASSBEAT_ENVIRONMENT=prod`, and the web app refuses to start when it can read the key. The
-`anthropic` provider (`classbeat.agent.providers.anthropic`, the official `anthropic` SDK pinned at
-0.125.0, the last release on `httpx`; it gets no further fixes, since 1.x and 2.x need `httpx2`.
-We stay on 0.125.0 until a review on 2027-01-31 (ADR 0006 section 2, #120: the egress allowlist
-and its guard are built on httpx, and `httpx2` stays out of the image); Dependabot ignores
-`anthropic` majors until then, and pip-audit must stay clean): with `anthropic` the worker refuses
-to start (and the provider to build) when `ANTHROPIC_LOG`, `ANTHROPIC_CUSTOM_HEADERS` or
-`SSLKEYLOGFILE` is set; its price entries in `classbeat.agent.prices` are to be verified before
+`anthropic` provider (`classbeat.agent.providers.anthropic`) uses the official `anthropic` SDK
+pinned at 0.125.0. That is the last release on `httpx` and it gets no further fixes, since 1.x and
+2.x need `httpx2`; we stay on it for now because the egress allowlist and its guard are built on
+httpx and `httpx2` stays out of the image (ADR 0006 section 2, #120). Review by 2027-01-31, or
+earlier if pip-audit reports an advisory against 0.125.0, the API needs something 0.x lacks, or
+Authlib needs `httpx2` itself; Dependabot ignores `anthropic` majors until then, and pip-audit
+must stay clean. With `anthropic` the worker refuses to start (and the provider to build) when
+`ANTHROPIC_LOG`, `ANTHROPIC_CUSTOM_HEADERS` or `SSLKEYLOGFILE` is set; the provider's price entries in `classbeat.agent.prices` are to be verified before
 live use. The worker's outbound requests go only to `https://api.mowl.com` and
 `https://api.anthropic.com` (`classbeat.egress`, the only module allowed to build an HTTP client
 or `urllib` opener; guarded by `tests/test_egress_guard.py`); its TLS contexts never write a key

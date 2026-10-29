@@ -99,7 +99,9 @@ async def _rewrap_row(
                     _C.owner_id == ctx.user_id,
                     _C.wrapped_dek == row.wrapped_dek,
                 )
-                .values(status="needs_reconnect", last_error="decrypt_failed")
+                .values(
+                    status="needs_reconnect", last_error="decrypt_failed", updated_at=func.now()
+                )
             )
             logger.warning(
                 "connection unusable",
