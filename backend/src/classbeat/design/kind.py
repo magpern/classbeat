@@ -11,7 +11,13 @@ mowl_connection_id}`` (``DesignDraftInput``). Stages:
    jobs, #114 item 4);
 3. store, in the final fenced transaction: the connection guard once more
    (``MusicStep.still_current``; ``not_connected`` rolls it back and fails the job), then the
-   ``draft`` revision (``classbeat.design.revision``); the job ends ``completed``.
+   ``draft`` revision (``classbeat.design.revision``, provenance ``origin = design_draft``) and,
+   for the class's first design, its ``brief``, ``music_source`` and ``current_revision_id``
+   (ADR 0007 section 2); the job ends ``completed``.
+
+It consumes the class's credit (``consumes_credit``, ADR 0007 section 3) and has no ``admit``.
+The brief is refused at creation when it would not fit ``classes.brief`` (4096 bytes as jsonb),
+so a long brief fails before the model runs, not in the final store.
 
 The kind is registered in ``classbeat.jobs.KINDS`` when this package is imported: by the worker
 (which runs it) and by the web app (the jobs API validates the input with the same registry,
@@ -24,10 +30,10 @@ from the claimed row) and the job's input; everything it writes goes through ``J
 
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Annotated, ClassVar, Final, Literal
+from typing import Annotated, ClassVar, Final, Literal, Self
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, StringConstraints
+from pydantic import BaseModel, ConfigDict, StringConstraints, model_validator
 
 from classbeat.agent import AgentConfig, Brief, DesignContext, JobStageHost, design_stage, run_stage
 from classbeat.agent.design import DesignResult
@@ -58,6 +64,12 @@ class DesignDraftInput(JobInput):
     brief: Brief
     music: MusicChoice
     mowl_connection_id: UUID
+
+    @model_validator(mode="after")
+    def _brief_fits_the_class(self) -> Self:
+        if revision.jsonb_size(self.brief.model_dump(mode="json")) > revision.MAX_BRIEF_BYTES:
+            raise ValueError("the brief is too long")
+        return self
 
 
 @dataclass(frozen=True)
@@ -131,7 +143,14 @@ async def run(job_run: JobRun) -> Complete:
         ``not_connected`` here rolls it back and ends the job with that category."""
         try:
             await step.still_current(fs)
-            return await draft.store(fs)
+            revision_id = await draft.store(fs)
+            await revision.adopt_first(
+                fs,
+                revision_id,
+                given.brief.model_dump(mode="json"),
+                given.music.model_dump(mode="json"),
+            )
+            return revision_id
         finally:
             step.close()
 

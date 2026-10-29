@@ -22,7 +22,8 @@ from classbeat.agent import Provenance, WorkoutDraft
 from classbeat.design import Runtime
 from classbeat.design import kind as design_kind
 from classbeat.design import music as design_music
-from designtools import PLAYLIST_NAME, DesignEnv, FakeMowlMusic
+from designtools import BRIEF, PLAYLIST_NAME, DesignEnv, FakeMowlMusic
+from jobtools import new_job
 from optools import OTHER_PLAYLIST, PLAYLIST, TOKEN_A, TOKEN_B
 
 pytestmark = pytest.mark.usefixtures("jenv")
@@ -260,3 +261,85 @@ async def test_the_kind_reads_the_user_only_from_its_job(
             "SELECT id FROM mowl_playlist_links WHERE owner_id = :o", o=owner
         ).all()
         assert revision.music["link_id"] == str(link.id)
+
+
+def class_of(denv: DesignEnv, job_id: uuid.UUID) -> Any:
+    return denv.ops.sql(
+        "SELECT c.* FROM classes c JOIN jobs j ON j.class_id = c.id AND j.owner_id = c.owner_id "
+        "WHERE j.id = :id",
+        id=job_id,
+    ).one()
+
+
+async def test_the_first_draft_sets_the_class_brief_music_and_current_revision(
+    denv: DesignEnv, fake_mowl: FakeMowlMusic
+) -> None:
+    """ADR 0007 section 2 (K1): the first design's final store sets ``brief``, ``music_source``
+    and ``current_revision_id`` with the revision; a later design on the same class adds a
+    revision and leaves all three (compare-and-set from NULL)."""
+    owner, conn = await owner_with_mowl(denv)
+    first = denv.job(owner, conn)
+    before = class_of(denv, first)
+    assert (before.brief, before.music_source, before.current_revision_id) == (None, None, None)
+    await denv.run_next()
+    [revision] = denv.revisions(first)
+    stored = class_of(denv, first)
+    given = design_kind.DesignDraftInput.model_validate(denv.input(conn))
+    assert stored.current_revision_id == revision.id
+    assert stored.brief == given.brief.model_dump(mode="json")
+    assert stored.music_source == {
+        "source": "mowl_spotify_playlist",
+        "spotify_playlist_id": PLAYLIST,
+    }
+    made = Provenance.model_validate_json(json.dumps(revision.provenance))
+    assert (made.origin, made.base_revision_id, made.request_message_id) == (
+        "design_draft", None, None
+    )  # fmt: skip
+
+    body = {k: v for k, v in denv.input(conn, OTHER_PLAYLIST).items() if k != "title"}
+    body["class_id"] = str(stored.id)
+    body["brief"] = {**BRIEF, "length_min": 45}
+    second = new_job(
+        denv.admin, owner, class_id=stored.id, kind=design.KIND, input=json.dumps(body)
+    )
+    await denv.run_next()
+    assert denv.ops.row(second).state == "completed"
+    [later] = denv.revisions(second)
+    assert later.number == 2
+    again = class_of(denv, second)
+    assert (again.current_revision_id, again.brief, again.music_source) == (
+        revision.id,
+        stored.brief,
+        stored.music_source,
+    )
+
+
+async def test_a_failed_draft_leaves_the_class_pointers_unset(
+    denv: DesignEnv, fake_mowl: FakeMowlMusic
+) -> None:
+    denv.script = "refusal"
+    owner, conn = await owner_with_mowl(denv)
+    job_id = denv.job(owner, conn)
+    await denv.run_next()
+    assert denv.ops.row(job_id).state == "failed"
+    stored = class_of(denv, job_id)
+    assert (stored.brief, stored.music_source, stored.current_revision_id) == (None, None, None)
+
+
+def test_a_brief_too_long_for_the_class_is_refused_with_the_input() -> None:
+    """``classes.brief`` holds 4096 bytes (as jsonb): a valid but long brief in multi-byte text
+    fails validation at creation (the jobs API's 422) instead of in the final store."""
+    connection = str(uuid.uuid4())
+    base = {
+        "title": "Tuesday climb",
+        "music": {"source": "mowl_spotify_playlist", "spotify_playlist_id": PLAYLIST},
+        "mowl_connection_id": connection,
+    }
+    fits = design_kind.DesignDraftInput.model_validate(
+        {**base, "brief": {**BRIEF, "text": "x" * 2000}}
+    )
+    assert len(fits.brief.text) == 2000
+    with pytest.raises(ValueError, match="too long"):
+        design_kind.DesignDraftInput.model_validate(
+            {**base, "brief": {**BRIEF, "text": "\u00e5\u00e4\u00f6\U0001f6b4" * 500}}
+        )

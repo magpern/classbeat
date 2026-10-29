@@ -15,7 +15,9 @@
   ``crossfade_sec`` next to it, the ``agent_runs`` ids, usage and cost.
 
 ``store`` runs inside the job's final fenced transaction (``Complete``), so the revision, its
-``revision_created`` event and ``completed`` commit together or not at all.
+``revision_created`` event and ``completed`` commit together or not at all. ``adopt_first`` runs
+in the same transaction after it (ADR 0007 section 2): the class's first design sets
+``classes.brief``, ``music_source`` and ``current_revision_id``, compare-and-set from NULL.
 """
 
 import hashlib
@@ -36,6 +38,7 @@ from classbeat.jobs import FencedSession, JobFailure
 
 MUSIC_SOURCE: Final = "mowl_spotify_playlist"
 MAX_CONTENT_BYTES: Final = 65536  # the class_revisions.content check of migration 0004
+MAX_BRIEF_BYTES: Final = 4096  # the classes.brief check of migration 0005
 
 _INSERT = text(
     "INSERT INTO class_revisions (id, owner_id, class_id, number, kind, content, content_hash, "
@@ -45,6 +48,39 @@ _INSERT = text(
     "CAST(:content AS jsonb), :content_hash, CAST(:music AS jsonb), CAST(:provenance AS jsonb), "
     "j.id FROM jobs j WHERE j.id = :job_id AND j.owner_id = :owner_id RETURNING number"
 )
+
+# The job's own class (read from the fenced job row, never from the input). All three are set
+# together and only while the class has no current revision: its first design.
+_ADOPT_FIRST = text(
+    "UPDATE classes c SET current_revision_id = :revision_id, brief = CAST(:brief AS jsonb), "
+    "music_source = CAST(:music_source AS jsonb) FROM jobs j "
+    "WHERE j.id = :job_id AND j.owner_id = :owner_id AND c.owner_id = j.owner_id "
+    "AND c.id = j.class_id AND c.current_revision_id IS NULL RETURNING c.id"
+)
+
+
+def jsonb_size(value: Any) -> int:
+    """The length of ``value`` as jsonb prints it (``", "`` and ``": "``), in UTF-8 bytes."""
+    return len(json.dumps(value, ensure_ascii=False, separators=(", ", ": ")).encode("utf-8"))
+
+
+async def adopt_first(
+    fs: FencedSession, revision_id: UUID, brief: dict[str, Any], music_source: dict[str, Any]
+) -> bool:
+    """In the final fenced transaction, after the revision is stored: make it the class's current
+    revision and record the brief and the music source, if the class has none yet. Returns
+    whether it did (a class that already has a current revision keeps it)."""
+    found = await fs.db.execute(
+        _ADOPT_FIRST,
+        {
+            "revision_id": revision_id,
+            "brief": json.dumps(brief, sort_keys=True, ensure_ascii=False),
+            "music_source": json.dumps(music_source, sort_keys=True, ensure_ascii=False),
+            "job_id": fs.lease.job_id,
+            "owner_id": fs.lease.owner_id,
+        },
+    )
+    return found.first() is not None
 
 
 class UnknownBpmTrack(BaseModel):
@@ -139,7 +175,7 @@ def build(
         fingerprint=step.fingerprint,
         unknown_bpm=[UnknownBpmTrack(index=u.index, title=u.title) for u in step.unknown_bpm],
     )
-    made: Provenance = provenance([outcome], music_map)
+    made: Provenance = provenance([outcome], music_map, origin="design_draft")
     return DraftRevision(
         content=content,
         content_hash=hashlib.sha256(canonical(content)).digest(),
