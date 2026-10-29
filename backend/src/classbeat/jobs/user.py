@@ -22,6 +22,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from classbeat.context import UserContext, require_context
+from classbeat.jobs.events import notify_event, validated_payload
 
 USER_LEASE_VERSION: Final = 0
 
@@ -67,10 +68,11 @@ async def _event(db: AsyncSession, ctx: UserContext, job_id: UUID, seq: int, kin
             "job_id": job_id,
             "seq": seq,
             "kind": kind,
-            "payload": json.dumps({}),
+            "payload": json.dumps(validated_payload(kind, {})),
             "v": USER_LEASE_VERSION,
         },
     )
+    await notify_event(db, job_id)
 
 
 async def cancel(db: AsyncSession, ctx: UserContext, job_id: UUID) -> str | None:

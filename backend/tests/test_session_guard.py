@@ -30,6 +30,7 @@ def test_the_allowlist_is_exactly_the_reviewed_one() -> None:
     assert ALLOWED_MODULES == (
         "classbeat.jobs.fence",
         "classbeat.jobs.credits",
+        "classbeat.jobs.progress",
         "classbeat.keys_cli",
     )
 
