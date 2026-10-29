@@ -96,3 +96,48 @@ def test_the_smtp_password_comes_only_from_its_secret_file(
 def test_the_smtp_port_is_range_checked() -> None:
     with pytest.raises(ValidationError):
         settings(smtp_port=0)
+
+
+@pytest.mark.parametrize("mode", ["starttls", "tls"])
+async def test_the_smtp_tls_context_ignores_sslkeylogfile(
+    mode: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The stdlib's default context would append every session's secrets to the file that
+    ``SSLKEYLOGFILE`` names; the mailer's context is ``egress.tls_client_context()``."""
+    import smtplib
+    import ssl
+    from typing import Any
+
+    key_log = tmp_path / "keys.log"
+    monkeypatch.setenv("SSLKEYLOGFILE", str(key_log))
+    assert ssl.create_default_context().keylog_filename == str(key_log)  # the risk is real
+    key_log.unlink()
+    seen: list[ssl.SSLContext] = []
+
+    class Client:
+        """Stands in for ``smtplib.SMTP`` and ``SMTP_SSL``: records the TLS context."""
+
+        def __init__(self, *args: Any, context: ssl.SSLContext | None = None, **kwargs: Any):
+            if context is not None:
+                seen.append(context)
+
+        def __enter__(self) -> "Client":
+            return self
+
+        def __exit__(self, *exc: object) -> None:
+            return None
+
+        def starttls(self, *, context: ssl.SSLContext) -> None:
+            seen.append(context)
+
+        def send_message(self, message: Any) -> None:
+            return None
+
+    monkeypatch.setattr(smtplib, "SMTP", Client)
+    monkeypatch.setattr(smtplib, "SMTP_SSL", Client)
+    mailer = Mailer(settings(smtp_host="smtp.example.test", smtp_tls=mode))
+    await mailer.send(MailMessage("to@example.com", "Hello", "Body\n"))
+    [context] = seen
+    assert context.keylog_filename is None
+    assert (context.verify_mode, context.check_hostname) == (ssl.CERT_REQUIRED, True)
+    assert not key_log.exists()

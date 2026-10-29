@@ -17,7 +17,7 @@ The only place in ``classbeat`` that builds an HTTP client or an ``urllib`` open
   see a refusal as an error it does not retry (``classbeat.agent.providers.anthropic``).
 
 Both paths verify TLS with a context from ``tls_client_context()``, which never writes a TLS key
-log (``SSLKEYLOGFILE`` is ignored, threat model T19).
+log (``SSLKEYLOGFILE`` is ignored, threat model T49).
 
 A refused request raises ``OutboundBlocked`` (the job fails ``outbound_blocked``, ADR 0005 §4)
 and logs the host only, never the URL, its path or query, or a header.
@@ -306,7 +306,11 @@ class AllowlistTransport(httpx.AsyncBaseTransport):
 
 
 def model_network_transport() -> httpx.AsyncHTTPTransport:
-    """The network transport under the allowlist: no environment, no TLS key log."""
+    """The network transport under the allowlist: trust store ``certifi`` (the one httpx itself
+    uses by default, not the system's), no TLS key log. ``trust_env=False`` is kept as a
+    belt-and-braces flag: with our own ``verify`` context it no longer decides anything about
+    TLS (``SSL_CERT_FILE`` and ``SSL_CERT_DIR`` are ignored because that context is passed, not
+    because of the flag) and the transport has no proxy settings."""
     return httpx.AsyncHTTPTransport(
         trust_env=False, verify=tls_client_context(cafile=certifi.where())
     )
@@ -321,9 +325,10 @@ def allowlisted_async_client(
 ) -> httpx.AsyncClient:
     """The ``httpx.AsyncClient`` for the model SDK (``AsyncAnthropic(http_client=...)``).
 
-    ``trust_env=False`` on the client and the transport: no proxy, ``NETRC`` or ``SSL_CERT_*``
-    from the environment. TLS uses ``tls_client_context`` with httpx's own trust store
-    (``certifi``), so no key log either. ``inner`` replaces the network transport in tests (an
+    ``trust_env=False`` on the client: no proxy or ``NETRC`` from the environment. The
+    environment's ``SSL_CERT_*`` is ignored because the transport is handed ``tls_client_context``
+    (httpx's own trust store, ``certifi``) instead of building one itself, which also means no
+    key log. ``inner`` replaces the network transport in tests (an
     ``httpx.MockTransport``, no network); the check still runs. ``refused`` turns an
     ``OutboundBlocked`` into the exception the caller's library does not retry (raised ``from``
     it, so the refusal stays its cause).

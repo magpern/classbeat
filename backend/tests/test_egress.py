@@ -388,3 +388,34 @@ def test_the_model_client_writes_no_tls_key_log(key_log: Path) -> None:
     assert isinstance(network, httpx.AsyncHTTPTransport)
     _assert_no_key_log(_field(_field(network, "_pool"), "_ssl_context"))
     assert not key_log.exists()
+
+
+# --- the model transport's trust store ------------------------------------------------------
+
+
+def test_the_model_transport_trusts_certifi_not_the_system_store(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    asked: list[str | None] = []
+    real = egress.tls_client_context
+
+    def spy(*, cafile: str | None = None) -> ssl.SSLContext:
+        asked.append(cafile)
+        return real(cafile=cafile)
+
+    monkeypatch.setattr(egress, "tls_client_context", spy)
+    network = egress.model_network_transport()
+    assert asked == [certifi.where()]  # switching to the system store (None) fails here
+    context: ssl.SSLContext = _field(_field(network, "_pool"), "_ssl_context")
+    expected = real(cafile=certifi.where()).get_ca_certs()
+    assert expected  # the bundle is not empty
+    assert context.get_ca_certs() == expected
+
+
+def test_certifi_is_a_declared_dependency() -> None:
+    """``classbeat.egress`` imports it, so it must not rest on being pulled in by httpx."""
+    import tomllib
+
+    pyproject = Path(__file__).resolve().parents[1] / "pyproject.toml"
+    declared = tomllib.loads(pyproject.read_text("utf-8"))["project"]["dependencies"]
+    assert any(d.split(">")[0].split("=")[0].split("[")[0].strip() == "certifi" for d in declared)
