@@ -16,7 +16,6 @@ queue functions insert (a trigger would break the queue check, ADR 0005 section 
 
 from collections.abc import Mapping
 from datetime import datetime
-from enum import StrEnum
 from typing import Annotated, Any, Final, Literal
 from uuid import UUID
 
@@ -41,16 +40,24 @@ NOTIFY = text("SELECT pg_notify('job_events', :job_id)")
 Name = Annotated[str, StringConstraints(pattern=r"^[a-z][a-z0-9_]{0,39}$")]
 
 
-class ToolError(StrEnum):
-    """Why a tool call failed, as a code. Never the error text (it can hold provider data)."""
-
-    INVALID_ARGUMENTS = "invalid_arguments"
-    UNKNOWN_TOOL = "unknown_tool"
-    NOT_ALLOWED = "not_allowed"
-    NOT_FOUND = "not_found"
-    LIMIT_EXCEEDED = "limit_exceeded"
-    UPSTREAM_UNAVAILABLE = "upstream_unavailable"
-    INTERNAL = "internal"
+# Why a tool call failed, as a code (never the error text, which can hold provider data). The one
+# vocabulary: the agent dispatcher (``classbeat.agent.dispatcher``) takes its ``ERROR_CODES`` from
+# here, so what it emits and what an event may carry cannot drift apart. The first seven are the
+# dispatcher's; the rest are reserved for tools that are not written yet.
+TOOL_ERROR_CODES: Final = (
+    "unknown_tool",
+    "too_large",
+    "invalid_input",
+    "out_of_range",
+    "invalid_draft",
+    "result_too_large",
+    "internal",
+    "invalid_arguments",
+    "not_allowed",
+    "not_found",
+    "limit_exceeded",
+    "upstream_unavailable",
+)
 
 
 class Payload(BaseModel):
@@ -72,7 +79,14 @@ class StageStarted(Payload):
 class ToolCalled(Payload):
     tool: Name
     ok: bool
-    error: ToolError | None = None
+    error: str | None = None
+
+    @field_validator("error")
+    @classmethod
+    def _known_code(cls, value: str | None) -> str | None:
+        if value is not None and value not in TOOL_ERROR_CODES:
+            raise ValueError("unknown tool error code")
+        return value
 
     @model_validator(mode="after")
     def _error_only_on_failure(self) -> "ToolCalled":

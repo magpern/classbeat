@@ -223,6 +223,12 @@ async def test_the_stream_ends_when_the_user_really_signs_out(
     assert await probe()
     assert not await session_probe(env.factory, env.settings, session.token, other)()
     assert not await session_probe(env.factory, env.settings, "no-such-token", owner)()
+    disabled = await env.user("c@example.com")
+    disabled_session = await env.login(disabled)
+    disabled_probe = session_probe(env.factory, env.settings, disabled_session.token, disabled)
+    assert await disabled_probe()
+    await env.run("UPDATE users SET disabled_at = now() WHERE id = :i", i=disabled)
+    assert not await disabled_probe()  # a disabled user's stream ends too
     job_id = new_job(jobs_admin, owner)
     task = asyncio.ensure_future(collect(env, owner, job_id, still_signed_in=probe))
     done, _ = await asyncio.wait({task}, timeout=0.5)  # open and idle while the session lives

@@ -3,8 +3,9 @@
 One dedicated ``LISTEN job_events`` connection per web process. It never queries a table: a
 notification carries a job id and nothing else, and the hub only sets the ``asyncio.Event`` of the
 streams subscribed to that id. The stream then reads in a user session, so a notification for
-someone else's job reveals nothing (the id was never secret, and no stream of another user can be
-subscribed to it: a stream subscribes only after the owner-scoped read found the job).
+someone else's job reveals nothing: a wake-up carries no data, and a stream shows only what its
+own owner-scoped read returns. (A stream subscribes just before its first read; the route has
+already answered 404 for a job that is not the caller's.)
 
 If the listener is down, ``listening`` is false and streams poll every few seconds; the listener
 reconnects with backoff, and every subscriber is woken when it goes down and when it is back (a

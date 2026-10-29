@@ -23,23 +23,15 @@ from pydantic import ValidationError
 
 from classbeat.agent.provider import ToolCall, ToolResult
 from classbeat.agent.stage import Stage, ToolError
+from classbeat.jobs.events import TOOL_ERROR_CODES
 
 MAX_INPUT_BYTES: Final = 32 * 1024
 MAX_RESULT_BYTES: Final = 32 * 1024
 MAX_MESSAGES: Final = 20
 UNKNOWN: Final = "unknown"
-# Every code a result or a ``tool_called`` event may carry.
-ERROR_CODES: Final = frozenset(
-    {
-        "unknown_tool",
-        "too_large",
-        "invalid_input",
-        "out_of_range",
-        "invalid_draft",
-        "result_too_large",
-        "internal",
-    }
-)
+# Every code a result or a ``tool_called`` event may carry: one vocabulary, defined in
+# ``classbeat.jobs.events`` (a code the events refuse would end the job as ``internal``).
+ERROR_CODES: Final = frozenset(TOOL_ERROR_CODES)
 
 
 @dataclass(frozen=True, slots=True)

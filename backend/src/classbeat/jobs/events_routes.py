@@ -3,7 +3,9 @@
 Signed in only (401). A job that is not the caller's, an unknown one and a malformed id are the
 same 404. ``Last-Event-ID`` (or ``?after=`` for the first connect) names the last ``seq`` the
 browser has. At most ``MAX_STREAMS_PER_USER`` open streams per user and web process (429
-beyond). The stream itself is ``classbeat.jobs.stream``.
+beyond). The stream itself is ``classbeat.jobs.stream``. Each 15 s check of the session goes
+through ``resolve_session``, which refreshes ``last_seen_at`` (throttled), so an open stream keeps
+the session alive.
 """
 
 import time
