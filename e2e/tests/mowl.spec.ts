@@ -33,6 +33,8 @@ test('connect MOWL, see the status, disconnect', async ({ page }) => {
   await expect(mowl.getByTestId('mowl-status')).toHaveText('Connected')
 
   await mowl.getByRole('button', { name: 'Disconnect MOWL' }).click()
+  await expect(mowl.getByText(/second time/)).toBeVisible() // the warning of ADR 0006 section 3
+  await mowl.getByRole('button', { name: 'Yes, disconnect MOWL' }).click()
   await expect(mowl.getByText(/MOWL is disconnected/)).toBeVisible()
   await expect(mowl.getByRole('button', { name: 'Connect MOWL' })).toBeVisible()
   await expect(mowl.getByTestId('mowl-status')).toHaveCount(0)

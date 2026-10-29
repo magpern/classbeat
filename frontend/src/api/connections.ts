@@ -5,6 +5,8 @@ import { list, object, optionalText, text } from './decode'
 // error categories come from the backend; nothing secret is ever part of these answers.
 
 export interface Connection {
+  /** The user's own connection id: what a job input names. */
+  id: string
   provider: string
   /** `connected` or `needs_reconnect`. */
   status: string
@@ -17,6 +19,7 @@ export interface Connection {
 function decodeConnection(value: unknown): Connection {
   const item = object(value, 'connection')
   return {
+    id: text(item, 'id'),
     provider: text(item, 'provider'),
     status: text(item, 'status'),
     lastError: optionalText(item, 'last_error'),

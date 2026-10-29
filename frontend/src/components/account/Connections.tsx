@@ -37,6 +37,14 @@ function lastErrorText(category: string): string {
   return known ?? 'The last use of this connection failed.'
 }
 
+/**
+ * classbeat's local record of the playlists it added to this MOWL account goes with the
+ * connection, whether it is disconnected or connected again in place, and with it any adding
+ * that was left undecided (ADR 0006 section 3, #117 item 7).
+ */
+const FORGET_WARNING =
+  'classbeat forgets which playlists it has added to your MOWL music, and any adding that was left undecided. The next class you design from one of those playlists may add it to your MOWL music a second time, so you could see two copies there.'
+
 function since(iso: string): string {
   const date = new Date(iso)
   return Number.isNaN(date.getTime()) ? iso : date.toLocaleDateString()
@@ -50,6 +58,7 @@ export function Connections() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [note, setNote] = useState<string | null>(null)
+  const [confirmingDisconnect, setConfirmingDisconnect] = useState(false)
   const action = useAction()
 
   const load = useCallback(async () => {
@@ -89,6 +98,7 @@ export function Connections() {
 
   const disconnect = () => {
     setNote(null)
+    setConfirmingDisconnect(false)
     void action.run(async () => {
       await guard(() => disconnectMowl())
       await load()
@@ -125,6 +135,11 @@ export function Connections() {
       ) : null}
       {needsForm ? (
         <form onSubmit={connect}>
+          {mowl ? (
+            <p className="notice" data-kind="info" data-testid="reconnect-warning">
+              Connecting again replaces the stored sign-in. {FORGET_WARNING}
+            </p>
+          ) : null}
           <p>
             Sign in with your Intelligent Cycling (MOWL) account. classbeat uses your password once
             to get a sign-in token and does not keep it.
@@ -160,14 +175,34 @@ export function Connections() {
             Disconnecting deletes the token classbeat holds. MOWL has no way for classbeat to end
             the sign-in on its side; change your MOWL password to end it there.
           </p>
-          <button
-            className="button button--secondary"
-            type="button"
-            disabled={action.busy}
-            onClick={disconnect}
-          >
-            Disconnect MOWL
-          </button>
+          {confirmingDisconnect ? (
+            <div className="notice" role="group" aria-label="Confirm disconnect">
+              <p>{FORGET_WARNING}</p>
+              <button className="button" type="button" disabled={action.busy} onClick={disconnect}>
+                Yes, disconnect MOWL
+              </button>
+              <button
+                className="button button--secondary"
+                type="button"
+                onClick={() => {
+                  setConfirmingDisconnect(false)
+                }}
+              >
+                Keep it connected
+              </button>
+            </div>
+          ) : (
+            <button
+              className="button button--secondary"
+              type="button"
+              disabled={action.busy}
+              onClick={() => {
+                setConfirmingDisconnect(true)
+              }}
+            >
+              Disconnect MOWL
+            </button>
+          )}
         </>
       ) : null}
     </Section>

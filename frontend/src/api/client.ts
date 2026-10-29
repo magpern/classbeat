@@ -76,6 +76,8 @@ async function currentCsrfToken(): Promise<string> {
 
 export interface RequestOptions {
   body?: unknown
+  /** Extra request headers (an `Idempotency-Key`); never CSRF or content type. */
+  headers?: Record<string, string>
   signal?: AbortSignal
 }
 
@@ -96,7 +98,7 @@ export async function request(
   let csrfRetried = false
   let sessionRetried = false
   for (;;) {
-    const headers: Record<string, string> = { Accept: 'application/json' }
+    const headers: Record<string, string> = { Accept: 'application/json', ...options.headers }
     if (options.body !== undefined) headers['Content-Type'] = 'application/json'
     if (unsafe) headers[CSRF_HEADER] = await currentCsrfToken()
     const response = await fetch(path, {
@@ -138,8 +140,12 @@ export function get(path: string, signal?: AbortSignal): Promise<unknown> {
   return request('GET', path, { signal })
 }
 
-export function post(path: string, body?: unknown): Promise<unknown> {
-  return request('POST', path, { body: body ?? {} })
+export function post(
+  path: string,
+  body?: unknown,
+  headers?: Record<string, string>,
+): Promise<unknown> {
+  return request('POST', path, { body: body ?? {}, headers })
 }
 
 export function del(path: string): Promise<unknown> {
