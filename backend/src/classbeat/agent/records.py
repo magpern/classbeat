@@ -16,16 +16,22 @@ must therefore look at the job's state, not at ``outcome IS NULL``.
 builds it from the stage runs and the music map. Besides ``map_version`` it records the map's
 ``crossfade``: ``music.MAP_VERSION`` stayed 12 across ``mowl-workouts`` 0.5.0, so ``map_version``
 alone no longer tells a back-to-back map from an overlapped one.
+
+ADR 0007 section 2 adds where a revision came from: ``origin`` (``design_draft`` or
+``revise_draft``), ``base_revision_id`` (the revision a revise started from) and
+``request_message_id`` (the user's ``class_messages`` row that asked for it); both ids are
+``null`` for a design and set for a revise. A revision stored before them has none of the three
+and still validates.
 """
 
 import uuid
 from collections.abc import Mapping, Sequence
 from importlib.metadata import PackageNotFoundError, version
-from typing import Any
+from typing import Any, Literal, Self
 from uuid import UUID
 
 from mowl import music, spotify
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 from sqlalchemy import text
 
 from classbeat import __version__ as classbeat_version
@@ -152,10 +158,31 @@ class Provenance(BaseModel):
     agent_run_ids: list[UUID] = Field(min_length=1)
     usage: ProvenanceUsage
     cost_micros: int = Field(ge=0)
+    # ADR 0007 section 2; absent on revisions stored before it.
+    origin: Literal["design_draft", "revise_draft"] | None = None
+    base_revision_id: UUID | None = None
+    request_message_id: UUID | None = None
+
+    @model_validator(mode="after")
+    def _lineage(self) -> Self:
+        revise = self.origin == "revise_draft"
+        if revise != (self.base_revision_id is not None) or revise != (
+            self.request_message_id is not None
+        ):
+            raise ValueError("a revise names its base and request; a design names neither")
+        return self
 
 
-def provenance(runs: Sequence[StageOutcome], music_map: Mapping[str, Any]) -> Provenance:
-    """From the job's stage runs (the last one made the content) and the map it was fitted to."""
+def provenance(
+    runs: Sequence[StageOutcome],
+    music_map: Mapping[str, Any],
+    *,
+    origin: Literal["design_draft", "revise_draft"] = "design_draft",
+    base_revision_id: UUID | None = None,
+    request_message_id: UUID | None = None,
+) -> Provenance:
+    """From the job's stage runs (the last one made the content) and the map it was fitted to;
+    ``origin`` and the two ids say what the revision was made from (ADR 0007 section 2)."""
     if not runs:
         raise ValueError("a revision is made by at least one stage run")
     last = runs[-1]
@@ -181,4 +208,7 @@ def provenance(runs: Sequence[StageOutcome], music_map: Mapping[str, Any]) -> Pr
             cache_write_tokens=usage.cache_write_tokens,
         ),
         cost_micros=sum(r.cost_micros for r in runs),
+        origin=origin,
+        base_revision_id=base_revision_id,
+        request_message_id=request_message_id,
     )

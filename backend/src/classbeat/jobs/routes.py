@@ -6,7 +6,10 @@
   the same key and body again is 200 with the same job; the same key with another body is 409
   ``idempotency_mismatch``. Also 409 ``class_busy``, ``not_connected``, ``quota``; 404
   ``class_not_found``; 429 ``busy`` (the per-user limit); 400 for the header; 422 for the body;
-  413 ``too_large`` for a body over ``BODY_MAX_BYTES`` (also on approve).
+  413 ``too_large`` for a body over ``BODY_MAX_BYTES`` (also on approve). A kind with ``admit``
+  (``classbeat.jobs.kinds``) may refuse with its own reason (409 ``{reason}`` and whole-number
+  counts, unless the reason has a status above); an input naming one of the kind's server fields
+  is 422 ``invalid_input``: only ``admit`` sets those.
 - ``GET /api/jobs/{id}``: the job's state.
 - ``GET /api/jobs/{id}/revision``: the draft the job stored, for the draft summary: 409
   ``no_revision`` while it has none. Answers only ``{revision_id, number, kind, content,
@@ -29,6 +32,7 @@ and 3); ``/api/jobs`` is also in ``SECRET_INPUT_PATHS``, so FastAPI's own 422 dr
 import hashlib
 import json
 import re
+from collections.abc import Mapping
 from dataclasses import asdict
 from datetime import datetime
 from typing import Annotated, Any
@@ -37,6 +41,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, Header, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from classbeat import auth
 from classbeat.agent.schemas import WorkoutDraft
@@ -44,9 +49,9 @@ from classbeat.context import UserContext
 from classbeat.jobs import service
 from classbeat.jobs.credits import CreditLedger, UnmeteredLedger
 from classbeat.jobs.inputs import JobInput
-from classbeat.jobs.kinds import KIND_NAME, KINDS, KindRegistry
+from classbeat.jobs.kinds import KIND_NAME, KINDS, JobKind, KindRegistry, Refused
 from classbeat.jobs.progress import read_revision
-from classbeat.jobs.user import NewJob
+from classbeat.jobs.user import Admission, CreateAdmit, NewJob
 from classbeat.usage import job_usage
 
 router = APIRouter(prefix="/api/jobs", tags=["jobs"])
@@ -125,9 +130,12 @@ class RevisionOut(BaseModel):
     created_at: datetime
 
 
-def _refuse(reason: str, status: int | None = None) -> JSONResponse:
+def _refuse(
+    reason: str, status: int | None = None, counts: Mapping[str, int] | None = None
+) -> JSONResponse:
     return JSONResponse(
-        {"detail": {"reason": reason}}, status_code=status or _STATUS.get(reason, 409)
+        {"detail": {**(counts or {}), "reason": reason}},
+        status_code=status or _STATUS.get(reason, 409),
     )
 
 
@@ -180,6 +188,25 @@ def _jsonb_size(value: Any) -> int:
     return len(json.dumps(value, ensure_ascii=False, separators=(", ", ": ")).encode("utf-8"))
 
 
+def _bound_admit(kind: JobKind, parsed: BaseModel) -> CreateAdmit | None:
+    """The kind's ``admit`` for this input, run by ``user.create`` under the owner lock. What it
+    accepts is validated by the kind's model again and stored in place of the browser's input."""
+    admit = kind.admit
+    if admit is None:
+        return None
+
+    async def run(db: AsyncSession, ctx: UserContext) -> Admission | Refused:
+        result = await admit(db, ctx, parsed)
+        if isinstance(result, Refused):
+            return result
+        stored = kind.admitted_input(parsed, result.fields).model_dump(mode="json")
+        if _jsonb_size(stored) > INPUT_MAX_BYTES:
+            return Refused("too_large")
+        return Admission(canonical_json(stored).decode("utf-8"), result.after_insert)
+
+    return run
+
+
 @router.post(
     "",
     status_code=201,
@@ -206,6 +233,8 @@ async def create_job(
     kind = kinds.get(body.kind)
     if kind is None or not issubclass(kind.input_model, JobInput):
         return _refuse("unknown_kind", 422)
+    if kind.server_fields & body.input.keys():
+        return _invalid()  # set by the server only; never echoed
     try:
         parsed = kind.parse_input(body.input)
     except ValidationError as error:
@@ -222,6 +251,8 @@ async def create_job(
         connection_ids=parsed.connection_ids(),
         idempotency_key=idempotency_key,
         request_hash=hashlib.sha256(canonical_json({"kind": kind.name, "input": stored})).digest(),
+        consumes_credit=kind.consumes_credit,
+        admit=_bound_admit(kind, parsed),
     )
     settings = request.app.state.settings
     result = await service.create(
@@ -232,7 +263,7 @@ async def create_job(
         ledger=ledger,
     )
     if result.job is None:
-        return _refuse(result.reason or "invalid_input")
+        return _refuse(result.reason or "invalid_input", counts=result.counts)
     out = JobOut.of(result.job)
     if not result.created:
         return JSONResponse(out.model_dump(mode="json"), status_code=200)
