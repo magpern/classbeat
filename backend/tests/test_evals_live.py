@@ -144,7 +144,7 @@ def test_it_refuses_without_a_key(kek_dir: Path) -> None:
 
 
 @pytest.mark.usefixtures("key")
-@pytest.mark.parametrize("name", ["ANTHROPIC_LOG", "ANTHROPIC_CUSTOM_HEADERS"])
+@pytest.mark.parametrize("name", ["ANTHROPIC_LOG", "ANTHROPIC_CUSTOM_HEADERS", "SSLKEYLOGFILE"])
 def test_it_refuses_the_sdk_environment(monkeypatch: pytest.MonkeyPatch, name: str) -> None:
     monkeypatch.setenv(name, "x-api-key: something")
     spy = Spy()

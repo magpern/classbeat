@@ -77,11 +77,30 @@ order and answered together in one message.
 - **SDK:** the official `anthropic` package (pinned, audited), `AsyncAnthropic(api_key=<secret
   file>, http_client=<the allowlisted httpx.AsyncClient of §9>, max_retries=2,
   timeout=120)`. API keys only; no CLI, shell, file, web or code-execution tools are ever
-  declared.
+  declared. The SDK's own retries stay on (what they mean for usage: §6). `max_retries=0`, so
+  that only the job retries (ADR 0005 §4), was considered for #121 and not taken: every
+  transient 429, 529 or 5xx would then end the stage run, and the job's next attempt would start
+  the stage again from its first turn after a backoff, re-sending and re-billing every earlier
+  turn and spending one of `max_attempts`, which costs more than the usage gap it closes.
+- **SDK version** (decided for #120, 2026-10-29; review by **2027-01-31**): `anthropic==0.125.0`,
+  the last 0.x release (2026-08-19) and the last on `httpx`. It gets no further fixes: 1.0.0
+  (2026-08-20) and 2.x (2026-10-21) require `httpx2`. We stay on 0.125.0 for now, because
+  `classbeat.egress` and the egress guard (static reachability and runtime) are built on httpx,
+  and moving means rebuilding the allowlisted transport on httpx2 (host, scheme and port, the
+  per-hop redirect check, `trust_env=False`, the `refused` hook so refusals aren't retried,
+  `after_request`) and reviewing it again, while keeping httpx2 out of the web process and out of
+  Authlib's OAuth client (the `mcp` exclusion: `httpx2` replaced httpx inside Authlib); 0.125.0
+  has no known advisory (pip-audit is clean) and has everything the provider uses (streamed
+  Messages, strict tools, adaptive thinking, `output_config.effort`). Dependabot ignores
+  `anthropic` semver-major updates (1.x, 2.x) until the review. The move to httpx2 gets its own
+  issue at the review date, or earlier if pip-audit reports an advisory against 0.125.0, the API
+  needs something 0.x lacks, or Authlib (already warning that its httpx integration is
+  deprecated for httpx2) needs httpx2 itself.
 - **Request:** streamed (`messages.stream(...)` then `get_final_message()`), so long turns don't
   hit HTTP timeouts. `model` default `claude-opus-5-5`, `output_config={"effort": "medium"}` set
   explicitly, `thinking={"type": "adaptive"}`, `max_tokens` 32 000, `tool_choice={"type":
-  "auto"}`. No sampling parameters (rejected by current models). Forced tool choice (`any` or a
+  "auto"}`. No sampling parameters (rejected by current models), no `eager_input_streaming`
+  (the loop acts on a tool call only once the whole answer is in). Forced tool choice (`any` or a
   named tool) is rejected by Opus 5.5, so the final tool is required by the prompt and by §1's
   reminder rule instead.
 - **Tools:** every tool has `strict: true` and an `input_schema` with `additionalProperties:
@@ -253,10 +272,16 @@ in progress, with `(outcome IS NULL) = (finished_at IS NULL)`, amended in J1, #8
 `finished_at NULL`. Counters are updated after every turn, so a crashed run still shows its cost.
 A turn that finishes after its worker lost the lease can't be recorded (the fence refuses it), so
 the cost across attempts may **undercount by that one turn per lost lease**; the next holder does
-not guess it. Likewise a turn whose request fails after the provider started billing it (an
-error mid-stream, a timeout) returns no usage, so nothing is recorded for it (amended in A2,
-#91): **at most one turn per failed attempt**, so up to the job's `max_attempts` turns. Accepted:
-leases are lost rarely, failed turns end their attempt, and both gaps are bounded; real cost
+not guess it. Likewise a request that fails after the provider started billing it (an error
+mid-stream, a timeout) returns no usage, so nothing is recorded for it (amended in A2, #91). And
+the SDK retries silently inside one turn (§2, `max_retries=2`: a connection error or a timeout
+before the response headers, and 408, 409, 429 and 5xx answers; never once the stream has
+started); only the attempt that answers reports usage, so an earlier attempt the provider billed
+(a timeout or a dropped connection after the request was sent) is lost **even when the turn
+succeeds** (amended for #121). Bound: **at most two uncounted attempts per turn, and three for
+the turn that ends a failed attempt**, each at most the conversation's input plus `max_tokens`.
+Accepted: leases are lost rarely, a retried attempt is billed only if the provider processed it
+before the failure, failed turns end their attempt, and the gaps are bounded; real cost
 per class is measured against the provider's own figures at live activation (roadmap M3b).
 No transcript is stored in M3a: model text, tool arguments and results stay in memory and are
 never logged. (A debug transcript store, if ever needed, gets its own decision and falls under
@@ -376,12 +401,16 @@ missing-music case: D1 fails a job without music before the stage runs.
 - **Model key.** A new secret file `anthropic_api_key`, mounted on **worker only** (web never
   calls a model), read as `SecretStr`, never logged. `CLASSBEAT_MODEL_PROVIDER` is `anthropic`
   (the default) or `fake`; the worker refuses to start with `anthropic` and no key file, and with
-  `fake` when `CLASSBEAT_ENVIRONMENT` is `prod`.
+  `fake` when `CLASSBEAT_ENVIRONMENT` is `prod`. With `anthropic` it also refuses to start (and
+  the provider to build) when `ANTHROPIC_LOG`, `ANTHROPIC_CUSTOM_HEADERS` or `SSLKEYLOGFILE` is
+  set (A2; `SSLKEYLOGFILE` added for #121).
 - **Outbound allowlist** (roadmap §7, T19). The worker installs, before anything else, a
   process-wide `urllib` opener whose handler refuses any request (including every redirect hop)
   that is not `https` to an allowlisted host on port 443, and builds the model client on an
   `httpx.AsyncClient` (`trust_env=False`) whose transport applies the same check; the opener has
-  an empty `ProxyHandler`, so no proxy setting in the environment reroutes a call. M3a's list:
+  an empty `ProxyHandler`, so no proxy setting in the environment reroutes a call. Both verify
+  TLS with a context built without `ssl.create_default_context()`, so `SSLKEYLOGFILE` never makes
+  them write TLS session secrets (#121). M3a's list:
   `api.mowl.com`, `api.anthropic.com`; M4 adds the Spotify hosts. A refused request raises, logs
   the host only and fails the run with `outbound_blocked`. A guard test fails on any other HTTP
   client construction or `urlopen` in `classbeat` outside the allowlist module. The E2E fakes

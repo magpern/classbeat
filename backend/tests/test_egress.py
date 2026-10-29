@@ -3,13 +3,16 @@ handler (urllib) and transport (httpx) are replaced by fakes that record what re
 
 import io
 import logging
+import ssl
 import urllib.error
 import urllib.request
 import urllib.response
 from email.message import Message
+from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
 
+import certifi
 import httpx
 import pytest
 
@@ -343,3 +346,45 @@ async def test_the_model_client_ignores_proxy_settings(
 async def test_the_model_client_has_the_adr_timeout() -> None:
     async with allowlisted_async_client() as client:
         assert client.timeout == httpx.Timeout(120.0)
+
+
+# --- TLS key log (SSLKEYLOGFILE) -------------------------------------------------------------
+
+
+def _assert_no_key_log(context: ssl.SSLContext) -> None:
+    assert context.keylog_filename is None
+    assert context.verify_mode == ssl.CERT_REQUIRED
+    assert context.check_hostname is True
+
+
+@pytest.fixture
+def key_log(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    """``SSLKEYLOGFILE`` set; the stdlib's default context would write it (checked here)."""
+    path = tmp_path / "keys.log"
+    monkeypatch.setenv("SSLKEYLOGFILE", str(path))
+    assert ssl.create_default_context().keylog_filename == str(path)  # the risk is real
+    path.unlink()
+    return path
+
+
+def test_the_tls_context_ignores_sslkeylogfile(key_log: Path) -> None:
+    _assert_no_key_log(egress.tls_client_context())
+    _assert_no_key_log(egress.tls_client_context(cafile=certifi.where()))
+    assert not key_log.exists()
+
+
+def test_the_urllib_opener_writes_no_tls_key_log(key_log: Path) -> None:
+    opener = build_allowlist_opener(WORKER_ALLOWLIST)
+    [https] = [h for h in _field(opener, "handlers") if isinstance(h, urllib.request.HTTPSHandler)]
+    _assert_no_key_log(_field(https, "_context"))
+    assert not key_log.exists()
+
+
+def test_the_model_client_writes_no_tls_key_log(key_log: Path) -> None:
+    client = allowlisted_async_client()  # built only, never used: nothing to close
+    transport = client._transport  # pyright: ignore[reportPrivateUsage]
+    assert isinstance(transport, egress.AllowlistTransport)
+    network = _field(transport, "_inner")
+    assert isinstance(network, httpx.AsyncHTTPTransport)
+    _assert_no_key_log(_field(_field(network, "_pool"), "_ssl_context"))
+    assert not key_log.exists()

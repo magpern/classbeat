@@ -268,18 +268,31 @@ call a model). `anthropic` needs the `anthropic_api_key` secret file, mounted on
 key); the worker refuses to start with `anthropic` and no key and with `fake` when
 `CLASSBEAT_ENVIRONMENT=prod`, and the web app refuses to start when it can read the key. The
 `anthropic` provider (`classbeat.agent.providers.anthropic`, the official `anthropic` SDK pinned at
-0.125.0, the last release on `httpx`; it gets no further fixes, since 1.x and 2.x need `httpx2`,
-and the move to `httpx2` is a tracked follow-up): with `anthropic` the worker refuses to start
-(and the provider to build) when `ANTHROPIC_LOG` or `ANTHROPIC_CUSTOM_HEADERS` is set; its price entries in `classbeat.agent.prices` are to be
-verified before live use. The worker's outbound requests go only to `https://api.mowl.com` and `https://api.anthropic.com`
-(`classbeat.egress`, the only module allowed to build an HTTP client or `urllib` opener; guarded by
-`tests/test_egress_guard.py`).
+0.125.0, the last release on `httpx`; it gets no further fixes, since 1.x and 2.x need `httpx2`.
+We stay on 0.125.0 until a review on 2027-01-31 (ADR 0006 section 2, #120: the egress allowlist
+and its guard are built on httpx, and `httpx2` stays out of the image); Dependabot ignores
+`anthropic` majors until then, and pip-audit must stay clean): with `anthropic` the worker refuses
+to start (and the provider to build) when `ANTHROPIC_LOG`, `ANTHROPIC_CUSTOM_HEADERS` or
+`SSLKEYLOGFILE` is set; its price entries in `classbeat.agent.prices` are to be verified before
+live use. The worker's outbound requests go only to `https://api.mowl.com` and
+`https://api.anthropic.com` (`classbeat.egress`, the only module allowed to build an HTTP client
+or `urllib` opener; guarded by `tests/test_egress_guard.py`); its TLS contexts never write a key
+log (`egress.tls_client_context`).
 The agent loop (`classbeat.agent`, ADR 0006 sections 2, 5 and 8): `CLASSBEAT_AGENT_MODEL` (default
 `claude-opus-5-5`), `_EFFORT` (`medium`), `_MAX_TOKENS` (32000), the per-stage limits `_MAX_TURNS` (12),
 `_MAX_TOOL_CALLS` (40), `_MAX_CORRECTIONS` (3), `_STAGE_SECONDS` (300), the per-job ceiling
 `_JOB_COST_MICROS` (1500000, $1.50) and `CLASSBEAT_AGENT_TURN_OUTPUT_RESERVE` (8000);
 `CLASSBEAT_FAKE_MODEL_SCRIPT` is the `FakeProvider` script with `fake` (`backend/tests/agent_scripts/`).
-The smoke set (ADR 0006 section 8) runs in CI against `FakeProvider` (`backend/tests/test_evals_smoke.py`); the owner's live run is `docker compose exec worker python -m classbeat.evals smoke --live` (it prints its cost ceiling and stops unless `--max-usd N` is also given; agents and CI never run it). Options: `--model` (a priced one: `claude-opus-5-5`, `claude-sonnet-5-5`, `claude-haiku-5-5`), `--effort` (default `CLASSBEAT_AGENT_EFFORT`), `--repeat N` (each case N times, at most 10), `--case`, `--out FILE` (JSON with the metrics, the checks with their details and the shape of each class); failed checks print with their detail. A model comparison is one such run per model, and **each run needs the owner's go-ahead**; `python -m classbeat.evals compare RESULT.json ... --out DIR` then writes `compare.md` and `compare.html` offline (no model, no network, no settings).
+The smoke set (ADR 0006 section 8) runs in CI against `FakeProvider`
+(`backend/tests/test_evals_smoke.py`); the owner's live run is
+`docker compose exec worker python -m classbeat.evals smoke --live` (it prints its cost ceiling and
+stops unless `--max-usd N` is also given; agents and CI never run it). Options: `--model` (a priced
+one: `claude-opus-5-5`, `claude-sonnet-5-5`, `claude-haiku-5-5`), `--effort` (default
+`CLASSBEAT_AGENT_EFFORT`), `--repeat N` (each case N times, at most 10), `--case`, `--out FILE`
+(JSON with the metrics, the checks with their details and the shape of each class); failed checks
+print with their detail. A model comparison is one such run per model, and **each run needs the
+owner's go-ahead**; `python -m classbeat.evals compare RESULT.json ... --out DIR` then writes
+`compare.md` and `compare.html` offline (no model, no network, no settings).
 Jobs (ADR 0005 sections 3 and 4): `CLASSBEAT_JOB_LEASE_SECONDS` (default 120, 30 to 600),
 `CLASSBEAT_WORKER_CONCURRENCY` (2, at most 16; the worker's pool is `2n + 2` connections plus
 an overflow of `n`: a pipeline and a heartbeat per run, the `LISTEN` connection and one for claims
