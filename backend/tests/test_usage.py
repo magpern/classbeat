@@ -7,6 +7,8 @@ from typing import Any
 from uuid import UUID
 
 import pytest
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from agentfake import CONFIG, analysed, brief, provider
 from classbeat.agent import DesignContext, JobStageHost, design_stage, run_stage
@@ -259,12 +261,57 @@ async def test_a_deleted_completed_job_still_counts(jenv: JobsEnv, browsers: Any
     assert (await alice.get("/api/usage")).json()["classes_designed"] == 1
 
 
-async def test_the_owner_filter_holds_without_rls(jenv: JobsEnv, browsers: Any) -> None:
+async def test_the_owner_filter_holds_without_rls(
+    jenv: JobsEnv, browsers: Any, database_url: str
+) -> None:
+    """On the superuser's connection RLS does not apply, so only the explicit filter answers."""
     alice: Browser = await browsers()
     bob: Browser = await browsers()
     job_id = UUID((await alice.create()).json()["id"])
-    plant(jenv, alice.user_id, job_id)
-    assert await job_usage(jenv.factory, make_context(bob.user_id), job_id) is None
+    plant(jenv, alice.user_id, job_id, cost=77)
+    complete(jenv, job_id)
+    engine = create_async_engine(database_url)
+    try:
+        bypass = async_sessionmaker(engine, expire_on_commit=False)
+        async with bypass() as db:  # the connection really bypasses RLS: it sees alice's run
+            assert (await db.execute(text("SELECT count(*) FROM agent_runs"))).scalar_one() >= 1
+        assert await job_usage(bypass, make_context(bob.user_id), job_id) is None
+        theirs = await month_usage(bypass, make_context(bob.user_id), THIS_MONTH)
+        assert theirs is not None
+        assert (theirs.total.runs, theirs.classes_designed, theirs.revisions) == (0, 0, 0)
+        mine = await job_usage(bypass, make_context(alice.user_id), job_id)
+        assert mine is not None
+        assert mine.cost_micros == 77
+    finally:
+        await engine.dispose()
+
+
+async def test_a_deleted_job_without_a_submitted_run_does_not_count(
+    jenv: JobsEnv, browsers: Any
+) -> None:
+    alice: Browser = await browsers()
+    for state, category in (("failed", "model_unavailable"), ("cancelled", None)):
+        created = (await alice.create()).json()
+        job_id = UUID(created["id"])
+        plant(jenv, alice.user_id, job_id, outcome="model_unavailable")
+        plant(jenv, alice.user_id, job_id, kind="revise_draft", outcome=None, attempt=2)
+        finish(jenv, job_id, state, category)
+        jenv.sql("DELETE FROM classes WHERE id = :c", c=UUID(created["class_id"]))
+    assert jenv.sql("SELECT count(*) FROM jobs").scalar_one() == 0
+    month = (await alice.get("/api/usage")).json()
+    assert month["total"]["runs"] == 4  # the cost stays ...
+    assert (month["classes_designed"], month["revisions"]) == (0, 0)  # ... the counts do not
+
+
+async def test_the_month_boundary_counts_classes_half_open(jenv: JobsEnv, browsers: Any) -> None:
+    alice: Browser = await browsers()
+    job_id = UUID((await alice.create()).json()["id"])
+    plant(jenv, alice.user_id, job_id, started=datetime(2026, 4, 1, tzinfo=UTC))
+    complete(jenv, job_id)
+    march = (await alice.get("/api/usage?month=2026-03")).json()
+    assert (march["total"]["runs"], march["classes_designed"]) == (0, 0)
+    april = (await alice.get("/api/usage?month=2026-04")).json()
+    assert (april["total"]["runs"], april["classes_designed"]) == (1, 1)
 
 
 async def test_the_month_boundary_is_half_open(jenv: JobsEnv, browsers: Any) -> None:
