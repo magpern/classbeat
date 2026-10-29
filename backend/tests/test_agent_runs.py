@@ -12,11 +12,20 @@ from mowl import spotify
 from pydantic import ValidationError
 
 from agentfake import CONFIG, Planted, analysed, brief, provider, synthetic_tracks
-from classbeat.agent import DesignContext, JobStageHost, design_stage, provenance, run_stage
+from classbeat.agent import (
+    DesignContext,
+    JobStageHost,
+    Provenance,
+    design_stage,
+    provenance,
+    run_stage,
+)
 from classbeat.agent.loop import StageOutcome
 from classbeat.agent.providers.fake import FakeProvider
 from classbeat.jobs import Complete, JobRun
 from jobcore import JobsEnv, registry_for, run_next, store_draft
+
+LINEAGE = ("origin", "base_revision_id", "request_message_id")
 
 pytestmark = pytest.mark.usefixtures("jenv")
 
@@ -227,7 +236,15 @@ async def test_provenance_records_the_run_and_the_crossfade(
         "agent_run_ids",
         "usage",
         "cost_micros",
+        "origin",
+        "base_revision_id",
+        "request_message_id",
     }
+    assert (data["origin"], data["base_revision_id"], data["request_message_id"]) == (
+        "design_draft",
+        None,
+        None,
+    )
     legacy = dict(ctx.map)
     del legacy["crossfade"]  # a 0.4.1 map is fitted at the default, and recorded so
     assert provenance(outcomes, legacy).crossfade_sec == spotify.CROSSFADE_SEC
@@ -237,6 +254,44 @@ async def test_provenance_records_the_run_and_the_crossfade(
         type(made).model_validate({**data, "extra": 1})
     with pytest.raises(ValueError, match="at least one"):
         provenance([], ctx.map)
+
+
+async def test_provenance_validates_old_and_new_revisions(
+    jenv: JobsEnv, ctx: DesignContext
+) -> None:
+    """ADR 0007 section 2 (K1): ``origin``, ``base_revision_id`` and ``request_message_id`` are
+    new; a revision stored before them has none and still validates, as stored JSON."""
+    jenv.job()
+    outcomes: list[StageOutcome] = []
+    await run_next(jenv, design_kind(ctx, provider("good_first_draft"), outcomes))
+    data = provenance(outcomes, ctx.map).model_dump(mode="json")
+    model = Provenance
+    old = {k: v for k, v in data.items() if k not in LINEAGE}
+    assert model.model_validate_json(json.dumps(old)).origin is None
+    design = model.model_validate_json(json.dumps(data))
+    assert (design.origin, design.base_revision_id, design.request_message_id) == (
+        "design_draft", None, None
+    )  # fmt: skip
+    base, message = uuid.uuid4(), uuid.uuid4()
+    revise = {**data, "origin": "revise_draft", "base_revision_id": str(base),
+              "request_message_id": str(message)}  # fmt: skip
+    made = model.model_validate_json(json.dumps(revise))
+    assert (made.base_revision_id, made.request_message_id) == (base, message)
+    built = provenance(
+        outcomes, ctx.map, origin="revise_draft", base_revision_id=base, request_message_id=message
+    )
+    assert built.model_dump(mode="json") == revise
+    for broken in (
+        {**data, "origin": "save_workout"},
+        {**data, "origin": "revise_draft"},  # a revise names its base and its request
+        {**revise, "request_message_id": None},
+        {**revise, "base_revision_id": None},
+        {**data, "base_revision_id": str(base)},  # a design names neither
+        {**old, "request_message_id": str(message)},
+        {**data, "base_revision_id": "not-a-uuid"},
+    ):
+        with pytest.raises(ValidationError):
+            model.model_validate_json(json.dumps(broken))
 
 
 async def test_a_run_stopped_after_its_second_turn_keeps_its_counters(

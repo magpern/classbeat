@@ -7,7 +7,8 @@ worker's, so the fence does not apply. Every read and write filters on ``owner_i
 ctx.user_id`` under RLS: another user's job id is not found, exactly like an unknown one.
 """
 
-from dataclasses import dataclass
+from collections.abc import Mapping
+from dataclasses import dataclass, field
 from datetime import datetime
 from uuid import UUID
 
@@ -70,6 +71,7 @@ class CreateResult:
     created: bool
     job: JobView | None
     reason: str | None = None  # see ``user.Created``, plus quota and too_large
+    counts: Mapping[str, int] = field(default_factory=dict[str, int])  # with admit's reason
 
 
 async def create(
@@ -81,7 +83,7 @@ async def create(
             async with user_session(factory, ctx) as db:
                 done = await user.create(db, ctx, new, limit=limit, ledger=ledger)
                 if done.job_id is None:
-                    return CreateResult(False, None, done.reason)
+                    return CreateResult(False, None, done.reason, done.counts)
                 return CreateResult(done.created, await _view(db, ctx, done.job_id))
         except QuotaRefused:
             return CreateResult(False, None, "quota")
@@ -147,7 +149,7 @@ async def approve(
                 return "not_connected"
         if await user.active_jobs(db, ctx) >= limit:  # the owner lock is held (user.approve)
             return "busy"
-        if not await ledger.allows(db, ctx, waiting.job_id):
+        if kind.consumes_credit and not await ledger.allows(db, ctx, waiting.job_id):
             return "quota"
         return None
 
