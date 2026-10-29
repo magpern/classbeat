@@ -195,6 +195,7 @@ uv run python -m classbeat     # the API on http://127.0.0.1:8000 (--host, --por
 uv run python -m classbeat.worker   # the worker; stops on Ctrl+C or SIGTERM
 uv run python -m classbeat invite create [--expires 7d]    # operator commands (ADR 0003 section 7);
 uv run python -m classbeat admin grant|revoke|mfa-reset EMAIL   # in the stack: docker compose exec web ...
+uv run python -m classbeat jobs stats   # job counts per state, uncertain external operations (no ids)
 uv run python -m classbeat keys rewrap [--totp]   # after a KEK rotation (ADR 0004 section 2); --totp once
 docker compose --profile maint run --rm maint python -m classbeat keys wipe --confirm|--resend   # KEK compromise only
 uv run alembic upgrade head    # migrations as the owner role, CLASSBEAT_MIGRATIONS_DATABASE_URL
@@ -263,8 +264,8 @@ and maintenance, so at most 50), `CLASSBEAT_WORKER_POLL_SECONDS` (2; the claim p
 `CLASSBEAT_APPROVAL_TTL_HOURS` (168) and `CLASSBEAT_JOB_BUSY_REQUEUE_LIMIT` (5 `operation_busy`
 requeues per phase without an attempt). Worker and agent code write job data only through
 `classbeat.jobs.fenced_session`; only `classbeat.jobs.fence`, `classbeat.jobs.credits`,
-`classbeat.keys_cli` and the `classbeat.connections`, `classbeat.auth` and `classbeat.db` packages
-may open a `user_session` (`tests/test_session_guard.py`); job kinds live outside `classbeat.jobs`.
+`classbeat.operations.user` (the user's Check again / Do it anyway), `classbeat.keys_cli` and the
+`classbeat.connections`, `classbeat.auth` and `classbeat.db` packages may open a `user_session` (`tests/test_session_guard.py`); job kinds live outside `classbeat.jobs`.
 OAuth sign-in (ADR 0003 section 5): `CLASSBEAT_OAUTH_<PROVIDER>_CLIENT_ID` and the
 `oauth_<provider>_client_secret` secret file switch on `google`, `github` or `microsoft`; a provider
 with only one of them is off. Microsoft setup: add the `auth_time` optional claim (ID token) to

@@ -335,6 +335,20 @@ async def use[T](
     """Run one library call with the user's credentials (in a worker thread). A 401 or 403
     flips the connection to ``needs_reconnect``; any failure is a ``ConnectionFailure``."""
     opened = await open_connection(factory, ring, ctx, provider)
+    return await call_opened(factory, ctx, opened, call, library_error=library_error)
+
+
+async def call_opened[T](
+    factory: Factory,
+    ctx: UserContext,
+    opened: OpenConnection,
+    call: Callable[[Credentials], T],
+    *,
+    library_error: type[BaseException] = MowlError,
+) -> T:
+    """``use`` with a connection the caller opened already (an external operation opens it
+    before writing its ``pending`` row, so ``not_connected`` costs no row, ADR 0005 section 7).
+    Never inside another transaction."""
     failure: ConnectionFailure | None = None
     try:
         result = await run_library_call(
@@ -370,10 +384,31 @@ async def connect(
     return await save(factory, ring, ctx, provider, secret, public=public, expires_at=expires_at)
 
 
+# ADR 0006 section 3: classbeat's local data about a MOWL account goes with its connection, so a
+# reconnect as another MOWL account never reuses a link or an ``external_id`` of the old one. The
+# operations go first: a worker recording an attach locks the operation row and then writes the
+# link, so taking the same order here cannot deadlock with it.
+_FORGET_MOWL = (
+    text(
+        "DELETE FROM external_operations WHERE owner_id = :owner_id "
+        "AND kind = 'mowl_attach_spotify_playlist'"
+    ),
+    text("DELETE FROM mowl_playlist_links WHERE owner_id = :owner_id"),
+)
+
+
+async def _forget_mowl_account(db: AsyncSession, ctx: UserContext) -> None:
+    for statement in _FORGET_MOWL:
+        await db.execute(statement, {"owner_id": ctx.user_id})
+
+
 async def disconnect(factory: Factory, ctx: UserContext, provider: str) -> bool:
-    """Delete the row (local only: MOWL has no known revoke endpoint)."""
+    """Delete the row (local only: MOWL has no known revoke endpoint). For MOWL, the user's
+    playlist links and attach operations go in the same transaction (ADR 0006 section 3)."""
     _check_provider(provider)
     async with user_session(factory, ctx) as db:
+        if provider == "mowl":
+            await _forget_mowl_account(db, ctx)
         result = await db.execute(
             delete(connections)
             .where(_C.owner_id == ctx.user_id, _C.provider == provider)
@@ -384,7 +419,9 @@ async def disconnect(factory: Factory, ctx: UserContext, provider: str) -> bool:
 
 async def delete_all_in(db: AsyncSession, ctx: UserContext) -> list[str]:
     """For ``keys wipe``: delete every row of the user in the caller's transaction. Returns the
-    affected providers (sorted)."""
+    affected providers (sorted). The MOWL links and attach operations go too, as on a
+    disconnect."""
+    await _forget_mowl_account(db, ctx)
     result = await db.execute(
         delete(connections).where(_C.owner_id == ctx.user_id).returning(_C.provider)
     )

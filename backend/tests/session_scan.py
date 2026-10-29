@@ -13,6 +13,9 @@ by the packages that own data and their own transactions:
   ``wrapped_dek`` and touch no job data);
 - ``classbeat.auth`` (the web issuer);
 - ``classbeat.db`` (where it is defined and exported);
+- ``classbeat.operations.user`` (the user's **Check again** and **Do it anyway** on their own
+  external operations, ADR 0005 section 7: user actions in the web process, never worker writes;
+  the rest of ``classbeat.operations`` writes through the fence);
 - ``classbeat.keys_cli`` (the operator's ``keys wipe``, which predates this guard: it runs as the
   owner role from the CLI, never in the worker, and deletes connections and TOTP per owner).
 
@@ -31,7 +34,12 @@ ALLOWED_PREFIXES = (
     "classbeat.auth",
     "classbeat.db",
 )
-ALLOWED_MODULES = ("classbeat.jobs.fence", "classbeat.jobs.credits", "classbeat.keys_cli")
+ALLOWED_MODULES = (
+    "classbeat.jobs.fence",
+    "classbeat.jobs.credits",
+    "classbeat.operations.user",
+    "classbeat.keys_cli",
+)
 NAMES = frozenset({"user_session", "_owned_session"})
 SESSION_MODULE = "classbeat.db.session"
 

@@ -14,6 +14,7 @@ from classbeat.connections.errors import (
 )
 from classbeat.connections.repository import (
     ConnectionInfo,
+    call_opened,
     connect,
     connection_refs,
     delete_all_in,
@@ -38,6 +39,7 @@ __all__ = [
     "ConnectionInfo",
     "Credentials",
     "OpenConnection",
+    "call_opened",
     "classify",
     "connect",
     "connection_refs",
