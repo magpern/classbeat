@@ -254,6 +254,11 @@ key); the worker refuses to start with `anthropic` and no key and with `fake` wh
 worker's outbound requests go only to `https://api.mowl.com` and `https://api.anthropic.com`
 (`classbeat.egress`, the only module allowed to build an HTTP client or `urllib` opener; guarded by
 `tests/test_egress_guard.py`).
+The agent loop (`classbeat.agent`, ADR 0006 sections 2, 5 and 8): `CLASSBEAT_AGENT_MODEL` (default
+`claude-opus-5-5`), `_EFFORT` (`medium`), `_MAX_TOKENS` (32000), the per-stage limits `_MAX_TURNS` (12),
+`_MAX_TOOL_CALLS` (40), `_MAX_CORRECTIONS` (3), `_STAGE_SECONDS` (300), the per-job ceiling
+`_JOB_COST_MICROS` (1500000, $1.50) and `CLASSBEAT_AGENT_TURN_OUTPUT_RESERVE` (8000);
+`CLASSBEAT_FAKE_MODEL_SCRIPT` is the `FakeProvider` script with `fake` (`backend/tests/agent_scripts/`).
 Jobs (ADR 0005 sections 3 and 4): `CLASSBEAT_JOB_LEASE_SECONDS` (default 120, 30 to 600),
 `CLASSBEAT_WORKER_CONCURRENCY` (2, at most 16; the worker's pool is `2n + 2` connections plus
 an overflow of `n`: a pipeline and a heartbeat per run, the `LISTEN` connection and one for claims
