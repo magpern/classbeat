@@ -174,6 +174,8 @@ class Settings(BaseSettings):
     approval_ttl_hours: int = Field(default=168, ge=1, le=8760)
     # operation_busy requeues per phase that cost no attempt; after that each one counts (#86).
     job_busy_requeue_limit: int = Field(default=5, ge=0, le=100)
+    # Queued and running jobs per user; creation and approval above it are 429 (ADR 0005 s. 2).
+    jobs_per_user: int = Field(default=2, ge=1, le=100)
     # From the file ``anthropic_api_key`` (never the environment), mounted on the worker only;
     # the web app refuses to start when it can read it. An empty file counts as no key
     # (``scripts/worktree.sh init`` creates an empty one; it is never a real key).
