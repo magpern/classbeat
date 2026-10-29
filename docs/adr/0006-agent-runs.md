@@ -158,6 +158,13 @@ same account from another one. Undecided `uncertain` attach rows go too, so the 
 that playlist may add a second wrapper to the user's MOWL music; U1's reconnect and disconnect
 dialogs say so.
 
+**Holder of an operation row** (ADR 0005 §7 step 1, amended in #125). The pair `(job_id,
+lease_version)` names a holder only while the row is `pending`. A job that marks a stale `pending`
+row `uncertain`, or meets an `uncertain` row, sets its `job_id` to itself in the same fenced
+transaction, so the job that fails `uncertain_write` lists the decision; `lease_version` keeps the
+token of the call. For `uncertain` rows, and rows resolved after a take-over, `job_id` therefore no
+longer names the job that made the call.
+
 **The tools in `design`:**
 - `get_music()`: the music summary again (so the model can re-read it after corrections).
   `model_input` builds it by **projecting** `library.summary` down to §7's fields: its
