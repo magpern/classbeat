@@ -331,7 +331,19 @@ async def test_a_redirect_to_another_host_is_outbound_blocked() -> None:
     with pytest.raises(ProviderError) as raised:
         await p.start(SPEC).turn(())
     assert raised.value.category == "outbound_blocked"
+    assert raised.value.__cause__ is None
+    # A refusal is never retried: one request, the key sent once.
+    assert len(fake.requests) == 1
     assert all(r.url.host == "api.anthropic.com" for r in fake.requests)
+
+
+async def test_a_same_host_redirect_is_not_followed_and_not_retried() -> None:
+    redirect = Reply(307, b"", {"location": "https://api.anthropic.com/v1/elsewhere"})
+    p, fake = provider(redirect)
+    with pytest.raises(ProviderError) as raised:
+        await p.start(SPEC).turn(())
+    assert raised.value.category == "internal"
+    assert [str(r.url) for r in fake.requests] == ["https://api.anthropic.com/v1/messages"]
 
 
 async def test_the_environment_cannot_move_the_client(monkeypatch: pytest.MonkeyPatch) -> None:

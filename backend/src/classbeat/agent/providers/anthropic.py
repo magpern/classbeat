@@ -3,8 +3,11 @@
 - **Client:** the official ``anthropic`` SDK, ``AsyncAnthropic`` with the key from the
   ``anthropic_api_key`` secret file, an explicit ``base_url`` and the worker's allowlisted
   ``httpx.AsyncClient`` (``classbeat.egress``: ``https`` to ``api.anthropic.com`` on 443 only,
-  every redirect hop checked, ``trust_env=False``), ``max_retries=2``, ``timeout=120`` per
-  attempt; each turn, retries included, is bounded by ``turn_seconds`` too.
+  every redirect hop checked, ``trust_env=False``, no redirect followed), ``max_retries=2``,
+  ``timeout=120`` per attempt; each turn, retries included, is bounded by ``turn_seconds`` too.
+  A request the allowlist refuses is never retried: the transport raises it as
+  ``ModelOutboundBlocked`` (an ``anthropic.AnthropicError``, which the SDK passes through
+  unwrapped and does not retry) with the ``OutboundBlocked`` as its cause.
 - **Request:** streamed (``messages.stream(...)``, then ``get_final_message()``); ``model``,
   ``max_tokens`` and ``output_config={"effort": ...}`` from the ``StageSpec``,
   ``thinking={"type": "adaptive"}``, ``tool_choice={"type": "auto"}``; no sampling parameters, no
@@ -30,7 +33,6 @@ The key lives in the SDK client only; nothing here logs, stores or repr()s it.
 import asyncio
 import copy
 import logging
-import os
 from collections.abc import Mapping, Sequence
 from typing import Any, Final
 
@@ -47,6 +49,7 @@ from classbeat.agent.provider import (
     Turn,
     Usage,
 )
+from classbeat.config import model_sdk_environment_problems
 from classbeat.egress import OutboundBlocked, allowlisted_async_client
 
 logger = logging.getLogger(__name__)
@@ -56,9 +59,6 @@ MAX_RETRIES: Final = 2
 TIMEOUT_SECONDS: Final = 120.0
 TURN_SECONDS: Final = 300.0
 CACHE: Final = {"type": "ephemeral"}
-# The SDK reads these at import or construction even with an explicit key and base URL: debug
-# logging of request bodies, and extra headers on every request. The worker never sets them.
-REFUSED_ENVIRONMENT: Final = ("ANTHROPIC_LOG", "ANTHROPIC_CUSTOM_HEADERS")
 
 _STOPS: Final[Mapping[str, StopReason]] = {
     "tool_use": "tool_use",
@@ -76,9 +76,12 @@ _MODEL_CONFIG_EVENTS: Final = frozenset(
 _REQUEST_ID_MAX = 100
 
 
-def environment_problems() -> list[str]:
-    """The names of the SDK environment variables that are set and must not be."""
-    return [name for name in REFUSED_ENVIRONMENT if name in os.environ]
+class ModelOutboundBlocked(anthropic.AnthropicError):
+    """The allowlist refused a model request (``__cause__`` is the ``OutboundBlocked``)."""
+
+    def __init__(self, refused: OutboundBlocked) -> None:
+        super().__init__("outbound request blocked")
+        self.host = refused.host
 
 
 def _strict_schema(schema: Mapping[str, Any]) -> dict[str, Any]:
@@ -231,13 +234,17 @@ class AnthropicProvider:
     ) -> None:
         """``transport`` replaces the network under the allowlist in tests (an
         ``httpx.MockTransport``); the allowlist check still runs on every request."""
-        if environment_problems():
-            raise ValueError("refused SDK environment: " + ", ".join(environment_problems()))
+        if model_sdk_environment_problems():
+            raise ValueError(
+                "refused SDK environment: " + ", ".join(model_sdk_environment_problems())
+            )
         self._turn_seconds = turn_seconds
         self._client = anthropic.AsyncAnthropic(
             api_key=api_key.get_secret_value(),
             base_url=BASE_URL,
-            http_client=allowlisted_async_client(timeout=TIMEOUT_SECONDS, inner=transport),
+            http_client=allowlisted_async_client(
+                timeout=TIMEOUT_SECONDS, inner=transport, refused=ModelOutboundBlocked
+            ),
             max_retries=max_retries,
             timeout=TIMEOUT_SECONDS,
         )

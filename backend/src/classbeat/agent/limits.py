@@ -25,7 +25,9 @@ and JSON, so the estimate errs towards stopping early.
 **Undercount after a lost lease.** A turn that finishes after its worker lost the lease cannot be
 recorded (the fence refuses the ``agent_runs`` update), so the job's cost across attempts may
 undercount by that one turn per lost lease; the next holder does not guess it (ADR 0006 section 6,
-accepted there).
+accepted there). **And after a failed request:** a turn whose request fails after the provider
+started billing it (an error mid-stream, a timeout) returns no usage, so it isn't counted either:
+at most one turn per failed attempt, so up to the job's ``max_attempts`` turns (same section).
 """
 
 import math

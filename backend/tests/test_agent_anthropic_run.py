@@ -136,12 +136,13 @@ async def test_an_unpriced_model_is_model_config_before_any_request(ctx: DesignC
 
 
 async def test_a_blocked_request_fails_the_run_outbound_blocked(ctx: DesignContext) -> None:
-    p, _ = anthropic_provider(Reply(302, b"", {"location": "https://evil.example/"}))
+    p, fake = anthropic_provider(Reply(302, b"", {"location": "https://evil.example/"}))
     host = MemoryHost()
     with pytest.raises(JobFailure) as caught:
         await run(ctx, p, host)
     assert caught.value.category == "outbound_blocked"
     assert host.outcomes() == ["outbound_blocked"]
+    assert len(fake.requests) == 1  # never retried
 
 
 def test_provider_for_builds_the_anthropic_provider(kek_dir: Path) -> None:

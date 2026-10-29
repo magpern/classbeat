@@ -99,6 +99,36 @@ def test_anthropic_with_the_key_starts(kek_dir: Path, environment: str) -> None:
     check_worker_model_provider(settings)
 
 
+@pytest.mark.parametrize("name", ["ANTHROPIC_LOG", "ANTHROPIC_CUSTOM_HEADERS"])
+def test_anthropic_with_sdk_environment_is_refused_at_start(
+    kek_dir: Path, monkeypatch: pytest.MonkeyPatch, name: str
+) -> None:
+    _key_file(kek_dir, PLANTED_KEY)
+    monkeypatch.setenv(name, "x-api-key: planted-header-value")
+    with pytest.raises(ModelProviderRefused, match=name) as raised:
+        check_worker_model_provider(Settings(model_provider="anthropic"))
+    assert "planted-header-value" not in str(raised.value)
+    assert PLANTED_KEY not in str(raised.value)
+
+
+@pytest.mark.parametrize("environment", ["dev", "test"])
+def test_fake_ignores_the_model_sdk_environment(
+    monkeypatch: pytest.MonkeyPatch, environment: str
+) -> None:
+    monkeypatch.setenv("ANTHROPIC_LOG", "debug")
+    check_worker_model_provider(
+        Settings(model_provider="fake", environment=environment)  # pyright: ignore[reportArgumentType]
+    )
+
+
+def test_the_worker_process_refuses_anthropic_with_sdk_logging(kek_dir: Path) -> None:
+    _key_file(kek_dir, PLANTED_KEY)
+    result = _run_worker({"CLASSBEAT_MODEL_PROVIDER": "anthropic", "ANTHROPIC_LOG": "debug"})
+    assert result.returncode == 2
+    assert "ANTHROPIC_LOG" in json.loads(result.stdout.splitlines()[-1])["reason"]
+    assert PLANTED_KEY not in result.stdout + result.stderr
+
+
 @pytest.mark.parametrize("environment", ["dev", "test"])
 def test_fake_starts_outside_prod(environment: str) -> None:
     check_worker_model_provider(

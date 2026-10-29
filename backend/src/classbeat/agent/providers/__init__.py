@@ -8,9 +8,9 @@ provider; the web app never imports this package.
 """
 
 from classbeat.agent.provider import ModelProvider
-from classbeat.agent.providers.anthropic import AnthropicProvider, environment_problems
+from classbeat.agent.providers.anthropic import AnthropicProvider
 from classbeat.agent.providers.fake import FakeProvider, FakeScript, ScriptMismatch
-from classbeat.config import Settings
+from classbeat.config import Settings, model_sdk_environment_problems
 
 
 class ProviderUnavailable(Exception):
@@ -26,7 +26,7 @@ def provider_for(settings: Settings) -> ModelProvider:
         return FakeProvider.from_file(settings.fake_model_script)
     if settings.anthropic_api_key is None:
         raise ProviderUnavailable("model_provider anthropic needs the anthropic_api_key file")
-    refused = environment_problems()
+    refused = model_sdk_environment_problems()  # also refused at worker start
     if refused:
         raise ProviderUnavailable("the worker must not set " + ", ".join(refused))
     return AnthropicProvider(settings.anthropic_api_key, turn_seconds=settings.agent_stage_seconds)
