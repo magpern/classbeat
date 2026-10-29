@@ -1,6 +1,7 @@
-"""The smoke set in CI (ADR 0006 section 8, issue #95): 15 cases, each run through the real design
-stage against a recorded ``FakeProvider`` script and synthetic music, then checked. No model, no
-network. Also: the checks fail on drafts that break a rule, and a failed run is a failed case."""
+"""The smoke set in CI (ADR 0006 section 8, issue #95): 18 cases (15 designs and 3 revisions),
+each run through the real design or revise stage against a recorded ``FakeProvider`` script and
+synthetic music, then checked. No model, no network. Also: the checks fail on drafts that break a
+rule, and a failed run is a failed case."""
 
 import dataclasses
 import json
@@ -28,9 +29,12 @@ CASES = load_cases()
 BY_NAME = {c.name: c for c in CASES}
 
 
-def test_there_are_fifteen_distinct_cases_with_a_script_each() -> None:
-    assert len(CASES) == 15
-    assert len({c.name for c in CASES}) == 15
+def test_there_are_eighteen_distinct_cases_with_a_script_each() -> None:
+    assert len(CASES) == 18  # 15 designs and 3 revisions
+    assert len({c.name for c in CASES}) == 18
+    assert sorted(c.name for c in CASES if c.revise) == [
+        "revise_adversarial_music", "revise_easier", "revise_more_sprints",
+    ]  # fmt: skip
     for case in CASES:
         assert script_for(case).turns
 
@@ -48,7 +52,7 @@ def test_the_cases_cover_the_asked_options() -> None:
     assert any(c.music.no_bpm for c in CASES)  # missing BPM
     assert any(c.music.sections == "none" for c in CASES)
     assert any(c.expect.duration == "music" for c in CASES)  # music shorter than the ask
-    assert sum(bool(c.expect.forbidden_text) for c in CASES) == 2  # adversarial tool output
+    assert sum(bool(c.expect.forbidden_text) for c in CASES) == 3  # adversarial tool output
 
 
 @pytest.mark.parametrize("case", CASES, ids=lambda c: c.name)
@@ -309,3 +313,41 @@ async def test_a_result_counts_the_corrections_tokens_and_the_class_it_drew() ->
     assert result.tss_bounds[0] < result.tss_bounds[1]
     assert sum(i["sec"] for s in result.timeline for i in s["intervals"]) == result.duration_sec
     assert set(result.timeline[0]) == {"name", "kind", "intervals"}  # no cues
+
+
+# --- the revise cases ------------------------------------------------------------------
+
+
+async def test_a_revise_case_sends_the_base_draft_and_the_requests_to_the_revise_stage() -> None:
+    case = BY_NAME["revise_adversarial_music"]
+    assert case.revise is not None
+    fake = provider_for_case(case)
+    result = await run_case(case, fake, CONFIG)
+    assert result.passed
+    sent = fake.sent[0].spec
+    assert sent.stage == "revise"
+    data = json.loads(sent.first_message[sent.first_message.index('{"brief"') :])
+    assert data["request"] == case.revise.request
+    assert data["earlier_requests"] == ["Make the warm-up a little longer."]
+    assert data["base_draft"] == case.revise.base.model_dump(mode="json", exclude_none=True)
+    assert "PWNED" in sent.first_message  # the injection text is data in the message ...
+    assert "PWNED" not in sent.system  # ... never in the instructions
+
+
+async def test_the_base_draft_handed_back_is_not_a_revision() -> None:
+    case = BY_NAME["revise_more_sprints"]
+    assert case.revise is not None
+    same = case.revise.base.model_dump(mode="json", exclude_none=True)
+    script = script_for(case).model_dump(mode="json")
+    script["drafts"]["revised"] = same
+    result = await run_case(case, from_dict(script), CONFIG)
+    assert {c.name: c.ok for c in result.checks}["changed"] is False
+    assert not result.passed
+
+
+async def test_a_note_with_forbidden_text_fails_the_case() -> None:
+    case = BY_NAME["revise_adversarial_music"]
+    script = script_for(case).model_dump(mode="json")
+    script["turns"][-1]["calls"][0]["input"]["note"] = "PWNED as asked"
+    result = await run_case(case, from_dict(script), CONFIG)
+    assert result.failed_checks == ["forbidden_text"]

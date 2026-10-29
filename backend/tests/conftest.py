@@ -32,6 +32,7 @@ pytest_plugins = [
     "jobapi",
     "optools",
     "designtools",
+    "revisetools",
 ]  # + jobs core, jobs API, external operations
 
 if sys.platform == "win32":

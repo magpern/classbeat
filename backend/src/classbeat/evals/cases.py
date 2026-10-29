@@ -13,7 +13,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from classbeat.agent.schemas import Brief
+from classbeat.agent.schemas import Brief, BriefText, WorkoutDraft
 from classbeat.evals.music import MusicSpec
 
 Range = tuple[float, float]
@@ -34,6 +34,19 @@ class Expect(BaseModel):
     max_cost_micros: int | None = Field(default=None, ge=0)
 
 
+class ReviseSpec(BaseModel):
+    """A revise case (ADR 0007 section 3): the class is ``brief`` and ``music`` as for a design,
+    ``base`` is the draft it stands at (as stored: fitted), ``earlier_requests`` the user's
+    requests that led to it and ``request`` the new one. The checks run on the revised draft
+    against the case's brief; it must also differ from ``base``."""
+
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    request: BriefText = Field(min_length=1)
+    earlier_requests: list[BriefText] = Field(default_factory=lambda: list[str](), max_length=10)
+    base: WorkoutDraft
+
+
 class Case(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
 
@@ -42,6 +55,7 @@ class Case(BaseModel):
     brief: Brief
     music: MusicSpec
     expect: Expect = Field(default_factory=Expect)
+    revise: ReviseSpec | None = None  # a revise case; none: a design case
 
 
 def load_cases() -> list[Case]:

@@ -1,5 +1,6 @@
-"""The agent smoke set (ADR 0006 section 8): 15 cases, each a brief, a synthetic music fixture and
-deterministic checks on the draft the design stage submits.
+"""The agent smoke set (ADR 0006 section 8): 15 design and 3 revise cases (ADR 0007 section 3),
+each a brief, a synthetic music fixture and deterministic checks on the draft the design or revise
+stage submits (a revise case also holds the base draft and the requests).
 
 - ``cases``: the case files (``smoke/*.json``) and their models;
 - ``music``: the synthetic playlists (invented titles and BPMs, no Spotify data), built into the
