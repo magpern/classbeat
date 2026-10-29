@@ -19,7 +19,6 @@ the stored link if there is one, else the attach.
 """
 
 import re
-from dataclasses import replace
 from typing import Any, Final
 from uuid import UUID
 
@@ -40,6 +39,7 @@ from classbeat.operations.kinds import (
 )
 from classbeat.operations.protocol import (
     CallResult,
+    Guard,
     OperationRequest,
     UncertainAnswer,
     perform,
@@ -74,13 +74,14 @@ def idempotency_key(source_id: str) -> str:
     return KEY_PREFIX + check_source_id(source_id)
 
 
-def attach_request(source_id: str) -> OperationRequest:
+def attach_request(source_id: str, guard: Guard | None = None) -> OperationRequest:
     source_id = check_source_id(source_id)
     return OperationRequest(
         kind=KIND,
         idempotency_key=idempotency_key(source_id),
         request_hash=request_hash(KIND, source=SOURCE, source_id=source_id),
         timeout_seconds=ATTACH_TIMEOUT_SECONDS,
+        guard=guard,
     )
 
 
@@ -133,7 +134,7 @@ async def linked_playlist(run: JobRun, source_id: str) -> int | None:
         ).scalar_one_or_none()
 
 
-def _still(run: JobRun, opened: OpenConnection) -> Any:
+def _still(run: JobRun, opened: OpenConnection) -> Guard:
     async def guard(db: AsyncSession) -> bool:
         return await hold(db, run.ctx, opened)
 
@@ -170,6 +171,6 @@ async def attach_spotify_playlist(
         )
         return CallResult(str(_answered_playlist_id(answer)))
 
-    request = replace(attach_request(source_id), guard=_still(run, opened))
+    request = attach_request(source_id, _still(run, opened))
     done = await perform(run, request, call, keyring=keyring)
     return playlist_id_of(done.external_id)
