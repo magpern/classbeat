@@ -32,6 +32,7 @@ def test_the_allowlist_is_exactly_the_reviewed_one() -> None:
         "classbeat.auth",
         "classbeat.db",
         "classbeat.classes",
+        "classbeat.usage",
     )
     assert ALLOWED_MODULES == (
         "classbeat.jobs.fence",

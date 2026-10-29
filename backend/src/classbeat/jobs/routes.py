@@ -33,6 +33,7 @@ import hashlib
 import json
 import re
 from collections.abc import Mapping
+from dataclasses import asdict
 from datetime import datetime
 from typing import Annotated, Any
 from uuid import UUID
@@ -51,6 +52,7 @@ from classbeat.jobs.inputs import JobInput
 from classbeat.jobs.kinds import KIND_NAME, KINDS, JobKind, KindRegistry, Refused
 from classbeat.jobs.progress import read_revision
 from classbeat.jobs.user import Admission, CreateAdmit, NewJob
+from classbeat.usage import job_usage
 
 router = APIRouter(prefix="/api/jobs", tags=["jobs"])
 
@@ -84,6 +86,15 @@ class ApproveIn(BaseModel):
     content_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
 
 
+class JobUsageOut(BaseModel):
+    runs: int
+    input_tokens: int
+    output_tokens: int
+    cache_read_tokens: int
+    cache_write_tokens: int
+    cost_micros: int
+
+
 class JobOut(BaseModel):
     id: UUID
     kind: str
@@ -98,6 +109,7 @@ class JobOut(BaseModel):
     created_at: datetime
     updated_at: datetime
     finished_at: datetime | None
+    usage: JobUsageOut | None = None  # GET only: summed over the job's runs; None if none
 
     @classmethod
     def of(cls, view: service.JobView) -> "JobOut":
@@ -274,7 +286,13 @@ async def get_job(
     if wanted is None:
         return _refuse("not_found")
     view = await service.get(request.app.state.session_factory, ctx, wanted)
-    return _refuse("not_found") if view is None else JobOut.of(view)
+    if view is None:
+        return _refuse("not_found")
+    out = JobOut.of(view)
+    used = await job_usage(request.app.state.session_factory, ctx, wanted)
+    if used is not None:
+        out.usage = JobUsageOut(**asdict(used))
+    return out
 
 
 @router.get("/{job_id}/revision", response_model=RevisionOut, responses={404: {}, 409: {}})
