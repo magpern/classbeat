@@ -78,14 +78,24 @@ v<N>` does not change and the startup check stays as is.
 - **`external_operations`** gains `class_id uuid NULL` (owner-inclusive FK to `classes`, `ON DELETE
   CASCADE`; NULL for the attach), `request_context jsonb` (default `'{}'`, ≤ 2048 bytes,
   non-secret: ids of the user's own rows, hashes, MOWL program ids, §8), `pending_at` and
-  `call_ended_at timestamptz NULL` (§8). Its `kind` check gains `mowl_save_workout` and
+  `call_ended_at timestamptz NULL` (§8). **Every transition into `pending`, the insert and the
+  take-over of a `failed` row alike, sets `pending_at = now()`, `call_ended_at = NULL` and the new
+  attempt's `request_context`** (baseline, `before_hash`, `bound_seconds`), so nothing of the
+  earlier attempt survives. "The call returned" means `call_ended_at >= pending_at`. Its `kind` check gains `mowl_save_workout` and
   `mowl_update_workout`. `result` and `external_id` keep their meaning and limits.
 - **`agent_runs`** becomes the durable usage record (§10): `job_id` nullable with `ON DELETE SET
   NULL (job_id)`, new `job_kind text` and `price_version text`, an index `(owner_id,
-  started_at)`, and two restrictive policies: `agent_runs_finished_immutable` (`FOR UPDATE USING
-  (outcome IS NULL)`) and `agent_runs_no_delete` (`FOR DELETE USING (false)`). Deleting a class
-  therefore keeps its usage; deleting the user still cascades (FK actions run without row
-  security).
+  started_at)`, and two restrictive policies: `agent_runs_finished_immutable` (`AS RESTRICTIVE FOR
+  UPDATE USING (outcome IS NULL) WITH CHECK (true)`) and `agent_runs_no_delete` (`AS RESTRICTIVE FOR
+  DELETE USING (false)`). The `WITH CHECK (true)` is required: without it PostgreSQL applies the
+  `USING` expression to the *new* row as well, and the fenced update that sets `outcome` and
+  `finished_at` would be refused (for `classbeat_app`, and for the owner too under forced row
+  security). The `USING` part still applies to the old row, so a finished row can't be changed. The
+  migration **backfills `job_kind`** (and `price_version`, `'unknown'`) on the existing finished
+  rows from their jobs **before** it creates the policy, or the backfill itself would be refused.
+  Deleting a class therefore keeps its usage; deleting the user still cascades (FK actions run
+  without row security). The columns are added by C1 (#141, the only migration); US1 (#145) only
+  writes them.
 - **Error categories** (the three checks that share the list: `jobs.error_category`,
   `external_operations.error_category`, `agent_runs.outcome`) gain `program_changed`,
   `program_missing` and `music_unlinked` (§5, §7).
@@ -261,7 +271,13 @@ Model output is a proposal and the model has no write tool; the writes below are
 
 **Kind `save_workout`** (issue SV1), stages `prepare`, `save`, `verify`.
 
-1. **`prepare`**: the revalidation of §5.2; the playlist id is read from the revision's link row;
+1. **`prepare`**: the revalidation of §5.2, which also includes the **unresolved-write rule**: a Save
+   (and an Update, §7) is refused with 409 `write_unresolved` while any `mowl_save_workout` or
+   `mowl_update_workout` row of the same class that belongs to **another job** is `pending` or
+   `uncertain` (at creation in `admit`, and again here); the user resolves it with Check again or
+   Do it anyway (§8), after which it is `succeeded` or `failed` and the rule no longer applies. Without
+   the rule a save that may have happened would be followed by a second one with no warning. The
+   playlist id is read from the revision's link row;
    `hold` is taken on the opened connection in that transaction. Then a **preflight read**, outside
    any operation: `api.list_workouts(creds, page=0)` through `call_opened`, whose result (the
    ProgramIDs of the first page, at most 50) is the **baseline**. A preflight that fails is an
@@ -274,15 +290,22 @@ Model output is a proposal and the model has no write tool; the writes below are
      content_hash (hex), playlist_id}`; **`class_id`** set; **`context`** `{revision_id,
      content_hash, playlist_id, baseline: [program ids], bound_seconds}`;
    - **the call**: `workout.save(spec, creds, playlist_id)` in a thread through `call_opened` with
-     **`single_request = False`**. The library makes many requests, so `ConnectionFailure.not_applied`
-     is never true for it, an allowlist refusal is `uncertain` (`OperationRequest.single_request`),
-     and a MowlError after a first request is `uncertain` too. **Every failure of the write itself
+     **`single_request = False`**. The library makes many requests, so after a first request
+     `ConnectionFailure.not_applied` is not trusted for it (only the `NEVER_SENT` categories,
+     `key_unavailable`, `decrypt_failed` and `not_connected`, still say nothing was sent, and for
+     those `failed` is correct: the call never started); an allowlist refusal after the first
+     request is `uncertain` (`OperationRequest.single_request`), and a MowlError after a first
+     request is `uncertain` too. **Every failure of the write itself
      is `uncertain`; `failed` comes only from a reconciliation that proves no effect (§8).** An
      answer without an integer `program_id` is `UncertainAnswer`, also `uncertain`;
    - **the lease**: the `pending` transaction extends it by `bound_seconds = 30 s × (3 + 3 ×
-     segments)` capped at 30 minutes (the library's own per-request timeout is 30 s); the heartbeat
+     segments)` capped at 30 minutes; the heartbeat
      keeps extending it; a cancel never interrupts the call between `pending` and its outcome
-     (ADR 0005 §4);
+     (ADR 0005 §4). **The bound assumes a total deadline of 30 s per request.** The library's
+     `urlopen(timeout=30)` is only a socket timeout per blocking operation, so a slow-drip response
+     could outlast it. SV1 therefore enforces the total deadline in the request function the call
+     goes through (the connection's egress-checked transport), tested with a slow-drip fake; where it
+     cannot, `bound_seconds` uses 60 s per request. `call_may_be_running` (§8) rests on this;
    - **the effect**: MOWL's `ProgramID` becomes the operation's `external_id` and `result`
      `{segments: n}`. In the same transaction as the `succeeded` row, `on_succeeded` inserts the
      `saved_workouts` row (`ON CONFLICT DO NOTHING` on the live-program index), so whoever marks the
@@ -307,8 +330,13 @@ reaped job reuses its operation by key and never saves twice.
   decide guard read the program id from the user's own live `saved_workouts` row (same class, same
   owner, `detached_at IS NULL`) inside the fenced transaction. A program id from the browser, from
   a model or from MOWL's own listing is never written to. The operation key is `<job_id>:update`,
-  the hash covers `{kind, program_id, content_hash}`, and `on_succeeded` updates only a live
+  the hash covers `{kind, program_id, content_hash, playlist_id}` (the update writes the playlist
+  id, as Save's hash does), and `on_succeeded` updates only a live
   `saved_workouts` row with that program id.
+- **Baseline** (in `prepare`, as for Save, §6): `api.list_workouts(creds, page=0)` through
+  `call_opened`, outside any operation; its ProgramIDs are the **baseline** stored in the context. An
+  update is not one request either and can create a program (below), so it needs the same listing
+  evidence as Save. A failing preflight is an ordinary failure with no operation row.
 - **Read first** (`read`, outside any operation): `api.get_workout(program_id)`. It must exist
   (`program_missing` otherwise: deleted in MOWL, or the id is not served to this account), and its
   **normalized state** must match what classbeat last wrote:
@@ -326,13 +354,18 @@ reaped job reuses its operation by key and never saves twice.
     writes `IsPublic: false`, so a public program is always "changed". `overwrite` is sent only by
     the page's confirmation, never inferred by the server, and **Do it anyway** on an uncertain
     update leaves it to the page to ask (§8).
-  - The `normalized` hash before the write is the operation's `before_hash` (context).
+  - The `normalized` hash before the write is the operation's `before_hash` (context), next to the
+    `baseline` and `bound_seconds`.
 - **The write**: `workout.save(spec, creds, playlist_id, program_id=program_id)`, again
   `single_request = False` and every failure `uncertain`. A MowlError saying MOWL answered with
   another program id is `uncertain` as any other: MOWL then made a **new, empty program** (the
-  library stops before writing segments into it); the page's uncertain text for updates mentions
-  that a stray workout of that name may exist in My Workouts. That is accepted: it is the user's
-  own private workout, and nothing in classbeat points at it.
+  library stops before writing segments into it) while the original stays untouched. The original
+  therefore still equals `before_hash`, and a read of the target alone can **not** show that the
+  request had no effect. That is why the reconciler (§8) also lists My Workouts against the
+  baseline and treats **any new program as inconclusive**: such a row is `uncertain`, is never
+  retried automatically, and so cannot pile up stray workouts, one per attempt. The page's uncertain
+  text for updates mentions that a stray workout of that name may exist in My Workouts; it is the
+  user's own private workout, nothing in classbeat points at it, and the user deletes it in MOWL.
 - **`verify`** as in §6: `state_hash` set from the read-back, or NULL.
 
 ### 8. Uncertain saves and updates: what a read proves
@@ -341,7 +374,10 @@ A multi-request write that fails or whose outcome is not recorded is `uncertain`
 sends it again** (ADR 0005 §7 step 4; T51). The one automatic reconciliation runs the kind's
 `Reconciler` in the worker; the same code runs in the web process for the user's **Check again**.
 It is read-only, with the user's credentials opened through `classbeat.connections`, and bounded
-(one listing and at most three program reads). It needs the data the write left behind, which is
+(one listing and at most three program reads). **The listing is covered** when it has fewer than 50
+programs or contains at least one program of the baseline (it is newest first); a full page of only
+new programs, or a listing that fails, is not covered. Only a covered listing can support `failed`;
+a target that would sit off page 0 is therefore inconclusive. It needs the data the write left behind, which is
 why `request_context` is stored at the `pending` insert and handed to the reconciler and to
 `on_succeeded` (the shared protocol change of issue X2: `OperationRequest.context`,
 `Operation.context`).
@@ -351,10 +387,11 @@ why `request_context` is stored at the `pending` insert and handed to the reconc
 
 | What the read shows | Outcome |
 |---|---|
-| exactly one program that is **not in the baseline**, private, whose `matches(spec, program)` holds (the revision's content, rebuilt from the stored revision) | `succeeded`, `external_id` = its ProgramID, `saved_workouts` written |
-| one or more new programs that don't match (a **partial** save: the program exists, segments missing or different) | inconclusive: the effect happened, a retry would duplicate |
+| **exactly one** program that is both **not in the baseline** and private and whose `matches(spec, program)` holds (the revision's content, rebuilt from the stored revision). Only *new* programs count, and other new programs that do **not** match (something the user made in the MOWL app meanwhile) neither add to nor cancel this single match | `succeeded`, `external_id` = its ProgramID, `saved_workouts` written |
+| no match, but one or more new programs that don't match (a **partial** save: the program exists, segments missing or different) | inconclusive: the effect may have happened, a retry would duplicate |
 | two or more new programs that match | inconclusive (a duplicate already exists; the user decides) |
-| no new program | inconclusive, **unless** `CLASSBEAT_MOWL_LISTING_LAG_SECONDS` is set and `now() ≥ call_ended_at + lag`, then `failed` |
+| no new program, listing covered | inconclusive, **unless** `CLASSBEAT_MOWL_LISTING_LAG_SECONDS` is set and `call_ended_at` is set and `now() ≥ call_ended_at + lag`, then `failed` |
+| listing not covered (more than 50 new programs, or it failed) | inconclusive |
 
 Absence is not proof: MOWL's read-after-write delay is unknown, and a wrongly-`failed` row leads to
 a duplicate. The lag setting is **unset by default**; the owner measures how soon a new workout
@@ -365,18 +402,23 @@ Two assumptions here are **not yet checked against real MOWL** and are listed in
 below: that a new workout appears on page 0 of `creationDateDesc`, and that `get_workout` shows the
 fields `matches` compares.
 
-**`mowl_update_workout`.** From `get_workout(program_id)` and the context's `before_hash`:
+**`mowl_update_workout`.** From `get_workout(program_id)`, the listing (`list_workouts`, page 0) and
+the context's `before_hash` and `baseline`. The target read alone never proves "no effect", because
+the request can create a *different* resource (§7), so `failed` also needs a covered listing with
+**no new program** since the baseline:
 
 | What the read shows | Outcome |
 |---|---|
-| `matches(spec, program)` holds | `succeeded` |
-| `sha256(normalized(program)) = before_hash` | `failed`: provably unchanged (orphan segment copies the failed attempt made are not part of the program) |
+| `matches(spec, program)` holds | `succeeded` (a new program, if any, is a stray of the user's own; the page mentions it) |
+| the target is unchanged (`sha256(normalized(program)) = before_hash`) **and** the listing is covered **and** has no program that is not in the baseline | `failed`: provably unchanged and nothing created (orphan segment copies the failed attempt made are not part of the program) |
+| the target is unchanged but **any new program** appeared (or the listing is not covered or failed) | inconclusive: MOWL may have made a copy; a retry could make another, so the row stays `uncertain` and is never retried automatically |
 | anything else (partial) | inconclusive |
 | the program is gone | inconclusive (`program_missing` is shown) |
 
 An update that is `failed` by proof is retried by the job as the protocol already does
-(`NO_EFFECT_CATEGORY`); the retry's own `read` step compares again, so it can't overwrite an edit
-the user made meanwhile.
+(`NO_EFFECT_CATEGORY`); the retry's own `prepare` takes a fresh baseline and its `read` step
+compares again, so it can't overwrite an edit the user made meanwhile. A retry therefore only
+follows a proof that nothing, neither a change nor a new program, resulted from the last attempt.
 
 **The user's two actions** (`classbeat.operations.user`, kind-agnostic, CSRF) behave as ADR 0005
 §7, plus a rule for the multi-request kinds. **Check again** runs the reconciler once more.
@@ -392,8 +434,38 @@ but fenced out, or slow) is marked `uncertain` by the next job without `call_end
 can still be sending requests for up to `bound_seconds`. For such rows both actions are refused
 with 409 `call_may_be_running` until `pending_at + bound_seconds + 30 s` (`actionable_at` in the
 view), so a repair can't interleave with the old call's late requests. A row whose call returned
-(step 3 set `call_ended_at`) is actionable at once. A row left by a crashed worker process is
-treated the same way: the bound is the only evidence that the call is over.
+(`call_ended_at >= pending_at`) is actionable at once. A row left by a crashed worker process is
+treated the same way: the bound is the only evidence that the call is over. **The automatic
+reconciliation waits for `actionable_at` too** (ADR 0005 §7 step 4): when the next attempt finds a
+stale `pending` row of a multi-request kind without `call_ended_at` and `now() < actionable_at`, it
+marks it `uncertain`, does not reconcile and does not call, and the job ends `uncertain_write`; the
+user's Check again after `actionable_at` does the reconciliation. An update therefore can't be
+retried while the old thread may still write.
+
+**An orphaned `pending` row.** Operation keys are per job, so the only job that can meet a `pending`
+row is the same job's next attempt. When `queue_reap` ends the job instead (`failed` /
+`lease_lost` once the attempts are spent, or `cancelled` when a cancel was requested), or the job
+expires or is deleted, nobody would ever resolve the row: both user actions answer 409
+`not_uncertain`, and a later Save would add a second workout (#117 item 7 notes the hidden-pending
+gap). It is closed in two parts, without touching the queue functions:
+
+1. **Who resolves it.** `classbeat.operations.orphans.resolve(db, ctx)` marks every `pending`
+   `mowl_save_workout` / `mowl_update_workout` row of the user whose job is terminal (`failed`,
+   `cancelled`, `expired`, `completed`) or gone `uncertain`, under the same conditional update
+   (`WHERE state = 'pending'`) and the job's error category when it has one. It runs under the
+   user's own row security at the start of every route that reads or acts on a class's operations
+   (the class and operation views, Save and Update admit, class delete, Check again, Do it anyway)
+   and in a worker's `prepare` for the owner. The user then sees the row as an ordinary uncertain
+   write, with `actionable_at` still applying (it has no `call_ended_at`). A late outcome write from
+   the fenced-out holder fails on the lease, so it can't overwrite the marking.
+2. **Save and Update refuse meanwhile** (the unresolved-write rule of §6): a `pending` row of
+   another job and an `uncertain` row of the class both give 409 `write_unresolved`. The user
+   resolves the row first, and only then can another write be started.
+
+Tests: crash on the last attempt (the job ends `failed` `lease_lost`, the row becomes `uncertain`,
+Save is refused, Check again after `actionable_at` resolves it); cancel requested, then lease
+expiry (the job `cancelled`, the same); a Save during the window before `resolve` ran is refused as
+`write_unresolved` too.
 
 ### 9. Reconnecting MOWL, and another account
 
@@ -556,12 +628,12 @@ lease data in any body):
 | `GET /api/classes/{id}/messages` | the conversation |
 | `POST /api/classes/{id}/current` | §2 |
 | `POST /api/jobs` with `revise_draft`, `save_workout`, `update_workout` | §3, §5 to §7 |
-| `DELETE /api/classes/{id}` | §11; 409 `class_busy` with an open job; 409 `uncertain_write` unless `?confirm_uncertain=true`; says the MOWL workouts stay |
+| `DELETE /api/classes/{id}` | §11; 409 `class_busy` with an open job; 409 `call_may_be_running` while a save or update row of the class is `pending` or still inside its bound (`now() < actionable_at`), because the cascade would drop the only record of a write that may still land; 409 `uncertain_write` unless `?confirm_uncertain=true`; says the MOWL workouts stay |
 | `GET /api/usage`, `usage` in the job view | §10 |
 | `/api/operations/...` | unchanged shape; `OperationView` gains `class_id`, `actionable_at` |
 
 Reasons on 409 at creation: `stale_base`, `revision_limit`, `chat_full`, `hash_mismatch`,
-`class_busy`, `not_connected`, `music_unlinked`, `invalid_input`. New failure categories, with
+`class_busy`, `write_unresolved` (§6, §8), `not_connected`, `music_unlinked`, `invalid_input`. New failure categories, with
 the plain sentence the page shows: `program_changed` ("this workout was changed in MOWL after
 classbeat saved it"), `program_missing` ("this workout is no longer in your MOWL account"),
 `music_unlinked` ("the music of this version is not in your connected MOWL account; change it and
@@ -584,7 +656,12 @@ named in an issue's criteria):
 - **Write protocol**: failure injection at each request number of a save and an update: refuse
   before send and drop after send both `uncertain`, none `failed`; crash mid-call then the next job
   never calls; two jobs on one class never both call; the reconciliation tables of §8, each row;
-  `call_may_be_running`; the lag setting off and on.
+  `call_may_be_running`; the lag setting off and on; an update whose copy attempt left a stray
+  program ends `uncertain` and is never sent again (no second stray); an orphaned `pending` row
+  (last attempt, cancel then lease expiry) becomes `uncertain` and blocks Save and class delete
+  until resolved; a take-over of a `failed` row resets `call_ended_at`, `pending_at` and the
+  context; a save with unrelated new programs still reconciles `succeeded`; more than 50 new
+  programs is inconclusive; a slow-drip response does not outlast `bound_seconds`.
 - **Account switch**: reconnect mid-call, between creation and run, and after saving: no stale
   link, `external_id`, operation or saved row is used; Update of a detached row refused; Save of an
   old revision `music_unlinked`; a revise re-attaches and the new revision saves into the new account.
@@ -640,7 +717,8 @@ named in an issue's criteria):
 - The M3a protocol changes only additively (`context`, `class_id`, two timestamps, an `OnSucceeded`
   and `Reconciler` input that carries the operation); its tests for the attach must pass unchanged.
 - `external_operations` rows of the two kinds go with their class, so deleting a class while a
-  write is undecided drops the user's record of it; the delete route asks for confirmation.
+  write is undecided drops the user's record of it; the delete route refuses while a write is
+  `pending` or inside its bound and asks for confirmation when one is `uncertain`.
 - A save or update that fails after MOWL received a request is **always** shown to the user until a
   read proves its fate; the user will see this rarely (the preflight removes the common transient
   failures) and the page must make the two actions understandable (issue FE2).
@@ -670,14 +748,14 @@ Sonnet Developer. Each issue is not startable before this ADR is accepted. Fakes
 
 | # | Issue | Owner | Depends on |
 |---|---|---|---|
-| C1 (#141) | Migration `0005_classes`: `classes` columns, `class_messages`, `saved_workouts`, `external_operations` columns and kinds, the three categories, durable immutable `agent_runs`, guard 10 (retention registry); RLS, cascade and immutability tests | **Opus** | none |
+| C1 (#141) | Migration `0005_classes`: `classes` columns, `class_messages`, `saved_workouts`, `external_operations` columns and kinds, the three categories, durable immutable `agent_runs` (columns `job_kind`, `price_version`, the two restrictive policies with `WITH CHECK (true)`, `job_kind` backfilled before the policy), guard 10 (retention registry); RLS, cascade and immutability tests | **Opus** | none |
 | K1 (#142) | Job-kind seams: `consumes_credit`, create-time `admit`, `design_draft` sets the class pointers, provenance fields | **Opus** | C1 |
-| X2 (#143) | Operation protocol: `class_id`, `request_context`, `pending_at`, `call_ended_at`, `Operation`-carrying `Reconciler` and `OnSucceeded`, `call_may_be_running`, disconnect and reconnect deleting the write operations and detaching saved rows | **Opus** | C1 |
-| C2 (#144) | Class and revision API, current-revision pick, class delete with the uncertain-write confirmation, 404 tests | Sonnet | C1 |
-| US1 (#145) | Usage: `job_kind` and `price_version` on `agent_runs`, `GET /api/usage`, per-job usage in the job view, `notes` codes | Sonnet | C1 |
+| X2 (#143) | Operation protocol: `class_id`, `request_context`, `pending_at`, `call_ended_at` (reset on every return to `pending`), orphan resolution, the unresolved-write rule, `Operation`-carrying `Reconciler` and `OnSucceeded`, `call_may_be_running`, disconnect and reconnect deleting the write operations and detaching saved rows | **Opus** | C1 |
+| C2 (#144) | Class and revision API, current-revision pick, class delete with the pending/bound refusal and the uncertain-write confirmation, 404 tests | Sonnet | C1 |
+| US1 (#145) | Usage: writes `job_kind` and `price_version` (columns added by C1) when it inserts `agent_runs` rows, adds `classbeat.usage` to the session-guard allowlist, `GET /api/usage`, per-job usage in the job view, `notes` codes | Sonnet | C1 |
 | R1 (#146) | `revise_draft`: admit with limits and stale base, `revise` stage, model input with the parent chain, change summary and note, store with compare-and-set, settings and `RevisionPolicy`, fake scripts and three smoke cases | Sonnet | C1, K1 |
 | SV1 (#147) | `save_workout`: approval revalidation, preflight baseline, `mowl_save_workout` with reconciler and `saved_workouts`, verify, fake MOWL programs with failure injection | **Opus** | K1, X2 |
-| SV2 (#148) | `update_workout`: saved-row-only target, read first, `program_changed` and overwrite, `mowl_update_workout` with `before_hash` reconciler | **Opus** | SV1 |
+| SV2 (#148) | `update_workout`: saved-row-only target, preflight baseline, read first, `program_changed` and overwrite, `mowl_update_workout` with `before_hash` and baseline reconciler | **Opus** | SV1 |
 | FE1 (#149) | Class page, revisions panel, Change it chat, My classes | Sonnet | C2, R1 |
 | FE2 (#150) | Save and Update UI, uncertain panels, overwrite dialog, usage panel | Sonnet | SV2, US1, FE1 |
 | T2 (#151) | E2E with fakes: design, revise, save, update; uncertain save and update; account switch; usage recorded per job | Sonnet | FE2 |
