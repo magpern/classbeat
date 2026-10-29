@@ -26,8 +26,8 @@ Revision 6 below stays as written; where it differs, this amendment wins. Record
     and MOWL" no longer apply to the circle.
 - **Developers by risk.** Security-critical PRs (encryption and keys, jobs with leases and
   fencing, Spotify OAuth, approvals and external writes) get an Opus Developer; the rest a
-  Sonnet Developer ("Development process", Roles). The Reviewer is a fresh Opus context
-  either way.
+  Sonnet Developer ("Development process", Roles). The Reviewer is a fresh context either
+  way; its model is set by Amendment 2.
 
 ## Amendment 2 (2026-10-29, owner decision: review cost)
 
@@ -43,8 +43,10 @@ Where it differs, this amendment wins over Revision 6's review gate ("Developmen
   the guarantees that changed.
 - **Follow-up findings are batched** into few hardening PRs, one review each.
 - **Reviewer model by risk:** security-critical PRs (the Opus-Developer list in Amendment 1,
-  plus auth and sessions, tenant isolation, guards, egress and model keys) keep a fresh Opus
-  Reviewer; other PRs (UI, tests, docs, tooling) may have a fresh Sonnet Reviewer.
+  plus auth and sessions, tenant isolation, guards and roles, the queue SQL, egress, model
+  keys and billing) keep a fresh Opus Reviewer; other PRs (UI, tests, docs, tooling) may have
+  a fresh Sonnet Reviewer. Whether a change touches a security-critical area, or a module a PR
+  changes or calls, is the Architect's call; when in doubt, Opus and a review.
 
 *Revision 6 — frozen for implementation. Song picking is a **core** feature with Claude
 choosing the final songs from real BPM and sections (the pool stage from `mowl-workouts`);
