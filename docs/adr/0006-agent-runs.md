@@ -246,7 +246,10 @@ in progress, with `(outcome IS NULL) = (finished_at IS NULL)`, amended in J1, #8
 `finished_at NULL`. Counters are updated after every turn, so a crashed run still shows its cost.
 A turn that finishes after its worker lost the lease can't be recorded (the fence refuses it), so
 the cost across attempts may **undercount by that one turn per lost lease**; the next holder does
-not guess it. Accepted: leases are lost rarely and the gap is bounded by one turn; real cost
+not guess it. Likewise a turn whose request fails after the provider started billing it (an
+error mid-stream, a timeout) returns no usage, so nothing is recorded for it (amended in A2,
+#91): **at most one turn per failed attempt**, so up to the job's `max_attempts` turns. Accepted:
+leases are lost rarely, failed turns end their attempt, and both gaps are bounded; real cost
 per class is measured against the provider's own figures at live activation (roadmap M3b).
 No transcript is stored in M3a: model text, tool arguments and results stay in memory and are
 never logged. (A debug transcript store, if ever needed, gets its own decision and falls under

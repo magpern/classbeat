@@ -156,4 +156,5 @@ responses and model output alike.
 - A model turn already running when the user cancels finishes and is billed (ADR 0005 §4).
 - Lost `NOTIFY` wake-ups delay progress by up to 5 s and claims by up to 2 s (ADR 0005 §3, §6).
 - A model turn that finishes after its worker lost the lease isn't recorded, so a job's cost can
-  undercount by one turn per lost lease (ADR 0006 §6).
+  undercount by one turn per lost lease; a turn whose request fails after billing started returns
+  no usage and isn't recorded either, at most one turn per failed attempt (ADR 0006 §6).

@@ -10,7 +10,11 @@ The only place in ``classbeat`` that builds an HTTP client or an ``urllib`` open
   an allowlisted host on port 443. It has no ``http``, ``ftp``, ``file`` or ``data`` handler.
 - **httpx**, for the model client (A2): ``allowlisted_async_client()`` returns an
   ``httpx.AsyncClient`` with ``trust_env=False`` whose transport applies the same check to every
-  request, so every redirect hop too.
+  request, so every redirect hop too. The client does not follow redirects
+  (``follow_redirects=False``, httpx's default): a redirect to another host is refused here, and
+  a same-host one comes back to the SDK as a 3xx response, which the model provider maps to
+  ``internal`` after one attempt (intended: the API never redirects). ``refused`` lets the SDK
+  see a refusal as an error it does not retry (``classbeat.agent.providers.anthropic``).
 
 A refused request raises ``OutboundBlocked`` (the job fails ``outbound_blocked``, ADR 0005 §4)
 and logs the host only, never the URL, its path or query, or a header.
@@ -23,6 +27,7 @@ network-level egress rule of M6, threat model).
 import logging
 import ssl
 import urllib.request
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 from urllib.parse import urlsplit
@@ -240,11 +245,25 @@ class AllowlistTransport(httpx.AsyncBaseTransport):
     refuses a redirect response that points at another host: httpx drops ``Authorization`` on a
     cross-origin hop but keeps ``x-api-key``, so the model key must never follow one."""
 
-    def __init__(self, allowlist: Allowlist, inner: httpx.AsyncBaseTransport) -> None:
+    def __init__(
+        self,
+        allowlist: Allowlist,
+        inner: httpx.AsyncBaseTransport,
+        refused: Callable[[OutboundBlocked], Exception] | None = None,
+    ) -> None:
         self._allowlist = allowlist
         self._inner = inner
+        self._refused = refused
 
     async def handle_async_request(self, request: httpx.Request) -> httpx.Response:
+        try:
+            return await self._handle(request)
+        except OutboundBlocked as exc:
+            if self._refused is None:
+                raise
+            raise self._refused(exc) from exc
+
+    async def _handle(self, request: httpx.Request) -> httpx.Response:
         url = request.url
         host = url.raw_host.decode("ascii", errors="replace")
         self._allowlist.check(url.scheme, host, url.port, bool(url.userinfo))
@@ -271,16 +290,19 @@ def allowlisted_async_client(
     *,
     timeout: float = MODEL_TIMEOUT_SECONDS,
     inner: httpx.AsyncBaseTransport | None = None,
+    refused: Callable[[OutboundBlocked], Exception] | None = None,
 ) -> httpx.AsyncClient:
     """The ``httpx.AsyncClient`` for the model SDK (``AsyncAnthropic(http_client=...)``).
 
     ``trust_env=False`` on the client and the transport: no proxy, ``NETRC`` or ``SSL_CERT_*``
     from the environment. ``inner`` replaces the network transport in tests (an
-    ``httpx.MockTransport``, no network); the check still runs.
+    ``httpx.MockTransport``, no network); the check still runs. ``refused`` turns an
+    ``OutboundBlocked`` into the exception the caller's library does not retry (raised ``from``
+    it, so the refusal stays its cause).
     """
     network = inner if inner is not None else httpx.AsyncHTTPTransport(trust_env=False)
     return httpx.AsyncClient(
-        transport=AllowlistTransport(allowlist, network),
+        transport=AllowlistTransport(allowlist, network, refused),
         trust_env=False,
         timeout=timeout,
     )

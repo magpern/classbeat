@@ -384,11 +384,27 @@ class ModelProviderRefused(Exception):
     """The worker's model-provider settings are not allowed; the message names the rule only."""
 
 
+# The model SDK reads these even with an explicit key and base URL: debug logging of request
+# bodies (at import) and extra headers on every request. The worker never sets them (A2).
+MODEL_SDK_REFUSED_ENVIRONMENT = ("ANTHROPIC_LOG", "ANTHROPIC_CUSTOM_HEADERS")
+
+
+def model_sdk_environment_problems() -> list[str]:
+    """The names (never the values) of the refused model SDK variables that are set."""
+    return [name for name in MODEL_SDK_REFUSED_ENVIRONMENT if name in os.environ]
+
+
 def check_worker_model_provider(settings: Settings) -> None:
-    """ADR 0006 §9: ``anthropic`` needs the ``anthropic_api_key`` file; ``fake`` never in prod."""
+    """ADR 0006 §9: ``anthropic`` needs the ``anthropic_api_key`` file and none of the refused
+    model SDK variables; ``fake`` never in prod."""
     if settings.model_provider == "anthropic" and settings.anthropic_api_key is None:
         raise ModelProviderRefused(
             "model_provider is anthropic but the anthropic_api_key secret file is missing or empty"
+        )
+    refused = model_sdk_environment_problems()
+    if settings.model_provider == "anthropic" and refused:
+        raise ModelProviderRefused(
+            "model_provider anthropic: the worker must not set " + ", ".join(refused)
         )
     if settings.model_provider == "fake" and settings.environment == "prod":
         raise ModelProviderRefused("model_provider fake is not allowed when environment is prod")

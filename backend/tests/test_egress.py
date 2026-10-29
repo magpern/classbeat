@@ -278,6 +278,23 @@ async def test_the_model_client_refuses_anything_else(url: str, _host: str) -> N
     assert recorder.seen == []
 
 
+class Mapped(Exception):
+    pass
+
+
+@pytest.mark.parametrize("url", ["https://evil.example/x", "https://api.anthropic.com/v1/x"])
+async def test_refused_maps_a_refusal_with_the_refusal_as_its_cause(url: str) -> None:
+    recorder = Recorder(redirect_to="https://evil.example/steal")
+    client = allowlisted_async_client(
+        inner=httpx.MockTransport(recorder), refused=lambda _: Mapped()
+    )
+    async with client:
+        with pytest.raises(Mapped) as raised:
+            await client.get(url)
+    assert isinstance(raised.value.__cause__, OutboundBlocked)
+    assert raised.value.__cause__.host == "evil.example"
+
+
 async def test_the_model_client_checks_every_redirect_hop() -> None:
     recorder = Recorder(redirect_to="https://evil.example/steal")
     async with allowlisted_async_client(inner=httpx.MockTransport(recorder)) as client:
