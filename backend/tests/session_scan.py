@@ -22,6 +22,8 @@ by the packages that own data and their own transactions:
 - ``classbeat.operations.orphans`` (ADR 0007 section 8: marks the user's orphaned ``pending``
   class writes ``uncertain`` before a view or action in the web process; on the worker path it
   is handed the job's fenced session and opens none);
+- ``classbeat.classes`` (ADR 0007 section 1, C2: the user's own reads of their classes, the
+  current-revision pick and the class delete in a web request, never the worker);
 - ``classbeat.keys_cli`` (the operator's ``keys wipe``, which predates this guard: it runs as the
   owner role from the CLI, never in the worker, and deletes connections and TOTP per owner).
 
@@ -39,6 +41,7 @@ ALLOWED_PREFIXES = (
     "classbeat.connections",
     "classbeat.auth",
     "classbeat.db",
+    "classbeat.classes",
 )
 ALLOWED_MODULES = (
     "classbeat.jobs.fence",
