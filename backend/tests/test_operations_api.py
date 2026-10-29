@@ -43,8 +43,10 @@ async def test_check_again_inconclusive_then_do_it_anyway_then_a_new_attach(
     assert [(o["id"], o["state"], o["kind"]) for o in listed] == [(str(op.id), "uncertain", ATTACH)]
     shown = listed[0]
     assert set(shown) == {
-        "id", "kind", "state", "job_id", "resolved_by", "created_at", "updated_at", "resolved_at"
+        "id", "kind", "state", "job_id", "resolved_by", "created_at", "updated_at", "resolved_at",
+        "class_id", "pending_at", "call_ended_at", "actionable_at",  # X2 (ADR 0007 section 8)
     }  # fmt: skip
+    assert (shown["class_id"], shown["actionable_at"]) == (None, None)  # an attach: no bound
     checked = await actor.post(f"{OPS}/{op.id}/check-again")
     assert checked.status_code == 200, checked.text
     assert (checked.json()["state"], checked.json()["resolved_by"]) == ("uncertain", None)

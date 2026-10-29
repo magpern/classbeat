@@ -11,8 +11,9 @@ found, the same as an unknown one. Writes:
   ``UNIQUE (owner_id, provider)`` (a parallel connect) rolls back and is retried once from the
   start in a new transaction. Never ``INSERT ... ON CONFLICT DO UPDATE`` (it would keep the old
   ``id`` with a payload encrypted for a new one).
-  A MOWL reconnect also forgets the user's MOWL playlist links and attach operations in the
-  same transaction, as a disconnect does (the token may belong to another MOWL account).
+  A MOWL reconnect also forgets the user's MOWL playlist links and MOWL operations and detaches
+  their saved workouts in the same transaction, as a disconnect does (the token may belong to
+  another MOWL account).
 - **status changes** (``needs_reconnect``, ``last_error``, ``last_used_at``) are conditional on
   the version that was read: ``WHERE id = :id AND wrapped_dek = :read_wrapped_dek``. They never
   touch ``secret``, ``wrapped_dek`` or ``key_id``.
@@ -398,14 +399,21 @@ async def connect(
     return await save(factory, ring, ctx, provider, secret, public=public, expires_at=expires_at)
 
 
-# ADR 0006 section 3: classbeat's local data about a MOWL account goes with its connection, so a
-# reconnect as another MOWL account never reuses a link or an ``external_id`` of the old one. The
-# operations go first: a worker recording an attach locks the operation row and then writes the
-# link, so taking the same order here cannot deadlock with it.
+# ADR 0006 section 3 and ADR 0007 section 9: classbeat's local data about a MOWL account goes with
+# its connection, so a reconnect as another MOWL account never reuses a link, a saved program or an
+# ``external_id`` of the old one. Every MOWL operation is deleted (attach, save and update, in any
+# state) and every live saved workout is detached (kept as history, out of the live-program
+# index, never re-attached). The operations go first: a worker recording an attach or a save locks
+# the operation row and then writes the link or the saved row, so taking the same order here
+# cannot deadlock with it, and a save recorded after this finds its row gone (``not_connected``).
 _FORGET_MOWL = (
     text(
-        "DELETE FROM external_operations WHERE owner_id = :owner_id "
-        "AND kind = 'mowl_attach_spotify_playlist'"
+        "DELETE FROM external_operations WHERE owner_id = :owner_id AND kind IN "
+        "('mowl_attach_spotify_playlist', 'mowl_save_workout', 'mowl_update_workout')"
+    ),
+    text(
+        "UPDATE saved_workouts SET detached_at = now(), updated_at = now() "
+        "WHERE owner_id = :owner_id AND detached_at IS NULL"
     ),
     text("DELETE FROM mowl_playlist_links WHERE owner_id = :owner_id"),
 )
@@ -418,7 +426,8 @@ async def _forget_mowl_account(db: AsyncSession, ctx: UserContext) -> None:
 
 async def disconnect(factory: Factory, ctx: UserContext, provider: str) -> bool:
     """Delete the row (local only: MOWL has no known revoke endpoint). For MOWL, the user's
-    playlist links and attach operations go in the same transaction (ADR 0006 section 3)."""
+    playlist links and MOWL operations go and the saved workouts are detached in the same
+    transaction (ADR 0006 section 3, ADR 0007 section 9)."""
     _check_provider(provider)
     async with user_session(factory, ctx) as db:
         # The row lock first: a job's external operation holds it (``hold``) while it writes
@@ -463,8 +472,8 @@ async def hold(db: AsyncSession, ctx: UserContext, opened: OpenConnection) -> bo
 
 async def delete_all_in(db: AsyncSession, ctx: UserContext) -> list[str]:
     """For ``keys wipe``: delete every row of the user in the caller's transaction. Returns the
-    affected providers (sorted). The MOWL links and attach operations go too, as on a
-    disconnect (the connection rows locked first, as ``disconnect`` does)."""
+    affected providers (sorted). The MOWL links and operations go and the saved workouts are
+    detached too, as on a disconnect (the connection rows locked first, as ``disconnect`` does)."""
     await db.execute(select(_C.id).where(_C.owner_id == ctx.user_id).with_for_update())
     await _forget_mowl_account(db, ctx)
     result = await db.execute(

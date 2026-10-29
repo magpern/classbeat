@@ -166,10 +166,12 @@ EXTERNAL_OPERATIONS_ALTER = (
     "ALTER TABLE public.external_operations ADD COLUMN call_ended_at timestamptz",
     "ALTER TABLE public.external_operations ADD CONSTRAINT external_operations_class_fkey "
     "FOREIGN KEY (owner_id, class_id) REFERENCES public.classes (owner_id, id) ON DELETE CASCADE",
-    # A save or update operation always belongs to a class, so it goes with the class (section 11).
-    f"ALTER TABLE public.external_operations ADD CONSTRAINT external_operations_class "
-    "CHECK (kind NOT IN ('mowl_save_workout', 'mowl_update_workout') "
-    "OR class_id IS NOT NULL)",
+    # A save or update operation always belongs to a class, so it goes with the class (section 11);
+    # an attach never does (it is the user's, kept as ADR 0006 section 3 says), so a class delete
+    # can't cascade it away (#141 review, X2).
+    "ALTER TABLE public.external_operations ADD CONSTRAINT external_operations_class "
+    "CHECK ((kind <> 'mowl_attach_spotify_playlist' OR class_id IS NULL) "
+    "AND (kind NOT IN ('mowl_save_workout', 'mowl_update_workout') OR class_id IS NOT NULL))",
 )
 
 
