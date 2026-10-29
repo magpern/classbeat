@@ -4,6 +4,7 @@ in-process fake MOWL (``savetools``); never the network.
 """
 
 import copy
+import json
 import uuid
 from datetime import UTC, datetime, timedelta
 from typing import Any
@@ -213,3 +214,42 @@ async def test_without_the_revision_key_or_context_it_is_inconclusive(
     other = await senv.saved_class(TOKEN_B)
     check = ReconcileInput(senv.ops.factory, senv.ops.keyring, make_context(other.owner), good)
     assert await operation.SAVE.reconcile(check) == operation.INCONCLUSIVE
+
+
+def test_the_name_filter_is_inclusive() -> None:
+    name = "Tuesday climb"
+    for listed in (
+        None,
+        "",
+        "  ",
+        7,
+        "Tuesday climb",
+        " tuesday  CLIMB ",
+        "Tuesday cl",
+        name + " (2)",
+    ):
+        assert operation.may_be_named(listed, name)
+    for listed in ("Made in the app", "Wednesday climb", "Tuesday hill"):
+        assert not operation.may_be_named(listed, name)
+
+
+async def test_a_listing_name_shown_differently_still_reads_the_program(
+    senv: SaveEnv, fake_programs: FakeMowlPrograms, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Two matching programs whose listing names differ in case and spacing from the saved name:
+    both are read, so the second match is not hidden (inconclusive, never ``succeeded``)."""
+    saved = await senv.saved_class()
+    first, second = plant_save(fake_programs), plant_save(fake_programs)
+    real = fake_programs._listing  # pyright: ignore[reportPrivateUsage]
+
+    def shown_differently(req: Any) -> Any:
+        answer = real(req)
+        body = json.loads(answer.read())
+        for item in body["Data"]:
+            if item["ProgramID"] in (first, second):
+                item["Name"] = "  " + item["Name"].upper()
+        return fake_programs._answer(req, 200, body)  # pyright: ignore[reportPrivateUsage]
+
+    monkeypatch.setattr(fake_programs, "_listing", shown_differently)
+    assert await reconcile(senv, saved, save_operation(saved, [])) == operation.INCONCLUSIVE
+    assert fake_programs.gets == 2

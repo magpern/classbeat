@@ -32,6 +32,7 @@ from classbeat.egress import (
     DeadlineHTTPSHandler,
     RequestDeadline,
     call_deadline,
+    call_deadline_until,
     install_worker_allowlist,
     tls_client_context,
 )
@@ -293,3 +294,44 @@ def _until(check: Any, seconds: float = 5.0) -> None:
     while not check():
         assert time.monotonic() < deadline, "condition never held"
         time.sleep(0.02)
+
+
+def test_a_thread_that_starts_late_uses_up_the_bound(drip: DripServer) -> None:
+    """The instant is taken before the call is scheduled (before ``pending``); the thread starts
+    only after it has passed: the save's first request is refused before it connects."""
+    drip.mode = "fast"
+    at = time.monotonic() + 0.3
+    outcome: list[BaseException | None] = []
+
+    def late() -> None:
+        time.sleep(0.5)  # queued behind other library calls
+        try:
+            with call_deadline_until(at):
+                workout.save(spec_of(DRAFT), CREDS, 7)
+        except BaseException as exc:
+            outcome.append(exc)
+        else:
+            outcome.append(None)
+
+    thread = threading.Thread(target=late, daemon=True)
+    thread.start()
+    thread.join(5)
+    assert len(outcome) == 1
+    assert isinstance(outcome[0], RequestDeadline)
+    time.sleep(0.2)
+    assert (drip.accepts, drip.paths) == (0, [])
+
+
+def test_a_late_thread_keeps_only_what_is_left_of_the_bound(drip: DripServer) -> None:
+    """Mutation counterpart: started late, ``call_deadline(bound)`` would grant the whole bound
+    again; ``call_deadline_until`` grants only the rest."""
+    at = time.monotonic() + 1.0
+    time.sleep(0.4)
+    with call_deadline_until(at):
+        left = egress.request_deadline(30) - time.monotonic()
+    with call_deadline(1.0):
+        whole = egress.request_deadline(30) - time.monotonic()
+    assert left == pytest.approx(0.6, abs=0.15)
+    assert whole == pytest.approx(1.0, abs=0.15)
+    with pytest.raises(TypeError, match="instant"), call_deadline_until(True):  # pyright: ignore[reportArgumentType]
+        pass

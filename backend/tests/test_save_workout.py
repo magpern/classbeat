@@ -532,3 +532,24 @@ async def test_the_saved_row_names_only_the_operations_own_class_and_revision(
     assert (row.class_id, row.revision_id, row.operation_id, row.program_id) == (
         saved.class_id, saved.revision_id, mine, 700001,
     )  # fmt: skip
+
+
+async def test_admit_refuses_a_connection_that_is_not_the_contexts(senv: SaveEnv) -> None:
+    """``admit`` compares the input's connection with the signed-in context itself (defence in
+    depth next to the jobs API's generic check and ``connections.find_in``): a connected row
+    of the user that the context does not name is refused."""
+    from classbeat.db import user_session
+
+    saved = await senv.saved_class()
+    parsed = saving.SaveWorkoutInput.model_validate(saved.input())
+    named = make_context(saved.owner, connections=[("mowl", saved.connection)])
+    unnamed = make_context(saved.owner)  # the same user, the connection not in the context
+    other = make_context(saved.owner, connections=[("mowl", uuid.uuid4())])
+    for ctx, expected in ((unnamed, "not_connected"), (other, "not_connected"), (named, None)):
+        async with user_session(senv.ops.factory, ctx) as db:
+            result = await save_kind.admit(db, ctx, parsed)
+        if expected is None:
+            assert isinstance(result, save_kind.Admitted)
+        else:
+            assert isinstance(result, save_kind.Refused)
+            assert result.reason == expected

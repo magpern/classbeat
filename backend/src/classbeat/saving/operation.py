@@ -7,8 +7,9 @@ account, as an external operation.
   playlist_id, baseline}``, plus the protocol's ``bound_seconds``. ``baseline`` is the
   ProgramIDs of My Workouts' first page read just before the write.
 - **The bound**: ``30 s * (3 + 3 * segments)``, at most 30 minutes; the call runs inside
-  ``classbeat.egress.call_deadline(bound)``, which ends every request of it by then (each request
-  also has its own total deadline of ``REQUEST_SECONDS``).
+  ``classbeat.egress.call_deadline_until`` of an instant taken just before the ``pending`` row is
+  written plus the bound, which ends every request of it by then however late its thread starts
+  (each request also has its own total deadline of ``REQUEST_SECONDS``).
 - **On success** (``on_succeeded``, same transaction as the ``succeeded`` row, whoever marks it:
   the worker, the reconciliation or the user's Check again): the ``saved_workouts`` row. It is
   built from the operation row and the revision **of the operation's own class** (one statement
@@ -27,6 +28,11 @@ account, as an external operation.
                                                              ``now >= call_ended_at + lag``
   listing not covered (50 new programs, or it failed)        inconclusive
   ========================================================  =================================
+
+  Candidates are the new programs whose listing ``Name`` may be the spec's name
+  (``may_be_named``, inclusive); that the listing shows the name ``get_workout`` returns (up to
+  spacing, case and truncation) is, like page 0 of ``creationDateDesc``, an assumption to check
+  at live activation (ADR 0007, "Live activation").
 
   The listing is **covered** when it has fewer than ``PAGE_SIZE`` programs or holds a program of
   the baseline (newest first). A program read that fails, more candidates than reads, or anything
@@ -145,6 +151,20 @@ def _names(listing: list[Any]) -> dict[int, object]:
     return out
 
 
+def _name_key(name: str) -> str:
+    return " ".join(name.split()).casefold()
+
+
+def may_be_named(listed: object, name: str) -> bool:
+    """Whether a listing entry's ``Name`` may be ``name`` as ``get_workout`` would show it:
+    anything but a text that clearly differs (after whitespace and case are normalized, and
+    allowing for a name cut short on either side)."""
+    if not isinstance(listed, str) or not listed.strip():
+        return True
+    a, b = _name_key(listed), _name_key(name)
+    return a.startswith(b) or b.startswith(a)
+
+
 def _lag_passed(operation: Operation) -> bool:
     lag = _lag
     if lag is None or not operation.call_returned or operation.call_ended_at is None:
@@ -179,10 +199,11 @@ async def _reconcile(check: ReconcileInput) -> Reconciliation:
     new = [i for i in ids if i not in baseline]
     if not new:
         return Reconciliation("failed") if _lag_passed(operation) else INCONCLUSIVE
-    # Only a new program of the spec's name can be the effect; a listing without names leaves
-    # every new program a candidate.
+    # Only a new program of the spec's name can be the effect. The comparison is inclusive, so a
+    # listing that shows the name differently (spacing, case, cut short) or not at all still
+    # makes the program a candidate: a skipped candidate could hide a second match.
     names = _names(cast(list[Any], listing))
-    candidates = [i for i in new if names.get(i) in (None, spec["name"])]
+    candidates = [i for i in new if may_be_named(names.get(i), spec["name"])]
     if not candidates or len(candidates) > MAX_PROGRAM_READS:
         return INCONCLUSIVE  # a partial save, or more than can be read
     found: list[int] = []

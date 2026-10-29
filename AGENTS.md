@@ -285,7 +285,7 @@ log (`egress.tls_client_context`). Every worker urllib request has a **total** d
 60 s without one, never past the thread's `egress.call_deadline`): a watchdog cuts a response that
 trickles in, and a request due after the deadline is never sent (ADR 0007 section 6).
 Save (`save_workout`, `classbeat.saving`, ADR 0007 sections 5, 6 and 8): no credit, no model; the
-write runs inside `call_deadline(bound_seconds)`. `CLASSBEAT_MOWL_LISTING_LAG_SECONDS` (unset by
+write runs inside `call_deadline_until` of an instant taken before its `pending` row, plus `bound_seconds`. `CLASSBEAT_MOWL_LISTING_LAG_SECONDS` (unset by
 default, at most 86400) lets the reconciler mark an uncertain save `failed` when a covered listing
 shows no new program and the call returned at least that long ago; leave it unset until the owner
 has measured MOWL's listing delay at live activation.
@@ -316,7 +316,8 @@ the jobs API answers 429 above it). Worker and agent code write job data only th
 `classbeat.jobs.fenced_session`; only `classbeat.jobs.fence`, `classbeat.jobs.credits`,
 `classbeat.jobs.service` (the jobs API), `classbeat.jobs.progress` (the SSE stream's reads),
 `classbeat.operations.user` (the user's Check again / Do it anyway), `classbeat.operations.orphans`
-(marking orphaned class writes `uncertain` before a view or action), `classbeat.keys_cli` and the
+(marking orphaned class writes `uncertain` before a view or action), `classbeat.saving.reads` (the
+save reconciler's read-only read of the saved revision, SV1), `classbeat.keys_cli` and the
 `classbeat.connections`, `classbeat.auth`, `classbeat.classes` (the class API), `classbeat.usage`
 (the usage reads, US1) and `classbeat.db` packages may open a `user_session`
 (`tests/test_session_guard.py`); job kinds live outside `classbeat.jobs`.

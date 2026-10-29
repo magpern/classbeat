@@ -26,9 +26,11 @@ deadline: its ``timeout`` (``REQUEST_FALLBACK_SECONDS`` when the caller gave non
 later than the thread's ``call_deadline`` if one is set. A watchdog shuts the socket down when
 it passes, so a blocked read returns at once and the request raises ``RequestDeadline`` (a
 ``TimeoutError``); a request that would start after the deadline is refused before anything is
-sent. A multi-request write runs inside ``call_deadline(bound_seconds)``, so no request of it
-outlives its bound (``call_may_be_running`` rests on that). The one wait it cannot cut is a DNS
-lookup in progress, which the resolver's own timeout ends; the request is refused right after.
+sent. A multi-request write runs inside ``call_deadline_until(at)``, ``at`` being taken before
+its ``pending`` row is written plus ``bound_seconds``, so no request of it outlives its bound
+(``call_may_be_running`` rests on that), however late its thread starts. The one wait it cannot
+cut is a DNS lookup in progress, which the resolver's own timeout ends; the request is refused
+right after.
 
 A refused request raises ``OutboundBlocked`` (the job fails ``outbound_blocked``, ADR 0005 §4)
 and logs the host only, never the URL, its path or query, or a header.
@@ -246,9 +248,20 @@ def call_deadline(seconds: float) -> Iterator[None]:
     keep the earlier deadline."""
     if not seconds > 0:
         raise ValueError("a call deadline is positive")
+    with call_deadline_until(time.monotonic() + seconds):
+        yield
+
+
+@contextmanager
+def call_deadline_until(at: float) -> Iterator[None]:
+    """``call_deadline`` for an absolute ``time.monotonic()`` instant taken by the caller
+    **before** the call was scheduled (a multi-request write takes it before its ``pending``
+    row is written). A thread that starts late uses up the time instead of extending it: once
+    ``at`` has passed every request is refused before it is sent."""
+    if not isinstance(at, int | float) or isinstance(at, bool):
+        raise TypeError("a call deadline is a monotonic instant")
     previous: float | None = getattr(_thread_deadline, "at", None)
-    at = time.monotonic() + seconds
-    _thread_deadline.at = at if previous is None else min(previous, at)
+    _thread_deadline.at = float(at) if previous is None else min(previous, float(at))
     try:
         yield
     finally:

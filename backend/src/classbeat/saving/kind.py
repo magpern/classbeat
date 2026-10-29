@@ -22,7 +22,9 @@ no effect, after a lost lease or a shutdown, never resumes at ``save``):
    ``call_opened``, outside any operation. Its ProgramIDs are the **baseline**. A preflight that
    fails is an ordinary failure with the usual retry classes and no operation row.
 2. ``save``: ``perform`` of ``mowl_save_workout`` (``classbeat.saving.operation``), the call being
-   ``workout.save(spec, creds, playlist_id)`` in a thread inside ``call_deadline(bound)``,
+   ``workout.save(spec, creds, playlist_id)`` in a thread inside ``call_deadline_until`` of an
+   instant taken before ``pending`` is written (``bound`` from then, so a late thread start
+   consumes the bound instead of extending it),
    ``single_request = False`` (every failure of the write is ``uncertain``); the guard re-reads the
    link row under ``hold`` and compares the playlist id. An answer without a whole-number
    ``program_id`` is ``UncertainAnswer``.
@@ -36,6 +38,7 @@ are logged.
 """
 
 import logging
+import time
 from dataclasses import dataclass
 from typing import Annotated, Any, ClassVar, Final, Self, cast
 from uuid import UUID
@@ -208,9 +211,13 @@ def _program_id(answer: object) -> int:
     return value
 
 
-def write_program(spec: dict[str, Any], creds: Credentials, playlist_id: int, bound: float) -> Any:
-    """The library's save in the call's thread: every request it makes ends within ``bound``."""
-    with egress.call_deadline(bound):
+def write_program(
+    spec: dict[str, Any], creds: Credentials, playlist_id: int, deadline_at: float
+) -> Any:
+    """The library's save in the call's thread: every request it makes ends by ``deadline_at``
+    (a ``time.monotonic()`` instant taken before the ``pending`` row was written, so a thread
+    that starts late uses up the bound instead of extending it)."""
+    with egress.call_deadline_until(deadline_at):
         return workout.save(spec, creds, playlist_id)
 
 
@@ -218,6 +225,10 @@ async def save(run: JobRun, keyring: KeyRing, plan: Plan) -> int:
     """Stage ``save``: the write as an external operation; returns the ProgramID."""
     revision, opened, playlist_id = plan.revision, plan.opened, plan.playlist_id
     bound = operation.bound_seconds(revision.segments)
+    # Anchored here, before ``perform`` writes ``pending`` (``pending_at = now()``): the call's
+    # requests end by ``pending_at + bound`` at the latest, however late its thread starts, so
+    # ``actionable_at`` (``pending_at + bound + 30 s``) never comes while one may still be sent.
+    deadline_at = time.monotonic() + bound
 
     async def guard(db: AsyncSession) -> bool:
         if not await hold(db, run.ctx, opened):
@@ -234,7 +245,7 @@ async def save(run: JobRun, keyring: KeyRing, plan: Plan) -> int:
             run.factory,
             run.ctx,
             opened,
-            lambda creds: write_program(revision.spec, creds, playlist_id, bound),
+            lambda creds: write_program(revision.spec, creds, playlist_id, deadline_at),
         )
         return CallResult(str(_program_id(answer)), {"segments": revision.segments})
 

@@ -6,13 +6,14 @@ reconnect mid-call and the take-over of a ``failed`` row. The in-process fake MO
 
 import asyncio
 import threading
+import time
 from typing import Any
 from uuid import UUID
 
 import pytest
 from sqlalchemy.exc import IntegrityError
 
-from classbeat import saving
+from classbeat import egress, saving
 from classbeat.jobs import queue
 from classbeat.operations import UncertainAnswer, user
 from classbeat.saving import kind as save_kind
@@ -358,3 +359,40 @@ async def test_the_decide_guard_refuses_a_change_after_prepare_before_any_row(
     assert senv.op_states(job_id) == []
     assert fake_programs.writes == []
     assert fake_programs.lists == 1
+
+
+async def test_a_late_thread_start_consumes_the_bound_instead_of_extending_it(
+    senv: SaveEnv, fake_programs: FakeMowlPrograms, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Blocking finding 1 of the review: the call's deadline is anchored before ``pending`` is
+    written, not when the thread starts. The thread here starts 0.5 s late; the deadline its
+    requests see is still ``before pending + bound`` (``test_egress_deadline`` shows a request
+    due after it is refused before it connects)."""
+    saved = await senv.saved_class()
+    bound = operation.bound_seconds(SEGMENTS)
+    stamps: dict[str, float] = {}
+    real_perform, real_write = save_kind.perform, save_kind.write_program
+
+    async def perform(*args: Any, **kwargs: Any) -> Any:
+        stamps["before_pending"] = time.monotonic()
+        return await real_perform(*args, **kwargs)
+
+    def late_write(*args: Any) -> Any:
+        time.sleep(0.5)  # the thread pool was busy
+        stamps["thread_start"] = time.monotonic()
+        return real_write(*args)
+
+    real_save = save_kind.workout.save
+
+    def save(*args: Any) -> Any:
+        stamps["deadline"] = egress.request_deadline(10 * bound)
+        return real_save(*args)
+
+    monkeypatch.setattr(save_kind, "perform", perform)
+    monkeypatch.setattr(save_kind, "write_program", late_write)
+    monkeypatch.setattr(save_kind.workout, "save", save)
+    job_id = senv.job(saved)
+    await senv.run_next()
+    assert senv.row(job_id).state == "completed"
+    assert stamps["deadline"] <= stamps["before_pending"] + bound
+    assert stamps["deadline"] - stamps["thread_start"] <= bound - 0.4

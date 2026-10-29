@@ -138,7 +138,8 @@ def test_the_write_runs_inside_its_bound(monkeypatch: pytest.MonkeyPatch) -> Non
         return {"program_id": 1}
 
     monkeypatch.setattr(save_kind.workout, "save", save)
-    assert save_kind.write_program(SPEC, Credentials(mowl_token="x" * 36), 7, 2.0) == {
+    at = time.monotonic() + 2.0  # the instant the save takes before writing ``pending``
+    assert save_kind.write_program(SPEC, Credentials(mowl_token="x" * 36), 7, at) == {
         "program_id": 1
     }
     assert seen == [pytest.approx(2.0, abs=0.5)]
