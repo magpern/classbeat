@@ -151,7 +151,12 @@ music. Whatever marks an attach `succeeded` (the worker or **Check again**) also
 about that MOWL account goes with the connection, as Amendment 1 has Spotify-derived data go
 with its class or account), so reconnecting as another MOWL account never reuses a link or an
 `external_id` from the old one. The delete is the mechanism; rows are not scoped by connection
-id, because a reconnect keeps the row id (ADR 0004 §4).
+id, because a reconnect keeps the row id (ADR 0004 §4). Amendment (#113): **reconnecting MOWL in
+place** (the same connection row rewritten, no disconnect) deletes them the same way, as do the
+keys wipe and a disconnect: the row records no MOWL account identity, so classbeat cannot tell the
+same account from another one. Undecided `uncertain` attach rows go too, so the next attach of
+that playlist may add a second wrapper to the user's MOWL music; U1's reconnect and disconnect
+dialogs say so.
 
 **The tools in `design`:**
 - `get_music()`: the music summary again (so the model can re-read it after corrections).

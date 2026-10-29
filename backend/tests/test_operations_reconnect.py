@@ -9,6 +9,7 @@
 
 Fake MOWL only (``optools``)."""
 
+import asyncio
 import io
 import json
 import urllib.request
@@ -21,10 +22,12 @@ import pytest
 
 from classbeat.db import user_session
 from classbeat.egress import WORKER_ALLOWLIST, OutboundBlocked, build_allowlist_opener
-from classbeat.operations import attach
+from classbeat.jobs import Complete, JobKind, JobRun, KindRegistry
+from classbeat.jobs.runner import RunConfig, execute
+from classbeat.operations import CallResult, OperationRequest, attach, perform
 from classbeat.operations.protocol import _MARK_UNCERTAIN, _RECORD  # pyright: ignore[reportPrivateUsage]
 from ctx import make_context
-from optools import PLAYLIST, TOKEN_A, TOKEN_B, FakeMowlAttach, OpsEnv
+from optools import KIND, PLAYLIST, TOKEN_A, TOKEN_B, AttachInput, FakeMowlAttach, OpsEnv
 from test_operations import ATTACH, hash_for, owner_with_job
 
 
@@ -201,3 +204,49 @@ async def test_recording_an_outcome_needs_a_pending_row_of_this_job_and_token(
     assert [o.state for o in xenv.operations(owner)] == ["pending"]
     assert await matched(xenv, owner, _RECORD, id=op, job_id=mine, v=1, **values)
     assert [o.state for o in xenv.operations(owner)] == ["succeeded"]
+
+
+async def test_a_later_request_refused_in_a_multi_request_call_is_uncertain(
+    xenv: OpsEnv, fake_attach: FakeMowlAttach
+) -> None:
+    """A call of several requests (``single_request=False``) whose later request is refused by
+    the allowlist: an earlier one already reached the provider, so the refusal (a separate
+    ``urlopen``, ``after_request`` False) is ``uncertain`` and nothing is sent again."""
+    owner = await xenv.user()
+    connection = await xenv.connect(owner)
+    calls: list[str] = []
+    request = OperationRequest(
+        kind=ATTACH,
+        idempotency_key=f"spotify:{PLAYLIST}",
+        request_hash=hash_for(PLAYLIST),
+        timeout_seconds=30,
+        single_request=False,
+    )
+
+    async def call() -> CallResult:
+        calls.append("first request reached the provider")
+        raise OutboundBlocked("evil.example")  # the second request, refused before it left
+
+    async def run(job_run: JobRun) -> Complete:
+        await job_run.stage("music")
+        await perform(job_run, request, call)
+        return Complete()
+
+    registry = KindRegistry()
+    registry.register(JobKind(KIND, AttachInput, ("music",), run))
+    jobs = [xenv.job(owner, connection), xenv.job(owner, connection)]
+    for job_id in jobs:
+        await execute(
+            await xenv.claim(),
+            xenv.factory,
+            registry,
+            RunConfig(lease_seconds=xenv.app.settings.job_lease_seconds),
+            asyncio.Event(),
+        )
+        assert (xenv.row(job_id).state, xenv.row(job_id).error_category) == (
+            "failed", "uncertain_write"
+        )  # fmt: skip
+    [op] = xenv.operations(owner)
+    assert (op.state, op.error_category) == ("uncertain", "outbound_blocked")
+    assert len(calls) == 1  # the next job never calls again
+    assert fake_attach.requests == []

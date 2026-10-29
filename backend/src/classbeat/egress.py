@@ -45,8 +45,11 @@ class OutboundBlocked(Exception):
 
     ``after_request`` is True when the refusal came on a redirect hop: the first request had
     already been sent, so whatever it asked the provider to do may have happened (an external
-    operation is then ``uncertain``, never ``failed``). False only for a refusal before
-    anything left the process."""
+    operation is then ``uncertain``, never ``failed``). On the **urllib** path it is False only
+    for a refusal before anything left the process. On the **httpx** path it is set only for a
+    cross-host redirect; a same-host hop to ``http`` or another port is refused by
+    ``Allowlist.check`` with False although the first request was sent, so an operation made
+    over httpx must never be ``single_request`` or otherwise rely on this flag."""
 
     def __init__(self, host: str, *, after_request: bool = False) -> None:
         super().__init__("outbound request blocked")
