@@ -24,7 +24,7 @@ from agentfake import (
     provider,
     synthetic_tracks,
 )
-from classbeat.agent import DesignContext, design_stage, run_stage
+from classbeat.agent import DesignContext, design_stage, model_input, run_stage
 from classbeat.agent.model_input import MAX_SUMMARY_BYTES, MusicData, music_summary
 from classbeat.agent.providers.fake import FakeProvider
 
@@ -190,3 +190,22 @@ async def test_injection_in_a_song_title_reaches_only_a_bad_draft_at_worst(
     assert INJECTION not in spec.system
     assert all(INJECTION not in json.dumps(dict(t.input_schema)) for t in spec.tools)
     assert outcome.output.draft.name == good_draft()["name"]
+
+
+def test_the_model_still_receives_the_loudness_mismatch_warning(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """mowl-workouts 0.5.1 added this quality issue. Dropping its ISSUE_CODES prefix would turn
+    it into ``other`` without failing any other test."""
+    text = "the hardest efforts sit on the quietest tracks (12 of 14 min)"
+    monkeypatch.setattr(
+        model_input.quality,
+        "report",
+        lambda wanted, fitted, m, report: {
+            "longest_zone_run": {"zone": 3, "sec": 120, "from": "05:00"},
+            "issues": [text],
+        },
+    )
+    out = model_input.quality_for_model({}, {}, {}, [])
+    assert out["issues"] == [{"code": "loudness_mismatch", "text": text}]
+    assert any(code == "loudness_mismatch" for _, code in model_input.ISSUE_CODES)
