@@ -73,7 +73,8 @@ async def test_markdown_has_per_case_rows_and_totals_per_model(
     assert (code, err) == (0, "")
     assert "compare.md" in out
     md = (tmp_path / "out" / "compare.md").read_text("utf-8")
-    rows = {tuple(c.strip() for c in line.split("|")[1:-1]) for line in md.splitlines()}
+    unescaped = md.replace(r"\(", "(").replace(r"\)", ")")  # parentheses are escaped in cells
+    rows = {tuple(c.strip() for c in line.split("|")[1:-1]) for line in unescaped.splitlines()}
     opus_easy = next(r for r in rows if r[:2] == ("easy_30", "claude-opus-5-5 (medium)"))
     assert opus_easy[2] == "2/2 (100 %)"
     assert opus_easy[3] == "$0.2500"  # the median of $0.20 and $0.30
@@ -196,3 +197,104 @@ async def test_the_command_runs_without_settings_secrets_or_network(
     )
     assert result.returncode == 0, result.stderr
     assert json.dumps(sorted(p.name for p in out_dir.iterdir())) == '["compare.html", "compare.md"]'
+
+
+def raw_row(**changes: Any) -> dict[str, Any]:
+    row: dict[str, Any] = {
+        "case": "easy_30",
+        "model": "m",
+        "passed": True,
+        "outcome": "submitted",
+        "cost_micros": 1,
+    }
+    return row | changes
+
+
+def raw_file(path: Path, rows: list[dict[str, Any]], fmt: int = 1) -> Path:
+    path.write_text(json.dumps({"format": fmt, "results": rows}), "utf-8")
+    return path
+
+
+def test_deeply_nested_json_is_refused_with_one_line(tmp_path: Path) -> None:
+    bad = tmp_path / "deep.json"
+    bad.write_text("[" * 100_000, "utf-8")
+    code, out, err = compare(tmp_path, bad)
+    assert (code, out) == (2, "")
+    assert err.count("\n") == 1
+    assert "deep.json" in err
+    assert "RecursionError" in err
+
+
+def test_a_file_over_the_size_limit_is_refused(tmp_path: Path, monkeypatch: Any) -> None:
+    monkeypatch.setattr("classbeat.evals.compare.MAX_FILE_BYTES", 10)
+    path = raw_file(tmp_path / "big.json", [raw_row()])
+    code, out, err = compare(tmp_path, path)
+    assert (code, out) == (2, "")
+    assert "big.json" in err
+    assert "larger than" in err
+
+
+def test_an_unsupported_results_format_is_refused(tmp_path: Path) -> None:
+    path = raw_file(tmp_path / "v2.json", [raw_row()], fmt=2)
+    code, out, err = compare(tmp_path, path)
+    assert (code, out) == (2, "")
+    assert "results format 2 is not supported" in err
+    assert not (tmp_path / "out").exists()
+
+
+@pytest.mark.parametrize("bad", ["NaN", "Infinity", "-Infinity"])
+@pytest.mark.parametrize("field", ["tss", "wall_sec", "tss_bounds"])
+def test_a_non_finite_number_is_refused(tmp_path: Path, field: str, bad: str) -> None:
+    value = f"[{bad}, 75]" if field == "tss_bounds" else bad
+    row = json.dumps(raw_row()).replace("}", f', "{field}": {value}}}')
+    path = tmp_path / "nan.json"
+    path.write_text(f'{{"format": 1, "results": [{row}]}}', "utf-8")
+    code, out, err = compare(tmp_path, path)
+    assert (code, out) == (2, "")
+    assert "invalid fields" in err
+
+
+def test_markdown_link_characters_in_a_file_string_are_escaped(tmp_path: Path) -> None:
+    path = raw_file(tmp_path / "r.json", [raw_row(model="[x](http://evil.example)")])
+    assert compare(tmp_path, path)[0] == 0
+    md = (tmp_path / "out" / "compare.md").read_text("utf-8")
+    assert r"\[x\]\(http://evil.example\)" in md
+    assert "[x](" not in md
+
+
+def test_a_backslash_cannot_cancel_the_link_escape(tmp_path: Path) -> None:
+    bs = chr(92)
+    evil = f"{bs}[x{bs}](http://evil.example)"  # a backslash-prefixed link
+    path = raw_file(tmp_path / "r.json", [raw_row(model=evil)])
+    assert compare(tmp_path, path)[0] == 0
+    md = (tmp_path / "out" / "compare.md").read_text("utf-8")
+    # Each backslash is doubled, so the escape after it still applies.
+    expected = f"{bs * 3}[x{bs * 3}]{bs}(http://evil.example{bs})"
+    assert expected in md
+
+
+def test_failed_check_names_and_the_outcome_are_escaped_in_the_html(tmp_path: Path) -> None:
+    evil = "<b>chk</b>"
+    rows = [
+        raw_row(passed=False, checks=[{"name": evil, "ok": False}]),
+        raw_row(model="n", passed=False, outcome="<i>limit</i>"),
+    ]
+    path = raw_file(tmp_path / "r.json", rows)
+    assert compare(tmp_path, path)[0] == 0
+    page = (tmp_path / "out" / "compare.html").read_text("utf-8")
+    assert "&lt;b&gt;chk&lt;/b&gt;" in page
+    assert "&lt;i&gt;limit&lt;/i&gt;" in page
+    assert "<b>" not in page
+    assert "<i>" not in page
+
+
+def test_an_unknown_segment_kind_cannot_choose_a_css_class(tmp_path: Path) -> None:
+    segs = [
+        {"name": "s", "kind": kind, "intervals": [{"sec": 60, "zone": 3, "track": 0}]}
+        for kind in ("warmup", "main", "cooldown", 'x" onload="y', "other")
+    ]
+    path = raw_file(tmp_path / "r.json", [raw_row(timeline=segs)])
+    assert compare(tmp_path, path)[0] == 0
+    page = (tmp_path / "out" / "compare.html").read_text("utf-8")
+    classes = re.findall(r'class="(k-[^"]*)"', page)
+    assert classes == ["k-warmup", "k-main", "k-cooldown", "k-main", "k-main"]
