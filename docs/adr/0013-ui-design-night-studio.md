@@ -25,7 +25,9 @@ exists today (2026-10-30):
 1. A full redesign: modern, attractive to people who are not technical. Account and administrative
    things must be easy to reach.
 2. People used to MOWL should feel at home. Generated classes look and feel like MOWL, with MOWL's
-   colours on the bars, or colours slightly off but similar.
+   colours on the bars, or colours slightly off but similar. Later the same day the owner narrowed
+   this: nothing of MOWL's is copied exactly, because it is probably protected. The colours are
+   similar, not identical, and the marks are classbeat's own.
 3. The Spotify parts should feel like Spotify (choosing a playlist and so on).
 4. Third-party UI components may be used. This overrides ADR 0001's "our own design tokens … system
    fonts" for the frontend.
@@ -67,31 +69,42 @@ Spotify's green or with MOWL's branding.
 
 **Effort zones.** MOWL's seven zones and names (`mowl.workout.ZONE_NAMES`), coloured as in the
 **MOWL app** (owner, 2026-10-30): grey Z1, blue Z2, green Z3, yellow Z4, and **one red for Z5 to
-Z7**. Above the bars, a **flame** marks zone 6 and a **bolt** marks zone 7. MOWL marks zone 7 with
-an owl, but that is MOWL's mascot, so classbeat uses its own mark (§3).
+Z7**. Above the bars, a **flame** marks zone 6, as in MOWL, and a **bolt** marks zone 7, where
+MOWL shows its owl mascot. Both are classbeat's own icons (`lucide`), never MOWL's artwork (§3).
 
-The owner's brief allows "colors from MOWL on bars (or slightly off, but similar)", so values taken
-from the MOWL app may be used as they are or nudged (roadmap Amendment 8). The values below are
-close to the app's, not taken from it. They are replaced by values from a screenshot of a workout
-in the MOWL app once the owner provides one (§12). The zone colours are the only thing taken from
-MOWL. They are the same in both themes:
+**Similar, never identical** (owner, roadmap Amendment 8). The owner shared a low-resolution
+screenshot of MOWL's desktop editor in chat. It was not committed. Read off it, MOWL shows roughly:
+- blue L2;
+- lime L3;
+- lemon-yellow L4;
+- one orange-red for L5 to L7;
+- bars that fade from the zone colour at the top to a pale tint at the bottom, on a neutral
+  charcoal.
+
+classbeat's values sit next to those and are each moved in hue or lightness, so that none is
+MOWL's. The fade (§7) is classbeat's own, lighter one. The values are the same in both themes:
 
 | Zone | Name | FTP | Colour | Marker above the bar |
 |---|---|---|---|---|
 | 1 | Recovery | 0–55 % | `#8E99A8` grey | — |
-| 2 | Endurance | 56–75 % | `#3D8BFF` blue | — |
-| 3 | Tempo | 76–90 % | `#2FBF71` green | — |
-| 4 | Threshold | 91–105 % | `#FFD23F` yellow | — |
-| 5 | VO2max | 106–120 % | `#FF4D4D` red | — |
-| 6 | Anaerobic | 120–150 % | `#FF4D4D` red | flame (`lucide` `Flame`) |
-| 7 | Neuromuscular | all out | `#FF4D4D` red | bolt (`lucide` `Zap`) |
+| 2 | Endurance | 56–75 % | `#3F9CE8` blue | — |
+| 3 | Tempo | 76–90 % | `#7DC05A` lime green | — |
+| 4 | Threshold | 91–105 % | `#F9DF4A` yellow | — |
+| 5 | VO2max | 106–120 % | `#F0483C` red | — |
+| 6 | Anaerobic | 120–150 % | `#F0483C` red | flame (`lucide` `Flame`, our icon) |
+| 7 | Neuromuscular | all out | `#F0483C` red | bolt (`lucide` `Zap`, our icon) |
 
 FTP ranges are those of `mowl.workout.ZONES` (0.6.0). Zones 5 to 7 share a colour, so they are
 told apart by bar height, the marker and the zone number in every label. Zone colours are used only for effort, never for buttons or status.
 
-**The stage.** A class profile always sits on a near-black stage (`stage #0B0C10`, grid lines
-`#23252F`, text `#E9EBF1` / `#9AA0B2`), in the light theme too, like the studio screen. This also
-keeps the yellow zone legible, since yellow on white would fail the 3:1 rule for graphics.
+**The stage.** A class profile always sits on a charcoal stage, in the light theme too, like MOWL's
+editor and the studio screen:
+- `stage` `#26272B`, a cool charcoal of classbeat's own;
+- grid lines `#383A42`;
+- text `#ECEEF2` and `#A3A8B5`.
+
+A dark stage in both themes also keeps the yellow zone legible, since yellow on white would fail
+the 3:1 rule for graphics.
 
 **Type.** Inter (UI, body, numbers with `tabular-nums`) and Archivo 700/800 (titles). Both are
 bundled with `@fontsource` (SIL OFL) and served by us, never from a font CDN. Scale: 60/46/40 titles,
@@ -108,8 +121,9 @@ four bars.
 
 - **MOWL.** The familiarity comes from the zone colours and from MOWL's words (program, segments,
   My Workouts, RPM, TSS), and from markers above the hardest bars. classbeat uses no MOWL logo,
-  owl, wordmark, typeface, screenshot or asset, and doesn't reproduce MOWL's app chrome. Where MOWL
-  puts its owl over zone 7, classbeat puts its own bolt. "MOWL" appears only as text naming the service
+  owl, wordmark, typeface, icon, screenshot or asset, and doesn't reproduce MOWL's app chrome.
+  Nothing of MOWL's is copied exactly, colours included. MOWL's zone 6 flame becomes classbeat's own
+  flame icon, and its zone 7 owl becomes classbeat's bolt. "MOWL" appears only as text naming the service
   ("Save to MOWL", "Connected to MOWL"), and nothing may suggest classbeat is made by MOWL (roadmap
   "Development process").
 - **Spotify.** Screens that show Spotify data follow the Spotify Design & Branding Guidelines for
@@ -119,7 +133,9 @@ four bars.
   - cover art shown unaltered: no crop, overlay, blur or tint, with a 4 px radius (8 px on large
     sizes);
   - track and artist names never rewritten;
-  - links that say OPEN SPOTIFY or PLAY ON SPOTIFY.
+  - links that say OPEN SPOTIFY or PLAY ON SPOTIFY. They appear only where the API returns a
+    link, such as a final playlist's `link` (ADR 0008 §9). The frontend never builds a Spotify URL,
+    and no Spotify id reaches the page.
 
   Spotify green appears only inside Spotify's logo. classbeat's own controls (Approve songs, the
   sidebar) stay violet, so the app never looks like a Spotify product. The "Spotify feel" is in the
@@ -151,14 +167,14 @@ four bars.
 | `/jobs/:id` | Designing (focus mode) |
 | the approval route of ADR 0008 §9 | Songs for approval |
 | `/classes/:id` | Class |
-| `/music` | Music: the user's MOWL playlists and the playlists classbeat made, with Open Spotify links; a "Connect Spotify" card while not connected |
+| `/music` | Music: the user's MOWL playlists and the playlists classbeat made (OPEN SPOTIFY where the API gives the final playlist's link); a "Connect Spotify" card while not connected |
 | `/account` | Account, with tabs: Connections, Plan and usage, Sign-in and security, Your data, Appearance |
 | `/account/spotify` | The Spotify wizard and settings. It stays where it is, because ADR 0009's callback ends there |
 | `/admin` | Admin (M5), in the same shell |
 
 ### 5. Screens
 
-Each item gives the content and the **one primary action**.
+Each item gives the content and its **primary action**, if any (at most one, §1).
 
 - **Landing.** A headline, an example class profile on the stage with its song list (synthetic and
   invented, like the e2e fake), three steps (describe, approve songs, save to MOWL) and **Sign up
@@ -168,7 +184,8 @@ Each item gives the content and the **one primary action**.
     the form (45 min hills, 30 min intervals, 60 min endurance).
   - A "Get set up" checklist (account, MOWL, optional Spotify), shown until it is complete.
   - Recent classes as cards: a mini profile on the stage, title, length, TSS and song count, and a
-    status chip.
+    status chip. A TSS with any zone 7 interval shows as "≈ 52", with ADR 0012 §7's note as its
+    accessible label (so on My classes too).
 - **New class** (one scrolling page of cards, not a multi-step wizard):
   - name;
   - length as chips plus "Other length";
@@ -190,8 +207,8 @@ Each item gives the content and the **one primary action**.
 - **Songs for approval.** Everything ADR 0008 §9 requires, laid out like a Spotify playlist:
   - a header with a 2×2 cover mosaic, "Songs for your class", the class title, the count, music
     time against class time, and the source with the Spotify logo;
-  - **Approve songs** (round, violet), Ask for changes, OPEN SPOTIFY, and the "waiting until"
-    date;
+  - **Approve songs** (round, violet), Ask for changes and the "waiting until" date. There is no
+    OPEN SPOTIFY here: no final playlist exists yet, and the working playlist stays internal;
   - the track rows, each with a replace toggle and its note;
   - a request box;
   - the privacy sentence.
@@ -207,6 +224,7 @@ Each item gives the content and the **one primary action**.
   - A side column with the **Change it** chat (bubbles, what changed, changes left) and Versions.
   - The uncertain panels keep their meaning, restyled as warning cards headed "Check needed".
 - **My classes.** A card grid like Home's, with filters (All, Saved to MOWL, Drafts) and search.
+  Primary action: **Design a class**.
 - **Account.** A profile header (avatar, name, email, Change email), then the tabs:
   - **Connections:** cards for MOWL, Spotify (with the working-playlist consent as a switch) and
     Swedebeat (coming later).
@@ -233,24 +251,26 @@ TSS, FTP, RPM and zone numbers stay, because MOWL users know them.
 ### 7. The class profile
 
 - **x is time** (bar width is the interval's `sec`). **y is the zone** (bar height grows with the
-  zone, as today). **Colour is the zone** (§2). Bars sit on the stage with faint horizontal grid
-  lines and a time axis every 5 minutes.
+  zone, as today). **Colour is the zone** (§2). Each bar fades from its zone colour at the top to
+  that colour mixed 60/40 with white at the bottom (`color-mix`), so the effort reads at a glance as
+  in MOWL. Bars sit on the stage with 1 px gaps, faint horizontal grid lines and a time axis every
+  5 minutes.
 - **Markers** (§2): a flame sits above every zone 6 bar and a bolt above every zone 7 bar,
   centred, in the stage's text colour. On a bar narrower than the icon, the icon overflows it
   evenly. Bar heights leave room for the marker (about 6 % plus 10.5 % per zone).
-- **Songs** run along the top as a strip of alternating blocks, each with the title and BPM, as
-  wide as the song's time in the class. Before the class API exposes the song list with start
+- **Songs** run under the time axis, where MOWL users look for them, as a strip of alternating
+  blocks. Each block has the title and BPM and is as wide as the song's time in the class. Before the class API exposes the song list with start
   times, the strip is hidden.
 - **Selecting a bar.** Hover, tap, or left and right arrow keys once the chart has focus. The chosen
   interval is outlined, and a detail bar below the chart shows its zone and name, its times, RPM
   (range or "on the beat"), seated or standing, and its cue.
-- **Time in each zone:** a stacked bar plus a legend with times.
+- **Time in each zone:** one row per zone (name, a bar scaled to the largest zone, the time).
 - **Accessible:**
   - the chart is `role="img"` with a summary;
   - the "Song by song" list is its text alternative;
   - a zone is never told by colour alone (height, markers and "Z4" labels);
-  - the zone colours and the stage text meet 3:1 against `#0B0C10` (the grid lines are
-    decorative);
+  - the zone colours (4.0 to 11.1:1) and the stage text meet 3:1 against `#26272B`; the grid
+    lines are decorative;
 - **Own code, no chart library:** an SVG component in React.
 
 ### 8. Component stack
@@ -283,8 +303,9 @@ Only **album covers of chosen songs** are shown, and only from data classbeat al
   (ADR 0008 §5). The content becomes `v: 2`, `v: 1` stays readable, and `content_hash` covers the
   field like the rest. Under the retention rules (ADR 0008 §8, guard 10's `RETENTION` registry,
   ADR 0010), it is deleted with the class and the account, like the title and artist beside it.
-- **Validation.** The backend keeps a URL only if it matches `^https://i\.scdn\.co/image/[0-9a-f]{40}$`,
-  both before storing and before returning it. Anything else becomes `null`. The URL is never taken
+- **Validation.** The backend keeps a URL only if the whole string matches
+  `https://i\.scdn\.co/image/[0-9a-f]{40}` (`re.fullmatch`, so not `$`, which also matches before
+  a trailing newline). It checks both before storing and before returning. Anything else becomes `null`. The URL is never taken
   from model output and never put into model input: the stages' track summaries leave it out.
 - **Browser.**
   - The browser loads covers straight from `https://i.scdn.co`, through one `CoverArt` component
@@ -335,8 +356,10 @@ browser contacts a third party, and it changes a guard test, so UI7 has an Opus 
 
 New milestone "UI Night Studio".
 
-- **Developers** are Sonnet, except UI7 (Opus).
-- **Reviewers** are a fresh Sonnet, except UI6, UI7 and UI8, which get a fresh Opus. UI7 changes a
+- **Developers** are Sonnet, except UI7 and L2 (Opus). L2 runs in the private library repo with
+  the local Architect, as L1 did (ADR 0008).
+- **Reviewers** are a fresh Sonnet, except L2, UI6, UI7 and UI8, which get a fresh Opus. L2 changes
+  the library the worker runs with users' tokens. UI7 changes a
   guard test and adds the CSP. UI6 restyles the consent switch, two-step sign-in, sessions and
   account deletion. UI8 sends the approval hash.
 - **API calls.** UI6, UI8 and every other issue keep each API call, CSRF and step-up exactly as they
@@ -351,24 +374,24 @@ New milestone "UI Night Studio".
 | UI5 | Designing page (§5), wording table (§6) | UI2 |
 | UI6 | Account with tabs, connection cards, usage details tucked away, Appearance | UI2 |
 | L2 | `mowl-workouts` 0.7.0: `image` on M-1 and M-5 track entries (local Architect, private repo), then the wheel pin and `uv lock` | — |
-| UI7 | Cover art: `song_list` `v: 2` `cover`, URL validation, `CoverArt`, guard-test exemption, CSP header, `Referrer-Policy`, threat model | UI1, L2 |
+| UI7 | Cover art: `song_list` `v: 2` `cover`, URL validation, `CoverArt`, guard-test exemption, CSP header, `Referrer-Policy`, threat model | UI1, L2; the in-flight M4 song work that owns `classbeat/songs/` (ADR 0012) |
 | UI8 | Songs for approval in the Spotify-like layout; Music page | UI7; M4's approval API |
 | UI9 | Landing, Sign in and Sign up restyle | UI2 |
 | UI10 | Playwright viewport and axe pass; the first-load bundle size from the Vite build report | UI3 to UI6 |
 
 Nothing starts before this ADR is accepted. After that, UI1, UI2, UI4 to UI6, UI9 and L2 can run
-beside M4. UI3 waits for the in-flight class-page work. M4 issues that add UI (song picking choice,
+beside M4. UI3 and UI7 wait for the in-flight M4 work they touch. M4 issues that add UI (song picking choice,
 Songs for approval, Change songs) use the new components once UI1 has merged.
 
-### 12. Owner answers (2026-10-30) and what is still open
+### 12. Owner answers (2026-10-30)
 
-1. **Zone colours:** the MOWL app is the reference; exact or slightly-off values are both within
-   the owner's brief. *Open:* a screenshot of a workout in the MOWL app to take the values from. §2
-   holds close values until then. The screenshot is shared in
-   chat, never committed, because it is MOWL's material.
-2. **Zones 5 to 7:** one red, as in MOWL. MOWL shows a flame above zone 6 and an owl above zone 7;
-   classbeat shows a flame and its own bolt (§2, §3). *Open:* the owner described the zone 6 mark
-   as a "flamenco", read here as a flame, to be confirmed.
+Nothing is open.
+
+1. **Zone colours:** the MOWL app is the reference, but nothing is copied exactly ("probably
+   copyrighted"). §2's values are similar, not identical. A screenshot, if the owner shares one,
+   only fine-tunes them and keeps them different.
+2. **Zones 5 to 7:** one red, as in MOWL. MOWL shows a flame above zone 6 (confirmed) and an owl
+   above zone 7. classbeat shows its own flame icon and its own bolt (§2, §3).
 3. **Default theme:** Dark, with Light and Same as device in Account. Accepted.
 4. **The Music page in the main navigation:** no preference. The Architect keeps it, because it is
    where playlists and song picking live, the part the owner wants to feel like Spotify. Without
@@ -383,9 +406,10 @@ Songs for approval, Change songs) use the new components once UI1 has merged.
 - **MUI or Mantine.** Rejected: both are full design systems with their own look, which is harder
   to bend into a MOWL-like stage and Spotify-like lists. Radix primitives give accessible behaviour
   with no look, and the components stay in our repo.
-- **Copy MOWL's app look** (layout, chrome, typeface, icons, the owl). Rejected: it would make
-  classbeat look like a MOWL product. The owner's brief takes only the zone colours (exact or close)
-  and the zone-6 flame idea, and classbeat draws its own zone-7 mark.
+- **Copy MOWL's app look, colours or marks exactly** (layout, chrome, typeface, icons, the owl,
+  the exact zone colours). Rejected by the owner: it is probably protected, and it would make
+  classbeat look like a MOWL product. classbeat takes the ideas (rainbow zones, one red for the
+  hardest, a mark above zones 6 and 7), with its own values and icons.
 - **Spotify green as the accent.** Rejected: it breaks Spotify's branding rules, and it would
   clash with zone 3.
 - **Proxy cover art through our backend.** Rejected: it adds web-process egress to a new host and
@@ -397,7 +421,7 @@ Songs for approval, Change songs) use the new components once UI1 has merged.
 
 - **ADR 0001 is superseded in part.** Its Frontend bullet "Our own design tokens … System fonts; no
   runtime requests to third-party hosts. No MOWL logo, owl, colours or copied assets" now reads:
-  our own tokens and brand colour, MOWL's zone colours (exact or close, §2), bundled fonts, third-party UI
+  our own tokens and brand colour, zone colours similar to MOWL's but not identical (§2), bundled fonts, third-party UI
   libraries allowed, no runtime requests to third-party hosts except Spotify cover art (§9), and
   no MOWL logo, owl or copied assets.
 - **Roadmap §8's** "Own name, colours, fonts and icons" and its Class row's "own palette" are

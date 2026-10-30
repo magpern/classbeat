@@ -141,13 +141,6 @@ GitHub hold the detail.
   cost caps per tier, which plan the testers get, trial on or off, quota period, refund on cancel,
   overlapping codes, Free feature gates, the Pro priority queue, audit-log retention, prices. Agents
   build on the defaults listed there; an answer changes seeds or settings, not the design.
-- **UI redesign** ([ADR 0013](adr/0013-ui-design-night-studio.md) §12; answered 2026-10-30 except
-  for two items):
-  - a screenshot of a workout in the MOWL app, shared in chat (never committed), to take the zone
-    colours from (exact or slightly off, Amendment 8);
-  - confirmation that the zone 6 mark is a flame.
-
-  Agents build on the values in ADR 0013 §2 meanwhile.
 - Each further live smoke run needs the owner's go-ahead for that run (2026-10-29: "do not run
   live test every time").
 - **M3c owner questions** ([ADR 0012](adr/0012-eval-suite-and-model-providers.md), "Owner questions"):

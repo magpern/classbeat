@@ -142,11 +142,12 @@ take effect when it is accepted.
 - **§8 "Own name, colours, fonts and icons; no MOWL logo/owl or copied assets"** now reads:
   - classbeat has its own name, logo, icons and brand colour;
   - **generated classes look and feel like MOWL**:
-    - zone colours on the bars taken from the MOWL app, as they are or slightly off (owner: "colors
-      from MOWL on bars (or slightly off, but similar)");
+    - zone colours on the bars like the MOWL app's: similar, never identical. The owner first said
+      "colors from MOWL on bars (or slightly off, but similar)", then that nothing is copied
+      exactly because it is probably copyrighted;
     - zones 5 to 7 in one red;
-    - a marker above zone 6 (a flame) and zone 7. MOWL's zone 7 owl is its mascot and is not used;
-      classbeat puts its own mark there;
+    - a mark above zone 6 (a flame, as in MOWL) and zone 7 (where MOWL has its owl mascot). Both
+      are classbeat's own icons, never MOWL's artwork;
     - this also replaces "own palette" in §8's Class row;
   - fonts may be bundled third-party fonts;
   - dark is the default theme, with a light theme available;
