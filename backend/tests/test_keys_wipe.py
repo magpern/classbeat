@@ -291,6 +291,39 @@ async def test_unsent_mails_are_counted_and_resent_from_the_database(
     assert (code, out) == (0, "wipe mails: 0 sent, 0 unsent\n")
 
 
+async def test_resend_survives_a_failure_other_than_a_mail_error(
+    env: Env,
+    wipe_settings: Any,
+    smtp: SmtpFake,
+    unreachable_database_url: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """#139 item 3: one mail that fails with something else than ``MailError`` is counted unsent
+    and the other users' mails still go out."""
+    from classbeat import keys_cli
+
+    alice = await env.user("a@example.com")
+    bob = await env.user("b@example.com")
+    for email, user_id in (("a@example.com", alice), ("b@example.com", bob)):
+        await connect(env.factory, env.app.state.keyring, user_id, TOKENS[email])
+    await stop_app(env)
+    closed_port = int(unreachable_database_url.rsplit(":", 1)[1].split("/")[0])
+    code, out, _ = await cli(wipe_settings(smtp_port=closed_port), "keys", "wipe", "--confirm")
+    assert (code, "mails unsent: 2" in out) == (0, True)
+    real = keys_cli.auth.wipe_mail
+
+    async def flaky(settings: Any, db: Any, event: Any) -> Any:
+        if event.user_id == alice:
+            raise ValueError("not a mail error")
+        return await real(settings, db, event)
+
+    monkeypatch.setattr(keys_cli.auth, "wipe_mail", flaky)
+    code, out, _ = await cli(wipe_settings("kek-1"), "keys", "wipe", "--resend")
+    assert (code, out) == (1, "wipe mails: 1 sent, 1 unsent\n")
+    assert (len(smtp.to("a@example.com")), len(smtp.to("b@example.com"))) == (0, 1)
+    assert sorted(e.get("mailed") is True for e in await events(env)) == [False, True]
+
+
 async def test_the_owner_role_without_a_context_sees_no_connection_rows(
     env: Env, wipe_settings: Any
 ) -> None:
