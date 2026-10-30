@@ -404,7 +404,7 @@ npm run build        # typecheck, then Vite writes frontend/dist
 - `/account/spotify` (`pages/SpotifyPage.tsx`, `components/account/Spotify.tsx`; signed-in users only) is
   where the Spotify callback ends: `?result=connected`, or a failure category shown as a sentence
   (`account_changed` asks the user to confirm the switch). It holds the connect wizard (the user's Client ID,
-  32 hex characters; never a field for a Client Secret), the connection card (status, Connect again, change
+  32 hex characters; never a field for a Client Secret), the connection card (status, Connect Spotify again, change
   Client ID, Disconnect with its dialogs) and the "Working playlist" consent (give or revoke). With song
   picking off the API answers 404 `feature_off` and the page says "Song picking is not available right now."
 - Colours, spacing and type live only in `frontend/src/styles/tokens.css` (light and dark).
