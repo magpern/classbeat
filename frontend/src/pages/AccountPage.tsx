@@ -3,6 +3,7 @@ import { oauthOutcomeMessage } from '../api/messages'
 import { useSession } from '../auth/SessionContext'
 import { Connections } from '../components/account/Connections'
 import { ChangeEmail, ChangePassword } from '../components/account/Credentials'
+import { SpotifySummary } from '../components/account/Spotify'
 import { SignInMethods } from '../components/account/SignInMethods'
 import { TwoFactor } from '../components/account/TwoFactor'
 import { Usage } from '../components/account/Usage'
@@ -49,6 +50,7 @@ function Account() {
         )
       ) : null}
       <Connections />
+      <SpotifySummary />
       <Usage />
       <SignInMethods />
       <ChangeEmail current={email} />

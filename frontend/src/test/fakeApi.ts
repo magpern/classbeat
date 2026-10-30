@@ -41,7 +41,8 @@ export const SIGNED_IN = {
 /**
  * Stubs `fetch` with a table of `"METHOD /path"` handlers. A handler returns a Response or any
  * JSON value (answered 200); a missing route fails the test loudly. `/api/auth/session`
- * defaults to anonymous, `/api/connections` and `/api/external-operations` to none and
+ * defaults to anonymous, `/api/connections` and `/api/external-operations` to none, `/api/connections/spotify` to
+ * 404 `feature_off` and
  * `/api/usage` to an empty month.
  */
 export function fakeApi(routes: Record<string, Handler | object | string>) {
@@ -50,6 +51,7 @@ export function fakeApi(routes: Record<string, Handler | object | string>) {
   const table: Record<string, Handler | object | string> = {
     'GET /api/auth/session': ANONYMOUS,
     'GET /api/connections': { connections: [] },
+    'GET /api/connections/spotify': () => json({ detail: { reason: 'feature_off' } }, 404),
     'GET /api/external-operations': { operations: [] },
     'GET /api/usage': USAGE_NONE,
     ...routes,
