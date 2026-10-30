@@ -67,7 +67,7 @@ responses and model output alike.
 | T15 | Admin account compromise | TOTP MFA mandatory; step-up for sensitive actions; admin routes 403 for others; audit log | M1, M5 |
 | T16 | Admin misuse | Admins never see tokens; every admin action audited; admin reads through the separate audited role | M5 |
 | T17 | Compromised dependency, base image or Action | Lockfiles; exact versions; checksum-verified tool downloads; pip-audit, npm audit, Trivy; Dependabot; least-privilege workflow `permissions`; no `pull_request_target`; `persist-credentials: false` | M0 |
-| T18 | An agent committing a secret or weakening a check | gitleaks in CI (a PR's own range; the whole history of `main` weekly); fresh-Opus review gate; ruleset with required checks; agents can't bypass | M0 |
+| T18 | An agent committing a secret or weakening a check | gitleaks in CI (a PR's own commits; the full history of every branch on the weekly and manual runs); fresh-Opus review gate; ruleset with required checks; agents can't bypass | M0 |
 | T19 | SSRF through user-supplied links (playlists, mixes) | Parse provider IDs only, never fetch user URLs; outbound allowlists for worker (MOWL, Spotify, Swedebeat, model APIs; in-process from M3a, ADR 0006 §9) and web (sign-in providers, Spotify OAuth, MOWL and Swedebeat sign-in, mail relay, and since D1 one read-only MOWL call with the user's token, `GET /api/music/mowl-playlists`, to the same host `api.mowl.com`) | M3a, M4 |
 | T20 | XSS through user, model or upstream text in the SPA | React escaping only, no raw HTML rendering; strict CSP | M1, M6 |
 | T21 | Exposed services or container breakout | Non-root image; local ports bound to 127.0.0.1; only Caddy public on the VPS; Postgres never published there | M0, M6 |

@@ -148,7 +148,13 @@ async def resend(settings: Settings, factory: Factory, out: TextIO) -> int:
         pending = await auth.pending_wipe_mails(db)
     sent = 0
     for event in pending:
-        sent += await _send(settings, factory, event)
+        # Any failure, not only a ``MailError`` (a database error while building or marking the
+        # mail, a bug), leaves this mail unsent and the next ones are still tried, as in ``wipe``.
+        try:
+            ok = await _send(settings, factory, event)
+        except Exception:
+            ok = False
+        sent += ok
     unsent = len(pending) - sent
     print(f"wipe mails: {sent} sent, {unsent} unsent", file=out)
     return 1 if unsent else 0

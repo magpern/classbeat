@@ -39,6 +39,7 @@ VIEW_H: Final = 150
 BARS_H: Final = 110
 
 Short = Annotated[str, StringConstraints(max_length=100)]
+Finite = Annotated[float, Field(allow_inf_nan=False)]
 
 
 class Interval(BaseModel):
@@ -81,14 +82,14 @@ class Run(BaseModel):
     tool_calls: int = Field(default=0, ge=0)
     corrections: int = Field(default=0, ge=0)
     cost_micros: int = Field(ge=0)
-    wall_sec: float = Field(default=0.0, ge=0)
+    wall_sec: float = Field(default=0.0, ge=0, allow_inf_nan=False)
     input_tokens: int = Field(default=0, ge=0)
     output_tokens: int = Field(default=0, ge=0)
     cache_read_tokens: int = Field(default=0, ge=0)
     cache_write_tokens: int = Field(default=0, ge=0)
     duration_sec: int = Field(default=0, ge=0)
-    tss: float = 0.0
-    tss_bounds: tuple[float, float] | None = None
+    tss: float = Field(default=0.0, allow_inf_nan=False)
+    tss_bounds: tuple[Finite, Finite] | None = None
     changes_on_music: Annotated[str, StringConstraints(max_length=30)] = ""
     checks: list[CheckRow] = Field(default_factory=lambda: list[CheckRow](), max_length=50)
     timeline: list[Segment] = Field(default_factory=lambda: list[Segment](), max_length=200)
@@ -123,7 +124,11 @@ def load_runs(paths: Sequence[Path]) -> list[Run]:
             parsed = ResultsFile.model_validate(data)
         except CompareRefused:
             raise
-        except (OSError, ValueError) as exc:  # JSON, unicode and validation errors are ValueErrors
+        except (
+            OSError,
+            ValueError,
+            RecursionError,
+        ) as exc:  # JSON, unicode, validation: ValueErrors
             what = "invalid fields" if isinstance(exc, ValidationError) else type(exc).__name__
             raise CompareRefused(f"{path}: not a results file ({what})") from None
         if parsed.format != RESULTS_FORMAT:
@@ -207,9 +212,12 @@ class Comparison:
 
 def _cell(text: str) -> str:
     """A table cell: a ``|`` or a line break in a file's string cannot break the table, and a
-    viewer that renders HTML in Markdown gets it escaped."""
+    viewer that renders HTML in Markdown gets it escaped, and ``[]()`` cannot make a link."""
     flat = "".join(" " if c in "\r\n" else c for c in text)
-    return html.escape(flat, quote=False).replace("|", "\\|")
+    out = html.escape(flat, quote=False).replace("\\", "\\\\")
+    for ch in "|[]()":
+        out = out.replace(ch, "\\" + ch)
+    return out
 
 
 def markdown(cmp: Comparison) -> str:
