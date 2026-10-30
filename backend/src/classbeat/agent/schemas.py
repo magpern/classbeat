@@ -14,9 +14,9 @@ options and the user's free text, nothing else.
 """
 
 import unicodedata
-from typing import Annotated, Any, Literal
+from typing import Annotated, Any, Literal, Self
 
-from pydantic import AfterValidator, BaseModel, ConfigDict, Field
+from pydantic import AfterValidator, BaseModel, ConfigDict, Field, model_validator
 
 STRICT = ConfigDict(extra="forbid", strict=True)
 
@@ -161,3 +161,92 @@ class Brief(BaseModel):
     ftp_test: Literal[3, 5, 20] | None = None
     style: Style = ""
     text: BriefText = ""
+
+
+# --- song picking (ADR 0008 section 3) ----------------------------------------------------------
+
+SONG_SCHEMA_VERSION = 1  # of the schemas below; recorded in a song_list revision's provenance
+
+Role = Literal["warmup", "build", "climb", "sprint", "interval", "race", "recovery", "cooldown"]
+ROLES: tuple[str, ...] = (
+    "warmup", "build", "climb", "sprint", "interval", "race", "recovery", "cooldown",
+)  # fmt: skip
+MAX_POOL = 120
+MAX_SONGS = 40
+TrackText = Annotated[str, Field(max_length=120)]
+
+
+SEARCH_DROPPED = str.maketrans({c: " " for c in ':"\\'})  # Spotify's field-filter and quote syntax
+
+
+def _search_text(value: str) -> str:
+    """Control and format characters removed (``clean_text``), and the characters that would turn
+    the text into a Spotify field filter (``artist:``, ``year:``, ``tag:new``) or a quoted phrase
+    replaced by spaces: the model supplies words, never the query syntax."""
+    words = clean_text(value).translate(SEARCH_DROPPED).split()
+    if not words:
+        raise ValueError("must have visible words")
+    return " ".join(words)
+
+
+class SearchInput(BaseModel):
+    """``search_tracks``: text and years only. The backend adds ``year:`` and builds the request;
+    the model supplies no field filter, URL, market or limit."""
+
+    model_config = STRICT
+
+    query: Annotated[str, _bounded(100, required=True), AfterValidator(_search_text)] = Field(
+        description="Words to search for (a title, an artist, a style). Plain words only."
+    )
+    year_from: int | None = Field(default=None, ge=1900, le=2100)
+    year_to: int | None = Field(default=None, ge=1900, le=2100)
+
+    @model_validator(mode="after")
+    def _years(self) -> Self:
+        if (
+            self.year_from is not None
+            and self.year_to is not None
+            and self.year_from > self.year_to
+        ):
+            raise ValueError("year_from must not be after year_to")
+        return self
+
+
+class PoolEntry(BaseModel):
+    model_config = STRICT
+
+    ref: int = Field(ge=0, description="A ref from a search_tracks result.")
+    role: Role
+
+
+class SongPool(BaseModel):
+    """``check_pool`` and ``submit_pool``: candidates as ``ref`` (an index into the job's search
+    registry) and the role each could play. The count is checked against the brief by the tool."""
+
+    model_config = STRICT
+
+    entries: list[PoolEntry] = Field(min_length=1, max_length=MAX_POOL)
+
+
+class SongRef(BaseModel):
+    model_config = STRICT
+
+    source: Literal["pool", "kept"]
+    index: int = Field(ge=0, description="An index from get_pool (pool) or the kept songs (kept).")
+    role: Role
+
+
+class SongList(BaseModel):
+    """``check_song_list`` and ``submit_song_list``: the chosen songs in play order and an
+    optional note. Only indexes and roles: titles, lengths and BPM are the backend's."""
+
+    model_config = STRICT
+
+    songs: list[SongRef] = Field(min_length=1, max_length=MAX_SONGS)
+    note: Note = Field(default="", description="One short sentence for the instructor (optional).")
+
+
+class GetPoolInput(BaseModel):
+    """``get_pool`` takes no arguments."""
+
+    model_config = STRICT

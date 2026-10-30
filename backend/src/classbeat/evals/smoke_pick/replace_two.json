@@ -1,0 +1,29 @@
+{
+ "name": "replace_two",
+ "about": "Two of eight songs replaced; the six others stay in their slots with their roles.",
+ "brief": {
+  "length_min": 30,
+  "intensity": "moderate",
+  "climbs": 1,
+  "sprints": 2
+ },
+ "catalogue": {
+  "size": 30
+ },
+ "replace": {
+  "seed_roles": [
+   "warmup",
+   "build",
+   "climb",
+   "recovery",
+   "sprint",
+   "interval",
+   "build",
+   "cooldown"
+  ],
+  "replace": [
+   2,
+   5
+  ]
+ }
+}

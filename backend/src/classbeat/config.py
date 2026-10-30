@@ -171,6 +171,8 @@ class Settings(BaseSettings):
     agent_max_corrections: int = Field(default=3, ge=0, le=20)
     agent_stage_seconds: float = Field(default=300.0, gt=0, le=3600)
     agent_job_cost_micros: int = Field(default=1_500_000, ge=0, le=100_000_000)  # $1.50
+    # The song-picking kinds' own ceiling across their stages and attempts (ADR 0008 section 3).
+    song_job_cost_micros: int = Field(default=3_000_000, ge=0, le=100_000_000)  # $3
     # Output tokens reserved per turn by the cost check (thinking included).
     agent_turn_output_reserve: int = Field(default=8_000, ge=0, le=128_000)
     # The FakeProvider's script (a JSON file) when model_provider is fake.
