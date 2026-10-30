@@ -71,7 +71,14 @@ jobs:
         run: |
           set -euo pipefail
           if [ "$EVENT_NAME" = pull_request ]; then
-            "$RUNNER_TEMP/gitleaks" git --redact --verbose --exit-code 1               --log-opts="${BASE_SHA}..${HEAD_SHA}" .
+            # A missing SHA or an empty range would make gitleaks report "no leaks" over 0
+            # commits: fail instead. --diff-merges=first-parent makes `git log -p` show the diff
+            # of a merge commit, so a secret added only in a hand-resolved merge is scanned.
+            git cat-file -e "${BASE_SHA}^{commit}"
+            git cat-file -e "${HEAD_SHA}^{commit}"
+            count="$(git rev-list --count "${BASE_SHA}..${HEAD_SHA}")"
+            [ "$count" -gt 0 ] || { echo "secret scan: no commits in ${BASE_SHA}..${HEAD_SHA}" >&2; exit 1; }
+            "$RUNNER_TEMP/gitleaks" git --redact --verbose --exit-code 1               --log-opts="--diff-merges=first-parent ${BASE_SHA}..${HEAD_SHA}" .
           else
             "$RUNNER_TEMP/gitleaks" git --redact --verbose --exit-code 1 .
           fi
