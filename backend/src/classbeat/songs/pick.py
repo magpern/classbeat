@@ -210,6 +210,7 @@ async def run_phase_one(
             account=account,
             provenance=stored[1],
             parent_id=seeded.revision_id if seeded is not None else None,
+            generations=_generations(spotify, step),
         )
     except BaseException:
         step.close()
@@ -237,6 +238,13 @@ async def run_phase_one(
             step.close()
 
     return AwaitApproval(store)
+
+
+def _generations(spotify: OpenConnection, step: MusicStep) -> song_list.Generations:
+    mowl = step.generation
+    if mowl is None:
+        raise JobFailure("not_connected")
+    return song_list.Generations(mowl=mowl, spotify=spotify.generation)
 
 
 async def _choose(

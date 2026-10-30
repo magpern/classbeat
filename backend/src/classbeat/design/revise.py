@@ -46,7 +46,7 @@ from classbeat.agent.revise import ReviseContext, ReviseResult, revise_stage
 from classbeat.agent.schemas import clean_text
 from classbeat.context import UserContext
 from classbeat.design import chat, diff, limits, revision
-from classbeat.design.kind import MusicChoice, current_runtime, new_provider
+from classbeat.design.kind import ClassMusicSource, current_runtime, new_provider
 from classbeat.design.music import load_music
 from classbeat.jobs import KINDS, Complete, FencedSession, JobFailure, JobKind, JobRun
 from classbeat.jobs.inputs import JobInput
@@ -159,7 +159,7 @@ async def run(job_run: JobRun) -> Complete:
         raise JobFailure("internal")  # a revision is immutable: the stored hash must hold
     try:
         brief = Brief.model_validate(base.brief)
-        music = MusicChoice.model_validate(base.music_source)
+        music = ClassMusicSource.model_validate(base.music_source)
         base_draft = WorkoutDraft.model_validate(base.content)
     except ValidationError:
         raise JobFailure("internal") from None

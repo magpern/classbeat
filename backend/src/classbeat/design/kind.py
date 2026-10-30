@@ -58,6 +58,15 @@ class MusicChoice(BaseModel):
     spotify_playlist_id: SpotifyPlaylistId
 
 
+class ClassMusicSource(MusicChoice):
+    """``classes.music_source`` as stored: the music choice, and for a class designed on picked
+    songs (ADR 0008 section 4) ``origin = "song_pick"`` and its ``class_playlists`` row. Never a
+    job input: ``design_draft`` takes ``MusicChoice``, which forbids both fields."""
+
+    origin: Literal["song_pick"] | None = None
+    class_playlist_id: UUID | None = None
+
+
 class DesignDraftInput(JobInput):
     CONNECTIONS: ClassVar[tuple[str, ...]] = ("mowl",)
 

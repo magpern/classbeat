@@ -55,7 +55,7 @@ async def test_song_picking_off_consent_missing_and_resume_create_nothing(
     refused(await rider.create(), "song_picking_off")
     songs.configure(songs.SongConfig(enabled=True, sync_wait_seconds=0.3))
     resume = {"mode": "resume", "resume": {"song_list_revision_id": str(rider.user_id)}}
-    refused(await rider.create(**resume), "receipt_invalid")
+    assert (await rider.create(**resume)).status_code == 422  # a resume names its class
     no_consent = await songenv.rider(spotify_user=USER_B, mowl_token=TOKEN_B, consent=False)
     refused(await no_consent.create(), "consent_missing")
     for owner in (rider.user_id, no_consent.user_id):
