@@ -190,6 +190,12 @@ class Settings(BaseSettings):
     job_busy_requeue_limit: int = Field(default=5, ge=0, le=100)
     # Queued and running jobs per user; creation and approval above it are 429 (ADR 0005 s. 2).
     jobs_per_user: int = Field(default=2, ge=1, le=100)
+    # Revising a class by chat (ADR 0007 section 4): chat revisions a class may have (the first
+    # design is not counted), user requests stored per class, and how many earlier requests
+    # along the revision chain go back to the model.
+    revisions_per_class: int = Field(default=25, ge=1, le=200)
+    chat_max_requests: int = Field(default=50, ge=1, le=200)
+    chat_context_requests: int = Field(default=10, ge=1, le=30)
     # ADR 0007 section 8: how long a new MOWL workout may take to appear in My Workouts. Unset
     # (the default), an uncertain save that left no new program stays uncertain for the user;
     # set (by the owner, after measuring it at live activation), such a save whose call returned

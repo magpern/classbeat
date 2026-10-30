@@ -12,6 +12,7 @@ import { errorMessage } from '../api/messages'
 import { SelectField, TextAreaField } from '../components/classes/fields'
 import { Card, Field, Notice, useAction } from '../components/forms'
 import { RequireAuth } from '../components/RequireAuth'
+import { BRIEF_TOO_LONG, briefBytes, MAX_BRIEF_BYTES } from '../lib/brief'
 import { newIdempotencyKey, rememberInput } from '../lib/submittedInput'
 import { Link, useRouter } from '../router/Router'
 
@@ -41,6 +42,7 @@ const CREATE_ERRORS: Record<string, string> = {
   class_busy: 'This class already has a design running.',
   busy: 'You already have designs running. Wait for one to finish, then try again.',
   idempotency_mismatch: 'That did not work. Check the form and try again.',
+  invalid_input: `The class was not accepted. Check the fields; the style and description together may be over ${String(MAX_BRIEF_BYTES)} bytes.`,
 }
 
 function createError(error: unknown): string {
@@ -176,17 +178,25 @@ function ClassForm({
     else if (!inRange(brief.races, 0, 5)) invalid = 'Races are 0 to 5.'
     else if (style.length > 60) invalid = 'The style is up to 60 characters.'
     else if (notes.length > 2000) invalid = 'The description is up to 2000 characters.'
+    const fullBrief: Brief | null =
+      invalid !== null
+        ? null
+        : {
+            ...brief,
+            intensity,
+            ftp_test: ftp === '' ? null : (Number(ftp) as 3 | 5 | 20),
+            style,
+            text: notes,
+          }
+    // The limit is in bytes (the brief is stored as jsonb), not characters.
+    if (invalid === null && fullBrief !== null && briefBytes(fullBrief) > MAX_BRIEF_BYTES) {
+      invalid = BRIEF_TOO_LONG
+    }
     setProblem(invalid)
-    if (invalid !== null) return
+    if (invalid !== null || fullBrief === null) return
     const input: DesignInput = {
       title: name,
-      brief: {
-        ...brief,
-        intensity,
-        ftp_test: ftp === '' ? null : (Number(ftp) as 3 | 5 | 20),
-        style,
-        text: notes,
-      },
+      brief: fullBrief,
       music: { source: 'mowl_spotify_playlist', spotify_playlist_id: playlist },
       mowl_connection_id: connection.id,
     }

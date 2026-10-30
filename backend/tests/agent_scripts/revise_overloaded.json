@@ -1,0 +1,8 @@
+{
+ "model": "fake-model",
+ "turns": [
+  {
+   "error": "overloaded"
+  }
+ ]
+}

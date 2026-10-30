@@ -326,6 +326,10 @@ save and update reconcilers' read-only read of the saved revision, SV1), `classb
 `classbeat.connections`, `classbeat.auth`, `classbeat.classes` (the class API), `classbeat.usage`
 (the usage reads, US1) and `classbeat.db` packages may open a `user_session`
 (`tests/test_session_guard.py`); job kinds live outside `classbeat.jobs`.
+Revising by chat (ADR 0007 section 4): `CLASSBEAT_REVISIONS_PER_CLASS` (25 chat revisions per class, the first
+design not counted), `CLASSBEAT_CHAT_MAX_REQUESTS` (50 user requests per class) and
+`CLASSBEAT_CHAT_CONTEXT_REQUESTS` (10 earlier requests sent to the model); the smoke set has 18 cases
+(15 designs, 3 revisions).
 Progress (ADR 0005 section 6): `GET /api/jobs/{id}/events` streams a job's events as SSE (`Last-Event-ID`,
 5 open streams per user and web process); each web process keeps one `LISTEN job_events` connection.
 OAuth sign-in (ADR 0003 section 5): `CLASSBEAT_OAUTH_<PROVIDER>_CLIENT_ID` and the

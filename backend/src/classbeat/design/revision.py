@@ -40,13 +40,18 @@ MUSIC_SOURCE: Final = "mowl_spotify_playlist"
 MAX_CONTENT_BYTES: Final = 65536  # the class_revisions.content check of migration 0004
 MAX_BRIEF_BYTES: Final = 4096  # the classes.brief check of migration 0005
 
+# The parent, when given, must be a revision of the job's own class (the schema's foreign key
+# checks only the owner), else no row is inserted.
 _INSERT = text(
     "INSERT INTO class_revisions (id, owner_id, class_id, number, kind, content, content_hash, "
-    "music, provenance, job_id) "
+    "music, provenance, job_id, parent_id) "
     "SELECT :id, j.owner_id, j.class_id, coalesce((SELECT max(r.number) FROM class_revisions r "
     "WHERE r.owner_id = j.owner_id AND r.class_id = j.class_id), 0) + 1, 'draft', "
     "CAST(:content AS jsonb), :content_hash, CAST(:music AS jsonb), CAST(:provenance AS jsonb), "
-    "j.id FROM jobs j WHERE j.id = :job_id AND j.owner_id = :owner_id RETURNING number"
+    "j.id, p.id FROM jobs j LEFT JOIN class_revisions p ON p.id = CAST(:parent_id AS uuid) "
+    "AND p.owner_id = j.owner_id AND p.class_id = j.class_id "
+    "WHERE j.id = :job_id AND j.owner_id = :owner_id "
+    "AND (CAST(:parent_id AS uuid) IS NULL OR p.id IS NOT NULL) RETURNING number"
 )
 
 # The job's own class (read from the fenced job row, never from the input). All three are set
@@ -131,10 +136,11 @@ class DraftRevision:
     content_hash: bytes
     music: dict[str, Any]
     provenance: dict[str, Any]
+    parent_id: UUID | None = None  # the base of a revise; None for a design
 
     async def store(self, fs: FencedSession) -> UUID:
         revision_id = uuid.uuid4()
-        number = (
+        found = (
             await fs.db.execute(
                 _INSERT,
                 {
@@ -143,11 +149,15 @@ class DraftRevision:
                     "content_hash": self.content_hash,
                     "music": json.dumps(self.music, sort_keys=True, ensure_ascii=False),
                     "provenance": json.dumps(self.provenance, sort_keys=True),
+                    "parent_id": self.parent_id,
                     "job_id": fs.lease.job_id,
                     "owner_id": fs.lease.owner_id,
                 },
             )
-        ).scalar_one()
+        ).first()
+        if found is None:  # the job's row or the parent is not what the input said
+            raise JobFailure("internal")
+        number = found.number
         await fs.event(
             "revision_created", {"revision_id": revision_id, "kind": "draft", "number": number}
         )
@@ -159,8 +169,14 @@ def build(
     outcome: StageOutcome,
     music_map: dict[str, Any],
     step: MusicStep,
+    *,
+    origin: Literal["design_draft", "revise_draft"] = "design_draft",
+    base_revision_id: UUID | None = None,
+    base_hash: bytes | None = None,
+    request_message_id: UUID | None = None,
 ) -> DraftRevision:
-    """The revision to store; ``invalid_output`` if the draft no longer validates."""
+    """The revision to store; ``invalid_output`` if the draft no longer validates, or (a revise)
+    if it is the base draft again: a revision that changes nothing is not stored."""
     draft = fitted_draft(result)
     try:
         workout.validate(draft.to_spec())  # again, server-side, before it is stored
@@ -175,10 +191,20 @@ def build(
         fingerprint=step.fingerprint,
         unknown_bpm=[UnknownBpmTrack(index=u.index, title=u.title) for u in step.unknown_bpm],
     )
-    made: Provenance = provenance([outcome], music_map, origin="design_draft")
+    content_hash = hashlib.sha256(canonical(content)).digest()
+    if base_hash is not None and content_hash == base_hash:
+        raise JobFailure("invalid_output")
+    made: Provenance = provenance(
+        [outcome],
+        music_map,
+        origin=origin,
+        base_revision_id=base_revision_id,
+        request_message_id=request_message_id,
+    )
     return DraftRevision(
         content=content,
-        content_hash=hashlib.sha256(canonical(content)).digest(),
+        content_hash=content_hash,
         music=music.model_dump(mode="json"),
         provenance=made.model_dump(mode="json"),
+        parent_id=base_revision_id,
     )

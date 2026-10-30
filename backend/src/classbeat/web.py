@@ -18,6 +18,7 @@ from classbeat.config import Settings, check_web_has_no_model_key
 from classbeat.connections.routes import router as connections_router
 from classbeat.crypto.keks import load_keyring
 from classbeat.db import create_engine, create_session_factory, verify_database_role
+from classbeat.design import configure_limits
 from classbeat.design.routes import router as music_router  # registers design_draft (J3)
 from classbeat.jobs.events_routes import StreamLimiter
 from classbeat.jobs.events_routes import router as job_events_router
@@ -125,6 +126,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         openapi_url="/api/openapi.json" if docs_enabled else None,
     )
     app.state.settings = settings
+    configure_limits(settings)  # revise_draft's admit reads them (ADR 0007 section 4)
     app.include_router(api)
     auth.install(app)
     app.include_router(connections_router)

@@ -23,6 +23,15 @@
   --cb-color-danger: #b23b30;
   --cb-color-focus: #1f6f78;
 
+  /* Effort zones 1 (recovery) to 7 (all out), for the timeline chart */
+  --cb-zone-1: #8fb0b6;
+  --cb-zone-2: #3f8f98;
+  --cb-zone-3: #2b7a4b;
+  --cb-zone-4: #a07c10;
+  --cb-zone-5: #c0661a;
+  --cb-zone-6: #b23b30;
+  --cb-zone-7: #7a1f4a;
+
   /* Spacing */
   --cb-space-1: 0.25rem;
   --cb-space-2: 0.5rem;
@@ -69,5 +78,12 @@
     --cb-color-success: #6fcb97;
     --cb-color-danger: #f08c82;
     --cb-color-focus: #5cc1ca;
+    --cb-zone-1: #6d8c93;
+    --cb-zone-2: #5cc1ca;
+    --cb-zone-3: #6fcb97;
+    --cb-zone-4: #d8b84a;
+    --cb-zone-5: #e8a45e;
+    --cb-zone-6: #f08c82;
+    --cb-zone-7: #e0709f;
   }
 }
