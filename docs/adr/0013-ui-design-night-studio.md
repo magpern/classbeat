@@ -40,8 +40,9 @@ exists today (2026-10-30):
   a MOWL program.
 - **Music looks like music.** Cover art, track rows and playlist tiles, laid out the way Spotify
   users expect, within Spotify's rules (§3).
-- **One big next step.** Each screen has one primary button. New class, Account and usage are in
-  the same place on every page.
+- **One big next step.** Each screen has at most one primary button. Settings and progress pages
+  (Account, Designing) have none. New class, Account and usage are in the same place on every
+  page.
 
 ### 2. Visual language
 
@@ -67,22 +68,26 @@ Spotify's green or with MOWL's branding.
 **Effort zones.** MOWL's seven zones and names (`mowl.workout.ZONE_NAMES`), coloured as in the
 **MOWL app** (owner, 2026-10-30): grey Z1, blue Z2, green Z3, yellow Z4, and **one red for Z5 to
 Z7**. Above the bars, a **flame** marks zone 6 and a **bolt** marks zone 7. MOWL marks zone 7 with
-an owl, but that is MOWL's mascot, so classbeat uses its own mark (§3). The values below are close
-to the app's, not sampled from it. They are replaced by values sampled from a screenshot of a
-workout in the MOWL app once the owner provides one (§12). They are the same in both themes:
+an owl, but that is MOWL's mascot, so classbeat uses its own mark (§3).
+
+The owner's brief allows "colors from MOWL on bars (or slightly off, but similar)", so values taken
+from the MOWL app may be used as they are or nudged (roadmap Amendment 8). The values below are
+close to the app's, not taken from it. They are replaced by values from a screenshot of a workout
+in the MOWL app once the owner provides one (§12). The zone colours are the only thing taken from
+MOWL. They are the same in both themes:
 
 | Zone | Name | FTP | Colour | Marker above the bar |
 |---|---|---|---|---|
-| 1 | Recovery | under 55 % | `#8E99A8` grey | — |
+| 1 | Recovery | 0–55 % | `#8E99A8` grey | — |
 | 2 | Endurance | 56–75 % | `#3D8BFF` blue | — |
 | 3 | Tempo | 76–90 % | `#2FBF71` green | — |
 | 4 | Threshold | 91–105 % | `#FFD23F` yellow | — |
 | 5 | VO2max | 106–120 % | `#FF4D4D` red | — |
-| 6 | Anaerobic | 121–150 % | `#FF4D4D` red | flame (`lucide` `Flame`) |
+| 6 | Anaerobic | 120–150 % | `#FF4D4D` red | flame (`lucide` `Flame`) |
 | 7 | Neuromuscular | all out | `#FF4D4D` red | bolt (`lucide` `Zap`) |
 
-Zones 5 to 7 share a colour, so they are told apart by bar height, the marker and the zone number
-in every label. Zone colours are used only for effort, never for buttons or status.
+FTP ranges are those of `mowl.workout.ZONES` (0.6.0). Zones 5 to 7 share a colour, so they are
+told apart by bar height, the marker and the zone number in every label. Zone colours are used only for effort, never for buttons or status.
 
 **The stage.** A class profile always sits on a near-black stage (`stage #0B0C10`, grid lines
 `#23252F`, text `#E9EBF1` / `#9AA0B2`), in the light theme too, like the studio screen. This also
@@ -169,7 +174,8 @@ Each item gives the content and the **one primary action**.
   - length as chips plus "Other length";
   - music: **Pick songs for me** (song picking, ADR 0008) or **Use my playlist**, with style chips
     for era and genre plus free text;
-  - the user's playlists as a Spotify-like tile grid;
+  - the user's MOWL playlists as a Spotify-like tile grid, each tile showing the playlist's
+    initials (no playlist covers, §9);
   - effort as three cards (Easy, Moderate, Hard), each showing its zone range;
   - climbs, sprints and races as − / + steppers;
   - FTP test;
@@ -193,7 +199,8 @@ Each item gives the content and the **one primary action**.
   - A header with the title, save-state chips ("Version 3 saved to MOWL", "Version 4 has changes
     not in MOWL yet") and **Save to MOWL** / **Update in MOWL**, with Change songs and a ··· menu
     (Versions, Delete).
-  - Stat tiles: Length, TSS, Songs, Climbs, Sprints, Hardest zone.
+  - Stat tiles: Length, TSS, Songs, Climbs, Sprints, Hardest zone. With any zone 7 interval, the
+    TSS tile keeps ADR 0012 §7's note "approximate: zone 7 has no exact TSS weight".
   - The profile (§7) and "Time in each zone".
   - Notices, such as a song with no measured tempo.
   - "Song by song" rows with a zone strip, start time, part and song, zones, RPM, position and cue.
@@ -242,7 +249,8 @@ TSS, FTP, RPM and zone numbers stay, because MOWL users know them.
   - the chart is `role="img"` with a summary;
   - the "Song by song" list is its text alternative;
   - a zone is never told by colour alone (height, markers and "Z4" labels);
-  - the stage colours meet 3:1 against `#0B0C10`.
+  - the zone colours and the stage text meet 3:1 against `#0B0C10` (the grid lines are
+    decorative);
 - **Own code, no chart library:** an SVG component in React.
 
 ### 8. Component stack
@@ -256,29 +264,56 @@ TSS, FTP, RPM and zone numbers stay, because MOWL users know them.
 - **Not added:** chart, state or form libraries; the router stays (it is small and tested). Drag
   and drop (`@dnd-kit`) only if reordering songs is ever asked for.
 - **Bundling and checks.** Everything is bundled by Vite and served from our origin. `npm audit`
-  keeps gating; licences must be MIT, ISC, Apache-2.0 or OFL. `no-third-party-hosts.test.ts` stays,
-  with exactly one allowed host (§9).
+  keeps gating. Package licences must be MIT, ISC, Apache-2.0 or OFL; the Spotify logo is the one
+  asset under its owner's brand terms. The Reviewer checks licences from `package-lock.json` in
+  each PR that adds a package. `no-third-party-hosts.test.ts` stays, with exactly one allowed host
+  (§9).
 
 ### 9. Cover art
 
-- **Library change.** `mowl-workouts` gains cover-art URLs on track and playlist entries: the
-  smallest image of at least 64 px, from Spotify's `album.images` and `images`. That is a library
-  release: 0.7.0, a rebuilt wheel, `uv lock`.
-- **Storage.** classbeat stores the URL only in the owned rows that already hold the song (the
-  `song_list` revision, ADR 0008 §8). It is deleted with them, under the same Spotify-derived
-  retention rules (ADR 0010).
-- **Validation.** Before storing, and again before returning one, the backend accepts only
-  `https://i.scdn.co/image/<hex>`. Anything else is dropped. It is never taken from model output.
-- **Browser.** The browser loads covers straight from `https://i.scdn.co`. `<img
-  referrerpolicy="no-referrer" loading="lazy">` is used in one `CoverArt` component. The app's CSP
-  (when it lands) has `img-src 'self' https://i.scdn.co`. The guard test exempts that host in that
-  one file only.
-- **Fallback.** With no URL, or a failed load, a neutral tile is shown with the playlist's
-  initials. MOWL playlists without Spotify connected always use the tile.
+Only **album covers of chosen songs** are shown, and only from data classbeat already keeps:
 
-This is the one place the browser contacts a third party. The user has connected that Spotify
-account, and the request sends no referrer, cookie or classbeat data. It changes a guard test, so
-it is reviewed by Opus.
+- **Where they come from.** The track entries of `mowl-workouts` (contract rows M-1 and M-5 of ADR
+  0009) gain one field, `image`. It holds the URL of the album's smallest image that is at least
+  64 px, or `null`. Getting it is a library release: 0.7.0 by the local Architect, then the wheel
+  pin (issue L2 in §11). Playlist images are not used: they would need a Spotify read from the web
+  process, which ADR 0009 does not allow, or a stored copy. They are also often served from other
+  hosts.
+- **Storage.** The URL is kept only as a new `cover` field on each song of the `song_list` revision
+  (ADR 0008 §5). The content becomes `v: 2`, `v: 1` stays readable, and `content_hash` covers the
+  field like the rest. Under the retention rules (ADR 0008 §8, guard 10's `RETENTION` registry,
+  ADR 0010), it is deleted with the class and the account, like the title and artist beside it.
+- **Validation.** The backend keeps a URL only if it matches `^https://i\.scdn\.co/image/[0-9a-f]{40}$`,
+  both before storing and before returning it. Anything else becomes `null`. The URL is never taken
+  from model output and never put into model input: the stages' track summaries leave it out.
+- **Browser.**
+  - The browser loads covers straight from `https://i.scdn.co`, through one `CoverArt` component
+    with `<img referrerpolicy="no-referrer" loading="lazy">`.
+  - UI7 adds the app's first Content-Security-Policy as a **response header** from the web process,
+    not a `<meta>` in `index.html`. Its `img-src` is `'self' https://i.scdn.co`; the other
+    directives follow the threat model's strict CSP, and the e2e suite runs with the header on.
+  - UI7 also adds a page-wide `Referrer-Policy: no-referrer` header.
+  - The URL check stays the main control. The guard test exempts that host in `CoverArt` only.
+- **Where covers appear.** Covers show in the Songs for approval rows and its 2×2 mosaic (the first
+  four songs). They also show on the Class page's song list and on the Music page's tiles for
+  playlists classbeat made, as a mosaic from their `song_list`. MOWL playlists (the New class
+  picker, Music's "Your playlists") always use a neutral tile with the playlist's initials, and so
+  does a song without a cover or with a failed load.
+
+The request carries no referrer, no classbeat cookie and no classbeat data. The viewer's IP address
+and browser still reach Spotify's CDN; the M6 privacy notice says so. This is the one place the
+browser contacts a third party, and it changes a guard test, so UI7 has an Opus review.
+
+**Contracts this amends in part, when this ADR is accepted:**
+
+- **ADR 0009 §10.** "`images` … values from responses are not requested, stored or shown" gains
+  one exception: the album image URL on M-1 and M-5 track entries. It is never requested by the
+  server. It is stored only in `song_list` after the host-pinned check above, and shown only through
+  `CoverArt`.
+- **ADR 0009, contract table.** Rows M-1 and M-5 gain `image`. M-3 is unchanged.
+- **ADR 0008 §5.** `song_list` content `v: 2` with `cover` per song.
+- **ADR 0008 §8.** The first retention row adds "album cover URL".
+- **Threat model T73.** It is narrowed the same way, and UI7 adds an entry for the cover-art host.
 
 ### 10. Accessibility and devices
 
@@ -298,29 +333,38 @@ it is reviewed by Opus.
 
 ### 11. Delivery
 
-New milestone "UI Night Studio". Developers are Sonnet, except UI7. A fresh Sonnet reviews each
-issue, except UI7 (Opus: a guard test and CSP).
+New milestone "UI Night Studio".
+
+- **Developers** are Sonnet, except UI7 (Opus).
+- **Reviewers** are a fresh Sonnet, except UI6, UI7 and UI8, which get a fresh Opus. UI7 changes a
+  guard test and adds the CSP. UI6 restyles the consent switch, two-step sign-in, sessions and
+  account deletion. UI8 sends the approval hash.
+- **API calls.** UI6, UI8 and every other issue keep each API call, CSRF and step-up exactly as they
+  are; a restyle changes no request.
 
 | # | Issue | Depends on |
 |---|---|---|
 | UI1 | Tailwind v4, tokens (§2), fonts, `src/components/ui` primitives, theme switch | — |
 | UI2 | App shell: sidebar, icon rail, tab bar, focus layout; Home; My classes cards | UI1 |
-| UI3 | Class profile (§7) and the class page layout (§5) | UI1, UI2 |
+| UI3 | Class profile (§7) and the class page layout (§5) | UI1, UI2; the in-flight M4 class-page work and M3c's Z7 (ADR 0012) |
 | UI4 | New class page (§5), same API | UI2 |
 | UI5 | Designing page (§5), wording table (§6) | UI2 |
 | UI6 | Account with tabs, connection cards, usage details tucked away, Appearance | UI2 |
-| UI7 | Cover art: `mowl-workouts` 0.7.0 images, URL validation, `CoverArt`, guard-test exemption, CSP `img-src` | UI1; M4 SJ1 |
+| L2 | `mowl-workouts` 0.7.0: `image` on M-1 and M-5 track entries (local Architect, private repo), then the wheel pin and `uv lock` | — |
+| UI7 | Cover art: `song_list` `v: 2` `cover`, URL validation, `CoverArt`, guard-test exemption, CSP header, `Referrer-Policy`, threat model | UI1, L2 |
 | UI8 | Songs for approval in the Spotify-like layout; Music page | UI7; M4's approval API |
 | UI9 | Landing, Sign in and Sign up restyle | UI2 |
-| UI10 | Playwright viewport and axe pass | UI3 to UI6 |
+| UI10 | Playwright viewport and axe pass; the first-load bundle size from the Vite build report | UI3 to UI6 |
 
-UI1 to UI6 and UI9 can start now beside M4. M4 issues that add UI (song picking choice, Songs for
-approval, Change songs) use the new components once UI1 has merged.
+Nothing starts before this ADR is accepted. After that, UI1, UI2, UI4 to UI6, UI9 and L2 can run
+beside M4. UI3 waits for the in-flight class-page work. M4 issues that add UI (song picking choice,
+Songs for approval, Change songs) use the new components once UI1 has merged.
 
 ### 12. Owner answers (2026-10-30) and what is still open
 
-1. **Zone colours:** the MOWL app is the reference. *Open:* a screenshot of a workout in the MOWL
-   app to sample the exact values. §2 holds close values until then. The screenshot is shared in
+1. **Zone colours:** the MOWL app is the reference; exact or slightly-off values are both within
+   the owner's brief. *Open:* a screenshot of a workout in the MOWL app to take the values from. §2
+   holds close values until then. The screenshot is shared in
    chat, never committed, because it is MOWL's material.
 2. **Zones 5 to 7:** one red, as in MOWL. MOWL shows a flame above zone 6 and an owl above zone 7;
    classbeat shows a flame and its own bolt (§2, §3). *Open:* the owner described the zone 6 mark
@@ -339,8 +383,9 @@ approval, Change songs) use the new components once UI1 has merged.
 - **MUI or Mantine.** Rejected: both are full design systems with their own look, which is harder
   to bend into a MOWL-like stage and Spotify-like lists. Radix primitives give accessible behaviour
   with no look, and the components stay in our repo.
-- **Copy MOWL's exact palette and app look.** Rejected: it makes classbeat look like a MOWL
-  product. The rainbow zone convention gives the familiarity without copying.
+- **Copy MOWL's app look** (layout, chrome, typeface, icons, the owl). Rejected: it would make
+  classbeat look like a MOWL product. The owner's brief takes only the zone colours (exact or close)
+  and the zone-6 flame idea, and classbeat draws its own zone-7 mark.
 - **Spotify green as the accent.** Rejected: it breaks Spotify's branding rules, and it would
   clash with zone 3.
 - **Proxy cover art through our backend.** Rejected: it adds web-process egress to a new host and
@@ -352,15 +397,19 @@ approval, Change songs) use the new components once UI1 has merged.
 
 - **ADR 0001 is superseded in part.** Its Frontend bullet "Our own design tokens … System fonts; no
   runtime requests to third-party hosts. No MOWL logo, owl, colours or copied assets" now reads:
-  our own tokens and brand colour, MOWL-like zone colours (§2), bundled fonts, third-party UI
+  our own tokens and brand colour, MOWL's zone colours (exact or close, §2), bundled fonts, third-party UI
   libraries allowed, no runtime requests to third-party hosts except Spotify cover art (§9), and
   no MOWL logo, owl or copied assets.
-- **Roadmap §8's** "Own name, colours, fonts and icons" is amended the same way (Amendment 8).
+- **Roadmap §8's** "Own name, colours, fonts and icons" and its Class row's "own palette" are
+  amended the same way (Amendment 8).
+- **ADR 0009 §10 and its contract rows M-1 and M-5, ADR 0008 §5 and §8, and threat-model T73**
+  are amended in part by §9 when this ADR is accepted. Their texts get pointers to §9 then, listed
+  in `docs/status.md` as owed.
 - **AGENTS.md's** frontend notes ("System fonts and local assets only …") are updated by UI1 and
   UI7 when they land.
 - `tokens.css` is rewritten in UI1. Every component moves to the new tokens. The old teal zone
   ramp goes.
 - The bundle grows by Tailwind's output, Radix primitives, two font families and icons. The
   target is under 250 kB gzip of JavaScript for the first load.
-- The threat model gains an entry for the cover-art host in UI7: a malicious image URL, tracking
-  by the CDN, and its mitigations from §9.
+- The threat model gains an entry for the cover-art host in UI7: a malicious image URL, the CDN
+  seeing the viewer's IP address, and the mitigations from §9.

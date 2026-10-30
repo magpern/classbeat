@@ -124,8 +124,14 @@ GitHub hold the detail.
   [ADR 0013](adr/0013-ui-design-night-studio.md) covers a dark-first "Night Studio" look, MOWL-like
   zone colours on the class profile, Spotify-like music screens, a sidebar or tab bar with Account
   always in reach, and Tailwind with Radix primitives. Mockups of every main screen are on the
-  owner's design canvas. Planned as milestone "UI Night Studio" (UI1 to UI10, ADR 0013 §11) once
-  the ADR is accepted.
+  owner's design canvas. Planned as milestone "UI Night Studio" (L2, UI1 to UI10, ADR 0013 §11)
+  once the ADR is accepted.
+
+  ADR amendments owed when ADR 0013 is accepted (pointers to ADR 0013 §9):
+  - ADR 0001's Frontend bullet;
+  - ADR 0009 §10 (album image URLs) and its contract rows M-1 and M-5 (`image`);
+  - ADR 0008 §5 (`song_list` `v: 2` with `cover`) and §8 (the retention row);
+  - threat-model T73.
 - Releases: v0.1.0 (cut partway through M0); v0.2.0 is not cut yet (deferred to save Actions quota). Image
   `ghcr.io/magpern/classbeat`, private.
 
@@ -137,8 +143,8 @@ GitHub hold the detail.
   build on the defaults listed there; an answer changes seeds or settings, not the design.
 - **UI redesign** ([ADR 0013](adr/0013-ui-design-night-studio.md) §12; answered 2026-10-30 except
   for two items):
-  - a screenshot of a workout in the MOWL app, shared in chat (never committed), so the zone
-    colours can be sampled;
+  - a screenshot of a workout in the MOWL app, shared in chat (never committed), to take the zone
+    colours from (exact or slightly off, Amendment 8);
   - confirmation that the zone 6 mark is a flame.
 
   Agents build on the values in ADR 0013 §2 meanwhile.
