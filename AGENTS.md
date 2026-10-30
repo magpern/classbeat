@@ -294,9 +294,13 @@ earlier if pip-audit reports an advisory against 0.125.0, the API needs somethin
 Authlib needs `httpx2` itself; Dependabot ignores `anthropic` majors until then, and pip-audit
 must stay clean. With `anthropic` the worker refuses to start (and the provider to build) when
 `ANTHROPIC_LOG`, `ANTHROPIC_CUSTOM_HEADERS` or `SSLKEYLOGFILE` is set; the provider's price entries in `classbeat.agent.prices` are to be verified before
-live use. The worker's outbound requests go only to `https://api.mowl.com` and
-`https://api.anthropic.com` (`classbeat.egress`, the only module allowed to build an HTTP client
-or `urllib` opener; guarded by `tests/test_egress_guard.py`); its TLS contexts never write a key
+live use. The worker's outbound requests go only to `https://api.mowl.com`, `https://api.anthropic.com`,
+`https://api.spotify.com` and `https://accounts.spotify.com` (`WORKER_HOSTS` in `classbeat.egress`, ADR 0009
+section 10; the model client alone is limited to the model host). The Spotify token endpoint and `GET /me`
+(`classbeat.spotify.http`) use `egress.spotify_async_client()`, in the web process (connect) and the
+worker (refresh) alike, whose list is the two Spotify hosts and nothing else. The list is code, not a
+setting. `classbeat.egress` is the only module allowed to build an HTTP client or `urllib` opener;
+guarded by `tests/test_egress_guard.py`; its TLS contexts never write a key
 log (`egress.tls_client_context`). Every worker urllib request has a **total** deadline (its timeout,
 60 s without one, never past the thread's `egress.call_deadline`): a watchdog cuts a response that
 trickles in, and a request due after the deadline is never sent (ADR 0007 section 6).
@@ -325,6 +329,25 @@ one: `claude-opus-5-5`, `claude-sonnet-5-5`, `claude-haiku-5-5`), `--effort` (de
 print with their detail. A model comparison is one such run per model, and **each run needs the
 owner's go-ahead**; `python -m classbeat.evals compare RESULT.json ... --out DIR` then writes
 `compare.md` and `compare.html` offline (no model, no network, no settings).
+Song picking and the Spotify connection (ADR 0008, ADR 0009): `CLASSBEAT_SONG_PICKING` (default off; off,
+every Spotify route answers 404 `feature_off`; the owner switches it on, roadmap Amendment 1; with it on,
+`CLASSBEAT_PUBLIC_BASE_URL` may not be `localhost`, use `127.0.0.1`, because Spotify does not accept
+`localhost` in a redirect URI), `CLASSBEAT_SONG_JOB_COST_MICROS` (3000000, $3; the song-picking kinds' own
+ceiling across their stages and attempts, 0 to 100000000), `CLASSBEAT_SPOTIFY_FLOW_TTL_SECONDS` (600, 60 to 600;
+how long a connect flow lives), `CLASSBEAT_SPOTIFY_REFRESH_MARGIN_SECONDS` (120, 0 to 1800; a token with less
+than this left is refreshed), `CLASSBEAT_SPOTIFY_REFRESH_TIMEOUT_SECONDS` (10, above 0 and at most 20; the
+refresh request's total deadline) and `CLASSBEAT_SPOTIFY_LISTING_LAG_SECONDS` (unset, at most 86400; lets the
+reconciler mark an uncertain playlist create `failed` when the user's listing shows no playlist with its `ref`
+and the call returned at least that long ago; leave it unset until the owner has measured Spotify's listing
+delay at live activation). There is no Client ID setting and no Client Secret: each user enters their own
+Spotify app's Client ID on the account page, and the callback is the fixed
+`<CLASSBEAT_PUBLIC_BASE_URL>/oauth/spotify/callback`.
+The Spotify playlist writes live in `classbeat.playlists` (ADR 0008 section 2): the external-operation
+kinds `spotify_create_playlist` and `spotify_replace_items` (`create`, `replace`, with `common` for the
+owner check, read-back and the one way they call Spotify), the pool steps (`pool`: `write_pool`) and the
+final-playlist steps (`final`: `create_final_playlist`, `fill_final_playlist`). Importing the package
+registers both kinds (worker and web app both import it); every write goes through
+`classbeat.operations.perform` and the job's fence, and nothing in it opens a `user_session`.
 Jobs (ADR 0005 sections 3 and 4): `CLASSBEAT_JOB_LEASE_SECONDS` (default 120, 30 to 600),
 `CLASSBEAT_WORKER_CONCURRENCY` (2, at most 16; the worker's pool is `2n + 2` connections plus
 an overflow of `n`: a pipeline and a heartbeat per run, the `LISTEN` connection and one for claims
@@ -345,7 +368,12 @@ save and update reconcilers' read-only read of the saved revision, SV1), `classb
 Revising by chat (ADR 0007 section 4): `CLASSBEAT_REVISIONS_PER_CLASS` (25 chat revisions per class, the first
 design not counted), `CLASSBEAT_CHAT_MAX_REQUESTS` (50 user requests per class) and
 `CLASSBEAT_CHAT_CONTEXT_REQUESTS` (10 earlier requests sent to the model); the smoke set has 18 cases
-(15 designs, 3 revisions).
+(15 designs, 3 revisions). Beside them are three song-picking smoke cases (ADR 0008 section 3,
+`classbeat.evals.pick`; files in `classbeat/evals/smoke_pick/`): `pick_30`, `replace_two` and
+`injected_title`, each run through the real `pick_pool` and `choose_songs` stages against a recorded
+`FakeProvider` script, a synthetic Spotify catalogue and a synthetic MOWL analysis (no Spotify, MOWL or
+model contact). They run in CI (`backend/tests/test_evals_pick_smoke.py`) and are not part of
+`smoke --live`.
 Progress (ADR 0005 section 6): `GET /api/jobs/{id}/events` streams a job's events as SSE (`Last-Event-ID`,
 5 open streams per user and web process); each web process keeps one `LISTEN job_events` connection.
 OAuth sign-in (ADR 0003 section 5): `CLASSBEAT_OAUTH_<PROVIDER>_CLIENT_ID` and the
@@ -373,6 +401,12 @@ npm run build        # typecheck, then Vite writes frontend/dist
 
 - Proxy target: set `API_PROXY_TARGET` (shell or `frontend/.env`, git-ignored) to point the dev
   server at another backend, for example `API_PROXY_TARGET=http://localhost:8001 npm run dev`.
+- `/account/spotify` (`pages/SpotifyPage.tsx`, `components/account/Spotify.tsx`; signed-in users only) is
+  where the Spotify callback ends: `?result=connected`, or a failure category shown as a sentence
+  (`account_changed` asks the user to confirm the switch). It holds the connect wizard (the user's Client ID,
+  32 hex characters; never a field for a Client Secret), the connection card (status, Connect again, change
+  Client ID, Disconnect with its dialogs) and the "Working playlist" consent (give or revoke). With song
+  picking off the API answers 404 `feature_off` and the page says "Song picking is not available right now."
 - Colours, spacing and type live only in `frontend/src/styles/tokens.css` (light and dark).
 - System fonts and local assets only; nothing is requested from a third-party host at runtime
   (`src/no-third-party-hosts.test.ts` guards the sources).
@@ -444,9 +478,16 @@ Web and worker trust one bundle of both fakes' throwaway CAs. The worker replays
 `/fake-run/script.json`, which starts on `good_first_draft.json` and which a test repoints with
 `e2e/tests/model-script.ts` for the revise runs.
 
+The fake Spotify (`e2e/fake-spotify/server.py`, service `spotify-fake`) answers as `api.spotify.com` and
+`accounts.spotify.com` through compose network aliases and publishes no port. Its logic is
+`backend/tests/spotifycore.py`, mounted read-only, the same code the backend tests run in-process
+(`tests/spotifyfake.py`), so the two cannot drift; the `/__e2e/` control is reached from the web container.
+Web and worker trust the same CA bundle (`SSL_CERT_FILE`), now including the Spotify fake's CA.
+
 The specs: `design-draft.spec.ts` (draft, cancel while running, uncertain attach),
-`class-save.spec.ts` (change, save, update, uncertain writes, another MOWL account) and
-`class-usage.spec.ts`.
+`class-save.spec.ts` (change, save, update, uncertain writes, another MOWL account),
+`class-usage.spec.ts` and `fake-spotify.spec.ts` (web connects through the fake with PKCE, the worker
+reaches it too, it publishes no port).
 
 The fakes' state is shared, so Playwright runs one worker. The Playwright context blocks every
 origin but the stack's. They use public test values only and are never part of the default stack.
