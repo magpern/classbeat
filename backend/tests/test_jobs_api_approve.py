@@ -152,6 +152,30 @@ async def test_the_per_user_limit_and_the_credit_seam(
     await nothing_started(jenv, job_id, kinds)
 
 
+async def test_approval_decides_on_the_job_rows_credit_state(
+    jenv: JobsEnv, browsers: Any, env: Env
+) -> None:
+    """The ledger is asked for what the job row reserved (``credit_state``), not for what the
+    kind says today: a refusing ledger stops a reserved job and does not stop one with none."""
+
+    class Refusing(UnmeteredLedger):
+        async def allows(self, db: AsyncSession, ctx: UserContext, job_id: UUID) -> bool:
+            return False
+
+    env.app.dependency_overrides[credit_ledger] = Refusing
+    alice: Browser = await browsers()
+    reserved, reserved_rev = await waiting_job(jenv, alice)
+    assert jenv.sql("SELECT credit_state FROM jobs WHERE id = :i", i=reserved).scalar_one() == (
+        "reserved"
+    )
+    refused(await alice.approve(reserved, reserved_rev, LIST_HASH), "quota")
+    free, free_rev = await waiting_job(jenv, alice)
+    jenv.sql("UPDATE jobs SET credit_state = 'none' WHERE id = :i", i=free)
+    done = await alice.approve(free, free_rev, LIST_HASH)
+    assert done.status_code == 200, done.text
+    assert done.json()["state"] == "queued"
+
+
 async def test_two_concurrent_approvals_cannot_pass_the_limit(
     jenv: JobsEnv, browsers: Any, env: Env
 ) -> None:

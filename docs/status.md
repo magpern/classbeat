@@ -98,8 +98,9 @@ GitHub hold the detail.
   (second-class test for the pointer update, brief byte limit message in the form, approve
   uses the job's credit state), #159 (`jobs` counts a deleted job's runs, price-version test,
   saves and updates missing from the monthly view), #160 and #162 to #169 (see their review
-  comments). ADR 0007 amendments owed: the brief is limited to 4096 bytes (refused with 422 at
-  creation) and a usage month before the account shows zeros instead of 404.
+  comments). The ADR 0007 amendments (brief limit, usage month before the account, counting
+  rules, the class API's saved summary) are written in the ADR's "Amendments after
+  implementation".
 - **M4 in progress** (song picking, Spotify BYOK): ADR 0008 (song picking) and ADR 0009 (the Spotify
   connection) are Proposed and split into 14 issues (#173 to #186), roadmap Amendment 5. The first work is
   the `mowl-workouts` v0.6.0 release by the local Architect (L1), the migration (SP1) and the Spotify

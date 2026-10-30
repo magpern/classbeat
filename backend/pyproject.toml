@@ -15,7 +15,7 @@ dependencies = [
     "joserfc==1.7.7",
     # The domain library (ADR 0001): v0.5.0 built from its tag WITHOUT the bundled Swedebeat app
     # key (scripts/build-mowl-wheel.sh; threat model, accepted risks). Pinned by uv.lock's hash.
-    "mowl-workouts==0.5.0",
+    "mowl-workouts==0.6.0",
     "psycopg[binary]>=3.2",
     "pydantic>=2.10",
     "pydantic-settings>=2.7",
@@ -44,7 +44,7 @@ audit = [
 exclude-dependencies = ["mcp"]
 
 [tool.uv.sources]
-mowl-workouts = { path = "vendor/mowl_workouts-0.5.0-py3-none-any.whl" }
+mowl-workouts = { path = "vendor/mowl_workouts-0.6.0-py3-none-any.whl" }
 
 [build-system]
 requires = ["hatchling"]

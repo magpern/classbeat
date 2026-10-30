@@ -224,15 +224,23 @@ docker compose --profile maint run --rm maint python -m classbeat keys wipe --co
 uv run alembic upgrade head    # migrations as the owner role, CLASSBEAT_MIGRATIONS_DATABASE_URL
 ```
 
-The domain library `mowl` (`mowl-workouts`) is pinned as `backend/vendor/mowl_workouts-0.5.0-py3-none-any.whl`,
-built from the v0.5.0 tag **without** the bundled Swedebeat app key by `scripts/build-mowl-wheel.sh`
+The domain library `mowl` (`mowl-workouts`) is pinned as `backend/vendor/mowl_workouts-0.6.0-py3-none-any.whl`,
+built from the v0.6.0 tag (commit `0319fcb8`; vendored wheel SHA-256 `d3957a80…`, release asset
+`5ea21460…`) **without** the bundled Swedebeat app key by `scripts/build-mowl-wheel.sh`
 (needs `gh` access to the private repo; it checks the tag's commit, the missing key file and that
 every other file and the `Requires-Dist` lines match the release wheel). After a rebuild run `uv lock`. classbeat leaves out
 the library's `mcp` dependency (`exclude-dependencies`): it never runs the MCP server, and `mcp`'s
 `httpx2` would replace httpx inside Authlib. Backend tests fake MOWL in-process (`tests/mowlfake.py`).
 Because `mcp` is left out, the image's `mowl` and `mowl-mcp` console scripts fail on import: use only the library's modules `api`, `service`, `library`, `spotify_web`
 and `swedebeat` (never the CLI or MCP entry points). The tag commit, the release asset's digest and
-the vendored wheel's SHA-256 are recorded in the header of `scripts/build-mowl-wheel.sh`.
+the vendored wheel's SHA-256 are recorded in full in the header of `scripts/build-mowl-wheel.sh`.
+0.6.0 adds what Spotify song picking needs (ADR 0009 §12): ID-based `spotify_web` calls
+(`create_playlist`, `add_items`, `replace_playlist_items`, `get_playlist`, `playlist_items` on
+`/items`, `me`, `my_playlists`), `search_tracks(market=)`, `spotify.track_uri`, `SCOPES_PRIVATE`,
+`MowlError.status`/`.retry_after`, and the `Credentials` options `spotify_refresh_enabled` (classbeat
+always sets `False`: the library never reaches the token endpoint) and `spotify_max_retry_wait`
+(classbeat sets `0`: the library never sleeps on a 429). Never use its name-based `save_playlist` or
+`find_playlist_tracks` (CLI only).
 
 Database tests need a throwaway Postgres whose application database has the roles of
 `docker/postgres/init/10-roles.sql` (ADR 0002 section 4). Give it a name and port of its own

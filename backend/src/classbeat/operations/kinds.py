@@ -47,6 +47,9 @@ MAX_CONTEXT_BYTES: Final = 2048  # the external_operations.request_context check
 CALL_MAY_RUN_MARGIN_SECONDS: Final = 30
 # The bound taken for a class write whose stored context has none (``requests.ACTIONABLE_AT_SQL``).
 FALLBACK_BOUND_SECONDS: Final = 3600
+# The largest bound a request may carry (``OperationRequest`` refuses more); a stored bound is
+# clamped to 0..this wherever it is read, for a row the protocol did not write.
+MAX_BOUND_SECONDS: Final = 1800
 BOUND_KEY: Final = "bound_seconds"  # where the protocol stores the bound in the context
 
 
@@ -167,9 +170,11 @@ OPERATION_KINDS = OperationKinds()
 
 def bound_of(context: Mapping[str, Any]) -> float | None:
     value = context.get(BOUND_KEY)
-    if isinstance(value, bool) or not isinstance(value, int | float) or value <= 0:
-        return None
-    return float(value)
+    if isinstance(value, bool) or not isinstance(value, int | float) or not value > 0:
+        return None  # also NaN
+    # Clamped before the float conversion, so a huge int (or inf) is MAX_BOUND_SECONDS, not an
+    # OverflowError.
+    return float(min(value, MAX_BOUND_SECONDS))
 
 
 def context_size(context: Mapping[str, Any]) -> int:

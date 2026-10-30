@@ -43,7 +43,7 @@ from classbeat.crypto.keks import KeyRing
 from classbeat.design import revision
 from classbeat.design.music import load_music
 from classbeat.jobs import KINDS, Complete, FencedSession, JobFailure, JobKind, JobRun
-from classbeat.jobs.inputs import JobInput
+from classbeat.jobs.inputs import JobInput, jsonb_size
 
 KIND: Final = "design_draft"
 STAGES: Final = ("music", "design")
@@ -67,7 +67,7 @@ class DesignDraftInput(JobInput):
 
     @model_validator(mode="after")
     def _brief_fits_the_class(self) -> Self:
-        if revision.jsonb_size(self.brief.model_dump(mode="json")) > revision.MAX_BRIEF_BYTES:
+        if jsonb_size(self.brief.model_dump(mode="json")) > revision.MAX_BRIEF_BYTES:
             raise ValueError("the brief is too long")
         return self
 

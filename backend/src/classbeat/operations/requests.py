@@ -5,6 +5,7 @@ before which a stale multi-request call may still be sending requests.
 Kept apart from ``classbeat.operations.protocol``, which uses both, so each module stays small.
 """
 
+import math
 from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass, field
 from typing import Any, Final
@@ -18,6 +19,7 @@ from classbeat.operations.kinds import (
     CALL_MAY_RUN_MARGIN_SECONDS,
     CLASS_WRITE_KINDS,
     FALLBACK_BOUND_SECONDS,
+    MAX_BOUND_SECONDS,
     MAX_CONTEXT_BYTES,
     context_size,
 )
@@ -32,13 +34,20 @@ from classbeat.operations.kinds import (
 # in for a row that predates it.
 _CLASS_KINDS_SQL: Final = ", ".join(f"'{name}'" for name in sorted(CLASS_WRITE_KINDS))
 _HAS_BOUND_SQL: Final = "jsonb_typeof(request_context -> 'bound_seconds') = 'number'"
+# The stored bound, clamped to 0..MAX_BOUND_SECONDS: a context written by anything but the
+# protocol can't make a row wait forever or end its wait before it began. Clamped as ``numeric``
+# (which holds any jsonb number) before the ``float8`` cast, so ``1e400`` clamps, not errors.
+_CLAMPED_BOUND_SQL: Final = (
+    f"least(greatest((request_context ->> 'bound_seconds')::numeric, 0), {MAX_BOUND_SECONDS})"
+    "::float8"
+)
 WAITING_SQL: Final = (
     f"(({_HAS_BOUND_SQL} OR kind IN ({_CLASS_KINDS_SQL})) "
     "AND NOT coalesce(call_ended_at >= pending_at, false))"
 )
 ACTIONABLE_AT_SQL: Final = (
     f"CASE WHEN {WAITING_SQL} THEN coalesce(pending_at, updated_at) + make_interval(secs => "
-    f"CASE WHEN {_HAS_BOUND_SQL} THEN (request_context ->> 'bound_seconds')::float8 "
+    f"CASE WHEN {_HAS_BOUND_SQL} THEN {_CLAMPED_BOUND_SQL} "
     f"ELSE {FALLBACK_BOUND_SECONDS} END + {CALL_MAY_RUN_MARGIN_SECONDS}) END"
 )
 # True while a stale call may still be running: no reconciliation, no user action.
@@ -93,8 +102,14 @@ class OperationRequest:
         if self.bound_seconds is not None:
             if self.single_request:
                 raise ValueError("a bound is for a call of several requests")
+            if not math.isfinite(self.bound_seconds):
+                raise ValueError("a bound is a finite number of seconds")
             if not self.timeout_seconds <= self.bound_seconds:
                 raise ValueError("the bound covers the call's whole timeout")
+            # Reads clamp a stored bound to this; a larger one would let a row become
+            # actionable while its call may still be sending requests.
+            if self.bound_seconds > MAX_BOUND_SECONDS:
+                raise ValueError("a bound is at most MAX_BOUND_SECONDS")
         elif self.kind in CLASS_WRITE_KINDS:
             raise ValueError("a class write is several requests and needs its bound")
         self.stored_context()

@@ -219,7 +219,7 @@ async def test_provenance_records_the_run_and_the_crossfade(
     made = provenance(outcomes, ctx.map)
     assert made.agent_run_ids == [outcomes[0].run_id]
     assert (made.map_version, made.crossfade_sec) == (12, spotify.CROSSFADE_SEC)
-    assert made.mowl_version == "0.5.0"
+    assert made.mowl_version == "0.6.0"
     assert made.cost_micros == runs(jenv, job_id)[0].cost_micros
     assert made.usage.input_tokens == 3000
     data = made.model_dump(mode="json")

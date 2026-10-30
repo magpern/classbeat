@@ -3,17 +3,19 @@
 
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
-from typing import Any
+from typing import Any, cast
 from uuid import UUID
 
 import pytest
-from sqlalchemy import text
+from sqlalchemy import CursorResult, text
+from sqlalchemy.exc import ProgrammingError
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from agentfake import CONFIG, analysed, brief, provider
 from classbeat.agent import DesignContext, JobStageHost, design_stage, run_stage
 from classbeat.agent import prices as price_module
 from classbeat.agent.prices import PRICES_VERSION
+from classbeat.db import user_session
 from classbeat.jobs import Complete, JobRun
 from classbeat.usage import job_usage, month_usage
 from ctx import make_context
@@ -114,6 +116,62 @@ async def test_the_price_version_stored_is_not_changed_by_editing_the_table(
     )
     stored = jenv.sql("SELECT price_version FROM agent_runs WHERE job_id = :j", j=job_id)
     assert stored.scalar_one() == PRICES_VERSION != "2099-01-01"
+
+
+async def test_a_price_bump_prices_only_later_jobs_and_a_finished_row_is_immutable(
+    jenv: JobsEnv, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Two jobs either side of a bump of ``PRICES_VERSION`` (the name the recorder imported): the
+    first keeps its version and cost, the second gets the new version, the monthly view adds both
+    as stored, and the app role can neither change nor delete a finished row."""
+    from classbeat.agent import records
+
+    ctx = DesignContext.build(brief(), analysed(monkeypatch))
+    owner, first = jenv.job()
+    await run_next(jenv, design_kind(ctx))
+    before = jenv.sql("SELECT id, price_version, cost_micros FROM agent_runs").one()
+    assert before.price_version == PRICES_VERSION
+
+    monkeypatch.setattr(records, "PRICES_VERSION", "2099-01-01")
+    _, second = jenv.job(owner)
+    await run_next(jenv, design_kind(ctx))
+    versions = {
+        r.job_id: (r.price_version, r.cost_micros)
+        for r in jenv.sql("SELECT job_id, price_version, cost_micros FROM agent_runs").all()
+    }
+    assert versions[first] == (PRICES_VERSION, before.cost_micros)  # not re-priced
+    assert versions[second][0] == "2099-01-01"
+    month = await month_usage(jenv.factory, make_context(owner), THIS_MONTH)
+    assert month is not None
+    assert month.total.cost_micros == before.cost_micros + versions[second][1]
+
+    # A finished row is immutable for the app role: a change touches nothing, a delete is denied.
+    async with user_session(jenv.factory, make_context(owner)) as db:
+        changed = await db.execute(
+            text("UPDATE agent_runs SET price_version = 'x', cost_micros = 0 WHERE id = :i"),
+            {"i": before.id},
+        )
+        assert cast(CursorResult[Any], changed).rowcount == 0
+    with pytest.raises(ProgrammingError):
+        async with user_session(jenv.factory, make_context(owner)) as db:
+            await db.execute(text("DELETE FROM agent_runs WHERE id = :i"), {"i": before.id})
+    kept = jenv.sql("SELECT price_version, cost_micros FROM agent_runs WHERE id = :i", i=before.id)
+    assert tuple(kept.one()) == (PRICES_VERSION, before.cost_micros)
+
+
+async def test_a_deleted_jobs_runs_each_count_as_a_job(jenv: JobsEnv, browsers: Any) -> None:
+    """Documented residue (``usage.service``): a deleted job's identity is gone with ``job_id``,
+    and ``agent_runs`` holds nothing else that names the job, so each of its runs counts as one
+    job in ``jobs`` while a live job counts once however many runs it has."""
+    alice: Browser = await browsers()
+    live = UUID((await alice.create()).json()["id"])
+    plant(jenv, alice.user_id, live, attempt=1)
+    plant(jenv, alice.user_id, live, attempt=2)
+    plant(jenv, alice.user_id, None, attempt=1)
+    plant(jenv, alice.user_id, None, attempt=2)
+    month = await month_usage(jenv.factory, make_context(alice.user_id), THIS_MONTH)
+    assert month is not None
+    assert (month.total.runs, month.total.jobs) == (4, 3)
 
 
 async def test_two_attempts_and_an_open_crashed_run_all_count(jenv: JobsEnv, browsers: Any) -> None:

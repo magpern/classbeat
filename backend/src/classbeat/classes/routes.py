@@ -7,11 +7,14 @@ unknown id and a malformed one are the same 404 ``not_found``. Errors carry a re
 ``uncertain_write`` (the delete).
 """
 
+import base64
+import json
 import re
+from datetime import datetime
 from typing import Annotated, Any
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, Query, Request
 from fastapi.responses import JSONResponse
 from pydantic import ValidationError
 
@@ -54,12 +57,43 @@ def _uuid(raw: str) -> UUID | None:
         return None
 
 
-@router.get("", response_model=ClassesOut)
+def _encode_cursor(after: service.Cursor) -> str:
+    raw = json.dumps([after[0].isoformat(), str(after[1])]).encode()
+    return base64.urlsafe_b64encode(raw).decode().rstrip("=")
+
+
+def _decode_cursor(cursor: str) -> service.Cursor | None:
+    try:
+        at, class_id = json.loads(base64.urlsafe_b64decode(cursor + "=" * (-len(cursor) % 4)))
+        when = datetime.fromisoformat(at)
+        parsed = UUID(class_id)
+    except (ValueError, TypeError):  # bad base64, JSON, shape, timestamp or uuid
+        return None
+    # A cursor names an instant: a naive timestamp would be read in the session's time zone.
+    if when.utcoffset() is None:
+        return None
+    return when, parsed
+
+
+@router.get("", response_model=ClassesOut, responses={422: {}})
 async def list_classes(
-    request: Request, ctx: Annotated[UserContext, Depends(auth.require_user)]
-) -> ClassesOut:
-    rows = await service.list_classes(request.app.state.session_factory, ctx)
-    return ClassesOut(classes=[ClassOut.of(r) for r in rows])
+    request: Request,
+    ctx: Annotated[UserContext, Depends(auth.require_user)],
+    limit: Annotated[int, Query(ge=1, le=service.LIST_LIMIT)] = service.LIST_LIMIT,
+    cursor: Annotated[str | None, Query(max_length=200)] = None,
+) -> ClassesOut | JSONResponse:
+    """Newest first, at most ``limit`` (default and maximum 500) per page; ``next_cursor`` goes
+    back as ``cursor`` for the next one."""
+    after = None if cursor is None else _decode_cursor(cursor)
+    if cursor is not None and after is None:
+        return _refuse("invalid_cursor", 422)
+    page = await service.list_classes(
+        request.app.state.session_factory, ctx, limit=limit, after=after
+    )
+    return ClassesOut(
+        classes=[ClassOut.of(r) for r in page.rows],
+        next_cursor=None if page.next_after is None else _encode_cursor(page.next_after),
+    )
 
 
 @router.get("/{class_id}", response_model=ClassOut, responses={404: {}})

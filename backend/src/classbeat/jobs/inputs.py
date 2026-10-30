@@ -15,12 +15,21 @@ and ``classbeat.connections`` reports it ``connected``. ``design_draft`` (D1) is
 Kinds whose input model is not a ``JobInput`` are not creatable through the API.
 """
 
+import json
 from typing import Annotated, Any, ClassVar, Self
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, StringConstraints, model_validator
 
 from classbeat.connections import PROVIDERS
+
+
+def jsonb_size(value: Any) -> int:
+    """The length of ``value`` as jsonb prints it (``", "`` and ``": "``), in UTF-8 bytes. The one
+    measure for the stored input and for a brief's column limit; the database check stays the
+    backstop."""
+    return len(json.dumps(value, ensure_ascii=False, separators=(", ", ": ")).encode("utf-8"))
+
 
 Title = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=100)]
 

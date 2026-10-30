@@ -26,6 +26,7 @@ from classbeat.operations import (
 from classbeat.operations.kinds import (
     CALL_MAY_RUN_MARGIN_SECONDS,
     FALLBACK_BOUND_SECONDS,
+    MAX_BOUND_SECONDS,
     context_size,
 )
 from classbeat.operations.protocol import RESOLVE
@@ -192,6 +193,17 @@ async def test_actionable_at_is_one_rule_for_every_row(wenv: WriteEnv) -> None:
     update = plant(wenv, owner, "uncertain", kind="mowl_update_workout", context={})
     assert await actionable(update) == fallback
     assert await actionable(plant(wenv, owner, "uncertain", kind=ATTACH, context={})) is None
+    # A stored bound is clamped to 0..MAX_BOUND_SECONDS (one rule, in the SQL): no row waits
+    # for hours, and none stops waiting before its margin.
+    huge = plant(wenv, owner, "uncertain", context={"bound_seconds": 1e9})
+    assert await actionable(huge) == MAX_BOUND_SECONDS + CALL_MAY_RUN_MARGIN_SECONDS
+    negative = plant(wenv, owner, "uncertain", context={"bound_seconds": -500})
+    assert await actionable(negative) == CALL_MAY_RUN_MARGIN_SECONDS
+    # A jsonb number past float8's range clamps too (PR #172 review item 4), not errors.
+    beyond = plant(wenv, owner, "uncertain", context={"bound_seconds": 10**400})
+    assert await actionable(beyond) == MAX_BOUND_SECONDS + CALL_MAY_RUN_MARGIN_SECONDS
+    below = plant(wenv, owner, "uncertain", context={"bound_seconds": -(10**400)})
+    assert await actionable(below) == CALL_MAY_RUN_MARGIN_SECONDS
     now = datetime.now(UTC)
     returned = plant(wenv, owner, "uncertain", pending_at=now, call_ended_at=now)
     assert await actionable(returned) is None
