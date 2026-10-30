@@ -13,7 +13,7 @@ dependencies = [
     "fastapi>=0.115",
     "httpx==0.28.1",
     "joserfc==1.7.7",
-    # The domain library (ADR 0001): v0.5.0 built from its tag WITHOUT the bundled Swedebeat app
+    # The domain library (ADR 0001): v0.6.0 built from its tag WITHOUT the bundled Swedebeat app
     # key (scripts/build-mowl-wheel.sh; threat model, accepted risks). Pinned by uv.lock's hash.
     "mowl-workouts==0.6.0",
     "psycopg[binary]>=3.2",
