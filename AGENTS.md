@@ -424,6 +424,8 @@ npm run build        # typecheck, then Vite writes frontend/dist
 - Fonts are bundled (`@fontsource-variable/inter`, `@fontsource/archivo` 700 and 800, SIL OFL) and served from
   our origin; nothing is requested from a third-party host at runtime (`src/no-third-party-hosts.test.ts`
   guards the sources). Pin exact versions of every package added; licences must be MIT, ISC, Apache-2.0 or OFL.
+  Accepted exception (Architect, #258): `lightningcss` (MPL-2.0), a build-time dependency of Tailwind's Vite
+  plugin; unmodified and not shipped in the bundle.
 - CI runs the same five commands in the `frontend` job.
 
 ### Stack and worktrees
