@@ -1,0 +1,140 @@
+/* The class page, My classes and the Change it chat. Tokens only (tokens.css). */
+
+.class-page {
+  display: grid;
+  gap: var(--cb-space-5);
+  max-width: 48rem;
+}
+
+.class-page > h1 {
+  margin: 0;
+  font-size: var(--cb-text-xl);
+  line-height: var(--cb-leading-tight);
+  overflow-wrap: anywhere;
+}
+
+.class-page > p {
+  margin: 0;
+}
+
+.class-list a {
+  font-weight: var(--cb-weight-medium);
+  overflow-wrap: anywhere;
+}
+
+.facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--cb-space-5);
+  margin: 0;
+}
+
+.facts div {
+  display: grid;
+}
+
+.facts dt {
+  color: var(--cb-color-text-muted);
+  font-size: var(--cb-text-sm);
+}
+
+.facts dd {
+  margin: 0;
+  font-size: var(--cb-text-lg);
+  font-weight: var(--cb-weight-bold);
+  font-variant-numeric: tabular-nums;
+}
+
+.timeline {
+  margin: 0;
+}
+
+.timeline__svg {
+  display: block;
+  width: 100%;
+  height: 8rem;
+  border: 1px solid var(--cb-color-border);
+  border-radius: var(--cb-radius-sm);
+  background: var(--cb-color-surface-sunken);
+}
+
+.timeline__edge {
+  stroke: var(--cb-color-border);
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+}
+
+.timeline__bar[data-zone='1'] { fill: var(--cb-zone-1); }
+.timeline__bar[data-zone='2'] { fill: var(--cb-zone-2); }
+.timeline__bar[data-zone='3'] { fill: var(--cb-zone-3); }
+.timeline__bar[data-zone='4'] { fill: var(--cb-zone-4); }
+.timeline__bar[data-zone='5'] { fill: var(--cb-zone-5); }
+.timeline__bar[data-zone='6'] { fill: var(--cb-zone-6); }
+.timeline__bar[data-zone='7'] { fill: var(--cb-zone-7); }
+
+.revisions li {
+  align-items: flex-start;
+  flex-wrap: wrap;
+}
+
+.revisions li[aria-current='true'] {
+  padding-left: var(--cb-space-3);
+  border-left: 3px solid var(--cb-color-primary);
+}
+
+.tag {
+  color: var(--cb-color-accent);
+  font-size: var(--cb-text-sm);
+  font-weight: var(--cb-weight-medium);
+}
+
+.chat__history {
+  display: grid;
+  gap: var(--cb-space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.chat__message {
+  padding: var(--cb-space-3);
+  border: 1px solid var(--cb-color-border);
+  border-radius: var(--cb-radius-sm);
+  background: var(--cb-color-bg);
+}
+
+.chat__message--answer {
+  border-left: 3px solid var(--cb-color-primary);
+}
+
+.chat__who {
+  margin: 0;
+  color: var(--cb-color-text-muted);
+  font-size: var(--cb-text-sm);
+  font-weight: var(--cb-weight-medium);
+}
+
+/* Requests and notes are plain text; keep their line breaks and break long words. */
+.chat__text {
+  margin: var(--cb-space-1) 0 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.chat__change {
+  margin: var(--cb-space-1) 0;
+  padding-left: var(--cb-space-5);
+}
+
+.chat__outcome {
+  margin: var(--cb-space-2) 0 0;
+}
+
+.chat textarea {
+  padding: var(--cb-space-2) var(--cb-space-3);
+  border: 1px solid var(--cb-color-border);
+  border-radius: var(--cb-radius-sm);
+  background: var(--cb-color-bg);
+  color: var(--cb-color-text);
+  font: inherit;
+}
