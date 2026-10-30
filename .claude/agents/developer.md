@@ -14,8 +14,11 @@ and the roadmap sections and ADRs it names before writing code.
   report back to the Architect instead of changing them.
 - Write tests with the code. Tests never use the network or real accounts; fake MOWL, Spotify,
   Swedebeat and model APIs.
-- Run the project's lint, type checks and tests locally before pushing; say in the PR what
-  you ran and the result.
+- Run the project's lint and type checks and the **targeted** tests (the files you changed and
+  the guards they touch) locally before pushing; say in the PR what you ran and the result.
+  Do not run the full suite locally: CI runs it, and a second full run only costs tokens and
+  time. Run the full suite only to chase a failure CI showed that the targeted files do not
+  reproduce. Keep command output short (`tail`, `-q`).
 - Commits and the PR title follow Conventional Commits; no `Co-Authored-By` trailer.
 - Open the PR with `gh pr create`, body: Scope, Acceptance criteria (each with how it's
   tested), `Closes #<issue>`, and the footer

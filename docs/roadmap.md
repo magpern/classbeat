@@ -56,6 +56,20 @@ Where it differs, this amendment wins over Revision 6's review gate ("Developmen
   a fresh Sonnet Reviewer. Whether a change touches a security-critical area, or a module a PR
   changes or calls, is the Architect's call; when in doubt, Opus and a review.
 
+## Amendment 4 (2026-10-30, owner decision: token cost)
+
+Where it differs, this amendment wins over Amendment 2's reviewer-model rule.
+
+- **Delta reviews by Sonnet:** a delta review (the diff since the last reviewed head) of a
+  security-critical PR may be done by a fresh **Sonnet** when the delta only adds or changes
+  tests or docs, loosens no guard test (netguard, session guard, egress guard, RLS and role
+  tests), and has no hand-resolved conflict in production code. After a second `FAIL` the
+  reviewer is a fresh Opus again.
+- **Review effort:** reviewers run targeted test files, never the full suite (CI does), and about
+  8 mutation checks per review, chosen by risk; the mutation each earlier finding needs in a
+  delta review is outside that cap, and a docs-only finding is verified by reading.
+- **Developers** run targeted tests locally, not the full suite.
+
 *Revision 6 — frozen for implementation. Song picking is a **core** feature with Claude
 choosing the final songs from real BPM and sections (the pool stage from `mowl-workouts`);
 the instructor approves once, then the class is created hands-off. **Spotify is
