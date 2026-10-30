@@ -1,36 +1,45 @@
 /*
- * Design tokens: the one place for colour, spacing and type.
- * Light is the default; dark follows prefers-color-scheme.
- * classbeat has its own look (lagoon teal, warm paper, amber): no colours or marks from
- * MOWL / Intelligent Cycling or any other product.
+ * Design tokens (ADR 0013 section 2): the one place for colour, spacing, type and shape.
+ * Night Studio: dark is the default; light is chosen with data-theme="light" on <html>, and
+ * data-theme="system" follows the device. theme-init.js sets the attribute before first paint.
+ * Zone colours are similar to, never identical to, MOWL's; the marks are classbeat's own.
  */
 
 :root {
-  color-scheme: light dark;
+  color-scheme: dark;
 
-  /* Colour: light */
-  --cb-color-bg: #f6f4ef;
-  --cb-color-surface: #ffffff;
-  --cb-color-surface-sunken: #ebe8e0;
-  --cb-color-border: #d3cfc2;
-  --cb-color-text: #1d2a2e;
-  --cb-color-text-muted: #51636a;
-  --cb-color-primary: #1f6f78;
-  --cb-color-on-primary: #ffffff;
-  --cb-color-accent: #8f4a08;
-  --cb-color-accent-soft: #f6e6d2;
-  --cb-color-success: #2b7a4b;
-  --cb-color-danger: #b23b30;
-  --cb-color-focus: #1f6f78;
+  /* Colour: dark (default) */
+  --cb-bg: #0e0f13;
+  --cb-surface: #17181e;
+  --cb-raised: #20222b;
+  --cb-line: #2c2f3b;
+  --cb-text: #f4f5f8;
+  --cb-muted: #a6abbb;
+  --cb-brand: #8b7bff;
+  --cb-on-brand: #0e0f13;
+  --cb-ok: #3ddc97;
+  --cb-ok-soft: #10301f;
+  --cb-warn: #ffb547;
+  --cb-warn-soft: #34270f;
+  --cb-bad: #ff7a7a;
+  --cb-bad-soft: #381a1c;
+  --cb-scrim: rgb(0 0 0 / 0.6);
+  --cb-paper: #ffffff;
 
-  /* Effort zones 1 (recovery) to 7 (all out), for the timeline chart */
-  --cb-zone-1: #8fb0b6;
-  --cb-zone-2: #3f8f98;
-  --cb-zone-3: #2b7a4b;
-  --cb-zone-4: #a07c10;
-  --cb-zone-5: #c0661a;
-  --cb-zone-6: #b23b30;
-  --cb-zone-7: #7a1f4a;
+  /* Effort zones 1 (recovery) to 7: the same in both themes. Zones 5 to 7 share one red. */
+  --cb-zone-1: #8e99a8;
+  --cb-zone-2: #3f9ce8;
+  --cb-zone-3: #7dc05a;
+  --cb-zone-4: #f9df4a;
+  --cb-zone-5: #f0483c;
+  --cb-zone-6: #f0483c;
+  --cb-zone-7: #f0483c;
+
+  /* The stage: class profiles always sit on charcoal */
+  --cb-stage: #26272b;
+  --cb-stage-grid: #383a42;
+  --cb-stage-text: #eceef2;
+  --cb-stage-muted: #a3a8b5;
 
   /* Spacing */
   --cb-space-1: 0.25rem;
@@ -42,14 +51,20 @@
   --cb-space-7: 3rem;
   --cb-space-8: 4.5rem;
 
-  /* Type: system fonts only, nothing is downloaded */
-  --cb-font-sans: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  /* Type: Inter for the UI, Archivo 700/800 for titles; both bundled */
+  --cb-font-sans: 'Inter Variable', system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif;
+  --cb-font-display: 'Archivo', 'Inter Variable', system-ui, sans-serif;
   --cb-font-mono: ui-monospace, 'Cascadia Code', 'SF Mono', Menlo, Consolas, monospace;
-  --cb-text-sm: 0.875rem;
+  --cb-text-xs: 0.75rem;
+  --cb-text-label: 0.8125rem;
+  --cb-text-sm: 0.9375rem;
   --cb-text-base: 1rem;
+  --cb-text-md: 1.0625rem;
   --cb-text-lg: 1.25rem;
-  --cb-text-xl: 1.75rem;
-  --cb-text-2xl: clamp(1.75rem, 1.1rem + 2.8vw, 2.75rem);
+  --cb-text-xl: 1.5rem;
+  --cb-text-2xl: 1.875rem;
+  --cb-text-3xl: clamp(2rem, 1.4rem + 2.2vw, 2.5rem);
+  --cb-text-4xl: clamp(2.25rem, 1.5rem + 3vw, 3.75rem);
   --cb-weight-regular: 400;
   --cb-weight-medium: 500;
   --cb-weight-bold: 700;
@@ -57,33 +72,52 @@
   --cb-leading-base: 1.55;
 
   /* Shape */
-  --cb-radius-sm: 0.375rem;
+  --cb-radius-art: 0.25rem;
+  --cb-radius-sm: 0.5rem;
   --cb-radius-md: 0.75rem;
+  --cb-radius-lg: 1.5rem;
   --cb-radius-full: 999px;
+  --cb-target: 2.75rem;
   --cb-content-width: 64rem;
+  --cb-duration: 150ms;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --cb-color-bg: #11191c;
-    --cb-color-surface: #182226;
-    --cb-color-surface-sunken: #0d1416;
-    --cb-color-border: #2c3b40;
-    --cb-color-text: #e7edef;
-    --cb-color-text-muted: #9fb1b7;
-    --cb-color-primary: #5cc1ca;
-    --cb-color-on-primary: #08262a;
-    --cb-color-accent: #e8a45e;
-    --cb-color-accent-soft: #3a2a18;
-    --cb-color-success: #6fcb97;
-    --cb-color-danger: #f08c82;
-    --cb-color-focus: #5cc1ca;
-    --cb-zone-1: #6d8c93;
-    --cb-zone-2: #5cc1ca;
-    --cb-zone-3: #6fcb97;
-    --cb-zone-4: #d8b84a;
-    --cb-zone-5: #e8a45e;
-    --cb-zone-6: #f08c82;
-    --cb-zone-7: #e0709f;
+:root[data-theme='light'] {
+  color-scheme: light;
+  --cb-bg: #f5f5f8;
+  --cb-surface: #ffffff;
+  --cb-raised: #eeeff4;
+  --cb-line: #dadce5;
+  --cb-text: #15161b;
+  --cb-muted: #5a6072;
+  --cb-brand: #5b4bdb;
+  --cb-on-brand: #ffffff;
+  --cb-ok: #0f6e43;
+  --cb-ok-soft: #ddf3e8;
+  --cb-warn: #9a5b00;
+  --cb-warn-soft: #fbebcf;
+  --cb-bad: #b32d24;
+  --cb-bad-soft: #fbe0dd;
+  --cb-scrim: rgb(20 22 30 / 0.5);
+}
+
+@media (prefers-color-scheme: light) {
+  :root[data-theme='system'] {
+    color-scheme: light;
+    --cb-bg: #f5f5f8;
+    --cb-surface: #ffffff;
+    --cb-raised: #eeeff4;
+    --cb-line: #dadce5;
+    --cb-text: #15161b;
+    --cb-muted: #5a6072;
+    --cb-brand: #5b4bdb;
+    --cb-on-brand: #ffffff;
+    --cb-ok: #0f6e43;
+    --cb-ok-soft: #ddf3e8;
+    --cb-warn: #9a5b00;
+    --cb-warn-soft: #fbebcf;
+    --cb-bad: #b32d24;
+    --cb-bad-soft: #fbe0dd;
+    --cb-scrim: rgb(20 22 30 / 0.5);
   }
 }
