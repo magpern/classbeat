@@ -17,6 +17,7 @@ import { ResetPage } from './pages/ResetPage'
 import { SignInPage } from './pages/SignInPage'
 import { SignUpConfirmPage } from './pages/SignUpConfirmPage'
 import { SignUpPage } from './pages/SignUpPage'
+import { SpotifyPage } from './pages/SpotifyPage'
 import { Link, RouterProvider, useRouter } from './router/Router'
 
 function Routes() {
@@ -47,6 +48,8 @@ function Routes() {
       return <NewClassPage />
     case '/account':
       return <AccountPage />
+    case '/account/spotify':
+      return <SpotifyPage />
     case '/admin':
       return <AdminPage />
     default:
