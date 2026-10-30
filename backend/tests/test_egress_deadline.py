@@ -16,6 +16,7 @@ import urllib.request
 from collections.abc import Iterator
 from dataclasses import dataclass, field
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
@@ -222,19 +223,36 @@ def test_mutation_without_the_deadline_a_drip_outlasts_the_socket_timeout(
     assert not finished
 
 
-def test_no_request_starts_after_the_call_deadline(drip: DripServer) -> None:
+def test_no_request_starts_after_the_call_deadline(
+    drip: DripServer, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """A save whose requests are each fast but whose whole runs past the bound: the request due
-    after the deadline is refused before it is sent, so nothing of the call outlives it."""
-    drip.mode, drip.pause = "fast", 0.15
-    started = time.monotonic()
-    with call_deadline(0.5), pytest.raises(RequestDeadline):
+    after the deadline is refused before it is sent, so nothing of the call outlives it.
+
+    Time is a fake clock that moves only when a request has finished (10 "seconds" each, inside
+    its own timeout; the call's bound is 25), so exactly three requests fit and the outcome does
+    not depend on how fast the machine is. The watchdog is not armed here (its real timer is a
+    second line of defence that would mask a missing check): this proves the refusal before
+    connecting, nothing else."""
+    now = [1000.0]
+    monkeypatch.setattr(egress, "time", SimpleNamespace(monotonic=lambda: now[0]))
+    monkeypatch.setattr(egress._Watchdog, "arm", lambda self, sock: None)  # pyright: ignore[reportPrivateUsage]
+    real_call = api.call
+
+    def call_taking_10_seconds(*args: Any, **kwargs: Any) -> Any:
+        try:
+            return real_call(*args, **kwargs)
+        finally:
+            now[0] += 10.0  # the library working after the answer
+
+    monkeypatch.setattr(api, "call", call_taking_10_seconds)
+    drip.mode = "fast"
+    with call_deadline(25), pytest.raises(RequestDeadline):
         workout.save(spec_of(DRAFT), CREDS, 7)
-    assert time.monotonic() - started < 0.9
-    assert 1 <= len(drip.paths) < WRITES  # it stopped part-way
-    sent = len(drip.paths)
-    time.sleep(0.4)
-    assert len(drip.paths) == sent  # and nothing more went out
-    assert drip.accepts == sent  # not even a connection for the request due after it
+    assert len(drip.paths) == 3  # starts at 0, 10 and 20 are inside the bound; 30 is not
+    time.sleep(0.3)  # real time: give a stray request the chance to show up
+    assert len(drip.paths) == 3  # and nothing more went out
+    assert drip.accepts == 3  # not even a connection for the request due after it
 
 
 def test_a_request_due_after_the_deadline_never_connects(drip: DripServer) -> None:

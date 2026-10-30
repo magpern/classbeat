@@ -131,6 +131,45 @@ Amendment 6 is M3c's (ADR 0012, PR #229).
 - **"Admin area", jobs:** waiting approvals and uncertain operations are shown, not resolved; an
   uncertain operation stays the user's to resolve (ADR 0005 §7).
 
+## Amendment 8 (2026-10-30, owner decisions: the UI redesign)
+
+The owner's decisions apply now. The design that carries them out is
+[ADR 0013](adr/0013-ui-design-night-studio.md), accepted by the owner on 2026-10-30.
+
+- **§8 Product: a full redesign.** The UI should be modern and attractive to people who are not
+  technical, with account and administrative things easy to reach.
+- **§8 "Own name, colours, fonts and icons; no MOWL logo/owl or copied assets"** now reads:
+  - classbeat has its own name, logo, icons and brand colour;
+  - **generated classes look and feel like MOWL**:
+    - zone colours on the bars like the MOWL app's: similar, never identical. The owner first said
+      "colors from MOWL on bars (or slightly off, but similar)", then that nothing is copied
+      exactly because it is probably copyrighted;
+    - zones 5 to 7 in one red;
+    - a mark above zone 6 (a flame, as in MOWL) and zone 7 (where MOWL has its owl mascot). Both
+      are lucide icons chosen by classbeat, never MOWL's artwork;
+    - this also replaces "own palette" in §8's Class row;
+  - fonts may be bundled third-party fonts;
+  - dark is the default theme, with a light theme available;
+  - still no MOWL logo, owl, wordmark or copied assets, and nothing may suggest the app is made by
+    MOWL.
+- **§8 Music:** the Spotify parts (choosing a playlist, songs for approval) should feel like
+  Spotify, within Spotify's branding rules for developers.
+- **ADR 0001, Frontend:** third-party UI components and libraries may be used (owner override).
+  Everything stays bundled and served from our origin. The one runtime third-party request ADR 0013
+  allows is Spotify album cover art of chosen songs (ADR 0013 §9). That narrows ADR 0009 §10 and
+  threat-model T73 ("no URL from a response is … stored or shown") for host-pinned album image
+  URLs only.
+- **Milestones: a new milestone MU, Night Studio UI** (owner, 2026-10-30). It runs beside M4 and
+  M5 and is done **before M6 starts**, so the testers get the new UI on the VPS.
+  - Deliverable: ADR 0013, issues #242, #243, #246 to #251 and #253 to #255.
+  - Done when:
+    - every page uses the ADR 0013 tokens and components, with no colour outside `tokens.css`. That
+      includes the M5 plan and admin pages, which use the components once UI1 has merged; UI2
+      restyles any that merged before it;
+    - the class profile follows ADR 0013 §7;
+    - covers load only from `i.scdn.co`, through `CoverArt`, behind the CSP header;
+    - UI10's viewport, axe and bundle checks are green in CI.
+
 *Revision 6 — frozen for implementation. Song picking is a **core** feature with Claude
 choosing the final songs from real BPM and sections (the pool stage from `mowl-workouts`);
 the instructor approves once, then the class is created hands-off. **Spotify is
