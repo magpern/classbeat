@@ -242,26 +242,75 @@ refuses when the built provider's kind does not match the choice's provider (so 
 data, so no `owner_id` and no RLS, like `connection_keks`; the app role's privileges below, checked by
 guard 2's privilege test):
 
-`model_eval_results`: **one row per recorded run and stage group** (a suite run covering both groups
-records two rows with the same `run_id`): `id`, `run_id`, `recorded_at`, `suite_version`,
-`manifest_digest`, `provider`, `model`, `effort`, `stage_group` (`design` | `songs`),
-`prompt_versions jsonb` (stage → SHA-256, the group's stages), `classbeat_version`, `results_sha256`
-(of the file as written), `verdict jsonb NOT NULL` (§4.3, the group's part, computed when recorded; an `incomplete` verdict is stored with `"passed": false`), `passed
-bool NOT NULL`, `total_cost_micros`, `authorization text` (1 to 200 characters: the owner's go-ahead,
-for example "owner 2026-11-03 chat"), and a unique key `(id, provider, model, effort, stage_group,
-passed)` for the foreign key below. **Append-only**: the app role has `SELECT` and `INSERT` only (a
-test that `UPDATE` and `DELETE` fail, like `agent_runs`). Two `CHECK`s, neither of which can
-evaluate to NULL: `jsonb_typeof(verdict->'passed') = 'boolean' AND passed = (verdict->>'passed')::boolean`
-(a verdict without a boolean `passed`, or with `null`, is refused, so the flag the foreign key reads
-equals the stored verdict's) and `provider IN ('anthropic', 'openai', 'deepseek')` (never `fake`).
+**One row per recorded run and stage group** in `model_eval_results` (a suite run covering both groups
+records two rows with the same `run_id`). The DDL below is **exact**: the migration may add indexes and
+comments, nothing else; any change to it is an ADR amendment. It was checked in a throwaway
+`postgres:17.11` container against the must-fail and must-pass cases listed after it (PR #229).
 
-`model_routes`: `route_key text` (`^[a-z0-9_]{1,40}$`), `stage_group`, `provider`, `model`, `effort`,
-`eval_result_id`, `gate_passed bool NOT NULL DEFAULT true CHECK (gate_passed)`, `set_at`, `set_by
-text`; primary key `(route_key, stage_group)`. A **composite foreign key** `(eval_result_id, provider,
-model, effort, stage_group, gate_passed)` → `model_eval_results (id, provider, model, effort,
-stage_group, passed)`: **the database refuses a route whose result is not a pass for exactly that
-provider, model, effort and group.** Deleting a route is how a model is disabled; the app role has
-`SELECT, INSERT, UPDATE, DELETE` on routes.
+```sql
+-- ADR 0012 §5: the gate tables (exact DDL; the migration may add indexes and comments only).
+CREATE TABLE model_eval_results (
+    id                uuid        PRIMARY KEY,
+    run_id            uuid        NOT NULL,
+    recorded_at       timestamptz NOT NULL DEFAULT now(),
+    suite_version     integer     NOT NULL CHECK (suite_version >= 1),
+    manifest_digest   text        NOT NULL CHECK (manifest_digest ~ '^[0-9a-f]{64}$'),
+    provider          text        NOT NULL CHECK (provider IN ('anthropic', 'openai', 'deepseek')),
+    model             text        NOT NULL CHECK (model ~ '^[A-Za-z0-9._:-]{1,100}$'),
+    effort            text        NOT NULL CHECK (effort IN ('low', 'medium', 'high', 'xhigh', 'max')),
+    stage_group       text        NOT NULL CHECK (stage_group IN ('design', 'songs')),
+    prompt_versions   jsonb       NOT NULL CHECK (jsonb_typeof(prompt_versions) = 'object'),
+    classbeat_version text        NOT NULL,
+    results_sha256    text        NOT NULL CHECK (results_sha256 ~ '^[0-9a-f]{64}$'),
+    verdict           jsonb       NOT NULL,
+    passed            boolean     NOT NULL,
+    total_cost_micros bigint      NOT NULL CHECK (total_cost_micros >= 0),
+    authorization_note text       NOT NULL CHECK (char_length(authorization_note) BETWEEN 1 AND 200),
+    -- Never NULL: `?` is false (not NULL) for a missing key on a NOT NULL jsonb, so AND is false.
+    CONSTRAINT model_eval_results_passed_matches_verdict CHECK (
+        verdict ? 'passed'
+        AND jsonb_typeof(verdict -> 'passed') = 'boolean'
+        AND passed = (verdict ->> 'passed')::boolean
+    ),
+    UNIQUE (run_id, stage_group),
+    CONSTRAINT model_eval_results_fk_target UNIQUE (id, provider, model, effort, stage_group, passed)
+);
+
+CREATE TABLE model_routes (
+    route_key      text        NOT NULL CHECK (route_key ~ '^[a-z0-9_]{1,40}$'),
+    stage_group    text        NOT NULL CHECK (stage_group IN ('design', 'songs')),
+    provider       text        NOT NULL CHECK (provider IN ('anthropic', 'openai', 'deepseek')),
+    model          text        NOT NULL,
+    effort         text        NOT NULL,
+    eval_result_id uuid        NOT NULL,
+    gate_passed    boolean     NOT NULL DEFAULT true CHECK (gate_passed),
+    set_at         timestamptz NOT NULL DEFAULT now(),
+    set_by         text        NOT NULL CHECK (char_length(set_by) BETWEEN 1 AND 200),
+    PRIMARY KEY (route_key, stage_group),
+    CONSTRAINT model_routes_passing_result
+        FOREIGN KEY (eval_result_id, provider, model, effort, stage_group, gate_passed)
+        REFERENCES model_eval_results (id, provider, model, effort, stage_group, passed)
+        MATCH FULL ON UPDATE RESTRICT ON DELETE RESTRICT
+);
+```
+
+Why it holds: every column the composite foreign key uses is `NOT NULL` on both sides and the key is
+`MATCH FULL`, so the key is always checked (under the default `MATCH SIMPLE` a NULL in any referencing
+column skips it). `passed_matches_verdict` cannot evaluate to NULL: `verdict` is `NOT NULL`, and
+`verdict ? 'passed'` is false, not NULL, when the key is missing, so the whole `AND` is false; a JSON
+`null` or a string fails `jsonb_typeof`. An `incomplete` verdict (§4.3) is stored with `"passed":
+false`. `ON UPDATE / ON DELETE RESTRICT` keep a result that a route uses from changing or going, on top
+of the app role having only `SELECT` and `INSERT` on results (append-only; a test that `UPDATE` and
+`DELETE` fail, like `agent_runs`). The app role has `SELECT, INSERT, UPDATE, DELETE` on routes;
+deleting a route is how a model is disabled. (The column is `authorization_note` because
+`AUTHORIZATION` is a reserved word.)
+
+Must fail (each a test in G1, #211): a result whose verdict is `{}`, `{"x": 1}`, `{"passed": null}`,
+`{"passed": "true"}` or NULL, or whose `passed` disagrees with it; a result with provider `fake` or a
+NULL provider, model or stage group; a route at a failing result, at a passing result with another
+effort, model or stage group, with a NULL model, with a NULL `eval_result_id`, with `gate_passed`
+false; an `UPDATE` of a route onto a failing result; an `UPDATE` or `DELETE` of a result a route uses.
+Must succeed: a passing and a failing result, a route at the passing result, deleting the route.
 
 **Who writes a result.** Only the live command with `--record`, in the worker container (the one with
 the keys and a database connection), after the last run: it computes the verdict from the runs it just
