@@ -29,14 +29,21 @@ SELECT c.id, c.title, c.created_at, c.updated_at, c.current_revision_id,
         WHERE r.owner_id = c.owner_id AND r.class_id = c.id AND r.kind = 'draft') AS revision_count,
     oj.id AS open_job_id, oj.kind AS open_job_kind, oj.state AS open_job_state,
     coalesce(sv.n, 0) AS saved_count, sv.revision_number AS saved_revision_number,
-    sv.updated_at AS saved_at, (sv.content_hash = cur.content_hash) AS saved_up_to_date
+    sv.updated_at AS saved_at, (sv.content_hash = cur.content_hash) AS saved_up_to_date,
+    sv.updatable_id AS saved_workout_id,
+    (SELECT count(*) FROM saved_workouts d
+        WHERE d.owner_id = c.owner_id AND d.class_id = c.id AND d.detached_at IS NOT NULL
+    ) AS detached_count
 FROM classes c
 LEFT JOIN class_revisions cur
     ON cur.owner_id = c.owner_id AND cur.class_id = c.id AND cur.id = c.current_revision_id
 LEFT JOIN jobs oj
     ON oj.owner_id = c.owner_id AND oj.class_id = c.id AND oj.state IN {OPEN_JOB}
 LEFT JOIN LATERAL (
-    SELECT count(*) OVER () AS n, s.revision_number, s.updated_at, s.content_hash
+    SELECT count(*) OVER () AS n, s.revision_number, s.updated_at, s.content_hash,
+        CASE WHEN s.operation_id IS NULL OR EXISTS (SELECT 1 FROM external_operations o
+            WHERE o.owner_id = s.owner_id AND o.id = s.operation_id AND o.class_id = s.class_id)
+        THEN s.id END AS updatable_id
     FROM saved_workouts s
     WHERE s.owner_id = c.owner_id AND s.class_id = c.id AND s.detached_at IS NULL
     ORDER BY s.updated_at DESC, s.id LIMIT 1) sv ON true

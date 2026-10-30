@@ -15,12 +15,20 @@ class OpenJobOut(BaseModel):
 
 
 class SavedOut(BaseModel):
-    """Summary of the live (not detached) MOWL workouts classbeat made for the class."""
+    """Summary of the live (not detached) MOWL workouts classbeat made for the class.
+
+    ``latest_saved_workout_id`` is classbeat's own id of the newest live ``saved_workouts`` row,
+    the one Update names (ADR 0007 section 5), never a MOWL program id; ``None`` when the class
+    has no live row or that row is not one Update would accept (its creating operation is of
+    another class). ``detached_count`` counts the rows detached by a MOWL disconnect, reconnect
+    or ``keys wipe`` (section 9)."""
 
     count: int
     latest_revision_number: int | None
     latest_saved_at: datetime | None
     latest_up_to_date: bool | None
+    latest_saved_workout_id: UUID | None
+    detached_count: int
 
 
 class ClassOut(BaseModel):
@@ -56,6 +64,8 @@ class ClassOut(BaseModel):
                 latest_revision_number=row.saved_revision_number,
                 latest_saved_at=row.saved_at,
                 latest_up_to_date=bool(row.saved_up_to_date) if has_saved else None,
+                latest_saved_workout_id=row.saved_workout_id if has_saved else None,
+                detached_count=int(row.detached_count),
             ),
             open_job_id=row.open_job_id,
             open_job=job,
