@@ -17,8 +17,9 @@ back and run again later); a claim is left to finish (5 s ``connect_timeout``, 3
 reaper.
 
 **A drifted queue or a privileged role** (``DatabaseRoleError``) stops the worker wherever it is
-raised: the background queue check, a claim, a run's or a maintenance step's new connection
-(#109 item 2). The running jobs are then handed back as on SIGTERM, and ``run`` raises it.
+raised: the background queue check, a claim, a run's or a maintenance step's new connection,
+a run's heartbeat (#109 item 2, #140 item 6). The running jobs are then handed back as on
+SIGTERM, and ``run`` raises it.
 """
 
 import asyncio
@@ -286,7 +287,10 @@ class Worker:
             for task in busy:
                 task.cancel()
             await asyncio.gather(*tasks, return_exceptions=True)
-        pending = [e for e in [*self.stranded, *executions] if e.needs_hand_back()]
+        # A run that raised ``DatabaseRoleError`` while this waited for it is both stranded and
+        # one of ``executions``: hand it back once (#140 item 5; ``Execution`` hashes by identity).
+        everyone = dict.fromkeys([*self.stranded, *executions])
+        pending = [e for e in everyone if e.needs_hand_back()]
         self.stranded = []
         results = await asyncio.gather(
             *(hand_back(e, self.factory) for e in pending), return_exceptions=True

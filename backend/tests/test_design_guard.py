@@ -250,3 +250,36 @@ async def test_a_retryable_job_failure_from_a_store_requeues_the_job_without_a_r
     assert jenv.counts(job_id)[1] == 0  # no revision
     assert "revision_created" not in jenv.kinds(job_id)
     assert "retry_scheduled" in jenv.kinds(job_id)
+
+
+@pytest.mark.parametrize("cancelled", [False, True])
+async def test_the_step_is_closed_whether_the_store_ran_or_not(
+    denv: DesignEnv,
+    fake_mowl: FakeMowlMusic,
+    monkeypatch: pytest.MonkeyPatch,
+    cancelled: bool,
+) -> None:
+    """#122 item 4: the music step's credentials are dropped once the attempt is over, also when
+    a cancel found by the final transaction means ``store`` never runs."""
+    owner, conn = await owner_with_mowl(denv)
+    steps: list[design_music.MusicStep] = []
+    real_load, real_run_stage = design_kind.load_music, design_kind.run_stage
+
+    async def keep_step(*args: Any, **kwargs: Any) -> design_music.MusicStep:
+        steps.append(await real_load(*args, **kwargs))
+        return steps[-1]
+
+    async def run_then_cancel(*args: Any, **kwargs: Any) -> Any:
+        outcome = await real_run_stage(*args, **kwargs)
+        if cancelled:  # after the last checkpoint: only the final transaction sees it
+            denv.ops.sql("UPDATE jobs SET cancel_requested_at = now() WHERE id = :id", id=job_id)
+        return outcome
+
+    monkeypatch.setattr(design_kind, "load_music", keep_step)
+    monkeypatch.setattr(design_kind, "run_stage", run_then_cancel)
+    job_id = denv.job(owner, conn)
+    await denv.run_next()
+    assert denv.ops.row(job_id).state == ("cancelled" if cancelled else "completed")
+    assert len(denv.revisions(job_id)) == (0 if cancelled else 1)
+    [step] = steps
+    assert step._opened is None  # pyright: ignore[reportPrivateUsage]

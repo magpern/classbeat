@@ -3,6 +3,7 @@ the app role under RLS, with the test-only kind. No provider is contacted."""
 
 import asyncio
 import hashlib
+from collections.abc import AsyncIterator
 from typing import Any
 from uuid import UUID
 
@@ -320,6 +321,37 @@ async def test_a_body_over_the_cap_is_refused_before_it_is_read(
     )  # fmt: skip
     assert approve.status_code == 413
     assert jenv.sql("SELECT count(*) FROM jobs").scalar() == 0
+
+
+@pytest.mark.parametrize("oversized", [False, True])
+async def test_a_chunked_body_without_a_length_is_capped_while_it_is_read(
+    jenv: JobsEnv, browsers: Any, oversized: bool
+) -> None:
+    """#140 item 4: a body sent without ``Content-Length`` (chunked) is counted as it arrives:
+    413 once it passes ``BODY_MAX_BYTES``; one under the cap is read whole and accepted."""
+    from classbeat.jobs.routes import BODY_MAX_BYTES
+
+    alice: Browser = await browsers()
+    note = "x" * BODY_MAX_BYTES if oversized else "hills"
+    payload = canonical_json(alice.body(note=note))
+
+    async def chunks() -> AsyncIterator[bytes]:
+        for start in range(0, len(payload), 4096):
+            yield payload[start : start + 4096]
+
+    headers = await alice.headers() | {
+        "Idempotency-Key": new_key(),
+        "Content-Type": "application/json",
+    }
+    response = await alice.client.post("/api/jobs", headers=headers, content=chunks())
+    alice.client.cookies.clear()
+    assert "content-length" not in response.request.headers
+    assert response.request.headers["transfer-encoding"] == "chunked"
+    if oversized:
+        assert (response.status_code, response.json()) == (413, {"detail": {"reason": "too_large"}})
+        assert jenv.sql("SELECT count(*) FROM jobs").scalar() == 0
+    else:
+        assert response.status_code == 201, response.text
 
 
 def test_jsonb_size_is_one_measure_for_the_input_and_the_brief_limit() -> None:

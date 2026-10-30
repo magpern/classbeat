@@ -197,6 +197,38 @@ async def test_a_database_blip_while_storing_retries_the_attempt(jenv: JobsEnv) 
     assert jenv.counts(job_id)[1] == 0  # the revision was rolled back
 
 
+@pytest.mark.parametrize("before_store", [None, "cancel", "lease_lost", "store_fails"])
+async def test_the_outcome_is_released_once_whether_its_store_ran_or_not(
+    jenv: JobsEnv, before_store: str | None
+) -> None:
+    """#122 item 4: ``release`` runs once the attempt is over, also when ``store`` never runs (a
+    cancel or a lost lease found by the final transaction) or raises."""
+    _, job_id = jenv.job()
+    calls: list[str] = []
+
+    async def store(fs):
+        calls.append("store")
+        if before_store == "store_fails":
+            raise JobFailure("not_connected")
+        return await store_draft(fs)
+
+    async def run(job_run: JobRun) -> Complete:
+        if before_store == "cancel":
+            jenv.sql("UPDATE jobs SET cancel_requested_at = now() WHERE id = :id", id=job_id)
+        elif before_store == "lease_lost":
+            jenv.sql("UPDATE jobs SET lease_version = lease_version + 1 WHERE id = :id", id=job_id)
+        return Complete(store, release=lambda: calls.append("release"))
+
+    execution = await run_next(jenv, registry_for(run))
+    expected = {
+        None: (["store", "release"], "completed"),
+        "cancel": (["release"], "cancelled"),
+        "lease_lost": (["release"], "lost"),
+        "store_fails": (["store", "release"], "failed"),
+    }[before_store]
+    assert (calls, execution.result) == expected
+
+
 @pytest.mark.parametrize("where", ["checkpoint", "stage", "fenced"])
 async def test_a_database_blip_inside_the_pipeline_retries_the_attempt(
     jenv: JobsEnv, monkeypatch: pytest.MonkeyPatch, where: str

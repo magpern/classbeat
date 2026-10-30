@@ -319,6 +319,72 @@ async def test_a_drift_met_by_a_run_stops_the_worker_and_hands_the_leases_back(
         assert jenv.kinds(job_id)[-1] == "requeued"
 
 
+def handed_back(caplog: pytest.LogCaptureFixture, job_id: uuid.UUID) -> list[str]:
+    return [
+        getattr(r, "job_state", "")
+        for r in caplog.records
+        if r.getMessage() == "job handed back" and getattr(r, "job_id", None) == str(job_id)
+    ]
+
+
+async def test_a_drift_met_by_a_run_while_shutdown_waits_is_handed_back_once(
+    jenv: JobsEnv, caplog: pytest.LogCaptureFixture
+) -> None:
+    """#140 item 5: a run raising ``DatabaseRoleError`` while ``stop_runs`` waits for it is both
+    stranded and one of the waited runs: one hand-back, not a second that finds the lease gone."""
+    _, job_id = jenv.job()
+    in_turn = asyncio.Event()
+
+    async def run(job_run: JobRun) -> Complete:
+        in_turn.set()
+        await until(job_run.shutdown.is_set, 30)
+        raise DatabaseRoleError(DRIFT)  # its next connection, after SIGTERM
+
+    caplog.set_level("INFO", logger="classbeat.jobs.runner")
+    async with running(jenv, registry_for(run)) as (_, stop, task):
+        await asyncio.wait_for(in_turn.wait(), 10)
+        stop.set()
+        await asyncio.wait_for(task, 30)
+    assert handed_back(caplog, job_id) == ["queued"]
+    row = jenv.row(job_id)
+    assert (row.state, row.attempt) == ("queued", 0)
+    assert jenv.kinds(job_id).count("requeued") == 1
+
+
+async def test_a_drift_met_by_the_heartbeat_stops_the_worker_and_hands_the_lease_back(
+    jenv: JobsEnv, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """#140 item 6: ``DatabaseRoleError`` on the heartbeat's connection is not a database blip
+    (which would lose the run after three): the run is abandoned and the worker stops."""
+    from classbeat.jobs import run as run_module
+
+    _, job_id = jenv.job()
+    beats = {"n": 0}
+    real = run_module.fenced_session
+
+    @contextlib.asynccontextmanager
+    async def drifted(factory: Any, lease: Any) -> AsyncIterator[Any]:
+        beats["n"] += 1  # the run below opens no fenced transaction: only the heartbeat does
+        raise DatabaseRoleError(DRIFT)
+        async with real(factory, lease) as fs:  # pragma: no cover
+            yield fs
+
+    async def run(job_run: JobRun) -> Complete:
+        job_run.lease_seconds = 0.15  # read by the heartbeat, which starts after this
+        await asyncio.sleep(60)  # abandoned by the heartbeat
+        return Complete()
+
+    monkeypatch.setattr(run_module, "fenced_session", drifted)
+    caplog.set_level("INFO", logger="classbeat.jobs.runner")
+    async with running(jenv, registry_for(run)) as (_, _, task):
+        with pytest.raises(DatabaseRoleError, match="planted"):
+            await asyncio.wait_for(task, 30)
+    assert beats["n"] == 1  # stopped at the first refusal, not retried as a blip
+    assert handed_back(caplog, job_id) == ["queued"]
+    row = jenv.row(job_id)
+    assert (row.state, row.attempt, row.error_category) == ("queued", 0, None)
+
+
 async def test_a_drift_met_by_maintenance_stops_the_worker(
     jenv: JobsEnv, monkeypatch: pytest.MonkeyPatch
 ) -> None:

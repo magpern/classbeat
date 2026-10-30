@@ -12,6 +12,9 @@ the attempt ended, exactly once and fenced:
   ``JobFailure`` raised by the outcome's ``store`` rolls the store back and counts the same way
   (any other exception there is ``internal``).
 
+The outcome's ``release`` runs once the attempt is over, on every path after the pipeline
+returned it.
+
 Only categories and exception type names are logged, never texts.
 """
 
@@ -194,6 +197,8 @@ async def execute(
     except DatabaseRoleError:
         raise  # not the job's failure: the worker stops and hands the lease back (#109 item 2)
     except asyncio.CancelledError:
+        if run.fatal is not None:  # abandoned by the heartbeat's DatabaseRoleError (#140 item 6)
+            raise run.fatal from None
         if run.lost and not shutdown.is_set():
             execution.settled, execution.result = True, "lost"
             return  # abandoned after the lease was lost; the reaper owns the job
@@ -210,6 +215,8 @@ async def execute(
         await _record(execution, factory, lambda fs: transitions.fail(fs, "internal"))
         return
     try:
+        if run.fatal is not None:  # the heartbeat met it after the run's last checkpoint
+            raise run.fatal
         await _finish(execution, factory, run, outcome, config)
     except JobFailure as failure:  # the kind's store refused (rolled back): its category
         await _failed(execution, factory, run, failure, config)
@@ -220,7 +227,20 @@ async def execute(
         # A database blip (connection lost, timeout) retries the attempt, fenced; anything else
         # is ``internal`` (failure_of).
         await _failed(execution, factory, run, failure_of(exc), config)
+    finally:
+        _release(outcome)
     _log(execution, "job attempt ended", job_state=execution.result)
+
+
+def _release(outcome: Outcome) -> None:
+    """The outcome's ``release`` once the attempt is over, whether its ``store`` ran or not (a
+    cancel, a lost lease, shutdown, a failure before it; #122 item 4)."""
+    if outcome.release is None:
+        return
+    try:
+        outcome.release()
+    except Exception as exc:  # never hides how the attempt ended
+        logger.warning("job outcome release failed", extra={"error_type": type(exc).__name__})
 
 
 async def _stopped(execution: Execution, factory: Factory, reason: str) -> None:
