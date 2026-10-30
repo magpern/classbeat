@@ -24,7 +24,14 @@ from classbeat.operations.kinds import (
     Reconciliation,
     request_hash,
 )
-from classbeat.operations.protocol import CallResult, Done, UncertainAnswer, perform
+from classbeat.operations.protocol import (
+    CallResult,
+    Done,
+    NotWritten,
+    UncertainAnswer,
+    perform,
+    perform_for,
+)
 from classbeat.operations.requests import OperationRequest
 
 __all__ = [
@@ -33,6 +40,7 @@ __all__ = [
     "OPERATION_KINDS",
     "CallResult",
     "Done",
+    "NotWritten",
     "Operation",
     "OperationKind",
     "OperationKinds",
@@ -43,5 +51,6 @@ __all__ = [
     "attach_spotify_playlist",
     "linked_playlist",
     "perform",
+    "perform_for",
     "request_hash",
 ]

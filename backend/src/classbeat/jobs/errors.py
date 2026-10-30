@@ -61,7 +61,11 @@ CATEGORIES: Final = (
 )
 # Retried by the worker (a new attempt with backoff). ``lease_lost`` is retried by the reaper and
 # ``operation_busy`` is requeued without an attempt (``classbeat.jobs.transitions``).
-RETRYABLE: Final = frozenset({"upstream_unavailable", "rate_limited", "model_unavailable"})
+# ``pool_missing`` (ADR 0008 sections 1 and 2, OP1): the pool playlist was gone; its id and the
+# pool operation rows are forgotten, so the retry creates a new pool under a new key and ``ref``.
+RETRYABLE: Final = frozenset(
+    {"upstream_unavailable", "rate_limited", "model_unavailable", "pool_missing"}
+)
 
 # A transient error of our own database (connection lost, a statement or lock timeout) during a
 # checkpoint, a stage write, a kind's own fenced write or the store of a result. ADR 0005 section 4
@@ -83,6 +87,15 @@ _FROM_CONNECTION: Final = {
     "key_unavailable": "key_unavailable",
     "decrypt_failed": "decrypt_failed",
     "not_connected": "not_connected",
+    # ADR 0009 section 8's Spotify categories that are job categories too (migration 0006), so
+    # a Spotify write's refusal keeps its category instead of ``internal`` (OP1). None of them is
+    # retried; ``rate_limited`` and ``upstream_unavailable`` are above.
+    "invalid_grant": "invalid_grant",
+    "app_misconfigured": "app_misconfigured",
+    "forbidden": "forbidden",
+    "quota_exhausted": "quota_exhausted",
+    "not_found": "not_found",
+    "invalid_response": "invalid_response",
 }
 
 

@@ -12,7 +12,8 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from sqlalchemy import text
 
-from classbeat import __version__, auth, saving  # saving registers save_workout (SV1)
+# saving registers save_workout (SV1); playlists the Spotify writes for Check again (OP1)
+from classbeat import __version__, auth, playlists, saving
 from classbeat.classes.routes import router as classes_router
 from classbeat.config import Settings, check_web_has_no_model_key
 from classbeat.connections.routes import router as connections_router
@@ -25,6 +26,7 @@ from classbeat.jobs.events_routes import router as job_events_router
 from classbeat.jobs.hub import EventHub
 from classbeat.jobs.routes import router as jobs_router
 from classbeat.operations.routes import router as operations_router
+from classbeat.playlists.runtime import playlists_runtime
 from classbeat.spotify.routes import api as spotify_router
 from classbeat.spotify.routes import callback as spotify_callback_router
 from classbeat.usage.routes import router as usage_router
@@ -93,6 +95,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     check_web_has_no_model_key(settings)  # the model key is the worker's only (ADR 0006 §9)
     # The save reconciler of the user's Check again (ADR 0007 section 8).
     saving.configure_listing_lag(settings.mowl_listing_lag_seconds)
+    # The Spotify create's and replace's reconcilers of the user's Check again (OP1).
+    playlists.configure(playlists_runtime(settings))
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
