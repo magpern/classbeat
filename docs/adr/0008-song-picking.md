@@ -68,8 +68,11 @@ created (below), and it uses a unique token and the owner check, not the display
 
 **Every write is preceded by an owner check** (inside the operation's call, before the first write
 request): `GET /playlists/{id}` must answer `owner.id == connection.public.spotify_user_id`, `public ==
-false` and `collaborative == false`. A 404 on the pool is `pool_missing` (the user deleted it: the
-row's `playlist_id` is set NULL conditionally and the retry creates a new one); anything else wrong is
+false` and `collaborative == false`. A 404 on the pool is `pool_missing` (the user deleted it). In one
+transaction the row's `playlist_id` and `last_hash` are set NULL conditionally (`WHERE owner_id = :u
+AND id = :pool_id AND playlist_id = :old`) and **`forget_pool`** (below) deletes the user's pool
+operation rows, so the retry creates a new pool under a new key and `ref` instead of reusing the
+deleted playlist's id; anything else wrong is
 `pool_unusable` ("make it private again or stop and set up the working playlist again"; classbeat
 never flips a user's privacy itself); 403 is `forbidden`. All three are `failed` with nothing written.
 `public: false` and `collaborative: false` are sent explicitly on every create (the library fixes
@@ -78,17 +81,31 @@ them, ADR 0009 M-2).
 **Two operation kinds**, both through `perform` (ADR 0005 §7, ADR 0007 §8). Both share-lock the
 Spotify connection in the decide transaction and compare its `generation` (ADR 0009 §5) and its
 Spotify user id with the ones the call will use, and the pool kind also re-reads `spotify_pool`
-(consent present, same `playlist_id`): a disconnect, reconnect or revoked consent in between ends the
+(consent present, the same `spotify_pool.id` and `playlist_id`): a disconnect, reconnect or revoked consent in between ends the
 job `not_connected` / `consent_missing` before `pending` is written.
 
 **`spotify_create_playlist`** (create only; one request, `single_request = True`, so a refusal before
-sending is `failed` and a drop after sending is `uncertain`). Pool key `spotify:pool-create` (the same
-row for every job of the user, like the attach); final key `<job_id>:final-create`. Request hash over
-`{kind, purpose, name, content_hash?}` (the final's covers the approved revision's hash). Context
-`{purpose: "pool"|"final", ref}` with `ref` = 12 hex characters of the operation id; the playlist's
-description is `classbeat ref <ref>` (plus a fixed sentence for the pool). `external_id` = the new
-playlist id. `on_succeeded`, in the same transaction: pool → `UPDATE spotify_pool SET playlist_id =
-:id WHERE owner_id = :u AND playlist_id IS NULL`; final → insert the `class_playlists` row (`created`).
+sending is `failed` and a drop after sending is `uncertain`). Pool key `<job_id>:pool-create` and
+final key `<job_id>:final-create`: **one row per job, never one per user**, so a later job (after a
+`pool_missing`, a revoked and re-given consent, or a retired uncertain create) always makes a new row
+with a new operation id and therefore a new `ref`; only the attempts of one job share a row, and a
+`failed` row is re-taken by them only when the create provably did not happen (refused before
+sending). Request hash over `{kind, purpose, name, pool_id?, content_hash?}` (the pool's covers the
+`spotify_pool.id`, the final's the approved revision's hash). Context `{purpose: "pool"|"final", ref,
+pool_id?}` with `ref` = 12 hex characters of the operation id; the playlist's description is
+`classbeat ref <ref>` (plus a fixed sentence for the pool). `external_id` = the new playlist id.
+`on_succeeded`, in the same transaction: pool → `UPDATE spotify_pool SET playlist_id = :id WHERE
+owner_id = :u AND id = :pool_id AND playlist_id IS NULL`; final → insert the `class_playlists` row
+(`created`).
+
+**`forget_pool(db, owner)`** (issue OP1, in `classbeat.spotify`) deletes the user's **pool operation
+rows**: every `spotify_create_playlist` and `spotify_replace_items` row with `class_id IS NULL`, in any
+state (an undecided one is gone, as in `forget_account`, ADR 0009 §7). It runs inside the caller's
+transaction and only there: the `pool_missing` NULLing above, the consent revoke (ADR 0009 §9), the
+Client ID change (ADR 0009 §7), and `forget_account` (which deletes these rows and the final ones).
+A job whose `pending` row is deleted under it cannot record its outcome (the fence finds no row),
+writes nothing more and is not retried; its next decide step re-reads `spotify_pool` and ends
+`consent_missing` or creates anew.
 
 **Reconciler for create-then-fill (the roadmap's open point).** The create is split from the fill so
 the id exists between the two requests, and an uncertain **create** is reconciled by the one thing it
@@ -119,11 +136,27 @@ reads the playlist the same way (owner check, then items): equal → `succeeded`
 unreadable → inconclusive. `on_succeeded`: pool → `last_hash`, `last_written_at`; final → the
 `class_playlists` row becomes `verified` with `content_hash` and `track_count`.
 
-**The pool never reaches the user as an uncertain write.** Because a pool replace is absolute, the
-decide step of the **next** pool replace by the same user marks an older `uncertain` pool replace row
-of that playlist `failed` (`resolved_by = 'worker'`) once its `actionable_at` has passed; before that
-the job requeues without an attempt (`operation_busy`). So a half-written pool simply gets
-overwritten, and the user sees only the job's own failure. A final playlist's uncertain create or fill
+**The user is never asked to resolve a pool write.** Pool rows (`class_id IS NULL`) get no **Check
+again** or **Do it anyway**: the operations routes answer 404 for them, so no user action ever re-sends
+a pool create under the same operation id and `ref`. A job whose pool write stays uncertain after its
+one automatic reconciliation fails `uncertain_write`, and the page words it for a pick ("the working
+playlist could not be confirmed; nothing was chosen. Start the pick again"). The **next** pick then
+supersedes the row in its own decide step:
+
+- *Pool replace.* Because a replace is absolute, the decide step of the next pool replace by the same
+  user marks an older `uncertain` (or orphaned `pending`) pool replace row of that playlist `failed`
+  (`resolved_by = 'worker'`) once its `actionable_at` has passed; before that the job requeues without
+  an attempt (`operation_busy`). A half-written pool simply gets overwritten.
+- *Pool create.* It is a single request, so its call is over when its job is no longer `running` under
+  the row's `lease_version`. The decide step of the next pool create (only reached while
+  `spotify_pool.playlist_id` is NULL) marks every older `uncertain` or orphaned `pending` pool create
+  row of the user `failed` (`resolved_by = 'worker'`) and creates under its own job's key, with a new
+  `ref`. If the superseded create did happen, an empty private playlist with the pool's name stays in
+  the user's Spotify and is never written to (its id was never stored); that is the accepted risk of
+  the stray empty playlist (threat model), extended to the pool. `pool_busy` (below) means no other pick
+  of the user is running, so the superseded row has no live holder.
+
+A final playlist's uncertain create or fill
 **is** shown (Check again / Do it anyway on `/api/operations/...`), and the page then offers "Create
 the playlist again" as a **resume** job (§6), which makes a new create under a new key.
 
@@ -324,7 +357,12 @@ or model failure that ended the job, expiry of a *started* phase 2). `admit` acc
 still the newest; the new job reserves credit again (the failed one released it), skips the creation
 of any verified `class_playlists` row for that revision, and otherwise creates anew. No new approval is
 needed because the user's click is the receipt; no other route to phase 2 exists, and an expired,
-superseded or never-approved list cannot be resumed.
+superseded or never-approved list cannot be resumed. **A receipt is spent once its list is done:**
+`admit` (under the owner lock) also refuses `receipt_invalid` when any job of the class whose
+approved or resumed revision is that `song_list` revision is `completed`, or is still `queued` or
+`running` (another resume in flight). So after a resume completes, the original failed job is no
+longer a receipt, and a second resume cannot reserve credit and attach, analyse and design again; after
+a resume that **failed**, the user may resume once more against the same receipt.
 
 ### 7. Waiting, expiry, cancel, credit
 
@@ -346,10 +384,11 @@ entries in SP1; its plant-and-delete test covers them):
 |---|---|---|
 | Track titles, artists, ids, BPM, lengths, order of the chosen songs | `class_revisions.content` (`song_list`), the draft's `music` | the class (cascade), the account |
 | Final playlist id and name | `class_playlists` | the class, the account, **Disconnect Spotify** (detached first, then with the class) |
-| Pool playlist id, Spotify user id, consent | `spotify_pool` | the account, **Disconnect Spotify**, **revoking the consent** |
+| Pool playlist id, Spotify user id, consent | `spotify_pool` | the account, **Disconnect Spotify**, a Client ID change, **revoking the consent**; the playlist id alone also on `pool_missing` |
 | Client ID, Spotify user id | `connections.public` | Disconnect, the account |
 | Tokens | `connections.secret` (ciphertext) | Disconnect, the account, `keys wipe` |
-| Playlist ids, `ref`, hashes | `external_operations.request_context`, `external_id` | the class for final-playlist kinds (`class_id` cascade), the account, Disconnect |
+| Playlist ids, `ref`, hashes of the pool kinds (`class_id NULL`) | `external_operations.request_context`, `external_id` | `forget_pool` (§2) in the same transaction as revoking the consent, `pool_missing` and a Client ID change; the account; Disconnect and an account change (`forget_account`) |
+| Playlist ids, `ref`, hashes of the final kinds | `external_operations.request_context`, `external_id` | the class (`class_id` cascade), the account, Disconnect and an account change (`forget_account`) |
 | Seed ids, brief, the user's change request | `jobs.input`, `class_messages` | the class |
 | Transient: OAuth flows, search registry, pool analysis | `spotify_oauth_flows` (≤ 10 min); memory | use or expiry; the run's end |
 
@@ -435,7 +474,10 @@ step. The checklist (issue T3 writes it into `docs/runbooks/m4-live-activation.m
    follow later edits of the playlist (§2 `pool_not_synced`); the real shape of `/items` (`item` vs
    `track`), its page size and the owner/privacy fields; the first `/me` 403 and the token endpoint's
    `invalid_grant` body for a user off the allow-list and a revoked token (ADR 0009 assumptions); how
-   soon a new playlist appears in `/me/playlists` (sets the listing lag).
+   soon a new playlist appears in `/me/playlists` (sets the listing lag). Also the facts ADR 0009's
+   Context takes from secondary sources: the `/items` path and field rename, that contents are
+   returned only for owned or collaborative playlists, that `POST /me/playlists` creates, that search
+   `limit` is at most 10, and the Development Mode allow-list size and Premium rule (step 1 and 2).
 4. One Approve: the final playlist, its read-back verification, the attach, the design.
 5. One Change songs.
 6. Real cost per song-picked class (the ceiling of §3 and `PRICES_VERSION`, as ADR 0007 §10).
@@ -451,9 +493,11 @@ callback mix-up, T67 token theft and refresh, T68 pool or playlist overwrite (th
 T69 injection through track metadata, T70 approval replay or a superseded list, T71 BYOK
 misconfiguration, T72 quota and 429 abuse, T73 SSRF through Spotify URLs, T74 half-written playlists,
 T75 two jobs on one pool, T76 Spotify-derived data surviving deletion, T77 stale connection used after a
-reconnect, T78 playlist privacy drift. Accepted risks added: a stray empty playlist after a **Do it
-anyway**, the pool's last candidates staying in the user's Spotify, the plaintext PKCE verifier for at
-most 10 minutes.
+reconnect, T78 playlist privacy drift. This ADR's own rows are T68 to T70 and T74 to T76 (T78 is
+shared); the others are ADR 0009's. Four accepted risks are added: a stray empty playlist after a
+**Do it anyway** or a superseded uncertain pool create, the pool's last candidates staying in the
+user's Spotify, the plaintext PKCE verifier for at most 10 minutes, and the Spotify Developer Terms
+risks of ADR 0010 for the beta circle.
 
 **Tests** (fakes only; ADR 0009 §13 lists the connection ones), each named in an issue's criteria:
 
@@ -472,9 +516,16 @@ most 10 minutes.
   replace (refuse before send, drop after send, answer without id, partial PUT): the states of §2; the
   create reconciler's table (one match, none with and without the lag setting, two, a failed or full
   listing); crash mid-fill then the next attempt never creates a second playlist; a stale call that is
-  still running blocks the next pool replace until `actionable_at`; the supersede rule; **resume**
-  after Do it anyway creates once more and designs; resume refuses an expired, superseded or
-  never-approved list.
+  still running blocks the next pool replace until `actionable_at`; the supersede rule for an
+  uncertain pool replace and an uncertain pool create (the next pick creates under its own key with a
+  new `ref`, and no Check again / Do it anyway route accepts a pool row); **resume** after Do it anyway
+  creates once more and designs; resume refuses an expired, superseded or never-approved list, and a
+  receipt whose list already has a `completed` job or a resume in flight.
+- **Pool lifetime**: after `pool_missing` the retry makes a new create row and a new playlist (the
+  deleted id is never returned from an old row); after a consent revoke and a new consent the next pick
+  creates a new pool and sends **no** request to the old playlist id; the revoke, the `pool_missing`
+  NULLing and a Client ID change leave no pool operation row (in the same transaction, a crash test
+  between the statements finds both or neither).
 - **Pool**: two picks of one user: the second gets `pool_busy`; two users concurrently each get their
   own pool; a MOWL that shows the old tracks gives `pool_not_synced`, one that shows the new gives a
   list; unknown-BPM tracks are left out and `pool_too_small` fires.
@@ -519,13 +570,15 @@ most 10 minutes.
 
 - M4 is fourteen issues (§13); eight need an Opus Developer (Spotify OAuth and egress, the connection,
   operations, the two jobs and the library release), and every PR gets a fresh Reviewer (Opus except
-  frontend, docs and E2E, and AG1, whose data-boundary review is Opus by the "when in doubt" rule).
+  frontend, docs and E2E; AG1, whose data-boundary review is Opus by the "when in doubt" rule; and
+  CL1 and SEC1, whose cross-user 404 and deletion tests are tenant isolation, Opus by the review gate).
 - The shared operation protocol grows additively: a set of multi-request kinds (the `bound_seconds`,
   `call_may_be_running` and `actionable_at` rules apply to Spotify's two kinds), the pool supersede
   rule and `generation` in place of `wrapped_dek` for connection guards; M3a/M3b tests pass unchanged.
 - `JobKind` gets one more optional seam, `approve_check`; ADR 0005 §2's approval is otherwise as built.
-- The user sees uncertain writes rarely; the pool never. A **Do it anyway** on a final playlist can
-  leave an empty private playlist in the user's Spotify.
+- The user sees uncertain writes rarely and is never asked to resolve a pool write. A **Do it anyway**
+  on a final playlist, or a superseded uncertain pool create, can leave an empty private playlist in
+  the user's Spotify.
 - A pick takes minutes (searches, MOWL analysis, a model turn or more) before the approval page; the
   per-user `pool_busy` rule means one pick at a time.
 - Real behaviour of MOWL on a changed Spotify playlist, the `/items` shapes and the 403 and token
@@ -549,12 +602,12 @@ the rest a Sonnet Developer. No issue is startable before ADRs 0008 and 0009 are
 | SP2 (#175) | Spotify egress and fakes: worker and web allowlists, `classbeat.spotify.http`, guard-test updates, `tests/spotifyfake.py` and `e2e/fake-spotify` with failure injection, compose e2e wiring | **Opus** | none |
 | SC1 (#176) | Spotify connection backend (ADR 0009): wizard routes, flow table use, callback rules, verification, storage, refresh with lock and rotation, `spotify_call`, error categories, Disconnect/Client ID/account change with `forget_account`, pool consent, rate limits, feature flag | **Opus** | SP1, SP2, L1 |
 | SC2 (#177) | Frontend: Spotify wizard, connection card and plain error sentences, pool consent step, reconnect prompt | Sonnet | SC1 |
-| OP1 (#178) | Operation kinds `spotify_create_playlist` and `spotify_replace_items`: calls, owner check, read-back verification, reconcilers (create by `ref`, replace by comparison), multi-request set, pool supersede, listing-lag setting, generation guard | **Opus** | SP1, SP2, SC1, L1 |
+| OP1 (#178) | Operation kinds `spotify_create_playlist` and `spotify_replace_items`: calls, owner check, read-back verification, reconcilers (create by `ref`, replace by comparison), multi-request set, pool supersede (replace and create), per-job pool create key, `forget_pool`, listing-lag setting, generation guard | **Opus** | SP1, SP2, SC1, L1 |
 | AG1 (#179) | Stages `pick_pool` and `choose_songs`: schemas, tools, search registry, limits, prompts and versions, `model_input` additions with the planted-value test, fake scripts (incl. injection), smoke cases | Sonnet (Opus Reviewer) | SC1, L1 |
 | SJ1 (#180) | `design_with_songs` phase 1: input, `admit` (`pool_busy`, consent), pool write and MOWL analysis with sync wait, `song_list` revision and hash, `AwaitApproval`, the `approve_check` seam (`account_changed`), expiry/cancel tests | **Opus** | AG1, OP1 |
 | SJ2 (#181) | `design_with_songs` phase 2 and resume: `prepare`, create, fill with read-back, attach, music and fingerprint check, design, store, `class_playlists`, receipt rule | **Opus** | SJ1 |
 | SJ3 (#182) | `revise_songs`: admit, kept/replace choose, new final playlist, `revise` stage with changed music, limits | **Opus** | SJ2 |
-| CL1 (#183) | Class and revision API: song state, `song_list` view, playlist link, class delete and Disconnect dialogs' data (playlists left in Spotify), retention tests, 404 tests | Sonnet | SJ1 |
+| CL1 (#183) | Class and revision API: song state, `song_list` view, playlist link, class delete and Disconnect dialogs' data (playlists left in Spotify), retention tests, 404 tests | Sonnet (Opus Reviewer) | SJ1 |
 | FE3 (#184) | Frontend: "Let Claude pick the songs", Designing stages, Songs for approval page and its states, Ask for changes, Change songs, uncertain panel with Create again | Sonnet | CL1, SC2, SJ2 |
 | SEC1 (#185) | Backend M4 done-when suite: two users on different Client IDs end to end, cross-user playlist overwrite, every error category, wrong-account callback, whole-flow planted-value and injection tests, partial-failure matrix, no-request-on-deletion test | Sonnet (Opus Reviewer) | SJ3, SC1 |
 | T3 (#186) | E2E with fakes (§12) and `docs/runbooks/m4-live-activation.md` (§11), status and AGENTS.md developer notes for Spotify | Sonnet | FE3, SEC1 |

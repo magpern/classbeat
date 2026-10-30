@@ -104,6 +104,11 @@ GitHub hold the detail.
   connection) are Proposed and split into 14 issues (#173 to #186), roadmap Amendment 5. The first work is
   the `mowl-workouts` v0.6.0 release by the local Architect (L1), the migration (SP1) and the Spotify
   egress and fakes (SP2). Nothing live is run; the owner-authorized live steps are in ADR 0008 §11.
+  ADR amendments owed when ADR 0009 is accepted (superseded-by pointers to ADR 0009 §5.4 and §6):
+  ADR 0004 §4 (status changes conditional on `wrapped_dek`), ADR 0005 §3 (the `connections` status
+  writes "conditional on `wrapped_dek`") and §4's category table ("a 401 or 403 (the status flips)",
+  narrowed for Spotify), and ADR 0007 §9 (Save's link, `hold` and credentials "from one `wrapped_dek`
+  generation"): the guard is `generation`, compared together with `id`.
 - Releases: v0.1.0 (cut partway through M0); v0.2.0 is not cut yet (deferred to save Actions quota). Image
   `ghcr.io/magpern/classbeat`, private.
 

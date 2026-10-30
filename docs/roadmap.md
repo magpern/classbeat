@@ -70,7 +70,10 @@ Where it differs, this amendment wins over Amendment 2's reviewer-model rule.
   delta review is outside that cap, and a docs-only finding is verified by reading.
 - **Developers** run targeted tests locally, not the full suite.
 
-## Amendment 5 (2026-10-30, Architect, ADRs 0008 and 0009)
+## Amendment 5 (2026-10-30, Architect, ADRs 0008 and 0009; effective on their acceptance)
+
+Like Amendment 3, this takes effect when ADRs 0008 and 0009 are accepted; until then they are
+Proposed and none of the M4 issues is startable.
 
 - **§6 retention, the periodic purge:** M4 stores no shared music analysis either (the pool's analysis
   lives in memory for the run; the chosen songs' BPM and lengths are in the owned `song_list`
@@ -82,6 +85,11 @@ Where it differs, this amendment wins over Amendment 2's reviewer-model rule.
   ([ADR 0009](adr/0009-spotify-connection.md) §9).
 - **§3 Spotify connect:** the scopes are only `playlist-read-private playlist-modify-private`;
   `connections.generation` replaces `wrapped_dek` as the version guard of every provider.
+- **§3 Client ID change:** where §3 says "changing the Client ID deletes the old connection's tokens
+  and forces a reconnect", the reading is: the old tokens **stay in use until a new flow with the new
+  Client ID succeeds** for the same Spotify account; only then are they replaced (and the pool consent
+  asked again). A failed or abandoned flow leaves the old connection working
+  ([ADR 0009](adr/0009-spotify-connection.md) §7).
 
 *Revision 6 — frozen for implementation. Song picking is a **core** feature with Claude
 choosing the final songs from real BPM and sections (the pool stage from `mowl-workouts`);

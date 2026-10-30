@@ -19,7 +19,7 @@ What exists and is relied on unchanged:
   Client ID and Spotify user id; the encrypted payload holds `{access_token, refresh_token,
   expires_at}`; `classbeat.connections` is the only module that decrypts and returns a redacting
   `Credentials`; library failures leave it as `ConnectionFailure(category)` with no chained exception
-  (ADR 0004 §5). ADR 0004 §3 lists the requirements a Spotify refresh must meet; §8 below meets them.
+  (ADR 0004 §5). ADR 0004 §3 lists the requirements a Spotify refresh must meet; §6 below meets them.
 - OAuth flow rows for sign-in (`oauth_flows`, ADR 0003 §5): state as SHA-256, the PKCE verifier kept
   as given, at most 10 minutes, deleted on use, the flow cookie. Recent authentication (10 minutes,
   `require_recent_auth`, ADR 0003 §6), CSRF, and the rate-limit mechanism (reserve first, 429 with
@@ -38,13 +38,16 @@ What exists and is relied on unchanged:
 
 Facts about the Spotify API this relies on, and how sure they are:
 
-- **Checked in the ADR 0010 research and the Feb 2026 changelog summary** (the developer pages
-  themselves could not be fetched from the design session): `/playlists/{id}/tracks` is renamed
-  `/items`, the response field `tracks` becomes `items` and nested fields follow the pattern, playlist
-  contents are returned only for playlists the user owns or collaborates on, `POST /me/playlists`
-  replaces the user-id form, search `limit` is at most 10, Development Mode allows 5 users per Client
-  ID via an allow-list and the app owner needs Premium.
-- **Assumptions, each marked where used and checked by the first live run** (§11 of ADR 0008): the
+- **From secondary sources only, so assumptions to verify at the first live step** (ADR 0008 §11
+  steps 1 to 3). They come from the ADR 0010 research and a search summary of the Feb 2026 changelog;
+  the developer pages themselves could not be fetched from the design session, so none of this is
+  checked: `/playlists/{id}/tracks` is renamed `/items`, the response field `tracks` becomes `items`
+  and nested fields follow the pattern, playlist contents are returned only for playlists the user
+  owns or collaborates on, `POST /me/playlists` replaces the user-id form, search `limit` is at most
+  10, Development Mode allows 5 users per Client ID via an allow-list and the app owner needs Premium.
+  The design relies on them as the most likely shape; the fakes encode them and a wrong one is an edit
+  of the reader and the fake (§11).
+- **Further assumptions, each marked where used and checked by the first live run** (§11 of ADR 0008): the
   playlist item object names the track `item` (a legacy `track` may remain); `/items` pages are at
   most 50; the 403 for a user missing from the allow-list or an app owner without Premium arrives at
   the first `GET /me`; the token endpoint answers a dead refresh token with HTTP 400 and the OAuth
@@ -118,14 +121,17 @@ UPDATE spotify_oauth_flows SET used_at = now()
 RETURNING client_id, redirect_uri, verifier, confirm_account_change
 ```
 
-Every mismatch deletes the row that `state` names (when there is one) and does nothing else: unknown,
-expired or used `state`; the signed-in user or the session is not the flow's; the request's own host
-or path is not the fixed callback. **The `redirect_uri` sent to the token endpoint is the stored one,
+On a mismatch the callback changes nothing and **deletes only the caller's own flow**: the row whose
+`state_hash`, `owner_id` and `session_hash` all match the request (`DELETE … WHERE state_hash = :h
+AND owner_id = :u AND session_hash = :s`), which exists only when that own flow is expired or used,
+or when the request's own host or path is not the fixed callback. A `state` that is unknown, or that
+names **another user's or another session's** flow, deletes nothing: that flow is not the caller's
+and stays valid for its owner. **The `redirect_uri` sent to the token endpoint is the stored one,
 re-checked equal to the setting**, never anything from the request. `?error=access_denied` (the user
-pressed Cancel) or any `error` ends with `result=access_denied` and no further call. A callback whose
-`state` belongs to another user's flow is the same answer as an unknown one (no distinction leaks), and
-it does **not** consume that other user's flow (the update is scoped by `owner_id` and `session_hash`);
-the mix-up test in §13 runs both users concurrently. The mix-up risk the roadmap names (a callback
+pressed Cancel) or any `error` ends with `result=access_denied`, deletes the caller's own flow the same
+way, and makes no further call. All these mismatches give the same answer (no distinction leaks); the
+mix-up test in §13 runs both users concurrently and asserts that the other user's flow still
+completes. The mix-up risk the roadmap names (a callback
 connecting a different account or app) is closed by three bindings: user and session (who may
 finish), Client ID (the token request names the stored one), redirect URI (stored, fixed).
 
@@ -140,10 +146,14 @@ ever**), then verification.
    `invalid_grant`; any other failure is its category. Nothing is stored on a failure; the tokens are
    dropped (Spotify has no app-side revoke call, the page says where to remove the app's access:
    spotify.com/account/apps).
-2. If the user has a connection already: same Spotify user id → the row is rewritten in place (new
-   Client ID or tokens; pool and rows kept); a **different** user id needs the flow's
+2. If the user has a connection already (one rule, §7's table): same Spotify user id and **same
+   Client ID** (a reconnect) → the row is rewritten in place, `generation` + 1, pool consent and rows
+   kept; same Spotify user id and a **new Client ID** → the row is rewritten in place, `generation` + 1,
+   and `forget_pool` (ADR 0008 §2) deletes the pool row and the pool operation rows in the same
+   transaction, so the consent is asked again; the final `class_playlists` rows stay attached (same
+   account, same playlists). A **different** Spotify user id needs the flow's
    `confirm_account_change`, otherwise the callback ends `account_changed` and stores nothing; with it,
-   §7's forget runs in the same transaction.
+   `forget_account` (§7) runs in the same transaction.
 3. Storage uses `classbeat.connections` only (ADR 0004 §4's write path: `SELECT … FOR UPDATE`, new DEK,
    `UPDATE` or `INSERT`). `public = {"client_id": "...", "spotify_user_id": "..."}`; the payload
    `{access_token, refresh_token, expires_at}` (epoch seconds, the token answer's `expires_in` minus 60
@@ -201,22 +211,46 @@ Spotify API with a user's token. Per call:
   from message text (ADR 0004 §5 stands). The body is parsed and discarded: never logged, never in an
   exception.
 
+**Status-flip rules for Spotify** (they narrow ADR 0004 §4 and the generic "a 401 or 403 (the status
+flips)" of ADR 0005 §4's category table for this provider). Because a refresh does not change `generation`, `generation`
+alone cannot tell a stale 401 from a current one, so a flip to `needs_reconnect` happens **only** in
+these two cases:
+
+- *The token endpoint* answers `invalid_grant` or `invalid_client` to a refresh. The flip is written in
+  the refresh transaction itself, under the row lock and after the re-read, conditional on `id` and
+  `generation`; it therefore always concerns the refresh token the row holds now.
+- *A 401 on an API call* whose access token is still the row's current one. A 401 first forces one
+  refresh (under the lock; if the re-read shows another caller already refreshed, no request), then
+  the read is repeated once. Only a 401 on that repeat flips, conditional on `id`, `generation` **and**
+  the `wrapped_dek` read when the repeat opened the row: any refresh, rewrap or reconnect after that
+  read changes it, and the flip writes zero rows. A 401 sent with a pre-refresh access token therefore
+  never flips a freshly refreshed connection; it only causes the (reused) refresh and the repeat. A
+  **write** is never repeated (§6 step 2): its 401 is a refusal (`failed`, nothing written), forces the
+  refresh, does not flip, and the job's next attempt (ADR 0005 §4) writes with the new token.
+
+`forbidden`, `not_found`, `not_allowlisted` (connect only, nothing is stored), the playlist 403s and
+every ownership refusal of ADR 0008 §2 **never** flip the status; they fail the job or the call with
+their category and leave the connection `connected`. A flip writes `status`, `last_error` and
+`updated_at` only, never `secret`, `wrapped_dek`, `key_id` or `generation`.
+
 The token endpoint is called by `classbeat.spotify.http` only (a guard test), from web (connect) and
 worker (refresh) alike, through `classbeat.egress` (§10).
 
 ### 7. Disconnect, a changed Client ID and a changed account
 
-`classbeat.spotify.forget_account(db, ctx)` is one transaction, called by every path below. It
-**deletes** the user's `spotify_pool` row, all their `spotify_create_playlist` and `spotify_replace_items`
-operations (any state; an undecided one is gone, as an undecided MOWL attach is, ADR 0006 §3), and the
-connection's tokens; it **detaches** (`detached_at = now()`) every `class_playlists` row (history, not
-reused; ADR 0008 §2). It does not touch MOWL links (they belong to the MOWL account) or any playlist in
-Spotify.
+`classbeat.spotify.forget_account(db, ctx)` is one transaction, called by Disconnect and an account
+change. It **deletes** the user's `spotify_pool` row, all their `spotify_create_playlist` and
+`spotify_replace_items` operations (pool and final, any state; an undecided one is gone, as an
+undecided MOWL attach is, ADR 0006 §3; this includes what `forget_pool` deletes), and the connection's
+tokens; it **detaches** (`detached_at = now()`) every `class_playlists` row (history, not reused; ADR
+0008 §2). `forget_pool` (ADR 0008 §2) is its narrower part, run alone in the transaction of a consent
+revoke (§9), a `pool_missing` and a Client ID change. Neither touches MOWL links (they belong to the
+MOWL account) or any playlist in Spotify.
 
 | Action | Effect |
 |---|---|
 | **Disconnect** (`DELETE`, recent auth, CSRF) | `forget_account` and the row deleted. "Revokes locally": Spotify has no app-side revocation, so the page says classbeat stopped using the tokens and where to remove the app's access in Spotify |
-| **Client ID change** (a start with another Client ID than the row's) | at the callback, once the new tokens are verified for the **same** Spotify user: the old tokens are replaced (generation +1) and the user is forced through the whole wizard (consent included: the pool row is deleted and consent asked again). A different user id needs `confirm_account_change` and forgets as above. A failed or abandoned flow leaves the old connection untouched; the page shows it as "reconnecting" |
+| **Client ID change** (a start with another Client ID than the row's) | nothing changes at the start, and **the old tokens stay in use until a new flow succeeds**. At the callback, once the new tokens are verified for the **same** Spotify user: the old tokens are replaced (generation +1) and `forget_pool` runs in the same transaction, so the user is forced through the rest of the wizard (the pool consent is asked again); class playlists stay attached. A different user id needs `confirm_account_change` and runs `forget_account`. A failed or abandoned flow leaves the old connection untouched; the page shows it as "reconnecting" |
 | **Reconnect** (same Client ID, same account, e.g. after `needs_reconnect`) | rewritten in place (generation +1); pool consent and rows kept |
 | **Account deletion**, `keys wipe` | the row cascades or is deleted; `spotify_pool` and the rest cascade (ADR 0004 §2, ADR 0003 §6) |
 
@@ -232,7 +266,7 @@ the three category checks of ADR 0007 §1):
 
 | Category | From | Retry | What the page says |
 |---|---|---|---|
-| `invalid_grant` | token endpoint 400 `invalid_grant`; or 401 on a call after one refresh | no (reconnect) | "Spotify no longer accepts the connection. Reconnect Spotify." |
+| `invalid_grant` | token endpoint 400 `invalid_grant`; or 401 on the repeat of a read after one refresh (the only two that flip the status, §6) | no (reconnect) | "Spotify no longer accepts the connection. Reconnect Spotify." |
 | `app_misconfigured` | token endpoint `invalid_client` / `invalid_request`; `redirect_uri` mismatch reported by Spotify as `error` on the callback | no | "Spotify does not recognise this app setup. Check the Client ID and the redirect URI in your Spotify app." |
 | `not_allowlisted` | 403 on the first `GET /me` of a connect | no | "Spotify refused this account. In your Spotify app's *User Management* add this account's name and email (Development Mode allows 5 people), and make sure the app's owner has Spotify Premium." |
 | `forbidden` | any other 403 | no | "Spotify refused this request for your account or playlist." (the ownership checks of ADR 0008 §2 run first, so this is rare) |
@@ -244,7 +278,9 @@ the three category checks of ADR 0007 §1):
 | `account_changed` | §5 | no | "This is a different Spotify account than before. Confirm to switch (classbeat forgets the working playlist)." |
 | `access_denied` | the user pressed Cancel on Spotify's page | no | "Spotify was not connected." |
 
-`last_error` stores the category; a provider message is never stored or shown. The admin area shows the
+Only `invalid_grant` and `app_misconfigured` (from the token endpoint) flip the connection to
+`needs_reconnect`, by the rules of §6; every other category leaves the status alone. `last_error`
+stores the category; a provider message is never stored or shown. The admin area shows the
 last category only (roadmap, "Admin area"). **Quota:** besides what Spotify answers, classbeat caps its
 own use: `CLASSBEAT_SPOTIFY_CALLS_PER_JOB` (default 300 requests per job, counted in the fenced usage
 note of the stage; over it the job fails `limit_exceeded`) and the library never sleeps on a 429
@@ -259,9 +295,12 @@ CSRF, needs `connected`) inserts it with `playlist_id NULL` and the connection's
 wizard's last step shows the sentence: "classbeat manages one private working playlist in your Spotify
 account, named *classbeat working copy*, to ask for song candidates and have MOWL analyse them. It is
 overwritten on each pick; anyone with its link could open it." (the wording T25 requires about
-non-public playlists). `DELETE` revokes: the row is deleted (the playlist id is forgotten and **never
-touched again**; the page tells the user the playlist stays in their Spotify and how to delete it), and
-song picking needs consent again (a new pool playlist is created on the next pick). Every write to the
+non-public playlists). `DELETE` revokes, in **one transaction**: the row is deleted and `forget_pool`
+(ADR 0008 §2) deletes the user's pool operation rows, the succeeded create that holds the old id and
+the replace rows whose hash covers it included. The playlist id is therefore forgotten and **never
+touched again** (no row is left from which a later pick could reuse it; the page tells the user the
+playlist stays in their Spotify and how to delete it), and song picking needs consent again (a new
+pool playlist is created on the next pick, under that job's own create key and a new `ref`). Every write to the
 pool checks the row exists at the operation's decide step (ADR 0008 §2); a pick job without consent
 fails `consent_missing` before any call. Consent is logged as `job_events`-free audit: an
 `auth_events` row `spotify_pool_consent` / `spotify_pool_revoked` (ids only), through `classbeat.auth`
@@ -362,12 +401,16 @@ Tests, each named in an issue's criteria:
   `code` never in logs, events or errors; state single-use under two concurrent callbacks.
 - **Tokens**: refresh before expiry; two concurrent refreshes make one request and keep the rotated
   refresh token; a failed write after a rotation fails the call; `invalid_grant` flips the status once
-  and a stale call from before a reconnect does not (generation); a refresh does not invalidate a running
-  job's `hold`; `pg_dump` has ciphertext only; `repr` redaction; the library never reaches the token
+  and a stale call from before a reconnect does not (generation); a 401 sent with a pre-refresh access
+  token, answered after another caller refreshed, does not flip the refreshed connection (`wrapped_dek`
+  changed); `forbidden`, `not_found` and the playlist 403s never flip; a refresh does not invalidate a
+  running job's `hold`; `pg_dump` has ciphertext only; `repr` redaction; the library never reaches the token
   endpoint (fake records zero token requests from a library call).
 - **Every category** of §8 from the fake, on connect and on use, with the sentence the API returns.
 - **Account/app changes**: Client ID change, other Spotify account with and without confirmation,
-  disconnect: tokens, pool, operations and detach exactly as §7, nothing else touched.
+  disconnect, consent revoke: tokens, pool, operations and detach exactly as §5 step 2, §7 and §9,
+  nothing else touched; after a revoke and a new consent the next pick sends no request to the old
+  pool id. A wrong-user or wrong-session callback leaves the other flow usable.
 - **Isolation**: two users on **different Client IDs** with their own tokens, tracks, pool and
   playlists, concurrently: every fake request carries the right user's token and Client ID; 404 on the
   other's ids; a model-chosen or browser-sent playlist id is never used (ADR 0008).
@@ -376,10 +419,12 @@ Tests, each named in an issue's criteria:
 
 ### 14. Threat model
 
-New rows T66 to T73 and T78 in [the threat model](../security/threat-model.md): callback mix-up and
-code injection (extends T14), token theft and refresh (T40/T41 extended), BYOK misconfiguration, quota
-and rate-limit abuse, SSRF through Spotify URLs, cross-user token use through a stale connection, and
-playlist privacy drift. ADR 0008 adds the rows for the playlists, the stages and the approval.
+This ADR's rows in [the threat model](../security/threat-model.md) are T66, T67, T71 to T73, T77 and
+T78: callback mix-up and code injection (T66, extends T14), token theft and refresh (T67, T40/T41
+extended), BYOK misconfiguration (T71), quota and rate-limit abuse (T72), SSRF through Spotify URLs
+(T73), a stale connection used after a reconnect or account change (T77, §5, §6), and playlist privacy
+drift (T78, shared with ADR 0008). ADR 0008 adds T68 to T70 and T74 to T76 for the playlists, the
+stages and the approval.
 
 ## Alternatives
 
@@ -410,4 +455,7 @@ playlist privacy drift. ADR 0008 adds the rows for the playlists, the stages and
   the real library code (L1 gates the other issues).
 - Every `connections` consumer that compared `wrapped_dek` now compares `generation` (SP1 changes
   `hold` and the flips; its tests cover MOWL unchanged).
-- Threat model T66 to T73, T78.
+- Threat model T66, T67, T71 to T73, T77, T78.
+- ADR 0004 §4, ADR 0005 §3 and ADR 0007 §9 still describe the `wrapped_dek` guard, and ADR
+  0005 §4's category table the generic 401/403 flip; on acceptance §5.4 and §6 supersede them, recorded
+  under "ADR amendments owed" in `docs/status.md`.
