@@ -176,6 +176,35 @@ async def test_a_lost_lease_stores_nothing(
     assert renv.denv.ops.row(job_id).state != "completed"
 
 
+@pytest.mark.parametrize("cancelled", [False, True])
+async def test_the_step_is_closed_whether_the_store_ran_or_not(
+    renv: ReviseEnv, monkeypatch: pytest.MonkeyPatch, cancelled: bool
+) -> None:
+    """#122 item 4: the music step's credentials are dropped once the attempt is over, also when
+    a cancel found by the final transaction means ``store`` never runs."""
+    class_id, base = await renv.design()
+    steps: list[Any] = []
+    real_load, real_run_stage = revise_mod.load_music, revise_mod.run_stage
+
+    async def keep_step(*args: Any, **kwargs: Any) -> Any:
+        steps.append(await real_load(*args, **kwargs))
+        return steps[-1]
+
+    async def run_then_cancel(*args: Any, **kwargs: Any) -> Any:
+        outcome = await real_run_stage(*args, **kwargs)
+        if cancelled:  # after the last checkpoint: only the final transaction sees it
+            renv.sql("UPDATE jobs SET cancel_requested_at = now() WHERE kind = 'revise_draft'")
+        return outcome
+
+    monkeypatch.setattr(revise_mod, "load_music", keep_step)
+    monkeypatch.setattr(revise_mod, "run_stage", run_then_cancel)
+    job_id, _ = await renv.revise(class_id, base, "revise_good")
+    assert renv.denv.ops.row(job_id).state == ("cancelled" if cancelled else "completed")
+    assert len(renv.revisions(class_id)) == (1 if cancelled else 2)
+    [step] = steps
+    assert step._opened is None  # pyright: ignore[reportPrivateUsage]
+
+
 async def test_a_retry_restarts_the_stage_from_its_beginning_and_stores_once(
     renv: ReviseEnv,
 ) -> None:

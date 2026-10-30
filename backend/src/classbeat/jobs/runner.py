@@ -136,14 +136,23 @@ async def _pipeline(run: JobRun, kind_run: Any) -> Outcome:
     task: asyncio.Task[Outcome] = asyncio.ensure_future(kind_run(run))
     run.on_lost(task.cancel)  # a lost lease abandons the run (not an external call in flight)
     heartbeat = asyncio.ensure_future(run.heartbeat())
+    returned = False
     try:
-        return await task
+        try:
+            outcome = await task
+        finally:
+            heartbeat.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await heartbeat
+            if not task.done():
+                task.cancel()
+        returned = True
+        return outcome
     finally:
-        heartbeat.cancel()
-        with contextlib.suppress(asyncio.CancelledError):
-            await heartbeat
-        if not task.done():
-            task.cancel()
+        # The kind returned its outcome, but this was cancelled (shutdown) before handing it on:
+        # nobody else will release it (#122 item 4).
+        if not returned and task.done() and not task.cancelled() and task.exception() is None:
+            _release(task.result())
 
 
 async def execute(
@@ -204,6 +213,8 @@ async def execute(
             return  # abandoned after the lease was lost; the reaper owns the job
         raise  # shutdown: the worker hands the lease back
     except Exception as exc:
+        if run.fatal is not None:  # met by the heartbeat during a call that then failed
+            raise run.fatal from None
         if run.lost:
             execution.settled, execution.result = True, "lost"
             return
@@ -232,13 +243,14 @@ async def execute(
     _log(execution, "job attempt ended", job_state=execution.result)
 
 
-def _release(outcome: Outcome) -> None:
+def _release(outcome: object) -> None:
     """The outcome's ``release`` once the attempt is over, whether its ``store`` ran or not (a
     cancel, a lost lease, shutdown, a failure before it; #122 item 4)."""
-    if outcome.release is None:
+    release = outcome.release if isinstance(outcome, Complete | AwaitApproval) else None
+    if release is None:
         return
     try:
-        outcome.release()
+        release()
     except Exception as exc:  # never hides how the attempt ended
         logger.warning("job outcome release failed", extra={"error_type": type(exc).__name__})
 
