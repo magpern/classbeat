@@ -34,6 +34,8 @@ COVERED = {
     "revise_unchanged",
     "revise_overloaded",
     "revise_note_too_long",
+    # used by the e2e specs (e2e/tests/class-save.spec.ts): a revise that changes the description
+    "revise_description",
 }
 
 SPEC = StageSpec("design", "s", (), "m", "fake-model", "medium", 32_000, "submit_draft")
