@@ -91,7 +91,7 @@ async def hand_back(execution: Execution, factory: Factory) -> None:
             claimed.job_id, claimed.lease_version, owner_context(claimed.owner_id)
         )
     await _record(execution, factory, transitions.hand_back)
-    _log(execution, "job handed back", state=execution.result)
+    _log(execution, "job handed back", job_state=execution.result)
 
 
 async def _finish(
@@ -126,7 +126,7 @@ async def _failed(
         return await transitions.retry(fs, category, delay)
 
     await _record(execution, factory, write)
-    _log(execution, "job attempt failed", category=category, state=execution.result)
+    _log(execution, "job attempt failed", category=category, job_state=execution.result)
 
 
 async def _pipeline(run: JobRun, kind_run: Any) -> Outcome:
@@ -220,7 +220,7 @@ async def execute(
         # A database blip (connection lost, timeout) retries the attempt, fenced; anything else
         # is ``internal`` (failure_of).
         await _failed(execution, factory, run, failure_of(exc), config)
-    _log(execution, "job attempt ended", state=execution.result)
+    _log(execution, "job attempt ended", job_state=execution.result)
 
 
 async def _stopped(execution: Execution, factory: Factory, reason: str) -> None:
@@ -230,4 +230,4 @@ async def _stopped(execution: Execution, factory: Factory, reason: str) -> None:
         await hand_back(execution, factory)
     else:
         await _record(execution, factory, transitions.cancel)
-        _log(execution, "job cancelled", state=execution.result)
+        _log(execution, "job cancelled", job_state=execution.result)

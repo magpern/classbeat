@@ -34,12 +34,28 @@ _PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
     (re.compile(r"(/oauth/[^\s?\"'#]*)\?[^\s\"'#]*"), r"\1"),
     # Mail links carry their token in the fragment (section 5): ``/reset#token=...``.
     (re.compile(r"(?i)([#?&]token=)[\w.~%-]+"), rf"\1{_REDACTED}"),
+    # ADR 0009 §10: the OAuth ``code``, ``code_verifier`` and ``state`` (and the token endpoint's
+    # other secrets) in a query or form string, wherever it is (a callback URL, a token request
+    # body in an exception), and as a quoted key in a dict or JSON text.
+    (
+        re.compile(
+            r"(?i)(?<![\w-])(code|code_verifier|state|refresh_token|access_token|client_secret)"
+            r"=[^&\s\"'#]*"
+        ),
+        rf"\1={_REDACTED}",
+    ),
+    (
+        re.compile(r"(?i)([\"'](?:code|code_verifier|state)[\"']\s*:\s*[\"'])[^\"']*"),
+        rf"\1{_REDACTED}",
+    ),
 )
 
 
 # ADR 0004 section 7: values under these keys are masked wherever they appear in a record
 # (``extra`` fields, nested dicts): provider tokens, passwords, tickets, cookies and anything under
-# ``public`` or ``secret`` of a connection row, plus the row's key material columns.
+# ``public`` or ``secret`` of a connection row, plus the row's key material columns. ADR 0009 §10
+# adds the OAuth ``code``, ``code_verifier`` and ``state`` (so no log field is named ``state``:
+# a job's state is logged as ``job_state``).
 SECRET_KEYS = frozenset(
     {
         "token",
@@ -62,6 +78,10 @@ SECRET_KEYS = frozenset(
         "api_key",
         "x-api-key",
         "anthropic_api_key",
+        "code",
+        "code_verifier",
+        "state",
+        "client_secret",
     }
 )
 

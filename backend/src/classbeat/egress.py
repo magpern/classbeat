@@ -1,4 +1,4 @@
-"""The worker's outbound allowlist (ADR 0006 §9; threat model T19, T49).
+"""The outbound allowlists (ADR 0006 §9, ADR 0009 §10; threat model T19, T49, T73).
 
 The only place in ``classbeat`` that builds an HTTP client or an ``urllib`` opener (the guard in
 ``tests/egress_scan.py`` fails on any other). Two paths leave the worker:
@@ -14,9 +14,18 @@ The only place in ``classbeat`` that builds an HTTP client or an ``urllib`` open
   (``follow_redirects=False``, httpx's default): a redirect to another host is refused here, and
   a same-host one comes back to the SDK as a 3xx response, which the model provider maps to
   ``internal`` after one attempt (intended: the API never redirects). ``refused`` lets the SDK
-  see a refusal as an error it does not retry (``classbeat.agent.providers.anthropic``).
+  see a refusal as an error it does not retry (``classbeat.agent.providers.anthropic``). Its
+  list is the model host alone (``MODEL_ALLOWLIST``).
 
-Both paths verify TLS with a context from ``tls_client_context()``, which never writes a TLS key
+**The Spotify client** (ADR 0009 §10): ``spotify_async_client()`` is the ``httpx.AsyncClient`` of
+``classbeat.spotify.http`` (the token endpoint and ``GET /me``), in the web process (connect) and
+the worker (refresh) alike. Its list is ``SPOTIFY_ALLOWLIST``, the two Spotify hosts and nothing
+else, in either process; it does not follow redirects and refuses one to another host; it has
+``trust_env=False``; and its request has a **total** deadline covering the answer's body
+(``total_seconds``; a trickling answer raises ``RequestDeadline``). No URL from a Spotify answer
+(``next``, ``href``) is ever fetched; were one handed to it, the list refuses any other host.
+
+All paths verify TLS with a context from ``tls_client_context()``, which never writes a TLS key
 log (``SSLKEYLOGFILE`` is ignored, threat model T49).
 
 **A total deadline per urllib request** (ADR 0007 section 6). ``urlopen(timeout=30)`` is only a
@@ -40,6 +49,7 @@ the process; code running in the worker could still open a socket around it (acc
 network-level egress rule of M6, threat model).
 """
 
+import asyncio
 import contextlib
 import http.client
 import logging
@@ -48,7 +58,7 @@ import ssl
 import threading
 import time
 import urllib.request
-from collections.abc import Callable, Iterator
+from collections.abc import AsyncIterator, Callable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
 from typing import Any, Final
@@ -61,9 +71,18 @@ logger = logging.getLogger(__name__)
 
 HTTPS = "https"
 HTTPS_PORT = 443
-# M3a: the MOWL API (the library's base URL) and the model API. M4 adds the Spotify hosts.
-WORKER_HOSTS = frozenset({"api.mowl.com", "api.anthropic.com"})
+MOWL_HOST = "api.mowl.com"  # the library's base URL
+MODEL_HOST = "api.anthropic.com"
+SPOTIFY_API_HOST = "api.spotify.com"
+SPOTIFY_ACCOUNTS_HOST = "accounts.spotify.com"  # the authorize page and the token endpoint
+SPOTIFY_HOSTS = frozenset({SPOTIFY_API_HOST, SPOTIFY_ACCOUNTS_HOST})
+# M3a: the MOWL API and the model API; M4 (ADR 0009 §10): the Spotify API and token endpoint,
+# which the library reaches over urllib.
+WORKER_HOSTS = frozenset({MOWL_HOST, MODEL_HOST}) | SPOTIFY_HOSTS
 MODEL_TIMEOUT_SECONDS = 120.0  # ADR 0006 §2
+# The Spotify client's total deadline per request unless the caller gives one (ADR 0009 §6:
+# ``CLASSBEAT_SPOTIFY_REFRESH_TIMEOUT_SECONDS`` defaults to 10).
+SPOTIFY_TOTAL_SECONDS = 10.0
 _LOGGED_HOST_MAX = 253  # the longest DNS name
 
 
@@ -149,6 +168,10 @@ class Allowlist:
 
 
 WORKER_ALLOWLIST = Allowlist(WORKER_HOSTS)
+# The model client's list: the model API alone, although the worker's urllib list is wider.
+MODEL_ALLOWLIST = Allowlist(frozenset({MODEL_HOST}))
+# The Spotify client's list, in the web process and the worker alike (ADR 0009 §10).
+SPOTIFY_ALLOWLIST = Allowlist(SPOTIFY_HOSTS)
 
 # Set by ``install_worker_allowlist``: this process is the worker. The web-only call sites the
 # guard exempts (OAuth sign-in, account mail) call ``refuse_in_worker`` first, so they cannot
@@ -500,28 +523,84 @@ def install_worker_allowlist() -> urllib.request.OpenerDirector:
 # --- httpx ---------------------------------------------------------------------------------
 
 
+class _DeadlineStream(httpx.AsyncByteStream):
+    """An answer's body that must be read by ``at`` (``time.monotonic()``): each chunk waits at
+    most until then, so a body trickling in a byte at a time ends with ``RequestDeadline``."""
+
+    def __init__(self, inner: httpx.AsyncByteStream, at: float) -> None:
+        self._inner = inner
+        self._at = at
+
+    async def __aiter__(self) -> AsyncIterator[bytes]:
+        chunks = self._inner.__aiter__()
+        while True:
+            remaining = self._at - time.monotonic()
+            if remaining <= 0:
+                raise RequestDeadline
+            try:
+                async with asyncio.timeout(remaining):
+                    chunk = await anext(chunks)
+            except StopAsyncIteration:
+                return
+            except TimeoutError:
+                raise RequestDeadline from None
+            yield chunk
+
+    async def aclose(self) -> None:
+        await self._inner.aclose()
+
+
 class AllowlistTransport(httpx.AsyncBaseTransport):
     """Checks every request (each redirect hop is a request) before the inner transport, and
     refuses a redirect response that points at another host: httpx drops ``Authorization`` on a
-    cross-origin hop but keeps ``x-api-key``, so the model key must never follow one."""
+    cross-origin hop but keeps ``x-api-key``, so the model key must never follow one.
+
+    With ``total_seconds`` each request, its answer's body included, ends within that time
+    (``RequestDeadline``, a ``TimeoutError``): httpx's own timeouts are per read, so they never
+    end an answer that keeps trickling in."""
 
     def __init__(
         self,
         allowlist: Allowlist,
         inner: httpx.AsyncBaseTransport,
         refused: Callable[[OutboundBlocked], Exception] | None = None,
+        *,
+        total_seconds: float | None = None,
     ) -> None:
+        if total_seconds is not None and not total_seconds > 0:
+            raise ValueError("a total deadline is positive")
         self._allowlist = allowlist
         self._inner = inner
         self._refused = refused
+        self._total_seconds = total_seconds
 
     async def handle_async_request(self, request: httpx.Request) -> httpx.Response:
         try:
-            return await self._handle(request)
+            if self._total_seconds is None:
+                return await self._handle(request)
+            return await self._handle_within(request, time.monotonic() + self._total_seconds)
         except OutboundBlocked as exc:
             if self._refused is None:
                 raise
             raise self._refused(exc) from exc
+
+    async def _handle_within(self, request: httpx.Request, at: float) -> httpx.Response:
+        try:
+            async with asyncio.timeout(at - time.monotonic()):
+                response = await self._handle(request)
+        except TimeoutError:
+            raise RequestDeadline from None
+        stream = response.stream
+        if not isinstance(stream, httpx.AsyncByteStream):  # pragma: no cover - async transports
+            await response.aclose()
+            raise TypeError("an async transport answers with an async stream")
+        return httpx.Response(
+            response.status_code,
+            headers=response.headers,
+            stream=_DeadlineStream(stream, at),
+            extensions=response.extensions,
+            request=request,
+        )
 
     async def _handle(self, request: httpx.Request) -> httpx.Response:
         url = request.url
@@ -557,7 +636,7 @@ def model_network_transport() -> httpx.AsyncHTTPTransport:
 
 
 def allowlisted_async_client(
-    allowlist: Allowlist = WORKER_ALLOWLIST,
+    allowlist: Allowlist = MODEL_ALLOWLIST,
     *,
     timeout: float = MODEL_TIMEOUT_SECONDS,
     inner: httpx.AsyncBaseTransport | None = None,
@@ -578,4 +657,34 @@ def allowlisted_async_client(
         transport=AllowlistTransport(allowlist, network, refused),
         trust_env=False,
         timeout=timeout,
+    )
+
+
+def spotify_network_transport() -> httpx.AsyncHTTPTransport:
+    """The network transport of the Spotify client: the trust store of the urllib path
+    (``tls_client_context()``, the system's, as the library's calls to Spotify use), no TLS key
+    log, no proxy."""
+    return httpx.AsyncHTTPTransport(trust_env=False, verify=tls_client_context())
+
+
+def spotify_async_client(
+    *,
+    total_seconds: float = SPOTIFY_TOTAL_SECONDS,
+    inner: httpx.AsyncBaseTransport | None = None,
+) -> httpx.AsyncClient:
+    """The ``httpx.AsyncClient`` of ``classbeat.spotify.http`` (ADR 0009 §6, §10): the token
+    endpoint and ``GET /me``, from the web process and the worker.
+
+    Its list is always ``SPOTIFY_ALLOWLIST`` (no parameter widens it); ``trust_env=False`` (no
+    proxy or ``NETRC`` from the environment); redirects are not followed and one to another host
+    is refused (``OutboundBlocked`` with ``after_request``); every request with its body ends
+    within ``total_seconds`` (``RequestDeadline``). ``inner`` replaces the network transport in
+    tests (the fake Spotify, no network); the checks still run.
+    """
+    network = inner if inner is not None else spotify_network_transport()
+    return httpx.AsyncClient(
+        transport=AllowlistTransport(SPOTIFY_ALLOWLIST, network, total_seconds=total_seconds),
+        trust_env=False,
+        timeout=total_seconds,
+        follow_redirects=False,
     )

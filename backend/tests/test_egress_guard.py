@@ -137,6 +137,21 @@ REFUSED = [
     "from httpx import Client\nclass C(Client): pass",
     "import httpx\nclass T(httpx.AsyncBaseTransport): pass",
     "import urllib.request\nclass H(urllib.request.BaseHandler): pass",
+    # ADR 0009 §10: allowlists are built and chosen in classbeat.egress only.
+    "from classbeat.egress import Allowlist\nAllowlist(frozenset({'evil.example'}))",
+    "from classbeat import egress\negress.Allowlist(hosts)",
+    "import classbeat.egress as e\ne.AllowlistTransport(e.SPOTIFY_ALLOWLIST, inner)",
+    "from classbeat.egress import build_allowlist_opener\nbuild_allowlist_opener()",
+    "from classbeat.egress import DeadlineHTTPSHandler\nDeadlineHTTPSHandler()",
+    "from classbeat.egress import spotify_network_transport\nspotify_network_transport()",
+    "from classbeat.egress import model_network_transport\nmodel_network_transport()",
+    "from classbeat.egress import allowlisted_async_client, WORKER_ALLOWLIST\n"
+    "allowlisted_async_client(WORKER_ALLOWLIST)",
+    "from classbeat.egress import allowlisted_async_client\nallowlisted_async_client(allowlist=a)",
+    "from classbeat.egress import allowlisted_async_client\nallowlisted_async_client(**options)",
+    "from classbeat.egress import Allowlist\nclass Wider(Allowlist): pass",
+    "from classbeat.egress import AllowlistTransport\nclass T(AllowlistTransport): pass",
+    "import httpx\nhttpx.AsyncClient(transport=t, trust_env=False)",
 ]
 
 
@@ -157,12 +172,29 @@ ALLOWED = [
     "from urllib.error import HTTPError, URLError",
     "from urllib.parse import urlsplit\nurlsplit('https://x')",
     "import urllib.request\nurllib.request.Request('https://x')",
+    "from classbeat.egress import spotify_async_client\nspotify_async_client()",
+    "from classbeat.egress import spotify_async_client\nspotify_async_client(total_seconds=5.0)",
+    "from classbeat import egress\negress.spotify_async_client(total_seconds=t, inner=n)",
+    "from classbeat.egress import allowlisted_async_client\n"
+    "allowlisted_async_client(timeout=1.0, inner=t, refused=E)",
+    "from classbeat.egress import SPOTIFY_ALLOWLIST\nSPOTIFY_ALLOWLIST.check_url(u)",
 ]
 
 
 @pytest.mark.parametrize("source", ALLOWED)
 def test_the_guard_allows(source: str) -> None:
     assert scan_source(source, M) == []
+
+
+def test_a_relative_import_of_an_allowlist_is_refused_too() -> None:
+    source = "from ..egress import Allowlist\nAllowlist(frozenset({'evil.example'}))"
+    assert scan_source(source, "classbeat.spotify.http") != []
+
+
+def test_the_spotify_package_counts_as_worker_code() -> None:
+    """ADR 0009 §6: refresh and the song-picking calls run in the worker, so the Spotify package
+    may never import a web-only exempt module (OAuth sign-in, mail)."""
+    assert "classbeat.spotify" in WORKER_PACKAGES
 
 
 def test_an_exemption_is_per_module_and_per_call() -> None:
