@@ -305,3 +305,45 @@ async def test_a_deferred_refusal_holds_when_the_own_row_turned_failed_before_th
     assert fake_programs.write_count == writes  # never called
     [op] = uenv.operations(live.saved.owner)
     assert op.state == "failed"
+
+
+async def test_a_late_thread_start_consumes_the_bound_instead_of_extending_it(
+    uenv: UpdateEnv, fake_programs: FakeMowlPrograms, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """As for Save (SV1 review): the update's deadline is anchored before ``pending`` is
+    written, so a thread that starts late uses up the bound instead of extending it."""
+    import time
+
+    from classbeat import egress
+    from classbeat.saving import kind as save_kind
+    from classbeat.saving import update as update_kind
+
+    live = await uenv.live()
+    revision = uenv.revision(live)
+    bound = operation.bound_seconds(SEGMENTS)
+    stamps: dict[str, float] = {}
+    real_perform, real_write = update_kind.perform, update_kind.write_program
+
+    async def perform(*args: Any, **kwargs: Any) -> Any:
+        stamps["before_pending"] = time.monotonic()
+        return await real_perform(*args, **kwargs)
+
+    def late_write(*args: Any) -> Any:
+        time.sleep(0.5)  # the thread pool was busy
+        stamps["thread_start"] = time.monotonic()
+        return real_write(*args)
+
+    real_save = save_kind.workout.save
+
+    def save(*args: Any, **kwargs: Any) -> Any:
+        stamps["deadline"] = egress.request_deadline(10 * bound)
+        return real_save(*args, **kwargs)
+
+    monkeypatch.setattr(update_kind, "perform", perform)
+    monkeypatch.setattr(update_kind, "write_program", late_write)
+    monkeypatch.setattr(save_kind.workout, "save", save)
+    job_id = uenv.job(live, revision, DRAFT_2)
+    await uenv.run_next()
+    assert uenv.row(job_id).state == "completed"
+    assert stamps["deadline"] <= stamps["before_pending"] + bound
+    assert stamps["deadline"] - stamps["thread_start"] <= bound - 0.4

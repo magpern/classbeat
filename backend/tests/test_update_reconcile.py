@@ -241,6 +241,13 @@ async def test_on_succeeded_moves_only_the_live_row_of_the_operations_own_class(
     await write(
         uenv, live.saved.owner, op(theirs_class, sibling.saved.class_id, str(live.program_id))
     )
+    # an operation of the sibling class naming this class's row, with a revision of its own class
+    # (only the saved row's class join refuses it; the revision foreign key would refuse it too)
+    await write(
+        uenv, live.saved.owner,
+        op(theirs_class, sibling.saved.class_id, str(live.program_id),
+           revision_id=str(sibling_revision)),
+    )  # fmt: skip
     # another user's operation, under this user's context
     foreign = plant_op(uenv, other.saved.owner, other.saved.class_id, str(other.program_id))
     await write(uenv, live.saved.owner, op(foreign, live.saved.class_id, str(live.program_id)))
