@@ -207,8 +207,11 @@ Rules, all from the manifest, with these defaults:
 - every case runs at least **3 times** (`--repeat 3`);
 - `adversarial` and the `limits` and `forbidden_text` checks of every category: **every run** passes;
 - every other category: at least **90 %** of its runs pass, and every case passes at least once;
-- `cost`: the median cost per class of the run at most **$0.75** for `design` and **$1.50** for
-  `songs`, and no run over the job ceiling;
+- `cost`: the median cost per class of the run at most **$0.75** for `design` and **$1.00** for
+  `songs`, and no run over its job ceiling. A song-picked class runs both groups inside one
+  `CLASSBEAT_SONG_JOB_COST_MICROS` ceiling ($3, ADR 0008 §3), so the two medians together ($1.75) leave
+  room under it for corrections and retries; each median sits below its own ceiling, so the rule says
+  more than "no run over the ceiling";
 - a run that ended in `model_unavailable` or `outbound_blocked` counts as not run, not as failed; a
   file with more than 10 % such runs gets no verdict (`incomplete`), so an outage cannot fail a model
   and too few runs cannot pass it.
@@ -224,6 +227,15 @@ only that provider's host before the provider is built, and builds the provider 
 `provider_for_choice` (§5), never `fake` (a `fake` choice is refused). Each run needs the owner's
 go-ahead for that run, as today; agents and CI never run it.
 
+The command is two layers. The **CLI entry** (`main` in `evals/__main__.py`) checks every precondition
+above (`--live`, `CI`, catalog, key, environment) and calls `main_suite` with the real
+`provider_for_choice` and the real allowlist installer. `main_suite` takes the provider factory, the
+installer and the database session as **keyword-only** parameters that no command-line argument can
+set; tests inject the replay provider there. A test asserts that the CLI entry passes exactly the real
+factory and installer. What is recorded as provider and model comes from the **choice** the command was
+given (catalog-checked), never from the built provider's `name` or `Turn.model`; `--record` additionally
+refuses when the built provider's kind does not match the choice's provider (so a `fake` never records).
+
 ### 5. The gate: recorded results and routes
 
 **Tables** (one migration, the next free revision when it lands; global, not owned: they hold no user
@@ -238,7 +250,9 @@ records two rows with the same `run_id`): `id`, `run_id`, `recorded_at`, `suite_
 bool NOT NULL`, `total_cost_micros`, `authorization text` (1 to 200 characters: the owner's go-ahead,
 for example "owner 2026-11-03 chat"), and a unique key `(id, provider, model, effort, stage_group,
 passed)` for the foreign key below. **Append-only**: the app role has `SELECT` and `INSERT` only (a
-test that `UPDATE` and `DELETE` fail, like `agent_runs`).
+test that `UPDATE` and `DELETE` fail, like `agent_runs`). Two `CHECK`s: `passed = (verdict->>'passed')::boolean`
+(the flag the foreign key reads always agrees with the stored verdict) and `provider <> 'fake'` (plus
+`provider IN ('anthropic', 'openai', 'deepseek')`).
 
 `model_routes`: `route_key text` (`^[a-z0-9_]{1,40}$`), `stage_group`, `provider`, `model`, `effort`,
 `eval_result_id`, `gate_passed bool NOT NULL DEFAULT true CHECK (gate_passed)`, `set_at`, `set_by
@@ -250,11 +264,22 @@ provider, model, effort and group.** Deleting a route is how a model is disabled
 
 **Who writes a result.** Only the live command with `--record`, in the worker container (the one with
 the keys and a database connection), after the last run: it computes the verdict from the runs it just
-made, refuses to record when `provider.name` is not the catalog provider of the choice (a `fake`
-provider never records), and inserts the row with the file's SHA-256 and the given authorization. There
-is **no import of a result file**: a hand-edited or fake-provider file has no way into the table through
-the app. (The operator with database access is trusted; the gate protects against mistakes and agents,
-not against the owner.)
+made, refuses to record when the built provider's kind is not the choice's catalog provider (a `fake`
+provider never records), and inserts the rows through **one function, `classbeat.models.store.record_result`**,
+with the file's SHA-256 and the given authorization. There is **no import of a result file**.
+
+What is enforced, and what is not. Web and worker both connect as the app role, which has `INSERT` on the
+table, so the database alone cannot tell a live run's row from any other insert. The enforcement is:
+(a) a **static guard test** (like `tests/test_session_guard.py`): no module but
+`classbeat.models.store` mentions `model_eval_results` in SQL or a table object, and only
+`classbeat.evals.suite_live` imports `record_result` (the test fails on a new caller, and its allowlist is
+a reviewed change); (b) the two `CHECK`s, so a row's `passed` always matches its stored verdict and a
+`fake` result can never exist; (c) the composite foreign key on routes. Together: application code other
+than the live command cannot write a result without failing CI, and no route can point at a failing,
+mismatched or fake result even if it did. Not enforced: that the verdict rows came from real provider
+answers rather than a doctored suite run by someone with the worker's shell, or a direct `INSERT` by the
+operator; the operator is trusted (accepted risk). A separate recording database role would make (a) a
+database rule instead of a test; deferred to M6's security review.
 
 **Routes.** `classbeat.models` (new package):
 
@@ -269,8 +294,9 @@ def provider_for_choice(settings, choice) -> ModelProvider
 
 Plain async functions on an open session, so M5's admin calls them inside its own transaction and
 writes its audit row with them. `set_route` refuses (a typed `RouteRefused` with a reason code, which M5
-answers as 409) unless: the model is in the catalog with that effort; for DeepSeek
-`CLASSBEAT_DEEPSEEK_ENABLED` is on and the entry's `data_policy` is `allowed` (§6); the provider's key
+answers as 409) unless: the model is in the catalog with that effort; the entry's `data_policy` is
+`allowed` (§6; Anthropic's entries are `allowed`, OpenAI's and DeepSeek's ship `owner_pending`); for
+DeepSeek `CLASSBEAT_DEEPSEEK_ENABLED` is on; the provider's key
 file is present; and the **newest** recorded result for that provider, model, effort and group with the
 current `suite_version` passed **and** its `prompt_versions` equal the running code's
 for that group's stages. It then upserts the route with that result's id (the FK checks the rest).
@@ -281,15 +307,24 @@ result it will rely on and needs `--yes`).
 **Resolving.** Every model job (`design_draft`, `revise_draft`, `design_with_songs`, `revise_songs`)
 calls `resolve_route(route_key, group)` once per stage group at the start of the stage, with the
 `route_key` from its job input (M5 fills it from the user's plan; until then every job has
-`"default"`). The answer is the route's choice. **With no route** for that key and group, the answer is
+`"default"`). The answer is the route's choice, after `resolve_route` **checks again** what `set_route`
+checked that can change without a new result: the model and effort are still in the catalog, the
+provider's key file is present, and for a non-Anthropic provider the catalog's `data_policy` is
+`allowed` (and for DeepSeek `CLASSBEAT_DEEPSEEK_ENABLED` is on). A route that fails one of these is
+**unusable**: the job fails `model_config` at the stage start (no request is sent, no fallback to
+another provider, the user sees "the model for your plan is not available"; the operator sees the
+reason in `models list` and one log line with key, group and reason code). Falling back to the
+bootstrap was considered and not taken: a revoked data policy must stop sending, and a silent switch
+would hide a misconfiguration from the owner. **With no route** for that key and group, the answer is
 the **bootstrap choice**: provider `anthropic` with `CLASSBEAT_AGENT_MODEL` and `_EFFORT`, as today, so
 nothing changes on deploy. The bootstrap can never name another provider (`CLASSBEAT_MODEL_PROVIDER`
 stays `anthropic | fake`), so **OpenAI and DeepSeek are reachable only through a route, and a route only
 through a recorded pass.** `fake` stays the dev and CI provider and bypasses routes (never in `prod`).
 
-**Staleness.** A route whose result's prompt versions no longer equal the running code's (a deploy
-changed a prompt or a tool schema) or whose `suite_version` is older is **stale**: `list_routes` and the
-CLI show it, the worker logs a warning once per process (route key and group, no data), and the route
+**Staleness.** A route is **stale** when its result's prompt versions no longer equal the running
+code's (a deploy changed a prompt or a tool schema), its `suite_version` is older, or **a newer result
+for the same provider, model, effort and group has failed**. `list_routes` and the CLI show it with the
+reason, the worker logs a warning once per process (route key, group and reason, no data), and the route
 keeps working until the owner re-runs the suite or clears it (owner question 3). A new route for a
 stale result is refused.
 
@@ -311,24 +346,33 @@ prompt version; they gain `route_key` and `eval_result_id` (NULL for the bootstr
   a missing key file; the database refuses a hand-made route `INSERT` pointing at a failing or
   mismatched result (the FK), and `UPDATE` or `DELETE` on `model_eval_results`.
 - Resolving: a design job with a route uses the route's provider (the replay one) and records
-  `route_key` and `eval_result_id`; without a route it uses the bootstrap choice; a stale route is
-  used and flagged.
-- `--record` with a `FakeProvider` refuses; `--record` under `CI` refuses (the precondition).
+  `route_key` and `eval_result_id`; without a route it uses the bootstrap choice; a stale route
+  (each of the three reasons) is used and flagged; an unusable route (catalog entry gone, key removed,
+  `data_policy` reverted, DeepSeek switched off) fails the job `model_config` before any request.
+- The guard test fails on a planted second writer of `model_eval_results`; an `INSERT` with
+  `passed` disagreeing with `verdict`, or with `provider = 'fake'`, fails in the database.
+- `--record` with a `FakeProvider` refuses; the CLI entry refuses under `CI`, and a test asserts it
+  wires the real factory and installer (the injected seams are reachable only from Python).
 
 ### 6. What goes to OpenAI and DeepSeek
 
 The model input is the same as for Anthropic (ADR 0006 §7, ADR 0008 §3): the brief, Spotify-derived
 track metadata and MOWL's analysis, the current draft and the user's requests; never tokens, emails,
-names, ids, URLs or provider error texts. Amendment 1 and ADR 0010 allowed that data to go to "the
-model" for the beta circle when the model was Claude. Sending it to another company is a new
-disclosure, so:
+names, ids, URLs or provider error texts. **Spotify's Developer Policy forbids ingesting Spotify
+Content, metadata included, into an AI model (§III 14)**; ADR 0010 records that, and records the owner's
+**acceptance of that risk for the beta circle, with Claude as the model** (Amendment 1). Nothing permits
+it. Sending the same Spotify-derived metadata to OpenAI or DeepSeek is the same breach extended to a
+second and third AI company, plus a new disclosure of users' briefs, so it needs the owner's own
+decision per provider:
 
 - **Eval runs** send synthetic data only (invented music, invented briefs): no user data reaches any
   provider through the suite. They need the owner's go-ahead per run and the provider's key (which the
   owner creates; agents never see it).
-- **OpenAI routes** for real users: `data_policy: allowed` on the owner's decision (question 1, default
-  yes for the beta circle: `store=False`, the API's default of no training on API data). ADR 0010 gets a
-  dated line recording it when answered.
+- **OpenAI**: the catalog entries ship with `data_policy: owner_pending`, like DeepSeek's, so no OpenAI
+  route can be set or used for real users until the owner answers question 1. A "yes" is a reviewed
+  catalog change to `allowed` plus a dated line in ADR 0010 extending the risk acceptance to OpenAI
+  (with `store=False` and the API's no-training default noted). Until then OpenAI is evaluated on
+  synthetic data only.
 - **DeepSeek**: `data_policy: owner_pending` and `CLASSBEAT_DEEPSEEK_ENABLED=false` until the owner has
   decided privacy (where data is processed and kept), the terms, and a passing eval (question 2). Turning
   it on is a code change of the catalog entry (reviewed) plus the setting; ADR 0010 records the decision.
@@ -383,18 +427,24 @@ carry it per run, where the `tss` check of a case with zone 7 widens its upper b
 
 ## Owner questions (with the defaults agents build to)
 
-1. **OpenAI and user data.** May OpenAI receive the same data Claude does (briefs, Spotify-derived
-   track metadata, MOWL's analysis) for the beta circle? *Default: yes, with `store=False`; recorded in
-   ADR 0010 when you answer. Until then OpenAI is evaluated on synthetic data only and no OpenAI route is
-   set.*
+1. **OpenAI and user data.** Spotify's Developer Policy §III 14 forbids sending Spotify Content
+   (including track metadata) to an AI model; you accepted that risk for Claude only (ADR 0010). Do you
+   extend that acceptance to OpenAI, so it may receive what Claude does (briefs, Spotify-derived track
+   metadata, MOWL's analysis) for the beta circle, with `store=False`? *Default until you answer: no.
+   OpenAI's catalog entries stay `owner_pending`; it is evaluated on synthetic data only and no OpenAI
+   route can be set. A yes flips them to `allowed` in a reviewed change and adds a dated line to ADR
+   0010.*
 2. **DeepSeek.** Keep it disabled (no route, no host) until you decide privacy and terms? *Default: yes,
    disabled; its adapter is built and tested on fixtures, and an eval run with synthetic data needs your
    go-ahead.*
-3. **Stale routes.** After a deploy that changes a prompt, should enabled routes keep working (flagged)
-   until you re-run the suite, or fall back to the bootstrap model at once? *Default: keep working,
-   flagged.*
+3. **Stale routes.** After a deploy that changes a prompt or tool schema (or after a newer run of the
+   same model failed), should enabled routes keep working, flagged, until you re-run the suite? That
+   means a model whose **current** prompt has not passed keeps serving users. The alternative is to fall
+   back to the bootstrap model at once, which sends data only to the provider you already accepted
+   (Anthropic) but runs a model that, under question 5, may not have passed either. *Default: keep
+   working, flagged.*
 4. **Thresholds.** 3 repeats per case; adversarial and limit checks 100 %; other categories 90 % of runs
-   and each case at least once; median cost per class at most $0.75 (design) and $1.50 (song picking).
+   and each case at least once; median cost per class at most $0.75 (design) and $1.00 (song picking, inside the $3 song job ceiling).
    *Default: as written; they live in the manifest.*
 5. **Does the current default (Opus 5.5) need a full-suite pass** before M5's tiers use it? *Default:
    yes for any route; the bootstrap keeps using it until you record a run, which costs roughly the
@@ -408,9 +458,11 @@ One issue per PR, milestone "M3c Eval and providers". "Opus" marks an Opus Devel
 keys and egress, the gate); every PR gets a fresh Reviewer (Opus for the Opus issues and for EV1, Sonnet
 for the rest). No issue is startable before this ADR is accepted. Fakes and fixtures only.
 
-In-flight M4 work (#180 to #186, #198) owns `classbeat/jobs` song kinds, `classbeat/agent/{pick_pool,
+In-flight M4 work (#180 to #186, #198, #200) owns the song job kinds in `classbeat/songs/`, `classbeat/agent/{pick_pool,
 choose_songs,songs,registry}.py`, the class API's song views and the frontend class pages; #196 owns
 `evals/compare.py`. No M3c issue edits those files before they merge; G2 and Z7 are sequenced after them.
+Expected rebases, not collisions: P0 edits `config.py` (also changed by #200), G2 edits `agent/records.py`
+(also #200; G2 already follows #182), and T4 edits `AGENTS.md` (also #186, #197, #198 and #200; T4 is last).
 
 | # | Issue | Owner | Depends on |
 |---|---|---|---|
@@ -426,7 +478,7 @@ choose_songs,songs,registry}.py`, the class API's song views and the frontend cl
 | EV5 (#213) | `evals suite --live ... --record`: preconditions per provider, plan and ceiling, recording; offline test through the replay provider | **Opus** | G1, P2 |
 | G2 (#215) | Jobs resolve routes: `route_key` in job inputs (default `"default"`), the four model kinds build their provider per stage group, provenance `route_key` and `eval_result_id`, stale warning | **Opus** | G1, #182 |
 | Z7 (#217) | Zone 7 TSS approximate flag: backend flag on revisions and in preview/submit results, class API field, class page note | Sonnet | #183, #184 |
-| T4 (#219) | Done-when: offline end-to-end gate test per provider (replay → suite → record → enable → a job uses it; fail → refused; DeepSeek refused while disabled), `docs/runbooks/m3c-model-enable.md`, AGENTS.md notes, status | Sonnet (Opus Reviewer) | P3, EV2, EV3, EV4, EV5, G2, Z7 |
+| T4 (#219) | Done-when: offline end-to-end gate test per provider (replay → suite → record → enable → a job uses it; fail → refused; DeepSeek refused while disabled), `docs/runbooks/m3c-model-enable.md` (the first live run per provider is an adapter check: a small `--max-usd`, no `--record`, fixtures updated from its shapes in a reviewed PR before a recorded run), AGENTS.md notes, status | Sonnet (Opus Reviewer) | P3, EV2, EV3, EV4, EV5, G2, Z7 |
 
 Order: P0 and EV1 in parallel; then P1, EV2, EV3, EV4 and G1 in parallel (EV3 calls the song stages
 as they are and edits only `evals/`); P2 and P3

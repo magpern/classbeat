@@ -122,7 +122,8 @@ GitHub hold the detail.
 - Each further live smoke run needs the owner's go-ahead for that run (2026-10-29: "do not run
   live test every time").
 - **M3c owner questions** ([ADR 0012](adr/0012-eval-suite-and-model-providers.md), "Owner questions"):
-  may OpenAI receive what Claude does for the beta circle (default yes, `store=False`); keep DeepSeek
+  do you extend your Spotify §III 14 risk acceptance (Claude only, ADR 0010) to OpenAI (default no:
+  OpenAI stays `owner_pending`, evaluated on synthetic data only); keep DeepSeek
   disabled (default yes); stale routes keep working, flagged (default yes); the suite thresholds; a
   full-suite run before Opus 5.5 is used by a tier (default yes); you place the OpenAI and DeepSeek keys
   yourself (default yes). Each live suite run needs your go-ahead for that run.

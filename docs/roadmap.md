@@ -103,8 +103,10 @@ How M3c reads, recorded in [ADR 0012](adr/0012-eval-suite-and-model-providers.md
   calls M3c's `set_route`. Until then every job uses the `default` key, and with no route the
   configured Anthropic model is used as today (the bootstrap; it can never name another provider).
 - **§5 "DeepSeek disabled"** is a setting (`CLASSBEAT_DEEPSEEK_ENABLED`, off) plus a catalog data
-  policy that waits for the owner's privacy and terms decision; **§5 data to the model** for OpenAI
-  needs the owner's answer too (ADR 0012 §6); eval runs send synthetic data only.
+  policy (`owner_pending`) that waits for the owner's privacy and terms decision. **§5 data to the
+  model:** Amendment 1's allowance is the owner's acceptance of Spotify's §III 14 risk for Claude only;
+  OpenAI also ships `owner_pending` until the owner extends it (ADR 0012 §6); eval runs send synthetic
+  data only.
 - **§11**: the smoke set stays as it is; the regression suite is versioned (`suite_version`) and
   scored per stage group (`design`, `songs`) with the thresholds of ADR 0012 §4.3.
 
