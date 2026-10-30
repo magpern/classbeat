@@ -17,10 +17,12 @@ whatever ``admit`` wrote and creates no class and no job. A job of a kind that c
 is inserted with ``credit_state = 'none'`` and the ledger is not called.
 
 ``approve`` checks what the job row can tell: the wait, its expiry, the revision (the newest
-``song_list`` of the class) and the content hash; then the caller's ``admit`` (the jobs API:
-connections, the per-user limit and the credit seam, ADR 0005 section 2) in the same
-transaction. Accepted, it starts a new **phase**: ``attempt = 0``, ``approved_at = now()``,
-state ``queued``, available at once, and it wakes the workers (``jobs_queued``).
+``song_list`` of the class; a revision id that is not one of the user's own song lists of that
+class is ``not_found``, like a foreign job) and the content hash; then the caller's ``admit``
+(the jobs API: connections, the kind's ``approve_check``, the per-user limit and the credit
+seam, ADR 0005 section 2) in the same transaction. Accepted, it starts a new **phase**:
+``attempt = 0``, ``approved_at = now()``, state ``queued``, available at once, and it wakes the
+workers (``jobs_queued``).
 """
 
 import json
@@ -80,6 +82,13 @@ _REQUEST_CANCEL = text(
 _NEWEST_LIST = text(
     "SELECT id FROM class_revisions WHERE owner_id = :owner_id AND class_id = :class_id "
     "AND kind = 'song_list' ORDER BY number DESC LIMIT 1"
+)
+# The approved revision must be one of the user's own song lists of the job's class: anything else
+# (another user's, another class's, an unknown id) is answered like an unknown job (ADR 0008
+# section 12: a foreign revision is 404, never "superseded").
+_OWN_LIST = text(
+    "SELECT 1 FROM class_revisions WHERE owner_id = :owner_id AND class_id = :class_id "
+    "AND id = :revision_id AND kind = 'song_list'"
 )
 _APPROVE = text(
     "UPDATE jobs SET state = 'queued', attempt = 0, approved_at = now(), available_at = now(), "
@@ -253,6 +262,9 @@ class Waiting:
     kind: str
     input: Mapping[str, Any]
     credit_state: str  # the job row's: 'reserved' when it consumes a credit, else 'none'
+    class_id: UUID
+    revision_id: UUID  # the job's approval revision, the class's newest song list
+    content_hash: bytes  # the approved hash, equal to the job's approval_hash
 
 
 # The jobs API's checks at approval (connections, per-user limit, credit): a refusal reason, or
@@ -264,7 +276,8 @@ Admit = Callable[[AsyncSession, Waiting], Awaitable[str | None]]
 class Approval:
     accepted: bool
     state: str | None
-    # not_found, not_waiting, expired, superseded, hash_mismatch, or the reason ``admit`` gave
+    # not_found (also for a revision that is not one of the user's song lists of the job's
+    # class), not_waiting, expired, superseded, hash_mismatch, or the reason ``admit`` gave
     reason: str | None = None
 
 
@@ -299,11 +312,23 @@ async def approve(
     newest = (
         await db.execute(_NEWEST_LIST, {"owner_id": ctx.user_id, "class_id": row.class_id})
     ).scalar_one_or_none()
+    if row.approval_revision_id != revision_id:
+        own = await db.execute(
+            _OWN_LIST,
+            {"owner_id": ctx.user_id, "class_id": row.class_id, "revision_id": revision_id},
+        )
+        if own.first() is None:
+            return Approval(False, row.state, "not_found")
     if row.approval_revision_id != revision_id or newest != revision_id:
         return Approval(False, row.state, "superseded")
     if not same:
         return Approval(False, row.state, "hash_mismatch")
-    reason = await admit(db, Waiting(job_id, row.kind, row.input, row.credit_state))
+    reason = await admit(
+        db,
+        Waiting(
+            job_id, row.kind, row.input, row.credit_state, row.class_id, revision_id, content_hash
+        ),
+    )
     if reason is not None:
         return Approval(False, row.state, reason)
     seq = (await db.execute(_APPROVE, params)).scalar_one()

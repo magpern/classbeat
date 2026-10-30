@@ -30,6 +30,20 @@ Two seams for the kinds of ADR 0007 (section 3, K1):
   added to the stored input; they must be among the kind's ``server_fields``, which a browser
   may never send (the API answers 422). ``Admitted.after_insert`` runs once the job row exists,
   in the same transaction, with the new job's id. A kind without ``admit`` behaves as before.
+
+And one for approvals (ADR 0008 sections 4 and 5, M4 SJ1):
+
+- ``approve_check(db, ctx, approving) -> reason | None`` (optional): ``POST /api/jobs/{id}/approve``
+  runs it inside the approval's transaction, under the owner lock and the job row lock, after
+  ADR 0005 section 2's row checks (waiting, expiry, the newest ``song_list``, the hash) and the
+  connection checks of the kind's ``CONNECTIONS``, and before the per-user limit and the credit
+  seam. A reason refuses the approval (409 ``{reason}``) and nothing is written; None lets the
+  generic checks go on. ``approving`` names the job, its class, the revision being approved
+  (already proven to be the job's own and the class's newest list), the approved hash (equal to
+  the job's ``approval_hash``) and the stored input, parsed.
+  It only reads: it may never write, since a later check can still refuse. ``design_with_songs``
+  uses it for ``account_changed`` (the connected Spotify account is not the one the list was
+  made for).
 """
 
 import re
@@ -93,6 +107,25 @@ class Refused:
                 raise ValueError("a refusal's counts are named codes with whole numbers")
 
 
+@dataclass(frozen=True, slots=True)
+class Approving:
+    """What ``approve_check`` sees of the job being approved."""
+
+    job_id: UUID
+    class_id: UUID
+    revision_id: UUID
+    content_hash: bytes  # the approved hash, equal to the job's ``approval_hash``
+    input: BaseModel
+
+
+class ApproveCheck(Protocol):
+    """A kind's approval-time check (annotations only, as ``Admit``)."""
+
+    def __call__(
+        self, db: AsyncSession, ctx: UserContext, approving: Approving, /
+    ) -> Awaitable[str | None]: ...
+
+
 class Admit(Protocol):
     """A kind's create-time check (annotations only: a ``UserContext`` is never built here)."""
 
@@ -110,6 +143,7 @@ class JobKind:
     consumes_credit: bool = True
     admit: Admit | None = None
     server_fields: frozenset[str] = frozenset()
+    approve_check: ApproveCheck | None = None
 
     def __post_init__(self) -> None:
         if not KIND_NAME.match(self.name):

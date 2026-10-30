@@ -356,7 +356,10 @@ and maintenance, so at most 50), `CLASSBEAT_WORKER_POLL_SECONDS` (2; the claim p
 `CLASSBEAT_WORKER_SHUTDOWN_WAIT_SECONDS` (25, inside compose's `stop_grace_period: 30s`),
 `CLASSBEAT_APPROVAL_TTL_HOURS` (168), `CLASSBEAT_JOB_BUSY_REQUEUE_LIMIT` (5 `operation_busy`
 requeues per phase without an attempt) and `CLASSBEAT_JOBS_PER_USER` (2 queued or running jobs;
-the jobs API answers 429 above it). Worker and agent code write job data only through
+the jobs API answers 429 above it).
+Song picking (`design_with_songs`, `classbeat.songs`, ADR 0008 section 2): `CLASSBEAT_SPOTIFY_POOL_SYNC_WAIT_SECONDS`
+(120, at most 600) is how long a pick waits for MOWL's track list of the pool playlist to show exactly
+the candidates just written; after it the pick fails `pool_not_synced` (retried once per phase). Worker and agent code write job data only through
 `classbeat.jobs.fenced_session`; only `classbeat.jobs.fence`, `classbeat.jobs.credits`,
 `classbeat.jobs.service` (the jobs API), `classbeat.jobs.progress` (the SSE stream's reads),
 `classbeat.operations.user` (the user's Check again / Do it anyway), `classbeat.operations.orphans`

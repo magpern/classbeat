@@ -7,6 +7,9 @@
   written, so a parallel disconnect or account change cannot leave a consent for another
   account); inserts ``spotify_pool`` with ``playlist_id NULL`` and the connection's Spotify user
   id. Giving it again only refreshes ``consent_version`` and ``consented_at``.
+- ``spotify_account_in``, ``pool_consent_in``: inside the caller's transaction (the jobs API's
+  create and approve, ADR 0008 sections 4 and 5): the Spotify user id of the user's ``connected``
+  Spotify row, and whether the pool consent is given for that account. Neither returns more.
 - ``revoke_pool_consent``: in **one transaction**, after the connection row lock, the consent row
   and every pool operation row (the succeeded create that holds the old playlist id and the
   replace rows whose hash covers it included) are deleted (``spotify_data.revoke_pool``), so the
@@ -92,6 +95,35 @@ async def give_pool_consent(factory: Factory, ctx: UserContext, version: int) ->
         # A row of another Spotify user id cannot exist (an account change deletes it, under
         # this same row lock); were it there, the conflict update above leaves it untouched.
         return (await db.execute(_EXISTS, {"owner_id": ctx.user_id})).first() is not None
+
+
+_CONSENT_FOR = text(
+    "SELECT 1 FROM spotify_pool WHERE owner_id = :owner_id AND spotify_user_id = :spotify_user_id"
+)
+
+
+async def spotify_account_in(
+    db: AsyncSession, ctx: UserContext, connection_id: object
+) -> str | None:
+    """The Spotify user id of the user's ``connected`` Spotify row ``connection_id`` (share-locked
+    until the caller's transaction ends, so a reconnect cannot pass in between), or None."""
+    row = (
+        await db.execute(
+            select(_C.status, _C.public)
+            .where(_C.owner_id == ctx.user_id, _C.provider == PROVIDER, _C.id == connection_id)
+            .with_for_update(read=True)
+        )
+    ).first()
+    if row is None or row.status != "connected":
+        return None
+    account = (row.public or {}).get("spotify_user_id")
+    return account if isinstance(account, str) and account else None
+
+
+async def pool_consent_in(db: AsyncSession, ctx: UserContext, account: str) -> bool:
+    """Whether the user's pool consent is given, for the Spotify account ``account``."""
+    found = await db.execute(_CONSENT_FOR, {"owner_id": ctx.user_id, "spotify_user_id": account})
+    return found.first() is not None
 
 
 async def revoke_pool_consent(factory: Factory, ctx: UserContext) -> bool:

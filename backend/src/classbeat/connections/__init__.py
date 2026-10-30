@@ -35,7 +35,9 @@ from classbeat.connections.rewrap import rewrap_owner, rows_by_key
 from classbeat.connections.spotify_account import (
     SpotifyStatus,
     give_pool_consent,
+    pool_consent_in,
     revoke_pool_consent,
+    spotify_account_in,
     spotify_status,
 )
 from classbeat.connections.spotify_flows import (
@@ -73,6 +75,7 @@ __all__ = [
     "list_connections",
     "mark_needs_reconnect",
     "open_connection",
+    "pool_consent_in",
     "record_result",
     "refresh_spotify",
     "refs_in",
@@ -81,6 +84,7 @@ __all__ = [
     "rows_by_key",
     "run_library_call",
     "save",
+    "spotify_account_in",
     "spotify_status",
     "take_flow",
     "use",
