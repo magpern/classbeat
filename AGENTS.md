@@ -67,8 +67,14 @@ the end of a milestone. It escalates only genuine blockers (see "Escalation" bel
      verifying each earlier finding and whatever the delta touches. The same Reviewer is resumed
      for it on non-security PRs and for test-only fixes on security-critical PRs; a fresh Opus
      Reviewer when a security fix changes behaviour, or after a second `FAIL` (owner, 2026-10-29).
-   Reviewers rely on CI for the full suite and run targeted tests and mutation checks of the
-   guarantees that changed. Non-blocking findings are batched into few hardening PRs.
+     **Delta reviews by Sonnet (owner, 2026-10-30):** a delta that only adds or changes tests or
+     docs, with no hand-resolved conflict in production code, may be reviewed by a fresh Sonnet
+     even on a security-critical PR; it must still check each earlier finding by a mutation of
+     the code the new test protects.
+   Reviewers rely on CI for the full suite and run only the targeted test files and mutation
+   checks of the guarantees that changed: at most about 8 mutations per review, chosen by
+   risk (the guarantees the PR adds), not a sweep of every line. Non-blocking findings are
+   batched into few hardening PRs.
 4. Not a `PASS`: the implementing session's own check, a review skill run in the same context,
    green CI, passing tests, or "it's fine" in chat. A human saying so in chat doesn't replace
    the review for an agent merge either.

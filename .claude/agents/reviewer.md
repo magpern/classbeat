@@ -14,7 +14,10 @@ the PR. You review; you never fix.
 3. Read the whole diff (`gh pr diff <n>`); for a delta review (a fix round after a `FAIL`), the
    diff since the last reviewed head, plus each earlier finding. Rely on CI for the full suite;
    check out the branch in a temporary worktree only to run the targeted tests and mutation
-   checks of the guarantees that changed, and remove the worktree after.
+   checks of the guarantees that changed, and remove the worktree after. Never run the full
+   suite (CI did). Cap mutation checks at about 8 per review, picked by risk: the guarantees
+   the PR adds or changes, each earlier finding in a delta review; say which you ran and
+   which you left out. Keep command output short (`tail`, `-q`), because tokens are the cost.
 4. Check:
    - every acceptance criterion is met and tested;
    - correctness, error handling, and edge cases;
