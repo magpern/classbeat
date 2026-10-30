@@ -13,7 +13,7 @@ from pydantic import BaseModel
 from sqlalchemy import text
 
 # saving registers save_workout (SV1); playlists the Spotify writes for Check again (OP1)
-from classbeat import __version__, auth, playlists, saving
+from classbeat import __version__, auth, playlists, saving, songs
 from classbeat.classes.routes import router as classes_router
 from classbeat.config import Settings, check_web_has_no_model_key
 from classbeat.connections.routes import router as connections_router
@@ -133,6 +133,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     )
     app.state.settings = settings
     configure_limits(settings)  # revise_draft's admit reads them (ADR 0007 section 4)
+    # design_with_songs' admit reads the feature switch (ADR 0008 section 10); importing
+    # classbeat.songs registered the kind.
+    songs.configure(songs.SongConfig.from_settings(settings))
     app.include_router(api)
     # The Spotify callback (outside /api, ADR 0009 section 2) before the sign-in providers'
     # ``/oauth/{provider}/callback``, which would otherwise answer it with a 404.

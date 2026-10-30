@@ -5,7 +5,7 @@ import logging
 import signal
 import sys
 
-from classbeat import design, playlists, saving
+from classbeat import design, playlists, saving, songs
 from classbeat.config import ModelProviderRefused, Settings, check_worker_model_provider
 from classbeat.crypto.keks import load_keyring
 from classbeat.db import (
@@ -44,6 +44,8 @@ async def _run(settings: Settings) -> None:
     # The Spotify writes (OP1): the refresh client and margin, and the listing lag of the create
     # reconciler (ADR 0008 section 2).
     playlists.configure(playlists_runtime(settings))
+    # design_with_songs (SJ1): the job ceiling and the pool's sync wait; it shares design's runtime.
+    songs.configure(songs.SongConfig.from_settings(settings))
     stop = asyncio.Event()
     # Before "worker started" is logged, so a signal after that line is always handled.
     _install_signal_handlers(asyncio.get_running_loop(), stop)
