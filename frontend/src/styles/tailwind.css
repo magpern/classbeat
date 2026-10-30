@@ -1,0 +1,55 @@
+/*
+ * Tailwind v4 without its preflight (existing pages keep their own base styles).
+ * @theme only points at the variables of tokens.css; no colour is defined here.
+ */
+@import 'tailwindcss/theme.css' layer(theme);
+@import 'tailwindcss/utilities.css' layer(utilities);
+
+@theme inline {
+  --color-*: initial;
+  --color-bg: var(--cb-bg);
+  --color-surface: var(--cb-surface);
+  --color-raised: var(--cb-raised);
+  --color-line: var(--cb-line);
+  --color-text: var(--cb-text);
+  --color-muted: var(--cb-muted);
+  --color-brand: var(--cb-brand);
+  --color-on-brand: var(--cb-on-brand);
+  --color-ok: var(--cb-ok);
+  --color-ok-soft: var(--cb-ok-soft);
+  --color-warn: var(--cb-warn);
+  --color-warn-soft: var(--cb-warn-soft);
+  --color-bad: var(--cb-bad);
+  --color-bad-soft: var(--cb-bad-soft);
+  --color-scrim: var(--cb-scrim);
+  --color-zone-1: var(--cb-zone-1);
+  --color-zone-2: var(--cb-zone-2);
+  --color-zone-3: var(--cb-zone-3);
+  --color-zone-4: var(--cb-zone-4);
+  --color-zone-5: var(--cb-zone-5);
+  --color-zone-6: var(--cb-zone-6);
+  --color-zone-7: var(--cb-zone-7);
+  --color-stage: var(--cb-stage);
+  --color-stage-grid: var(--cb-stage-grid);
+  --color-stage-text: var(--cb-stage-text);
+  --color-stage-muted: var(--cb-stage-muted);
+  --font-sans: var(--cb-font-sans);
+  --font-display: var(--cb-font-display);
+  --font-mono: var(--cb-font-mono);
+  --radius-sm: var(--cb-radius-sm);
+  --radius-md: var(--cb-radius-md);
+  --radius-lg: var(--cb-radius-lg);
+  --radius-full: var(--cb-radius-full);
+}
+
+/* Reduced motion turns every animation and transition off (ADR 0013 section 2). */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
