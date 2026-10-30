@@ -1,9 +1,11 @@
 """Helpers for tests that create tables as the owner role, the way migrations do."""
 
+import importlib.util
 import os
 from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
+from types import ModuleType
 
 import pytest
 from alembic import command
@@ -106,8 +108,23 @@ def truncate_auth(admin_url: str) -> None:
     try:
         with engine.connect() as connection:
             connection.execute(text(f"TRUNCATE {AUTH_TABLES}, connection_keks CASCADE"))
+            # ``plans.updated_by`` references ``users``, so the cascade empties ``plans`` too;
+            # the migration's seed goes back in (the effective plan falls back to ``free``).
+            if connection.execute(text("SELECT to_regclass('public.plans')")).scalar_one():
+                connection.execute(text(tiers_migration().PLAN_SEED))
     finally:
         engine.dispose()
+
+
+def tiers_migration() -> ModuleType:
+    """The M5 migration module (``*_tiers.py``, whatever revision it is chained onto)."""
+    (path,) = (BACKEND_DIR / "migrations" / "versions").glob("*_tiers.py")
+    spec = importlib.util.spec_from_file_location("tiers_migration", path)
+    assert spec is not None
+    assert spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
 
 
 def install_queue(admin_url: str) -> None:

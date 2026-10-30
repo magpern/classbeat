@@ -506,7 +506,7 @@ def test_upgrade_and_downgrade_on_an_empty_and_a_populated_database(
                     .all()
                 )
                 assert forced == [True, True, True, True]
-            command.upgrade(config, "0006_spotify")  # and up again over the downgraded data
+            command.upgrade(config, "head")  # and up again over the downgraded data
             with admin_engine.connect() as conn:
                 assert check_tables(conn, SYSTEM_TABLES) == []
                 assert check_retention(conn, RETENTION, SYSTEM_TABLES) == []
