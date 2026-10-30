@@ -246,13 +246,14 @@ guard 2's privilege test):
 records two rows with the same `run_id`): `id`, `run_id`, `recorded_at`, `suite_version`,
 `manifest_digest`, `provider`, `model`, `effort`, `stage_group` (`design` | `songs`),
 `prompt_versions jsonb` (stage → SHA-256, the group's stages), `classbeat_version`, `results_sha256`
-(of the file as written), `verdict jsonb` (§4.3, the group's part, computed when recorded), `passed
+(of the file as written), `verdict jsonb NOT NULL` (§4.3, the group's part, computed when recorded; an `incomplete` verdict is stored with `"passed": false`), `passed
 bool NOT NULL`, `total_cost_micros`, `authorization text` (1 to 200 characters: the owner's go-ahead,
 for example "owner 2026-11-03 chat"), and a unique key `(id, provider, model, effort, stage_group,
 passed)` for the foreign key below. **Append-only**: the app role has `SELECT` and `INSERT` only (a
-test that `UPDATE` and `DELETE` fail, like `agent_runs`). Two `CHECK`s: `passed = (verdict->>'passed')::boolean`
-(the flag the foreign key reads always agrees with the stored verdict) and `provider <> 'fake'` (plus
-`provider IN ('anthropic', 'openai', 'deepseek')`).
+test that `UPDATE` and `DELETE` fail, like `agent_runs`). Two `CHECK`s, neither of which can
+evaluate to NULL: `jsonb_typeof(verdict->'passed') = 'boolean' AND passed = (verdict->>'passed')::boolean`
+(a verdict without a boolean `passed`, or with `null`, is refused, so the flag the foreign key reads
+equals the stored verdict's) and `provider IN ('anthropic', 'openai', 'deepseek')` (never `fake`).
 
 `model_routes`: `route_key text` (`^[a-z0-9_]{1,40}$`), `stage_group`, `provider`, `model`, `effort`,
 `eval_result_id`, `gate_passed bool NOT NULL DEFAULT true CHECK (gate_passed)`, `set_at`, `set_by
@@ -270,11 +271,12 @@ with the file's SHA-256 and the given authorization. There is **no import of a r
 
 What is enforced, and what is not. Web and worker both connect as the app role, which has `INSERT` on the
 table, so the database alone cannot tell a live run's row from any other insert. The enforcement is:
-(a) a **static guard test** (like `tests/test_session_guard.py`): no module but
+(a) a **static guard test** (like `tests/test_session_guard.py`) over `backend/src/classbeat` only (the
+migration that creates the table and the tests that check it are outside its scope): no module there but
 `classbeat.models.store` mentions `model_eval_results` in SQL or a table object, and only
 `classbeat.evals.suite_live` imports `record_result` (the test fails on a new caller, and its allowlist is
-a reviewed change); (b) the two `CHECK`s, so a row's `passed` always matches its stored verdict and a
-`fake` result can never exist; (c) the composite foreign key on routes. Together: application code other
+a reviewed change); (b) the two `CHECK`s, so every row's `passed` equals the boolean `passed` of its
+`NOT NULL` verdict and a `fake` result can never exist; (c) the composite foreign key on routes. Together: application code other
 than the live command cannot write a result without failing CI, and no route can point at a failing,
 mismatched or fake result even if it did. Not enforced: that the verdict rows came from real provider
 answers rather than a doctored suite run by someone with the worker's shell, or a direct `INSERT` by the
@@ -350,7 +352,8 @@ prompt version; they gain `route_key` and `eval_result_id` (NULL for the bootstr
   (each of the three reasons) is used and flagged; an unusable route (catalog entry gone, key removed,
   `data_policy` reverted, DeepSeek switched off) fails the job `model_config` before any request.
 - The guard test fails on a planted second writer of `model_eval_results`; an `INSERT` with
-  `passed` disagreeing with `verdict`, or with `provider = 'fake'`, fails in the database.
+  `passed` disagreeing with `verdict`, with a verdict that has no `passed` key or `"passed": null`, or
+  with `provider = 'fake'`, fails in the database.
 - `--record` with a `FakeProvider` refuses; the CLI entry refuses under `CI`, and a test asserts it
   wires the real factory and installer (the injected seams are reachable only from Python).
 
@@ -444,7 +447,8 @@ carry it per run, where the `tss` check of a case with zone 7 widens its upper b
    (Anthropic) but runs a model that, under question 5, may not have passed either. *Default: keep
    working, flagged.*
 4. **Thresholds.** 3 repeats per case; adversarial and limit checks 100 %; other categories 90 % of runs
-   and each case at least once; median cost per class at most $0.75 (design) and $1.00 (song picking, inside the $3 song job ceiling).
+   and each case at least once; median cost per class at most $0.75 (design) and $1.00 (song
+   picking, inside the $3 song job ceiling).
    *Default: as written; they live in the manifest.*
 5. **Does the current default (Opus 5.5) need a full-suite pass** before M5's tiers use it? *Default:
    yes for any route; the bootstrap keeps using it until you record a run, which costs roughly the
