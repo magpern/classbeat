@@ -35,7 +35,8 @@ answered as MOWL making a copy: a new, empty program with the header, the origin
 `docker compose exec web`): `arm`, `release` and `state` take `?playlist=<spotify id>`;
 `save-arm?fail=<n>:<mode>,...` (zero the write counter and set the injections; no `fail` clears
 them; `reset=1` also forgets every program), `save-state` (the counter, the injections, the
-number of programs per account, no tokens) and `save-programs` (each program's account number,
+number of programs per account, no tokens), `save-listing?hidden=1|0` (My Workouts answers empty,
+as if MOWL's listing had not caught up with a write; `save-arm` shows it again) and `save-programs` (each program's account number,
 header, segment names and every interval's duration and zone) are for the programs.
 """
 
@@ -76,6 +77,7 @@ SEGMENTS: dict[int, dict[str, object]] = {}
 SAVE = {"writes": 0, "next_program": 800_000, "next_segment": 950_000}
 FAIL: dict[int, str] = {}
 FAIL_MODES = ("refuse", "drop", "noid", "copy")
+LISTING = {"hidden": False}  # My Workouts answers empty: MOWL's listing has not caught up
 POSITION_NAMES = {1: "Seated", 2: "Standing"}
 CYCLE_NAMES = {1: "SB", 4: "ACC"}
 TOKENS: set[str] = set()
@@ -378,7 +380,10 @@ class Handler(BaseHTTPRequestHandler):
             self.reply(400, {"Error": "bad request"})
             return
         with LOCK:
-            mine = sorted((i for i, p in PROGRAMS.items() if p["token"] == token), reverse=True)
+            mine = sorted(
+                (i for i, p in PROGRAMS.items() if p["token"] == token and not LISTING["hidden"]),
+                reverse=True,
+            )
             shown = mine[page * per_page : (page + 1) * per_page]
             listed = [
                 {"ProgramID": i, "Name": PROGRAMS[i]["body"].get("Name"), "IsPublic": False}  # type: ignore[union-attr]
@@ -438,6 +443,10 @@ class Handler(BaseHTTPRequestHandler):
         if action == "save-programs":
             self.save_programs()
             return
+        if action == "save-listing":
+            LISTING["hidden"] = (query.get("hidden") or [""])[0] == "1"
+            self.reply(200, dict(LISTING))
+            return
         if action == "save-edit":
             self.save_edit((query.get("program") or [""])[0])
             return
@@ -484,6 +493,7 @@ class Handler(BaseHTTPRequestHandler):
                         "program_id": program_id,
                         "account": number[str(program["token"])],
                         "name": body.get("Name"),
+                        "description": body.get("Description"),
                         "public": bool(body.get("IsPublic")),
                         "playlist_id": body.get("PlaylistID"),
                         "segments": [str(s["body"].get("Name")) for s in segments],  # type: ignore[union-attr]
@@ -509,6 +519,7 @@ class Handler(BaseHTTPRequestHandler):
                 SAVE["writes"] = 0
                 FAIL.clear()
                 FAIL.update(wanted)
+                LISTING["hidden"] = False
                 if reset == "1":  # every program and segment is forgotten (a test's clean start)
                     PROGRAMS.clear()
                     SEGMENTS.clear()

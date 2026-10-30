@@ -14,6 +14,7 @@ export interface FakeProgram {
   /** 0 for the account that owns the oldest program, 1 for the next, ... */
   account: number
   name: string
+  description: string
   public: boolean
   playlist_id: number
   segments: string[]
@@ -42,6 +43,12 @@ export const saveState = (): SaveState => fakeControl('GET', 'save-state')
 
 export const savePrograms = (): FakeProgram[] =>
   fakeControl<{ programs: FakeProgram[] }>('GET', 'save-programs').programs
+
+/** Hide or show the programs in the fake's My Workouts listing, as if MOWL had not caught up with a
+ *  write (ADR 0007 section 8: absence is not proof). `saveArm` shows them again. */
+export const listing = (hidden: boolean): void => {
+  fakeControl('POST', `save-listing?hidden=${hidden ? 1 : 0}`)
+}
 
 /** The fake MOWL's `save-edit`: the user renames the program in the MOWL app. */
 export const editInMowl = (programId: number): void => {

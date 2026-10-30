@@ -26,6 +26,9 @@ export default defineConfig({
   testDir: './tests',
   forbidOnly: !!process.env.CI,
   retries: 0,
+  // The fakes are one shared state (the fake MOWL's programs, the worker's model script), so the
+  // spec files run one after the other.
+  workers: 1,
   reporter: [['list'], ['html', { open: 'never' }]],
   use: {
     baseURL,
