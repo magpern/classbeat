@@ -224,7 +224,7 @@ async def test_the_views_show_what_the_page_needs_and_no_provider_ids(
     two: tuple[Plant, Plant],
 ) -> None:
     mine, _ = two
-    insert(
+    saved_id = insert(
         mine.admin,
         "saved_workouts",
         owner_id=mine.owner,
@@ -266,6 +266,8 @@ async def test_the_views_show_what_the_page_needs_and_no_provider_ids(
     assert row["open_job"] == {"id": str(queued), "kind": "test_kind", "state": "queued"}
     assert (row["saved"]["count"], row["saved"]["latest_revision_number"]) == (1, 1)
     assert row["saved"]["latest_up_to_date"] is True
+    assert row["saved"]["latest_saved_workout_id"] == str(saved_id)
+    assert row["saved"]["detached_count"] == 0
 
     revisions = await mine.browser.get(f"{base}/revisions")
     texts.append(revisions.text)
@@ -294,8 +296,144 @@ async def test_the_views_show_what_the_page_needs_and_no_provider_ids(
     )
 
     for body in texts:
+        for forbidden in (*FORBIDDEN, "987654"):
+            assert forbidden not in body, forbidden
+
+
+# --- the saved summary's workout id and detached count (#167) ---------------------------------
+
+_PROGRAMS = iter(range(700001, 799999))
+
+
+def saved_row(
+    plant: Plant,
+    class_id: UUID | None = None,
+    *,
+    age: int = 0,
+    detached: bool = False,
+    **more: Any,
+) -> UUID:
+    """A ``saved_workouts`` row of the plant's owner, ``age`` minutes old (by ``updated_at``)."""
+    at = datetime.now(UTC) - timedelta(minutes=age)
+    return insert(
+        plant.admin,
+        "saved_workouts",
+        owner_id=plant.owner,
+        class_id=class_id or plant.class_id,
+        program_id=next(_PROGRAMS),
+        revision_number=1,
+        content_hash=content_digest({**DRAFT, "name": "v1"}),
+        name="Tuesday climb",
+        created_at=at,
+        updated_at=at,
+        detached_at=at if detached else None,
+        **more,
+    )
+
+
+async def saved_summary(plant: Plant, class_id: UUID | None = None) -> dict[str, Any]:
+    """The class's ``saved`` object; the listing and the one-class read must agree."""
+    wanted = str(class_id or plant.class_id)
+    shown = await plant.browser.get(f"/api/classes/{wanted}")
+    assert shown.status_code == 200, shown.text
+    listed = (await plant.browser.get("/api/classes")).json()["classes"]
+    [row] = [c for c in listed if c["id"] == wanted]
+    assert row["saved"] == shown.json()["saved"]
+    for body in (shown.text, (await plant.browser.get("/api/classes")).text):
         for forbidden in FORBIDDEN:
             assert forbidden not in body, forbidden
+    return shown.json()["saved"]
+
+
+async def test_the_saved_summary_names_the_newest_live_row_and_counts_detached_ones(
+    two: tuple[Plant, Plant],
+) -> None:
+    mine, _ = two
+    none = await saved_summary(mine)
+    assert none == {
+        "count": 0,
+        "latest_revision_number": None,
+        "latest_saved_at": None,
+        "latest_up_to_date": None,
+        "latest_saved_workout_id": None,
+        "detached_count": 0,
+    }
+
+    saved_row(mine, age=10)
+    newest = saved_row(mine, age=1)
+    saved_row(mine, age=0, detached=True)  # newer, but detached: never the latest
+    summary = await saved_summary(mine)
+    assert (summary["count"], summary["latest_saved_workout_id"]) == (2, str(newest))
+    assert summary["detached_count"] == 1
+
+    # every live row detached (as a MOWL disconnect or reconnect does): no id, count 0
+    mine.sql("UPDATE saved_workouts SET detached_at = now() WHERE class_id = :c", c=mine.class_id)
+    gone = await saved_summary(mine)
+    assert (gone["count"], gone["latest_saved_workout_id"], gone["detached_count"]) == (0, None, 3)
+    assert gone["latest_up_to_date"] is None
+
+
+async def test_another_users_class_and_my_other_class_never_contribute(
+    two: tuple[Plant, Plant],
+) -> None:
+    mine, theirs = two
+    my_other = new_class(mine.admin, mine.owner, "Other")
+    # Newer rows, live and detached, on their class and on my other class only.
+    their_live = saved_row(theirs, age=0)
+    saved_row(theirs, age=0, detached=True)
+    saved_row(theirs, age=0, detached=True)
+    other_live = saved_row(mine, my_other, age=0)
+    saved_row(mine, my_other, age=0, detached=True)
+
+    empty = await saved_summary(mine)
+    assert (empty["count"], empty["latest_saved_workout_id"], empty["detached_count"]) == (
+        0,
+        None,
+        0,
+    )
+
+    old = saved_row(mine, age=30)
+    saved_row(mine, age=40, detached=True)
+    summary = await saved_summary(mine)
+    assert (summary["count"], summary["latest_saved_workout_id"], summary["detached_count"]) == (
+        1,
+        str(old),
+        1,
+    )
+    other = await saved_summary(mine, my_other)
+    assert (other["count"], other["latest_saved_workout_id"], other["detached_count"]) == (
+        1,
+        str(other_live),
+        1,
+    )
+    theirs_summary = await saved_summary(theirs)
+    assert (
+        theirs_summary["count"],
+        theirs_summary["latest_saved_workout_id"],
+        theirs_summary["detached_count"],
+    ) == (1, str(their_live), 2)
+    # None of their ids or mine leak into the other user's responses.
+    for plant, foreign in ((mine, their_live), (theirs, old), (theirs, other_live)):
+        listed = await plant.browser.get("/api/classes")
+        assert str(foreign) not in listed.text
+
+
+async def test_a_latest_row_whose_creating_operation_is_another_classs_names_no_id(
+    two: tuple[Plant, Plant],
+) -> None:
+    """The ``operation_id`` foreign key is owner-inclusive, not class-inclusive (#156 review).
+    Update refuses such a row, so the summary does not offer its id (it still counts)."""
+    mine, _ = two
+    my_other = new_class(mine.admin, mine.owner, "Other")
+    foreign_op = operation(mine.admin, mine.owner, my_other, "succeeded")
+    own_op = operation(mine.admin, mine.owner, mine.class_id, "succeeded")
+    saved_row(mine, age=0, operation_id=foreign_op)
+    inconsistent = await saved_summary(mine)
+    assert (inconsistent["count"], inconsistent["latest_saved_workout_id"]) == (1, None)
+    mine.sql("UPDATE saved_workouts SET operation_id = :o WHERE class_id = :c",
+             o=own_op, c=mine.class_id)  # fmt: skip
+    consistent = await saved_summary(mine)
+    assert consistent["latest_saved_workout_id"] is not None
 
 
 async def test_picking_a_revision(two: tuple[Plant, Plant]) -> None:
