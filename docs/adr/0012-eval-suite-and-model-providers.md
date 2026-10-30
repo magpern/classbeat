@@ -242,95 +242,130 @@ refuses when the built provider's kind does not match the choice's provider (so 
 data, so no `owner_id` and no RLS, like `connection_keks`; the app role's privileges below, checked by
 guard 2's privilege test):
 
-**One row per recorded run and stage group** in `model_eval_results` (a suite run covering both groups
-records two rows with the same `run_id`). The DDL below is **exact**: the migration may add indexes and
-comments, nothing else; any change to it is an ADR amendment. It was checked in a throwaway
-`postgres:17.11` container against the must-fail and must-pass cases listed after it (PR #229).
+**One row per recorded run and stage group** in `model_eval_results` (a suite run covering both
+groups records two rows with the same `run_id`). The DDL and grants below are **exact**: the
+migration may add indexes and comments, and must issue the `REVOKE`s shown (its downgrade the
+matching `GRANT`s); any other change is an ADR amendment. It was checked as the app role in a
+throwaway `postgres:17.11` container against the cases listed after it (PR #229).
 
 ```sql
--- ADR 0012 §5: the gate tables (exact DDL; the migration may add indexes and comments only).
+-- Rule: every CHECK is NULL-proof, written CHECK (coalesce(<expr>, false)), so none can pass by
+-- evaluating to NULL. Every column the foreign key uses is NOT NULL and the key is MATCH FULL.
 CREATE TABLE model_eval_results (
-    id                uuid        PRIMARY KEY,
-    run_id            uuid        NOT NULL,
-    recorded_at       timestamptz NOT NULL DEFAULT now(),
-    suite_version     integer     NOT NULL CHECK (suite_version >= 1),
-    manifest_digest   text        NOT NULL CHECK (manifest_digest ~ '^[0-9a-f]{64}$'),
-    provider          text        NOT NULL CHECK (provider IN ('anthropic', 'openai', 'deepseek')),
-    model             text        NOT NULL CHECK (model ~ '^[A-Za-z0-9._:-]{1,100}$'),
-    effort            text        NOT NULL CHECK (effort IN ('low', 'medium', 'high', 'xhigh', 'max')),
-    stage_group       text        NOT NULL CHECK (stage_group IN ('design', 'songs')),
-    prompt_versions   jsonb       NOT NULL CHECK (jsonb_typeof(prompt_versions) = 'object'),
-    classbeat_version text        NOT NULL,
-    results_sha256    text        NOT NULL CHECK (results_sha256 ~ '^[0-9a-f]{64}$'),
-    verdict           jsonb       NOT NULL,
-    passed            boolean     NOT NULL,
-    total_cost_micros bigint      NOT NULL CHECK (total_cost_micros >= 0),
-    authorization_note text       NOT NULL CHECK (char_length(authorization_note) BETWEEN 1 AND 200),
-    -- Never NULL: `?` is false (not NULL) for a missing key on a NOT NULL jsonb, so AND is false.
-    CONSTRAINT model_eval_results_passed_matches_verdict CHECK (
-        verdict ? 'passed'
+    id                 uuid        NOT NULL PRIMARY KEY,
+    run_id             uuid        NOT NULL,
+    recorded_at        timestamptz NOT NULL DEFAULT now(),
+    suite_version      integer     NOT NULL CHECK (coalesce(suite_version >= 1, false)),
+    manifest_digest    text        NOT NULL CHECK (coalesce(manifest_digest ~ '^[0-9a-f]{64}$', false)),
+    provider           text        NOT NULL
+        CHECK (coalesce(provider IN ('anthropic', 'openai', 'deepseek'), false)),
+    model              text        NOT NULL CHECK (coalesce(model ~ '^[A-Za-z0-9._:-]{1,100}$', false)),
+    effort             text        NOT NULL
+        CHECK (coalesce(effort IN ('low', 'medium', 'high', 'xhigh', 'max'), false)),
+    stage_group        text        NOT NULL CHECK (coalesce(stage_group IN ('design', 'songs'), false)),
+    prompt_versions    jsonb       NOT NULL CHECK (coalesce(jsonb_typeof(prompt_versions) = 'object', false)),
+    classbeat_version  text        NOT NULL CHECK (coalesce(char_length(classbeat_version) BETWEEN 1 AND 64, false)),
+    results_sha256     text        NOT NULL CHECK (coalesce(results_sha256 ~ '^[0-9a-f]{64}$', false)),
+    verdict            jsonb       NOT NULL,
+    passed             boolean     NOT NULL,
+    total_cost_micros  bigint      NOT NULL CHECK (coalesce(total_cost_micros >= 0, false)),
+    authorization_note text        NOT NULL
+        CHECK (coalesce(char_length(authorization_note) BETWEEN 1 AND 200, false)),
+    CONSTRAINT model_eval_results_passed_matches_verdict CHECK (coalesce(
+        jsonb_typeof(verdict) = 'object'
+        AND verdict ? 'passed'
         AND jsonb_typeof(verdict -> 'passed') = 'boolean'
-        AND passed = (verdict ->> 'passed')::boolean
-    ),
+        AND passed = (verdict ->> 'passed')::boolean,
+        false)),
     UNIQUE (run_id, stage_group),
     CONSTRAINT model_eval_results_fk_target UNIQUE (id, provider, model, effort, stage_group, passed)
 );
+-- Append-only for the app (the default privileges grant it SELECT, INSERT, UPDATE, DELETE).
+REVOKE UPDATE, DELETE, TRUNCATE ON model_eval_results FROM classbeat_app;
 
 CREATE TABLE model_routes (
-    route_key      text        NOT NULL CHECK (route_key ~ '^[a-z0-9_]{1,40}$'),
-    stage_group    text        NOT NULL CHECK (stage_group IN ('design', 'songs')),
-    provider       text        NOT NULL CHECK (provider IN ('anthropic', 'openai', 'deepseek')),
+    route_key      text        NOT NULL CHECK (coalesce(route_key ~ '^[a-z0-9_]{1,40}$', false)),
+    stage_group    text        NOT NULL CHECK (coalesce(stage_group IN ('design', 'songs'), false)),
+    provider       text        NOT NULL
+        CHECK (coalesce(provider IN ('anthropic', 'openai', 'deepseek'), false)),
     model          text        NOT NULL,
     effort         text        NOT NULL,
     eval_result_id uuid        NOT NULL,
-    gate_passed    boolean     NOT NULL DEFAULT true CHECK (gate_passed),
+    gate_passed    boolean     NOT NULL DEFAULT true CHECK (coalesce(gate_passed, false)),
     set_at         timestamptz NOT NULL DEFAULT now(),
-    set_by         text        NOT NULL CHECK (char_length(set_by) BETWEEN 1 AND 200),
+    set_by         text        NOT NULL CHECK (coalesce(char_length(set_by) BETWEEN 1 AND 200, false)),
     PRIMARY KEY (route_key, stage_group),
     CONSTRAINT model_routes_passing_result
         FOREIGN KEY (eval_result_id, provider, model, effort, stage_group, gate_passed)
         REFERENCES model_eval_results (id, provider, model, effort, stage_group, passed)
         MATCH FULL ON UPDATE RESTRICT ON DELETE RESTRICT
 );
+REVOKE TRUNCATE ON model_routes FROM classbeat_app;
 ```
 
-Why it holds: every column the composite foreign key uses is `NOT NULL` on both sides and the key is
-`MATCH FULL`, so the key is always checked (under the default `MATCH SIMPLE` a NULL in any referencing
-column skips it). `passed_matches_verdict` cannot evaluate to NULL: `verdict` is `NOT NULL`, and
-`verdict ? 'passed'` is false, not NULL, when the key is missing, so the whole `AND` is false; a JSON
-`null` or a string fails `jsonb_typeof`. An `incomplete` verdict (§4.3) is stored with `"passed":
-false`. `ON UPDATE / ON DELETE RESTRICT` keep a result that a route uses from changing or going, on top
-of the app role having only `SELECT` and `INSERT` on results (append-only; a test that `UPDATE` and
-`DELETE` fail, like `agent_runs`). The app role has `SELECT, INSERT, UPDATE, DELETE` on routes;
-deleting a route is how a model is disabled. (The column is `authorization_note` because
-`AUTHORIZATION` is a reserved word.)
+`docker/postgres/init/10-roles.sql` re-grants `SELECT, INSERT, UPDATE, DELETE` on every table each
+time it runs and then revokes per table; G1 adds the matching line, so a re-run never gives the app
+role `UPDATE` or `DELETE` on results back (tested by running the file again and reading the
+privileges):
 
-Must fail (each a test in G1, #211): a result whose verdict is `{}`, `{"x": 1}`, `{"passed": null}`,
-`{"passed": "true"}` or NULL, or whose `passed` disagrees with it; a result with provider `fake` or a
-NULL provider, model or stage group; a route at a failing result, at a passing result with another
-effort, model or stage group, with a NULL model, with a NULL `eval_result_id`, with `gate_passed`
-false; an `UPDATE` of a route onto a failing result; an `UPDATE` or `DELETE` of a result a route uses.
-Must succeed: a passing and a failing result, a route at the passing result, deleting the route.
+```sql
+-- Eval results are append-only for the app (ADR 0012 section 5, the M3c migration).
+SELECT 'REVOKE UPDATE, DELETE, TRUNCATE ON TABLE public.model_eval_results FROM classbeat_app'
+ WHERE to_regclass('public.model_eval_results') IS NOT NULL \gexec
+```
 
-**Who writes a result.** Only the live command with `--record`, in the worker container (the one with
-the keys and a database connection), after the last run: it computes the verdict from the runs it just
-made, refuses to record when the built provider's kind is not the choice's catalog provider (a `fake`
-provider never records), and inserts the rows through **one function,
-`classbeat.models.store.record_result`**, with the file's SHA-256 and the given authorization. There is **no import of a result file**.
+**Rules that make it hold.** (1) **Every CHECK is NULL-proof via `coalesce(<expr>, false)`**: a
+CHECK accepts a row whose expression is NULL, so each one is written to be false instead; new CHECKs
+on these tables follow the same rule. (2) The verdict check starts with `jsonb_typeof(verdict) =
+'object'`, because `?` also matches array elements and scalar strings (`'["passed"]' ? 'passed'` is
+true); then `?` for the key, `jsonb_typeof` for a JSON boolean, and equality with `passed`. (3)
+Every column the foreign key uses is `NOT NULL` on both sides and the key is `MATCH FULL`, so it is
+always checked (under the default `MATCH SIMPLE` a NULL in any referencing column skips it). (4)
+Results are append-only by privilege: the app role keeps `SELECT, INSERT` only, and `ON UPDATE / ON
+DELETE RESTRICT` also protect a used result from its owner's mistakes; no constraint is
+`DEFERRABLE`. The app role has `SELECT, INSERT, UPDATE, DELETE` on routes (deleting a route disables
+a model) but no `TRUNCATE`. An `incomplete` verdict (§4.3) is stored with `"passed": false`. The
+column is `authorization_note` because `AUTHORIZATION` is a reserved word. jsonb keeps the last of
+duplicate keys, so `{"passed": false, "passed": true}` is stored as `{"passed": true}` and is
+checked as such.
 
-What is enforced, and what is not. Web and worker both connect as the app role, which has `INSERT` on the
-table, so the database alone cannot tell a live run's row from any other insert. The enforcement is:
-(a) a **static guard test** (like `tests/test_session_guard.py`) over `backend/src/classbeat` only (the
-migration that creates the table and the tests that check it are outside its scope): no module there but
-`classbeat.models.store` mentions `model_eval_results` in SQL or a table object, and only
-`classbeat.evals.suite_live` imports `record_result` (the test fails on a new caller, and its allowlist is
-a reviewed change); (b) the two `CHECK`s, so every row's `passed` equals the boolean `passed` of its
-`NOT NULL` verdict and a `fake` result can never exist; (c) the composite foreign key on routes.
-Together: application code other than the live command cannot write a result without failing CI, and no route can point at a failing,
-mismatched or fake result even if it did. Not enforced: that the verdict rows came from real provider
-answers rather than a doctored suite run by someone with the worker's shell, or a direct `INSERT` by the
-operator; the operator is trusted (accepted risk). A separate recording database role would make (a) a
-database rule instead of a test; deferred to M6's security review.
+**Must fail** (each a test in G1, #211, as `classbeat_app`): a verdict that is `{}`, `{"x": 1}`, a
+non-object (`["passed"]`, `"passed"`, `1`, `true`, JSON `null`, `[{"passed": true}]`), nested only
+(`{"result": {"passed": true}}`), or whose `passed` is `null`, a string, a number, an object or an
+array; `passed` disagreeing with the verdict (also after duplicate keys); a provider `fake`,
+`OpenAI` or ` openai`; a model with a trailing space or empty; an unknown effort or stage group; a
+non-object `prompt_versions`; `suite_version` 0; a negative cost; an empty `authorization_note`; a
+digest that is not hex; NULL in every column of either table; `UPDATE`, `DELETE`, `TRUNCATE` and
+`INSERT ... ON CONFLICT DO UPDATE` on results; a route at a failing result, at a random id, or at a
+pass with another effort, model (case), provider or stage group; `gate_passed` false or NULL; a
+route upsert or `UPDATE` onto a failing result or to another effort; `TRUNCATE` on routes; `SET
+CONSTRAINTS ALL DEFERRED` followed by a bad route; `SET session_replication_role`; `ALTER TABLE ...
+DROP CONSTRAINT` and `DISABLE TRIGGER`. **Must succeed:** a passing and a failing design result, a
+passing songs result, a verdict with extra keys, a route at each pass, deleting a route. The run of
+these 73 and 8 cases is in PR #229.
+
+**Who writes a result.** Only the live command with `--record`, in the worker container (the one
+with the keys and a database connection), after the last run: it computes the verdict from the runs
+it just made, refuses to record when the built provider's kind is not the choice's catalog provider
+(a `fake` provider never records), and inserts the rows through **one function,
+`classbeat.models.store.record_result`**, with the file's SHA-256 and the given authorization. There
+is **no import of a result file**.
+
+What is enforced, and what is not. Web and worker both connect as the app role, which has `INSERT`
+on the table, so the database alone cannot tell a live run's row from any other insert. The
+enforcement is: (a) a **static guard test** (like `tests/test_session_guard.py`) over
+`backend/src/classbeat` only (the migration that creates the table and the tests that check it are
+outside its scope): no module there but `classbeat.models.store` mentions `model_eval_results` in
+SQL or a table object, and only `classbeat.evals.suite_live` imports `record_result` (the test fails
+on a new caller, and its allowlist is a reviewed change); (b) the NULL-proof `CHECK`s, so every
+row's `passed` equals the JSON boolean `passed` of its object verdict and a `fake` result can never
+exist; (c) append-only privileges that survive a re-run of `10-roles.sql`; (d) the composite foreign
+key on routes. Together: application code other than the live command cannot write a result without
+failing CI, no app code can change one afterwards, and no route can point at a failing, mismatched
+or fake result. Not enforced: that the verdict rows came from real provider answers rather than a
+doctored suite run by someone with the worker's shell, or a direct `INSERT` by the operator; the
+operator is trusted (accepted risk). A separate recording database role would make (a) a database
+rule instead of a test; deferred to M6's security review.
 
 **Routes.** `classbeat.models` (new package):
 
@@ -517,12 +552,12 @@ One issue per PR, milestone "M3c Eval and providers". "Opus" marks an Opus Devel
 keys and egress, the gate); every PR gets a fresh Reviewer (Opus for the Opus issues and for EV1, Sonnet
 for the rest). No issue is startable before this ADR is accepted. Fakes and fixtures only.
 
-In-flight M4 work (#180 to #186, #198, #200) owns the song job kinds in `classbeat/songs/`,
-`classbeat/agent/{pick_pool,
-choose_songs,songs,registry}.py`, the class API's song views and the frontend class pages; #196 owns
-`evals/compare.py`. No M3c issue edits those files before they merge; G2 and Z7 are sequenced after them.
-Expected rebases, not collisions: P0 edits `config.py` (also changed by #200), G2 edits `agent/records.py`
-(also #200; G2 already follows #182), and T4 edits `AGENTS.md` (also #186, #197, #198 and #200; T4 is last).
+In-flight M4 work (#180 to #186, #198, #200) owns the song job kinds in `classbeat/songs/`, the song
+stages `classbeat/agent/{pick_pool,choose_songs,songs,registry}.py`, the class API's song views and
+the frontend class pages; #196 owns `evals/compare.py`. No M3c issue edits those files before they
+merge; G2 and Z7 are sequenced after them. Expected rebases, not collisions: P0 edits `config.py`
+(also changed by #200), G2 edits `agent/records.py` (also #200; G2 already follows #182), and T4
+edits `AGENTS.md` (also #186, #197, #198 and #200; T4 is last).
 
 | # | Issue | Owner | Depends on |
 |---|---|---|---|
