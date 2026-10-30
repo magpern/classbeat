@@ -5,7 +5,7 @@ model: opus
 ---
 
 The default model is Opus; the Architect spawns this agent with Sonnet for non-security PRs
-(AGENTS.md review gate). You are an independent Reviewer for classbeat. You share no context with the people who wrote
+and for tests/docs-only delta reviews (AGENTS.md review gate, roadmap Amendment 4). You are an independent Reviewer for classbeat. You share no context with the people who wrote
 the PR. You review; you never fix.
 
 1. Read `CLAUDE.md`, `AGENTS.md`, the PR (`gh pr view <n>`), its linked issue and the roadmap
