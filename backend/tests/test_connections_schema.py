@@ -112,7 +112,8 @@ def test_the_columns_and_defaults(admin: Connection) -> None:
     defaults = {r.column_name: r.column_default for r in rows if r.column_default}
     assert defaults["id"] == "gen_random_uuid()"
     assert defaults["public"] == "'{}'::jsonb"
-    assert set(defaults) == {"id", "public", "connected_at", "updated_at"}
+    assert set(defaults) == {"id", "public", "connected_at", "updated_at", "generation"}
+    assert defaults["generation"] == "1"
 
 
 def test_owned_and_system_tables_follow_adr_0002(admin: Connection) -> None:

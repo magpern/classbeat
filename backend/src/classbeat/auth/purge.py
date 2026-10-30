@@ -3,9 +3,10 @@
 from datetime import timedelta
 from typing import Any
 
-from sqlalchemy import and_, delete, func, or_, update
+from sqlalchemy import and_, delete, func, or_, text, update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from classbeat.auth.deps import purge_contexts
 from classbeat.auth.tables import (
     auth_events,
     auth_tokens,
@@ -17,12 +18,19 @@ from classbeat.auth.tables import (
     sessions,
 )
 from classbeat.config import Settings
-from classbeat.db import system_session
+from classbeat.context import UserContext
+from classbeat.db import system_session, user_session
 
 RETENTION_DAYS = 30
 DEVICE_RETENTION_DAYS = 90
 # The longest rate-limit window is an hour; older windows can never be hit again.
 RATE_LIMIT_KEEP = timedelta(hours=2)
+# ADR 0009 section 3: a Spotify connect flow is deleted when used or expired. The table is owned
+# (row security), so it is purged per user in that user's own session.
+_SPOTIFY_FLOWS = text(
+    "DELETE FROM spotify_oauth_flows WHERE owner_id = :owner_id "
+    "AND (expires_at <= now() OR used_at IS NOT NULL)"
+)
 
 
 def _ago(days: int) -> Any:
@@ -40,7 +48,8 @@ async def purge_expired(
     - ``rate_limits``: windows over two hours old;
     - ``invites``: used or expired more than 30 days ago;
     - ``known_devices``: unused for 90 days;
-    - ``auth_events``: older than 30 days.
+    - ``auth_events``: older than 30 days;
+    - ``spotify_oauth_flows``: expired or used (an owned table: per user, in their own session).
     """
     idle = timedelta(days=settings.session_idle_days)
     now = func.now()
@@ -78,4 +87,17 @@ async def purge_expired(
             .values(ip=None)
         )
         counts["sessions_ip_cleared"] = int(cleared.rowcount or 0)  # pyright: ignore[reportAttributeAccessIssue]
+        contexts = await purge_contexts(db)
+    counts["spotify_oauth_flows"] = await _purge_spotify_flows(factory, contexts)
     return counts
+
+
+async def _purge_spotify_flows(
+    factory: async_sessionmaker[AsyncSession], contexts: list[UserContext]
+) -> int:
+    removed = 0
+    for ctx in contexts:
+        async with user_session(factory, ctx) as db:
+            result = await db.execute(_SPOTIFY_FLOWS, {"owner_id": ctx.user_id})
+            removed += int(result.rowcount or 0)  # pyright: ignore[reportAttributeAccessIssue]
+    return removed

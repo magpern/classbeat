@@ -10,7 +10,13 @@ with the class or the account. Every owned table is listed with
 - ``deleted_with``: how the rows go. ``class`` and ``account`` are ``ON DELETE CASCADE`` paths
   from ``classes`` and ``users`` that the guard checks in the catalog; ``mowl_connection`` is the
   application's own deletion when the MOWL connection is dropped or replaced (ADR 0006 section 3,
-  ADR 0007 section 9), which the guard can't see and a test exercises.
+  ADR 0007 section 9), which the guard can't see and a test exercises; ``spotify_connection`` is
+  the same for Spotify (ADR 0009 section 7, ADR 0008 sections 2 and 8): Disconnect and an account
+  change (``forget_spotify_account``), and the narrower ``forget_pool`` of a consent revoke, a
+  ``pool_missing`` and a Client ID change, tested in ``tests/test_spotify_schema.py``.
+
+``spotify_oauth_flows`` also go when used or expired (the callback, the hourly purge of
+``classbeat.auth``); the registry lists the account, the path that always holds.
 
 ``tests/retention_guard.py`` fails when an owned table is missing, when a ``text``, ``jsonb`` or
 ``bytea`` column of a listed table is in neither set, when an entry names a column or table that
@@ -23,7 +29,7 @@ from dataclasses import dataclass
 from types import MappingProxyType
 from typing import Literal
 
-DeletionPath = Literal["class", "account", "mowl_connection"]
+DeletionPath = Literal["class", "account", "mowl_connection", "spotify_connection"]
 
 
 @dataclass(frozen=True)
@@ -67,6 +73,7 @@ RETENTION: Mapping[str, Retention] = MappingProxyType(
             "class",
             "account",
             "mowl_connection",
+            "spotify_connection",
         ),
         "mowl_playlist_links": _entry(
             "source_id playlist_id", "source", "account", "mowl_connection"
@@ -82,6 +89,24 @@ RETENTION: Mapping[str, Retention] = MappingProxyType(
             "provider status key_id",
             "account",
             "mowl_connection",
+            "spotify_connection",
+        ),
+        # ADR 0009 section 3: the user's own Client ID and the PKCE verifier (useless without the
+        # one-time code); the redirect URI is classbeat's own callback.
+        "spotify_oauth_flows": _entry(
+            "client_id verifier", "state_hash session_hash redirect_uri", "account"
+        ),
+        # ADR 0008 section 8: the pool playlist id and the Spotify user id, with the consent.
+        "spotify_pool": _entry(
+            "spotify_user_id playlist_id", "last_hash", "account", "spotify_connection"
+        ),
+        # Final playlists: detached by Disconnect or an account change, then gone with the class.
+        "class_playlists": _entry(
+            "playlist_id spotify_user_id name",
+            "state content_hash",
+            "class",
+            "account",
+            "spotify_connection",
         ),
     }
 )

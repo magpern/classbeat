@@ -561,6 +561,17 @@ def test_deleting_the_class_then_the_user_leaves_nothing_in_the_registered_table
     )  # fmt: skip
     insert(admin, "mowl_playlist_links", owner_id=owner, source="spotify",
            source_id="37i9dQZF1DXcBWIGoYBM5M", playlist_id=7)  # fmt: skip
+    # M4 (migration 0006). The pool operation rows and the Spotify deletion paths are planted and
+    # deleted in test_spotify_forget.py.
+    insert(admin, "class_playlists", owner_id=owner, class_id=class_id, revision_id=rev,
+           playlist_id="0vvXsWCC9xrXsKd4FyS8kM", spotify_user_id="user-a", name="Tuesday climb",
+           state="created")  # fmt: skip
+    insert(admin, "spotify_pool", owner_id=owner, spotify_user_id="user-a", consent_version=1,
+           playlist_id="37i9dQZF1DXcBWIGoYBM5M")  # fmt: skip
+    insert(admin, "spotify_oauth_flows", owner_id=owner, state_hash=digest("s"),
+           session_hash=digest("x"), client_id="0123456789abcdef0123456789abcdef",
+           redirect_uri="u", verifier="A" * 43, created_at="2998-12-31 23:55",
+           expires_at="2999-01-01")  # fmt: skip
     tables = sorted(RETENTION)
     planted = {t for t in tables if count(admin, t) > 0}
     assert planted == set(tables) - {"connections"}

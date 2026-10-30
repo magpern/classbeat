@@ -15,8 +15,9 @@ from sqlalchemy.exc import DisconnectionError, OperationalError
 from classbeat.connections import ConnectionFailure
 from classbeat.egress import OutboundBlocked
 
-# ADR 0005 section 4 and ADR 0007 section 1; the same list as the ``jobs.error_category`` check of
-# migration 0005.
+# ADR 0005 section 4, ADR 0007 section 1, ADR 0008 section 1 and ADR 0009 section 8; the same list
+# as the ``jobs.error_category`` check of migration 0006. Which of the new ones are retried is
+# decided with the code that raises them (``RETRYABLE`` is unchanged until then).
 CATEGORIES: Final = (
     "upstream_unavailable",
     "rate_limited",
@@ -39,6 +40,24 @@ CATEGORIES: Final = (
     "program_changed",
     "program_missing",
     "music_unlinked",
+    # ADR 0009 section 8 (migration 0006).
+    "invalid_grant",
+    "app_misconfigured",
+    "not_allowlisted",
+    "forbidden",
+    "quota_exhausted",
+    "not_found",
+    "scope_mismatch",
+    "invalid_response",
+    "account_changed",
+    "access_denied",
+    # ADR 0008 section 1 (migration 0006).
+    "consent_missing",
+    "pool_unusable",
+    "pool_missing",
+    "pool_not_synced",
+    "playlist_mismatch",
+    "pool_too_small",
 )
 # Retried by the worker (a new attempt with backoff). ``lease_lost`` is retried by the reaper and
 # ``operation_busy`` is requeued without an attempt (``classbeat.jobs.transitions``).
