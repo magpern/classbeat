@@ -16,7 +16,8 @@ GitHub hold the detail.
 | M4 | Song picking (beta), Spotify BYOK | in progress: design in review ([ADR 0008](adr/0008-song-picking.md), [ADR 0009](adr/0009-spotify-connection.md)); issues in milestone "M4 Song picking and Spotify" (#173 to #186) |
 | M3c | Eval suite, OpenAI and DeepSeek adapters | design in review ([ADR 0012](adr/0012-eval-suite-and-model-providers.md)); issues in milestone "M3c Eval and providers" (#201 to #219) |
 | M5 | Tiers, quotas, codes, admin | M5 design accepted, development started ([ADR 0011](adr/0011-tiers-quotas-and-admin.md)); issues in milestone "M5 Tiers and admin" |
-| M6 | Security review, backups, GDPR, VPS | not started |
+| MU | Night Studio UI (ADR 0013) | design accepted 2026-10-30 ([ADR 0013](adr/0013-ui-design-night-studio.md), roadmap Amendment 8); issues #242, #243, #246 to #251, #253 to #255; runs beside M4 and M5, done before M6 |
+| M6 | Security review, backups, GDPR, VPS | not started; starts after MU |
 | M7 | Commercial (deferred) | deferred |
 
 ## Now
@@ -120,18 +121,24 @@ GitHub hold the detail.
   "M5 Tiers and admin"; QT1, FL1, FE1 and T1 wait for
   their M4 dependencies. The owner's questions (limits, testers' plan, trial, refunds and more) are in
   ADR 0011 §11; development proceeds on its defaults.
-- **UI redesign proposed** (owner decisions 2026-10-30, roadmap Amendment 8):
-  [ADR 0013](adr/0013-ui-design-night-studio.md) covers a dark-first "Night Studio" look, MOWL-like
-  zone colours on the class profile, Spotify-like music screens, a sidebar or tab bar with Account
-  always in reach, and Tailwind with Radix primitives. Mockups of every main screen are on the
-  owner's design canvas. Planned as milestone "UI Night Studio" (L2, UI1 to UI10, ADR 0013 §11)
-  once the ADR is accepted.
-
-  ADR amendments owed when ADR 0013 is accepted (pointers to ADR 0013 §9):
-  - ADR 0001's Frontend bullet;
-  - ADR 0009 §10 (album image URLs) and its contract rows M-1 and M-5 (`image`);
-  - ADR 0008 §5 (`song_list` `v: 2` with `cover`) and §8 (the retention row);
+- **MU Night Studio UI** (owner decisions 2026-10-30, roadmap Amendment 8). ADR 0013 was merged
+  in #237 and accepted in #256 (closes #241), which also added the "amended by ADR 0013 §9" notes to:
+  - ADR 0001 Frontend;
+  - ADR 0008 §5 and §8;
+  - ADR 0009 §10, M-1 and M-5;
   - threat-model T73.
+
+  The issues and the order they open up in:
+  - #242 L2: the `mowl-workouts` 0.7.0 library release, by the local Architect.
+  - #243 UI1: the foundation, startable now.
+  - #246 UI2: the shell.
+  - #254 UI9: the landing and sign-in pages, after UI2.
+  - #247 UI3, #248 UI4, #249 UI5, #250 UI6, #251 UI7, #253 UI8: also wait for the M4, M3c and M5
+    issues named in them (#181 to #184, #217, #224).
+  - #255 UI10: the done-when checks.
+
+  Mockups of every main screen are on the owner's design canvas. The issues are in GitHub
+  milestone "MU Night Studio UI" (#12).
 - Releases: v0.1.0 (cut partway through M0); v0.2.0 is not cut yet (deferred to save Actions quota). Image
   `ghcr.io/magpern/classbeat`, private.
 
