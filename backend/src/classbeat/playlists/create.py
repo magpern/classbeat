@@ -6,7 +6,15 @@ the user's own Spotify account, as an external operation. Create only: the track
   user, so a later job (after ``pool_missing``, a revoked and given-again consent, or a superseded
   uncertain create) makes a new row with a new id and therefore a new ``ref``. Only the attempts
   of one job share a row, and they take a ``failed`` row over only when the create provably did
-  not happen (refused before it was sent).
+  not happen (refused before it was sent, or refused by Spotify; #198 item 1):
+
+  - the job's own reconciliation never resolves a create ``failed`` (``_JOB_KINDS``): "none
+    listed after the lag" is not proof, so there it is inconclusive and the job fails
+    ``uncertain_write``; the lag rule below is the user's (Check again), whose next create is a
+    new job under a new key;
+  - the decide step (``_retake_guard``) refuses a ``failed`` row that the call's own record did
+    not write (``resolved_by`` other than ``worker``: the user's Check again or Do it anyway),
+    with ``uncertain_write`` and nothing sent.
 - **Request hash** over ``{kind, purpose, name, pool_id}`` (the pool) or ``{kind, purpose, name,
   content_hash}`` (the final playlist, the approved ``song_list`` revision's hash).
 - **Context** ``{purpose, pool_id}`` or ``{purpose, revision_id, content_hash, name,
@@ -25,9 +33,9 @@ the user's own Spotify account, as an external operation. Create only: the track
 
   ======================================================  ===================================
   exactly one                                             ``succeeded`` with its id
-  none, every page read (fewer than 1000), the call      ``failed``
-  returned and ``CLASSBEAT_SPOTIFY_LISTING_LAG_SECONDS``
-  set and passed since
+  none, every page read (fewer than 1000), the call      ``failed`` (the user's Check again;
+  returned and ``CLASSBEAT_SPOTIFY_LISTING_LAG_SECONDS``  inconclusive in the job's own
+  set and passed since                                    reconciliation, ``_JOB_KINDS``)
   none otherwise (the lag unset by default)               inconclusive
   two or more, a failed listing, 20 full pages            inconclusive
   ======================================================  ===================================
@@ -35,6 +43,7 @@ the user's own Spotify account, as an external operation. Create only: the track
   A same-named playlist without this ``ref`` is never taken for ours.
 """
 
+import dataclasses
 import logging
 from datetime import UTC, datetime, timedelta
 from typing import Any, Final, cast
@@ -55,6 +64,7 @@ from classbeat.operations import (
     CallResult,
     Operation,
     OperationKind,
+    OperationKinds,
     OperationRequest,
     ReconcileInput,
     Reconciliation,
@@ -148,11 +158,46 @@ def _create(name: str, about: str) -> Any:
     return fn
 
 
+# This job's own create row, locked whatever its state (so a Do it anyway cannot turn it
+# ``failed`` between this check and the protocol's take-over in the same transaction).
+_OWN_ROW = text(
+    "SELECT state, resolved_by FROM external_operations WHERE owner_id = :owner_id "
+    "AND kind = :kind AND idempotency_key = :key FOR UPDATE"
+)
+
+
+def _retake_guard(owner_id: UUID, request: OperationRequest) -> Guard:
+    """The request's own guard, then: a ``failed`` row is taken over only when the call's own
+    record wrote it (``resolved_by = 'worker'``, a refusal that proves no effect). The job's
+    reconciliation never writes ``failed`` for a create (``_JOB_KINDS``), so a ``worker``
+    ``failed`` row of this key is always such a record; anything else may have been created."""
+    inner = request.guard
+
+    async def guard(db: AsyncSession) -> bool:
+        if inner is not None and not await inner(db):
+            return False
+        row = (
+            await db.execute(
+                _OWN_ROW,
+                {"owner_id": owner_id, "kind": KIND, "key": request.idempotency_key},
+            )
+        ).first()
+        if row is not None and row.state == "failed" and row.resolved_by != "worker":
+            logger.warning("create not sent again: not proven absent", extra={"kind": KIND})
+            raise JobFailure("uncertain_write")
+        return True
+
+    return guard
+
+
 async def create(
     run: JobRun, keyring: KeyRing, opened: OpenConnection, request: OperationRequest, name: str
 ) -> str:
     """Perform the create of ``request`` with the held connection ``opened``; the new id."""
+    if request.kind != KIND:
+        raise JobFailure("internal")
     purpose = str(request.context["purpose"])
+    request = dataclasses.replace(request, guard=_retake_guard(run.lease.owner_id, request))
 
     async def call(operation_id: UUID) -> CallResult:
         about = common.description(ref_of(operation_id), purpose)
@@ -169,7 +214,7 @@ async def create(
             raise UncertainAnswer
         return CallResult(answer)
 
-    done = await perform_for(run, request, call, keyring=keyring)
+    done = await perform_for(run, request, call, keyring=keyring, kinds=_JOB_KINDS)
     return common.check_playlist_id(done.external_id)
 
 
@@ -300,3 +345,16 @@ async def _on_succeeded(db: AsyncSession, owner_id: UUID, operation: Operation) 
 
 
 CREATE: Final = OPERATION_KINDS.register(OperationKind(KIND, _reconcile, _on_succeeded))
+
+
+async def _reconcile_in_job(check: ReconcileInput) -> Reconciliation:
+    """The job's own reconciliation: ``failed`` (none listed after the lag) is not proof that
+    the create did not happen, and the job's next attempt would take the row over and send it
+    again under the same ``ref`` (#198 item 1). It stays inconclusive for the user instead."""
+    found = await _reconcile(check)
+    return INCONCLUSIVE if found.outcome == "failed" else found
+
+
+# What ``create`` hands ``perform_for``: the same kind, with the job's reconciler.
+_JOB_KINDS: Final = OperationKinds()
+_JOB_KINDS.register(OperationKind(KIND, _reconcile_in_job, _on_succeeded))

@@ -245,6 +245,9 @@ async def test_the_token_endpoints_refusal_flips_once_and_keeps_the_tokens(
         ({"kind": "status", "status": 503}, "upstream_unavailable"),
         ({"kind": "rate_limited", "retry_after": 30}, "rate_limited"),
         ({"kind": "refuse"}, "upstream_unavailable"),
+        # A 400 or 401 without an OAuth ``error`` code (#198 item 2).
+        ({"kind": "status", "status": 400}, "upstream_unavailable"),
+        ({"kind": "status", "status": 401}, "upstream_unavailable"),
     ],
 )
 async def test_other_refresh_failures_never_flip(
@@ -333,6 +336,68 @@ async def test_a_401_with_a_pre_refresh_token_does_not_flip_the_refreshed_connec
     assert [s.status for s in sent] == [401, 200]
     row = await spot.connection(ctx)
     assert (row.status, row.last_error) == ("connected", None)
+
+
+# --- the worker's refresh deadline (#198 item 3) -------------------------------------------------
+
+
+async def test_the_workers_refresh_has_the_refresh_timeout_as_its_total_deadline(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The worker hands its Spotify calls (``playlists.common.call``, the writes and the search)
+    a token client built from ``CLASSBEAT_SPOTIFY_REFRESH_TIMEOUT_SECONDS``, not the egress
+    default: the refresh request's client gets exactly that total deadline. No database."""
+    import httpx
+
+    from authtools import make_settings
+    from classbeat import design, egress, playlists, saving, songs
+    from classbeat.playlists import common
+    from classbeat.worker import __main__ as worker_main
+
+    class Engine:
+        async def dispose(self) -> None:
+            return None
+
+    async def nothing(*args: Any, **kwargs: Any) -> Any:
+        return None
+
+    seen: list[common.Runtime] = []
+    totals: list[float] = []
+
+    async def run_worker(settings: Any, stop: Any) -> None:
+        seen.append(common.runtime())
+
+    def client(*, total_seconds: float = egress.SPOTIFY_TOTAL_SECONDS) -> Any:
+        totals.append(total_seconds)
+        raise httpx.ConnectError("no network in tests")
+
+    monkeypatch.setattr(worker_main, "create_engine", lambda settings: Engine())
+    monkeypatch.setattr(worker_main, "verify_database_role", nothing)
+    monkeypatch.setattr(worker_main, "create_session_factory", lambda engine: None)
+    monkeypatch.setattr(worker_main, "load_keyring", nothing)
+    monkeypatch.setattr(worker_main.design, "runtime_from_settings", lambda s, k: None)
+    monkeypatch.setattr(worker_main, "_install_signal_handlers", lambda loop, stop: None)
+    monkeypatch.setattr(worker_main, "run_worker", run_worker)
+    monkeypatch.setattr(egress, "spotify_async_client", client)
+    previous = common.runtime()
+    url = "postgresql+psycopg://u:p@127.0.0.1:1/x"
+    try:
+        settings = make_settings(url, spotify_refresh_timeout_seconds=7.5)
+        await worker_main._run(settings)  # pyright: ignore[reportPrivateUsage]
+        [runtime] = seen
+        assert runtime.http is not None
+        assert runtime.margin_seconds == settings.spotify_refresh_margin_seconds
+        with pytest.raises(ConnectionFailure) as failed:
+            await runtime.http.refresh(CLIENT_A, "a-refresh-token")
+        assert failed.value.category == "upstream_unavailable"
+        assert totals == [7.5]
+        assert egress.SPOTIFY_TOTAL_SECONDS != 7.5  # not the default by coincidence
+    finally:
+        playlists.configure(previous)
+        songs.configure(None)
+        saving.configure(None)
+        saving.configure_listing_lag(None)
+        design.configure(None)
 
 
 async def test_a_stale_401_after_a_reconnect_does_not_flip_the_new_connection(
