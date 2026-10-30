@@ -30,17 +30,21 @@ const CALL_FAKE = [
 ].join('\n')
 
 /**
- * The fake MOWL's test control (`arm`, `release`, `state`). The fake is only on the compose
+ * One call to the fake MOWL's test control (`/__e2e/<path>`). The fake is only on the compose
  * network, so the call is made from inside the web container, which trusts its certificate.
  */
-export function fakeMowl(action: 'arm' | 'release' | 'state', playlistId: string): FakeMowlState {
-  const method = action === 'state' ? 'GET' : 'POST'
+export function fakeControl<T>(method: 'GET' | 'POST', path: string): T {
   const out = execFileSync(
     'docker',
-    ['compose', 'exec', '-T', 'web', 'python', '-c', CALL_FAKE, method, `${action}?playlist=${playlistId}`],
+    ['compose', 'exec', '-T', 'web', 'python', '-c', CALL_FAKE, method, path],
     { cwd: new URL('../..', import.meta.url), encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] },
   )
-  return JSON.parse(out) as FakeMowlState
+  return JSON.parse(out) as T
+}
+
+/** The fake's per-playlist control (`arm`, `release`, `state`). */
+export function fakeMowl(action: 'arm' | 'release' | 'state', playlistId: string): FakeMowlState {
+  return fakeControl(action === 'state' ? 'GET' : 'POST', `${action}?playlist=${playlistId}`)
 }
 
 /** On the account page, connect the fake MOWL account. Needs a fresh sign-in. */

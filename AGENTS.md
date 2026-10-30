@@ -424,9 +424,13 @@ to the provider. The fake MOWL (`e2e/fake-mowl/server.py`) answers as `api.mowl.
 (invented music; test playlists that hold a read or lose an attach answer, steered by `/__e2e/` calls the
 tests make from the web container), and keeps programs for Save (create, segments, intervals, My
 Workouts and one program; `/__e2e/save-arm?fail=<n>:<refuse|drop|noid>` injects a failure at a write
-request number, `/__e2e/save-state` reports the counts); web and worker trust one bundle of both fakes' throwaway CAs, and the
-worker replays `backend/tests/agent_scripts/good_first_draft.json` with the `fake` model provider
-(`design-draft.spec.ts`: draft, cancel while running, uncertain attach). The Playwright context blocks
+request number, `/__e2e/save-state` reports the counts, `save-programs` shows what each program holds, `save-listing?hidden=1`
+hides them from My Workouts); web and worker trust one bundle of both fakes' throwaway CAs, and the
+worker replays a `backend/tests/agent_scripts/` script with the `fake` model provider: it reads the symlink
+`/fake-run/script.json`, which starts on `good_first_draft.json` and which a test repoints with
+`e2e/tests/model-script.ts` for the revise runs (`design-draft.spec.ts`: draft, cancel while running, uncertain
+attach; `class-save.spec.ts`: change, save, update, uncertain writes, another MOWL account; `class-usage.spec.ts`).
+The fakes' state is shared, so Playwright runs one worker. The Playwright context blocks
 every origin but the stack's.
 They use public test values only and are never part of the default stack. The e2e
 stack trusts the docker network as proxy so each test presents its own `X-Forwarded-For` address

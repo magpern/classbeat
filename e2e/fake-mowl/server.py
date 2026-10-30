@@ -34,8 +34,10 @@ answered as MOWL making a copy: a new, empty program with the header, the origin
 `/__e2e/...` is the test control, reached from the compose network only (the tests call it with
 `docker compose exec web`): `arm`, `release` and `state` take `?playlist=<spotify id>`;
 `save-arm?fail=<n>:<mode>,...` (zero the write counter and set the injections; no `fail` clears
-them) and `save-state` (the counter, the injections, the number of programs per account, no
-tokens) are for the programs.
+them; `reset=1` also forgets every program), `save-state` (the counter, the injections, the
+number of programs per account, no tokens), `save-listing?hidden=1|0` (My Workouts answers empty,
+as if MOWL's listing had not caught up with a write; `save-arm` shows it again) and `save-programs` (each program's account number,
+header, segment names and every interval's duration and zone) are for the programs.
 """
 
 import contextlib
@@ -75,6 +77,7 @@ SEGMENTS: dict[int, dict[str, object]] = {}
 SAVE = {"writes": 0, "next_program": 800_000, "next_segment": 950_000}
 FAIL: dict[int, str] = {}
 FAIL_MODES = ("refuse", "drop", "noid", "copy")
+LISTING = {"hidden": False}  # My Workouts answers empty: MOWL's listing has not caught up
 POSITION_NAMES = {1: "Seated", 2: "Standing"}
 CYCLE_NAMES = {1: "SB", 4: "ACC"}
 TOKENS: set[str] = set()
@@ -377,7 +380,10 @@ class Handler(BaseHTTPRequestHandler):
             self.reply(400, {"Error": "bad request"})
             return
         with LOCK:
-            mine = sorted((i for i, p in PROGRAMS.items() if p["token"] == token), reverse=True)
+            mine = sorted(
+                (i for i, p in PROGRAMS.items() if p["token"] == token and not LISTING["hidden"]),
+                reverse=True,
+            )
             shown = mine[page * per_page : (page + 1) * per_page]
             listed = [
                 {"ProgramID": i, "Name": PROGRAMS[i]["body"].get("Name"), "IsPublic": False}  # type: ignore[union-attr]
@@ -432,7 +438,14 @@ class Handler(BaseHTTPRequestHandler):
         """Test control: `arm` (zero the counters, close the gate), `release` (open the gate) and
         `state` of one playlist; `save-arm` and `save-state` for the programs."""
         if action in ("save-arm", "save-state"):
-            self.save_control(action, (query.get("fail") or [""])[0])
+            self.save_control(action, (query.get("fail") or [""])[0], (query.get("reset") or [""])[0])
+            return
+        if action == "save-programs":
+            self.save_programs()
+            return
+        if action == "save-listing":
+            LISTING["hidden"] = (query.get("hidden") or [""])[0] == "1"
+            self.reply(200, dict(LISTING))
             return
         if action == "save-edit":
             self.save_edit((query.get("program") or [""])[0])
@@ -463,7 +476,37 @@ class Handler(BaseHTTPRequestHandler):
                 found["body"]["Name"] = "Renamed in the MOWL app"  # type: ignore[index]
         self.reply(200 if found is not None else 404, {"edited": found is not None})
 
-    def save_control(self, action: str, fail: str) -> None:
+    def save_programs(self) -> None:
+        """What each program holds, for the tests: accounts numbered by their oldest program (no
+        tokens), the header, the segment names and every interval's duration and zone."""
+        with LOCK:
+            number: dict[str, int] = {}
+            for program_id in sorted(PROGRAMS):  # an account is numbered by its oldest program
+                number.setdefault(str(PROGRAMS[program_id]["token"]), len(number))
+            shown = []
+            for program_id, program in sorted(PROGRAMS.items()):
+                body = program["body"]
+                assert isinstance(body, dict)
+                segments = [SEGMENTS[i] for i in program["segments"]]  # type: ignore[union-attr]
+                shown.append(
+                    {
+                        "program_id": program_id,
+                        "account": number[str(program["token"])],
+                        "name": body.get("Name"),
+                        "description": body.get("Description"),
+                        "public": bool(body.get("IsPublic")),
+                        "playlist_id": body.get("PlaylistID"),
+                        "segments": [str(s["body"].get("Name")) for s in segments],  # type: ignore[union-attr]
+                        "intervals": [
+                            [iv.get("Duration"), iv.get("ScaleCoggan")]
+                            for s in segments
+                            for iv in s["intervals"]  # type: ignore[union-attr]
+                        ],
+                    }
+                )
+        self.reply(200, {"programs": shown})
+
+    def save_control(self, action: str, fail: str, reset: str = "") -> None:
         if action == "save-arm":
             wanted: dict[int, str] = {}
             for item in filter(None, fail.split(",")):
@@ -476,6 +519,10 @@ class Handler(BaseHTTPRequestHandler):
                 SAVE["writes"] = 0
                 FAIL.clear()
                 FAIL.update(wanted)
+                LISTING["hidden"] = False
+                if reset == "1":  # every program and segment is forgotten (a test's clean start)
+                    PROGRAMS.clear()
+                    SEGMENTS.clear()
         with LOCK:
             accounts = Counter(str(p["token"]) for p in PROGRAMS.values())
             state = {
