@@ -10,13 +10,14 @@ for the write; the attach's never name the job or class either, so every job of 
 same target finds the same row.
 
 M3a registers ``mowl_attach_spotify_playlist``; M3b adds the MOWL saves (``mowl_save_workout``,
-``mowl_update_workout``), M4 the Spotify writes. The names are the ``external_operations.kind``
-check of migrations 0004 to 0006.
+``mowl_update_workout``), M4 the Spotify writes (``classbeat.playlists``). The names are the
+``external_operations.kind`` check of migrations 0004 to 0006.
 """
 
 import hashlib
 import json
 import math
+import re
 from collections.abc import Awaitable, Callable, Iterator, Mapping
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -34,11 +35,47 @@ Factory = async_sessionmaker[AsyncSession]
 ATTACH_KIND: Final = "mowl_attach_spotify_playlist"
 # The multi-request MOWL writes of a class (ADR 0007 sections 6 and 7): their rows carry the class.
 CLASS_WRITE_KINDS: Final = frozenset({"mowl_save_workout", "mowl_update_workout"})
-# The Spotify writes (ADR 0008 section 2; reserved by migration 0006, their code is issue OP1). A
-# pool row has no class, a final-playlist row has one.
-SPOTIFY_WRITE_KINDS: Final = frozenset({"spotify_create_playlist", "spotify_replace_items"})
+# The Spotify writes (ADR 0008 section 2, issue OP1, ``classbeat.playlists``). A pool row has no
+# class, a final-playlist row has one: which one follows from its key (``spotify_purpose``).
+SPOTIFY_CREATE_KIND: Final = "spotify_create_playlist"
+SPOTIFY_REPLACE_KIND: Final = "spotify_replace_items"
+SPOTIFY_WRITE_KINDS: Final = frozenset({SPOTIFY_CREATE_KIND, SPOTIFY_REPLACE_KIND})
+# The writes of several requests (ADR 0007 section 8, generalised by ADR 0008 section 2): each
+# carries ``bound_seconds``, and a stale call of one may still be sending requests until
+# ``actionable_at``. ``spotify_create_playlist`` is one request and is not in it.
+MULTI_REQUEST_KINDS: Final = frozenset({*CLASS_WRITE_KINDS, SPOTIFY_REPLACE_KIND})
 # The external_operations.kind check of migrations 0004 to 0006.
 KIND_NAMES: Final = frozenset({ATTACH_KIND, *CLASS_WRITE_KINDS, *SPOTIFY_WRITE_KINDS})
+# A Spotify write's key names its purpose (ADR 0008 section 2): ``<job_id>:pool-create``,
+# ``<job_id>:final-create``, ``<job_id>:pool:<h16>`` and ``<job_id>:final-fill``. The job part is
+# a UUID; ``h16`` is the first 16 hex characters of the track-list hash.
+_SPOTIFY_KEYS: Final = {
+    SPOTIFY_CREATE_KIND: (
+        (re.compile(r"[0-9a-f-]{36}:pool-create"), "pool"),
+        (re.compile(r"[0-9a-f-]{36}:final-create"), "final"),
+    ),
+    SPOTIFY_REPLACE_KIND: (
+        (re.compile(r"[0-9a-f-]{36}:pool:[0-9a-f]{16}"), "pool"),
+        (re.compile(r"[0-9a-f-]{36}:final-fill"), "final"),
+    ),
+}
+
+
+def spotify_purpose(kind: str, key: str) -> Literal["pool", "final"] | None:
+    """``pool`` or ``final`` for a Spotify write's key, None for any other kind or key. A pool
+    row carries no class and a final row carries its class (``OperationRequest`` enforces it,
+    since no table check ties ``class_id`` to the key)."""
+    for pattern, purpose in _SPOTIFY_KEYS.get(kind, ()):
+        if pattern.fullmatch(key) is not None:
+            return "pool" if purpose == "pool" else "final"
+    return None
+
+
+def is_pool_row(kind: str, class_id: UUID | None) -> bool:
+    """A Spotify pool row (``class_id IS NULL``): never offered to the user (ADR 0008 section 2)."""
+    return kind in SPOTIFY_WRITE_KINDS and class_id is None
+
+
 STATES: Final = ("pending", "succeeded", "failed", "uncertain")
 MAX_EXTERNAL_ID = 200  # the external_operations.external_id check
 MAX_CONTEXT_BYTES: Final = 2048  # the external_operations.request_context check
@@ -51,6 +88,14 @@ FALLBACK_BOUND_SECONDS: Final = 3600
 # clamped to 0..this wherever it is read, for a row the protocol did not write.
 MAX_BOUND_SECONDS: Final = 1800
 BOUND_KEY: Final = "bound_seconds"  # where the protocol stores the bound in the context
+# Where the protocol stores the operation's ``ref`` (``OperationRequest.with_ref``): 12 hex
+# characters of the row's own id, so every row (a later job's included) has its own.
+REF_KEY: Final = "ref"
+
+
+def ref_of(operation_id: UUID) -> str:
+    """The ``ref`` of an operation row (ADR 0008 section 2): 12 hex characters of its id."""
+    return operation_id.hex[:12]
 
 
 @dataclass(frozen=True, slots=True)

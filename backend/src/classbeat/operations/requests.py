@@ -21,18 +21,25 @@ from classbeat.operations.kinds import (
     FALLBACK_BOUND_SECONDS,
     MAX_BOUND_SECONDS,
     MAX_CONTEXT_BYTES,
+    MULTI_REQUEST_KINDS,
+    REF_KEY,
+    SPOTIFY_CREATE_KIND,
+    SPOTIFY_WRITE_KINDS,
     context_size,
+    ref_of,
+    spotify_purpose,
 )
 
 # ADR 0007 section 8: until when a stale multi-request call may still be sending requests. The
 # one definition of ``actionable_at`` (the protocol, the user's actions, the operation view and
 # the class delete all use it). NULL when nothing waits: the current attempt's call returned, or
-# the row is no class write and has no bound (the attach, a single-request kind). A class write
+# the row is no multi-request write and has no bound (the attach, the Spotify create). A
+# multi-request write (``MULTI_REQUEST_KINDS``: the MOWL class writes and ``spotify_replace_items``)
 # whose context carries no usable bound (the protocol never writes one) waits
 # ``FALLBACK_BOUND_SECONDS``: a row of unknown bound is never actionable early.
 # ``pending_at`` is set by every transition into ``pending``; ``updated_at`` (later) only stands
 # in for a row that predates it.
-_CLASS_KINDS_SQL: Final = ", ".join(f"'{name}'" for name in sorted(CLASS_WRITE_KINDS))
+_MULTI_KINDS_SQL: Final = ", ".join(f"'{name}'" for name in sorted(MULTI_REQUEST_KINDS))
 _HAS_BOUND_SQL: Final = "jsonb_typeof(request_context -> 'bound_seconds') = 'number'"
 # The stored bound, clamped to 0..MAX_BOUND_SECONDS: a context written by anything but the
 # protocol can't make a row wait forever or end its wait before it began. Clamped as ``numeric``
@@ -42,7 +49,7 @@ _CLAMPED_BOUND_SQL: Final = (
     "::float8"
 )
 WAITING_SQL: Final = (
-    f"(({_HAS_BOUND_SQL} OR kind IN ({_CLASS_KINDS_SQL})) "
+    f"(({_HAS_BOUND_SQL} OR kind IN ({_MULTI_KINDS_SQL})) "
     "AND NOT coalesce(call_ended_at >= pending_at, false))"
 )
 ACTIONABLE_AT_SQL: Final = (
@@ -53,6 +60,9 @@ ACTIONABLE_AT_SQL: Final = (
 # True while a stale call may still be running: no reconciliation, no user action.
 NOT_ACTIONABLE_SQL: Final = f"coalesce(({ACTIONABLE_AT_SQL}) > now(), false)"
 
+
+# Stands in for the row's id when the context's size is checked before the row exists.
+_SIZE_PROBE: Final = UUID(int=0)
 
 # Runs first in step 1's transaction (before the operation row is locked): False ends the job
 # ``not_connected`` before any row is written. The attach share-locks the MOWL connection it
@@ -87,6 +97,10 @@ class OperationRequest:
     # A multi-request write's total bound (ADR 0007 section 6): the lease is extended by it, it
     # is stored in the context, and a stale call is waited for until ``pending_at + bound + 30 s``.
     bound_seconds: float | None = None
+    # The protocol stores ``ref`` (12 hex characters of the row's own id, ``kinds.ref_of``) in
+    # the context of every attempt and hands the row's id to the call (``perform_for``), so the
+    # write can carry it (the Spotify create's description, ADR 0008 section 2).
+    with_ref: bool = False
 
     def __post_init__(self) -> None:
         if not 1 <= len(self.idempotency_key) <= 120:  # the table's check
@@ -95,10 +109,7 @@ class OperationRequest:
             raise ValueError("a request hash is SHA-256")
         if self.timeout_seconds <= 0:
             raise ValueError("a provider call needs a positive timeout")
-        if self.kind == ATTACH_KIND and self.class_id is not None:
-            raise ValueError("an attach belongs to no class")
-        if self.kind in CLASS_WRITE_KINDS and self.class_id is None:
-            raise ValueError("a class write names its class")
+        self._check_class()
         if self.bound_seconds is not None:
             if self.single_request:
                 raise ValueError("a bound is for a call of several requests")
@@ -110,18 +121,40 @@ class OperationRequest:
             # actionable while its call may still be sending requests.
             if self.bound_seconds > MAX_BOUND_SECONDS:
                 raise ValueError("a bound is at most MAX_BOUND_SECONDS")
-        elif self.kind in CLASS_WRITE_KINDS:
-            raise ValueError("a class write is several requests and needs its bound")
+        elif self.kind in MULTI_REQUEST_KINDS:
+            raise ValueError("a write of several requests needs its bound")
+        if self.kind == SPOTIFY_CREATE_KIND and not (self.single_request and self.with_ref):
+            raise ValueError("a Spotify create is one request and carries its ref")
         self.stored_context()
 
-    def stored_context(self) -> dict[str, Any]:
-        """The ``request_context`` this attempt stores: the kind's context plus the bound,
-        checked again on every use (the caller's mapping is not copied at construction)."""
-        if BOUND_KEY in self.context:
-            raise ValueError("the bound is stored by the protocol itself")
+    def _check_class(self) -> None:
+        """A row carries ``class_id`` exactly when its kind is a class write (ADR 0008 section
+        1): the MOWL saves and the final-playlist writes. No table check ties a Spotify row's
+        class to its purpose, so it is enforced here, from the key."""
+        if self.kind == ATTACH_KIND and self.class_id is not None:
+            raise ValueError("an attach belongs to no class")
+        if self.kind in CLASS_WRITE_KINDS and self.class_id is None:
+            raise ValueError("a class write names its class")
+        if self.kind in SPOTIFY_WRITE_KINDS:
+            purpose = spotify_purpose(self.kind, self.idempotency_key)
+            if purpose is None:
+                raise ValueError("not a Spotify write's key")
+            if (purpose == "final") != (self.class_id is not None):
+                raise ValueError("a final-playlist write names its class and a pool write none")
+            if self.context.get("purpose") != purpose:
+                raise ValueError("a Spotify write's context names the key's purpose")
+
+    def stored_context(self, operation_id: UUID | None = None) -> dict[str, Any]:
+        """The ``request_context`` this attempt stores: the kind's context plus the bound (and,
+        ``with_ref``, the ``ref`` of the row ``operation_id``), checked again on every use (the
+        caller's mapping is not copied at construction)."""
+        if BOUND_KEY in self.context or REF_KEY in self.context:
+            raise ValueError("the bound and the ref are stored by the protocol itself")
         stored = dict(self.context)
         if self.bound_seconds is not None:
             stored[BOUND_KEY] = self.bound_seconds
+        if self.with_ref:
+            stored[REF_KEY] = ref_of(operation_id if operation_id is not None else _SIZE_PROBE)
         try:
             size = context_size(stored)
         except (TypeError, ValueError):

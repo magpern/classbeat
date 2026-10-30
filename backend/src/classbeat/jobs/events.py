@@ -57,6 +57,8 @@ TOOL_ERROR_CODES: Final = (
     "not_found",
     "limit_exceeded",
     "upstream_unavailable",
+    "invalid_pool",
+    "invalid_song_list",
 )
 
 

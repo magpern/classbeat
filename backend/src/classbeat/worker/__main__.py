@@ -5,7 +5,7 @@ import logging
 import signal
 import sys
 
-from classbeat import design, saving
+from classbeat import design, playlists, saving
 from classbeat.config import ModelProviderRefused, Settings, check_worker_model_provider
 from classbeat.crypto.keks import load_keyring
 from classbeat.db import (
@@ -16,6 +16,7 @@ from classbeat.db import (
 )
 from classbeat.egress import install_worker_allowlist
 from classbeat.log import configure_logging
+from classbeat.playlists.runtime import playlists_runtime
 from classbeat.worker.loop import run_worker
 
 
@@ -40,6 +41,9 @@ async def _run(settings: Settings) -> None:
     # save_workout (SV1): the key ring, and the listing lag its reconciler may rely on.
     saving.configure(saving.Runtime(keyring))
     saving.configure_listing_lag(settings.mowl_listing_lag_seconds)
+    # The Spotify writes (OP1): the refresh client and margin, and the listing lag of the create
+    # reconciler (ADR 0008 section 2).
+    playlists.configure(playlists_runtime(settings))
     stop = asyncio.Event()
     # Before "worker started" is logged, so a signal after that line is always handled.
     _install_signal_handlers(asyncio.get_running_loop(), stop)

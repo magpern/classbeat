@@ -350,8 +350,12 @@ def _parse(provider: str, row: Any, plaintext: bytes) -> tuple[str | None, OpenC
         credentials = build_credentials(provider, payload, dict(row.public or {}))  # pyright: ignore[reportUnknownArgumentType]
     except (ValueError, TypeError, KeyError):
         return "unknown", None
+    account: str | None = None
+    if provider == "spotify":
+        found = dict(row.public or {}).get("spotify_user_id")  # pyright: ignore[reportUnknownArgumentType]
+        account = found if isinstance(found, str) and found else None
     return None, OpenConnection(
-        row.id, provider, credentials, bytes(row.wrapped_dek), int(row.generation)
+        row.id, provider, credentials, bytes(row.wrapped_dek), int(row.generation), account
     )
 
 
@@ -545,19 +549,23 @@ async def hold(db: AsyncSession, ctx: UserContext, opened: OpenConnection) -> bo
     another account) or flipped meanwhile, so no call goes out with credentials that are no
     longer the user's connection. A refresh or a rewrap keeps the generation (ADR 0009 section
     5.4), so neither invalidates a running job's hold. The lock lasts until the caller commits;
-    ``disconnect`` takes the row lock first, so the two never deadlock."""
-    row = (
-        await db.execute(
-            select(_C.id)
-            .where(
-                _C.id == opened.id,
-                _C.owner_id == ctx.user_id,
-                _C.generation == opened.generation,
-                _C.status == "connected",
-            )
-            .with_for_update(read=True)
-        )
-    ).first()
+    ``disconnect`` takes the row lock first, so the two never deadlock.
+
+    A Spotify row must also still name the account that was opened (ADR 0008 section 2: the
+    decide step compares the generation **and** the Spotify user id the call will use); an
+    opened Spotify connection without an account never holds."""
+    conditions = [
+        _C.id == opened.id,
+        _C.owner_id == ctx.user_id,
+        _C.generation == opened.generation,
+        _C.status == "connected",
+        _C.provider == opened.provider,
+    ]
+    if opened.provider == "spotify":
+        if opened.account is None:
+            return False
+        conditions.append(_C.public["spotify_user_id"].astext == opened.account)
+    row = (await db.execute(select(_C.id).where(*conditions).with_for_update(read=True))).first()
     return row is not None
 
 
