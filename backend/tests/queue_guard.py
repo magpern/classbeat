@@ -12,9 +12,16 @@ from sqlalchemy import text
 from sqlalchemy.engine import Connection
 
 from classbeat.db.queue_check import QUEUE_FUNCTIONS, QUEUE_VERSION
-from classbeat.db.queue_digests import QUEUE_DIGESTS
+from classbeat.db.queue_digests import GUARD_TRIGGER_DIGESTS, QUEUE_DIGESTS
 
-QUEUE, APP = "classbeat_queue", "classbeat_app"
+QUEUE, APP, OWNER = "classbeat_queue", "classbeat_app", "classbeat_owner"
+# The M5 guard triggers of migration 0007 (ADR 0011 section 1): function = trigger name -> (table,
+# the events of a row-level BEFORE trigger). pg_trigger.tgtype bits: ROW 1, BEFORE 2, INSERT 4,
+# DELETE 8, UPDATE 16, TRUNCATE 32, INSTEAD 64.
+GUARD_TRIGGERS = {
+    "credit_ledger_guard": ("credit_ledger", 16),
+    "admin_audit_guard": ("admin_audit", 8 | 16),
+}
 SEARCH_PATH = ["search_path=pg_catalog, pg_temp"]
 ACL = {f"{QUEUE}=X/{QUEUE}", f"{APP}=X/{QUEUE}"}
 TABLES = {
@@ -192,6 +199,9 @@ def check_queue(conn: Connection) -> list[str]:
         .scalars()
         .all()
     )
+    # The one amendment (ADR 0011 section 1): the two M5 guard triggers, admitted only exactly.
+    pinned = pinned_guard_triggers(conn)
+    hooks = [hook for hook in hooks if hook not in pinned]
     # Temp schemas (pg_temp_N) hold no built-ins, so any function there is >= 16384 and found.
     need(
         not hooks,
@@ -242,3 +252,48 @@ def check_queue(conn: Connection) -> list[str]:
         need(f.md5 == QUEUE_DIGESTS[name], f"{prefix}: definition md5 differs from the shipped one")
         need(set(f.acl or []) == ACL and len(f.acl or []) == 2, f"{prefix}: ACL must be {ACL}")
     return problems
+
+
+def pinned_guard_triggers(conn: Connection) -> set[str]:
+    """The hook names (as ``check_queue`` names them) of the M5 guard triggers that match their
+    pinned definition exactly; a guard that differs in anything is left to be reported."""
+    allowed: set[str] = set()
+    for name, (table, events) in GUARD_TRIGGERS.items():
+        functions = conn.execute(
+            text(
+                "SELECT p.oid, p.prokind, p.prosecdef, l.lanname, pg_get_userbyid(p.proowner), "
+                "CAST(p.proacl AS text[]), p.proconfig, oidvectortypes(p.proargtypes), "
+                "format_type(p.prorettype, NULL), "
+                "CASE WHEN p.prokind = 'f' THEN md5(pg_get_functiondef(p.oid)) END "
+                "FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace "
+                "JOIN pg_language l ON l.oid = p.prolang "
+                "WHERE n.nspname = 'public' AND p.proname = :name"
+            ),
+            {"name": name},
+        ).all()
+        if len(functions) != 1:
+            continue
+        oid, *facts = functions[0]
+        expected = [
+            "f", False, "plpgsql", OWNER, [f"{OWNER}=X/{OWNER}"], SEARCH_PATH, "", "trigger",
+            GUARD_TRIGGER_DIGESTS[name],
+        ]  # fmt: skip
+        if [*facts[:4], list(facts[4] or []), list(facts[5] or []), *facts[6:]] != expected:
+            continue
+        allowed.add(f"function public.{name}()")
+        triggers = conn.execute(
+            text(
+                "SELECT t.tgname, n.nspname, c.relname, t.tgfoid, t.tgtype, t.tgenabled, "
+                "t.tgnargs, CAST(t.tgattr AS text), t.tgqual IS NULL, t.tgconstraint, "
+                "t.tgoldtable IS NULL AND t.tgnewtable IS NULL "
+                "FROM pg_trigger t JOIN pg_class c ON c.oid = t.tgrelid "
+                "JOIN pg_namespace n ON n.oid = c.relnamespace "
+                "WHERE NOT t.tgisinternal AND (t.tgname = :name OR t.tgfoid = :oid)"
+            ),
+            {"name": name, "oid": oid},
+        ).all()
+        if [tuple(t) for t in triggers] == [
+            (name, "public", table, oid, 1 | 2 | events, "O", 0, "", True, 0, True)
+        ]:
+            allowed.add(f"trigger {name} on public.{table}")
+    return allowed
