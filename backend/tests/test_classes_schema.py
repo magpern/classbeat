@@ -4,6 +4,7 @@ durable usage. Contract, isolation, immutability, cascades and the guards."""
 import json
 import uuid
 from collections.abc import Iterator
+from datetime import date
 from typing import Any
 
 import pytest
@@ -572,6 +573,19 @@ def test_deleting_the_class_then_the_user_leaves_nothing_in_the_registered_table
            session_hash=digest("x"), client_id="0123456789abcdef0123456789abcdef",
            redirect_uri="u", verifier="A" * 43, created_at="2998-12-31 23:55",
            expires_at="2999-01-01")  # fmt: skip
+    # M5 (migration 0007): an entitlement from a code, its redemption, a credit and its lock row.
+    code_id = admin.execute(
+        text("INSERT INTO redeem_codes (code_hash, label, plan_id, grant_days, max_redemptions, "
+             "expires_at) VALUES (:h, 'beta', 'pro', 30, 5, now() + interval '1 day') "
+             "RETURNING id"), {"h": digest("code")},
+    ).scalar_one()  # fmt: skip
+    entitlement = insert(admin, "entitlements", owner_id=owner, plan_id="pro", source="code",
+                         code_id=code_id, note="tester")  # fmt: skip
+    insert(admin, "code_redemptions", owner_id=owner, code_id=code_id, entitlement_id=entitlement)
+    for table in ("credit_ledger", "quota_periods"):
+        extra = {"job_id": job_id, "plan_id": "free", "state": "committed"}
+        insert(admin, table, owner_id=owner, period=date.today().replace(day=1),
+               **(extra if table == "credit_ledger" else {}))  # fmt: skip
     tables = sorted(RETENTION)
     planted = {t for t in tables if count(admin, t) > 0}
     assert planted == set(tables) - {"connections"}
