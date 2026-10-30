@@ -52,19 +52,40 @@ pages, §10 threat model and tests, §11 the owner's questions. The issue split 
 ### 1. Data (one migration, `0007_tiers`)
 
 All in one migration so parallel M5 PRs never race on Alembic heads (M4's only migration, `0006`,
-has merged). System tables (no `owner_id`, `SYSTEM_TABLES`) and owned tables (ADR 0002 §2:
+has merged). M3c adds migrations too (ADR 0012, #211 and #215), each "the next free revision when it
+lands": `0007_tiers` is likewise **the next free revision**, and whichever of #207, #211 and #215
+lands later re-chains its `down_revision` (and its file name) onto the head of `main`; the existing
+single-head check stays. System tables (no `owner_id`, `SYSTEM_TABLES`) and owned tables (ADR 0002 §2:
 `owner_id`, `UNIQUE (owner_id, id)`, owner-inclusive keys, `enable_owner_rls`) as marked.
 
 | Table | Kind | Columns (beyond `id`, `created_at`) | Notes |
 |---|---|---|---|
 | `plans` | system | `id text` primary key (`free`, `instructor`, `pro`; check `^[a-z_]{1,30}$`), `name`, `rank int` (unique; higher wins), `classes_per_month int` (0 to 10 000), `revisions_per_class int` (0 to 200), `concurrent_jobs int` (1 to 16), `monthly_cost_micros bigint` (0 to 10^10), `route_key text` (default `'default'`, ADR 0012), `features text[]` (each in a code list, §7), `updated_at`, `updated_by uuid NULL` (→ `users`, set null) | Seeded with §11's defaults. No price column (billing is off, §8). `free` can't be deleted (no `DELETE` grant to anyone) |
-| `entitlements` | owned (the holder) | `plan_id text NULL` → `plans`, `features text[]` (default `{}`), `source text` check `IN ('grant', 'code', 'trial', 'subscription')`, `starts_at`, `ends_at NULL`, `code_id uuid NULL` → `redeem_codes` (set null), `granted_by uuid NULL` → `users` (set null), `note text NULL` (≤ 200, admin-only), `revoked_at NULL`, `revoked_by uuid NULL` | Check `plan_id IS NOT NULL OR cardinality(features) > 0`; `ends_at > starts_at`. Partial unique index `(owner_id) WHERE source = 'trial'`: one trial per account, ever. A restrictive `INSERT` policy `WITH CHECK (source IN ('code', 'trial'))`: the app role can only add what redeem and trial add; grants come only through `classbeat_maint` (BYPASSRLS, §5). `subscription` has no writer until M7 |
+| `entitlements` | owned (the holder) | `plan_id text NULL` → `plans`, `features text[]` (default `{}`), `source text` check `IN ('grant', 'code', 'trial', 'subscription')`, `starts_at`, `ends_at NULL`, `code_id uuid NULL` → `redeem_codes` (restrict, as `code_redemptions`), `granted_by uuid NULL` → `users` (set null), `note text NULL` (≤ 200, admin-only), `revoked_at NULL`, `revoked_by uuid NULL` | Check `plan_id IS NOT NULL OR cardinality(features) > 0`; `ends_at > starts_at`; `source <> 'code' OR code_id IS NOT NULL`. Partial unique index `(owner_id) WHERE source = 'trial'`: one trial per account, ever. A restrictive `INSERT` policy `WITH CHECK (source IN ('code', 'trial'))`: the app role can only add what redeem and trial add; grants come only through `classbeat_maint` (BYPASSRLS, §5). `subscription` has no writer until M7 |
 | `redeem_codes` | system | `code_hash bytea` unique (SHA-256), `label text` (≤ 80), `plan_id NULL` → `plans`, `features text[]`, `grant_days int` (1 to 366), `max_redemptions int` (1 to 1000), `redeemed_count int` (check `0 <= redeemed_count <= max_redemptions`), `expires_at`, `disabled_at NULL`, `created_by uuid NULL` (set null) | Codes are 16 random bytes, Crockford base32, shown once (as invites) |
 | `code_redemptions` | owned | `code_id` → `redeem_codes` (restrict), `entitlement_id` → `entitlements` (cascade, owner-inclusive) | `UNIQUE (owner_id, code_id)`: a user redeems a code once |
-| `credit_ledger` | owned | `job_id uuid NULL` (→ `jobs`, owner-inclusive, `ON DELETE SET NULL (job_id)`), `period date` (first day of the UTC month), `plan_id text`, `state text` check `IN ('reserved', 'committed', 'released', 'refunded')`, `reason text NULL` (`failed`, `cancelled`, `expired`, `admin_refund`), `settled_at NULL`, `refunded_by uuid NULL` | `UNIQUE (owner_id, job_id)`; index `(owner_id, period)`. Restrictive policies: no `DELETE` (`USING (false)`; only the account's cascade removes rows), `UPDATE` only `USING (state = 'reserved') WITH CHECK (state IN ('committed', 'released'))`. A `BEFORE UPDATE` trigger allows exactly `reserved → committed | released` and `committed → refunded`, the `job_id → NULL` of the cascade, and no other column change, for every role |
+| `credit_ledger` | owned | `job_id uuid NULL` (→ `jobs`, owner-inclusive, `ON DELETE SET NULL (job_id)`), `period date` (first day of the UTC month), `plan_id text`, `state text` check `IN ('reserved', 'committed', 'released', 'refunded')`, `reason text NULL` (`failed`, `cancelled`, `expired`, `admin_refund`), `settled_at NULL`, `refunded_by uuid NULL` | `UNIQUE (owner_id, job_id)`; index `(owner_id, period)`. Restrictive policies: `INSERT` only `WITH CHECK (state = 'reserved' AND settled_at IS NULL AND refunded_by IS NULL)`, no `DELETE` (`USING (false)`; only the account's cascade removes rows), `UPDATE` only `USING (state = 'reserved') WITH CHECK (state IN ('committed', 'released'))`. A `BEFORE UPDATE` trigger allows, by `current_user`: for `classbeat_app`, exactly `reserved → committed | released`; for `classbeat_maint`, exactly `committed → refunded` (so the admin can never release a live reservation, which would make its later commit a no-op and the class free); for every role, the `job_id → NULL` of the cascade; no other column change. Any other role (the owner role included) is refused |
 | `quota_periods` | owned | `period date` | `UNIQUE (owner_id, period)`; the row a reservation locks (§3); holds no count |
 | `app_settings` | system | `key text` primary key (a code list, §7), `value jsonb` (≤ 2048 bytes, validated per key), `updated_at`, `updated_by uuid NULL` | Read per request; no cache to invalidate |
 | `admin_audit` | system | `actor_id uuid NULL` (→ `users`, set null), `actor_email text` (at the time), `action text` (a code list), `target_user_id uuid NULL` (set null), `target_kind text NULL`, `target_id text NULL` (≤ 100), `params jsonb` (≤ 2048, per-action schema, never a secret, code or token), `outcome text` check `IN ('ok', 'refused', 'error')`, `reason text NULL` (an enum code), `request_id text`, `ip_hash bytea` (HMAC, as the rate limits) | Append-only: `REVOKE ALL` from `classbeat_app` (an exception in guard 2's allowlist), `classbeat_maint` has `INSERT, SELECT` only, and a trigger refuses `UPDATE` and `DELETE` except the foreign keys' `SET NULL` of `actor_id` and `target_user_id` |
+
+**The app role's grants on the new tables** (guard 2 checks them as an allowlist; the default
+privileges of ADR 0002 §4 are revoked table by table where narrower):
+
+| Table | `classbeat_app` |
+|---|---|
+| `plans`, `app_settings` | `SELECT` |
+| `entitlements`, `code_redemptions` | `SELECT, INSERT` (no `UPDATE`: a bug can't extend `ends_at` or un-revoke) |
+| `redeem_codes` | `SELECT`, `UPDATE (redeemed_count)` |
+| `credit_ledger` | `SELECT, INSERT, UPDATE` (narrowed by the policies and the trigger above) |
+| `quota_periods` | `SELECT, INSERT, UPDATE` (`UPDATE` is what `SELECT … FOR UPDATE` needs; no column is ever updated) |
+| `admin_audit` | none |
+
+**Jobs that are open when M5 deploys:** the migration backfills a `reserved` ledger row (the period
+of the job's `created_at`, plan `free`) for every job with `credit_state = 'reserved'` that has not
+ended (`queued`, `running` or `waiting_for_approval`, which can wait up to 7 days), so they count and
+settle like any other. It is an `INSERT` only (the trigger is not involved) and states how it
+reaches owned rows, as ADR 0002 §4 asks of data migrations: per owner with `app.user_id` set.
 
 `invites` is **reused unchanged**: the admin area creates and lists invites with the CLI's code and
 hashing (ADR 0003 §7); an invite still only lets someone sign up. Giving a tester a plan is a grant
@@ -132,9 +153,10 @@ multi-use.
   insert `reserved` with the period and plan. `QuotaRefused` gains `reason`, `limit`, `used`,
   `period_end` and `plan`; the jobs API answers 409 `quota` with them (the existing seam, now with a
   body), and nothing is created.
-- **`allows`** (approval, ADR 0005 §2): the credit is already held, so it checks only the cost cap
-  and that the job's `reserved` row exists. A list approved after a downgrade still runs: its credit
-  was taken before.
+- **`allows`** (approval, ADR 0005 §2): the credit is already held, so it checks only the cost cap.
+  A missing ledger row (a job the backfill did not reach) is allowed, as `commit` and `release` treat
+  it as a no-op; a row in any state other than `reserved` refuses. A list approved after a downgrade
+  still runs: its credit was taken before.
 - **`commit` / `release`** from settle, in the same transaction as the `jobs.credit_state` update:
   `UPDATE credit_ledger SET state = …, reason = …, settled_at = now() WHERE owner_id = … AND job_id
   = … AND state = 'reserved'`. Zero rows (a job created before M5 under `UnmeteredLedger`) is a
@@ -181,6 +203,12 @@ rows in a period below a limit that lives in another table".
   released jobs included). Checked at `reserve` and `allows`, and in the revise kinds' `admit`
   (`QuotaRefused` reason `cost`, 409 `quota`). A run already going finishes within its per-job
   ceiling. It is the backstop that makes generous refunds safe.
+- **Environment upper bounds for the money limits** (stricter-wins, as §7):
+  `CLASSBEAT_CLASSES_PER_MONTH_MAX` (default 200), `CLASSBEAT_MONTHLY_COST_MICROS_MAX` (default
+  300 000 000, $300) and `CLASSBEAT_TRIAL_DAYS_MAX` (default 30). The effective value of a plan's
+  `classes_per_month` and `monthly_cost_micros` is the smaller of the row and the bound, the admin
+  can't store more than the bound (422), and a trial's plan can't rank above `instructor`. The
+  backstop of T86 therefore has a ceiling the admin area can't raise.
 - **Priority queue (Pro):** not in M5 (§8).
 
 ### 5. The admin database path (`classbeat_maint`)
@@ -206,14 +234,30 @@ write=False, target=…, params=…)`**, the only code that may build a session 
   `entitlements`, `UPDATE (state, reason, settled_at, refunded_by)` on `credit_ledger`, `INSERT` and
   `UPDATE (expires_at)` on `invites` (disabling an invite expires it, so the M1 consume path is
   unchanged), `INSERT` and `UPDATE (disabled_at)` on `redeem_codes`, `INSERT, UPDATE` on `app_settings`,
-  `UPDATE` of the limit columns on `plans`, `INSERT, SELECT` on `admin_audit`. Nothing on the queue
-  functions or `job_events`; no `UPDATE` on `jobs` or `external_operations`.
-- **Audit on every use:** `admin_session` opens the transaction, sets it `READ WRITE` only when
-  `write=True` (which the route grants only after the step-up check), inserts the `admin_audit` row
-  (`outcome = 'ok'`) **first**, then yields; the row commits or rolls back with the action, so the
-  log never shows an action that did not happen. A refused or failing action writes an `outcome =
-  'refused' | 'error'` row in a separate short transaction. Reads are audited too (one row per
-  request, with the filter in `params`).
+  `UPDATE` of the limit columns on `plans`, `INSERT, SELECT` on `admin_audit`; for AD5, on M3c's
+  tables (ADR 0012): `SELECT` on `model_eval_results` and `SELECT, INSERT, UPDATE, DELETE` on
+  `model_routes` (added to `30-maint.sql` by AD5, after #211). Nothing on the queue functions or
+  `job_events`: the admin's job counts come from `jobs.state` through maint's column `SELECT`, not
+  from `queue_stats()` (whose grants `20-queue.sql` resets on every run); no `UPDATE` on `jobs` or
+  `external_operations`.
+- **Audit on every use, and reads stay read-only.** Every transaction on the maint engine starts
+  with `SET TRANSACTION READ WRITE` (allowed only before the first query; the role default is read
+  only) and inserts its `admin_audit` row (`outcome = 'ok'`) as its first statement. Then:
+  - a **read** (`write=False`) runs `SET TRANSACTION READ ONLY` before yielding. Postgres allows
+    switching a transaction to read-only after a write and refuses the switch back, so after the
+    audit insert nothing the read path does can write, and the audit row commits with the read.
+    Checked on `postgres:17.11` as a role with `default_transaction_read_only = on`: after
+    `SET TRANSACTION READ WRITE; INSERT …; SET TRANSACTION READ ONLY;` an `INSERT` fails with
+    `cannot execute INSERT in a read-only transaction`, both `SET TRANSACTION READ WRITE` and
+    `SET transaction_read_only = off` fail with `transaction read-write mode must be set before any
+    query`, and `COMMIT` keeps the audit row.
+  - a **write** (`write=True`, which the route passes only after the step-up check) yields with the
+    transaction still read-write; the audit row commits or rolls back with the action, so the log
+    never shows a write that did not happen.
+
+  A refused or failing action (either kind) writes an `outcome = 'refused' | 'error'` row in its
+  own short transaction (the same `READ WRITE`, insert, commit). Reads are audited once per request,
+  with the filter in `params`.
 - **Startup:** web checks the maint role's attributes, memberships and role settings at startup and
   on every new maint connection (as ADR 0002 §4 does for the app role), refuses to start when the
   maint URL is set and the check fails, and starts without the admin area (503 `admin_unavailable`)
@@ -232,15 +276,28 @@ read-only default makes a read path unable to write, and the worker never holds 
 All under `/api/admin/*`: `require_admin` (role `admin`, TOTP within 12 hours, ADR 0003 §7) for
 every route; **step-up** (TOTP or recovery code within 5 minutes) for every write; CSRF on writes;
 `Cache-Control: no-store`; a rate limit (60 requests per admin per minute); `422` for anything a
-schema rejects. Pages under `/admin` in a lazy chunk; the server is the authority.
+schema rejects. Pages under `/admin` in a lazy chunk; the server is the authority. The router shell
+(`classbeat.admin.routes`, its dependencies and the router-enumerating guard test) is built with the
+maint path in AR1, so the admin feature modules only add routes to it.
+
+**Refusals are audited without a flood.** Only callers whose `users.role` is `admin` get a
+`refused` audit row (an admin hitting `mfa_required` or `stepup_required`, or a refused admin
+action); a non-admin's 403 writes no audit row and opens no maint connection. Refusal rows are
+limited to 20 per admin and 100 in total per minute; beyond that they are counted in a log line, so
+neither the table nor the maint pool (2 connections) can be exhausted.
+
+**Admin targets.** Disable and delete refuse a target whose role is `admin`, the acting admin
+included (409 `target_is_admin`): demoting an admin stays the CLI's (ADR 0003 §7), and no admin can
+lock themselves or another admin out from the browser. A delete records the target's id in
+`target_id` (text), because the foreign key nulls `target_user_id` in the same transaction.
 
 | Area | Reads | Writes (step-up) |
 |---|---|---|
 | Users | list (email, created, role, disabled, effective plan and its source and end, classes held this period of the limit, cost this period) with search by email prefix and paging; detail adds entitlements (with notes), the credit ledger of the last three periods, and **connection status only**: MOWL (status, connected, last used), Spotify (status, so whether a Client ID is set, and the last error category, ADR 0009 §8), Swedebeat (status). Never a token, ciphertext, Client ID value, playlist id, brief or class content | grant and revoke entitlements; disable and enable (disable revokes all the user's sessions, ADR 0003 §3; a disabled user's jobs end as T53); delete (the ADR 0003 account deletion for the target, with the target's email typed to confirm); refund a committed credit. Never role changes: granting and revoking admin stay CLI-only (ADR 0003 §7) |
 | Codes | invites (created by, used, expiry; never the code) and redeem codes (label, plan, days, uses, expiry, disabled) | create an invite or a redeem code (the code shown once), disable either |
 | Usage and cost | per period: classes, revisions, saves, runs, tokens and `cost_micros` by plan, kind and model, from `agent_runs` and `credit_ledger`; top users by cost; the `price_version` in use and the price table (read-only, `classbeat.agent.prices`) | none |
-| Jobs | counts per state (`queue_stats`), waiting approvals (owner email, kind, waiting since, expires), recent failures by category, uncertain external operations (owner email, kind, since, the job's state); no job input or operation content | none in M5: an uncertain operation stays the user's to resolve (ADR 0005 §7); an admin "resolve" could cause a duplicate write in the user's account |
-| Settings and flags | every §7 key with its effective value and where it comes from (environment or database); plans with their limits; the read-only settings (per-job ceilings, billing, Swedebeat) | edit §7's keys and the plans' limits; model routes per plan through ADR 0012's `set_route` (refused unless the eval passed; issue AD5) |
+| Jobs | counts per state (from `jobs.state`), waiting approvals (owner email, kind, waiting since, expires), recent failures by category, uncertain external operations (owner email, kind, since, the job's state); no job input or operation content | none in M5: an uncertain operation stays the user's to resolve (ADR 0005 §7); an admin "resolve" could cause a duplicate write in the user's account |
+| Settings and flags | every §7 key with its effective value and where it comes from (environment or database); plans with their limits; the read-only settings (per-job ceilings, billing, Swedebeat) | edit §7's keys and the plans' limits (within §4's environment bounds); model routes per plan through ADR 0012's `set_route` (refused unless the eval passed; issue AD5). Provider key files live on the worker only, so the web-side `set_route` checks the catalog, the eval result and the data policy, and the key file is checked by the worker's `resolve_route` re-check (ADR 0012 §5, agreed with M3c): a route to a provider without a key fails its job at resolution, never silently |
 | Audit log | filter by actor, action, target, period; newest first | none |
 
 **MFA and step-up** reuse ADR 0003 unchanged (`require_admin`, `require_stepup` in `classbeat.auth.deps`): `POST /api/auth/mfa/stepup` with a TOTP code sets
@@ -308,7 +365,11 @@ New threats T85 to T96 in `docs/security/threat-model.md`. Tests (fakes only, no
   role and maint; the app role can't insert a `grant` entitlement or touch `admin_audit`; guard 11.
 - **Admin:** every `/api/admin/*` route is 403 for a non-admin, `mfa_required` without TOTP, and
   every write is `stepup_required` without step-up (a test enumerates the router, so a new route
-  without the dependency fails); every call writes exactly one audit row, refusals included; no
+  without the dependency fails); every call writes exactly one audit row, admin refusals included
+  and non-admin 403s none; inside a read `admin_session`, after its audit insert, `SHOW
+  transaction_read_only` is `on`, an `INSERT`/`UPDATE` fails and `SET TRANSACTION READ WRITE` fails,
+  while the audit row is committed; maint cannot release a `reserved` ledger row; disable and
+  delete refuse an admin target; no
   admin response contains a planted token, hash, Client ID, brief or job input (planted-value test);
   log redaction of codes.
 - **Flags:** stricter-wins for each key; `song_picking` `granted` admits only users with the
@@ -371,11 +432,11 @@ startable before this ADR is accepted. Fakes only.
 | # | Issue | Owner | Reviewer | Depends on |
 |---|---|---|---|---|
 | DB1 (#207) | Migration `0007_tiers` (§1), policies and triggers, seeds, `classbeat.plans.resolve`, retention entries, guard updates | Opus | Opus | none |
-| AR1 (#210) | `classbeat_maint` role, column grants, `admin_session` with audit, startup checks, guard 11, secret and compose | Opus | Opus | DB1 |
+| AR1 (#210) | `classbeat_maint` role, column grants, `admin_session` with audit and the read-only switch, startup checks, guard 11, secret and compose, the admin router shell and its guard | Opus | Opus | DB1 |
 | PL1 (#212) | Redeem, trial, `GET /api/account/plan` | Opus | Opus | DB1 |
-| QT1 (#214) | `MeteredLedger`, `PlanRevisionPolicy`, `PlanJobLimitPolicy`, cost cap, `quota` bodies, wiring | Opus | Opus | DB1, #180 |
-| FL1 (#216) | `classbeat.flags`, stricter-wins, sign-up mode and song-picking wiring, public settings | Opus | Opus | DB1, #180, #182 |
-| AD1 (#218) | Admin users: list, detail, grants, disable, delete | Opus | Opus | AR1 |
+| QT1 (#214) | `MeteredLedger`, `PlanRevisionPolicy`, `PlanJobLimitPolicy`, cost cap, env bounds, `quota` bodies, wiring | Opus | Opus | DB1, #180, #181, #182 |
+| FL1 (#216) | `classbeat.flags`, stricter-wins, sign-up mode and song-picking wiring, public settings | Opus | Opus | DB1, QT1 (both edit the M4 song kinds' `admit`), #180, #182 |
+| AD1 (#218) | Admin users: list, detail, grants, disable, delete (admin targets refused) | Opus | Opus | AR1 |
 | AD2 (#220) | Admin codes: invites and redeem codes | Opus | Opus | AR1, PL1 |
 | AD3 (#221) | Admin usage, cost and jobs views; admin refund | Opus | Opus | AR1, QT1 |
 | AD4 (#222) | Admin settings, flags, plans' limits, audit-log view | Opus | Opus | AR1, FL1 |
@@ -386,6 +447,6 @@ startable before this ADR is accepted. Fakes only.
 | SEC1 (#227) | M5 security suite (§10) | Sonnet | Opus | PL1, QT1, FL1, AD1 to AD4 |
 | T1 (#228) | E2E done-when, status, AGENTS.md notes | Sonnet | Sonnet | FE1, FE3, SEC1, #186 |
 
-Order: DB1; then AR1, PL1, QT1, FL1 in parallel (QT1 and FL1 once their M4 dependencies merged);
-AD1 to AD4 and FE1 in parallel; FE2, AD5 and SEC1; FE3; T1 last. M5 is done technically when SEC1
+Order: DB1; then AR1, PL1 and QT1 in parallel (QT1 once #180 to #182 merged); FL1 after QT1;
+AD1 to AD3 in parallel, AD4 and FE1 after FL1; FE2, AD5 and SEC1; FE3; T1 last. M5 is done technically when SEC1
 and T1 are green.
