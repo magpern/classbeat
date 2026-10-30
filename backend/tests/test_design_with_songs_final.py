@@ -289,3 +289,39 @@ async def test_a_spotify_reconnect_while_choosing_stores_no_list(
     assert songenv.sql(
         "SELECT count(*) FROM class_revisions WHERE job_id = :id", id=job_id
     ).scalar_one() == 0  # fmt: skip
+
+
+@pytest.mark.parametrize("phase", ["pick", "approved"])
+@pytest.mark.parametrize("cancelled", [False, True])
+async def test_the_music_step_is_closed_whether_the_store_ran_or_not(
+    songenv: SongEnv, monkeypatch: pytest.MonkeyPatch, phase: str, cancelled: bool
+) -> None:
+    """#122 item 4 for both phases: the runner's ``release`` drops the MOWL credentials once the
+    attempt is over, also when a cancel seen by the final transaction means ``store`` never runs."""
+    rider = await songenv.rider()
+    module: Any = pick if phase == "pick" else phase2
+    steps: list[Any] = []
+    load, last_stage = module.load_music, module.run_stage
+    job_id: UUID | None = None
+
+    async def keep_step(*args: Any, **kwargs: Any) -> Any:
+        steps.append(await load(*args, **kwargs))
+        return steps[-1]
+
+    async def then_cancel(*args: Any, **kwargs: Any) -> Any:
+        outcome = await last_stage(*args, **kwargs)
+        if cancelled and steps:  # after the music step: only the final transaction sees it
+            songenv.sql("UPDATE jobs SET cancel_requested_at = now() WHERE id = :id", id=job_id)
+        return outcome
+
+    if phase == "pick":
+        job_id = await songenv.created(rider)
+    else:
+        job_id, _ = await songenv.approved(rider)
+    monkeypatch.setattr(module, "load_music", keep_step)
+    monkeypatch.setattr(module, "run_stage", then_cancel)
+    row = await songenv.run(job_id)
+    expected = "waiting_for_approval" if phase == "pick" else "completed"
+    assert row.state == ("cancelled" if cancelled else expected)
+    [step] = steps
+    assert step._opened is None  # pyright: ignore[reportPrivateUsage]

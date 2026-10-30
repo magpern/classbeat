@@ -228,18 +228,15 @@ async def run_phase_one(
     async def store(fs: FencedSession) -> tuple[UUID, bytes]:
         """In the final fenced transaction: both connections still the ones the pick used, then
         the revision. A ``not_connected`` here rolls it back and ends the job with it."""
-        try:
-            if not await hold(fs.db, fs.lease.ctx, spotify):
-                raise JobFailure("not_connected")
-            await step.still_current(fs)
-            revision_id = await built.store(fs)
-            return revision_id, built.content_hash
-        finally:
-            step.close()
+        if not await hold(fs.db, fs.lease.ctx, spotify):
+            raise JobFailure("not_connected")
+        await step.still_current(fs)
+        revision_id = await built.store(fs)
+        return revision_id, built.content_hash
 
-    # TODO(#234): pass ``release=step.close`` once the runner's ``release`` hook is merged; until
-    # then the step is closed only inside ``store`` (an attempt that never stores keeps it open).
-    return AwaitApproval(store)
+    # The runner releases the step once the attempt is over, whether ``store`` ran or not (a
+    # cancel, a lost lease or shutdown before it; #122 item 4).
+    return AwaitApproval(store, release=step.close)
 
 
 def _generations(spotify: OpenConnection, step: MusicStep) -> song_list.Generations:

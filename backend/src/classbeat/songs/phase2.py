@@ -306,38 +306,35 @@ async def run_phase_two(
 
     async def store(fs: FencedSession) -> UUID:
         """The final transaction (module docstring, step 7)."""
-        try:
-            if not await hold(fs.db, fs.lease.ctx, p.spotify):
-                raise JobFailure("not_connected")
-            await step.still_current(fs)
-            owner = {"owner_id": fs.lease.owner_id, "class_id": p.class_id}
-            if await _newest(fs, p.class_id) != p.revision_id:
-                raise JobFailure("invalid_input")
-            live = await fs.db.execute(
-                _LIVE_VERIFIED,
-                {
-                    **owner,
-                    "id": final.id,
-                    "playlist_id": final.playlist_id,
-                    "revision_id": p.revision_id,
-                    "content_hash": _tracks_hash(p),
-                },
-            )
-            if live.first() is None:
-                raise JobFailure("not_connected")  # Disconnect detached it meanwhile
-            revision_id = await draft.store(fs)
-            await revision.adopt_first(
-                fs, revision_id, given.brief.model_dump(mode="json"), music_source(final)
-            )
-            marked = await fs.db.execute(
-                _MOWL_ID, {**owner, "id": final.id, "mowl_playlist_id": mowl_playlist_id}
-            )
-            if marked.first() is None:
-                raise JobFailure("internal")
-            return revision_id
-        finally:
-            step.close()
+        if not await hold(fs.db, fs.lease.ctx, p.spotify):
+            raise JobFailure("not_connected")
+        await step.still_current(fs)
+        owner = {"owner_id": fs.lease.owner_id, "class_id": p.class_id}
+        if await _newest(fs, p.class_id) != p.revision_id:
+            raise JobFailure("invalid_input")
+        live = await fs.db.execute(
+            _LIVE_VERIFIED,
+            {
+                **owner,
+                "id": final.id,
+                "playlist_id": final.playlist_id,
+                "revision_id": p.revision_id,
+                "content_hash": _tracks_hash(p),
+            },
+        )
+        if live.first() is None:
+            raise JobFailure("not_connected")  # Disconnect detached it meanwhile
+        revision_id = await draft.store(fs)
+        await revision.adopt_first(
+            fs, revision_id, given.brief.model_dump(mode="json"), music_source(final)
+        )
+        marked = await fs.db.execute(
+            _MOWL_ID, {**owner, "id": final.id, "mowl_playlist_id": mowl_playlist_id}
+        )
+        if marked.first() is None:
+            raise JobFailure("internal")
+        return revision_id
 
-    # TODO(#234): pass ``release=step.close`` once the runner's ``release`` hook is merged; until
-    # then the step is closed only inside ``store`` (an attempt that never stores keeps it open).
-    return Complete(store)
+    # The runner releases the step once the attempt is over, whether ``store`` ran or not (a
+    # cancel, a lost lease or shutdown before it; #122 item 4).
+    return Complete(store, release=step.close)
