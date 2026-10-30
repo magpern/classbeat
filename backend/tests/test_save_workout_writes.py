@@ -75,7 +75,7 @@ async def test_an_answer_without_its_id_is_uncertain(
 
 
 def test_the_call_answer_needs_a_whole_program_id() -> None:
-    read = save_kind._program_id  # pyright: ignore[reportPrivateUsage]
+    read = save_kind.program_id_of_answer
     assert read({"program_id": 7, "segment_ids": [1]}) == 7
     for answer in (
         {},

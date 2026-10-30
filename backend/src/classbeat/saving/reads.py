@@ -1,4 +1,5 @@
-"""The save reconciler's one database read: the spec of the revision an operation saved.
+"""The save and update reconcilers' one database read: the spec of the revision an operation
+wrote.
 
 A reconciler gets a session factory and the user's context (``ReconcileInput``), not a
 transaction: it runs outside any transaction in the worker (step 4 of the protocol) and in the
