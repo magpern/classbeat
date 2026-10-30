@@ -18,6 +18,7 @@ from classbeat.operations.kinds import (
     CALL_MAY_RUN_MARGIN_SECONDS,
     CLASS_WRITE_KINDS,
     FALLBACK_BOUND_SECONDS,
+    MAX_BOUND_SECONDS,
     MAX_CONTEXT_BYTES,
     context_size,
 )
@@ -32,13 +33,18 @@ from classbeat.operations.kinds import (
 # in for a row that predates it.
 _CLASS_KINDS_SQL: Final = ", ".join(f"'{name}'" for name in sorted(CLASS_WRITE_KINDS))
 _HAS_BOUND_SQL: Final = "jsonb_typeof(request_context -> 'bound_seconds') = 'number'"
+# The stored bound, clamped to 0..MAX_BOUND_SECONDS: a context written by anything but the
+# protocol can't make a row wait forever or end its wait before it began.
+_CLAMPED_BOUND_SQL: Final = (
+    f"least(greatest((request_context ->> 'bound_seconds')::float8, 0), {MAX_BOUND_SECONDS})"
+)
 WAITING_SQL: Final = (
     f"(({_HAS_BOUND_SQL} OR kind IN ({_CLASS_KINDS_SQL})) "
     "AND NOT coalesce(call_ended_at >= pending_at, false))"
 )
 ACTIONABLE_AT_SQL: Final = (
     f"CASE WHEN {WAITING_SQL} THEN coalesce(pending_at, updated_at) + make_interval(secs => "
-    f"CASE WHEN {_HAS_BOUND_SQL} THEN (request_context ->> 'bound_seconds')::float8 "
+    f"CASE WHEN {_HAS_BOUND_SQL} THEN {_CLAMPED_BOUND_SQL} "
     f"ELSE {FALLBACK_BOUND_SECONDS} END + {CALL_MAY_RUN_MARGIN_SECONDS}) END"
 )
 # True while a stale call may still be running: no reconciliation, no user action.

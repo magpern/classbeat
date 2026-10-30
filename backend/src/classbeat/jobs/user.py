@@ -62,7 +62,8 @@ _NEW_JOB = text(
 )
 _LOCK = text(
     "SELECT state, kind, input, class_id, cancel_requested_at, approval_revision_id, "
-    "approval_hash, approved_at, expires_at IS NOT NULL AND expires_at > now() AS live "
+    "approval_hash, approved_at, credit_state, "
+    "expires_at IS NOT NULL AND expires_at > now() AS live "
     "FROM jobs WHERE id = :job_id AND owner_id = :owner_id FOR UPDATE"
 )
 _CANCEL_NOW = text(
@@ -251,6 +252,7 @@ class Waiting:
     job_id: UUID
     kind: str
     input: Mapping[str, Any]
+    credit_state: str  # the job row's: 'reserved' when it consumes a credit, else 'none'
 
 
 # The jobs API's checks at approval (connections, per-user limit, credit): a refusal reason, or
@@ -301,7 +303,7 @@ async def approve(
         return Approval(False, row.state, "superseded")
     if not same:
         return Approval(False, row.state, "hash_mismatch")
-    reason = await admit(db, Waiting(job_id, row.kind, row.input))
+    reason = await admit(db, Waiting(job_id, row.kind, row.input, row.credit_state))
     if reason is not None:
         return Approval(False, row.state, reason)
     seq = (await db.execute(_APPROVE, params)).scalar_one()

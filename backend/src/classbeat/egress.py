@@ -43,6 +43,7 @@ network-level egress rule of M6, threat model).
 import contextlib
 import http.client
 import logging
+import math
 import socket
 import ssl
 import threading
@@ -260,6 +261,8 @@ def call_deadline_until(at: float) -> Iterator[None]:
     ``at`` has passed every request is refused before it is sent."""
     if not isinstance(at, int | float) or isinstance(at, bool):
         raise TypeError("a call deadline is a monotonic instant")
+    if not math.isfinite(at):  # nan would compare false everywhere and never expire
+        raise ValueError("a call deadline is a finite instant")
     previous: float | None = getattr(_thread_deadline, "at", None)
     _thread_deadline.at = float(at) if previous is None else min(previous, float(at))
     try:

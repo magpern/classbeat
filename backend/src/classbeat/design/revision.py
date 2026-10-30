@@ -64,11 +64,6 @@ _ADOPT_FIRST = text(
 )
 
 
-def jsonb_size(value: Any) -> int:
-    """The length of ``value`` as jsonb prints it (``", "`` and ``": "``), in UTF-8 bytes."""
-    return len(json.dumps(value, ensure_ascii=False, separators=(", ", ": ")).encode("utf-8"))
-
-
 async def adopt_first(
     fs: FencedSession, revision_id: UUID, brief: dict[str, Any], music_source: dict[str, Any]
 ) -> bool:

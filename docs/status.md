@@ -98,8 +98,9 @@ GitHub hold the detail.
   (second-class test for the pointer update, brief byte limit message in the form, approve
   uses the job's credit state), #159 (`jobs` counts a deleted job's runs, price-version test,
   saves and updates missing from the monthly view), #160 and #162 to #169 (see their review
-  comments). ADR 0007 amendments owed: the brief is limited to 4096 bytes (refused with 422 at
-  creation) and a usage month before the account shows zeros instead of 404.
+  comments). The ADR 0007 amendments (brief limit, usage month before the account, counting
+  rules, the class API's saved summary) are written in the ADR's "Amendments after
+  implementation".
 - **Next: M4** (song picking, Spotify BYOK): starts with its ADR.
 - Releases: v0.1.0 (cut partway through M0); v0.2.0 is not cut yet (deferred to save Actions quota). Image
   `ghcr.io/magpern/classbeat`, private.

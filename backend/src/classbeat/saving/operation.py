@@ -44,6 +44,7 @@ measured MOWL's listing delay at live activation.
 """
 
 import logging
+import unicodedata
 from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime, timedelta
 from typing import Any, Final, cast
@@ -152,13 +153,18 @@ def _names(listing: list[Any]) -> dict[int, object]:
 
 
 def _name_key(name: str) -> str:
-    return " ".join(name.split()).casefold()
+    """Whitespace collapsed, NFKC-normalized (so ``…`` is ``...`` and a composed or decomposed
+    accent is the same) and case-folded, without a trailing ``...``: a listing that cuts a long
+    name short may end it with an ellipsis, which then only marks a prefix."""
+    key = " ".join(unicodedata.normalize("NFKC", name).split()).casefold()
+    return key[:-3].rstrip() if key.endswith("...") else key
 
 
 def may_be_named(listed: object, name: str) -> bool:
     """Whether a listing entry's ``Name`` may be ``name`` as ``get_workout`` would show it:
     anything but a text that clearly differs (after whitespace and case are normalized, and
-    allowing for a name cut short on either side)."""
+    allowing for a name cut short on either side, with or without a trailing ellipsis, and for
+    another Unicode normalization of the same text)."""
     if not isinstance(listed, str) or not listed.strip():
         return True
     a, b = _name_key(listed), _name_key(name)

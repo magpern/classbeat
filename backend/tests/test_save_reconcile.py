@@ -216,6 +216,26 @@ async def test_without_the_revision_key_or_context_it_is_inconclusive(
     assert await operation.SAVE.reconcile(check) == operation.INCONCLUSIVE
 
 
+def test_the_name_filter_survives_ellipsis_and_unicode_normalization() -> None:
+    """A listing may cut a long name with ``…`` or ``...`` and may spell an accent composed or
+    decomposed (or in a compatibility form); none of that rules a program out. A different text
+    still does, and so does a prefix of another word's start."""
+    name = "Tuesday climb \u00e9tude"  # composed é
+    for listed in (
+        "Tuesday cl…",
+        "Tuesday cl...",
+        "Tuesday climb \u00e9...",
+        "Tuesday climb e\u0301tude",  # decomposed é
+        "Tuesday climb e\u0301...",
+        "TUESDAY  CLIMB \u00c9TUDE\u2026",
+        "\uff34uesday climb \u00e9tude",  # fullwidth T
+    ):
+        assert operation.may_be_named(listed, name), listed
+    assert operation.may_be_named("Caf\u00e9 ride", "Cafe\u0301 ride...")  # on the spec's side too
+    for listed in ("Wednesday cl…", "Tuesday hill...", "Made in the app…"):
+        assert not operation.may_be_named(listed, name), listed
+
+
 def test_the_name_filter_is_inclusive() -> None:
     name = "Tuesday climb"
     for listed in (
