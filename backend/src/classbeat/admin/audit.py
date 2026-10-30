@@ -30,11 +30,15 @@ class Params(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
 
+ROUTE_PATTERN: Final = r"^/api/admin[a-z0-9_/{}.-]{0,90}$"
+METHOD_PATTERN: Final = r"^[A-Z]{3,7}$"
+
+
 class RequestParams(Params):
     """A refusal at the admin gate (``admin.request``): which route, which method."""
 
-    method: Annotated[str, StringConstraints(pattern=r"^[A-Z]{3,7}$")]
-    route: Annotated[str, StringConstraints(pattern=r"^/api/admin[a-z0-9_/{}.-]{0,90}$")]
+    method: Annotated[str, StringConstraints(pattern=METHOD_PATTERN)]
+    route: Annotated[str, StringConstraints(pattern=ROUTE_PATTERN)]
 
 
 # Action code -> its params model. ``admin.request`` is the gate's own (ADR 0011 section 6:

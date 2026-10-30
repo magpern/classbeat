@@ -12,7 +12,7 @@ from sqlalchemy.engine import Connection
 
 from conftest import RoleUrls
 from dbtools import migrated
-from maint_guard import MAINT, SECRET_COLUMNS, check_maint, is_secret
+from maint_guard import MAINT, SECRET_COLUMNS, check_maint, forbidden_calls, is_secret
 
 SRC = Path(__file__).resolve().parent.parent / "src" / "classbeat"
 MAINT_NAMES = frozenset(
@@ -149,3 +149,34 @@ def test_only_the_admin_db_module_touches_maint_credentials() -> None:
             if isinstance(name, str) and name.rsplit(".", 1)[-1] in MAINT_NAMES:
                 offenders.append(f"{path.relative_to(SRC)}:{getattr(node, 'lineno', '?')}")
     assert offenders == []
+
+
+def test_the_admin_package_never_notifies_or_takes_advisory_locks() -> None:
+    found = [
+        f"{path.relative_to(SRC)}:{line}: {what}"
+        for path in sorted((SRC / "admin").rglob("*.py"))
+        for line, what in forbidden_calls(path.read_text(encoding="utf-8"))
+    ]
+    assert found == []
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "q = text(\"SELECT pg_notify('jobs_queued', '')\")",
+        "q = text('NOTIFY jobs_queued')",
+        "q = text('LISTEN job_events')",
+        "q = text('SELECT pg_advisory_xact_lock(1)')",
+        "q = text('SELECT pg_try_advisory_lock(1)')",
+        "q = select(func.pg_advisory_lock(1))",
+        "q = select(sqlalchemy.func.pg_notify('x', 'y'))",
+        "from sqlalchemy.func import pg_advisory_unlock_all",
+    ],
+)
+def test_the_notify_and_advisory_check_fails_on_a_use(source: str) -> None:
+    assert forbidden_calls(source) != []
+
+
+def test_the_notify_check_ignores_docstrings() -> None:
+    source = '"""We never NOTIFY or listen here."""\nx = 1\n'
+    assert forbidden_calls(source) == []

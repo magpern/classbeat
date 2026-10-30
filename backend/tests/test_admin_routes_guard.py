@@ -29,6 +29,10 @@ def _probe_router() -> APIRouter:
             users = await session.execute(select(func.count()).select_from(text("users")))
             return {"users": users.scalar_one()}
 
+    @router.get("/users/{userId}")
+    async def camel_probe(userId: str, actor: AdminActor) -> dict[str, str]:
+        return {"user": userId}
+
     @router.post("/probe")
     async def write_probe(actor: AdminActor) -> dict[str, str]:
         return {"actor": str(actor.user_id)}
@@ -232,3 +236,17 @@ async def test_web_refuses_to_start_on_a_drifted_maint_role(
 def test_the_shared_router_is_gated() -> None:
     assert admin_routes.router.prefix == "/api/admin"
     assert gate_problems(admin_routes.router.routes) == []
+
+
+async def test_a_route_template_outside_the_params_pattern_keeps_the_refusal(
+    env: Env, make_actor: Any, superuser: Connection
+) -> None:
+    user_id = await env.user("a@example.com", role="admin")
+    actor = await make_actor(user_id)  # no MFA: the gate refuses and audits
+    response = await actor.get("/api/admin/users/abc")
+    assert response.status_code == 403
+    assert reason(response) == "mfa_required"
+    params = superuser.execute(
+        text("SELECT params FROM admin_audit WHERE actor_id = :u"), {"u": user_id}
+    ).scalar_one()
+    assert params == {"method": "GET", "route": "/api/admin"}

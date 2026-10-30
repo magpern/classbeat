@@ -10,7 +10,7 @@ dependencies = [
     "authlib==1.9.1",
     "certifi>=2026.10.23",  # imported by classbeat.egress: the model transport's trust store
     "cryptography==50.0.2",
-    "fastapi>=0.115",
+    "fastapi>=0.138",  # fastapi.routing.iter_route_contexts (the admin router guard)
     "httpx==0.28.1",
     "joserfc==1.7.7",
     # The domain library (ADR 0001): v0.6.0 built from its tag WITHOUT the bundled Swedebeat app

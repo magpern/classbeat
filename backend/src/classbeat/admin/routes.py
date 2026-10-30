@@ -19,6 +19,7 @@ An admin refused at 1 (``mfa_required``), 2 or 4 gets an ``admin.request`` audit
 carries ``Cache-Control: no-store``.
 """
 
+import re
 import secrets
 from typing import Annotated, Any, NoReturn
 
@@ -27,6 +28,7 @@ from fastapi.responses import JSONResponse
 from fastapi.routing import APIRoute, iter_route_contexts
 
 from classbeat import auth
+from classbeat.admin.audit import METHOD_PATTERN, ROUTE_PATTERN
 from classbeat.admin.db import Actor, AdminDb, AdminRefused, audit_refusal
 from classbeat.context import UserContext
 
@@ -45,10 +47,19 @@ def _ip_hash(request: Request) -> bytes:
     )
 
 
-def _route_template(request: Request) -> str:
+def _gate_params(request: Request) -> dict[str, str]:
+    """The ``admin.request`` params: the route template and method, or ``/api/admin`` and
+    ``OTHER`` when one would not pass ``RequestParams`` (a camelCase ``{userId}``, say), so a
+    refusal keeps its status and its row instead of turning into a 500."""
     route: Any = request.scope.get("route")
-    path = getattr(route, "path", "/api/admin")
-    return path if isinstance(path, str) and len(path) <= 100 else "/api/admin"
+    path = getattr(route, "path", None)
+    method = request.method
+    return {
+        "method": method if re.fullmatch(METHOD_PATTERN, method) else "OTHER",
+        "route": path
+        if isinstance(path, str) and re.fullmatch(ROUTE_PATTERN, path)
+        else "/api/admin",
+    }
 
 
 def admin_db(request: Request) -> AdminDb | None:
@@ -79,7 +90,7 @@ async def admin_gate(
         if db is not None:
             await audit_refusal(
                 db, actor, GATE_ACTION, reason,
-                params={"method": request.method, "route": _route_template(request)},
+                params=_gate_params(request),
             )  # fmt: skip
         raise HTTPException(status_code=status, detail={"reason": reason}, headers=headers)
 

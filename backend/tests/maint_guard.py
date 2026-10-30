@@ -14,6 +14,7 @@ change there needs the same change here):
 - ``SECRET_COLUMNS`` names only columns that exist (no stale entry hides a renamed one).
 """
 
+import ast
 import re
 from collections import defaultdict
 
@@ -260,3 +261,41 @@ def check_maint(conn: Connection) -> list[str]:
 
 def _db(conn: Connection) -> str:
     return str(conn.execute(text("SELECT current_database()")).scalar_one())
+
+
+# ADR 0011 section 5: the read-only switch does not stop NOTIFY, pg_notify or the advisory-lock
+# functions (they succeed in a read-only transaction), so code under ``classbeat.admin`` must
+# never name them. Checked in the source: every string that is not a docstring, and every name
+# and attribute (``func.pg_notify``, ``sqlalchemy.func.pg_advisory_xact_lock``).
+FORBIDDEN_SQL = re.compile(r"\bnotify\b|\bpg_notify\b|\bpg_(try_)?advisory\w*|\blisten\b", re.I)
+
+
+def forbidden_calls(source: str) -> list[tuple[int, str]]:
+    """``(line, what)`` for each NOTIFY, LISTEN, pg_notify or advisory-lock use in ``source``."""
+    tree = ast.parse(source)
+    docstrings: set[int] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Module | ast.ClassDef | ast.FunctionDef | ast.AsyncFunctionDef):
+            body = node.body
+            if body and isinstance(body[0], ast.Expr) and isinstance(body[0].value, ast.Constant):
+                docstrings.add(id(body[0].value))
+    found: list[tuple[int, str]] = []
+    for node in ast.walk(tree):
+        value = (
+            node.value
+            if isinstance(node, ast.Constant)
+            and isinstance(node.value, str)
+            and id(node) not in docstrings
+            else node.attr
+            if isinstance(node, ast.Attribute)
+            else node.id
+            if isinstance(node, ast.Name)
+            else node.name
+            if isinstance(node, ast.alias)
+            else None
+        )
+        if isinstance(value, str):
+            match = FORBIDDEN_SQL.search(value)
+            if match:
+                found.append((getattr(node, "lineno", 0), match.group(0)))
+    return found

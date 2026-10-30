@@ -49,7 +49,7 @@ from classbeat.db import TransactionGuard
 from classbeat.db.engine import CONNECT_TIMEOUT_SECONDS, discard_session_state
 from classbeat.db.role_check import (
     EXPECTED_ROLE_SETTINGS,
-    _is_authentication_failure,  # pyright: ignore[reportPrivateUsage]
+    is_authentication_failure,
 )
 
 logger = logging.getLogger(__name__)
@@ -244,7 +244,7 @@ class AdminDb:
         except MaintRoleError:
             raise
         except OperationalError as exc:
-            if _is_authentication_failure(exc):
+            if is_authentication_failure(exc):
                 raise MaintRoleError(
                     "the database refused the admin role's credentials; check "
                     "maint_database_url and the database_maint_password secret file"
