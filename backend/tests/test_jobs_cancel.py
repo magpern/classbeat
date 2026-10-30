@@ -155,8 +155,8 @@ async def test_approval_refusals_start_nothing(jenv: JobsEnv) -> None:
     stranger = jenv.user()
     assert (await user_approve(jenv, stranger, job_id, revision, good)).reason == "not_found"
     assert (await user_approve(jenv, owner, job_id, revision, b"x" * 32)).reason == "hash_mismatch"
-    other = uuid.uuid4()
-    assert (await user_approve(jenv, owner, job_id, other, good)).reason == "superseded"
+    other = uuid.uuid4()  # not one of the user's song lists of the class (ADR 0008 section 12)
+    assert (await user_approve(jenv, owner, job_id, other, good)).reason == "not_found"
     jenv.sql(
         "INSERT INTO class_revisions (id, owner_id, class_id, number, kind, content, "
         "content_hash, music, provenance) SELECT gen_random_uuid(), owner_id, class_id, 99, "

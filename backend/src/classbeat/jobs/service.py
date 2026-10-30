@@ -23,7 +23,7 @@ from classbeat.db import user_session
 from classbeat.jobs import user
 from classbeat.jobs.credits import CreditLedger, QuotaRefused
 from classbeat.jobs.inputs import JobInput
-from classbeat.jobs.kinds import KindRegistry
+from classbeat.jobs.kinds import Approving, KindRegistry
 
 Factory = async_sessionmaker[AsyncSession]
 
@@ -130,7 +130,9 @@ async def approve(
     ledger: CreditLedger,
 ) -> ApproveResult:
     """Approve with every check of ADR 0005 section 2, in one transaction: the owner lock, the
-    job row lock and its checks (``user.approve``), then ``admit`` below."""
+    job row lock and its checks (``user.approve``), then ``admit`` below: the connections of the
+    kind's ``CONNECTIONS``, the kind's ``approve_check`` (ADR 0008 section 5), the per-user limit
+    and the credit seam, in that order."""
 
     async def admit(db: AsyncSession, waiting: user.Waiting) -> str | None:
         kind = kinds.get(waiting.kind)
@@ -147,6 +149,13 @@ async def approve(
             info = await connections.find_in(db, ctx, connection_id)
             if info is None or info.status != "connected":
                 return "not_connected"
+        if kind.approve_check is not None:  # the kind's own refusal (ADR 0008 section 5)
+            approving = Approving(
+                waiting.job_id, waiting.class_id, waiting.revision_id, waiting.content_hash, parsed
+            )
+            reason = await kind.approve_check(db, ctx, approving)
+            if reason is not None:
+                return reason
         if await user.active_jobs(db, ctx) >= limit:  # the owner lock is held (user.approve)
             return "busy"
         if waiting.credit_state == "reserved" and not await ledger.allows(db, ctx, waiting.job_id):

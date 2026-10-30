@@ -217,6 +217,9 @@ class Settings(BaseSettings):
     # with its ``ref`` stays uncertain; set (by the owner, after measuring it at live activation),
     # such a create whose call returned at least this long ago is ``failed``. A day at most.
     spotify_listing_lag_seconds: float | None = Field(default=None, gt=0, le=86400)
+    # ADR 0008 section 2: how long a pick waits for MOWL's track list of the pool playlist to
+    # show exactly the candidates just written (``pool_not_synced`` after it).
+    spotify_pool_sync_wait_seconds: float = Field(default=120.0, ge=0, le=600)
     # From the file ``anthropic_api_key`` (never the environment), mounted on the worker only;
     # the web app refuses to start when it can read it. An empty file counts as no key
     # (``scripts/worktree.sh init`` creates an empty one; it is never a real key).

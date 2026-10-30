@@ -5,6 +5,7 @@ seam and the queue calls. The worker loop (``classbeat.worker.loop``) drives the
 from classbeat.jobs.credits import CreditLedger, QuotaRefused, UnmeteredLedger, settle, settle_one
 from classbeat.jobs.errors import (
     CATEGORIES,
+    RETRIED_ONCE,
     RETRYABLE,
     JobFailure,
     LeaseLost,
@@ -20,6 +21,7 @@ from classbeat.jobs.run import JobRun
 __all__ = [
     "CATEGORIES",
     "KINDS",
+    "RETRIED_ONCE",
     "RETRYABLE",
     "AwaitApproval",
     "Claimed",
