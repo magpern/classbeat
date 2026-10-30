@@ -1,6 +1,6 @@
 # ADR 0007: Classes, revisions and saving to MOWL
 
-Status: Proposed
+Status: Accepted (#152, 2026-10-29)
 
 ## Context
 
@@ -768,3 +768,15 @@ Order: C1; then K1, X2, C2 and US1 in parallel; then R1 and SV1; SV2; FE1; FE2; 
 when T2 and the crash and failure-injection tests of SV1 and SV2 are green (roadmap M3b "done when":
 design, revise, save, update with fakes; the uncertain-write path; token usage and cost recorded per
 job).
+
+## Amendments after implementation (2026-10-30)
+
+- **Brief size (K1, #158):** a brief can be 2000 characters but the `classes.brief` column is
+  limited to 4096 bytes, which multi-byte text can exceed. Job creation refuses such a brief
+  with 422 (no echo of the text) instead of failing in the final store after the model has run.
+- **Usage before the account existed (US1, #159):** `GET /api/usage?month=` answers zeros for a
+  month before the account was created, not 404: the 404 would need `users.created_at`, which the
+  auth-tables guard reserves for `classbeat.auth`. A malformed month is 422 `invalid_month`.
+- **Classes designed and revisions** count only completed jobs; for deleted jobs a `submitted`
+  run stands in, so a deleted job with several submitted attempts is over-counted (documented in
+  `usage/service.py`).
