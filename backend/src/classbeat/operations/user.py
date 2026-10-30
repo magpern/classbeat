@@ -14,6 +14,10 @@ go through the fence (``classbeat.operations.protocol``).
   ``resolved_by = 'user'``, conditional on ``state = 'uncertain'``. The next job on the same
   target then takes the ``failed`` row over and makes the call again.
 
+**Pool rows** (a Spotify create or replace without a class, ADR 0008 section 2) are never shown
+or acted on: listed nowhere and not found by id (404), so the user is never asked to resolve a
+pool write; the next pick supersedes them (``classbeat.playlists.pool``).
+
 Neither applies to a ``succeeded`` row (``final``: it is final) or a ``pending`` one
 (``not_uncertain``: a call is in flight or its holder has not been reaped yet). Both are
 idempotent by their target: Do it anyway on a ``failed`` row answers with that row.
@@ -38,12 +42,22 @@ from classbeat.context import UserContext, require_context
 from classbeat.crypto.keks import KeyRing
 from classbeat.db import user_session
 from classbeat.operations import orphans
-from classbeat.operations.kinds import OPERATION_KINDS, OperationKinds, ReconcileInput
+from classbeat.operations.kinds import (
+    OPERATION_KINDS,
+    SPOTIFY_WRITE_KINDS,
+    OperationKinds,
+    ReconcileInput,
+)
 from classbeat.operations.protocol import RESOLVE, operation_of, reconcile, succeeded
 from classbeat.operations.requests import ACTIONABLE_AT_SQL, NOT_ACTIONABLE_SQL
 
 Factory = async_sessionmaker[AsyncSession]
 LIST_LIMIT: Final = 50
+# ADR 0008 section 2: the user is never asked to resolve a pool write. A Spotify row without a
+# class (the pool's create and replace) is not shown and not acted on: not found, like another
+# user's id, so no user action ever re-sends a pool create under the same id and ``ref``.
+_SPOTIFY_KINDS_SQL: Final = ", ".join(f"'{name}'" for name in sorted(SPOTIFY_WRITE_KINDS))
+_OFFERED: Final = f"NOT (kind IN ({_SPOTIFY_KINDS_SQL}) AND class_id IS NULL)"
 
 _FIELDS = (
     "id, kind, idempotency_key, state, external_id, result, job_id, resolved_by, created_at, "
@@ -52,15 +66,15 @@ _FIELDS = (
 )
 _ONE = text(
     f"SELECT {_FIELDS} FROM external_operations "  # noqa: S608 - constant column list
-    "WHERE id = :id AND owner_id = :owner_id"
+    f"WHERE id = :id AND owner_id = :owner_id AND {_OFFERED}"
 )
 _LOCK_ONE = text(
     f"SELECT {_FIELDS} FROM external_operations "  # noqa: S608 - constant column list
-    "WHERE id = :id AND owner_id = :owner_id FOR UPDATE"
+    f"WHERE id = :id AND owner_id = :owner_id AND {_OFFERED} FOR UPDATE"
 )
 _UNCERTAIN = text(
     f"SELECT {_FIELDS} FROM external_operations "  # noqa: S608 - constant column list
-    "WHERE owner_id = :owner_id AND state = 'uncertain' "
+    f"WHERE owner_id = :owner_id AND state = 'uncertain' AND {_OFFERED} "
     "AND (CAST(:job_id AS uuid) IS NULL OR job_id = CAST(:job_id AS uuid)) "
     "ORDER BY created_at DESC LIMIT :limit"
 )

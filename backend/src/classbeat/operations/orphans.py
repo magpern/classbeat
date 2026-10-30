@@ -17,6 +17,10 @@ row (#117 item 7). The queue functions do not change; instead:
   ``prepare`` for the owner. The row has no ``call_ended_at``, so ``actionable_at`` still applies
   to it (``classbeat.operations.protocol``). A late outcome write of the fenced-out holder fails
   on its lease (and on ``state = 'pending'``), so it can't overwrite the marking.
+  The final-playlist writes (``spotify_create_playlist`` and ``spotify_replace_items`` with a
+  class, ADR 0008 section 2) are class writes with per-job keys too and are marked the same way,
+  so the user sees an orphaned one as uncertain; the pool rows (no class) are never shown and
+  are superseded by the next pick instead (``classbeat.playlists.pool``).
 - ``write_unresolved(db, ctx, class_id, job_id)`` is the rule shared by Save, Update and their
   ``prepare``: a ``pending`` row of another job, or any ``uncertain`` row, of the class blocks a
   new write (409 ``write_unresolved``) until the user resolves it with Check again or Do it
@@ -46,7 +50,9 @@ _RESOLVE = text(
     "error_category = coalesce((SELECT j.error_category FROM jobs j "
     "WHERE j.owner_id = o.owner_id AND j.id = o.job_id), o.error_category), updated_at = now() "
     "WHERE o.owner_id = :owner_id AND o.state = 'pending' "
-    "AND o.kind IN ('mowl_save_workout', 'mowl_update_workout') "
+    "AND (o.kind IN ('mowl_save_workout', 'mowl_update_workout') "
+    "OR (o.kind IN ('spotify_create_playlist', 'spotify_replace_items') "
+    "AND o.class_id IS NOT NULL)) "
     "AND (o.job_id IS NULL "
     "OR EXISTS (SELECT 1 FROM jobs j WHERE j.owner_id = o.owner_id AND j.id = o.job_id "
     "AND j.state IN ('completed', 'failed', 'cancelled', 'expired'))) "

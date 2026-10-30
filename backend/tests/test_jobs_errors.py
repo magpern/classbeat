@@ -35,7 +35,11 @@ def migration_categories() -> set[str]:
 
 def test_the_categories_match_the_migration_check() -> None:
     assert set(CATEGORIES) == migration_categories()
-    assert frozenset({"upstream_unavailable", "rate_limited", "model_unavailable"}) == RETRYABLE
+    # ``pool_missing`` (OP1, ADR 0008 section 1): the pool is forgotten and the retry creates anew.
+    assert (
+        frozenset({"upstream_unavailable", "rate_limited", "model_unavailable", "pool_missing"})
+        == RETRYABLE
+    )
 
 
 @pytest.mark.parametrize("attempt", [1, 2, 3, 4, 5, 6, 10])
@@ -62,6 +66,14 @@ def test_a_rate_limit_waits_at_least_its_hint_capped_at_an_hour() -> None:
         (ConnectionFailure("decrypt_failed"), "decrypt_failed", None),
         (ConnectionFailure("not_connected"), "not_connected", None),
         (ConnectionFailure("unknown"), "internal", None),
+        # ADR 0009 section 8's categories that are job categories keep their name (OP1).
+        (ConnectionFailure("forbidden"), "forbidden", None),
+        (ConnectionFailure("not_found"), "not_found", None),
+        (ConnectionFailure("invalid_grant"), "invalid_grant", None),
+        (ConnectionFailure("app_misconfigured"), "app_misconfigured", None),
+        (ConnectionFailure("quota_exhausted"), "quota_exhausted", None),
+        (ConnectionFailure("invalid_response"), "invalid_response", None),
+        (ConnectionFailure("not_allowlisted"), "internal", None),  # connect only, never a job
         (OutboundBlocked("x.example"), "outbound_blocked", None),
         (JobFailure("model_unavailable"), "model_unavailable", None),
         (JobFailure("no such category"), "internal", None),

@@ -86,6 +86,10 @@ class OpenConnection:
     credentials: Credentials
     version: bytes
     generation: int
+    # The provider account the row was connected as, where the row records one: the Spotify
+    # user id of ``public`` (ADR 0009 section 5). ``hold`` compares it, and the Spotify writes
+    # check playlist ownership against it (ADR 0008 section 2). None for MOWL and Swedebeat.
+    account: str | None = None
 
     def __repr__(self) -> str:
         return f"OpenConnection(id={self.id}, provider={self.provider!r}, credentials=...)"

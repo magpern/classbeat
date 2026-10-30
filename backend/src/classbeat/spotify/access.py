@@ -69,15 +69,36 @@ async def refresh_if_needed(
     )
 
 
+def _expected(opened: OpenConnection, expect: OpenConnection | None) -> OpenConnection:
+    """The row as opened now must be the connection the caller held (``expect``): the same row,
+    generation and Spotify account. A refresh keeps all three; a reconnect, a Client ID change or
+    another account changes the generation, and then nothing is sent (``not_connected``)."""
+    if expect is not None and (
+        opened.id != expect.id
+        or opened.generation != expect.generation
+        or opened.account is None
+        or opened.account != expect.account
+    ):
+        raise ConnectionFailure("not_connected")
+    return opened
+
+
 async def _attempt[T](
-    factory: Factory, ctx: UserContext, opened: OpenConnection, fn: Callable[[Credentials], T]
+    factory: Factory,
+    ctx: UserContext,
+    opened: OpenConnection,
+    fn: Callable[[Credentials], T],
+    single_request: bool = False,
 ) -> tuple[T | None, ConnectionFailure | None]:
     """One library call. A 401 is returned unrecorded (the caller refreshes and decides); any
     other failure is recorded as ``last_error`` (never a flip)."""
     failure: ConnectionFailure | None = None
     try:
         result = await connections.run_library_call(
-            lambda: fn(opened.credentials), sign_in=False, classifier=classify_use
+            lambda: fn(opened.credentials),
+            sign_in=False,
+            classifier=classify_use,
+            single_request=single_request,
         )
     except ConnectionFailure as error:
         failure = error
@@ -98,18 +119,26 @@ async def spotify_call[T](
     http: SpotifyHttp | None = None,
     write: bool = False,
     margin_seconds: float = DEFAULT_REFRESH_MARGIN_SECONDS,
+    expect: OpenConnection | None = None,
+    single_request: bool = False,
 ) -> T:
     """Run ``fn(credentials)`` (a ``mowl.spotify_web`` call) for ``ctx``'s Spotify connection.
+
+    ``expect``: the connection the caller held (an external operation's decide step held it):
+    every time the row is opened here it must still be that row, generation and Spotify account,
+    or nothing is sent (``not_connected``). ``single_request``: ``fn`` is exactly one HTTP
+    request, so a refusal of it proves no effect (``ConnectionFailure.not_applied``,
+    ``run_library_call``).
 
     ``ConnectionFailure`` with a category of ADR 0009 section 8 (or ``not_connected``,
     ``key_unavailable``, ``decrypt_failed`` before any call); ``OutboundBlocked`` when the
     allowlist refused a request."""
     http = http if http is not None else SpotifyHttp()
-    opened = await open_connection(factory, ring, ctx, PROVIDER)
+    opened = _expected(await open_connection(factory, ring, ctx, PROVIDER), expect)
     if _expiring(opened, margin_seconds, time.time()):
         await refresh_if_needed(factory, ring, ctx, http, margin_seconds=margin_seconds)
-        opened = await open_connection(factory, ring, ctx, PROVIDER)
-    result, failure = await _attempt(factory, ctx, opened, fn)
+        opened = _expected(await open_connection(factory, ring, ctx, PROVIDER), expect)
+    result, failure = await _attempt(factory, ctx, opened, fn, single_request)
     if failure is None:
         return result  # pyright: ignore[reportReturnType]
     if failure.http_status != UNAUTHORIZED:
@@ -125,8 +154,8 @@ async def spotify_call[T](
     )
     if write:
         raise ConnectionFailure("upstream_unavailable", not_applied=True, http_status=UNAUTHORIZED)
-    repeat = await open_connection(factory, ring, ctx, PROVIDER)
-    result, failure = await _attempt(factory, ctx, repeat, fn)
+    repeat = _expected(await open_connection(factory, ring, ctx, PROVIDER), expect)
+    result, failure = await _attempt(factory, ctx, repeat, fn, single_request)
     if failure is None:
         return result  # pyright: ignore[reportReturnType]
     if failure.http_status != UNAUTHORIZED:

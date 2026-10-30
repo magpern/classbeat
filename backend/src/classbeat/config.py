@@ -212,6 +212,11 @@ class Settings(BaseSettings):
     spotify_flow_ttl_seconds: int = Field(default=600, ge=60, le=600)
     spotify_refresh_margin_seconds: int = Field(default=120, ge=0, le=1800)
     spotify_refresh_timeout_seconds: float = Field(default=10.0, gt=0, le=20)
+    # ADR 0008 section 2: how long a new Spotify playlist may take to appear in the user's
+    # playlist listing. Unset (the default), an uncertain create whose listing shows no playlist
+    # with its ``ref`` stays uncertain; set (by the owner, after measuring it at live activation),
+    # such a create whose call returned at least this long ago is ``failed``. A day at most.
+    spotify_listing_lag_seconds: float | None = Field(default=None, gt=0, le=86400)
     # From the file ``anthropic_api_key`` (never the environment), mounted on the worker only;
     # the web app refuses to start when it can read it. An empty file counts as no key
     # (``scripts/worktree.sh init`` creates an empty one; it is never a real key).

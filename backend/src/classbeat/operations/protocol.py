@@ -23,7 +23,8 @@
 2. **The call**, outside any transaction (``JobRun.external_call``: no call starts after a
    cancel or SIGTERM, and once started a cancel does not interrupt it).
 3. **Record** (fenced, conditional on ``state = 'pending' AND job_id AND lease_version``):
-   ``succeeded``, ``failed`` (``ConnectionFailure.not_applied``: refused, or never left) or
+   ``succeeded``, ``failed`` (``ConnectionFailure.not_applied``: refused, or never left; or
+   ``NotWritten``: the call proved nothing was written, or read back a definite other state) or
    ``uncertain``, and ``call_ended_at = now()`` with any of them ("the call returned" is
    ``call_ended_at >= pending_at``). A lost fence leaves the row ``pending`` under the old
    token, without ``call_ended_at``. A row that is
@@ -35,9 +36,14 @@
    job fails ``uncertain_write``. An uncertain write is never sent again by a job: the user
    decides (**Check again** or **Do it anyway**, ``classbeat.operations.user``).
    **A stale call may still be running** (ADR 0007 section 8): for a multi-request write
-   (``bound_seconds`` set) whose call has not returned, nothing is reconciled before
+   (``bound_seconds`` set; ``kinds.MULTI_REQUEST_KINDS``, the MOWL class writes and the Spotify
+   replace) whose call has not returned, nothing is reconciled before
    ``actionable_at = pending_at + bound_seconds + 30 s``; the job fails ``uncertain_write``
    without a read, and the user's Check again after that time does the reconciliation.
+
+``perform_for`` hands the call the id of the row it writes for: a kind whose request is
+``with_ref`` stores ``ref`` (12 hex characters of that id) in each attempt's context, and the
+call puts it into what it writes (the Spotify create's description).
 
 Every write the worker makes here goes through ``JobRun.fenced`` and records an
 ``external_operation {kind, state}`` event. The transactions are never nested (a second fenced
@@ -162,6 +168,17 @@ class UncertainAnswer(Exception):
         super().__init__("uncertain answer")
 
 
+class NotWritten(Exception):
+    """The call proved that nothing was written (a Spotify owner check that refused before any
+    write request, ADR 0008 section 2) or found a definite state that differs (a read-back that
+    is not the list written: ``playlist_mismatch``): ``failed`` with ``category``. Carries only
+    the category."""
+
+    def __init__(self, category: str) -> None:
+        self.failure = JobFailure(category)
+        super().__init__(self.failure.category)
+
+
 @dataclass(frozen=True, slots=True)
 class Done:
     """A ``succeeded`` operation: made by this call, found by a reconciliation, or reused."""
@@ -223,7 +240,12 @@ async def _decide(
         if request.guard is not None and not await request.guard(fs.db):
             raise JobFailure("not_connected")
         keyed = {"owner_id": lease.owner_id, "kind": request.kind, "key": request.idempotency_key}
-        attempt = {"context": json.dumps(request.stored_context()), "class_id": request.class_id}
+
+        def attempt(operation_id: UUID) -> dict[str, Any]:
+            # This attempt's context (with the row's own ``ref`` when the kind asks for one).
+            context = request.stored_context(operation_id)
+            return {"context": json.dumps(context), "class_id": request.class_id}
+
         for _ in range(DECIDE_ROUNDS):
             row = (await fs.db.execute(_LOCK, keyed)).first()
             if row is None:
@@ -233,7 +255,7 @@ async def _decide(
                         _INSERT,
                         {
                             **keyed,
-                            **attempt,
+                            **attempt(operation_id),
                             "id": operation_id,
                             "job_id": lease.job_id,
                             "hash": request.request_hash,
@@ -257,7 +279,7 @@ async def _decide(
             if row.state == "failed":
                 taken = await fs.db.execute(
                     _TAKE_FAILED,
-                    {**ids, **attempt, "job_id": lease.job_id, "v": lease.lease_version},
+                    {**ids, **attempt(row.id), "job_id": lease.job_id, "v": lease.lease_version},
                 )
                 if taken.first() is None:
                     continue
@@ -311,11 +333,16 @@ def _checked(answer: object) -> CallResult:
 
 
 async def _invoke(
-    call: Callable[[], Awaitable[CallResult]], kind: str, request: OperationRequest
+    call: Callable[[UUID], Awaitable[CallResult]],
+    operation_id: UUID,
+    kind: str,
+    request: OperationRequest,
 ) -> _Outcome:
     """Step 2. A ``ConnectionFailure`` is ``failed`` only when it proves there was no effect."""
     try:
-        answer = _checked(await call())
+        answer = _checked(await call(operation_id))
+    except NotWritten as refused:
+        return _Outcome("failed", failure=refused.failure)
     except ConnectionFailure as failure:
         state = "failed" if failure.not_applied else "uncertain"
         return _Outcome(state, failure=failure_of(failure))
@@ -446,13 +473,30 @@ async def perform(
 ) -> Done:
     """One external write for ``run`` (the module docstring). Raises ``JobFailure`` (its
     category says why), ``RunStopped`` at the checkpoints and ``LeaseLost`` from the fence."""
+
+    async def call_for(_: UUID) -> CallResult:
+        return await call()
+
+    return await perform_for(run, request, call_for, keyring=keyring, kinds=kinds)
+
+
+async def perform_for(
+    run: JobRun,
+    request: OperationRequest,
+    call: Callable[[UUID], Awaitable[CallResult]],
+    *,
+    keyring: KeyRing | None = None,
+    kinds: OperationKinds = OPERATION_KINDS,
+) -> Done:
+    """``perform`` whose call gets the id of the row it writes for (the row's ``ref``, which a
+    Spotify create puts into the playlist's description, ADR 0008 section 2)."""
     kind = kinds.require(request.kind)
     async with run.external_call(request.lease_seconds):
         decision = await _decide(run, request, kind)
         if isinstance(decision, Done):
             return decision
         if isinstance(decision, _Call):
-            outcome = await _invoke(call, kind.name, request)
+            outcome = await _invoke(call, decision.operation_id, kind.name, request)
             done = await _record(run, kind, decision.operation_id, outcome)
             if done is not None:
                 return done
