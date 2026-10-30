@@ -78,7 +78,8 @@ jobs:
             git cat-file -e "${HEAD_SHA}^{commit}"
             count="$(git rev-list --count "${BASE_SHA}..${HEAD_SHA}")"
             [ "$count" -gt 0 ] || { echo "secret scan: no commits in ${BASE_SHA}..${HEAD_SHA}" >&2; exit 1; }
-            "$RUNNER_TEMP/gitleaks" git --redact --verbose --exit-code 1               --log-opts="--diff-merges=first-parent ${BASE_SHA}..${HEAD_SHA}" .
+            "$RUNNER_TEMP/gitleaks" git --redact --verbose --exit-code 1 \
+              --log-opts="--diff-merges=first-parent ${BASE_SHA}..${HEAD_SHA}" .
           else
             "$RUNNER_TEMP/gitleaks" git --redact --verbose --exit-code 1 .
           fi
