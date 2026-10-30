@@ -12,7 +12,7 @@ from uuid import UUID
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from classbeat.classes import seams
+from classbeat.classes import seams, song_views
 from classbeat.context import UserContext, require_context
 from classbeat.db import user_session
 
@@ -158,6 +158,20 @@ async def get_class(factory: Factory, ctx: UserContext, class_id: UUID) -> Any |
         return (await db.execute(_CLASSES, _ids(ctx, class_id, limit=1))).first()
 
 
+async def get_class_detail(
+    factory: Factory, ctx: UserContext, class_id: UUID
+) -> tuple[Any, song_views.SongsState, song_views.Playlists] | None:
+    """The class row with its song state and playlists (one transaction), or ``None``."""
+    require_context(ctx)
+    async with user_session(factory, ctx) as db:
+        await seams.resolve_orphans(db, ctx)
+        row = (await db.execute(_CLASSES, _ids(ctx, class_id, limit=1))).first()
+        if row is None:
+            return None
+        songs = await song_views.songs_state(db, ctx.user_id, class_id)
+        return row, songs, await song_views.playlists_of(db, ctx.user_id, class_id)
+
+
 async def list_revisions(factory: Factory, ctx: UserContext, class_id: UUID) -> list[Any] | None:
     require_context(ctx)
     async with user_session(factory, ctx) as db:
@@ -192,6 +206,7 @@ class Outcome:
 
     reason: str | None = None
     kept: int = 0
+    playlists: tuple[song_views.PlaylistRef, ...] = ()  # a delete: left in the user's Spotify
 
 
 async def pick(
@@ -242,5 +257,6 @@ async def delete(
         if writes and not confirm_uncertain:
             return Outcome("uncertain_write")
         kept = int((await db.execute(_KEPT, _ids(ctx, class_id))).scalar_one())
+        left = (await song_views.playlists_of(db, ctx.user_id, class_id)).all
         await db.execute(_DELETE, _ids(ctx, class_id))
-    return Outcome(None, kept)
+    return Outcome(None, kept, left)

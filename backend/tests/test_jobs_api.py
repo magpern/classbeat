@@ -48,6 +48,7 @@ async def test_create_queues_a_job_on_a_new_class_with_its_event_and_credit(
         "expires_at",
         "approved_at",
         "error_category",
+        "error_message",
         "created_at",
         "updated_at",
         "finished_at",
