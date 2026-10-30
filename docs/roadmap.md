@@ -91,6 +91,27 @@ Proposed and none of the M4 issues is startable.
   asked again). A failed or abandoned flow leaves the old connection working
   ([ADR 0009](adr/0009-spotify-connection.md) §7).
 
+## Amendment 7 (2026-10-30, Architect, ADR 0011; effective on its acceptance)
+
+Like Amendment 5, this takes effect when [ADR 0011](adr/0011-tiers-quotas-and-admin.md) is accepted.
+Amendment 6 is M3c's (ADR 0012, PR #229).
+
+- **§4 refunds:** every job that ends other than `completed` (failed, cancelled at any time,
+  expired) releases its class credit, as ADR 0005 §5 settles today; a per-user monthly cost cap per
+  plan bounds the abuse. An admin can refund a committed credit.
+- **§1 `UserContext.entitlements`** stays empty: the plan and features are resolved inside each
+  transaction from the user's entitlement rows (ADR 0011 §2).
+- **§9 entitlements:** invites stay sign-up-only; a plan comes from an admin grant, a redeem code
+  or a trial (user-started, off by default). `subscription` has no writer until M7.
+- **§9 Pro "priority queue"** and the other per-tier feature gates (races, games, FTP tests,
+  history, multi-week series) are deferred to M7 or to the features themselves; M5 gates only song
+  picking.
+- **§5 and "Admin area", the price table:** shown read-only in the admin; a price change stays a
+  reviewed code change with a `PRICES_VERSION` bump. Provider, model and effort per tier are ADR
+  0012's model routes, which the admin edits only for a model that passed the evals.
+- **"Admin area", jobs:** waiting approvals and uncertain operations are shown, not resolved; an
+  uncertain operation stays the user's to resolve (ADR 0005 §7).
+
 *Revision 6 — frozen for implementation. Song picking is a **core** feature with Claude
 choosing the final songs from real BPM and sections (the pool stage from `mowl-workouts`);
 the instructor approves once, then the class is created hands-off. **Spotify is

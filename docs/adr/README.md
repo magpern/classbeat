@@ -16,3 +16,4 @@ Reviewer reviews each in its PR (AGENTS.md, "Decisions and ADRs").
 | [0008](0008-song-picking.md) | Song picking: pool and final playlists, stages, jobs, approval (M4) | Proposed |
 | [0009](0009-spotify-connection.md) | Spotify connection (BYOK), tokens and the Spotify API (M4) | Proposed |
 | [0010](0010-live-activation-permissions.md) | Provider permissions for live activation | Accepted |
+| [0011](0011-tiers-quotas-and-admin.md) | Tiers, quotas and the admin area (M5) | Proposed |
