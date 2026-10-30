@@ -131,14 +131,13 @@ GitHub hold the detail.
   cost caps per tier, which plan the testers get, trial on or off, quota period, refund on cancel,
   overlapping codes, Free feature gates, the Pro priority queue, audit-log retention, prices. Agents
   build on the defaults listed there; an answer changes seeds or settings, not the design.
-- **UI redesign questions** ([ADR 0013](adr/0013-ui-design-night-studio.md) §12):
-  - which zone colours to nudge after comparing them with the MOWL app;
-  - zones 5 to 7 in three colours or all red;
-  - Dark as the default theme;
-  - Music in the main navigation;
-  - the fonts Inter and Archivo.
+- **UI redesign** ([ADR 0013](adr/0013-ui-design-night-studio.md) §12; answered 2026-10-30 except
+  for two items):
+  - a screenshot of a workout in the MOWL app, shared in chat (never committed), so the zone
+    colours can be sampled;
+  - confirmation that the zone 6 mark is a flame.
 
-  Agents build on the defaults listed there.
+  Agents build on the values in ADR 0013 §2 meanwhile.
 - Each further live smoke run needs the owner's go-ahead for that run (2026-10-29: "do not run
   live test every time").
 - **MOWL connect (#66) has merged, so the owner can now authorize: a check of the MOWL token's lifetime**

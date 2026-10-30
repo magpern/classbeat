@@ -64,23 +64,25 @@ Every colour lives in `tokens.css` as a CSS variable, in both themes:
 Violet is classbeat's own colour. It is chosen so that it never competes with a zone colour, with
 Spotify's green or with MOWL's branding.
 
-**Effort zones.** MOWL's seven zones and names (`mowl.workout.ZONE_NAMES`), coloured in the rainbow
-order MOWL riders know from the app and the bike lights: blue Z2, green Z3, yellow Z4, then up to red.
-The values are close to MOWL's but not copied from it. They are the same in both themes:
+**Effort zones.** MOWL's seven zones and names (`mowl.workout.ZONE_NAMES`), coloured as in the
+**MOWL app** (owner, 2026-10-30): grey Z1, blue Z2, green Z3, yellow Z4, and **one red for Z5 to
+Z7**. Above the bars, a **flame** marks zone 6 and a **bolt** marks zone 7. MOWL marks zone 7 with
+an owl, but that is MOWL's mascot, so classbeat uses its own mark (§3). The values below are close
+to the app's, not sampled from it. They are replaced by values sampled from a screenshot of a
+workout in the MOWL app once the owner provides one (§12). They are the same in both themes:
 
-| Zone | Name | FTP | Colour |
-|---|---|---|---|
-| 1 | Recovery | under 55 % | `#8E99A8` grey |
-| 2 | Endurance | 56–75 % | `#3D8BFF` blue |
-| 3 | Tempo | 76–90 % | `#2FBF71` green |
-| 4 | Threshold | 91–105 % | `#FFD23F` yellow |
-| 5 | VO2max | 106–120 % | `#FF9133` orange |
-| 6 | Anaerobic | 121–150 % | `#FF4D4D` red |
-| 7 | Neuromuscular | all out | `#D7266D` crimson |
+| Zone | Name | FTP | Colour | Marker above the bar |
+|---|---|---|---|---|
+| 1 | Recovery | under 55 % | `#8E99A8` grey | — |
+| 2 | Endurance | 56–75 % | `#3D8BFF` blue | — |
+| 3 | Tempo | 76–90 % | `#2FBF71` green | — |
+| 4 | Threshold | 91–105 % | `#FFD23F` yellow | — |
+| 5 | VO2max | 106–120 % | `#FF4D4D` red | — |
+| 6 | Anaerobic | 121–150 % | `#FF4D4D` red | flame (`lucide` `Flame`) |
+| 7 | Neuromuscular | all out | `#FF4D4D` red | bolt (`lucide` `Zap`) |
 
-MOWL shows zones 5 to 7 in red. classbeat separates them as orange, red and crimson, so that a
-profile can show where the all-out efforts are. Zone colours are used only for effort, never for
-buttons or status.
+Zones 5 to 7 share a colour, so they are told apart by bar height, the marker and the zone number
+in every label. Zone colours are used only for effort, never for buttons or status.
 
 **The stage.** A class profile always sits on a near-black stage (`stage #0B0C10`, grid lines
 `#23252F`, text `#E9EBF1` / `#9AA0B2`), in the light theme too, like the studio screen. This also
@@ -100,8 +102,9 @@ four bars.
 ### 3. Brand boundaries (MOWL and Spotify)
 
 - **MOWL.** The familiarity comes from the zone colours and from MOWL's words (program, segments,
-  My Workouts, RPM, TSS). classbeat uses no MOWL logo, owl, wordmark, typeface, screenshot or
-  asset, and doesn't reproduce MOWL's app chrome. "MOWL" appears only as text naming the service
+  My Workouts, RPM, TSS), and from markers above the hardest bars. classbeat uses no MOWL logo,
+  owl, wordmark, typeface, screenshot or asset, and doesn't reproduce MOWL's app chrome. Where MOWL
+  puts its owl over zone 7, classbeat puts its own bolt. "MOWL" appears only as text naming the service
   ("Save to MOWL", "Connected to MOWL"), and nothing may suggest classbeat is made by MOWL (roadmap
   "Development process").
 - **Spotify.** Screens that show Spotify data follow the Spotify Design & Branding Guidelines for
@@ -225,6 +228,9 @@ TSS, FTP, RPM and zone numbers stay, because MOWL users know them.
 - **x is time** (bar width is the interval's `sec`). **y is the zone** (bar height grows with the
   zone, as today). **Colour is the zone** (§2). Bars sit on the stage with faint horizontal grid
   lines and a time axis every 5 minutes.
+- **Markers** (§2): a flame sits above every zone 6 bar and a bolt above every zone 7 bar,
+  centred, in the stage's text colour. On a bar narrower than the icon, the icon overflows it
+  evenly. Bar heights leave room for the marker (about 6 % plus 10.5 % per zone).
 - **Songs** run along the top as a strip of alternating blocks, each with the title and BPM, as
   wide as the song's time in the class. Before the class API exposes the song list with start
   times, the strip is hidden.
@@ -235,7 +241,7 @@ TSS, FTP, RPM and zone numbers stay, because MOWL users know them.
 - **Accessible:**
   - the chart is `role="img"` with a summary;
   - the "Song by song" list is its text alternative;
-  - a zone is never told by colour alone (height and "Z4" labels);
+  - a zone is never told by colour alone (height, markers and "Z4" labels);
   - the stage colours meet 3:1 against `#0B0C10`.
 - **Own code, no chart library:** an SVG component in React.
 
@@ -311,15 +317,20 @@ issue, except UI7 (Opus: a guard test and CSP).
 UI1 to UI6 and UI9 can start now beside M4. M4 issues that add UI (song picking choice, Songs for
 approval, Change songs) use the new components once UI1 has merged.
 
-### 12. Questions for the owner (defaults let development proceed)
+### 12. Owner answers (2026-10-30) and what is still open
 
-1. **Zone colours.** Compare §2 with the MOWL app and bike lights, and say which to nudge. Default:
-   the table.
-2. **Zones 5 to 7.** Orange, red and crimson, or all red as in MOWL? Default: three colours.
-3. **Default theme.** Default: Dark, with Light and Same as device in Account.
-4. **The Music page in the main navigation.** Default: yes. Without Spotify it shows the MOWL
-   playlists and the connect card.
-5. **Fonts.** Inter and Archivo. Default: yes.
+1. **Zone colours:** the MOWL app is the reference. *Open:* a screenshot of a workout in the MOWL
+   app to sample the exact values. §2 holds close values until then. The screenshot is shared in
+   chat, never committed, because it is MOWL's material.
+2. **Zones 5 to 7:** one red, as in MOWL. MOWL shows a flame above zone 6 and an owl above zone 7;
+   classbeat shows a flame and its own bolt (§2, §3). *Open:* the owner described the zone 6 mark
+   as a "flamenco", read here as a flame, to be confirmed.
+3. **Default theme:** Dark, with Light and Same as device in Account. Accepted.
+4. **The Music page in the main navigation:** no preference. The Architect keeps it, because it is
+   where playlists and song picking live, the part the owner wants to feel like Spotify. Without
+   Spotify it shows the MOWL playlists and the connect card. To be revisited after the testers have
+   used it.
+5. **Fonts:** no preference, so Inter and Archivo are kept.
 
 ## Alternatives
 

@@ -122,9 +122,11 @@ accepted.
   technical, with account and administrative things easy to reach.
 - **§8 "Own name, colours, fonts and icons; no MOWL logo/owl or copied assets"** now reads:
   - classbeat has its own name, logo, icons and brand colour;
-  - **generated classes look and feel like MOWL**, with zone colours on the bars close to MOWL's
-    (similar, not copied);
+  - **generated classes look and feel like MOWL**: zone colours on the bars as in the MOWL app
+    (similar, not copied), zones 5 to 7 in one red, and a marker above zone 6 (a flame) and zone 7.
+    MOWL's zone 7 owl is its mascot and is not used; classbeat puts its own mark there;
   - fonts may be bundled third-party fonts;
+  - dark is the default theme, with a light theme available;
   - still no MOWL logo, owl, wordmark or copied assets, and nothing may suggest the app is made by
     MOWL.
 - **§8 Music:** the Spotify parts (choosing a playlist, songs for approval) should feel like
