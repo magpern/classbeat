@@ -12,7 +12,7 @@ GitHub hold the detail.
 | M1 | Accounts | done (milestone closed 2026-10-28) |
 | M2 | `mowl-workouts` v0.4.0, isolation, encryption, connect MOWL | done, except the token-lifetime check (waits for the owner) |
 | M3a | Jobs, Anthropic loop, design on existing music | done (2026-10-29); live smoke run once: 14 of 15 passed |
-| M3b | Class page, revisions, save to MOWL, usage and cost | in progress: [ADR 0007](adr/0007-classes-revisions-and-saving.md) merged (#152), issues #141 to #151 |
+| M3b | Class page, revisions, save to MOWL, usage and cost | done technically (2026-10-30, on fakes): [ADR 0007](adr/0007-classes-revisions-and-saving.md), issues #141 to #151 |
 | M4 | Song picking (beta), Spotify BYOK | not started |
 | M3c | Eval suite, OpenAI and DeepSeek adapters | not started |
 | M5 | Tiers, quotas, codes, admin | not started |
@@ -82,10 +82,25 @@ GitHub hold the detail.
   (flaky auth tests), #114 (A1), #117 (X1, items 2 and 7), #122 (D1, item 4), #127 (U1), #135,
   #140 (from #138), #153 (from #136); #137 (UI and tests) and #139 (connections and egress) are in
   review.
-- **M3b in progress** (class page, revisions, save and update to MOWL, usage and cost):
-  [ADR 0007](adr/0007-classes-revisions-and-saving.md) merged (#152, closes #71); roadmap
-  Amendment 3 moves the periodic purge to the first milestone that stores a shared analysis.
-  Issues #141 to #151 are built in dependency order.
+- **M3b done technically** (2026-10-30, on fakes). Its "done when" (roadmap): an E2E run with
+  fakes of design, revise, save and update; the uncertain-write path; token usage and cost
+  recorded per job (the real cost per class is measured at live activation). What merged:
+  [ADR 0007](adr/0007-classes-revisions-and-saving.md) (#152, closes #71) and roadmap
+  Amendment 3 (the periodic purge moves to the first milestone that stores a shared analysis);
+  C1 schema (#156); K1 job-kind seams (#158); C2 class API (#157); US1 usage (#159); X2
+  operations seams (#160); R1 `revise_draft` (#161); SV1 Save (#162); FE1 class page (#163);
+  SV2 Update (#164); FE2 Save/Update screens (#166) with the class API fields they needed
+  (#167, #168); T2 E2E (#169). Process: cheaper reviews (#165, roadmap Amendment 4); the repo
+  became public on 2026-10-29 (no secrets in it; fork-PR workflows need approval).
+- **M3b follow-ups** (open, non-blocking review findings, to be batched into a hardening PR):
+  #155 plus the findings of the M3b reviews: #157 (orphans shim now removed by #160; clamp
+  `bound_seconds` to 0 to 1800, class list paging at 500, `POST /current` CSRF test), #158
+  (second-class test for the pointer update, brief byte limit message in the form, approve
+  uses the job's credit state), #159 (`jobs` counts a deleted job's runs, price-version test,
+  saves and updates missing from the monthly view), #160 and #162 to #169 (see their review
+  comments). ADR 0007 amendments owed: the brief is limited to 4096 bytes (refused with 422 at
+  creation) and a usage month before the account shows zeros instead of 404.
+- **Next: M4** (song picking, Spotify BYOK): starts with its ADR.
 - Releases: v0.1.0 (cut partway through M0); v0.2.0 is not cut yet (deferred to save Actions quota). Image
   `ghcr.io/magpern/classbeat`, private.
 
