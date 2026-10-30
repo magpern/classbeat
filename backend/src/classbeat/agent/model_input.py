@@ -59,6 +59,7 @@ ISSUE_CODES: Final = (
     ("zone ", "zone_run_too_long"),
     ("cadence changes ", "cadence_jump"),
     ('"beat" cadence', "beat_off"),
+    ("the hardest efforts sit on the quietest ", "loudness_mismatch"),  # mowl-workouts 0.5.1
 )
 
 

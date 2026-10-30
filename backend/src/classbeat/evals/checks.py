@@ -57,7 +57,10 @@ TSS_PER_HOUR: Final[dict[str, Range]] = {
     "moderate": (40.0, 75.0),
     "hard": (55.0, 100.0),
 }
-TOLERATED_ISSUES: Final = frozenset({"beat_off"})  # a fallback cadence, not a mistake
+# beat_off: a fallback cadence, not a mistake. loudness_mismatch: the smoke music's loudness is a
+# fixed cycle (evals.music.LOUDNESS) unrelated to any design, so here it is a warning to the model,
+# not a measure of the design.
+TOLERATED_ISSUES: Final = frozenset({"beat_off", "loudness_mismatch"})
 
 
 @dataclass(frozen=True, slots=True)
