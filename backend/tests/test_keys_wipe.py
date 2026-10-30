@@ -1,14 +1,23 @@
 """``keys wipe`` after a suspected KEK compromise (ADR 0004 section 2 and the Architect's
 decisions on #65): refusals, per-user wipe and mail, ``--resend``, re-runs."""
 
+import uuid
 from pathlib import Path
 from typing import Any
+from uuid import UUID
 
 import pytest
 from sqlalchemy import text
 
 from authtools import TEST_KEK, Env
-from classbeat.db import create_migrations_engine, create_session_factory, system_session
+from classbeat.classes import service as classes_api
+from classbeat.db import (
+    create_migrations_engine,
+    create_session_factory,
+    system_session,
+    user_session,
+)
+from ctx import make_context
 from keystools import (
     KEY_2,
     KEY_3,
@@ -158,6 +167,59 @@ async def test_rotate_rewrap_wipe_leaves_nothing_and_a_fresh_connect_works(
         assert await token_of(ring_factory, ring, alice) == TOKENS["a@example.com"]
     finally:
         await engine.dispose()
+
+
+async def test_wipe_detaches_saved_workouts_and_the_class_shows_the_count(
+    env: Env, app_database_url: str, owner_database_url: str, kek_dir: Path, wipe_settings: Any
+) -> None:
+    """ADR 0007 sections 9 and 12: ``keys wipe`` detaches the user's live saved workouts like a
+    disconnect does, so the class API shows ``detached_count`` and no live row; another user's
+    rows are untouched."""
+    alice = await env.user("a@example.com")
+    bob = await env.user("b@example.com")
+    for email, user_id in (("a@example.com", alice), ("b@example.com", bob)):
+        await connect(env.factory, env.app.state.keyring, user_id, TOKENS[email])
+    classes: dict[UUID, UUID] = {}
+    admin = create_migrations_engine(wipe_settings())
+    try:
+        for number, user_id in enumerate((alice, bob), start=1):
+            async with user_session(create_session_factory(admin), make_context(user_id)) as db:
+                classes[user_id] = uuid.uuid4()
+                await db.execute(
+                    text("INSERT INTO classes (id, owner_id, title) VALUES (:c, :o, 'Ride')"),
+                    {"c": classes[user_id], "o": user_id},
+                )
+                for extra in range(2):
+                    await db.execute(
+                        text(
+                            "INSERT INTO saved_workouts (id, owner_id, class_id, program_id, "
+                            "revision_number, content_hash, name) VALUES (:i, :o, :c, :p, 1, "
+                            "decode(repeat('ab', 32), 'hex'), 'Ride')"
+                        ),
+                        {
+                            "i": uuid.uuid4(),
+                            "o": user_id,
+                            "c": classes[user_id],
+                            "p": number * 100 + extra,
+                        },
+                    )
+    finally:
+        await admin.dispose()
+    (kek_dir / "connection_kek").write_bytes(KEY_3.hex().encode())  # the runbook's new KEK
+    await stop_app(env)
+
+    code, _, err = await cli(wipe_settings("kek-3"), "keys", "wipe", "--confirm")
+    assert (code, err) == (0, ""), err
+
+    mine = await classes_api.get_class(env.factory, make_context(alice), classes[alice])
+    assert mine is not None
+    assert (mine.saved_count, mine.detached_count, mine.saved_workout_id) == (0, 2, None)
+    both = await classes_api.get_class(env.factory, make_context(bob), classes[bob])
+    # Every account is wiped, so bob's rows are detached too; each count is per owner.
+    assert both is not None
+    assert (both.saved_count, both.detached_count) == (0, 2)
+    foreign = await classes_api.get_class(env.factory, make_context(alice), classes[bob])
+    assert foreign is None  # and alice never sees bob's class
 
 
 async def test_wipe_reconnect_wipe_again(

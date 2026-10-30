@@ -14,8 +14,15 @@ from sqlalchemy.exc import IntegrityError
 
 from classbeat.jobs import queue
 from classbeat.operations import OperationRequest, Reconciliation, request_hash, user
-from classbeat.operations.kinds import MAX_CONTEXT_BYTES, context_size
+from classbeat.operations.kinds import (
+    BOUND_KEY,
+    MAX_BOUND_SECONDS,
+    MAX_CONTEXT_BYTES,
+    bound_of,
+    context_size,
+)
 from classbeat.operations.protocol import operation_of
+from classbeat.saving import operation as saving_operation
 from ctx import make_context
 from jobtools import new_class, new_user
 from optools import PLAYLIST, TOKEN_A, FakeMowlAttach, OpsEnv, wait_entered
@@ -67,11 +74,36 @@ def test_the_request_checks_its_class_context_and_bound() -> None:
         request(single_request=True)
     with pytest.raises(ValueError, match="whole timeout"):
         request(bound_seconds=30)
+    # PR #172 review: reads clamp a stored bound to MAX_BOUND_SECONDS, so a request never
+    # carries more (its lease would outlive the time the row waits); nor a non-finite one.
+    assert request(bound_seconds=MAX_BOUND_SECONDS).lease_seconds == MAX_BOUND_SECONDS
+    with pytest.raises(ValueError, match="at most MAX_BOUND_SECONDS"):
+        request(bound_seconds=MAX_BOUND_SECONDS + 0.5)
+    for bad in (float("inf"), float("nan")):
+        with pytest.raises(ValueError, match="finite"):
+            request(bound_seconds=bad)
     attach_hash = request_hash(ATTACH, source="spotify", source_id=PLAYLIST)
     with pytest.raises(ValueError, match="no class"):
         request(kind=ATTACH, request_hash=attach_hash, bound_seconds=None)
     plain = request(kind=ATTACH, request_hash=attach_hash, class_id=None, bound_seconds=None)
     assert (plain.stored_context(), plain.lease_seconds) == ({}, 60)
+
+
+def test_the_save_bound_is_capped_by_the_one_shared_constant() -> None:
+    assert saving_operation.MAX_BOUND_SECONDS is MAX_BOUND_SECONDS
+    assert saving_operation.bound_seconds(10_000) == MAX_BOUND_SECONDS
+
+
+def test_bound_of_reads_a_stored_bound_clamped_or_not_at_all() -> None:
+    """PR #172 review item 3: a stored bound is read clamped to 0..MAX_BOUND_SECONDS; a huge
+    int is clamped (no ``OverflowError``), and a non-number, bool, NaN or non-positive is none."""
+    assert bound_of({BOUND_KEY: 600}) == 600.0
+    assert bound_of({BOUND_KEY: 600.5}) == 600.5
+    for huge in (1e9, 10**400, float("inf")):
+        assert bound_of({BOUND_KEY: huge}) == float(MAX_BOUND_SECONDS), huge
+    for none in (float("nan"), -1, -(10**400), 0, True, False, "600", None):
+        assert bound_of({BOUND_KEY: none}) is None, none
+    assert bound_of({}) is None
 
 
 def test_an_attach_row_cannot_name_a_class(xenv: OpsEnv) -> None:

@@ -320,3 +320,14 @@ async def test_a_body_over_the_cap_is_refused_before_it_is_read(
     )  # fmt: skip
     assert approve.status_code == 413
     assert jenv.sql("SELECT count(*) FROM jobs").scalar() == 0
+
+
+def test_jsonb_size_is_one_measure_for_the_input_and_the_brief_limit() -> None:
+    """``jobs.inputs.jsonb_size`` is what the API's input cap and the design kind's brief limit
+    both use: jsonb's ``", "`` and ``": "`` separators, UTF-8 bytes, no escaping of non-ASCII."""
+    from classbeat.design import revision
+    from classbeat.jobs import inputs, routes
+
+    assert inputs.jsonb_size({"a": [1, 2], "b": "å"}) == len('{"a": [1, 2], "b": "å"}'.encode())
+    assert not hasattr(revision, "jsonb_size")  # the copies are gone
+    assert not hasattr(routes, "_jsonb_size")

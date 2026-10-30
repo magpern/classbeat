@@ -2,6 +2,7 @@
 and the class delete, against Postgres. Setup rows are written as the superuser; everything under
 test runs as ``classbeat_app`` through the web app. Fakes only."""
 
+import base64
 import hashlib
 import json
 import uuid
@@ -356,6 +357,7 @@ async def test_the_saved_summary_names_the_newest_live_row_and_counts_detached_o
         "latest_saved_at": None,
         "latest_up_to_date": None,
         "latest_saved_workout_id": None,
+        "saved_state": "none",
         "detached_count": 0,
     }
 
@@ -364,6 +366,7 @@ async def test_the_saved_summary_names_the_newest_live_row_and_counts_detached_o
     saved_row(mine, age=0, detached=True)  # newer, but detached: never the latest
     summary = await saved_summary(mine)
     assert (summary["count"], summary["latest_saved_workout_id"]) == (2, str(newest))
+    assert summary["saved_state"] == "ok"
     assert summary["detached_count"] == 1
 
     # every live row detached (as a MOWL disconnect or reconnect does): no id, count 0
@@ -371,6 +374,7 @@ async def test_the_saved_summary_names_the_newest_live_row_and_counts_detached_o
     gone = await saved_summary(mine)
     assert (gone["count"], gone["latest_saved_workout_id"], gone["detached_count"]) == (0, None, 3)
     assert gone["latest_up_to_date"] is None
+    assert gone["saved_state"] == "none"
 
 
 async def test_another_users_class_and_my_other_class_never_contribute(
@@ -430,10 +434,13 @@ async def test_a_latest_row_whose_creating_operation_is_another_classs_names_no_
     saved_row(mine, age=0, operation_id=foreign_op)
     inconsistent = await saved_summary(mine)
     assert (inconsistent["count"], inconsistent["latest_saved_workout_id"]) == (1, None)
+    # A stable field tells the page why there is no id, instead of the id just vanishing.
+    assert inconsistent["saved_state"] == "inconsistent"
     mine.sql("UPDATE saved_workouts SET operation_id = :o WHERE class_id = :c",
              o=own_op, c=mine.class_id)  # fmt: skip
     consistent = await saved_summary(mine)
     assert consistent["latest_saved_workout_id"] is not None
+    assert consistent["saved_state"] == "ok"
 
 
 async def test_picking_a_revision(two: tuple[Plant, Plant]) -> None:
@@ -616,6 +623,18 @@ async def test_delete_needs_csrf(two: tuple[Plant, Plant]) -> None:
     assert mine.count("class_revisions") == 2
 
 
+async def test_pick_needs_csrf(two: tuple[Plant, Plant]) -> None:
+    mine, _ = two
+    response = await mine.browser.client.post(
+        f"/api/classes/{mine.class_id}/current",
+        json={"revision_id": str(mine.r2), "content_hash": mine.hash_of(2)},
+        headers=session_cookie(mine.browser.token),
+    )
+    assert response.status_code == 403
+    current = mine.sql("SELECT current_revision_id FROM classes WHERE id = :c", c=mine.class_id)
+    assert current.scalar_one() == mine.r1
+
+
 def reason(response: httpx.Response) -> tuple[int, str]:
     return response.status_code, response.json()["detail"]["reason"]
 
@@ -769,6 +788,26 @@ async def test_the_bound_comes_from_the_rows_context(two: tuple[Plant, Plant]) -
     assert reason(await delete(mine.browser, path)) == (409, "call_may_be_running")  # fallback
 
 
+async def test_only_save_and_update_rows_of_this_class_gate_a_delete(
+    two: tuple[Plant, Plant],
+) -> None:
+    """The delete check looks at the class's own save and update rows. An attach belongs to no
+    class (the table's check refuses a class on it), so a pending one never blocks, and nor does
+    another class's pending write."""
+    mine, theirs = two
+    attach = operation(mine.admin, mine.owner, None, "pending", kind="mowl_attach_spotify_playlist")
+    assert attach
+    other = new_class(mine.admin, mine.owner, "Other")
+    operation(mine.admin, mine.owner, other, "pending")
+    with pytest.raises(Exception, match="check"):
+        operation(
+            mine.admin, mine.owner, mine.class_id, "pending", kind="mowl_attach_spotify_playlist"
+        )
+    mine.admin.rollback()
+    operation(theirs.admin, theirs.owner, theirs.class_id, "pending")
+    assert (await delete(mine.browser, f"/api/classes/{mine.class_id}")).status_code == 200
+
+
 async def test_succeeded_and_failed_writes_do_not_block_a_delete(two: tuple[Plant, Plant]) -> None:
     mine, _ = two
     operation(mine.admin, mine.owner, mine.class_id, "succeeded")
@@ -832,4 +871,39 @@ def test_the_seams_are_the_operations_modules_own() -> None:
 
 async def test_users_without_classes_get_an_empty_list(browsers: Any) -> None:
     browser: Browser = await browsers(mowl=False)
-    assert (await browser.get("/api/classes")).json() == {"classes": []}
+    assert (await browser.get("/api/classes")).json() == {"classes": [], "next_cursor": None}
+
+
+async def test_the_listing_pages_with_a_cursor(browsers: Any, jobs_admin: Connection) -> None:
+    browser: Browser = await browsers(mowl=False)
+    base = datetime.now(UTC) - timedelta(hours=1)
+    ids = [new_class(jobs_admin, browser.user_id, f"C{i}") for i in range(5)]
+    for i, class_id in enumerate(ids):  # three share one instant: the id breaks the tie
+        jobs_admin.execute(
+            text("UPDATE classes SET updated_at = :t WHERE id = :c"),
+            {"t": base + timedelta(minutes=max(i - 2, 0)), "c": class_id},
+        )
+    everything = (await browser.get("/api/classes")).json()
+    assert everything["next_cursor"] is None
+    expected = [c["id"] for c in everything["classes"]]
+    assert len(expected) == 5
+
+    seen: list[str] = []
+    cursor: str | None = None
+    for _ in range(5):
+        query = "limit=2" + ("" if cursor is None else f"&cursor={cursor}")
+        page = (await browser.get(f"/api/classes?{query}")).json()
+        assert len(page["classes"]) <= 2
+        seen += [c["id"] for c in page["classes"]]
+        cursor = page["next_cursor"]
+        if cursor is None:
+            break
+    assert seen == expected  # no gap, no repeat
+
+    for bad in ("limit=0", "limit=501", "limit=x"):
+        assert (await browser.get(f"/api/classes?{bad}")).status_code == 422
+    naive = json.dumps(["2026-01-01T00:00:00", expected[0]]).encode()  # no offset
+    naive_cursor = base64.urlsafe_b64encode(naive).decode().rstrip("=")
+    for cursor in ("!!", "e30", "W10", naive_cursor):  # not base64, {}, [], a naive time
+        refused = await browser.get(f"/api/classes?cursor={cursor}")
+        assert reason(refused) == (422, "invalid_cursor")

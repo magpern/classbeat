@@ -5,6 +5,7 @@ classes and revisions the user has (no per-class query).
 """
 
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Any, Final
 from uuid import UUID
 
@@ -48,6 +49,8 @@ LEFT JOIN LATERAL (
     WHERE s.owner_id = c.owner_id AND s.class_id = c.id AND s.detached_at IS NULL
     ORDER BY s.updated_at DESC, s.id LIMIT 1) sv ON true
 WHERE c.owner_id = :owner_id AND (CAST(:class_id AS uuid) IS NULL OR c.id = CAST(:class_id AS uuid))
+    AND (CAST(:after_at AS timestamptz) IS NULL OR c.updated_at < CAST(:after_at AS timestamptz)
+        OR (c.updated_at = CAST(:after_at AS timestamptz) AND c.id > CAST(:after_id AS uuid)))
 ORDER BY c.updated_at DESC, c.id
 LIMIT :limit""")  # noqa: S608 - constants only
 
@@ -111,13 +114,39 @@ _DELETE = text("DELETE FROM classes WHERE id = :class_id AND owner_id = :owner_i
 
 
 def _ids(ctx: UserContext, class_id: UUID | None, **more: Any) -> dict[str, Any]:
-    return {"owner_id": ctx.user_id, "class_id": class_id, **more}
+    return {
+        "owner_id": ctx.user_id,
+        "class_id": class_id,
+        "after_at": None,
+        "after_id": None,
+        **more,
+    }
 
 
-async def list_classes(factory: Factory, ctx: UserContext) -> list[Any]:
+Cursor = tuple[datetime, UUID]  # (updated_at, id) of the last class of the page before
+
+
+@dataclass(frozen=True, slots=True)
+class ClassPage:
+    rows: list[Any]
+    next_after: Cursor | None  # None on the last page
+
+
+async def list_classes(
+    factory: Factory, ctx: UserContext, *, limit: int = LIST_LIMIT, after: Cursor | None = None
+) -> ClassPage:
+    """One page of at most ``limit`` (and ``LIST_LIMIT``) classes, newest first, after the
+    keyset ``after``. One extra row is read to know whether another page follows."""
     require_context(ctx)
+    size = max(1, min(limit, LIST_LIMIT))
+    after_at, after_id = after if after is not None else (None, None)
+    params = _ids(ctx, None, limit=size + 1, after_at=after_at, after_id=after_id)
     async with user_session(factory, ctx) as db:
-        return list((await db.execute(_CLASSES, _ids(ctx, None, limit=LIST_LIMIT))).all())
+        rows = list((await db.execute(_CLASSES, params)).all())
+    if len(rows) <= size:
+        return ClassPage(rows, None)
+    rows = rows[:size]
+    return ClassPage(rows, (rows[-1].updated_at, rows[-1].id))
 
 
 async def get_class(factory: Factory, ctx: UserContext, class_id: UUID) -> Any | None:
