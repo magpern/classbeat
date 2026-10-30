@@ -462,14 +462,29 @@ gap). It is closed in two parts, without touching the queue functions:
    and in a worker's `prepare` for the owner. The user then sees the row as an ordinary uncertain
    write, with `actionable_at` still applying (it has no `call_ended_at`). A late outcome write from
    the fenced-out holder fails on the lease, so it can't overwrite the marking.
-2. **Save and Update refuse meanwhile** (the unresolved-write rule of §6): a `pending` row of
-   another job and an `uncertain` row of the class both give 409 `write_unresolved`. The user
+2. **Save and Update refuse meanwhile** (the unresolved-write rule of §6): a Save or an Update is
+   refused with 409 `write_unresolved` while any `mowl_save_workout` or `mowl_update_workout` row
+   of the same class that belongs to **another job** is `pending` or `uncertain`. The user
    resolves the row first, and only then can another write be started.
 
 Tests: crash on the last attempt (the job ends `failed` `lease_lost`, the row becomes `uncertain`,
 Save is refused, Check again after `actionable_at` resolves it); cancel requested, then lease
 expiry (the job `cancelled`, the same); a Save during the window before `resolve` ran is refused as
 `write_unresolved` too.
+
+**The tested forms in the end-to-end suite (T2, `e2e/tests/class-save.spec.ts`).** Issue #151
+described two of the uncertain cases more literally than the fakes can show them; these forms are
+accepted as the tests of those cases:
+
+- *A save whose answer is lost* (and *a second workout only when the user decides*): the fake MOWL
+  applies every write but drops the answer to the **last** write (`save-arm?fail=<n>:drop`), and
+  `save-listing?hidden=1` hides the new program from My Workouts, so the reconciler sees no new
+  program and cannot prove "no effect". Check again, once the listing shows the program, finds it.
+- *A partly done update*: the revision between the two versions changes only the **description**
+  (the `revise_description` script), and the drop hits the write after the program header and the
+  first segment (`5:drop`), so the program holds the new description but the old segment list.
+  Check again cannot tell it from an untouched one and the row stays `uncertain`; Do it anyway
+  leads to an Update with `overwrite`.
 
 ### 9. Reconnecting MOWL, and another account
 
@@ -762,7 +777,7 @@ Sonnet Developer. Each issue is not startable before this ADR is accepted. Fakes
 | SV2 (#148) | `update_workout`: saved-row-only target, preflight baseline, read first, `program_changed` and overwrite, `mowl_update_workout` with `before_hash` and baseline reconciler | **Opus** | SV1 |
 | FE1 (#149) | Class page, revisions panel, Change it chat, My classes | Sonnet | C2, R1 |
 | FE2 (#150) | Save and Update UI, uncertain panels, overwrite dialog, usage panel | Sonnet | SV2, US1, FE1 |
-| T2 (#151) | E2E with fakes: design, revise, save, update; uncertain save and update; account switch; usage recorded per job | Sonnet | FE2 |
+| T2 (#151) | E2E with fakes: design, revise, save, update; uncertain save and update; account switch; usage recorded per job (the uncertain cases in the forms recorded in §8) | Sonnet | FE2 |
 
 Order: C1; then K1, X2, C2 and US1 in parallel; then R1 and SV1; SV2; FE1; FE2; T2 last. M3b is done
 when T2 and the crash and failure-injection tests of SV1 and SV2 are green (roadmap M3b "done when":

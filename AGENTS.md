@@ -417,25 +417,35 @@ npx playwright show-report               # HTML report after a failure
 cd .. && dc down -v
 ```
 
-The fake (`e2e/fake-oidc/server.py`) answers the providers' real back-channel hostnames inside the
-compose network and issues ID tokens for Google and Microsoft; Playwright plays the browser's visit
-to the provider. The fake MOWL (`e2e/fake-mowl/server.py`) answers as `api.mowl.com` (the
-`mowl-workouts` base URL) for the MOWL sign-in, the playlist list, the attach and the reads of a design run
-(invented music; test playlists that hold a read or lose an attach answer, steered by `/__e2e/` calls the
-tests make from the web container), and keeps programs for Save (create, segments, intervals, My
-Workouts and one program; `/__e2e/save-arm?fail=<n>:<refuse|drop|noid>` injects a failure at a write
-request number, `/__e2e/save-state` reports the counts, `save-programs` shows what each program holds, `save-listing?hidden=1`
-hides them from My Workouts); web and worker trust one bundle of both fakes' throwaway CAs, and the
-worker replays a `backend/tests/agent_scripts/` script with the `fake` model provider: it reads the symlink
+The fake OpenID provider (`e2e/fake-oidc/server.py`) answers the providers' real back-channel
+hostnames inside the compose network and issues ID tokens for Google and Microsoft; Playwright plays
+the browser's visit to the provider.
+
+The fake MOWL (`e2e/fake-mowl/server.py`) answers as `api.mowl.com` (the `mowl-workouts` base URL)
+for the MOWL sign-in, the playlist list, the attach and the reads of a design run (invented music;
+test playlists that hold a read or lose an attach answer, steered by `/__e2e/` calls the tests make
+from the web container).
+
+It also keeps programs for Save (create, segments, intervals, My Workouts and one program).
+`/__e2e/save-arm?fail=<n>:<refuse|drop|noid>` injects a failure at a write request number,
+`/__e2e/save-state` reports the counts, `save-programs` shows what each program holds and
+`save-listing?hidden=1` hides them from My Workouts.
+
+Web and worker trust one bundle of both fakes' throwaway CAs. The worker replays a
+`backend/tests/agent_scripts/` script with the `fake` model provider: it reads the symlink
 `/fake-run/script.json`, which starts on `good_first_draft.json` and which a test repoints with
-`e2e/tests/model-script.ts` for the revise runs (`design-draft.spec.ts`: draft, cancel while running, uncertain
-attach; `class-save.spec.ts`: change, save, update, uncertain writes, another MOWL account; `class-usage.spec.ts`).
-The fakes' state is shared, so Playwright runs one worker. The Playwright context blocks
-every origin but the stack's.
-They use public test values only and are never part of the default stack. The e2e
-stack trusts the docker network as proxy so each test presents its own `X-Forwarded-For` address
-(separate rate limits). Sign-up is limited to 5 per IP and hour: use `down -v` between full runs
-of a stack that is not given per-test addresses.
+`e2e/tests/model-script.ts` for the revise runs.
+
+The specs: `design-draft.spec.ts` (draft, cancel while running, uncertain attach),
+`class-save.spec.ts` (change, save, update, uncertain writes, another MOWL account) and
+`class-usage.spec.ts`.
+
+The fakes' state is shared, so Playwright runs one worker. The Playwright context blocks every
+origin but the stack's. They use public test values only and are never part of the default stack.
+
+The e2e stack trusts the docker network as proxy so each test presents its own `X-Forwarded-For`
+address (separate rate limits). Sign-up is limited to 5 per IP and hour: use `down -v` between full
+runs of a stack that is not given per-test addresses.
 
 CI runs the same in the `e2e` job (when the stack changed) and uploads `playwright-report` only on failure.
 

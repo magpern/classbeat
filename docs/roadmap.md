@@ -29,14 +29,6 @@ Revision 6 below stays as written; where it differs, this amendment wins. Record
   Sonnet Developer ("Development process", Roles). The Reviewer is a fresh context either
   way; its model is set by Amendment 2.
 
-## Amendment 3 (2026-10-29, Architect, on accepting ADR 0007)
-
-- **§6 retention, the periodic purge:** Amendment 1 put "a periodic purge" of shared music
-  analyses in M3b. M3b stores no shared analysis ([ADR 0007](adr/0007-classes-revisions-and-saving.md)
-  §11), so there is nothing to purge; the purge is built in the first milestone that stores a
-  shared analysis, to the design in ADR 0007 §11. Everything Spotify-derived that M3b keeps is in
-  rows a class or the account owns and is deleted with them.
-
 ## Amendment 2 (2026-10-29, owner decision: review cost)
 
 Where it differs, this amendment wins over Revision 6's review gate ("Development process").
@@ -55,6 +47,14 @@ Where it differs, this amendment wins over Revision 6's review gate ("Developmen
   keys and billing) keep a fresh Opus Reviewer; other PRs (UI, tests, docs, tooling) may have
   a fresh Sonnet Reviewer. Whether a change touches a security-critical area, or a module a PR
   changes or calls, is the Architect's call; when in doubt, Opus and a review.
+
+## Amendment 3 (2026-10-29, Architect, on accepting ADR 0007)
+
+- **§6 retention, the periodic purge:** Amendment 1 put "a periodic purge" of shared music
+  analyses in M3b. M3b stores no shared analysis ([ADR 0007](adr/0007-classes-revisions-and-saving.md)
+  §11), so there is nothing to purge; the purge is built in the first milestone that stores a
+  shared analysis, to the design in ADR 0007 §11. Everything Spotify-derived that M3b keeps is in
+  rows a class or the account owns and is deleted with them.
 
 ## Amendment 4 (2026-10-30, owner decision: token cost)
 
