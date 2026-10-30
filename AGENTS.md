@@ -224,9 +224,9 @@ docker compose --profile maint run --rm maint python -m classbeat keys wipe --co
 uv run alembic upgrade head    # migrations as the owner role, CLASSBEAT_MIGRATIONS_DATABASE_URL
 ```
 
-The domain library `mowl` (`mowl-workouts`) is pinned as `backend/vendor/mowl_workouts-0.6.0-py3-none-any.whl`,
-built from the v0.6.0 tag (commit `0319fcb8`; vendored wheel SHA-256 `d3957a80…`, release asset
-`5ea21460…`) **without** the bundled Swedebeat app key by `scripts/build-mowl-wheel.sh`
+The domain library `mowl` (`mowl-workouts`) is pinned as `backend/vendor/mowl_workouts-0.7.0-py3-none-any.whl`,
+built from the v0.7.0 tag (commit `88d08f05`; vendored wheel SHA-256 `866650a0…`, release asset
+`0ff5f60e…`) **without** the bundled Swedebeat app key by `scripts/build-mowl-wheel.sh`
 (needs `gh` access to the private repo; it checks the tag's commit, the missing key file and that
 every other file and the `Requires-Dist` lines match the release wheel). After a rebuild run `uv lock`. classbeat leaves out
 the library's `mcp` dependency (`exclude-dependencies`): it never runs the MCP server, and `mcp`'s
@@ -241,6 +241,10 @@ the vendored wheel's SHA-256 are recorded in full in the header of `scripts/buil
 always sets `False`: the library never reaches the token endpoint) and `spotify_max_retry_wait`
 (classbeat sets `0`: the library never sleeps on a 429). Never use its name-based `save_playlist` or
 `find_playlist_tracks` (CLI only).
+0.7.0 adds `image` to the `playlist_items` and `search_tracks` track entries (ADR 0013 §9): the
+URL of the album's smallest image at least 64 px wide, or `None`, never requested by the library
+and not host-checked there. classbeat ignores it until UI7: nothing stores, returns or shows it,
+and it never goes into model input.
 
 Database tests need a throwaway Postgres whose application database has the roles of
 `docker/postgres/init/10-roles.sql` (ADR 0002 section 4). Give it a name and port of its own
