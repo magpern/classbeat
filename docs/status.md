@@ -14,7 +14,7 @@ GitHub hold the detail.
 | M3a | Jobs, Anthropic loop, design on existing music | done (2026-10-29); live smoke run once: 14 of 15 passed |
 | M3b | Class page, revisions, save to MOWL, usage and cost | done technically (2026-10-30, on fakes): [ADR 0007](adr/0007-classes-revisions-and-saving.md), issues #141 to #151 |
 | M4 | Song picking (beta), Spotify BYOK | in progress: design in review ([ADR 0008](adr/0008-song-picking.md), [ADR 0009](adr/0009-spotify-connection.md)); issues in milestone "M4 Song picking and Spotify" (#173 to #186) |
-| M3c | Eval suite, OpenAI and DeepSeek adapters | design in review ([ADR 0012](adr/0012-eval-suite-and-model-providers.md)); issues in milestone "M3c Eval and providers" |
+| M3c | Eval suite, OpenAI and DeepSeek adapters | design in review ([ADR 0012](adr/0012-eval-suite-and-model-providers.md)); issues in milestone "M3c Eval and providers" (#201 to #219) |
 | M5 | Tiers, quotas, codes, admin | not started |
 | M6 | Security review, backups, GDPR, VPS | not started |
 | M7 | Commercial (deferred) | deferred |

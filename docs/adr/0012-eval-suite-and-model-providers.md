@@ -414,19 +414,19 @@ choose_songs,songs,registry}.py`, the class API's song views and the frontend cl
 
 | # | Issue | Owner | Depends on |
 |---|---|---|---|
-| P0 | Catalog, keys, settings, egress: `agent/catalog.py`, `openai_api_key` / `deepseek_api_key` secrets (config, compose worker only, worktree init, stack check canaries), refused `OPENAI_*`/`DEEPSEEK_*`, `CLASSBEAT_DEEPSEEK_ENABLED`, `MODEL_HOSTS` and per-provider one-host allowlists, guard tests | **Opus** | none |
-| P1 | `openai` SDK pin and `providers/openai_common.py`: client builder, error map, usage normalisation, strict-schema transform, effort map, replay transport test helper | **Opus** | P0 |
-| P2 | `OpenAIProvider` (Responses API) with fixtures and the planted-value test | **Opus** | P1 |
-| P3 | `DeepSeekProvider` (Chat Completions, disabled) with fixtures | **Opus** | P1 |
-| EV1 | Suite manifest, `suite_version` and digest test, categories, results format 2, `evals/gate.py` verdict, zone 7 margin rule | **Opus** | none |
-| EV2 | Design-group cases: `standard`, `music_sync`, `games_ftp`, `revisions` cases and checks, fake scripts | Sonnet | EV1 |
-| EV3 | `song_choice` cases and `evals/song_checks.py`, live-capable song runner on the synthetic catalogue | Sonnet | EV1 |
-| EV4 | `adversarial`, `missing_music` and `cost` cases for both groups, fake scripts | Sonnet | EV1 |
-| G1 | Migration and `classbeat.models`: tables, FK gate, privileges, `set_route` / `clear_route` / `list_*` / `resolve_route`, `provider_for_choice`, `models` CLI | **Opus** | P0, EV1 |
-| EV5 | `evals suite --live ... --record`: preconditions per provider, plan and ceiling, recording; offline test through the replay provider | **Opus** | G1, P2 |
-| G2 | Jobs resolve routes: `route_key` in job inputs (default `"default"`), the four model kinds build their provider per stage group, provenance `route_key` and `eval_result_id`, stale warning | **Opus** | G1, #182 |
-| Z7 | Zone 7 TSS approximate flag: backend flag on revisions and in preview/submit results, class API field, class page note | Sonnet | #183, #184 |
-| T4 | Done-when: offline end-to-end gate test per provider (replay → suite → record → enable → a job uses it; fail → refused; DeepSeek refused while disabled), `docs/runbooks/m3c-model-enable.md`, AGENTS.md notes, status | Sonnet (Opus Reviewer) | P3, EV2, EV3, EV4, EV5, G2, Z7 |
+| P0 (#201) | Catalog, keys, settings, egress: `agent/catalog.py`, `openai_api_key` / `deepseek_api_key` secrets (config, compose worker only, worktree init, stack check canaries), refused `OPENAI_*`/`DEEPSEEK_*`, `CLASSBEAT_DEEPSEEK_ENABLED`, `MODEL_HOSTS` and per-provider one-host allowlists, guard tests | **Opus** | none |
+| P1 (#203) | `openai` SDK pin and `providers/openai_common.py`: client builder, error map, usage normalisation, strict-schema transform, effort map, replay transport test helper | **Opus** | P0 |
+| P2 (#204) | `OpenAIProvider` (Responses API) with fixtures and the planted-value test | **Opus** | P1 |
+| P3 (#205) | `DeepSeekProvider` (Chat Completions, disabled) with fixtures | **Opus** | P1 |
+| EV1 (#202) | Suite manifest, `suite_version` and digest test, categories, results format 2, `evals/gate.py` verdict, zone 7 margin rule | **Opus** | none |
+| EV2 (#206) | Design-group cases: `standard`, `music_sync`, `games_ftp`, `revisions` cases and checks, fake scripts | Sonnet | EV1 |
+| EV3 (#208) | `song_choice` cases and `evals/song_checks.py`, live-capable song runner on the synthetic catalogue | Sonnet | EV1 |
+| EV4 (#209) | `adversarial`, `missing_music` and `cost` cases for both groups, fake scripts | Sonnet | EV1 |
+| G1 (#211) | Migration and `classbeat.models`: tables, FK gate, privileges, `set_route` / `clear_route` / `list_*` / `resolve_route`, `provider_for_choice`, `models` CLI | **Opus** | P0, EV1 |
+| EV5 (#213) | `evals suite --live ... --record`: preconditions per provider, plan and ceiling, recording; offline test through the replay provider | **Opus** | G1, P2 |
+| G2 (#215) | Jobs resolve routes: `route_key` in job inputs (default `"default"`), the four model kinds build their provider per stage group, provenance `route_key` and `eval_result_id`, stale warning | **Opus** | G1, #182 |
+| Z7 (#217) | Zone 7 TSS approximate flag: backend flag on revisions and in preview/submit results, class API field, class page note | Sonnet | #183, #184 |
+| T4 (#219) | Done-when: offline end-to-end gate test per provider (replay → suite → record → enable → a job uses it; fail → refused; DeepSeek refused while disabled), `docs/runbooks/m3c-model-enable.md`, AGENTS.md notes, status | Sonnet (Opus Reviewer) | P3, EV2, EV3, EV4, EV5, G2, Z7 |
 
 Order: P0 and EV1 in parallel; then P1, EV2, EV3, EV4 and G1 in parallel (EV3 calls the song stages
 as they are and edits only `evals/`); P2 and P3
