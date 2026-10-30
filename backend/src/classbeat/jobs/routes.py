@@ -53,6 +53,7 @@ from classbeat.jobs.credits import CreditLedger, UnmeteredLedger
 from classbeat.jobs.inputs import JobInput, jsonb_size
 from classbeat.jobs.kinds import KIND_NAME, KINDS, JobKind, KindRegistry, Refused
 from classbeat.jobs.progress import read_revision
+from classbeat.jobs.sentences import failure_sentence
 from classbeat.jobs.user import Admission, CreateAdmit, NewJob
 from classbeat.usage import job_usage
 
@@ -108,6 +109,7 @@ class JobOut(BaseModel):
     expires_at: datetime | None
     approved_at: datetime | None
     error_category: str | None
+    error_message: str | None = None  # the plain sentence of a song-picking or Spotify category
     created_at: datetime
     updated_at: datetime
     finished_at: datetime | None
@@ -115,7 +117,9 @@ class JobOut(BaseModel):
 
     @classmethod
     def of(cls, view: service.JobView) -> "JobOut":
-        return cls.model_validate(view, from_attributes=True)
+        out = cls.model_validate(view, from_attributes=True)
+        out.error_message = failure_sentence(view.error_category)
+        return out
 
 
 class UnknownBpmOut(BaseModel):
