@@ -20,8 +20,10 @@
   job that ended otherwise.
 - ``POST /api/jobs/{id}/approve`` with ``{revision_id, content_hash}`` (64 hex characters): 200
   with the state (a repeated approval too); 409 with ``not_waiting``, ``expired``,
-  ``superseded``, ``hash_mismatch``, ``not_connected``, ``invalid_input`` or ``quota``; 429
-  ``busy``. Recent authentication is not required (ADR 0005 section 2).
+  ``superseded``, ``hash_mismatch``, ``not_connected``, ``invalid_input``, ``quota`` or the
+  kind's own reason (``approve_check``: ``account_changed`` for ``design_with_songs``); 429
+  ``busy``; 404 ``not_found`` also for a ``revision_id`` that is not one of the user's own song
+  lists of the job's class. Recent authentication is not required (ADR 0005 section 2).
 
 Another user's job id is 404 ``not_found``, the same body as an unknown id or a malformed one.
 Errors carry a reason code only: the create and approve bodies are validated here, and their

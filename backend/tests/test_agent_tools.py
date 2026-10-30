@@ -8,7 +8,7 @@ from typing import Any
 
 import pytest
 from mowl import service, spotify, workout
-from pydantic import ValidationError
+from pydantic import BaseModel, ConfigDict, ValidationError
 
 from agentfake import analysed, brief, good_draft
 from classbeat.agent import DesignContext, design_stage
@@ -368,3 +368,39 @@ def test_a_workout_longer_than_the_music_is_a_warning(stage: Stage) -> None:
     body, done = call(stage, "preview_draft", {"draft": draft})
     assert done.ok
     assert body["warnings"][0] == "The workout (37:00) is longer than the music (30:57)."
+
+
+# --- a lent read may answer later (ADR 0008 section 3: the job's Spotify search) ---------------
+
+
+def _lent_stage(handler: Any) -> Any:
+    tool = Tool("look", "read", "A lent read.", _LentInput, handler)
+    return Stage(name="lent", system="s", tools=(tool,), final_tool="look")
+
+
+class _LentInput(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    q: str
+
+
+async def test_dispatch_async_awaits_a_lent_read_and_keeps_its_tool_error() -> None:
+    from classbeat.agent.dispatcher import dispatch_async
+
+    async def later(answer: bool) -> ToolAnswer:
+        if not answer:
+            raise ToolError("upstream_unavailable", ["not now"])
+        return ToolAnswer({"found": 1}, output="done")
+
+    def handler(args: _LentInput) -> Any:
+        return later(args.q == "yes")
+
+    stage = _lent_stage(handler)
+    done = await dispatch_async(stage, ToolCall("c", "look", {"q": "yes"}))
+    assert (done.ok, done.output, json.loads(done.result.content)) == (
+        True, "done", {"found": 1, "ok": True},
+    )  # fmt: skip
+    refused = await dispatch_async(stage, ToolCall("c", "look", {"q": "no"}))
+    assert (refused.ok, refused.error) == (False, "upstream_unavailable")
+    # The synchronous dispatch never runs an awaitable: it is closed and the call is internal.
+    sync = dispatch(stage, ToolCall("c", "look", {"q": "yes"}))
+    assert (sync.ok, sync.error) == (False, "internal")

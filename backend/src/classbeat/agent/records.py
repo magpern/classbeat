@@ -83,8 +83,13 @@ def _counter_params(counters: Counters) -> dict[str, Any]:
 
 
 class JobStageHost:
-    def __init__(self, run: JobRun) -> None:
+    """``job_stage``: the job's stage this run belongs to, when it is not named like the agent
+    stage (``design_with_songs``' ``pool_search`` runs ``pick_pool``, ADR 0008 section 4); the
+    ``agent_runs`` row keeps the agent stage's name either way."""
+
+    def __init__(self, run: JobRun, job_stage: str | None = None) -> None:
         self.run = run
+        self.job_stage = job_stage
 
     def _ids(self) -> dict[str, Any]:
         return {"owner_id": self.run.lease.owner_id, "job_id": self.run.lease.job_id}
@@ -93,7 +98,8 @@ class JobStageHost:
         await self.run.checkpoint()
 
     async def begin(self, info: RunInfo) -> tuple[UUID, int]:
-        await self.run.stage(info.stage)  # a checkpoint, the job's stage and stage_started
+        # A checkpoint, the job's stage and stage_started.
+        await self.run.stage(self.job_stage or info.stage)
         run_id = uuid.uuid4()
         async with self.run.fenced() as fs:
             spent = (await fs.db.execute(_SPENT, self._ids())).scalar_one()

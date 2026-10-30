@@ -14,7 +14,8 @@ backend lends it, and it answers with the library's track dicts. Its failure is
 ``upstream_unavailable`` with a fixed sentence (never the provider's text).
 """
 
-from collections.abc import Callable, Mapping, Sequence
+import inspect
+from collections.abc import Awaitable, Callable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any, Final
 
@@ -73,9 +74,13 @@ SUBMIT_DESCRIPTION: Final = (
     "errors they come back to fix, otherwise the pool is done."
 )
 
-Searcher = Callable[[str], Sequence[Mapping[str, Any]]]
+Hits = Sequence[Mapping[str, Any]]
+Searcher = Callable[[str], Hits | Awaitable[Hits]]
 """Runs one Spotify search for the backend-built query and returns the library's track dicts
-(``mowl.spotify_web.search_tracks``). Raises ``SearchUnavailable`` when the search could not run."""
+(``mowl.spotify_web.search_tracks``), or an awaitable of them (the job's search, which runs
+through ``spotify_call``, ``classbeat.songs.search``). Raises ``SearchUnavailable`` when the
+search could not run; anything else it raises (a job failure: the connection is gone) ends the
+stage and the job with that category."""
 
 
 class SearchUnavailable(Exception):
@@ -183,11 +188,7 @@ def check_entries(ctx: PoolContext, entries: Sequence[PoolEntry]) -> PoolResult:
 
 
 def pool_stage(ctx: PoolContext) -> Stage:
-    def search_tracks(args: SearchInput) -> ToolAnswer:
-        try:
-            hits = ctx.searcher(build_query(args))
-        except SearchUnavailable:
-            raise ToolError("upstream_unavailable", ["search is not available right now"]) from None
+    def answer(hits: Hits) -> ToolAnswer:
         entries = ctx.registry.add_hits(list(hits)[:MAX_RESULTS])
         if not entries and ctx.registry.full:
             raise ToolError(
@@ -196,6 +197,25 @@ def pool_stage(ctx: PoolContext) -> Stage:
         return ToolAnswer(
             {"tracks": [e.shown() for e in entries], "candidates_found": len(ctx.registry)}
         )
+
+    def unavailable() -> ToolError:
+        return ToolError("upstream_unavailable", ["search is not available right now"])
+
+    async def finish(pending: Awaitable[Hits]) -> ToolAnswer:
+        try:
+            hits = await pending
+        except SearchUnavailable:
+            raise unavailable() from None
+        return answer(hits)
+
+    def search_tracks(args: SearchInput) -> ToolAnswer | Awaitable[ToolAnswer]:
+        try:
+            hits = ctx.searcher(build_query(args))
+        except SearchUnavailable:
+            raise unavailable() from None
+        if inspect.isawaitable(hits):
+            return finish(hits)
+        return answer(hits)
 
     def counts(result: PoolResult) -> dict[str, Any]:
         by_role: dict[str, int] = {}
