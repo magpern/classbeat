@@ -43,7 +43,6 @@ the user's own Spotify account, as an external operation. Create only: the track
   A same-named playlist without this ``ref`` is never taken for ours.
 """
 
-import dataclasses
 import logging
 from datetime import UTC, datetime, timedelta
 from typing import Any, Final, cast
@@ -96,15 +95,16 @@ def final_key(job_id: UUID) -> str:
     return f"{job_id}:final-create"
 
 
-def pool_request(job_id: UUID, pool_id: UUID, guard: Guard) -> OperationRequest:
+def pool_request(owner_id: UUID, job_id: UUID, pool_id: UUID, guard: Guard) -> OperationRequest:
+    key = pool_key(job_id)
     return OperationRequest(
         kind=KIND,
-        idempotency_key=pool_key(job_id),
+        idempotency_key=key,
         request_hash=request_hash(
             KIND, purpose="pool", name=common.POOL_NAME, pool_id=str(pool_id)
         ),
         timeout_seconds=TIMEOUT_SECONDS,
-        guard=guard,
+        guard=_retake_guard(owner_id, key, guard),
         single_request=True,
         context={"purpose": "pool", "pool_id": str(pool_id)},
         with_ref=True,
@@ -112,6 +112,7 @@ def pool_request(job_id: UUID, pool_id: UUID, guard: Guard) -> OperationRequest:
 
 
 def final_request(
+    owner_id: UUID,
     job_id: UUID,
     class_id: UUID,
     revision_id: UUID,
@@ -123,14 +124,15 @@ def final_request(
     if len(content_hash) != 32:
         raise JobFailure("invalid_input")
     name = common.check_name(name)
+    key = final_key(job_id)
     return OperationRequest(
         kind=KIND,
-        idempotency_key=final_key(job_id),
+        idempotency_key=key,
         request_hash=request_hash(
             KIND, purpose="final", name=name, content_hash=content_hash.hex()
         ),
         timeout_seconds=TIMEOUT_SECONDS,
-        guard=guard,
+        guard=_retake_guard(owner_id, key, guard),
         single_request=True,
         class_id=class_id,
         context={
@@ -166,22 +168,17 @@ _OWN_ROW = text(
 )
 
 
-def _retake_guard(owner_id: UUID, request: OperationRequest) -> Guard:
-    """The request's own guard, then: a ``failed`` row is taken over only when the call's own
-    record wrote it (``resolved_by = 'worker'``, a refusal that proves no effect). The job's
-    reconciliation never writes ``failed`` for a create (``_JOB_KINDS``), so a ``worker``
-    ``failed`` row of this key is always such a record; anything else may have been created."""
-    inner = request.guard
+def _retake_guard(owner_id: UUID, key: str, inner: Guard) -> Guard:
+    """``inner`` (the step's own guard), then: a ``failed`` row is taken over only when the
+    call's own record wrote it (``resolved_by = 'worker'``, a refusal that proves no effect). The
+    job's reconciliation never writes ``failed`` for a create (``_JOB_KINDS``), so a ``worker``
+    ``failed`` row of this key is always such a record; anything else may have been created.
+    Built into every create request by ``pool_request`` and ``final_request``."""
 
     async def guard(db: AsyncSession) -> bool:
-        if inner is not None and not await inner(db):
+        if not await inner(db):
             return False
-        row = (
-            await db.execute(
-                _OWN_ROW,
-                {"owner_id": owner_id, "kind": KIND, "key": request.idempotency_key},
-            )
-        ).first()
+        row = (await db.execute(_OWN_ROW, {"owner_id": owner_id, "kind": KIND, "key": key})).first()
         if row is not None and row.state == "failed" and row.resolved_by != "worker":
             logger.warning("create not sent again: not proven absent", extra={"kind": KIND})
             raise JobFailure("uncertain_write")
@@ -194,10 +191,7 @@ async def create(
     run: JobRun, keyring: KeyRing, opened: OpenConnection, request: OperationRequest, name: str
 ) -> str:
     """Perform the create of ``request`` with the held connection ``opened``; the new id."""
-    if request.kind != KIND:
-        raise JobFailure("internal")
     purpose = str(request.context["purpose"])
-    request = dataclasses.replace(request, guard=_retake_guard(run.lease.owner_id, request))
 
     async def call(operation_id: UUID) -> CallResult:
         about = common.description(ref_of(operation_id), purpose)
