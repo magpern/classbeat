@@ -4,6 +4,7 @@ before any connection. And the lazy ``classbeat.auth`` package that keeps them o
 process exports exactly what it did."""
 
 import ast
+import urllib.request
 from pathlib import Path
 from typing import Any, ClassVar
 
@@ -16,6 +17,8 @@ from classbeat.auth.oauth_providers import Provider
 from classbeat.config import Settings
 from classbeat.egress import OutboundBlocked, install_worker_allowlist
 from classbeat.mail import Mailer, MailMessage
+from spotifycore import FakeSpotify
+from spotifyfake import CLIENT_A, USER_A, SpotifyHTTPS, spotify_client
 
 PROVIDER = Provider(
     name="google",
@@ -102,6 +105,64 @@ def test_the_worker_flag_is_set_only_by_installing_the_allowlist() -> None:
     assert egress.worker_allowlist_installed()
     with pytest.raises(OutboundBlocked):
         egress.refuse_in_worker("anything.example")
+
+
+# --- Spotify (ADR 0009 §10) -----------------------------------------------------------------
+
+
+async def test_the_spotify_client_keeps_its_own_list_inside_the_worker(
+    spotify: FakeSpotify,
+) -> None:
+    """The worker's urllib list also holds MOWL and the model; the Spotify client never does."""
+    install_worker_allowlist()
+    access, _ = spotify.grant(CLIENT_A, USER_A)
+    async with spotify_client(spotify) as client:
+        me = await client.get(
+            "https://api.spotify.com/v1/me", headers={"Authorization": f"Bearer {access}"}
+        )
+        assert me.json()["id"] == USER_A
+        for url in ("https://api.mowl.com/v1/programs", "https://api.anthropic.com/v1/x"):
+            with pytest.raises(OutboundBlocked):
+                await client.get(url)
+    assert [s.path for s in spotify.requests()] == ["/v1/me"]
+
+
+async def test_the_spotify_client_works_and_refuses_alike_in_the_web_process(
+    spotify: FakeSpotify,
+) -> None:
+    assert not egress.worker_allowlist_installed()
+    access, _ = spotify.grant(CLIENT_A, USER_A)
+    async with spotify_client(spotify) as client:
+        me = await client.get(
+            "https://api.spotify.com/v1/me", headers={"Authorization": f"Bearer {access}"}
+        )
+        assert me.status_code == 200
+        with pytest.raises(OutboundBlocked):
+            await client.get("https://api.mowl.com/v1/programs")
+        with pytest.raises(OutboundBlocked):
+            await client.get("http://accounts.spotify.com/api/token")
+
+
+def test_the_installed_worker_opener_lets_the_spotify_hosts_through(
+    monkeypatch: pytest.MonkeyPatch, spotify: FakeSpotify
+) -> None:
+    """The real installed opener (its network handler swapped for the fake): the library's
+    urllib calls to Spotify pass the guard, another host does not."""
+    opener = install_worker_allowlist()
+    every = getattr(opener, "handlers")  # noqa: B009 - not in the type stubs
+    handlers = [h for h in every if isinstance(h, egress.DeadlineHTTPSHandler)]
+    assert len(handlers) == 1
+    fake = SpotifyHTTPS(spotify)
+    monkeypatch.setattr(handlers[0], "https_open", fake.https_open)
+    access, _ = spotify.grant(CLIENT_A, USER_A)
+    request = urllib.request.Request(
+        "https://api.spotify.com/v1/me", headers={"Authorization": f"Bearer {access}"}
+    )
+    with urllib.request.urlopen(request, timeout=5) as response:  # noqa: S310
+        assert b"rider-one" in response.read()
+    with pytest.raises(OutboundBlocked):
+        urllib.request.urlopen("https://open.spotify.com/track/x", timeout=5)
+    assert [s.path for s in spotify.requests()] == ["/v1/me"]
 
 
 # --- the lazy auth package -----------------------------------------------------------------

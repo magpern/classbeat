@@ -1,7 +1,8 @@
 # TEST ONLY. Adds a fake OpenID Connect provider to the stack and switches Google and
 # Microsoft sign-in on against it, for the Playwright E2E tests (e2e/tests/oauth.spec.ts), and a
 # fake MOWL API for MOWL connect (e2e/tests/mowl.spec.ts), the new-class form and the design run
-# (e2e/tests/new-class.spec.ts, design-draft.spec.ts).
+# (e2e/tests/new-class.spec.ts, design-draft.spec.ts), and a fake Spotify (ADR 0009 section 13;
+# e2e/tests/fake-spotify.spec.ts).
 #
 #   docker compose -f compose.yaml -f compose.e2e.yaml --profile e2e up -d --build --wait
 #   (or COMPOSE_FILE=compose.yaml:compose.e2e.yaml COMPOSE_PROFILES=e2e in the environment)
@@ -14,7 +15,10 @@
 #
 # The fakes answer the providers' real hostnames (compose network aliases), so classbeat needs no
 # test-only setting and its provider endpoints stay hard-coded (ADR 0003 section 5; the MOWL base
-# URL is the mowl-workouts library's own). Web trusts one bundle of both fakes' throwaway CAs.
+# URL is the mowl-workouts library's own; the Spotify hosts are classbeat's and the library's).
+# Web and worker trust one bundle of the three fakes' throwaway CAs: oidc-fake writes its CA,
+# mowl-fake adds its own, spotify-fake adds its own and writes the bundle they mount. No fake
+# publishes a port: each is reachable only inside the compose network.
 
 services:
   oidc-fake:
@@ -66,11 +70,43 @@ services:
       timeout: 3s
       retries: 30
 
+  # Answers as api.spotify.com and accounts.spotify.com. The fake is backend/tests/spotifycore.py,
+  # the code the backend tests run in-process, mounted read-only; server.py only carries HTTP.
+  spotify-fake:
+    profiles: [e2e]
+    image: ${COMPOSE_PROJECT_NAME:-classbeat}:local
+    pull_policy: never
+    restart: "no"
+    user: "0:0" # writes the CA bundle to a shared volume and binds :443 (test-only service)
+    command: ["python", "/fake/server.py"]
+    environment:
+      # The stack's own callback as the browser reaches it (ADR 0009 section 2), registered on
+      # the fake's test apps. Public test values only.
+      FAKE_SPOTIFY_REDIRECT_URI: http://127.0.0.1:${WEB_PORT:-8000}/oauth/spotify/callback
+    volumes:
+      - ./e2e/fake-spotify:/fake:ro
+      - ./backend/tests/spotifycore.py:/fake-core/spotifycore.py:ro
+      - mowl-ca:/mowl-ca:ro
+      - spotify-ca:/ca
+    networks:
+      default:
+        aliases:
+          - api.spotify.com
+          - accounts.spotify.com
+    depends_on:
+      mowl-fake:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "test", "-s", "/ca/bundle.pem"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
   web:
     environment:
       CLASSBEAT_OAUTH_GOOGLE_CLIENT_ID: e2e-fake-google-client
       CLASSBEAT_OAUTH_MICROSOFT_CLIENT_ID: e2e-fake-microsoft-client
-      # The fake OIDC provider's CA and the fake MOWL's CA (written by mowl-fake).
+      # The fake OIDC provider's, the fake MOWL's and the fake Spotify's CAs (spotify-fake).
       SSL_CERT_FILE: /fake-ca/bundle.pem
       # Each E2E test presents its own client address in X-Forwarded-For (own rate limits).
       CLASSBEAT_TRUSTED_PROXIES: 10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,127.0.0.0/8
@@ -78,17 +114,20 @@ services:
       - oauth_google_client_secret
       - oauth_microsoft_client_secret
     volumes:
-      - mowl-ca:/fake-ca:ro
+      - spotify-ca:/fake-ca:ro
     depends_on:
       oidc-fake:
         condition: service_healthy
       mowl-fake:
         condition: service_healthy
+      spotify-fake:
+        condition: service_healthy
 
   # The worker drafts classes against the same fake MOWL, with the FakeProvider replaying a
   # recorded script (ADR 0006 section 8): no model API and no real MOWL is ever contacted. The
   # worker's own outbound allowlist (ADR 0006 section 9) still applies; it lets api.mowl.com
-  # through, which resolves to mowl-fake inside this network.
+  # through, which resolves to mowl-fake inside this network, and the two Spotify hosts (ADR 0009
+  # section 10), which resolve to spotify-fake.
   #
   # The script is the symlink /fake-run/script.json (a tmpfs the worker can write), which starts
   # on good_first_draft.json. A test that needs another model script (the revise runs of
@@ -105,12 +144,14 @@ services:
       CLASSBEAT_FAKE_MODEL_SCRIPT: /fake-run/script.json
       SSL_CERT_FILE: /fake-ca/bundle.pem
     volumes:
-      - mowl-ca:/fake-ca:ro
+      - spotify-ca:/fake-ca:ro
       - ./backend/tests/agent_scripts:/fake-scripts:ro
     tmpfs:
       - /fake-run:mode=1777
     depends_on:
       mowl-fake:
+        condition: service_healthy
+      spotify-fake:
         condition: service_healthy
 
 secrets:
@@ -122,3 +163,4 @@ secrets:
 volumes:
   oidc-ca:
   mowl-ca:
+  spotify-ca:

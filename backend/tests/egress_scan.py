@@ -13,6 +13,11 @@ not do outside ``classbeat.egress``:
   ``httpcore``, ``http.client``, ``pycurl``, ``websockets``, ``ftplib``, ``telnetlib``), also
   through ``importlib.import_module`` or ``__import__`` with a constant name.
 
+- build an allowlist, an allowlisted transport or opener itself (``classbeat.egress.Allowlist``,
+  ``AllowlistTransport``, ``build_allowlist_opener``, the deadline handlers), or hand
+  ``allowlisted_async_client`` an allowlist (ADR 0009 §10): every list is code in
+  ``classbeat.egress`` and is chosen there, never widened by a caller.
+
 Names are resolved through imports and aliases (``import httpx as h``, ``from urllib import
 request``, ``from httpx import AsyncClient as C``). Like the other guards this catches accidental
 use and makes the rest visible in review; it cannot stop obfuscated code.
@@ -33,6 +38,8 @@ WORKER_PACKAGES = (
     "classbeat.design",
     "classbeat.saving",
     "classbeat.evals",
+    # ADR 0009 §6: the Spotify package runs in the worker too (refresh, the song-picking calls).
+    "classbeat.spotify",
 )
 # What the worker process imports at start. Add each new worker entry point here (A1, D1:
 # ``classbeat.agent`` ...); the reachability test imports them all in a fresh interpreter and
@@ -108,8 +115,19 @@ _CALLS = frozenset(
         "openai.AsyncOpenAI",
         "ssl.get_server_certificate",
         "xmlrpc.client.ServerProxy",
+        # The allowlists and what applies them are built in classbeat.egress only (ADR 0009 §10).
+        "classbeat.egress.Allowlist",
+        "classbeat.egress.AllowlistTransport",
+        "classbeat.egress.build_allowlist_opener",
+        "classbeat.egress.DeadlineHTTPSHandler",
+        "classbeat.egress.DeadlineHTTPSConnection",
+        "classbeat.egress.model_network_transport",
+        "classbeat.egress.spotify_network_transport",
     }
 )
+# Allowed only without an allowlist argument (the list is the function's own).
+_NO_ALLOWLIST_ARGUMENT = frozenset({"classbeat.egress.allowlisted_async_client"})
+
 # Any call by these attribute names, whatever the object (an event loop, a socket): raw
 # connections around both allowlisted paths.
 _CALL_ATTRIBUTES = frozenset(
@@ -138,6 +156,8 @@ _BASES = frozenset(
         "http.client.HTTPConnection",
         "http.client.HTTPSConnection",
         "socket.socket",
+        "classbeat.egress.Allowlist",
+        "classbeat.egress.AllowlistTransport",
     }
 )
 ALLOWLISTED_CLIENT = "classbeat.egress.allowlisted_async_client"
@@ -277,6 +297,10 @@ def scan_source(source: str, module: str) -> list[tuple[int, str]]:
         if name is None:
             continue
         name = _canonical(name)
+        if name in _NO_ALLOWLIST_ARGUMENT:
+            if node.args or any(k.arg in (None, "allowlist") for k in node.keywords):
+                found.append((node.lineno, f"hands {name} an allowlist: lists live in {EGRESS}"))
+            continue
         if name not in _CALLS or name in exempt:
             continue
         if name in _SDK_CLIENTS and _hands_the_allowlisted_client(node, aliases):

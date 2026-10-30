@@ -67,6 +67,8 @@ def _opener(fake: FakeHTTPS) -> urllib.request.OpenerDirector:
         "https://API.MOWL.COM/v1/programs",
         "https://api.mowl.com:443/v1/programs",
         "https://api.anthropic.com/v1/messages",
+        "https://api.spotify.com/v1/me",  # M4 (ADR 0009 §10)
+        "https://accounts.spotify.com/api/token",
     ],
 )
 def test_https_to_an_allowlisted_host_goes_out(url: str) -> None:
@@ -91,7 +93,11 @@ BLOCKED = [
     ("file:///etc/passwd", ""),
     ("data:text/plain,hello", ""),
     ("https://api.mowl.com:99999/", ""),
-    ("https://api.spotify.com/v1/me", "api.spotify.com"),  # M4 adds it, not before
+    ("https://spotify.com/v1/me", "spotify.com"),
+    ("https://open.spotify.com/track/x", "open.spotify.com"),
+    ("https://api.spotify.com.evil.example/v1/me", "api.spotify.com.evil.example"),
+    ("http://api.spotify.com/v1/me", "api.spotify.com"),
+    ("http://accounts.spotify.com/api/token", "accounts.spotify.com"),
 ]
 
 
@@ -157,6 +163,9 @@ def test_a_redirect_to_an_allowlisted_host_is_followed() -> None:
     [
         ("https://api.mowl.com/v1/start", "https://api.anthropic.com/v1/messages"),
         ("https://api.anthropic.com/v1/x", "https://api.mowl.com/v1/programs"),
+        ("https://api.spotify.com/v1/me", "https://accounts.spotify.com/api/token"),
+        ("https://accounts.spotify.com/api/token", "https://api.spotify.com/v1/me"),
+        ("https://api.spotify.com/v1/me", "https://api.mowl.com/v1/programs"),
     ],
 )
 def test_a_redirect_to_the_other_allowlisted_host_is_refused(start: str, target: str) -> None:
@@ -239,8 +248,25 @@ def test_the_mowl_library_call_goes_through_the_installed_opener(
         api.call(None, "GET", "v1/ping")
 
 
-def test_the_worker_list_is_exactly_mowl_and_anthropic() -> None:
-    assert frozenset({"api.mowl.com", "api.anthropic.com"}) == egress.WORKER_HOSTS
+def test_the_worker_list_is_exactly_mowl_anthropic_and_the_two_spotify_hosts() -> None:
+    expected = {"api.mowl.com", "api.anthropic.com", "api.spotify.com", "accounts.spotify.com"}
+    assert frozenset(expected) == egress.WORKER_HOSTS
+    assert WORKER_ALLOWLIST.hosts == egress.WORKER_HOSTS
+
+
+def test_the_model_client_list_is_the_model_host_alone() -> None:
+    assert egress.MODEL_ALLOWLIST.hosts == frozenset({"api.anthropic.com"})
+
+
+@pytest.mark.parametrize(
+    "url", ["https://api.mowl.com/v1/programs", "https://api.spotify.com/v1/me"]
+)
+async def test_the_model_client_refuses_the_other_worker_hosts(url: str) -> None:
+    recorder = Recorder()
+    async with allowlisted_async_client(inner=httpx.MockTransport(recorder)) as client:
+        with pytest.raises(OutboundBlocked):
+            await client.get(url)
+    assert recorder.seen == []
 
 
 @pytest.mark.parametrize("host", ["API.example", "", "trailing.dot."])
