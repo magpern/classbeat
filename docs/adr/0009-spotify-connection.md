@@ -317,7 +317,17 @@ fails `consent_missing` before any call. Consent is logged as `job_events`-free 
   opener. No new HTTP client construction elsewhere; the guard test is extended, not relaxed.
 - **No URL from Spotify is ever fetched.** Pagination uses `offset` and `total`, never the `next` URL;
   `href`, `external_urls`, `images`, `preview_url` and `uri` values from responses are not requested,
-  stored or shown (URIs are rebuilt from validated 22-character ids: `^[0-9A-Za-z]{22}$`). A fake that
+  stored or shown (URIs are rebuilt from validated 22-character ids: `^[0-9A-Za-z]{22}$`). *Amended by
+  ADR 0013 §9 (2026-10-30), one exception: the album image URL (`image`) on M-1 and M-5 track
+  entries.*
+  - It is never requested by the server.
+  - It is stored only as `cover` in the `song_list` content, after
+    `re.fullmatch(r"https://i\.scdn\.co/image/[0-9a-f]{40}", url)`, and otherwise becomes `null`.
+  - It never goes to the model.
+  - Only the browser loads it, through `CoverArt`, with no referrer, behind the CSP's `img-src`.
+  - Every other URL stays unrequested, unstored and unshown.
+
+  A fake that
   answers a `next` pointing at an unlisted host must produce no request to it (and the allowlist would
   refuse it anyway). Every id from a response is validated before it is used in a path.
 - **TLS** contexts never write a key log (`egress.tls_client_context`); the token endpoint's request and
@@ -359,11 +369,11 @@ them), and releases `v0.6.0`. Each item is acceptance-tested in that repo and by
 
 | # | Item | Why |
 |---|---|---|
-| M-1 | `spotify_web.playlist_items(creds, playlist_id) -> list`: `GET /playlists/{id}/items`, `limit` 50, offset pagination by `total`, never `next`; each entry `{id, uri, name, artists, album, release_date, duration_ms, type, is_local}` from `item` (else `track`); non-tracks/null/local entries returned as markers; `playlist_tracks` becomes an alias of it; `find_playlist_tracks` stays for the CLI only | §11 |
+| M-1 | `spotify_web.playlist_items(creds, playlist_id) -> list`: `GET /playlists/{id}/items`, `limit` 50, offset pagination by `total`, never `next`; each entry `{id, uri, name, artists, album, release_date, duration_ms, type, is_local}` from `item` (else `track`), plus `image` from 0.7.0 (ADR 0013 §9); non-tracks/null/local entries returned as markers; `playlist_tracks` becomes an alias of it; `find_playlist_tracks` stays for the CLI only | §11 |
 | M-2 | `create_playlist(creds, name, uris=(), description="") -> id`: `uris` may be empty (create only), `public: false` and `collaborative: false` fixed, no `public` parameter; `add_items(creds, id, uris)`; `replace_playlist_items(creds, id, uris) -> snapshot_id` (PUT the first 100, an empty list clears, POST the rest, returns the last `snapshot_id`; the id is validated) | create, then fill, as two requests so the id exists between them (ADR 0008 §2) |
 | M-3 | `get_playlist(creds, id) -> {id, name, description, public, collaborative, snapshot_id, owner_id, total}`; `me(creds) -> {id}`; `my_playlists` returns `{id, name, description, owner_id, public, collaborative}` | owner check, reconcile |
 | M-4 | `Credentials` gains `spotify_refresh_enabled: bool = True` (False: never call the token endpoint, never call `on_spotify_token`; an expired token raises `MowlError` with no HTTP cause) and `spotify_max_retry_wait: float = 30.0` (0: never sleep, raise the 429 `MowlError` with its `HTTPError` cause so `Retry-After` is readable); `SCOPES` constant split: `SCOPES_PRIVATE = "playlist-read-private playlist-modify-private"` for hosted use | §6, §8 |
-| M-5 | `search_tracks(creds, query, limit=10, market=None)` returns the structured fields `_track` already builds plus `duration_ms` and `release_date`; `spotify.track_uri(id)` validating the id; `unknown_bpm` etc. unchanged | pool |
+| M-5 | `search_tracks(creds, query, limit=10, market=None)` returns the structured fields `_track` already builds plus `duration_ms` and `release_date` (and `image` from 0.7.0, ADR 0013 §9); `spotify.track_uri(id)` validating the id; `unknown_bpm` etc. unchanged | pool |
 | M-6 | Nice to have, not blocking: `MowlError` gains `status` and `retry_after` attributes (ADR 0004's note) so classification no longer depends on `__cause__` | |
 
 Items M-1 to M-5 are required; the classbeat tests use the real library against the fake Spotify, so

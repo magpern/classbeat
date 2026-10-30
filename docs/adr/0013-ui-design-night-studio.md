@@ -1,6 +1,6 @@
 # ADR 0013: UI design: the Night Studio look, navigation and components
 
-Status: Proposed
+Status: Accepted (2026-10-30, owner; milestone MU, before M6)
 
 ## Context
 
@@ -67,10 +67,10 @@ Every colour lives in `tokens.css` as a CSS variable, in both themes:
 Violet is classbeat's own colour. It is chosen so that it never competes with a zone colour, with
 Spotify's green or with MOWL's branding.
 
-**Effort zones.** MOWL's seven zones and names (`mowl.workout.ZONE_NAMES`), coloured as in the
-**MOWL app** (owner, 2026-10-30): grey Z1, blue Z2, green Z3, yellow Z4, and **one red for Z5 to
+**Effort zones.** MOWL's seven zones and names (`mowl.workout.ZONE_NAMES`), coloured like the
+**MOWL app's**, similar but not identical (owner, 2026-10-30): grey Z1, blue Z2, green Z3, yellow Z4, and **one red for Z5 to
 Z7**. Above the bars, a **flame** marks zone 6, as in MOWL, and a **bolt** marks zone 7, where
-MOWL shows its owl mascot. Both are classbeat's own icons (`lucide`), never MOWL's artwork (§3).
+MOWL shows its owl mascot. Both are lucide icons (ISC) chosen by classbeat, never MOWL's artwork (§3).
 
 **Similar, never identical** (owner, roadmap Amendment 8). The owner shared a low-resolution
 screenshot of MOWL's desktop editor in chat. It was not committed. Read off it, MOWL shows roughly:
@@ -91,8 +91,8 @@ MOWL's. The fade (§7) is classbeat's own, lighter one. The values are the same 
 | 3 | Tempo | 76–90 % | `#7DC05A` lime green | — |
 | 4 | Threshold | 91–105 % | `#F9DF4A` yellow | — |
 | 5 | VO2max | 106–120 % | `#F0483C` red | — |
-| 6 | Anaerobic | 120–150 % | `#F0483C` red | flame (`lucide` `Flame`, our icon) |
-| 7 | Neuromuscular | all out | `#F0483C` red | bolt (`lucide` `Zap`, our icon) |
+| 6 | Anaerobic | 120–150 % | `#F0483C` red | flame (lucide `Flame`) |
+| 7 | Neuromuscular | all out | `#F0483C` red | bolt (lucide `Zap`) |
 
 FTP ranges are those of `mowl.workout.ZONES` (0.6.0). Zones 5 to 7 share a colour, so they are
 told apart by bar height, the marker and the zone number in every label. Zone colours are used only for effort, never for buttons or status.
@@ -135,7 +135,9 @@ four bars.
   - track and artist names never rewritten;
   - links that say OPEN SPOTIFY or PLAY ON SPOTIFY. They appear only where the API returns a
     link, such as a final playlist's `link` (ADR 0008 §9). The frontend never builds a Spotify URL,
-    and no Spotify id reaches the page.
+    and no raw Spotify id reaches the page, except inside a link the API returns. Whether Songs for
+    approval needs a link back to Spotify is settled in UI8 against the guidelines' current text. If
+    it does, the link is built by the API, which needs an ADR 0008 §9 change.
 
   Spotify green appears only inside Spotify's logo. classbeat's own controls (Approve songs, the
   sidebar) stay violet, so the app never looks like a Spotify product. The "Spotify feel" is in the
@@ -167,7 +169,7 @@ four bars.
 | `/jobs/:id` | Designing (focus mode) |
 | the approval route of ADR 0008 §9 | Songs for approval |
 | `/classes/:id` | Class |
-| `/music` | Music: the user's MOWL playlists and the playlists classbeat made (OPEN SPOTIFY where the API gives the final playlist's link); a "Connect Spotify" card while not connected |
+| `/music` | Music: the user's MOWL playlists and the playlists classbeat made (OPEN SPOTIFY where the API gives the final playlist's link); a "Connect Spotify" card while not connected. The playlists classbeat made come from a new read-only, owner-scoped class-API read (UI8) |
 | `/account` | Account, with tabs: Connections, Plan and usage, Sign-in and security, Your data, Appearance |
 | `/account/spotify` | The Spotify wizard and settings. It stays where it is, because ADR 0009's callback ends there |
 | `/admin` | Admin (M5), in the same shell |
@@ -354,7 +356,10 @@ browser contacts a third party, and it changes a guard test, so UI7 has an Opus 
 
 ### 11. Delivery
 
-New milestone "UI Night Studio".
+Milestone **MU Night Studio UI** (roadmap Amendment 8): it runs beside M4 and M5 and is done
+before M6 starts. Its issues are #242 (L2), #243 (UI1), #246 (UI2), #247 (UI3), #248 (UI4),
+#249 (UI5), #250 (UI6), #251 (UI7), #253 (UI8), #254 (UI9) and #255 (UI10). Each issue's
+"Depends on" line names the in-flight M4, M3c and M5 issues it waits for.
 
 - **Developers** are Sonnet, except UI7 and L2 (Opus). L2 runs in the private library repo with
   the local Architect, as L1 did (ADR 0008).
@@ -363,7 +368,9 @@ New milestone "UI Night Studio".
   guard test and adds the CSP. UI6 restyles the consent switch, two-step sign-in, sessions and
   account deletion. UI8 sends the approval hash.
 - **API calls.** UI6, UI8 and every other issue keep each API call, CSRF and step-up exactly as they
-  are; a restyle changes no request.
+  are; a restyle changes no existing request. Any new read is named in its issue, is owner-scoped
+  and has a cross-user test. There are two: UI2's optional `profile` field on the class list, and
+  UI8's list of the playlists classbeat made.
 
 | # | Issue | Depends on |
 |---|---|---|
@@ -388,10 +395,10 @@ Songs for approval, Change songs) use the new components once UI1 has merged.
 Nothing is open.
 
 1. **Zone colours:** the MOWL app is the reference, but nothing is copied exactly ("probably
-   copyrighted"). §2's values are similar, not identical. A screenshot, if the owner shares one,
-   only fine-tunes them and keeps them different.
+   copyrighted"). §2's values are similar, not identical. They were set next to the owner's
+   screenshot of MOWL's editor, which was shared in chat and not committed.
 2. **Zones 5 to 7:** one red, as in MOWL. MOWL shows a flame above zone 6 (confirmed) and an owl
-   above zone 7. classbeat shows its own flame icon and its own bolt (§2, §3).
+   above zone 7. classbeat shows a lucide flame and a lucide bolt (§2, §3).
 3. **Default theme:** Dark, with Light and Same as device in Account. Accepted.
 4. **The Music page in the main navigation:** no preference. The Architect keeps it, because it is
    where playlists and song picking live, the part the owner wants to feel like Spotify. Without
@@ -427,8 +434,7 @@ Nothing is open.
 - **Roadmap §8's** "Own name, colours, fonts and icons" and its Class row's "own palette" are
   amended the same way (Amendment 8).
 - **ADR 0009 §10 and its contract rows M-1 and M-5, ADR 0008 §5 and §8, and threat-model T73**
-  are amended in part by §9 when this ADR is accepted. Their texts get pointers to §9 then, listed
-  in `docs/status.md` as owed.
+  are amended in part by §9. Each carries an "amended by ADR 0013 §9" note (#241).
 - **AGENTS.md's** frontend notes ("System fonts and local assets only …") are updated by UI1 and
   UI7 when they land.
 - `tokens.css` is rewritten in UI1. Every component moves to the new tokens. The old teal zone
