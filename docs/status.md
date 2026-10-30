@@ -15,7 +15,7 @@ GitHub hold the detail.
 | M3b | Class page, revisions, save to MOWL, usage and cost | done technically (2026-10-30, on fakes): [ADR 0007](adr/0007-classes-revisions-and-saving.md), issues #141 to #151 |
 | M4 | Song picking (beta), Spotify BYOK | in progress: design in review ([ADR 0008](adr/0008-song-picking.md), [ADR 0009](adr/0009-spotify-connection.md)); issues in milestone "M4 Song picking and Spotify" (#173 to #186) |
 | M3c | Eval suite, OpenAI and DeepSeek adapters | not started |
-| M5 | Tiers, quotas, codes, admin | M5 design proposed ([ADR 0011](adr/0011-tiers-quotas-and-admin.md)); issues in milestone "M5 Tiers and admin" |
+| M5 | Tiers, quotas, codes, admin | M5 design accepted, development started ([ADR 0011](adr/0011-tiers-quotas-and-admin.md)); issues in milestone "M5 Tiers and admin" |
 | M6 | Security review, backups, GDPR, VPS | not started |
 | M7 | Commercial (deferred) | deferred |
 
@@ -110,10 +110,10 @@ GitHub hold the detail.
   writes "conditional on `wrapped_dek`") and §4's category table ("a 401 or 403 (the status flips)",
   narrowed for Spotify), and ADR 0007 §9 (Save's link, `hold` and credentials "from one `wrapped_dek`
   generation"): the guard is `generation`, compared together with `id`.
-- **M5 design proposed:** [ADR 0011](adr/0011-tiers-quotas-and-admin.md) (tiers, quota reservation and
+- **M5 design accepted, development started:** [ADR 0011](adr/0011-tiers-quotas-and-admin.md) (tiers, quota reservation and
   refund, concurrency limits and cost caps, codes, grants, trial, the `classbeat_maint` admin path with
   its audit log, flags), roadmap Amendment 7, threat model T85 to T96. Split into 15 issues in milestone
-  "M5 Tiers and admin"; none startable until the ADR is accepted, and QT1, FL1, FE1 and T1 wait for
+  "M5 Tiers and admin"; QT1, FL1, FE1 and T1 wait for
   their M4 dependencies. The owner's questions (limits, testers' plan, trial, refunds and more) are in
   ADR 0011 §11; development proceeds on its defaults.
 - Releases: v0.1.0 (cut partway through M0); v0.2.0 is not cut yet (deferred to save Actions quota). Image
