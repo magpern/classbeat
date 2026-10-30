@@ -391,7 +391,11 @@ sign-in only for the admin role (§7).
 - **TOTP** (RFC 6238 via `pyotp`):
   - **Parameters:** SHA-1, 6 digits, a 30 s period, ±1 step of tolerance, and a 160-bit secret.
   - **Enrollment:** shows a QR code (an SVG rendered server-side, no third-party host) and the
-    key. It is confirmed by one valid code.
+    key. It is confirmed by one valid code. Of concurrent first enrollments exactly one wins; a
+    loser writes nothing and is refused with 409 `totp_changed` (its session was resolved before
+    the winner committed) or, when resolved after, with 403 `stepup_required` (the user now has a
+    confirmed TOTP and that session no step-up, §6). Which of the two depends on timing
+    (`tests/test_auth_mfa_hardening.py`, #107).
   - **Replay protection:** a code is accepted only by
     `UPDATE mfa_totp SET last_step = :step WHERE user_id = … AND last_step < :step RETURNING`.
 - **Recovery codes:**
