@@ -18,9 +18,14 @@ function kindOf(operation: Operation): WriteKind | null {
   return null
 }
 
-function outcomeOf(operation: Operation): WriteOutcome {
+/**
+ * The backend records `resolved_by = 'user'` for both buttons, so a failed row alone cannot tell
+ * the user's own decision (Do it anyway) from a check that proved nothing was written: the
+ * button pressed decides.
+ */
+function outcomeOf(operation: Operation, which: 'check' | 'anyway'): WriteOutcome {
   if (operation.state === 'succeeded') return 'found'
-  if (operation.state === 'failed') return operation.resolvedBy === 'user' ? 'decided' : 'nothing'
+  if (operation.state === 'failed') return which === 'anyway' ? 'decided' : 'nothing'
   return 'still_unsure'
 }
 
@@ -90,7 +95,7 @@ function Panel({
     void action.run(async () => {
       try {
         const result = await (which === 'check' ? checkAgain(operation.id) : doItAnyway(operation.id))
-        const next = outcomeOf(result)
+        const next = outcomeOf(result, which)
         setOutcome(next)
         setConfirming(false)
         onDecided(kind, next)
