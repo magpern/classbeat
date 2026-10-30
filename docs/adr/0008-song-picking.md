@@ -320,7 +320,15 @@ revised or saved as a draft). `content` (≤ 64 KB, versioned `v: 1`):
  "omitted_no_bpm": 2, "note": "..."}
 ```
 
-`content_hash` = SHA-256 of its canonical JSON (the same function as drafts). `music` =
+`content_hash` = SHA-256 of its canonical JSON (the same function as drafts). *Amended by ADR 0013 §9
+(2026-10-30):*
+- content `v: 2` adds `cover` to each song: the album image URL, host-pinned (checked before
+  storing and before returning), or `null`;
+- `v: 1` stays readable;
+- `content_hash` covers the field;
+- the URL is never taken from model output and never goes to the model.
+
+`music` =
 `{source: "claude_pick", fingerprint, spotify_user_id}`; `provenance` as ADR 0006 §6 plus
 `origin: "design_with_songs" | "revise_songs"` and `stage_versions`. The page renders title, artist,
 role, BPM, length and the total time **from this content** (`GET` below), never the ids.
@@ -397,7 +405,7 @@ entries in SP1; its plant-and-delete test covers them):
 
 | Data | Where | Deleted with |
 |---|---|---|
-| Track titles, artists, ids, BPM, lengths, order of the chosen songs | `class_revisions.content` (`song_list`), the draft's `music` | the class (cascade), the account |
+| Track titles, artists, ids, BPM, lengths, order of the chosen songs; album cover URLs (`cover`, ADR 0013 §9) | `class_revisions.content` (`song_list`), the draft's `music` | the class (cascade), the account |
 | Final playlist id and name | `class_playlists` | the class, the account, **Disconnect Spotify** (detached first, then with the class) |
 | Pool playlist id, Spotify user id, consent | `spotify_pool` | the account, **Disconnect Spotify**, a Client ID change, **revoking the consent**; the playlist id alone also on `pool_missing` |
 | Client ID, Spotify user id | `connections.public` | Disconnect, the account |

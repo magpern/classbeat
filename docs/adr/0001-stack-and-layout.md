@@ -1,6 +1,6 @@
 # ADR 0001: Stack and repository layout
 
-Status: Accepted
+Status: Accepted (Frontend amended in part by ADR 0013, 2026-10-30)
 
 ## Context
 
@@ -48,7 +48,13 @@ versions, how settings and secrets are read, and how the pieces are packaged.
 - **React 19**, **TypeScript** (`strict`), **Vite**, npm with `package-lock.json`, Node **24**.
 - ESLint flat config (typescript-eslint, react-hooks); **Vitest** with jsdom and Testing Library.
 - Our own design tokens (CSS custom properties, light and dark) in one file. System fonts; no
-  runtime requests to third-party hosts. No MOWL logo, owl, colours or copied assets.
+  runtime requests to third-party hosts. No MOWL logo, owl, colours or copied assets. (Amended by
+  ADR 0013 and roadmap Amendment 8:
+  - the tokens stay in one file and include zone colours similar to MOWL's, never identical;
+  - fonts are bundled (Inter, Archivo), and third-party UI libraries are allowed, all served from
+    our origin;
+  - the one runtime third-party request is Spotify album cover art from `i.scdn.co` (ADR 0013 §9);
+  - still no MOWL logo, owl or copied assets.)
 - Talks only to `/api` on its own origin. The Vite dev server proxies `/api` to the backend.
 
 ### HTTP surface
