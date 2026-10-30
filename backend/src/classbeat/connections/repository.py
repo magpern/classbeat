@@ -13,10 +13,17 @@ found, the same as an unknown one. Writes:
   ``id`` with a payload encrypted for a new one).
   A MOWL reconnect also forgets the user's MOWL playlist links and MOWL operations and detaches
   their saved workouts in the same transaction, as a disconnect does (the token may belong to
-  another MOWL account).
+  another MOWL account). A Spotify reconnect compares the account and the Client ID it replaces
+  (ADR 0009 sections 5 and 7): another Spotify user id forgets the account's pool, operations and
+  live class playlists, another Client ID the pool and its operations, in the same transaction.
+  Every rewrite of an existing row is a user's connect, so it increases ``generation`` (ADR 0009
+  section 5.4); a refresh (``classbeat.spotify``) and a rewrap keep it.
 - **status changes** (``needs_reconnect``, ``last_error``, ``last_used_at``) are conditional on
-  the version that was read: ``WHERE id = :id AND wrapped_dek = :read_wrapped_dek``. They never
-  touch ``secret``, ``wrapped_dek`` or ``key_id``.
+  the version that was read: ``WHERE id = :id AND generation = :read_generation``. A Spotify
+  flip also compares the ``wrapped_dek`` read and happens only for ``invalid_grant`` and
+  ``app_misconfigured`` (ADR 0009 section 6): a refresh in between keeps the generation but
+  changes the data key, so a stale 401 flips nothing. They never touch ``secret``,
+  ``wrapped_dek``, ``key_id`` or ``generation``.
 """
 
 import json
@@ -40,6 +47,7 @@ from classbeat.connections.credentials import (
     build_credentials,
 )
 from classbeat.connections.errors import ConnectionFailure, run_library_call
+from classbeat.connections.spotify_data import forget_spotify_account, revoke_pool
 from classbeat.connections.tables import PROVIDERS, connections
 from classbeat.context import UserContext
 from classbeat.crypto.envelope import (
@@ -56,6 +64,9 @@ from classbeat.db import user_session
 logger = logging.getLogger(__name__)
 
 PROVIDER_UNIQUE = "connections_owner_id_provider_key"
+# ADR 0009 sections 6 and 8: the only categories that flip a Spotify connection, from the token
+# endpoint (``invalid_grant``, ``invalid_client``) or a 401 on the repeat of a read after a refresh.
+SPOTIFY_FLIP_CATEGORIES = frozenset({"invalid_grant", "app_misconfigured"})
 Factory = async_sessionmaker[AsyncSession]
 _C = connections.c
 
@@ -170,13 +181,14 @@ async def _write(
     public: dict[str, Any],
     expires_at: datetime | None,
 ) -> UUID:
-    existing = (
+    found = (
         await db.execute(
-            select(_C.id)
+            select(_C.id, _C.public)
             .where(_C.owner_id == ctx.user_id, _C.provider == provider)
             .with_for_update()
         )
-    ).scalar_one_or_none()
+    ).first()
+    existing: UUID | None = None if found is None else found.id
     row_id = existing if existing is not None else uuid.uuid4()
     kek = await ring.current(db)
     sealed = seal(
@@ -198,20 +210,43 @@ async def _write(
         "connected_at": func.now(),
         "updated_at": func.now(),
     }
-    if existing is not None:
+    if found is not None:
         if provider == "mowl":
             # A reconnect in place may be another MOWL account, and the row records no account
             # identity: it forgets the old account's links and attach operations exactly as a
             # disconnect then connect would (ADR 0006 section 3), after the row lock above.
             await _forget_mowl_account(db, ctx)
+        elif provider == "spotify":
+            await _forget_replaced_spotify(db, ctx, dict(found.public or {}), public)
         await db.execute(
-            update(connections).where(_C.id == row_id, _C.owner_id == ctx.user_id).values(**values)
+            update(connections)
+            .where(_C.id == row_id, _C.owner_id == ctx.user_id)
+            .values(**values, generation=_C.generation + 1)
         )
     else:
         await db.execute(
             insert(connections).values(id=row_id, owner_id=ctx.user_id, provider=provider, **values)
         )
     return row_id
+
+
+async def _forget_replaced_spotify(
+    db: AsyncSession, ctx: UserContext, old: Mapping[str, Any], new: Mapping[str, Any]
+) -> None:
+    """ADR 0009 section 7, after the row lock: another Spotify account forgets everything kept
+    about the old one; the same account under another Client ID forgets the pool (the consent is
+    asked again); a reconnect of the same account and app keeps both. A value that is missing on
+    either side counts as different (the safe reading). The caller (the callback, SC1) has already
+    required ``confirm_account_change`` for another account."""
+
+    def same(key: str) -> bool:
+        value = old.get(key)
+        return isinstance(value, str) and bool(value) and value == new.get(key)
+
+    if not same("spotify_user_id"):
+        await forget_spotify_account(db, ctx.user_id)
+    elif not same("client_id"):
+        await revoke_pool(db, ctx.user_id)
 
 
 async def open_connection(
@@ -240,6 +275,7 @@ async def open_connection(
                     _C.wrapped_dek,
                     _C.dek_nonce,
                     _C.key_id,
+                    _C.generation,
                 ).where(_C.owner_id == ctx.user_id, _C.provider == provider)
             )
         ).first()
@@ -249,7 +285,9 @@ async def open_connection(
             row_id = row.id
             failure, plaintext = await _decrypt(db, ring, ctx, provider, row)
             if failure == "decrypt_failed":
-                await _flip(db, ctx, row.id, bytes(row.wrapped_dek), "decrypt_failed")
+                await _flip(
+                    db, ctx, row.id, row.generation, "decrypt_failed", bytes(row.wrapped_dek)
+                )
             elif plaintext is not None:
                 failure, opened = _parse(provider, row, plaintext)
     if failure is not None or opened is None:
@@ -292,15 +330,27 @@ def _parse(provider: str, row: Any, plaintext: bytes) -> tuple[str | None, OpenC
         credentials = build_credentials(provider, payload, dict(row.public or {}))  # pyright: ignore[reportUnknownArgumentType]
     except (ValueError, TypeError, KeyError):
         return "unknown", None
-    return None, OpenConnection(row.id, provider, credentials, bytes(row.wrapped_dek))
+    return None, OpenConnection(
+        row.id, provider, credentials, bytes(row.wrapped_dek), int(row.generation)
+    )
 
 
 async def _flip(
-    db: AsyncSession, ctx: UserContext, row_id: UUID, version: bytes, category: str
+    db: AsyncSession,
+    ctx: UserContext,
+    row_id: UUID,
+    generation: int,
+    category: str,
+    wrapped_dek: bytes | None = None,
 ) -> bool:
+    """``needs_reconnect`` for the row of ``generation`` (and, when given, of that ``wrapped_dek``):
+    ``status``, ``last_error`` and ``updated_at`` only."""
+    conditions = [_C.id == row_id, _C.owner_id == ctx.user_id, _C.generation == generation]
+    if wrapped_dek is not None:
+        conditions.append(_C.wrapped_dek == wrapped_dek)
     result = await db.execute(
         update(connections)
-        .where(_C.id == row_id, _C.owner_id == ctx.user_id, _C.wrapped_dek == version)
+        .where(*conditions)
         .values(status="needs_reconnect", last_error=category, updated_at=func.now())
         .returning(_C.id)
     )
@@ -310,24 +360,38 @@ async def _flip(
 async def mark_needs_reconnect(
     factory: Factory, ctx: UserContext, opened: OpenConnection, category: str = "needs_reconnect"
 ) -> bool:
-    """Flip to ``needs_reconnect``, only if the row still holds the version that was read (a
-    stale 401 from before a reconnect leaves the fresh connection alone)."""
+    """Flip to ``needs_reconnect``, only if the row still holds the generation that was read (a
+    stale 401 from before a reconnect leaves the fresh connection alone).
+
+    Spotify (ADR 0009 section 6): only ``invalid_grant`` or ``app_misconfigured`` flip (any other
+    category is a ``ValueError``: a 403, a 404 or a refused write never flips), and only while the
+    row still holds the ``wrapped_dek`` read as well, so a 401 answered after a refresh, a rewrap
+    or a reconnect writes zero rows."""
+    wrapped_dek: bytes | None = None
+    if opened.provider == "spotify":
+        if category not in SPOTIFY_FLIP_CATEGORIES:
+            raise ValueError("only invalid_grant or app_misconfigured flip a Spotify connection")
+        wrapped_dek = opened.version
     async with user_session(factory, ctx) as db:
-        return await _flip(db, ctx, opened.id, opened.version, category)
+        return await _flip(db, ctx, opened.id, opened.generation, category, wrapped_dek)
 
 
 async def record_result(
     factory: Factory, ctx: UserContext, opened: OpenConnection, category: str | None
 ) -> bool:
     """After a call: ``last_used_at`` and ``last_error`` (``None`` on success), conditional on
-    the version read."""
+    the generation read."""
     values: dict[str, Any] = {"last_error": category}
     if category is None:
         values["last_used_at"] = func.now()
     async with user_session(factory, ctx) as db:
         result = await db.execute(
             update(connections)
-            .where(_C.id == opened.id, _C.owner_id == ctx.user_id, _C.wrapped_dek == opened.version)
+            .where(
+                _C.id == opened.id,
+                _C.owner_id == ctx.user_id,
+                _C.generation == opened.generation,
+            )
             .values(**values)
             .returning(_C.id)
         )
@@ -344,7 +408,8 @@ async def use[T](
     library_error: type[BaseException] = MowlError,
 ) -> T:
     """Run one library call with the user's credentials (in a worker thread). A 401 or 403
-    flips the connection to ``needs_reconnect``; any failure is a ``ConnectionFailure``."""
+    flips a MOWL or Swedebeat connection to ``needs_reconnect`` (never a Spotify one, see
+    ``call_opened``); any failure is a ``ConnectionFailure``."""
     opened = await open_connection(factory, ring, ctx, provider)
     return await call_opened(factory, ctx, opened, call, library_error=library_error)
 
@@ -374,8 +439,10 @@ async def call_opened[T](
     else:
         await record_result(factory, ctx, opened, None)
         return result
-    # Outside the except block, so nothing new is chained onto the failure.
-    if failure.category == "needs_reconnect":
+    # Outside the except block, so nothing new is chained onto the failure. A Spotify 401 or 403
+    # is recorded but never flips here: a 401 may come from a token a refresh has replaced, and
+    # only ``classbeat.spotify`` knows (ADR 0009 section 6; it calls ``mark_needs_reconnect``).
+    if failure.category == "needs_reconnect" and opened.provider != "spotify":
         await mark_needs_reconnect(factory, ctx, opened)
     else:
         await record_result(factory, ctx, opened, failure.category)
@@ -425,9 +492,10 @@ async def _forget_mowl_account(db: AsyncSession, ctx: UserContext) -> None:
 
 
 async def disconnect(factory: Factory, ctx: UserContext, provider: str) -> bool:
-    """Delete the row (local only: MOWL has no known revoke endpoint). For MOWL, the user's
-    playlist links and MOWL operations go and the saved workouts are detached in the same
-    transaction (ADR 0006 section 3, ADR 0007 section 9)."""
+    """Delete the row (local only: MOWL has no known revoke endpoint, Spotify no app-side one). For
+    MOWL, the user's playlist links and MOWL operations go and the saved workouts are detached in
+    the same transaction (ADR 0006 section 3, ADR 0007 section 9); for Spotify the pool consent and
+    every Spotify operation go and the class playlists are detached (ADR 0009 section 7)."""
     _check_provider(provider)
     async with user_session(factory, ctx) as db:
         # The row lock first: a job's external operation holds it (``hold``) while it writes
@@ -440,6 +508,8 @@ async def disconnect(factory: Factory, ctx: UserContext, provider: str) -> bool:
         )
         if provider == "mowl":
             await _forget_mowl_account(db, ctx)
+        elif provider == "spotify":
+            await forget_spotify_account(db, ctx.user_id)
         result = await db.execute(
             delete(connections)
             .where(_C.owner_id == ctx.user_id, _C.provider == provider)
@@ -450,18 +520,19 @@ async def disconnect(factory: Factory, ctx: UserContext, provider: str) -> bool:
 
 async def hold(db: AsyncSession, ctx: UserContext, opened: OpenConnection) -> bool:
     """In the caller's transaction (a job's fenced step 1 of an external operation, ADR 0005
-    section 7): share-lock the connection row the job opened, if it is still that version and
-    ``connected``. False when it was disconnected, reconnected (another ``wrapped_dek``, maybe
+    section 7): share-lock the connection row the job opened, if it is still that generation and
+    ``connected``. False when it was disconnected, reconnected (another ``generation``, maybe
     another account) or flipped meanwhile, so no call goes out with credentials that are no
-    longer the user's connection. The lock lasts until the caller commits; ``disconnect``
-    takes the row lock first, so the two never deadlock."""
+    longer the user's connection. A refresh or a rewrap keeps the generation (ADR 0009 section
+    5.4), so neither invalidates a running job's hold. The lock lasts until the caller commits;
+    ``disconnect`` takes the row lock first, so the two never deadlock."""
     row = (
         await db.execute(
             select(_C.id)
             .where(
                 _C.id == opened.id,
                 _C.owner_id == ctx.user_id,
-                _C.wrapped_dek == opened.version,
+                _C.generation == opened.generation,
                 _C.status == "connected",
             )
             .with_for_update(read=True)
@@ -473,9 +544,11 @@ async def hold(db: AsyncSession, ctx: UserContext, opened: OpenConnection) -> bo
 async def delete_all_in(db: AsyncSession, ctx: UserContext) -> list[str]:
     """For ``keys wipe``: delete every row of the user in the caller's transaction. Returns the
     affected providers (sorted). The MOWL links and operations go and the saved workouts are
-    detached too, as on a disconnect (the connection rows locked first, as ``disconnect`` does)."""
+    detached too, as on a disconnect, and so does what is kept about the Spotify account (the
+    connection rows locked first, as ``disconnect`` does)."""
     await db.execute(select(_C.id).where(_C.owner_id == ctx.user_id).with_for_update())
     await _forget_mowl_account(db, ctx)
+    await forget_spotify_account(db, ctx.user_id)
     result = await db.execute(
         delete(connections).where(_C.owner_id == ctx.user_id).returning(_C.provider)
     )

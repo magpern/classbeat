@@ -81,6 +81,15 @@ async def operator_contexts(db: AsyncSession) -> list[UserContext]:
     return [UserContext(user_id=user_id, role="user", issuer=issuer_token()) for user_id in ids]
 
 
+async def purge_contexts(db: AsyncSession) -> list[UserContext]:
+    """For the hourly purge only (``classbeat.auth.purge``; ADR 0009 section 3): a context per user
+    (role ``user``, no connections) to delete that user's used or expired Spotify connect flows in
+    their own session, since the table is owned and row security is forced. Nothing else may name
+    it (``tests/test_user_context_guard.py``)."""
+    ids = (await db.execute(select(users.c.id).order_by(users.c.id))).scalars()
+    return [UserContext(user_id=user_id, role="user", issuer=issuer_token()) for user_id in ids]
+
+
 def _refuse(status: int, reason: str) -> NoReturn:
     raise HTTPException(status_code=status, detail={"reason": reason})
 

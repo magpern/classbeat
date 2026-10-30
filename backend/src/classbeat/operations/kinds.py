@@ -11,7 +11,7 @@ same target finds the same row.
 
 M3a registers ``mowl_attach_spotify_playlist``; M3b adds the MOWL saves (``mowl_save_workout``,
 ``mowl_update_workout``), M4 the Spotify writes. The names are the ``external_operations.kind``
-check of migrations 0004 and 0005.
+check of migrations 0004 to 0006.
 """
 
 import hashlib
@@ -34,8 +34,11 @@ Factory = async_sessionmaker[AsyncSession]
 ATTACH_KIND: Final = "mowl_attach_spotify_playlist"
 # The multi-request MOWL writes of a class (ADR 0007 sections 6 and 7): their rows carry the class.
 CLASS_WRITE_KINDS: Final = frozenset({"mowl_save_workout", "mowl_update_workout"})
-# The external_operations.kind check of migrations 0004 and 0005.
-KIND_NAMES: Final = frozenset({ATTACH_KIND, *CLASS_WRITE_KINDS})
+# The Spotify writes (ADR 0008 section 2; reserved by migration 0006, their code is issue OP1). A
+# pool row has no class, a final-playlist row has one.
+SPOTIFY_WRITE_KINDS: Final = frozenset({"spotify_create_playlist", "spotify_replace_items"})
+# The external_operations.kind check of migrations 0004 to 0006.
+KIND_NAMES: Final = frozenset({ATTACH_KIND, *CLASS_WRITE_KINDS, *SPOTIFY_WRITE_KINDS})
 STATES: Final = ("pending", "succeeded", "failed", "uncertain")
 MAX_EXTERNAL_ID = 200  # the external_operations.external_id check
 MAX_CONTEXT_BYTES: Final = 2048  # the external_operations.request_context check
@@ -130,7 +133,7 @@ class OperationKind:
 
     def __post_init__(self) -> None:
         if self.name not in KIND_NAMES:
-            raise ValueError("unknown external-operation kind (migration 0004's check)")
+            raise ValueError("unknown external-operation kind (the migrations' check)")
 
 
 class OperationKinds:

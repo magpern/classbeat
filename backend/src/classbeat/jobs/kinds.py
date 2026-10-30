@@ -35,7 +35,7 @@ Two seams for the kinds of ADR 0007 (section 3, K1):
 import re
 from collections.abc import Awaitable, Callable, Iterator, Mapping
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, Protocol
+from typing import TYPE_CHECKING, Any, Final, Protocol
 from uuid import UUID
 
 from pydantic import BaseModel
@@ -48,6 +48,9 @@ if TYPE_CHECKING:
     from classbeat.jobs.run import JobRun
 
 KIND_NAME = re.compile(r"^[a-z_]{1,40}$")  # the jobs.kind check of migration 0004
+# ADR 0008 section 1: the song-picking kinds, reserved by migration 0006 (issue SP1); their code
+# and registration are issues SJ1 to SJ3.
+SONG_KIND_NAMES: Final = ("design_with_songs", "revise_songs")
 STAGE_NAME = KIND_NAME
 REASON = KIND_NAME  # a refusal reason is a code, never text from the input
 

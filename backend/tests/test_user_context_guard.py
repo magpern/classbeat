@@ -340,6 +340,18 @@ def test_operator_contexts_is_reached_only_by_the_cli() -> None:
     assert "classbeat/keys_cli.py" in users
 
 
+def test_purge_contexts_is_reached_only_by_the_purge() -> None:
+    """``auth.purge_contexts`` builds a context per user for the hourly purge of the Spotify connect
+    flows (an owned table; ADR 0009 section 3). Only its definition and the purge may name it; it
+    is not exported from ``classbeat.auth``."""
+    users = sorted(
+        path.relative_to(SRC).as_posix()
+        for path in (SRC / "classbeat").rglob("*.py")
+        if "purge_contexts" in path.read_text("utf-8")
+    )
+    assert users == ["classbeat/auth/deps.py", "classbeat/auth/purge.py"]
+
+
 # ``classbeat.jobs.issuer.owner_context`` builds a bare context for any UUID (#109 item 6). Only the
 # runner (the account-disabled failure and the shutdown hand-back) and the credit settle use it.
 OWNER_CONTEXT_USERS = {

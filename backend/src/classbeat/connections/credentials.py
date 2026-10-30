@@ -68,12 +68,18 @@ def build_credentials(
 @dataclass(frozen=True, slots=True, repr=False, eq=False)
 class OpenConnection:
     """A decrypted connection for one call: the row id, the provider, the credentials and the
-    version that was read (``wrapped_dek``), so status changes apply only to that version."""
+    versions that were read, so status changes apply only to that version.
+
+    ``generation`` (ADR 0009 section 5.4) is the connection the user made: ``hold``,
+    ``record_result`` and the flips compare it. ``version`` is the ``wrapped_dek`` read, which
+    every write of the row (a refresh, a rewrap, a reconnect) changes: a Spotify flip compares it
+    as well (section 6), so a 401 sent with a token that is no longer the row's flips nothing."""
 
     id: UUID
     provider: str
     credentials: Credentials
     version: bytes
+    generation: int
 
     def __repr__(self) -> str:
         return f"OpenConnection(id={self.id}, provider={self.provider!r}, credentials=...)"
