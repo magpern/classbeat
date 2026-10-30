@@ -91,6 +91,25 @@ Proposed and none of the M4 issues is startable.
   asked again). A failed or abandoned flow leaves the old connection working
   ([ADR 0009](adr/0009-spotify-connection.md) §7).
 
+## Amendment 6 (2026-10-30, Architect, ADR 0012; effective on its acceptance)
+
+How M3c reads, recorded in [ADR 0012](adr/0012-eval-suite-and-model-providers.md):
+
+- **M3c "done when"** ("models enabled per tier only after passing") is met **technically** when no
+  model route can be set without a recorded passing suite result for exactly that provider, model,
+  effort and stage group (the database enforces it), tested end to end with providers replaying
+  fixture responses. Recording a real result and enabling a model are the owner's live steps.
+- **"Per tier"**: M3c stores routes by an opaque `route_key`; M5 maps plans to route keys and its admin
+  calls M3c's `set_route`. Until then every job uses the `default` key, and with no route the
+  configured Anthropic model is used as today (the bootstrap; it can never name another provider).
+- **§5 "DeepSeek disabled"** is a setting (`CLASSBEAT_DEEPSEEK_ENABLED`, off) plus a catalog data
+  policy (`owner_pending`) that waits for the owner's privacy and terms decision. **§5 data to the
+  model:** Amendment 1's allowance is the owner's acceptance of Spotify's §III 14 risk for Claude only;
+  OpenAI also ships `owner_pending` until the owner extends it (ADR 0012 §6); eval runs send synthetic
+  data only.
+- **§11**: the smoke set stays as it is; the regression suite is versioned (`suite_version`) and
+  scored per stage group (`design`, `songs`) with the thresholds of ADR 0012 §4.3.
+
 ## Amendment 7 (2026-10-30, Architect, ADR 0011; effective on its acceptance)
 
 Like Amendment 5, this takes effect when [ADR 0011](adr/0011-tiers-quotas-and-admin.md) is accepted.
