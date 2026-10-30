@@ -138,3 +138,16 @@
   color: var(--cb-color-text);
   font: inherit;
 }
+
+.usage-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.usage-table th,
+.usage-table td {
+  padding: var(--cb-space-2);
+  border-bottom: 1px solid var(--cb-color-border);
+  text-align: left;
+  overflow-wrap: anywhere;
+}

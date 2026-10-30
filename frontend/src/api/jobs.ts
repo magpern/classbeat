@@ -39,7 +39,7 @@ export function isTerminal(state: string): boolean {
   return TERMINAL_STATES.includes(state)
 }
 
-function decodeJob(value: unknown): Job {
+export function decodeJob(value: unknown): Job {
   const item = object(value, 'job')
   const state = text(item, 'state')
   return {
@@ -200,17 +200,29 @@ export async function getMowlPlaylists(signal?: AbortSignal): Promise<Playlist[]
 
 export interface Operation {
   id: string
+  /** `mowl_attach_playlist`, `mowl_save_workout`, `mowl_update_workout`, ... ('' if absent). */
+  kind: string
   /** `pending`, `succeeded`, `failed` or `uncertain`. */
   state: string
   resolvedBy: string | null
+  /** The class a save or update belongs to (ADR 0007 section 12). */
+  classId: string | null
+  /**
+   * While a call of a multi-request write may still be running, the time before which Check
+   * again and Do it anyway are refused (`call_may_be_running`); null: actionable now.
+   */
+  actionableAt: string | null
 }
 
 function decodeOperation(value: unknown): Operation {
   const item = object(value, 'operation')
   return {
     id: text(item, 'id'),
+    kind: optionalText(item, 'kind') ?? '',
     state: text(item, 'state'),
     resolvedBy: optionalText(item, 'resolved_by'),
+    classId: optionalText(item, 'class_id'),
+    actionableAt: optionalText(item, 'actionable_at'),
   }
 }
 

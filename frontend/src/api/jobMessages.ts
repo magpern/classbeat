@@ -111,6 +111,10 @@ const STAGES: Record<string, string> = {
   music: 'Reading your playlist',
   design: 'Designing the class',
   revise: 'Changing the class',
+  prepare: 'Checking the class and your MOWL account',
+  read: 'Reading the workout in MOWL',
+  save: 'Writing to MOWL',
+  verify: 'Checking what MOWL kept',
 }
 
 export function stageLabel(stage: string | null): string {

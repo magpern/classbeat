@@ -20,6 +20,15 @@ export function reason(status: number, why: string): Response {
   return json({ detail: { reason: why } }, status)
 }
 
+export const USAGE_NONE = {
+  month: '2026-10',
+  total: { runs: 0, jobs: 0, input_tokens: 0, output_tokens: 0, cache_read_tokens: 0, cache_write_tokens: 0, cost_micros: 0 },
+  by_kind_model: [],
+  classes_designed: 0,
+  revisions: 0,
+  notes: [],
+}
+
 const ANONYMOUS = { authenticated: false, csrf_token: 'csrf-anon' }
 
 export const SIGNED_IN = {
@@ -32,7 +41,8 @@ export const SIGNED_IN = {
 /**
  * Stubs `fetch` with a table of `"METHOD /path"` handlers. A handler returns a Response or any
  * JSON value (answered 200); a missing route fails the test loudly. `/api/auth/session`
- * defaults to anonymous and `/api/connections` to none.
+ * defaults to anonymous, `/api/connections` and `/api/external-operations` to none and
+ * `/api/usage` to an empty month.
  */
 export function fakeApi(routes: Record<string, Handler | object | string>) {
   rememberCsrfToken(null)
@@ -40,6 +50,8 @@ export function fakeApi(routes: Record<string, Handler | object | string>) {
   const table: Record<string, Handler | object | string> = {
     'GET /api/auth/session': ANONYMOUS,
     'GET /api/connections': { connections: [] },
+    'GET /api/external-operations': { operations: [] },
+    'GET /api/usage': USAGE_NONE,
     ...routes,
   }
   const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {

@@ -411,6 +411,25 @@ describe('deleting a class', () => {
   })
 })
 
+describe('deleting while a write may still land', () => {
+  it('explains call_may_be_running, keeps the class and offers no confirm_uncertain', async () => {
+    const api = fakeApi({
+      ...SESSION_ROUTES,
+      ...classRoutes(),
+      [`DELETE ${CLASS_PATH}`]: () => reason(409, 'call_may_be_running'),
+    })
+    renderAt(PAGE)
+    fireEvent.click(await screen.findByRole('button', { name: 'Delete class' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Yes, delete this class' }))
+    expect(
+      await screen.findByText(/may still be writing this class to MOWL.*only record of that write.*Wait a few minutes/),
+    ).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Delete anyway' })).toBeNull()
+    expect(screen.getByRole('button', { name: 'Yes, delete this class' })).toBeInTheDocument()
+    expect(api.to('DELETE', `${CLASS_PATH}?confirm_uncertain=true`)).toHaveLength(0)
+  })
+})
+
 describe('a class that is not there', () => {
   it('is the same page for an unknown and a foreign class', async () => {
     fakeApi({

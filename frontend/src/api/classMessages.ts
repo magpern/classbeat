@@ -23,7 +23,7 @@ const REASONS: Record<string, string> = {
   quota: 'You have used up what your plan allows for now.',
   busy: 'You already have designs running. Wait for one to finish, then try again.',
   call_may_be_running:
-    'classbeat is writing this class to MOWL right now. Wait a few minutes, then try to delete it again.',
+    'classbeat may still be writing this class to MOWL, and deleting it now would remove the only record of that write. Wait a few minutes, then try to delete it again.',
   music_unlinked:
     'The music of this version is not in your connected MOWL account. Change it and save the new version.',
 }

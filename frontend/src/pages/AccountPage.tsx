@@ -5,6 +5,7 @@ import { Connections } from '../components/account/Connections'
 import { ChangeEmail, ChangePassword } from '../components/account/Credentials'
 import { SignInMethods } from '../components/account/SignInMethods'
 import { TwoFactor } from '../components/account/TwoFactor'
+import { Usage } from '../components/account/Usage'
 import { Notice, Section, useAction } from '../components/forms'
 import { RequireAuth } from '../components/RequireAuth'
 import { useQuery, useRouter } from '../router/Router'
@@ -48,6 +49,7 @@ function Account() {
         )
       ) : null}
       <Connections />
+      <Usage />
       <SignInMethods />
       <ChangeEmail current={email} />
       <ChangePassword />
