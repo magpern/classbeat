@@ -67,6 +67,21 @@ class Limits:
             turn_output_reserve=settings.agent_turn_output_reserve,
         )
 
+    def for_song_stage(
+        self, settings: Settings, *, max_turns: int, max_tool_calls: int
+    ) -> "Limits":
+        """The song-picking stages' limits (ADR 0008 section 3): their own turn and tool-call
+        caps, 3 corrections, the stage wall time and turn reserve of the settings, and the song
+        kinds' job ceiling (``CLASSBEAT_SONG_JOB_COST_MICROS``)."""
+        return Limits(
+            max_turns=max_turns,
+            max_tool_calls=max_tool_calls,
+            max_corrections=3,
+            stage_seconds=settings.agent_stage_seconds,
+            job_cost_micros=settings.song_job_cost_micros,
+            turn_output_reserve=settings.agent_turn_output_reserve,
+        )
+
 
 def tokens_for(chars: int) -> int:
     return math.ceil(max(chars, 0) / CHARS_PER_TOKEN)

@@ -24,6 +24,7 @@ ADR 0007 section 2 adds where a revision came from: ``origin`` (``design_draft``
 and still validates.
 """
 
+import re
 import uuid
 from collections.abc import Mapping, Sequence
 from importlib.metadata import PackageNotFoundError, version
@@ -31,7 +32,14 @@ from typing import Any, Literal, Self
 from uuid import UUID
 
 from mowl import music, spotify
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    SerializerFunctionWrapHandler,
+    model_serializer,
+    model_validator,
+)
 from sqlalchemy import text
 
 from classbeat import __version__ as classbeat_version
@@ -159,12 +167,20 @@ class Provenance(BaseModel):
     usage: ProvenanceUsage
     cost_micros: int = Field(ge=0)
     # ADR 0007 section 2; absent on revisions stored before it.
-    origin: Literal["design_draft", "revise_draft"] | None = None
+    origin: Literal["design_draft", "revise_draft", "design_with_songs", "revise_songs"] | None = (
+        None
+    )
     base_revision_id: UUID | None = None
     request_message_id: UUID | None = None
+    # ADR 0008 section 3, on a ``song_list`` revision: the version of the song schemas and the
+    # ``prompt_version`` of every stage that ran (``pick_pool``, ``choose_songs``).
+    schema_version: int | None = Field(default=None, ge=1)
+    stage_versions: dict[str, str] | None = None
 
     @model_validator(mode="after")
     def _lineage(self) -> Self:
+        if self.origin == "revise_songs":  # a song change names what the revision started from
+            return self
         revise = self.origin == "revise_draft"
         if revise != (self.base_revision_id is not None) or revise != (
             self.request_message_id is not None
@@ -172,17 +188,43 @@ class Provenance(BaseModel):
             raise ValueError("a revise names its base and request; a design names neither")
         return self
 
+    @model_serializer(mode="wrap")
+    def _without_unused_song_fields(self, handler: SerializerFunctionWrapHandler) -> dict[str, Any]:
+        """A revision that was not made from picked songs is stored exactly as before: the two
+        song fields are left out when unset (additive, ADR 0008 section 3)."""
+        out: dict[str, Any] = handler(self)
+        for key in ("schema_version", "stage_versions"):
+            if out.get(key) is None:
+                out.pop(key, None)
+        return out
+
+    @model_validator(mode="after")
+    def _versions(self) -> Self:
+        if (self.schema_version is None) != (self.stage_versions is None):
+            raise ValueError("the schema version and the stage versions come together")
+        for stage, prompt in (self.stage_versions or {}).items():
+            if not re.fullmatch(r"[a-z][a-z0-9_]{0,39}", stage) or not re.fullmatch(
+                r"[0-9a-f]{64}", prompt
+            ):
+                raise ValueError("stage_versions maps a stage name to a SHA-256 prompt_version")
+        return self
+
 
 def provenance(
     runs: Sequence[StageOutcome],
     music_map: Mapping[str, Any],
     *,
-    origin: Literal["design_draft", "revise_draft"] = "design_draft",
+    origin: Literal[
+        "design_draft", "revise_draft", "design_with_songs", "revise_songs"
+    ] = "design_draft",
     base_revision_id: UUID | None = None,
     request_message_id: UUID | None = None,
+    schema_version: int | None = None,
 ) -> Provenance:
     """From the job's stage runs (the last one made the content) and the map it was fitted to;
-    ``origin`` and the two ids say what the revision was made from (ADR 0007 section 2)."""
+    ``origin`` and the two ids say what the revision was made from (ADR 0007 section 2).
+    ``schema_version`` (the song schemas', ADR 0008 section 3) also records every stage's
+    ``prompt_version`` as ``stage_versions``; the last run's stays ``prompt_version``."""
     if not runs:
         raise ValueError("a revision is made by at least one stage run")
     last = runs[-1]
@@ -211,4 +253,8 @@ def provenance(
         origin=origin,
         base_revision_id=base_revision_id,
         request_message_id=request_message_id,
+        schema_version=schema_version,
+        stage_versions=(
+            {r.info.stage: r.info.prompt_version for r in runs} if schema_version else None
+        ),
     )

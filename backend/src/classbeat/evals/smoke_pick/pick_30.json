@@ -1,0 +1,13 @@
+{
+ "name": "pick_30",
+ "about": "A 30 minute class with one climb and two sprints, picked from scratch.",
+ "brief": {
+  "length_min": 30,
+  "intensity": "moderate",
+  "climbs": 1,
+  "sprints": 2
+ },
+ "catalogue": {
+  "size": 40
+ }
+}
