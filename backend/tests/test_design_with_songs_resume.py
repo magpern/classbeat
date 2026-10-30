@@ -13,7 +13,9 @@ from uuid import UUID
 
 import pytest
 
+from ctx import make_context
 from songtools import CHOSEN, Rider, SongEnv, design_script, failing_script
+from spotifyfake import CLIENT_A, USER_B
 
 pytestmark = pytest.mark.usefixtures("songenv")
 
@@ -140,6 +142,8 @@ async def test_an_uncertain_final_write_is_the_users_and_a_resume_designs_after_
     assert [(o["kind"], o["class_id"], o["state"]) for o in listed] == [
         (kind, str(row.class_id), "uncertain")
     ]
+    # Undecided: a resume would make another playlist, so it is refused and costs nothing.
+    await refused_quietly(songenv, rider, row.class_id, revision, "write_unresolved")
     anyway = await rider.browser.post(f"{OPS}/{listed[0]['id']}/do-it-anyway")
     assert anyway.status_code == 200, anyway.text
     creates = songenv.creates()
@@ -151,3 +155,11 @@ async def test_an_uncertain_final_write_is_the_users_and_a_resume_designs_after_
     assert songenv.fake.playlists[final.playlist_id].entries == [
         f"spotify:track:{i}" for i in CHOSEN
     ]
+    assert len(songenv.class_playlists(rider.user_id)) == (1 if write == "create" else 2)
+
+
+async def test_a_resume_for_another_spotify_account_is_account_changed(songenv: SongEnv) -> None:
+    rider = await songenv.rider()
+    _, class_id, revision = await failed_after_approval(songenv, rider)
+    await songenv.spot.seed(make_context(rider.user_id), CLIENT_A, USER_B)  # same row, new user
+    await refused_quietly(songenv, rider, class_id, revision, "account_changed")

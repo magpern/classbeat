@@ -16,8 +16,11 @@ job, the per-user limit), in this order, each refusal writing nothing:
      is spent once its list is done) or is still ``queued`` or ``running`` (another resume in
      flight). After a resume that failed, the user may resume again against the same receipt.
 
-   An expired, superseded or never-approved list therefore cannot be resumed. The new job
-   reserves the credit again (the failed one released it);
+   An expired, superseded or never-approved list therefore cannot be resumed. Last,
+   ``write_unresolved`` while a final-playlist write of the class is ``pending`` or ``uncertain``
+   (``classbeat.operations.orphans.playlist_unresolved``, after ``resolve``): a resume never makes
+   another playlist before the user's Check again or Do it anyway on it. The new job reserves the
+   credit again (the failed one released it);
 3. ``not_connected`` unless the Spotify row is ``connected`` with a Spotify user id (share-locked
    for the rest of the transaction);
 4. ``consent_missing`` unless the user's pool consent is given for that Spotify account;
@@ -54,6 +57,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from classbeat import connections
 from classbeat.context import UserContext
 from classbeat.jobs.kinds import SONG_KIND_NAMES, Admitted, Approving, Refused
+from classbeat.operations import orphans
 from classbeat.songs import config, song_list
 from classbeat.songs.inputs import DesignWithSongsInput, Seed
 
@@ -126,6 +130,8 @@ async def _admit_resume(
         return Refused("receipt_invalid")
     if found.account != account:
         return Refused("account_changed")
+    if await orphans.playlist_unresolved(db, ctx, parsed.class_id):
+        return Refused("write_unresolved")  # the user decides the earlier write first
     return Admitted()
 
 

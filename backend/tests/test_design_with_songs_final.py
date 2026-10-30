@@ -7,6 +7,8 @@ The 120-track page rule of A3 is covered where it lives, the fill itself
 """
 
 import asyncio
+import json
+import uuid
 from typing import Any
 from uuid import UUID
 
@@ -216,6 +218,56 @@ async def test_a_deleted_class_stops_the_job_at_the_fence(
         "SELECT count(*) FROM class_revisions WHERE class_id = :c", c=class_id
     ).scalar_one() == 0  # fmt: skip
     assert songenv.providers[-1].sent == []  # the design stage never started
+
+
+async def test_a_reconnect_during_prepare_stops_before_any_write(
+    songenv: SongEnv, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """``prepare`` holds both connections in its fence: a Spotify reconnect after it opened the
+    connection (here: while it opens MOWL's) ends the job there, before ``create``."""
+    rider = await songenv.rider()
+    job_id, _ = await songenv.approved(rider)
+    opening = phase2.open_connection
+
+    async def reconnecting(*args: Any, **kwargs: Any) -> Any:
+        opened = await opening(*args, **kwargs)
+        await songenv.spot.seed(make_context(rider.user_id), CLIENT_A, USER_A)
+        return opened
+
+    monkeypatch.setattr(phase2, "open_connection", reconnecting)
+    writes = songenv.writes()
+    row = await songenv.run(job_id)
+    assert (row.state, row.error_category) == ("failed", "not_connected")
+    assert songenv.stages(job_id)[-1] == "prepare"
+    assert songenv.writes() == writes
+
+
+async def test_a_newer_list_while_designing_stores_no_draft(
+    songenv: SongEnv, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The final transaction checks again that the approved list is still the class's newest."""
+    rider = await songenv.rider()
+    job_id, _ = await songenv.approved(rider)
+    class_id = songenv.row(job_id).class_id
+    music = phase2._music  # pyright: ignore[reportPrivateUsage]
+
+    async def then_supersede(*args: Any, **kwargs: Any) -> Any:
+        step = await music(*args, **kwargs)
+        songenv.sql(
+            "INSERT INTO class_revisions (id, owner_id, class_id, number, kind, content, "
+            "content_hash, music, provenance) VALUES (:id, :o, :c, 99, 'song_list', "
+            "CAST(:content AS jsonb), decode(repeat('ab', 32), 'hex'), '{}', '{}')",
+            id=uuid.uuid4(), o=rider.user_id, c=class_id, content=json.dumps({"songs": []}),
+        )  # fmt: skip
+        return step
+
+    monkeypatch.setattr(phase2, "_music", then_supersede)
+    row = await songenv.run(job_id)
+    assert (row.state, row.error_category) == ("failed", "invalid_input")
+    assert klass(songenv, class_id).current_revision_id is None
+    assert songenv.sql(
+        "SELECT count(*) FROM class_revisions WHERE class_id = :c AND kind = 'draft'", c=class_id
+    ).scalar_one() == 0  # fmt: skip
 
 
 async def test_a_spotify_reconnect_while_choosing_stores_no_list(
