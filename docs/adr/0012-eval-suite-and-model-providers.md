@@ -315,8 +315,8 @@ Must succeed: a passing and a failing result, a route at the passing result, del
 **Who writes a result.** Only the live command with `--record`, in the worker container (the one with
 the keys and a database connection), after the last run: it computes the verdict from the runs it just
 made, refuses to record when the built provider's kind is not the choice's catalog provider (a `fake`
-provider never records), and inserts the rows through **one function, `classbeat.models.store.record_result`**,
-with the file's SHA-256 and the given authorization. There is **no import of a result file**.
+provider never records), and inserts the rows through **one function,
+`classbeat.models.store.record_result`**, with the file's SHA-256 and the given authorization. There is **no import of a result file**.
 
 What is enforced, and what is not. Web and worker both connect as the app role, which has `INSERT` on the
 table, so the database alone cannot tell a live run's row from any other insert. The enforcement is:
@@ -325,8 +325,8 @@ migration that creates the table and the tests that check it are outside its sco
 `classbeat.models.store` mentions `model_eval_results` in SQL or a table object, and only
 `classbeat.evals.suite_live` imports `record_result` (the test fails on a new caller, and its allowlist is
 a reviewed change); (b) the two `CHECK`s, so every row's `passed` equals the boolean `passed` of its
-`NOT NULL` verdict and a `fake` result can never exist; (c) the composite foreign key on routes. Together: application code other
-than the live command cannot write a result without failing CI, and no route can point at a failing,
+`NOT NULL` verdict and a `fake` result can never exist; (c) the composite foreign key on routes.
+Together: application code other than the live command cannot write a result without failing CI, and no route can point at a failing,
 mismatched or fake result even if it did. Not enforced: that the verdict rows came from real provider
 answers rather than a doctored suite run by someone with the worker's shell, or a direct `INSERT` by the
 operator; the operator is trusted (accepted risk). A separate recording database role would make (a) a
@@ -517,7 +517,8 @@ One issue per PR, milestone "M3c Eval and providers". "Opus" marks an Opus Devel
 keys and egress, the gate); every PR gets a fresh Reviewer (Opus for the Opus issues and for EV1, Sonnet
 for the rest). No issue is startable before this ADR is accepted. Fakes and fixtures only.
 
-In-flight M4 work (#180 to #186, #198, #200) owns the song job kinds in `classbeat/songs/`, `classbeat/agent/{pick_pool,
+In-flight M4 work (#180 to #186, #198, #200) owns the song job kinds in `classbeat/songs/`,
+`classbeat/agent/{pick_pool,
 choose_songs,songs,registry}.py`, the class API's song views and the frontend class pages; #196 owns
 `evals/compare.py`. No M3c issue edits those files before they merge; G2 and Z7 are sequenced after them.
 Expected rebases, not collisions: P0 edits `config.py` (also changed by #200), G2 edits `agent/records.py`
