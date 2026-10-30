@@ -33,9 +33,9 @@ Relied on, unchanged:
 - ADR 0008 §4: `design_with_songs` consumes the class credit; `revise_songs` does not;
   `CLASSBEAT_SONG_PICKING` is the feature switch.
 - The M3c boundary agreed with ADR 0012 (M3c, in review in parallel): M3c owns
-  `classbeat.models` (`model_routes` keyed by an opaque `route_key` and stage, `set_route` that
+  `classbeat.models` (`model_routes` keyed by an opaque `route_key` and stage group (`design`, `songs`), `set_route` that
   refuses a model without a passing eval, `resolve_route` used by the worker). M5 owns what a
-  route key means for a tier, choosing a job's route key at creation, and the admin screen that
+  route key means for a tier, choosing a job's route key at creation (into the `route_key` job-input field M3c adds, #215), and the admin screen that
   calls `set_route`. Threat-model rows: M3c T79 to T84, M5 from T85.
 
 What exists today: every job runs on `UnmeteredLedger` (always allows, records nothing beyond
@@ -359,7 +359,7 @@ New threats T85 to T96 in `docs/security/threat-model.md`. Tests (fakes only, no
   switch under the database flag.
 - The admin can read emails, plans, usage and connection status of every user, and nothing of their
   classes or credentials.
-- Roadmap Amendment 6 records what M5 defers or reads differently (price table, priority queue,
+- Roadmap Amendment 7 records what M5 defers or reads differently (price table, priority queue,
   plans on invites, `UserContext.entitlements`).
 
 ## M5 issue breakdown
@@ -379,7 +379,7 @@ startable before this ADR is accepted. Fakes only.
 | AD2 (#220) | Admin codes: invites and redeem codes | Opus | Opus | AR1, PL1 |
 | AD3 (#221) | Admin usage, cost and jobs views; admin refund | Opus | Opus | AR1, QT1 |
 | AD4 (#222) | Admin settings, flags, plans' limits, audit-log view | Opus | Opus | AR1, FL1 |
-| AD5 (#223) | Model routes per plan (ADR 0012's `set_route`) and the route key at job creation | Opus | Opus | AR1, QT1, M3c's models issue |
+| AD5 (#223) | Model routes per plan (ADR 0012's `set_route`) and the route key at job creation | Opus | Opus | AR1, QT1, #211, #215 (M3c) |
 | FE1 (#224) | Account plan and usage, redeem, trial, quota sentences, banner | Sonnet | Sonnet | PL1, QT1, FL1, #184 |
 | FE2 (#225) | Admin pages: shell and step-up, users, codes | Sonnet | Sonnet | AD1, AD2 |
 | FE3 (#226) | Admin pages: usage, jobs, settings, audit | Sonnet | Sonnet | AD3, AD4, FE2 |

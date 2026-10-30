@@ -91,10 +91,10 @@ Proposed and none of the M4 issues is startable.
   asked again). A failed or abandoned flow leaves the old connection working
   ([ADR 0009](adr/0009-spotify-connection.md) §7).
 
-## Amendment 6 (2026-10-30, Architect, ADR 0011; effective on its acceptance)
+## Amendment 7 (2026-10-30, Architect, ADR 0011; effective on its acceptance)
 
 Like Amendment 5, this takes effect when [ADR 0011](adr/0011-tiers-quotas-and-admin.md) is accepted.
-If M3c's ADR 0012 adds an amendment first, this one is renumbered in the later PR.
+Amendment 6 is M3c's (ADR 0012, PR #229).
 
 - **§4 refunds:** every job that ends other than `completed` (failed, cancelled at any time,
   expired) releases its class credit, as ADR 0005 §5 settles today; a per-user monthly cost cap per

@@ -112,7 +112,7 @@ GitHub hold the detail.
   generation"): the guard is `generation`, compared together with `id`.
 - **M5 design proposed:** [ADR 0011](adr/0011-tiers-quotas-and-admin.md) (tiers, quota reservation and
   refund, concurrency limits and cost caps, codes, grants, trial, the `classbeat_maint` admin path with
-  its audit log, flags), roadmap Amendment 6, threat model T85 to T96. Split into 15 issues in milestone
+  its audit log, flags), roadmap Amendment 7, threat model T85 to T96. Split into 15 issues in milestone
   "M5 Tiers and admin"; none startable until the ADR is accepted, and QT1, FL1, FE1 and T1 wait for
   their M4 dependencies. The owner's questions (limits, testers' plan, trial, refunds and more) are in
   ADR 0011 §11; development proceeds on its defaults.
