@@ -208,6 +208,9 @@ function Completed({ job }: { job: Job }) {
       ) : null}
       {state === 'ready' && draft !== null ? <DraftSummaryView draft={draft} /> : null}
       <p>
+        <Link className="button" to={`/classes/${job.classId}`}>
+          Open the class
+        </Link>
         <Link className="button button--secondary" to="/classes/new">
           Design another class
         </Link>

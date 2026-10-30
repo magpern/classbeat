@@ -83,6 +83,7 @@ describe('the Designing page', () => {
     })
     renderAt(`/jobs/${JOB_ID}`)
     expect(await screen.findByRole('heading', { name: 'Your class is ready' })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Open the class' })).toHaveAttribute('href', `/classes/${CLASS_ID}`)
     // Server text is text: markup in names, notes and titles is shown literally, never parsed.
     expect(await screen.findByText('Tuesday climb <b>bold</b>')).toBeInTheDocument()
     expect(screen.getByText('Two hills <img src=x onerror=alert(1)>')).toBeInTheDocument()

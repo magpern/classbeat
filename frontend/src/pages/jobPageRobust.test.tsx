@@ -117,12 +117,14 @@ describe('after a decision', () => {
     renderAt(`/jobs/${JOB_ID}`)
     fireEvent.click(await screen.findByRole('button', { name: 'Check again' }))
     expect(await screen.findByText(/playlist is in your MOWL music/)).toBeInTheDocument()
+    // Wait for each effect of the decision (the second read, the row gone, Design again offered)
+    // instead of asserting right after the first of them: under load they land in separate ticks.
     await waitFor(() => {
+      expect(reads).toBe(2)
       expect(screen.queryByRole('button', { name: 'Check again' })).toBeNull()
     })
-    expect(reads).toBe(2)
+    expect(await screen.findByRole('button', { name: /Design again|Start a new design/ })).toBeInTheDocument()
     expect(screen.queryByTestId('no-undecided')).toBeNull() // the outcome says it already
-    expect(screen.getByRole('button', { name: /Design again|Start a new design/ })).toBeInTheDocument()
   })
 
   it('drops the decided row even when the second read fails', async () => {
@@ -202,7 +204,10 @@ describe('the job hook', () => {
     renderAt(`/jobs/${JOB_ID}`)
     fireEvent.click(await screen.findByRole('button', { name: 'Stop designing' }))
     expect(await screen.findByText('This design has just finished.')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Stop designing' })).not.toBeDisabled()
+    // The action is released in a later tick than its error text: wait for it.
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Stop designing' })).not.toBeDisabled()
+    })
   })
 })
 

@@ -398,6 +398,35 @@ describe('an undecided write', () => {
     })
   })
 
+  it('Check again that proves nothing was written says so, and offers a plain Update again', async () => {
+    let checked = false
+    const api = start(
+      { saved: saved() },
+      {
+        [`GET ${OPS}`]: () => ({ operations: checked ? [] : [op('mowl_update_workout')] }),
+        // The backend records resolved_by = 'user' for Check again too.
+        [`POST ${OPS}/${OP}/check-again`]: () => {
+          checked = true
+          return op('mowl_update_workout', { state: 'failed', resolved_by: 'user' })
+        },
+        'POST /api/jobs': () => jobBody('queued', { id: SAVE_JOB, kind: 'update_workout' }),
+      },
+    )
+    renderAt(PAGE)
+    fireEvent.click(await screen.findByRole('button', { name: 'Check again' }))
+    expect((await screen.findAllByText(/checked and your MOWL workout is unchanged/)).length).toBeGreaterThan(0)
+    expect(document.body).not.toHaveTextContent('Understood')
+    fireEvent.click(await screen.findByRole('button', { name: 'Update again' }))
+    // The plain Update dialog, not the Update anyway one: the check proved the MOWL copy untouched.
+    const dialog = screen.getByRole('group', { name: 'Confirm' })
+    expect(dialog).not.toHaveTextContent(/Update anyway\?/)
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Update workout' }))
+    await waitFor(() => {
+      expect(jobsPosts(api)).toHaveLength(1)
+    })
+    expect(jobsPosts(api)[0]!.body).toMatchObject({ kind: 'update_workout', input: { overwrite: false } })
+  })
+
   it('Do it anyway for an update warns, then Update again sends overwrite only after its dialog', async () => {
     let decided = false
     const api = start(
