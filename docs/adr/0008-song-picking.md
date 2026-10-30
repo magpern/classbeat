@@ -322,10 +322,11 @@ revised or saved as a draft). `content` (≤ 64 KB, versioned `v: 1`):
 
 `content_hash` = SHA-256 of its canonical JSON (the same function as drafts). *Amended by ADR 0013 §9
 (2026-10-30):*
-- content `v: 2` adds `cover` to each song: the album image URL, host-pinned, or `null`;
+- content `v: 2` adds `cover` to each song: the album image URL, host-pinned (checked before
+  storing and before returning), or `null`;
 - `v: 1` stays readable;
 - `content_hash` covers the field;
-- the URL never goes to the model.
+- the URL is never taken from model output and never goes to the model.
 
 `music` =
 `{source: "claude_pick", fingerprint, spotify_user_id}`; `provenance` as ADR 0006 §6 plus

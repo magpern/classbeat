@@ -315,15 +315,16 @@ fails `consent_missing` before any call. Consent is logged as `job_events`-free 
 - **Only `classbeat.egress` builds clients** (ADR 0006 §9, guard test): `classbeat.spotify.http` uses its
   `httpx` factory with `trust_env=False`; the library keeps using the worker's process-wide `urllib`
   opener. No new HTTP client construction elsewhere; the guard test is extended, not relaxed.
-- **No URL from Spotify is ever fetched.** Pagination uses `offset` and `total`, never the `next` URL;
+- **No URL from Spotify is ever fetched by classbeat's servers.** Pagination uses `offset` and `total`, never the `next` URL;
   `href`, `external_urls`, `images`, `preview_url` and `uri` values from responses are not requested,
   stored or shown (URIs are rebuilt from validated 22-character ids: `^[0-9A-Za-z]{22}$`). *Amended by
   ADR 0013 §9 (2026-10-30), one exception: the album image URL (`image`) on M-1 and M-5 track
   entries.*
   - It is never requested by the server.
   - It is stored only as `cover` in the `song_list` content, after
-    `re.fullmatch(r"https://i\.scdn\.co/image/[0-9a-f]{40}", url)`, and otherwise becomes `null`.
-  - It never goes to the model.
+    `re.fullmatch(r"https://i\.scdn\.co/image/[0-9a-f]{40}", url)`, checked again before it is
+    returned, and otherwise becomes `null`.
+  - It is never taken from model output and never goes to the model.
   - Only the browser loads it, through `CoverArt`, with no referrer, behind the CSP's `img-src`.
   - Every other URL stays unrequested, unstored and unshown.
 

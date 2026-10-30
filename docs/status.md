@@ -122,7 +122,7 @@ GitHub hold the detail.
   their M4 dependencies. The owner's questions (limits, testers' plan, trial, refunds and more) are in
   ADR 0011 §11; development proceeds on its defaults.
 - **MU Night Studio UI** (owner decisions 2026-10-30, roadmap Amendment 8). ADR 0013 was merged
-  in #237 and accepted in #241's PR, which also added the "amended by ADR 0013 §9" notes to:
+  in #237 and accepted in #256 (closes #241), which also added the "amended by ADR 0013 §9" notes to:
   - ADR 0001 Frontend;
   - ADR 0008 §5 and §8;
   - ADR 0009 §10, M-1 and M-5;
@@ -132,13 +132,13 @@ GitHub hold the detail.
   - #242 L2: the `mowl-workouts` 0.7.0 library release, by the local Architect.
   - #243 UI1: the foundation, startable now.
   - #246 UI2: the shell.
-  - #248 UI4, #249 UI5, #254 UI9: pages, after UI2.
-  - #247 UI3, #250 UI6, #251 UI7, #253 UI8: wait for the M4, M3c and M5 issues named in them.
+  - #254 UI9: the landing and sign-in pages, after UI2.
+  - #247 UI3, #248 UI4, #249 UI5, #250 UI6, #251 UI7, #253 UI8: also wait for the M4, M3c and M5
+    issues named in them (#181 to #184, #217, #224).
   - #255 UI10: the done-when checks.
 
-  Mockups of every main screen are on the owner's design canvas. **The GitHub milestone "MU Night
-  Studio UI" still has to be created and these issues assigned to it.** The cloud session that
-  planned it has no milestone API; the local Architect does it with `gh`.
+  Mockups of every main screen are on the owner's design canvas. The issues are in GitHub
+  milestone "MU Night Studio UI" (#12).
 - Releases: v0.1.0 (cut partway through M0); v0.2.0 is not cut yet (deferred to save Actions quota). Image
   `ghcr.io/magpern/classbeat`, private.
 

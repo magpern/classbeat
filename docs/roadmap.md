@@ -163,7 +163,9 @@ The owner's decisions apply now. The design that carries them out is
   M5 and is done **before M6 starts**, so the testers get the new UI on the VPS.
   - Deliverable: ADR 0013, issues #242, #243, #246 to #251 and #253 to #255.
   - Done when:
-    - every page uses the ADR 0013 tokens and components, with no colour outside `tokens.css`;
+    - every page uses the ADR 0013 tokens and components, with no colour outside `tokens.css`. That
+      includes the M5 plan and admin pages, which use the components once UI1 has merged; UI2
+      restyles any that merged before it;
     - the class profile follows ADR 0013 §7;
     - covers load only from `i.scdn.co`, through `CoverArt`, behind the CSP header;
     - UI10's viewport, axe and bundle checks are green in CI.
