@@ -199,6 +199,11 @@ async def test_actionable_at_is_one_rule_for_every_row(wenv: WriteEnv) -> None:
     assert await actionable(huge) == MAX_BOUND_SECONDS + CALL_MAY_RUN_MARGIN_SECONDS
     negative = plant(wenv, owner, "uncertain", context={"bound_seconds": -500})
     assert await actionable(negative) == CALL_MAY_RUN_MARGIN_SECONDS
+    # A jsonb number past float8's range clamps too (PR #172 review item 4), not errors.
+    beyond = plant(wenv, owner, "uncertain", context={"bound_seconds": 10**400})
+    assert await actionable(beyond) == MAX_BOUND_SECONDS + CALL_MAY_RUN_MARGIN_SECONDS
+    below = plant(wenv, owner, "uncertain", context={"bound_seconds": -(10**400)})
+    assert await actionable(below) == CALL_MAY_RUN_MARGIN_SECONDS
     now = datetime.now(UTC)
     returned = plant(wenv, owner, "uncertain", pending_at=now, call_ended_at=now)
     assert await actionable(returned) is None

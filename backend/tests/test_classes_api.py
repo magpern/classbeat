@@ -2,6 +2,7 @@
 and the class delete, against Postgres. Setup rows are written as the superuser; everything under
 test runs as ``classbeat_app`` through the web app. Fakes only."""
 
+import base64
 import hashlib
 import json
 import uuid
@@ -901,6 +902,8 @@ async def test_the_listing_pages_with_a_cursor(browsers: Any, jobs_admin: Connec
 
     for bad in ("limit=0", "limit=501", "limit=x"):
         assert (await browser.get(f"/api/classes?{bad}")).status_code == 422
-    for cursor in ("!!", "e30", "W10"):  # not base64, {}, []
+    naive = json.dumps(["2026-01-01T00:00:00", expected[0]]).encode()  # no offset
+    naive_cursor = base64.urlsafe_b64encode(naive).decode().rstrip("=")
+    for cursor in ("!!", "e30", "W10", naive_cursor):  # not base64, {}, [], a naive time
         refused = await browser.get(f"/api/classes?cursor={cursor}")
         assert reason(refused) == (422, "invalid_cursor")

@@ -58,6 +58,7 @@ from classbeat import mowl_state
 from classbeat.connections import ConnectionFailure, call_opened, open_connection
 from classbeat.operations.kinds import (
     INCONCLUSIVE,
+    MAX_BOUND_SECONDS,
     OPERATION_KINDS,
     Operation,
     OperationKind,
@@ -73,7 +74,6 @@ KIND: Final = "mowl_save_workout"
 KEY_SUFFIX: Final = ":save"
 PAGE_SIZE: Final = 50  # ``api.list_workouts``' page
 REQUEST_SECONDS: Final = 30.0  # the total deadline of one request (the library's timeout)
-MAX_BOUND_SECONDS: Final = 1800.0
 MAX_PROGRAM_READS: Final = 3
 
 _lag: float | None = None
@@ -92,7 +92,7 @@ def bound_seconds(segments: int) -> float:
     three per segment, the segment list), one to spare, at most ``MAX_BOUND_SECONDS``."""
     if segments < 1:
         raise ValueError("a workout has segments")
-    return min(REQUEST_SECONDS * (3 + 3 * segments), MAX_BOUND_SECONDS)
+    return min(REQUEST_SECONDS * (3 + 3 * segments), float(MAX_BOUND_SECONDS))
 
 
 def idempotency_key(job_id: UUID) -> str:
@@ -152,12 +152,17 @@ def _names(listing: list[Any]) -> dict[int, object]:
     return out
 
 
-def _name_key(name: str) -> str:
-    """Whitespace collapsed, NFKC-normalized (so ``…`` is ``...`` and a composed or decomposed
-    accent is the same) and case-folded, without a trailing ``...``: a listing that cuts a long
-    name short may end it with an ellipsis, which then only marks a prefix."""
-    key = " ".join(unicodedata.normalize("NFKC", name).split()).casefold()
-    return key[:-3].rstrip() if key.endswith("...") else key
+def _name_key(name: str, *, nfkc: bool) -> str:
+    """Whitespace collapsed, NFKC-normalized if ``nfkc`` (so ``…`` is ``...`` and a composed or
+    decomposed accent is the same) and case-folded, without a trailing ``...`` or ``…``: a
+    listing that cuts a long name short may end it with an ellipsis, which then only marks a
+    prefix."""
+    text = unicodedata.normalize("NFKC", name) if nfkc else name
+    key = " ".join(text.split()).casefold()
+    for mark in ("...", "…"):
+        if key.endswith(mark):
+            return key[: -len(mark)].rstrip()
+    return key
 
 
 def may_be_named(listed: object, name: str) -> bool:
@@ -167,8 +172,13 @@ def may_be_named(listed: object, name: str) -> bool:
     another Unicode normalization of the same text)."""
     if not isinstance(listed, str) or not listed.strip():
         return True
-    a, b = _name_key(listed), _name_key(name)
-    return a.startswith(b) or b.startswith(a)
+    # A union: NFKC doesn't preserve prefixes (a decomposed ``Café Climb`` cut to
+    # ``Cafe`` only matches unnormalized), so either key matching keeps the program.
+    for nfkc in (False, True):
+        a, b = _name_key(listed, nfkc=nfkc), _name_key(name, nfkc=nfkc)
+        if a.startswith(b) or b.startswith(a):
+            return True
+    return False
 
 
 def _lag_passed(operation: Operation) -> bool:

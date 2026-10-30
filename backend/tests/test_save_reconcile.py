@@ -232,6 +232,10 @@ def test_the_name_filter_survives_ellipsis_and_unicode_normalization() -> None:
     ):
         assert operation.may_be_named(listed, name), listed
     assert operation.may_be_named("Caf\u00e9 ride", "Cafe\u0301 ride...")  # on the spec's side too
+    # PR #172 review: NFKC doesn't keep prefixes, so a decomposed name cut after the base letter
+    # only matches unnormalized; the filter matches if either key does.
+    assert operation.may_be_named("Cafe", "Cafe\u0301 Climb")
+    assert operation.may_be_named("Cafe\u0301 Climb", "Cafe")
     for listed in ("Wednesday cl…", "Tuesday hill...", "Made in the app…"):
         assert not operation.may_be_named(listed, name), listed
 

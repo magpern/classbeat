@@ -65,9 +65,14 @@ def _encode_cursor(after: service.Cursor) -> str:
 def _decode_cursor(cursor: str) -> service.Cursor | None:
     try:
         at, class_id = json.loads(base64.urlsafe_b64decode(cursor + "=" * (-len(cursor) % 4)))
-        return datetime.fromisoformat(at), UUID(class_id)
+        when = datetime.fromisoformat(at)
+        parsed = UUID(class_id)
     except (ValueError, TypeError):  # bad base64, JSON, shape, timestamp or uuid
         return None
+    # A cursor names an instant: a naive timestamp would be read in the session's time zone.
+    if when.utcoffset() is None:
+        return None
+    return when, parsed
 
 
 @router.get("", response_model=ClassesOut, responses={422: {}})
