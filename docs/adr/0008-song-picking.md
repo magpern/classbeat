@@ -78,6 +78,18 @@ never flips a user's privacy itself); 403 is `forbidden`. All three are `failed`
 `public: false` and `collaborative: false` are sent explicitly on every create (the library fixes
 them, ADR 0009 M-2).
 
+> **Amendment, 2026-10-30 (Architect; issue #198 items 4 and 5):** the text above stays; this aligns it with
+> `backend/src/classbeat/playlists/replace.py`.
+> - *Final playlists.* The owner check of a final playlist maps a 404 to `not_found`, and a 403, or a
+>   playlist that is readable but not owned by the connected user, public or collaborative, to `forbidden`
+>   (`replace.py:91-92`, `:155-156`, `:194`). The pool keeps `pool_missing`, `pool_unusable` and `forbidden`.
+>   `not_found` is as in ADR 0009 (404 on a playlist addressed by id).
+> - *Owner-check transport failures.* An owner-check request that was never sent (a `NEVER_SENT` category) or
+>   that Spotify answered with another 4xx is `failed` with nothing written (`replace.py:143-157`,
+>   `:189-191`). Any other failure of that request (dropped, a 5xx, refused after sending) is `uncertain`
+>   (`replace.py:192`): the replace is a multi-request write (`single_request = False`), so only an owner
+>   check refused before sending proves that nothing took effect.
+
 **Two operation kinds**, both through `perform` (ADR 0005 §7, ADR 0007 §8). Both share-lock the
 Spotify connection in the decide transaction and compare its `generation` (ADR 0009 §5) and its
 Spotify user id with the ones the call will use, and the pool kind also re-reads `spotify_pool`
