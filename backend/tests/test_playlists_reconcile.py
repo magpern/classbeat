@@ -25,7 +25,6 @@ from ctx import make_context
 from playlisttools import TRACKS, PlayEnv
 from spotifyfake import USER_A, USER_B
 
-NOW = datetime.now(UTC)
 MINE = "/v1/me/playlists"
 ITEMS = r"/v1/playlists/[0-9A-Za-z]{22}/items"
 
@@ -48,7 +47,8 @@ def create_row(
 ) -> Operation:
     operation_id = uuid.uuid4()
     job = uuid.uuid4()
-    pending_at = NOW - timedelta(hours=1)
+    now = datetime.now(UTC)  # at build time: a long run must not age the row
+    pending_at = now - timedelta(hours=1)
     return Operation(
         id=operation_id,
         kind=create_kind.KIND,
@@ -63,7 +63,7 @@ def create_row(
             "ref": ref if ref is not None else ref_of(operation_id),
         },
         pending_at=pending_at,
-        call_ended_at=None if returned_ago is None else NOW - timedelta(seconds=returned_ago),
+        call_ended_at=None if returned_ago is None else now - timedelta(seconds=returned_ago),
     )
 
 
@@ -199,7 +199,7 @@ def replace_row(
     pending_ago: float = 60.0,
     bound: float = 120.0,
 ) -> Operation:
-    pending_at = NOW - timedelta(seconds=pending_ago)
+    pending_at = datetime.now(UTC) - timedelta(seconds=pending_ago)  # at build time
     return Operation(
         id=uuid.uuid4(),
         kind=replace_kind.KIND,
