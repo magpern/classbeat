@@ -112,6 +112,27 @@ Amendment 6 is M3c's (ADR 0012, PR #229).
 - **"Admin area", jobs:** waiting approvals and uncertain operations are shown, not resolved; an
   uncertain operation stays the user's to resolve (ADR 0005 §7).
 
+## Amendment 8 (2026-10-30, owner decisions: the UI redesign)
+
+The owner's decisions apply now. The design that carries them out is
+[ADR 0013](adr/0013-ui-design-night-studio.md) (Proposed), and its details take effect when it is
+accepted.
+
+- **§8 Product: a full redesign.** The UI should be modern and attractive to people who are not
+  technical, with account and administrative things easy to reach.
+- **§8 "Own name, colours, fonts and icons; no MOWL logo/owl or copied assets"** now reads:
+  - classbeat has its own name, logo, icons and brand colour;
+  - **generated classes look and feel like MOWL**, with zone colours on the bars close to MOWL's
+    (similar, not copied);
+  - fonts may be bundled third-party fonts;
+  - still no MOWL logo, owl, wordmark or copied assets, and nothing may suggest the app is made by
+    MOWL.
+- **§8 Music:** the Spotify parts (choosing a playlist, songs for approval) should feel like
+  Spotify, within Spotify's branding rules for developers.
+- **ADR 0001, Frontend:** third-party UI components and libraries may be used (owner override).
+  Everything stays bundled and served from our origin. The one runtime third-party request ADR 0013
+  allows is Spotify cover art (ADR 0013 §9).
+
 *Revision 6 — frozen for implementation. Song picking is a **core** feature with Claude
 choosing the final songs from real BPM and sections (the pool stage from `mowl-workouts`);
 the instructor approves once, then the class is created hands-off. **Spotify is

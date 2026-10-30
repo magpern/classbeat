@@ -17,3 +17,4 @@ Reviewer reviews each in its PR (AGENTS.md, "Decisions and ADRs").
 | [0009](0009-spotify-connection.md) | Spotify connection (BYOK), tokens and the Spotify API (M4) | Proposed |
 | [0010](0010-live-activation-permissions.md) | Provider permissions for live activation | Accepted |
 | [0011](0011-tiers-quotas-and-admin.md) | Tiers, quotas and the admin area (M5) | Accepted |
+| [0013](0013-ui-design-night-studio.md) | UI design: the Night Studio look, navigation and components | Proposed |

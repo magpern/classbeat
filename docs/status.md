@@ -116,6 +116,12 @@ GitHub hold the detail.
   "M5 Tiers and admin"; QT1, FL1, FE1 and T1 wait for
   their M4 dependencies. The owner's questions (limits, testers' plan, trial, refunds and more) are in
   ADR 0011 §11; development proceeds on its defaults.
+- **UI redesign proposed** (owner decisions 2026-10-30, roadmap Amendment 8):
+  [ADR 0013](adr/0013-ui-design-night-studio.md) covers a dark-first "Night Studio" look, MOWL-like
+  zone colours on the class profile, Spotify-like music screens, a sidebar or tab bar with Account
+  always in reach, and Tailwind with Radix primitives. Mockups of every main screen are on the
+  owner's design canvas. Planned as milestone "UI Night Studio" (UI1 to UI10, ADR 0013 §11) once
+  the ADR is accepted.
 - Releases: v0.1.0 (cut partway through M0); v0.2.0 is not cut yet (deferred to save Actions quota). Image
   `ghcr.io/magpern/classbeat`, private.
 
@@ -125,6 +131,14 @@ GitHub hold the detail.
   cost caps per tier, which plan the testers get, trial on or off, quota period, refund on cancel,
   overlapping codes, Free feature gates, the Pro priority queue, audit-log retention, prices. Agents
   build on the defaults listed there; an answer changes seeds or settings, not the design.
+- **UI redesign questions** ([ADR 0013](adr/0013-ui-design-night-studio.md) §12):
+  - which zone colours to nudge after comparing them with the MOWL app;
+  - zones 5 to 7 in three colours or all red;
+  - Dark as the default theme;
+  - Music in the main navigation;
+  - the fonts Inter and Archivo.
+
+  Agents build on the defaults listed there.
 - Each further live smoke run needs the owner's go-ahead for that run (2026-10-29: "do not run
   live test every time").
 - **MOWL connect (#66) has merged, so the owner can now authorize: a check of the MOWL token's lifetime**
