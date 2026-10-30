@@ -18,12 +18,14 @@ validation error could not echo it either.
 
 from typing import Annotated, Final
 from urllib.parse import urlencode, urlsplit
+from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from fastapi.responses import JSONResponse, RedirectResponse
 from pydantic import BaseModel, ConfigDict, Field
 
 from classbeat import auth, connections
+from classbeat.classes import song_views
 from classbeat.config import Settings
 from classbeat.context import UserContext
 from classbeat.db import system_session
@@ -79,6 +81,17 @@ class StatusOut(BaseModel):
     consent_version: int | None
     consent_text: str
     song_picking_enabled: bool
+    # The dialogs' data (ADR 0008 section 8): what a consent revoke or Disconnect leaves in the
+    # user's own Spotify. Names only, never a link or an id.
+    pool_playlist: str | None
+    class_playlists: list["ClassPlaylistOut"]
+
+
+class ClassPlaylistOut(BaseModel):
+    class_id: UUID
+    class_title: str
+    name: str
+    detached: bool
 
 
 class StartIn(BaseModel):
@@ -106,6 +119,7 @@ async def status(
     request: Request, ctx: Annotated[UserContext, Depends(auth.require_user)]
 ) -> StatusOut:
     found = await connections.spotify_status(request.app.state.session_factory, ctx)
+    left = await song_views.playlists_left(request.app.state.session_factory, ctx)
     settings = _settings(request)
     return StatusOut(
         status=found.status,
@@ -117,6 +131,16 @@ async def status(
         consent_version=found.consent_version,
         consent_text=CONSENT_TEXT,
         song_picking_enabled=settings.song_picking,
+        pool_playlist=left.pool_playlist,
+        class_playlists=[
+            ClassPlaylistOut(
+                class_id=r.class_id,
+                class_title=r.class_title,
+                name=r.name,
+                detached=bool(r.detached),
+            )
+            for r in left.class_playlists
+        ],
     )
 
 
