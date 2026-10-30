@@ -200,6 +200,21 @@ function. Write `updated_at` in the statement, not by trigger. Extensions need t
 (never `public` or `pg_catalog`); adding one, or any user function, needs an amendment here that
 allows that schema, and the same change in all three checks.
 
+**Amendment (2026-10-30, ADR 0011 section 1, #207):** the user code allowed is now the five queue
+functions **plus** the two M5 guard trigger functions of migration `0007_tiers`,
+`public.credit_ledger_guard()` and `public.admin_audit_guard()` (`SECURITY INVOKER` plpgsql made
+by `classbeat_owner`; they call only built-ins and run no SQL text), and their two triggers,
+`credit_ledger_guard` on `public.credit_ledger` (row-level `BEFORE UPDATE`) and
+`admin_audit_guard` on `public.admin_audit` (row-level `BEFORE UPDATE OR DELETE`). No queue
+function touches either table, and `classbeat_queue` has no privilege on them. All three checks
+admit them only exactly, pinned like the queue functions. Each function is pinned by its name, the
+`md5` of its `pg_get_functiondef`, its owner and an ACL holding only the owner's `EXECUTE`. Each
+trigger is pinned by its name, table, function, `tgtype` (19, 27), being enabled, and having no
+arguments, columns, `WHEN` or constraint. Anything else is still refused. The digests are
+`GUARD_TRIGGER_DIGESTS` in `classbeat/db/queue_digests.py`, refreshed and checked by the same
+`tests/queue_digests.py` (and also written into `20-queue.sql`'s check). Guard 2 refuses `EXECUTE`
+on either function for any role but `classbeat_owner`.
+
 | Function | Does |
 |---|---|
 | `queue_claim(p_worker text, p_lease_seconds int, p_kinds text[])` | checks `p_worker ~ '^[A-Za-z0-9._:-]{1,100}$'` and 30 ≤ `p_lease_seconds` ≤ 600; `SELECT id … WHERE state = 'queued' AND available_at <= now() AND attempt < max_attempts AND kind = ANY(p_kinds) ORDER BY available_at, created_at LIMIT 1 FOR UPDATE SKIP LOCKED`; sets `running`, `attempt + 1`, `lease_version + 1`, `leased_by`, `lease_expires_at = now() + lease`, `heartbeat_at`, `started_at` (first time); inserts the `claimed` event; returns the row or nothing |
