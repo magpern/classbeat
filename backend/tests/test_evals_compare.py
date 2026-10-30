@@ -262,6 +262,17 @@ def test_markdown_link_characters_in_a_file_string_are_escaped(tmp_path: Path) -
     assert "[x](" not in md
 
 
+def test_a_backslash_cannot_cancel_the_link_escape(tmp_path: Path) -> None:
+    bs = chr(92)
+    evil = f"{bs}[x{bs}](http://evil.example)"  # a backslash-prefixed link
+    path = raw_file(tmp_path / "r.json", [raw_row(model=evil)])
+    assert compare(tmp_path, path)[0] == 0
+    md = (tmp_path / "out" / "compare.md").read_text("utf-8")
+    # Each backslash is doubled, so the escape after it still applies.
+    expected = f"{bs * 3}[x{bs * 3}]{bs}(http://evil.example{bs})"
+    assert expected in md
+
+
 def test_failed_check_names_and_the_outcome_are_escaped_in_the_html(tmp_path: Path) -> None:
     evil = "<b>chk</b>"
     rows = [
