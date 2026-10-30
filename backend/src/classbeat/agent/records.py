@@ -32,7 +32,14 @@ from typing import Any, Literal, Self
 from uuid import UUID
 
 from mowl import music, spotify
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    SerializerFunctionWrapHandler,
+    model_serializer,
+    model_validator,
+)
 from sqlalchemy import text
 
 from classbeat import __version__ as classbeat_version
@@ -180,6 +187,16 @@ class Provenance(BaseModel):
         ):
             raise ValueError("a revise names its base and request; a design names neither")
         return self
+
+    @model_serializer(mode="wrap")
+    def _without_unused_song_fields(self, handler: SerializerFunctionWrapHandler) -> dict[str, Any]:
+        """A revision that was not made from picked songs is stored exactly as before: the two
+        song fields are left out when unset (additive, ADR 0008 section 3)."""
+        out: dict[str, Any] = handler(self)
+        for key in ("schema_version", "stage_versions"):
+            if out.get(key) is None:
+                out.pop(key, None)
+        return out
 
     @model_validator(mode="after")
     def _versions(self) -> Self:
