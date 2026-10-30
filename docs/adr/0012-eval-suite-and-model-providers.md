@@ -298,10 +298,15 @@ Plain async functions on an open session, so M5's admin calls them inside its ow
 writes its audit row with them. `set_route` refuses (a typed `RouteRefused` with a reason code, which M5
 answers as 409) unless: the model is in the catalog with that effort; the entry's `data_policy` is
 `allowed` (§6; Anthropic's entries are `allowed`, OpenAI's and DeepSeek's ship `owner_pending`); for
-DeepSeek `CLASSBEAT_DEEPSEEK_ENABLED` is on; the provider's key
-file is present; and the **newest** recorded result for that provider, model, effort and group with the
+DeepSeek `CLASSBEAT_DEEPSEEK_ENABLED` is on (compose passes the setting to web and worker alike); and
+the **newest** recorded result for that provider, model, effort and group with the
 current `suite_version` passed **and** its `prompt_versions` equal the running code's
 for that group's stages. It then upserts the route with that result's id (the FK checks the rest).
+`set_route` does **not** check the provider's key file: M5's admin calls it from the web process, which
+must never see a model key (§2), so it cannot know. The worker's `resolve_route` checks the key before
+every stage (below); a route to a provider without a key fails its jobs `model_config` there, and
+`models list` in the worker shows it as unusable. `classbeat_maint`'s privileges on the two tables are
+M5's (ADR 0011); the migration chain with M5's `0007_tiers` is re-linked by whichever lands later.
 Until M5's admin exists, a CLI does the same: `python -m classbeat models list | results | enable
 ROUTE_KEY GROUP PROVIDER MODEL EFFORT | disable ROUTE_KEY GROUP` (worker container; `enable` prints the
 result it will rely on and needs `--yes`).
@@ -344,8 +349,9 @@ prompt version; they gain `route_key` and `eval_result_id` (NULL for the bootstr
   allowlist installer runs a small manifest, writes a format-2 file and `--record`s it into the test
   database; a fixture set that answers well makes a passing row, one that answers badly a failing row.
 - The gate: `enable` succeeds on the passing row; refuses on the failing row, a row of another effort or
-  model, an older `suite_version`, other prompt versions, DeepSeek with the setting off or `owner_pending`,
-  a missing key file; the database refuses a hand-made route `INSERT` pointing at a failing or
+  model, an older `suite_version`, other prompt versions, DeepSeek with the setting off or `owner_pending`;
+  it succeeds without any key file present (the web process's view) and the worker then refuses the
+  route at resolution; the database refuses a hand-made route `INSERT` pointing at a failing or
   mismatched result (the FK), and `UPDATE` or `DELETE` on `model_eval_results`.
 - Resolving: a design job with a route uses the route's provider (the replay one) and records
   `route_key` and `eval_result_id`; without a route it uses the bootstrap choice; a stale route
