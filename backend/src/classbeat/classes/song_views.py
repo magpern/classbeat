@@ -37,8 +37,9 @@ from classbeat.songs.song_list import SongListContent
 
 Factory = async_sessionmaker[AsyncSession]
 
+DETACHED_NOTE: Final = "In your earlier Spotify account."
 PLAYLIST_URL: Final = "https://open.spotify.com/playlist/"
-SongsStateName = Literal["none", "waiting", "approved", "expired", "cancelled"]
+SongsStateName = Literal["none", "waiting", "approved", "expired", "superseded", "cancelled"]
 ListStatus = Literal["waiting", "approved", "expired", "superseded", "cancelled"]
 
 _JOB = (
@@ -73,9 +74,10 @@ _PLAYLISTS = text(
     "ORDER BY p.created_at, p.id"
 )
 _LEFT_CLASSES = text(
-    "SELECT c.id AS class_id, c.title AS class_title, p.name FROM class_playlists p "
+    "SELECT c.id AS class_id, c.title AS class_title, p.name, "
+    "p.detached_at IS NOT NULL AS detached FROM class_playlists p "
     "JOIN classes c ON c.owner_id = p.owner_id AND c.id = p.class_id "
-    "WHERE p.owner_id = :owner_id AND p.detached_at IS NULL "
+    "WHERE p.owner_id = :owner_id "
     "ORDER BY p.created_at, p.id LIMIT 500"
 )
 _POOL_EXISTS = text(
@@ -142,8 +144,7 @@ async def songs_state(db: AsyncSession, owner_id: UUID, class_id: UUID) -> Songs
         approval_revision_id=row.approval_revision_id,
         revision_id=row.id,
     )
-    state: SongsStateName = "cancelled" if status == "superseded" else status
-    return SongsState(state, row.job_id, row.id, bytes(row.content_hash).hex(), row.expires_at)
+    return SongsState(status, row.job_id, row.id, bytes(row.content_hash).hex(), row.expires_at)
 
 
 @dataclass(frozen=True, slots=True)
@@ -151,6 +152,7 @@ class PlaylistRef:
     name: str
     link: str | None
     detached: bool
+    note: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -169,8 +171,13 @@ async def playlists_of(db: AsyncSession, owner_id: UUID, class_id: UUID) -> Play
     refs: list[PlaylistRef] = []
     current: PlaylistRef | None = None
     for r in rows:
+        detached = bool(r.detached)
+        # A detached playlist belongs to an earlier Spotify account: its name, no link.
         ref = PlaylistRef(
-            r.name, link_of(r.playlist_id) if r.state == "verified" else None, bool(r.detached)
+            r.name,
+            link_of(r.playlist_id) if r.state == "verified" and not detached else None,
+            detached,
+            DETACHED_NOTE if detached else None,
         )
         refs.append(ref)
         if r.for_current:
@@ -237,7 +244,8 @@ async def get_song_list(
 @dataclass(frozen=True, slots=True)
 class PlaylistsLeft:
     """What a Disconnect or a consent revoke leaves in the user's Spotify: the working playlist
-    (its name only, when there is one) and the live class playlists (class, name; no link)."""
+    (its name only, when there is one) and the class playlists, detached ones too (class and
+    name; no link)."""
 
     pool_playlist: str | None
     class_playlists: tuple[Any, ...]

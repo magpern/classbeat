@@ -30,6 +30,7 @@ from classbeat.classes.schemas import (
     MessageOut,
     MessagesOut,
     PickIn,
+    PlaylistNameOut,
     PlaylistOut,
     ProvenanceOut,
     RevisionOut,
@@ -288,7 +289,7 @@ async def delete_class(
         return _not_found()
     if done.reason is not None:
         return _refuse(done.reason)
-    left = [PlaylistOut(**asdict(p)) for p in done.playlists]
+    left = [PlaylistNameOut(name=p.name, detached=p.detached) for p in done.playlists]
     return DeletedOut(
         deleted=True,
         mowl_workouts_kept=done.kept,

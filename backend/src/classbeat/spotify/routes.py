@@ -91,6 +91,7 @@ class ClassPlaylistOut(BaseModel):
     class_id: UUID
     class_title: str
     name: str
+    detached: bool
 
 
 class StartIn(BaseModel):
@@ -132,7 +133,12 @@ async def status(
         song_picking_enabled=settings.song_picking,
         pool_playlist=left.pool_playlist,
         class_playlists=[
-            ClassPlaylistOut(class_id=r.class_id, class_title=r.class_title, name=r.name)
+            ClassPlaylistOut(
+                class_id=r.class_id,
+                class_title=r.class_title,
+                name=r.name,
+                detached=bool(r.detached),
+            )
             for r in left.class_playlists
         ],
     )

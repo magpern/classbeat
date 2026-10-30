@@ -83,7 +83,7 @@ class SongsOut(BaseModel):
     back with ``revision_id``; ``state`` is ``none``, ``waiting``, ``approved``, ``expired`` or
     ``cancelled``."""
 
-    state: Literal["none", "waiting", "approved", "expired", "cancelled"]
+    state: Literal["none", "waiting", "approved", "expired", "superseded", "cancelled"]
     job_id: UUID | None = None
     revision_id: UUID | None = None
     content_hash: str | None = None
@@ -96,6 +96,15 @@ class PlaylistOut(BaseModel):
 
     name: str
     link: str | None = None
+    detached: bool = False
+    note: str | None = None  # a detached one: it is in the earlier Spotify account
+
+
+class PlaylistNameOut(BaseModel):
+    """A playlist left in Spotify as the class-delete answer names it: no link (ADR 0008 section
+    2: links are shown on the class page only)."""
+
+    name: str
     detached: bool = False
 
 
@@ -219,7 +228,7 @@ class DeletedOut(BaseModel):
     deleted: bool
     mowl_workouts_kept: int
     note: str
-    spotify_playlists_left: list[PlaylistOut] = []
+    spotify_playlists_left: list[PlaylistNameOut] = []
     spotify_note: str | None = None
 
 

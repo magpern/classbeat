@@ -6,14 +6,21 @@ Spotify id, track id, account id or fingerprint is in any body except the owner'
 link; a superseded or expired list is reported as such.
 """
 
+import uuid
+from collections.abc import AsyncIterator
 from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
 
 import pytest
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import create_async_engine
 
+from classbeat.classes import song_views
 from classbeat.classes.song_views import plain
+from classbeat.db import create_session_factory, user_session
 from classbeat.jobs.sentences import SONG_SENTENCES, failure_sentence
+from ctx import make_context
 from jobtools import new_class, new_job
 from songtools import Rider, SongEnv, song_id
 from spotifyfake import USER_A
@@ -196,14 +203,24 @@ async def test_the_playlist_link_is_the_owners_own_and_only_once_verified(
     )  # fmt: skip
     path = f"/api/classes/{class_id}"
     created = (await mine.browser.get(path)).json()
-    assert created["playlist"] == {"name": "Tuesday climb", "link": None, "detached": False}
+    assert created["playlist"] == {
+        "name": "Tuesday climb",
+        "link": None,
+        "detached": False,
+        "note": None,
+    }
     admin.exec_driver_sql(
         "UPDATE class_playlists SET state = 'verified', content_hash = %s, track_count = 8 "
         "WHERE id = %s", (content_digest({}), row),
     )  # fmt: skip
     shown = await mine.browser.get(path)
     link = f"https://open.spotify.com/playlist/{PLAYLIST}"
-    assert shown.json()["playlist"] == {"name": "Tuesday climb", "link": link, "detached": False}
+    assert shown.json()["playlist"] == {
+        "name": "Tuesday climb",
+        "link": link,
+        "detached": False,
+        "note": None,
+    }
     assert shown.json()["spotify_playlists"] == [shown.json()["playlist"]]
     # The id appears only inside the two links (current and list); other bodies never carry it.
     assert shown.text.count(PLAYLIST) == shown.text.count(link) == 2
@@ -241,11 +258,13 @@ async def test_class_delete_lists_the_playlists_left_in_spotify_and_asks_spotify
     deleted = await delete(rider, f"/api/classes/{class_id}")
     assert deleted.status_code == 200, deleted.text
     body = deleted.json()
+    # Names only: links are shown on the class page, not in the delete answer (ADR 0008 section 2).
     assert body["spotify_playlists_left"] == [
-        {"name": "list verified", "link": f"https://open.spotify.com/playlist/{PLAYLIST}",
-         "detached": False},
-        {"name": "list created", "link": None, "detached": True},
-    ]  # fmt: skip
+        {"name": "list verified", "detached": False},
+        {"name": "list created", "detached": True},
+    ]
+    assert "open.spotify.com" not in deleted.text
+    assert PLAYLIST not in deleted.text
     assert "Spotify" in body["spotify_note"]
     assert OTHER_PLAYLIST not in deleted.text
     assert songenv.counts() == before  # nothing sent to Spotify, MOWL or a model
@@ -281,12 +300,22 @@ async def test_the_status_lists_what_a_disconnect_or_revoke_leaves_without_links
         admin, "class_playlists", owner_id=rider.user_id, class_id=class_id, revision_id=list_rev,
         playlist_id=PLAYLIST, spotify_user_id=USER_A, name="Tuesday climb", state="created",
     )  # fmt: skip
+    insert(
+        admin, "class_playlists", owner_id=rider.user_id, class_id=class_id, revision_id=list_rev,
+        playlist_id=OTHER_PLAYLIST, spotify_user_id=USER_A, name="Earlier account",
+        state="created", detached_at=datetime.now(UTC),
+    )  # fmt: skip
     got = await rider.browser.get(status)
     body = got.json()
     assert body["pool_playlist"] == "classbeat working copy"
+    # Detached playlists are still in the user's Spotify: the dialogs list them by name too.
     assert body["class_playlists"] == [
-        {"class_id": str(class_id), "class_title": "Tuesday climb", "name": "Tuesday climb"}
-    ]
+        {"class_id": str(class_id), "class_title": "Tuesday climb", "name": "Tuesday climb",
+         "detached": False},
+        {"class_id": str(class_id), "class_title": "Tuesday climb", "name": "Earlier account",
+         "detached": True},
+    ]  # fmt: skip
+    assert OTHER_PLAYLIST not in got.text
     assert PLAYLIST not in got.text
     assert pool_id not in got.text
     assert "open.spotify.com" not in got.text
@@ -322,3 +351,137 @@ async def test_the_job_view_carries_the_category_and_its_plain_sentence(
     assert got["error_message"] == SONG_SENTENCES["pool_too_small"]
     queued = new_job(admin, rider.user_id)
     assert (await rider.browser.get(f"/api/jobs/{queued}")).json()["error_message"] is None
+
+
+@pytest.mark.parametrize("tamper", ["title", "hash"])
+async def test_a_changed_song_list_is_a_500_that_shows_nothing_of_either_version(
+    songenv: SongEnv, tamper: str
+) -> None:
+    rider = await songenv.rider()
+    job_id, revision_id, _ = await songenv.waiting(rider)
+    path = f"/api/classes/{class_of(songenv, job_id)}/revisions/{revision_id}"
+    stored = songenv.revision(revision_id).content["songs"][0]
+    assert (await rider.browser.get(path)).status_code == 200
+    if tamper == "title":
+        songenv.sql(
+            "UPDATE class_revisions SET content = jsonb_set(content, '{songs,0,title}', "
+            "'\"Swapped Title\"') WHERE id = :id", id=revision_id,
+        )  # fmt: skip
+    else:
+        songenv.sql(
+            "UPDATE class_revisions SET content_hash = decode(repeat('ab', 32), 'hex') "
+            "WHERE id = :id", id=revision_id,
+        )  # fmt: skip
+    got = await rider.browser.get(path)
+    assert (got.status_code, got.json()) == (500, {"detail": {"reason": "internal"}})
+    for shown in (stored["title"], stored["artist"], "Swapped Title", stored["spotify_id"]):
+        assert shown not in got.text
+
+
+async def draft_for(
+    env: SongEnv, rider: Rider, class_id: UUID, list_rev: UUID, **music: Any
+) -> UUID:
+    admin = env.admin
+    made = revision(admin, rider.user_id, class_id, 9, music=music)
+    make_current(admin, class_id, made)
+    insert(
+        admin, "class_playlists", owner_id=rider.user_id, class_id=class_id,
+        revision_id=list_rev, playlist_id=PLAYLIST, spotify_user_id=USER_A,
+        name="Tuesday climb", state="verified", **VERIFIED,
+    )  # fmt: skip
+    return made
+
+
+@pytest.mark.parametrize("case", ["no_key", "other_list", "not_a_uuid", "playlist_unlinked"])
+async def test_only_the_playlist_of_the_current_drafts_own_list_is_the_drafts(
+    songenv: SongEnv, case: str
+) -> None:
+    rider = await songenv.rider()
+    job_id, list_rev, _ = await songenv.waiting(rider)
+    class_id = class_of(songenv, job_id)
+    music: dict[str, Any] = {
+        "no_key": {"source": "x"},
+        "other_list": {"song_list_id": str(uuid.uuid4())},
+        "not_a_uuid": {"song_list_id": "nonsense"},
+        "playlist_unlinked": {"song_list_id": str(list_rev)},
+    }[case]
+    await draft_for(songenv, rider, class_id, list_rev, **music)
+    if case == "playlist_unlinked":  # the list was deleted: SET NULL on the playlist's pointer
+        songenv.sql("UPDATE class_playlists SET revision_id = NULL WHERE class_id = :c", c=class_id)
+    shown = (await rider.browser.get(f"/api/classes/{class_id}")).json()
+    assert shown["playlist"] is None
+    assert [p["name"] for p in shown["spotify_playlists"]] == ["Tuesday climb"]
+
+
+async def test_a_detached_playlist_has_no_link_and_says_whose_it_is(songenv: SongEnv) -> None:
+    rider = await songenv.rider()
+    job_id, list_rev, _ = await songenv.waiting(rider)
+    class_id = class_of(songenv, job_id)
+    await draft_for(songenv, rider, class_id, list_rev, song_list_id=str(list_rev))
+    path = f"/api/classes/{class_id}"
+    live = (await rider.browser.get(path)).json()["playlist"]
+    assert live["link"] is not None
+    songenv.sql("UPDATE class_playlists SET detached_at = now() WHERE class_id = :c", c=class_id)
+    got = await rider.browser.get(path)
+    expected = {
+        "name": "Tuesday climb", "link": None, "detached": True,
+        "note": "In your earlier Spotify account.",
+    }  # fmt: skip
+    assert got.json()["playlist"] == expected
+    assert got.json()["spotify_playlists"] == [expected]
+    assert PLAYLIST not in got.text
+
+
+async def test_a_waiting_job_on_another_revision_makes_the_newest_list_superseded(
+    songenv: SongEnv,
+) -> None:
+    rider = await songenv.rider()
+    job_id, list_rev, _ = await songenv.waiting(rider)
+    class_id = class_of(songenv, job_id)
+    other = revision(songenv.admin, rider.user_id, class_id, 9)
+    songenv.sql("UPDATE jobs SET approval_revision_id = :r WHERE id = :j", r=other, j=job_id)
+    shown = (await rider.browser.get(f"/api/classes/{class_id}")).json()["songs"]
+    assert (shown["state"], shown["revision_id"]) == ("superseded", str(list_rev))
+    listed = (await rider.browser.get(f"/api/classes/{class_id}/revisions/{list_rev}")).json()
+    assert listed["status"] == "superseded"
+
+
+@pytest.fixture
+async def around_rls(database_url: str) -> AsyncIterator[Any]:
+    """A session factory of the superuser: row-level security does not apply to it."""
+    engine = create_async_engine(database_url)
+    try:
+        yield create_session_factory(engine)
+    finally:
+        await engine.dispose()
+
+
+async def test_the_queries_filter_on_the_owner_themselves_with_rls_out_of_the_way(
+    songenv: SongEnv, around_rls: Any
+) -> None:
+    mine = await songenv.rider()
+    theirs = await songenv.rider()
+    where: dict[UUID, tuple[UUID, UUID]] = {}
+    for rider in (mine, theirs):
+        job_id, list_rev, _ = await songenv.waiting(rider)
+        class_id = class_of(songenv, job_id)
+        insert(
+            songenv.admin, "class_playlists", owner_id=rider.user_id, class_id=class_id,
+            revision_id=list_rev, playlist_id=PLAYLIST if rider is mine else OTHER_PLAYLIST,
+            spotify_user_id=USER_A, name=f"for {rider.user_id}", state="verified", **VERIFIED,
+        )  # fmt: skip
+        where[rider.user_id] = (class_id, list_rev)
+    ctx = make_context(mine.user_id)
+    their_class, their_list = where[theirs.user_id]
+    my_class, my_list = where[mine.user_id]
+    async with user_session(around_rls, ctx) as db:
+        # Self-check: with this factory both users' rows are visible.
+        assert (await db.execute(text("SELECT count(*) FROM class_playlists"))).scalar_one() == 2
+        assert (await song_views.playlists_of(db, mine.user_id, their_class)).all == ()
+        assert (await song_views.songs_state(db, mine.user_id, their_class)).state == "none"
+        mine_listed = await song_views.playlists_of(db, mine.user_id, my_class)
+        assert [p.name for p in mine_listed.all] == [f"for {mine.user_id}"]
+    assert await song_views.get_song_list(around_rls, ctx, their_class, their_list) is None
+    assert await song_views.get_song_list(around_rls, ctx, my_class, my_list) is not None
+    left = await song_views.playlists_left(around_rls, ctx)
+    assert [r.class_id for r in left.class_playlists] == [my_class]
