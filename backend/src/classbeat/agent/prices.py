@@ -97,6 +97,10 @@ class PriceTable:
     def lookup(self, provider: str, model: str) -> Price | None:
         return self._prices.get((provider, model)) or self._prices.get((provider, ANY_MODEL))
 
+    def priced(self) -> frozenset[tuple[str, str]]:
+        """Every priced ``(provider, model)`` (the catalog test checks them, ADR 0012 §1)."""
+        return frozenset(self._prices)
+
 
 # Verify before live use (see above).
 ANTHROPIC_PRICES: Final = {

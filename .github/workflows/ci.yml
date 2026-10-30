@@ -337,13 +337,16 @@ jobs:
         run: |
           set -euo pipefail
           scripts/worktree.sh init
-          # init leaves the model key empty (ADR 0006 section 9). A random canary, never a real
-          # key, lets the checks below prove where the value goes. The worker stays on `fake`.
-          if [ ! -f secrets/anthropic_api_key ] || [ -s secrets/anthropic_api_key ]; then
-            echo "::error::init must create an empty secrets/anthropic_api_key"
-            exit 1
-          fi
-          printf 'ci-canary-not-a-key-%s' "$(openssl rand -hex 16)" > secrets/anthropic_api_key
+          # init leaves the model keys empty (ADR 0006 section 9, ADR 0012 section 2). A random
+          # canary each, never a real key, lets the checks below prove where the values go. The
+          # worker stays on `fake`.
+          for key in anthropic_api_key openai_api_key deepseek_api_key; do
+            if [ ! -f "secrets/$key" ] || [ -s "secrets/$key" ]; then
+              echo "::error::init must create an empty secrets/$key"
+              exit 1
+            fi
+            printf 'ci-canary-not-a-key-%s' "$(openssl rand -hex 16)" > "secrets/$key"
+          done
 
       - name: Start the stack
         working-directory: .
@@ -386,10 +389,12 @@ jobs:
             fi
           done
           [ "$checked" -gt 0 ] || { echo "::error::no secret files were checked"; exit 1; }
-          # The connection KEK (ADR 0004 section 7) and the model key canary (ADR 0006 section 9)
-          # must exist and so were among them.
+          # The connection KEK (ADR 0004 section 7) and the model key canaries (ADR 0006 section
+          # 9, ADR 0012 section 2) must exist and so were among them.
           [ -s secrets/connection_kek ] || { echo "::error::secrets/connection_kek is missing"; exit 1; }
-          [ -s secrets/anthropic_api_key ] || { echo "::error::secrets/anthropic_api_key is empty"; exit 1; }
+          for key in anthropic_api_key openai_api_key deepseek_api_key; do
+            [ -s "secrets/$key" ] || { echo "::error::secrets/$key is empty"; exit 1; }
+          done
           rm -f "$RUNNER_TEMP/inspect.json"
 
       # The superuser password (ADR 0005 section 3, amending ADR 0002 section 4) is mounted on db
@@ -416,17 +421,21 @@ jobs:
           [ "$(docker inspect --format '{{.State.ExitCode}}' "$(docker compose ps -aq db-functions)")" = 0 ] \
             || { echo "::error::db-functions did not succeed"; exit 1; }
 
-      # ADR 0006 section 9: the model key is a file on the worker only, never an env variable.
-      - name: Check the model key is mounted on the worker only
+      # ADR 0006 section 9, ADR 0012 section 2: each model key is a file on the worker only,
+      # never an env variable.
+      - name: Check the model keys are mounted on the worker only
         working-directory: .
         run: |
           set -euo pipefail
+          keys='anthropic_api_key|openai_api_key|deepseek_api_key'
           worker="$(docker compose ps -q worker)"
           [ -n "$worker" ] || { echo "::error::no worker container"; exit 1; }
-          if ! docker compose exec -T worker test -s /run/secrets/anthropic_api_key; then
-            echo "::error::the worker does not have the anthropic_api_key secret"
-            exit 1
-          fi
+          for key in anthropic_api_key openai_api_key deepseek_api_key; do
+            if ! docker compose exec -T worker test -s "/run/secrets/$key"; then
+              echo "::error::the worker does not have the $key secret"
+              exit 1
+            fi
+          done
           provider="$(docker compose exec -T worker printenv CLASSBEAT_MODEL_PROVIDER)"
           if [ "$provider" != "fake" ]; then
             echo "::error::the stack's worker must run the fake model provider"
@@ -438,12 +447,14 @@ jobs:
             name="$(docker inspect --format '{{.Name}}' "$c")"
             if [ "$c" != "$worker" ] && docker inspect \
               --format '{{range .Mounts}}{{println .Source .Destination}}{{end}}' "$c" \
-              | grep -q anthropic_api_key; then
-              echo "::error::$name mounts anthropic_api_key; only the worker may"
+              | grep -qE "$keys"; then
+              echo "::error::$name mounts a model key; only the worker may"
               exit 1
             fi
+            # CLASSBEAT_DEEPSEEK_ENABLED is the one setting that names a provider (not a key).
             if docker inspect --format '{{range .Config.Env}}{{println .}}{{end}}' "$c" \
-              | grep -qiE '^[a-z_]*(anthropic|api_key)[a-z_]*='; then
+              | grep -vE '^CLASSBEAT_DEEPSEEK_ENABLED=(true|false)$' \
+              | grep -qiE '^[a-z0-9_]*(anthropic|openai|deepseek|api_key)[a-z0-9_]*='; then
               echo "::error::$name has a model key variable in its environment"
               exit 1
             fi
