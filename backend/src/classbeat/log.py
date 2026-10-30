@@ -40,12 +40,15 @@ _PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
     (
         re.compile(
             r"(?i)(?<![\w-])(code|code_verifier|state|refresh_token|access_token|client_secret)"
-            r"=[^&\s\"'#]*"
+            r"=(?:'[^']*'|\"[^\"]*\"|[^&\s\"'#]*)"
         ),
         rf"\1={_REDACTED}",
     ),
     (
-        re.compile(r"(?i)([\"'](?:code|code_verifier|state)[\"']\s*:\s*[\"'])[^\"']*"),
+        re.compile(
+            r"(?i)([\"'](?:code|code_verifier|state|refresh_token|access_token|client_secret)[\"']"
+            r"\s*:\s*[\"'])[^\"']*"
+        ),
         rf"\1{_REDACTED}",
     ),
 )

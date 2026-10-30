@@ -66,6 +66,11 @@ def test_extra_fields_named_code_verifier_and_state_are_masked(
         json.dumps({"code": CODE, "code_verifier": VERIFIER, "state": STATE}),
         repr({"code": CODE, "code_verifier": VERIFIER, "state": STATE}),
         f"code={CODE} code_verifier={VERIFIER} state={STATE}",
+        # A keyword-argument or dataclass repr: the value is quoted.
+        f"Req(code='{CODE}', code_verifier=\"{VERIFIER}\", state='{STATE}')",
+        f'code=\'{CODE}\' code_verifier="{VERIFIER}" state="{STATE}"',
+        # A token endpoint's JSON body inside an exception message.
+        json.dumps({"access_token": CODE, "refresh_token": VERIFIER, "client_secret": STATE}),
     ],
 )
 def test_query_form_and_json_text_is_masked(logs: pytest.LogCaptureFixture, text: str) -> None:
