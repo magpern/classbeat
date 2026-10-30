@@ -56,6 +56,7 @@ WORKER_ENTRYPOINTS = (
     "classbeat.design",
     "classbeat.saving",
     "classbeat.evals.__main__",
+    "classbeat.spotify",  # spotify_call and the refresh run in the worker (ADR 0009 section 6)
 )
 
 _CALLS = frozenset(

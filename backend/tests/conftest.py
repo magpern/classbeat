@@ -29,6 +29,7 @@ pytest_plugins = [
     "mowlfake",
     "isofake",
     "spotifyfake",
+    "spotifytools",
     "jobcore",
     "jobapi",
     "optools",

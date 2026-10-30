@@ -84,6 +84,7 @@ if TYPE_CHECKING:
         connect_buckets,
         mfa_buckets,
         password_buckets,
+        spotify_start_buckets,
     )
     from classbeat.auth.reset_routes import make_reset_link_sender
     from classbeat.auth.sessions import (
@@ -170,6 +171,7 @@ _EXPORTS: dict[str, str] = {
     "connect_buckets": "ratelimit",
     "mfa_buckets": "ratelimit",
     "password_buckets": "ratelimit",
+    "spotify_start_buckets": "ratelimit",
     "make_reset_link_sender": "reset_routes",
     "IssuedSession": "sessions",
     "Resolution": "sessions",
@@ -289,6 +291,7 @@ __all__ = [
     "send_reset_link",
     "set_device_cookie",
     "set_session_cookie",
+    "spotify_start_buckets",
     "start_session",
     "token_hash",
     "totp_rows_by_key",

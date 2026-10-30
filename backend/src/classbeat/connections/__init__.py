@@ -32,6 +32,19 @@ from classbeat.connections.repository import (
     vacuum_tables,
 )
 from classbeat.connections.rewrap import rewrap_owner, rows_by_key
+from classbeat.connections.spotify_account import (
+    SpotifyStatus,
+    give_pool_consent,
+    revoke_pool_consent,
+    spotify_status,
+)
+from classbeat.connections.spotify_flows import (
+    TakenFlow,
+    create_flow,
+    delete_own_flow,
+    take_flow,
+)
+from classbeat.connections.spotify_tokens import RefreshedTokens, expires_at_of, refresh_spotify
 from classbeat.connections.tables import PROVIDERS
 
 __all__ = [
@@ -41,24 +54,35 @@ __all__ = [
     "ConnectionInfo",
     "Credentials",
     "OpenConnection",
+    "RefreshedTokens",
+    "SpotifyStatus",
+    "TakenFlow",
     "call_opened",
     "classify",
     "connect",
     "connection_refs",
+    "create_flow",
     "delete_all_in",
+    "delete_own_flow",
     "disconnect",
+    "expires_at_of",
     "find",
     "find_in",
+    "give_pool_consent",
     "hold",
     "list_connections",
     "mark_needs_reconnect",
     "open_connection",
     "record_result",
+    "refresh_spotify",
     "refs_in",
+    "revoke_pool_consent",
     "rewrap_owner",
     "rows_by_key",
     "run_library_call",
     "save",
+    "spotify_status",
+    "take_flow",
     "use",
     "vacuum_tables",
 ]

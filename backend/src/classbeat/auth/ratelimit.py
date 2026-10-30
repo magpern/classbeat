@@ -10,7 +10,7 @@ Bucket keys are an HMAC of ``(action, scope, value, window)``: no email or IP in
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Literal
+from typing import Any, Literal
 
 from sqlalchemy import Float, and_, delete, func, literal, update
 from sqlalchemy.dialects.postgresql import insert
@@ -52,6 +52,10 @@ PASSWORD_CHANGE = Limit("password-change", "account", 10, 3600)
 CONNECT_USER = Limit("connect", "account", 5, 15 * 60)
 CONNECT_IP = Limit("connect", "ip", 20, 15 * 60)
 CONNECT_PROVIDER_EMAIL = Limit("connect", "provider-email", 5, 15 * 60)
+# ADR 0009 section 4: Spotify connect starts, per user and per IP and hour. A completed
+# connection releases its slot (the callback, ``RateLimiter.release``).
+SPOTIFY_START_USER = Limit("spotify-start", "account", 10, 3600)
+SPOTIFY_START_IP = Limit("spotify-start", "ip", 30, 3600)
 
 OnSuccess = Literal["decrement", "delete"]
 
@@ -106,10 +110,35 @@ class Attempt:
         self.slots = []
 
 
+def _window_start(window: int) -> Any:
+    return func.to_timestamp(
+        func.floor(func.extract("epoch", func.clock_timestamp()) / window) * window
+    )
+
+
 class RateLimiter:
     def __init__(self, factory: async_sessionmaker[AsyncSession], keys: Keys) -> None:
         self._factory = factory
         self._keys = keys
+
+    async def release(self, buckets: Sequence[Bucket]) -> None:
+        """Give back one slot of each bucket in its current window (never below zero): a
+        success that completes in another request than the one that reserved (the Spotify
+        callback releases its start's slot)."""
+        async with system_session(self._factory) as session:
+            for bucket in buckets:
+                bucket_hash = self.bucket_hash(bucket.limit, bucket.value)
+                await session.execute(
+                    update(rate_limits)
+                    .where(
+                        and_(
+                            rate_limits.c.bucket_hash == bucket_hash,
+                            rate_limits.c.window_start
+                            == _window_start(bucket.limit.window_seconds),
+                        )
+                    )
+                    .values(count=func.greatest(rate_limits.c.count - 1, 0))
+                )
 
     def bucket_hash(self, limit: Limit, value: str) -> bytes:
         return hmac_digest(
@@ -119,9 +148,7 @@ class RateLimiter:
     async def _reserve_one(self, bucket: Bucket) -> tuple[Slot, bool, int]:
         window = bucket.limit.window_seconds
         bucket_hash = self.bucket_hash(bucket.limit, bucket.value)
-        started = func.to_timestamp(
-            func.floor(func.extract("epoch", func.clock_timestamp()) / window) * window
-        )
+        started = _window_start(window)
         statement = (
             insert(rate_limits)
             .values(bucket_hash=bucket_hash, window_start=started, count=1)
@@ -197,3 +224,8 @@ def connect_buckets(provider: str, user_id: str, ip: str, email_normalized: str)
         Bucket(CONNECT_IP, bucket_ip(ip)),
         Bucket(CONNECT_PROVIDER_EMAIL, f"{provider}|{email_normalized}"),
     ]
+
+
+def spotify_start_buckets(user_id: str, ip: str) -> list[Bucket]:
+    """A Spotify connect start (ADR 0009 section 4): per user and per IP."""
+    return [Bucket(SPOTIFY_START_USER, user_id), Bucket(SPOTIFY_START_IP, bucket_ip(ip))]

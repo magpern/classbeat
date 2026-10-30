@@ -34,6 +34,17 @@ CATEGORIES = (
     "decrypt_failed",
     "not_connected",
     "unknown",
+    # ADR 0009 section 8: the Spotify connection's categories (``classbeat.spotify.errors``).
+    "invalid_grant",
+    "app_misconfigured",
+    "not_allowlisted",
+    "forbidden",
+    "quota_exhausted",
+    "not_found",
+    "scope_mismatch",
+    "invalid_response",
+    "account_changed",
+    "access_denied",
 )
 # Raised before any provider call (``open_connection``): nothing was sent.
 NEVER_SENT = frozenset({"key_unavailable", "decrypt_failed", "not_connected"})
@@ -54,7 +65,12 @@ class ConnectionFailure(Exception):
     unreadable answer)."""
 
     def __init__(
-        self, category: str, retry_after: int | None = None, *, not_applied: bool = False
+        self,
+        category: str,
+        retry_after: int | None = None,
+        *,
+        not_applied: bool = False,
+        http_status: int | None = None,
     ) -> None:
         if category not in CATEGORIES:
             category = "unknown"
@@ -62,6 +78,9 @@ class ConnectionFailure(Exception):
         self.category = category
         self.retry_after = retry_after
         self.not_applied = not_applied or category in NEVER_SENT
+        # The provider's HTTP status, when there was one (a number, never a message): the
+        # Spotify access path tells a 401 to refresh and repeat apart from other refusals.
+        self.http_status = http_status
 
 
 @dataclass(frozen=True, slots=True)
@@ -87,6 +106,14 @@ def _retry_after(cause: object) -> int | None:
     if not value or len(value) > _RETRY_DIGITS or not all("0" <= c <= "9" for c in value):
         return None
     return min(int(value), MAX_RETRY_AFTER)
+
+
+def retry_after_of(cause: object) -> int | None:
+    """``Retry-After`` of an HTTP error object (its ``headers``), as ``_retry_after``."""
+    try:
+        return _retry_after(cause)
+    except Exception:
+        return None
 
 
 def _by_status(status: object, cause: object, *, sign_in: bool) -> tuple[str, int | None]:
@@ -193,12 +220,16 @@ def _outbound_blocked(exc: BaseException) -> OutboundBlocked | None:
     return None
 
 
+Classifier = Callable[[BaseException], Outcome]
+
+
 async def run_library_call[T](
     call: Callable[[], T],
     *,
     library_error: type[BaseException] = MowlError,
     sign_in: bool,
     single_request: bool = False,
+    classifier: Classifier | None = None,
 ) -> T:
     """Run a synchronous library call in a worker thread (``asyncio.to_thread``).
 
@@ -212,6 +243,9 @@ async def run_library_call[T](
     refusal or a request that never left proves it had no effect (``not_applied``). A call made
     of several requests (``workout.save``) may have written with an earlier one, so its failures
     are never ``not_applied``.
+
+    ``classifier`` replaces ``classify`` (``classbeat.spotify.errors.classify_use``: ADR 0009
+    section 8's categories); it must not raise (anything it raises is ``unknown``).
     """
     outcome: Outcome | None = None
     blocked_host: str | None = None
@@ -225,11 +259,27 @@ async def run_library_call[T](
             blocked_host = found.host
             blocked_after_request = found.after_request
         else:
-            outcome = classify(exc, library_error=library_error, sign_in=sign_in)
+            outcome = _classified(exc, classifier, library_error, sign_in)
             refused = single_request and not_applied(exc, library_error=library_error)
     # Outside the except block: no __context__. ``exc`` is already unbound here.
     if blocked_host is not None:
         raise OutboundBlocked(blocked_host, after_request=blocked_after_request)
     assert outcome is not None  # noqa: S101 - set in the except block
     log_outcome(outcome, "sign_in" if sign_in else "use")
-    raise ConnectionFailure(outcome.category, outcome.retry_after, not_applied=refused)
+    raise ConnectionFailure(
+        outcome.category, outcome.retry_after, not_applied=refused, http_status=outcome.http_status
+    )
+
+
+def _classified(
+    exc: BaseException,
+    classifier: Classifier | None,
+    library_error: type[BaseException],
+    sign_in: bool,
+) -> Outcome:
+    if classifier is None:
+        return classify(exc, library_error=library_error, sign_in=sign_in)
+    try:
+        return classifier(exc)
+    except Exception:
+        return Outcome("unknown", "unclassifiable")
