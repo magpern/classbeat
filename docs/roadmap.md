@@ -91,6 +91,25 @@ Proposed and none of the M4 issues is startable.
   asked again). A failed or abandoned flow leaves the old connection working
   ([ADR 0009](adr/0009-spotify-connection.md) §7).
 
+## Amendment 6 (2026-10-30, Architect, ADR 0012; effective on its acceptance)
+
+How M3c reads, recorded in [ADR 0012](adr/0012-eval-suite-and-model-providers.md):
+
+- **M3c "done when"** ("models enabled per tier only after passing") is met **technically** when no
+  model route can be set without a recorded passing suite result for exactly that provider, model,
+  effort and stage group (the database enforces it), tested end to end with providers replaying
+  fixture responses. Recording a real result and enabling a model are the owner's live steps.
+- **"Per tier"**: M3c stores routes by an opaque `route_key`; M5 maps plans to route keys and its admin
+  calls M3c's `set_route`. Until then every job uses the `default` key, and with no route the
+  configured Anthropic model is used as today (the bootstrap; it can never name another provider).
+- **§5 "DeepSeek disabled"** is a setting (`CLASSBEAT_DEEPSEEK_ENABLED`, off) plus a catalog data
+  policy (`owner_pending`) that waits for the owner's privacy and terms decision. **§5 data to the
+  model:** Amendment 1's allowance is the owner's acceptance of Spotify's §III 14 risk for Claude only;
+  OpenAI also ships `owner_pending` until the owner extends it (ADR 0012 §6); eval runs send synthetic
+  data only.
+- **§11**: the smoke set stays as it is; the regression suite is versioned (`suite_version`) and
+  scored per stage group (`design`, `songs`) with the thresholds of ADR 0012 §4.3.
+
 ## Amendment 7 (2026-10-30, Architect, ADR 0011; effective on its acceptance)
 
 Like Amendment 5, this takes effect when [ADR 0011](adr/0011-tiers-quotas-and-admin.md) is accepted.
@@ -111,6 +130,36 @@ Amendment 6 is M3c's (ADR 0012, PR #229).
   0012's model routes, which the admin edits only for a model that passed the evals.
 - **"Admin area", jobs:** waiting approvals and uncertain operations are shown, not resolved; an
   uncertain operation stays the user's to resolve (ADR 0005 §7).
+
+## Amendment 8 (2026-10-30, owner decisions: the UI redesign)
+
+The owner's decisions apply now. The design that carries them out is
+[ADR 0013](adr/0013-ui-design-night-studio.md) (Proposed). Its details, and the work it plans,
+take effect when it is accepted.
+
+- **§8 Product: a full redesign.** The UI should be modern and attractive to people who are not
+  technical, with account and administrative things easy to reach.
+- **§8 "Own name, colours, fonts and icons; no MOWL logo/owl or copied assets"** now reads:
+  - classbeat has its own name, logo, icons and brand colour;
+  - **generated classes look and feel like MOWL**:
+    - zone colours on the bars like the MOWL app's: similar, never identical. The owner first said
+      "colors from MOWL on bars (or slightly off, but similar)", then that nothing is copied
+      exactly because it is probably copyrighted;
+    - zones 5 to 7 in one red;
+    - a mark above zone 6 (a flame, as in MOWL) and zone 7 (where MOWL has its owl mascot). Both
+      are classbeat's own icons, never MOWL's artwork;
+    - this also replaces "own palette" in §8's Class row;
+  - fonts may be bundled third-party fonts;
+  - dark is the default theme, with a light theme available;
+  - still no MOWL logo, owl, wordmark or copied assets, and nothing may suggest the app is made by
+    MOWL.
+- **§8 Music:** the Spotify parts (choosing a playlist, songs for approval) should feel like
+  Spotify, within Spotify's branding rules for developers.
+- **ADR 0001, Frontend:** third-party UI components and libraries may be used (owner override).
+  Everything stays bundled and served from our origin. The one runtime third-party request ADR 0013
+  allows is Spotify album cover art of chosen songs (ADR 0013 §9). On ADR 0013's acceptance, that
+  narrows ADR 0009 §10 and threat-model T73 ("no URL from a response is … stored or shown") for
+  host-pinned album image URLs only.
 
 *Revision 6 — frozen for implementation. Song picking is a **core** feature with Claude
 choosing the final songs from real BPM and sections (the pool stage from `mowl-workouts`);
