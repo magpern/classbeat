@@ -28,6 +28,13 @@ export interface SavedSummary {
   latestRevisionNumber: number | null
   latestSavedAt: string | null
   latestUpToDate: boolean | null
+  /**
+   * NOT SENT by the backend yet (PR for #150 lists the gap): the id Update names
+   * (`saved_workout_id`, ADR 0007 section 5) and how many saves were detached by a MOWL
+   * reconnect (section 9). Absent means null and 0; the page then offers no Update.
+   */
+  latestSavedWorkoutId: string | null
+  detachedCount: number
 }
 
 export interface ClassSummary {
@@ -64,6 +71,8 @@ function decodeClass(value: unknown): ClassSummary {
       latestRevisionNumber: optionalCount(saved, 'latest_revision_number'),
       latestSavedAt: optionalText(saved, 'latest_saved_at'),
       latestUpToDate: optionalFlag(saved, 'latest_up_to_date'),
+      latestSavedWorkoutId: optionalText(saved, 'latest_saved_workout_id'),
+      detachedCount: optionalCount(saved, 'detached_count') ?? 0,
     },
     openJob,
   }

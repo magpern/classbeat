@@ -3,6 +3,7 @@ import { classReasonText, isStale } from '../api/classMessages'
 import { getRevision, pickCurrent, type RevisionSummary } from '../api/classes'
 import { ChatPanel } from '../components/classes/ChatPanel'
 import { DeleteClass } from '../components/classes/DeleteClass'
+import { SavePanel } from '../components/classes/SavePanel'
 import { RevisionView } from '../components/classes/RevisionView'
 import { RevisionsPanel } from '../components/classes/RevisionsPanel'
 import { Card, Notice, useAction } from '../components/forms'
@@ -134,12 +135,6 @@ function ClassBody({
           <Link to={`/jobs/${summary.openJob.id}`}>See how it is going</Link>
         </Notice>
       ) : null}
-      {summary.saved.count > 0 ? (
-        <Notice>
-          Saved to MOWL as version {summary.saved.latestRevisionNumber ?? '?'}
-          {summary.saved.latestUpToDate === false ? '. The current version has changes that are not saved yet.' : '.'}
-        </Notice>
-      ) : null}
       {notice ? <Notice kind="error">{notice}</Notice> : null}
       {pick.error ? <Notice kind="error">{pick.error}</Notice> : null}
 
@@ -198,6 +193,7 @@ function ClassBody({
         onUse={use}
         busy={pick.busy || busy}
       />
+      <SavePanel summary={summary} onReload={reload} />
       <ChatPanel
         summary={summary}
         revisions={revisions}
