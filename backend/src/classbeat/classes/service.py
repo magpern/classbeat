@@ -34,12 +34,22 @@ SELECT c.id, c.title, c.created_at, c.updated_at, c.current_revision_id,
     sv.updatable_id AS saved_workout_id,
     (SELECT count(*) FROM saved_workouts d
         WHERE d.owner_id = c.owner_id AND d.class_id = c.id AND d.detached_at IS NOT NULL
-    ) AS detached_count
+    ) AS detached_count,
+    coalesce(pf.profile, '[]'::jsonb) AS profile
 FROM classes c
 LEFT JOIN class_revisions cur
     ON cur.owner_id = c.owner_id AND cur.class_id = c.id AND cur.id = c.current_revision_id
 LEFT JOIN jobs oj
     ON oj.owner_id = c.owner_id AND oj.class_id = c.id AND oj.state IN {OPEN_JOB}
+LEFT JOIN LATERAL (
+    SELECT jsonb_agg(jsonb_build_array((iv.i ->> 'zone')::int, (iv.i ->> 'sec')::int)
+        ORDER BY sg.ord, iv.ord) AS profile
+    FROM jsonb_array_elements(CASE WHEN jsonb_typeof(cur.content -> 'segments') = 'array'
+        THEN cur.content -> 'segments' ELSE '[]'::jsonb END) WITH ORDINALITY AS sg(seg, ord)
+    CROSS JOIN LATERAL jsonb_array_elements(CASE WHEN jsonb_typeof(sg.seg -> 'intervals') = 'array'
+        THEN sg.seg -> 'intervals' ELSE '[]'::jsonb END) WITH ORDINALITY AS iv(i, ord)
+    WHERE jsonb_typeof(iv.i -> 'zone') = 'number' AND jsonb_typeof(iv.i -> 'sec') = 'number'
+) pf ON true
 LEFT JOIN LATERAL (
     SELECT count(*) OVER () AS n, s.revision_number, s.updated_at, s.content_hash,
         CASE WHEN s.operation_id IS NULL OR EXISTS (SELECT 1 FROM external_operations o
