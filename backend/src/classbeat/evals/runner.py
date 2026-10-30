@@ -9,25 +9,39 @@ error) is a failed case whose outcome is the failure category.
 the shape of the class (per segment its name and kind, per interval its length, zone and the index
 of the track under it) only: no cues, no description, no song titles, no ids. ``results_table`` and
 ``results_json`` are what the owner pastes into a PR; ``classbeat.evals.compare`` reads the JSON.
+
+The suite (ADR 0012 section 4.2) writes **format 2**: ``suite_results`` is one file per run of the
+suite, the ``SuiteHeader`` (suite version and digest, the choice, the prompt version of each stage,
+the classbeat, mowl and price versions, the repeat count, the times and the provider kind built),
+then per run of a case the format-1 row plus its ``category`` (``suite_row``) or a song run's row
+(``song_suite_row``). Same rule: numbers and names only. ``smoke --live`` keeps format 1.
 """
 
 import json
 import time
 import uuid
-from collections.abc import Callable
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
-from typing import Any
+from datetime import UTC, datetime
+from typing import TYPE_CHECKING, Any
 
+from classbeat import __version__ as _classbeat_version
 from classbeat.agent import DesignContext, DesignResult, design_stage, run_stage
 from classbeat.agent.loop import AgentConfig, Counters, RunInfo
+from classbeat.agent.prices import PRICES_VERSION
 from classbeat.agent.provider import ModelProvider, Usage
+from classbeat.agent.records import mowl_version as _mowl_version
 from classbeat.agent.revise import ReviseContext, ReviseResult, revise_stage
 from classbeat.evals.cases import Case
-from classbeat.evals.checks import Check, run_checks, tss_bounds_for
+from classbeat.evals.checks import Check, has_zone7, run_checks, tss_bounds_for
 from classbeat.evals.music import build_music
 from classbeat.jobs.errors import JobFailure
 
-RESULTS_FORMAT = 1  # of ``results_json``; ``classbeat.evals.compare`` refuses another
+if TYPE_CHECKING:
+    from classbeat.evals.pick import PickCaseResult
+
+RESULTS_FORMAT = 1  # of ``results_json`` (``smoke --live``); ``classbeat.evals.compare`` reads it
+RESULTS_FORMAT_SUITE = 2  # of ``suite_results`` (ADR 0012 section 4.2); ``evals.gate`` reads it
 
 
 class EvalHost:
@@ -77,6 +91,7 @@ class CaseResult:
     tss_bounds: tuple[float, float] | None = None
     changes_on_music: str = ""  # "x of y" interval starts on the music, as quality.report says
     timeline: list[dict[str, Any]] = field(default_factory=lambda: list[dict[str, Any]]())
+    tss_approximate: bool = False  # a zone 7 interval: its TSS weight is a guess (ADR 0012 s. 7)
 
     @property
     def passed(self) -> bool:
@@ -115,7 +130,9 @@ async def run_case(
     *,
     repeat: int = 0,
     clock: Callable[[], float] = time.monotonic,
+    zone7_tss_margin: float = 0.0,
 ) -> CaseResult:
+    """``zone7_tss_margin``: the suite's (its manifest); the smoke set runs with 0."""
     music = build_music(case.music)
     ctx = DesignContext.build(case.brief, music)
     stage, first = design_stage(ctx), ctx.first_message()
@@ -165,7 +182,16 @@ async def run_case(
         return failed("error:BadOutput")
     result = output
     try:
-        checks = run_checks(case, result, done, config.limits, float(ctx.map["duration"]), note)
+        checks = run_checks(
+            case,
+            result,
+            done,
+            config.limits,
+            float(ctx.map["duration"]),
+            note,
+            zone7_tss_margin=zone7_tss_margin,
+        )
+        zone7 = has_zone7(result.spec)
     except Exception as exc:
         return failed(f"error:{type(exc).__name__}")
     return CaseResult(
@@ -185,9 +211,12 @@ async def run_case(
         corrections=done.corrections,
         wall_sec=wall,
         usage=done.usage,
-        tss_bounds=tss_bounds_for(case, result.duration_sec),
+        tss_bounds=tss_bounds_for(
+            case, result.duration_sec, zone7=zone7, zone7_margin=zone7_tss_margin
+        ),
         changes_on_music=str(result.quality.get("changes_on_music", "")),
         timeline=class_shape(result.timeline),
+        tss_approximate=zone7,
     )
 
 
@@ -240,6 +269,91 @@ def results_json(results: list[CaseResult]) -> str:
     return json.dumps(
         {"format": RESULTS_FORMAT, "results": [result_row(r) for r in results]}, indent=1
     )
+
+
+@dataclass(frozen=True)
+class SuiteHeader:
+    """The header of a suite results file (ADR 0012 section 4.2). ``provider``, ``model`` and
+    ``effort`` are the catalog choice the run was given; ``provider_kind`` is the ``name`` of the
+    provider actually built. Versions and times only: no key, no account, no model text."""
+
+    suite_version: int
+    manifest_digest: str
+    provider: str
+    model: str
+    effort: str
+    prompt_versions: Mapping[str, str]  # stage -> prompt_version
+    repeat: int
+    started_at: datetime
+    ended_at: datetime
+    provider_kind: str
+    classbeat_version: str = _classbeat_version
+    mowl_version: str = field(default_factory=_mowl_version)
+    prices_version: str = PRICES_VERSION
+
+
+def _utc(at: datetime) -> str:
+    if at.tzinfo is None:
+        raise ValueError("a results time is timezone-aware")
+    return at.astimezone(UTC).isoformat()
+
+
+def suite_row(r: CaseResult, category: str) -> dict[str, Any]:
+    """A design or revise run in format 2: the format-1 row plus its category, the zone 7 flag
+    and the scores (none for a design run)."""
+    return {
+        **result_row(r),
+        "category": category,
+        "tss_approximate": r.tss_approximate,
+        "scores": {},
+    }
+
+
+def song_suite_row(
+    r: "PickCaseResult", category: str, *, repeat: int, model: str, effort: str
+) -> dict[str, Any]:
+    """A song run (``pick_pool`` then ``choose_songs``) in format 2: numbers, check names and
+    details (roles and seconds), the prompt version of each stage. No title, artist or id."""
+    return {
+        "case": r.name,
+        "repeat": repeat,
+        "category": category,
+        "model": model,
+        "effort": effort,
+        "prompt_versions": dict(r.prompt_versions),
+        "passed": r.passed,
+        "outcome": r.outcome,
+        "turns": r.turns,
+        "tool_calls": r.tool_calls,
+        "cost_micros": r.cost_micros,
+        "checks": [{"name": c.name, "ok": c.ok, "detail": c.detail} for c in r.checks],
+        "scores": {},
+    }
+
+
+def suite_results(header: SuiteHeader, rows: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
+    """One file per run of the suite: the header of section 4.2, then the runs."""
+    return {
+        "results_format": RESULTS_FORMAT_SUITE,
+        "suite_version": header.suite_version,
+        "manifest_digest": header.manifest_digest,
+        "provider": header.provider,
+        "model": header.model,
+        "effort": header.effort,
+        "prompt_versions": dict(sorted(header.prompt_versions.items())),
+        "classbeat_version": header.classbeat_version,
+        "mowl_version": header.mowl_version,
+        "prices_version": header.prices_version,
+        "repeat": header.repeat,
+        "started_at": _utc(header.started_at),
+        "ended_at": _utc(header.ended_at),
+        "provider_kind": header.provider_kind,
+        "results": [dict(row) for row in rows],
+    }
+
+
+def suite_results_json(header: SuiteHeader, rows: Sequence[Mapping[str, Any]]) -> str:
+    return json.dumps(suite_results(header, rows), indent=1, allow_nan=False)
 
 
 def failed_check_lines(r: CaseResult) -> list[str]:

@@ -14,7 +14,9 @@ passes when all of them do. They look only at the fitted spec the backend comput
   race has the shape the prompt gives (15 to 35 s); a climb is a run of at least 90 s in zone 3 or
   above whose mean cadence stays at or under 75 rpm, or that sits in a segment named "climb";
 - ``zones``: the share of the time in zone 5 or above within the bounds of the asked intensity;
-- ``tss``: the backend's TSS within the bounds of the intensity and the length;
+- ``tss``: the backend's TSS within the bounds of the intensity and the length (for a class
+  with a zone 7 interval the upper bound widened by the suite's ``zone7_tss_margin``, ADR 0012
+  section 7: zone 7's TSS weight is a guess);
 - ``changes_on_music``, ``quality_issues``: from ``mowl.quality.report`` (computed by
   ``model_input.quality_for_model``, not re-implemented here): the share of interval starts that
   landed on a drop, breakdown, track change or bar start, and no standing, cadence or zone-run
@@ -45,6 +47,7 @@ RACE_SEC: Final = (15, 35)
 CLIMB_MIN_SEC: Final = 90
 CLIMB_MAX_RPM: Final = 75
 HARD_ZONE: Final = 5
+ZONE7: Final = 7
 # Share of the time in zone 5 or above, per intensity ("about a tenth" in a typical class).
 HARD_SHARE: Final[dict[str, Range]] = {
     "easy": (0.0, 0.10),
@@ -133,10 +136,20 @@ def _between(value: float, bounds: Range) -> bool:
     return bounds[0] <= value <= bounds[1]
 
 
-def tss_bounds_for(case: Case, total_sec: float) -> Range:
-    """The TSS the draft must land in: the case's own, else the intensity's per hour of class."""
+def has_zone7(spec: dict[str, Any]) -> bool:
+    """Whether the class has a zone 7 interval, whose TSS weight is a guess (ADR 0012 section 7)."""
+    return any(i["zone"] == ZONE7 for _, i in _intervals(spec))
+
+
+def tss_bounds_for(
+    case: Case, total_sec: float, *, zone7: bool = False, zone7_margin: float = 0.0
+) -> Range:
+    """The TSS the draft must land in: the case's own, else the intensity's per hour of class.
+    For a class with zone 7 the upper bound is widened by ``zone7_margin`` (the suite's
+    manifest sets it; the smoke set leaves it at 0)."""
     per_hour = TSS_PER_HOUR[case.brief.intensity]
-    return case.expect.tss or (per_hour[0] * total_sec / 3600, per_hour[1] * total_sec / 3600)
+    low, high = case.expect.tss or (per_hour[0] * total_sec / 3600, per_hour[1] * total_sec / 3600)
+    return (low, high * (1 + zone7_margin)) if zone7 else (low, high)
 
 
 def run_checks(
@@ -146,6 +159,8 @@ def run_checks(
     limits: Limits,
     music_sec: float,
     note: str = "",
+    *,
+    zone7_tss_margin: float = 0.0,
 ) -> list[Check]:
     spec, brief, expect = result.spec, case.brief, case.expect
     total = result.duration_sec
@@ -207,7 +222,7 @@ def run_checks(
     bounds = expect.hard_share or HARD_SHARE[brief.intensity]
     add("zones", _between(share, bounds), f"zone {HARD_ZONE}+ share {share:.2f}, bounds {bounds}")
 
-    tss_bounds = tss_bounds_for(case, total)
+    tss_bounds = tss_bounds_for(case, total, zone7=has_zone7(spec), zone7_margin=zone7_tss_margin)
     add(
         "tss",
         _between(result.tss, tss_bounds),
