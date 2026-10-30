@@ -346,10 +346,20 @@ async def test_a_same_host_redirect_is_not_followed_and_not_retried() -> None:
     assert [str(r.url) for r in fake.requests] == ["https://api.anthropic.com/v1/messages"]
 
 
+@pytest.mark.parametrize(
+    "name", ["ANTHROPIC_BASE_URL", "ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN"]
+)
+def test_sdk_variables_that_could_move_the_client_are_refused(
+    monkeypatch: pytest.MonkeyPatch, name: str
+) -> None:
+    """ADR 0012 §2: every ``ANTHROPIC_*`` variable is refused, not only ignored."""
+    monkeypatch.setenv(name, "https://evil.example")
+    with pytest.raises(ValueError, match=name) as raised:
+        AnthropicProvider(KEY, transport=FakeAnthropic([stream(message())]))
+    assert "evil.example" not in str(raised.value)
+
+
 async def test_the_environment_cannot_move_the_client(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("ANTHROPIC_BASE_URL", "https://evil.example")
-    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-from-the-environment")
-    monkeypatch.setenv("ANTHROPIC_AUTH_TOKEN", "token-from-the-environment")
     monkeypatch.setenv("HTTPS_PROXY", "http://proxy.example:3128")
     _, fake = await one_turn(stream(message(text("hi"))))
     [request] = fake.requests
@@ -358,7 +368,10 @@ async def test_the_environment_cannot_move_the_client(monkeypatch: pytest.Monkey
     assert "authorization" not in request.headers
 
 
-@pytest.mark.parametrize("name", ["ANTHROPIC_LOG", "ANTHROPIC_CUSTOM_HEADERS", "SSLKEYLOGFILE"])
+@pytest.mark.parametrize(
+    "name",
+    ["ANTHROPIC_LOG", "ANTHROPIC_CUSTOM_HEADERS", "SSLKEYLOGFILE", "OPENAI_API_KEY", "DEEPSEEK_X"],
+)
 def test_sdk_environment_that_changes_requests_or_logging_is_refused(
     monkeypatch: pytest.MonkeyPatch, name: str
 ) -> None:

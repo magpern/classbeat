@@ -6,7 +6,12 @@ import signal
 import sys
 
 from classbeat import design, playlists, saving, songs
-from classbeat.config import ModelProviderRefused, Settings, check_worker_model_provider
+from classbeat.config import (
+    ModelProviderRefused,
+    Settings,
+    check_worker_model_provider,
+    worker_model_providers,
+)
 from classbeat.crypto.keks import load_keyring
 from classbeat.db import (
     create_engine,
@@ -58,6 +63,7 @@ logger = logging.getLogger("classbeat.worker")
 def main() -> int:
     # Before anything else: every urllib request of the process (the provider library's) goes
     # through the outbound allowlist (ADR 0006 §9).
+    # Without a model host until the settings say which providers the worker can use.
     install_worker_allowlist()
     settings = Settings()
     configure_logging(settings.log_level)
@@ -66,6 +72,8 @@ def main() -> int:
     except ModelProviderRefused as refused:
         logger.error("worker refused to start", extra={"reason": str(refused)})
         return 2
+    # ADR 0012 §2: a model host only for a provider with its key (DeepSeek: and its setting on).
+    install_worker_allowlist(worker_model_providers(settings))
     asyncio.run(_run(settings), loop_factory=event_loop_factory())
     return 0
 
