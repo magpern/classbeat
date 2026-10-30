@@ -13,7 +13,7 @@ GitHub hold the detail.
 | M2 | `mowl-workouts` v0.4.0, isolation, encryption, connect MOWL | done, except the token-lifetime check (waits for the owner) |
 | M3a | Jobs, Anthropic loop, design on existing music | done (2026-10-29); live smoke run once: 14 of 15 passed |
 | M3b | Class page, revisions, save to MOWL, usage and cost | done technically (2026-10-30, on fakes): [ADR 0007](adr/0007-classes-revisions-and-saving.md), issues #141 to #151 |
-| M4 | Song picking (beta), Spotify BYOK | not started |
+| M4 | Song picking (beta), Spotify BYOK | in progress: design in review ([ADR 0008](adr/0008-song-picking.md), [ADR 0009](adr/0009-spotify-connection.md)); issues in milestone "M4 Song picking and Spotify" (#173 to #186) |
 | M3c | Eval suite, OpenAI and DeepSeek adapters | not started |
 | M5 | Tiers, quotas, codes, admin | not started |
 | M6 | Security review, backups, GDPR, VPS | not started |
@@ -100,7 +100,15 @@ GitHub hold the detail.
   saves and updates missing from the monthly view), #160 and #162 to #169 (see their review
   comments). ADR 0007 amendments owed: the brief is limited to 4096 bytes (refused with 422 at
   creation) and a usage month before the account shows zeros instead of 404.
-- **Next: M4** (song picking, Spotify BYOK): starts with its ADR.
+- **M4 in progress** (song picking, Spotify BYOK): ADR 0008 (song picking) and ADR 0009 (the Spotify
+  connection) are Proposed and split into 14 issues (#173 to #186), roadmap Amendment 5. The first work is
+  the `mowl-workouts` v0.6.0 release by the local Architect (L1), the migration (SP1) and the Spotify
+  egress and fakes (SP2). Nothing live is run; the owner-authorized live steps are in ADR 0008 §11.
+  ADR amendments owed when ADR 0009 is accepted (superseded-by pointers to ADR 0009 §5.4 and §6):
+  ADR 0004 §4 (status changes conditional on `wrapped_dek`), ADR 0005 §3 (the `connections` status
+  writes "conditional on `wrapped_dek`") and §4's category table ("a 401 or 403 (the status flips)",
+  narrowed for Spotify), and ADR 0007 §9 (Save's link, `hold` and credentials "from one `wrapped_dek`
+  generation"): the guard is `generation`, compared together with `id`.
 - Releases: v0.1.0 (cut partway through M0); v0.2.0 is not cut yet (deferred to save Actions quota). Image
   `ghcr.io/magpern/classbeat`, private.
 
