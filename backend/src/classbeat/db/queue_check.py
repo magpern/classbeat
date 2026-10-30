@@ -28,7 +28,7 @@ from typing import Any
 from sqlalchemy.engine import Engine
 from sqlalchemy.ext.asyncio import AsyncEngine
 
-from classbeat.db.queue_digests import QUEUE_DIGESTS
+from classbeat.db.queue_digests import GUARD_TRIGGER_DIGESTS, QUEUE_DIGESTS
 
 QUEUE_ROLE = "classbeat_queue"
 QUEUE_VERSION = "classbeat-queue v2"
@@ -91,7 +91,56 @@ SQL_TEXT_BUILTINS = (
     "set_config",
 )
 
-QUEUE_QUERY = """
+# The M5 guard triggers (ADR 0011 section 1), the one amendment to the invariant above: "the five
+# queue functions plus the two M5 guard triggers, pinned by digest". Migration 0007 makes them as
+# classbeat_owner; SECURITY INVOKER plpgsql that calls only built-ins and runs no SQL text, on
+# tables no queue function touches. Each is admitted only exactly: the function by name, the md5 of
+# its definition (``GUARD_TRIGGER_DIGESTS``), its owner and its ACL (the owner's EXECUTE only), the
+# trigger by name, table, function, ``tgtype`` (row-level BEFORE UPDATE = 19, BEFORE UPDATE OR
+# DELETE = 27), enabled, no arguments, no columns, no WHEN and no constraint. Anything else is
+# reported as user code. ``20-queue.sql`` and guard 9 admit exactly the same strings.
+GUARD_OWNER = "classbeat_owner"
+GUARD_TRIGGERS: dict[str, tuple[str, int]] = {
+    "credit_ledger_guard": ("credit_ledger", 19),
+    "admin_audit_guard": ("admin_audit", 27),
+}
+GUARD_FUNCTION_SIGNATURE = (
+    "CASE WHEN p.prokind = 'f' AND n.nspname = 'public' AND p.proname IN "
+    "('credit_ledger_guard', 'admin_audit_guard') THEN p.proname || '|' "
+    "|| pg_catalog.md5(pg_catalog.pg_get_functiondef(p.oid)) || '|' "
+    "|| pg_catalog.pg_get_userbyid(p.proowner) || '|' "
+    "|| coalesce(pg_catalog.array_to_string(p.proacl, ','), '') END"
+)
+GUARD_TRIGGER_SIGNATURE = (
+    "t.tgname || '|' || n.nspname || '.' || c.relname || '|' "
+    "|| (SELECT fn.nspname || '.' || fp.proname || '(' "
+    "|| pg_catalog.oidvectortypes(fp.proargtypes) || ')' FROM pg_catalog.pg_proc fp "
+    "JOIN pg_catalog.pg_namespace fn ON fn.oid = fp.pronamespace WHERE fp.oid = t.tgfoid) "
+    "|| '|' || t.tgtype::text || '|' || t.tgenabled::text || '|' || t.tgnargs::text || '|' "
+    "|| t.tgattr::text || '|' || (t.tgqual IS NULL)::text || '|' || t.tgconstraint::text"
+)
+
+
+def guard_function_signatures() -> list[str]:
+    return [
+        f"{name}|{GUARD_TRIGGER_DIGESTS[name]}|{GUARD_OWNER}|{GUARD_OWNER}=X/{GUARD_OWNER}"
+        for name in GUARD_TRIGGERS
+    ]
+
+
+def guard_trigger_signatures() -> list[str]:
+    return [
+        f"{name}|public.{table}|public.{name}()|{tgtype}|O|0||true|0"
+        for name, (table, tgtype) in GUARD_TRIGGERS.items()
+    ]
+
+
+def _quoted(values: list[str]) -> str:
+    return ", ".join("'" + value.replace("'", "''") + "'" for value in values)
+
+
+QUEUE_QUERY = (
+    """
 WITH q AS (SELECT oid FROM pg_catalog.pg_roles WHERE rolname = 'classbeat_queue')
 SELECT
     (SELECT ARRAY[r.rolcanlogin, r.rolsuper, r.rolcreatedb, r.rolcreaterole, r.rolreplication,
@@ -157,6 +206,7 @@ SELECT
            AND (p.oid >= 16384 OR n.nspname = 'public'
                 OR (n.nspname NOT IN ('pg_catalog', 'information_schema', 'pg_toast')
                     AND n.nspname !~ '^pg_(toast_)?temp_[0-9]+$'))
+           AND NOT coalesce(__GUARD_FUNCTION__ IN (__GUARD_FUNCTIONS__), false)
         UNION ALL
         SELECT 'operator ' || n.nspname || '.' || o.oprname || '('
                || CASE WHEN o.oprleft = 0 THEN 'NONE' ELSE o.oprleft::regtype::text END || ', '
@@ -170,6 +220,7 @@ SELECT
           FROM pg_catalog.pg_trigger t JOIN pg_catalog.pg_class c ON c.oid = t.tgrelid
           JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
          WHERE NOT t.tgisinternal
+           AND NOT coalesce(__GUARD_TRIGGER__ IN (__GUARD_TRIGGERS__), false)
         UNION ALL
         SELECT 'rule ' || r.rulename || ' on ' || n.nspname || '.' || c.relname
           FROM pg_catalog.pg_rewrite r JOIN pg_catalog.pg_class c ON c.oid = r.ev_class
@@ -214,6 +265,11 @@ SELECT
            AND f.proname IN (__SQL_TEXT_BUILTINS__)
         ORDER BY 1)
 """.replace("__SQL_TEXT_BUILTINS__", ", ".join(f"'{name}'" for name in SQL_TEXT_BUILTINS))
+    .replace("__GUARD_FUNCTION__", GUARD_FUNCTION_SIGNATURE)
+    .replace("__GUARD_FUNCTIONS__", _quoted(guard_function_signatures()))
+    .replace("__GUARD_TRIGGER__", GUARD_TRIGGER_SIGNATURE)
+    .replace("__GUARD_TRIGGERS__", _quoted(guard_trigger_signatures()))
+)
 # 16384 is FirstNormalObjectId: below it is only what initdb created (pg_catalog, information_schema
 # and the two rules of the pg_settings view). Anything at or above it, in any schema, is user-made.
 COLUMN_COUNT = 7
