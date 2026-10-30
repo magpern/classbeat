@@ -1,10 +1,21 @@
 """The ``connections`` table (ADR 0004 §1): owned, one row per user and provider.
 
 Only ``classbeat.connections`` reads or writes it (``tests/test_crypto_guard.py``). Migration
-``0003_connections`` creates it with its constraints and RLS; this is the query-side mirror.
+``0003_connections`` creates it with its constraints and RLS, ``0006_spotify`` adds
+``generation``; this is the query-side mirror.
 """
 
-from sqlalchemy import Column, DateTime, ForeignKey, LargeBinary, MetaData, Table, Text, text
+from sqlalchemy import (
+    BigInteger,
+    Column,
+    DateTime,
+    ForeignKey,
+    LargeBinary,
+    MetaData,
+    Table,
+    Text,
+    text,
+)
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 
 PROVIDERS = ("mowl", "spotify", "swedebeat")
@@ -29,4 +40,7 @@ connections = Table(
     Column("connected_at", DateTime(timezone=True), nullable=False, server_default=text("now()")),
     Column("updated_at", DateTime(timezone=True), nullable=False, server_default=text("now()")),
     Column("last_used_at", DateTime(timezone=True)),
+    # ADR 0009 section 5.4: the version ``hold`` and the status flips compare. A user's connect,
+    # reconnect or Client ID change increases it; a refresh or a rewrap does not.
+    Column("generation", BigInteger, nullable=False, server_default=text("1")),
 )
