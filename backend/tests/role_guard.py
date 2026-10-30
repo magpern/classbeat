@@ -27,6 +27,9 @@ QUEUE_SIGNATURES = {
     "queue_unsettled(integer)",
     "queue_stats()",
 }
+# The M5 guard trigger functions (migration 0007, ADR 0011 section 1): SECURITY INVOKER, owned by
+# classbeat_owner, executable by nobody else (firing a trigger needs no EXECUTE).
+GUARD_TRIGGER_FUNCTIONS = frozenset({"credit_ledger_guard()", "admin_audit_guard()"})
 TABLE_PRIVILEGES = {"SELECT", "INSERT", "UPDATE", "DELETE"}
 # Tables where the app role gets less than full DML: the KEK check values are recorded and read,
 # never changed or forgotten by the app (migration 0003; ``keys wipe`` deletes as the owner);
@@ -36,6 +39,22 @@ RESTRICTED_APP_PRIVILEGES = {
     "connection_keks": {"SELECT", "INSERT"},
     "class_messages": {"SELECT", "INSERT"},
     "agent_runs": {"SELECT", "INSERT", "UPDATE"},
+    # ADR 0011 section 1 (M5): read-only tiers and settings; entitlements and redemptions are
+    # never updated by the app (a bug can't extend ``ends_at`` or un-revoke); the ledger and the
+    # lock rows are narrowed further by policies and the ledger trigger. ``admin_audit`` is in
+    # ``NO_APP_ACCESS``.
+    "plans": {"SELECT"},
+    "app_settings": {"SELECT"},
+    "entitlements": {"SELECT", "INSERT"},
+    "code_redemptions": {"SELECT", "INSERT"},
+    "redeem_codes": {"SELECT"},
+    "credit_ledger": {"SELECT", "INSERT", "UPDATE"},
+    "quota_periods": {"SELECT", "INSERT", "UPDATE"},
+}
+# The only column-level privileges in public, exactly: (table, column) -> {(grantee, privilege)}.
+# ``redeem_codes.redeemed_count`` is what a redeem increments (ADR 0011 section 2).
+COLUMN_PRIVILEGES = {
+    ("redeem_codes", "redeemed_count"): {(APP, "UPDATE")},
 }
 SEQUENCE_PRIVILEGES = {"USAGE", "SELECT"}
 # Built-in languages that PUBLIC may use (Postgres' own default).
@@ -232,14 +251,32 @@ def check_roles(conn: Connection) -> list[str]:
         {"owner": OWNER},
     ).scalar_one()
     need(foreign_owned == 0, "every relation in public must be owned by classbeat_owner")
-    column_acls = conn.execute(
+    column_rows = conn.execute(
         text(
-            "SELECT count(*) FROM pg_attribute a JOIN pg_class c ON c.oid = a.attrelid "
-            "JOIN pg_namespace n ON n.oid = c.relnamespace "
+            "SELECT c.relname, a.attname, "
+            + GRANTEE.replace("a.grantee", "x.grantee")
+            + ", x.privilege_type, x.is_grantable "
+            "FROM pg_attribute a JOIN pg_class c ON c.oid = a.attrelid "
+            "JOIN pg_namespace n ON n.oid = c.relnamespace, aclexplode(a.attacl) x "
             "WHERE n.nspname = 'public' AND a.attacl IS NOT NULL"
         )
-    ).scalar_one()
-    need(column_acls == 0, "no column-level privileges in public")
+    ).all()
+    found_columns: dict[tuple[str, str], set[tuple[str, str]]] = {}
+    for table, column, grantee, privilege, grantable in column_rows:
+        found_columns.setdefault((str(table), str(column)), set()).add(
+            (str(grantee), str(privilege))
+        )
+        need(not grantable, f"{table}.{column}: no grantable column privilege")
+    expected_columns = {
+        key: value
+        for key, value in COLUMN_PRIVILEGES.items()
+        if key[0] in {o.split(":")[0] for o, *_ in relations}
+    }
+    need(
+        found_columns == expected_columns,
+        f"column-level privileges in public must be exactly {expected_columns}, "
+        f"are {found_columns}",
+    )
 
     # Functions (in public, and user-made ones anywhere): PUBLIC may call none; classbeat_app
     # only the queue's SECURITY DEFINER functions owned by classbeat_queue (ADR 0005 section 3;
@@ -265,6 +302,17 @@ def check_roles(conn: Connection) -> list[str]:
             f"{obj}: classbeat_app may execute only the queue functions",
         )
         need(_grantees(functions, obj) <= {APP, OWNER, QUEUE}, f"{obj}: unexpected grantee")
+        if obj.split(":")[0] in GUARD_TRIGGER_FUNCTIONS:
+            need(
+                _grantees(functions, obj) == {OWNER},
+                f"{obj}: only classbeat_owner may execute a guard trigger function",
+            )
+    present = {o.split(":")[0] for o, *_ in functions}
+    for signature in sorted(GUARD_TRIGGER_FUNCTIONS & present):
+        need(
+            f"{signature}:{OWNER}:false" in {o for o, *_ in functions},
+            f"{signature}: must be owned by classbeat_owner and SECURITY INVOKER",
+        )
     need(len(QUEUE_SIGNATURES) == len(QUEUE_FUNCTIONS), "QUEUE_SIGNATURES must list each function")
     languages = _acl(
         conn,

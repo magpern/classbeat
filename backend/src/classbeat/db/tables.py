@@ -24,7 +24,13 @@ SYSTEM_TABLES: MappingProxyType[str, str] = MappingProxyType(
         "auth_events": "security event log; keeps a null user_id after the user is deleted",
         "connection_keks": "check values of the KEK ids (ADR 0004), read at startup before "
         "any user; reached only through classbeat.crypto.keks",
+        # ADR 0011 section 1 (M5).
+        "plans": "the tiers and their limits, the same for every user; read-only for the app",
+        "redeem_codes": "multi-use plan codes (hash only), looked up by hash before redeeming",
+        "app_settings": "the database flags and settings (ADR 0011 section 7), not per user",
+        "admin_audit": "append-only admin audit log; keeps nulled ids after an account goes",
     }
 )
-# System tables the app role must have no privilege on at all (the rest get DML).
-NO_APP_ACCESS = frozenset({"alembic_version"})
+# System tables the app role must have no privilege on at all (the rest get DML, or the narrower
+# set guard 2 lists). ``admin_audit`` is written only through classbeat_maint (ADR 0011 s. 5).
+NO_APP_ACCESS = frozenset({"alembic_version", "admin_audit"})

@@ -108,5 +108,11 @@ RETENTION: Mapping[str, Retention] = MappingProxyType(
             "account",
             "spotify_connection",
         ),
+        # ADR 0011 section 1 (M5): plans, credits and their lock rows go with the account; none
+        # holds Spotify-derived data. The note is the admin's own text about the grant.
+        "entitlements": _entry("note", "plan_id source", "account"),
+        "code_redemptions": _entry("", "", "account"),
+        "credit_ledger": _entry("", "plan_id state reason", "account"),
+        "quota_periods": _entry("", "", "account"),
     }
 )

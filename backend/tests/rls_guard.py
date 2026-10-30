@@ -23,12 +23,30 @@ REQUIRED_DENY_POLICIES = {
     "job_events": {"UPDATE", "DELETE"},
     "class_messages": {"UPDATE", "DELETE"},
     "agent_runs": {"DELETE"},
+    # ADR 0011 section 1: only the account's cascade removes ledger rows.
+    "credit_ledger": {"DELETE"},
 }
 # Restrictive policies with their own expressions: a finished usage row can't be updated, and the
 # update that finishes a run is not refused (``WITH CHECK (true)``; without it the USING
 # expression would apply to the new row too).
-REQUIRED_POLICIES = {
+REQUIRED_POLICIES: dict[str, set[tuple[str, str | None, str | None]]] = {
     "agent_runs": {("UPDATE", "(outcome IS NULL)", "true")},
+    # ADR 0011 section 1: the app role adds only code and trial entitlements; a ledger row is
+    # inserted only as ``reserved`` and updated only from ``reserved`` to a settled state (the
+    # trigger narrows that further by role).
+    "entitlements": {("INSERT", None, "(source = ANY (ARRAY['code'::text, 'trial'::text]))")},
+    "credit_ledger": {
+        (
+            "INSERT",
+            None,
+            "((state = 'reserved'::text) AND (settled_at IS NULL) AND (refunded_by IS NULL))",
+        ),
+        (
+            "UPDATE",
+            "(state = 'reserved'::text)",
+            "(state = ANY (ARRAY['committed'::text, 'released'::text]))",
+        ),
+    },
 }
 SAFE_DELETE_ACTIONS = {"a": "NO ACTION", "r": "RESTRICT", "c": "CASCADE"}
 SET_ACTIONS = {"n": "SET NULL", "d": "SET DEFAULT"}
