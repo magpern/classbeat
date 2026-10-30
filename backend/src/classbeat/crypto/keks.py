@@ -129,7 +129,9 @@ class KeyRing:
 
     async def current(self, db: AsyncSession) -> Kek:
         """The current KEK, for writes. Checked against its row first if not done yet (in a
-        session of its own; ``db`` is not used for it)."""
+        session of its own; ``db`` is not used for it). That first check therefore takes a
+        **second** pool connection while the caller still holds ``db``'s (and its transaction,
+        possibly with row locks), once per process, before its first write."""
         if self._unchecked is not None:
             async with system_session(self._unchecked) as own:
                 await _record_and_compare(own, self._current)

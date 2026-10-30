@@ -15,7 +15,7 @@ GitHub hold the detail.
 | M3b | Class page, revisions, save to MOWL, usage and cost | done technically (2026-10-30, on fakes): [ADR 0007](adr/0007-classes-revisions-and-saving.md), issues #141 to #151 |
 | M4 | Song picking (beta), Spotify BYOK | in progress: design in review ([ADR 0008](adr/0008-song-picking.md), [ADR 0009](adr/0009-spotify-connection.md)); issues in milestone "M4 Song picking and Spotify" (#173 to #186) |
 | M3c | Eval suite, OpenAI and DeepSeek adapters | design in review ([ADR 0012](adr/0012-eval-suite-and-model-providers.md)); issues in milestone "M3c Eval and providers" (#201 to #219) |
-| M5 | Tiers, quotas, codes, admin | not started |
+| M5 | Tiers, quotas, codes, admin | M5 design accepted, development started ([ADR 0011](adr/0011-tiers-quotas-and-admin.md)); issues in milestone "M5 Tiers and admin" |
 | M6 | Security review, backups, GDPR, VPS | not started |
 | M7 | Commercial (deferred) | deferred |
 
@@ -114,11 +114,21 @@ GitHub hold the detail.
   threat model T79 to T84. Owner questions with defaults are in ADR 0012 (OpenAI data, DeepSeek kept
   disabled, stale routes, thresholds, a full-suite run for Opus, provider keys); agents build to the
   defaults. Nothing live is run; G2 and Z7 wait for M4's #182 to #184.
+- **M5 design accepted, development started:** [ADR 0011](adr/0011-tiers-quotas-and-admin.md) (tiers, quota reservation and
+  refund, concurrency limits and cost caps, codes, grants, trial, the `classbeat_maint` admin path with
+  its audit log, flags), roadmap Amendment 7, threat model T85 to T96. Split into 15 issues in milestone
+  "M5 Tiers and admin"; QT1, FL1, FE1 and T1 wait for
+  their M4 dependencies. The owner's questions (limits, testers' plan, trial, refunds and more) are in
+  ADR 0011 §11; development proceeds on its defaults.
 - Releases: v0.1.0 (cut partway through M0); v0.2.0 is not cut yet (deferred to save Actions quota). Image
   `ghcr.io/magpern/classbeat`, private.
 
 ## Waiting for the owner
 
+- **M5 product questions** ([ADR 0011](adr/0011-tiers-quotas-and-admin.md) §11, Q1 to Q10): limits and
+  cost caps per tier, which plan the testers get, trial on or off, quota period, refund on cancel,
+  overlapping codes, Free feature gates, the Pro priority queue, audit-log retention, prices. Agents
+  build on the defaults listed there; an answer changes seeds or settings, not the design.
 - Each further live smoke run needs the owner's go-ahead for that run (2026-10-29: "do not run
   live test every time").
 - **M3c owner questions** ([ADR 0012](adr/0012-eval-suite-and-model-providers.md), "Owner questions"):
