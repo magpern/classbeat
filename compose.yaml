@@ -77,12 +77,16 @@ services:
     restart: "no"
     user: postgres
     entrypoint: ["sh", "/queue/db-functions.sh"]
+    # database_maint_password: the admin role's password, set by 31-maint-password.psql (ADR 0011
+    # section 5). Mounted here and on web only, never on the worker, migrate or maint.
     secrets:
       - postgres_password
+      - database_maint_password
     tmpfs:
       - /run/pgpass:mode=0700,uid=999,gid=999
     volumes:
       - ./docker/postgres/queue:/queue:ro
+      - ./docker/postgres/maint:/maint:ro
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -90,6 +94,16 @@ services:
   web:
     <<: *app
     restart: unless-stopped
+    environment:
+      <<: *app-env
+      # The admin area's audited role (ADR 0011 section 5); the password is the
+      # database_maint_password secret, on web only. Without it the admin routes answer 503.
+      CLASSBEAT_MAINT_DATABASE_URL: postgresql+psycopg://classbeat_maint@db:5432/classbeat
+    secrets:
+      - database_password
+      - app_secret_key
+      - connection_kek
+      - database_maint_password
     ports:
       - "127.0.0.1:${WEB_PORT:-8000}:8000"
     healthcheck:
@@ -160,6 +174,9 @@ secrets:
     file: ./secrets/app_secret_key
   connection_kek:
     file: ./secrets/connection_kek
+  # The admin role classbeat_maint (ADR 0011 section 5): db-functions and web only.
+  database_maint_password:
+    file: ./secrets/database_maint_password
   # Empty from `scripts/worktree.sh init` (never a real key); worker only.
   anthropic_api_key:
     file: ./secrets/anthropic_api_key

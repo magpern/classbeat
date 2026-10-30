@@ -280,6 +280,11 @@ and retired ones are `connection_kek_<id>`; `smtp_password` (optional) is the SM
 (`CLASSBEAT_SMTP_HOST`, `_PORT`, `_SENDER`, `_USERNAME` and `_TLS` = `starttls`, `tls` or `none`;
 `none` only for loopback or the compose `mailpit`; compose points them at mailpit); the matching
 `CLASSBEAT_DATABASE_PASSWORD` and `CLASSBEAT_DATABASE_OWNER_PASSWORD` variables are ignored.
+The admin area (ADR 0011 section 5): `CLASSBEAT_MAINT_DATABASE_URL` (compose sets it on web) and the
+`database_maint_password` secret file (web and `db-functions` only, which creates the role
+`classbeat_maint` from `docker/postgres/maint/`) connect the admin routes as that role; without either
+they answer 503 `admin_unavailable` and the rest of the app works, and web refuses to start when the
+role is not exactly `classbeat_maint` (guard 11, `tests/test_maint_privileges.py`, checks its grants).
 The model (ADR 0006 section 9): `CLASSBEAT_MODEL_PROVIDER` is `anthropic` (the default) or `fake`
 (compose takes `MODEL_PROVIDER` from `.env`, `fake` in `.env.example`, so the dev stack and CI never
 call a model). `anthropic` needs the `anthropic_api_key` secret file, mounted on the **worker only**
@@ -539,7 +544,7 @@ The `checks` job runs these as steps; the image scan is a step of `e2e`:
 | pip-audit | `uv export --frozen` (production, then all groups) through `pip-audit` (pinned) |
 | npm audit | `npm audit --audit-level=high` in `frontend/` and `e2e/` |
 | Trivy repository scan | Trivy on the repository (vulnerabilities, Dockerfile misconfiguration; compose is not scanned) |
-| `e2e`: stack checks | builds the stack once: `/api/ready` and the SPA answer, `web` and `worker` run as non-root, no secret value appears in `docker inspect` (the empty model key is replaced by a random canary first), only `worker` mounts `anthropic_api_key` and runs `fake`, no container has a model key variable, and `postgres_password` is mounted on `db` and `db-functions` only (never web, worker, migrate or maint) |
+| `e2e`: stack checks | builds the stack once: `/api/ready` and the SPA answer, `web` and `worker` run as non-root, no secret value appears in `docker inspect` (the empty model key is replaced by a random canary first), only `worker` mounts `anthropic_api_key` and runs `fake`, no container has a model key variable, `postgres_password` is mounted on `db` and `db-functions` only (never web, worker, migrate or maint), and `database_maint_password` on `db-functions` and `web` only |
 | `e2e`: Trivy image scan | Trivy on the image the running stack was built from (never pushed); then Playwright runs |
 
 Trivy and gitleaks are checksum-verified release binaries. `pip-audit` (exact version) lives in

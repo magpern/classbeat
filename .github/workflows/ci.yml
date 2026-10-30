@@ -415,6 +415,24 @@ jobs:
           [ "$(docker inspect --format '{{.State.ExitCode}}' "$(docker compose ps -aq db-functions)")" = 0 ] \
             || { echo "::error::db-functions did not succeed"; exit 1; }
 
+      # ADR 0011 section 5: the admin role's password is mounted on db-functions (which sets it)
+      # and web (the admin area) only: never on the worker, migrate or maint.
+      - name: Check database_maint_password is mounted on db-functions and web only
+        working-directory: .
+        run: |
+          set -euo pipefail
+          config="$(docker compose --profile '*' config --format json)"
+          holders="$(jq -r '[.services | to_entries[]
+            | select((.value.secrets // []) | map(.source) | index("database_maint_password"))
+            | .key] | sort | join(" ")' <<< "$config")"
+          echo "database_maint_password is mounted on: $holders"
+          [ "$holders" = "db-functions web" ] \
+            || { echo "::error::database_maint_password must be mounted on db-functions and web only"; exit 1; }
+          docker compose exec -T web test -s /run/secrets/database_maint_password \
+            || { echo "::error::web does not have the database_maint_password secret"; exit 1; }
+          docker compose exec -T worker sh -c '! test -e /run/secrets/database_maint_password' \
+            || { echo "::error::the worker can read database_maint_password"; exit 1; }
+
       # ADR 0006 section 9: the model key is a file on the worker only, never an env variable.
       - name: Check the model key is mounted on the worker only
         working-directory: .

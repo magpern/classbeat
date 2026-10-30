@@ -56,6 +56,8 @@ CONNECT_PROVIDER_EMAIL = Limit("connect", "provider-email", 5, 15 * 60)
 # connection releases its slot (the callback, ``RateLimiter.release``).
 SPOTIFY_START_USER = Limit("spotify-start", "account", 10, 3600)
 SPOTIFY_START_IP = Limit("spotify-start", "ip", 30, 3600)
+# ADR 0011 section 6: every /api/admin request, per admin and minute.
+ADMIN_USER = Limit("admin", "account", 60, 60)
 
 OnSuccess = Literal["decrement", "delete"]
 
@@ -229,3 +231,8 @@ def connect_buckets(provider: str, user_id: str, ip: str, email_normalized: str)
 def spotify_start_buckets(user_id: str, ip: str) -> list[Bucket]:
     """A Spotify connect start (ADR 0009 section 4): per user and per IP."""
     return [Bucket(SPOTIFY_START_USER, user_id), Bucket(SPOTIFY_START_IP, bucket_ip(ip))]
+
+
+def admin_buckets(user_id: str) -> list[Bucket]:
+    """An admin area request (ADR 0011 section 6): 60 per admin and minute."""
+    return [Bucket(ADMIN_USER, user_id)]
