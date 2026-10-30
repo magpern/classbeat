@@ -237,6 +237,8 @@ async def run_phase_one(
         finally:
             step.close()
 
+    # TODO(#234): pass ``release=step.close`` once the runner's ``release`` hook is merged; until
+    # then the step is closed only inside ``store`` (an attempt that never stores keeps it open).
     return AwaitApproval(store)
 
 

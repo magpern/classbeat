@@ -85,6 +85,15 @@ async def test_one_approve_gives_the_verified_private_playlist_and_the_first_des
     draft = songenv.revision(shown.current_revision_id)
     assert (draft.kind, draft.job_id, draft.class_id) == ("draft", job_id, row.class_id)
     assert draft.music["song_list_id"] == str(revision_id)
+    # The class views (#183) find the current draft's playlist by that key.
+    found = songenv.sql(
+        "SELECT p.id FROM classes c JOIN class_revisions r ON r.id = c.current_revision_id "
+        "JOIN class_playlists p ON p.owner_id = r.owner_id AND p.class_id = r.class_id "
+        "AND p.revision_id = CAST(r.music ->> 'song_list_id' AS uuid) "
+        "AND p.detached_at IS NULL WHERE c.id = :c",
+        c=row.class_id,
+    ).all()
+    assert [f.id for f in found] == [final.id]
     assert draft.music["source"] == "mowl_spotify_playlist"
     assert draft.provenance["origin"] == "design_with_songs"
     assert shown.music_source == {
