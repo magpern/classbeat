@@ -69,6 +69,12 @@ single-head check stays. System tables (no `owner_id`, `SYSTEM_TABLES`) and owne
 | `app_settings` | system | `key text` primary key (a code list, §7), `value jsonb` (≤ 2048 bytes, validated per key), `updated_at`, `updated_by uuid NULL` | Read per request; no cache to invalidate |
 | `admin_audit` | system | `actor_id uuid NULL` (→ `users`, set null), `actor_email text` (at the time), `action text` (a code list), `target_user_id uuid NULL` (set null), `target_kind text NULL`, `target_id text NULL` (≤ 100), `params jsonb` (≤ 2048, per-action schema, never a secret, code or token), `outcome text` check `IN ('ok', 'refused', 'error')`, `reason text NULL` (an enum code), `request_id text`, `ip_hash bytea` (HMAC, as the rate limits) | Append-only: `REVOKE ALL` from `classbeat_app` (an exception in guard 2's allowlist), `classbeat_maint` has `INSERT, SELECT` only, and a trigger refuses `UPDATE` and `DELETE` except the foreign keys' `SET NULL` of `actor_id` and `target_user_id` |
 
+The two guard triggers (`credit_ledger_guard`, `admin_audit_guard`) are the only user code besides
+the queue functions. ADR 0005 section 3's amendment (2026-10-30, #207) admits them, pinned by
+digest. `refunded_by` and `revoked_by` carry no foreign key, because a `SET NULL` from a deleted
+admin would be a ledger change the trigger refuses. After an admin's account is deleted, those
+columns keep a dangling admin id, which is an opaque UUID and no personal data.
+
 **The app role's grants on the new tables** (guard 2 checks them as an allowlist; the default
 privileges of ADR 0002 §4 are revoked table by table where narrower):
 
