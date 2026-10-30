@@ -288,12 +288,28 @@ async def test_the_forget_statements_filter_on_the_owner_without_rls(
 ) -> None:
     """#117 item 6: the ``owner_id = :owner_id`` filter of ``_FORGET_MOWL`` scopes the deletes on
     its own. Run as the superuser (RLS does not apply), one owner's forget leaves the other's
-    link and attach in place."""
+    link and attach in place, and detaches only the owner's live saved workout (#155)."""
     from classbeat.connections.repository import _FORGET_MOWL  # pyright: ignore[reportPrivateUsage]
 
     owner, _ = await attached(xenv)
     other, _ = await attached(xenv)
+    for number, user in enumerate((owner, other), start=1):
+        class_id = uuid.uuid4()
+        xenv.sql(
+            "INSERT INTO classes (id, owner_id, title) VALUES (:c, :o, 'Ride')", c=class_id, o=user
+        )
+        xenv.sql(
+            "INSERT INTO saved_workouts (id, owner_id, class_id, program_id, revision_number, "
+            "content_hash, name) VALUES (:i, :o, :c, :p, 1, decode(repeat('ab', 32), 'hex'), "
+            "'Ride')",
+            i=uuid.uuid4(),
+            o=user,
+            c=class_id,
+            p=number,
+        )
     for statement in _FORGET_MOWL:
         xenv.admin.execute(statement, {"owner_id": owner})
     assert (xenv.links(owner), xenv.operations(owner)) == ([], [])
     assert len(xenv.links(other)) == len(xenv.operations(other)) == 1
+    live = "SELECT count(*) FROM saved_workouts WHERE owner_id = :o AND detached_at IS NULL"
+    assert (xenv.sql(live, o=owner).scalar_one(), xenv.sql(live, o=other).scalar_one()) == (0, 1)
