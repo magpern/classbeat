@@ -89,15 +89,26 @@ services:
   # recorded script (ADR 0006 section 8): no model API and no real MOWL is ever contacted. The
   # worker's own outbound allowlist (ADR 0006 section 9) still applies; it lets api.mowl.com
   # through, which resolves to mowl-fake inside this network.
+  #
+  # The script is the symlink /fake-run/script.json (a tmpfs the worker can write), which starts
+  # on good_first_draft.json. A test that needs another model script (the revise runs of
+  # class-save.spec.ts) points the link at one of /fake-scripts with `docker compose exec`
+  # (e2e/tests/model-script.ts) while no run is going; every run reads the file anew.
   worker:
+    command:
+      - sh
+      - -c
+      - ln -sfn /fake-scripts/good_first_draft.json /fake-run/script.json && exec python -m classbeat.worker
     environment:
       # Explicit, so a `.env` that says `anthropic` cannot reach a model from the e2e stack.
       CLASSBEAT_MODEL_PROVIDER: fake
-      CLASSBEAT_FAKE_MODEL_SCRIPT: /fake-scripts/good_first_draft.json
+      CLASSBEAT_FAKE_MODEL_SCRIPT: /fake-run/script.json
       SSL_CERT_FILE: /fake-ca/bundle.pem
     volumes:
       - mowl-ca:/fake-ca:ro
       - ./backend/tests/agent_scripts:/fake-scripts:ro
+    tmpfs:
+      - /fake-run:mode=1777
     depends_on:
       mowl-fake:
         condition: service_healthy
