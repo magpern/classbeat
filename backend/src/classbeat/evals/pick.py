@@ -19,7 +19,6 @@ import json
 import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
-from dataclasses import replace as replaced
 from importlib import resources
 from typing import Any, Final
 
@@ -235,6 +234,16 @@ class PickCaseResult:
         return [c.name for c in self.checks if not c.ok]
 
 
+def _with(config: AgentConfig, limits: Limits) -> AgentConfig:
+    return AgentConfig(
+        model=config.model,
+        effort=config.effort,
+        max_tokens=config.max_tokens,
+        limits=limits,
+        prices=config.prices,
+    )
+
+
 async def run_pick_case(
     case: PickCase,
     provider: ModelProvider,
@@ -255,7 +264,7 @@ async def run_pick_case(
             provider,
             pool_stage(pool_ctx),
             pool_ctx.first_message(),
-            replaced(config, limits=limits[0]),
+            _with(config, limits[0]),
         )
         result.pool = pooled.output
         result.prompt_versions[pooled.info.stage] = pooled.info.prompt_version
@@ -268,7 +277,7 @@ async def run_pick_case(
             provider,
             choose_stage(choose_ctx),
             choose_ctx.first_message(),
-            replaced(config, limits=limits[1]),
+            _with(config, limits[1]),
         )
         result.chosen = chosen.output
         result.prompt_versions[chosen.info.stage] = chosen.info.prompt_version
