@@ -149,7 +149,7 @@ async def approve(
                 return "not_connected"
         if await user.active_jobs(db, ctx) >= limit:  # the owner lock is held (user.approve)
             return "busy"
-        if kind.consumes_credit and not await ledger.allows(db, ctx, waiting.job_id):
+        if waiting.credit_state == "reserved" and not await ledger.allows(db, ctx, waiting.job_id):
             return "quota"
         return None
 

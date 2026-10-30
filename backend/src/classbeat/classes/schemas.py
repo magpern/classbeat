@@ -2,7 +2,7 @@
 fingerprint, an agent run id, a hash or lease data (ADR 0007 section 12)."""
 
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict
@@ -20,14 +20,17 @@ class SavedOut(BaseModel):
     ``latest_saved_workout_id`` is classbeat's own id of the newest live ``saved_workouts`` row,
     the one Update names (ADR 0007 section 5), never a MOWL program id; ``None`` when the class
     has no live row or that row is not one Update would accept (its creating operation is of
-    another class). ``detached_count`` counts the rows detached by a MOWL disconnect, reconnect
-    or ``keys wipe`` (section 9)."""
+    another class). ``saved_state`` says which: ``none`` (no live row), ``ok`` or
+    ``inconsistent`` (a live row exists but the id is withheld, so the page can say the saved
+    state needs attention instead of showing a missing id). ``detached_count`` counts the rows
+    detached by a MOWL disconnect, reconnect or ``keys wipe`` (section 9)."""
 
     count: int
     latest_revision_number: int | None
     latest_saved_at: datetime | None
     latest_up_to_date: bool | None
     latest_saved_workout_id: UUID | None
+    saved_state: Literal["none", "ok", "inconsistent"]
     detached_count: int
 
 
@@ -65,6 +68,9 @@ class ClassOut(BaseModel):
                 latest_saved_at=row.saved_at,
                 latest_up_to_date=bool(row.saved_up_to_date) if has_saved else None,
                 latest_saved_workout_id=row.saved_workout_id if has_saved else None,
+                saved_state=(
+                    "none" if not has_saved else "ok" if row.saved_workout_id else "inconsistent"
+                ),
                 detached_count=int(row.detached_count),
             ),
             open_job_id=row.open_job_id,
@@ -73,7 +79,11 @@ class ClassOut(BaseModel):
 
 
 class ClassesOut(BaseModel):
+    """One page of the user's classes, newest first. ``next_cursor`` is the opaque ``cursor`` of
+    the next page, ``None`` on the last."""
+
     classes: list[ClassOut]
+    next_cursor: str | None = None
 
 
 class SummaryOut(BaseModel):

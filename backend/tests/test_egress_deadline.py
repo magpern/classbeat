@@ -335,3 +335,10 @@ def test_a_late_thread_keeps_only_what_is_left_of_the_bound(drip: DripServer) ->
     assert whole == pytest.approx(1.0, abs=0.15)
     with pytest.raises(TypeError, match="instant"), call_deadline_until(True):  # pyright: ignore[reportArgumentType]
         pass
+
+
+@pytest.mark.parametrize("at", [float("nan"), float("inf"), float("-inf")])
+def test_a_non_finite_deadline_fails_closed(at: float) -> None:
+    """``nan`` compares false with everything, so a deadline of it would never expire."""
+    with pytest.raises(ValueError, match="finite"), call_deadline_until(at):
+        pass

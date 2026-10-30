@@ -48,7 +48,7 @@ from classbeat.agent.schemas import WorkoutDraft
 from classbeat.context import UserContext
 from classbeat.jobs import service
 from classbeat.jobs.credits import CreditLedger, UnmeteredLedger
-from classbeat.jobs.inputs import JobInput
+from classbeat.jobs.inputs import JobInput, jsonb_size
 from classbeat.jobs.kinds import KIND_NAME, KINDS, JobKind, KindRegistry, Refused
 from classbeat.jobs.progress import read_revision
 from classbeat.jobs.user import Admission, CreateAdmit, NewJob
@@ -183,11 +183,6 @@ def canonical_json(value: Any) -> bytes:
     return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode()
 
 
-def _jsonb_size(value: Any) -> int:
-    # jsonb's text form separates with ", " and ": "; the database check stays the backstop.
-    return len(json.dumps(value, ensure_ascii=False, separators=(", ", ": ")).encode("utf-8"))
-
-
 def _bound_admit(kind: JobKind, parsed: BaseModel) -> CreateAdmit | None:
     """The kind's ``admit`` for this input, run by ``user.create`` under the owner lock. What it
     accepts is validated by the kind's model again and stored in place of the browser's input."""
@@ -200,7 +195,7 @@ def _bound_admit(kind: JobKind, parsed: BaseModel) -> CreateAdmit | None:
         if isinstance(result, Refused):
             return result
         stored = kind.admitted_input(parsed, result.fields).model_dump(mode="json")
-        if _jsonb_size(stored) > INPUT_MAX_BYTES:
+        if jsonb_size(stored) > INPUT_MAX_BYTES:
             return Refused("too_large")
         return Admission(canonical_json(stored).decode("utf-8"), result.after_insert)
 
@@ -241,7 +236,7 @@ async def create_job(
         return _invalid(error)
     assert isinstance(parsed, JobInput)  # noqa: S101 - parse_input returns input_model
     stored = parsed.model_dump(mode="json")
-    if _jsonb_size(stored) > INPUT_MAX_BYTES:
+    if jsonb_size(stored) > INPUT_MAX_BYTES:
         return _refuse("too_large")
     new = NewJob(
         kind=kind.name,

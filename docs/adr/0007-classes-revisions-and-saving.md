@@ -642,7 +642,7 @@ lease data in any body):
 
 | Route | Does |
 |---|---|
-| `GET /api/classes`, `GET /api/classes/{id}` | my classes; one class with its current revision number, saved summary, open job |
+| `GET /api/classes`, `GET /api/classes/{id}` | my classes (`limit`, 1 to 500, default 500, and `cursor`; the body's `next_cursor` is the next page's `cursor`, `null` on the last; a bad cursor is 422 `invalid_cursor`); one class with its current revision number, saved summary, open job |
 | `GET /api/classes/{id}/revisions`, `/revisions/{id}` | the tree (number, parent number, origin, created, summary numbers, cost) and one revision (content, music warnings, provenance without run ids) |
 | `GET /api/classes/{id}/messages` | the conversation |
 | `POST /api/classes/{id}/current` | §2 |
@@ -795,3 +795,22 @@ job).
 - **Classes designed and revisions** count only completed jobs; for deleted jobs a `submitted`
   run stands in, so a deleted job with several submitted attempts is over-counted (documented in
   `usage/service.py`).
+- **The class API's saved summary (#167, hardening batch):** `saved` carries `count` (live rows),
+  `latest_revision_number`, `latest_saved_at`, `latest_up_to_date`, `latest_saved_workout_id` (the
+  classbeat id, never a MOWL id, of the newest live `saved_workouts` row, the one Update names),
+  `detached_count` (rows detached by a MOWL disconnect, a reconnect or `keys wipe`, section 9) and
+  `saved_state`: `none` (no live row), `ok`, or `inconsistent` (a live row exists but its creating
+  operation belongs to another class, so no id is offered because Update would refuse it; the page
+  says the saved state needs attention).
+- **Bound clamp:** a `bound_seconds` read from an operation's `request_context` is clamped to 0 to
+  1800 s wherever `actionable_at` is computed (the one SQL in `operations.requests`, used by the
+  protocol, Check again, Do it anyway, the operation view and class delete) and in `bound_of`.
+- **Usage, what the view leaves out:** `jobs` counts a live job once and each run of a deleted job
+  as a job (its identity went with `job_id`; `agent_runs` holds nothing else that names the job),
+  so it can be high after a class delete. Saves and updates completed are **not** in the monthly
+  view: their only records (`jobs`, `external_operations`, `saved_workouts`) go with the class or
+  the MOWL connection, so a count would shrink when a class is deleted, unlike the rest of the
+  figures. If the account page needs them, a durable counter is its own change.
+- **Listing-name filter:** the save reconciler's name comparison normalizes to NFKC, collapses
+  whitespace, folds case and ignores a trailing `…` or `...` (a listing may cut a long name); it
+  stays inclusive, so an unsure comparison leaves the program a candidate.

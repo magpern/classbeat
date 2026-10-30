@@ -23,7 +23,7 @@ from classbeat.design import Runtime
 from classbeat.design import kind as design_kind
 from classbeat.design import music as design_music
 from designtools import BRIEF, PLAYLIST_NAME, DesignEnv, FakeMowlMusic
-from jobtools import new_job
+from jobtools import new_class, new_job
 from optools import OTHER_PLAYLIST, PLAYLIST, TOKEN_A, TOKEN_B
 
 pytestmark = pytest.mark.usefixtures("jenv")
@@ -312,6 +312,22 @@ async def test_the_first_draft_sets_the_class_brief_music_and_current_revision(
         stored.brief,
         stored.music_source,
     )
+
+
+async def test_the_first_draft_touches_only_its_own_class(
+    denv: DesignEnv, fake_mowl: FakeMowlMusic
+) -> None:
+    """The pointer update joins the job's own class: another class of the same user that has
+    no design yet keeps NULL pointers. Without ``c.id = j.class_id`` it would adopt this
+    revision too (a revision of another class)."""
+    owner, conn = await owner_with_mowl(denv)
+    bystander = new_class(denv.admin, owner, "Bystander")
+    first = denv.job(owner, conn)
+    await denv.run_next()
+    [revision] = denv.revisions(first)
+    assert class_of(denv, first).current_revision_id == revision.id
+    other = denv.ops.sql("SELECT * FROM classes WHERE id = :c", c=bystander).one()
+    assert (other.brief, other.music_source, other.current_revision_id) == (None, None, None)
 
 
 async def test_a_failed_draft_leaves_the_class_pointers_unset(
