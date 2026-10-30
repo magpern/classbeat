@@ -78,6 +78,42 @@ class ClassOut(BaseModel):
         )
 
 
+class SongsOut(BaseModel):
+    """The class's newest song list (ADR 0008 section 9). ``content_hash`` is what Approve sends
+    back with ``revision_id``; ``state`` is ``none``, ``waiting``, ``approved``, ``expired`` or
+    ``cancelled``."""
+
+    state: Literal["none", "waiting", "approved", "expired", "superseded", "cancelled"]
+    job_id: UUID | None = None
+    revision_id: UUID | None = None
+    content_hash: str | None = None
+    expires_at: datetime | None = None
+
+
+class PlaylistOut(BaseModel):
+    """A playlist classbeat made in the owner's own Spotify; ``link`` is theirs alone (built from
+    the stored id, only once the playlist is verified)."""
+
+    name: str
+    link: str | None = None
+    detached: bool = False
+    note: str | None = None  # a detached one: it is in the earlier Spotify account
+
+
+class PlaylistNameOut(BaseModel):
+    """A playlist left in Spotify as the class-delete answer names it: no link (ADR 0008 section
+    2: links are shown on the class page only)."""
+
+    name: str
+    detached: bool = False
+
+
+class ClassDetailOut(ClassOut):
+    songs: SongsOut
+    playlist: PlaylistOut | None = None  # the current draft's own playlist
+    spotify_playlists: list[PlaylistOut]  # every one left in Spotify if the class is deleted
+
+
 class ClassesOut(BaseModel):
     """One page of the user's classes, newest first. ``next_cursor`` is the opaque ``cursor`` of
     the next page, ``None`` on the last."""
@@ -191,4 +227,39 @@ class PickIn(BaseModel):
 class DeletedOut(BaseModel):
     deleted: bool
     mowl_workouts_kept: int
+    note: str
+    spotify_playlists_left: list[PlaylistNameOut] = []
+    spotify_note: str | None = None
+
+
+class SongOut(BaseModel):
+    """A song of a list as the page shows it: no Spotify id."""
+
+    position: int
+    title: str
+    artist: str
+    role: str
+    bpm: float
+    length_sec: int
+    new: bool
+
+
+class SongListOut(BaseModel):
+    id: UUID
+    number: int
+    kind: Literal["song_list"] = "song_list"
+    created_at: datetime
+    parent_id: UUID | None
+    parent_number: int | None
+    status: Literal["waiting", "approved", "expired", "superseded", "cancelled"]
+    job_id: UUID | None
+    expires_at: datetime | None
+    approved_at: datetime | None
+    content_hash: str
+    mode: str
+    target_sec: int
+    total_sec: int
+    crossfade_sec: float
+    songs: list[SongOut]
+    omitted_no_bpm: int
     note: str

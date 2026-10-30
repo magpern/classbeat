@@ -107,6 +107,8 @@ async def test_happy_path_connects_and_stores_ciphertext_only(
         "consent_version": None,
         "consent_text": body["consent_text"],
         "song_picking_enabled": True,
+        "pool_playlist": None,
+        "class_playlists": [],
     }
     for hidden in (access, refresh, USER_A, "Rider One"):
         assert hidden not in status.text
