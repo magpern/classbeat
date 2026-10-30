@@ -75,7 +75,8 @@ async def test_every_refusal_starts_nothing(jenv: JobsEnv, browsers: Any, env: E
     kinds = jenv.kinds(job_id)
 
     refused(await alice.approve(job_id, revision, "0" * 64), "hash_mismatch")
-    refused(await alice.approve(job_id, uuid.uuid4(), LIST_HASH), "superseded")
+    # An id that is none of the user's song lists of the class: 404 (ADR 0008 section 12).
+    refused(await alice.approve(job_id, uuid.uuid4(), LIST_HASH), "not_found", 404)
     malformed = await alice.approve(job_id, revision, "ZZ")
     assert malformed.status_code == 422
     await nothing_started(jenv, job_id, kinds)

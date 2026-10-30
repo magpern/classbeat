@@ -7,7 +7,10 @@ write kind: a stage cannot have a write tool, and ``Stage`` refuses one.
 A tool's handler takes its validated input (a strict Pydantic model) and returns a ``ToolAnswer``
 (a JSON-ready payload and, for the final tool, the stage's output) or raises ``ToolError`` with an
 error code and messages for the model to correct. Handlers are pure: no network, no credentials,
-no database.
+no database. The one exception is a ``read`` tool that reads through a backend function it was
+lent (``pick_pool``'s ``search_tracks``, ADR 0008 section 3): its handler may return an awaitable
+of the ``ToolAnswer`` (the job's Spotify search, which runs through ``spotify_call`` on the event
+loop); the stage itself still holds no client and no credentials.
 
 ``prompt_version`` is the SHA-256 of the stage's system prompt and tool definitions (names,
 descriptions, JSON schemas) as canonical JSON, so any change to what the model is told changes it.
@@ -15,7 +18,7 @@ descriptions, JSON schemas) as canonical JSON, so any change to what the model i
 
 import hashlib
 import json
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Awaitable, Callable, Mapping, Sequence
 from dataclasses import dataclass
 from functools import cached_property
 from typing import Any, Literal
@@ -49,7 +52,7 @@ class Tool:
     kind: ToolKind
     description: str
     input_model: type[BaseModel]
-    handler: Callable[[Any], ToolAnswer]
+    handler: Callable[[Any], ToolAnswer | Awaitable[ToolAnswer]]
 
     def __post_init__(self) -> None:
         if self.kind not in TOOL_KINDS:

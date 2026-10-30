@@ -14,8 +14,8 @@ GitHub hold the detail.
 | M3a | Jobs, Anthropic loop, design on existing music | done (2026-10-29); live smoke run once: 14 of 15 passed |
 | M3b | Class page, revisions, save to MOWL, usage and cost | done technically (2026-10-30, on fakes): [ADR 0007](adr/0007-classes-revisions-and-saving.md), issues #141 to #151 |
 | M4 | Song picking (beta), Spotify BYOK | in progress: design in review ([ADR 0008](adr/0008-song-picking.md), [ADR 0009](adr/0009-spotify-connection.md)); issues in milestone "M4 Song picking and Spotify" (#173 to #186) |
-| M3c | Eval suite, OpenAI and DeepSeek adapters | not started |
-| M5 | Tiers, quotas, codes, admin | M5 design proposed ([ADR 0011](adr/0011-tiers-quotas-and-admin.md)); issues in milestone "M5 Tiers and admin" |
+| M3c | Eval suite, OpenAI and DeepSeek adapters | design in review ([ADR 0012](adr/0012-eval-suite-and-model-providers.md)); issues in milestone "M3c Eval and providers" (#201 to #219) |
+| M5 | Tiers, quotas, codes, admin | M5 design accepted, development started ([ADR 0011](adr/0011-tiers-quotas-and-admin.md)); issues in milestone "M5 Tiers and admin" |
 | M6 | Security review, backups, GDPR, VPS | not started |
 | M7 | Commercial (deferred) | deferred |
 
@@ -110,10 +110,14 @@ GitHub hold the detail.
   writes "conditional on `wrapped_dek`") and §4's category table ("a 401 or 403 (the status flips)",
   narrowed for Spotify), and ADR 0007 §9 (Save's link, `hold` and credentials "from one `wrapped_dek`
   generation"): the guard is `generation`, compared together with `id`.
-- **M5 design proposed:** [ADR 0011](adr/0011-tiers-quotas-and-admin.md) (tiers, quota reservation and
+- **M3c design** (eval suite, providers, the enable gate): ADR 0012 is Proposed, roadmap Amendment 6,
+  threat model T79 to T84. Owner questions with defaults are in ADR 0012 (OpenAI data, DeepSeek kept
+  disabled, stale routes, thresholds, a full-suite run for Opus, provider keys); agents build to the
+  defaults. Nothing live is run; G2 and Z7 wait for M4's #182 to #184.
+- **M5 design accepted, development started:** [ADR 0011](adr/0011-tiers-quotas-and-admin.md) (tiers, quota reservation and
   refund, concurrency limits and cost caps, codes, grants, trial, the `classbeat_maint` admin path with
   its audit log, flags), roadmap Amendment 7, threat model T85 to T96. Split into 15 issues in milestone
-  "M5 Tiers and admin"; none startable until the ADR is accepted, and QT1, FL1, FE1 and T1 wait for
+  "M5 Tiers and admin"; QT1, FL1, FE1 and T1 wait for
   their M4 dependencies. The owner's questions (limits, testers' plan, trial, refunds and more) are in
   ADR 0011 §11; development proceeds on its defaults.
 - Releases: v0.1.0 (cut partway through M0); v0.2.0 is not cut yet (deferred to save Actions quota). Image
@@ -127,6 +131,12 @@ GitHub hold the detail.
   build on the defaults listed there; an answer changes seeds or settings, not the design.
 - Each further live smoke run needs the owner's go-ahead for that run (2026-10-29: "do not run
   live test every time").
+- **M3c owner questions** ([ADR 0012](adr/0012-eval-suite-and-model-providers.md), "Owner questions"):
+  do you extend your Spotify §III 14 risk acceptance (Claude only, ADR 0010) to OpenAI (default no:
+  OpenAI stays `owner_pending`, evaluated on synthetic data only); keep DeepSeek
+  disabled (default yes); stale routes keep working, flagged (default yes); the suite thresholds; a
+  full-suite run before Opus 5.5 is used by a tier (default yes); you place the OpenAI and DeepSeek keys
+  yourself (default yes). Each live suite run needs your go-ahead for that run.
 - **MOWL connect (#66) has merged, so the owner can now authorize: a check of the MOWL token's lifetime**
   against the owner's own account (M2 "done when"; [ADR 0004](adr/0004-connections-and-encryption.md) §6).
   What is known (#66): the token is a 36-character GUID, not a JWT, so it carries no expiry

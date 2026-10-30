@@ -16,7 +16,7 @@ from uuid import UUID
 
 from sqlalchemy import text
 
-from classbeat.jobs.errors import RETRYABLE, LeaseLost
+from classbeat.jobs.errors import RETRIED_ONCE, RETRYABLE, LeaseLost
 from classbeat.jobs.fence import FencedSession, insert_event
 
 # Each statement spells the fence out: WHERE id, owner_id, lease_version and state = 'running'.
@@ -56,6 +56,13 @@ _SET_STAGE = text(
 _BUSY_COUNT = text(
     "SELECT count(*) FROM job_events e WHERE e.owner_id = :owner_id AND e.job_id = :job_id "
     "AND e.kind = 'retry_scheduled' AND e.payload ->> 'category' = 'operation_busy' "
+    "AND e.seq > coalesce((SELECT max(a.seq) FROM job_events a WHERE a.owner_id = :owner_id "
+    "AND a.job_id = :job_id AND a.kind = 'approved'), 0)"
+)
+# Retries of one category in the current phase (as ``_BUSY_COUNT``), for ``RETRIED_ONCE``.
+_RETRIES_OF = text(
+    "SELECT count(*) FROM job_events e WHERE e.owner_id = :owner_id AND e.job_id = :job_id "
+    "AND e.kind = 'retry_scheduled' AND e.payload ->> 'category' = :category "
     "AND e.seq > coalesce((SELECT max(a.seq) FROM job_events a WHERE a.owner_id = :owner_id "
     "AND a.job_id = :job_id AND a.kind = 'approved'), 0)"
 )
@@ -161,11 +168,16 @@ async def _requeue(
 
 async def retry(fs: FencedSession, category: str, delay: float) -> str:
     """A retryable failure: a new attempt after ``delay`` seconds while attempts remain, else
-    ``failed`` with the category; ``cancelled`` if a cancel was requested."""
+    ``failed`` with the category; ``cancelled`` if a cancel was requested. A category of
+    ``RETRIED_ONCE`` gets one retry per phase."""
     if fs.cancel_requested:
         return await cancel(fs)
     counts = await attempts(fs)
-    if category not in RETRYABLE and category != "operation_busy":
+    if category in RETRIED_ONCE:
+        done = await fs.db.execute(_RETRIES_OF, {**fs.lease.params(), "category": category})
+        if done.scalar_one() >= 1:
+            return await fail(fs, category)
+    elif category not in RETRYABLE and category != "operation_busy":
         return await fail(fs, category)
     if counts.attempt >= counts.max_attempts:
         return await fail(fs, category)

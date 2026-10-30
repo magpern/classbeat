@@ -66,6 +66,9 @@ CATEGORIES: Final = (
 RETRYABLE: Final = frozenset(
     {"upstream_unavailable", "rate_limited", "model_unavailable", "pool_missing"}
 )
+# Retried once per phase, then failed (ADR 0008 section 1: ``pool_not_synced``, "once more":
+# MOWL had not caught up with the pool playlist; a second miss is the user's to retry later).
+RETRIED_ONCE: Final = frozenset({"pool_not_synced"})
 
 # A transient error of our own database (connection lost, a statement or lock timeout) during a
 # checkpoint, a stage write, a kind's own fenced write or the store of a result. ADR 0005 section 4

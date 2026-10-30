@@ -34,7 +34,7 @@ from dataclasses import dataclass, field
 from typing import Any, Final, Protocol
 from uuid import UUID
 
-from classbeat.agent.dispatcher import dispatch
+from classbeat.agent.dispatcher import dispatch_async
 from classbeat.agent.limits import Limits, tokens_for
 from classbeat.agent.prices import DEFAULT_PRICES, Price, PriceTable
 from classbeat.agent.provider import ModelProvider, ProviderError, StageSpec, ToolResult, Usage
@@ -245,7 +245,7 @@ async def _loop(
             if counters.tool_calls >= limits.max_tool_calls or out_of_time():
                 raise _Stop("limit_exceeded")
             counters.tool_calls += 1
-            done = dispatch(stage, call)
+            done = await dispatch_async(stage, call)
             await host.tool_called(done.tool, done.error)
             if done.final:
                 if done.ok:

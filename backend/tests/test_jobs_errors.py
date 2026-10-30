@@ -134,8 +134,15 @@ def test_invalid_kinds_are_refused(
 
 def test_the_worker_ships_exactly_the_reviewed_kinds() -> None:
     import classbeat.design  # registers design_draft (D1) and revise_draft (R1)
-    import classbeat.saving  # noqa: F401 - registers save_workout (SV1) and update_workout (SV2)
+    import classbeat.saving
+    import classbeat.songs  # noqa: F401 - registers design_with_songs (SJ1)
     from classbeat.jobs import KINDS
 
-    # M4 adds the song-picking kinds
-    assert KINDS.names() == ["design_draft", "revise_draft", "save_workout", "update_workout"]
+    # M4 adds revise_songs with SJ3
+    assert KINDS.names() == [
+        "design_draft",
+        "design_with_songs",
+        "revise_draft",
+        "save_workout",
+        "update_workout",
+    ]
