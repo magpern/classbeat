@@ -52,10 +52,17 @@ def tokens(access: str = "access-1") -> dict[str, Any]:
     return {"access_token": access, "refresh_token": "refresh-1", "expires_at": 2_000_000_000}
 
 
-async def connect(env: Env, ctx: Any, client_id: str = CLIENT_A, user: str = SPOTIFY_USER) -> None:
+async def connect(
+    env: Env,
+    ctx: Any,
+    client_id: str = CLIENT_A,
+    user: str = SPOTIFY_USER,
+    *,
+    confirm: bool = False,
+) -> None:
     await connections.save(
         env.factory, env.app.state.keyring, ctx, "spotify", tokens(),
-        public={"client_id": client_id, "spotify_user_id": user},
+        public={"client_id": client_id, "spotify_user_id": user}, confirm_account_change=confirm,
     )  # fmt: skip
 
 
@@ -210,7 +217,7 @@ async def test_another_spotify_account_forgets_everything_kept_about_the_old_one
 ) -> None:
     alice, bob, planted, _ = await users(env, admin)
     before, bob_before = state(admin, alice.user_id), state(admin, bob.user_id)
-    await connect(env, alice, user="user-other")
+    await connect(env, alice, user="user-other", confirm=True)
     assert state(admin, alice.user_id) == {
         **before,
         "operations": {planted["attach"]},
@@ -219,6 +226,20 @@ async def test_another_spotify_account_forgets_everything_kept_about_the_old_one
         "detached": {planted["playlist"]},
         "connection": {2},
     }
+    assert state(admin, bob.user_id) == bob_before
+
+
+async def test_another_spotify_account_without_confirmation_changes_nothing(
+    env: Env, admin: Connection
+) -> None:
+    """ADR 0009 section 5 step 2 (SC1): the account switch needs ``confirm_account_change``, checked
+    under the row lock; without it ``account_changed`` and the transaction rolls back."""
+    alice, bob, _, _ = await users(env, admin)
+    before, bob_before = state(admin, alice.user_id), state(admin, bob.user_id)
+    with pytest.raises(connections.ConnectionFailure) as refused:
+        await connect(env, alice, user="user-other")
+    assert refused.value.category == "account_changed"
+    assert state(admin, alice.user_id) == before
     assert state(admin, bob.user_id) == bob_before
 
 

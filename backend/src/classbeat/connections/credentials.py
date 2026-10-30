@@ -57,11 +57,17 @@ def build_credentials(
         return Credentials(
             swedebeat_token=str(payload["token"]), swedebeat_device_id=str(payload["device_id"])
         )
+    # ADR 0009 section 6 step 2: the library gets the access token only. No refresh token and
+    # renewal off, so it never contacts the token endpoint and never persists anything (the
+    # refresh is ``classbeat.connections.spotify_tokens``'s, under the row lock); no sleeping on
+    # a 429 either (the job's backoff honours ``Retry-After``, section 8).
     return Credentials(
         spotify_client_id=str(public.get("client_id", "")),
         spotify_access_token=str(payload["access_token"]),
-        spotify_refresh_token=str(payload["refresh_token"]),
+        spotify_refresh_token="",
         spotify_expires_at=float(payload["expires_at"]),
+        spotify_refresh_enabled=False,
+        spotify_max_retry_wait=0.0,
     )
 
 

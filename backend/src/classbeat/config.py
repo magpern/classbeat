@@ -201,6 +201,15 @@ class Settings(BaseSettings):
     # set (by the owner, after measuring it at live activation), such a save whose call returned
     # at least this long ago is ``failed``. A day at most.
     mowl_listing_lag_seconds: float | None = Field(default=None, gt=0, le=86400)
+    # Song picking and the Spotify connection (ADR 0008, ADR 0009). Off by default: the owner
+    # switches live features on (roadmap Amendment 1); off, every Spotify route answers 404
+    # ``feature_off``. A connect flow lives at most 10 minutes (the table's check), a token is
+    # refreshed when it has less than the margin left, and a refresh request (inside the row
+    # lock) ends within its timeout, below the role's 30 s statement and 60 s idle limits.
+    song_picking: bool = False
+    spotify_flow_ttl_seconds: int = Field(default=600, ge=60, le=600)
+    spotify_refresh_margin_seconds: int = Field(default=120, ge=0, le=1800)
+    spotify_refresh_timeout_seconds: float = Field(default=10.0, gt=0, le=20)
     # From the file ``anthropic_api_key`` (never the environment), mounted on the worker only;
     # the web app refuses to start when it can read it. An empty file counts as no key
     # (``scripts/worktree.sh init`` creates an empty one; it is never a real key).
@@ -305,6 +314,21 @@ class Settings(BaseSettings):
         if not 1 <= value <= 65535:
             raise ValueError("smtp_port must be between 1 and 65535")
         return value
+
+    @model_validator(mode="after")
+    def _spotify_needs_a_loopback_address(self) -> "Settings":
+        # ADR 0009 section 2: Spotify does not accept ``localhost`` in a redirect URI (only the
+        # loopback address), so the fixed callback would never work.
+        if self.song_picking and (urlsplit(self.public_base_url).hostname or "") == "localhost":
+            raise ValueError(
+                "public_base_url may not be localhost with song_picking on (use 127.0.0.1)"
+            )
+        return self
+
+    @property
+    def spotify_redirect_uri(self) -> str:
+        """The fixed callback URL (ADR 0009 section 2): from settings only, never from input."""
+        return f"{self.public_base_url}/oauth/spotify/callback"
 
     @model_validator(mode="after")
     def _prod_needs_https(self) -> "Settings":

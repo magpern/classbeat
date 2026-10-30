@@ -25,6 +25,8 @@ from classbeat.jobs.events_routes import router as job_events_router
 from classbeat.jobs.hub import EventHub
 from classbeat.jobs.routes import router as jobs_router
 from classbeat.operations.routes import router as operations_router
+from classbeat.spotify.routes import api as spotify_router
+from classbeat.spotify.routes import callback as spotify_callback_router
 from classbeat.usage.routes import router as usage_router
 
 logger = logging.getLogger(__name__)
@@ -128,7 +130,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.settings = settings
     configure_limits(settings)  # revise_draft's admit reads them (ADR 0007 section 4)
     app.include_router(api)
+    # The Spotify callback (outside /api, ADR 0009 section 2) before the sign-in providers'
+    # ``/oauth/{provider}/callback``, which would otherwise answer it with a 404.
+    app.include_router(spotify_callback_router)
     auth.install(app)
+    app.include_router(spotify_router)
     app.include_router(connections_router)
     app.include_router(job_events_router)
     app.include_router(jobs_router)

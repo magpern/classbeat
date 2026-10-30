@@ -14,8 +14,10 @@ found, the same as an unknown one. Writes:
   A MOWL reconnect also forgets the user's MOWL playlist links and MOWL operations and detaches
   their saved workouts in the same transaction, as a disconnect does (the token may belong to
   another MOWL account). A Spotify reconnect compares the account and the Client ID it replaces
-  (ADR 0009 sections 5 and 7): another Spotify user id forgets the account's pool, operations and
-  live class playlists, another Client ID the pool and its operations, in the same transaction.
+  (ADR 0009 sections 5 and 7): another Spotify user id (only with ``confirm_account_change``,
+  checked under the row lock, else ``account_changed`` and nothing written) forgets the account's
+  pool, operations and live class playlists, another Client ID the pool and its operations, in
+  the same transaction.
   Every rewrite of an existing row is a user's connect, so it increases ``generation`` (ADR 0009
   section 5.4); a refresh (``classbeat.spotify``) and a rewrap keep it.
 - **status changes** (``needs_reconnect``, ``last_error``, ``last_used_at``) are conditional on
@@ -152,24 +154,33 @@ async def save(
     *,
     public: Mapping[str, Any] | None = None,
     expires_at: datetime | None = None,
+    confirm_account_change: bool = False,
 ) -> UUID:
     """Connect or reconnect: store ``secret`` (the provider's payload fields) encrypted.
-    Returns the row id (kept across reconnects)."""
+    Returns the row id (kept across reconnects).
+
+    Spotify (ADR 0009 section 5 step 2): replacing a row of **another** Spotify account needs
+    ``confirm_account_change``; without it ``ConnectionFailure("account_changed")`` is raised
+    after the row lock and nothing is written. The comparison is made under the lock, against
+    the row as it is then, so a parallel connect cannot slip another account past it."""
     _check_provider(provider)
     if set(secret) != PAYLOAD_FIELDS[provider]:
         raise ValueError("the payload does not have the provider's fields")
     plaintext = canonical_json(dict(secret))
     public_values = dict(public or {})
+    confirm = confirm_account_change
     try:
         async with user_session(factory, ctx) as db:
-            return await _write(db, ring, ctx, provider, plaintext, public_values, expires_at)
+            return await _write(
+                db, ring, ctx, provider, plaintext, public_values, expires_at, confirm
+            )
     except IntegrityError as error:
         if not _is_provider_conflict(error):
             raise
     # A parallel connect inserted the row first: start again in a new transaction (once).
     logger.info("parallel connect; retrying once", extra={"provider": provider})
     async with user_session(factory, ctx) as db:
-        return await _write(db, ring, ctx, provider, plaintext, public_values, expires_at)
+        return await _write(db, ring, ctx, provider, plaintext, public_values, expires_at, confirm)
 
 
 async def _write(
@@ -180,6 +191,7 @@ async def _write(
     plaintext: bytes,
     public: dict[str, Any],
     expires_at: datetime | None,
+    confirm_account_change: bool = False,
 ) -> UUID:
     found = (
         await db.execute(
@@ -217,7 +229,9 @@ async def _write(
             # disconnect then connect would (ADR 0006 section 3), after the row lock above.
             await _forget_mowl_account(db, ctx)
         elif provider == "spotify":
-            await _forget_replaced_spotify(db, ctx, dict(found.public or {}), public)
+            await _forget_replaced_spotify(
+                db, ctx, dict(found.public or {}), public, confirm_account_change
+            )
         await db.execute(
             update(connections)
             .where(_C.id == row_id, _C.owner_id == ctx.user_id)
@@ -231,19 +245,25 @@ async def _write(
 
 
 async def _forget_replaced_spotify(
-    db: AsyncSession, ctx: UserContext, old: Mapping[str, Any], new: Mapping[str, Any]
+    db: AsyncSession,
+    ctx: UserContext,
+    old: Mapping[str, Any],
+    new: Mapping[str, Any],
+    confirm_account_change: bool,
 ) -> None:
     """ADR 0009 section 7, after the row lock: another Spotify account forgets everything kept
-    about the old one; the same account under another Client ID forgets the pool (the consent is
-    asked again); a reconnect of the same account and app keeps both. A value that is missing on
-    either side counts as different (the safe reading). The caller (the callback, SC1) has already
-    required ``confirm_account_change`` for another account."""
+    about the old one, and only with ``confirm_account_change`` (else ``account_changed``, the
+    transaction rolls back and nothing is written); the same account under another Client ID
+    forgets the pool (the consent is asked again); a reconnect of the same account and app keeps
+    both. A value that is missing on either side counts as different (the safe reading)."""
 
     def same(key: str) -> bool:
         value = old.get(key)
         return isinstance(value, str) and bool(value) and value == new.get(key)
 
     if not same("spotify_user_id"):
+        if not confirm_account_change:
+            raise ConnectionFailure("account_changed", not_applied=True)
         await forget_spotify_account(db, ctx.user_id)
     elif not same("client_id"):
         await revoke_pool(db, ctx.user_id)
