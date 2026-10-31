@@ -139,6 +139,31 @@ describe('Swedebeat connection on the account page', () => {
     ])
   })
 
+  it('drops the force answer when the email is edited after a device-in-use answer', async () => {
+    let attempts = 0
+    const api = fakeApi({
+      ...ACCOUNT_ROUTES,
+      'GET /api/connections': list(ON),
+      'POST /api/connections/swedebeat': () => {
+        attempts += 1
+        return attempts === 1 ? reason(409, 'device_in_use') : CONNECTED
+      },
+    })
+    renderAt('/account')
+    const swedebeat = await fillAndConnect()
+    fireEvent.click(swedebeat.getByRole('button', { name: 'Connect Swedebeat' }))
+    await swedebeat.findByTestId('swedebeat-device-warning')
+    fireEvent.change(swedebeat.getByLabelText('Swedebeat email'), { target: { value: 'other@example.test' } })
+    expect(swedebeat.queryByTestId('swedebeat-device-warning')).toBeNull()
+    fireEvent.change(swedebeat.getByLabelText('Swedebeat password'), { target: { value: PASSWORD } })
+    fireEvent.click(swedebeat.getByRole('button', { name: 'Connect Swedebeat' }))
+    expect(await swedebeat.findByText('Swedebeat is connected.')).toBeInTheDocument()
+    expect(api.to('POST', '/api/connections/swedebeat').map((c) => (c.body as { force: boolean }).force)).toEqual([
+      false,
+      false,
+    ])
+  })
+
   it('goes back to a normal sign-in when the user keeps the other device signed in', async () => {
     fakeApi({
       ...ACCOUNT_ROUTES,
