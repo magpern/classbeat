@@ -9,9 +9,11 @@ the web process never loads, so ``classbeat.models`` does not import this module
   key file present and none of the refused model SDK variables set. It checks neither
   ``data_policy`` nor ``CLASSBEAT_DEEPSEEK_ENABLED``: the live eval of an ``owner_pending`` or
   disabled model runs on synthetic data with the owner's go-ahead (ADR 0012 §2, §6);
-  ``resolve_route`` checks both for a job's route before this is called. Anthropic and OpenAI
-  (``OpenAIProvider``, M3c P2) are built; DeepSeek has no adapter on this branch yet (M3c P3), so
-  its choices are refused here until it lands.
+  ``resolve_route`` checks both for a job's route before this is called. Anthropic, OpenAI
+  (``OpenAIProvider``, M3c P2) and DeepSeek (``deepseek_provider``, M3c P3) are built. DeepSeek
+  is refused while ``CLASSBEAT_DEEPSEEK_ENABLED`` is off, unless the caller is the eval command
+  and passes ``eval_allow_disabled_deepseek=True`` (keyword-only; the owner's live eval of a
+  disabled model, ADR 0012 §2). Jobs never pass it (``tests/test_models_jobs_guard.py``).
 - ``RouteModels(settings)`` is the model jobs' ``ModelSource`` (``classbeat.models.jobs``): with
   ``fake`` it answers the fake provider and the agent config unchanged (no route, no database
   read); otherwise ``resolve_route`` for the job's route key and group, inside the job's fence,
@@ -31,6 +33,7 @@ from classbeat.agent.providers import (
     AnthropicProvider,
     OpenAIProvider,
     ProviderUnavailable,
+    deepseek_provider,
     provider_for,
 )
 from classbeat.config import Settings, model_sdk_environment_problems
@@ -41,7 +44,9 @@ from classbeat.models.routes import ModelChoice, resolve_route
 from classbeat.models.store import StageGroup
 
 
-def provider_for_choice(settings: Settings, choice: ModelChoice) -> ModelProvider:
+def provider_for_choice(
+    settings: Settings, choice: ModelChoice, *, eval_allow_disabled_deepseek: bool = False
+) -> ModelProvider:
     """The provider for ``choice`` (see the module); ``ProviderUnavailable`` naming the rule."""
     entry = catalog.find(choice.provider, choice.model)
     if entry is None:
@@ -58,6 +63,8 @@ def provider_for_choice(settings: Settings, choice: ModelChoice) -> ModelProvide
         return AnthropicProvider(key, turn_seconds=settings.agent_stage_seconds)
     if entry.provider == "openai":
         return OpenAIProvider(key, turn_seconds=settings.agent_stage_seconds)
+    if entry.provider == "deepseek":
+        return deepseek_provider(settings, allow_disabled=eval_allow_disabled_deepseek)
     raise ProviderUnavailable(f"provider {entry.provider} has no adapter yet")
 
 

@@ -17,7 +17,12 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 
 from classbeat.agent import catalog
 from classbeat.agent.catalog import CatalogModel
-from classbeat.agent.providers import AnthropicProvider, OpenAIProvider, ProviderUnavailable
+from classbeat.agent.providers import (
+    AnthropicProvider,
+    DeepSeekProvider,
+    OpenAIProvider,
+    ProviderUnavailable,
+)
 from classbeat.config import Settings
 from classbeat.db import system_session
 from classbeat.evals.gate import CategoryVerdict, GroupVerdict, Status
@@ -663,6 +668,23 @@ def test_provider_for_choice_builds_openai_with_its_key_and_needs_it(
         provider_for_choice(worker(app_database_url, kek_dir, "anthropic"), choice)
 
 
+def test_provider_for_choice_builds_deepseek_only_while_on_or_for_an_eval(
+    app_database_url: str, kek_dir: Path, catalog_plus: AcceptedEntries
+) -> None:
+    choice = ModelChoice("deepseek", catalog_plus.deepseek.model, "medium")
+    off = worker(app_database_url, kek_dir, "deepseek")
+    with pytest.raises(ProviderUnavailable, match="DeepSeek is off"):
+        provider_for_choice(off, choice)  # the jobs' path (RouteModels never passes the flag)
+    built = provider_for_choice(off, choice, eval_allow_disabled_deepseek=True)
+    assert isinstance(built, DeepSeekProvider)  # the eval-only path; built only, nothing sent
+    on = settings(app_database_url, deepseek_enabled=True)
+    assert isinstance(provider_for_choice(on, choice), DeepSeekProvider)
+    (kek_dir / "deepseek_api_key").unlink()
+    keyless = settings(app_database_url)  # the key file is read when the settings are made
+    with pytest.raises(ProviderUnavailable, match="key file"):
+        provider_for_choice(keyless, choice, eval_allow_disabled_deepseek=True)
+
+
 @pytest.mark.parametrize(
     ("choice", "rule"),
     [
@@ -670,7 +692,7 @@ def test_provider_for_choice_builds_openai_with_its_key_and_needs_it(
         (ModelChoice("anthropic", "fake", "medium"), "catalog"),
         (ModelChoice("anthropic", "claude-opus-9", "medium"), "catalog"),
         (ModelChoice("anthropic", OPUS, "ultra"), "effort"),
-        (ModelChoice("deepseek", "deepseek-ok", "medium"), "no adapter"),
+        (ModelChoice("deepseek", "deepseek-ok", "medium"), "DeepSeek is off"),
     ],
 )
 def test_provider_for_choice_never_builds_fake_or_a_non_catalog_model(

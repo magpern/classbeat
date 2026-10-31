@@ -15,6 +15,7 @@ the eval runner to build (M3c G1, EV5); nothing builds it yet, and its catalog e
 ``DeepSeekProvider`` for a job or an eval run (G1's ``provider_for_choice`` calls it): it refuses
 unless ``CLASSBEAT_DEEPSEEK_ENABLED`` is on and the ``deepseek_api_key`` file holds a key, and
 with DeepSeek off its host is not on the worker allowlist either (``worker_model_providers``).
+The eval command alone may pass ``allow_disabled=True`` (see the function).
 """
 
 from typing import Any
@@ -46,10 +47,18 @@ def provider_for(settings: Settings) -> ModelProvider:
     return AnthropicProvider(settings.anthropic_api_key, turn_seconds=settings.agent_stage_seconds)
 
 
-def deepseek_provider(settings: Settings, **kw: Any) -> DeepSeekProvider:
+def deepseek_provider(
+    settings: Settings, *, allow_disabled: bool = False, **kw: Any
+) -> DeepSeekProvider:
     """``DeepSeekProvider`` for a job or an eval run, only while DeepSeek is on (ADR 0012 §2).
-    ``kw`` (``transport`` and the like) is for tests."""
-    if not settings.deepseek_enabled:
+
+    ``allow_disabled=True`` is the **eval-only** path (Architect, 2026-10-31, keeping ADR 0012 §2
+    as written): the owner-authorized live eval of a disabled DeepSeek model, on synthetic data,
+    does not need ``CLASSBEAT_DEEPSEEK_ENABLED``. The key file and the SDK environment checks
+    still apply. Jobs never pass it (``RouteModels``; ``resolve_route`` refuses a DeepSeek route
+    while the setting is off), and only ``classbeat.evals`` may
+    (``tests/test_models_jobs_guard.py``). ``kw`` (``transport`` and the like) is for tests."""
+    if not settings.deepseek_enabled and not allow_disabled:
         raise ProviderUnavailable("DeepSeek is off (CLASSBEAT_DEEPSEEK_ENABLED)")
     if settings.deepseek_api_key is None:
         raise ProviderUnavailable("DeepSeek needs the deepseek_api_key file")

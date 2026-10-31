@@ -9,6 +9,10 @@
   ``classbeat.models.providers``, and nothing else in ``classbeat`` may: so a job's provider
   comes from ``Runtime.models``, never from the settings directly.
 - The kinds' ``Runtime`` has no provider factory field, only ``models``.
+- DeepSeek's eval-only path (Architect, 2026-10-31): only ``classbeat.evals`` may pass
+  ``eval_allow_disabled_deepseek`` to ``provider_for_choice``, and only it and
+  ``classbeat.models.providers`` may pass ``allow_disabled`` to ``deepseek_provider``; so a job
+  never builds DeepSeek while ``CLASSBEAT_DEEPSEEK_ENABLED`` is off.
 """
 
 import ast
@@ -24,6 +28,10 @@ ADAPTERS = "classbeat.agent.providers"
 ROUTED = "classbeat.models.providers"
 ADAPTER_IMPORTERS = ("classbeat.agent.providers", "classbeat.evals", ROUTED)
 ROUTED_IMPORTERS = ("classbeat.design.kind",)
+EVAL_ONLY_KEYWORDS = {
+    "eval_allow_disabled_deepseek": ("classbeat.evals",),
+    "allow_disabled": ("classbeat.evals", ROUTED),
+}
 
 
 def _module(path: Path) -> str:
@@ -66,7 +74,26 @@ def scan(source: str, module: str) -> list[tuple[int, str]]:
             problems.append((line, f"imports {name}: providers come from a route's choice"))
         if _within(name, (ROUTED,)) and not _within(module, (*ROUTED_IMPORTERS, ROUTED)):
             problems.append((line, f"imports {name}: only the worker's runtime builds it"))
+    for node in ast.walk(ast.parse(source)):
+        if isinstance(node, ast.Call):
+            for kw in node.keywords:
+                allowed = EVAL_ONLY_KEYWORDS.get(kw.arg or "")
+                if allowed is not None and not _within(module, allowed):
+                    problems.append((node.lineno, f"passes {kw.arg}: the eval command only"))
+                # ``**kw`` could carry either keyword: only where they may be passed anyway.
+                if (
+                    kw.arg is None
+                    and not _within(module, ("classbeat.evals", ROUTED))
+                    and _names_deepseek_factory(node)
+                ):
+                    problems.append((node.lineno, "passes **kwargs to a DeepSeek factory"))
     return problems
+
+
+def _names_deepseek_factory(call: ast.Call) -> bool:
+    func = call.func
+    name = func.id if isinstance(func, ast.Name) else getattr(func, "attr", "")
+    return name in ("deepseek_provider", "provider_for_choice")
 
 
 def test_job_providers_come_only_from_the_routes_source() -> None:
@@ -81,6 +108,10 @@ def test_job_providers_come_only_from_the_routes_source() -> None:
 def test_the_allowlists_are_exactly_the_reviewed_ones() -> None:
     assert ADAPTER_IMPORTERS == ("classbeat.agent.providers", "classbeat.evals", ROUTED)
     assert ROUTED_IMPORTERS == ("classbeat.design.kind",)
+    assert EVAL_ONLY_KEYWORDS == {
+        "eval_allow_disabled_deepseek": ("classbeat.evals",),
+        "allow_disabled": ("classbeat.evals", ROUTED),
+    }
 
 
 def test_the_runtime_takes_a_model_source_and_no_provider_factory() -> None:
@@ -106,6 +137,34 @@ def test_the_runtime_takes_a_model_source_and_no_provider_factory() -> None:
 @pytest.mark.parametrize("module", ["classbeat.songs.kind", "classbeat.design.revise"])
 def test_a_planted_provider_import_in_a_kind_fails_the_guard(planted: str, module: str) -> None:
     assert scan(planted, module) != []
+
+
+@pytest.mark.parametrize(
+    "planted",
+    [
+        "provider_for_choice(s, c, eval_allow_disabled_deepseek=True)",
+        "deepseek_provider(s, allow_disabled=True)",
+        "providers.deepseek_provider(s, allow_disabled=flag)",
+        "provider_for_choice(s, c, **extra)",
+    ],
+)
+@pytest.mark.parametrize("module", ["classbeat.models.jobs", "classbeat.songs.kind"])
+def test_the_disabled_deepseek_path_is_refused_outside_the_eval_command(
+    planted: str, module: str
+) -> None:
+    assert scan(planted, module) != []
+    assert scan(planted, "classbeat.evals.suite_live") == []
+
+
+def test_the_routes_source_never_takes_the_eval_path() -> None:
+    source = (SRC / "classbeat" / "models" / "providers.py").read_text("utf-8")
+    assert scan(source, ROUTED) == []
+    tree = ast.parse(source)
+    classes = [n for n in ast.walk(tree) if isinstance(n, ast.ClassDef)]
+    [routes] = [n for n in classes if n.name == "RouteModels"]
+    passed = {kw.arg for n in ast.walk(routes) if isinstance(n, ast.Call) for kw in n.keywords}
+    assert "eval_allow_disabled_deepseek" not in passed
+    assert "allow_disabled" not in passed
 
 
 def test_the_allowed_modules_pass_and_others_do_not() -> None:
