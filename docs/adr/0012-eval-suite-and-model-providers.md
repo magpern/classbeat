@@ -129,8 +129,13 @@ every adapter's captured request body).
   *The Anthropic adapter follows the same rule (#219, found in the #306 review):* an answer whose
   stream began with a 2xx but that cannot be assembled or read, or whose usage is missing or not
   whole numbers, is `ProviderError("internal", billed=True)` and is recorded at the turn's ceiling,
-  not at 0. A missing cache count still reads as 0; an error status, a transport failure and an
-  API error event inside the stream are not billed.
+  not at 0. A missing cache count still reads as 0. *Widened (#219 follow-up, from the #320 review):*
+  once the stream has begun with a 2xx (`message_start` reported the input), whatever ends the turn is
+  billed at the ceiling with its own category: a read timeout or the 300 s turn bound
+  (`model_unavailable`), an in-stream API error event (an unknown type is `internal`), a connection
+  cut mid-stream, events the SDK cannot assemble, and a stream that ends cleanly without a stop reason.
+  The SDK never sends a stream again, so no retry adds a second charge. Only an error status and a
+  failure before the stream began (a refused connection, the allowlist) are unbilled.
 - **Tool arguments** (amended 2026-10-31, #299): arguments that are not JSON, or nest deeper than
   32 levels (`MAX_ARGUMENT_DEPTH`), go to the loop as their text, which it answers `invalid_input`
   (a tool error the model can correct), never a crash or `internal`.

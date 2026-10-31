@@ -17,7 +17,7 @@ from ctx import make_context
 from jobtools import engine_for, new_user
 
 Factory = async_sessionmaker[AsyncSession]
-FREE = Plan("free", "Free", 0, 3, 3, 1, 10_000_000, "default", frozenset())
+FREE = Plan("free", "Free", 0, 3, 3, 1, 10_000_000, "free", frozenset())
 
 
 @pytest.fixture

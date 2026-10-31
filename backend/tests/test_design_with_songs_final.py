@@ -73,7 +73,7 @@ async def test_one_approve_gives_the_verified_private_playlist_and_the_first_des
     # One model per stage group, from the job's route key: songs for the pick, design after it.
     models = design.current_runtime().models  # pyright: ignore[reportOptionalMemberAccess]
     assert isinstance(models, FactoryModels)
-    assert models.asked == [("default", "songs"), ("default", "design")]
+    assert models.asked == [("pro", "songs"), ("pro", "design")]
 
     [final] = songenv.class_playlists(rider.user_id)
     playlist = songenv.fake.playlists[final.playlist_id]

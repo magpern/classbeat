@@ -47,16 +47,16 @@ def worker(app_url: str, kek_dir: Path, name: str) -> Settings:
 
 async def enable_all(
     s: Settings, name: str, groups: tuple[str, ...], tmp_path: Path, rec: Factory,
-    monkeypatch: pytest.MonkeyPatch,
+    monkeypatch: pytest.MonkeyPatch, key: str = "default",
 ) -> None:  # fmt: skip
-    """Replay and record a small suite for ``name``, then enable ``groups`` for ``default``."""
+    """Replay and record a small suite for ``name``, then enable ``groups`` for ``key``."""
     suite, choice = small_suite(), CHOICES[name]
     running_suite(monkeypatch, suite)
     owner_says_yes(monkeypatch, choice)
     done = await record(tmp_path, rec, suite, name)
     assert done.code == 0, (done.out, done.err)
     for group in groups:
-        code, _, err = await models_cli(s, *enable_args(choice, group), "--yes")
+        code, _, err = await models_cli(s, *enable_args(choice, group, key), "--yes")
         assert code == 0, err
 
 
@@ -117,7 +117,8 @@ async def test_a_song_job_runs_both_phases_on_the_enabled_routes(
     clear_gate(songenv.admin)
     s = worker(app_database_url, kek_dir, name)
     try:
-        await enable_all(s, name, ("songs", "design"), tmp_path, rec_factory, monkeypatch)
+        # The rider is on the pro plan, whose route key is ``pro`` (migration 0014).
+        await enable_all(s, name, ("songs", "design"), tmp_path, rec_factory, monkeypatch, "pro")
         builds = ReplayBuilds(songenv.new_provider)  # the script of the phase being run
         design.configure(
             Runtime(keyring=songenv.ring, models=RouteModels(s, build=builds), agent=CONFIG)
@@ -134,7 +135,7 @@ async def test_a_song_job_runs_both_phases_on_the_enabled_routes(
         ).all()
         assert [r.stage for r in runs] == ["pick_pool", "choose_songs", "design"]
         assert {(r.provider, r.model, r.route_key) for r in runs} == {
-            (name, CHOICES[name].model, "default")
+            (name, CHOICES[name].model, "pro")
         }
         by_group = {
             g: songenv.sql(

@@ -83,6 +83,10 @@ async def test_non_admin_mfa_and_stepup_refusals_change_nothing(
         response = await send(plain, method, path, body)
         assert (response.status_code, reason(response)) == (403, "forbidden"), path
     admin = await env.user("a@example.com", role="admin")
+    no_mfa = await make_actor(admin)
+    for method, path, body in calls:
+        response = await send(no_mfa, method, path, body)
+        assert (response.status_code, reason(response)) == (403, "mfa_required"), path
     no_stepup = await make_actor(admin, mfa=True)
     await env.run("UPDATE sessions SET stepup_at = NULL WHERE user_id = :u", u=admin)
     for method, path, body in calls[1:]:
@@ -112,7 +116,7 @@ async def test_setting_a_route_audits_first_and_the_route_stands_on_the_passing_
     assert [
         (r["route_key"], r["stage_group"], r["refused_by_worker"]) for r in shown["routes"]
     ] == [("pro", "design", False)]
-    assert [p["route_key"] for p in shown["plans"]] == ["default"] * 3
+    assert [p["route_key"] for p in shown["plans"]] == ["free", "instructor", "pro"]
     assert [r["id"] for r in shown["results"]] == [str(result)]
 
 
@@ -223,3 +227,15 @@ async def test_maint_reads_results_but_cannot_write_them(
                     maint.execute(text(statement))
     finally:
         engine.dispose()
+
+
+async def test_the_catalog_shows_deepseek_disabled_while_the_switch_is_off(
+    env: Env, make_actor: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    accepted = extend_catalog(monkeypatch)  # an allowed DeepSeek entry (owner "yes" simulated)
+    actor = await stepped_admin(env, make_actor)
+    shown = {(c["provider"], c["model"]): c for c in (await actor.get(MODELS)).json()["catalog"]}
+    assert shown[("deepseek", accepted.deepseek.model)]["data_policy"] == "allowed"
+    assert shown[("deepseek", accepted.deepseek.model)]["enabled"] is False  # switch off
+    assert shown[("anthropic", OPUS)]["enabled"] is True
+    assert shown[("openai", "gpt-test")]["enabled"] is False  # owner_pending

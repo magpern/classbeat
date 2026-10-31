@@ -222,9 +222,9 @@ def test_the_plans_are_seeded_with_the_owner_defaults(admin: Connection) -> None
         )
     ).all()
     assert [tuple(r) for r in rows] == [
-        ("free", 0, 3, 3, 1, 10_000_000, "default", []),
-        ("instructor", 10, 30, 10, 2, 60_000_000, "default", []),
-        ("pro", 20, 100, 25, 3, 200_000_000, "default", []),
+        ("free", 0, 3, 3, 1, 10_000_000, "free", []),
+        ("instructor", 10, 30, 10, 2, 60_000_000, "instructor", []),
+        ("pro", 20, 100, 25, 3, 200_000_000, "pro", []),
     ]
 
 

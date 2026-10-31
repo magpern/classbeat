@@ -512,6 +512,10 @@ other than the one whose link it read: the link, the `hold` and the credentials 
 re-analyse**; saving an old revision after an account change is refused rather than writing timings
 fitted to music the new account may not have.
 
+**Amendment (2026-10-31, ADR 0009 §5.4, accepted in #198):** "one `wrapped_dek` generation" now
+reads one `generation`: the link, the `hold` and the credentials come from one value of
+`connections.generation`, compared together with `id` (a rewrap no longer changes it).
+
 If a later MOWL read exposes a stable account identity, comparing it would let a same-account
 reconnect keep its rows; that is a possible improvement, not assumed.
 
