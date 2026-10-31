@@ -9,8 +9,12 @@
 # been skipped while the `changes` output that gates it is "false". A job that is skipped,
 # cancelled or failed while its filter is true fails the gate, and so does a missing job.
 #
+# `backend-tests` is a matrix (the pytest shards): GitHub gives `needs` one result for it, success
+# only when every shard succeeded, failure or cancelled when any shard did not. It is gated by the
+# `backend` filter like `backend`, so a skipped matrix while that filter is true fails the gate.
+#
 # Fails closed. jq validates the values, not only the shape, before it decides anything: exactly
-# one JSON document; exactly the five expected jobs; every result one of success, failure,
+# one JSON document; exactly the six expected jobs; every result one of success, failure,
 # cancelled or skipped; every filter output the string "true" or "false". Only then does it
 # emit one verdict line per job, built from those validated values. Bash never splits or
 # interprets the raw input.
@@ -35,8 +39,9 @@ program='
   | if type != "object" then fail("NEEDS must be a JSON object") else . end
   | if (keys | map(select(test("^[A-Za-z0-9_-]+$") | not)) | length) > 0
       then fail("a job name has unexpected characters") else . end
-  | if keys != ["backend", "changes", "checks", "e2e", "frontend"]
-      then fail("NEEDS must hold exactly the jobs changes, checks, backend, frontend, e2e") else . end
+  | if keys != ["backend", "backend-tests", "changes", "checks", "e2e", "frontend"]
+      then fail("NEEDS must hold exactly the jobs changes, checks, backend, backend-tests, frontend, e2e")
+      else . end
   | if all(.[]; type == "object"
         and (.result | type) == "string"
         and (.result | IN("success", "failure", "cancelled", "skipped")))
@@ -45,7 +50,7 @@ program='
   | if (["backend", "frontend", "stack"]
         | all(. as $f | $n.changes.outputs[$f] | type == "string" and IN("true", "false")))
       then . else fail("every filter output must be the string true or false") end
-  | {backend: "backend", frontend: "frontend", e2e: "stack"} as $filter
+  | {backend: "backend", "backend-tests": "backend", frontend: "frontend", e2e: "stack"} as $filter
   | to_entries[]
   | .key as $j
   | .value.result as $r
@@ -65,7 +70,7 @@ verdict="$(tr -d '\r' <<< "$verdict")"
 
 # An empty or short result list must not pass vacuously.
 got="$(wc -w <<< "$RESULTS")"
-[ "$got" -eq 5 ] || die "expected 5 results, got $got"
+[ "$got" -eq 6 ] || die "expected 6 results, got $got"
 
 fail=0
 while IFS= read -r line; do

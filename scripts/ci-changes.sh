@@ -2,10 +2,13 @@
 # Decides which CI jobs a change needs. Writes backend/frontend/stack/all (true|false) to
 # $GITHUB_OUTPUT, or to stdout when that is unset (local use).
 #
-#   EVENT_NAME  github.event_name; anything but pull_request means "run everything"
-#   BASE_SHA    pull request base commit    HEAD_SHA  pull request head commit
+#   EVENT_NAME  github.event_name; pull_request and merge_group diff, anything else means "run
+#               everything"
+#   BASE_SHA    the pull request's base commit, or the merge group's base_sha (the target branch tip)
+#   HEAD_SHA    the pull request's head commit, or the merge group's head_sha (the merged result)
 #
-# When the changed files cannot be determined, everything runs. Local try-out:
+# When the changed files cannot be determined (no SHA, an unknown commit), everything runs. Local
+# try-out:
 #   EVENT_NAME=pull_request BASE_SHA=origin/main HEAD_SHA=HEAD scripts/ci-changes.sh
 set -euo pipefail
 
@@ -23,13 +26,15 @@ frontend=false
 stack=false
 all=false
 
-if [ "$EVENT_NAME" != pull_request ]; then
+if [ "$EVENT_NAME" != pull_request ] && [ "$EVENT_NAME" != merge_group ]; then
+  all=true
+elif [ -z "${BASE_SHA:-}" ] || [ -z "${HEAD_SHA:-}" ]; then
+  echo "::warning::no base or head commit for $EVENT_NAME; running everything" >&2
   all=true
 else
-  : "${BASE_SHA:?BASE_SHA is required}" "${HEAD_SHA:?HEAD_SHA is required}"
-  # Three dots: what the branch changed since it left the base, not what the base gained.
-  # --no-renames: a moved file counts at its old and its new path. -z and quotePath=false:
-  # names are NUL-separated and never quoted, whatever characters they hold.
+  # Three dots: what the branch (or the merge group) changed since it left the base, not what the
+  # base gained. --no-renames: a moved file counts at its old and its new path. -z and
+  # quotePath=false: names are NUL-separated and never quoted, whatever characters they hold.
   list="$(mktemp)"
   trap 'rm -f "$list"' EXIT
   if git -c core.quotePath=false diff --name-only --no-renames -z "${BASE_SHA}...${HEAD_SHA}" > "$list"; then

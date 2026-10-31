@@ -10,12 +10,15 @@ report() { # report <ok|FAIL> <message>
 }
 
 # needs <changes> <checks> <backend> <frontend> <e2e> <backend filter> <frontend filter> <stack filter>
+#       [backend-tests]
+# backend-tests (the pytest shard matrix, one aggregate result) defaults to the backend result.
 needs() {
   jq -nc --arg ch "$1" --arg ck "$2" --arg b "$3" --arg f "$4" --arg e "$5" \
-    --arg fb "$6" --arg ff "$7" --arg fs "$8" '{
+    --arg fb "$6" --arg ff "$7" --arg fs "$8" --arg bt "${9:-$3}" '{
       changes: {result: $ch, outputs: {backend: $fb, frontend: $ff, stack: $fs, all: "false"}},
       checks: {result: $ck, outputs: {}},
       backend: {result: $b, outputs: {}},
+      "backend-tests": {result: $bt, outputs: {}},
       frontend: {result: $f, outputs: {}},
       e2e: {result: $e, outputs: {}}}'
 }
@@ -46,16 +49,16 @@ gate "changes skipped"                        1 "$(needs skipped success skipped
 gate "filter output missing"                  1 "$(needs success success skipped skipped skipped '' '' '')"
 gate "job missing from needs"                 1 "$(needs success success skipped skipped skipped false false false | jq -c 'del(.e2e)')"
 gate "empty needs"                            1 "{}"
-gate 'NEEDS is a string'                      1 '"abcde"' "a b c d e"
-gate 'NEEDS is a number'                      1 '5' "a b c d e"
+gate 'NEEDS is a string'                      1 '"abcdef"' "a b c d e f"
+gate 'NEEDS is a number'                      1 '6' "a b c d e f"
 gate 'NEEDS is an array'                      1 '[]' ""
 gate 'NEEDS is null'                          1 'null' ""
-gate 'NEEDS is an object of strings'          1 '{"a":"x","b":"x","c":"x","d":"x","e":"x"}' "a b c d e"
+gate 'NEEDS is an object of strings'          1 '{"a":"x","b":"x","c":"x","d":"x","e":"x","f":"x"}' "a b c d e f"
 gate 'NEEDS is malformed JSON'                1 '{' "a"
 # Value-level mutations of a valid docs-only input: each must fail the gate. The results list
-# is passed as five words so the count check cannot be what rejects them.
+# is passed as six words so the count check cannot be what rejects them.
 docs="$(needs success success skipped skipped skipped false false false)"
-five="success success skipped skipped skipped"
+five="success success skipped skipped skipped skipped"
 mutated() { jq -c "$1" <<< "$docs"; }
 gate "filter is boolean false"                1 "$(mutated '.changes.outputs.backend = false')" "$five"
 gate "filter is number 0"                     1 "$(mutated '.changes.outputs.backend = 0')" "$five"
@@ -83,6 +86,19 @@ gate "two JSON documents"                     1 "$docs $docs" "$five"
 gate "NEEDS is whitespace"                    1 "   " "$five"
 gate "valid input still passes"               0 "$docs" "$five"
 gate "result count mismatch"                 1 "$(needs success success skipped skipped skipped false false false)" "success success"
+gate "five results for six jobs"              1 "$docs" "success success skipped skipped skipped"
+
+# The backend-tests matrix (the pytest shards): one aggregate result, gated by the backend filter.
+#     name                                  want  needs: ... filters, then the backend-tests result
+gate "shards passed"                          0 "$(needs success success success skipped skipped true false false success)"
+gate "a shard failed"                         1 "$(needs success success success skipped skipped true false false failure)"
+gate "a shard cancelled"                      1 "$(needs success success success skipped skipped true false false cancelled)"
+gate "shards skipped, backend filter true"    1 "$(needs success success success skipped skipped true false false skipped)"
+gate "shards skipped, backend filter false"   0 "$(needs success success skipped skipped skipped false false false skipped)"
+gate "static failed, shards passed"           1 "$(needs success success failure skipped skipped true false false success)"
+gate "shards failed, backend filter false"    1 "$(needs success success skipped skipped skipped false false false failure)"
+gate "shards missing from needs"              1 "$(needs success success success skipped skipped true false false | jq -c 'del(.["backend-tests"])')" "success success success skipped skipped"
+gate "a shard listed as its own job"          1 "$(needs success success success skipped skipped true false false | jq -c '.["backend-tests-1"] = {"result": "success"}')" "success success success success skipped skipped success"
 
 # changes <name> <event> <"file file ..."> <expected "backend frontend stack all">
 tmp="$(mktemp -d)"
@@ -127,6 +143,12 @@ changes ".trivyignore"      pull_request      ".trivyignore"                    
 changes ".github changes"   pull_request      ".github/workflows/ci.yml"            "true true true true"
 changes "schedule"          schedule          "README.md"                           "true true true true"
 changes "manual dispatch"   workflow_dispatch "README.md"                           "true true true true"
+# A merge group diffs its base_sha (the target branch tip) against its head_sha like a pull request.
+changes "merge group docs"  merge_group       "README.md docs/x.md"                 "false false false false"
+changes "merge group back"  merge_group       "backend/app/x.py"                    "true false true false"
+changes "merge group front" merge_group       "frontend/src/a.ts"                   "false true true false"
+changes "merge group ci"    merge_group       ".github/workflows/ci.yml"            "true true true true"
+changes "unknown event"     push              "README.md"                           "true true true true"
 
 
 # Paths that need care: a command-line list of files per case, created and committed as given.
@@ -173,6 +195,20 @@ changes_git "non-ASCII name in docs/"       "false false false false" add_docs_n
 # An unresolvable base runs everything instead of failing.
 out="$(cd "$tmp" && env -u GITHUB_OUTPUT EVENT_NAME=pull_request BASE_SHA=0000000000000000000000000000000000000001   HEAD_SHA=HEAD "$here/ci-changes.sh" 2> /dev/null | cut -d= -f2 | tr '\n' ' ')"
 if [ "$out" = "true true true true " ]; then report ok "changes: unknown base runs everything"; else report FAIL "changes: unknown base (got '$out')"; fi
+
+# The same for a merge group, and for a merge group (or pull request) without its SHAs: the
+# diff cannot be computed, so everything runs (fail closed), never "nothing changed".
+fail_closed() { # fail_closed <name> <env assignments...>
+  local name="$1" out
+  shift
+  out="$(cd "$tmp" && env -u GITHUB_OUTPUT -u BASE_SHA -u HEAD_SHA "$@" "$here/ci-changes.sh" 2> /dev/null | cut -d= -f2 | tr '\n' ' ')"
+  if [ "$out" = "true true true true " ]; then report ok "changes: $name"; else report FAIL "changes: $name (got '$out')"; fi
+}
+fail_closed "merge group, unknown base runs everything" EVENT_NAME=merge_group BASE_SHA=0000000000000000000000000000000000000001 HEAD_SHA=HEAD
+fail_closed "merge group, unknown head runs everything" EVENT_NAME=merge_group BASE_SHA=HEAD HEAD_SHA=0000000000000000000000000000000000000002
+fail_closed "merge group, no base runs everything"      EVENT_NAME=merge_group HEAD_SHA=HEAD
+fail_closed "merge group, empty SHAs run everything"    EVENT_NAME=merge_group BASE_SHA= HEAD_SHA=
+fail_closed "pull request, no head runs everything"     EVENT_NAME=pull_request BASE_SHA=HEAD
 
 [ "$failures" -eq 0 ] || { echo "$failures test(s) failed"; exit 1; }
 echo "all tests passed"

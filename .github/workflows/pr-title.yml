@@ -2,9 +2,15 @@ name: PR title
 
 # PRs are squash-merged, so the PR title becomes the commit on main: check it against
 # commitlint.config.cjs. A separate workflow, so editing the title re-runs only this check.
+#
+# `pr-title` is a required check, so it must also report in the merge queue (`merge_group`). A
+# merge group has no PR title: the title was already checked on the pull request before it could
+# join the queue, and editing it re-runs this check there. In a merge group the job therefore only
+# succeeds; it checks nothing and runs no third-party code.
 on:
   pull_request:
     types: [opened, edited, reopened, synchronize]
+  merge_group:
 
 permissions:
   contents: read
@@ -14,18 +20,25 @@ jobs:
     name: pr-title
     runs-on: ubuntu-24.04
     steps:
+      - name: Title already checked on the pull request
+        if: github.event_name == 'merge_group'
+        run: echo "In a merge group the PR title was already checked on the pull request."
+
       # No token left in .git/config while third-party lint code runs.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: github.event_name == 'pull_request'
         with:
           persist-credentials: false
 
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        if: github.event_name == 'pull_request'
         with:
           node-version: 24
           package-manager-cache: false
 
       # The title goes through an environment variable, never into the script text.
       - name: Check the title with commitlint
+        if: github.event_name == 'pull_request'
         env:
           PR_TITLE: ${{ github.event.pull_request.title }}
         run: |

@@ -99,9 +99,12 @@ and only when CI is green, the `PASS` is for that SHA, no blocking comment is op
 branch is up to date. Never `--auto`, never `--admin`, never an approving review, never a
 change to the ruleset to get a merge through.
 
-The ruleset on `main` (GitHub Pro): pull request required, required checks `ci` and
-`pr-title`, branch up to date, no direct pushes, squash only, zero required approvals.
-`CODEOWNERS` (`* @magpern`) is informational.
+The ruleset on `main` (GitHub Pro): pull request required, merge queue (squash), required
+checks `ci` and `pr-title`, no strict up-to-date requirement (the queue tests each PR merged on
+top of `main` and what is ahead of it, so a branch need not be rebased by hand), no direct pushes,
+squash only, zero required approvals. `CODEOWNERS` (`* @magpern`) is informational. The
+Architect switches the ruleset to this after #307 merges; until then it still requires the
+branch to be up to date.
 
 ## Branches, worktrees and commits
 
@@ -556,16 +559,26 @@ CI runs the same in the `e2e` job (when the stack changed) and uploads `playwrig
 
 ### CI: what runs, and when
 
-CI is expensive (every job bills at least a minute, ~15 minutes for a full run), so a pull request
-only runs what its change needs. `ci.yml` has no `push` trigger: `main` only receives squashes of
-an up-to-date, already-tested branch. It runs on `pull_request`, weekly (Monday 04:00 UTC, which
-picks up new advisories) and on `workflow_dispatch`; the last two run everything.
+CI is expensive (every job bills at least a minute; a full run took 11 to 17 minutes before the
+backend tests were sharded, see #307 for the timings now), so a pull request only runs what its
+change needs. `ci.yml` has no `push` trigger: `main` only receives squashes the merge queue has
+tested. It runs on `pull_request`, on `merge_group` (the queue's merged result: the PR squashed on
+top of `main` and the groups ahead of it; the required checks `ci` and `pr-title` must pass there
+before the squash lands), weekly (Monday 04:00 UTC, which picks up new advisories) and on
+`workflow_dispatch`; the last two run everything. A newer push cancels a pull request's older run;
+a merge group's run is never cancelled by concurrency (`cancel-in-progress` is true only for
+`pull_request`).
+
+The `pr-title` workflow also runs on `merge_group` and succeeds there without a title: a merge
+group has none, and the title was already checked on the pull request (editing it re-runs the
+check there).
 
 | Job | Runs | What it does |
 |---|---|---|
-| `changes` | always | `scripts/ci-changes.sh`: `git diff` against the PR base gives the outputs `backend` (`backend/`, `docker/postgres/`), `frontend` (`frontend/`), `stack` (`backend/`, `frontend/`, `e2e/`, `docker/`, `Dockerfile`, `compose*.yaml`, `.dockerignore`, `.env.example`, `.trivyignore`, `scripts/worktree.sh`) and `all`. Renames count at both paths; names are read NUL-separated; if the diff cannot be computed everything runs. `all` is true on schedule/dispatch and when `.github/`, `.gitattributes` or `scripts/ci-changes.sh`, `ci-gate.sh` or `test-ci-gate.sh` change (CI changes test themselves) and makes the others true |
+| `changes` | always | `scripts/ci-changes.sh`: `git diff` of the PR's base and head (or the merge group's `base_sha` and `head_sha`) gives the outputs `backend` (`backend/`, `docker/postgres/`), `frontend` (`frontend/`), `stack` (`backend/`, `frontend/`, `e2e/`, `docker/`, `Dockerfile`, `compose*.yaml`, `.dockerignore`, `.env.example`, `.trivyignore`, `scripts/worktree.sh`) and `all`. Renames count at both paths; names are read NUL-separated; if the diff cannot be computed (an unknown commit, a missing SHA) everything runs. `all` is true on schedule/dispatch and when `.github/`, `.gitattributes` or `scripts/ci-changes.sh`, `ci-gate.sh` or `test-ci-gate.sh` change (CI changes test themselves) and makes the others true |
 | `checks` | always | the cheap checks as steps of one job (below) |
-| `backend` | `backend` | ruff, format, pyright, the queue functions' md5 regenerated on the pinned image (fails when `queue_digests.py` is stale), pytest against Postgres |
+| `backend` | `backend` | once per run: ruff, format, pyright, the queue functions' md5 regenerated on the pinned image (fails when `queue_digests.py` is stale), and the shard check: `backend/tests/shards.py check N` compares pytest's own collection with the split, so every test file runs in exactly one shard and none is empty |
+| `backend-tests` | `backend` | pytest in a matrix of 3 shards (`fail-fast: false`), each its own runner and Postgres service; a file's shard is `sha256(path) % N + 1` (`tests/shards.py list K N`), so the split needs no list and no dependency. Change the shard count only in the matrix (`shard: [1, 2, 3]`); the check reads it from there |
 | `frontend` | `frontend` | lint, typecheck, Vitest, build |
 | `e2e` | `stack` | the stack, the checks below, the Trivy image scan, then Playwright |
 | `ci` | always | the required check; see the gate below |
@@ -575,8 +588,11 @@ A docs-only PR therefore runs `changes`, `checks` and `ci` (plus `pr-title`).
 **The `ci` gate** (`scripts/ci-gate.sh`, tested by `scripts/test-ci-gate.sh` in `checks`) fails
 unless `changes` and `checks` succeeded and every other job either succeeded or was skipped while
 its filter output is `false`. A job that is needed (filter `true`) but skipped, cancelled or failed
-fails the gate, and so does a job missing from `needs`, a short result list or malformed input (it fails closed). Add a new job to
-`needs` of `ci`, to `ci-gate.sh` (and its filter) and to the tests.
+fails the gate, and so does a job missing from `needs`, a short result list or malformed input (it fails closed). The
+`backend-tests` matrix has one result in `needs` (success only when every shard succeeded), gated
+by the `backend` filter: a failed or cancelled shard, or the matrix skipped while `backend` is
+true, fails the gate. Add a new job to `needs` of `ci`, to `ci-gate.sh` (and its filter) and to
+the tests.
 
 ### Security checks (CI)
 
@@ -584,10 +600,10 @@ The `checks` job runs these as steps; the image scan is a step of `e2e`:
 
 | Step | What it checks |
 |---|---|
-| Secret scan | gitleaks over the pull request's own commits; the weekly and manual runs scan the whole history |
+| Secret scan | gitleaks over the pull request's own commits (a merge group's: `base_sha..head_sha`); the weekly and manual runs scan the whole history |
 | bash -n, shellcheck | every `scripts/*.sh` |
 | CI gate and change-filter tests | `scripts/test-ci-gate.sh` |
-| Postgres image pinned alike | compose's `db` and `db-functions` and the `backend` job's service use the same exact `postgres` tag (the queue functions' md5 depends on it) |
+| Postgres image pinned alike | compose's `db` and `db-functions` and the `backend` and `backend-tests` jobs' services use the same exact `postgres` tag (the queue functions' md5 depends on it) |
 | uv version, actionlint | `setup-uv`'s version equals the Dockerfile's uv tag (`scripts/ci-uv-version.sh`); actionlint (with shellcheck) on every workflow |
 | pip-audit | `uv export --frozen` (production, then all groups) through `pip-audit` (pinned) |
 | npm audit | `npm audit --audit-level=high` in `frontend/` and `e2e/` |
