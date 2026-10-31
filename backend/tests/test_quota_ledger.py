@@ -135,6 +135,7 @@ async def test_held_is_committed_and_reserved_with_a_job_of_this_period(
 async def test_a_deleted_class_keeps_its_committed_credit_and_frees_a_reserved_one(
     admin: Connection, factory: Factory
 ) -> None:
+    """Threats: T87."""
     owner = new_user(admin)
     delivered = new_job(admin, owner, state="completed", finished_at=ENDED)
     kept = ledger(admin, owner, delivered, state="committed", settled_at="2026-10-02")
@@ -188,6 +189,7 @@ def test_the_period_end_is_the_first_of_the_next_month() -> None:
 async def test_the_cost_cap_refuses_a_reservation_and_counts_this_period_only(
     admin: Connection, factory: Factory
 ) -> None:
+    """Threats: T86."""
     owner = new_user(admin)
     plant_run(admin, owner, 10_000_000, "now() - interval '40 days'")  # last month: not counted
     plant_run(admin, owner, 9_999_999)

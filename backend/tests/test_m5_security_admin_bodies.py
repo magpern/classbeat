@@ -9,6 +9,8 @@ review's notes 1 and 3.
 - A body over ``MAX_BODY_BYTES`` (64 KiB), by its ``Content-Length`` or streamed without one, is
   413 ``body_too_large`` behind the same gate, with one row refused ``body_too_large``. Exactly
   64 KiB is read (and here answered 422 for its content).
+
+Threats covered: T90, T92, T93.
 """
 
 import inspect
@@ -130,6 +132,7 @@ async def check_refused_behind_the_gate(
 async def test_a_body_nested_too_deep_to_parse_meets_the_gate_first(
     env: Env, make_actor: Any, superuser: Connection
 ) -> None:
+    """Threats: T90, T92, T93."""
     assert len(DEEP) < MAX_BODY_BYTES
     with pytest.raises(RecursionError):  # what FastAPI's 400 comes from, on this platform too
         json.loads(DEEP)
@@ -140,6 +143,7 @@ async def test_a_body_nested_too_deep_to_parse_meets_the_gate_first(
 async def test_a_body_over_the_limit_by_its_content_length_is_413_behind_the_gate(
     env: Env, make_actor: Any, superuser: Connection
 ) -> None:
+    """Threats: T90, T92, T93."""
     who = await actors(env, make_actor)
     big = b'{"plan_id": "pro", "note": "' + b"x" * MAX_BODY_BYTES + b'"}'
     await check_refused_behind_the_gate(env, superuser, who, big, 413, "body_too_large")
@@ -148,7 +152,10 @@ async def test_a_body_over_the_limit_by_its_content_length_is_413_behind_the_gat
 async def test_a_streamed_body_over_the_limit_is_413_without_a_content_length(
     env: Env, make_actor: Any, superuser: Connection
 ) -> None:
-    """A chunked body has no ``Content-Length``: the bytes are counted as they come in."""
+    """A chunked body has no ``Content-Length``: the bytes are counted as they come in.
+
+    Threats: T90, T92, T93.
+    """
 
     def streamed() -> AsyncIterator[bytes]:
         async def chunks() -> AsyncIterator[bytes]:
@@ -169,6 +176,7 @@ async def test_a_streamed_body_over_the_limit_is_413_without_a_content_length(
 async def test_a_body_of_exactly_the_limit_is_read(
     env: Env, make_actor: Any, superuser: Connection
 ) -> None:
+    """Threats: T90, T92."""
     who = await actors(env, make_actor)
     target = await env.user("t@example.com")
     head, tail = b'{"plan_id": "pro", "note": "', b'"}'
@@ -184,7 +192,10 @@ async def test_a_body_of_exactly_the_limit_is_read(
 def test_only_the_two_body_refusals_get_a_body_reason() -> None:
     """#315 review, non-blocking 1: a 400 or 413 an admin route raises itself is not labelled
     ``body_unreadable`` or ``body_too_large`` (nor audited a second time); and FastAPI still
-    raises its body-parse failure with the detail this matches."""
+    raises its body-parse failure with the detail this matches.
+
+    Threats: T92.
+    """
     assert _body_refusal(HTTPException(400, "There was an error parsing the body")) == (
         "body_unreadable"
     )
@@ -202,7 +213,10 @@ def test_only_the_two_body_refusals_get_a_body_reason() -> None:
 
 
 async def test_the_limit_is_the_admin_areas_alone(env: Env, make_actor: Any) -> None:
-    """Outside ``/api/admin`` a large body is not refused by this limit."""
+    """Outside ``/api/admin`` a large body is not refused by this limit.
+
+    Threats: T90.
+    """
     rider_id = await env.user("rider@example.com")
     rider = await make_actor(rider_id, mfa=True)
     big = b'{"code": "' + b"x" * (MAX_BODY_BYTES + 10) + b'"}'

@@ -14,7 +14,7 @@ GitHub hold the detail.
 | M3a | Jobs, Anthropic loop, design on existing music | done (2026-10-29); live smoke run once: 14 of 15 passed |
 | M3b | Class page, revisions, save to MOWL, usage and cost | done technically (2026-10-30, on fakes): [ADR 0007](adr/0007-classes-revisions-and-saving.md), issues #141 to #151 |
 | M4 | Song picking (beta), Spotify BYOK | in progress: design in review ([ADR 0008](adr/0008-song-picking.md), [ADR 0009](adr/0009-spotify-connection.md)); issues in milestone "M4 Song picking and Spotify" (#173 to #186) |
-| M3c | Eval suite, OpenAI and DeepSeek adapters | design in review ([ADR 0012](adr/0012-eval-suite-and-model-providers.md)); issues in milestone "M3c Eval and providers" (#201 to #219) |
+| M3c | Eval suite, OpenAI and DeepSeek adapters | done technically (on replayed providers, #219): [ADR 0012](adr/0012-eval-suite-and-model-providers.md); the owner's live steps are in [docs/runbooks/m3c-model-enable.md](runbooks/m3c-model-enable.md) |
 | M5 | Tiers, quotas, codes, admin | done technically, on fakes, once #227 (security suite) and this E2E PR (#228) are merged ([ADR 0011](adr/0011-tiers-quotas-and-admin.md)); issues in milestone "M5 Tiers and admin". Live activation is the owner's |
 | MU | Night Studio UI (ADR 0013) | design accepted 2026-10-30 ([ADR 0013](adr/0013-ui-design-night-studio.md), roadmap Amendment 8); issues #242, #243, #246 to #251, #253 to #255; runs beside M4 and M5, done before M6 |
 | M6 | Security review, backups, GDPR, VPS | not started; starts after MU |
@@ -144,7 +144,7 @@ GitHub hold the detail.
   `test_m5_security_concurrency.py`): E2E would need a Spotify-connected run to a waiting approval, and the approval
   lifetime has a one-hour floor. M5 follow-ups for the owner: the Q1 to Q10 answers (limits and prices change seeds
   or settings only), live activation (admin account with TOTP via `admin grant`, the testers' plan, the `song_picking`
-  grant, the first live run of each model route) and enabling OpenAI or DeepSeek models per ADR 0012; none of these
+  grant, the first live run of each model route) and enabling OpenAI or DeepSeek models ([m3c-model-enable.md](runbooks/m3c-model-enable.md)); none of these
   is done by agents.
 - **MU Night Studio UI** (owner decisions 2026-10-30, roadmap Amendment 8). ADR 0013 was merged
   in #237 and accepted in #256 (closes #241), which also added the "amended by ADR 0013 §9" notes to:
@@ -175,6 +175,11 @@ GitHub hold the detail.
   build on the defaults listed there; an answer changes seeds or settings, not the design.
 - Each further live smoke run needs the owner's go-ahead for that run (2026-10-29: "do not run
   live test every time").
+- **M3c live steps** (runbook [m3c-model-enable.md](runbooks/m3c-model-enable.md)): create and place the OpenAI (and later
+  DeepSeek) key; give a go-ahead and a `--max-usd` for each first live run per provider (an adapter check, no `--record`);
+  review the fixture update from it; then a recorded run per model and group and `models enable`. Until a pass is recorded,
+  the bootstrap Anthropic model serves users. OpenAI and DeepSeek routes stay impossible until you flip `data_policy`
+  (questions 1 and 2).
 - **M3c owner questions** ([ADR 0012](adr/0012-eval-suite-and-model-providers.md), "Owner questions"):
   do you extend your Spotify §III 14 risk acceptance (Claude only, ADR 0010) to OpenAI (default no:
   OpenAI stays `owner_pending`, evaluated on synthetic data only); keep DeepSeek

@@ -17,7 +17,8 @@ mowl_connection_id}`` (``DesignDraftInput``). Stages:
    for the class's first design, its ``brief``, ``music_source`` and ``current_revision_id``
    (ADR 0007 section 2); the job ends ``completed``.
 
-It consumes the class's credit (``consumes_credit``, ADR 0007 section 3) and has no ``admit``.
+It consumes the class's credit (``consumes_credit``, ADR 0007 section 3). Its ``admit`` only sets
+the ``route_key`` of the user's effective plan (``classbeat.quota.route``, AD5 #223).
 The brief is refused at creation when it would not fit ``classes.brief`` (4096 bytes as jsonb),
 so a long brief fails before the model runs, not in the final store.
 
@@ -46,6 +47,7 @@ from classbeat.jobs import KINDS, Complete, FencedSession, JobFailure, JobKind, 
 from classbeat.jobs.inputs import ModelJobInput, jsonb_size
 from classbeat.models.jobs import GroupModel, ModelSource
 from classbeat.models.store import StageGroup
+from classbeat.quota.route import with_route_key
 
 KIND: Final = "design_draft"
 STAGES: Final = ("music", "design")
@@ -179,4 +181,13 @@ async def run(job_run: JobRun) -> Complete:
             step.close()
 
 
-DESIGN_DRAFT: Final = KINDS.register(JobKind(KIND, DesignDraftInput, STAGES, run))
+DESIGN_DRAFT: Final = KINDS.register(
+    JobKind(
+        KIND,
+        DesignDraftInput,
+        STAGES,
+        run,
+        admit=with_route_key(),  # only the plan's route key (AD5 #223)
+        server_fields=frozenset({"route_key"}),
+    )
+)

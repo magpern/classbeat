@@ -36,6 +36,7 @@ INVITE_ONLY: Any = None  # a missing row
 def test_signup_mode_is_the_stricter_of_the_environment_and_the_database(
     environment: Any, stored: Any, expected: str
 ) -> None:
+    """Threats: T94."""
     assert core.stricter_signup(environment, stored) == expected
 
 
@@ -58,6 +59,7 @@ def test_signup_mode_is_the_stricter_of_the_environment_and_the_database(
 def test_song_picking_is_off_under_the_kill_switch_and_defaults_to_granted(
     environment_on: bool, stored: Any, expected: str
 ) -> None:
+    """Threats: T94."""
     assert core.song_picking_setting(environment_on, stored) == expected
 
 
@@ -126,7 +128,10 @@ PLAIN_TEXT = ["Vår grupp tränar kl 9", "Café \U0001f6b4 日本語", "á b"]
 def test_a_stored_banner_that_is_not_plain_text_is_not_served(
     text: str, caplog: pytest.LogCaptureFixture
 ) -> None:
-    """The read side refuses it too: a value stored before the write side did, or past it."""
+    """The read side refuses it too: a value stored before the write side did, or past it.
+
+    Threats: T95.
+    """
     with caplog.at_level(logging.WARNING, logger="classbeat.flags.core"):
         assert core.banner_setting({"text": text, "level": "info"}) is None
     assert [r.getMessage() for r in caplog.records] == [
@@ -137,6 +142,7 @@ def test_a_stored_banner_that_is_not_plain_text_is_not_served(
 
 @pytest.mark.parametrize("text", NOT_PLAIN_TEXT)
 def test_a_banner_that_is_not_plain_text_is_refused_on_write(text: str) -> None:
+    """Threats: T95."""
     with pytest.raises(core.FlagRefused) as refused:
         core.validate_for_write("banner", {"text": text, "level": "info"}, trial_days_max=30)
     assert refused.value.reason == "invalid_value"
@@ -151,6 +157,7 @@ def test_ordinary_unicode_banner_text_is_kept(text: str) -> None:
 
 
 def test_the_banner_text_is_returned_as_text_not_changed() -> None:
+    """Threats: T95."""
     markup = "<b>Maintenance</b> <img src=x onerror=alert(1)>"
     shown = core.banner_setting({"text": markup, "level": "info"})
     assert shown is not None

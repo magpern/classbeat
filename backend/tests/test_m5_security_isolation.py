@@ -139,7 +139,10 @@ async def test_t89_t96_writes_aimed_at_another_users_rows_are_refused(
 def test_the_account_endpoints_carry_no_id_to_swap() -> None:
     """Cross-user 404s apply to routes that take an id; the account plan API takes none (it is
     always the session's own user). A route added here with a path parameter fails this test,
-    and needs a cross-user 404 test of its own."""
+    and needs a cross-user 404 test of its own.
+
+    Threats: T89.
+    """
     paths = [getattr(r, "path", "") for r in routes.router.routes]
     assert sorted(paths) == ["/api/account/plan", "/api/account/redeem", "/api/account/trial"]
     assert not [p for p in paths if "{" in p]

@@ -126,6 +126,11 @@ every adapter's captured request body).
   then succeeds is recorded with its own usage only. Telling the two apart needs a response hook
   in the egress client, and charging for it would add a surcharge to a turn that did succeed.
   That is not worth it for a rare event that the turn bound already limits.
+  *The Anthropic adapter follows the same rule (#219, found in the #306 review):* an answer whose
+  stream began with a 2xx but that cannot be assembled or read, or whose usage is missing or not
+  whole numbers, is `ProviderError("internal", billed=True)` and is recorded at the turn's ceiling,
+  not at 0. A missing cache count still reads as 0; an error status, a transport failure and an
+  API error event inside the stream are not billed.
 - **Tool arguments** (amended 2026-10-31, #299): arguments that are not JSON, or nest deeper than
   32 levels (`MAX_ARGUMENT_DEPTH`), go to the loop as their text, which it answers `invalid_input`
   (a tool error the model can correct), never a crash or `internal`.
@@ -271,6 +276,11 @@ Rules, all from the manifest, with these defaults:
   `CLASSBEAT_SONG_JOB_COST_MICROS` ceiling ($3, ADR 0008 §3), so the two medians together ($1.75) leave
   room under it for corrections and retries; each median sits below its own ceiling, so the rule says
   more than "no run over the ceiling";
+- the `cost` cases' own bounds (`max_turns`, `max_cost_micros` of one run) report under different
+  check names by group (#219, from the #269 review): a **design** case over its bound fails the
+  `limits` check, which every run of every category must pass, so one such run fails the whole
+  design group; a **song** case over its bound fails `case_bounds`, an ordinary check of the cost
+  category (the 90 % rule applies to it), while its `limits` check is the job-ceiling one;
 - a run that ended in `model_unavailable` or `outbound_blocked` counts as not run, not as failed; a
   file with more than 10 % such runs gets no verdict (`incomplete`), so an outage cannot fail a model
   and too few runs cannot pass it.
@@ -710,3 +720,14 @@ Accepted during G2 (#215), from the PR #267 review (2026-10-31):
   reason, and `models list` shows it as `unusable: newer_failure`. The other stale reasons
   (`prompt_versions`, `suite_version`, `manifest_digest`) keep section 5's behaviour: the route is
   used and warned about once per process.
+
+Accepted during T4 (#219), from the PR #269 review (2026-10-31):
+
+- **Suite version 7.** `nothing_stored`, the check of a song run that ended in the failure category its
+  case expects, now fails when the choose stage began (`pick.ended_checks` gets the stage that began
+  last on the run's host). Before, it was `chosen is None`, which every failure path satisfies. The
+  change is in `evals/pick.py`, a digest source, so `suite_version` is 7 with a new pinned digest
+  (`RELEASED`); no result was recorded on version 6 outside the fixtures.
+- **The gate counts a failed `pool_too_small` run on an unlisted case as a failure** (a test,
+  `test_evals_suite_t4.py`; no behaviour change).
+
