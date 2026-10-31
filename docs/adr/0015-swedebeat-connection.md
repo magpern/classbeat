@@ -99,7 +99,7 @@ They are Swedebeat's, not classbeat's.
 - **The production image holds it.** Only `.github/workflows/release.yml` (tags `v*.*.*`) passes it:
   a step checks the repository secret `SWEDEBEAT_APP` (present, JSON, 32 and 16 characters; it fails
   the release otherwise and prints nothing), and `docker/build-push-action` hands it to BuildKit as a
-  secret (`secret-envs: swedebeat_app=SWEDEBEAT_APP`, `build-args: REQUIRE_SWEDEBEAT_APP=1`). One
+  secret (the `secret-envs` input mapping the id `swedebeat_app` to the variable of the same name, and the build argument `REQUIRE_SWEDEBEAT_APP` set to 1). One
   `RUN --mount=type=secret,id=swedebeat_app` in the `Dockerfile` validates it again and installs it
   as `/app/swedebeat_app.json` (`0444`); with `REQUIRE_SWEDEBEAT_APP=1` a missing or malformed secret
   fails the build. It is no `ARG`, `ENV` or `COPY`, and the release build exports and imports no layer

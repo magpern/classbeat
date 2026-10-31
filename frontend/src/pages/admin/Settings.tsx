@@ -245,7 +245,7 @@ function SwedebeatForm({ item, busy, onSave }: { item: Flag; busy: boolean; onSa
         }}
       >
         <option value="off">Nobody</option>
-        <option value="on">Everyone who has a Swedebeat account</option>
+        <option value="on">Everyone</option>
       </SelectField>
       <Button type="submit" disabled={busy || forbidden}>
         Save

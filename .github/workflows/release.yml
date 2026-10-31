@@ -99,7 +99,7 @@ jobs:
           SWEDEBEAT_APP: ${{ secrets.SWEDEBEAT_APP }}
         with:
           context: .
-          secret-envs: swedebeat_app=SWEDEBEAT_APP
+          secret-envs: swedebeat_app=SWEDEBEAT_APP # gitleaks:allow
           build-args: REQUIRE_SWEDEBEAT_APP=1
           platforms: linux/amd64,linux/arm64
           push: true

@@ -1,0 +1,4 @@
+# False positives only (reviewed): the build-push-action input name 'secret-envs' maps a secret id to an
+# environment variable NAME; no value is present. Fingerprints are commit-bound (PR #366 first commit).
+5bdd0bcb13f2c40f75ee181a18a90e84623c2e05:.github/workflows/release.yml:generic-api-key:102
+5bdd0bcb13f2c40f75ee181a18a90e84623c2e05:docs/adr/0015-swedebeat-connection.md:generic-api-key:102
