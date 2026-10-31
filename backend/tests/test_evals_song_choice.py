@@ -30,6 +30,10 @@ NEW = [
     "thin_catalogue_20", "short_15", "easy_songs_30", "long_songs_60", "climb_heavy_45",
     "sprint_heavy_45", "era_2000_2012", "replace_three",
 ]  # fmt: skip
+SONG_209 = [  # adversarial, missing music and cost (issue #209)
+    "adv_malformed_hits", "adv_oversized_hits", "adv_pool_requests", "mm_pool_too_small",
+    "mm_unknown_bpm_pick", "cost_pick_30", "cost_replace_two",
+]  # fmt: skip
 CASES = {n: SUITE.song_cases[n] for n in NEW}
 LIMITS = (POOL_LIMITS, CHOOSE_LIMITS)
 
@@ -44,6 +48,13 @@ async def run(case: PickCase, flaw: str | None = None) -> tuple[PickCaseResult, 
 def test_the_suite_has_eight_song_choice_cases_that_run_the_quality_checks() -> None:
     listed = SUITE.manifest.categories["song_choice"]["songs"]
     assert set(NEW) <= set(listed)
+    assert len(NEW) == 8
+    # The song case set, exactly: the 3 smoke cases and the 8 named here (#208), and this suite's
+    # own adversarial, missing-music and cost cases (#209).
+    assert sorted(listed) == sorted(["pick_30", "replace_two", *NEW])
+    assert sorted(SUITE.song_cases) == sorted(
+        ["pick_30", "replace_two", "injected_title", *NEW, *SONG_209]
+    )
     assert all(c.quality for c in CASES.values())
     assert {c.catalogue.size for c in CASES.values()} >= {10, 60}  # a thin one and a long one
     assert [c for c in CASES.values() if c.replace]
@@ -114,25 +125,41 @@ def verdicts(case: PickCase, chosen: ChosenList, facts: SongFacts) -> dict[str, 
     return {n: ok for n, ok, _ in rows}
 
 
-async def test_each_pool_check_fails_on_a_pool_that_breaks_its_rule() -> None:
+def _no_climb(rows: list[PoolRow], facts: SongFacts) -> dict[str, Any]:
+    return {
+        "pool": [dataclasses.replace(r, role="build") if r.role == "climb" else r for r in rows]
+    }
+
+
+def _twin(rows: list[PoolRow], facts: SongFacts) -> dict[str, Any]:
+    twin = dataclasses.replace(rows[1], title=rows[0].title, artist=rows[0].artist)
+    return {"pool": [rows[0], twin, *rows[2:]]}
+
+
+replace = dataclasses.replace
+POOL_BREAKS: list[tuple[str, Any]] = [
+    ("pool_size", lambda rows, facts: {"pool": rows[:2]}),  # too few
+    ("pool_size", lambda rows, facts: {"pool": rows * 4}),  # too many
+    ("pool_roles", _no_climb),
+    ("pool_unique", _twin),
+    (
+        "pool_years",
+        lambda rows, facts: {"pool": [dataclasses.replace(rows[0], year=1999), *rows[1:]]},
+    ),
+    ("pool_years", lambda rows, facts: {"queries": [*facts.queries, "group0 year:1990-2024"]}),
+]
+POOL_IDS = ["size-few", "size-many", "roles", "unique", "years-candidate", "years-query"]
+
+
+@pytest.mark.parametrize(("check", "breaks"), POOL_BREAKS, ids=POOL_IDS)
+async def test_a_pool_that_breaks_a_rule_fails_that_check(check: str, breaks: Any) -> None:
     case = CASES["era_2000_2012"]
     result, catalogue = await run(case)
     assert result.chosen is not None
     chosen, facts = result.chosen, facts_of(result, catalogue, case)
-    assert all(verdicts(case, chosen, facts).values())
-    rows = list(facts.pool)
-
-    def bad(**changes: Any) -> dict[str, bool]:
-        return verdicts(case, chosen, dataclasses.replace(facts, **changes))
-
-    assert not bad(pool=rows[:2])["pool_size"]
-    assert not bad(pool=rows * 4)["pool_size"]
-    no_climb = [dataclasses.replace(r, role="build") if r.role == "climb" else r for r in rows]
-    assert not bad(pool=no_climb)["pool_roles"]
-    twin = dataclasses.replace(rows[1], title=rows[0].title, artist=rows[0].artist)
-    assert not bad(pool=[rows[0], twin, *rows[2:]])["pool_unique"]
-    assert not bad(pool=[dataclasses.replace(rows[0], year=1999), *rows[1:]])["pool_years"]
-    assert not bad(queries=[*facts.queries, "group0 year:1990-2024"])["pool_years"]
+    assert all(verdicts(case, chosen, facts).values())  # the unbroken pool passes every check
+    broken = dataclasses.replace(facts, **breaks(list(facts.pool), facts))
+    assert not verdicts(case, chosen, broken)[check]
 
 
 async def test_the_band_check_fails_on_a_slow_sprint_and_on_a_sprint_with_no_drop() -> None:

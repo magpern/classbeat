@@ -93,6 +93,32 @@ describe('the class page', () => {
     everyRequestStaysOnTheOrigin(api)
   })
 
+  it('shows no TSS note when the backend did not flag the version', async () => {
+    fakeApi({ ...SESSION_ROUTES, ...classRoutes() })
+    renderAt(PAGE)
+    await screen.findByTestId('tss')
+    expect(screen.getByTestId('tss')).toHaveTextContent(/^26\.[34]$/)
+    expect(screen.queryByTestId('tss-note')).toBeNull()
+  })
+
+  it('shows the note next to the TSS when the backend flags the version as approximate', async () => {
+    fakeApi({
+      ...SESSION_ROUTES,
+      ...classRoutes({
+        revisionBodies: { [REV1]: revisionBody(REV1, 1, CONTENT, { tss_approximate: true }) },
+      }),
+    })
+    renderAt(PAGE)
+    expect(await screen.findByTestId('tss-note')).toHaveTextContent(
+      'approximate: zone 7 has no exact TSS weight',
+    )
+    const hidden = within(screen.getByTestId('tss')).getByText(
+      /^26\.[34], approximate: zone 7 has no exact TSS weight$/,
+    )
+    expect(hidden).toHaveClass('sr-only')
+    expect(screen.getByTestId('tss')).toHaveTextContent(/^≈ 26\.[34]/)
+  })
+
   it('lists two versions with the current one marked, and views the other', async () => {
     fakeApi({
       ...SESSION_ROUTES,

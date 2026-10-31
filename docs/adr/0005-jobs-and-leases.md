@@ -215,6 +215,14 @@ arguments, columns, `WHEN` or constraint. Anything else is still refused. The di
 `tests/queue_digests.py` (and also written into `20-queue.sql`'s check). Guard 2 refuses `EXECUTE`
 on either function for any role but `classbeat_owner`.
 
+**Amendment (2026-10-31, ADR 0011 section 1, #271):** a third guard trigger function is admitted
+the same way, `public.redeem_codes_guard()` of migration `0010_m5_hardening` (`SECURITY INVOKER`
+plpgsql by `classbeat_owner`, built-ins only), with its trigger `redeem_codes_guard` on
+`public.redeem_codes` (row-level `BEFORE UPDATE`, `tgtype` 19). The same migration replaces the
+body of `credit_ledger_guard()` (a new digest). No queue function touches `redeem_codes`. All three
+checks pin and require the three functions and triggers; Guard 2 refuses `EXECUTE` on any of them
+for any role but `classbeat_owner`.
+
 | Function | Does |
 |---|---|
 | `queue_claim(p_worker text, p_lease_seconds int, p_kinds text[])` | checks `p_worker ~ '^[A-Za-z0-9._:-]{1,100}$'` and 30 ≤ `p_lease_seconds` ≤ 600; `SELECT id … WHERE state = 'queued' AND available_at <= now() AND attempt < max_attempts AND kind = ANY(p_kinds) ORDER BY available_at, created_at LIMIT 1 FOR UPDATE SKIP LOCKED`; sets `running`, `attempt + 1`, `lease_version + 1`, `leased_by`, `lease_expires_at = now() + lease`, `heartbeat_at`, `started_at` (first time); inserts the `claimed` event; returns the row or nothing |

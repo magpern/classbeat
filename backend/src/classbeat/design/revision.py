@@ -203,6 +203,7 @@ def build(
         origin=origin,
         base_revision_id=base_revision_id,
         request_message_id=request_message_id,
+        tss_approximate=result.tss_approximate,
     )
     return DraftRevision(
         content=content,

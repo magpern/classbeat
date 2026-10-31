@@ -1,0 +1,14 @@
+{
+ "status": 500,
+ "headers": {
+  "x-request-id": "req_fixture_500"
+ },
+ "body": {
+  "error": {
+   "message": "Server Error",
+   "type": "api_error",
+   "param": null,
+   "code": null
+  }
+ }
+}

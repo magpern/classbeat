@@ -1,0 +1,17 @@
+{
+ "name": "mm_music_short_60",
+ "about": "60 minutes asked, music of about 18 minutes: the draft fills the music.",
+ "brief": {
+  "length_min": 60,
+  "intensity": "moderate",
+  "climbs": 1,
+  "sprints": 1
+ },
+ "music": {
+  "tracks": 4,
+  "track_sec": 300
+ },
+ "expect": {
+  "duration": "music"
+ }
+}

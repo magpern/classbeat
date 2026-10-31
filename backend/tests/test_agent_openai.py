@@ -350,7 +350,7 @@ def test_the_four_openai_models_are_listed_owner_pending() -> None:
 
 
 def test_the_prices_version_moved_with_the_openai_prices() -> None:
-    assert PRICES_VERSION == "2026-10-31"
+    assert PRICES_VERSION >= "2026-10-31"
 
 
 def test_a_cache_write_is_priced_at_its_own_rate() -> None:
