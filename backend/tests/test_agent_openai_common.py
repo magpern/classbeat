@@ -300,10 +300,32 @@ def test_cached_tokens_are_taken_out_of_the_input() -> None:
     )
 
 
-@pytest.mark.parametrize("bad", [None, -5, "12", 1.5, True])
-def test_a_missing_or_malformed_count_is_zero(bad: object) -> None:
-    usage = normalise_usage(prompt_tokens=100, cached_tokens=bad, output_tokens=bad)
+def test_a_cache_count_left_out_is_zero_and_a_real_zero_stays_zero() -> None:
+    usage = normalise_usage(prompt_tokens=100, cached_tokens=None, output_tokens=0)
     assert usage == Usage(input_tokens=100, output_tokens=0, cache_read_tokens=0)
+
+
+@pytest.mark.parametrize("bad", [None, -5, "12", 1.5, True])
+@pytest.mark.parametrize("field", ["prompt_tokens", "output_tokens"])
+def test_a_missing_or_malformed_prompt_or_output_count_is_unreadable(
+    field: str, bad: object
+) -> None:
+    """#299, the #306 review: never read as 0, so a billed answer is never recorded at 0."""
+    counts: dict[str, object] = {"prompt_tokens": 100, "cached_tokens": 0, "output_tokens": 10}
+    counts[field] = bad
+    with pytest.raises(ProviderError) as raised:
+        normalise_usage(**counts)  # pyright: ignore[reportArgumentType]
+    assert raised.value.category == "internal"
+
+
+@pytest.mark.parametrize("bad", [-5, "12", 1.5, True])
+@pytest.mark.parametrize("field", ["cached_tokens", "written_tokens"])
+def test_a_malformed_cache_count_is_unreadable(field: str, bad: object) -> None:
+    counts: dict[str, object] = {"prompt_tokens": 100, "cached_tokens": 0, "output_tokens": 10}
+    counts[field] = bad
+    with pytest.raises(ProviderError) as raised:
+        normalise_usage(**counts)  # pyright: ignore[reportArgumentType]
+    assert raised.value.category == "internal"
 
 
 def test_cache_writes_are_taken_out_of_the_input() -> None:
