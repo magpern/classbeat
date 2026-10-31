@@ -3,23 +3,29 @@ import { ApiError } from '../../api/client'
 import { classReasonText, isStale } from '../../api/classMessages'
 import { deleteClass, type ClassSummary } from '../../api/classes'
 import { Notice, useAction } from '../forms'
+import { Button } from '../ui/button'
+import { Card } from '../ui/card'
 
 /**
  * Delete class (ADR 0007 section 11) with its warning: the class, its versions and its
  * conversation go from classbeat; the workouts classbeat saved to MOWL stay there. While a save
  * may still land (`call_may_be_running`) it waits; with an undecided write (`uncertain_write`) it
- * asks once more, because the record of that write goes with the class.
+ * asks once more, because the record of that write goes with the class. The header's ··· menu opens
+ * it (`open`); Keep it closes it again.
  */
 export function DeleteClass({
   summary,
+  open,
+  onClose,
   onDeleted,
   onReload,
 }: {
   summary: ClassSummary
+  open: boolean
+  onClose: () => void
   onDeleted: (kept: number) => void
   onReload: () => void
 }) {
-  const [open, setOpen] = useState(false)
   const [uncertain, setUncertain] = useState(false)
   const action = useAction()
 
@@ -41,28 +47,11 @@ export function DeleteClass({
       })
   }
 
-  if (!open) {
-    return (
-      <section className="panel" aria-labelledby="delete-title">
-        <h2 id="delete-title" className="panel__title">
-          Delete class
-        </h2>
-        <button
-          type="button"
-          className="button button--secondary"
-          onClick={() => {
-            setOpen(true)
-          }}
-        >
-          Delete class
-        </button>
-      </section>
-    )
-  }
+  if (!open) return null
   const kept = summary.saved.count
   return (
-    <section className="panel" aria-labelledby="delete-title">
-      <h2 id="delete-title" className="panel__title">
+    <Card className="flex flex-col gap-3" role="region" aria-labelledby="delete-title">
+      <h2 id="delete-title" className="m-0 font-display text-xl font-bold">
         Delete class
       </h2>
       <Notice kind="error">
@@ -74,29 +63,27 @@ export function DeleteClass({
       </Notice>
       {action.error ? <Notice kind="error">{action.error}</Notice> : null}
       <p>
-        <button
-          type="button"
-          className="button"
+        <Button
+          
           disabled={action.busy}
           onClick={() => {
             run(uncertain)
           }}
         >
           {uncertain ? 'Delete anyway' : 'Yes, delete this class'}
-        </button>
-        <button
-          type="button"
-          className="button button--secondary"
+        </Button>
+        <Button
+          variant="secondary"
           disabled={action.busy}
           onClick={() => {
-            setOpen(false)
+            onClose()
             setUncertain(false)
             action.clear()
           }}
         >
           Keep it
-        </button>
+        </Button>
       </p>
-    </section>
+    </Card>
   )
 }

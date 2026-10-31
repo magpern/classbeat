@@ -48,7 +48,7 @@ describe('My classes', () => {
   })
 
   it('marks a TSS with a zone 7 interval as approximate, with the note as screen-reader text', async () => {
-    renderAtWith([classBody({ profile: [[3, 600], [7, 30]] })])
+    renderAtWith([classBody({ profile: [[3, 600], [7, 30]], tss_approximate: true })])
     const note = await screen.findByText(/^\d+(\.\d)?, approximate: zone 7 has no exact TSS weight$/)
     expect(note).toHaveClass('sr-only')
     // The visible mark is hidden from screen readers; the note is the text they get.

@@ -405,3 +405,43 @@ async def test_the_stage_and_attempts_statements_carry_their_own_fence(jenv: Job
         await stale_writes()
     row = jenv.row(job_id)
     assert (row.state, row.stage) == ("running", "pick")
+
+
+async def test_the_spotify_count_statement_carries_its_own_fence(jenv: JobsEnv) -> None:
+    """ADR 0009 section 8 (#300): ``_SPOTIFY_CALLS`` matches nothing for a stale token or a job
+    no longer ``running``, even inside a transaction whose fence passed, and changes nothing."""
+    _, job_id = jenv.job()
+    execution = await claim(jenv)
+    lease = await _lease(jenv, execution)
+    async with fenced_session(jenv.factory, lease) as fs:
+        await transitions.save_spotify_calls(fs, 5)  # the real lease passes
+    assert jenv.row(job_id).spotify_calls == 5
+
+    async def stale_writes() -> None:
+        async with fenced_session(jenv.factory, lease) as fs:
+
+            async def count() -> int:
+                query = text("SELECT spotify_calls FROM jobs WHERE id = :id")
+                return (await fs.db.execute(query, {"id": job_id})).scalar_one()
+
+            for version in (lease.lease_version - 1, lease.lease_version + 1):
+                stale = FencedSession(fs.db, Lease(job_id, version, lease.ctx), False)
+                with pytest.raises(LeaseLost):
+                    await transitions.save_spotify_calls(stale, 9)
+                assert await count() == 5
+            await fs.db.execute(
+                text(
+                    "UPDATE jobs SET state = 'queued', leased_by = NULL, lease_expires_at = NULL, "
+                    "heartbeat_at = NULL WHERE id = :id"
+                ),
+                {"id": job_id},
+            )
+            with pytest.raises(LeaseLost):
+                await transitions.save_spotify_calls(fs, 9)
+            assert await count() == 5
+            raise _Undo
+
+    with pytest.raises(_Undo):
+        await stale_writes()
+    row = jenv.row(job_id)
+    assert (row.state, row.spotify_calls) == ("running", 5)

@@ -105,6 +105,51 @@ def test_banner_is_plain_text_with_a_limit(stored: Any, expected: Any) -> None:
     assert core.banner_setting(stored) == expected
 
 
+# Text a banner may not hold (#227): format characters (Cf), separators (Zl, Zp), controls (Cc).
+NOT_PLAIN_TEXT = [
+    "Back at \u202e9 ta kcab",  # right-to-left override
+    "Back \u202aat 9",  # left-to-right embedding
+    "Back \u2066at\u2069 9",  # left-to-right isolate, pop directional isolate
+    "Back at\u200b 9",  # zero-width space
+    "Back at\u200d 9",  # zero-width joiner
+    "Back at\xad 9",  # soft hyphen
+    "\ufeffBack at 9",  # byte-order mark
+    "Back at\u2028 9",  # line separator
+    "Back at\u2029 9",  # paragraph separator
+    "Back at\x85 9",  # NEL, a C1 control character
+    "Back at\x1b 9",  # ESC
+]
+PLAIN_TEXT = ["Vår grupp tränar kl 9", "Café \U0001f6b4 日本語", "á b"]
+
+
+@pytest.mark.parametrize("text", NOT_PLAIN_TEXT)
+def test_a_stored_banner_that_is_not_plain_text_is_not_served(
+    text: str, caplog: pytest.LogCaptureFixture
+) -> None:
+    """The read side refuses it too: a value stored before the write side did, or past it."""
+    with caplog.at_level(logging.WARNING, logger="classbeat.flags.core"):
+        assert core.banner_setting({"text": text, "level": "info"}) is None
+    assert [r.getMessage() for r in caplog.records] == [
+        "flag banner holds an invalid value; its stricter default applies"
+    ]
+    assert text not in caplog.text
+
+
+@pytest.mark.parametrize("text", NOT_PLAIN_TEXT)
+def test_a_banner_that_is_not_plain_text_is_refused_on_write(text: str) -> None:
+    with pytest.raises(core.FlagRefused) as refused:
+        core.validate_for_write("banner", {"text": text, "level": "info"}, trial_days_max=30)
+    assert refused.value.reason == "invalid_value"
+
+
+@pytest.mark.parametrize("text", PLAIN_TEXT)
+def test_ordinary_unicode_banner_text_is_kept(text: str) -> None:
+    """Letters, combining marks, symbols and emoji are not format characters."""
+    value = {"text": text, "level": "warning"}
+    assert core.validate_for_write("banner", value, trial_days_max=30) == value
+    assert core.banner_setting(value) == core.Banner(text, "warning")
+
+
 def test_the_banner_text_is_returned_as_text_not_changed() -> None:
     markup = "<b>Maintenance</b> <img src=x onerror=alert(1)>"
     shown = core.banner_setting({"text": markup, "level": "info"})

@@ -8,6 +8,8 @@ import {
 } from '../../api/jobs'
 import { FORGET_WARNING } from '../account/mowlWarning'
 import { Link } from '../../router/Router'
+import { Button } from '../ui/button'
+import { CheckNeeded } from './CheckNeeded'
 import { Notice, useAction } from '../forms'
 
 type Outcome = 'found' | 'absent' | 'still_unsure' | 'decided'
@@ -153,8 +155,8 @@ export function UncertainAttach({
 
   const first = listing.status === 'ready' ? listing.operations[0] : undefined
   return (
-    <div className="stack" data-testid="uncertain-attach">
-      <h2>classbeat could not tell whether your playlist was added</h2>
+    <CheckNeeded data-testid="uncertain-attach">
+      <h2 className="m-0 font-display text-xl font-bold">classbeat could not tell whether your playlist was added</h2>
       <p>
         To read your music, classbeat asked MOWL to add the playlist you chose to your MOWL music.
         MOWL did not answer clearly, so the playlist may or may not be there now. classbeat does
@@ -169,15 +171,14 @@ export function UncertainAttach({
         <>
           <Notice kind="error">What is left to decide could not be loaded.</Notice>
           <p>
-            <button
-              type="button"
-              className="button"
+            <Button
+              
               onClick={() => {
                 void load()
               }}
             >
               Try again
-            </button>
+            </Button>
           </p>
         </>
       ) : null}
@@ -199,26 +200,24 @@ export function UncertainAttach({
       ) : null}
       {first !== undefined && !confirming ? (
         <p>
-          <button
-            type="button"
-            className="button"
+          <Button
+            
             disabled={action.busy}
             onClick={() => {
               decide('check', first)
             }}
           >
             Check again
-          </button>
-          <button
-            type="button"
-            className="button button--secondary"
+          </Button>
+          <Button
+            variant="secondary"
             disabled={action.busy}
             onClick={() => {
               setConfirming(true)
             }}
           >
             Do it anyway
-          </button>
+          </Button>
         </p>
       ) : null}
       {first !== undefined && confirming ? (
@@ -227,28 +226,26 @@ export function UncertainAttach({
             Do it anyway means you decide the playlist was not added. The next design adds it to
             your MOWL music again. If it was added after all, you will have two copies of it there.
           </p>
-          <button
-            type="button"
-            className="button"
+          <Button
+            
             disabled={action.busy}
             onClick={() => {
               decide('anyway', first)
             }}
           >
             Yes, add it again
-          </button>
-          <button
-            type="button"
-            className="button button--secondary"
+          </Button>
+          <Button
+            variant="secondary"
             disabled={action.busy}
             onClick={() => {
               setConfirming(false)
             }}
           >
             Cancel
-          </button>
+          </Button>
         </div>
       ) : null}
-    </div>
+    </CheckNeeded>
   )
 }

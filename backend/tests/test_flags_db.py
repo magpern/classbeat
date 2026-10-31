@@ -78,9 +78,16 @@ async def test_an_invalid_or_oversized_banner_is_not_served(
             {"text": "Hi", "level": "danger"},
             {"text": 5, "level": "info"},
             "just a string",
+            # Not plain text (#227): stored past the write side, never served.
+            {"text": "Back at \u202e9 ta kcab", "level": "info"},
+            {"text": "Back at\u200b 9", "level": "info"},
+            {"text": "Back at\u2028 9", "level": "warning"},
+            {"text": "Back at\x85 9", "level": "info"},
         ):
             with stored(database_url, banner=bad):
-                assert (await Browser(env).get(PUBLIC)).json()["banner"] is None
+                response = await Browser(env).get(PUBLIC)
+                assert response.json()["banner"] is None, bad
+                assert "Back at" not in response.text
 
 
 @pytest.mark.parametrize(
