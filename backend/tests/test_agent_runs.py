@@ -239,12 +239,16 @@ async def test_provenance_records_the_run_and_the_crossfade(
         "origin",
         "base_revision_id",
         "request_message_id",
+        "route_key",
+        "eval_result_id",
     }
     assert (data["origin"], data["base_revision_id"], data["request_message_id"]) == (
         "design_draft",
         None,
         None,
     )
+    # ADR 0012 section 5: no route (outside a routed job): both null, never left out.
+    assert (data["route_key"], data["eval_result_id"]) == (None, None)
     legacy = dict(ctx.map)
     del legacy["crossfade"]  # a 0.4.1 map is fitted at the default, and recorded so
     assert provenance(outcomes, legacy).crossfade_sec == spotify.CROSSFADE_SEC

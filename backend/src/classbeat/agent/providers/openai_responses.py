@@ -26,7 +26,13 @@ and prompt-caching guides, read 2026-10-31 (docs only; nothing here was learned 
 - **Turn**: the text of the ``output_text`` parts; each call's arguments through ``tool_input``
   (the added ``null``s dropped); usage by ``responses_usage``; ``model`` as the API reports it; the
   request id from the SDK. A model the catalog does not list for OpenAI, or an effort its entry
-  does not take, is ``model_config`` before any request.
+  does not take, is ``model_config`` before any request. After a 2xx, an answer that cannot be
+  read (the body included, ``with_raw_response`` then ``parse`` inside ``read_answer``) or whose
+  usage is missing or malformed is ``internal`` and ``billed``: the loop charges it at the turn's
+  ceiling. A call whose arguments nest too deep goes on as its text (``invalid_input``).
+- **Timeout**: one attempt may take the whole ``turn_seconds`` (``attempt_seconds``), so a slow
+  answer is never cut at a shorter per-attempt timeout and sent again (ADR 0012 §3, amended
+  2026-10-31); retries are left for quick failures (429, 5xx, a lost connection).
 
 Every failure is a ``ProviderError`` raised outside any exception handler (``bounded_request``).
 """
@@ -55,6 +61,7 @@ from classbeat.agent.providers.openai_common import (
     build_client,
     printable,
     provider_effort,
+    read_answer,
     responses_usage,
     strict_schema,
     tool_input,
@@ -115,7 +122,13 @@ class OpenAIProvider:
         """``transport`` replaces the network under the allowlist in tests (an
         ``httpx.MockTransport``); the allowlist check still runs on every request."""
         self._turn_seconds = turn_seconds
-        self._client = build_client("openai", api_key, transport=transport, max_retries=max_retries)
+        self._client = build_client(
+            "openai",
+            api_key,
+            transport=transport,
+            max_retries=max_retries,
+            attempt_seconds=turn_seconds,
+        )
 
     def __repr__(self) -> str:
         return "OpenAIProvider()"
@@ -173,7 +186,9 @@ class OpenAIConversation:
         history: Any = sent
         include: Any = list(INCLUDE)
         reasoning: Any = {"effort": self._effort}
-        response = await self._client.responses.create(
+        # The raw answer: a status error still raises here (and is retried by the SDK), and
+        # everything after the 2xx, decoding the body included, is read inside ``read_answer``.
+        raw = await self._client.responses.with_raw_response.create(
             model=spec.model,
             instructions=shape["instructions"],
             input=history,
@@ -187,6 +202,9 @@ class OpenAIConversation:
             prompt_cache_key=shape["prompt_cache_key"],
             stream=False,
         )
+        return read_answer(lambda: self._answer(raw.parse()))
+
+    def _answer(self, response: Any) -> tuple[Turn, list[dict[str, Any]]]:
         return self._turn(response), [item.to_dict() for item in response.output]
 
     def _turn(self, response: Any) -> Turn:

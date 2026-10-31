@@ -4,8 +4,9 @@ result"). Not run by CI or by an agent; it spends the owner's money, and each ru
 owner's go-ahead.
 
 **Two layers.** The CLI entry (``classbeat.evals.__main__``) checks every precondition
-(``check_preconditions``) and then calls ``main_suite`` with the real ``provider_for_choice``, the
-real allowlist installer (``install_choice_allowlist``) and the worker's database session
+(``check_preconditions``) and then calls ``main_suite`` with the real
+``eval_provider_for_choice`` (``provider_for_choice`` with DeepSeek's eval-only path), the real
+allowlist installer (``install_choice_allowlist``) and the worker's database session
 (``worker_session``). ``main_suite`` takes those three, and the suite, as **keyword-only**
 parameters that no command-line argument sets; tests inject a replay provider there.
 
@@ -62,7 +63,12 @@ from classbeat.agent import catalog, choose_songs, pick_pool
 from classbeat.agent.limits import Limits
 from classbeat.agent.loop import AgentConfig
 from classbeat.agent.provider import ModelProvider
-from classbeat.agent.providers import AnthropicProvider, OpenAIProvider, ProviderUnavailable
+from classbeat.agent.providers import (
+    AnthropicProvider,
+    DeepSeekProvider,
+    OpenAIProvider,
+    ProviderUnavailable,
+)
 from classbeat.config import Settings, model_sdk_environment_problems
 from classbeat.egress import install_worker_allowlist
 from classbeat.evals.gate import evaluate
@@ -95,7 +101,11 @@ logger = logging.getLogger(__name__)
 REFUSED: Final = 2
 AUTHORIZATION_MAX: Final = 200
 # The adapter class of each provider (ADR 0012 §4.4): what was built, not what it calls itself.
-ADAPTERS: Final[dict[type, str]] = {AnthropicProvider: "anthropic", OpenAIProvider: "openai"}
+ADAPTERS: Final[dict[type, str]] = {
+    AnthropicProvider: "anthropic",
+    OpenAIProvider: "openai",
+    DeepSeekProvider: "deepseek",
+}
 
 ProviderFactory = Callable[[Settings, ModelChoice], ModelProvider]
 SessionOpener = Callable[[], AbstractAsyncContextManager[AsyncSession]]

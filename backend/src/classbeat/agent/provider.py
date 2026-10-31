@@ -103,13 +103,18 @@ class StageSpec:
 
 
 class ProviderError(Exception):
-    """A request failed with ``category`` (``args == (category,)``); no provider text."""
+    """A request failed with ``category`` (``args == (category,)``); no provider text.
 
-    def __init__(self, category: str) -> None:
+    ``billed``: the provider answered (so the request was billed) but the answer could not be
+    read, its usage included. The loop then charges the turn at its ceiling (ADR 0006 §5: cost
+    errs high, never low); an unanswered request is not ``billed``."""
+
+    def __init__(self, category: str, *, billed: bool = False) -> None:
         if category not in PROVIDER_CATEGORIES:
             category = "internal"
         super().__init__(category)
         self.category = category
+        self.billed = billed
 
 
 class Conversation(Protocol):

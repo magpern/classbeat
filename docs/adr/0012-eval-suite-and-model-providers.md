@@ -102,6 +102,33 @@ every adapter's captured request body).
   provider's one-host allowlisted httpx.AsyncClient>, max_retries=2, timeout=120,
   organization=None, project=None)`; each turn, retries included, is bounded by `turn_seconds` as
   Anthropic's is. A request the allowlist refuses is raised unretried as `outbound_blocked`.
+  *Amended 2026-10-31 (#299), long requests:* the adapters are not streamed, and the per-attempt
+  timeout is the adapter's whole `turn_seconds` (the stage's time, `CLASSBEAT_AGENT_STAGE_SECONDS`,
+  300 s by default), no longer 120 s. A high-effort answer of up to `max_tokens` can take longer
+  than 120 s; cut there, the SDK would send it again, and each attempt may be billed. The SDK's two
+  retries now serve the quick failures only (429, 5xx, a lost connection), inside the same turn
+  bound, and a turn that runs out of time fails `model_unavailable` once. Reversible: one argument
+  (`attempt_seconds`) in `openai_common.build_client`, tested on the scripted transport. *Was:*
+  `timeout=120` per attempt.
+- **A billed answer that cannot be read** (amended 2026-10-31, #299): the adapters take the raw
+  answer from the SDK (`with_raw_response`), so error statuses and retries are as before, and
+  every step after a 2xx, decoding the body included, is checked. A failure there is
+  `ProviderError("internal", billed=True)`: a body that is not JSON, a broken shape, or usage
+  that is missing or malformed (a missing or non-whole prompt or output count; a cache count
+  that is there but not a whole number). Only a cache count left out reads as 0. The loop records
+  such a turn at its ceiling (the prompt estimate at the dearest input rate plus `max_tokens` of
+  output), never at 0 (ADR 0006 §5: cost errs high). So is DeepSeek's
+  `insufficient_system_resource`, which fails `model_unavailable`. A request with no answer (a
+  timeout, an error status) costs nothing, as before.
+  *Known gap:* a connection dropped while a 200 body is being read is an `APIConnectionError`
+  like a refused connection (httpx reads the body before the SDK sees the status), so the SDK
+  retries it and that attempt, which the provider may have billed, is recorded at 0; a retry that
+  then succeeds is recorded with its own usage only. Telling the two apart needs a response hook
+  in the egress client, and charging for it would add a surcharge to a turn that did succeed.
+  That is not worth it for a rare event that the turn bound already limits.
+- **Tool arguments** (amended 2026-10-31, #299): arguments that are not JSON, or nest deeper than
+  32 levels (`MAX_ARGUMENT_DEPTH`), go to the loop as their text, which it answers `invalid_input`
+  (a tool error the model can correct), never a crash or `internal`.
 - **Errors** by SDK exception class, never by message text, with the same table as ADR 0006 §2:
   `RateLimitError`, `InternalServerError`, other 5xx, `APITimeoutError`, `APIConnectionError` →
   `model_unavailable`; `AuthenticationError`, `PermissionDeniedError`, `NotFoundError` →
@@ -549,6 +576,13 @@ carry it per run, where the `tss` check of a case with zone 7 widens its upper b
   routes per tier and a suite verdict per stage; two groups match how the suite is scored. A later ADR
   can split a group.
 - **Cross-provider fallback on outages**: rejected (§3).
+- **Long OpenAI-SDK requests** (#299): *streaming* (as the Anthropic adapter does), where the timeout
+  counts between chunks rather than for the whole answer, works for any length. But it adds a second
+  way to read an answer (events, a final usage chunk, a stream cut midway), and the turn is bounded
+  by `turn_seconds` anyway. A *per-model and effort timeout table* needs measured times we do not
+  have, and each entry could only be below the turn bound. The whole turn as the per-attempt timeout
+  is the smallest change and is reversible. Streaming stays the next step if live runs show answers
+  that need more than the stage's time.
 
 ## Consequences
 
@@ -640,3 +674,39 @@ Accepted by the Architect during G1 (#211, PR #267):
 - **Clearing a route that does not exist is refused.** `clear_route` raises
   `RouteRefused("no_route")` when there is no route for that key and group. M5's admin answers it
   with 409, like the other refusals, and does not report it as a silent success.
+
+Accepted during G2 (#215), from the PR #267 review (2026-10-31):
+
+- **The manifest digest is part of the gate.** `set_route` also refuses
+  (`RouteRefused("manifest_digest")`) when the newest passing result was recorded on another suite
+  than the running one: its `manifest_digest` differs from the digest stored in
+  `evals/suite/manifest.json`, which `load_suite` and `tests/test_evals_suite.py` hold equal to the
+  suite's files, read without importing `classbeat.evals`. A route whose result has another digest
+  is **stale** with the reason `manifest_digest` (used and flagged, like the other three reasons).
+- **"Newest" is deterministic.** Migration `0012_model_jobs` gives `model_eval_results` an identity
+  column `seq` (`GENERATED ALWAYS`): newest is `recorded_at DESC, seq DESC`, so two results recorded
+  in one transaction (one `now()`) are ordered by insertion, never by their random ids. The
+  newer-failure check compares `(recorded_at, seq)`.
+- **The route key is a server-only job input field.** The four model kinds' inputs are
+  `ModelJobInput`, with `route_key` (default `"default"`) stored with the input at creation, so
+  every attempt and the approved phase of a job that waited use the same key. A browser that
+  sends `route_key` is refused 422 (`JobInput.SERVER_FIELDS`); M5 (#223) sets it in the create path.
+- **Where a group resolves.** A kind resolves each stage group once per attempt, at the start of
+  that group's work and before any MOWL or Spotify call of it (`design_draft` and `revise_draft`:
+  `design`; `design_with_songs` and `revise_songs`: `songs` for the pick, `design` for the approved
+  phase), through `Runtime.models` (`classbeat.models.providers.RouteModels` in the worker). Only
+  that path builds a job's provider (`tests/test_models_jobs_guard.py`).
+- **Provenance.** `agent_runs.route_key` and `agent_runs.eval_result_id` (both or neither; the id
+  references `model_eval_results`, `RESTRICT`) and the same two fields in
+  `class_revisions.provenance` (`null` for the bootstrap choice and `fake`; absent on revisions
+  stored before G2).
+- **A newer failure is refused, not used** (Architect, 2026-10-31, on the #267 review's item 4).
+  It replaces "the route keeps working" in section 5's **Staleness** for this one reason. A route
+  whose result has a newer failing result for the same provider, model, effort and group no longer
+  has a standing pass: `resolve_route` raises `RouteUnusable("newer_failure")`, so the job fails
+  `model_config` before any request, logs the usual "model route unusable" line (key, group and
+  reason), and does not fall back to the bootstrap. This also covers a failure recorded between
+  `set_route`'s check and its write. `list_routes` still shows the route as stale with that
+  reason, and `models list` shows it as `unusable: newer_failure`. The other stale reasons
+  (`prompt_versions`, `suite_version`, `manifest_digest`) keep section 5's behaviour: the route is
+  used and warned about once per process.

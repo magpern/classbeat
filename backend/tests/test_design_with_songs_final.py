@@ -14,7 +14,9 @@ from uuid import UUID
 
 import pytest
 
+from agentfake import FactoryModels
 from classbeat import connections
+from classbeat.design import kind as design
 from classbeat.jobs import settle
 from classbeat.jobs.credits import UnmeteredLedger
 from classbeat.jobs.runner import RunConfig, execute
@@ -68,6 +70,10 @@ async def test_one_approve_gives_the_verified_private_playlist_and_the_first_des
     row = await songenv.run(job_id)
     assert (row.state, row.error_category) == ("completed", None)
     assert songenv.stages(job_id) == [*PHASE_ONE, *PHASE_TWO]
+    # One model per stage group, from the job's route key: songs for the pick, design after it.
+    models = design.current_runtime().models  # pyright: ignore[reportOptionalMemberAccess]
+    assert isinstance(models, FactoryModels)
+    assert models.asked == [("default", "songs"), ("default", "design")]
 
     [final] = songenv.class_playlists(rider.user_id)
     playlist = songenv.fake.playlists[final.playlist_id]

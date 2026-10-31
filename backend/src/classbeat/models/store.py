@@ -5,10 +5,10 @@ This is the **only** module under ``backend/src/classbeat`` that names the resul
 the only module that may import ``record_result`` (``tests/test_models_guard.py``). Every
 function runs on the caller's open session and never commits: the caller owns the transaction.
 
-What the database itself refuses (migration ``0009_models``): a result whose ``passed`` is not
-the JSON boolean ``passed`` of its object verdict, a ``fake`` or unknown provider, any NULL, any
-``UPDATE`` or ``DELETE`` of a result by the app role, and a route at anything but a pass for
-exactly its provider, model, effort and stage group.
+What the database itself refuses (migrations ``0009_models`` and ``0012_model_jobs``): a result
+whose ``passed`` is not the JSON boolean ``passed`` of its object verdict, a ``fake`` or unknown
+provider, any NULL, any ``UPDATE`` or ``DELETE`` of a result by the app role, and a route at
+anything but a pass for exactly its provider, model, effort and stage group.
 """
 
 import hashlib
@@ -32,6 +32,7 @@ _COLUMNS = (
     "stage_group, prompt_versions, classbeat_version, results_sha256, verdict, passed, "
     "total_cost_micros, authorization_note"
 )
+_SELECT_COLUMNS = _COLUMNS + ", seq"
 _INSERT_RESULT = text(
     f"INSERT INTO model_eval_results ({_COLUMNS}) VALUES ("  # noqa: S608 - constant names
     ":id, :run_id, now(), :suite_version, :manifest_digest, :provider, :model, :effort, "
@@ -39,8 +40,10 @@ _INSERT_RESULT = text(
     "CAST(:verdict AS jsonb), :passed, :total_cost_micros, :authorization_note) "
     "RETURNING recorded_at"
 )
-_SELECT_RESULTS = f"SELECT {_COLUMNS} FROM model_eval_results"  # noqa: S608
-_NEWEST = " ORDER BY recorded_at DESC, id DESC"
+_SELECT_RESULTS = f"SELECT {_SELECT_COLUMNS} FROM model_eval_results"  # noqa: S608
+# ``seq`` (migration 0012) is the insertion order: two results recorded in one transaction share
+# ``recorded_at`` (``now()``) and are still ordered, the later one first.
+_NEWEST = " ORDER BY recorded_at DESC, seq DESC"
 _ROUTE_COLUMNS = "route_key, stage_group, provider, model, effort, eval_result_id, set_at, set_by"
 
 
@@ -66,6 +69,7 @@ class ResultRow:
     passed: bool
     total_cost_micros: int
     authorization_note: str
+    seq: int  # the database's insertion order (identity, migration 0012)
 
 
 @dataclass(frozen=True, slots=True)
@@ -98,6 +102,7 @@ def _result(row: Any) -> ResultRow:
         passed=row.passed,
         total_cost_micros=row.total_cost_micros,
         authorization_note=row.authorization_note,
+        seq=row.seq,
     )
 
 
@@ -240,7 +245,7 @@ async def newer_failure(db: AsyncSession, result: ResultRow) -> bool:
         text(
             "SELECT 1 FROM model_eval_results WHERE provider = :provider AND model = :model "
             "AND effort = :effort AND stage_group = :stage_group AND NOT passed "
-            "AND (recorded_at, id) > (:recorded_at, :id) LIMIT 1"
+            "AND (recorded_at, seq) > (:recorded_at, :seq) LIMIT 1"
         ),
         {
             "provider": result.provider,
@@ -248,7 +253,7 @@ async def newer_failure(db: AsyncSession, result: ResultRow) -> bool:
             "effort": result.effort,
             "stage_group": result.stage_group,
             "recorded_at": result.recorded_at,
-            "id": result.id,
+            "seq": result.seq,
         },
     )
     return found.first() is not None

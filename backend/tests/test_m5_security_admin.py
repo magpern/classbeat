@@ -9,11 +9,10 @@
   422's row stores the route's template and method, never the raw input (#303 review).
 - The planted-value test across every admin route is ``test_m5_security_admin_secrets.py``.
 
-A route added later (the settings API of #222 part 2, say) has no valid request in
-``BODIES`` or its path values in ``target_with_entitlement`` until its PR adds them: the tests
-then fail and name it, so the fuzz cannot silently skip a route. AD3's usage, jobs and refund
-routes and AD2's invites and redeem codes are covered; the settings API (#222 part 2) is the
-next to add (TODO at ``BODIES``).
+A route added later has no valid request in ``BODIES`` or its path values in
+``target_with_entitlement`` until its PR adds them: the tests then fail and name it, so the fuzz
+cannot silently skip a route. AD3's usage, jobs and refund routes, AD2's invites and redeem
+codes and AD4's settings and plan limits (#314) are covered.
 """
 
 import secrets
@@ -53,10 +52,12 @@ BODIES: dict[tuple[str, str], dict[str, Any]] = {
         "max_redemptions": 5,
         "expires_at": "2999-01-01T00:00:00+00:00",
     },
-    # TODO(#222 part 2, the settings API): its routes need a valid body here and their path
-    # values in ``target_with_entitlement``; until then the gate, fuzz and planted-value tests
-    # fail on them and name the route (by design).
+    # AD4 (#314): a flag write (the banner, path value ``key``) and a plan's limits (``plan_id``).
+    ("PUT", "/api/admin/settings/{key}"): {"value": {"text": "Fuzz banner", "level": "info"}},
+    ("PATCH", "/api/admin/plans/{plan_id}"): {"classes_per_month": 10},
 }
+# The path values that need no row of their own: a flag key and a plan id.
+FIXED_VALUES = {"key": "banner", "plan_id": "pro"}
 
 
 @pytest.fixture
@@ -184,6 +185,7 @@ async def target_with_entitlement(env: Env, conn: Connection) -> dict[str, str]:
         "ledger_id": str(ledger),
         "invite_id": str(invite),
         "code_id": str(code),
+        **FIXED_VALUES,
     }
 
 
@@ -195,7 +197,7 @@ async def test_every_admin_route_refuses_a_non_admin_and_audits_the_admin_refusa
 ) -> None:
     values = {"user_id": str(uuid.uuid4()), "entitlement_id": str(uuid.uuid4()),
               "ledger_id": str(uuid.uuid4()), "invite_id": str(uuid.uuid4()),
-              "code_id": str(uuid.uuid4())}  # fmt: skip
+              "code_id": str(uuid.uuid4()), **FIXED_VALUES}  # fmt: skip
     plain = await env.user("plain@example.com")
     plain_actor = await make_actor(plain, mfa=True)
     await env.run("UPDATE sessions SET stepup_at = now() WHERE user_id = :u", u=plain)
@@ -234,6 +236,20 @@ async def test_every_admin_route_refuses_a_non_admin_and_audits_the_admin_refusa
 # --- input fuzz across every route ------------------------------------------------------------
 
 
+def settings_and_plans(conn: Connection) -> tuple[list[Any], list[Any]]:
+    """Every stored flag and every plan's limits, with who and when last changed them."""
+    settings = conn.execute(
+        text("SELECT key, value, updated_at, updated_by FROM app_settings ORDER BY key")
+    ).all()
+    plans = conn.execute(
+        text(
+            "SELECT id, classes_per_month, revisions_per_class, concurrent_jobs, "
+            "monthly_cost_micros, updated_at, updated_by FROM plans ORDER BY id"
+        )
+    ).all()
+    return [tuple(r) for r in settings], [tuple(r) for r in plans]
+
+
 def fuzz_cases(
     route: APIRoute, method: str
 ) -> list[tuple[str, Callable[[str], tuple[tuple[str, str] | None, dict[str, Any] | None, Any]]]]:
@@ -268,6 +284,7 @@ async def test_every_string_input_of_every_admin_route_is_refused_and_audited_on
 ) -> None:
     actor = await admin(env, make_actor)
     values = await target_with_entitlement(env, superuser)
+    settings_before, plans_before = settings_and_plans(superuser)
     tried: list[str] = []
     for method, route in routes(env):
         for field, case in fuzz_cases(route, method):
@@ -301,6 +318,11 @@ async def test_every_string_input_of_every_admin_route_is_refused_and_audited_on
         "GET /api/admin/redeem-codes query:offset",
         "POST /api/admin/redeem-codes body:label",
         "POST /api/admin/redeem-codes/{code_id}/disable path:code_id",
+        "PUT /api/admin/settings/{key} path:key",
+        "PUT /api/admin/settings/{key} body:value",
+        "DELETE /api/admin/settings/{key} path:key",
+        "PATCH /api/admin/plans/{plan_id} path:plan_id",
+        "PATCH /api/admin/plans/{plan_id} body:classes_per_month",
     ):
         assert any(t.startswith(ad3) for t in tried), ad3  # fmt: skip
     state = superuser.execute(
@@ -316,6 +338,8 @@ async def test_every_string_input_of_every_admin_route_is_refused_and_audited_on
         {"i": values["invite_id"], "c": values["code_id"]},
     ).one()
     assert tuple(live) == (True, True, 0)  # nothing disabled, no fuzzed code created
+    # No fuzzed flag write or plan edit changed a setting or a plan's limits.
+    assert settings_and_plans(superuser) == (settings_before, plans_before)
     # Nothing the fuzz sent changed the target (read as the superuser, past RLS).
     kept = superuser.execute(
         text(

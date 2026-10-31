@@ -20,7 +20,8 @@ results from the ``function_call_output`` items, and the reminder from the trail
 The fake's ``Turn`` is rendered as a Responses body: a reasoning item with encrypted content,
 then the message and function-call items, the status of its stop, and its usage with cached reads
 and cache writes inside ``input_tokens``. An ``error`` turn becomes an error status (503 with
-``x-should-retry: false``, so the SDK does not retry it; 401; 400).
+``x-should-retry: false``, so the SDK does not retry it; 401; 400). A script call whose input is
+``{"$raw": "<text>"}`` is sent with that text as its ``arguments``, as the model wrote it.
 """
 
 import json
@@ -87,6 +88,12 @@ def _is_error(content: str) -> bool:
         return False
 
 
+def _arguments(value: Any) -> str:
+    if isinstance(value, dict) and set(value) == {"$raw"}:  # pyright: ignore[reportUnknownArgumentType]
+        return str(value["$raw"])  # pyright: ignore[reportUnknownArgumentType]
+    return json.dumps(value)
+
+
 def render(turn: Turn, body: dict[str, Any], n: int) -> dict[str, Any]:
     """The fake's turn as a Responses API answer to ``body`` (request ``n``)."""
     output: list[dict[str, Any]] = [
@@ -114,7 +121,7 @@ def render(turn: Turn, body: dict[str, Any], n: int) -> dict[str, Any]:
                 "id": f"fc_{call.call_id}",
                 "call_id": call.call_id,
                 "name": call.name,
-                "arguments": json.dumps(call.input),
+                "arguments": _arguments(call.input),
                 "status": "completed",
             }
         )

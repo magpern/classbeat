@@ -16,6 +16,7 @@ from sqlalchemy import text
 from classbeat import __version__, auth, playlists, quota, saving, songs
 from classbeat.admin import routes as admin_routes
 from classbeat.admin.db import AdminDb
+from classbeat.classes.routes import music_router as class_music_router
 from classbeat.classes.routes import router as classes_router
 from classbeat.config import Settings, check_web_has_no_model_key
 from classbeat.connections.routes import router as connections_router
@@ -168,6 +169,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(settings_router)
     app.include_router(operations_router)
     app.include_router(music_router)
+    app.include_router(class_music_router)
     app.include_router(classes_router)
 
     if settings.static_dir is not None:
