@@ -1,0 +1,12 @@
+{
+ "name": "std_easy_20",
+ "about": "Easy 20 minutes, nothing asked.",
+ "brief": {
+  "length_min": 20,
+  "intensity": "easy"
+ },
+ "music": {
+  "tracks": 7
+ },
+ "expect": {}
+}
