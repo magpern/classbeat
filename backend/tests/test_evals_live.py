@@ -569,3 +569,34 @@ async def test_repeats_run_all_cases_once_before_any_case_again() -> None:
         ("minimum_10", 1),
     ]
     assert {r.model for r in results} == {"fake-model"}
+
+
+def test_the_default_installer_puts_the_runs_model_host_on_the_list(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The #238 review: the live run installs the worker list with its provider's host, through
+    the same per-provider builder as the worker, never a list without a model host."""
+    import inspect
+    import urllib.request
+
+    from classbeat import egress
+
+    assert (
+        inspect.signature(main_live).parameters["install"].default is live.install_model_allowlist
+    )
+    monkeypatch.setattr(urllib.request, "_opener", None)
+    built: list[tuple[str, ...]] = []
+    real = egress.worker_allowlist
+
+    def recording(model_providers: Any = ()) -> egress.Allowlist:
+        built.append(tuple(model_providers))
+        return real(model_providers)
+
+    monkeypatch.setattr(egress, "worker_allowlist", recording)
+    opener = live.install_model_allowlist()
+    assert built == [("anthropic",)]
+    assert "api.anthropic.com" in real(built[0]).hosts
+    assert isinstance(opener, urllib.request.OpenerDirector)
+    for host in ("api.openai.com", "api.deepseek.com", "evil.example"):
+        with pytest.raises(egress.OutboundBlocked):
+            opener.open(f"https://{host}/", timeout=1)

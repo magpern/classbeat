@@ -1,0 +1,13 @@
+{
+ "name": "easy_songs_30",
+ "about": "An easy 30 minute class with one gentle climb.",
+ "brief": {
+  "length_min": 30,
+  "intensity": "easy",
+  "climbs": 1
+ },
+ "catalogue": {
+  "size": 40
+ },
+ "quality": true
+}

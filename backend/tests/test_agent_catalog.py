@@ -3,6 +3,7 @@ entry's host is its provider's one host, and only Anthropic may receive user dat
 owner decides (§6)."""
 
 import dataclasses
+from typing import Any
 
 import pytest
 
@@ -85,6 +86,25 @@ def test_only_anthropic_may_receive_user_data() -> None:
     for entry in CATALOG:
         if entry.provider != "anthropic":
             assert entry.data_policy == "owner_pending", entry
+
+
+@pytest.mark.parametrize("provider", ["openai", "deepseek"])
+def test_the_entry_type_refuses_user_data_for_a_provider_the_owner_has_not_accepted(
+    provider: str,
+) -> None:
+    """ADR 0012 §6, enforced by the type itself (the #238 review): an ``allowed`` OpenAI or
+    DeepSeek entry cannot be built, so a P2/P3 entry cannot ship ``allowed`` by mistake."""
+    hosts: Any = MODEL_HOSTS
+    allowed: Any = (provider, f"{provider}-x", ("medium",), hosts[provider], "allowed")
+    with pytest.raises(ValueError, match="user data"):
+        CatalogModel(*allowed)
+    pending: Any = (*allowed[:4], "owner_pending")
+    entry = CatalogModel(*pending)
+    assert entry.data_policy == "owner_pending"
+
+
+def test_only_anthropic_is_accepted_for_user_data() -> None:
+    assert frozenset({"anthropic"}) == catalog.USER_DATA_PROVIDERS
 
 
 def test_the_default_agent_model_is_in_the_catalog() -> None:
