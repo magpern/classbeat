@@ -27,6 +27,13 @@
   class name, the status and the request id only.
 - **Usage:** input, output, cache read and cache write tokens of each answer, as the API reports
   them; the loop prices them (``classbeat.agent.prices``).
+- **A billed answer that cannot be read** (the rule of the OpenAI-SDK adapters, #306): once the
+  stream has begun with a 2xx, a failure to assemble or read the answer (events the SDK cannot
+  put together, usage that is missing or not whole numbers, a shape that cannot be read) is
+  ``ProviderError("internal", billed=True)``, which the loop records at the turn's ceiling (prompt
+  estimate plus ``max_tokens``), never at 0 (ADR 0006 section 5, cost errs high). Only a cache
+  count left out reads as 0. An error status, a transport failure and an API error event are not
+  billed here.
 
 The key lives in the SDK client only; nothing here logs, stores or repr()s it.
 """
@@ -205,6 +212,13 @@ def _log_failure(exc: BaseException, category: str) -> None:
     )
 
 
+def _unreadable_stream(exc: Exception) -> bool:
+    """A failure while reading the events of a stream that began with a 2xx (entering the stream
+    raises an error status, so this is after it) which is not a transport, timeout, allowlist or
+    API error event: the SDK could not assemble the answer. The API answered, so it was billed."""
+    return category_of(exc) == "internal" and not isinstance(exc, anthropic.APIStatusError)
+
+
 def _block_param(block: Any) -> dict[str, Any]:
     """A response content block as it goes back next turn: what the API sent, unchanged."""
     data = block.to_dict(mode="json")
@@ -213,12 +227,27 @@ def _block_param(block: Any) -> dict[str, Any]:
     return data
 
 
+def _count(value: object, *, optional: bool) -> int:
+    """A token count: a whole number of at least 0. A cache count the API leaves out (``None``)
+    is 0; a missing input or output count, or any that is not a whole number, is unreadable
+    (``internal``), never 0: the answer was billed (ADR 0006 section 5, cost errs high)."""
+    if optional and value is None:
+        return 0
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        raise ProviderError("internal")
+    return value
+
+
 def _usage(usage: Any) -> Usage:
+    if usage is None:
+        raise ProviderError("internal")
     return Usage(
-        input_tokens=usage.input_tokens,
-        output_tokens=usage.output_tokens,
-        cache_read_tokens=usage.cache_read_input_tokens or 0,
-        cache_write_tokens=usage.cache_creation_input_tokens or 0,
+        input_tokens=_count(getattr(usage, "input_tokens", None), optional=False),
+        output_tokens=_count(getattr(usage, "output_tokens", None), optional=False),
+        cache_read_tokens=_count(getattr(usage, "cache_read_input_tokens", None), optional=True),
+        cache_write_tokens=_count(
+            getattr(usage, "cache_creation_input_tokens", None), optional=True
+        ),
     )
 
 
@@ -304,7 +333,17 @@ class AnthropicConversation:
             output_config={"effort": spec.effort},  # pyright: ignore[reportArgumentType]
             messages=messages,  # pyright: ignore[reportArgumentType]
         ) as stream:
-            final = await stream.get_final_message()
+            final: Any = None
+            unreadable = False
+            try:
+                final = await stream.get_final_message()
+            except Exception as exc:
+                if not _unreadable_stream(exc):
+                    raise
+                _log_failure(exc, "internal")
+                unreadable = True  # a 2xx whose events could not be read: billed
+            if unreadable:  # raised outside the handler: no cause, no context
+                raise ProviderError("internal", billed=True)
             return final, stream.request_id
 
     async def turn(self, results: Sequence[ToolResult], *, reminder: str | None = None) -> Turn:
@@ -314,15 +353,28 @@ class AnthropicConversation:
         try:
             async with asyncio.timeout(self._turn_seconds):
                 final, request_id = await self._request(messages)
-            turn = self._turn(final, request_id)
         except ProviderError:
             raise
         except Exception as exc:  # not CancelledError: a cancel goes through as it is
             category = category_of(exc)
             _log_failure(exc, category)
             raise ProviderError(category) from None
-        self._messages = [*messages, {"role": "assistant", "content": turn_blocks(final)}]
+        turn, blocks = self._read(final, request_id)
+        self._messages = [*messages, {"role": "assistant", "content": blocks}]
         return turn
+
+    def _read(self, final: Any, request_id: str | None) -> tuple[Turn, list[dict[str, Any]]]:
+        """The answer the API has given, so one that was billed. A failure to read it (usage
+        missing or malformed, a broken shape) is ``ProviderError("internal", billed=True)``, which
+        the loop charges at the turn's ceiling, never at 0. No provider text travels with it."""
+        category = "internal"
+        try:
+            return self._turn(final, request_id), turn_blocks(final)
+        except ProviderError as exc:
+            category = exc.category
+        except Exception as exc:
+            _log_failure(exc, category)
+        raise ProviderError(category, billed=True)
 
     def _turn(self, final: Any, request_id: str | None) -> Turn:
         blocks = list(final.content)
