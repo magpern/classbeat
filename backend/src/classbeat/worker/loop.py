@@ -120,6 +120,7 @@ class Worker:
             lease_seconds=settings.job_lease_seconds,
             approval_ttl_hours=settings.approval_ttl_hours,
             busy_requeue_limit=settings.job_busy_requeue_limit,
+            spotify_calls_per_job=settings.spotify_calls_per_job,
         )
         self.shutdown = asyncio.Event()  # set on SIGTERM: runs stop at their next checkpoint
         self.wake = asyncio.Event()

@@ -63,7 +63,7 @@ from sqlalchemy import text
 
 from classbeat.connections import ConnectionFailure
 from classbeat.crypto.keks import KeyRing
-from classbeat.egress import OutboundBlocked
+from classbeat.egress import OutboundBlocked, RequestBudgetExhausted
 from classbeat.jobs import FencedSession, JobFailure, JobRun, failure_of
 from classbeat.operations.kinds import (
     MAX_EXTERNAL_ID,
@@ -352,6 +352,11 @@ async def _invoke(
         never_sent = request.single_request and not refused.after_request
         state = "failed" if never_sent else "uncertain"
         return _Outcome(state, failure=JobFailure("outbound_blocked"))
+    except RequestBudgetExhausted:
+        # The request over the job's budget was never sent; an earlier one of a multi-request
+        # write may have been, so only a single-request operation is ``failed`` for certain.
+        state = "failed" if request.single_request else "uncertain"
+        return _Outcome(state, failure=JobFailure("limit_exceeded"))
     except UncertainAnswer:
         logger.warning("external operation answer unreadable", extra={"kind": kind})
         return _Outcome("uncertain", failure=JobFailure("upstream_unavailable"))
@@ -502,5 +507,10 @@ async def perform_for(
                 return done
             if outcome.state == "failed":
                 assert outcome.failure is not None  # noqa: S101 - set for failed
+                raise outcome.failure
+            if outcome.failure is not None and outcome.failure.category == "limit_exceeded":
+                # The job's request budget is used up: its reconciliation could send nothing
+                # either. The row stays ``uncertain`` (the next pick supersedes a pool row; the
+                # user decides a class row) and the job ends with the cap's own category.
                 raise outcome.failure
     return await _reconcile_once(run, kind, decision.operation_id, keyring)

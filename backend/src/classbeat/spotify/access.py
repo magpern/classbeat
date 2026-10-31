@@ -131,8 +131,38 @@ async def spotify_call[T](
     ``run_library_call``).
 
     ``ConnectionFailure`` with a category of ADR 0009 section 8 (or ``not_connected``,
-    ``key_unavailable``, ``decrypt_failed`` before any call); ``OutboundBlocked`` when the
-    allowlist refused a request."""
+    ``key_unavailable``, ``decrypt_failed`` before any call), its ``provider`` ``"spotify"``;
+    ``OutboundBlocked`` when the allowlist refused a request; ``egress.RequestBudgetExhausted``
+    when the job's request budget was used up (that request was never sent)."""
+    try:
+        return await _call(
+            factory,
+            ring,
+            ctx,
+            fn,
+            http=http,
+            write=write,
+            margin_seconds=margin_seconds,
+            expect=expect,
+            single_request=single_request,
+        )
+    except ConnectionFailure as failure:
+        failure.provider = PROVIDER
+        raise
+
+
+async def _call[T](
+    factory: Factory,
+    ring: KeyRing,
+    ctx: UserContext,
+    fn: Callable[[Credentials], T],
+    *,
+    http: SpotifyHttp | None,
+    write: bool,
+    margin_seconds: float,
+    expect: OpenConnection | None,
+    single_request: bool,
+) -> T:
     http = http if http is not None else SpotifyHttp()
     opened = _expected(await open_connection(factory, ring, ctx, PROVIDER), expect)
     if _expiring(opened, margin_seconds, time.time()):

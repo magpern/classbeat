@@ -119,7 +119,7 @@ async def test_no_planted_or_made_value_leaves_its_place_over_the_whole_flow(
     ).all()
     assert leaked(everything, json.dumps([[e.kind, e.payload] for e in events])) == []
     # 3. Every log record.
-    assert leaked(secrets + made[:4], logs.out.getvalue()) == []
+    assert leaked(everything, logs.out.getvalue()) == []
     # 4. The API: the job, its revision, the class's revisions; the class page shows only the
     # owner's own final playlist.
     answers = [
