@@ -554,7 +554,19 @@ The fake Spotify (`e2e/fake-spotify/server.py`, service `spotify-fake`) answers 
 (`tests/spotifyfake.py`), so the two cannot drift; the `/__e2e/` control is reached from the web container.
 Web and worker trust the same CA bundle (`SSL_CERT_FILE`), now including the Spotify fake's CA.
 
+Song picking is on in the e2e stack only (`CLASSBEAT_SONG_PICKING: "true"` on web and worker in
+`compose.e2e.yaml`); the defaults keep it off. `e2e/tests/spotify-helpers.ts` holds the fake Spotify's public
+test data (`CLIENT_A` allows `USER_A`, `CLIENT_B` allows `USER_B`, `CLIENT_UNKNOWN` is no app), its control
+calls from the web container (`/__e2e/reset`, `sign-in?user=`, `deny`, `inject?...`, `state`: every request
+with the app and user of its token, never a token, code or verifier) and `playSpotify(page)`, which plays the
+browser's visit to `accounts.spotify.com/authorize` (the browser cannot reach the fake: the helper asks it
+from the web container without following the redirect and hands the page the answer). The fake's signed-in
+user is one global setting, so a spec sets `signInAtSpotify(user)` before each connect and the specs run one
+after the other. The live-activation steps for the owner are `docs/runbooks/m4-live-activation.md`.
+
 The specs: `design-draft.spec.ts` (draft, cancel while running, uncertain attach),
+`spotify-connect.spec.ts` (the Spotify wizard, consent, Disconnect, two users on different Client IDs and
+every error category's page text),
 `class-save.spec.ts` (change, save, update, uncertain writes, another MOWL account),
 `class-usage.spec.ts` and `fake-spotify.spec.ts` (web connects through the fake with PKCE, the worker
 reaches it too, it publishes no port).

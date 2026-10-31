@@ -111,6 +111,14 @@ GitHub hold the detail.
   writes "conditional on `wrapped_dek`") and §4's category table ("a 401 or 403 (the status flips)",
   narrowed for Spotify), and ADR 0007 §9 (Save's link, `hold` and credentials "from one `wrapped_dek`
   generation"): the guard is `generation`, compared together with `id`.
+- **M4 T3 (#186), part 1:** the e2e stack turns song picking on (test-only); `spotify-connect.spec.ts`
+  covers the wizard (callback copy, a Client ID that is not 32 hex characters, an unknown Client ID, cancel,
+  allow-list refusal, a changed state), the working-playlist consent, Disconnect, two users on different
+  Client IDs, a confirmed account switch and every error category's page text. The live-activation
+  checklist is [docs/runbooks/m4-live-activation.md](runbooks/m4-live-activation.md) (ADR 0008 §11; agents
+  run no step without the owner's go-ahead for that step). Part 2 (pick, approval, superseded and expired
+  lists, partial failure and resume, Change songs) closes #186; M4 is not technically done until it
+  merges and its "done when" is checked against the roadmap row.
 - **M3c design** (eval suite, providers, the enable gate): ADR 0012 is Proposed, roadmap Amendment 6,
   threat model T79 to T84. Owner questions with defaults are in ADR 0012 (OpenAI data, DeepSeek kept
   disabled, stale routes, thresholds, a full-suite run for Opus, provider keys); agents build to the
