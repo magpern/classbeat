@@ -227,3 +227,66 @@ describe('admin navigation', () => {
     expect(within(nav).getByRole('link', { name: 'Jobs' })).toHaveAttribute('aria-current', 'page')
   })
 })
+
+describe('review follow-ups of #305', () => {
+  it('sends the literal audit query: actor_id as typed and the end day as the start of the next day', async () => {
+    const actor = 'bbbbbbbb-0000-0000-0000-000000000002'
+    const since = encodeURIComponent(new Date(2026, 9, 1).toISOString())
+    const until = encodeURIComponent(new Date(2026, 10, 1).toISOString()) // 31 October inclusive
+    const path = `/api/admin/audit?action=refund.credit&actor_id=${actor}&since=${since}&until=${until}&limit=50`
+    const api = adminApi({ [`GET ${path}`]: { rows: [AUDIT_ROW], next_before: null } })
+    renderAt(`/admin/audit?action=refund.credit&actor_id=${actor}&since=2026-10-01&until=2026-10-31`)
+    expect(await screen.findByRole('table', { name: 'Audit log entries' })).toBeInTheDocument()
+    expect(api.to('GET', path)).toHaveLength(1)
+  })
+
+  it('labels the total an estimate and shows used credits by plan', async () => {
+    adminApi({ 'GET /api/admin/usage?month=2026-10': USAGE })
+    renderAt('/admin/usage?month=2026-10')
+    const total = await screen.findByText('$3.50', { selector: 'dd' })
+    expect(total.previousElementSibling).toHaveTextContent('Estimated cost')
+    const byPlan = screen.getByRole('table', { name: 'Usage by plan' })
+    const free = within(byPlan).getByRole('row', { name: /^Free/ })
+    const headers = within(byPlan).getAllByRole('columnheader').map((h) => h.textContent)
+    const cells = within(free).getAllByRole('cell').map((c) => c.textContent)
+    expect(cells[headers.indexOf('Used')]).toBe('1')
+  })
+
+  it('keeps the Jobs window select when a load fails, and keeps its focus while loading', async () => {
+    adminApi({
+      'GET /api/admin/jobs?days=7': reason(500, 'internal'),
+      'GET /api/admin/jobs?days=30': JOBS,
+    })
+    renderAt('/admin/jobs')
+    expect(await screen.findByRole('alert')).toBeInTheDocument()
+    const select = screen.getByLabelText('Failures in the last')
+    select.focus()
+    fireEvent.change(select, { target: { value: '30' } })
+    expect(await screen.findByRole('table', { name: 'Jobs by state' })).toBeInTheDocument()
+    expect(screen.getByLabelText('Failures in the last')).toBe(select)
+    expect(document.activeElement).toBe(select)
+  })
+
+  it('drops the typed admin email after Back', async () => {
+    const empty = filter({})
+    const next = filter({ action: 'user.' })
+    const api = adminApi({
+      [`GET ${auditPath(empty, '', null)}`]: { rows: [], next_before: null },
+      [`GET ${auditPath(next, 'ann@example.test', null)}`]: { rows: [AUDIT_ROW], next_before: null },
+    })
+    renderAt('/admin/audit')
+    expect(await screen.findByText('No entries match.')).toBeInTheDocument()
+    fireEvent.change(screen.getByLabelText('Action'), { target: { value: 'user.' } })
+    fireEvent.change(screen.getByLabelText('Admin email'), { target: { value: 'ann@example.test' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Filter' }))
+    expect(await screen.findByRole('table', { name: 'Audit log entries' })).toBeInTheDocument()
+    act(() => {
+      window.history.back()
+    })
+    await waitFor(() => {
+      expect(screen.getByLabelText('Admin email')).toHaveValue('')
+    })
+    expect(await screen.findByText('No entries match.')).toBeInTheDocument()
+    expect(api.calls.filter((c) => c.path.includes('actor_email'))).toHaveLength(1)
+  })
+})
