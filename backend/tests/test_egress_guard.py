@@ -149,6 +149,14 @@ REFUSED = [
     "allowlisted_async_client(WORKER_ALLOWLIST)",
     "from classbeat.egress import allowlisted_async_client\nallowlisted_async_client(allowlist=a)",
     "from classbeat.egress import allowlisted_async_client\nallowlisted_async_client(**options)",
+    # ADR 0012 §2: a caller names its provider; it never hands in a list, also not by position.
+    "from classbeat.egress import allowlisted_async_client, MODEL_ALLOWLISTS\n"
+    "allowlisted_async_client(MODEL_ALLOWLISTS['openai'])",
+    "from classbeat.egress import allowlisted_async_client, MODEL_ALLOWLISTS\n"
+    "allowlisted_async_client(provider='openai', allowlist=MODEL_ALLOWLISTS['deepseek'])",
+    "from classbeat.egress import Allowlist\nAllowlist(frozenset({'api.openai.com', 'x.example'}))",
+    "import openai\nopenai.AsyncOpenAI(api_key=k, base_url='https://api.deepseek.com')",
+    "from openai import AsyncOpenAI\nAsyncOpenAI(http_client=None)",
     "from classbeat.egress import Allowlist\nclass Wider(Allowlist): pass",
     "from classbeat.egress import AllowlistTransport\nclass T(AllowlistTransport): pass",
     "import httpx\nhttpx.AsyncClient(transport=t, trust_env=False)",
@@ -177,6 +185,11 @@ ALLOWED = [
     "from classbeat import egress\negress.spotify_async_client(total_seconds=t, inner=n)",
     "from classbeat.egress import allowlisted_async_client\n"
     "allowlisted_async_client(timeout=1.0, inner=t, refused=E)",
+    # ADR 0012 §2: the OpenAI-SDK clients of P1 to P3 get their provider's one-host client.
+    "from classbeat.egress import allowlisted_async_client\n"
+    "allowlisted_async_client(provider='openai', timeout=1.0, inner=t, refused=E)",
+    "from openai import AsyncOpenAI\nfrom classbeat.egress import allowlisted_async_client\n"
+    "AsyncOpenAI(api_key=k, http_client=allowlisted_async_client(provider='deepseek'))",
     "from classbeat.egress import SPOTIFY_ALLOWLIST\nSPOTIFY_ALLOWLIST.check_url(u)",
 ]
 

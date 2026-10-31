@@ -5,6 +5,11 @@
 ``FakeProvider`` with ``CLASSBEAT_FAKE_MODEL_SCRIPT`` when it is ``fake`` (never in prod:
 ``check_worker_model_provider`` refuses it at start, and so does this). Only the worker builds a
 provider; the web app never imports this package.
+
+``CLASSBEAT_MODEL_PROVIDER`` stays ``anthropic | fake`` (ADR 0012 §5): OpenAI and DeepSeek are
+listed in ``classbeat.agent.catalog`` and reached only through a route (M3c G1, G2), never
+through this setting. Their key files (``openai_api_key``, ``deepseek_api_key``) are read here
+by no code yet; their adapters come with M3c P2 and P3.
 """
 
 from classbeat.agent.provider import ModelProvider
