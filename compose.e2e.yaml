@@ -106,6 +106,9 @@ services:
     environment:
       CLASSBEAT_OAUTH_GOOGLE_CLIENT_ID: e2e-fake-google-client
       CLASSBEAT_OAUTH_MICROSOFT_CLIENT_ID: e2e-fake-microsoft-client
+      # Song picking is on in the e2e stack (ADR 0008 section 10): the Spotify routes answer and the
+      # new-class form offers the choice. It stays off in every default stack.
+      CLASSBEAT_SONG_PICKING: "true"
       # The fake OIDC provider's, the fake MOWL's and the fake Spotify's CAs (spotify-fake).
       SSL_CERT_FILE: /fake-ca/bundle.pem
       # Each E2E test presents its own client address in X-Forwarded-For (own rate limits).
@@ -142,6 +145,7 @@ services:
       # Explicit, so a `.env` that says `anthropic` cannot reach a model from the e2e stack.
       CLASSBEAT_MODEL_PROVIDER: fake
       CLASSBEAT_FAKE_MODEL_SCRIPT: /fake-run/script.json
+      CLASSBEAT_SONG_PICKING: "true"
       SSL_CERT_FILE: /fake-ca/bundle.pem
     volumes:
       - spotify-ca:/fake-ca:ro

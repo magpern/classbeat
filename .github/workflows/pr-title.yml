@@ -2,9 +2,21 @@ name: PR title
 
 # PRs are squash-merged, so the PR title becomes the commit on main: check it against
 # commitlint.config.cjs. A separate workflow, so editing the title re-runs only this check.
+#
+# `pr-title` is a required check, so it must also report in the merge queue (`merge_group`). A
+# merge group has no PR title. Instead the job checks the subjects of the commits the queue is
+# about to land (`git log --format=%s base_sha..head_sha`): the squash commits, whose subject is
+# each PR's title as it was when the queue built the group. A title edited after the PR was
+# enqueued is checked there too, so it can't land unchecked.
+#
+# On the pull request the title is linted with " (#<number>)" appended: exactly the subject the
+# squash gets and the queue lints. header-max-length is 100, so a title of 94 to 100 characters
+# would otherwise pass on the PR and then fail in every merge group. scripts/commitlint-subject.sh
+# lints for both events; the self-test step shows a 100-character title failing with the suffix.
 on:
   pull_request:
     types: [opened, edited, reopened, synchronize]
+  merge_group:
 
 permissions:
   contents: read
@@ -14,23 +26,67 @@ jobs:
     name: pr-title
     runs-on: ubuntu-24.04
     steps:
-      # No token left in .git/config while third-party lint code runs.
+      # No token left in .git/config while third-party lint code runs. A merge group needs the
+      # history between its base and head.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          fetch-depth: ${{ github.event_name == 'merge_group' && 0 || 1 }}
 
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 24
           package-manager-cache: false
 
-      # The title goes through an environment variable, never into the script text.
-      - name: Check the title with commitlint
-        env:
-          PR_TITLE: ${{ github.event.pull_request.title }}
+      # The lint is tested before it is trusted: a 100-character title passes alone and must fail
+      # with the suffix the squash adds; a short title passes with it.
+      - name: Self-test the subject lint
+        if: github.event_name == 'pull_request'
         run: |
           set -euo pipefail
-          printf '%s\n' "$PR_TITLE" | npx --yes \
-            --package @commitlint/cli@21.2.3 \
-            --package @commitlint/config-conventional@21.2.3 \
-            -- commitlint --verbose
+          title="ci: $(printf 'x%.0s' $(seq 1 96))"
+          [ "${#title}" -eq 100 ] || { echo "::error::the self-test title is ${#title} characters"; exit 1; }
+          SUBJECT="$title" scripts/commitlint-subject.sh > /dev/null \
+            || { echo "::error::a 100-character title must pass on its own"; exit 1; }
+          # It must fail for that rule, not for any other reason (a script that does not run).
+          if out="$(SUBJECT="$title (#123)" scripts/commitlint-subject.sh 2>&1)"; then
+            echo "::error::a 100-character title with ' (#123)' must fail header-max-length"
+            exit 1
+          fi
+          grep -q 'header-max-length' <<< "$out" \
+            || { echo "::error::the suffixed title failed, but not on header-max-length"; exit 1; }
+          SUBJECT="ci: a short title (#123)" scripts/commitlint-subject.sh > /dev/null \
+            || { echo "::error::a short title with its PR number must pass"; exit 1; }
+          echo "self-test passed: the PR number suffix is linted"
+
+      # The title goes through an environment variable, never into the script text. It is linted
+      # as the squash subject, with " (#<number>)" appended.
+      - name: Check the title with commitlint
+        if: github.event_name == 'pull_request'
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          [[ $PR_NUMBER =~ ^[1-9][0-9]*$ ]] || { echo "::error::no PR number"; exit 1; }
+          SUBJECT="$PR_TITLE (#$PR_NUMBER)" scripts/commitlint-subject.sh
+
+      # Every commit the merge group would land, each subject on its own. Fails closed: a missing
+      # or unknown SHA, or an empty range, fails the check.
+      - name: Check the queued squash subjects with commitlint
+        if: github.event_name == 'merge_group'
+        env:
+          BASE_SHA: ${{ github.event.merge_group.base_sha }}
+          HEAD_SHA: ${{ github.event.merge_group.head_sha }}
+        run: |
+          set -euo pipefail
+          [ -n "$BASE_SHA" ] && [ -n "$HEAD_SHA" ] || { echo "::error::merge group without base or head SHA"; exit 1; }
+          git cat-file -e "${BASE_SHA}^{commit}"
+          git cat-file -e "${HEAD_SHA}^{commit}"
+          mapfile -t commits < <(git rev-list --reverse "${BASE_SHA}..${HEAD_SHA}")
+          [ "${#commits[@]}" -gt 0 ] || { echo "::error::no commits in ${BASE_SHA}..${HEAD_SHA}"; exit 1; }
+          for c in "${commits[@]}"; do
+            subject="$(git log -1 --format=%s "$c")"
+            echo "checking $c: $subject"
+            SUBJECT="$subject" scripts/commitlint-subject.sh
+          done

@@ -65,7 +65,7 @@ RETENTION: Mapping[str, Retention] = MappingProxyType(
         "jobs": _entry(
             "input",
             "kind state stage idempotency_key request_hash leased_by approval_hash "
-            "error_category credit_state",
+            "error_category credit_state spotify_failure",
             "class",
             "account",
         ),
@@ -84,7 +84,7 @@ RETENTION: Mapping[str, Retention] = MappingProxyType(
         "agent_runs": _entry(
             "",
             "stage provider model model_answered effort prompt_version outcome job_kind "
-            "price_version",
+            "price_version route_key",
             "account",
         ),
         "connections": _entry(

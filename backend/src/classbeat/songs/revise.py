@@ -54,7 +54,7 @@ from classbeat.agent.revise import ReviseContext, ReviseResult, revise_stage
 from classbeat.context import UserContext
 from classbeat.crypto.keks import KeyRing
 from classbeat.design import chat, diff, limits, revision
-from classbeat.design.kind import current_runtime, new_provider
+from classbeat.design.kind import current_runtime, group_model
 from classbeat.flags import effective as flags
 from classbeat.jobs import KINDS, Complete, FencedSession, JobFailure, JobKind, JobRun, Outcome
 from classbeat.jobs.kinds import Admitted, Refused
@@ -324,18 +324,19 @@ async def run(job_run: JobRun) -> Outcome:
         raise JobFailure("internal")  # a resume never waits
     songs = config.current()
     if job_run.approved or given.mode == "resume":
-        provider = new_provider(runtime)  # before any Spotify or MOWL call; this run's own
+        # Phase 2 revises the draft (the ``design`` group), before any Spotify or MOWL call.
+        model = await group_model(runtime, job_run, given.route_key, "design")
         return await run_revise_phase_two(
             job_run,
             given,
             keyring=runtime.keyring,
-            provider=provider,
-            agent=runtime.agent,
+            provider=model.provider,
+            agent=model.agent,
             config=songs,
             context_requests=runtime.context_requests,
         )
     brief, seed = await _phase_one_plan(job_run, given)
-    provider = new_provider(runtime)
+    model = await group_model(runtime, job_run, given.route_key, "songs")  # phase 1: songs
     return await run_phase_one(
         job_run,
         given,
@@ -343,8 +344,8 @@ async def run(job_run: JobRun) -> Outcome:
         seed=seed,
         origin=KIND,
         keyring=runtime.keyring,
-        provider=provider,
-        agent=runtime.agent,
+        provider=model.provider,
+        agent=model.agent,
         config=songs,
     )
 

@@ -92,16 +92,26 @@ decision, never an agent's: an agent never merges without the gate, even when to
 Agents merge only with:
 
 ```bash
-gh pr merge <n> --squash --match-head-commit <reviewed-sha> --subject "<PR title> (#<n>)"
+gh pr merge <n> --squash --match-head-commit <reviewed-sha>
 ```
 
-and only when CI is green, the `PASS` is for that SHA, no blocking comment is open and the
-branch is up to date. Never `--auto`, never `--admin`, never an approving review, never a
-change to the ruleset to get a merge through.
+and only when CI is green, the `PASS` is for that SHA and no blocking comment is open. With the
+merge queue this **enqueues** the PR: the queue squashes it on top of `main` (and whatever is
+ahead of it), runs `ci` and `pr-title` on that merged result, and lands it only if they pass;
+`--match-head-commit` makes GitHub refuse it if the head moved after the review. The squash
+commit's title is the PR title (with ` (#<n>)`), so there is no `--subject`, and the PR title
+must be the Conventional Commits subject (`pr-title` checks it on the PR and checks the queued
+commits' subjects again in the merge group). The branch need not be up to date with `main`; a
+queue failure leaves the PR open, to be fixed and enqueued again (a new head needs a new
+review). Never `--auto`, never `--admin`, never an approving review, never a change to the
+ruleset to get a merge through.
 
-The ruleset on `main` (GitHub Pro): pull request required, required checks `ci` and
-`pr-title`, branch up to date, no direct pushes, squash only, zero required approvals.
-`CODEOWNERS` (`* @magpern`) is informational.
+The ruleset on `main` (GitHub Pro): pull request required, merge queue (squash), required
+checks `ci` and `pr-title`, no strict up-to-date requirement (the queue tests each PR merged on
+top of `main` and what is ahead of it, so a branch need not be rebased by hand), no direct pushes,
+squash only, zero required approvals. `CODEOWNERS` (`* @magpern`) is informational. The
+Architect switches the ruleset to this after #307 merges; until then it still requires the
+branch to be up to date.
 
 ## Branches, worktrees and commits
 
@@ -362,10 +372,16 @@ every Spotify route answers 404 `feature_off`; the owner switches it on, roadmap
 ceiling across their stages and attempts, 0 to 100000000), `CLASSBEAT_SPOTIFY_FLOW_TTL_SECONDS` (600, 60 to 600;
 how long a connect flow lives), `CLASSBEAT_SPOTIFY_REFRESH_MARGIN_SECONDS` (120, 0 to 1800; a token with less
 than this left is refreshed), `CLASSBEAT_SPOTIFY_REFRESH_TIMEOUT_SECONDS` (10, above 0 and at most 20; the
-refresh request's total deadline) and `CLASSBEAT_SPOTIFY_LISTING_LAG_SECONDS` (unset, at most 86400; lets the
+refresh request's total deadline), `CLASSBEAT_SPOTIFY_LISTING_LAG_SECONDS` (unset, at most 86400; lets the
 reconciler mark an uncertain playlist create `failed` when the user's listing shows no playlist with its `ref`
 and the call returned at least that long ago; leave it unset until the owner has measured Spotify's listing
-delay at live activation). There is no Client ID setting and no Client Secret: each user enters their own
+delay at live activation) and `CLASSBEAT_SPOTIFY_CALLS_PER_JOB` (300, 1 to 10000; the Spotify requests one job may
+send across its stages and attempts, token refreshes included, counted per request and redirect hop by
+`egress.RequestBudget` and stored in `jobs.spotify_calls` with each attempt's ending; the request over it is never
+sent and the job ends `limit_exceeded`). Three attempts in a row ending with a Spotify 429 end the job
+`quota_exhausted` (a MOWL 429 does not count; `jobs.spotify_rate_limits`), and the job keeps the last Spotify
+`Retry-After` (`jobs.spotify_retry_after`) so the page's sentence names the minutes or hours (ADR 0009 section 8;
+migration 0013). There is no Client ID setting and no Client Secret: each user enters their own
 Spotify app's Client ID on the account page, and the callback is the fixed
 `<CLASSBEAT_PUBLIC_BASE_URL>/oauth/spotify/callback`.
 The Spotify playlist writes live in `classbeat.playlists` (ADR 0008 section 2): the external-operation
@@ -545,7 +561,19 @@ The fake Spotify (`e2e/fake-spotify/server.py`, service `spotify-fake`) answers 
 (`tests/spotifyfake.py`), so the two cannot drift; the `/__e2e/` control is reached from the web container.
 Web and worker trust the same CA bundle (`SSL_CERT_FILE`), now including the Spotify fake's CA.
 
+Song picking is on in the e2e stack only (`CLASSBEAT_SONG_PICKING: "true"` on web and worker in
+`compose.e2e.yaml`); the defaults keep it off. `e2e/tests/spotify-helpers.ts` holds the fake Spotify's public
+test data (`CLIENT_A` allows `USER_A`, `CLIENT_B` allows `USER_B`, `CLIENT_UNKNOWN` is no app), its control
+calls from the web container (`/__e2e/reset`, `sign-in?user=`, `deny`, `inject?...`, `state`: every request
+with the app and user of its token, never a token, code or verifier) and `playSpotify(page)`, which plays the
+browser's visit to `accounts.spotify.com/authorize` (the browser cannot reach the fake: the helper asks it
+from the web container without following the redirect and hands the page the answer). The fake's signed-in
+user is one global setting, so a spec sets `signInAtSpotify(user)` before each connect and the specs run one
+after the other. The live-activation steps for the owner are `docs/runbooks/m4-live-activation.md`.
+
 The specs: `design-draft.spec.ts` (draft, cancel while running, uncertain attach),
+`spotify-connect.spec.ts` (the Spotify wizard, consent, Disconnect, two users on different Client IDs and
+every error category's page text),
 `class-save.spec.ts` (change, save, update, uncertain writes, another MOWL account),
 `class-usage.spec.ts` and `fake-spotify.spec.ts` (web connects through the fake with PKCE, the worker
 reaches it too, it publishes no port).
@@ -561,16 +589,37 @@ CI runs the same in the `e2e` job (when the stack changed) and uploads `playwrig
 
 ### CI: what runs, and when
 
-CI is expensive (every job bills at least a minute, ~15 minutes for a full run), so a pull request
-only runs what its change needs. `ci.yml` has no `push` trigger: `main` only receives squashes of
-an up-to-date, already-tested branch. It runs on `pull_request`, weekly (Monday 04:00 UTC, which
-picks up new advisories) and on `workflow_dispatch`; the last two run everything.
+CI is expensive (every job bills at least a minute; a full run took 11 to 17 minutes before the
+backend tests were sharded, see #307 for the timings now), so a pull request only runs what its
+change needs. `ci.yml` has no `push` trigger: `main` only receives squashes the merge queue has
+tested. It runs on `pull_request`, on `merge_group` (the queue's merged result: the PR squashed on
+top of `main` and the groups ahead of it; the required checks `ci` and `pr-title` must pass there
+before the squash lands), weekly (Monday 04:00 UTC, which picks up new advisories) and on
+`workflow_dispatch`; the last two run everything. A newer push cancels a pull request's older run;
+a merge group's run is never cancelled by concurrency (`cancel-in-progress` is true only for
+`pull_request`).
+
+The `pr-title` workflow also runs on `merge_group`. A merge group has no PR title, so there it runs
+commitlint on the subject of every commit the queue would land (`git log --format=%s
+base_sha..head_sha`, the squash commits, each titled with its PR's title as the queue built it):
+a title edited after the PR was enqueued is checked too. A missing SHA or an empty range fails it.
+On the pull request it lints the title with ` (#<number>)` appended, the subject the squash gets,
+so a title that fits the 100-character `header-max-length` only without the suffix fails there
+and not in every merge group (keep titles to about 90 characters). Both events use
+`scripts/commitlint-subject.sh`; a self-test step shows a 100-character title failing with the
+suffix.
+
+The backend test shard count has one source: the `shard` list of the `backend-tests` matrix.
+`scripts/ci-shards.sh` (run in `changes`, tested in `checks`) reads it, refuses another axis, an
+`include` or `exclude`, or anything but `1..N`, and passes N to the shard check and to every shard
+(never `strategy.job-total`).
 
 | Job | Runs | What it does |
 |---|---|---|
-| `changes` | always | `scripts/ci-changes.sh`: `git diff` against the PR base gives the outputs `backend` (`backend/`, `docker/postgres/`), `frontend` (`frontend/`), `stack` (`backend/`, `frontend/`, `e2e/`, `docker/`, `Dockerfile`, `compose*.yaml`, `.dockerignore`, `.env.example`, `.trivyignore`, `scripts/worktree.sh`) and `all`. Renames count at both paths; names are read NUL-separated; if the diff cannot be computed everything runs. `all` is true on schedule/dispatch and when `.github/`, `.gitattributes` or `scripts/ci-changes.sh`, `ci-gate.sh` or `test-ci-gate.sh` change (CI changes test themselves) and makes the others true |
+| `changes` | always | `scripts/ci-changes.sh`: `git diff` of the PR's base and head (or the merge group's `base_sha` and `head_sha`) gives the outputs `backend` (`backend/`, `docker/postgres/`), `frontend` (`frontend/`), `stack` (`backend/`, `frontend/`, `e2e/`, `docker/`, `Dockerfile`, `compose*.yaml`, `.dockerignore`, `.env.example`, `.trivyignore`, `scripts/worktree.sh`) and `all`. Renames count at both paths; names are read NUL-separated; if the diff cannot be computed (an unknown commit, a missing SHA) everything runs. `all` is true on schedule/dispatch and when `.github/`, `.gitattributes` or `scripts/ci-changes.sh`, `ci-gate.sh`, `ci-shards.sh` or `test-ci-gate.sh` change (CI changes test themselves) and makes the others true |
 | `checks` | always | the cheap checks as steps of one job (below) |
-| `backend` | `backend` | ruff, format, pyright, the queue functions' md5 regenerated on the pinned image (fails when `queue_digests.py` is stale), pytest against Postgres |
+| `backend` | `backend` | once per run: ruff, format, pyright, the queue functions' md5 regenerated on the pinned image (fails when `queue_digests.py` is stale), and the shard check: `backend/tests/shards.py check N` compares pytest's own collection with the split, so every test file runs in exactly one shard and none is empty |
+| `backend-tests` | `backend` | pytest in a matrix of 3 shards (`fail-fast: false`), each its own runner and Postgres service; a file's shard is `sha256(path) % N + 1` (`tests/shards.py list K N`), so the split needs no list and no dependency. Change the shard count only in the matrix (`shard: [1, 2, 3]`); `changes` reads it from there (`scripts/ci-shards.sh`) and passes it to the check and every shard |
 | `frontend` | `frontend` | lint, typecheck, Vitest, build |
 | `e2e` | `stack` | the stack, the checks below, the Trivy image scan, then Playwright |
 | `ci` | always | the required check; see the gate below |
@@ -580,8 +629,11 @@ A docs-only PR therefore runs `changes`, `checks` and `ci` (plus `pr-title`).
 **The `ci` gate** (`scripts/ci-gate.sh`, tested by `scripts/test-ci-gate.sh` in `checks`) fails
 unless `changes` and `checks` succeeded and every other job either succeeded or was skipped while
 its filter output is `false`. A job that is needed (filter `true`) but skipped, cancelled or failed
-fails the gate, and so does a job missing from `needs`, a short result list or malformed input (it fails closed). Add a new job to
-`needs` of `ci`, to `ci-gate.sh` (and its filter) and to the tests.
+fails the gate, and so does a job missing from `needs`, a short result list or malformed input (it fails closed). The
+`backend-tests` matrix has one result in `needs` (success only when every shard succeeded), gated
+by the `backend` filter: a failed or cancelled shard, or the matrix skipped while `backend` is
+true, fails the gate. Add a new job to `needs` of `ci`, to `ci-gate.sh` (and its filter) and to
+the tests.
 
 ### Security checks (CI)
 
@@ -589,10 +641,10 @@ The `checks` job runs these as steps; the image scan is a step of `e2e`:
 
 | Step | What it checks |
 |---|---|
-| Secret scan | gitleaks over the pull request's own commits; the weekly and manual runs scan the whole history |
+| Secret scan | gitleaks over the pull request's own commits (a merge group's: `base_sha..head_sha`); the weekly and manual runs scan the whole history |
 | bash -n, shellcheck | every `scripts/*.sh` |
 | CI gate and change-filter tests | `scripts/test-ci-gate.sh` |
-| Postgres image pinned alike | compose's `db` and `db-functions` and the `backend` job's service use the same exact `postgres` tag (the queue functions' md5 depends on it) |
+| Postgres image pinned alike | compose's `db` and `db-functions` and the `backend` and `backend-tests` jobs' services use the same exact `postgres` tag (the queue functions' md5 depends on it) |
 | uv version, actionlint | `setup-uv`'s version equals the Dockerfile's uv tag (`scripts/ci-uv-version.sh`); actionlint (with shellcheck) on every workflow |
 | pip-audit | `uv export --frozen` (production, then all groups) through `pip-audit` (pinned) |
 | npm audit | `npm audit --audit-level=high` in `frontend/` and `e2e/` |

@@ -241,6 +241,9 @@ class Settings(BaseSettings):
     # with its ``ref`` stays uncertain; set (by the owner, after measuring it at live activation),
     # such a create whose call returned at least this long ago is ``failed``. A day at most.
     spotify_listing_lag_seconds: float | None = Field(default=None, gt=0, le=86400)
+    # ADR 0009 section 8: the Spotify requests one job may send across its stages and attempts
+    # (the token refreshes included); the request over it is never sent (``limit_exceeded``).
+    spotify_calls_per_job: int = Field(default=300, ge=1, le=10_000)
     # ADR 0008 section 2: how long a pick waits for MOWL's track list of the pool playlist to
     # show exactly the candidates just written (``pool_not_synced`` after it).
     spotify_pool_sync_wait_seconds: float = Field(default=120.0, ge=0, le=600)

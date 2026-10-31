@@ -55,6 +55,18 @@ export interface ClassPlaylist {
 
 const SPOTIFY_PLAYLIST_LINK = /^https:\/\/open\.spotify\.com\/playlist\/[A-Za-z0-9]{22}$/
 
+const SPOTIFY_TRACK_LINK = /^https:\/\/open\.spotify\.com\/track\/[A-Za-z0-9]{22}$/
+
+/** Whether a link from the API is a Spotify track link; the frontend never builds one. */
+export function isTrackLink(link: string): boolean {
+  return SPOTIFY_TRACK_LINK.test(link)
+}
+
+/** Whether a link from the API is a Spotify playlist link; the frontend never builds one. */
+export function isPlaylistLink(link: string): boolean {
+  return SPOTIFY_PLAYLIST_LINK.test(link)
+}
+
 function decodePlaylist(value: unknown): ClassPlaylist | null {
   if (value === null || value === undefined) return null
   const item = object(value, 'playlist')

@@ -82,7 +82,8 @@ async def test_a_category_that_ends_the_pick_shows_its_sentence(
     assert (row.state, row.error_category) == ("failed", category)
     view = await shown(rider, job_id)
     assert (view["state"], view["error_category"]) == ("failed", category)
-    assert view["error_message"] == sentence(category)
+    # The quota names the hours of Spotify's Retry-After (kept on the job, #300).
+    assert view["error_message"] == sentence(category, options.get("retry_after"))
     assert not any(text in str(view) for text in SECRETS)  # never Spotify's own words
     assert (await spotify_status(songenv, rider))[0] == status
     assert songenv.fake.playlists == {}  # nothing was created
@@ -103,16 +104,17 @@ async def test_not_found_on_the_final_playlist_ends_the_second_phase(songenv: So
 
 
 @pytest.mark.parametrize(
-    ("kind", "options", "at_least"),
+    ("kind", "options", "at_least", "waiting"),
     [
-        # rate_limited: Retry-After honoured by the backoff
-        ("rate_limited", {"method": "POST", "path": MINE, "retry_after": 600}, 600),
+        # rate_limited: Retry-After honoured by the backoff, and named by the sentence
+        ("rate_limited", {"method": "POST", "path": MINE, "retry_after": 600}, 600,
+         "Spotify asks to slow down; trying again in about 10 minutes."),
         # upstream_unavailable: the create never left
-        ("refuse", {"method": "POST", "path": MINE}, 0),
+        ("refuse", {"method": "POST", "path": MINE}, 0, "Spotify is not answering."),
     ],
-)
+)  # fmt: skip
 async def test_a_retryable_category_is_retried_and_the_retry_finishes_the_pick(
-    songenv: SongEnv, kind: str, options: dict[str, Any], at_least: int
+    songenv: SongEnv, kind: str, options: dict[str, Any], at_least: int, waiting: str
 ) -> None:
     rider = await songenv.rider()
     songenv.fake.inject(kind, **options)
@@ -122,7 +124,12 @@ async def test_a_retryable_category_is_retried_and_the_retry_finishes_the_pick(
     assert (row.state, row.attempt) == ("queued", 1), (row.state, row.error_category)
     assert row.available_at >= started + timedelta(seconds=at_least)
     view = await shown(rider, job_id)
-    assert view["state"] == "queued"
+    # While the retry waits, the page shows ADR 0009 section 8's own sentence (#300 item 5).
+    assert (view["state"], view["error_category"], view["error_message"]) == (
+        "queued",
+        None,
+        waiting,
+    )
     assert not any(text in str(view) for text in SECRETS)
     assert (await spotify_status(songenv, rider))[0] == "connected"
     assert (await songenv.run(job_id)).state == "waiting_for_approval"
@@ -133,7 +140,7 @@ async def test_rate_limits_never_park_a_worker_thread_and_end_the_job_when_attem
     songenv: SongEnv,
 ) -> None:
     """The library never sleeps on a 429 (``spotify_max_retry_wait=0``): an attempt that meets
-    one ends at once and the job's backoff waits instead. Three in a row use up the attempts."""
+    one ends at once and the job's backoff waits instead."""
     rider = await songenv.rider()
     songenv.fake.inject("rate_limited", method="POST", path=MINE, retry_after=30, times=3)
     job_id = await songenv.created(rider)
@@ -148,24 +155,19 @@ async def test_rate_limits_never_park_a_worker_thread_and_end_the_job_when_attem
     assert await songenv.claim() is None
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="ADR 0009 section 8: 3 rate_limited retries in a row on one job are quota_exhausted; "
-    "the job ends rate_limited today (reported in #185 for the Architect)",
-)
 async def test_three_rate_limits_in_a_row_end_quota_exhausted(songenv: SongEnv) -> None:
+    """ADR 0009 section 8: three Spotify rate limits in a row on one job are
+    ``quota_exhausted``, and the sentence names the last ``Retry-After`` (30 s: "1 hour")."""
     rider = await songenv.rider()
     songenv.fake.inject("rate_limited", method="POST", path=MINE, retry_after=30, times=3)
     job_id = await songenv.created(rider)
     rows = [await songenv.run(job_id) for _ in range(3)]
-    assert (rows[-1].state, rows[-1].error_category) == ("failed", "quota_exhausted")
+    assert [r.state for r in rows] == ["queued", "queued", "failed"]
+    assert (rows[-1].error_category, rows[-1].spotify_rate_limits) == ("quota_exhausted", 3)
+    view = await shown(rider, job_id)
+    assert view["error_message"] == sentence("quota_exhausted", 30)
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="ADR 0009 section 8: quota_exhausted says 'Try again in about N hours' from the "
-    "Retry-After; a job keeps no hint, so the page says 1 hour (reported in #185)",
-)
 async def test_the_quota_sentence_names_the_hours_spotify_asked_for(songenv: SongEnv) -> None:
     rider = await songenv.rider()
     songenv.fake.inject("rate_limited", method="POST", path=MINE, retry_after=3 * 3600)

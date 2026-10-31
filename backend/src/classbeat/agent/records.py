@@ -17,6 +17,10 @@ builds it from the stage runs and the music map. Besides ``map_version`` it reco
 ``crossfade``: ``music.MAP_VERSION`` stayed 12 across ``mowl-workouts`` 0.5.0, so ``map_version``
 alone no longer tells a back-to-back map from an overlapped one.
 
+ADR 0012 section 5 (M3c G2) adds the model route: every ``agent_runs`` row and every new
+revision's provenance record the ``route_key`` and ``eval_result_id`` of the choice the stage ran
+on (``RunInfo``, from the job's ``AgentConfig``), both NULL for the bootstrap choice and ``fake``.
+
 ADR 0007 section 2 adds where a revision came from: ``origin`` (``design_draft`` or
 ``revise_draft``), ``base_revision_id`` (the revision a revise started from) and
 ``request_message_id`` (the user's ``class_messages`` row that asked for it); both ids are
@@ -53,8 +57,9 @@ _SPENT = text(
 )
 _INSERT = text(
     "INSERT INTO agent_runs (id, owner_id, job_id, job_kind, price_version, stage, attempt, "
-    "provider, model, effort, prompt_version) VALUES (:id, :owner_id, :job_id, :job_kind, "
-    ":price_version, :stage, :attempt, :provider, :model, :effort, :prompt_version)"
+    "provider, model, effort, prompt_version, route_key, eval_result_id) VALUES (:id, :owner_id, "
+    ":job_id, :job_kind, :price_version, :stage, :attempt, :provider, :model, :effort, "
+    ":prompt_version, :route_key, :eval_result_id)"
 )
 _SET_COUNTERS = (
     "UPDATE agent_runs SET turns = :turns, tool_calls = :tool_calls, "
@@ -116,6 +121,8 @@ class JobStageHost:
                     "model": info.model,
                     "effort": info.effort,
                     "prompt_version": info.prompt_version,
+                    "route_key": info.route_key,
+                    "eval_result_id": info.eval_result_id,
                 },
             )
         return run_id, int(spent)
@@ -182,6 +189,10 @@ class Provenance(BaseModel):
     # ``prompt_version`` of every stage that ran (``pick_pool``, ``choose_songs``).
     schema_version: int | None = Field(default=None, ge=1)
     stage_versions: dict[str, str] | None = None
+    # ADR 0012 section 5: the model route the last run's choice came from; both ``None`` for the
+    # bootstrap choice and ``fake`` (and absent on revisions stored before M3c G2).
+    route_key: str | None = Field(default=None, pattern=r"^[a-z0-9_]{1,40}$")
+    eval_result_id: UUID | None = None
     # ADR 0012 section 7, on a draft: the fitted draft has a zone 7 interval, so its TSS is a
     # guess. Computed by the backend; absent on revisions stored before it and on song lists.
     tss_approximate: bool | None = None
@@ -206,6 +217,12 @@ class Provenance(BaseModel):
             if out.get(key) is None:
                 out.pop(key, None)
         return out
+
+    @model_validator(mode="after")
+    def _route(self) -> Self:
+        if (self.route_key is None) != (self.eval_result_id is None):
+            raise ValueError("a route names its key and its eval result together")
+        return self
 
     @model_validator(mode="after")
     def _versions(self) -> Self:
@@ -268,4 +285,6 @@ def provenance(
         stage_versions=(
             {r.info.stage: r.info.prompt_version for r in runs} if schema_version else None
         ),
+        route_key=last.info.route_key,
+        eval_result_id=last.info.eval_result_id,
     )

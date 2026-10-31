@@ -12,7 +12,9 @@
 - Any push after a `PASS` invalidates it. A merge-only update of `main` with no hand-resolved
   conflict is covered by the Architect's merge check (AGENTS.md review gate, item 3); any
   other push needs a fresh (delta) review.
-- Merge only with `gh pr merge <n> --squash --match-head-commit <reviewed-sha> --subject "<PR title> (#<n>)"`.
+- Merge only with `gh pr merge <n> --squash --match-head-commit <reviewed-sha>`. With the merge
+  queue this enqueues the PR; the queue tests the merged result and lands the squash, whose title
+  is the PR title (no `--subject`). The branch need not be up to date with `main`.
 - Never `--auto`, never `--admin`, never an approving review, never a ruleset change, never a
   comment starting `Human review:`.
 

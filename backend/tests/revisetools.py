@@ -11,7 +11,7 @@ from uuid import UUID
 import httpx
 import pytest
 
-from agentfake import CONFIG, provider
+from agentfake import CONFIG, FactoryModels, provider
 from classbeat import design
 from classbeat.agent.providers.fake import FakeProvider
 from classbeat.design import DESIGN_DRAFT, REVISE_DRAFT, Runtime
@@ -40,7 +40,7 @@ class ReviseEnv:
 
         return Runtime(
             keyring=self.denv.ops.keyring,
-            provider=build,
+            models=FactoryModels(build),
             agent=CONFIG,
             context_requests=self.context_requests,
         )
