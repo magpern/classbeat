@@ -36,7 +36,8 @@ describe('the Music page', () => {
     expect(screen.getByRole('link', { name: 'Hill day' })).toHaveAttribute('href', '/classes/c1')
     const mowl = await screen.findByRole('heading', { name: 'Your playlists in MOWL' })
     expect(within(mowl.parentElement!).getByText('Warm up')).toBeInTheDocument()
-    expect(screen.getByTestId('spotify-attribution')).toBeInTheDocument()
+    expect(screen.getAllByAltText('Spotify')[0]).toBeInTheDocument()
+    expect(screen.getAllByTestId('spotify-attribution').length).toBeGreaterThan(0)
   })
 
   it('offers no link for a playlist without one, and drops a link that is not a playlist link', async () => {

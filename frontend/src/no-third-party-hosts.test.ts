@@ -26,6 +26,7 @@ const REMOTE_URL = /(?:https?:)?\/\/(?!localhost\b|127\.0\.0\.1\b)[a-z0-9.-]+\.[
 // The one exception (ADR 0013 section 9): album covers from Spotify's image host, named only in
 // CoverArt, which shows them. The exemption is that exact quoted string in that one file.
 const COVER_ART = './components/songs/CoverArt.tsx'
+const SPOTIFY_LOGO = './components/songs/SpotifyAttribution.tsx'
 const COVER_HOST = "'https://i.scdn.co'"
 
 /** The remote URLs in a source file, after the SVG namespace and the one allowed host. */
@@ -79,12 +80,19 @@ describe('no third-party hosts', () => {
     expect(naming).toEqual([])
   })
 
-  it('only CoverArt renders an image element', () => {
+  it('only CoverArt and the Spotify logo render an image element', () => {
     // src/test/ holds test fixtures (hostile text such as an <img> in a description), not app code.
     const withImg = Object.entries(scripts)
       .filter(([path]) => !path.startsWith('./test/'))
       .filter(([, source]) => /<img\b|createElement\(\s*['"]img['"]|new Image\(/.test(source))
       .map(([path]) => path)
-    expect(withImg).toEqual([COVER_ART])
+    expect(withImg.sort()).toEqual([COVER_ART, SPOTIFY_LOGO].sort())
+    // The logo's images come from the two bundled brand files and nothing else.
+    const logo = scripts[SPOTIFY_LOGO] ?? ''
+    expect(logo.match(/src=\{(\w+)\}/g)).toEqual(['src={whiteLogo}', 'src={blackLogo}'])
+    expect(logo.match(/from '([^']+)'/g)).toEqual([
+      "from '../../assets/brand/Full_Logo_Black_RGB.svg'",
+      "from '../../assets/brand/Full_Logo_White_RGB.svg'",
+    ])
   })
 })

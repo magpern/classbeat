@@ -111,7 +111,12 @@ function Music() {
         {mowl.status === 'ready' && mowl.items.length === 0 ? (
           <p className="m-0 text-muted">MOWL lists no Spotify playlists for your account.</p>
         ) : null}
-        {mowl.status === 'ready' && mowl.items.length > 0 ? <MowlTiles playlists={mowl.items} /> : null}
+        {mowl.status === 'ready' && mowl.items.length > 0 ? (
+          <>
+            <MowlTiles playlists={mowl.items} />
+            <SpotifyAttribution />
+          </>
+        ) : null}
       </section>
     </div>
   )
