@@ -18,14 +18,13 @@ from classbeat.db.queue_check import (
     guard_trigger_signatures,
     queue_problems,
 )
-from dbtools import QUEUE_SCRIPT, install_queue, tiers_migration
+from dbtools import QUEUE_SCRIPT, install_queue, migration_module
 from jobtools import engine_for
 from queue_guard import check_queue
 from role_guard import check_roles
 
-LEDGER_RESTORE = tiers_migration().LEDGER_GUARD.replace(
-    "CREATE FUNCTION", "CREATE OR REPLACE FUNCTION"
-)
+# The current body (0008 replaced 0007's), as the migration creates it.
+LEDGER_RESTORE = migration_module("ledger_guard_owner").LEDGER_GUARD
 
 
 @pytest.fixture
@@ -133,6 +132,34 @@ def test_any_change_to_a_guard_fails_every_check(
     assert startup_problems(admin) == []
     assert check_queue(admin) == []
     assert check_roles(admin) == []
+
+
+MISSING = {
+    "credit_ledger_guard": (
+        "DROP TRIGGER credit_ledger_guard ON public.credit_ledger",
+        "CREATE TRIGGER credit_ledger_guard BEFORE UPDATE ON public.credit_ledger "
+        "FOR EACH ROW EXECUTE FUNCTION public.credit_ledger_guard()",
+    ),
+    "admin_audit_guard": (
+        "DROP TRIGGER admin_audit_guard ON public.admin_audit",
+        "CREATE TRIGGER admin_audit_guard BEFORE UPDATE OR DELETE ON public.admin_audit "
+        "FOR EACH ROW EXECUTE FUNCTION public.admin_audit_guard()",
+    ),
+}
+
+
+@pytest.mark.parametrize(("drop", "undo"), MISSING.values(), ids=MISSING.keys())
+def test_a_missing_guard_trigger_fails_startup_and_guard_9(
+    admin: Connection, drop: str, undo: str
+) -> None:
+    raw(admin, drop)
+    try:
+        assert any("M5 guard triggers" in p for p in startup_problems(admin))
+        assert any("M5 guard triggers" in p for p in check_queue(admin))
+    finally:
+        raw(admin, undo)
+    assert startup_problems(admin) == []
+    assert check_queue(admin) == []
 
 
 def test_the_role_guard_refuses_execute_on_a_guard_function(admin: Connection) -> None:

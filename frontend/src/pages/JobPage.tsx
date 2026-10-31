@@ -1,5 +1,9 @@
 import { useCallback, useEffect, useState } from 'react'
 import { planRefusalText } from '../api/planMessages'
+import { isSongKind } from '../api/songs'
+import { PICK_STAGES } from '../api/songMessages'
+import { SongEnded } from '../components/songs/SongEnded'
+import { SongsForApproval } from '../components/songs/SongsForApproval'
 import { failureText, retryLabel, stageLabel } from '../api/jobMessages'
 import {
   cancelJob,
@@ -27,7 +31,7 @@ export function JobPage({ jobId }: { jobId: string }) {
 }
 
 function JobView({ jobId }: { jobId: string }) {
-  const { job, progress, problem, setJob } = useJobProgress(jobId)
+  const { job, progress, problem, setJob, follow } = useJobProgress(jobId)
   if (problem === 'not_found') {
     return (
       <Card title="Class not found">
@@ -66,7 +70,15 @@ function JobView({ jobId }: { jobId: string }) {
       {problem === 'failed' ? (
         <Notice kind="error">The connection to the server dropped. Trying again.</Notice>
       ) : null}
-      <JobBody job={job} progress={progress} onJob={setJob} />
+      <JobBody
+        job={job}
+        progress={progress}
+        onJob={setJob}
+        onApproved={(next) => {
+          setJob(next)
+          follow()
+        }}
+      />
     </div>
   )
 }
@@ -75,11 +87,20 @@ function JobBody({
   job,
   progress,
   onJob,
+  onApproved,
 }: {
   job: Job
   progress: Progress
   onJob: (job: Job) => void
+  onApproved: (job: Job) => void
 }) {
+  const song = isSongKind(job.kind)
+  if (song && job.state === 'waiting_for_approval') {
+    return <SongsForApproval job={job} onApproved={onApproved} />
+  }
+  if (song && (job.state === 'failed' || job.state === 'cancelled' || job.state === 'expired')) {
+    return <SongEnded job={job} />
+  }
   switch (job.state) {
     case 'queued':
     case 'running':
@@ -124,11 +145,13 @@ function Designing({
     }, cancelError)
   }
   const waiting = job.state === 'queued' && progress.stage === null
+  const picking = job.kind === 'design_with_songs' && job.approvedAt === null
   return (
     <section className="panel" aria-labelledby="designing-title">
       <h1 id="designing-title" className="panel__title">
-        Designing your class…
+        {picking ? 'Picking your songs…' : 'Designing your class…'}
       </h1>
+      {picking ? <PickStages current={progress.stage ?? job.stage} /> : null}
       <div role="status" aria-live="polite" data-testid="progress">
         {stopping ? (
           <p>Stopping. This takes a moment.</p>
@@ -157,6 +180,25 @@ function Designing({
         </button>
       </p>
     </section>
+  )
+}
+
+/** The stages of picking songs in words, with the running one marked (ADR 0008 section 9). */
+function PickStages({ current }: { current: string | null }) {
+  const at = PICK_STAGES.findIndex((s) => s.stage === current)
+  return (
+    <ol className="m-0 flex list-none flex-col gap-1 p-0 text-muted" aria-label="Steps">
+      {PICK_STAGES.map((s, i) => (
+        <li
+          key={s.stage}
+          aria-current={i === at ? 'step' : undefined}
+          className={i === at ? 'font-medium text-text' : undefined}
+        >
+          {s.label}
+          {i < at ? ' (done)' : ''}
+        </li>
+      ))}
+    </ol>
   )
 }
 

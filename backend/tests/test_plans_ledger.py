@@ -1,6 +1,6 @@
-"""Migration 0007's credit ledger and audit log (ADR 0011 section 1; issue DB1, #207): the
-restrictive policies, the ledger trigger by role (app, a maint stand-in, the owner), the cascades
-of a deleted class and account, and the append-only audit log."""
+"""The credit ledger and audit log of migrations 0007 and 0008 (ADR 0011 section 1; #207, #210):
+the restrictive policies, the ledger trigger by role (app, a maint stand-in, the owner), the
+cascades of a deleted class and account, and the append-only audit log."""
 
 from collections.abc import Iterator
 
@@ -115,8 +115,8 @@ def test_the_app_role_changes_nothing_else_on_the_ledger(admin: Connection, app:
         (
             "UPDATE credit_ledger SET job_id = NULL WHERE id = :i",
             {},
-            "row-level security",
-        ),  # the trigger lets it by; the policy not
+            REFUSED,
+        ),  # only the owner's cascade may (0008)
         (
             "UPDATE credit_ledger SET state = 'committed', job_id = NULL WHERE id = :i",
             {},
@@ -195,6 +195,20 @@ def test_maint_refunds_a_committed_credit_and_never_releases_a_reservation(
             maint.execute(text(statement), {"i": target, "by": user})
     maint.execute(text(refund), {"i": committed, "by": user})
     maint.execute(text("RESET ROLE"))
+    # Nulling the job would stop a reservation counting (the class would be free): maint has no
+    # UPDATE on job_id, and with one the trigger still refuses (0008: the cascade is the owner's).
+    maint.execute(text(f"GRANT UPDATE (job_id) ON public.credit_ledger TO {MAINT}"))
+    try:
+        maint.execute(text(f"SET ROLE {MAINT}"))
+        for target in (reserved, committed):
+            with pytest.raises(DBAPIError, match=REFUSED):
+                maint.execute(
+                    text("UPDATE credit_ledger SET job_id = NULL WHERE id = :i"), {"i": target}
+                )
+    finally:
+        maint.execute(text("RESET ROLE"))
+        maint.execute(text(f"REVOKE UPDATE (job_id) ON public.credit_ledger FROM {MAINT}"))
+    assert row(maint, reserved).job_id is not None
     assert row(maint, committed).state == "refunded"
     assert row(maint, committed).refunded_by == user
     assert (row(maint, reserved).state, row(maint, released).state) == ("reserved", "released")

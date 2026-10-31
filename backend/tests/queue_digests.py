@@ -2,8 +2,9 @@
 
 The expected ``md5(pg_get_functiondef(oid))`` of each queue function depends on the exact text
 of ``docker/postgres/queue/20-queue.sql`` and on how the pinned Postgres image renders it; that
-of the two M5 guard trigger functions on migration ``0007_tiers``. Run it against a database
-migrated to head where ``20-queue.sql`` has run (as the test superuser):
+of the two M5 guard trigger functions on the migrations that make them (``0007_tiers``,
+``0008_ledger_guard_owner``). Run it against a database migrated to head where ``20-queue.sql``
+has run (as the test superuser):
 
     uv run python tests/queue_digests.py --check   # CI: fails (with a diff) when it is stale
     uv run python tests/queue_digests.py --write   # after changing 20-queue.sql or a trigger

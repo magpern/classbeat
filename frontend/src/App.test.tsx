@@ -1,4 +1,5 @@
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
+import { render, screen, within } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 import { App } from './App'
 import { SIGNED_IN, fakeApi, reason } from './test/fakeApi'
@@ -35,15 +36,15 @@ describe('App shell', () => {
     fakeApi({
       'GET /api/auth/session': SIGNED_IN,
       'POST /api/auth/logout': reason(500, 'boom'),
+      'GET /api/classes': { classes: [] },
     })
     window.history.replaceState(null, '', '/')
     render(<App />)
-    const nav = await screen.findByRole('navigation', { name: 'Account' })
-    fireEvent.click(within(nav).getByRole('button', { name: 'Sign out' }))
-    await waitFor(() => {
-      expect(within(nav).getByRole('alert')).toHaveTextContent(/went wrong on the server/)
-    })
-    expect(within(nav).getByRole('button', { name: 'Sign out' })).toBeEnabled()
+    await userEvent.click(await screen.findByRole('button', { name: 'ann@example.test' }))
+    await userEvent.click(await screen.findByRole('menuitem', { name: 'Sign out' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent(/went wrong on the server/)
+    await userEvent.click(screen.getByRole('button', { name: 'ann@example.test' }))
+    expect(await screen.findByRole('menuitem', { name: 'Sign out' })).not.toHaveAttribute('data-disabled')
     expect(window.location.pathname).toBe('/')
   })
 })

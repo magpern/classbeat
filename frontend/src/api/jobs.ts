@@ -27,12 +27,20 @@ const TERMINAL_STATES: readonly string[] = ['completed', 'failed', 'cancelled', 
 
 export interface Job {
   id: string
+  /** `design_draft`, `design_with_songs`, ... ('' if the answer has none). */
+  kind: string
   state: JobState
   stage: string | null
   classId: string
   cancelRequested: boolean
   /** An ADR 0005 section 4 category, never an error text. */
   errorCategory: string | null
+  /** The song list this job waits on (ADR 0008 section 5); null for other jobs. */
+  approvalRevisionId: string | null
+  /** When the wait for approval ends. */
+  expiresAt: string | null
+  /** Set once the user approved, whatever the job does afterwards. */
+  approvedAt: string | null
 }
 
 export function isTerminal(state: string): boolean {
@@ -44,11 +52,15 @@ export function decodeJob(value: unknown): Job {
   const state = text(item, 'state')
   return {
     id: text(item, 'id'),
+    kind: optionalText(item, 'kind') ?? '',
     state: STATES.includes(state) ? (state as JobState) : 'failed',
     stage: optionalText(item, 'stage'),
     classId: text(item, 'class_id'),
     cancelRequested: flag(item, 'cancel_requested'),
     errorCategory: optionalText(item, 'error_category'),
+    approvalRevisionId: optionalText(item, 'approval_revision_id'),
+    expiresAt: optionalText(item, 'expires_at'),
+    approvedAt: optionalText(item, 'approved_at'),
   }
 }
 
