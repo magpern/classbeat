@@ -4,7 +4,7 @@ import { lengthLabel, profileSeconds } from '../../lib/classCards'
  * A small class profile on the stage (ADR 0013 sections 2 and 7): x is time, bar height and colour
  * are the zone. A sketch only: the full chart with axes and markers is the class page's.
  */
-export function MiniProfile({ profile }: { profile: [number, number][] }) {
+export function MiniProfile({ profile, tall = false }: { profile: [number, number][]; tall?: boolean }) {
   const total = profileSeconds(profile)
   const bars = profile.filter(([, sec]) => sec > 0)
   const label =
@@ -16,7 +16,7 @@ export function MiniProfile({ profile }: { profile: [number, number][] }) {
       aria-label={label}
       viewBox="0 0 200 56"
       preserveAspectRatio="none"
-      className="block h-14 w-full rounded-md bg-stage"
+      className={`block w-full rounded-md bg-stage ${tall ? 'h-40' : 'h-14'}`}
     >
       {bars.map(([zone, sec], i) => {
         const z = Math.min(Math.max(zone, 1), 7)

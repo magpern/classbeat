@@ -1,7 +1,9 @@
 import type { Revision } from '../../api/classes'
 import { originLabel } from '../../api/classMessages'
+import { TSS_APPROXIMATE_NOTE } from '../../lib/classCards'
 import { clock, segmentSeconds, totalSeconds, tss } from '../../lib/workout'
 import { TimelineChart } from './TimelineChart'
+import { TssValue } from './TssValue'
 
 const KINDS: Record<string, string> = {
   warmup: 'Warm-up',
@@ -43,7 +45,17 @@ export function RevisionView({
         </div>
         <div>
           <dt>TSS</dt>
-          <dd data-testid="tss">{tss(revision.segments)}</dd>
+          <dd>
+            <span data-testid="tss">
+              <TssValue value={tss(revision.segments)} approximate={revision.tssApproximate} />
+            </span>
+            {revision.tssApproximate ? (
+              <small className="muted" data-testid="tss-note">
+                {' '}
+                ({TSS_APPROXIMATE_NOTE})
+              </small>
+            ) : null}
+          </dd>
         </div>
         <div>
           <dt>Segments</dt>

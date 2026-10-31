@@ -10,12 +10,21 @@ or params its model rejects, before it opens a connection. The admin feature mod
 import json
 import logging
 import time
+import unicodedata
 from collections.abc import Mapping
 from dataclasses import dataclass, field
-from typing import Annotated, Any, Final
+from typing import Annotated, Any, Final, Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, StringConstraints, ValidationError
+from pydantic import (
+    AfterValidator,
+    AwareDatetime,
+    BaseModel,
+    ConfigDict,
+    Field,
+    StringConstraints,
+    ValidationError,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -45,10 +54,36 @@ class NoParams(Params):
     """An action whose target says everything (a read or write of one user or row)."""
 
 
+def json_bytes(value: str) -> int:
+    """How many bytes ``value`` takes inside a JSON string as ``checked_params`` writes it
+    (escapes included: a non-ASCII character is 6 or 12 bytes, not 1)."""
+    return len(json.dumps(value).encode()) - 2
+
+
+def bounded_text(max_bytes: int) -> AfterValidator:
+    """Free text that is safe to store in ``params``: no control character (Unicode ``Cc``, NUL
+    included, which ``jsonb`` refuses) and at most ``max_bytes`` once JSON-encoded, so a bound in
+    characters can never push the params past ``MAX_PARAMS_BYTES``."""
+
+    def check(value: str) -> str:
+        if any(unicodedata.category(c) == "Cc" for c in value):
+            raise ValueError("control characters are not allowed")
+        if json_bytes(value) > max_bytes:
+            raise ValueError(f"at most {max_bytes} bytes once encoded")
+        return value
+
+    return AfterValidator(check)
+
+
+# The Users list's search text (AD1 #218): no control character, and bounded in encoded bytes as
+# well as in characters (254 emoji would be 3048 bytes once encoded).
+UserQuery = Annotated[str, StringConstraints(max_length=254), bounded_text(1024)]
+
+
 class UserListParams(Params):
     """The Users list's filter (AD1 #218): an email prefix (never a full credential) and paging."""
 
-    q: Annotated[str, StringConstraints(max_length=254)] | None = None
+    q: UserQuery | None = None
     offset: Annotated[int, Field(ge=0, le=10_000)] = 0
     limit: Annotated[int, Field(ge=1, le=100)] = 50
 
@@ -63,6 +98,45 @@ class GrantParams(Params):
     note: bool = False
 
 
+# The audit filter's two free-text fields, bounded so the largest accepted filter still fits
+# MAX_PARAMS_BYTES (``tests/test_admin_audit.py`` measures the worst case).
+FilterEmail = Annotated[str, StringConstraints(min_length=1, max_length=320), bounded_text(640)]
+FilterTargetId = Annotated[str, StringConstraints(min_length=1, max_length=100), bounded_text(200)]
+
+
+class AuditListParams(Params):
+    """The audit log's filter (AD4 #222, ``classbeat.admin.audit_routes``): ids, codes, the
+    period and the page; ``actor_email`` is an admin's email, as ``actor_email`` itself."""
+
+    actor_id: UUID | None = None
+    actor_email: FilterEmail | None = None
+    action: Annotated[str, StringConstraints(pattern=r"^[a-z][a-z0-9_.]{0,59}$")] | None = None
+    target_user_id: UUID | None = None
+    target_kind: Annotated[str, StringConstraints(pattern=r"^[a-z][a-z0-9_]{0,39}$")] | None = None
+    target_id: FilterTargetId | None = None
+    outcome: Literal["ok", "refused", "error"] | None = None
+    since: AwareDatetime | None = None
+    until: AwareDatetime | None = None
+    before: UUID | None = None
+    limit: Annotated[int, Field(ge=1, le=100)] = 50
+
+
+class UsageParams(Params):
+    """The Usage and cost view's period (AD3 #221): a UTC month, ``YYYY-MM``."""
+
+    month: Annotated[str, StringConstraints(pattern=r"^\d{4}-\d{2}$")]
+
+
+class JobsParams(Params):
+    """The Jobs view's window for recent failures (AD3 #221), in days."""
+
+    days: Annotated[int, Field(ge=1, le=90)]
+
+
+class RefundParams(Params):
+    """An admin refund (AD3 #221): the target (user, ledger row) says everything."""
+
+
 # Action code -> its params model. ``admin.request`` is the gate's own (ADR 0011 section 6:
 # mfa_required, stepup_required and rate_limited of an admin).
 ACTIONS: dict[str, type[Params]] = {
@@ -75,7 +149,13 @@ ACTIONS: dict[str, type[Params]] = {
     "user.disable": NoParams,
     "user.enable": NoParams,
     "user.delete": NoParams,
+    # Usage, cost and jobs; the admin refund (AD3 #221, classbeat.admin.usage and .jobs).
+    "usage.read": UsageParams,
+    "job.list": JobsParams,
+    "refund.credit": RefundParams,
 }
+# The audit log (AD4 #222).
+ACTIONS["audit.list"] = AuditListParams
 
 
 class UnknownAction(ValueError):
@@ -91,10 +171,27 @@ def checked_params(action: str, params: Mapping[str, Any] | None) -> str:
         value = model.model_validate(dict(params or {}))
     except ValidationError:
         raise UnknownAction(f"params rejected for admin action {action!r}") from None
-    encoded = json.dumps(value.model_dump(mode="json"), separators=(",", ":"), sort_keys=True)
+    dumped = value.model_dump(mode="json")
+    if _holds_nul(dumped):  # jsonb refuses a NUL in a string: the row could never be written
+        raise UnknownAction(f"params rejected for admin action {action!r}")
+    encoded = json.dumps(dumped, separators=(",", ":"), sort_keys=True)
     if len(encoded.encode()) > MAX_PARAMS_BYTES:
         raise UnknownAction(f"params too large for admin action {action!r}")
     return encoded
+
+
+def _holds_nul(value: object) -> bool:
+    """Whether a dumped value has a real NUL character in a key or string. A literal backslash
+    followed by ``u0000`` is six ordinary characters, which ``jsonb`` stores fine."""
+    if isinstance(value, str):
+        return "\x00" in value
+    if isinstance(value, dict):
+        items: dict[object, object] = value  # pyright: ignore[reportUnknownVariableType]
+        return any(_holds_nul(k) or _holds_nul(v) for k, v in items.items())
+    if isinstance(value, list):
+        values: list[object] = value  # pyright: ignore[reportUnknownVariableType]
+        return any(_holds_nul(v) for v in values)
+    return False
 
 
 @dataclass(frozen=True, slots=True)

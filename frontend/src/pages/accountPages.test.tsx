@@ -115,7 +115,7 @@ describe('account page', () => {
         return new Response(null, { status: 204 })
       },
     })
-    renderAt('/account')
+    renderAt('/account#security')
     fireEvent.click(await screen.findByRole('button', { name: 'Unlink GitHub' }))
     await waitFor(() => {
       expect(screen.queryByRole('button', { name: 'Unlink GitHub' })).toBeNull()
@@ -126,7 +126,7 @@ describe('account page', () => {
 
   it('refuses to unlink the last method with a clear message', async () => {
     fakeApi({ ...base, 'DELETE /api/auth/identities/i1': reason(409, 'last_sign_in_method') })
-    renderAt('/account')
+    renderAt('/account#security')
     fireEvent.click(await screen.findByRole('button', { name: 'Unlink GitHub' }))
     expect(await screen.findByRole('alert')).toHaveTextContent(/only way to sign in/)
   })
@@ -141,7 +141,7 @@ describe('account page', () => {
         return { status: 'ok' }
       },
     })
-    renderAt('/account')
+    renderAt('/account#security')
     await screen.findByRole('button', { name: 'Unlink GitHub' })
     type('New password', 'a brand new passphrase')
     type('Repeat the new password', 'a brand new passphrase')
@@ -164,7 +164,7 @@ describe('account page', () => {
       'POST /api/auth/password/change': reason(403, 'reauth_required'),
       'POST /api/auth/oauth/github/start': { authorization_url: 'https://idp.example/a' },
     })
-    renderAt('/account')
+    renderAt('/account#security')
     await screen.findByRole('button', { name: 'Unlink GitHub' })
     type('New password', 'a brand new passphrase')
     type('Repeat the new password', 'a brand new passphrase')
@@ -209,7 +209,7 @@ describe('account page', () => {
         return { ok: true }
       },
     })
-    renderAt('/account')
+    renderAt('/account#security')
     await screen.findByRole('button', { name: 'Unlink GitHub' })
     type('New email address', 'new@example.test')
     fireEvent.click(screen.getByRole('button', { name: 'Change email' }))
@@ -222,7 +222,7 @@ describe('account page', () => {
 
   it('cancelling the prompt leaves the change undone without an error', async () => {
     fakeApi({ ...base, 'POST /api/auth/password/change': reason(403, 'reauth_required') })
-    renderAt('/account')
+    renderAt('/account#security')
     await screen.findByRole('button', { name: 'Unlink GitHub' })
     type('New password', 'a brand new passphrase')
     type('Repeat the new password', 'a brand new passphrase')
@@ -237,7 +237,7 @@ describe('account page', () => {
 
   it('signs out everywhere', async () => {
     const api = fakeApi({ ...base, 'POST /api/auth/logout-all': new Response(null, { status: 204 }) })
-    renderAt('/account')
+    renderAt('/account#security')
     fireEvent.click(await screen.findByRole('button', { name: 'Sign out everywhere' }))
     await waitFor(() => {
       expect(api.to('POST', '/api/auth/logout-all')).toHaveLength(1)
@@ -260,7 +260,7 @@ describe('account page', () => {
       },
       'POST /api/auth/mfa/totp/confirm': { recovery_codes: ['AAAAA11111', 'BBBBB22222'] },
     })
-    renderAt('/account')
+    renderAt('/account#security')
     fireEvent.click(await screen.findByRole('button', { name: 'Set up an authenticator app' }))
     // Drawn inline (no data: URL, which the CSP's img-src does not allow), shapes only.
     const qr = await screen.findByRole('img', { name: 'QR code for your authenticator app' })
@@ -281,11 +281,14 @@ describe('account page', () => {
   })
 })
 
+const ADMIN_SESSION = { ...SIGNED_IN, user: { ...SIGNED_IN.user, role: 'admin' } }
+
 describe('admin page', () => {
   it('asks an enrolled admin for a code and then shows the area', async () => {
     let verified = false
     const api = fakeApi({
-      'GET /api/auth/session': SIGNED_IN,
+      'GET /api/auth/session': ADMIN_SESSION,
+      'GET /api/admin/users?offset=0&limit=50': { users: [], next_offset: null },
       'GET /api/admin/whoami': () =>
         verified ? { id: 'u1', email: 'ann@example.test', role: 'admin' } : reason(403, 'mfa_required'),
       'GET /api/auth/mfa': { totp_enabled: true, recovery_codes_left: 9 },
@@ -303,7 +306,7 @@ describe('admin page', () => {
 
   it('offers enrolment to an admin without a second factor', async () => {
     fakeApi({
-      'GET /api/auth/session': SIGNED_IN,
+      'GET /api/auth/session': ADMIN_SESSION,
       'GET /api/admin/whoami': reason(403, 'mfa_required'),
       'GET /api/auth/mfa': MFA_OFF,
     })
@@ -312,7 +315,7 @@ describe('admin page', () => {
   })
 
   it('turns non-admins away', async () => {
-    fakeApi({ 'GET /api/auth/session': SIGNED_IN, 'GET /api/admin/whoami': reason(403, 'forbidden') })
+    fakeApi({ 'GET /api/auth/session': ADMIN_SESSION, 'GET /api/admin/whoami': reason(403, 'forbidden') })
     renderAt('/admin')
     expect(await screen.findByText(/not an admin account/)).toBeInTheDocument()
   })

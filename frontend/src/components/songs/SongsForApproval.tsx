@@ -13,6 +13,7 @@ import {
 import {
   currentConnectionIds,
   digest,
+  classContext,
   followUpBrief,
   isNotConnected,
   minutes,
@@ -82,10 +83,12 @@ function useNewPick(job: Job, list: SongList) {
           if (!(error instanceof ApiError && error.status === 409)) throw error
         }
         const ids = await currentConnectionIds()
+        // The class's own brief; this tab's remembered form only when the class has none.
+        const context = await classContext(job.classId)
         const kept = recallPick(job.id)
         const input: PickInput = {
           class_id: job.classId,
-          brief: followUpBrief(kept?.brief ?? null, list.targetSec, note),
+          brief: followUpBrief(context.brief ?? kept?.brief ?? null, list.targetSec, note),
           mode: 'pick',
           ...(replace !== null && replace.length > 0
             ? { seed: { song_list_revision_id: list.id, replace } }
@@ -187,7 +190,7 @@ function Approval({
         setRefusal(found)
         setProblem(found.text)
         setBusy(false)
-        locked.current = found.final
+        locked.current = false
       },
     )
   }

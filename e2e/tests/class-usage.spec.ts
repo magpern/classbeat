@@ -63,7 +63,8 @@ const tokens = (s: Sums): string =>
   new Intl.NumberFormat('en-US').format(s.input_tokens + s.output_tokens + s.cache_read_tokens + s.cache_write_tokens)
 
 async function expectAccountPage(page: Page, view: UsageView): Promise<void> {
-  await page.goto('/account')
+  await page.goto('/account#plan')
+  await page.getByText('Show usage details').click()
   const facts = page.getByTestId('usage-facts')
   await expect(facts).toBeVisible()
   const fact = (label: string) => facts.locator('div').filter({ has: page.getByText(label, { exact: true }) }).locator('dd')

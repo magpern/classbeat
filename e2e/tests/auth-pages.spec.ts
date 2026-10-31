@@ -77,6 +77,7 @@ test('change the password on the account page (the session is recent after sign-
   const email = uniqueEmail('change')
   await signUpThroughUi(page, email)
   await signInThroughUi(page, email)
+  await page.getByRole('tab', { name: 'Sign-in and security' }).click()
 
   const next = 'another long passphrase 1'
   await page.getByLabel('New password', { exact: true }).fill(next)

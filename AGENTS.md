@@ -340,6 +340,17 @@ one: `claude-opus-5-5`, `claude-sonnet-5-5`, `claude-haiku-5-5`), `--effort` (de
 print with their detail. A model comparison is one such run per model, and **each run needs the
 owner's go-ahead**; `python -m classbeat.evals compare RESULT.json ... --out DIR` then writes
 `compare.md` and `compare.html` offline (no model, no network, no settings).
+The regression suite's live run (ADR 0012 §4.4, `classbeat.evals.suite_live`): `docker compose exec worker
+python -m classbeat.evals suite --live --provider P --model M --effort E --repeat 3 --max-usd N --out FILE
+[--record --authorization TEXT]`. It refuses (exit 2, rule only) without `--live`, under `CI`, for a model or
+effort outside `classbeat.agent.catalog` (so `fake`), without that provider's key file and with a refused SDK
+variable; prints the plan and cost ceiling and stops without `--max-usd`; installs the worker allowlist with only
+that provider's model host before building it (`provider_for_choice`) and refuses a built adapter that is not the
+choice's provider. It runs both stage groups (design cases, and song cases on the synthetic catalogue), writes
+format 2 and prints the verdict per group (`gate.evaluate` against the digest-verified manifest). `--record`
+writes one `model_eval_results` row per group through `classbeat.models.store.record_result`; the verdict
+`enable` relies on. Each run needs the owner's go-ahead; agents and CI never run it (the offline test is
+`backend/tests/test_evals_suite_live.py`).
 Song picking and the Spotify connection (ADR 0008, ADR 0009): `CLASSBEAT_SONG_PICKING` (default off; off,
 every Spotify route answers 404 `feature_off`; the owner switches it on, roadmap Amendment 1; with it on,
 `CLASSBEAT_PUBLIC_BASE_URL` may not be `localhost`, use `127.0.0.1`, because Spotify does not accept
@@ -392,6 +403,12 @@ model contact). They run in CI (`backend/tests/test_evals_pick_smoke.py`) and ar
 Plans (ADR 0011 sections 2 and 4, PL1): `GET /api/account/plan`, `POST /api/account/redeem` (10 per user and 30 per IP
 and hour) and `POST /api/account/trial`; `CLASSBEAT_TRIAL_DAYS_MAX` (30, 0 to 366; 0 turns trials off) clamps the
 stored `trial` setting's days when a trial starts, and a trial's plan is clamped to at most `instructor`.
+Quotas (ADR 0011 sections 3 and 4, QT1): the jobs API reserves a credit through `classbeat.quota.MeteredLedger`
+(the period's `quota_periods` row locked, then the held count) and counts the plan's `concurrent_jobs`; every limit
+is the plan's under an environment bound: `CLASSBEAT_CLASSES_PER_MONTH_MAX` (200, 0 to 10000),
+`CLASSBEAT_MONTHLY_COST_MICROS_MAX` (300000000, $300), `CLASSBEAT_JOBS_PER_USER` and `CLASSBEAT_REVISIONS_PER_CLASS`.
+Refusals: 409 `quota` (`quota` `classes` or `cost`, `limit`, `used`, `period_end`, `plan`; no money for `cost`) and 429
+`busy` with the plan's `limit`.
 Progress (ADR 0005 section 6): `GET /api/jobs/{id}/events` streams a job's events as SSE (`Last-Event-ID`,
 5 open streams per user and web process); each web process keeps one `LISTEN job_events` connection.
 OAuth sign-in (ADR 0003 section 5): `CLASSBEAT_OAUTH_<PROVIDER>_CLIENT_ID` and the

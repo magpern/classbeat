@@ -1,0 +1,36 @@
+{
+ "headers": {
+  "x-request-id": "req_fixture-no-reasoning"
+ },
+ "body": {
+  "id": "fixture-no-reasoning",
+  "object": "chat.completion",
+  "created": 1793404800,
+  "model": "deepseek-flash",
+  "system_fingerprint": "fp_fixture",
+  "choices": [
+   {
+    "index": 0,
+    "message": {
+     "role": "assistant",
+     "content": "ok"
+    },
+    "finish_reason": "stop",
+    "logprobs": null
+   }
+  ],
+  "usage": {
+   "prompt_tokens": 100,
+   "completion_tokens": 2,
+   "total_tokens": 102,
+   "prompt_cache_hit_tokens": 0,
+   "prompt_cache_miss_tokens": 100,
+   "prompt_tokens_details": {
+    "cached_tokens": 0
+   },
+   "completion_tokens_details": {
+    "reasoning_tokens": 0
+   }
+  }
+ }
+}

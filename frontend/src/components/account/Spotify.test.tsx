@@ -423,7 +423,7 @@ describe('the pool consent', () => {
     spotifyApi()
     renderAt('/account/spotify')
     await screen.findByLabelText('Spotify Client ID')
-    expect(screen.queryByRole('button', { name: 'I agree' })).toBeNull()
+    expect(screen.queryByRole('switch', { name: 'Allow the working playlist' })).toBeNull()
   })
 
   it('shows the exact wording with the link-sharing sentence and records the consent', async () => {
@@ -442,7 +442,7 @@ describe('the pool consent', () => {
     expect(quote).toHaveTextContent('anyone with its link could open it')
     expect(screen.getByTestId('spotify-consent-state')).toHaveTextContent('not allowed it yet')
     expect(api.to('PUT', '/api/connections/spotify/pool-consent')).toHaveLength(0)
-    fireEvent.click(screen.getByRole('button', { name: 'I agree' }))
+    fireEvent.click(screen.getByRole('switch', { name: 'Allow the working playlist' }))
     expect(await screen.findByText(/classbeat may use the working playlist/)).toBeInTheDocument()
     expect(screen.getByTestId('spotify-consent-state')).toHaveTextContent('You have allowed')
     const [call] = api.to('PUT', '/api/connections/spotify/pool-consent')
@@ -460,7 +460,7 @@ describe('the pool consent', () => {
       },
     })
     renderAt('/account/spotify')
-    fireEvent.click(await screen.findByRole('button', { name: 'Revoke consent' }))
+    fireEvent.click(await screen.findByRole('switch', { name: 'Allow the working playlist' }))
     const dialog = screen.getByRole('group', { name: 'Confirm revoke' })
     expect(dialog).toHaveTextContent('The playlist stays in your Spotify')
     expect(dialog).toHaveTextContent('delete it there')
@@ -469,15 +469,15 @@ describe('the pool consent', () => {
     fireEvent.click(within(dialog).getByRole('button', { name: 'Yes, revoke my consent' }))
     expect(await screen.findByText(/Your consent is withdrawn/)).toBeInTheDocument()
     expect(api.to('DELETE', '/api/connections/spotify/pool-consent')).toHaveLength(1)
-    expect(await screen.findByRole('button', { name: 'I agree' })).toBeInTheDocument()
+    expect(await screen.findByRole('switch', { name: 'Allow the working playlist' })).toBeInTheDocument()
   })
 
   it('keeps the consent when the revoke is cancelled', async () => {
     const api = spotifyApi(status({ status: 'connected', pool_consent: true, consent_version: 1 }))
     renderAt('/account/spotify')
-    fireEvent.click(await screen.findByRole('button', { name: 'Revoke consent' }))
+    fireEvent.click(await screen.findByRole('switch', { name: 'Allow the working playlist' }))
     fireEvent.click(screen.getByRole('button', { name: 'Keep my consent' }))
-    expect(screen.getByRole('button', { name: 'Revoke consent' })).toBeInTheDocument()
+    expect(screen.getByRole('switch', { name: 'Allow the working playlist' })).toBeInTheDocument()
     expect(api.to('DELETE', '/api/connections/spotify/pool-consent')).toHaveLength(0)
   })
 
@@ -486,7 +486,7 @@ describe('the pool consent', () => {
       'PUT /api/connections/spotify/pool-consent': reason(409, 'not_connected'),
     })
     renderAt('/account/spotify')
-    fireEvent.click(await screen.findByRole('button', { name: 'I agree' }))
+    fireEvent.click(await screen.findByRole('switch', { name: 'Allow the working playlist' }))
     expect(await screen.findByRole('alert')).toBeInTheDocument()
   })
 })

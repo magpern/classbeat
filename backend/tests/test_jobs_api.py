@@ -114,7 +114,7 @@ async def test_idempotency_same_key_same_body_other_body_and_two_keys(
     second = await alice.create(new_key(), note="a")
     assert second.status_code == 201 and second.json()["id"] != first.json()["id"]  # noqa: PT018
     third = await alice.create(new_key(), note="a")  # the per-user limit (2) is reached
-    assert (third.status_code, third.json()) == (429, {"detail": {"reason": "busy"}})
+    assert (third.status_code, third.json()) == (429, {"detail": {"reason": "busy", "limit": 2}})
     assert jenv.sql("SELECT count(*) FROM jobs WHERE owner_id = :o", o=alice.user_id).scalar() == 2
     # A replay still answers once the limit is reached, and writes nothing.
     assert (await alice.create(key, note="a")).status_code == 200
@@ -156,7 +156,10 @@ async def test_create_counts_the_limit_only_after_the_owner_lock(
         plant_running(jenv, alice.user_id)  # the limit (2) is now reached
         holder.commit()
         response = await task
-    assert (response.status_code, response.json()) == (429, {"detail": {"reason": "busy"}})
+    assert (response.status_code, response.json()) == (
+        429,
+        {"detail": {"reason": "busy", "limit": 2}},
+    )
 
 
 async def test_the_mowl_connection_must_be_the_users_own(jenv: JobsEnv, browsers: Any) -> None:
