@@ -48,6 +48,7 @@ RELEASED: dict[int, str] = {
     1: "beabe1887df6236e30bd4b040104281e78d1b02ee2d8adecca0bee32557651b5",
     2: "77fecc25fc25fb081f40e0bae1b2b8e83cbd4a611d42fd346e3f3672b64befd4",
     3: "2784a043380717f56842be5fd91517d801dea05a1db44ec9f4647b061bc6a383",
+    4: "115188823f67e6103de0e10e970e9df4dc2f36365be4fe306ee9f36a0cc20f32",
 }
 
 SUITE = load_suite()
@@ -160,8 +161,8 @@ def test_the_suite_holds_every_smoke_and_song_case_once_in_its_group() -> None:
     assert set(SUITE.design_cases) == {c.name for c in load_cases()} | DESIGN_OWN
     assert set(SUITE.song_cases) == {c.name for c in load_pick_cases()} | SONG_OWN
     assert (len(DESIGN_OWN), len(SONG_OWN)) == (29, 8)  # #206 and #208
-    assert (len(SUITE.design_cases), len(SUITE.song_cases)) == (47, 11)
-    assert len(index) == 58
+    assert (len(SUITE.design_cases), len(SUITE.song_cases)) == (48, 11)
+    assert len(index) == 59
     assert all(index[n][1] == "design" for n in SUITE.design_cases)
     assert all(index[n][1] == "songs" for n in SUITE.song_cases)
     assert set(MANIFEST.categories) == set(suite.CATEGORY_GROUPS)
@@ -169,7 +170,7 @@ def test_the_suite_holds_every_smoke_and_song_case_once_in_its_group() -> None:
         "adversarial_brief", "adversarial_music", "revise_adversarial_music", "injected_title",
     }  # fmt: skip
     assert {n for n, (cat, _) in index.items() if cat == "revisions"} >= {
-        "revise_easier", "revise_more_sprints",
+        "revise_easier", "revise_more_sprints", "revise_other_songs",
     }  # fmt: skip
 
 
@@ -339,7 +340,7 @@ async def test_the_recorded_smoke_runs_pass_the_gate_in_both_groups() -> None:
     verdict = gate.evaluate(suite_results(header(), rows), MANIFEST)
     assert set(verdict.groups) == {"design", "songs"}
     for group in verdict.groups.values():
-        assert group.status == "passed", group.as_json()
+        assert group.status == "passed", json.dumps(group.as_json())[:2500]
         assert group.runs == 3 * len(
             SUITE.design_cases if group.group == "design" else SUITE.song_cases
         )

@@ -1,6 +1,6 @@
 {
- "suite_version": 3,
- "digest": "2784a043380717f56842be5fd91517d801dea05a1db44ec9f4647b061bc6a383",
+ "suite_version": 4,
+ "digest": "115188823f67e6103de0e10e970e9df4dc2f36365be4fe306ee9f36a0cc20f32",
  "rules": {
   "repeat": 3,
   "pass_share": 0.9,
@@ -49,7 +49,7 @@
   },
   "revisions": {
    "design": [
-    "revise_easier", "revise_more_sprints",
+    "revise_easier", "revise_more_sprints", "revise_other_songs",
     "rev_climb_to_end_45", "rev_climb_to_start_40", "rev_easier_40", "rev_easier_50_to_easy",
     "rev_more_sprints_30", "rev_more_sprints_60", "rev_shorter_45_to_30", "rev_shorter_75_to_60"
    ]

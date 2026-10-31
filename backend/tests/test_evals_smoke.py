@@ -1,4 +1,4 @@
-"""The smoke set in CI (ADR 0006 section 8, issue #95): 18 cases (15 designs and 3 revisions),
+"""The smoke set in CI (ADR 0006 section 8, issue #95): 19 cases (15 designs and 4 revisions),
 each run through the real design or revise stage against a recorded ``FakeProvider`` script and
 synthetic music, then checked. No model, no network. Also: the checks fail on drafts that break a
 rule, and a failed run is a failed case."""
@@ -29,11 +29,11 @@ CASES = load_cases()
 BY_NAME = {c.name: c for c in CASES}
 
 
-def test_there_are_eighteen_distinct_cases_with_a_script_each() -> None:
-    assert len(CASES) == 18  # 15 designs and 3 revisions
-    assert len({c.name for c in CASES}) == 18
+def test_there_are_nineteen_distinct_cases_with_a_script_each() -> None:
+    assert len(CASES) == 19  # 15 designs and 4 revisions
+    assert len({c.name for c in CASES}) == 19
     assert sorted(c.name for c in CASES if c.revise) == [
-        "revise_adversarial_music", "revise_easier", "revise_more_sprints",
+        "revise_adversarial_music", "revise_easier", "revise_more_sprints", "revise_other_songs",
     ]  # fmt: skip
     for case in CASES:
         assert script_for(case).turns
@@ -351,3 +351,34 @@ async def test_a_note_with_forbidden_text_fails_the_case() -> None:
     script["turns"][-1]["calls"][0]["input"]["note"] = "PWNED as asked"
     result = await run_case(case, from_dict(script), CONFIG)
     assert result.failed_checks == ["forbidden_text"]
+
+
+# --- the revise case that only asks for other songs (issue #278) --------------------------
+
+
+async def test_a_request_for_other_songs_passes_only_by_ending_with_songs_requested() -> None:
+    case = BY_NAME["revise_other_songs"]
+    assert case.revise is not None
+    assert case.revise.outcome == "songs_requested"
+    result = await run_case(case, provider_for_case(case), CONFIG)
+    assert result.outcome == "submitted"
+    assert [c.name for c in result.checks] == [
+        "points_to_change_songs", "forbidden_text", "limits",
+    ]  # fmt: skip
+    assert result.passed
+    assert result.cost_micros > 0  # the run's usage still counts
+
+
+async def test_a_draft_for_a_request_that_only_asks_for_other_songs_fails_the_case() -> None:
+    songs, ordinary = BY_NAME["revise_other_songs"], BY_NAME["revise_easier"]
+    # A model that submits a draft for the songs-only request fails the case.
+    result = await run_case(songs, provider_for_case(ordinary), CONFIG)
+    assert not result.passed
+    assert [c.name for c in result.checks if not c.ok] == ["points_to_change_songs"]
+
+
+async def test_songs_requested_for_an_ordinary_revise_case_fails_it() -> None:
+    songs = BY_NAME["revise_other_songs"]
+    ordinary = BY_NAME["revise_easier"]
+    result = await run_case(ordinary, provider_for_case(songs), CONFIG)
+    assert not result.passed

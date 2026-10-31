@@ -11,6 +11,8 @@ import { Card, CardTitle } from '../ui/card'
 import { SongRows } from './SongRows'
 
 const MAX_REQUEST = 2000
+/** The id of the panel: "Change songs" in the chat's answer to a songs-only request scrolls here. */
+export const CHANGE_SONGS_ID = 'change-songs'
 
 /**
  * Change songs (ADR 0008 section 6): for a class whose songs Claude picked, mark the songs to
@@ -105,7 +107,13 @@ export function ChangeSongs({ summary }: { summary: ClassSummary }) {
   }
 
   return (
-    <Card className="flex flex-col gap-3" aria-labelledby="change-songs-title" role="region">
+    <Card
+      id={CHANGE_SONGS_ID}
+      tabIndex={-1}
+      className="flex flex-col gap-3"
+      aria-labelledby="change-songs-title"
+      role="region"
+    >
       <CardTitle id="change-songs-title">Change songs</CardTitle>
       {busy ? <p className="m-0 text-muted">Wait for the running task to finish first.</p> : null}
       {failed ? <Notice kind="error">The songs could not be loaded. Reload the page.</Notice> : null}

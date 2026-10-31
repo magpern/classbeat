@@ -10,7 +10,7 @@ import pytest
 from agentfake import CONFIG, MemoryHost, analysed, brief, from_dict, good_draft
 from classbeat.agent import DesignContext, WorkoutDraft, design_stage, run_stage
 from classbeat.agent.model_input import revise_message
-from classbeat.agent.revise import ReviseContext, ReviseResult, revise_stage
+from classbeat.agent.revise import ReviseContext, ReviseResult, SongsRequested, revise_stage
 from classbeat.agent.schemas import ReviseInput
 from classbeat.design import diff
 
@@ -90,7 +90,8 @@ def test_the_stage_has_no_write_tool_a_note_and_its_own_prompt_version(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     stage = revise_stage(context(monkeypatch))
-    assert [t.name for t in stage.tools] == ["get_music", "preview_draft", "submit_draft"]
+    names = [t.name for t in stage.tools]
+    assert names == ["get_music", "preview_draft", "submit_draft", "songs_requested"]
     assert {t.kind for t in stage.tools} <= {"read", "compute"}
     assert "note" in stage.tools[2].input_model.model_json_schema()["properties"]
     design = design_stage(DesignContext.build(brief(), analysed(monkeypatch)))
@@ -128,3 +129,56 @@ async def test_the_stage_ends_with_the_draft_and_the_note(monkeypatch: pytest.Mo
     assert done.output.note == "Easier."
     assert done.output.result.draft.segments[0].intervals[0].zone == 1
     assert done.info.stage == "revise"
+
+
+def test_the_stage_offers_songs_requested_as_a_second_final_tool(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    stage = revise_stage(context(monkeypatch))
+    assert [t.name for t in stage.tools] == [
+        "get_music", "preview_draft", "submit_draft", "songs_requested",
+    ]  # fmt: skip
+    assert stage.is_final("submit_draft")
+    assert stage.is_final("songs_requested")
+    assert not stage.is_final("get_music")
+    assert stage.tools[3].input_model.model_json_schema().get("properties", {}) == {}
+
+
+def test_revise_songs_does_not_offer_it_because_its_request_is_the_songs(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    ctx = ReviseContext.build(
+        brief(),
+        analysed(monkeypatch),
+        WorkoutDraft.model_validate(good_draft()),
+        (),
+        "Other songs",
+        music_changed=False,
+        songs_changed=True,
+    )
+    stage = revise_stage(ctx)
+    assert [t.name for t in stage.tools] == ["get_music", "preview_draft", "submit_draft"]
+    assert not stage.is_final("songs_requested")
+
+
+async def test_songs_requested_ends_the_stage_without_a_draft(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    ctx = context(monkeypatch)
+    call = {"name": "songs_requested", "input": {}, "expect": {"accepted": True}}
+    fake = from_dict({"drafts": {}, "turns": [{"calls": [call]}]})
+    done = await run_stage(MemoryHost(), fake, revise_stage(ctx), ctx.first_message(), CONFIG)
+    assert isinstance(done.output, SongsRequested)
+    assert done.tool_calls == 1
+
+
+async def test_songs_requested_takes_no_input(monkeypatch: pytest.MonkeyPatch) -> None:
+    ctx = context(monkeypatch)
+    calls = [
+        {"name": "songs_requested", "input": {"note": "x"}},
+        {"name": "songs_requested", "input": {}, "expect": {"accepted": True}},
+    ]
+    fake = from_dict({"drafts": {}, "turns": [{"calls": calls[:1]}, {"calls": calls[1:]}]})
+    done = await run_stage(MemoryHost(), fake, revise_stage(ctx), ctx.first_message(), CONFIG)
+    assert isinstance(done.output, SongsRequested)
+    assert done.corrections == 1  # the extra field was refused first

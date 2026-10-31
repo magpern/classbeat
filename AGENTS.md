@@ -380,8 +380,8 @@ save and update reconcilers' read-only read of the saved revision, SV1), `classb
 (`tests/test_session_guard.py`); job kinds live outside `classbeat.jobs`.
 Revising by chat (ADR 0007 section 4): `CLASSBEAT_REVISIONS_PER_CLASS` (25 chat revisions per class, the first
 design not counted), `CLASSBEAT_CHAT_MAX_REQUESTS` (50 user requests per class) and
-`CLASSBEAT_CHAT_CONTEXT_REQUESTS` (10 earlier requests sent to the model); the smoke set has 18 cases
-(15 designs, 3 revisions). Beside them are three song-picking smoke cases (ADR 0008 section 3,
+`CLASSBEAT_CHAT_CONTEXT_REQUESTS` (10 earlier requests sent to the model); the smoke set has 19 cases
+(15 designs, 4 revisions). Beside them are three song-picking smoke cases (ADR 0008 section 3,
 `classbeat.evals.pick`; files in `classbeat/evals/smoke_pick/`): `pick_30`, `replace_two` and
 `injected_title`, each run through the real `pick_pool` and `choose_songs` stages against a recorded
 `FakeProvider` script, a synthetic Spotify catalogue and a synthetic MOWL analysis (no Spotify, MOWL or

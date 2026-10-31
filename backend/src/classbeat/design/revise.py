@@ -18,6 +18,8 @@ retry restarts the stage from its beginning and the final store is the only writ
    base revision's is told to the model as a fact;
 3. the ``revise`` stage (``classbeat.agent.revise``) over the brief, the music summary, the base
    draft and the user's requests along the ``parent_id`` chain. No earlier note or model text;
+   A request that only asks for other songs ends the stage with ``songs_requested`` and the job
+   with ``use_change_songs`` (issue #278): no revision, no assistant message, usage recorded.
 4. the final fenced transaction (``Complete``): the connection guard, the revision (parent = base,
    provenance ``origin = revise_draft``; the base again is ``invalid_output``), the assistant
    message (the model's note and the backend's change summary), and the compare-and-set of
@@ -42,7 +44,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from classbeat.agent import Brief, WorkoutDraft, run_stage
 from classbeat.agent.records import JobStageHost
-from classbeat.agent.revise import ReviseContext, ReviseResult, revise_stage
+from classbeat.agent.revise import ReviseContext, ReviseResult, SongsRequested, revise_stage
 from classbeat.agent.schemas import clean_text
 from classbeat.context import UserContext
 from classbeat.design import chat, diff, limits, revision
@@ -184,6 +186,10 @@ async def run(job_run: JobRun) -> Complete:
         outcome = await run_stage(
             JobStageHost(job_run), provider, revise_stage(ctx), ctx.first_message(), runtime.agent
         )
+        if isinstance(outcome.output, SongsRequested):
+            # The request only asks for other songs (ADR 0008 section 6): nothing is revised, no
+            # revision is stored, no revision is counted; the run's usage is already recorded.
+            raise JobFailure("use_change_songs")
         if not isinstance(outcome.output, ReviseResult):
             raise JobFailure("internal")
         revised = outcome.output
