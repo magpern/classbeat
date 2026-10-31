@@ -72,12 +72,15 @@ _SPOTIFY_CALLS = text(
     "WHERE id = :job_id AND owner_id = :owner_id AND lease_version = :v AND state = 'running'"
 )
 # ADR 0009 section 8: the attempts in a row that ended with a Spotify 429 (any other ending
-# resets them), the category of a Spotify failure whose sentence is Spotify's, the last hint.
+# resets them), the category of a Spotify failure whose sentence is Spotify's, and the last hint,
+# kept only while the attempts end with a Spotify 429 (``rate_limited`` or ``quota_exhausted``;
+# any other ending clears it).
 _SPOTIFY_ENDING = text(
     "UPDATE jobs SET spotify_rate_limits = CASE WHEN :rate_limited "
     "THEN LEAST(spotify_rate_limits + 1, :cap) ELSE 0 END, "
     "spotify_failure = :failure, "
-    "spotify_retry_after = coalesce(:retry_after, spotify_retry_after) "
+    "spotify_retry_after = CASE WHEN :failure IN ('rate_limited', 'quota_exhausted') "
+    "THEN coalesce(:retry_after, spotify_retry_after) END "
     "WHERE id = :job_id AND owner_id = :owner_id AND lease_version = :v AND state = 'running' "
     "RETURNING spotify_rate_limits"
 )

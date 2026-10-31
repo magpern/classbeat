@@ -7,7 +7,8 @@ A kind's pipeline gets a ``JobRun`` and reaches the database only through it:
   the lease is gone (``lost``), the worker is shutting down (``shutdown``: no new model turn or
   external call after SIGTERM) or the user asked to cancel (``cancelled``; the fence returns
   ``cancel_requested_at``).
-- ``stage(name)``: a checkpoint, then the job's ``stage`` and a ``stage_started`` event.
+- ``stage(name)``: a checkpoint, then the job's ``stage`` and a ``stage_started`` event, with the
+  Spotify requests the job has sent so far (``budget``, ADR 0009 section 8) in the same transaction.
 - ``fenced()``: a fenced transaction for the kind's own writes (revisions, ``agent_runs``,
   external operations). ``LeaseLost`` marks the run lost.
 - ``external_call(timeout)``: around one provider write (X1). It starts with a checkpoint, so no
@@ -38,6 +39,7 @@ from typing import Final
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from classbeat import egress
 from classbeat.context import UserContext
 from classbeat.db import DatabaseRoleError
 from classbeat.jobs import transitions
@@ -76,6 +78,9 @@ class JobRun:
         self.in_flight = 0
         self.fatal: DatabaseRoleError | None = None  # met by the heartbeat: the worker stops
         self._on_lost: Callable[[], object] | None = None
+        # The job's Spotify request budget (set by the runner) and the count the row holds.
+        self.budget: egress.RequestBudget | None = None
+        self.calls_saved = 0
 
     @property
     def ctx(self) -> UserContext:
@@ -130,11 +135,26 @@ class JobRun:
 
     async def stage(self, name: str) -> None:
         await self.checkpoint()
+        used = self.unsaved_calls()
         try:
             async with self.fenced() as fs:
                 await transitions.set_stage(fs, name)
+                if used is not None:
+                    await transitions.save_spotify_calls(fs, used)
         except LeaseLost:
             raise RunStopped("lost") from None
+        self.saved_calls(used)
+
+    def unsaved_calls(self) -> int | None:
+        """The budget's count when the row does not hold it yet, else None."""
+        if self.budget is None or self.budget.used == self.calls_saved:
+            return None
+        return self.budget.used
+
+    def saved_calls(self, used: int | None) -> None:
+        """``used`` was committed with the job's row."""
+        if used is not None:
+            self.calls_saved = used
 
     @asynccontextmanager
     async def external_call(self, timeout_seconds: float) -> AsyncIterator[None]:

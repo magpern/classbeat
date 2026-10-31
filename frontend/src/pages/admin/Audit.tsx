@@ -118,7 +118,10 @@ export function Audit() {
   const { pathname, search, navigate } = useRouter()
   const applied = filterFromSearch(new URLSearchParams(search))
   const appliedKey = filterSearch(applied)
-  const [email, setEmail] = useState('')
+  // The email filter, for the address it was applied with: Back, Forward or another address
+  // drops it (it is never in the address, so it cannot come back with one).
+  const [appliedEmail, setAppliedEmail] = useState<{ key: string; email: string }>({ key: '', email: '' })
+  const email = appliedEmail.key === appliedKey ? appliedEmail.email : ''
   // The cursors of the pages seen, for the filter and email they belong to: a new filter starts
   // at page 1.
   const pagingKey = `${appliedKey}\n${email}`
@@ -160,11 +163,11 @@ export function Audit() {
         initial={applied}
         initialEmail={email}
         onApply={(filter, typed) => {
-          setEmail(typed)
+          setAppliedEmail({ key: filterSearch(filter), email: typed })
           navigate(`${pathname}${filterSearch(filter)}`)
         }}
         onClear={() => {
-          setEmail('')
+          setAppliedEmail({ key: '', email: '' })
           navigate(pathname)
         }}
       />

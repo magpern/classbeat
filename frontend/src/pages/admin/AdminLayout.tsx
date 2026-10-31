@@ -30,6 +30,7 @@ const SECTIONS = [
   { to: '/admin/usage', label: 'Usage' },
   { to: '/admin/jobs', label: 'Jobs' },
   { to: '/admin/audit', label: 'Audit log' },
+  { to: '/admin/settings', label: 'Settings' },
 ] as const
 
 function AdminNav() {
