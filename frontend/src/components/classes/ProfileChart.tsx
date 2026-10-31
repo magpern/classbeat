@@ -12,13 +12,13 @@ import { SongStrip } from './SongStrip'
 // the Z labels, the detail bar and the "Song by song" list under it all carry it.
 
 const W = 600
-const LEFT = 26
+const LEFT = 34
 const PLOT_W = W - LEFT
 const TOP = 6
 const PLOT_H = 150
 const AXIS_Y = TOP + PLOT_H
-const H = AXIS_Y + 22
-const MARKER = 14
+const H = AXIS_Y + 26
+const MARKER = 18
 const TICK = 300
 
 export function ProfileChart({
@@ -80,7 +80,7 @@ export function ProfileChart({
             return (
               <g key={z}>
                 <line x1={LEFT} x2={W} y1={y} y2={y} style={{ stroke: 'var(--cb-stage-grid)' }} strokeWidth={1} />
-                <text x={2} y={y + 3} fontSize={9} style={{ fill: 'var(--cb-stage-muted)' }}>
+                <text x={2} y={y + 4} fontSize={13} style={{ fill: 'var(--cb-stage-muted)' }}>
                   {`Z${String(z)}`}
                 </text>
               </g>
@@ -147,8 +147,8 @@ export function ProfileChart({
               />
               <text
                 x={LEFT + t * scale}
-                y={AXIS_Y + 15}
-                fontSize={9}
+                y={AXIS_Y + 20}
+                fontSize={13}
                 textAnchor="middle"
                 style={{ fill: 'var(--cb-stage-muted)' }}
               >
