@@ -24,8 +24,8 @@ const SEGMENTS: DraftSegment[] = [
 ]
 
 const SONGS: Song[] = [
-  { position: 1, title: 'First', artist: 'A', role: 'warmup', bpm: 120, lengthSec: 600, isNew: false },
-  { position: 2, title: 'Second', artist: 'B', role: 'main', bpm: 140, lengthSec: 600, isNew: false },
+  { position: 1, title: 'First', artist: 'A', role: 'warmup', bpm: 120, lengthSec: 600, isNew: false, cover: null, openSpotify: null },
+  { position: 2, title: 'Second', artist: 'B', role: 'main', bpm: 140, lengthSec: 600, isNew: false, cover: null, openSpotify: null },
 ]
 
 function bars(container: HTMLElement) {

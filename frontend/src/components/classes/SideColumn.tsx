@@ -28,7 +28,7 @@ export function SideColumn({
 }) {
   return (
     <aside aria-label="Save, change and versions" className="flex min-w-0 flex-col gap-5">
-      <div id="change-songs" className="scroll-mt-4">
+      <div>
         <ChangeSongs summary={summary} />
       </div>
       <ChatPanel summary={summary} revisions={revisions} messages={messages} onReload={reload} onView={onView} />
