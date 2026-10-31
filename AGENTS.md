@@ -320,7 +320,7 @@ earlier if pip-audit reports an advisory against 0.125.0, the API needs somethin
 Authlib needs `httpx2` itself; Dependabot ignores `anthropic` majors until then, and pip-audit
 must stay clean. With `anthropic` the worker refuses to start (and the provider to build) when
 `ANTHROPIC_LOG`, `ANTHROPIC_CUSTOM_HEADERS` or `SSLKEYLOGFILE` is set; the provider's price entries in `classbeat.agent.prices` are to be verified before
-live use. The worker's outbound requests go only to `https://api.mowl.com`, `https://api.spotify.com` and
+live use. Once an Anthropic stream has begun, any end without a readable answer (read timeout, the turn bound, an error event, a cut connection, no stop reason) is recorded at the turn's ceiling, not 0; only an error status or a failure before the stream is unbilled. The worker's outbound requests go only to `https://api.mowl.com`, `https://api.spotify.com` and
 `https://accounts.spotify.com` plus the host of each model provider whose key file holds a key (`api.anthropic.com`,
 `api.openai.com`; `api.deepseek.com` only with `CLASSBEAT_DEEPSEEK_ENABLED` too; `worker_model_providers`, `worker_hosts`
 in `classbeat.egress`, ADR 0009 section 10, ADR 0012 section 2); each model client alone is limited to its own provider's host. The one exception to the DeepSeek rule: the owner's live eval of a disabled DeepSeek model installs that host for that command only (`install_choice_allowlist`); jobs never get it. The Spotify token endpoint and `GET /me`
@@ -587,8 +587,13 @@ The specs: `design-draft.spec.ts` (draft, cancel while running, uncertain attach
 `spotify-connect.spec.ts` (the Spotify wizard, consent, Disconnect, two users on different Client IDs and
 every error category's page text),
 `class-save.spec.ts` (change, save, update, uncertain writes, another MOWL account),
+`m5-quota.spec.ts` and `m5-admin.spec.ts` (M5 done-when: parallel creates from several browser contexts of one session, the
+plan limit, refunds, an admin with TOTP granting a plan and refunding a credit, a redeem code; helpers in `m5-helpers.ts`,
+and `nextTotp` in `helpers.ts`; the session shows an admin as a user until two-factor is on, so enrolment is on
+`/account#security`),
 `class-usage.spec.ts` and `fake-spotify.spec.ts` (web connects through the fake with PKCE, the worker
-reaches it too, it publishes no port).
+reaches it too and reads a 120-track playlist back in order over three pages, A3 at the playlist-read
+level since a pick's final list is one page, it publishes no port).
 
 The fakes' state is shared, so Playwright runs one worker. The Playwright context blocks every
 origin but the stack's. They use public test values only and are never part of the default stack.

@@ -27,13 +27,16 @@
   class name, the status and the request id only.
 - **Usage:** input, output, cache read and cache write tokens of each answer, as the API reports
   them; the loop prices them (``classbeat.agent.prices``).
-- **A billed answer that cannot be read** (the rule of the OpenAI-SDK adapters, #306): once the
-  stream has begun with a 2xx, a failure to assemble or read the answer (events the SDK cannot
-  put together, usage that is missing or not whole numbers, a shape that cannot be read) is
-  ``ProviderError("internal", billed=True)``, which the loop records at the turn's ceiling (prompt
-  estimate plus ``max_tokens``), never at 0 (ADR 0006 section 5, cost errs high). Only a cache
-  count left out reads as 0. An error status, a transport failure and an API error event are not
-  billed here.
+- **A billed turn that does not end in a readable answer** (the rule of the OpenAI-SDK adapters,
+  #306; #219): once the stream has begun with a 2xx, ``message_start`` has reported the input and
+  the provider is billing. Whatever then ends the turn is ``ProviderError(category, billed=True)``
+  and costs the ceiling: a read timeout or the turn bound (``model_unavailable``), an API error
+  event inside the stream (its category; an unknown type is ``internal``), a connection cut
+  mid-way, events the SDK cannot assemble, a stream that ends without a stop reason, and usage
+  that is missing or not whole numbers (``internal``). The SDK never sends a stream again, so no
+  retry adds a second charge. The loop records the ceiling (prompt estimate plus ``max_tokens``),
+  never 0 (ADR 0006 section 5, cost errs high). Only a cache count left out reads as 0. Unbilled:
+  an error status, and any failure before the stream began (a refused connection, the allowlist).
 
 The key lives in the SDK client only; nothing here logs, stores or repr()s it.
 """
@@ -212,13 +215,6 @@ def _log_failure(exc: BaseException, category: str) -> None:
     )
 
 
-def _unreadable_stream(exc: Exception) -> bool:
-    """A failure while reading the events of a stream that began with a 2xx (entering the stream
-    raises an error status, so this is after it) which is not a transport, timeout, allowlist or
-    API error event: the SDK could not assemble the answer. The API answered, so it was billed."""
-    return category_of(exc) == "internal" and not isinstance(exc, anthropic.APIStatusError)
-
-
 def _block_param(block: Any) -> dict[str, Any]:
     """A response content block as it goes back next turn: what the API sent, unchanged."""
     data = block.to_dict(mode="json")
@@ -297,6 +293,7 @@ class AnthropicConversation:
         self._turn_seconds = turn_seconds
         self._messages: list[dict[str, Any]] = []
         self.requests = 0
+        self._streaming = False
 
     def __repr__(self) -> str:
         return f"AnthropicConversation(stage={self._spec.stage!r}, requests={self.requests})"
@@ -333,23 +330,19 @@ class AnthropicConversation:
             output_config={"effort": spec.effort},  # pyright: ignore[reportArgumentType]
             messages=messages,  # pyright: ignore[reportArgumentType]
         ) as stream:
-            final: Any = None
-            unreadable = False
-            try:
-                final = await stream.get_final_message()
-            except Exception as exc:
-                if not _unreadable_stream(exc):
-                    raise
-                _log_failure(exc, "internal")
-                unreadable = True  # a 2xx whose events could not be read: billed
-            if unreadable:  # raised outside the handler: no cause, no context
-                raise ProviderError("internal", billed=True)
+            self._streaming = True  # a 2xx: the provider has started billing this turn
+            final = await stream.get_final_message()
             return final, stream.request_id
 
     async def turn(self, results: Sequence[ToolResult], *, reminder: str | None = None) -> Turn:
         user = self._next_user(results, reminder)
         messages = [*self._messages, user]
         self.requests += 1
+        self._streaming = False
+        category: str | None = None
+        billed = False
+        final: Any = None
+        request_id: str | None = None
         try:
             async with asyncio.timeout(self._turn_seconds):
                 final, request_id = await self._request(messages)
@@ -358,7 +351,12 @@ class AnthropicConversation:
         except Exception as exc:  # not CancelledError: a cancel goes through as it is
             category = category_of(exc)
             _log_failure(exc, category)
-            raise ProviderError(category) from None
+            # Once the stream began, whatever ends it (a read timeout, the turn bound, an error
+            # event, a cut connection, events the SDK cannot assemble) was billed from
+            # ``message_start`` on, and the SDK never sends a stream again: the ceiling, not 0.
+            billed = self._streaming
+        if category is not None:  # raised outside the handler: no cause, no context
+            raise ProviderError(category, billed=billed) from None
         turn, blocks = self._read(final, request_id)
         self._messages = [*messages, {"role": "assistant", "content": blocks}]
         return turn
@@ -378,7 +376,11 @@ class AnthropicConversation:
 
     def _turn(self, final: Any, request_id: str | None) -> Turn:
         blocks = list(final.content)
-        stop: StopReason = _STOPS.get(final.stop_reason or "") or "other"
+        if (
+            not final.stop_reason
+        ):  # a stream cut cleanly after message_start: usage is a placeholder
+            raise ProviderError("internal")
+        stop: StopReason = _STOPS.get(final.stop_reason) or "other"
         text = "".join(b.text for b in blocks if b.type == "text")
         calls = tuple(ToolCall(b.id, b.name, b.input) for b in blocks if b.type == "tool_use")
         return Turn(

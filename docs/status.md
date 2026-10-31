@@ -13,9 +13,9 @@ GitHub hold the detail.
 | M2 | `mowl-workouts` v0.4.0, isolation, encryption, connect MOWL | done, except the token-lifetime check (waits for the owner) |
 | M3a | Jobs, Anthropic loop, design on existing music | done (2026-10-29); live smoke run once: 14 of 15 passed |
 | M3b | Class page, revisions, save to MOWL, usage and cost | done technically (2026-10-30, on fakes): [ADR 0007](adr/0007-classes-revisions-and-saving.md), issues #141 to #151 |
-| M4 | Song picking (beta), Spotify BYOK | in progress: design in review ([ADR 0008](adr/0008-song-picking.md), [ADR 0009](adr/0009-spotify-connection.md)); issues in milestone "M4 Song picking and Spotify" (#173 to #186) |
+| M4 | Song picking (beta), Spotify BYOK | in progress: design accepted 2026-10-31 ([ADR 0008](adr/0008-song-picking.md), [ADR 0009](adr/0009-spotify-connection.md), #198); issues in milestone "M4 Song picking and Spotify": #173 to #185 closed, #186 open until its part 2 merges; not marked done technically |
 | M3c | Eval suite, OpenAI and DeepSeek adapters | done technically (on replayed providers, #219): [ADR 0012](adr/0012-eval-suite-and-model-providers.md); the owner's live steps are in [docs/runbooks/m3c-model-enable.md](runbooks/m3c-model-enable.md) |
-| M5 | Tiers, quotas, codes, admin | M5 design accepted, development started ([ADR 0011](adr/0011-tiers-quotas-and-admin.md)); issues in milestone "M5 Tiers and admin" |
+| M5 | Tiers, quotas, codes, admin | done technically, on fakes, once this E2E PR (#228) is merged (the security suite #227 is in) ([ADR 0011](adr/0011-tiers-quotas-and-admin.md)); issues in milestone "M5 Tiers and admin". Live activation is the owner's |
 | MU | Night Studio UI (ADR 0013) | design accepted 2026-10-30 ([ADR 0013](adr/0013-ui-design-night-studio.md), roadmap Amendment 8); issues #242, #243, #246 to #251, #253 to #255; runs beside M4 and M5, done before M6 |
 | M6 | Security review, backups, GDPR, VPS | not started; starts after MU |
 | M7 | Commercial (deferred) | deferred |
@@ -103,14 +103,13 @@ GitHub hold the detail.
   rules, the class API's saved summary) are written in the ADR's "Amendments after
   implementation".
 - **M4 in progress** (song picking, Spotify BYOK): ADR 0008 (song picking) and ADR 0009 (the Spotify
-  connection) are Proposed and split into 14 issues (#173 to #186), roadmap Amendment 5. The first work is
-  the `mowl-workouts` v0.6.0 release by the local Architect (L1), the migration (SP1) and the Spotify
-  egress and fakes (SP2). Nothing live is run; the owner-authorized live steps are in ADR 0008 §11.
-  ADR amendments owed when ADR 0009 is accepted (superseded-by pointers to ADR 0009 §5.4 and §6):
-  ADR 0004 §4 (status changes conditional on `wrapped_dek`), ADR 0005 §3 (the `connections` status
-  writes "conditional on `wrapped_dek`") and §4's category table ("a 401 or 403 (the status flips)",
-  narrowed for Spotify), and ADR 0007 §9 (Save's link, `hold` and credentials "from one `wrapped_dek`
-  generation"): the guard is `generation`, compared together with `id`.
+  connection) were accepted on 2026-10-31 (#198 item 6, with their dated amendments), and roadmap
+  Amendment 5 is in effect. Of their 14 issues, #173 to #185 are closed and #186 stays open until its part 2 merges. Nothing live is run; the
+  owner-authorized live steps are in ADR 0008 §11. The superseded-by notes that ADR 0009 owed are written:
+  ADR 0004 §4, ADR 0005 §3 and §4's category table, and ADR 0007 §9 (the guard is `generation`,
+  compared together with `id`; for Spotify only the flips of ADR 0009 §6). The M4 review follow-ups
+  (#198) are done on `main`; item 19 (A3's paging, unreachable with 40 songs) is covered at the
+  playlist-read level in `e2e/tests/fake-spotify.spec.ts`. None of #198's items needs a live step.
 - **M4 T3 (#186), part 1:** the e2e stack turns song picking on (test-only); `spotify-connect.spec.ts`
   covers the wizard (callback copy, a Client ID that is not 32 hex characters, an unknown Client ID, cancel,
   allow-list refusal, a changed state), the working-playlist consent, Disconnect, two users on different
@@ -129,6 +128,23 @@ GitHub hold the detail.
   "M5 Tiers and admin"; QT1, FL1, FE1 and T1 wait for
   their M4 dependencies. The owner's questions (limits, testers' plan, trial, refunds and more) are in
   ADR 0011 §11; development proceeds on its defaults.
+- **M5 done technically** (#228, on fakes). Merged: tiers, plans and entitlements (migration 0007, #233), plan, redeem
+  and trial API (#252), the `classbeat_maint` admin path with its audit log (#257), the metered quota ledger with plan
+  limits and the cost cap (#294), the admin API for users, codes, usage, jobs and the refund (#277, #279, #281),
+  hardening (#276), database flags (#304), the settings and plan-limit API (#314), the account and admin pages (#266,
+  #289, #305, #317), model routes per plan (#321) and the security suites (#268, #303, #315). The done-when "limits hold
+  under concurrency and refunds work" is tested end to end in `e2e/tests/m5-quota.spec.ts` (parallel creates from several
+  contexts start exactly the plan's limit, the month then refuses every create with 409 `quota`, two users never mix;
+  a failed and a cancelled run give the credit back) and `m5-admin.spec.ts` (an admin with TOTP grants Instructor, the
+  limit rises at once, the admin refunds a used credit, both are in the audit log, a redeem code raises a second user's
+  limit), and in the backend through the API in `test_m5_done_when.py` (parallel creates at the limit, 409 and 429
+  bodies, a cancel and an admin refund settle once, a plan limit changed by the admin applies to the next reservation).
+  An expired song-list approval releasing its credit is tested in the backend only (`test_quota_jobs.py`,
+  `test_m5_security_concurrency.py`): E2E would need a Spotify-connected run to a waiting approval, and the approval
+  lifetime has a one-hour floor. M5 follow-ups for the owner: the Q1 to Q10 answers (limits and prices change seeds
+  or settings only), live activation (admin account with TOTP via `admin grant`, the testers' plan, the `song_picking`
+  grant, the first live run of each model route) and enabling OpenAI or DeepSeek models ([m3c-model-enable.md](runbooks/m3c-model-enable.md)); none of these
+  is done by agents.
 - **MU Night Studio UI** (owner decisions 2026-10-30, roadmap Amendment 8). ADR 0013 was merged
   in #237 and accepted in #256 (closes #241), which also added the "amended by ADR 0013 §9" notes to:
   - ADR 0001 Frontend;

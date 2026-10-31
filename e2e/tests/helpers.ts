@@ -1,3 +1,4 @@
+import { createHmac } from 'node:crypto'
 import { execFileSync } from 'node:child_process'
 import { expect, test as base, type APIRequestContext, type Page } from '@playwright/test'
 
@@ -96,3 +97,43 @@ export const test = base.extend<{ networkGuard: void }>({
 })
 
 export { expect }
+
+// --- Time-based one-time codes (RFC 6238: SHA-1, 6 digits, 30 s) for the admin spec. ---------
+
+const BASE32 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567'
+
+function base32Decode(secret: string): Buffer {
+  let bits = ''
+  for (const char of secret.replace(/=+$/, '').toUpperCase()) {
+    const value = BASE32.indexOf(char)
+    if (value < 0) throw new Error('not a base32 secret')
+    bits += value.toString(2).padStart(5, '0')
+  }
+  const bytes: number[] = []
+  for (let i = 0; i + 8 <= bits.length; i += 8) bytes.push(parseInt(bits.slice(i, i + 8), 2))
+  return Buffer.from(bytes)
+}
+
+export function totpAt(secret: string, step: number): string {
+  const counter = Buffer.alloc(8)
+  counter.writeBigUInt64BE(BigInt(step))
+  const digest = createHmac('sha1', base32Decode(secret)).update(counter).digest()
+  const offset = digest[digest.length - 1]! & 0x0f
+  const code = (digest.readUInt32BE(offset) & 0x7fffffff) % 1_000_000
+  return String(code).padStart(6, '0')
+}
+
+const lastStep = new Map<string, number>()
+
+/**
+ * The next code the server will take for this secret. It accepts one step either side of now and
+ * refuses a step it has already seen (replay), so each use needs a later step: take the next one
+ * that is inside the window, and wait for the clock when none is.
+ */
+export async function nextTotp(secret: string): Promise<string> {
+  const now = () => Math.floor(Date.now() / 30_000)
+  const step = Math.max(now(), (lastStep.get(secret) ?? 0) + 1)
+  while (step > now() + 1) await new Promise((resolve) => setTimeout(resolve, 1_000))
+  lastStep.set(secret, step)
+  return totpAt(secret, step)
+}

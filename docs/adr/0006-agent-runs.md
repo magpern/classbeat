@@ -272,8 +272,12 @@ in progress, with `(outcome IS NULL) = (finished_at IS NULL)`, amended in J1, #8
 `finished_at NULL`. Counters are updated after every turn, so a crashed run still shows its cost.
 A turn that finishes after its worker lost the lease can't be recorded (the fence refuses it), so
 the cost across attempts may **undercount by that one turn per lost lease**; the next holder does
-not guess it. Likewise a request that fails after the provider started billing it (an error
-mid-stream, a timeout) returns no usage, so nothing is recorded for it (amended in A2, #91). And
+not guess it. Likewise a request that fails after the provider started billing it returns no
+usage, so nothing is recorded for it (amended in A2, #91), **except** where the adapter marks the
+turn billed (`ProviderError.billed`, ADR 0012 section 3, #219): the loop then records it at the
+turn's ceiling. That is so for the OpenAI-SDK adapters and for Anthropic once its stream has begun
+(an error event, a read timeout, the turn bound, a cut connection). A cancel mid-stream stays
+unrecorded. And
 the SDK retries silently inside one turn (§2, `max_retries=2`: a connection error or a timeout
 before the response headers, and 408, 409, 429 and 5xx answers; never once the stream has
 started; the provider's `x-should-retry` response header can override that list for one answer,

@@ -1,6 +1,11 @@
 # ADR 0008: Song picking (M4)
 
-Status: Proposed
+Status: Accepted (#198, 2026-10-31; amended, see the dated amendments)
+
+> **Amendment, 2026-10-31 (issue #198 item 6): accepted.** M4 was built to this ADR on fakes (#173 to
+> #185, and #186's first part, #302), with the dated amendments in its sections; it is accepted as
+> amended, and roadmap Amendment 5 is in effect. The live activation (§11,
+> `docs/runbooks/m4-live-activation.md`) stays the owner's, one go-ahead per step.
 
 ## Context
 
