@@ -18,7 +18,9 @@ An admin refused at 1 (``mfa_required``), 2 or 4 gets an ``admin.request`` audit
 ``outcome = 'refused'``, within the limiter's 20 per admin and 100 per minute. So does an admin
 past the gate whose request is then refused for its input (ADR 0011 section 10, #227): FastAPI's
 own 422 (reason ``invalid_input``) or an ``AdminRefused`` raised before any ``admin_session``
-(its own reason, ``period_invalid`` say). Every response carries ``Cache-Control: no-store``.
+(its own reason, ``period_invalid`` say). A body that is not JSON is refused by FastAPI before any
+dependency runs; the gate then runs in the validation handler first, so a non-admin still gets
+the 403 and an admin's 422 still has its row. Every response carries ``Cache-Control: no-store``.
 """
 
 import re
@@ -134,6 +136,29 @@ async def _audit_input_refusal(request: Request, reason: str) -> None:
         await audit_refusal(db, actor, GATE_ACTION, reason, params=_gate_params(request))
 
 
+async def _gate_before_validation(request: Request) -> JSONResponse | None:
+    """FastAPI refuses a body that is not JSON before any dependency runs, so ``admin_gate``
+    would not have run: a non-admin would get the 422 (learning that the route takes a JSON
+    body) instead of the 403, and an admin's refusal would have no row (#303 review). The gate
+    runs here then, with its own refusals and rows; ``None`` once it passed (the actor is set)."""
+    route: Any = request.scope.get("route")
+    if getattr(request.state, "admin_actor", None) is not None or not isinstance(route, APIRoute):
+        return None
+    if admin_gate not in _calls(route.dependant):
+        return None  # ``whoami``: not the admin area's gate
+    info = await auth.current_session(request)
+    ctx = await auth.current_context(request, info)
+    try:
+        await admin_gate(request, Response(), info, ctx)
+    except HTTPException as exc:
+        return JSONResponse(
+            {"detail": exc.detail},
+            status_code=exc.status_code,
+            headers={**(exc.headers or {}), "Cache-Control": "no-store"},
+        )
+    return None
+
+
 def install(app: Any) -> None:
     """The admin router, the feature modules' routers, the handler that turns an
     ``AdminRefused`` into its response, and the audit row of an admin request's 422. Call it
@@ -152,9 +177,15 @@ def install(app: Any) -> None:
 
     @app.exception_handler(RequestValidationError)
     async def validation_failed(request: Request, exc: Exception) -> Response:
-        if request.url.path.startswith("/api/admin"):
-            await _audit_input_refusal(request, "invalid_input")
-        return await previous(request, exc)
+        if not request.url.path.startswith("/api/admin"):
+            return await previous(request, exc)
+        refused = await _gate_before_validation(request)
+        if refused is not None:
+            return refused
+        await _audit_input_refusal(request, "invalid_input")
+        response = await previous(request, exc)
+        response.headers["Cache-Control"] = "no-store"
+        return response
 
     @app.exception_handler(AdminRefused)
     async def admin_refused(request: Request, exc: Exception) -> JSONResponse:

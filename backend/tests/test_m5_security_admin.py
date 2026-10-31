@@ -5,16 +5,16 @@
   ``refused`` row each.
 - Input fuzz (PR #282 review): NUL, another control character and an over-long non-ASCII value
   in every path parameter, query parameter and top-level body field of every route. Each is a
-  422 or 404 with exactly one audit row (``refused``), never a 500 and never an ``ok`` row.
-- A planted value of every secret-bearing column of ADR 0011 section 5's list never appears in
-  any admin response, the audit view's included (PR #277 review).
+  422 or 404 with exactly one audit row (``refused``), never a 500 and never an ``ok`` row; a
+  422's row stores the route's template and method, never the raw input (#303 review).
+- The planted-value test across every admin route is ``test_m5_security_admin_secrets.py``.
 
-A route added later (AD2 #279 codes and invites, AD3 #281 usage, jobs and refunds) has no entry
-in ``PATH_VALUES``/``BODIES`` until its PR adds one: the tests then fail and name it, so the fuzz
-cannot silently skip a route.
+A route added later (AD2 #279 codes and invites, FL1 #216 flags) has no valid request in
+``BODIES`` or its path values in ``target_with_entitlement`` until its PR adds them: the tests
+then fail and name it, so the fuzz cannot silently skip a route. AD3's usage, jobs and refund
+routes are covered.
 """
 
-import json
 import secrets
 import uuid
 from collections.abc import AsyncIterator, Callable
@@ -71,7 +71,8 @@ def routes(env: Env) -> list[tuple[str, APIRoute]]:
         if path != WHOAMI and isinstance(route, APIRoute)
         for method in sorted(route.methods or ())
     ]
-    assert len(found) >= 8  # the Users screen's seven and the audit view, at least
+    # The Users screen's seven, the audit view, and AD3's usage, jobs and refund, at least.
+    assert len(found) >= 11
     return found
 
 
@@ -111,6 +112,16 @@ def rows(conn: Connection, actor_id: object) -> list[tuple[str, str, str | None]
     ]
 
 
+def last_params(conn: Connection, actor_id: object) -> Any:
+    return conn.execute(
+        text(
+            "SELECT params FROM admin_audit WHERE actor_id = :a ORDER BY created_at DESC, id DESC "
+            "LIMIT 1"
+        ),
+        {"a": actor_id},
+    ).scalar_one()
+
+
 async def admin(env: Env, make_actor: Any, *, mfa: bool = True, stepup: bool = True) -> Any:
     user_id = await env.user(f"admin-{secrets.token_hex(4)}@example.com", role="admin")
     actor = await make_actor(user_id, mfa=mfa)
@@ -130,7 +141,15 @@ async def target_with_entitlement(env: Env, conn: Connection) -> dict[str, str]:
         ),
         {"o": target},
     ).scalar_one()
-    return {"user_id": str(target), "entitlement_id": str(entitlement)}
+    ledger = conn.execute(
+        text(
+            "INSERT INTO credit_ledger (owner_id, period, plan_id, state) VALUES (:o, "
+            "CAST(date_trunc('month', now() AT TIME ZONE 'UTC') AS date), 'pro', 'committed') "
+            "RETURNING id"
+        ),
+        {"o": target},
+    ).scalar_one()
+    return {"user_id": str(target), "entitlement_id": str(entitlement), "ledger_id": str(ledger)}
 
 
 # --- the gate on every route ------------------------------------------------------------------
@@ -139,7 +158,8 @@ async def target_with_entitlement(env: Env, conn: Connection) -> dict[str, str]:
 async def test_every_admin_route_refuses_a_non_admin_and_audits_the_admin_refusals(
     env: Env, make_actor: Any, superuser: Connection
 ) -> None:
-    values = {"user_id": str(uuid.uuid4()), "entitlement_id": str(uuid.uuid4())}
+    values = {"user_id": str(uuid.uuid4()), "entitlement_id": str(uuid.uuid4()),
+              "ledger_id": str(uuid.uuid4())}  # fmt: skip
     plain = await env.user("plain@example.com")
     plain_actor = await make_actor(plain, mfa=True)
     await env.run("UPDATE sessions SET stepup_at = now() WHERE user_id = :u", u=plain)
@@ -226,11 +246,26 @@ async def test_every_string_input_of_every_admin_route_is_refused_and_audited_on
                 assert response.status_code in (404, 422), (where, response.text[:300])
                 new = rows(superuser, actor.user_id)[before:]
                 assert [row[1] for row in new] == ["refused"], (where, new)
+                if new[0][0] == "admin.request":  # a 422: the template, never the raw input
+                    assert last_params(superuser, actor.user_id) == {
+                        "method": method,
+                        "route": route.path,
+                    }, where
                 tried.append(where)
     assert any(
         t.startswith("POST /api/admin/users/{user_id}/entitlements body:note") for t in tried
     )
     assert any("/api/admin/audit query:actor_email" in t for t in tried)
+    for ad3 in (
+        "GET /api/admin/usage query:month",
+        "GET /api/admin/jobs query:days",
+        "POST /api/admin/users/{user_id}/credits/{ledger_id}/refund path:ledger_id",
+    ):
+        assert any(t.startswith(ad3) for t in tried), ad3  # fmt: skip
+    state = superuser.execute(
+        text("SELECT state FROM credit_ledger WHERE id = :l"), {"l": values["ledger_id"]}
+    ).scalar_one()
+    assert state == "committed"  # no fuzzed refund went through
     # Nothing the fuzz sent changed the target (read as the superuser, past RLS).
     kept = superuser.execute(
         text(
@@ -299,173 +334,3 @@ async def test_a_nul_in_the_grant_note_is_422_not_a_500(
         f"/api/admin/users/{target}/entitlements", {"plan_id": "pro", "note": "é" * 200}
     )
     assert fine.status_code == 201, fine.text
-
-
-# --- planted secrets never leave through an admin route ---------------------------------------
-
-
-def plant_secrets(conn: Connection, owner: uuid.UUID) -> list[str]:
-    """One row of every table with a secret column (``maint_guard.SECRET_COLUMNS``) that a
-    user's account can hold, each secret column a distinct planted value; the needles to look
-    for (texts as they are, bytes as hex, base64 and latin-1 text)."""
-    import base64
-
-    raw = {k: secrets.token_bytes(n) for k, n in (
-        ("c_secret", 40), ("c_nonce", 12), ("c_wrapped", 48), ("c_dek_nonce", 12),
-        ("t_secret", 32), ("t_nonce", 12), ("t_wrapped", 48), ("t_dek_nonce", 12),
-        ("recovery", 32), ("rev_hash", 32), ("op_hash", 32), ("pool_hash", 32), ("flow", 32),
-        ("state", 32), ("sp_state", 32), ("sp_session", 32), ("device", 32), ("token", 32),
-        ("job_hash", 32), ("sw_content", 32), ("sw_state", 32),
-    )}  # fmt: skip
-    tag = secrets.token_hex(5)
-    words = {
-        "password": f"$argon2id$v=19$PLANTEDpw{tag}",
-        "c_key": f"kek-plantedc{tag}",
-        "t_key": f"kek-plantedt{tag}",
-        "client_id": secrets.token_hex(16),
-        "title": f"PLANTED title {tag}",
-        "brief": f"PLANTED brief {tag}",
-        "content": f"PLANTED revision {tag}",
-        "music": f"PLANTED music {tag}",
-        "provenance": f"PLANTED provenance {tag}",
-        "message": f"PLANTED message {tag}",
-        "change": f"PLANTED change {tag}",
-        "op_key": f"PLANTEDopkey{tag}",
-        "external": f"PLANTEDexternal{tag}",
-        "result": f"PLANTED result {tag}",
-        "context": f"PLANTED context {tag}",
-        "spotify_user": f"planted-spotify-{tag}",
-        "pool_playlist": f"Pool{tag}PLANTED{secrets.token_hex(4)}"[:22].ljust(22, "x"),
-        "subject": f"planted-subject-{tag}",
-        "email_at_link": f"planted-link-{tag}@example.org",
-        "oauth_nonce": f"PLANTEDnonce{tag}",
-        "pkce": f"PLANTEDpkce{tag}",
-        "return_to": f"/planted/return/{tag}",
-        "sp_client": secrets.token_hex(16),
-        "redirect": f"http://127.0.0.1/planted/{tag}",
-        "verifier": (f"PLANTEDverifier{tag}" + "v" * 43)[:43],
-        "auth_ip": f"203.0.113.{secrets.randbelow(200) + 1}-{tag}",
-        "auth_detail": f"PLANTED detail {tag}",
-        "session_ip": f"198.51.100.{secrets.randbelow(200) + 1}",
-        "user_agent": f"PLANTED-agent/{tag}",
-        "job_input": f"PLANTED job input {tag}",
-        "job_key": f"PLANTEDjobkey{tag}",
-        "event": f"PLANTED event {tag}",
-        "sw_name": f"PLANTED workout {tag}",
-        "sw_program": str(900_000_000_000 + secrets.randbelow(10**9)),
-        "link_source": f"Link{tag}PLANTED{secrets.token_hex(4)}"[:22].ljust(22, "y"),
-        "link_playlist": str(800_000_000_000 + secrets.randbelow(10**9)),
-    }
-    class_id = uuid.uuid4()
-
-    def run(sql: str, **params: Any) -> Any:
-        return conn.execute(text(sql), {"o": owner, "c": class_id, **params})
-
-    def js(value: str) -> str:
-        return json.dumps({"x": value})
-
-    run("UPDATE users SET password_hash = :p WHERE id = :o", p=words["password"])
-    run("UPDATE sessions SET ip = :i, user_agent = :a WHERE user_id = :o",
-        i=words["session_ip"], a=words["user_agent"])  # fmt: skip
-    run("INSERT INTO connections (owner_id, provider, status, public, secret, secret_nonce, "
-        "wrapped_dek, dek_nonce, key_id) VALUES (:o, 'spotify', 'connected', CAST(:p AS jsonb), "
-        ":s, :n, :w, :d, :k)", p=json.dumps({"client_id": words["client_id"]}),
-        s=raw["c_secret"], n=raw["c_nonce"], w=raw["c_wrapped"], d=raw["c_dek_nonce"],
-        k=words["c_key"])  # fmt: skip
-    run("INSERT INTO mfa_totp (user_id, secret_ciphertext, nonce, key_id, wrapped_dek, dek_nonce) "
-        "VALUES (:o, :s, :n, :k, :w, :d)", s=raw["t_secret"], n=raw["t_nonce"], k=words["t_key"],
-        w=raw["t_wrapped"], d=raw["t_dek_nonce"])  # fmt: skip
-    run("INSERT INTO mfa_recovery_codes (user_id, code_hash) VALUES (:o, :h)", h=raw["recovery"])
-    run("INSERT INTO classes (id, owner_id, title, brief) VALUES (:c, :o, :t, CAST(:b AS jsonb))",
-        t=words["title"], b=js(words["brief"]))  # fmt: skip
-    run("INSERT INTO class_revisions (owner_id, class_id, number, kind, content, content_hash, "
-        "music, provenance) VALUES (:o, :c, 1, 'draft', CAST(:a AS jsonb), :h, CAST(:m AS jsonb), "
-        "CAST(:p AS jsonb))", a=js(words["content"]), h=raw["rev_hash"], m=js(words["music"]),
-        p=js(words["provenance"]))  # fmt: skip
-    run("INSERT INTO class_messages (owner_id, class_id, seq, role, body, change) "
-        "VALUES (:o, :c, 1, 'user', :b, CAST(:x AS jsonb))", b=words["message"],
-        x=js(words["change"]))  # fmt: skip
-    job = run("INSERT INTO jobs (owner_id, kind, state, class_id, input, idempotency_key, "
-              "request_hash, credit_state) VALUES (:o, 'test_kind', 'queued', :c, "
-              "CAST(:i AS jsonb), :k, :h, 'none') RETURNING id", i=js(words["job_input"]),
-              k=words["job_key"], h=raw["job_hash"]).scalar_one()  # fmt: skip
-    run(
-        "INSERT INTO job_events (owner_id, job_id, seq, kind, payload, lease_version) "
-        "VALUES (:o, :j, 1, 'queued', CAST(:p AS jsonb), 0)",
-        j=job,
-        p=js(words["event"]),
-    )
-    run("INSERT INTO external_operations (owner_id, kind, idempotency_key, request_hash, state, "
-        "external_id, result, request_context, lease_version) VALUES (:o, "
-        "'spotify_create_playlist', :k, :h, 'succeeded', :e, CAST(:r AS jsonb), "
-        "CAST(:x AS jsonb), 0)", k=words["op_key"], h=raw["op_hash"], e=words["external"],
-        r=js(words["result"]), x=js(words["context"]))  # fmt: skip
-    run("INSERT INTO spotify_pool (owner_id, spotify_user_id, playlist_id, consent_version, "
-        "last_hash) VALUES (:o, :u, :p, 1, :h)", u=words["spotify_user"],
-        p=words["pool_playlist"], h=raw["pool_hash"])  # fmt: skip
-    run(
-        "INSERT INTO identities (user_id, provider, subject, email_at_link) "
-        "VALUES (:o, 'google', :s, :e)",
-        s=words["subject"],
-        e=words["email_at_link"],
-    )
-    run("INSERT INTO oauth_flows (flow_hash, provider, purpose, state_hash, nonce, pkce_verifier, "
-        "user_id, return_to, expires_at) VALUES (:f, 'google', 'link', :s, :n, :p, :o, :r, "
-        "now() + interval '5 minutes')", f=raw["flow"], s=raw["state"], n=words["oauth_nonce"],
-        p=words["pkce"], r=words["return_to"])  # fmt: skip
-    run("INSERT INTO spotify_oauth_flows (owner_id, state_hash, session_hash, client_id, "
-        "redirect_uri, verifier, expires_at) VALUES (:o, :s, :h, :i, :r, :v, "
-        "now() + interval '5 minutes')", s=raw["sp_state"], h=raw["sp_session"],
-        i=words["sp_client"], r=words["redirect"], v=words["verifier"])  # fmt: skip
-    run("INSERT INTO known_devices (user_id, device_hash) VALUES (:o, :h)", h=raw["device"])
-    run(
-        "INSERT INTO auth_tokens (purpose, token_hash, user_id, expires_at) VALUES "
-        "('reset_password', :h, :o, now() + interval '1 hour')",
-        h=raw["token"],
-    )
-    run(
-        "INSERT INTO auth_events (kind, user_id, ip, detail) VALUES ('sign_in', :o, :i, "
-        "CAST(:d AS jsonb))",
-        i=words["auth_ip"],
-        d=js(words["auth_detail"]),
-    )
-    run("INSERT INTO saved_workouts (owner_id, class_id, program_id, revision_number, "
-        "content_hash, state_hash, name) VALUES (:o, :c, :p, 1, :h, :s, :n)",
-        p=int(words["sw_program"]), h=raw["sw_content"], s=raw["sw_state"],
-        n=words["sw_name"])  # fmt: skip
-    run("INSERT INTO mowl_playlist_links (owner_id, source, source_id, playlist_id) "
-        "VALUES (:o, 'spotify', :s, :p)", s=words["link_source"],
-        p=int(words["link_playlist"]))  # fmt: skip
-    needles = list(words.values())
-    for value in raw.values():
-        needles += [value.hex(), base64.b64encode(value).decode(), value.decode("latin-1")]
-    return needles
-
-
-async def test_no_admin_route_returns_a_planted_secret_of_any_table(
-    env: Env, make_actor: Any, superuser: Connection
-) -> None:
-    """PR #277 review: every secret-bearing column (non-zero nonces and wrapped keys, key ids,
-    TOTP and recovery codes, revisions, messages, external operations, the Spotify pool,
-    identities, both OAuth flow tables, devices, tokens, events, saved workouts and links) is
-    planted for one user; no response of any admin route contains one, the audit view
-    included (which shows every call's params)."""
-    actor = await admin(env, make_actor)
-    values = await target_with_entitlement(env, superuser)
-    owner = uuid.UUID(values["user_id"])
-    rider = await make_actor(owner)  # a session row to plant ip and user agent into
-    needles = [*plant_secrets(superuser, owner), rider.token, actor.token]
-    responses = []
-    for method, route in routes(env):
-        path = fill(route, values)
-        if route.path.endswith("/users"):
-            path += "?q=rider"
-        responses.append(await send(actor, method, path, BODIES.get((method, route.path))))
-    responses.append(await actor.get("/api/admin/audit?limit=100"))
-    assert all(r.status_code < 500 for r in responses), [r.status_code for r in responses]
-    detail = [r for r in responses if r.request.method == "GET"
-              and r.request.url.path.endswith(values["user_id"])]  # fmt: skip
-    assert [r.status_code for r in detail] == [200]  # the detail answered, connections and all
-    for response in responses:
-        leaked = [n for n in needles if len(n) >= 8 and n in response.text]
-        assert leaked == [], (response.request.method, response.request.url.path)

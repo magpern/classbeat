@@ -185,7 +185,9 @@ async def test_a_bad_month_is_422_and_reads_nothing(
     actor = await stepped_admin(env, make_actor)
     response = await actor.get(f"{USAGE}?month={month}")
     assert response.status_code == 422, response.text
-    assert audit(superuser, actor.user_id) == []
+    # Nothing read, and the refusal has its row (ADR 0011 section 10, #227).
+    expected = "bad_month" if month == "2026-13" else "invalid_input"
+    assert audit(superuser, actor.user_id) == [("admin.request", "refused", expected)]
 
 
 async def test_a_refund_frees_a_slot_at_once_and_only_once(
