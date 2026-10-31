@@ -19,6 +19,7 @@ export function classBody(extra: Record<string, unknown> = {}) {
     current_revision_number: 1,
     revision_count: 1,
     saved: { count: 0, latest_revision_number: null, latest_saved_at: null, latest_up_to_date: null },
+    profile: [[2, 300], [5, 90], [3, 600]],
     open_job_id: null,
     open_job: null,
     ...extra,

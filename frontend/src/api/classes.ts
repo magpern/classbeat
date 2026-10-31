@@ -47,6 +47,21 @@ export interface ClassSummary {
   revisionCount: number
   saved: SavedSummary
   openJob: OpenJob | null
+  /** The current version's intervals as [zone, seconds], in order (empty without one). */
+  profile: [number, number][]
+}
+
+/** Absent or malformed means no profile: a card then shows no sketch rather than failing the list. */
+function decodeProfile(value: unknown): [number, number][] {
+  if (!Array.isArray(value)) return []
+  const out: [number, number][] = []
+  for (const entry of value as unknown[]) {
+    if (!Array.isArray(entry) || entry.length !== 2) return []
+    const [zone, sec] = entry as unknown[]
+    if (!Number.isInteger(zone) || !Number.isInteger(sec) || (sec as number) < 0) return []
+    out.push([zone as number, sec as number])
+  }
+  return out
 }
 
 function decodeClass(value: unknown): ClassSummary {
@@ -75,6 +90,7 @@ function decodeClass(value: unknown): ClassSummary {
       detachedCount: optionalCount(saved, 'detached_count') ?? 0,
     },
     openJob,
+    profile: decodeProfile(item.profile),
   }
 }
 

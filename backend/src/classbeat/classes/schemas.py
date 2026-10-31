@@ -45,6 +45,9 @@ class ClassOut(BaseModel):
     saved: SavedOut
     open_job_id: UUID | None
     open_job: OpenJobOut | None
+    # The current revision's intervals as [zone, seconds], in order: enough for a mini profile
+    # and a length, nothing else (ADR 0013 section 11, UI2). Empty without a current revision.
+    profile: list[tuple[int, int]] = []
 
     @classmethod
     def of(cls, row: Any) -> "ClassOut":
@@ -75,6 +78,7 @@ class ClassOut(BaseModel):
             ),
             open_job_id=row.open_job_id,
             open_job=job,
+            profile=[(int(z), int(sec)) for z, sec in row.profile],
         )
 
 

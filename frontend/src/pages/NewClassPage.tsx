@@ -14,7 +14,8 @@ import { Card, Field, Notice, useAction } from '../components/forms'
 import { RequireAuth } from '../components/RequireAuth'
 import { BRIEF_TOO_LONG, briefBytes, MAX_BRIEF_BYTES } from '../lib/brief'
 import { newIdempotencyKey, rememberInput } from '../lib/submittedInput'
-import { Link, useRouter } from '../router/Router'
+import { readPreset } from '../lib/presets'
+import { Link, useQuery, useRouter } from '../router/Router'
 
 type Source =
   | { status: 'loading' }
@@ -144,14 +145,15 @@ function ClassForm({
   playlists: Playlist[]
 }) {
   const { navigate } = useRouter()
+  const preset = readPreset(useQuery())
   const action = useAction()
   const [title, setTitle] = useState('')
   const [playlist, setPlaylist] = useState('')
-  const [length, setLength] = useState('45')
-  const [intensity, setIntensity] = useState<Brief['intensity']>('moderate')
-  const [climbs, setClimbs] = useState('0')
-  const [sprints, setSprints] = useState('0')
-  const [races, setRaces] = useState('0')
+  const [length, setLength] = useState(preset.length)
+  const [intensity, setIntensity] = useState<Brief['intensity']>(preset.intensity)
+  const [climbs, setClimbs] = useState(preset.climbs)
+  const [sprints, setSprints] = useState(preset.sprints)
+  const [races, setRaces] = useState(preset.races)
   const [ftp, setFtp] = useState('')
   const [style, setStyle] = useState('')
   const [notes, setNotes] = useState('')

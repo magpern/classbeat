@@ -1,6 +1,11 @@
 import '@testing-library/jest-dom/vitest'
-import { cleanup } from '@testing-library/react'
+import { cleanup, configure } from '@testing-library/react'
 import { afterEach } from 'vitest'
+
+// The first render of the whole app in a test file is slow on a loaded machine (cold JIT, CI
+// runners): findBy* and waitFor give it 5 s instead of 1 s. Nothing passes sooner or later
+// because of this; it only stops a slow start from failing an assertion that would hold.
+configure({ asyncUtilTimeout: 5000 })
 
 // Vitest globals are off, so Testing Library cannot register its own cleanup.
 afterEach(() => {
@@ -41,5 +46,7 @@ if (!('matchMedia' in window)) {
       removeListener: noop,
       dispatchEvent: () => false,
     }),
+    configurable: true,
+    writable: true,
   })
 }
