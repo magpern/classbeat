@@ -305,6 +305,7 @@ Admin Codes (`classbeat.admin.codes`, AD2): `/api/admin/invites` and `/api/admin
 and `.../{id}/disable`; a new invite or code is in its create response only (never a list, audit row or log),
 disabling an invite expires it, and the invite statements live in `classbeat.auth` (guard 8).
 Admin Settings (`classbeat.admin.settings`, AD4): `GET /api/admin/settings` (every flag with its effective value and source, the plans, the environment's bounds, the read-only settings), `PUT /api/admin/settings/{key}` (a flag through `classbeat.flags.core.validate_for_write`: `open` sign-up, an invalid value, a trial over `CLASSBEAT_TRIAL_DAYS_MAX` or above `instructor`, and any other key are 422 and a `refused` audit row), `DELETE /api/admin/settings/{key}` (clears the value to the JSON `null`, because maint has no `DELETE` on `app_settings`) and `PATCH /api/admin/plans/{id}` (the four limits, under the table's range and the environment's bounds; held credits are untouched). Audit params hold the key and what the value means, never banner text.
+Admin Model routes (`classbeat.admin.models`, AD5): `GET /api/admin/models` (plans with their `route_key`, routes with the result they stand on and why they are stale, results, the catalog), `PUT`/`DELETE /api/admin/models/routes/{route_key}/{stage_group}` (ADR 0012's `set_route`/`clear_route` inside the audited maint transaction; a `RouteRefused` is 409 with its reason, `no_route` 404). A model job's `route_key` is the effective plan's `plans.route_key`, set by `classbeat.quota.route.with_route_key` in each of the four kinds' `admit` and never taken from the browser. maint holds `SELECT` on `model_eval_results` and `SELECT, INSERT, UPDATE, DELETE` on `model_routes` (guard 11).
 The model (ADR 0006 section 9): `CLASSBEAT_MODEL_PROVIDER` is `anthropic` (the default) or `fake`
 (compose takes `MODEL_PROVIDER` from `.env`, `fake` in `.env.example`, so the dev stack and CI never
 call a model). `anthropic` needs the `anthropic_api_key` secret file, mounted on the **worker only**
@@ -319,9 +320,10 @@ earlier if pip-audit reports an advisory against 0.125.0, the API needs somethin
 Authlib needs `httpx2` itself; Dependabot ignores `anthropic` majors until then, and pip-audit
 must stay clean. With `anthropic` the worker refuses to start (and the provider to build) when
 `ANTHROPIC_LOG`, `ANTHROPIC_CUSTOM_HEADERS` or `SSLKEYLOGFILE` is set; the provider's price entries in `classbeat.agent.prices` are to be verified before
-live use. The worker's outbound requests go only to `https://api.mowl.com`, `https://api.anthropic.com`,
-`https://api.spotify.com` and `https://accounts.spotify.com` (`WORKER_HOSTS` in `classbeat.egress`, ADR 0009
-section 10; the model client alone is limited to the model host). The Spotify token endpoint and `GET /me`
+live use. The worker's outbound requests go only to `https://api.mowl.com`, `https://api.spotify.com` and
+`https://accounts.spotify.com` plus the host of each model provider whose key file holds a key (`api.anthropic.com`,
+`api.openai.com`; `api.deepseek.com` only with `CLASSBEAT_DEEPSEEK_ENABLED` too; `worker_model_providers`, `worker_hosts`
+in `classbeat.egress`, ADR 0009 section 10, ADR 0012 section 2); each model client alone is limited to its own provider's host. The one exception to the DeepSeek rule: the owner's live eval of a disabled DeepSeek model installs that host for that command only (`install_choice_allowlist`); jobs never get it. The Spotify token endpoint and `GET /me`
 (`classbeat.spotify.http`) use `egress.spotify_async_client()`, in the web process (connect) and the
 worker (refresh) alike, whose list is the two Spotify hosts and nothing else. The list is code, not a
 setting. `classbeat.egress` is the only module allowed to build an HTTP client or `urllib` opener;
@@ -365,6 +367,16 @@ format 2 and prints the verdict per group (`gate.evaluate` against the digest-ve
 writes one `model_eval_results` row per group through `classbeat.models.store.record_result`; the verdict
 `enable` relies on. Each run needs the owner's go-ahead; agents and CI never run it (the offline test is
 `backend/tests/test_evals_suite_live.py`).
+Models, routes and the enable gate (ADR 0012 sections 2 and 5, M3c): `docker compose exec worker python -m classbeat models
+list | results [--provider P] [--model M] | enable KEY GROUP PROVIDER MODEL EFFORT [--yes] | disable KEY GROUP`. A route
+(`default` is the only key until M5) sends a stage group (`design`, `songs`) to a model and exists only on a recorded passing
+`suite --live --record` result of the running suite version, manifest digest and prompt versions; `enable` prints the result it
+relies on and needs `--yes`. Secret files (worker only): `anthropic_api_key`, `openai_api_key`, `deepseek_api_key`; settings:
+`CLASSBEAT_MODEL_PROVIDER` (`anthropic` or `fake`), `CLASSBEAT_AGENT_MODEL` and `_EFFORT` (the bootstrap, used with no route),
+`CLASSBEAT_DEEPSEEK_ENABLED` (false). OpenAI and DeepSeek catalog entries ship `data_policy: owner_pending`, so no route to them
+can be set until the owner's answers (a reviewed catalog change); DeepSeek also needs the setting. The owner's steps for live evals
+and enabling are `docs/runbooks/m3c-model-enable.md`; the end-to-end offline proof is `backend/tests/test_m3c_done_when.py` and
+`test_m3c_done_when_jobs.py` (replayed provider transcripts via `tests/m3ctools.py`).
 Song picking and the Spotify connection (ADR 0008, ADR 0009): `CLASSBEAT_SONG_PICKING` (default off; off,
 every Spotify route answers 404 `feature_off`; the owner switches it on, roadmap Amendment 1; with it on,
 `CLASSBEAT_PUBLIC_BASE_URL` may not be `localhost`, use `127.0.0.1`, because Spotify does not accept
@@ -649,7 +661,7 @@ The `checks` job runs these as steps; the image scan is a step of `e2e`:
 | pip-audit | `uv export --frozen` (production, then all groups) through `pip-audit` (pinned) |
 | npm audit | `npm audit --audit-level=high` in `frontend/` and `e2e/` |
 | Trivy repository scan | Trivy on the repository (vulnerabilities, Dockerfile misconfiguration; compose is not scanned) |
-| `e2e`: stack checks | builds the stack once: `/api/ready` and the SPA answer, `web` and `worker` run as non-root, no secret value appears in `docker inspect` (the empty model key is replaced by a random canary first), only `worker` mounts `anthropic_api_key` and runs `fake`, no container has a model key variable, `postgres_password` is mounted on `db` and `db-functions` only (never web, worker, migrate or maint), and `database_maint_password` on `db-functions` and `web` only |
+| `e2e`: stack checks | builds the stack once: `/api/ready` and the SPA answer, `web` and `worker` run as non-root, no secret value appears in `docker inspect` (the empty model key is replaced by a random canary first), only `worker` mounts the three model keys (`anthropic_api_key`, `openai_api_key`, `deepseek_api_key`, a random canary each) and runs `fake`, no container has a model key variable, `postgres_password` is mounted on `db` and `db-functions` only (never web, worker, migrate or maint), and `database_maint_password` on `db-functions` and `web` only |
 | `e2e`: Trivy image scan | Trivy on the image the running stack was built from (never pushed); then Playwright runs |
 
 Trivy and gitleaks are checksum-verified release binaries. `pip-audit` (exact version) lives in

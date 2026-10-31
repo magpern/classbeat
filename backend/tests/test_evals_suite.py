@@ -53,6 +53,7 @@ RELEASED: dict[int, str] = {
     4: "ceb3883f4002f8ee0e33819ca5512008da6bbded81dd02e8787f6e0c987c1827",
     5: "adb3e8ff185a904c68acae037eb6c465f6262819ece65e1c361a6aba4e27470c",
     6: "027a8a2f3fa5634b392e148a1faf27834c33eb4d53d2385fe334dfca2d47c51d",
+    7: "4002ae10e99243477ae86f595b4deed0322906882edacced277cc58ddb168b25",
 }
 
 SUITE = load_suite()

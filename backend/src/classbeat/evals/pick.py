@@ -24,6 +24,7 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from classbeat.agent import run_stage
+from classbeat.agent.choose_songs import STAGE as CHOOSE_STAGE
 from classbeat.agent.choose_songs import ChooseContext, ChosenList, choose_stage
 from classbeat.agent.limits import Limits
 from classbeat.agent.loop import AgentConfig
@@ -211,7 +212,8 @@ async def run_pick_case(
         c = host.counters
         result.outcome = failure.category
         result.turns, result.tool_calls, result.cost_micros = c.turns, c.tool_calls, c.cost_micros
-        result.checks = ended_checks(case, result)
+        began = host.info.stage if host.info is not None else None
+        result.checks = ended_checks(case, result, began)
         return result, catalogue, registry
     result.checks = pick_checks(case, plan, result, catalogue, sent_text(provider), bands)
     result.checks.append(limits_check(result, limits))
@@ -234,14 +236,23 @@ def limits_check(result: PickCaseResult, limits: tuple[Limits, Limits]) -> PickC
     )
 
 
-def ended_checks(case: PickCase, result: PickCaseResult) -> list[PickCheck]:
+def ended_checks(case: PickCase, result: PickCaseResult, began: str | None) -> list[PickCheck]:
     """The checks of a run that ended in a failure category: only a case that expects that
-    category has any (it ended as expected and nothing was stored: no list came out of it)."""
+    category has any (it ended as expected and nothing was stored). ``began`` is the stage that
+    began last on the run's host. ``nothing_stored`` fails when a list came out or the choose stage
+    began at all: a pool too small to choose from must end before any model turn of the choose
+    stage (#219; before it, the check could not fail, because ``chosen`` stays ``None`` on every
+    failure path)."""
     if case.expect.outcome != result.outcome:
         return []
+    started = began == CHOOSE_STAGE
     return [
         PickCheck("expected_outcome", True, result.outcome),
-        PickCheck("nothing_stored", result.chosen is None),
+        PickCheck(
+            "nothing_stored",
+            result.chosen is None and not started,
+            "the choose stage began" if started else "no list, no choose stage",
+        ),
     ]
 
 
