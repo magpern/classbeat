@@ -148,7 +148,7 @@ function Designing({
     }, cancelError)
   }
   const waiting = job.state === 'queued' && progress.stage === null
-  const picking = job.kind === 'design_with_songs' && job.approvedAt === null
+  const picking = isSongKind(job.kind) && job.approvedAt === null
   // The class name comes from the form this browser remembered; without it the title says "your class".
   const name = recallInput(job.id)?.title ?? recallPick(job.id)?.title ?? 'your class'
   const steps = designSteps(job.kind, job.approvedAt !== null)

@@ -201,6 +201,44 @@ describe('a failed design', () => {
     expect(await screen.findByRole('link', { name: 'Go to your account' })).toHaveAttribute('href', '/account')
   })
 
+  it.each(['cancelled', 'expired'])('offers "Design again", not "Try again", for a %s design', async (state) => {
+    window.sessionStorage.setItem(
+      `classbeat.design-input.${JOB_ID}`,
+      JSON.stringify({
+        title: 'Hills',
+        brief: { length_min: 45, intensity: 'moderate', climbs: 1, sprints: 0, races: 0, ftp_test: null, style: '', text: '' },
+        music: { source: 'mowl_spotify_playlist', spotify_playlist_id: 'AbCdEfGhIjKlMnOpQrStUv' },
+        mowl_connection_id: 'c0000000-0000-4000-8000-000000000001',
+      }),
+    )
+    fakeApi({ ...SESSION_ROUTES, [`GET ${JOB}`]: jobBody(state) })
+    renderAt(`/jobs/${JOB_ID}`)
+    expect(await screen.findByRole('button', { name: 'Design again' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Try again' })).toBeNull()
+  })
+
+  it.each([
+    ['design_with_songs', 'design', 6, 6],
+    ['design_with_songs', 'music', 5, 6],
+    ['revise_songs', 'choose', 4, 10],
+    ['revise_songs', 'revise', 10, 10],
+  ])('counts %s at %s as step %i of %i', async (kind, stage, step, total) => {
+    fakeApi({
+      ...SESSION_ROUTES,
+      [`GET ${JOB}`]: jobBody('running', { kind, approved_at: kind === 'design_with_songs' ? '2026-10-29T11:00:00Z' : null }),
+      [`GET ${EVENTS}`]: (() => {
+        let opened = 0
+        return () => (++opened > 1 ? openStream() : sse([1, 'queued'], [2, 'stage_started', { stage }]))
+      })(),
+    })
+    renderAt(`/jobs/${JOB_ID}`)
+    expect(await screen.findByText(`Step ${String(step)} of ${String(total)}`)).toBeInTheDocument()
+    expect(screen.getAllByRole('listitem')).toHaveLength(total)
+    // `revise_songs` never runs the stage "design", so it has no such step.
+    const labels = screen.getAllByRole('listitem').map((li) => li.textContent ?? '')
+    expect(labels.some((l) => l.startsWith('Building your class'))).toBe(kind !== 'revise_songs')
+  })
+
   it('starts the same design again as a new job of the same class', async () => {
     const input = {
       title: 'Hills',

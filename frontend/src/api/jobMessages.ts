@@ -132,13 +132,21 @@ export const PICK_STEPS: readonly { stage: string; label: string }[] = [
   { stage: 'choose', label: 'Choosing the best songs for each part' },
 ]
 
-/** After the songs are approved: the stages that other jobs do not have (backend songs/phase2.py). */
+/** After the songs are approved: PHASE_TWO of backend songs/phase2.py, in its order. */
 const APPROVED_STEPS: readonly { stage: string; label: string }[] = [
   { stage: 'prepare', label: 'Checking your accounts' },
   { stage: 'create', label: 'Creating your playlist in Spotify' },
   { stage: 'fill', label: 'Adding the approved songs to your playlist' },
   { stage: 'attach', label: 'Adding your playlist to your MOWL music' },
   { stage: 'music', label: 'Reading your playlist' },
+  { stage: 'design', label: 'Building your class' },
+]
+
+/** `revise_songs` runs both parts in one job and ends with `revise`, not `design` (backend songs/revise.py STAGES). */
+const REVISE_SONGS_STEPS: readonly { stage: string; label: string }[] = [
+  ...PICK_STEPS,
+  ...APPROVED_STEPS.filter((s) => s.stage !== 'design'),
+  { stage: 'revise', label: 'Changing the class' },
 ]
 
 const DRAFT_STEPS: readonly { stage: string; label: string }[] = [
@@ -148,6 +156,7 @@ const DRAFT_STEPS: readonly { stage: string; label: string }[] = [
 
 /** The checklist of the Designing page for a job, in the order its stages run. */
 export function designSteps(kind: string, approved: boolean): readonly { stage: string; label: string }[] {
+  if (kind === 'revise_songs') return REVISE_SONGS_STEPS
   if (kind === 'design_with_songs') return approved ? APPROVED_STEPS : PICK_STEPS
   return DRAFT_STEPS
 }
