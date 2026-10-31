@@ -172,7 +172,12 @@ def _retake_guard(owner_id: UUID, key: str, inner: Guard) -> Guard:
     """``inner`` (the step's own guard), then: a ``failed`` row is taken over only when the
     call's own record wrote it (``resolved_by = 'worker'``, a refusal that proves no effect). The
     job's reconciliation never writes ``failed`` for a create (``_JOB_KINDS``), so a ``worker``
-    ``failed`` row of this key is always such a record; anything else may have been created.
+    ``failed`` row of this key is such a record, with one exception: the pool supersede rule
+    (``classbeat.playlists.pool``) also marks rows ``failed`` with ``resolved_by = 'worker'``
+    although they may have been created. Those are safe only because they belong to other jobs
+    (the supersede skips the job's own key) that are neither queued nor running when they are
+    marked (``operation_busy`` otherwise), so no attempt of theirs runs the pool create again,
+    and keys are per job. Anything else may have been created.
     Built into every create request by ``pool_request`` and ``final_request``."""
 
     async def guard(db: AsyncSession) -> bool:

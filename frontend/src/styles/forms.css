@@ -255,3 +255,17 @@
   text-align: left;
   overflow-wrap: anywhere;
 }
+
+.banner {
+  margin: 0;
+  padding: var(--cb-space-2) var(--cb-space-4);
+  border-bottom: 1px solid var(--cb-line);
+  background: var(--cb-raised);
+  text-align: center;
+  overflow-wrap: anywhere;
+}
+
+.banner[data-level='warning'] {
+  border-color: var(--cb-warn);
+  background: var(--cb-warn-soft);
+}

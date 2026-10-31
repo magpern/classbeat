@@ -202,6 +202,16 @@ def check_queue(conn: Connection) -> list[str]:
     # The one amendment (ADR 0011 section 1): the two M5 guard triggers, admitted only exactly.
     pinned = pinned_guard_triggers(conn)
     hooks = [hook for hook in hooks if hook not in pinned]
+    # ... and both must exist exactly as pinned (review of #233), not only be allowed.
+    expected_pinned = {
+        hook
+        for name, (table, _) in GUARD_TRIGGERS.items()
+        for hook in (f"function public.{name}()", f"trigger {name} on public.{table}")
+    }
+    need(
+        pinned == expected_pinned,
+        f"the M5 guard triggers are missing or differ: {sorted(expected_pinned - pinned)}",
+    )
     # Temp schemas (pg_temp_N) hold no built-ins, so any function there is >= 16384 and found.
     need(
         not hooks,

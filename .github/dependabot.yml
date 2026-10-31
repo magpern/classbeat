@@ -18,6 +18,10 @@ updates:
       # issue #120). Review by 2027-01-31, or earlier on a pip-audit advisory against 0.125.0.
       - dependency-name: anthropic
         update-types: ["version-update:semver-major"]
+      # openai 3.x requires httpx2 for the same reason: we stay on 2.x, the last on httpx (ADR 0012
+      # section 3); reviewed with anthropic (#120, 2027-01-31).
+      - dependency-name: openai
+        update-types: ["version-update:semver-major"]
     groups:
       python:
         update-types: [minor, patch]

@@ -35,8 +35,14 @@ type Listing =
  * The undecided operations of the failed job; when its own list is empty, the account's (the
  * row may still belong to an earlier job). An empty answer from both is the honest "nothing".
  */
-async function readListing(jobId: string): Promise<Listing> {
-  const own = await listUncertainOperations(jobId)
+async function readListing(
+  jobId: string,
+  accept?: (operation: Operation) => boolean,
+): Promise<Listing> {
+  const found = await listUncertainOperations(jobId)
+  const own = accept === undefined ? found : found.filter(accept)
+  // A caller that names the operations it handles reads the job's own list only.
+  if (accept !== undefined) return { status: 'ready', operations: own, scope: 'job' }
   if (own.length > 0) return { status: 'ready', operations: own, scope: 'job' }
   const account = await listUncertainOperations()
   return { status: 'ready', operations: account, scope: 'account' }
@@ -51,9 +57,12 @@ async function readListing(jobId: string): Promise<Listing> {
 export function UncertainAttach({
   jobId,
   onResolved,
+  accept,
 }: {
   jobId: string
   onResolved: () => void
+  /** Only these operations of the job are handled here (a song job also has Spotify writes). */
+  accept?: (operation: Operation) => boolean
 }) {
   const [listing, setListing] = useState<Listing>({ status: 'loading' })
   const [outcome, setOutcome] = useState<Outcome | null>(null)
@@ -79,15 +88,15 @@ export function UncertainAttach({
   const load = useCallback(async () => {
     setListing({ status: 'loading' })
     try {
-      apply(await readListing(jobId))
+      apply(await readListing(jobId, accept))
     } catch {
       setListing({ status: 'error' })
     }
-  }, [jobId, apply])
+  }, [jobId, accept, apply])
 
   useEffect(() => {
     let current = true
-    readListing(jobId).then(
+    readListing(jobId, accept).then(
       (next) => {
         if (current) apply(next)
       },
@@ -98,13 +107,13 @@ export function UncertainAttach({
     return () => {
       current = false
     }
-  }, [jobId, apply])
+  }, [jobId, accept, apply])
 
   // After a decision the list is read again, so a decided row is gone; if that read fails the
   // decided row is dropped from what is shown.
   const refresh = async (decided: Operation | null) => {
     try {
-      apply(await readListing(jobId))
+      apply(await readListing(jobId, accept))
     } catch {
       if (decided === null) return
       setListing((now) =>
