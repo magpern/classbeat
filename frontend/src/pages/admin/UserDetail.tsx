@@ -17,15 +17,14 @@ import { Chip } from '../../components/ui/chip'
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '../../components/ui/dialog'
 import { Link, useRouter } from '../../router/Router'
 import { dayOf, endOfDay, FEATURES, PLANS, sourceLabel } from './format'
+import { Credits } from './Credits'
 import { isReason, useAdminWrite, useMfaRequired } from './StepUp'
-
-const CELL = 'border-b border-line py-2 pr-4'
 
 /**
  * One user (ADR 0011 section 6): plan and usage, entitlements with grant and revoke, the credit
  * ledger of the last three periods, connection status only, disable or enable, and delete with
  * the email typed to confirm. Disable and delete are not offered for an admin (the server
- * refuses them with 409 `target_is_admin` anyway). Refunds come with AD3 (#221).
+ * refuses them with 409 `target_is_admin` anyway). The credits and their refund are `Credits`.
  */
 export function UserDetail({ userId }: { userId: string }) {
   const onMfaRequired = useMfaRequired()
@@ -152,37 +151,7 @@ export function UserDetail({ userId }: { userId: string }) {
           ))}
         </ul>
       </Section>
-      <Section title="Credits, last three months">
-        {user.ledger.length === 0 ? (
-          <p className="text-muted">No classes in these months.</p>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full border-collapse text-left text-[0.9375rem]">
-              <thead className="text-muted">
-                <tr>
-                  <th className={`${CELL} font-medium`}>Month</th>
-                  <th className={`${CELL} font-medium`}>Plan</th>
-                  <th className={`${CELL} font-medium`}>State</th>
-                  <th className={`${CELL} font-medium`}>Started</th>
-                </tr>
-              </thead>
-              <tbody>
-                {user.ledger.map((row) => (
-                  <tr key={row.id}>
-                    <td className={CELL}>{row.period.slice(0, 7)}</td>
-                    <td className={CELL}>{row.planId}</td>
-                    <td className={CELL}>
-                      {row.state}
-                      {row.reason !== null ? ` (${row.reason})` : ''}
-                    </td>
-                    <td className={CELL}>{dayOf(row.createdAt)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </Section>
+      <Credits userId={user.id} ledger={user.ledger} onChanged={reload} />
       <Section title="Connections">
         <ul className="m-0 flex list-none flex-col gap-1 p-0">
           {user.connections.map((item) => (
