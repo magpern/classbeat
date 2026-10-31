@@ -3,7 +3,7 @@ import { ChipButton } from '../ui/chip'
 
 export type Music = 'playlist' | 'pick'
 
-/** What "Let Claude pick the songs" needs (ADR 0008 section 9). `off`: the feature is hidden. */
+/** What "Pick songs for me" needs (ADR 0008 section 9). `off`: the feature is hidden. */
 export type SongsAvailability =
   | { kind: 'off' }
   | { kind: 'needs_spotify' }
@@ -11,7 +11,7 @@ export type SongsAvailability =
   | { kind: 'ready'; spotifyConnectionId: string }
 
 /**
- * The music choice of the new-class form: a playlist from MOWL, or "Let Claude pick the songs".
+ * The music choice of the new-class form: a playlist from MOWL, or "Pick songs for me".
  * Without Spotify and the working-playlist consent the second choice is not selectable and links
  * to the wizard; with song picking switched off nothing is shown.
  */
@@ -38,7 +38,7 @@ export function MusicChoice({
             onChange('playlist')
           }}
         >
-          A playlist from MOWL
+          Use my playlist
         </ChipButton>
         <ChipButton
           pressed={value === 'pick'}
@@ -47,7 +47,7 @@ export function MusicChoice({
             onChange('pick')
           }}
         >
-          Let Claude pick the songs
+          Pick songs for me
         </ChipButton>
       </div>
       {songs.kind === 'needs_spotify' ? (
