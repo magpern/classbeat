@@ -60,7 +60,6 @@ _PREFIX = "https://api.mowl.com"
 _TRACKS = re.compile(r"^/v1/Playlists/(\d+)/tracks$")
 _AVAILABILITY = re.compile(r"^/v1/Playlists/(\d+)/sessiondesigner/availability$")
 _SECTIONS = re.compile(r"^/v1/Spotify/Tracks/([0-9A-Za-z]+)/AudioAnalysis$")
-_URI = re.compile(r"^spotify:track:([0-9A-Za-z]{22})$")
 
 
 NARROW_SONG = 2  # its album has no image of 64 px or more
@@ -129,10 +128,7 @@ class FakeMowlPool(FakeMowlAttach):
         if spotify_playlist in self.stale:
             return list(self.stale[spotify_playlist])
         assert self.spotify is not None
-        with self.spotify.lock:
-            found = self.spotify.playlists.get(spotify_playlist)
-            uris = list(found.entries) if found is not None else []
-        return [m[1] for u in uris if u and (m := _URI.match(u))]
+        return self.spotify.playlist_track_ids(spotify_playlist) or []
 
     def _ok(self, req: urllib.request.Request, data: Any) -> Any:
         return self._answer(req, 200, {"Data": data, "Error": None})
@@ -146,21 +142,10 @@ class FakeMowlPool(FakeMowlAttach):
         if path == "/v1/Spotify/Playlists" and req.get_method() == "POST":
             return self._ok(req, [])
         if (m := _TRACKS.match(path)) and (wrapped := self._owned(token, int(m[1]))):
-            tracks = []
-            for n, tid in enumerate(self._ids(wrapped)):
-                t = self.spotify.catalogue.get(tid, {"name": "Gone", "artist": "Gone"})
-                tracks.append(
-                    {
-                        "TrackID": 50_000 + n,
-                        "PlaylistID": int(m[1]),
-                        "Title": t["name"],
-                        "Artist": t["artist"],
-                        "Duration": int(t.get("duration_ms", TRACK_MS)),
-                        "BPM": 0 if tid in self.no_bpm else 100 + 3 * (int(tid[-3:]) % 30),
-                        "SpotifyTrackID": tid,
-                        "Url": "x",
-                    }
-                )
+            tracks = [
+                {**e, "PlaylistID": int(m[1]), "Url": "x"}
+                for e in self.spotify.mowl_entries(self._ids(wrapped), self.no_bpm)
+            ]
             return self._ok(req, tracks)
         if (m := _AVAILABILITY.match(path)) and self._owned(token, int(m[1])):
             return self._ok(req, {"PlaylistErrors": []})

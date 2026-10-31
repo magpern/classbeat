@@ -1,21 +1,57 @@
 import * as DialogPrimitive from '@radix-ui/react-dialog'
 import { X } from 'lucide-react'
-import type { ComponentProps } from 'react'
+import { useEffect, useState, type ComponentProps } from 'react'
 import { cn } from '../../lib/cn'
+import { keepTabInside, lockPageBehind } from '../../lib/modalLock'
 
-export const Dialog = DialogPrimitive.Root
+/**
+ * A modal dialog that works under `style-src 'self'` (ADR 0013 section 9). Radix's modal mode
+ * locks the page scroll with an injected `<style>`, which the policy refuses (a console error
+ * per open, and no lock). So Radix runs non-modal here, and the modal behaviour is ours and
+ * class-based: `lockPageBehind` (scroll lock and `inert`), our own overlay (a click on it
+ * closes), a Tab loop, and a taller-than-the-window dialog scrolls inside itself.
+ */
+export function Dialog(props: ComponentProps<typeof DialogPrimitive.Root>) {
+  return <DialogPrimitive.Root {...props} modal={false} />
+}
 export const DialogTrigger = DialogPrimitive.Trigger
 export const DialogClose = DialogPrimitive.Close
 
-export function DialogContent({ className, children, ...props }: ComponentProps<typeof DialogPrimitive.Content>) {
+export function DialogContent({
+  className,
+  children,
+  onKeyDown,
+  onFocusOutside,
+  onPointerDownOutside,
+  ...props
+}: ComponentProps<typeof DialogPrimitive.Content>) {
+  // The portal renders after the first commit, so the element arrives through state.
+  const [node, setNode] = useState<HTMLDivElement | null>(null)
+  useEffect(() => (node ? lockPageBehind(node) : undefined), [node])
   return (
     <DialogPrimitive.Portal>
-      <DialogPrimitive.Overlay className="fixed inset-0 z-40 bg-scrim" />
+      <div aria-hidden="true" className="fixed inset-0 z-40 bg-scrim" />
       <DialogPrimitive.Content
+        ref={setNode}
+        aria-modal="true"
         className={cn(
-          'fixed top-1/2 left-1/2 z-50 w-[min(28rem,calc(100%-2rem))] -translate-x-1/2 -translate-y-1/2 rounded-lg border border-line bg-surface p-5 text-text',
+          'fixed top-1/2 left-1/2 z-50 max-h-[calc(100%-2rem)] w-[min(28rem,calc(100%-2rem))] -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-lg border border-line bg-surface p-5 text-text',
           className,
         )}
+        onKeyDown={(event) => {
+          onKeyDown?.(event)
+          if (node && !event.defaultPrevented) keepTabInside(event, node)
+        }}
+        // Focus is kept inside by the Tab loop; a pointer-down on another dialog (a prompt on
+        // top of this one) is not a click away.
+        onFocusOutside={(event) => {
+          onFocusOutside?.(event)
+          event.preventDefault()
+        }}
+        onPointerDownOutside={(event) => {
+          onPointerDownOutside?.(event)
+          if (event.target instanceof Element && event.target.closest('[role="dialog"]')) event.preventDefault()
+        }}
         {...props}
       >
         {children}

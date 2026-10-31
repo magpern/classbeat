@@ -168,7 +168,7 @@ function ReauthPrompt({ onDone }: PromptProps) {
   const viaProvider = (provider: string) => {
     void action.run(async () => {
       const url = await startOAuth(provider, 'reauth', {
-        returnTo: reauthReturnTo(window.location.pathname, window.location.search),
+        returnTo: reauthReturnTo(window.location.pathname, window.location.search, window.location.hash),
       })
       goToProvider(url)
     })

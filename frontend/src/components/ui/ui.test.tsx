@@ -125,6 +125,63 @@ describe('Dialog', () => {
     expect(trigger).toHaveFocus()
   })
 
+  it('locks the page with a class and inert, not with an injected style (style-src self)', async () => {
+    const styles = document.querySelectorAll('style').length
+    render(
+      <>
+        <button>Behind</button>
+        <Dialog>
+          <DialogTrigger asChild>
+            <Button>Open it</Button>
+          </DialogTrigger>
+          <DialogContent>
+            <DialogTitle>Title</DialogTitle>
+            <DialogDescription>Text</DialogDescription>
+          </DialogContent>
+        </Dialog>
+      </>,
+    )
+    await userEvent.click(screen.getByRole('button', { name: 'Open it' }))
+    await screen.findByRole('dialog')
+    expect(document.documentElement).toHaveClass('overflow-hidden')
+    expect(document.body.querySelector('[inert]')).not.toBeNull()
+    expect(document.querySelectorAll('style')).toHaveLength(styles)
+    expect(document.body.getAttribute('style') ?? '').not.toContain('overflow')
+    await userEvent.keyboard('{Escape}')
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+    expect(document.documentElement).not.toHaveClass('overflow-hidden')
+    expect(document.body.querySelector('[inert]')).toBeNull()
+  })
+
+  it('keeps Tab inside and closes on a click on the overlay', async () => {
+    const onOpenChange = vi.fn()
+    render(
+      <>
+        <button>Behind</button>
+        <Dialog defaultOpen onOpenChange={onOpenChange}>
+          <DialogContent>
+            <DialogTitle>Title</DialogTitle>
+            <DialogDescription>Text</DialogDescription>
+            <button>Inside</button>
+          </DialogContent>
+        </Dialog>
+      </>,
+    )
+    const dialog = await screen.findByRole('dialog')
+    expect(dialog).toHaveAttribute('aria-modal', 'true')
+    const inside = screen.getByRole('button', { name: 'Inside' })
+    const close = screen.getByRole('button', { name: 'Close' })
+    // The controls are Inside, then Close: Tab from the last wraps to the first and back.
+    close.focus()
+    await userEvent.tab()
+    expect(inside).toHaveFocus()
+    await userEvent.tab({ shift: true })
+    expect(close).toHaveFocus()
+    const overlay = document.querySelector('[aria-hidden="true"].fixed')!
+    await userEvent.click(overlay)
+    expect(onOpenChange).toHaveBeenCalledWith(false)
+  })
+
   it('has a labelled Close button', async () => {
     render(
       <Dialog defaultOpen>

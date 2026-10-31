@@ -48,7 +48,7 @@ export const SIGNED_IN = {
   authenticated: true,
   csrf_token: 'csrf-session',
   user: { id: 'u1', email: 'ann@example.test', role: 'user' },
-  session: { id: 's1', expires_at: '2030-01-01T00:00:00Z', recent_auth: true, mfa: false, stepup: false },
+  session: { id: 's1', expires_at: '2030-01-01T00:00:00Z', recent_auth: true, mfa: false, stepup: false, admin_pending_mfa: false },
 }
 
 /**

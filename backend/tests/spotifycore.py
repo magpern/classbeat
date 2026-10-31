@@ -238,6 +238,11 @@ _ARTISTS = (
 CATALOGUE_SIZE = 160
 
 
+def mowl_bpm(tid: str) -> int:
+    """The BPM the fake MOWL has for a track: 100 to 187 by the last three digits of its id."""
+    return 100 + 3 * (int(tid[-3:]) % 30)
+
+
 def track_id(i: int) -> str:
     return f"FakeTrack{i:013d}"  # 22 letters and digits
 
@@ -358,6 +363,47 @@ class FakeSpotify:
     ) -> Playlist:
         with self.lock:
             return self._new_playlist(owner, name, description, public, collaborative, entries)
+
+    def playlist_track_ids(self, playlist_id: str) -> list[str] | None:
+        """The catalogue track ids a playlist holds now, in order (episodes, local files and null
+        items left out), or None for a playlist this fake does not know. For the fake MOWL, which
+        wraps a Spotify playlist and shows what it holds (MOWL is assumed to follow edits)."""
+        with self.lock:
+            found = self.playlists.get(playlist_id)
+            if found is None:
+                return None
+            uris = list(found.entries)
+        return [m[1] for u in uris if u and (m := TRACK_URI.fullmatch(u))]
+
+    def mowl_entries(
+        self, track_ids: Iterable[str], no_bpm: Iterable[str] = ()
+    ) -> list[dict[str, Any]]:
+        """What MOWL lists for a wrapped playlist of these tracks: one entry per id, in order
+        (``TrackID``, ``Title``, ``Artist``, ``Duration`` in ms, ``BPM`` and ``SpotifyTrackID``).
+        The BPM is a fixed function of the id; ``no_bpm`` ids get 0 (MOWL has none). One place
+        for the in-process and the e2e fake MOWL, so the two cannot drift."""
+        skip = set(no_bpm)
+        out: list[dict[str, Any]] = []
+        for n, tid in enumerate(track_ids):
+            t = self.catalogue.get(tid, {"name": "Gone", "artist": "Gone"})
+            out.append(
+                {
+                    "TrackID": 50_000 + n,
+                    "Title": t["name"],
+                    "Artist": t["artist"],
+                    "Duration": int(t.get("duration_ms", 240_000)),
+                    "BPM": 0 if tid in skip else mowl_bpm(tid),
+                    "SpotifyTrackID": tid,
+                }
+            )
+        return out
+
+    def set_durations(self, duration_ms: int) -> None:
+        """Every catalogue track lasts ``duration_ms`` (the e2e recorded design is written for
+        four-minute songs)."""
+        with self.lock:
+            for t in self.catalogue.values():
+                t["duration_ms"] = duration_ms
 
     def grant(self, client_id: str, user: str, scope: str = SCOPES) -> tuple[str, str]:
         """An access and refresh token as if ``user`` had connected ``client_id``."""

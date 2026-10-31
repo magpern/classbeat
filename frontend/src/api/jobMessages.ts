@@ -195,6 +195,10 @@ export const USE_CHANGE_SONGS =
 export const USE_NEW_CLASS_FOR_SONGS =
   'This request is only about the songs, so nothing changed. This class uses a playlist of your own; to use other music, design a new class.'
 
+/** The same while the class's own song pick is not done (waiting, expired, stopped). */
+export const USE_FINISH_SONGS =
+  'This request is only about the songs, so nothing changed. Finish or retry the song pick on this page first; then use Change songs.'
+
 const REVISE_FAILURES: Record<string, string> = {
   upstream_unavailable: 'MOWL could not be reached. Nothing changed. Try again in a few minutes.',
   rate_limited: 'MOWL asked classbeat to slow down. Nothing changed. Wait a few minutes and try again.',

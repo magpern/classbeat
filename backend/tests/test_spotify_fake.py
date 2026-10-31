@@ -618,3 +618,28 @@ def test_the_summary_holds_no_token_code_or_verifier(spotify: FakeSpotify) -> No
     text = json.dumps(spotify.summary())
     for value in (verifier, code, access, refresh, challenge_of(verifier)):
         assert value not in text
+
+
+def test_the_mowl_view_lists_what_a_playlist_holds_now_in_order(spotify: FakeSpotify) -> None:
+    """The fake MOWL (in-process and in the e2e stack) wraps a Spotify playlist and lists, from
+    this one view, what it holds now: catalogue tracks only, in order, with a BPM that is a fixed
+    function of the id. An episode or a null item is left out; an unknown playlist is None."""
+    ids = [track_id(5), track_id(1), track_id(3)]
+    held = spotify.add_playlist(
+        USER_A,
+        "Wrapped",
+        [f"spotify:track:{ids[0]}", None, f"spotify:episode:{'e' * 22}", f"spotify:track:{ids[1]}"],
+    )
+    assert spotify.playlist_track_ids(held.id) == ids[:2]
+    assert spotify.playlist_track_ids("NoSuchPlaylist0000000") is None
+
+    spotify.set_durations(240_000)
+    entries = spotify.mowl_entries(ids, no_bpm={ids[2]})
+    assert [e["SpotifyTrackID"] for e in entries] == ids
+    assert [e["Duration"] for e in entries] == [240_000] * 3
+    assert [e["BPM"] for e in entries] == [100 + 3 * 5, 100 + 3 * 1, 0]  # none for a no_bpm id
+    assert {e["Title"] for e in entries} == {spotify.catalogue[i]["name"] for i in ids}
+    assert all(
+        set(e) == {"TrackID", "Title", "Artist", "Duration", "BPM", "SpotifyTrackID"}
+        for e in entries
+    )
