@@ -48,10 +48,13 @@ jobs:
           [ "${#title}" -eq 100 ] || { echo "::error::the self-test title is ${#title} characters"; exit 1; }
           SUBJECT="$title" scripts/commitlint-subject.sh > /dev/null \
             || { echo "::error::a 100-character title must pass on its own"; exit 1; }
-          if SUBJECT="$title (#123)" scripts/commitlint-subject.sh > /dev/null; then
+          # It must fail for that rule, not for any other reason (a script that does not run).
+          if out="$(SUBJECT="$title (#123)" scripts/commitlint-subject.sh 2>&1)"; then
             echo "::error::a 100-character title with ' (#123)' must fail header-max-length"
             exit 1
           fi
+          grep -q 'header-max-length' <<< "$out" \
+            || { echo "::error::the suffixed title failed, but not on header-max-length"; exit 1; }
           SUBJECT="ci: a short title (#123)" scripts/commitlint-subject.sh > /dev/null \
             || { echo "::error::a short title with its PR number must pass"; exit 1; }
           echo "self-test passed: the PR number suffix is linted"
