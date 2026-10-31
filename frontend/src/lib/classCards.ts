@@ -22,11 +22,6 @@ export function profileTss(profile: [number, number][]): number {
   return Math.round((sum / 36) * 10) / 10
 }
 
-/** ADR 0012 section 7: zone 7 has no exact TSS weight, so a TSS with a zone 7 interval is a guess. */
-export function hasZone7(profile: [number, number][]): boolean {
-  return profile.some(([zone]) => zone === 7)
-}
-
 export const TSS_APPROXIMATE_NOTE = 'approximate: zone 7 has no exact TSS weight'
 
 export function lengthLabel(seconds: number): string {
