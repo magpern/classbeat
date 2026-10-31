@@ -1,0 +1,14 @@
+{
+ "status": 404,
+ "headers": {
+  "x-request-id": "req_fixture_404"
+ },
+ "body": {
+  "error": {
+   "message": "hand-written fixture error",
+   "type": "invalid_request_error",
+   "param": null,
+   "code": "model_not_found"
+  }
+ }
+}

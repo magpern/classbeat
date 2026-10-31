@@ -1,7 +1,8 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { getPendingSignup, submitPendingEmail, type PendingSignup } from '../api/auth'
 import { providerName } from '../api/messages'
-import { Card, Field, Notice, useAction } from '../components/forms'
+import { Field, Notice, useAction } from '../components/forms'
+import { AuthCard as Card } from '../components/auth/AuthCard'
 import { Link } from '../router/Router'
 
 /**

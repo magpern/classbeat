@@ -29,6 +29,10 @@ SYSTEM_TABLES: MappingProxyType[str, str] = MappingProxyType(
         "redeem_codes": "multi-use plan codes (hash only), looked up by hash before redeeming",
         "app_settings": "the database flags and settings (ADR 0011 section 7), not per user",
         "admin_audit": "append-only admin audit log; keeps nulled ids after an account goes",
+        # ADR 0012 section 5 (M3c): no user data, global like connection_keks.
+        "model_eval_results": "recorded eval suite runs per model and stage group; append-only "
+        "for the app, one writer in classbeat.models.store",
+        "model_routes": "which model each route_key uses per stage group, only at a recorded pass",
     }
 )
 # System tables the app role must have no privilege on at all (the rest get DML, or the narrower
