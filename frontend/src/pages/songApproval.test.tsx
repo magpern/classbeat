@@ -1,4 +1,4 @@
-import { fireEvent, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, screen, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it } from 'vitest'
 import { classRoutes } from '../test/classFixtures'
 import { fakeApi, json, reason } from '../test/fakeApi'
@@ -68,8 +68,11 @@ describe('the Songs for approval page', () => {
     })
     renderAt(`/jobs/${JOB_ID}`)
     const button = await screen.findByRole('button', { name: 'Approve songs' })
-    fireEvent.click(button)
-    fireEvent.click(button)
+    // Both clicks land before React re-renders, so only the in-flight guard can stop the second.
+    act(() => {
+      button.click()
+      button.click()
+    })
     await waitFor(() => {
       expect(api.to('POST', `${JOB}/approve`)).toHaveLength(1)
     })
@@ -87,6 +90,7 @@ describe('the Songs for approval page', () => {
     ['superseded', 409, /A newer list of songs has replaced these/, true],
     ['hash_mismatch', 409, /These songs changed after this page was loaded/, true],
     ['account_changed', 409, /not the one these songs were chosen for/, true],
+    ['invalid_input', 422, /approval was not accepted/, true],
     ['not_waiting', 409, /can no longer be approved/, true],
     ['not_connected', 409, /Spotify or MOWL is not connected/, false],
     ['busy', 429, /already have designs running/, false],

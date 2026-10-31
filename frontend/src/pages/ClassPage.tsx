@@ -130,17 +130,13 @@ function ClassBody({
         <Link to="/classes">My classes</Link>
       </p>
       <h1>{summary.title}</h1>
-      {summary.openJob !== null && summary.openJob.kind === 'design_draft' ? (
-        <Notice>
-          This class is being designed.{' '}
-          <Link to={`/jobs/${summary.openJob.id}`}>See how it is going</Link>
-        </Notice>
-      ) : null}
-      {summary.openJob !== null && summary.openJob.kind !== 'design_draft' && summary.openJob.kind !== 'revise_draft' ? (
+      {summary.openJob !== null && summary.openJob.kind !== 'revise_draft' ? (
         <Notice>
           {summary.openJob.state === 'waiting_for_approval'
             ? 'Songs are waiting for your approval. '
-            : 'The songs of this class are being worked on. '}
+            : summary.openJob.kind === 'design_draft'
+              ? 'This class is being designed. '
+              : 'The songs of this class are being worked on. '}
           <Link to={`/jobs/${summary.openJob.id}`}>
             {summary.openJob.state === 'waiting_for_approval' ? 'Review the songs' : 'See how it is going'}
           </Link>

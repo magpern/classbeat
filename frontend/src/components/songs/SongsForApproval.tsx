@@ -61,8 +61,8 @@ function useSongList(job: Job) {
 }
 
 /**
- * Starts a new pick for the class of \`job\` after stopping the waiting one (ADR 0008 section 5):
- * the two calls are sequential, and a \`class_busy\` answer to the second waits for the first.
+ * Starts a new pick for the class of `job` after stopping the waiting one (ADR 0008 section 5):
+ * the two calls are sequential, and a `class_busy` answer to the second waits for the first.
  */
 function useNewPick(job: Job, list: SongList) {
   const { navigate } = useRouter()

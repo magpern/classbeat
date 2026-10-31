@@ -1,8 +1,8 @@
-import { useCallback, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { ApiError } from '../../api/client'
 import { getClass } from '../../api/classes'
 import { failureText } from '../../api/jobMessages'
-import { type Job } from '../../api/jobs'
+import { listUncertainOperations, type Job, type Operation } from '../../api/jobs'
 import { startError } from '../../api/songMessages'
 import {
   createPickJob,
@@ -18,7 +18,11 @@ import { Link, useRouter } from '../../router/Router'
 import { Notice, useAction } from '../forms'
 import { Button } from '../ui/button'
 import { Card, CardTitle } from '../ui/card'
-import { UncertainPlaylist } from './UncertainPlaylist'
+import { UncertainAttach } from '../classes/UncertainAttach'
+import { PLAYLIST_OPERATIONS, UncertainPlaylist } from './UncertainPlaylist'
+
+const isPlaylistWrite = (operation: Operation) => PLAYLIST_OPERATIONS.includes(operation.kind)
+const isOtherWrite = (operation: Operation) => !isPlaylistWrite(operation)
 
 function describe(error: unknown): string {
   if (isNotConnected(error)) return startError(new ApiError(409, 'not_connected', null, undefined))
@@ -113,10 +117,36 @@ function usePickAgain(job: Job) {
 /** What a song job that ended without a class shows: failed, stopped or expired. */
 export function SongEnded({ job }: { job: Job }) {
   const uncertain = job.state === 'failed' && job.errorCategory === 'uncertain_write'
-  const [resolved, setResolved] = useState(false)
-  const onResolved = useCallback(() => {
-    setResolved(true)
+  const [operations, setOperations] = useState<Operation[] | null>(null)
+  const [loadFailed, setLoadFailed] = useState(false)
+  const [playlistDone, setPlaylistDone] = useState(false)
+  const [otherDone, setOtherDone] = useState(false)
+  const onPlaylistResolved = useCallback(() => {
+    setPlaylistDone(true)
   }, [])
+  const onOtherResolved = useCallback(() => {
+    setOtherDone(true)
+  }, [])
+  useEffect(() => {
+    if (!uncertain) return
+    let current = true
+    listUncertainOperations(job.id).then(
+      (all) => {
+        if (current) setOperations(all)
+      },
+      () => {
+        if (current) setLoadFailed(true)
+      },
+    )
+    return () => {
+      current = false
+    }
+  }, [uncertain, job.id])
+  const playlistOps = operations?.filter(isPlaylistWrite) ?? []
+  const otherOps = operations?.filter(isOtherWrite) ?? []
+  // Every undecided operation of the job is decided (or none is left) before a resume is offered.
+  const decided =
+    operations !== null && (playlistOps.length === 0 || playlistDone) && (otherOps.length === 0 || otherDone)
   const resume = useResume(job)
   const pick = usePickAgain(job)
   const approved = job.approvedAt !== null
@@ -144,12 +174,27 @@ export function SongEnded({ job }: { job: Job }) {
 
   // A resume is possible only for a list that was approved (the receipt); and not while a write
   // is still undecided.
-  const canResume = approved && !(uncertain && !resolved)
+  const canResume = approved && (!uncertain || decided)
   const error = resume.action.error ?? pick.action.error
   return (
     <Card>
       {uncertain ? (
-        <UncertainPlaylist jobId={job.id} onResolved={onResolved} />
+        <div className="flex flex-col gap-4">
+          {loadFailed ? (
+            <Notice kind="error">What is left to decide could not be loaded. Reload the page.</Notice>
+          ) : operations === null ? (
+            <p className="m-0">Checking what happened</p>
+          ) : null}
+          {playlistOps.length > 0 ? (
+            <UncertainPlaylist operations={playlistOps} onResolved={onPlaylistResolved} />
+          ) : null}
+          {otherOps.length > 0 ? (
+            <UncertainAttach jobId={job.id} accept={isOtherWrite} onResolved={onOtherResolved} />
+          ) : null}
+          {operations !== null && operations.length === 0 ? (
+            <Notice>Nothing is left to decide. You can create the playlist again.</Notice>
+          ) : null}
+        </div>
       ) : (
         <>
           <CardTitle>{title}</CardTitle>

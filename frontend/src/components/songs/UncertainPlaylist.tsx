@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { ApiError } from '../../api/client'
-import { checkAgain, doItAnyway, listUncertainOperations, type Operation } from '../../api/jobs'
+import { checkAgain, doItAnyway, type Operation } from '../../api/jobs'
 import {
   PLAYLIST_OUTCOME,
   PLAYLIST_OVERWRITE_WARNING,
@@ -119,35 +119,18 @@ function Panel({
 }
 
 /**
- * The undecided write of the final playlist (ADR 0008 section 2): Check again and Do it anyway
- * as for every external write (ADR 0005 section 7). \`onResolved\` fires once no operation of the
- * job is left undecided; the page then offers "Create the playlist again".
+ * The undecided writes of the final playlist (ADR 0008 section 2): Check again and Do it anyway
+ * as for every external write (ADR 0005 section 7). `onResolved` fires once every operation
+ * shown has been decided.
  */
-export function UncertainPlaylist({ jobId, onResolved }: { jobId: string; onResolved: () => void }) {
-  const [operations, setOperations] = useState<Operation[] | null>(null)
-  const [failed, setFailed] = useState(false)
+export function UncertainPlaylist({
+  operations,
+  onResolved,
+}: {
+  operations: Operation[]
+  onResolved: () => void
+}) {
   const [decided, setDecided] = useState<Set<string>>(new Set())
-
-  useEffect(() => {
-    let current = true
-    listUncertainOperations(jobId).then(
-      (all) => {
-        if (!current) return
-        const mine = all.filter((o) => PLAYLIST_OPERATIONS.includes(o.kind))
-        setOperations(mine)
-        if (mine.length === 0) onResolved()
-      },
-      () => {
-        if (current) setFailed(true)
-      },
-    )
-    return () => {
-      current = false
-    }
-  }, [jobId, onResolved])
-
-  if (failed) return <Notice kind="error">What is left to decide could not be loaded. Reload the page.</Notice>
-  if (operations === null) return <p className="m-0">Checking what happened</p>
   return (
     <div className="flex flex-col gap-4">
       {operations.map((operation) => (

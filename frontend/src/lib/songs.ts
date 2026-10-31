@@ -4,7 +4,7 @@ import type { Brief } from '../api/jobs'
 import { isClassBusy } from '../api/songMessages'
 
 // Helpers of the song pages: times as the page shows them, the brief a follow-up job needs, the
-// user's current connection ids, and the wait after \`class_busy\`.
+// user's current connection ids, and the wait after `class_busy`.
 
 export function minutes(totalSec: number): string {
   const whole = Math.max(0, Math.round(totalSec))
@@ -77,7 +77,7 @@ export function isNotConnected(error: unknown): boolean {
 export const timing = { classBusyPauseMs: 1000, classBusyTries: 4 }
 
 /**
- * Runs \`start\` (a job creation). A \`class_busy\` answer means the cancel before it is still
+ * Runs `start` (a job creation). A `class_busy` answer means the cancel before it is still
  * settling (ADR 0008 section 5): wait a moment and try again with the same request and key.
  */
 export async function startAfterCancel<T>(start: () => Promise<T>): Promise<T> {

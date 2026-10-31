@@ -69,7 +69,7 @@ describe('the Designing page of a song pick', () => {
 
 describe('a song job that failed', () => {
   it('has a plain sentence for every category and never shows the code', async () => {
-    expect(SONG_FAILURE_CATEGORIES.length).toBeGreaterThanOrEqual(20)
+    expect(SONG_FAILURE_CATEGORIES.length).toBeGreaterThanOrEqual(19)
     for (const category of SONG_FAILURE_CATEGORIES) {
       fakeApi({ ...SESSION_ROUTES, [`GET ${JOB}`]: songJob('failed', { error_category: category }) })
       const view = renderAt(`/jobs/${JOB_ID}`)
@@ -411,5 +411,71 @@ describe('the class page', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent(/was not picked by Claude/)
     const input = (api.to('POST', '/api/jobs')[0]?.body as { input: Record<string, unknown> }).input
     expect(input.replace).toBe('all')
+  })
+})
+
+describe('a song job with an undecided MOWL attach', () => {
+  const ATTACH_ID = '77777777-7777-4777-8777-777777777777'
+  const attach = {
+    id: ATTACH_ID,
+    kind: 'mowl_attach_spotify_playlist',
+    state: 'uncertain',
+    resolved_by: null,
+    class_id: CLASS_ID,
+    actionable_at: null,
+  }
+  const playlist = { ...attach, id: OPERATION_ID, kind: 'spotify_create_playlist' }
+  const failedJob = songJob('failed', { error_category: 'uncertain_write', approved_at: '2026-10-30T10:00:00Z' })
+
+  it('shows the attach panel with its sentence and holds the resume back until it is decided', async () => {
+    let decided = false
+    const api = fakeApi({
+      ...SESSION_ROUTES,
+      [`GET ${JOB}`]: failedJob,
+      [OPS]: () => ({ operations: decided ? [] : [attach] }),
+      [`POST /api/external-operations/${ATTACH_ID}/check-again`]: () => {
+        decided = true
+        return { ...attach, state: 'succeeded' }
+      },
+      'GET /api/connections': connectionsBody(),
+      [`GET ${LIST_PATH}`]: listBody({ status: 'approved' }),
+      'POST /api/jobs': () => json(NEW_JOB, 201),
+    })
+    renderAt(`/jobs/${JOB_ID}`)
+    expect(await screen.findByRole('button', { name: 'Check again' })).toBeInTheDocument()
+    expect(screen.getByText(/MOWL did not answer clearly/)).toBeInTheDocument()
+    expect(screen.queryByText(/written in Spotify/)).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Create the playlist again' })).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'Check again' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Create the playlist again' }))
+    await waitFor(() => {
+      expect(window.location.pathname).toBe(`/jobs/${NEW_JOB.id}`)
+    })
+    expect(api.to('POST', '/api/jobs')).toHaveLength(1)
+  })
+
+  it('holds the resume back until both a playlist write and an attach are decided', async () => {
+    let attachDecided = false
+    fakeApi({
+      ...SESSION_ROUTES,
+      [`GET ${JOB}`]: failedJob,
+      [OPS]: () => ({ operations: attachDecided ? [playlist] : [playlist, attach] }),
+      [`POST /api/external-operations/${OPERATION_ID}/check-again`]: { ...playlist, state: 'failed', resolved_by: 'reconciler' },
+      [`POST /api/external-operations/${ATTACH_ID}/check-again`]: () => {
+        attachDecided = true
+        return { ...attach, state: 'succeeded' }
+      },
+    })
+    renderAt(`/jobs/${JOB_ID}`)
+    expect(await screen.findByText(/written in Spotify/)).toBeInTheDocument()
+    expect(await screen.findByText(/MOWL did not answer clearly/)).toBeInTheDocument()
+    const resume = () => screen.queryByRole('button', { name: 'Create the playlist again' })
+    const checks = screen.getAllByRole('button', { name: 'Check again' })
+    expect(checks).toHaveLength(2)
+    fireEvent.click(checks[0]!) // the playlist write
+    await screen.findByText(/Nothing was written to Spotify/)
+    expect(resume()).toBeNull()
+    fireEvent.click(screen.getAllByRole('button', { name: 'Check again' })[1]!) // the attach
+    expect(await screen.findByRole('button', { name: 'Create the playlist again' })).toBeInTheDocument()
   })
 })

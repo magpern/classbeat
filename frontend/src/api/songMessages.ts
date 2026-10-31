@@ -70,6 +70,10 @@ const APPROVE_REFUSALS: Record<string, Refusal> = {
   },
   quota: { text: 'You have used up what your plan allows for now.', final: false },
   not_found: { text: 'These songs were not found, or they are not yours.', final: true },
+  invalid_input: {
+    text: 'The approval was not accepted. Reload the page to see the current songs.',
+    final: true,
+  },
 }
 
 const APPROVE_FALLBACK: Refusal = { text: 'That did not work. Try again.', final: false }
@@ -209,10 +213,6 @@ const SONG_FAILURES: Record<string, SongFailure> = {
   pool_too_small: {
     title: 'Not enough usable songs were found',
     detail: 'Not enough usable songs were found; try a wider style or era.',
-  },
-  pool_busy: {
-    title: 'Another song pick is still running',
-    detail: 'Another song pick is still running. Try again when it has finished.',
   },
 }
 
