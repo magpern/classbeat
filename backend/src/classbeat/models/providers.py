@@ -13,7 +13,8 @@ the web process never loads, so ``classbeat.models`` does not import this module
   (``OpenAIProvider``, M3c P2) and DeepSeek (``deepseek_provider``, M3c P3) are built. DeepSeek
   is refused while ``CLASSBEAT_DEEPSEEK_ENABLED`` is off, unless the caller is the eval command
   and passes ``eval_allow_disabled_deepseek=True`` (keyword-only; the owner's live eval of a
-  disabled model, ADR 0012 §2). Jobs never pass it (``tests/test_models_jobs_guard.py``).
+  disabled model, ADR 0012 §2), which ``eval_provider_for_choice`` (the eval command's factory)
+  does. Jobs never pass it (``tests/test_models_jobs_guard.py``).
 - ``RouteModels(settings)`` is the model jobs' ``ModelSource`` (``classbeat.models.jobs``): with
   ``fake`` it answers the fake provider and the agent config unchanged (no route, no database
   read); otherwise ``resolve_route`` for the job's route key and group, inside the job's fence,
@@ -66,6 +67,13 @@ def provider_for_choice(
     if entry.provider == "deepseek":
         return deepseek_provider(settings, allow_disabled=eval_allow_disabled_deepseek)
     raise ProviderUnavailable(f"provider {entry.provider} has no adapter yet")
+
+
+def eval_provider_for_choice(settings: Settings, choice: ModelChoice) -> ModelProvider:
+    """The live eval command's factory (``classbeat.evals.__main__``): ``provider_for_choice``
+    with the eval-only DeepSeek path, so the owner's live eval of a disabled DeepSeek model needs
+    no ``CLASSBEAT_DEEPSEEK_ENABLED`` (Architect, 2026-10-31; ADR 0012 §2). Jobs never use it."""
+    return provider_for_choice(settings, choice, eval_allow_disabled_deepseek=True)
 
 
 @dataclass(frozen=True)

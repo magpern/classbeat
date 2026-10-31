@@ -5,14 +5,16 @@
   model from the owner's command line) and ``classbeat.models.providers`` (``RouteModels``:
   ``resolve_route``, then ``provider_for_choice``; ``fake`` bypasses routes there) may import
   ``classbeat.agent.providers``.
-- Only ``classbeat.design.kind`` (``runtime_from_settings``, the worker's runtime) may import
-  ``classbeat.models.providers``, and nothing else in ``classbeat`` may: so a job's provider
-  comes from ``Runtime.models``, never from the settings directly.
+- Only ``classbeat.design.kind`` (``runtime_from_settings``, the worker's runtime) and the eval
+  command (``classbeat.evals``, M3c EV5) may import ``classbeat.models.providers``: so a job's
+  provider comes from ``Runtime.models``, never from the settings directly.
 - The kinds' ``Runtime`` has no provider factory field, only ``models``.
-- DeepSeek's eval-only path (Architect, 2026-10-31): only ``classbeat.evals`` may pass
-  ``eval_allow_disabled_deepseek`` to ``provider_for_choice``, and only it and
-  ``classbeat.models.providers`` may pass ``allow_disabled`` to ``deepseek_provider``; so a job
-  never builds DeepSeek while ``CLASSBEAT_DEEPSEEK_ENABLED`` is off.
+- DeepSeek's eval-only path (Architect, 2026-10-31): only ``classbeat.evals`` may name
+  ``eval_provider_for_choice`` (the eval command's factory), and only it and
+  ``classbeat.models.providers`` may pass ``eval_allow_disabled_deepseek`` or ``allow_disabled``;
+  in ``classbeat.models.providers`` only ``eval_provider_for_choice`` and ``provider_for_choice``
+  do, never ``RouteModels``. So a job never builds DeepSeek while ``CLASSBEAT_DEEPSEEK_ENABLED``
+  is off.
 """
 
 import ast
@@ -27,11 +29,12 @@ SRC = Path(__file__).resolve().parent.parent / "src"
 ADAPTERS = "classbeat.agent.providers"
 ROUTED = "classbeat.models.providers"
 ADAPTER_IMPORTERS = ("classbeat.agent.providers", "classbeat.evals", ROUTED)
-ROUTED_IMPORTERS = ("classbeat.design.kind",)
+ROUTED_IMPORTERS = ("classbeat.design.kind", "classbeat.evals")
 EVAL_ONLY_KEYWORDS = {
-    "eval_allow_disabled_deepseek": ("classbeat.evals",),
+    "eval_allow_disabled_deepseek": ("classbeat.evals", ROUTED),
     "allow_disabled": ("classbeat.evals", ROUTED),
 }
+EVAL_FACTORY = "eval_provider_for_choice"
 
 
 def _module(path: Path) -> str:
@@ -75,6 +78,13 @@ def scan(source: str, module: str) -> list[tuple[int, str]]:
         if _within(name, (ROUTED,)) and not _within(module, (*ROUTED_IMPORTERS, ROUTED)):
             problems.append((line, f"imports {name}: only the worker's runtime builds it"))
     for node in ast.walk(ast.parse(source)):
+        named = (
+            (isinstance(node, ast.Name) and node.id == EVAL_FACTORY)
+            or (isinstance(node, ast.Attribute) and node.attr == EVAL_FACTORY)
+            or (isinstance(node, ast.alias) and node.name == EVAL_FACTORY)
+        )
+        if named and not _within(module, ("classbeat.evals", ROUTED)):
+            problems.append((getattr(node, "lineno", 0), f"names {EVAL_FACTORY}: eval only"))
         if isinstance(node, ast.Call):
             for kw in node.keywords:
                 allowed = EVAL_ONLY_KEYWORDS.get(kw.arg or "")
@@ -107,11 +117,12 @@ def test_job_providers_come_only_from_the_routes_source() -> None:
 
 def test_the_allowlists_are_exactly_the_reviewed_ones() -> None:
     assert ADAPTER_IMPORTERS == ("classbeat.agent.providers", "classbeat.evals", ROUTED)
-    assert ROUTED_IMPORTERS == ("classbeat.design.kind",)
+    assert ROUTED_IMPORTERS == ("classbeat.design.kind", "classbeat.evals")
     assert EVAL_ONLY_KEYWORDS == {
-        "eval_allow_disabled_deepseek": ("classbeat.evals",),
+        "eval_allow_disabled_deepseek": ("classbeat.evals", ROUTED),
         "allow_disabled": ("classbeat.evals", ROUTED),
     }
+    assert EVAL_FACTORY == "eval_provider_for_choice"
 
 
 def test_the_runtime_takes_a_model_source_and_no_provider_factory() -> None:
@@ -146,6 +157,9 @@ def test_a_planted_provider_import_in_a_kind_fails_the_guard(planted: str, modul
         "deepseek_provider(s, allow_disabled=True)",
         "providers.deepseek_provider(s, allow_disabled=flag)",
         "provider_for_choice(s, c, **extra)",
+        "from classbeat.models.providers import eval_provider_for_choice",
+        "providers.eval_provider_for_choice(s, c)",
+        "build = eval_provider_for_choice",
     ],
 )
 @pytest.mark.parametrize("module", ["classbeat.models.jobs", "classbeat.songs.kind"])
@@ -165,6 +179,21 @@ def test_the_routes_source_never_takes_the_eval_path() -> None:
     passed = {kw.arg for n in ast.walk(routes) if isinstance(n, ast.Call) for kw in n.keywords}
     assert "eval_allow_disabled_deepseek" not in passed
     assert "allow_disabled" not in passed
+    named = {n.id for n in ast.walk(routes) if isinstance(n, ast.Name)}
+    assert EVAL_FACTORY not in named
+    # The only functions here that take the eval path: the eval factory and the one it calls.
+    takers = {
+        f.name
+        for f in tree.body
+        if isinstance(f, ast.FunctionDef)
+        and any(
+            kw.arg in EVAL_ONLY_KEYWORDS
+            for n in ast.walk(f)
+            if isinstance(n, ast.Call)
+            for kw in n.keywords
+        )
+    }
+    assert takers == {"provider_for_choice", EVAL_FACTORY}
 
 
 def test_the_allowed_modules_pass_and_others_do_not() -> None:

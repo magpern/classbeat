@@ -105,7 +105,7 @@ const START_ERRORS: Record<string, string> = {
     'These songs cannot be turned into a playlist again: they were already used, or never approved. Pick songs again.',
   account_changed: 'Your Spotify account is not the one these songs were chosen for. Pick songs again.',
   write_unresolved:
-    'An earlier step on Spotify is still undecided. Check it first, then create the playlist again.',
+    'An earlier step on Spotify is still undecided. Decide it first (Check again or Do it anyway), then try again.',
   idempotency_mismatch: 'That did not work. Check the form and try again.',
 }
 

@@ -39,7 +39,7 @@ from classbeat.models import (
     set_route,
 )
 from classbeat.models import routes as routes_module
-from classbeat.models.providers import provider_for_choice
+from classbeat.models.providers import eval_provider_for_choice, provider_for_choice
 from classbeat.models.store import ResultInvalid, record_result
 from classbeat.models.versions import (
     GROUP_STAGES,
@@ -680,9 +680,22 @@ def test_provider_for_choice_builds_deepseek_only_while_on_or_for_an_eval(
     on = settings(app_database_url, deepseek_enabled=True)
     assert isinstance(provider_for_choice(on, choice), DeepSeekProvider)
     (kek_dir / "deepseek_api_key").unlink()
+    assert isinstance(eval_provider_for_choice(off, choice), DeepSeekProvider)  # the CLI's factory
     keyless = settings(app_database_url)  # the key file is read when the settings are made
     with pytest.raises(ProviderUnavailable, match="key file"):
         provider_for_choice(keyless, choice, eval_allow_disabled_deepseek=True)
+
+
+def test_provider_for_choice_builds_the_openai_adapter_for_an_openai_entry(
+    app_database_url: str, kek_dir: Path
+) -> None:
+    with pytest.raises(ProviderUnavailable, match="key file"):
+        provider_for_choice(
+            worker(app_database_url, kek_dir), ModelChoice("openai", "gpt-6.1-sol", "high")
+        )
+    s = worker(app_database_url, kek_dir, "openai")
+    provider = provider_for_choice(s, ModelChoice("openai", "gpt-6.1-sol", "high"))
+    assert type(provider) is OpenAIProvider
 
 
 @pytest.mark.parametrize(
