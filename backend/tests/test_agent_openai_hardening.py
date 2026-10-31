@@ -38,6 +38,7 @@ from classbeat.agent.providers.openai_common import (
     responses_usage,
     tool_input,
 )
+from classbeat.egress import MODEL_HOSTS, ModelProviderName
 from classbeat.jobs.errors import JobFailure
 from deepseekfake import DEEPSEEK_EFFORT, DEEPSEEK_MODEL, scripted_deepseek
 from deepseekfake import PATH as DEEPSEEK_PATH
@@ -167,7 +168,40 @@ def _output_not_a_list(body: dict[str, Any]) -> None:
     body["output"] = 7
 
 
-@pytest.mark.parametrize("change", [_no_usage, _cached_above_prompt, _output_not_a_list])
+def _usage(usage: Any) -> Callable[[dict[str, Any]], None]:
+    def change(body: dict[str, Any]) -> None:
+        body["usage"] = usage
+
+    change.__name__ = f"usage={usage!r}"
+    return change
+
+
+# The #306 review's cases: usage present but unreadable is never read as zeros.
+UNREADABLE_OPENAI_USAGE = [
+    {},
+    {"input_tokens": None, "output_tokens": None},
+    {"input_tokens": "9", "output_tokens": -1},
+    {"input_tokens": 9000, "output_tokens": 1.5},
+    {"input_tokens": 9000, "output_tokens": 700, "input_tokens_details": {"cached_tokens": -1}},
+]
+UNREADABLE_DEEPSEEK_USAGE = [
+    {},
+    {"prompt_tokens": None, "completion_tokens": None},
+    {"prompt_tokens": "9", "completion_tokens": -1},
+    {"prompt_tokens": 9000, "completion_tokens": True},
+]
+
+
+@pytest.mark.parametrize(
+    "change",
+    [
+        _no_usage,
+        _cached_above_prompt,
+        _output_not_a_list,
+        *(_usage(u) for u in UNREADABLE_OPENAI_USAGE),
+    ],
+    ids=lambda c: c.__name__,
+)
 async def test_an_answer_that_cannot_be_read_is_a_billed_internal_failure(
     change: Callable[[dict[str, Any]], None],
 ) -> None:
@@ -178,6 +212,58 @@ async def test_an_answer_that_cannot_be_read_is_a_billed_internal_failure(
     assert (raised.value.category, raised.value.billed) == ("internal", True)
     assert raised.value.args == ("internal",)
     assert (raised.value.__cause__, raised.value.__context__) == (None, None)
+
+
+def _not_json(
+    provider: ModelProviderName, path: str
+) -> tuple[httpx.MockTransport, list[httpx.Request]]:
+    """A 200 that says JSON but whose body is not: the SDK cannot decode it."""
+    sent: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        sent.append(request)
+        assert (request.url.host, request.url.path) == (MODEL_HOSTS[provider], path)
+        return httpx.Response(
+            200, content=b"{not json", headers={"content-type": "application/json"}
+        )
+
+    return httpx.MockTransport(handler), sent
+
+
+@pytest.mark.parametrize("provider", ["openai", "deepseek"])
+async def test_a_200_whose_body_cannot_be_decoded_is_billed(provider: str) -> None:
+    """The #306 review: a failure after a 2xx is a billed answer, decoding included."""
+    if provider == "openai":
+        transport, sent = _not_json("openai", PATH)
+        conversation: Any = OpenAIProvider(KEY, transport=transport).start(SPEC)
+    else:
+        transport, sent = _not_json("deepseek", DEEPSEEK_PATH)
+        conversation = DeepSeekProvider(KEY, transport=transport).start(DEEPSEEK_SPEC)
+    with pytest.raises(ProviderError) as raised:
+        await conversation.turn([])
+    assert (raised.value.category, raised.value.billed) == ("internal", True)
+    assert (raised.value.__cause__, raised.value.__context__) == (None, None)
+    assert len(sent) == 1  # a decode failure is not retried
+
+
+async def test_a_200_whose_body_cannot_be_decoded_costs_the_ceiling_in_a_stage_run(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    ctx = DesignContext.build(brief(), analysed(monkeypatch))
+    transport, _ = _not_json("openai", PATH)
+    host = MemoryHost()
+    with pytest.raises(JobFailure):
+        await run_stage(
+            host,
+            OpenAIProvider(KEY, transport=transport),
+            design_stage(ctx),
+            ctx.first_message(),
+            OPENAI,
+        )
+    [record] = host.runs.values()
+    price = DEFAULT_PRICES.lookup("openai", OPENAI_MODEL)
+    assert price is not None
+    assert record["counters"].cost_micros > price.output_micros(OPENAI.max_tokens)
 
 
 async def test_an_error_status_is_not_billed() -> None:
@@ -327,10 +413,13 @@ def test_one_deepseek_attempt_may_take_the_whole_turn() -> None:
     assert model._client.timeout == 240.0  # pyright: ignore[reportPrivateUsage]
 
 
-async def test_a_deepseek_answer_without_usage_is_a_billed_internal_failure() -> None:
+@pytest.mark.parametrize("usage", [None, *UNREADABLE_DEEPSEEK_USAGE], ids=repr)
+async def test_a_deepseek_answer_with_unreadable_usage_is_a_billed_internal_failure(
+    usage: Any,
+) -> None:
     answer = Answer.from_file("deepseek", "tool_calls", path=DEEPSEEK_PATH)
     body = json.loads(json.dumps(answer.body))
-    body["usage"] = None
+    body["usage"] = usage
     replay = Replay("deepseek", [dataclasses.replace(answer, body=body)])
     model = DeepSeekProvider(KEY, transport=replay.transport())
     with pytest.raises(ProviderError) as raised:

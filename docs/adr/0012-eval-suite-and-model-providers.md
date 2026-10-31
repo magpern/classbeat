@@ -110,12 +110,22 @@ every adapter's captured request body).
   bound, and a turn that runs out of time fails `model_unavailable` once. Reversible: one argument
   (`attempt_seconds`) in `openai_common.build_client`, tested on the scripted transport. *Was:*
   `timeout=120` per attempt.
-- **A billed answer that cannot be read** (amended 2026-10-31, #299): once the API has answered,
-  a failure to read the answer, an answer without usage among them, is `ProviderError("internal",
-  billed=True)`. The loop records it as a turn at its ceiling (the prompt estimate at the dearest
-  input rate plus `max_tokens` of output), never at 0 (ADR 0006 §5: cost errs high). So is
-  DeepSeek's `insufficient_system_resource`, which fails `model_unavailable`. A request with no
-  answer (a timeout, a lost connection, an error status) costs nothing, as before.
+- **A billed answer that cannot be read** (amended 2026-10-31, #299): the adapters take the raw
+  answer from the SDK (`with_raw_response`), so error statuses and retries are as before, and
+  every step after a 2xx, decoding the body included, is checked. A failure there is
+  `ProviderError("internal", billed=True)`: a body that is not JSON, a broken shape, or usage
+  that is missing or malformed (a missing or non-whole prompt or output count; a cache count
+  that is there but not a whole number). Only a cache count left out reads as 0. The loop records
+  such a turn at its ceiling (the prompt estimate at the dearest input rate plus `max_tokens` of
+  output), never at 0 (ADR 0006 §5: cost errs high). So is DeepSeek's
+  `insufficient_system_resource`, which fails `model_unavailable`. A request with no answer (a
+  timeout, an error status) costs nothing, as before.
+  *Known gap:* a connection dropped while a 200 body is being read is an `APIConnectionError`
+  like a refused connection (httpx reads the body before the SDK sees the status), so the SDK
+  retries it and that attempt, which the provider may have billed, is recorded at 0; a retry that
+  then succeeds is recorded with its own usage only. Telling the two apart needs a response hook
+  in the egress client, and charging for it would add a surcharge to a turn that did succeed.
+  That is not worth it for a rare event that the turn bound already limits.
 - **Tool arguments** (amended 2026-10-31, #299): arguments that are not JSON, or nest deeper than
   32 levels (`MAX_ARGUMENT_DEPTH`), go to the loop as their text, which it answers `invalid_input`
   (a tool error the model can correct), never a crash or `internal`.

@@ -20,9 +20,12 @@ Both adapters (M3c P2, P3) build on this module; it sends nothing itself.
 - **A bounded request** (``bounded_request``): one turn, retries included, ends within
   ``turn_seconds``; any failure becomes ``ProviderError(category)`` raised with neither a cause
   nor a context, after one log line with the exception class, the status and the request id.
-- **A billed answer that cannot be read** (``read_answer``): once the API has answered, a failure
-  to read the answer (its usage included, or no usage at all) is ``ProviderError("internal",
-  billed=True)``, which the loop charges at the turn's ceiling, never at 0 (ADR 0006 §5).
+- **A billed answer that cannot be read** (``read_answer``): the adapters ask the SDK for the raw
+  answer (``with_raw_response``), so error statuses and the SDK's retries stay as they were, and
+  every step after a 2xx, decoding the body included, runs inside ``read_answer``. A failure there
+  (a body that is not JSON, a broken shape, usage that is missing or malformed) is
+  ``ProviderError("internal", billed=True)``, which the loop charges at the turn's ceiling, never
+  at 0 (ADR 0006 §5).
 - **Errors** (``category_of``) by SDK exception class and status code, never by message text:
   rate limits, server errors, timeouts and connection errors are ``model_unavailable``;
   ``AuthenticationError``, ``PermissionDeniedError``, ``NotFoundError`` and 402 (DeepSeek's
@@ -258,8 +261,20 @@ def read_answer[T](read: Callable[[], T]) -> T:
 # --- usage ---------------------------------------------------------------------------------
 
 
-def _count(value: object) -> int:
-    return value if isinstance(value, int) and not isinstance(value, bool) and value > 0 else 0
+def _whole(value: object) -> bool:
+    return isinstance(value, int) and not isinstance(value, bool) and value >= 0
+
+
+def _count(value: object, *, optional: bool) -> int:
+    """A token count: a whole number of at least 0. An ``optional`` one (cache reads and writes,
+    which an answer leaves out when there are none) may be missing and is then 0. Anything else,
+    a missing prompt or output count included, is unreadable: ``internal`` (#299, the #306
+    review: never counted as 0, so a billed answer is never recorded at 0)."""
+    if optional and value is None:
+        return 0
+    if not _whole(value):
+        raise ProviderError("internal")
+    return value  # pyright: ignore[reportReturnType]
 
 
 def normalise_usage(
@@ -267,18 +282,21 @@ def normalise_usage(
     prompt_tokens: object,
     cached_tokens: object,
     output_tokens: object,
-    written_tokens: object = 0,
+    written_tokens: object = None,
 ) -> Usage:
     """ADR 0012 §3 (amended 2026-10-31): ``input = prompt - cached - written``,
-    ``cache_read = cached``, ``cache_write = written``, ``output`` with reasoning. Missing or
-    malformed counts are 0; cached and written counts above the prompt are not trusted (an
-    answer that does not add up is ``internal``)."""
-    prompt, cached, written = _count(prompt_tokens), _count(cached_tokens), _count(written_tokens)
+    ``cache_read = cached``, ``cache_write = written``, ``output`` with reasoning. A missing or
+    malformed prompt or output count, a malformed cached or written one, and cached plus written
+    above the prompt are ``internal`` (unreadable); a missing cached or written count is 0."""
+    prompt = _count(prompt_tokens, optional=False)
+    cached = _count(cached_tokens, optional=True)
+    written = _count(written_tokens, optional=True)
+    output = _count(output_tokens, optional=False)
     if cached + written > prompt:
         raise ProviderError("internal")
     return Usage(
         input_tokens=prompt - cached - written,
-        output_tokens=_count(output_tokens),
+        output_tokens=output,
         cache_read_tokens=cached,
         cache_write_tokens=written,
     )
@@ -292,10 +310,10 @@ def responses_usage(usage: Any) -> Usage:
         raise ProviderError("internal")
     details = getattr(usage, "input_tokens_details", None)
     return normalise_usage(
-        prompt_tokens=getattr(usage, "input_tokens", 0),
-        cached_tokens=getattr(details, "cached_tokens", 0),
-        written_tokens=getattr(details, "cache_write_tokens", 0),
-        output_tokens=getattr(usage, "output_tokens", 0),
+        prompt_tokens=getattr(usage, "input_tokens", None),
+        cached_tokens=getattr(details, "cached_tokens", None),
+        written_tokens=getattr(details, "cache_write_tokens", None),
+        output_tokens=getattr(usage, "output_tokens", None),
     )
 
 
@@ -318,15 +336,15 @@ def chat_usage(usage: Any) -> Usage:
     if usage is None:
         raise ProviderError("internal")
     details = getattr(usage, "prompt_tokens_details", None)
-    prompt = getattr(usage, "prompt_tokens", 0)
+    prompt = getattr(usage, "prompt_tokens", None)
     cached = getattr(details, "cached_tokens", None)
-    if cached is None:
-        cached = _deepseek_cache_hits(usage, prompt)
+    if cached is None and _whole(prompt):
+        cached = _deepseek_cache_hits(usage, prompt)  # pyright: ignore[reportArgumentType]
     return normalise_usage(
         prompt_tokens=prompt,
         cached_tokens=cached,
-        written_tokens=getattr(details, "cache_write_tokens", 0),
-        output_tokens=getattr(usage, "completion_tokens", 0),
+        written_tokens=getattr(details, "cache_write_tokens", None),
+        output_tokens=getattr(usage, "completion_tokens", None),
     )
 
 

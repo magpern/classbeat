@@ -34,9 +34,10 @@ and the error codes.
 - **Turn**: each call's ``arguments`` parsed as JSON, or passed on as the text they are, for the
   loop to refuse; usage by ``chat_usage`` (cache hits are ``cached_tokens``, no cache write);
   ``model`` as the API reports it. A model the catalog does not list for DeepSeek, or an effort its
-  entry does not take, is ``model_config`` before any request. Once DeepSeek has answered,
-  anything that cannot be read (no usage included), and ``insufficient_system_resource``, is a
-  ``billed`` failure (``read_answer``): the loop charges it at the turn's ceiling (cost errs high).
+  entry does not take, is ``model_config`` before any request. Once DeepSeek has answered with a
+  2xx, anything that cannot be read (the body, or usage that is missing or malformed), and
+  ``insufficient_system_resource``, is a ``billed`` failure (``with_raw_response``, then ``parse``
+  inside ``read_answer``): the loop charges it at the turn's ceiling (cost errs high).
 - **Timeout**: one attempt may take the whole ``turn_seconds`` (``attempt_seconds``), as for OpenAI.
 
 Every failure is a ``ProviderError`` raised outside any exception handler (``bounded_request``).
@@ -192,7 +193,8 @@ class DeepSeekConversation:
         messages: Any = sent
         tools: Any = self._tools
         effort: Any = self._effort
-        response = await self._client.chat.completions.create(
+        # The raw answer, as for OpenAI: everything after the 2xx is read inside ``read_answer``.
+        raw = await self._client.chat.completions.with_raw_response.create(
             model=spec.model,
             messages=messages,
             tools=tools,
@@ -202,7 +204,7 @@ class DeepSeekConversation:
             extra_body={"thinking": dict(THINKING)},
             stream=False,
         )
-        return read_answer(lambda: _read(response))
+        return read_answer(lambda: _read(raw.parse()))
 
 
 def _read(response: Any) -> tuple[Turn, dict[str, Any]]:
