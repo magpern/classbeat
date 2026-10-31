@@ -22,11 +22,12 @@ Both adapters (M3c P2, P3) build on this module; it sends nothing itself.
   rate limits, server errors, timeouts and connection errors are ``model_unavailable``;
   ``AuthenticationError``, ``PermissionDeniedError`` and ``NotFoundError`` are ``model_config``;
   ``BadRequestError`` and the rest are ``internal``; an allowlist refusal is ``outbound_blocked``.
-- **Usage** (``normalise_usage``): the OpenAI APIs count cached prompt tokens inside the prompt
-  tokens and have no cache-write charge, so ``input = prompt - cached``, ``cache_read = cached``,
-  ``cache_write = 0`` and ``output`` = completion tokens, reasoning included. The SDK (2.54) also
-  reports ``cache_write_tokens``; they stay inside ``input`` (priced at the input rate), as ADR
-  0012 §3 decides, and are not counted again.
+- **Usage** (``normalise_usage``): the OpenAI APIs count cached reads and cache writes inside the
+  prompt tokens, and from GPT-5.6 on bill a write (30-minute lifetime, the default and the only
+  one classbeat asks for) at 1.25 times input (ADR 0012 §3, amended 2026-10-31). So
+  ``input = prompt - cached - written``, ``cache_read = cached``, ``cache_write = written`` and
+  ``output`` = completion tokens, reasoning included; a model without a write charge has its
+  write rate equal to its input rate in the price table, so the cost is the same either way.
 - **Strict tool schemas** (``strict_schema``, ``tool_input``): strict function mode needs every
   property in ``required`` and ``additionalProperties: false`` on every object. An optional
   property becomes a union with ``null``, and a ``null`` the model then sends for one is dropped
@@ -67,12 +68,14 @@ MAX_RETRIES: Final = 2
 TIMEOUT_SECONDS: Final = 120.0
 TURN_SECONDS: Final = 300.0
 _REQUEST_ID_MAX = 100
-# classbeat effort -> OpenAI ``reasoning.effort``. ``max`` has no OpenAI value: refused.
+# classbeat effort -> OpenAI ``reasoning.effort`` (the GPT-6 models take ``low`` to ``max``,
+# OpenAI's model pages read 2026-10-31). A catalog entry lists the ones its model takes.
 OPENAI_EFFORTS: Final[Mapping[str, str]] = {
     "low": "low",
     "medium": "medium",
     "high": "high",
     "xhigh": "xhigh",
+    "max": "max",
 }
 
 
@@ -172,7 +175,7 @@ def category_of(exc: BaseException) -> str:
     return "internal"
 
 
-def _printable(value: object) -> str | None:
+def printable(value: object) -> str | None:
     if not isinstance(value, str) or not value:
         return None
     text = "".join(c if c.isprintable() and not c.isspace() else "?" for c in value)
@@ -188,7 +191,7 @@ def log_failure(exc: BaseException, category: str) -> None:
         extra={
             "error": type(exc).__name__,
             "status": status,
-            "request_id": _printable(request_id),
+            "request_id": printable(request_id),
             "category": category,
         },
     )
@@ -204,8 +207,8 @@ async def bounded_request[T](
     try:
         async with asyncio.timeout(turn_seconds):
             return await request()
-    except ProviderError:
-        raise
+    except ProviderError as exc:
+        category = exc.category  # raised again below, outside the handler (the #262 review)
     except Exception as exc:
         category = category_of(exc)
         log_failure(exc, category)
@@ -220,19 +223,24 @@ def _count(value: object) -> int:
 
 
 def normalise_usage(
-    *, prompt_tokens: object, cached_tokens: object, output_tokens: object
+    *,
+    prompt_tokens: object,
+    cached_tokens: object,
+    output_tokens: object,
+    written_tokens: object = 0,
 ) -> Usage:
-    """ADR 0012 §3: ``input = prompt - cached``, ``cache_read = cached``, ``cache_write = 0``,
-    ``output`` with reasoning. Missing or malformed counts are 0; a cached count above the
-    prompt is not trusted (an answer that does not add up is ``internal``)."""
-    prompt, cached = _count(prompt_tokens), _count(cached_tokens)
-    if cached > prompt:
+    """ADR 0012 §3 (amended 2026-10-31): ``input = prompt - cached - written``,
+    ``cache_read = cached``, ``cache_write = written``, ``output`` with reasoning. Missing or
+    malformed counts are 0; cached and written counts above the prompt are not trusted (an
+    answer that does not add up is ``internal``)."""
+    prompt, cached, written = _count(prompt_tokens), _count(cached_tokens), _count(written_tokens)
+    if cached + written > prompt:
         raise ProviderError("internal")
     return Usage(
-        input_tokens=prompt - cached,
+        input_tokens=prompt - cached - written,
         output_tokens=_count(output_tokens),
         cache_read_tokens=cached,
-        cache_write_tokens=0,
+        cache_write_tokens=written,
     )
 
 
@@ -243,6 +251,7 @@ def responses_usage(usage: Any) -> Usage:
     return normalise_usage(
         prompt_tokens=getattr(usage, "input_tokens", 0),
         cached_tokens=getattr(details, "cached_tokens", 0),
+        written_tokens=getattr(details, "cache_write_tokens", 0),
         output_tokens=getattr(usage, "output_tokens", 0),
     )
 
@@ -254,6 +263,7 @@ def chat_usage(usage: Any) -> Usage:
     return normalise_usage(
         prompt_tokens=getattr(usage, "prompt_tokens", 0),
         cached_tokens=getattr(details, "cached_tokens", 0),
+        written_tokens=getattr(details, "cache_write_tokens", 0),
         output_tokens=getattr(usage, "completion_tokens", 0),
     )
 
@@ -280,6 +290,30 @@ def _with_null(node: dict[str, Any]) -> dict[str, Any]:
     if description is not None:
         out["description"] = description
     return out
+
+
+def _may_be_object(branch: Mapping[str, Any], root: Mapping[str, Any]) -> bool:
+    node = _resolve(branch, root)
+    # an unresolved ``$ref`` counts as an object: never assumed to be something else
+    return "properties" in node or node.get("type") == "object" or "$ref" in node
+
+
+def _object_branches(node: Mapping[str, Any], root: Mapping[str, Any]) -> int:
+    branches = [b for b in node.get("anyOf", ()) if isinstance(b, dict)]
+    return sum(1 for b in branches if _may_be_object(b, root))  # pyright: ignore[reportUnknownArgumentType]
+
+
+def _check_unions(node: Any, root: Mapping[str, Any]) -> None:
+    """A union of two object types is refused: dropping the added nulls follows the one object
+    branch a union has, and could not tell two apart (the #262 review)."""
+    if isinstance(node, dict):
+        if _object_branches(node, root) > 1:  # pyright: ignore[reportUnknownArgumentType]
+            raise ValueError("a tool schema may not have a union of two object types")
+        for value in node.values():  # pyright: ignore[reportUnknownVariableType]
+            _check_unions(value, root)
+    elif isinstance(node, list):
+        for value in node:  # pyright: ignore[reportUnknownVariableType]
+            _check_unions(value, root)
 
 
 def _strict(node: Any) -> Any:
@@ -312,7 +346,9 @@ def _strict(node: Any) -> Any:
 
 
 def strict_schema(schema: Mapping[str, Any]) -> dict[str, Any]:
-    """A tool's input schema in the form strict function mode accepts (a pure transform)."""
+    """A tool's input schema in the form strict function mode accepts (a pure transform).
+    A union of two object types is refused (``ValueError``)."""
+    _check_unions(schema, schema)
     return _strict(copy.deepcopy(dict(schema)))
 
 
@@ -328,6 +364,8 @@ def _resolve(node: Mapping[str, Any], root: Mapping[str, Any]) -> Mapping[str, A
 def _strip(value: Any, node: Mapping[str, Any], root: Mapping[str, Any]) -> Any:
     node = _resolve(node, root)
     if isinstance(value, dict):
+        if _object_branches(node, root) > 1:
+            return value  # never guessed at; ``strict_schema`` refuses such a tool anyway
         branches = [node, *(b for b in node.get("anyOf", ()) if isinstance(b, dict))]
         for branch in (_resolve(b, root) for b in branches):
             properties = branch.get("properties")
@@ -376,7 +414,7 @@ def provider_effort(entry: CatalogModel, effort: str) -> str | None:
     if effort not in entry.efforts:
         raise EffortRefused("the model does not list this effort in the catalog")
     if entry.provider == "openai":
-        if effort not in OPENAI_EFFORTS:
+        if effort not in OPENAI_EFFORTS:  # pragma: no cover - every classbeat effort maps
             raise EffortRefused("OpenAI has no setting for this effort")
         return OPENAI_EFFORTS[effort]
     if entry.provider == "deepseek":

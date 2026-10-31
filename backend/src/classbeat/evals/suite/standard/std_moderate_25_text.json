@@ -1,0 +1,15 @@
+{
+ "name": "std_moderate_25_text",
+ "about": "Moderate 25 minutes described in the instructor's words.",
+ "brief": {
+  "length_min": 25,
+  "intensity": "moderate",
+  "sprints": 1,
+  "climbs": 1,
+  "text": "Something for the Monday crowd: steady riding, a climb and one sprint near the end."
+ },
+ "music": {
+  "tracks": 8
+ },
+ "expect": {}
+}
