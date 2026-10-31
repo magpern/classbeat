@@ -11,6 +11,7 @@ import pytest
 from mowl import workout
 
 from agentfake import CONFIG
+from classbeat.agent.schemas import WorkoutDraft
 from classbeat.evals import checks
 from classbeat.evals.cases import Case, MusicSyncExpect
 from classbeat.evals.runner import CaseResult, run_case
@@ -271,4 +272,66 @@ async def test_a_shorter_revision_is_measured_against_the_asked_length() -> None
     assert ok["duration"]
     assert ok["revision"]
     assert "kept_length" not in ok  # the length is what changed
-    assert "kept_efforts" not in ok
+    assert ok["kept_efforts"]  # no kind of effort of the base vanished
+
+
+def _hard_in_parts(draft: dict[str, Any], seconds: int) -> dict[str, Any]:
+    """The same class with ``seconds`` of its main-part easy intervals raised to zone 6."""
+    out = copy.deepcopy(draft)
+    left = seconds
+    for seg in out["segments"]:
+        if seg["kind"] != "main":
+            continue
+        for i in seg["intervals"]:
+            if left > 0 and i["zone"] <= 3:
+                i["zone"], i["standing"], left = 6, False, left - i["sec"]
+    return out
+
+
+async def test_an_easier_revision_that_lowers_tss_but_not_the_hard_share_fails() -> None:
+    case = BY_NAME["rev_easier_40"]
+    easy = make_draft(2400, intensity="easy", climbs=1, sprints=0)
+    ok = await run(case, easy)
+    assert ok_of(ok)["revision"]  # lower TSS and a smaller hard share
+    harder = _hard_in_parts(easy, 300)
+    result = await run(case, harder)
+    base = case.revise.base.to_spec()  # type: ignore[union-attr]
+    assert checks._hard_share(harder_spec(harder)) > checks._hard_share(base)
+    assert workout.tss(harder_spec(harder)) <= checks.EASIER_TSS * workout.tss(base)
+    assert ok_of(result)["revision"] is False  # only the share clause is broken
+    assert "zone 5+ share" in next(c.detail for c in result.checks if c.name == "revision")
+
+
+def harder_spec(draft: dict[str, Any]) -> dict[str, Any]:
+    return WorkoutDraft.model_validate(draft).to_spec()
+
+
+@pytest.mark.parametrize(
+    ("name", "draft"),
+    [
+        ("rev_easier_40", lambda: make_draft(2400, intensity="easy", climbs=0, sprints=0)),
+        ("rev_shorter_45_to_30", lambda: make_draft(1800, intensity="moderate", climbs=0)),
+    ],
+    ids=["easier-climb-gone", "shorter-every-effort-gone"],
+)
+async def test_an_easier_or_shorter_revision_that_loses_the_bases_efforts_fails(
+    name: str, draft: Any
+) -> None:
+    result = await run(BY_NAME[name], draft())
+    assert ok_of(result)["kept_efforts"] is False
+    assert not result.passed
+
+
+async def test_an_easier_revision_may_soften_its_sprints() -> None:
+    result = await run(BY_NAME["rev_easier_40"], make_draft(2400, intensity="easy", climbs=1))
+    assert ok_of(result)["kept_efforts"]  # the base has two sprints; the climb is what is kept
+
+
+def test_no_sprints_fail_when_sprints_were_asked_whatever_the_music_holds() -> None:
+    with_drop = music_map(BY_NAME["sync_hard_45_sprints"])
+    no_drop = music_map(SUITE.design_cases["music_no_sections"])
+    assert [e for e in with_drop["events"] if e["kind"] == "drop"]
+    none = {"segments": [{"name": "S", "kind": "main", "intervals": [{"sec": 60, "zone": 3}]}]}
+    for m in (with_drop, no_drop):
+        assert not checks.sprints_on_drops(none, m, expected=2).ok
+        assert checks.sprints_on_drops(none, m, expected=0).ok  # none asked: nothing to place

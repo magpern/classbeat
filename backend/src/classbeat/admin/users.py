@@ -41,7 +41,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from classbeat import auth
-from classbeat.admin.audit import Target
+from classbeat.admin.audit import Target, UserQuery
 from classbeat.admin.db import AdminDb, AdminRefused, admin_session
 from classbeat.admin.routes import AdminActor, admin_db, admin_router
 from classbeat.connections import connection_statuses
@@ -281,7 +281,7 @@ async def _target(session: AsyncSession, user_id: UUID, *, lock: bool = False) -
 async def list_users(
     request: Request,
     actor: AdminActor,
-    q: Annotated[str | None, Query(max_length=254)] = None,
+    q: Annotated[UserQuery | None, Query()] = None,
     offset: Annotated[int, Query(ge=0, le=10_000)] = 0,
     limit: Annotated[int, Query(ge=1, le=100)] = 50,
 ) -> UserPage:

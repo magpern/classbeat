@@ -1,0 +1,33 @@
+{
+ "name": "cost_replace_two",
+ "about": "Two of eight songs replaced in six turns, bounded.",
+ "brief": {
+  "length_min": 30,
+  "intensity": "moderate",
+  "climbs": 1,
+  "sprints": 2
+ },
+ "catalogue": {
+  "size": 30
+ },
+ "replace": {
+  "seed_roles": [
+   "warmup",
+   "build",
+   "climb",
+   "recovery",
+   "sprint",
+   "interval",
+   "build",
+   "cooldown"
+  ],
+  "replace": [
+   2,
+   5
+  ]
+ },
+ "expect": {
+  "max_turns": 7,
+  "max_cost_micros": 160000
+ }
+}
