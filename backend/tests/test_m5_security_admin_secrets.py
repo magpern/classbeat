@@ -1,7 +1,10 @@
 """M5 security suite, part 2 (#227): a planted value of every secret-bearing column of ADR 0011
 section 5's list (``maint_guard.SECRET_COLUMNS``) never appears in any admin response, the audit
 view's included (PR #277 review; ``class_playlists`` added on the #303 review). The routes are
-enumerated from the app, with ``test_m5_security_admin.py``'s valid requests."""
+enumerated from the app, with ``test_m5_security_admin.py``'s valid requests.
+
+Threats covered: T91.
+"""
 
 import base64
 import json
@@ -180,7 +183,10 @@ async def test_no_admin_route_returns_a_planted_secret_of_any_table(
     identities, both OAuth flow tables, devices, tokens, events, saved workouts, class
     playlists and links) is
     planted for one user; no response of any admin route contains one, the audit view
-    included (which shows every call's params)."""
+    included (which shows every call's params).
+
+    Threats: T91.
+    """
     actor = await admin(env, make_actor)
     values = await target_with_entitlement(env, superuser)
     owner = uuid.UUID(values["user_id"])

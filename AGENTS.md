@@ -587,6 +587,10 @@ The specs: `design-draft.spec.ts` (draft, cancel while running, uncertain attach
 `spotify-connect.spec.ts` (the Spotify wizard, consent, Disconnect, two users on different Client IDs and
 every error category's page text),
 `class-save.spec.ts` (change, save, update, uncertain writes, another MOWL account),
+`m5-quota.spec.ts` and `m5-admin.spec.ts` (M5 done-when: parallel creates from several browser contexts of one session, the
+plan limit, refunds, an admin with TOTP granting a plan and refunding a credit, a redeem code; helpers in `m5-helpers.ts`,
+and `nextTotp` in `helpers.ts`; the session shows an admin as a user until two-factor is on, so enrolment is on
+`/account#security`),
 `class-usage.spec.ts` and `fake-spotify.spec.ts` (web connects through the fake with PKCE, the worker
 reaches it too, it publishes no port).
 
