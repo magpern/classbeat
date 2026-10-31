@@ -19,6 +19,8 @@ import { contentHash } from '../../lib/canonical'
 import { newIdempotencyKey } from '../../lib/submittedInput'
 import { Link } from '../../router/Router'
 import { Notice, useAction } from '../forms'
+import { Button } from '../ui/button'
+import { Card } from '../ui/card'
 import { UncertainWrite } from './UncertainWrite'
 
 type Mode = 'save' | 'update' | 'overwrite'
@@ -67,9 +69,8 @@ function WriteRun({
         </p>
       )}
       {action.error ? <Notice kind="error">{action.error}</Notice> : null}
-      <button
-        type="button"
-        className="button button--secondary"
+      <Button
+        variant="secondary"
         disabled={action.busy || stopping || over}
         onClick={() => {
           void action.run(async () => {
@@ -78,7 +79,7 @@ function WriteRun({
         }}
       >
         Stop
-      </button>
+      </Button>
     </div>
   )
 }
@@ -109,16 +110,16 @@ function Outcome({
   }
   if (job.state === 'failed') {
     return (
-      <div className="stack">
+      <div className="flex flex-col gap-3">
         <Notice kind="error">
           {saveFailureText(job.errorCategory)}{' '}
           {needsAccount(job.errorCategory) ? <Link to="/account">Go to your account</Link> : null}
         </Notice>
         {kind === 'update' && job.errorCategory === 'program_changed' ? (
           <p>
-            <button type="button" className="button button--secondary" onClick={onUpdateAnyway}>
+            <Button variant="secondary" onClick={onUpdateAnyway}>
               Update anyway (replaces your changes in MOWL)
-            </button>
+            </Button>
           </p>
         ) : null}
       </div>
@@ -237,8 +238,8 @@ export function SavePanel({
 
   return (
     <>
-      <section className="panel" aria-labelledby="save-title" data-testid="save-panel">
-        <h2 id="save-title" className="panel__title">
+      <Card className="flex flex-col gap-3" role="region" aria-labelledby="save-title" data-testid="save-panel">
+        <h2 id="save-title" className="m-0 font-display text-xl font-bold">
           Save to MOWL
         </h2>
         <p data-testid="saved-state">{stateLine}</p>
@@ -272,28 +273,26 @@ export function SavePanel({
         ) : null}
         {busy && !writing ? <p className="muted">Wait for the running task to finish first.</p> : null}
         {mode === null ? (
-          <p>
-            <button
-              type="button"
-              className="button"
+          <p className="m-0 flex flex-wrap gap-3">
+            <Button
+              
               disabled={!canWrite}
               onClick={() => {
                 setMode('save')
               }}
             >
               {again === 'save' ? 'Save again' : hasSaved ? 'Save as a new workout' : 'Save to MOWL'}
-            </button>
+            </Button>
             {showUpdate ? (
-              <button
-                type="button"
-                className="button button--secondary"
+              <Button
+                variant="secondary"
                 disabled={!canWrite || savedId === null}
                 onClick={() => {
                   setMode(updateOverwrites ? 'overwrite' : 'update')
                 }}
               >
                 {again === 'update' ? 'Update again' : 'Update saved workout'}
-              </button>
+              </Button>
             ) : null}
           </p>
         ) : (
@@ -364,7 +363,7 @@ export function SavePanel({
             Updating the saved workout is not available yet. Save adds a new workout instead.
           </p>
         ) : null}
-      </section>
+      </Card>
       <UncertainWrite
         classId={summary.id}
         version={version}
@@ -388,12 +387,12 @@ function ConfirmButtons({
 }) {
   return (
     <>
-      <button type="button" className="button" disabled={busy} onClick={onConfirm}>
+      <Button  disabled={busy} onClick={onConfirm}>
         {label}
-      </button>
-      <button type="button" className="button button--secondary" disabled={busy} onClick={onCancel}>
+      </Button>
+      <Button variant="secondary" disabled={busy} onClick={onCancel}>
         Cancel
-      </button>
+      </Button>
     </>
   )
 }

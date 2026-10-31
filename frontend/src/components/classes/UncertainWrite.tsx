@@ -10,6 +10,8 @@ import {
   type WriteOutcome,
 } from '../../api/saveMessages'
 import { SAVE_OPERATION, UPDATE_OPERATION } from '../../api/saving'
+import { Button } from '../ui/button'
+import { CheckNeeded } from './CheckNeeded'
 import { Notice, useAction } from '../forms'
 
 function kindOf(operation: Operation): WriteKind | null {
@@ -110,7 +112,7 @@ function Panel({
   }
 
   return (
-    <div className="stack" data-testid="uncertain-write" data-kind={kind}>
+    <div className="flex flex-col gap-3" data-testid="uncertain-write" data-kind={kind}>
       <h3>
         {kind === 'save'
           ? 'classbeat could not tell whether your workout was saved'
@@ -131,50 +133,46 @@ function Panel({
       {action.error ? <Notice kind="error">{action.error}</Notice> : null}
       {!confirming ? (
         <p>
-          <button
-            type="button"
-            className="button"
+          <Button
+            
             disabled={action.busy || waiting}
             onClick={() => {
               decide('check')
             }}
           >
             Check again
-          </button>
-          <button
-            type="button"
-            className="button button--secondary"
+          </Button>
+          <Button
+            variant="secondary"
             disabled={action.busy || waiting}
             onClick={() => {
               setConfirming(true)
             }}
           >
             Do it anyway
-          </button>
+          </Button>
         </p>
       ) : (
         <div className="notice" role="group" aria-label="Confirm" tabIndex={-1} ref={confirmRef}>
           <p>{kind === 'save' ? DUPLICATE_WARNING : OVERWRITE_WARNING}</p>
-          <button
-            type="button"
-            className="button"
+          <Button
+            
             disabled={action.busy || waiting}
             onClick={() => {
               decide('anyway')
             }}
           >
             {kind === 'save' ? 'Yes, it was not saved' : 'Yes, it was not updated'}
-          </button>
-          <button
-            type="button"
-            className="button button--secondary"
+          </Button>
+          <Button
+            variant="secondary"
             disabled={action.busy}
             onClick={() => {
               setConfirming(false)
             }}
           >
             Cancel
-          </button>
+          </Button>
         </div>
       )}
     </div>
@@ -229,8 +227,8 @@ export function UncertainWrite({
   }
   if (operations === null || operations.length === 0) return null
   return (
-    <section className="panel" aria-labelledby="undecided-title" data-testid="undecided">
-      <h2 id="undecided-title" className="panel__title">
+    <CheckNeeded aria-labelledby="undecided-title" data-testid="undecided">
+      <h2 id="undecided-title" className="m-0 font-display text-xl font-bold">
         Not sure what reached MOWL
       </h2>
       {operations.map((operation) => (
@@ -245,6 +243,6 @@ export function UncertainWrite({
           onChanged={reread}
         />
       ))}
-    </section>
+    </CheckNeeded>
   )
 }

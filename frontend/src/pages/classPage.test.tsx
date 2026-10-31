@@ -1,4 +1,5 @@
 import { fireEvent, screen, waitFor, within } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { describe, expect, it } from 'vitest'
 import { contentHash } from '../lib/canonical'
 import {
@@ -205,11 +206,13 @@ describe('the class page', () => {
         sse([1, 'claimed', { attempt: 1 }], [2, 'stage_started', { stage: 'revise' }], [3, 'completed']),
     })
     renderAt(PAGE)
+    // The stream ends at once, so the page may reload any moment: check everything that belongs to
+    // the running state in the one poll that first sees it.
     await waitFor(() => {
       expect(screen.getByTestId('revise-progress')).toHaveTextContent('Changing the class')
+      expect(screen.getByLabelText('What should change?')).toBeDisabled()
+      expect(screen.getByRole('button', { name: 'Stop changing' })).toBeInTheDocument()
     })
-    expect(screen.getByLabelText('What should change?')).toBeDisabled()
-    expect(screen.getByRole('button', { name: 'Stop changing' })).toBeInTheDocument()
     await waitFor(() => {
       expect(api.to('GET', CLASS_PATH).length).toBeGreaterThanOrEqual(2)
     })
@@ -380,6 +383,12 @@ describe('asking for a change', () => {
   })
 })
 
+/** Delete class is in the header's ··· menu. */
+async function openDelete() {
+  await userEvent.click(await screen.findByRole('button', { name: 'More actions' }))
+  await userEvent.click(await screen.findByRole('menuitem', { name: 'Delete class' }))
+}
+
 describe('deleting a class', () => {
   it('warns that the saved MOWL workouts stay, then deletes', async () => {
     const api = fakeApi({
@@ -390,7 +399,7 @@ describe('deleting a class', () => {
       [`DELETE ${CLASS_PATH}`]: { deleted: true, mowl_workouts_kept: 2, note: 'x' },
     })
     renderAt(PAGE)
-    fireEvent.click(await screen.findByRole('button', { name: 'Delete class' }))
+    await openDelete()
     expect(screen.getByText(/The 2 workouts classbeat saved to your MOWL account stay there; delete them in MOWL/)).toBeInTheDocument()
     expect(api.to('DELETE', CLASS_PATH)).toHaveLength(0)
     fireEvent.click(screen.getByRole('button', { name: 'Yes, delete this class' }))
@@ -413,7 +422,7 @@ describe('deleting a class', () => {
       [`DELETE ${CLASS_PATH}?confirm_uncertain=true`]: { deleted: true, mowl_workouts_kept: 0, note: 'x' },
     })
     renderAt(PAGE)
-    fireEvent.click(await screen.findByRole('button', { name: 'Delete class' }))
+    await openDelete()
     fireEvent.click(screen.getByRole('button', { name: 'Yes, delete this class' }))
     expect(await screen.findByText(/not sure whether a save of this class to MOWL went through/)).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Delete anyway' }))
@@ -428,7 +437,7 @@ describe('deleting a class', () => {
       [`DELETE ${CLASS_PATH}`]: () => reason(409, 'class_busy'),
     })
     renderAt(PAGE)
-    fireEvent.click(await screen.findByRole('button', { name: 'Delete class' }))
+    await openDelete()
     fireEvent.click(screen.getByRole('button', { name: 'Yes, delete this class' }))
     expect(await screen.findByText(/busy with another task/)).toBeInTheDocument()
     await waitFor(() => {
@@ -445,7 +454,7 @@ describe('deleting while a write may still land', () => {
       [`DELETE ${CLASS_PATH}`]: () => reason(409, 'call_may_be_running'),
     })
     renderAt(PAGE)
-    fireEvent.click(await screen.findByRole('button', { name: 'Delete class' }))
+    await openDelete()
     fireEvent.click(screen.getByRole('button', { name: 'Yes, delete this class' }))
     expect(
       await screen.findByText(/may still be writing this class to MOWL.*only record of that write.*Wait a few minutes/),

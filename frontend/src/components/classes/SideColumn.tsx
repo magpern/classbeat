@@ -1,13 +1,11 @@
 import type { ClassMessage, ClassSummary, RevisionSummary } from '../../api/classes'
 import { ChangeSongs } from '../songs/ChangeSongs'
 import { ChatPanel } from './ChatPanel'
-import { DeleteClass } from './DeleteClass'
 import { RevisionsPanel } from './RevisionsPanel'
-import { SavePanel } from './SavePanel'
 
 /**
- * The side column of the class page (ADR 0013 section 5): Save to MOWL first, then Change songs,
- * the Change it chat, the versions and Delete. Every panel keeps its own requests unchanged.
+ * The side column of the class page (ADR 0013 section 5): Change songs, the Change it chat and the
+ * versions. Save to MOWL and Delete are in the page header. Every panel keeps its own requests.
  */
 export function SideColumn({
   summary,
@@ -18,7 +16,6 @@ export function SideColumn({
   onView,
   onUse,
   reload,
-  onDeleted,
 }: {
   summary: ClassSummary
   revisions: RevisionSummary[]
@@ -28,15 +25,16 @@ export function SideColumn({
   onView: (id: string | null) => void
   onUse: (revision: RevisionSummary) => void
   reload: () => void
-  onDeleted: (kept: number) => void
 }) {
   return (
     <aside aria-label="Save, change and versions" className="flex min-w-0 flex-col gap-5">
-      <SavePanel summary={summary} onReload={reload} />
-      <ChangeSongs summary={summary} />
+      <div id="change-songs" className="scroll-mt-4">
+        <ChangeSongs summary={summary} />
+      </div>
       <ChatPanel summary={summary} revisions={revisions} messages={messages} onReload={reload} onView={onView} />
-      <RevisionsPanel revisions={revisions} viewingId={viewingId} onView={onView} onUse={onUse} busy={busy} />
-      <DeleteClass summary={summary} onDeleted={onDeleted} onReload={reload} />
+      <div id="versions" className="scroll-mt-4">
+        <RevisionsPanel revisions={revisions} viewingId={viewingId} onView={onView} onUse={onUse} busy={busy} />
+      </div>
     </aside>
   )
 }

@@ -4,6 +4,11 @@ import { getRevision, pickCurrent, type RevisionSummary } from '../api/classes'
 import { getSongList, type Song } from '../api/songs'
 import { classStatus } from '../lib/classCards'
 import { Chip } from '../components/ui/chip'
+import { Button } from '../components/ui/button'
+import { DeleteClass } from '../components/classes/DeleteClass'
+import { SavePanel } from '../components/classes/SavePanel'
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '../components/ui/dropdown-menu'
+import { Ellipsis } from 'lucide-react'
 import { RevisionView } from '../components/classes/RevisionView'
 import { SideColumn } from '../components/classes/SideColumn'
 import { Card, Notice, useAction } from '../components/forms'
@@ -93,6 +98,13 @@ function ClassBody({
     chosen !== null && revisions.some((r) => r.id === chosen) ? chosen : summary.currentRevisionId
   const shown = useRevision(classId, viewingId)
   const busy = summary.openJob !== null
+  const [deleting, setDeleting] = useState(false)
+  const canChangeSongs = summary.songs.state === 'approved' && summary.songs.revisionId !== null
+  const goTo = (id: string) => {
+    const target = document.getElementById(id)
+    target?.scrollIntoView?.({ block: 'start' })
+    target?.querySelector<HTMLElement>('button, input, textarea, a')?.focus()
+  }
   // The approved song list, for the strip under the axis; none (hidden) until there is one.
   const songRevisionId = summary.songs.state === 'approved' ? summary.songs.revisionId : null
   const [loadedSongs, setLoadedSongs] = useState<{ id: string; songs: Song[] } | null>(null)
@@ -148,7 +160,52 @@ function ClassBody({
       <header className="flex flex-wrap items-center gap-3">
         <h1 className="m-0 font-display text-3xl font-extrabold">{summary.title}</h1>
         <Chip tone={classStatus(summary).tone}>{classStatus(summary).label}</Chip>
+        <div className="ml-auto flex items-center gap-2">
+          {canChangeSongs ? (
+            <Button
+              variant="secondary"
+              onClick={() => {
+                goTo('change-songs')
+              }}
+            >
+              Change songs
+            </Button>
+          ) : null}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="secondary" aria-label="More actions">
+                <Ellipsis aria-hidden="true" size={18} />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem
+                onSelect={() => {
+                  goTo('versions')
+                }}
+              >
+                Versions
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onSelect={() => {
+                  setDeleting(true)
+                }}
+              >
+                Delete class
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
       </header>
+      <SavePanel summary={summary} onReload={reload} />
+      <DeleteClass
+        summary={summary}
+        open={deleting}
+        onClose={() => {
+          setDeleting(false)
+        }}
+        onDeleted={onDeleted}
+        onReload={reload}
+      />
       {summary.openJob !== null && summary.openJob.kind !== 'revise_draft' ? (
         <Notice>
           {summary.openJob.state === 'waiting_for_approval'
@@ -240,7 +297,6 @@ function ClassBody({
           onView={setChosen}
           onUse={use}
           reload={reload}
-          onDeleted={onDeleted}
         />
       </div>
     </div>
