@@ -14,6 +14,7 @@ from sqlalchemy import text
 
 # saving registers save_workout (SV1); playlists the Spotify writes for Check again (OP1)
 from classbeat import __version__, auth, playlists, quota, saving, songs
+from classbeat.account.routes import router as account_router
 from classbeat.admin import routes as admin_routes
 from classbeat.admin.db import AdminDb
 from classbeat.classes.routes import music_router as class_music_router
@@ -166,6 +167,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(jobs_router)
     app.include_router(usage_router)
     app.include_router(plans_router)
+    app.include_router(account_router)
     app.include_router(settings_router)
     app.include_router(operations_router)
     app.include_router(music_router)

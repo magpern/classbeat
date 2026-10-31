@@ -309,10 +309,20 @@ export async function signOutDevice(id: string): Promise<void> {
 }
 
 /**
- * Deletes the account (`DELETE /api/auth/account`, ADR 0003 section 6): recent authentication,
- * and a step-up once TOTP is set up; the caller runs it through the guard.
+ * Deletes the account (`POST /api/account/delete`, ADR 0014 section 3): the typed address goes
+ * to the server, which checks it against the account's; recent authentication, and a step-up
+ * once TOTP is set up. The caller runs it through the guard.
  */
-export async function deleteAccount(): Promise<void> {
-  await del('/api/auth/account')
+export async function deleteAccount(confirmEmail: string): Promise<void> {
+  await post('/api/account/delete', { confirm_email: confirmEmail })
   clearSubmittedInputs()
+}
+
+/**
+ * The user's own data as one JSON document (`GET /api/account/export`, ADR 0014 section 2):
+ * recent authentication, and a step-up once TOTP is set up; the caller runs it through the
+ * guard. 5 a hour (429).
+ */
+export async function exportMyData(): Promise<unknown> {
+  return get('/api/account/export')
 }

@@ -161,7 +161,8 @@ async def test_account_deletion_leaves_nothing_in_any_registered_table(songenv: 
     other = await planted(songenv)
     other_before = spotify_rows(other)
     before = songenv.counts()
-    answer = await call(mine.rider, "DELETE", "/api/auth/account")
+    email = songenv.sql("SELECT email FROM users WHERE id = :u", u=mine.owner).scalar_one()
+    answer = await mine.rider.browser.post("/api/account/delete", {"confirm_email": email})
     assert answer.status_code == 204, answer.text
     assert songenv.counts() == before
     for table, entry in RETENTION.items():

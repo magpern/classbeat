@@ -6,6 +6,7 @@ import { Connections } from '../components/account/Connections'
 import { ChangeEmail, ChangePassword } from '../components/account/Credentials'
 import { DeleteAccount } from '../components/account/DeleteAccount'
 import { Devices } from '../components/account/Devices'
+import { ExportData } from '../components/account/ExportData'
 import { Plan } from '../components/account/Plan'
 import { SignInMethods } from '../components/account/SignInMethods'
 import { SpotifySummary } from '../components/account/Spotify'
@@ -163,10 +164,7 @@ function Account() {
         </TabsContent>
         <TabsContent value="data" className="flex flex-col gap-4">
           <Section title="Download my data">
-            <p className="text-muted">Coming later: a copy of your classes and settings.</p>
-            <Button variant="secondary" disabled>
-              Download my data
-            </Button>
+            <ExportData />
           </Section>
           <Section title="Delete my account">
             <DeleteAccount email={email} />

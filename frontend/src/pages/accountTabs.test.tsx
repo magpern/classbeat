@@ -1,6 +1,6 @@
 import { fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
-import { SIGNED_IN, fakeApi, reason } from '../test/fakeApi'
+import { SIGNED_IN, fakeApi, json, reason } from '../test/fakeApi'
 import { setWidth } from '../test/layout'
 import { renderAt } from '../test/render'
 
@@ -198,13 +198,13 @@ describe('the consent switch', () => {
 })
 
 describe('delete my account', () => {
-  it('needs the typed email, then recent authentication, and never sends the typed text', async () => {
+  it('needs the typed email, then recent authentication, and sends the typed email once confirmed', async () => {
     let fresh = false
     let deleted = false
     const api = fakeApi({
       ...base,
       'GET /api/auth/session': () => (deleted ? { authenticated: false, csrf_token: 'a' } : SIGNED_IN),
-      'DELETE /api/auth/account': () => {
+      'POST /api/account/delete': () => {
         if (!fresh) return reason(403, 'reauth_required')
         deleted = true
         return new Response(null, { status: 204 })
@@ -223,7 +223,7 @@ describe('delete my account', () => {
     expect(go).toBeDisabled()
     fireEvent.change(within(confirm).getByLabelText('Your email'), { target: { value: 'Ann@Example.test' } })
     expect(go).toBeEnabled()
-    expect(api.to('DELETE', '/api/auth/account')).toHaveLength(0)
+    expect(api.to('POST', '/api/account/delete')).toHaveLength(0)
     fireEvent.click(go)
 
     const prompt = await screen.findByRole('dialog')
@@ -231,10 +231,11 @@ describe('delete my account', () => {
     await waitFor(() => {
       expect(window.location.pathname).toBe('/')
     })
-    const calls = api.to('DELETE', '/api/auth/account')
+    const calls = api.to('POST', '/api/account/delete')
     expect(calls).toHaveLength(2)
-    for (const call of calls) expect(call.body).toBeUndefined()
-    expect(api.calls.some((call) => call.path.includes('Example') || JSON.stringify(call.body ?? '').includes('Ann@'))).toBe(false)
+    // The server checks the typed address; it goes in the body of the delete, never in an address.
+    for (const call of calls) expect(call.body).toEqual({ confirm_email: 'Ann@Example.test' })
+    expect(api.calls.some((call) => call.path.toLowerCase().includes('ann@'))).toBe(false)
   })
 
   it('asks for a two-factor code when the server wants a step-up', async () => {
@@ -242,7 +243,7 @@ describe('delete my account', () => {
     const api = fakeApi({
       ...base,
       'GET /api/auth/mfa': MFA_ON,
-      'DELETE /api/auth/account': () =>
+      'POST /api/account/delete': () =>
         stepped ? new Response(null, { status: 204 }) : reason(403, 'stepup_required'),
       'POST /api/auth/mfa/stepup': () => {
         stepped = true
@@ -258,7 +259,7 @@ describe('delete my account', () => {
     fireEvent.change(within(prompt).getByLabelText('Authenticator or recovery code'), { target: { value: '123456' } })
     fireEvent.click(within(prompt).getByRole('button', { name: 'Continue' }))
     await waitFor(() => {
-      expect(api.to('DELETE', '/api/auth/account')).toHaveLength(2)
+      expect(api.to('POST', '/api/account/delete')).toHaveLength(2)
     })
     expect(api.to('POST', '/api/auth/mfa/stepup')[0]?.body).toEqual({ code: '123456' })
   })
@@ -272,7 +273,59 @@ describe('delete my account', () => {
     await waitFor(() => {
       expect(screen.queryByRole('dialog')).toBeNull()
     })
-    expect(api.to('DELETE', '/api/auth/account')).toHaveLength(0)
+    expect(api.to('POST', '/api/account/delete')).toHaveLength(0)
+  })
+})
+
+describe('delete my account, refused', () => {
+  it('shows the answer of the server when it does not accept the typed address', async () => {
+    fakeApi({ ...base, 'POST /api/account/delete': () => reason(400, 'confirmation_mismatch') })
+    renderAt('/account#data')
+    fireEvent.click(await screen.findByRole('button', { name: 'Delete my account' }))
+    const confirm = await screen.findByRole('dialog', { name: 'Delete your account?' })
+    fireEvent.change(within(confirm).getByLabelText('Your email'), { target: { value: 'ann@example.test' } })
+    fireEvent.click(within(confirm).getByRole('button', { name: 'Delete for good' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('Nothing was deleted')
+    expect(window.location.pathname).toBe('/account')
+  })
+})
+
+describe('download my data', () => {
+  it('asks for recent authentication, then saves the export as a file', async () => {
+    let fresh = false
+    const saved: Blob[] = []
+    const create = vi.fn((blob: Blob) => {
+      saved.push(blob)
+      return 'blob:export'
+    })
+    Object.assign(URL, { createObjectURL: create, revokeObjectURL: vi.fn() })
+    const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => undefined)
+    const api = fakeApi({
+      ...base,
+      'GET /api/account/export': () => (fresh ? { format: 'classbeat-export', version: 1 } : reason(403, 'reauth_required')),
+      'POST /api/auth/reauth': () => {
+        fresh = true
+        return { status: 'ok' }
+      },
+    })
+    renderAt('/account#data')
+    fireEvent.click(await screen.findByRole('button', { name: 'Download my data' }))
+    const prompt = await screen.findByRole('dialog')
+    await confirmWithPassword(prompt, 'my password here')
+    await waitFor(() => {
+      expect(click).toHaveBeenCalledTimes(1)
+    })
+    expect(api.to('GET', '/api/account/export')).toHaveLength(2)
+    expect(JSON.parse((await saved[0]?.text()) ?? '')).toEqual({ format: 'classbeat-export', version: 1 })
+    expect(await screen.findByText('Your data was saved to a file.')).toBeInTheDocument()
+    click.mockRestore()
+  })
+
+  it('says so when too many exports were asked for', async () => {
+    fakeApi({ ...base, 'GET /api/account/export': () => json({ detail: { reason: 'rate_limited' } }, 429) })
+    renderAt('/account#data')
+    fireEvent.click(await screen.findByRole('button', { name: 'Download my data' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('Too many attempts')
   })
 })
 
