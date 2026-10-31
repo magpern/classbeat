@@ -39,6 +39,7 @@ from classbeat.auth.flowtools import factory, mailer, reserve, user_agent
 from classbeat.auth.oauth_client import OAuthRuntime, ProviderError, authorization_url, identify
 from classbeat.auth.oauth_outcomes import Outcome, apply
 from classbeat.auth.oauth_outcomes import Request as OutcomeRequest
+from classbeat.auth.oauth_providers import visible_providers
 from classbeat.auth.oauth_store import Flow, create_flow, safe_return_to, take_flow
 from classbeat.auth.ratelimit import OAUTH_IP, Bucket
 from classbeat.auth.sessions import SessionInfo
@@ -77,7 +78,10 @@ def _redirect_uri(request: Request, provider: str) -> str:
 
 @router.get("/api/auth/oauth/providers")
 async def enabled(request: Request) -> ProvidersOut:
-    return ProvidersOut(providers=sorted(_runtime(request).providers))
+    # Only the providers the sign-in and sign-up screens show; the account page lists every
+    # enabled one through ``GET /api/auth/identities``.
+    settings = request.app.state.settings
+    return ProvidersOut(providers=visible_providers(settings, _runtime(request).providers))
 
 
 @router.post("/api/auth/oauth/{provider}/start")
