@@ -24,6 +24,7 @@ from songtools import (
     choose_turns,
     song_id,
 )
+from spotifycore import album_images
 from spotifyfake import USER_B
 
 pytestmark = pytest.mark.usefixtures("songenv")
@@ -150,6 +151,14 @@ async def test_a_replace_keeps_the_other_songs_in_their_slots(songenv: SongEnv) 
     assert [s["new"] for i, s in enumerate(content["songs"]) if i != 2] == [False] * 7
     assert songenv.revision(new_revision).parent_id == revision
     assert new_job != job_id
+    # the kept songs keep the seed's covers (none for the narrow album's song in slot 1), which
+    # this run never searched for; the new song has its own search hit's (ADR 0013 section 9)
+    seed_covers = [s["cover"] for s in songenv.revision(revision).content["songs"]]
+    covers = [s["cover"] for s in content["songs"]]
+    assert covers[:2] + covers[3:] == seed_covers[:2] + seed_covers[3:]
+    assert seed_covers[1] is None
+    assert all(c for i, c in enumerate(seed_covers) if i != 1)
+    assert covers[2] == album_images(songenv.fake.catalogue[song_id(13)]["album_id"])[-1]["url"]
 
 
 # Kept indexes 2 to 6 of the seed's other slots (3 to 7 of LIST_8) with their roles.

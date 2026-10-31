@@ -31,7 +31,9 @@ stages again, and the cost ceiling (``CLASSBEAT_SONG_JOB_COST_MICROS``) counts e
 what the pool must cover. The new list's parent is the seed.
 
 **Never in a model's input**: tokens, the Spotify user id, playlist names or ids, track ids or
-URIs, MOWL ids (``classbeat.agent.model_input``; the stages see refs, indexes and text only).
+URIs, album cover URLs, MOWL ids (``classbeat.agent.model_input``; the stages see refs, indexes
+and text only). A song's cover comes from the search hit its ref names (``SearchRegistry``) or,
+for a kept song, from the seed list, never from the model (ADR 0013 section 9).
 """
 
 import logging
@@ -135,7 +137,7 @@ async def _seeded(run: JobRun, seed: SeedSpec | None) -> Seeded | None:
     if not replaced or any(slot >= slots for slot in replaced):
         raise JobFailure("invalid_input")
     kept = tuple(
-        KeptSong(slot, s.spotify_id, s.title, s.artist, s.role, s.bpm, s.length_sec)
+        KeptSong(slot, s.spotify_id, s.title, s.artist, s.role, s.bpm, s.length_sec, s.cover)
         for slot, s in enumerate(found.content.songs)
         if slot not in replaced
     )
@@ -283,7 +285,8 @@ async def _choose(
 ) -> tuple[ChosenList, dict[str, Any]]:
     analysis_map = step.data.analysis["map"]
     wanted = [(p.spotify_id, p.role) for p in pool.picks]
-    tracks, omitted = analysed_pool(analysis_map, wanted)
+    covers = {p.spotify_id: p.cover for p in pool.picks}  # the search's, host-checked
+    tracks, omitted = analysed_pool(analysis_map, wanted, covers)
     ctx = ChooseContext.build(plan, tracks, omitted)  # pool_too_small
     choose_config = stage_config(
         agent, config, turns=choose_module.MAX_TURNS, calls=choose_module.MAX_TOOL_CALLS
