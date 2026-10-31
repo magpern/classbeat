@@ -1,0 +1,14 @@
+{
+ "status": 409,
+ "headers": {
+  "x-request-id": "req_fixture_409"
+ },
+ "body": {
+  "error": {
+   "message": "hand-written fixture error",
+   "type": "invalid_request_error",
+   "param": null,
+   "code": null
+  }
+ }
+}
