@@ -170,7 +170,20 @@ async def _gate_before_validation(request: Request) -> JSONResponse | None:
 MAX_BODY_BYTES = 64 * 1024
 BODY_TOO_LARGE = "body_too_large"
 BODY_UNREADABLE = "body_unreadable"
-_BODY_STATUSES = {400: BODY_UNREADABLE, 413: BODY_TOO_LARGE}
+# The two body refusals by exactly what raises them, so a 400 or 413 a route raises itself is
+# never taken for one (#315 review): FastAPI's own body-parse failure
+# (``fastapi.routing.get_request_handler``) and ``AdminBodyLimit``'s.
+_FASTAPI_BODY_ERROR = "There was an error parsing the body"
+_BODY_REFUSALS: dict[tuple[int, object], str] = {
+    (400, _FASTAPI_BODY_ERROR): BODY_UNREADABLE,
+    (413, repr({"reason": BODY_TOO_LARGE})): BODY_TOO_LARGE,
+}
+
+
+def _body_refusal(exc: object) -> str | None:
+    status, detail = getattr(exc, "status_code", None), getattr(exc, "detail", None)
+    key = detail if isinstance(detail, str) else repr(detail)
+    return _BODY_REFUSALS.get((status, key)) if isinstance(status, int) else None
 
 
 class AdminBodyLimit:
@@ -244,9 +257,9 @@ def install(app: Any) -> None:
     async def body_refused(request: Request, exc: Exception) -> Response:
         """A body FastAPI could not read (400) or ``AdminBodyLimit`` refused (413) on an admin
         route: the gate first, then the refusal with its row. Every other HTTP error (the
-        gate's own included) goes to the previous handler unchanged."""
-        status = getattr(exc, "status_code", None)
-        reason = _BODY_STATUSES.get(status) if isinstance(status, int) else None
+        gate's own included, and a 400 or 413 a route raises) goes to the previous handler
+        unchanged."""
+        reason = _body_refusal(exc)
         if reason is None or not request.url.path.startswith("/api/admin"):
             return await previous_http(request, exc)
         refused = await _gate_before_validation(request)

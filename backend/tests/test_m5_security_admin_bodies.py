@@ -11,17 +11,23 @@ review's notes 1 and 3.
   64 KiB is read (and here answered 422 for its content).
 """
 
+import inspect
 import json
 import uuid
 from collections.abc import AsyncIterator
 from typing import Any
 
+import fastapi.routing
 import pytest
+from fastapi import HTTPException
 from sqlalchemy import text
 from sqlalchemy.engine import Connection, make_url
 
 from authtools import ORIGIN, Env, running_env, session_cookie
-from classbeat.admin.routes import MAX_BODY_BYTES
+from classbeat.admin.routes import (
+    MAX_BODY_BYTES,
+    _body_refusal,  # pyright: ignore[reportPrivateUsage]
+)
 
 ENTITLEMENTS = "/api/admin/users/{user_id}/entitlements"
 CODES = "/api/admin/redeem-codes"
@@ -173,6 +179,26 @@ async def test_a_body_of_exactly_the_limit_is_read(
     assert [r[1:3] for r in rows(superuser, who.ids["stepped"])] == [("refused", "invalid_input")]
     over = await send_raw(who.stepped, ENTITLEMENTS.replace("{user_id}", str(target)), exact + b" ")
     assert (over.status_code, over.json()["detail"]["reason"]) == (413, "body_too_large")
+
+
+def test_only_the_two_body_refusals_get_a_body_reason() -> None:
+    """#315 review, non-blocking 1: a 400 or 413 an admin route raises itself is not labelled
+    ``body_unreadable`` or ``body_too_large`` (nor audited a second time); and FastAPI still
+    raises its body-parse failure with the detail this matches."""
+    assert _body_refusal(HTTPException(400, "There was an error parsing the body")) == (
+        "body_unreadable"
+    )
+    assert _body_refusal(HTTPException(413, {"reason": "body_too_large"})) == "body_too_large"
+    for other in (
+        HTTPException(400, "bad request"),
+        HTTPException(400, {"reason": "body_unreadable"}),
+        HTTPException(413, "too large"),
+        HTTPException(413, {"reason": "something_else"}),
+        HTTPException(403, {"reason": "forbidden"}),
+    ):
+        assert _body_refusal(other) is None, other
+    source = inspect.getsource(fastapi.routing)
+    assert 'status_code=400, detail="There was an error parsing the body"' in source
 
 
 async def test_the_limit_is_the_admin_areas_alone(env: Env, make_actor: Any) -> None:
