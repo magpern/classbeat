@@ -57,5 +57,6 @@ export const fakePlaylists = (): FakePlaylist[] => control<{ playlists: FakePlay
 
 /** The titles of the songs on the Songs for approval page, in order. */
 export async function listedTitles(page: Page): Promise<string[]> {
+  await expect(page.getByTestId('song').first()).toBeVisible() // the list may still be loading
   return page.getByTestId('song').locator('p:first-child').allInnerTexts()
 }

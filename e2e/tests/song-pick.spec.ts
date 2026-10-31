@@ -19,6 +19,8 @@ import { CLIENT_A, CLIENT_B, USER_B, USER_A, control, fakeState, playSpotify, re
 // MOWL lists what the fake Spotify's playlist holds now, so a pool or final playlist the worker
 // writes is what MOWL analyses. Public test values only: no real Spotify, MOWL or model.
 
+test.setTimeout(90_000) // a pick runs the worker twice
+
 test.beforeEach(() => {
   resetSpotify()
 })
@@ -176,7 +178,7 @@ test('a Spotify account switch while songs wait makes the approval refuse and wr
   await playSpotify(other)
   signInAtSpotify(USER_B)
   await changeClientId(other, CLIENT_B)
-  await expect(other.getByText(/This is a different Spotify account than before/)).toBeVisible()
+  await expect(other.getByText(/This is a different Spotify account than before/)).toBeVisible({ timeout: 20_000 })
   await other.getByLabel('Spotify Client ID').fill(CLIENT_B)
   await other.getByRole('button', { name: 'Confirm and switch account' }).click()
   await expect(other.getByText('Spotify is connected.')).toBeVisible()

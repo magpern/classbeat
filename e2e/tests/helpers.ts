@@ -73,6 +73,11 @@ function randomClientIp(): string {
 // The browser may only talk to the stack under test: any other origin is blocked and fails the
 // test (the fakes are compose-internal; a page asking for a real host is a bug). Routes a test
 // sets on its page (the OAuth provider's) answer first and never reach this guard.
+const PIXEL = Buffer.from(
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==',
+  'base64',
+)
+
 export const test = base.extend<{ networkGuard: void }>({
   extraHTTPHeaders: async ({}, use) => {
     await use({ 'X-Forwarded-For': randomClientIp() })
@@ -81,8 +86,14 @@ export const test = base.extend<{ networkGuard: void }>({
     async ({ context, baseURL }, use) => {
       const allowed = new URL(baseURL ?? 'http://127.0.0.1').origin
       const blocked: string[] = []
+      // The one third party the pages may ask for: album cover art from Spotify's image host
+      // (CSP img-src, frontend CoverArt). The fake Spotify names such URLs; the answer is a pixel.
       await context.route(
-        (url) => url.origin !== allowed,
+        (url) => url.origin === 'https://i.scdn.co',
+        (route) => route.fulfill({ status: 200, contentType: 'image/png', body: PIXEL }),
+      )
+      await context.route(
+        (url) => url.origin !== allowed && url.origin !== 'https://i.scdn.co',
         async (route) => {
           blocked.push(new URL(route.request().url()).origin)
           await route.abort('blockedbyclient')
