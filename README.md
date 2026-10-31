@@ -8,6 +8,7 @@ Swedebeat.
 
 - What we're building and in what order: [docs/roadmap.md](docs/roadmap.md)
 - Where it stands: [docs/status.md](docs/status.md)
+- Ideas that are not planned: [docs/ideas.md](docs/ideas.md)
 - How agents work on it: [AGENTS.md](AGENTS.md)
 - Decisions: [docs/adr/](docs/adr/)
 

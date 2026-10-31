@@ -3,6 +3,8 @@
 Updated on every merge. The roadmap is [roadmap.md](roadmap.md); the milestones and issues on
 GitHub hold the detail.
 
+See also: ideas that are not planned, in [ideas.md](ideas.md).
+
 ## Milestones
 
 | # | Milestone | State |
