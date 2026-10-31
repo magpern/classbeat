@@ -212,7 +212,8 @@ test('Songs for approval: viewports, accessibility and a quiet console', async (
 // ADR 0013 sections 8 and 9, the review of UI7: style-src stays 'self', so a library that injects
 // a <style> element is blocked. The Dialog is the one such component a page uses (Delete my
 // account); it has to open, trap and return focus, close on Escape and fit the window at both
-// sizes, and the blocked style must not be a console error that fails the checks above.
+// sizes, lock the page behind it with a class (not the inline style the CSP refuses), and leave
+// the console empty.
 test('a dialog under the CSP opens, fits the window and closes at 390 and 1440 px', async () => {
   await page.goto('/account#data')
   const trigger = page.getByRole('button', { name: /delete my account|delete account/i }).first()
@@ -225,6 +226,7 @@ test('a dialog under the CSP opens, fits the window and closes at 390 and 1440 p
     await trigger.click()
     const dialog = page.getByRole('dialog')
     await expect(dialog).toBeVisible()
+    expect(await page.evaluate(() => getComputedStyle(document.documentElement).overflow)).toBe('hidden')
     const box = (await dialog.boundingBox())!
     expect(box.x).toBeGreaterThanOrEqual(0)
     expect(box.x + box.width).toBeLessThanOrEqual(width + 0.5)
@@ -234,13 +236,8 @@ test('a dialog under the CSP opens, fits the window and closes at 390 and 1440 p
     await page.keyboard.press('Escape')
     await expect(dialog).toBeHidden()
     await expect(trigger).toBeFocused()
+    expect(await page.evaluate(() => getComputedStyle(document.documentElement).overflow)).not.toBe('hidden')
   }
-  // Known and accepted for now (UI10 check of the UI7 note): style-src stays 'self', so the
-  // scroll lock that Radix Dialog applies with an inline style is refused. The browser reports
-  // it as a console error once per open, the dialog still works, and the page behind it can be
-  // scrolled while it is open. Any other console error still fails here.
-  expect(consoleErrors.length).toBeLessThanOrEqual(2)
-  for (const message of consoleErrors) {
-    expect(message).toMatch(/^error: Applying inline style violates .*directive 'style-src 'self''/)
-  }
+  // The page scroll lock is a class, so the CSP refuses nothing: any console error fails.
+  expect(consoleErrors).toEqual([])
 })

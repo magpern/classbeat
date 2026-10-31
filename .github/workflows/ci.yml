@@ -129,6 +129,12 @@ jobs:
           [ "$fn" = "$db" ] && [ "$ci" = "$db" ] && [ "$shards" = "$db" ] \
             || { echo "::error::db, db-functions and the backend jobs must use the same postgres image"; exit 1; }
 
+      # compose.prod.yaml and the Caddyfile (issue #341): config parses with dummy values, the
+      # production invariants hold (only caddy publishes ports, no mailpit, internal backend
+      # network, no model key on web ...) and `caddy validate` accepts the Caddyfile.
+      - name: Production compose and Caddyfile
+        run: scripts/check-prod-compose.sh
+
       # Every setup-uv step's version equals the Dockerfile's uv tag (scripts/ci-uv-version.sh).
       - name: uv version matches the Dockerfile
         run: scripts/ci-uv-version.sh

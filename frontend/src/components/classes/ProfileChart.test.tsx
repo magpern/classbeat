@@ -24,8 +24,8 @@ const SEGMENTS: DraftSegment[] = [
 ]
 
 const SONGS: Song[] = [
-  { position: 1, title: 'First', artist: 'A', role: 'warmup', bpm: 120, lengthSec: 600, isNew: false, cover: null, openSpotify: null },
-  { position: 2, title: 'Second', artist: 'B', role: 'main', bpm: 140, lengthSec: 600, isNew: false, cover: null, openSpotify: null },
+  { position: 1, title: 'First', artist: 'A', role: 'warmup', bpm: 120, lengthSec: 600, startSec: 0, isNew: false, cover: null, openSpotify: null },
+  { position: 2, title: 'Second', artist: 'B', role: 'main', bpm: 140, lengthSec: 600, startSec: 591, isNew: false, cover: null, openSpotify: null },
 ]
 
 function bars(container: HTMLElement) {
@@ -109,6 +109,30 @@ describe('the class profile', () => {
     rerender(<ProfileChart segments={SEGMENTS} title="Hills" songs={SONGS} />)
     expect(screen.getByTestId('song-strip')).toBeInTheDocument()
     expect(screen.getByText('First')).toBeInTheDocument()
+  })
+
+  it('places each song block where the song starts in the class', () => {
+    // 1200 s class; the second song starts at 591 s (a 9 s crossfade) and the first block runs to it.
+    render(<ProfileChart segments={SEGMENTS} title="Hills" songs={SONGS} />)
+    const [first, second] = screen.getByTestId('song-strip').querySelectorAll('li')
+    expect(first?.style.left).toBe('0%')
+    expect(parseFloat(first?.style.width ?? '')).toBeCloseTo((591 / 1200) * 100, 5)
+    expect(parseFloat(second?.style.left ?? '')).toBeCloseTo((591 / 1200) * 100, 5)
+    expect(parseFloat(second?.style.width ?? '')).toBeCloseTo((600 / 1200) * 100, 5) // to its own end
+  })
+
+  it('labels the seven zones Z1 to Z7 on the grid, Z1 lowest', () => {
+    const { container } = render(<ProfileChart segments={SEGMENTS} title="Hills" songs={null} />)
+    const labels = [...container.querySelectorAll('svg text')].filter((t) => /^Z[1-7]$/.test(t.textContent ?? ''))
+    expect(labels.map((t) => t.textContent)).toEqual(['Z1', 'Z2', 'Z3', 'Z4', 'Z5', 'Z6', 'Z7'])
+    const ys = labels.map((t) => Number(t.getAttribute('y')))
+    // Higher zone, higher on the grid (a smaller y), by the same height share the bars use.
+    expect([...ys].sort((a, b) => b - a)).toEqual(ys)
+    expect(new Set(ys).size).toBe(7)
+    const grid = [...container.querySelectorAll('svg line')].filter((l) => l.getAttribute('y1') === l.getAttribute('y2'))
+    for (const label of labels) {
+      expect(grid.some((l) => Number(l.getAttribute('y1')) === Number(label.getAttribute('y')) - 4)).toBe(true)
+    }
   })
 
   it('lists the time in each of the seven zones', () => {
