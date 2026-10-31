@@ -190,6 +190,7 @@ async def run_case(
             float(ctx.map["duration"]),
             note,
             zone7_tss_margin=zone7_tss_margin,
+            music_map=ctx.map,
         )
         zone7 = has_zone7(result.spec)
     except Exception as exc:

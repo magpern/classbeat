@@ -53,7 +53,9 @@ CATEGORY_GROUPS: Final[dict[str, frozenset[str]]] = {
     "adversarial": frozenset({"design", "songs"}),
     "cost": frozenset({"design", "songs"}),
 }
-DIGEST_SOURCES: Final = ("cases.py", "checks.py", "music.py", "pick.py", "suite.py", "gate.py")
+DIGEST_SOURCES: Final = (
+    "cases.py", "checks.py", "music.py", "pick.py", "runner.py", "suite.py", "gate.py",
+)  # fmt: skip
 CONSTANT_MODULES: Final[tuple[ModuleType, ...]] = (checks, music, pick)
 CONSTANT_NAME: Final = re.compile(r"^[A-Z][A-Z0-9_]*$")
 HEX64: Final = re.compile(r"^[0-9a-f]{64}$")

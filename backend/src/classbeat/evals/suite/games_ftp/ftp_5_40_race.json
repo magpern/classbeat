@@ -1,0 +1,16 @@
+{
+ "name": "ftp_5_40_race",
+ "about": "Hard 40 minutes with a 5 minute FTP test and a race.",
+ "brief": {
+  "length_min": 40,
+  "intensity": "hard",
+  "ftp_test": 5,
+  "races": 1
+ },
+ "music": {
+  "tracks": 12
+ },
+ "expect": {
+  "ftp_warmup_min_sec": 600
+ }
+}
