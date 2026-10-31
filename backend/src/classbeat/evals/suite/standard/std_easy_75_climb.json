@@ -1,0 +1,13 @@
+{
+ "name": "std_easy_75_climb",
+ "about": "Easy 75 minutes with one climb.",
+ "brief": {
+  "length_min": 75,
+  "intensity": "easy",
+  "climbs": 1
+ },
+ "music": {
+  "tracks": 21
+ },
+ "expect": {}
+}

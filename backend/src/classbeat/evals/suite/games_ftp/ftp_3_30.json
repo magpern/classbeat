@@ -1,0 +1,15 @@
+{
+ "name": "ftp_3_30",
+ "about": "Moderate 30 minutes with a 3 minute FTP test.",
+ "brief": {
+  "length_min": 30,
+  "intensity": "moderate",
+  "ftp_test": 3
+ },
+ "music": {
+  "tracks": 9
+ },
+ "expect": {
+  "ftp_warmup_min_sec": 600
+ }
+}

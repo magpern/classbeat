@@ -9,9 +9,11 @@ from datetime import datetime
 from typing import Any, Final
 from uuid import UUID
 
+from pydantic import ValidationError
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from classbeat.agent.schemas import Brief
 from classbeat.classes import seams, song_views
 from classbeat.context import UserContext, require_context
 from classbeat.db import user_session
@@ -46,13 +48,23 @@ LEFT JOIN class_revisions cur
 LEFT JOIN jobs oj
     ON oj.owner_id = c.owner_id AND oj.class_id = c.id AND oj.state IN {OPEN_JOB}
 LEFT JOIN LATERAL (
-    SELECT jsonb_agg(jsonb_build_array((iv.i ->> 'zone')::int, (iv.i ->> 'sec')::int)
-        ORDER BY sg.ord, iv.ord) AS profile
-    FROM jsonb_array_elements(CASE WHEN jsonb_typeof(cur.content -> 'segments') = 'array'
-        THEN cur.content -> 'segments' ELSE '[]'::jsonb END) WITH ORDINALITY AS sg(seg, ord)
-    CROSS JOIN LATERAL jsonb_array_elements(CASE WHEN jsonb_typeof(sg.seg -> 'intervals') = 'array'
-        THEN sg.seg -> 'intervals' ELSE '[]'::jsonb END) WITH ORDINALITY AS iv(i, ord)
-    WHERE jsonb_typeof(iv.i -> 'zone') = 'number' AND jsonb_typeof(iv.i -> 'sec') = 'number'
+    SELECT jsonb_agg(jsonb_build_array(t.zone, t.sec) ORDER BY t.seg_ord, t.iv_ord) AS profile
+    FROM (
+        -- Only whole numbers are cast; an interval with any other zone or length is left out
+        -- (a bad value must not fail the whole list).
+        SELECT sg.ord AS seg_ord, iv.ord AS iv_ord,
+            CASE WHEN jsonb_typeof(iv.i -> 'zone') = 'number'
+                AND (iv.i ->> 'zone') ~ '^[0-9][0-9]?$' THEN (iv.i ->> 'zone')::int END AS zone,
+            CASE WHEN jsonb_typeof(iv.i -> 'sec') = 'number'
+                AND (iv.i ->> 'sec') ~ '^[0-9]+$' AND length(iv.i ->> 'sec') <= 6
+                THEN (iv.i ->> 'sec')::int END AS sec
+        FROM jsonb_array_elements(CASE WHEN jsonb_typeof(cur.content -> 'segments') = 'array'
+            THEN cur.content -> 'segments' ELSE '[]'::jsonb END) WITH ORDINALITY AS sg(seg, ord)
+        CROSS JOIN LATERAL jsonb_array_elements(
+            CASE WHEN jsonb_typeof(sg.seg -> 'intervals') = 'array'
+            THEN sg.seg -> 'intervals' ELSE '[]'::jsonb END) WITH ORDINALITY AS iv(i, ord)
+    ) t
+    WHERE t.zone IS NOT NULL AND t.sec IS NOT NULL
 ) pf ON true
 LEFT JOIN LATERAL (
     SELECT count(*) OVER () AS n, s.revision_number, s.updated_at, s.content_hash,
@@ -92,6 +104,12 @@ LIMIT :limit"""
 _REVISIONS = text(_REVISION_SELECT.format(body=""))
 _REVISION = text(_REVISION_SELECT.format(body=", r.content, r.music, r.provenance"))
 
+_BRIEF = text(
+    "SELECT coalesce(c.brief, (SELECT j.input -> 'brief' FROM jobs j "
+    "WHERE j.owner_id = c.owner_id AND j.class_id = c.id AND j.kind = 'design_with_songs' "
+    "ORDER BY j.created_at DESC LIMIT 1)) FROM classes c "
+    "WHERE c.owner_id = :owner_id AND c.id = :class_id"
+)
 _CLASS_EXISTS = text("SELECT 1 FROM classes WHERE id = :class_id AND owner_id = :owner_id")
 _MESSAGES = text(
     "SELECT seq, role, body, job_id, base_revision_id, result_revision_id, change, created_at "
@@ -172,10 +190,35 @@ async def get_class(factory: Factory, ctx: UserContext, class_id: UUID) -> Any |
         return (await db.execute(_CLASSES, _ids(ctx, class_id, limit=1))).first()
 
 
+@dataclass(frozen=True)
+class ClassDetail:
+    row: Any
+    songs: song_views.SongsState
+    playlists: song_views.Playlists
+    brief: Brief | None
+
+
+async def stored_brief(db: AsyncSession, owner_id: UUID, class_id: UUID) -> Brief | None:
+    """The class's stored brief (ADR 0008 section 6): ``classes.brief`` once it has a design;
+    before that, the brief of the class's newest ``design_with_songs`` job (the one its songs
+    were picked for). The user's own rows only; None when neither is there or it no longer
+    parses."""
+    value = (
+        await db.execute(_BRIEF, {"owner_id": owner_id, "class_id": class_id})
+    ).scalar_one_or_none()
+    if value is None:
+        return None
+    try:
+        return Brief.model_validate(value)
+    except ValidationError:
+        return None
+
+
 async def get_class_detail(
     factory: Factory, ctx: UserContext, class_id: UUID
-) -> tuple[Any, song_views.SongsState, song_views.Playlists] | None:
-    """The class row with its song state and playlists (one transaction), or ``None``."""
+) -> ClassDetail | None:
+    """The class row with its song state, playlists and stored brief (one transaction), or
+    ``None``."""
     require_context(ctx)
     async with user_session(factory, ctx) as db:
         await seams.resolve_orphans(db, ctx)
@@ -183,7 +226,8 @@ async def get_class_detail(
         if row is None:
             return None
         songs = await song_views.songs_state(db, ctx.user_id, class_id)
-        return row, songs, await song_views.playlists_of(db, ctx.user_id, class_id)
+        playlists = await song_views.playlists_of(db, ctx.user_id, class_id)
+        return ClassDetail(row, songs, playlists, await stored_brief(db, ctx.user_id, class_id))
 
 
 async def list_revisions(factory: Factory, ctx: UserContext, class_id: UUID) -> list[Any] | None:

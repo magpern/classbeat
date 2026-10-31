@@ -1,9 +1,8 @@
 import { TSS_APPROXIMATE_NOTE } from '../../lib/classCards'
 
 /**
- * A TSS; with any zone 7 interval it reads "≈ N" and carries ADR 0012 section 7's note. The note
- * is visually hidden text, so screen readers read the number with it (an aria-label on a plain
- * span is not reliably read).
+ * A TSS. With any zone 7 interval it reads "≈ N" and says why: the visible mark is hidden from
+ * screen readers, which get the number and ADR 0012 section 7's note as text instead.
  */
 export function TssValue({ value, approximate }: { value: number; approximate: boolean }) {
   if (!approximate) return <span>{String(value)}</span>

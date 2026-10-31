@@ -47,12 +47,24 @@ describe('My classes', () => {
     expect(screen.queryByText(/≈/)).toBeNull()
   })
 
-  it('marks a TSS with a zone 7 interval as approximate, with the note as visually hidden text', async () => {
+  it('marks a TSS with a zone 7 interval as approximate, with the note as screen-reader text', async () => {
     renderAtWith([classBody({ profile: [[3, 600], [7, 30]] })])
     const note = await screen.findByText(/^\d+(\.\d)?, approximate: zone 7 has no exact TSS weight$/)
     expect(note).toHaveClass('sr-only')
-    expect(note.parentElement).toHaveTextContent(/^≈ \d/)
-    expect(note.previousElementSibling).toHaveAttribute('aria-hidden', 'true')
+    // The visible mark is hidden from screen readers; the note is the text they get.
+    const mark = screen.getByText(/^≈ \d/)
+    expect(mark).toHaveAttribute('aria-hidden', 'true')
+    expect(note.parentElement).toContainElement(mark)
+    expect(note.parentElement).not.toHaveAttribute('aria-label')
+  })
+
+  it('skips a malformed interval and keeps the rest of the profile and the list', async () => {
+    renderAtWith([
+      classBody({ profile: [[2.5, 300], [3, 600], [4, 90.5], 'junk', [5], [3, -1], [4, 300]] }),
+      classBody({ id: SECOND, title: 'Other' }),
+    ])
+    expect(await screen.findByRole('img', { name: /Class profile, 15 min, 2 intervals/ })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Other' })).toBeInTheDocument()
   })
 
   it('shows saved state and "changes not in MOWL yet"', async () => {

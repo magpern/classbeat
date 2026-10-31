@@ -119,12 +119,13 @@ async def get_class(
     )
     if found is None:
         return _not_found()
-    row, songs, playlists = found
+    playlists = found.playlists
     return ClassDetailOut(
-        **ClassOut.of(row).model_dump(),
-        songs=SongsOut(**asdict(songs)),
+        **ClassOut.of(found.row).model_dump(),
+        songs=SongsOut(**asdict(found.songs)),
         playlist=None if playlists.current is None else PlaylistOut(**asdict(playlists.current)),
         spotify_playlists=[PlaylistOut(**asdict(p)) for p in playlists.all],
+        brief=found.brief,
     )
 
 

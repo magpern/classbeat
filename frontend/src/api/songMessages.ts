@@ -1,4 +1,5 @@
 import { ApiError } from './client'
+import { planRefusalText } from './planMessages'
 import { spotifySentence } from './spotifyMessages'
 
 // The words of song picking (ADR 0008 sections 5 and 9, ADR 0009 section 8). A category code, a
@@ -79,6 +80,9 @@ const APPROVE_REFUSALS: Record<string, Refusal> = {
 const APPROVE_FALLBACK: Refusal = { text: 'That did not work. Try again.', final: false }
 
 export function approveRefusal(error: unknown): Refusal {
+  if (error instanceof ApiError && (error.reason === 'quota' || error.reason === 'busy')) {
+    return { text: planRefusalText(error) ?? APPROVE_FALLBACK.text, final: false }
+  }
   if (error instanceof ApiError && error.reason !== null && Object.hasOwn(APPROVE_REFUSALS, error.reason)) {
     return APPROVE_REFUSALS[error.reason]!
   }
@@ -102,12 +106,12 @@ const START_ERRORS: Record<string, string> = {
   account_changed: 'Your Spotify account is not the one these songs were chosen for. Pick songs again.',
   write_unresolved:
     'An earlier step on Spotify is still undecided. Check it first, then create the playlist again.',
-  quota: 'You have used up what your plan allows for now.',
-  busy: 'You already have designs running. Wait for one to finish, then try again.',
   idempotency_mismatch: 'That did not work. Check the form and try again.',
 }
 
 export function startError(error: unknown): string {
+  const refusal = planRefusalText(error)
+  if (refusal !== null) return refusal
   if (error instanceof ApiError && error.reason !== null && Object.hasOwn(START_ERRORS, error.reason)) {
     return START_ERRORS[error.reason]!
   }

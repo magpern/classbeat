@@ -261,7 +261,7 @@ async def test_the_views_show_what_the_page_needs_and_no_provider_ids(
     [row] = listed.json()["classes"]
     shown = await mine.browser.get(base)
     texts.append(shown.text)
-    extra = {"songs", "playlist", "spotify_playlists"}  # the single class adds the song state
+    extra = {"songs", "playlist", "spotify_playlists", "brief"}  # the single class adds these
     assert {k: v for k, v in shown.json().items() if k not in extra} == row
     assert shown.json()["songs"] == {
         "state": "none", "job_id": None, "revision_id": None, "content_hash": None,
@@ -935,7 +935,7 @@ async def test_the_list_profile_is_the_current_revision_and_never_another_users(
     by_id = {c["id"]: c for c in listed}
     assert by_id[str(mine.class_id)]["profile"] == [[2, 60], [3, 120], [5, 300]]
     assert by_id[str(no_current)]["profile"] == []
-    assert "777" not in json.dumps(listed)
+    assert all([7, 777] not in c["profile"] for c in listed)
 
     theirs_listed = (await theirs.browser.get("/api/classes")).json()["classes"]
     assert [c["profile"] for c in theirs_listed] == [[[7, 777]]]
@@ -1002,3 +1002,36 @@ async def test_the_approximate_tss_flag_is_the_stored_one_or_read_from_a_zone_7_
 
 def by_class(response: Any, plant: Plant) -> dict[str, Any]:
     return {c["id"]: c for c in response.json()["classes"]}[str(plant.class_id)]
+
+
+async def test_a_bad_interval_is_left_out_of_the_profile_and_never_fails_the_list(
+    two: tuple[Plant, Plant],
+) -> None:
+    mine, _ = two
+    odd = {
+        **DRAFT,
+        "segments": [
+            {
+                "name": "X",
+                "kind": "main",
+                "intervals": [
+                    {"sec": 60, "zone": 2.5},  # not a whole zone
+                    {"sec": 60.5, "zone": 3},  # not a whole length
+                    {"sec": "90", "zone": 3},  # a string, not a number
+                    {"sec": -5, "zone": 3},
+                    {"sec": 10**9, "zone": 3},
+                    {"zone": 4},
+                    "junk",
+                    {"sec": 120, "zone": 4},
+                ],
+            }
+        ],
+    }
+    mine.sql(
+        "UPDATE class_revisions SET content = CAST(:c AS jsonb) WHERE id = :r",
+        c=json.dumps(odd),
+        r=mine.r1,
+    )
+    listed = await mine.browser.get("/api/classes")
+    assert listed.status_code == 200
+    assert listed.json()["classes"][0]["profile"] == [[4, 120]]

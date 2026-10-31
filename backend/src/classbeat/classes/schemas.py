@@ -7,6 +7,8 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict
 
+from classbeat.agent.schemas import Brief
+
 
 class OpenJobOut(BaseModel):
     id: UUID
@@ -119,6 +121,9 @@ class ClassDetailOut(ClassOut):
     songs: SongsOut
     playlist: PlaylistOut | None = None  # the current draft's own playlist
     spotify_playlists: list[PlaylistOut]  # every one left in Spotify if the class is deleted
+    # The brief the class was designed (or its songs picked) for, to seed a follow-up job such as
+    # Ask for changes or a resume (ADR 0008 section 6); the owner's own, never another user's.
+    brief: Brief | None = None
 
 
 class ClassesOut(BaseModel):

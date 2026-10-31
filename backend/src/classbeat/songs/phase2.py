@@ -10,7 +10,12 @@ It runs after the user's Approve (the same job, ``approved``) or for a **resume*
    class's **newest** ``song_list`` (``invalid_input`` otherwise: superseded) and still hash to
    its stored ``content_hash`` (``song_list.load``; ``invalid_input``); the Spotify account it was
    made for must be the connected one (``account_changed``); both connections must be the job's
-   and ``connected`` (``not_connected``). The approved phase also requires both connections to be
+   and ``connected`` (``not_connected``); no final-playlist write of the class may be undecided
+   (``uncertain_write``, ``orphans.playlist_unresolved``, behind ``admit``): any ``uncertain``
+   row, including the job's own, so a retry of the same job also stops on its own uncertain
+   create or fill, as Save's rule does; only the job's own ``pending`` rows are its to resolve by
+   key. For ``revise_songs`` the base draft must still be current (``invalid_input``). The
+   approved phase also requires both connections to be
    the **same generations** phase 1 recorded: a Spotify or MOWL reconnect between the pick and
    the run ends the job ``not_connected`` with no write (ADR 0008 Consequences: the approved list
    stays resumable, and a resume uses the connections as they are now). The playlist's tracks
@@ -68,7 +73,7 @@ from classbeat.crypto.keks import KeyRing
 from classbeat.design import revision
 from classbeat.design.music import MusicStep, load_music
 from classbeat.jobs import Complete, FencedSession, JobFailure, JobRun
-from classbeat.operations import attach_spotify_playlist
+from classbeat.operations import attach_spotify_playlist, orphans
 from classbeat.playlists import (
     ClassPlaylist,
     create_final_playlist,
@@ -78,7 +83,7 @@ from classbeat.playlists import (
 from classbeat.playlists import common as playlist_common
 from classbeat.songs import song_list
 from classbeat.songs.config import SongConfig
-from classbeat.songs.inputs import DesignWithSongsInput
+from classbeat.songs.inputs import DesignWithSongsInput, SongJob
 from classbeat.songs.pick import stage_config
 
 logger = logging.getLogger(__name__)
@@ -130,8 +135,17 @@ async def _newest(fs: FencedSession, class_id: UUID) -> UUID | None:
     return (await fs.db.execute(_NEWEST, params)).scalar_one_or_none()
 
 
-async def prepare(run: JobRun, keyring: KeyRing, given: DesignWithSongsInput) -> Prepared:
-    """Stage ``prepare`` (module docstring, step 1)."""
+_CURRENT = text(
+    "SELECT current_revision_id FROM classes WHERE owner_id = :owner_id AND id = :class_id"
+)
+
+
+async def prepare(
+    run: JobRun, keyring: KeyRing, given: SongJob, *, base_revision_id: UUID | None = None
+) -> Prepared:
+    """Stage ``prepare`` (module docstring, step 1). ``base_revision_id`` (``revise_songs``): the
+    draft the change starts from must still be the class's current revision (``invalid_input``),
+    checked in the same transaction, before any Spotify write."""
     await run.stage("prepare")
     if run.ctx.connection("mowl") != given.mowl_connection_id:
         raise JobFailure("not_connected")
@@ -152,6 +166,12 @@ async def prepare(run: JobRun, keyring: KeyRing, given: DesignWithSongsInput) ->
         stored = await song_list.load(fs.db, fs.lease.owner_id, job.class_id, revision_id)
         if stored is None:
             raise JobFailure("invalid_input")  # the row is not what was approved
+        if await orphans.playlist_unresolved(fs.db, fs.lease.ctx, job.class_id, fs.lease.job_id):
+            raise JobFailure("uncertain_write")  # behind admit: a final write is undecided
+        if base_revision_id is not None:
+            params = {"owner_id": fs.lease.owner_id, "class_id": job.class_id}
+            if (await fs.db.execute(_CURRENT, params)).scalar_one_or_none() != base_revision_id:
+                raise JobFailure("invalid_input")  # the base is no longer the current draft
         for opened in (spotify, mowl):
             if not await hold(fs.db, fs.lease.ctx, opened):
                 raise JobFailure("not_connected")
@@ -231,7 +251,7 @@ def check_music(step: MusicStep, p: Prepared) -> None:
 async def _music(
     run: JobRun,
     keyring: KeyRing,
-    given: DesignWithSongsInput,
+    given: SongJob,
     p: Prepared,
     final: ClassPlaylist,
     config: SongConfig,
@@ -274,6 +294,60 @@ def music_source(final: ClassPlaylist) -> dict[str, Any]:
     }
 
 
+async def final_music(
+    run: JobRun,
+    keyring: KeyRing,
+    given: SongJob,
+    config: SongConfig,
+    *,
+    base_revision_id: UUID | None = None,
+) -> tuple[Prepared, ClassPlaylist, MusicStep]:
+    """Steps 1 to 5 (both kinds): the approved list, its verified final playlist and its music.
+    The caller owns the step from here (``close`` it, or hand it to the outcome's ``release``)."""
+    p = await prepare(run, keyring, given, base_revision_id=base_revision_id)
+    final = await build_playlist(run, keyring, p)
+    return p, final, await _music(run, keyring, given, p, final, config)
+
+
+async def final_checks(
+    fs: FencedSession, p: Prepared, final: ClassPlaylist, step: MusicStep
+) -> None:
+    """The final transaction's checks (step 7): both connections held again, the MOWL link the
+    one analysed, the list still the newest, the class playlist still live and verified."""
+    if not await hold(fs.db, fs.lease.ctx, p.spotify):
+        raise JobFailure("not_connected")
+    await step.still_current(fs)
+    if await _newest(fs, p.class_id) != p.revision_id:
+        raise JobFailure("invalid_input")
+    live = await fs.db.execute(
+        _LIVE_VERIFIED,
+        {
+            "owner_id": fs.lease.owner_id,
+            "class_id": p.class_id,
+            "id": final.id,
+            "playlist_id": final.playlist_id,
+            "revision_id": p.revision_id,
+            "content_hash": _tracks_hash(p),
+        },
+    )
+    if live.first() is None:
+        raise JobFailure("not_connected")  # Disconnect detached it meanwhile
+
+
+async def mark_mowl(
+    fs: FencedSession, p: Prepared, final: ClassPlaylist, mowl_playlist_id: int
+) -> None:
+    """``class_playlists.mowl_playlist_id`` of the final playlist (step 7)."""
+    params = {
+        "owner_id": fs.lease.owner_id,
+        "class_id": p.class_id,
+        "id": final.id,
+        "mowl_playlist_id": mowl_playlist_id,
+    }
+    if (await fs.db.execute(_MOWL_ID, params)).first() is None:
+        raise JobFailure("internal")
+
+
 async def run_phase_two(
     run: JobRun,
     given: DesignWithSongsInput,
@@ -283,9 +357,7 @@ async def run_phase_two(
     agent: AgentConfig,
     config: SongConfig,
 ) -> Complete:
-    p = await prepare(run, keyring, given)
-    final = await build_playlist(run, keyring, p)
-    step = await _music(run, keyring, given, p, final, config)
+    p, final, step = await final_music(run, keyring, given, config)
     try:
         ctx = DesignContext.build(given.brief, step.data)
         design_config = stage_config(
@@ -306,33 +378,12 @@ async def run_phase_two(
 
     async def store(fs: FencedSession) -> UUID:
         """The final transaction (module docstring, step 7)."""
-        if not await hold(fs.db, fs.lease.ctx, p.spotify):
-            raise JobFailure("not_connected")
-        await step.still_current(fs)
-        owner = {"owner_id": fs.lease.owner_id, "class_id": p.class_id}
-        if await _newest(fs, p.class_id) != p.revision_id:
-            raise JobFailure("invalid_input")
-        live = await fs.db.execute(
-            _LIVE_VERIFIED,
-            {
-                **owner,
-                "id": final.id,
-                "playlist_id": final.playlist_id,
-                "revision_id": p.revision_id,
-                "content_hash": _tracks_hash(p),
-            },
-        )
-        if live.first() is None:
-            raise JobFailure("not_connected")  # Disconnect detached it meanwhile
+        await final_checks(fs, p, final, step)
         revision_id = await draft.store(fs)
         await revision.adopt_first(
             fs, revision_id, given.brief.model_dump(mode="json"), music_source(final)
         )
-        marked = await fs.db.execute(
-            _MOWL_ID, {**owner, "id": final.id, "mowl_playlist_id": mowl_playlist_id}
-        )
-        if marked.first() is None:
-            raise JobFailure("internal")
+        await mark_mowl(fs, p, final, mowl_playlist_id)
         return revision_id
 
     # The runner releases the step once the attempt is over, whether ``store`` ran or not (a
