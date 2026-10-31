@@ -6,7 +6,7 @@ Related: [ADR 0006](0006-agent-runs.md) (the agent loop, `model_input`, provenan
 [ADR 0007](0007-classes-revisions-and-saving.md) (classes and revisions),
 [ADR 0008](0008-song-picking.md) (the song stages; not changed here),
 [ADR 0012](0012-eval-suite-and-model-providers.md) (the suite, the manifest, the gate),
-[ADR 0013](0013-ui-design-night-studio.md) (UI), the threat model (no new row, see §9).
+[ADR 0013](0013-ui-design-night-studio.md) (UI), the threat model (no new row, see the Threat model section).
 
 ## Context
 
@@ -216,7 +216,8 @@ we show?". If no profile applies to the class today, no block is shown.
 - **Recording.** What was shown or dismissed is not logged per user. The revision keeps `rules`
   in its provenance (§2); the dismissal list is the only per-class state; both are in the account
   export and deletion paths because they are in `classes` and `class_revisions`
-  (ADR 0014; the export's table counts and the retention registry are updated in the same change).
+  (ADR 0014): the export registry already covers every non-omitted `classes` column, so P1b only
+  verifies export, deletion and the retention registry with a test and edits them only if it fails.
 
 ### 5. Evals
 
@@ -323,8 +324,9 @@ and P7 have a baseline; it is not in this list.
   screen, audit and review of data changes; a reviewed file is simpler and gives a digest for
   free. Revisit if profiles change often or per tenant.
 - **Store the hits on every revision.** Rejected: they are a pure function of data we already
-  keep, and a stored copy goes stale when the profile changes. Recomputing from the recorded
-  profile version is exact.
+  keep, and a stored copy goes stale when the profile changes. Notes are computed on read from
+  the current profile (§4); provenance records which profile the model saw and flags, with one
+  muted line, when it differs from today's.
 - **Thresholds at medians or quartiles.** Rejected: a median-based warning would fire on half of
   all professional classes. The 5th and 95th percentiles flag what is unusual.
 - **Show hits only to the model.** Rejected: the instructor decides; seeing "usual" next to their
