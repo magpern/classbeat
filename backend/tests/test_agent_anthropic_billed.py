@@ -7,13 +7,15 @@ prompt estimate at the dearest input rate plus ``max_tokens`` of output), never 
 section 5: cost errs high). A request with no answer (an error status) is not billed.
 """
 
+import asyncio
 import dataclasses
 import json
-from collections.abc import Callable
+from collections.abc import AsyncIterator, Callable
 from types import SimpleNamespace
 from typing import Any
 
 import anthropic
+import httpx
 import pytest
 from pydantic import SecretStr
 
@@ -22,6 +24,7 @@ from anthropicfake import (
     PLANTED_KEY,
     SPEC,
     FakeAnthropic,
+    Reply,
     message,
     status,
     stream,
@@ -30,7 +33,7 @@ from anthropicfake import (
 )
 from classbeat.agent import DesignContext, design_stage, run_stage
 from classbeat.agent.prices import DEFAULT_PRICES
-from classbeat.agent.provider import ProviderError
+from classbeat.agent.provider import ProviderError, ToolResult
 from classbeat.agent.providers import anthropic as adapter
 from classbeat.agent.providers.anthropic import AnthropicProvider
 from classbeat.jobs.errors import JobFailure
@@ -197,3 +200,147 @@ async def test_an_unreadable_answer_costs_the_turn_ceiling_in_a_stage_run(
     assert price is not None
     assert record["counters"].turns == 1
     assert record["counters"].cost_micros > price.output_micros(ANTHROPIC.max_tokens)
+
+
+# --- a turn that ends after the stream began (#219 follow-up, the #320 review) -----------------
+
+
+class Cut(httpx.AsyncByteStream):
+    """A 200 stream that sends ``chunks``, optionally waits, then ends: cleanly, or raising."""
+
+    def __init__(self, chunks: list[bytes], *, then: BaseException | None = None, wait: float = 0):
+        self.chunks, self.then, self.wait = chunks, then, wait
+
+    async def __aiter__(self) -> AsyncIterator[bytes]:
+        for chunk in self.chunks:
+            yield chunk
+        if self.wait:
+            await asyncio.sleep(self.wait)
+        if self.then is not None:
+            raise self.then
+
+
+class MidStream(httpx.AsyncBaseTransport):
+    def __init__(self, stream: Cut) -> None:
+        self.stream, self.requests = stream, 0
+
+    async def handle_async_request(self, request: httpx.Request) -> httpx.Response:
+        self.requests += 1
+        return httpx.Response(
+            200, headers={"content-type": "text/event-stream"}, stream=self.stream, request=request
+        )
+
+
+def start_only() -> bytes:
+    """The first event of a good answer: message_start, which reports the input tokens."""
+    return edited(lambda _: None).split(b"\n\n", 1)[0] + b"\n\n"
+
+
+def mid(then: BaseException | None, *, wait: float = 0, whole: bool = False) -> MidStream:
+    chunks = [edited(lambda _: None)] if whole else [start_only()]
+    return MidStream(Cut(chunks, then=then, wait=wait))
+
+
+async def run_turn(transport: httpx.AsyncBaseTransport, **kw: Any) -> ProviderError:
+    conversation = AnthropicProvider(KEY, transport=transport, max_retries=2, **kw).start(SPEC)
+    with pytest.raises(ProviderError) as raised:
+        await conversation.turn(())
+    assert (raised.value.__cause__, raised.value.__context__) == (None, None)
+    return raised.value
+
+
+@pytest.mark.parametrize(
+    ("then", "category"),
+    [
+        (httpx.ReadTimeout("slow"), "model_unavailable"),
+        (httpx.ReadError("cut"), "internal"),
+        (httpx.RemoteProtocolError("cut"), "internal"),
+        (None, "internal"),  # ends cleanly after message_start: no stop reason
+    ],
+    ids=["read_timeout", "read_error", "protocol_error", "clean_end"],
+)
+async def test_a_stream_that_ends_badly_after_message_start_is_billed(
+    then: BaseException | None, category: str
+) -> None:
+    transport = mid(then)
+    error = await run_turn(transport)
+    assert (error.category, error.billed) == (category, True)
+    assert transport.requests == 1  # the SDK does not send a stream again
+
+
+async def test_the_turn_bound_cutting_a_running_stream_is_billed() -> None:
+    transport = mid(None, wait=5)
+    error = await run_turn(transport, turn_seconds=0.2)
+    assert (error.category, error.billed) == ("model_unavailable", True)
+    assert transport.requests == 1
+
+
+@pytest.mark.parametrize(
+    ("kind", "category"),
+    [
+        ("overloaded_error", "model_unavailable"),
+        ("api_error", "model_unavailable"),
+        ("authentication_error", "model_config"),
+        ("invalid_request_error", "internal"),  # a type outside the lists: errs high
+        ("some_future_error", "internal"),
+    ],
+)
+async def test_an_error_event_inside_the_stream_is_billed_whatever_its_type(
+    kind: str, category: str
+) -> None:
+    body = message(text("part"), error_event={"type": kind, "message": "provider text"})
+    fake = FakeAnthropic([stream(body)])
+    error = await run_turn(fake)
+    assert (error.category, error.billed) == (category, True)
+    assert len(fake.requests) == 1
+
+
+async def test_failures_before_the_stream_began_are_not_billed() -> None:
+    refused = FakeAnthropic([Reply(raise_=lambda r: httpx.ConnectError("no", request=r))])
+    error = await run_turn(refused)
+    assert (error.category, error.billed) == ("model_unavailable", False)
+    for code, kind in ((401, "authentication_error"), (529, "overloaded_error")):
+        error = await run_turn(FakeAnthropic([status(code, kind)]))
+        assert error.billed is False
+
+
+async def test_a_stream_without_a_stop_reason_is_not_a_normal_turn() -> None:
+    def no_stop(event: dict[str, Any]) -> None:
+        if event["type"] == "message_delta":
+            event["delta"]["stop_reason"] = None
+
+    error = await run_turn(FakeAnthropic([stream(edited(no_stop))]))
+    assert (error.category, error.billed) == ("internal", True)
+
+
+async def test_a_timed_out_stream_costs_the_ceiling_in_a_stage_run(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    ctx = DesignContext.build(brief(), analysed(monkeypatch))
+    host = MemoryHost()
+    with pytest.raises(JobFailure) as failed:
+        await run_stage(
+            host,
+            AnthropicProvider(KEY, transport=mid(httpx.ReadTimeout("slow"))),
+            design_stage(ctx),
+            ctx.first_message(),
+            ANTHROPIC,
+        )
+    assert failed.value.category == "model_unavailable"
+    [record] = host.runs.values()
+    price = DEFAULT_PRICES.lookup("anthropic", ANTHROPIC.model)
+    assert price is not None
+    assert record["counters"].cost_micros > price.output_micros(ANTHROPIC.max_tokens)
+
+
+async def test_a_refused_second_turn_is_not_billed_for_the_first_ones_stream() -> None:
+    """The streaming flag is per turn: a turn that fails before its stream began is unbilled even
+    after an earlier turn of the conversation streamed."""
+    good = stream(edited(lambda _: None))
+    refused = Reply(raise_=lambda r: httpx.ConnectError("no", request=r))
+    fake = FakeAnthropic([good, refused])
+    conversation = AnthropicProvider(KEY, transport=fake, max_retries=0).start(SPEC)
+    await conversation.turn(())
+    with pytest.raises(ProviderError) as raised:
+        await conversation.turn((ToolResult("toolu_a", "{}", False),))
+    assert (raised.value.category, raised.value.billed) == ("model_unavailable", False)

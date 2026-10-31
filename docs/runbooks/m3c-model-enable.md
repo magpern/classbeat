@@ -32,7 +32,7 @@ provider transcripts and needs none of this (`backend/tests/test_m3c_done_when.p
 | Provider | Create it | Place it | Setting |
 |---|---|---|---|
 | OpenAI | an API key in the owner's OpenAI project, with a spend limit set in OpenAI's dashboard | `secrets/openai_api_key` in the stack's checkout (git-ignored; one line, no quotes) | none |
-| DeepSeek | an API key in the owner's DeepSeek account, with a balance cap | `secrets/deepseek_api_key` | `DEEPSEEK_ENABLED=true` in `.env` only to serve jobs (not needed for an eval) |
+| DeepSeek | an API key in the owner's DeepSeek account, with a balance cap | `secrets/deepseek_api_key` | `DEEPSEEK_ENABLED=true` in `.env` only to serve jobs (not needed for an eval); compose passes it as `CLASSBEAT_DEEPSEEK_ENABLED` to web and worker alike |
 | Anthropic | already in use | `secrets/anthropic_api_key` | none |
 
 `scripts/worktree.sh init` creates each file empty; an empty file counts as no key. Compose mounts the
@@ -49,7 +49,7 @@ is left of it as its ceiling, a failed run still counts what it spent, and a run
 charged everything that was left. Costs err high (prices are in `classbeat.agent.prices`, versioned by
 `PRICES_VERSION`; verify them against the provider's price page before the first live run). Also set the
 spend limit in the provider's own dashboard: it is the cap that does not depend on classbeat. A full
-suite at `--repeat 3` is about 68 cases times 3 runs; the printed ceiling is the number to approve.
+suite at `--repeat 3` is about 78 cases times 3 runs; the printed ceiling is the number to approve.
 
 ## Steps
 
