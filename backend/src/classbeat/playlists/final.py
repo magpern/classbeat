@@ -73,6 +73,7 @@ async def create_final_playlist(
     if opened.account is None:
         raise JobFailure("not_connected")
     request = create.final_request(
+        run.lease.owner_id,
         run.lease.job_id,
         class_id,
         revision_id,

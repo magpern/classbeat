@@ -211,6 +211,14 @@ Spotify API with a user's token. Per call:
   from message text (ADR 0004 §5 stands). The body is parsed and discarded: never logged, never in an
   exception.
 
+> **Amendment, 2026-10-31 (Architect; issue #198 item 2):** the token endpoint's app-setup codes are
+> `invalid_client`, `invalid_scope`, `unauthorized_client` and `unsupported_response_type` (plus
+> `invalid_request`, which §8 already lists). Each is `app_misconfigured` and flips the connection to
+> `needs_reconnect`, like `invalid_grant`; the flip rule below covers all of them. A token-endpoint 400 or
+> 401 with **no recognised error code** (no JSON, no `error`, or a code not listed) is
+> `upstream_unavailable`: it is retried and does not flip the connection
+> (`backend/src/classbeat/spotify/errors.py`, `APP_ERROR_CODES` and `by_oauth_code`).
+
 **Status-flip rules for Spotify** (they narrow ADR 0004 §4 and the generic "a 401 or 403 (the status
 flips)" of ADR 0005 §4's category table for this provider). Because a refresh does not change `generation`, `generation`
 alone cannot tell a stale 401 from a current one, so a flip to `needs_reconnect` happens **only** in
