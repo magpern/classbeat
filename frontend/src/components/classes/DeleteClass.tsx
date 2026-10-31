@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { ApiError } from '../../api/client'
 import { classReasonText, isStale } from '../../api/classMessages'
 import { deleteClass, type ClassSummary } from '../../api/classes'
@@ -28,6 +28,14 @@ export function DeleteClass({
 }) {
   const [uncertain, setUncertain] = useState(false)
   const action = useAction()
+  const card = useRef<HTMLDivElement>(null)
+  // Opened from the header's menu, the card is under the Save card: on a phone it is off screen.
+  // Bring it into view and move focus to it (a labelled region) so the warning is read first.
+  useEffect(() => {
+    if (!open) return
+    card.current?.scrollIntoView({ block: 'start' })
+    card.current?.focus()
+  }, [open])
 
   const run = (confirmUncertain: boolean) => {
     void action
@@ -50,7 +58,7 @@ export function DeleteClass({
   if (!open) return null
   const kept = summary.saved.count
   return (
-    <Card className="flex flex-col gap-3" role="region" aria-labelledby="delete-title">
+    <Card ref={card} tabIndex={-1} className="flex scroll-mt-4 flex-col gap-3" role="region" aria-labelledby="delete-title">
       <h2 id="delete-title" className="m-0 font-display text-xl font-bold">
         Delete class
       </h2>
