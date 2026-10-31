@@ -63,6 +63,10 @@ class _Guard:
         await (self._commit if ok else self._rollback)()
 
 
+# The admin path's audited maint session (``classbeat.admin.db``) owns its transaction the same way.
+TransactionGuard = _Guard
+
+
 @asynccontextmanager
 async def _owned_session(
     sessionmaker: async_sessionmaker[AsyncSession], user_id: str

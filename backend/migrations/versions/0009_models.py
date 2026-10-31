@@ -1,7 +1,7 @@
 """Eval results and model routes: the database half of the enable gate (ADR 0012 section 5)
 
-Revision ID: 0008_models
-Revises: 0007_tiers
+Revision ID: 0009_models
+Revises: 0008_ledger_guard_owner
 Create Date: 2026-10-31
 
 M3c G1 (#211). ``DDL`` is ADR 0012 section 5's SQL block **byte for byte**
@@ -29,8 +29,8 @@ from collections.abc import Sequence
 
 from alembic import op
 
-revision: str = "0008_models"
-down_revision: str | Sequence[str] | None = "0007_tiers"
+revision: str = "0009_models"
+down_revision: str | Sequence[str] | None = "0008_ledger_guard_owner"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

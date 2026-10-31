@@ -13,6 +13,9 @@ from classbeat.db.role_check import EXPECTED_ROLE_SETTINGS
 from classbeat.db.tables import NO_APP_ACCESS
 
 APP, OWNER, QUEUE = "classbeat_app", "classbeat_owner", "classbeat_queue"
+# The admin role (ADR 0011 section 5): guard 11 (tests/test_maint_privileges.py) checks its
+# attributes and its every privilege as an allowlist; here it is only an allowed grantee.
+MAINT = "classbeat_maint"
 # ADR 0005 section 3: exactly these for the queue functions' owner, and USAGE on public.
 QUEUE_TABLE_PRIVILEGES = {
     "jobs": {"SELECT", "UPDATE"},
@@ -180,7 +183,7 @@ def check_roles(conn: Connection) -> list[str]:
     )
     need(not _privileges(databases, "PUBLIC", db), "PUBLIC must have no privilege on the database")
     need("CONNECT" in _privileges(databases, OWNER, db), "classbeat_owner needs CONNECT")
-    need(_grantees(databases) <= {APP, OWNER}, "unexpected grantee on the database")
+    need(_grantees(databases) <= {APP, OWNER, MAINT}, "unexpected grantee on the database")
     database_owner = conn.execute(
         text("SELECT pg_get_userbyid(datdba) FROM pg_database WHERE datname = current_database()")
     ).scalar_one()
@@ -206,7 +209,7 @@ def check_roles(conn: Connection) -> list[str]:
         _privileges(schemas, QUEUE, "public") == ({"USAGE"} if queue_exists else set()),
         "classbeat_queue: USAGE only on public",
     )
-    need(_grantees(schemas) <= {APP, OWNER, QUEUE}, "unexpected grantee on a schema")
+    need(_grantees(schemas) <= {APP, OWNER, QUEUE, MAINT}, "unexpected grantee on a schema")
     need(
         not [1 for o, g, _, _ in schemas if o != "public" and g in (APP, QUEUE, "PUBLIC")],
         "no privilege for PUBLIC, classbeat_app or classbeat_queue on another schema",
@@ -242,7 +245,7 @@ def check_roles(conn: Connection) -> list[str]:
             _privileges(relations, QUEUE, obj) == (queue_expected if queue_exists else set()),
             f"{obj}: classbeat_queue privileges must be exactly {sorted(queue_expected)}",
         )
-        need(_grantees(relations, obj) <= {APP, OWNER, QUEUE}, f"{obj}: unexpected grantee")
+        need(_grantees(relations, obj) <= {APP, OWNER, QUEUE, MAINT}, f"{obj}: unexpected grantee")
     need(
         not [1 for *_, grantable in relations if grantable], "no grantable privilege on a relation"
     )
@@ -267,10 +270,12 @@ def check_roles(conn: Connection) -> list[str]:
     ).all()
     found_columns: dict[tuple[str, str], set[tuple[str, str]]] = {}
     for table, column, grantee, privilege, grantable in column_rows:
+        need(not grantable, f"{table}.{column}: no grantable column privilege")
+        if str(grantee) == MAINT:
+            continue  # guard 11
         found_columns.setdefault((str(table), str(column)), set()).add(
             (str(grantee), str(privilege))
         )
-        need(not grantable, f"{table}.{column}: no grantable column privilege")
     expected_columns = {
         key: value
         for key, value in COLUMN_PRIVILEGES.items()

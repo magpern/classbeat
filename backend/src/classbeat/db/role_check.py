@@ -157,7 +157,7 @@ def refuse_privileged_roles(engine: AsyncEngine, *, check_queue: bool = True) ->
             mark_queue_verified(engine.sync_engine)
 
 
-def _is_authentication_failure(exc: OperationalError) -> bool:
+def is_authentication_failure(exc: OperationalError) -> bool:
     """True when the server answered and rejected the login (not when it was unreachable)."""
     text_ = str(exc.orig).lower()
     return any(
@@ -178,7 +178,7 @@ async def verify_database_role(engine: AsyncEngine) -> None:
             if queue_check_enabled(engine):
                 queue_row = (await connection.execute(text(QUEUE_QUERY))).one()
     except OperationalError as exc:
-        if _is_authentication_failure(exc):
+        if is_authentication_failure(exc):
             # Fatal: a wrong password or role is a configuration error, not a database that is
             # down. The message names no user, host or password.
             raise DatabaseRoleError(

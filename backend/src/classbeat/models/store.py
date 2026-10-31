@@ -5,7 +5,7 @@ This is the **only** module under ``backend/src/classbeat`` that names the resul
 the only module that may import ``record_result`` (``tests/test_models_guard.py``). Every
 function runs on the caller's open session and never commits: the caller owns the transaction.
 
-What the database itself refuses (migration ``0008_models``): a result whose ``passed`` is not
+What the database itself refuses (migration ``0009_models``): a result whose ``passed`` is not
 the JSON boolean ``passed`` of its object verdict, a ``fake`` or unknown provider, any NULL, any
 ``UPDATE`` or ``DELETE`` of a result by the app role, and a route at anything but a pass for
 exactly its provider, model, effort and stage group.
