@@ -308,7 +308,10 @@ async def run_pick_case(
         result.tool_calls = pooled.tool_calls + chosen.tool_calls
         result.cost_micros = pooled.cost_micros + chosen.cost_micros
     except JobFailure as failure:
+        # What the run spent still counts against the budget, whatever stopped it (as run_case).
+        c = host.counters
         result.outcome = failure.category
+        result.turns, result.tool_calls, result.cost_micros = c.turns, c.tool_calls, c.cost_micros
         return result, catalogue, registry
     result.checks = pick_checks(case, plan, result, catalogue, sent_text(provider), bands)
     result.checks.append(limits_check(result, limits))

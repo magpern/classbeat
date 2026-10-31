@@ -17,11 +17,14 @@ parameters that no command-line argument sets; tests inject a replay provider th
 6. after the plan (the runs, the limits and the **cost ceiling**) is printed, ``--max-usd N``.
 
 ``main_suite`` then installs the worker's allowlist with **only the chosen provider's** model host
-(``install_worker_allowlist((provider,))``), before the provider is built; builds it once and
-refuses (exit 2) unless its adapter class is the choice's provider (``provider_kind``: the class,
-never ``provider.name``); and runs both stage groups: every design and revise case
-(``runner.run_case``) and every song case on the synthetic catalogue (``pick.run_pick_case``), each
-``--repeat`` times, round after round, with what is left of the budget as each run's job ceiling.
+(``install_worker_allowlist((provider,))``), before the provider is built; refuses (exit 2,
+nothing written) unless every provider it builds, the first and each run's, has the choice's
+provider as its adapter class (``provider_kind``: the class, never ``provider.name``); and runs
+both stage groups: every design and revise case (``runner.run_case``) and every song case on the
+synthetic catalogue (``pick.run_pick_case``), each ``--repeat`` times, round after round, with
+what is left of the budget as each run's job ceiling. A failed run still costs what it spent (the
+host's counters), and a run whose spend is unknown (an exception the runner did not catch) is
+charged everything that was left: cost errs high.
 
 **The file** (``--out``) is format 2 (``runner.suite_results``): the header carries the
 catalog-checked choice (never ``provider.name`` or ``Turn.model``), the running prompt versions and
@@ -96,6 +99,9 @@ ADAPTERS: Final[dict[type, str]] = {AnthropicProvider: "anthropic", OpenAIProvid
 
 ProviderFactory = Callable[[Settings, ModelChoice], ModelProvider]
 SessionOpener = Callable[[], AbstractAsyncContextManager[AsyncSession]]
+
+
+WRONG_ADAPTER = "refusing: the built provider is not the chosen provider's adapter"
 
 
 class SuiteRefused(Exception):
@@ -297,7 +303,8 @@ async def _one(
             song, provider, budgets.design, limits, suite.manifest.bpm_bands
         )
     except Exception as exc:  # the class name only: a message could hold request data
-        picked = PickCaseResult(run.case, f"error:{type(exc).__name__}")
+        # What it spent is unknown: charge the run's whole ceiling, so cost errs high.
+        picked = PickCaseResult(run.case, f"error:{type(exc).__name__}", cost_micros=left)
     row = song_suite_row(
         picked, category, repeat=run.repeat, model=choice.model, effort=choice.effort
     )
@@ -410,9 +417,15 @@ def main_suite(
         if budget is None:
             raise SuiteRefused("not run: pass --max-usd N to accept spending up to N dollars")
         install(choice)  # before the provider is built: every request goes through the list
-        built = provider_factory(settings, choice)
-        if provider_kind(built) != choice.provider:
-            raise SuiteRefused("refusing: the built provider is not the chosen provider's adapter")
+
+        def checked() -> ModelProvider:
+            # Every build, not only the first: a run never uses another adapter.
+            provider = provider_factory(settings, choice)
+            if provider_kind(provider) != choice.provider:
+                raise SuiteRefused(WRONG_ADAPTER)
+            return provider
+
+        built = checked()
     except SuiteRefused as refused:
         print(str(refused), file=err)
         return REFUSED
@@ -420,11 +433,11 @@ def main_suite(
         print(f"refusing: {unavailable}", file=err)
         return REFUSED
     started = clock()
-    rows = asyncio.run(
-        run_suite(
-            loaded, runs, lambda: provider_factory(settings, choice), budgets, budget, choice, out
-        )
-    )
+    try:
+        rows = asyncio.run(run_suite(loaded, runs, checked, budgets, budget, choice, out))
+    except SuiteRefused as refused:  # a later build was another adapter: nothing is written
+        print(str(refused), file=err)
+        return REFUSED
     header = SuiteHeader(
         suite_version=loaded.manifest.suite_version,
         manifest_digest=loaded.manifest.digest,
