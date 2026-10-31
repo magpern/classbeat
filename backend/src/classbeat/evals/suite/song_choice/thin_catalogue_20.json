@@ -1,0 +1,13 @@
+{
+ "name": "thin_catalogue_20",
+ "about": "A 20 minute class with one climb from a catalogue of only ten tracks.",
+ "brief": {
+  "length_min": 20,
+  "intensity": "moderate",
+  "climbs": 1
+ },
+ "catalogue": {
+  "size": 10
+ },
+ "quality": true
+}

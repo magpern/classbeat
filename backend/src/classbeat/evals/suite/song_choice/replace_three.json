@@ -1,0 +1,33 @@
+{
+ "name": "replace_three",
+ "about": "A 40 minute list of ten songs with three replaced: a climb and two sprints.",
+ "brief": {
+  "length_min": 40,
+  "intensity": "hard",
+  "climbs": 2,
+  "sprints": 2
+ },
+ "catalogue": {
+  "size": 40
+ },
+ "replace": {
+  "seed_roles": [
+   "warmup",
+   "build",
+   "climb",
+   "recovery",
+   "sprint",
+   "climb",
+   "recovery",
+   "sprint",
+   "build",
+   "cooldown"
+  ],
+  "replace": [
+   2,
+   4,
+   7
+  ]
+ },
+ "quality": true
+}
