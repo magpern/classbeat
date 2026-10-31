@@ -201,8 +201,8 @@ GitHub hold the detail.
     violation, quiet console), `mu-covers.spec.ts` (Songs for approval) and `npm run check:bundle` in the
     `frontend` job (first-load JavaScript 173 kB gzip of 250 kB).
   - **Open after UI10**, not part of its scope:
-    - [#330](https://github.com/magpern/classbeat/issues/330): an admin without a current TOTP check cannot
-      reach the TOTP prompt (the SPA gates `/admin` on the session role, which is `user` until the check passes).
+    - [#330](https://github.com/magpern/classbeat/issues/330): done (#335 gates `/admin` on the role or
+      `adminPendingMfa`; the avatar menu's Admin link follows the same rule, in the #331 frontend PR).
     - [#331](https://github.com/magpern/classbeat/issues/331), closed by its two PRs (#334 backend, the
       frontend PR): the Dialog (and DropdownMenu) scroll lock is class-based, so the CSP refuses nothing and the
       e2e console check has no allow-list (ADR 0013 section 8 amended); the Account tab is carried through a
