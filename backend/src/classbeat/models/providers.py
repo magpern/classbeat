@@ -22,7 +22,7 @@ the web process never loads, so ``classbeat.models`` does not import this module
 """
 
 from collections.abc import Callable
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 
 from classbeat.agent import catalog
 from classbeat.agent.loop import AgentConfig
@@ -82,13 +82,13 @@ class RouteModels:
             provider = self.build(self.settings, choice)
         except Exception:  # ProviderUnavailable and the like: an operator problem
             raise JobFailure("model_config") from None
-        return GroupModel(
-            provider,
-            replace(
-                agent,
-                model=choice.model,
-                effort=choice.effort,
-                route_key=choice.route_key,
-                eval_result_id=choice.eval_result_id,
-            ),
+        routed = AgentConfig(
+            model=choice.model,
+            effort=choice.effort,
+            max_tokens=agent.max_tokens,
+            limits=agent.limits,
+            prices=agent.prices,
+            route_key=choice.route_key,
+            eval_result_id=choice.eval_result_id,
         )
+        return GroupModel(provider, routed)
