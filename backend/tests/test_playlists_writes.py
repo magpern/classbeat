@@ -9,12 +9,14 @@ collaborative, another user's, gone, or whose stored id was edited to another us
 write request", and a take-over resetting ``pending_at``, ``call_ended_at`` and the context.
 """
 
+from datetime import datetime, timedelta
 from typing import Any
 
 import pytest
 
 from classbeat.operations.kinds import ref_of
 from classbeat.playlists import POOL_NAME, common
+from classbeat.playlists import create as create_kind
 from jobtools import new_class
 from playlisttools import MANY, TRACKS, PlayEnv
 from spotifyfake import USER_B
@@ -211,6 +213,76 @@ async def test_a_create_whose_reconciliation_cannot_list_stays_uncertain(penv: P
     [create] = penv.operations(owner)
     assert create.state == "uncertain"
     assert len(penv.fake.playlists) == 1  # it did happen; nobody points at it yet
+
+
+class _Later(datetime):
+    """The create reconciler's clock, an hour ahead: the listing lag has surely passed."""
+
+    @classmethod
+    def now(cls, tz: Any = None) -> Any:
+        return datetime.now(tz) + timedelta(hours=1)
+
+
+async def test_the_jobs_own_reconciliation_never_fails_a_create_on_the_listing_lag(
+    penv: PlayEnv, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """#198 item 1: "none listed after the lag" is no proof, so the job's own reconciliation
+    leaves the row ``uncertain`` (the job fails ``uncertain_write``) instead of ``failed``, which
+    the job's next attempt would take over and send again under the same ``ref``. The user's
+    Check again still applies the lag (ADR 0008 section 2's table); its row is never sent again."""
+    monkeypatch.setattr(create_kind, "datetime", _Later)
+    current = common.runtime()
+    common.configure(common.Runtime(current.http, current.margin_seconds, listing_lag_seconds=60))
+    owner = await penv.user()
+    class_id = new_class(penv.admin, owner)
+    revision_id, content_hash = penv.song_list(owner, class_id)
+    job_id = penv.job(
+        owner, class_id, action="final_create", revision_id=str(revision_id),
+        content_hash=content_hash.hex(),
+    )  # fmt: skip
+    penv.fake.inject("status", method="POST", path=MINE, status=503)  # may have been applied
+    row = await penv.run(job_id)
+    assert (row.state, row.error_category) == ("failed", "uncertain_write")  # not retried
+    [create] = penv.operations(owner)
+    assert (create.state, create.resolved_by) == ("uncertain", None)
+    assert len(penv.api(MINE, "POST")) == 1
+    assert len(penv.api(MINE, "GET")) == 1  # the reconciliation ran, and found nothing
+
+    actor = await penv.spot.browser(owner)
+    checked = await actor.post(f"/api/external-operations/{create.id}/check-again")
+    assert (checked.status_code, checked.json()["state"]) == (200, "failed")
+    [create] = penv.operations(owner)
+    assert (create.state, create.resolved_by) == ("failed", "user")
+    assert len(penv.api(MINE, "POST")) == 1
+
+
+@pytest.mark.parametrize("resolved_by", ["user", "admin"])
+async def test_a_failed_create_its_call_did_not_record_is_never_taken_over(
+    penv: PlayEnv, resolved_by: str
+) -> None:
+    """#198 item 1: only a ``failed`` row the call's own record wrote (a refusal: ``resolved_by =
+    'worker'``) is taken over. One the user resolved (Check again, Do it anyway) may have been
+    created: the next attempt ends ``uncertain_write`` and sends nothing."""
+    owner = await penv.user()
+    job_id = penv.job(owner)
+    penv.fake.inject("refuse", method="POST", path=MINE)
+    assert (await penv.run(job_id)).state == "queued"  # a refusal: retried
+    [create] = penv.operations(owner)
+    assert (create.state, create.resolved_by) == ("failed", "worker")
+    penv.sql(
+        "UPDATE external_operations SET resolved_by = :by WHERE id = :id",
+        by=resolved_by,
+        id=create.id,
+    )
+    penv.fake.seen.clear()
+    row = await penv.run(job_id)
+    assert (row.state, row.error_category) == ("failed", "uncertain_write")
+    assert penv.api() == []  # not even the create
+    [after] = penv.operations(owner)
+    assert (after.state, after.resolved_by, after.pending_at) == (
+        "failed", resolved_by, create.pending_at
+    )  # fmt: skip
+    assert penv.fake.playlists == {}
 
 
 # --- failure injection: the replace (pool and final fill) --------------------------------------
