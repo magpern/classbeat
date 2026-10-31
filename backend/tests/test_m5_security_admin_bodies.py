@@ -2,7 +2,7 @@
 dependency, other than invalid JSON (``test_m5_security_admin_session.py``), from the #303 delta
 review's notes 1 and 3.
 
-- A body nested too deep to parse (``[`` x 5000) is FastAPI's 400 "error parsing the body". On
+- A body nested too deep to parse (``[`` x 50 000) is FastAPI's 400 "error parsing the body". On
   ``/api/admin`` the gate runs first: a non-admin gets the same 403 as with a valid body, an admin
   without step-up ``stepup_required`` with its row, and a stepped-up admin the 400 with one
   ``admin.request`` row refused ``body_unreadable``.
@@ -11,6 +11,7 @@ review's notes 1 and 3.
   64 KiB is read (and here answered 422 for its content).
 """
 
+import json
 import uuid
 from collections.abc import AsyncIterator
 from typing import Any
@@ -24,7 +25,9 @@ from classbeat.admin.routes import MAX_BODY_BYTES
 
 ENTITLEMENTS = "/api/admin/users/{user_id}/entitlements"
 CODES = "/api/admin/redeem-codes"
-DEEP = b"[" * 5000
+# Deeper than CPython's C recursion limit on every platform (5000 is enough on Windows, not on
+# Linux, where it decodes to a plain ``json_invalid``), and under the body limit.
+DEEP = b"[" * 50_000
 
 
 @pytest.fixture
@@ -121,6 +124,9 @@ async def check_refused_behind_the_gate(
 async def test_a_body_nested_too_deep_to_parse_meets_the_gate_first(
     env: Env, make_actor: Any, superuser: Connection
 ) -> None:
+    assert len(DEEP) < MAX_BODY_BYTES
+    with pytest.raises(RecursionError):  # what FastAPI's 400 comes from, on this platform too
+        json.loads(DEEP)
     who = await actors(env, make_actor)
     await check_refused_behind_the_gate(env, superuser, who, DEEP, 400, "body_unreadable")
 
