@@ -1,0 +1,18 @@
+{
+ "name": "sync_hard_35_fast",
+ "about": "Hard 35 minutes to fast music (short phrases).",
+ "brief": {
+  "length_min": 35,
+  "intensity": "hard",
+  "sprints": 3
+ },
+ "music": {
+  "bpm": 140,
+  "bpm_step": 2,
+  "tracks": 11
+ },
+ "expect": {
+  "music_sync": {},
+  "changes_on_music_min": 0.9
+ }
+}

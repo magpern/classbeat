@@ -1,0 +1,17 @@
+{
+ "name": "sync_hard_40_races",
+ "about": "Hard 40 minutes, a sprint and two races on drops.",
+ "brief": {
+  "length_min": 40,
+  "intensity": "hard",
+  "sprints": 1,
+  "races": 2
+ },
+ "music": {
+  "tracks": 12
+ },
+ "expect": {
+  "music_sync": {},
+  "changes_on_music_min": 0.9
+ }
+}

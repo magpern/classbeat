@@ -11,7 +11,8 @@ failed. Rules, all parameters from the manifest:
   passes;
 - each name in ``every_run_checks`` (``limits``, ``forbidden_text``): in every category, no
   counted run has that check failed (an outcome in ``outcome_checks`` counts as that check
-  failed: a run stopped by a limit failed ``limits``);
+  failed: a run stopped by a limit failed ``limits``; a submitted run without the check failed
+  it too: missing is not passed);
 - ``pass_share``: in every other category at least ``rules.pass_share`` of the counted runs
   pass;
 - ``each_case_once``: every case with counted runs passes at least once;
@@ -146,6 +147,8 @@ class Verdict:
 def _check_failed(row: _Row, check: str, outcome_checks: Mapping[str, str]) -> bool:
     if outcome_checks.get(row.outcome) == check:
         return True
+    if row.outcome == "submitted" and not any(c.name == check for c in row.checks):
+        return True  # a submitted run without a required check did not pass it
     return any(c.name == check and not c.ok for c in row.checks)
 
 

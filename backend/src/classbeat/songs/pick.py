@@ -36,7 +36,7 @@ URIs, MOWL ids (``classbeat.agent.model_input``; the stages see refs, indexes an
 
 import logging
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Literal
 from uuid import UUID
 
 from sqlalchemy import text
@@ -59,7 +59,7 @@ from classbeat.agent import choose_songs as choose_module
 from classbeat.agent import pick_pool as pool_module
 from classbeat.agent.limits import Limits
 from classbeat.agent.provider import ModelProvider
-from classbeat.agent.schemas import SONG_SCHEMA_VERSION
+from classbeat.agent.schemas import SONG_SCHEMA_VERSION, Brief
 from classbeat.agent.songs import KeptSong, analysed_pool
 from classbeat.connections import OpenConnection, hold
 from classbeat.crypto.keks import KeyRing
@@ -67,14 +67,26 @@ from classbeat.design.music import MusicStep, load_music
 from classbeat.jobs import AwaitApproval, FencedSession, JobFailure, JobRun
 from classbeat.operations import attach_spotify_playlist
 from classbeat.playlists import open_spotify, write_pool
-from classbeat.songs import admit, song_list
+from classbeat.songs import song_list
 from classbeat.songs.config import SongConfig
-from classbeat.songs.inputs import DesignWithSongsInput
+from classbeat.songs.inputs import Seed, SongJob
 from classbeat.songs.search import job_searcher
 
 logger = logging.getLogger(__name__)
 
-ORIGIN = "design_with_songs"
+Origin = Literal["design_with_songs", "revise_songs"]
+
+
+@dataclass(frozen=True)
+class SeedSpec:
+    """The list a replace starts from and the slots to fill (``None``: every slot)."""
+
+    song_list_revision_id: UUID
+    replace: tuple[int, ...] | None
+
+    @classmethod
+    def of(cls, seed: Seed | None) -> "SeedSpec | None":
+        return None if seed is None else cls(seed.song_list_revision_id, tuple(seed.replace))
 
 
 @dataclass(frozen=True)
@@ -106,16 +118,22 @@ def stage_config(agent: AgentConfig, config: SongConfig, *, turns: int, calls: i
     )
 
 
-async def _seeded(run: JobRun, given: DesignWithSongsInput) -> Seeded | None:
-    seed = given.seed
+async def _seeded(run: JobRun, seed: SeedSpec | None) -> Seeded | None:
+    """The seed list re-read and re-hashed through the job's own class (``invalid_input`` when
+    it no longer loads or a slot is not in it); ``admit`` checked the rest."""
     if seed is None:
         return None
     async with run.fenced() as fs:
         class_id = await _class_of(fs)
-        found = await admit.seed_list(fs.db, run.lease.owner_id, class_id, seed, newest=False)
+        found = await song_list.load(
+            fs.db, run.lease.owner_id, class_id, seed.song_list_revision_id
+        )
     if found is None:
         raise JobFailure("invalid_input")
-    replaced = set(seed.replace)
+    slots = len(found.content.songs)
+    replaced = set(range(slots)) if seed.replace is None else set(seed.replace)
+    if not replaced or any(slot >= slots for slot in replaced):
+        raise JobFailure("invalid_input")
     kept = tuple(
         KeptSong(slot, s.spotify_id, s.title, s.artist, s.role, s.bpm, s.length_sec)
         for slot, s in enumerate(found.content.songs)
@@ -152,7 +170,7 @@ async def _write(
     run: JobRun,
     keyring: KeyRing,
     spotify: OpenConnection,
-    given: DesignWithSongsInput,
+    given: SongJob,
     track_ids: tuple[str, ...],
 ) -> str:
     await run.stage("pool_write")
@@ -166,8 +184,11 @@ async def _write(
 
 async def run_phase_one(
     run: JobRun,
-    given: DesignWithSongsInput,
+    given: SongJob,
     *,
+    brief: Brief,
+    seed: SeedSpec | None,
+    origin: Origin,
     keyring: KeyRing,
     provider: ModelProvider,
     agent: AgentConfig,
@@ -179,11 +200,11 @@ async def run_phase_one(
     account = spotify.account
     if account is None:  # open_spotify refuses it already
         raise JobFailure("not_connected")
-    seeded = await _seeded(run, given)
+    seeded = await _seeded(run, seed)
     plan = (
-        PickPlan.build(given.brief, replace=seeded.roles, kept=seeded.kept)
+        PickPlan.build(brief, replace=seeded.roles, kept=seeded.kept)
         if seeded is not None
-        else PickPlan.build(given.brief)
+        else PickPlan.build(brief)
     )
     pool_config = stage_config(
         agent, config, turns=pool_module.MAX_TURNS, calls=pool_module.MAX_TOOL_CALLS
@@ -204,7 +225,9 @@ async def run_phase_one(
         sync_wait_seconds=config.sync_wait_seconds,
     )
     try:
-        stored = await _choose(run, provider, plan, pool, pool_outcome, step, agent, config)
+        stored = await _choose(
+            run, provider, plan, pool, pool_outcome, step, agent, config, origin=origin
+        )
         built = song_list.build(
             stored[0],
             account=account,
@@ -255,6 +278,8 @@ async def _choose(
     step: MusicStep,
     agent: AgentConfig,
     config: SongConfig,
+    *,
+    origin: Origin,
 ) -> tuple[ChosenList, dict[str, Any]]:
     analysis_map = step.data.analysis["map"]
     wanted = [(p.spotify_id, p.role) for p in pool.picks]
@@ -271,7 +296,7 @@ async def _choose(
     made = provenance(
         [pool_outcome, outcome],
         analysis_map,
-        origin=ORIGIN,
+        origin=origin,
         schema_version=SONG_SCHEMA_VERSION,
     )
     return outcome.output, made.model_dump(mode="json")

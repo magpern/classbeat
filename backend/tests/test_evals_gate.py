@@ -208,6 +208,24 @@ def test_one_failed_limits_or_forbidden_text_check_fails_any_category(check: str
     assert std_rules(g) == (check,)
 
 
+@pytest.mark.parametrize("check", ["limits", "forbidden_text"])
+def test_a_submitted_run_without_a_required_check_failed_it(check: str) -> None:
+    results = rows()
+    results[0]["checks"] = [c for c in results[0]["checks"] if c["name"] != check]
+    assert results[0]["case"] == "s_a"  # 11 of 12 standard runs still pass: the share holds
+    g = design(results)
+    assert g.status == "failed"
+    assert std_rules(g) == (check,)
+
+
+def test_a_run_that_did_not_submit_is_not_missing_its_checks() -> None:
+    results = rows()
+    replace(results, "s_a", 0, outcome="invalid_output")  # no checks at all
+    g = design(results)
+    assert g.status == "passed"
+    assert std_rules(g) == ()
+
+
 def test_a_run_stopped_by_a_limit_failed_the_limits_check() -> None:
     results = rows()
     replace(results, "s_a", 0, outcome="limit_exceeded")

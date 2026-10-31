@@ -31,6 +31,8 @@ from classbeat.jobs import queue
 from classbeat.keys_cli import add_keys_subcommands
 from classbeat.keys_cli import run as run_keys
 from classbeat.mail import Mailer, MailError
+from classbeat.models.cli import add_models_subcommands
+from classbeat.models.cli import run as run_models
 
 _DURATION = re.compile(r"(\d+)([dhm])")
 _UNITS = {"d": "days", "h": "hours", "m": "minutes"}
@@ -68,6 +70,7 @@ def add_subcommands(parser: argparse.ArgumentParser) -> None:
     jobs = sub.add_parser("jobs", help="the job queue").add_subparsers(dest="action", required=True)
     jobs.add_parser("stats", help="count jobs per state and uncertain external operations")
     add_keys_subcommands(sub)
+    add_models_subcommands(sub)
 
 
 async def _jobs(args: argparse.Namespace, settings: Settings, out: TextIO, err: TextIO) -> int:
@@ -136,7 +139,7 @@ def run_command(
     err: TextIO | None = None,
 ) -> int:
     """Run an operator subcommand; the exit code is 0, or 1 for a refusal."""
-    command = {"keys": run_keys, "jobs": _jobs}.get(args.command, _admin)
+    command = {"keys": run_keys, "jobs": _jobs, "models": run_models}.get(args.command, _admin)
     return asyncio.run(
         command(args, settings, out or sys.stdout, err or sys.stderr),
         loop_factory=event_loop_factory(),
