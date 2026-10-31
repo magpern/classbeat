@@ -22,6 +22,7 @@ never shown. Fakes only: no network, no real account.
 import io
 import json
 import logging
+import re
 from collections.abc import Iterator
 
 import pytest
@@ -65,7 +66,16 @@ def logs() -> Iterator[Everything]:
 
 
 def leaked(values: list[str], text: str) -> list[str]:
-    return [v for v in values if v and v in text]
+    """The values found in ``text``. A value of digits only (a fake MOWL id such as ``1001``)
+    counts only as a number of its own: not inside a longer number or a decimal, such as the
+    ``created`` timestamp of a log record."""
+    return [v for v in values if v and _found(v, text)]
+
+
+def _found(value: str, text: str) -> bool:
+    if not value.isdigit():
+        return value in text
+    return re.search(rf"(?<!\d)(?<!\d\.){value}(?!\d)(?!\.\d)", text) is not None
 
 
 async def test_no_planted_or_made_value_leaves_its_place_over_the_whole_flow(

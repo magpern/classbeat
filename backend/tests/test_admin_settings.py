@@ -317,6 +317,50 @@ async def test_a_value_the_environment_or_the_schema_forbids_is_422_and_audited_
     assert given(row.params) == expected
 
 
+@pytest.mark.parametrize(
+    "banner_text",
+    [
+        "Back at \u202e9 ta kcab",  # right-to-left override
+        "Back \u2066at\u2069 9",  # isolate
+        "Back at\u200b 9",  # zero-width space
+        "Back at\u200d 9",  # zero-width joiner
+        "\ufeffBack at 9",  # byte-order mark
+        "Back at\u2028 9",  # line separator
+        "Back at\x85 9",  # NEL (C1)
+    ],
+)
+async def test_a_banner_that_is_not_plain_text_is_refused_and_the_public_banner_is_kept(
+    env: Env, make_actor: Any, superuser: Connection, banner_text: str
+) -> None:
+    """#227: ``PUT /api/admin/settings/banner`` refuses bidi, zero-width and other format
+    characters (and separators), 422 ``invalid_value`` with its ``refused`` row; the stored
+    banner and what ``/api/settings/public`` serves stay as they were."""
+    actor = await stepped_admin(env, make_actor)
+    store(superuser, "banner", {"text": "kept", "level": "info"})
+    response = await put(actor, "banner", {"text": banner_text, "level": "warning"})
+    assert (response.status_code, reason(response)) == (422, "invalid_value")
+    assert stored(superuser, "banner") == {"text": "kept", "level": "info"}
+    [row] = [r for r in rows_of(superuser, actor.user_id) if r.action == "setting.set"]
+    assert (row.outcome, row.reason, given(row.params)) == (
+        "refused",
+        "invalid_value",
+        {"key": "banner"},
+    )
+    public = await Browser(env).get(PUBLIC)
+    assert public.json()["banner"] == {"text": "kept", "level": "info"}
+    assert banner_text not in public.text
+
+
+async def test_an_ordinary_unicode_banner_is_stored_and_served(
+    env: Env, make_actor: Any, superuser: Connection
+) -> None:
+    actor = await stepped_admin(env, make_actor)
+    banner = {"text": "Vår grupp \U0001f6b4 tränar kl 9", "level": "info"}
+    assert (await put(actor, "banner", banner)).status_code == 200
+    assert stored(superuser, "banner") == banner
+    assert (await Browser(env).get(PUBLIC)).json()["banner"] == banner
+
+
 async def test_a_flag_write_with_extra_fields_is_a_schema_error(
     env: Env, make_actor: Any, superuser: Connection
 ) -> None:
