@@ -71,6 +71,8 @@ class Stage:
     system: str
     tools: tuple[Tool, ...]
     final_tool: str
+    # More tools that also end the run when they succeed (the revise stage's "other songs" exit).
+    also_final: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         names = [t.name for t in self.tools]
@@ -78,6 +80,11 @@ class Stage:
             raise ValueError("tool names are unique in a stage")
         if self.final_tool not in names:
             raise ValueError("the final tool is one of the stage's tools")
+        if any(name not in names for name in self.also_final):
+            raise ValueError("every final tool is one of the stage's tools")
+
+    def is_final(self, name: str) -> bool:
+        return name == self.final_tool or name in self.also_final
 
     def tool(self, name: str) -> Tool | None:
         return next((t for t in self.tools if t.name == name), None)

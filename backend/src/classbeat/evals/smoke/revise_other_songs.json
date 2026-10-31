@@ -1,0 +1,374 @@
+{
+ "name": "revise_other_songs",
+ "about": "A request that only asks for other songs: nothing is revised and Change songs is the way.",
+ "brief": {
+  "length_min": 45,
+  "intensity": "moderate",
+  "climbs": 1,
+  "sprints": 2
+ },
+ "music": {
+  "tracks": 13
+ },
+ "revise": {
+  "request": "Use other songs, something with more energy.",
+  "earlier_requests": [],
+  "base": {
+   "name": "Invented base class",
+   "description": "The class as it stands.",
+   "segments": [
+    {
+     "name": "Warm-up",
+     "kind": "warmup",
+     "intervals": [
+      {
+       "sec": 200,
+       "zone": 2,
+       "rpm": [
+        80,
+        90
+       ],
+       "standing": false,
+       "cue": ""
+      },
+      {
+       "sec": 101,
+       "zone": 3,
+       "rpm": [
+        80,
+        90
+       ],
+       "standing": false,
+       "cue": ""
+      }
+     ]
+    },
+    {
+     "name": "Climb 1",
+     "kind": "main",
+     "intervals": [
+      {
+       "sec": 149,
+       "zone": 4,
+       "rpm": [
+        68,
+        76
+       ],
+       "standing": false,
+       "cue": ""
+      },
+      {
+       "sec": 31,
+       "zone": 5,
+       "rpm": [
+        65,
+        75
+       ],
+       "standing": true,
+       "cue": ""
+      },
+      {
+       "sec": 90,
+       "zone": 4,
+       "rpm": [
+        68,
+        76
+       ],
+       "standing": false,
+       "cue": ""
+      },
+      {
+       "sec": 60,
+       "zone": 1,
+       "rpm": [
+        75,
+        85
+       ],
+       "standing": false,
+       "cue": ""
+      }
+     ]
+    },
+    {
+     "name": "Sprint 1",
+     "kind": "main",
+     "intervals": [
+      {
+       "sec": 122,
+       "zone": 4,
+       "rpm": [
+        80,
+        90
+       ],
+       "standing": false,
+       "cue": ""
+      },
+      {
+       "sec": 27,
+       "zone": 6,
+       "rpm": [
+        90,
+        100
+       ],
+       "standing": false,
+       "cue": ""
+      },
+      {
+       "sec": 60,
+       "zone": 1,
+       "rpm": [
+        75,
+        85
+       ],
+       "standing": false,
+       "cue": ""
+      }
+     ]
+    },
+    {
+     "name": "Sprint 2",
+     "kind": "main",
+     "intervals": [
+      {
+       "sec": 119,
+       "zone": 4,
+       "rpm": [
+        80,
+        90
+       ],
+       "standing": false,
+       "cue": ""
+      },
+      {
+       "sec": 25,
+       "zone": 6,
+       "rpm": [
+        90,
+        100
+       ],
+       "standing": false,
+       "cue": ""
+      },
+      {
+       "sec": 60,
+       "zone": 1,
+       "rpm": [
+        75,
+        85
+       ],
+       "standing": false,
+       "cue": ""
+      }
+     ]
+    },
+    {
+     "name": "Tempo 1",
+     "kind": "main",
+     "intervals": [
+      {
+       "sec": 186,
+       "zone": 4,
+       "rpm": [
+        80,
+        90
+       ],
+       "standing": false,
+       "cue": ""
+      },
+      {
+       "sec": 60,
+       "zone": 5,
+       "rpm": [
+        85,
+        95
+       ],
+       "standing": false,
+       "cue": ""
+      },
+      {
+       "sec": 60,
+       "zone": 3,
+       "rpm": [
+        80,
+        90
+       ],
+       "standing": false,
+       "cue": ""
+      }
+     ]
+    },
+    {
+     "name": "Tempo 2",
+     "kind": "main",
+     "intervals": [
+      {
+       "sec": 179,
+       "zone": 4,
+       "rpm": [
+        80,
+        90
+       ],
+       "standing": false,
+       "cue": ""
+      },
+      {
+       "sec": 60,
+       "zone": 5,
+       "rpm": [
+        85,
+        95
+       ],
+       "standing": false,
+       "cue": ""
+      },
+      {
+       "sec": 60,
+       "zone": 3,
+       "rpm": [
+        80,
+        90
+       ],
+       "standing": false,
+       "cue": ""
+      }
+     ]
+    },
+    {
+     "name": "Tempo 3",
+     "kind": "main",
+     "intervals": [
+      {
+       "sec": 180,
+       "zone": 4,
+       "rpm": [
+        80,
+        90
+       ],
+       "standing": false,
+       "cue": ""
+      },
+      {
+       "sec": 62,
+       "zone": 5,
+       "rpm": [
+        85,
+        95
+       ],
+       "standing": false,
+       "cue": ""
+      },
+      {
+       "sec": 60,
+       "zone": 3,
+       "rpm": [
+        80,
+        90
+       ],
+       "standing": false,
+       "cue": ""
+      }
+     ]
+    },
+    {
+     "name": "Tempo 4",
+     "kind": "main",
+     "intervals": [
+      {
+       "sec": 179,
+       "zone": 4,
+       "rpm": [
+        80,
+        90
+       ],
+       "standing": false,
+       "cue": ""
+      },
+      {
+       "sec": 60,
+       "zone": 5,
+       "rpm": [
+        85,
+        95
+       ],
+       "standing": false,
+       "cue": ""
+      },
+      {
+       "sec": 60,
+       "zone": 3,
+       "rpm": [
+        80,
+        90
+       ],
+       "standing": false,
+       "cue": ""
+      }
+     ]
+    },
+    {
+     "name": "Tempo 5",
+     "kind": "main",
+     "intervals": [
+      {
+       "sec": 60,
+       "zone": 4,
+       "rpm": [
+        80,
+        90
+       ],
+       "standing": false,
+       "cue": ""
+      },
+      {
+       "sec": 60,
+       "zone": 5,
+       "rpm": [
+        85,
+        95
+       ],
+       "standing": false,
+       "cue": ""
+      },
+      {
+       "sec": 60,
+       "zone": 3,
+       "rpm": [
+        80,
+        90
+       ],
+       "standing": false,
+       "cue": ""
+      }
+     ]
+    },
+    {
+     "name": "Cooldown",
+     "kind": "cooldown",
+     "intervals": [
+      {
+       "sec": 151,
+       "zone": 2,
+       "rpm": [
+        80,
+        90
+       ],
+       "standing": false,
+       "cue": ""
+      },
+      {
+       "sec": 119,
+       "zone": 1,
+       "rpm": [
+        70,
+        80
+       ],
+       "standing": false,
+       "cue": ""
+      }
+     ]
+    }
+   ]
+  },
+  "outcome": "songs_requested"
+ }
+}

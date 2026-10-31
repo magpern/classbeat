@@ -365,6 +365,8 @@ it:
 | `trial` | `{plan, days}` | `days = 0` (default) is off |
 | `banner` | `{text, level}` | text ≤ 280 characters, `info` or `warning`, rendered as text; served to everyone by `GET /api/settings/public` (with the effective sign-up mode) |
 
+**Amendment 2026-10-31 (FL1, Architect):** `closed` is the emergency brake and also stops confirmation. While the effective sign-up mode is `closed`, confirming a pending sign-up, password or provider, answers 403 `signups_closed`; the pending row and its invite stay, so it can still be confirmed if sign-ups reopen before it expires (24 hours). `invite` and `open` do not affect confirmation: the row was admitted when it was made. A provider flow or hand-off that carried an invite consumes it when the account is created, whatever the mode is by then, so the invite cannot be reused. ADR 0003 section 5's confirmation steps are read with this addition.
+
 Feature codes in M5: `song_picking`. `swedebeat` and `billing` are shown, read-only and off; the
 admin can't turn them on (§8). Plan limits are edited on `plans`, not in `app_settings`.
 
