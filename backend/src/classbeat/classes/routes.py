@@ -30,6 +30,9 @@ from classbeat.classes.schemas import (
     DeletedOut,
     MessageOut,
     MessagesOut,
+    MosaicSongOut,
+    MusicPlaylistOut,
+    MusicPlaylistsOut,
     PickIn,
     PlaylistNameOut,
     PlaylistOut,
@@ -46,6 +49,7 @@ from classbeat.context import UserContext
 from classbeat.covers import cover_url
 
 router = APIRouter(prefix="/api/classes", tags=["classes"])
+music_router = APIRouter(prefix="/api/music", tags=["music"])
 
 HASH = re.compile(r"^[0-9a-f]{64}$")
 KEPT_NOTE = "The workouts classbeat saved to your MOWL account stay there; delete them in MOWL."
@@ -105,6 +109,31 @@ async def list_classes(
     return ClassesOut(
         classes=[ClassOut.of(r) for r in page.rows],
         next_cursor=None if page.next_after is None else _encode_cursor(page.next_after),
+    )
+
+
+@music_router.get("/class-playlists", response_model=MusicPlaylistsOut)
+async def class_playlists(
+    request: Request, ctx: Annotated[UserContext, Depends(auth.require_user)]
+) -> MusicPlaylistsOut:
+    """The playlists classbeat made for the signed-in user, newest first (the Music page, ADR 0013
+    sections 4 and 9). A read only; another user's playlists are never in it. A link is the
+    owner's own, built here from a verified playlist's stored id; covers pass the pinned-host
+    check again just before they are returned."""
+    found = await song_views.music_playlists(request.app.state.session_factory, ctx)
+    return MusicPlaylistsOut(
+        playlists=[
+            MusicPlaylistOut(
+                class_id=p.class_id,
+                class_title=p.class_title,
+                name=p.name,
+                link=p.link,
+                detached=p.detached,
+                note=p.note,
+                songs=[MosaicSongOut(title=s.title, cover=cover_url(s.cover)) for s in p.songs],
+            )
+            for p in found
+        ]
     )
 
 
@@ -222,6 +251,7 @@ async def _song_list(
                 length_sec=s.length_sec,
                 new=s.new,
                 cover=cover_url(s.cover),  # the pinned host only, again (ADR 0013 section 9)
+                open_spotify=song_views.track_link(s.spotify_id),
             )
             for i, s in enumerate(c.songs, start=1)
         ],
