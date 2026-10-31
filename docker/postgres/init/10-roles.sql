@@ -14,7 +14,8 @@
 -- memberships, role settings, grants and default privileges of the two roles). ACL kinds it
 -- does not manage (large objects, types, parameters) are not touched.
 -- The job queue's function owner classbeat_queue is created by docker/postgres/queue/20-queue.sql
--- (after the migrations, ADR 0005 section 3); classbeat_maint (M5) by the milestone that needs it.
+-- (after the migrations, ADR 0005 section 3); classbeat_maint by docker/postgres/maint (ADR 0011
+-- section 5), neither touched here.
 
 \set ON_ERROR_STOP on
 -- Same bytes as config.py: strip exactly one trailing LF, then one trailing CR, nothing else.
@@ -120,6 +121,36 @@ SELECT 'REVOKE UPDATE, DELETE ON TABLE public.class_messages FROM classbeat_app'
  WHERE to_regclass('public.class_messages') IS NOT NULL \gexec
 SELECT 'REVOKE DELETE ON TABLE public.agent_runs FROM classbeat_app'
  WHERE to_regclass('public.agent_runs') IS NOT NULL \gexec
+-- Eval results are append-only for the app (ADR 0012 section 5, the M3c migration).
+SELECT 'REVOKE UPDATE, DELETE, TRUNCATE ON TABLE public.model_eval_results FROM classbeat_app'
+ WHERE to_regclass('public.model_eval_results') IS NOT NULL \gexec
+-- The M5 tables (migration 0007_tiers, ADR 0011 section 1): exactly the grants of its APP_GRANTS,
+-- restored after the blanket re-grant above (a table-level REVOKE also drops column grants).
+-- tests/test_roles_rerun.py checks a re-run leaves every table as a plain migration does.
+SELECT 'REVOKE ALL ON TABLE public.plans FROM classbeat_app',
+       'GRANT SELECT ON TABLE public.plans TO classbeat_app'
+ WHERE to_regclass('public.plans') IS NOT NULL \gexec
+SELECT 'REVOKE ALL ON TABLE public.app_settings FROM classbeat_app',
+       'GRANT SELECT ON TABLE public.app_settings TO classbeat_app'
+ WHERE to_regclass('public.app_settings') IS NOT NULL \gexec
+SELECT 'REVOKE ALL ON TABLE public.entitlements FROM classbeat_app',
+       'GRANT SELECT, INSERT ON TABLE public.entitlements TO classbeat_app'
+ WHERE to_regclass('public.entitlements') IS NOT NULL \gexec
+SELECT 'REVOKE ALL ON TABLE public.code_redemptions FROM classbeat_app',
+       'GRANT SELECT, INSERT ON TABLE public.code_redemptions TO classbeat_app'
+ WHERE to_regclass('public.code_redemptions') IS NOT NULL \gexec
+SELECT 'REVOKE ALL ON TABLE public.redeem_codes FROM classbeat_app',
+       'GRANT SELECT, UPDATE (redeemed_count) ON TABLE public.redeem_codes TO classbeat_app'
+ WHERE to_regclass('public.redeem_codes') IS NOT NULL \gexec
+SELECT 'REVOKE ALL ON TABLE public.credit_ledger FROM classbeat_app',
+       'GRANT SELECT, INSERT, UPDATE ON TABLE public.credit_ledger TO classbeat_app'
+ WHERE to_regclass('public.credit_ledger') IS NOT NULL \gexec
+SELECT 'REVOKE ALL ON TABLE public.quota_periods FROM classbeat_app',
+       'GRANT SELECT, INSERT, UPDATE ON TABLE public.quota_periods TO classbeat_app'
+ WHERE to_regclass('public.quota_periods') IS NOT NULL \gexec
+-- The audit log: no privilege at all for the app (append-only through classbeat_maint).
+SELECT 'REVOKE ALL ON TABLE public.admin_audit FROM classbeat_app'
+ WHERE to_regclass('public.admin_audit') IS NOT NULL \gexec
 REVOKE ALL ON ALL SEQUENCES IN SCHEMA public FROM PUBLIC, classbeat_app;
 GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO classbeat_app;
 REVOKE ALL ON ALL FUNCTIONS IN SCHEMA public FROM PUBLIC;

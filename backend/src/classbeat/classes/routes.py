@@ -20,6 +20,7 @@ from fastapi.responses import JSONResponse
 from pydantic import ValidationError
 
 from classbeat import auth
+from classbeat.agent.design import ZONE7
 from classbeat.agent.schemas import WorkoutDraft
 from classbeat.classes import service, song_views
 from classbeat.classes.schemas import (
@@ -167,6 +168,12 @@ async def get_revision(
         unknown = [UnknownBpmOut(index=int(u["index"]), title=str(u["title"])) for u in raw]
         provenance = ProvenanceOut.model_validate(row.provenance)
         summary = RevisionSummaryOut.of(row)
+        stored = row.provenance.get("tss_approximate")  # absent before ADR 0012 section 7
+        approximate = (
+            stored
+            if isinstance(stored, bool)
+            else any(i.zone == ZONE7 for s in draft.segments for i in s.intervals)
+        )
     except (ValidationError, KeyError, TypeError, ValueError):
         return JSONResponse({"detail": {"reason": "internal"}}, status_code=500)
     return RevisionOut(
@@ -175,6 +182,7 @@ async def get_revision(
         content=draft.model_dump(mode="json", exclude_none=True),
         unknown_bpm=unknown,
         provenance=provenance,
+        tss_approximate=approximate,
     )
 
 

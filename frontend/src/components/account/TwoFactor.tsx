@@ -151,6 +151,7 @@ export function TwoFactor() {
   const { refresh } = useSession()
   const [status, setStatus] = useState<MfaStatus | null>(null)
   const [codes, setCodes] = useState<string[] | null>(null)
+  const [confirmingRemove, setConfirmingRemove] = useState(false)
   const action = useAction()
 
   const load = useCallback(async () => {
@@ -176,6 +177,7 @@ export function TwoFactor() {
     })
   }
   const remove = () => {
+    setConfirmingRemove(false)
     void action.run(async () => {
       await guard(removeTotp)
       setCodes(null)
@@ -208,14 +210,37 @@ export function TwoFactor() {
           >
             New recovery codes
           </button>
-          <button
-            className="button button--secondary"
-            type="button"
-            disabled={action.busy}
-            onClick={remove}
-          >
-            Remove two-factor
-          </button>
+          {confirmingRemove ? (
+            <div className="notice" role="group" aria-label="Confirm removing two-factor">
+              <p>
+                Without two-factor, a stolen password is enough to change this account. Your
+                recovery codes stop working too.
+              </p>
+              <button className="button" type="button" disabled={action.busy} onClick={remove}>
+                Yes, remove two-factor
+              </button>
+              <button
+                className="button button--secondary"
+                type="button"
+                onClick={() => {
+                  setConfirmingRemove(false)
+                }}
+              >
+                Keep two-factor
+              </button>
+            </div>
+          ) : (
+            <button
+              className="button button--secondary"
+              type="button"
+              disabled={action.busy}
+              onClick={() => {
+                setConfirmingRemove(true)
+              }}
+            >
+              Remove two-factor
+            </button>
+          )}
         </>
       ) : (
         <>

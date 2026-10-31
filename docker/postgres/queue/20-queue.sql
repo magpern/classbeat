@@ -11,8 +11,8 @@
 -- revokes every privilege classbeat_queue holds anywhere (not its own EXECUTE on the functions it
 -- owns), re-grants exactly the list below, and replaces the functions with their ACLs and
 -- version comment. Migrations never create these functions, and no other user-defined function,
--- operator, trigger or rule may exist (the check below; the one exception is the two M5 guard
--- triggers of migrations 0007 and 0008, admitted exactly and pinned by digest). The functions'
+-- operator, trigger or rule may exist (the check below; the one exception is the three M5 guard
+-- triggers of migrations 0007 to 0010, admitted exactly and pinned by digest). The functions'
 -- search_path is pg_catalog, pg_temp (public left out, every table schema-qualified; Postgres
 -- never looks up functions or operators in pg_temp), so no object in public can shadow a
 -- built-in they call.
@@ -195,7 +195,7 @@ END $$;
 
 -- No user code may run as classbeat_queue (ADR 0005 section 3, #108): no other user function,
 -- operator, trigger or rule, and no expression calling a built-in that runs SQL text or changes
--- settings, except the two M5 guard triggers pinned by digest (ADR 0011 section 1; a changed
+-- settings, except the three M5 guard triggers pinned by digest (ADR 0011 section 1; a changed
 -- trigger function needs its new md5 here and in queue_digests.py). The queue check refuses the
 -- same: stop here, naming each object as it and guard 9 do.
 DO $$
@@ -211,17 +211,19 @@ BEGIN
        AND (p.oid >= 16384 OR n.nspname = 'public'
             OR (n.nspname NOT IN ('pg_catalog', 'information_schema', 'pg_toast')
                 AND n.nspname !~ '^pg_(toast_)?temp_[0-9]+$'))
-       -- The two M5 guard trigger functions (migrations 0007 and 0008, ADR 0011 section 1),
+       -- The three M5 guard trigger functions (migrations 0007 to 0010, ADR 0011 section 1),
        -- exactly: name, md5 of the definition, owner and ACL (classbeat/db/queue_check.py says
-       -- the same). The two literals below are longer than a line: they are compared whole.
+       -- the same). The literals below are longer than a line: they are compared whole.
        AND NOT coalesce(CASE WHEN p.prokind = 'f' AND n.nspname = 'public'
-                              AND p.proname IN ('credit_ledger_guard', 'admin_audit_guard')
+                              AND p.proname IN ('credit_ledger_guard', 'admin_audit_guard',
+                                                'redeem_codes_guard')
                         THEN p.proname || '|'
                              || pg_catalog.md5(pg_catalog.pg_get_functiondef(p.oid)) || '|'
                              || pg_catalog.pg_get_userbyid(p.proowner) || '|'
                              || coalesce(pg_catalog.array_to_string(p.proacl, ','), '') END IN (
-         'credit_ledger_guard|daf9a170dc7880c3fba48740e37556ec|classbeat_owner|classbeat_owner=X/classbeat_owner',
-         'admin_audit_guard|d804e00683bfbe2f82eedc0b9a2c5682|classbeat_owner|classbeat_owner=X/classbeat_owner'),
+         'credit_ledger_guard|3f35fac02d6276ef49d4980f49ba2861|classbeat_owner|classbeat_owner=X/classbeat_owner',
+         'admin_audit_guard|d804e00683bfbe2f82eedc0b9a2c5682|classbeat_owner|classbeat_owner=X/classbeat_owner',
+         'redeem_codes_guard|b0b580c9990b2a1fb23d82c89344d7e8|classbeat_owner|classbeat_owner=X/classbeat_owner'),
          false)
     UNION ALL
     SELECT 'operator ' || n.nspname || '.' || o.oprname || '('
@@ -235,7 +237,7 @@ BEGIN
     SELECT 'trigger ' || t.tgname || ' on ' || n.nspname || '.' || c.relname
       FROM pg_catalog.pg_trigger t JOIN pg_catalog.pg_class c ON c.oid = t.tgrelid
       JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace WHERE NOT t.tgisinternal
-       -- ... and their two triggers, exactly: name, table, function, BEFORE UPDATE (19) or
+       -- ... and their three triggers, exactly: name, table, function, BEFORE UPDATE (19) or
        -- BEFORE UPDATE OR DELETE (27) for each row, enabled, no arguments, columns, WHEN or
        -- constraint.
        AND NOT coalesce(t.tgname || '|' || n.nspname || '.' || c.relname || '|'
@@ -248,7 +250,8 @@ BEGIN
              || '|' || t.tgattr::text || '|' || (t.tgqual IS NULL)::text || '|'
              || t.tgconstraint::text IN (
          'credit_ledger_guard|public.credit_ledger|public.credit_ledger_guard()|19|O|0||true|0',
-         'admin_audit_guard|public.admin_audit|public.admin_audit_guard()|27|O|0||true|0'),
+         'admin_audit_guard|public.admin_audit|public.admin_audit_guard()|27|O|0||true|0',
+         'redeem_codes_guard|public.redeem_codes|public.redeem_codes_guard()|19|O|0||true|0'),
          false)
     UNION ALL
     SELECT 'rule ' || w.rulename || ' on ' || n.nspname || '.' || c.relname
