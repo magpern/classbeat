@@ -121,10 +121,10 @@ router = admin_router()
 def install(app: Any) -> None:
     """The admin router, the feature modules' routers, and the handler that turns an
     ``AdminRefused`` into its response."""
-    from classbeat.admin import codes  # the feature modules import this one
+    from classbeat.admin import codes, users  # the feature modules import this one
 
     app.include_router(router)
-    for feature in (codes.router,):  # each feature module's own ``admin_router()``
+    for feature in (users.router, codes.router):  # each feature module's own ``admin_router()``
         app.include_router(feature)
 
     @app.exception_handler(AdminRefused)

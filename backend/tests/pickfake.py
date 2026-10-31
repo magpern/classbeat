@@ -25,6 +25,7 @@ from classbeat.agent.choose_songs import ChooseContext, choose_stage
 from classbeat.agent.limits import Limits
 from classbeat.agent.loop import AgentConfig
 from classbeat.agent.pick_pool import PoolContext, SearchUnavailable, pool_stage
+from classbeat.agent.provider import ModelProvider
 from classbeat.agent.providers.fake import FakeProvider, FakeScript
 from classbeat.agent.registry import SearchRegistry
 from classbeat.agent.songs import PickPlan, analysed_pool
@@ -147,19 +148,29 @@ def good_pick_provider() -> FakeProvider:
     return provider(*pool_stage_turns(), *choose_stage_turns())
 
 
-async def run_pool(w: World, fake: FakeProvider, host: Any, limits: Limits = POOL_LIMITS) -> Any:
+async def run_pool(
+    w: World,
+    fake: ModelProvider,
+    host: Any,
+    limits: Limits = POOL_LIMITS,
+    config: AgentConfig = CONFIG,
+) -> Any:
     from dataclasses import replace
 
-    config: AgentConfig = replace(CONFIG, limits=limits)
+    config = replace(config, limits=limits)
     return await run_stage(host, fake, pool_stage(w.pool), w.pool.first_message(), config)
 
 
 async def run_choose(
-    ctx: ChooseContext, fake: FakeProvider, host: Any, limits: Limits = CHOOSE_LIMITS
+    ctx: ChooseContext,
+    fake: ModelProvider,
+    host: Any,
+    limits: Limits = CHOOSE_LIMITS,
+    config: AgentConfig = CONFIG,
 ) -> Any:
     from dataclasses import replace
 
-    config: AgentConfig = replace(CONFIG, limits=limits)
+    config = replace(config, limits=limits)
     return await run_stage(host, fake, choose_stage(ctx), ctx.first_message(), config)
 
 

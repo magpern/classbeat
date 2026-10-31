@@ -1,0 +1,15 @@
+{
+ "name": "ftp_20_75",
+ "about": "Hard 75 minutes around a 20 minute FTP test.",
+ "brief": {
+  "length_min": 75,
+  "intensity": "hard",
+  "ftp_test": 20
+ },
+ "music": {
+  "tracks": 21
+ },
+ "expect": {
+  "ftp_warmup_min_sec": 600
+ }
+}
