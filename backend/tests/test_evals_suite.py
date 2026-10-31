@@ -6,6 +6,7 @@ import copy
 import dataclasses
 import json
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
@@ -33,6 +34,7 @@ from classbeat.evals.runner import (
     suite_row,
 )
 from classbeat.evals.suite import Manifest, SuiteError, load_suite, suite_digest
+from advscripts import provider_for_case as adv_provider
 from pickfake import CHOOSE_LIMITS, POOL_LIMITS
 from pickscripts import provider_for_case as pick_provider
 from smokescripts import good_draft
@@ -43,10 +45,13 @@ from smokescripts import provider_for_case as design_provider
 # manifest's digest to ``suite.current_digest()`` and add the new pair here.
 RELEASED: dict[int, str] = {
     1: "beabe1887df6236e30bd4b040104281e78d1b02ee2d8adecca0bee32557651b5",
+    2: "19bdd02a13e8e4c92f3c284b1a7cc6b1d1031d83d2292c459a0d22134a2f782a",
 }
 
 SUITE = load_suite()
 MANIFEST = SUITE.manifest
+# The suite's own cases (suite/<category>/*.json), by the issue that added them.
+SUITE_OWN = {p.stem for p in Path(suite.__file__).parent.glob("suite/*/*.json")}
 
 
 def released(version: int, digest: str) -> bool:
@@ -147,14 +152,21 @@ def test_the_check_constants_hold_every_upper_case_constant_of_the_check_modules
 
 def test_the_suite_holds_every_smoke_and_song_case_once_in_its_group() -> None:
     index = MANIFEST.case_index()
-    assert set(SUITE.design_cases) == {c.name for c in load_cases()}  # the 18
-    assert set(SUITE.song_cases) == {c.name for c in load_pick_cases()}  # the 3
-    assert len(index) == 21
+    smoke = {c.name for c in load_cases()}
+    assert smoke <= set(SUITE.design_cases)  # the 18
+    assert set(SUITE.song_cases) - SUITE_OWN == {c.name for c in load_pick_cases()}  # the 3
+    assert set(SUITE.design_cases) - smoke == SUITE_OWN & set(SUITE.design_cases)
+    assert len(SUITE_OWN) == 19  # the adversarial, missing-music and cost cases (#209)
+    assert len(SUITE.design_cases) == 18 + 12
+    assert len(SUITE.song_cases) == 3 + 7
+    assert len(index) == 21 + 19
     assert all(index[n][1] == "design" for n in SUITE.design_cases)
     assert all(index[n][1] == "songs" for n in SUITE.song_cases)
     assert set(MANIFEST.categories) == set(suite.CATEGORY_GROUPS)
     assert {n for n, (cat, _) in index.items() if cat == "adversarial"} == {
         "adversarial_brief", "adversarial_music", "revise_adversarial_music", "injected_title",
+        "adv_brief_requests", "adv_malformed_hits", "adv_malformed_music", "adv_oversized_hits",
+        "adv_oversized_music", "adv_pool_requests", "adv_tool_requests", "revise_adv_requests",
     }  # fmt: skip
     assert {n for n, (cat, _) in index.items() if cat == "revisions"} == {
         "revise_easier", "revise_more_sprints",
@@ -276,7 +288,7 @@ async def _real_rows(repeat: int = 0) -> list[dict[str, Any]]:
     for name, case in sorted(SUITE.design_cases.items()):
         result = await run_case(
             case,
-            design_provider(case),
+            (adv_provider if name in SUITE_OWN else design_provider)(case),
             CONFIG,
             repeat=repeat,
             zone7_tss_margin=MANIFEST.zone7_tss_margin,
@@ -284,7 +296,10 @@ async def _real_rows(repeat: int = 0) -> list[dict[str, Any]]:
         rows.append(suite_row(result, SUITE.category_of(name)))
     for name, case in sorted(SUITE.song_cases.items()):
         result, _, _ = await run_pick_case(
-            case, pick_provider(case), CONFIG, (POOL_LIMITS, CHOOSE_LIMITS)
+            case,
+            (adv_provider if name in SUITE_OWN else pick_provider)(case),
+            CONFIG,
+            (POOL_LIMITS, CHOOSE_LIMITS),
         )
         rows.append(
             song_suite_row(
@@ -327,7 +342,7 @@ async def test_the_recorded_smoke_runs_pass_the_gate_in_both_groups() -> None:
     assert set(verdict.groups) == {"design", "songs"}
     for group in verdict.groups.values():
         assert group.status == "passed", group.as_json()
-        assert group.runs == (54 if group.group == "design" else 9)
+        assert group.runs == (90 if group.group == "design" else 30)
 
 
 # --- zone 7 (section 7) ------------------------------------------------------------------------

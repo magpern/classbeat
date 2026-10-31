@@ -20,7 +20,7 @@ import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from importlib import resources
-from typing import Any, Final
+from typing import Any, Final, Literal
 
 from mowl import spotify
 from pydantic import BaseModel, ConfigDict, Field
@@ -31,8 +31,8 @@ from classbeat.agent.limits import Limits
 from classbeat.agent.loop import AgentConfig
 from classbeat.agent.pick_pool import PoolContext, PoolResult, pool_stage
 from classbeat.agent.provider import ModelProvider
-from classbeat.agent.registry import SearchRegistry
-from classbeat.agent.schemas import Brief
+from classbeat.agent.registry import MAX_TEXT, SearchRegistry
+from classbeat.agent.schemas import Brief, clean_text
 from classbeat.agent.songs import KeptSong, PickPlan, analysed_pool, total_sec, within_tolerance
 from classbeat.evals.runner import EvalHost
 from classbeat.jobs.errors import JobFailure
@@ -47,13 +47,20 @@ KEPT_ID: Final = "SmokeKept{:013d}"
 YEAR_FILTER: Final = re.compile(r"\byear:(\d{4})(?:-(\d{4}))?\b")
 
 
+Malformed = Literal["no_title", "no_artist", "bad_id", "title_not_text"]
+
+
 class CatalogueSpec(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
 
     size: int = Field(ge=10, le=120)
     titles: dict[str, str] = Field(default_factory=lambda: dict[str, str]())  # index -> title
     artists: dict[str, str] = Field(default_factory=lambda: dict[str, str]())
+    albums: dict[str, str] = Field(default_factory=lambda: dict[str, str]())
     no_bpm: list[int] = Field(default_factory=lambda: list[int]())  # MOWL has no BPM yet
+    # Tracks whose search hit is malformed (see ``MALFORMED_HITS``): the hit the real tool-result
+    # handling (``SearchRegistry.add_hits``) must skip, not the stub's.
+    malformed: dict[str, Malformed] = Field(default_factory=lambda: dict[str, Malformed]())
 
 
 class ReplaceSpec(BaseModel):
@@ -69,6 +76,12 @@ class PickExpect(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
 
     forbidden_text: list[str] = Field(default_factory=lambda: list[str]())  # in the note
+    # The expected end of the run: a list (``submitted``) or the failure the case is about
+    # (``pool_too_small``: too few usable tracks, nothing stored). The manifest lists the cases
+    # that expect the latter (``Manifest.expected_outcomes``); the gate reads it from there.
+    outcome: Literal["submitted", "pool_too_small"] = "submitted"
+    max_turns: int | None = Field(default=None, ge=1)  # the case's own bounds (cost category)
+    max_cost_micros: int | None = Field(default=None, ge=0)
 
 
 class PickCase(BaseModel):
@@ -104,6 +117,33 @@ class CatalogueTrack:
     sec: int
     bpm: int  # 0: MOWL has none
     group: str  # a hidden tag, ``group0`` for tracks 0 to 9: a query for it finds that slice
+    album: str = "Invented Album"
+    malformed: Malformed | None = None  # the hit is returned broken (see ``hit``)
+
+    def hit(self) -> dict[str, Any]:
+        """The library's track dict for this track; a ``malformed`` one is broken the way a
+        search answer can be (no title, no artist, an id that is no Spotify id, a title that is
+        not text), which ``SearchRegistry`` must skip."""
+        out: dict[str, Any] = {
+            "uri": f"spotify:track:{self.spotify_id}",
+            "id": self.spotify_id,
+            "title": self.title,
+            "artists": [self.artist],
+            "album": self.album,
+            "year": str(self.year),
+            "sec": self.sec,
+            "duration_ms": self.sec * 1000,
+            "release_date": f"{self.year}-01-01",
+        }
+        if self.malformed == "no_title":
+            del out["title"]
+        elif self.malformed == "no_artist":
+            out["artists"] = []
+        elif self.malformed == "bad_id":
+            out["id"] = out["uri"] = "not an id"
+        elif self.malformed == "title_not_text":
+            out["title"] = {"text": self.title}
+        return out
 
 
 class SyntheticCatalogue:
@@ -119,6 +159,8 @@ class SyntheticCatalogue:
                 TRACK_SEC,
                 0 if i in spec.no_bpm else FIRST_BPM + BPM_STEP * (i % 40),
                 f"group{i // 10}",
+                spec.albums.get(str(i), "Invented Album"),
+                spec.malformed.get(str(i)),
             )
             for i in range(spec.size)
         ]
@@ -134,19 +176,7 @@ class SyntheticCatalogue:
             if years and not int(years[1]) <= t.year <= int(years[2] or years[1]):
                 continue
             if all(w in f"{t.title} {t.artist} {t.group}".lower() for w in words):
-                out.append(
-                    {
-                        "uri": f"spotify:track:{t.spotify_id}",
-                        "id": t.spotify_id,
-                        "title": t.title,
-                        "artists": [t.artist],
-                        "album": "Invented Album",
-                        "year": str(t.year),
-                        "sec": t.sec,
-                        "duration_ms": t.sec * 1000,
-                        "release_date": f"{t.year}-01-01",
-                    }
-                )
+                out.append(t.hit())
         return out[:10]
 
     def by_id(self) -> dict[str, CatalogueTrack]:
@@ -224,10 +254,15 @@ class PickCaseResult:
     tool_calls: int = 0
     cost_micros: int = 0
     prompt_versions: dict[str, str] = field(default_factory=lambda: dict[str, str]())
+    expected_outcome: str = "submitted"  # the case's ``expect.outcome``
 
     @property
     def passed(self) -> bool:
-        return self.outcome == "submitted" and bool(self.checks) and all(c.ok for c in self.checks)
+        return (
+            self.outcome == self.expected_outcome
+            and bool(self.checks)
+            and all(c.ok for c in self.checks)
+        )
 
     @property
     def failed_checks(self) -> list[str]:
@@ -255,7 +290,7 @@ async def run_pick_case(
     catalogue = SyntheticCatalogue(case.catalogue)
     registry = SearchRegistry()
     plan = plan_for(case)
-    result = PickCaseResult(case.name, "submitted")
+    result = PickCaseResult(case.name, "submitted", expected_outcome=case.expect.outcome)
     host = EvalHost()
     try:
         pool_ctx = PoolContext(plan, registry, catalogue.search)
@@ -286,9 +321,31 @@ async def run_pick_case(
         result.cost_micros = pooled.cost_micros + chosen.cost_micros
     except JobFailure as failure:
         result.outcome = failure.category
+        result.checks = ended_checks(case, result)
         return result, catalogue, registry
     result.checks = pick_checks(case, plan, result, catalogue, sent_text(provider))
     return result, catalogue, registry
+
+
+def ended_checks(case: PickCase, result: PickCaseResult) -> list[PickCheck]:
+    """The checks of a run that ended in a failure category: only a case that expects that
+    category has any (it ended as expected and nothing was stored: no list came out of it)."""
+    if case.expect.outcome != result.outcome:
+        return []
+    return [
+        PickCheck("expected_outcome", True, result.outcome),
+        PickCheck("nothing_stored", result.chosen is None),
+    ]
+
+
+def case_bounds(case: PickCase, result: PickCaseResult) -> PickCheck:
+    """The cost category's per-case bounds (ADR 0012 section 4): turns and cost of the whole run."""
+    turns, cost = case.expect.max_turns, case.expect.max_cost_micros
+    return PickCheck(
+        "case_bounds",
+        (turns is None or result.turns <= turns) and (cost is None or result.cost_micros <= cost),
+        f"{result.turns} turns of {turns}, cost {result.cost_micros} of {cost} micro-dollars",
+    )
 
 
 def sent_text(provider: ModelProvider) -> str:
@@ -301,6 +358,11 @@ def sent_text(provider: ModelProvider) -> str:
         for results, reminder in sent.turns:
             parts += [r.content for r in results] + [reminder or ""]
     return "\n".join(parts)
+
+
+def shown(text: str) -> str:
+    """A catalogue text as the registry shows it to the model: cleaned and cut."""
+    return clean_text(text)[:MAX_TEXT].strip()
 
 
 def pick_checks(
@@ -329,7 +391,7 @@ def pick_checks(
             "from_analysis",
             all(
                 (s.spotify_id in kept and s.title == kept[s.spotify_id].title)
-                or (s.spotify_id in by_id and s.title == by_id[s.spotify_id].title)
+                or (s.spotify_id in by_id and s.title == shown(by_id[s.spotify_id].title))
                 for s in songs
             ),
         ),
@@ -349,6 +411,8 @@ def pick_checks(
             not any(f.lower() in chosen.note.lower() for f in case.expect.forbidden_text),
         ),
     ]
+    if case.expect.max_turns is not None or case.expect.max_cost_micros is not None:
+        checks.append(case_bounds(case, result))
     if plan.replace:
         in_slot = all(
             0 <= k.slot < len(songs)

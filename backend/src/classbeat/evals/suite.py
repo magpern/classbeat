@@ -102,6 +102,13 @@ class Manifest(BaseModel):
     zone7_tss_margin: float = Field(ge=0, le=1)  # section 7: widens a zone 7 class's TSS bound
     # category -> stage group -> case names
     categories: dict[str, dict[Group, list[str]]]
+    # A song case whose right end is a failure category, not a list (``pool_too_small``: too few
+    # usable tracks, nothing stored; ADR 0012 section 4 ``missing_music``). The gate counts such a
+    # run as passed when it ended there and its checks hold; its case file says the same
+    # (``expect.outcome``), and ``load_suite`` refuses a pair that disagrees.
+    expected_outcomes: dict[str, Literal["pool_too_small"]] = Field(
+        default_factory=lambda: dict[str, Literal["pool_too_small"]]()
+    )
 
     @model_validator(mode="after")
     def _consistent(self) -> "Manifest":
@@ -120,6 +127,10 @@ class Manifest(BaseModel):
                     if name in seen:
                         raise ValueError(f"{name} is listed twice: a case has one category")
                     seen.add(name)
+        index = self.case_index()
+        for name in self.expected_outcomes:
+            if name not in index or index[name][1] != "songs":
+                raise ValueError("expected_outcomes names a song case of the manifest")
         rules = self.rules
         if not set(rules.every_run_categories) <= set(CATEGORY_GROUPS):
             raise ValueError("every_run_categories names an unknown category")
@@ -135,6 +146,9 @@ class Manifest(BaseModel):
             for group, names in by_group.items()
             for name in names
         }
+
+    def expected_outcome(self, name: str) -> str:
+        return self.expected_outcomes.get(name, "submitted")
 
     def cases_of(self, category: str, group: Group) -> list[str]:
         return list(self.categories[category].get(group, []))
@@ -261,6 +275,8 @@ def load_suite() -> Suite:
         if isinstance(case, PickCase) != (group == "songs"):
             raise SuiteError(f"{name} is listed in the {group} group but is not a {group} case")
         if isinstance(case, PickCase):
+            if case.expect.outcome != manifest.expected_outcome(name):
+                raise SuiteError(f"{name}: the case and the manifest expect different outcomes")
             song[name] = case
         else:
             design[name] = case
