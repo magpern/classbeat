@@ -84,7 +84,7 @@ def _prepare(stage: Stage, call: ToolCall) -> Dispatched | _Ready:
     tool = stage.tool(call.name) if isinstance(call.name, str) else None
     if tool is None:
         return _error(call, UNKNOWN, "unknown_tool", [f"the tools are: {_names(stage)}"])
-    final = tool.name == stage.final_tool
+    final = stage.is_final(tool.name)
     try:
         raw = compact(call.input)
     except (TypeError, ValueError):
