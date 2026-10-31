@@ -183,8 +183,7 @@ then reload it, and check from outside (a 2 MB file; the answer must be `413`, a
 
 ```bash
 head -c 2000000 /dev/zero > /tmp/big.bin
-curl -s -o /dev/null -w '%{http_code}
-' -X POST --data-binary @/tmp/big.bin "https://$DOMAIN/api/auth/login"
+curl -s -o /dev/null -w '%{http_code}\n' -X POST --data-binary @/tmp/big.bin "https://$DOMAIN/api/auth/login"
 ```
 
 The app logs each refusal it makes (method, path without the query, status and client address; at most
