@@ -8,10 +8,11 @@ import { Button } from '../ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogTitle, DialogTrigger } from '../ui/dialog'
 
 /**
- * Delete my account (ADR 0003 section 6). The user confirms by typing their email; the request
- * (`DELETE /api/auth/account`) then goes through the guard, which asks for recent authentication
- * and, with two-factor on, a step-up code, exactly as the server answers. The dialog closes before
- * the request so the guard's prompt is on top. The typed text is never sent or kept.
+ * Delete my account (ADR 0014 section 3). The user confirms by typing their email; the request
+ * (`POST /api/account/delete`) carries it, and the server checks it against the account's. It
+ * goes through the guard, which asks for recent authentication and, with two-factor on, a step-up
+ * code, exactly as the server answers. The dialog closes before the request so the guard's prompt
+ * is on top. The typed text is sent only to that request and kept nowhere.
  */
 export function DeleteAccount({ email }: { email: string }) {
   const guard = useGuard()
@@ -25,11 +26,12 @@ export function DeleteAccount({ email }: { email: string }) {
   const submit = (event: FormEvent) => {
     event.preventDefault()
     if (!matches) return
+    const confirmEmail = typed.trim()
     setOpen(false)
     setTyped('')
     void action
       .run(async () => {
-        await guard(deleteAccount)
+        await guard(() => deleteAccount(confirmEmail))
         return true
       })
       .then(async (deleted) => {
@@ -62,9 +64,10 @@ export function DeleteAccount({ email }: { email: string }) {
           <DialogContent aria-describedby="delete-account-description">
             <DialogTitle>Delete your account?</DialogTitle>
             <DialogDescription id="delete-account-description">
-              This deletes your account, your classes, your plan and your connections. It cannot be
-              undone. Workouts saved to MOWL and playlists in your Spotify stay there. Type your email
-              to confirm.
+              This deletes your account, your classes and song lists, your plan and usage, your
+              connections and your sign-in history. Jobs that are running are stopped first. It cannot
+              be undone; download your data first if you want a copy. Workouts saved to MOWL and
+              playlists in your Spotify stay there. Type your email to confirm.
             </DialogDescription>
             <form onSubmit={submit}>
               <Field

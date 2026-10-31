@@ -110,7 +110,7 @@ def test_on_delete_rules(admin: Connection) -> None:
         {"tables": [*metadata.tables, "connections"]},
     ).all()
     rules = {(r[0], r[1]): (r[2], r[3]) for r in rows}
-    set_null = {("invites", "created_by"), ("invites", "used_by"), ("auth_events", "user_id")}
+    set_null = {("invites", "created_by"), ("invites", "used_by")}
     for (table, column), (target, action) in rules.items():
         expected = "n" if (table, column) in set_null else "c"
         assert action == expected, (table, column)
@@ -122,7 +122,7 @@ def test_on_delete_rules(admin: Connection) -> None:
     assert len(rules) == 13
 
 
-def test_deleting_a_user_cascades_except_events_and_invites(admin: Connection) -> None:
+def test_deleting_a_user_cascades_events_too_but_only_nulls_invites(admin: Connection) -> None:
     user = admin.execute(
         text(
             "INSERT INTO users (email, email_normalized, email_verified_at) "
@@ -148,12 +148,11 @@ def test_deleting_a_user_cascades_except_events_and_invites(admin: Connection) -
     admin.execute(text("DELETE FROM users WHERE id = :u"), {"u": user})
     for table in (
         "sessions", "identities", "known_devices", "auth_tokens", "mfa_totp",
-        "mfa_recovery_codes", "oauth_flows",
+        "mfa_recovery_codes", "oauth_flows", "auth_events",
     ):  # fmt: skip
         count = admin.execute(text(f"SELECT count(*) FROM {table}")).scalar_one()  # noqa: S608
         assert count == 0, table
-    event = admin.execute(text("SELECT user_id FROM auth_events")).one()
-    assert event[0] is None  # kept, with a null user until the 30-day purge
+    # Migration 0015 (ADR 0014): the events, with their address, go with the user.
     invite = admin.execute(text("SELECT created_by, used_by FROM invites")).one()
     assert tuple(invite) == (None, None)
 

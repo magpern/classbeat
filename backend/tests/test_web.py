@@ -260,6 +260,26 @@ async def test_every_response_carries_the_csp_and_no_referrer(
             assert_secure_headers(response, path)
 
 
+async def test_an_unhandled_500_carries_the_csp_and_no_referrer(
+    unreachable_database_url: str,
+) -> None:
+    """Starlette answers an unhandled exception outside our middleware (T93): the 500 must
+    still carry the one policy and no referrer, and say nothing about the error."""
+    app = make_app(unreachable_database_url)
+
+    @app.get("/api/boom-for-test")
+    async def boom() -> None:  # pyright: ignore[reportUnusedFunction]
+        raise RuntimeError("secret internal detail")
+
+    async with app.router.lifespan_context(app):
+        transport = httpx.ASGITransport(app=app, raise_app_exceptions=False)
+        async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+            response = await client.get("/api/boom-for-test")
+    assert response.status_code == 500
+    assert "secret" not in response.text
+    assert_secure_headers(response, "/api/boom-for-test")
+
+
 def test_the_policy_allows_no_other_image_host_and_nothing_unsafe() -> None:
     from classbeat.headers import CONTENT_SECURITY_POLICY
 

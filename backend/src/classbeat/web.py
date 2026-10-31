@@ -14,6 +14,7 @@ from sqlalchemy import text
 
 # saving registers save_workout (SV1); playlists the Spotify writes for Check again (OP1)
 from classbeat import __version__, auth, playlists, quota, saving, songs
+from classbeat.account.routes import router as account_router
 from classbeat.admin import routes as admin_routes
 from classbeat.admin.db import AdminDb
 from classbeat.classes.routes import music_router as class_music_router
@@ -25,7 +26,7 @@ from classbeat.db import create_engine, create_session_factory, verify_database_
 from classbeat.design import configure_limits
 from classbeat.design.routes import router as music_router  # registers design_draft (J3)
 from classbeat.flags.routes import router as settings_router
-from classbeat.headers import SecurityHeaders
+from classbeat.headers import SecurityHeaders, unhandled_error
 from classbeat.jobs.events_routes import StreamLimiter
 from classbeat.jobs.events_routes import router as job_events_router
 from classbeat.jobs.hub import EventHub
@@ -166,6 +167,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(jobs_router)
     app.include_router(usage_router)
     app.include_router(plans_router)
+    app.include_router(account_router)
     app.include_router(settings_router)
     app.include_router(operations_router)
     app.include_router(music_router)
@@ -180,4 +182,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # Added last, so it is the outermost middleware: the CSP and Referrer-Policy go on every
     # response, the auth middleware's own answers included (ADR 0013 section 9).
     app.add_middleware(SecurityHeaders)
+    # Starlette answers an unhandled exception outside that middleware: its 500 adds the headers.
+    app.add_exception_handler(Exception, unhandled_error)
     return app

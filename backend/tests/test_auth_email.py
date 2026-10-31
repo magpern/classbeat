@@ -12,6 +12,10 @@ EMAIL = "user@example.com"
 NEW = "new.address@example.com"
 
 
+async def erase(browser: Browser, typed: str = EMAIL):
+    return await browser.post("/api/account/delete", {"confirm_email": typed})
+
+
 async def change(browser: Browser, new_email: str = NEW):
     return await browser.post("/api/auth/email/change", {"new_email": new_email})
 
@@ -150,11 +154,11 @@ async def test_deleting_the_account_needs_recent_auth_and_removes_everything(men
         "INSERT INTO identities (user_id, provider, subject) VALUES (:u, 'github', 'x')", u=user_id
     )
     await age_reauth(menv)
-    refused = await browser.request("DELETE", "/api/auth/account")
+    refused = await erase(browser)
     assert (refused.status_code, reason(refused)) == (403, "reauth_required")
     assert await menv.scalar("SELECT count(*) FROM users") == 1
     await browser.post("/api/auth/reauth", {"password": "correct horse battery staple"})
-    gone = await browser.request("DELETE", "/api/auth/account")
+    gone = await erase(browser)
     assert gone.status_code == 204
     for table in ("users", "sessions", "identities", "known_devices"):
         assert await menv.scalar(f"SELECT count(*) FROM {table}") == 0  # noqa: S608
@@ -171,21 +175,21 @@ async def test_deleting_the_account_needs_step_up_when_totp_is_confirmed(menv: E
         "INSERT INTO mfa_totp (user_id, secret_ciphertext, nonce, key_id, confirmed_at) "
         "SELECT id, 'x', 'y', 'app-v1', now() FROM users"
     )
-    refused = await browser.request("DELETE", "/api/auth/account")
+    refused = await erase(browser)
     assert (refused.status_code, reason(refused)) == (403, "stepup_required")
     await menv.run("UPDATE sessions SET stepup_at = now()")
-    assert (await browser.request("DELETE", "/api/auth/account")).status_code == 204
+    assert (await erase(browser)).status_code == 204
 
 
 async def test_deleting_leaves_other_users_alone(menv: Env) -> None:
     browser = await signed_in(menv)
     await user_with_password(menv, "other@example.com")
-    assert (await browser.request("DELETE", "/api/auth/account")).status_code == 204
+    assert (await erase(browser)).status_code == 204
     assert await menv.scalar("SELECT email FROM users") == "other@example.com"
 
 
 async def test_anonymous_deletion_is_401(menv: Env) -> None:
-    assert (await Browser(menv).request("DELETE", "/api/auth/account")).status_code == 401
+    assert (await erase(Browser(menv))).status_code == 401
 
 
 async def test_email_change_requests_also_count_per_account_and_record_the_ip(menv: Env) -> None:
