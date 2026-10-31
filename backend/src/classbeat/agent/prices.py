@@ -26,7 +26,6 @@ one (2.5 times). ``classbeat.agent.providers.openai_common.normalise_usage`` spl
 so each part is priced once. The OpenAI entries are ``owner_pending`` (ADR 0012 §6).
 """
 
-import dataclasses
 import math
 from collections.abc import Mapping
 from dataclasses import dataclass
@@ -140,12 +139,18 @@ OPENAI_LONG_CONTEXT_TOKENS: Final = 272_000  # "short context" is at most 272K i
 def _openai(short: tuple[str, str, str, str], long: tuple[str, str, str, str]) -> Price:
     """(input, cached read, 30-minute write, output) per million, short then long context."""
 
-    def rates(values: tuple[str, str, str, str]) -> Price:
-        given, read, write, output = (Decimal(v) for v in values)
-        return Price(input=given, output=output, cache_write=write, cache_read=read)
-
-    low, high = rates(short), rates(long)
-    return dataclasses.replace(low, above_tokens=OPENAI_LONG_CONTEXT_TOKENS, above=high)
+    given, read, write, output = (Decimal(v) for v in short)
+    long_input, long_read, long_write, long_output = (Decimal(v) for v in long)
+    return Price(
+        input=given,
+        output=output,
+        cache_write=write,
+        cache_read=read,
+        above_tokens=OPENAI_LONG_CONTEXT_TOKENS,
+        above=Price(
+            input=long_input, output=long_output, cache_write=long_write, cache_read=long_read
+        ),
+    )
 
 
 # Verify before live use (see above).
