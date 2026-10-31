@@ -278,3 +278,41 @@ export async function stepUp(code: string): Promise<void> {
 export async function adminWhoami(signal?: AbortSignal): Promise<string> {
   return text(object(await get('/api/admin/whoami', signal), 'whoami'), 'email')
 }
+
+export interface DeviceSession {
+  id: string
+  createdAt: string
+  lastSeenAt: string
+  userAgent: string | null
+  current: boolean
+}
+
+/** `GET /api/auth/sessions`: the user's own signed-in devices. The IP address is not kept here. */
+export async function listDevices(signal?: AbortSignal): Promise<DeviceSession[]> {
+  const body = await get('/api/auth/sessions', signal)
+  if (!Array.isArray(body)) throw new Error('Unexpected response from the server (sessions).')
+  return body.map((item: unknown) => {
+    const row = object(item, 'session')
+    return {
+      id: text(row, 'id'),
+      createdAt: text(row, 'created_at'),
+      lastSeenAt: text(row, 'last_seen_at'),
+      userAgent: optionalText(row, 'user_agent'),
+      current: flag(row, 'current'),
+    }
+  })
+}
+
+/** Signs out one of the user's own devices (`DELETE /api/auth/sessions/{id}`). */
+export async function signOutDevice(id: string): Promise<void> {
+  await del(`/api/auth/sessions/${encodeURIComponent(id)}`)
+}
+
+/**
+ * Deletes the account (`DELETE /api/auth/account`, ADR 0003 section 6): recent authentication,
+ * and a step-up once TOTP is set up; the caller runs it through the guard.
+ */
+export async function deleteAccount(): Promise<void> {
+  await del('/api/auth/account')
+  clearSubmittedInputs()
+}

@@ -4,8 +4,6 @@ import { errorMessage } from '../../api/messages'
 import {
   disconnectSpotify,
   getSpotifyStatus,
-  giveSpotifyConsent,
-  revokeSpotifyConsent,
   startSpotify,
   type SpotifyStatus,
 } from '../../api/spotify'
@@ -14,6 +12,7 @@ import { useGuard } from '../../auth/prompts'
 import { goToProvider } from '../../lib/navigation'
 import { Link, useQuery } from '../../router/Router'
 import { Field, Notice, Section, useAction } from '../forms'
+import { ConsentSwitch } from './ConsentSwitch'
 
 // ADR 0009 section 2 (the wizard), 7 (what Disconnect and a changed Client ID delete), 8 (the
 // sentences) and 9 (the consent). Nothing here prints a token, a Spotify id or a secret, and no
@@ -28,8 +27,6 @@ export const DISCONNECT_TEXT =
   'Disconnecting deletes what classbeat holds for Spotify: the stored sign-in, the working playlist setting and your consent for it, any playlist step that was left undecided, and the link between each class and the playlist classbeat made for it (the classes themselves stay). Playlists already in your Spotify stay there and classbeat will not touch them again. Spotify gives classbeat no way to end the connection on its side: remove classbeat’s access under Apps in your Spotify account settings.'
 export const CHANGE_CLIENT_ID_TEXT =
   'classbeat keeps using the current connection until the new Client ID has worked. Then it replaces the stored sign-in and forgets the working playlist setting, so you are asked for your consent again; the playlist stays in your Spotify. Your classes keep their playlists. If the new app signs in a different Spotify account, you must confirm the switch, and classbeat then deletes what Disconnect deletes.'
-export const REVOKE_TEXT =
-  'Revoking makes classbeat forget the working playlist and stop using it. The playlist stays in your Spotify, private, with its last songs; delete it there if you do not want it. Picking songs needs your consent again, and the next pick creates a new working playlist.'
 
 const STATUS_TEXT: Record<string, string> = {
   connected: 'Connected',
@@ -45,7 +42,7 @@ function startError(error: unknown): string {
   return errorMessage(error)
 }
 
-type Dialog = 'disconnect' | 'change' | 'revoke' | null
+type Dialog = 'disconnect' | 'change' | null
 
 function useSpotifyStatus() {
   const [status, setStatus] = useState<SpotifyStatus | null | undefined>(undefined)
@@ -72,9 +69,12 @@ function useSpotifyStatus() {
   return { status, loadFailed, reload }
 }
 
-/** The account page's short card: the status and a link. Hidden while song picking is off. */
+/**
+ * The account page's Spotify card: the status, the working-playlist consent switch once connected,
+ * and a link to the wizard. Hidden while song picking is off.
+ */
 export function SpotifySummary() {
-  const { status } = useSpotifyStatus()
+  const { status, reload } = useSpotifyStatus()
   if (!status) return null
   return (
     <Section title="Spotify">
@@ -88,6 +88,7 @@ export function SpotifySummary() {
           </span>
         </li>
       </ul>
+      {status.status === 'connected' ? <ConsentSwitch status={status} onChanged={reload} /> : null}
       <p>
         <Link to="/account/spotify">
           {status.status === 'not_connected' ? 'Set up Spotify' : 'Manage Spotify'}
@@ -365,67 +366,7 @@ export function SpotifyConnection() {
 
       {connected ? (
         <Section title="Working playlist">
-          <blockquote data-testid="spotify-consent-text">{status.consentText}</blockquote>
-          {status.poolConsent ? (
-            <>
-              <p data-testid="spotify-consent-state">You have allowed the working playlist.</p>
-              {dialog === 'revoke' ? (
-                <div className="notice" role="group" aria-label="Confirm revoke">
-                  <p>{REVOKE_TEXT}</p>
-                  <button
-                    className="button"
-                    type="button"
-                    disabled={action.busy}
-                    onClick={() => {
-                      run(
-                        () => guard(() => revokeSpotifyConsent()),
-                        'Your consent is withdrawn. The playlist stays in your Spotify.',
-                      )
-                    }}
-                  >
-                    Yes, revoke my consent
-                  </button>
-                  <button
-                    className="button button--secondary"
-                    type="button"
-                    onClick={() => {
-                      setDialog(null)
-                    }}
-                  >
-                    Keep my consent
-                  </button>
-                </div>
-              ) : (
-                <button
-                  className="button button--secondary"
-                  type="button"
-                  disabled={action.busy}
-                  onClick={() => {
-                    setDialog('revoke')
-                  }}
-                >
-                  Revoke consent
-                </button>
-              )}
-            </>
-          ) : (
-            <>
-              <p data-testid="spotify-consent-state">You have not allowed it yet.</p>
-              <button
-                className="button"
-                type="button"
-                disabled={action.busy}
-                onClick={() => {
-                  run(
-                    () => guard(() => giveSpotifyConsent()),
-                    'Thanks. classbeat may use the working playlist.',
-                  )
-                }}
-              >
-                I agree
-              </button>
-            </>
-          )}
+          <ConsentSwitch status={status} onChanged={reload} />
         </Section>
       ) : null}
     </div>
