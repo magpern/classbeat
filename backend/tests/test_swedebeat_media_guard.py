@@ -38,16 +38,14 @@ def assignments(tree: ast.Module, name: str) -> list[ast.expr]:
     """The values assigned to module-level ``name`` (also annotated)."""
     found: list[ast.expr] = []
     for node in ast.walk(tree):
-        if (
-            isinstance(node, ast.Assign)
-            and any(isinstance(t, ast.Name) and t.id == name for t in node.targets)
-        ) or (
-            isinstance(node, ast.AnnAssign)
-            and isinstance(node.target, ast.Name)
-            and node.target.id == name
-            and node.value is not None
-        ):
-            found.append(node.value)
+        if isinstance(node, ast.Assign):
+            targets, value = node.targets, node.value
+        elif isinstance(node, ast.AnnAssign) and node.value is not None:
+            targets, value = [node.target], node.value
+        else:
+            continue
+        if any(isinstance(t, ast.Name) and t.id == name for t in targets):
+            found.append(value)
     return found
 
 
