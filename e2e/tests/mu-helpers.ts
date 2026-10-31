@@ -79,8 +79,11 @@ export async function overflowPixels(page: Page): Promise<number> {
 }
 
 export async function setTheme(page: Page, theme: (typeof THEMES)[number]): Promise<void> {
-  await page.evaluate((value) => {
+  await page.evaluate(async (value) => {
     document.documentElement.setAttribute('data-theme', value)
+    // Two frames, so the colours are the new theme's before axe reads them (the app's own
+    // transitions are off under reduced motion, which `audit` asks for).
+    await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())))
   }, theme)
 }
 
@@ -92,6 +95,9 @@ export async function setTheme(page: Page, theme: (typeof THEMES)[number]): Prom
  */
 export async function audit(page: Page, name: string, primary: Locator): Promise<Findings> {
   const problems: string[] = []
+  // Reduced motion turns the colour transitions off (tailwind.css), so axe never reads a colour
+  // halfway between the two themes.
+  await page.emulateMedia({ reducedMotion: 'reduce' })
   for (const viewport of VIEWPORTS) {
     await page.setViewportSize({ width: viewport.width, height: viewport.height })
     for (const theme of THEMES) {
