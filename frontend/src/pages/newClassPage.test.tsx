@@ -260,9 +260,15 @@ describe('the new-class form', () => {
   })
 
   it('hides the classes line when the plan cannot be read', async () => {
-    fakeApi(READY)
+    // The default fake serves a plan; this test fails that read on purpose.
+    const api = fakeApi({ ...READY, 'GET /api/account/plan': () => reason(503, 'upstream_unavailable') })
     renderAt('/classes/new')
     await screen.findByLabelText('Class name')
+    // The refusal is answered once the request is recorded; nothing can show the line after that.
+    await waitFor(() => {
+      expect(api.to('GET', '/api/account/plan')).toHaveLength(1)
+    })
+    await Promise.resolve()
     expect(screen.queryByText(/classes left this month/)).toBeNull()
   })
 
