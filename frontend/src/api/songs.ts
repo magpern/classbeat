@@ -25,6 +25,8 @@ export interface Song {
   role: string
   bpm: number
   lengthSec: number
+  /** When it starts in the class: the lengths before it less the crossfade at each change of song. */
+  startSec: number
   isNew: boolean
   /** The album cover URL, shown only through `CoverArt` (ADR 0013 section 9), or null. */
   cover: string | null
@@ -54,7 +56,7 @@ function trackLink(link: string | null): string | null {
   return link !== null && isTrackLink(link) ? link : null
 }
 
-function decodeSong(value: unknown): Song {
+function decodeSong(value: unknown): Omit<Song, 'startSec'> {
   const item = object(value, 'song')
   return {
     position: count(item, 'position'),
@@ -68,6 +70,21 @@ function decodeSong(value: unknown): Song {
     cover: optionalText(item, 'cover'),
     openSpotify: trackLink(optionalText(item, 'open_spotify')),
   }
+}
+
+/**
+ * Start times from what the API sends: the picker's own rule (total time = lengths less the
+ * crossfade at every change of song), so the last song ends at `totalSec`. The API carries no
+ * per-song start of the analysed music.
+ */
+export function withStartTimes(songs: Omit<Song, 'startSec'>[], crossfadeSec: number): Song[] {
+  const overlap = Number.isFinite(crossfadeSec) ? Math.max(crossfadeSec, 0) : 0
+  let start = 0
+  return songs.map((song) => {
+    const placed = { ...song, startSec: start }
+    start += Math.max(song.lengthSec - overlap, 0)
+    return placed
+  })
 }
 
 export function decodeSongList(value: unknown): SongList {
@@ -84,7 +101,7 @@ export function decodeSongList(value: unknown): SongList {
     mode: text(item, 'mode'),
     targetSec: count(item, 'target_sec'),
     totalSec: count(item, 'total_sec'),
-    songs: list(item, 'songs').map(decodeSong),
+    songs: withStartTimes(list(item, 'songs').map(decodeSong), optionalCount(item, 'crossfade_sec') ?? 0),
     omittedNoBpm: optionalCount(item, 'omitted_no_bpm') ?? 0,
     note: optionalText(item, 'note') ?? '',
   }

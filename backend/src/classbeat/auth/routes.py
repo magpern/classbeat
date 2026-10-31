@@ -42,6 +42,10 @@ class SessionOut(BaseModel):
     recent_auth: bool
     mfa: bool
     stepup: bool
+    # The signed-in account is an admin whose TOTP check is missing or lapsed, so the page shows
+    # the code prompt (ADR 0011 section 6). Always false for any other account; it reports only
+    # the caller's own account, and the admin routes decide on their own.
+    admin_pending_mfa: bool
 
 
 class SessionState(BaseModel):
@@ -87,6 +91,7 @@ async def get_session(
                 recent_auth=info.recent_auth,
                 mfa=info.recent_mfa,
                 stepup=info.recent_stepup,
+                admin_pending_mfa=info.admin_pending_mfa,
             ),
         )
     value = request.cookies.get(CSRF_COOKIE, "")

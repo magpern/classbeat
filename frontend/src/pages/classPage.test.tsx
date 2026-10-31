@@ -1,6 +1,6 @@
 import { fireEvent, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { contentHash } from '../lib/canonical'
 import {
   CLASS_PATH,
@@ -405,6 +405,18 @@ describe('deleting a class', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Yes, delete this class' }))
     expect(await screen.findByRole('heading', { name: 'Class deleted' })).toBeInTheDocument()
     expect(api.to('DELETE', CLASS_PATH)[0]?.headers.get('X-CSRF-Token')).toBe('csrf-session')
+  })
+
+  it('scrolls the confirmation into view and focuses it when the menu opens it', async () => {
+    const scroll = vi.spyOn(Element.prototype, 'scrollIntoView')
+    fakeApi({ ...SESSION_ROUTES, ...classRoutes() })
+    renderAt(PAGE)
+    await openDelete()
+    const card = await screen.findByRole('region', { name: 'Delete class' })
+    await new Promise((resolve) => setTimeout(resolve, 50)) // past the menu's own focus return
+    expect(card).toHaveFocus()
+    expect(scroll.mock.contexts).toContain(card)
+    scroll.mockRestore()
   })
 
   it('asks again for an undecided write, then deletes with confirm_uncertain', async () => {

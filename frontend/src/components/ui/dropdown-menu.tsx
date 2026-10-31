@@ -2,7 +2,10 @@ import * as MenuPrimitive from '@radix-ui/react-dropdown-menu'
 import type { ComponentProps } from 'react'
 import { cn } from '../../lib/cn'
 
-export const DropdownMenu = MenuPrimitive.Root
+/** Non-modal: Radix's modal menu locks the page scroll with an injected `<style>` that `style-src 'self'` refuses (ADR 0013 section 8). */
+export function DropdownMenu(props: ComponentProps<typeof MenuPrimitive.Root>) {
+  return <MenuPrimitive.Root {...props} modal={false} />
+}
 export const DropdownMenuTrigger = MenuPrimitive.Trigger
 
 export function DropdownMenuContent({ className, sideOffset = 6, ...props }: ComponentProps<typeof MenuPrimitive.Content>) {

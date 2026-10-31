@@ -104,6 +104,19 @@ export function grantAdmin(email: string): void {
   })
 }
 
+/**
+ * Make the admin's last TOTP check 13 hours old (the 12-hour window lapsed, ADR 0011 section 6),
+ * as a database superuser inside the stack's `db` container. Test control only.
+ */
+export function lapseAdminCheck(email: string): void {
+  if (!/^[\w.+-]+@example\.test$/.test(email)) throw new Error('not a test address')
+  const sql = `UPDATE sessions SET mfa_at = now() - interval '13 hours' WHERE user_id = (SELECT id FROM users WHERE email = '${email}')`
+  execFileSync('docker', ['compose', 'exec', '-T', 'db', 'psql', '-U', 'postgres', '-d', 'classbeat', '-v', 'ON_ERROR_STOP=1', '-c', sql], {
+    cwd: new URL('../..', import.meta.url),
+    stdio: ['ignore', 'ignore', 'ignore'],
+  })
+}
+
 /** The month's held credits as `GET /api/account/plan` counts them. */
 export async function heldOf(page: Page): Promise<number> {
   const answer = await page.request.get('/api/account/plan')

@@ -124,7 +124,7 @@ export async function audit(page: Page, name: string, primary: Locator): Promise
         .analyze()
       for (const violation of result.violations) {
         if (violation.impact !== 'serious' && violation.impact !== 'critical') continue
-        const targets = violation.nodes.map((node) => `${node.target.join(' ')} ${node.html.slice(0, 160)}`).slice(0, 4)
+        const targets = violation.nodes.map((node) => `${node.target.join(' ')} ${node.html.slice(0, 160)} (${node.any[0]?.message ?? ''})`).slice(0, 4)
         problems.push(`${where}: axe ${violation.impact} ${violation.id}: ${targets.join(' | ')}`)
       }
     }

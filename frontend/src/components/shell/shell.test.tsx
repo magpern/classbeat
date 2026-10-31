@@ -143,6 +143,17 @@ describe('avatar menu and Admin', () => {
     expect(window.location.pathname).toBe('/admin')
     expect(within(mainNav()).getByRole('link', { name: 'Home' })).toBeInTheDocument()
   })
+
+  it('shows Admin to an admin whose TOTP check is missing or lapsed (role is still user)', async () => {
+    setWidth(1440)
+    fakeApi({
+      'GET /api/auth/session': { ...SIGNED_IN, session: { ...SIGNED_IN.session, admin_pending_mfa: true } },
+      'GET /api/usage': USAGE_NONE,
+    })
+    renderAt('/account')
+    await userEvent.click(await screen.findByRole('button', { name: 'ann@example.test' }))
+    expect(await screen.findByRole('menuitem', { name: 'Admin' })).toBeInTheDocument()
+  })
 })
 
 describe('focus layout', () => {
