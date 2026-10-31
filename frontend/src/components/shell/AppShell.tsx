@@ -106,16 +106,23 @@ function BrandLink({ compact }: { compact?: boolean }) {
 
 function SignedOutHeader({ ready }: { ready: boolean }) {
   return (
-    <header className="app-header">
-      <div className="app-header__inner">
-        <Link to="/" className="brand">
-          <Logo />
-          <span className="brand__name">classbeat</span>
-        </Link>
+    <header className="border-b border-line bg-surface">
+      <div className="mx-auto flex max-w-5xl flex-wrap items-center gap-x-4 gap-y-2 px-4 py-2">
+        <BrandLink />
         {ready ? (
-          <nav className="nav" aria-label="Account">
-            <Link to="/signin">Sign in</Link>
-            <Link to="/signup">Sign up</Link>
+          <nav aria-label="Account" className="ml-auto flex items-center gap-2">
+            <Link
+              to="/signin"
+              className="inline-flex min-h-11 items-center rounded-full px-4 font-medium text-text no-underline hover:bg-raised"
+            >
+              Sign in
+            </Link>
+            <Link
+              to="/signup"
+              className="inline-flex min-h-11 items-center rounded-full bg-brand px-5 font-medium text-on-brand no-underline hover:opacity-90"
+            >
+              Sign up
+            </Link>
           </nav>
         ) : null}
         <ApiStatus />
@@ -208,13 +215,14 @@ export function AppShell({ children }: { children: ReactNode }) {
     )
   }
 
-  const menu = (showName: boolean) => (
+  const menu = (showName: boolean, side: 'top' | 'bottom') => (
     <AvatarMenu
       email={email}
       isAdmin={session.user?.role === 'admin'}
       busy={action.busy}
       onSignOut={signOut}
       showName={showName}
+      side={side}
     />
   )
 
@@ -224,7 +232,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         top={
           <header className="sticky top-0 z-20 flex items-center justify-between border-b border-line bg-surface px-4 py-2">
             <BrandLink />
-            {menu(false)}
+            {menu(false, 'bottom')}
           </header>
         }
         mainClass="px-4 pt-6 pb-28"
@@ -250,9 +258,9 @@ export function AppShell({ children }: { children: ReactNode }) {
           <BrandLink compact={!sidebar} />
           <PrimaryNav layout={layout} pathname={pathname} />
           <div className="mt-auto flex flex-col gap-3">
-            {sidebar ? <ClassesThisMonth /> : null}
+            <ClassesThisMonth compact={!sidebar} />
             {sidebar ? <ApiStatus /> : null}
-            {menu(sidebar)}
+            {menu(sidebar, 'top')}
           </div>
         </aside>
       }

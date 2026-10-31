@@ -68,7 +68,7 @@ describe('the plan panel on the account page', () => {
         cost_share: 0.4,
       },
     })
-    renderAt('/account')
+    renderAt('/account#plan')
     const name = await screen.findByTestId('plan-name')
     expect(name.textContent).toBe('Your plan: Instructor (from a code), until 15 December')
     expect(screen.getByTestId('plan-classes').textContent).toBe('3 of 30 classes in October')
@@ -86,7 +86,7 @@ describe('the plan panel on the account page', () => {
         return { plan: 'instructor', features: [], ends_at: '2026-12-01T00:00:00Z' }
       },
     })
-    renderAt('/account')
+    renderAt('/account#plan')
     await screen.findByText('1 of 3 classes in October')
     fireEvent.change(screen.getByLabelText('Redeem a code'), { target: { value: ' ABC123 ' } })
     fireEvent.click(screen.getByRole('button', { name: 'Redeem' }))
@@ -99,7 +99,7 @@ describe('the plan panel on the account page', () => {
 
   it('says why a code was refused', async () => {
     fakeApi({ ...ACCOUNT, 'POST /api/account/redeem': () => reason(400, 'code_invalid') })
-    renderAt('/account')
+    renderAt('/account#plan')
     await screen.findByTestId('plan-name')
     fireEvent.change(screen.getByLabelText('Redeem a code'), { target: { value: 'nope' } })
     fireEvent.click(screen.getByRole('button', { name: 'Redeem' }))
@@ -119,7 +119,7 @@ describe('the plan panel on the account page', () => {
         return { plan: 'instructor', features: [], ends_at: '2026-11-14T00:00:00Z' }
       },
     })
-    renderAt('/account')
+    renderAt('/account#plan')
     fireEvent.click(await screen.findByRole('button', { name: 'Start your 14-day trial' }))
     await waitFor(() => {
       expect(screen.getByTestId('plan-name').textContent).toContain('your trial')
@@ -134,7 +134,7 @@ describe('the plan panel on the account page', () => {
       'GET /api/account/plan': { ...PLAN_FREE, trial: { plan: 'instructor', days: 14 } },
       'POST /api/account/trial': () => reason(409, 'trial_used'),
     })
-    renderAt('/account')
+    renderAt('/account#plan')
     fireEvent.click(await screen.findByRole('button', { name: /trial/ }))
     expect((await screen.findByRole('alert')).textContent).toBe('You have already had your trial.')
   })

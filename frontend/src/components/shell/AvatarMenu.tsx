@@ -14,6 +14,7 @@ export function AvatarMenu({
   busy,
   onSignOut,
   showName,
+  side = 'top',
 }: {
   email: string
   isAdmin: boolean
@@ -21,6 +22,8 @@ export function AvatarMenu({
   onSignOut: () => void
   /** The sidebar shows the name beside the avatar; the other layouts only the avatar. */
   showName?: boolean
+  /** Where the menu opens: up from the bottom of the sidebar, down from the phone header. */
+  side?: 'top' | 'bottom'
 }) {
   const { navigate } = useRouter()
   return (
@@ -40,7 +43,7 @@ export function AvatarMenu({
           {showName ? <span className="truncate pr-3 text-[0.9375rem]">{email}</span> : null}
         </button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" side="top">
+      <DropdownMenuContent align="end" side={side}>
         <DropdownMenuItem
           onSelect={() => {
             navigate('/account')
