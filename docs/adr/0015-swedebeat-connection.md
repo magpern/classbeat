@@ -6,7 +6,7 @@ the code in that PR).
 Related: [ADR 0004](0004-connections-and-encryption.md) (connections and encryption),
 [ADR 0009](0009-spotify-connection.md) (the connect wizard's style), [ADR 0010](0010-live-activation-permissions.md)
 (permissions), [ADR 0011](0011-tiers-quotas-and-admin.md) §7 (flags), [ADR 0013](0013-ui-design-night-studio.md)
-(the account page), the threat model (T19, T23, T94, T103 to T106 and the accepted risks).
+(the account page), the threat model (T19, T23, T94, T104 to T107 and the accepted risks).
 
 ## Context
 
@@ -116,7 +116,7 @@ They are Swedebeat's, not classbeat's.
   spent and before anything is sent; the page says "Swedebeat sign-in is not available on this
   server". It never crashes the app.
 - **Who can pull the image:** GHCR packages stay private (AGENTS.md); anyone who can pull a release image can
-  read the key. That is the owner's risk acceptance (threat model, T103).
+  read the key. That is the owner's risk acceptance (threat model, T104).
 - **Rotation / leak:** replace the GitHub secret (§9, step 1), cut a new release, deploy it, and delete
   the old image tags from GHCR; a runtime `swedebeat_app` secret file overrides an image's key at once
   without a rebuild. Users need not reconnect unless Swedebeat invalidates tokens.
@@ -232,4 +232,4 @@ call, and any live call. Agents run none (AGENTS.md safety envelope).
   (POST, DELETE, and the extended GET), one setting, one secret.
 - Swedebeat's real wording and token lifetime are unknown until the owner's live check.
 - `GET /api/connections` has a new top-level `swedebeat` block and a per-row `account`.
-- Threat model: T19 and T94 updated, T103 to T106 new, the Swedebeat accepted risk rewritten.
+- Threat model: T19 and T94 updated, T104 to T107 new, the Swedebeat accepted risk rewritten.

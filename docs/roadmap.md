@@ -197,7 +197,7 @@ The owner's decisions apply now; [ADR 0015](adr/0015-swedebeat-connection.md) ca
   embedded in third-party apps" is read as: agents never read, copy or create this key; the owner
   provides it to the build.
 - **§10, track F:** nothing changes for MOWL and Spotify. Swedebeat's authorization is not sought;
-  the use of its key is the owner's risk acceptance (threat model, T103).
+  the use of its key is the owner's risk acceptance (threat model, T104).
 
 *Revision 6 — frozen for implementation. Song picking is a **core** feature with Claude
 choosing the final songs from real BPM and sections (the pool stage from `mowl-workouts`);
