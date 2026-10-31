@@ -1,0 +1,57 @@
+{
+ "body": {
+  "id": "resp_fixture_max_output_tokens",
+  "object": "response",
+  "created_at": 1793404800,
+  "status": "incomplete",
+  "error": null,
+  "incomplete_details": {
+   "reason": "max_output_tokens"
+  },
+  "instructions": null,
+  "max_output_tokens": 32000,
+  "model": "gpt-6.1-sol-2026-09-15",
+  "output": [
+   {
+    "type": "reasoning",
+    "id": "rs_fixture_1",
+    "summary": [],
+    "encrypted_content": "gAAAAB-fixture-encrypted-reasoning-not-real"
+   },
+   {
+    "type": "message",
+    "id": "msg_fixture_1",
+    "status": "completed",
+    "role": "assistant",
+    "content": [
+     {
+      "type": "output_text",
+      "text": "The draft so f",
+      "annotations": [],
+      "logprobs": []
+     }
+    ]
+   }
+  ],
+  "parallel_tool_calls": true,
+  "reasoning": {
+   "effort": "medium",
+   "summary": null
+  },
+  "store": false,
+  "tool_choice": "auto",
+  "tools": [],
+  "usage": {
+   "input_tokens": 5000,
+   "input_tokens_details": {
+    "cached_tokens": 4000,
+    "cache_write_tokens": 0
+   },
+   "output_tokens": 32000,
+   "output_tokens_details": {
+    "reasoning_tokens": 31000
+   },
+   "total_tokens": 37000
+  }
+ }
+}
