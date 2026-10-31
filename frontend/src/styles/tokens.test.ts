@@ -65,16 +65,18 @@ const CSS_PROPERTY = String.raw`(?:color|background(?:-color|-image)?|border(?:-
 const CSS_KEYWORD = new RegExp(String.raw`(?:^|[;{\s])${CSS_PROPERTY}\s*:[^;{}]*${KEYWORD}`, 'i')
 // ts/tsx: a keyword as the value of a colour key in a style object.
 const STYLE_KEYWORD = new RegExp(
-  String.raw`\b(?:color|background|backgroundColor|borderColor|outlineColor|fill|stroke|stopColor|caretColor|accentColor)\s*:\s*['"` + '`' + String.raw`][^'"` + '`' + String.raw`]*${KEYWORD}`,
+  String.raw`\b(?:color|background|backgroundColor|borderColor|outlineColor|fill|stroke|stopColor|caretColor|accentColor|boxShadow|textShadow|outline|border[A-Za-z]*)\s*:\s*['"` + '`' + String.raw`][^'"` + '`' + String.raw`]*${KEYWORD}`,
   'i',
 )
+// Tailwind arbitrary values: `text-[red]`, `bg-[tomato]`, `[color:red]`.
+const ARBITRARY = new RegExp(String.raw`\b[a-z-]+-\[(?:${KEYWORDS.join('|')})\]|\[[a-z-]+:(?:${KEYWORDS.join('|')})\]`, 'i')
 const PALETTE =
   /\b(?:bg|text|border|ring|fill|stroke|from|via|to|outline|decoration|divide|accent|caret|shadow|placeholder)-(?:white|black|(?:slate|gray|zinc|neutral|stone|red|orange|amber|yellow|lime|green|emerald|teal|cyan|sky|blue|indigo|violet|purple|fuchsia|pink|rose)-\d{2,3})\b/
 
 function otherColour(name: string, source: string): string | null {
   const code = withoutComments(source)
   if (name.endsWith('.css')) return CSS_KEYWORD.exec(code)?.[0] ?? null
-  return STYLE_KEYWORD.exec(code)?.[0] ?? PALETTE.exec(code)?.[0] ?? null
+  return STYLE_KEYWORD.exec(code)?.[0] ?? ARBITRARY.exec(code)?.[0] ?? PALETTE.exec(code)?.[0] ?? null
 }
 
 describe('colour keywords and palette utilities', () => {
@@ -83,6 +85,9 @@ describe('colour keywords and palette utilities', () => {
     expect(otherColour('x.css', '.a { border-top: 1px solid red; }')).not.toBeNull()
     expect(otherColour('x.css', '.a { background: linear-gradient(black, var(--cb-bg)); }')).not.toBeNull()
     expect(otherColour('x.tsx', "<div style={{ backgroundColor: 'tomato' }} />")).not.toBeNull()
+    expect(otherColour('x.tsx', "<div style={{ boxShadow: '0 0 1px black' }} />")).not.toBeNull()
+    expect(otherColour('x.tsx', '<div className="text-[red] p-2" />')).not.toBeNull()
+    expect(otherColour('x.tsx', '<div className="[color:tomato]" />')).not.toBeNull()
     expect(otherColour('x.tsx', '<div className="bg-red-500 p-2" />')).not.toBeNull()
     expect(otherColour('x.tsx', '<div className="text-white" />')).not.toBeNull()
     expect(otherColour('x.tsx', '<div className="hover:border-blue-600" />')).not.toBeNull()
@@ -93,6 +98,7 @@ describe('colour keywords and palette utilities', () => {
     expect(otherColour('x.css', '.a { white-space: pre-wrap; content: "red"; }')).toBeNull()
     expect(otherColour('x.tsx', '<div className="bg-surface text-muted border-line white-space" />')).toBeNull()
     expect(otherColour('x.tsx', "const color = 'brand'")).toBeNull()
+    expect(otherColour('x.tsx', '<div className="w-[40px] text-[0.8rem] bg-[var(--cb-bg)]" style={{ boxShadow: "var(--cb-shadow)" }} />')).toBeNull()
   })
 
   it.each(Object.entries(sources))('%s has none', (name, source) => {
