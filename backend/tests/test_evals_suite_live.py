@@ -28,10 +28,16 @@ from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from classbeat.agent.provider import ModelProvider
-from classbeat.agent.providers import FakeProvider, OpenAIProvider
+from classbeat.agent.providers import (
+    DeepSeekProvider,
+    FakeProvider,
+    OpenAIProvider,
+    ProviderUnavailable,
+)
 from classbeat.agent.providers.fake import FakeScript
-from classbeat.config import Settings
+from classbeat.config import Settings, worker_model_providers
 from classbeat.db import system_session
+from classbeat.egress import MODEL_HOSTS, worker_hosts
 from classbeat.evals import __main__ as evals_main
 from classbeat.evals import suite_live
 from classbeat.evals.gate import RESULTS_FORMAT_2
@@ -48,6 +54,7 @@ from classbeat.models.providers import provider_for_choice
 from classbeat.models.routes import ModelChoice
 from classbeat.models.store import file_sha256
 from classbeat.models.versions import running_prompt_versions
+from deepseekfake import DEEPSEEK_EFFORT, DEEPSEEK_MODEL
 from jobtools import engine_for
 from modeltools import clear_gate
 from openaifake import OPENAI_MODEL, ScriptedResponses, scripted_openai
@@ -293,6 +300,48 @@ def test_the_real_installer_lists_only_the_chosen_model_host(
     monkeypatch.setattr(suite_live, "install_worker_allowlist", lambda p: seen.append(tuple(p)))
     suite_live.install_choice_allowlist(CHOICE)
     assert seen == [("openai",)]
+
+
+def test_a_disabled_deepseek_choice_gets_its_host_and_jobs_still_do_not(
+    tmp_path: Path, kek_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """#299: the live eval of a disabled DeepSeek model (synthetic data, the owner's go-ahead)
+    installs an allowlist with DeepSeek's host, whatever ``CLASSBEAT_DEEPSEEK_ENABLED`` says; the
+    worker's job allowlist still leaves it out while DeepSeek is off."""
+    (kek_dir / "deepseek_api_key").write_text(TEST_KEY, "utf-8")
+    settings = Settings()
+    assert settings.deepseek_enabled is False
+    installed: list[tuple[str, ...]] = []
+    monkeypatch.setattr(
+        suite_live, "install_worker_allowlist", lambda p: installed.append(tuple(p))
+    )
+    choice = ModelChoice("deepseek", DEEPSEEK_MODEL, DEEPSEEK_EFFORT)
+
+    def not_built(settings: Settings, choice: ModelChoice) -> ModelProvider:
+        raise ProviderUnavailable("not built in this test")
+
+    code = suite_live.main_suite(
+        settings,
+        choice=choice,
+        repeat=1,
+        max_usd="20",
+        out_path=tmp_path / "s.json",
+        out=io.StringIO(),
+        err=io.StringIO(),
+        provider_factory=not_built,
+        install=suite_live.install_choice_allowlist,  # the real installer
+        open_session=_no_session,
+        suite=small_suite(),
+    )
+    assert code == 2  # refused at the build, after the list was installed
+    assert installed == [("deepseek",)]
+    assert MODEL_HOSTS["deepseek"] in worker_hosts(installed[0])
+    assert MODEL_HOSTS["deepseek"] not in worker_hosts(worker_model_providers(settings))
+
+
+def test_the_deepseek_adapter_is_a_known_kind() -> None:
+    model = DeepSeekProvider(SecretStr(TEST_KEY), transport=httpx.MockTransport(_never))
+    assert suite_live.provider_kind(model) == "deepseek"
 
 
 # --- main_suite before the runs ---------------------------------------------------------------
@@ -554,6 +603,7 @@ async def test_a_song_run_that_fails_after_billed_turns_still_uses_budget_and_is
     assert first["outcome"] != "submitted"
     assert first["cost_micros"] > 0
     assert first["turns"] > 0
+    assert first["tool_calls"] > 0
     runs = [run for run, _, _ in seen]
     at = runs.index(failing)
     _, left, spent = seen[at]

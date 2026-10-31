@@ -102,6 +102,23 @@ every adapter's captured request body).
   provider's one-host allowlisted httpx.AsyncClient>, max_retries=2, timeout=120,
   organization=None, project=None)`; each turn, retries included, is bounded by `turn_seconds` as
   Anthropic's is. A request the allowlist refuses is raised unretried as `outbound_blocked`.
+  *Amended 2026-10-31 (#299), long requests:* the adapters are not streamed, and the per-attempt
+  timeout is the adapter's whole `turn_seconds` (the stage's time, `CLASSBEAT_AGENT_STAGE_SECONDS`,
+  300 s by default), no longer 120 s. A high-effort answer of up to `max_tokens` can take longer
+  than 120 s; cut there, the SDK would send it again, and each attempt may be billed. The SDK's two
+  retries now serve the quick failures only (429, 5xx, a lost connection), inside the same turn
+  bound, and a turn that runs out of time fails `model_unavailable` once. Reversible: one argument
+  (`attempt_seconds`) in `openai_common.build_client`, tested on the scripted transport. *Was:*
+  `timeout=120` per attempt.
+- **A billed answer that cannot be read** (amended 2026-10-31, #299): once the API has answered,
+  a failure to read the answer, an answer without usage among them, is `ProviderError("internal",
+  billed=True)`. The loop records it as a turn at its ceiling (the prompt estimate at the dearest
+  input rate plus `max_tokens` of output), never at 0 (ADR 0006 §5: cost errs high). So is
+  DeepSeek's `insufficient_system_resource`, which fails `model_unavailable`. A request with no
+  answer (a timeout, a lost connection, an error status) costs nothing, as before.
+- **Tool arguments** (amended 2026-10-31, #299): arguments that are not JSON, or nest deeper than
+  32 levels (`MAX_ARGUMENT_DEPTH`), go to the loop as their text, which it answers `invalid_input`
+  (a tool error the model can correct), never a crash or `internal`.
 - **Errors** by SDK exception class, never by message text, with the same table as ADR 0006 §2:
   `RateLimitError`, `InternalServerError`, other 5xx, `APITimeoutError`, `APIConnectionError` →
   `model_unavailable`; `AuthenticationError`, `PermissionDeniedError`, `NotFoundError` →
@@ -549,6 +566,13 @@ carry it per run, where the `tss` check of a case with zone 7 widens its upper b
   routes per tier and a suite verdict per stage; two groups match how the suite is scored. A later ADR
   can split a group.
 - **Cross-provider fallback on outages**: rejected (§3).
+- **Long OpenAI-SDK requests** (#299): *streaming* (as the Anthropic adapter does), where the timeout
+  counts between chunks rather than for the whole answer, works for any length. But it adds a second
+  way to read an answer (events, a final usage chunk, a stream cut midway), and the turn is bounded
+  by `turn_seconds` anyway. A *per-model and effort timeout table* needs measured times we do not
+  have, and each entry could only be below the turn bound. The whole turn as the per-attempt timeout
+  is the smallest change and is reversible. Streaming stays the next step if live runs show answers
+  that need more than the stage's time.
 
 ## Consequences
 

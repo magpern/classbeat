@@ -16,14 +16,16 @@ then repeats:
 5. a turn without tool calls gets one tool-less reminder to call the final tool (it counts as a
    turn); a second such turn ends the run ``invalid_output``.
 
-A provider failure ends the run with its category (``model_unavailable`` is retried by the job,
-ADR 0005 section 4). The run's ``agent_runs`` row gets its outcome, then ``JobFailure(category)``
-is raised; a cancel (``RunStopped("cancelled")``) records ``cancelled`` and re-raises. Anything
-else raised inside the run (a lent read's job failure, such as a lost Spotify connection during
-``search_tracks``) records the category the job fails with (``classbeat.jobs.failure_of``,
-``internal`` for an unknown error) and propagates. A lost lease records nothing more (the fence
-refuses it) and neither does a shutdown hand-back: that row keeps outcome NULL with the counters
-of what it spent, and the next attempt opens a new row.
+A provider failure ends the run with its category (``model_unavailable`` is retried by the job, ADR
+0005 section 4). One the provider answered but whose answer could not be read
+(``ProviderError.billed``) is first counted as a turn at its ceiling: the prompt estimate at the
+dearest input rate plus ``max_tokens`` of output (cost errs high). The run's ``agent_runs`` row
+gets its outcome, then ``JobFailure(category)`` is raised; a cancel (``RunStopped("cancelled")``)
+records ``cancelled`` and re-raises. Anything else raised inside the run (a lent read's job
+failure, such as a lost Spotify connection during ``search_tracks``) records the category the job
+fails with (``classbeat.jobs.failure_of``, ``internal`` for an unknown error) and propagates. A
+lost lease records nothing more (the fence refuses it) and neither does a shutdown hand-back: that
+row keeps outcome NULL with the counters of what it spent, and the next attempt opens a new row.
 
 Model text, tool arguments and results stay in memory for the run and are never logged or stored;
 events carry the tool's stage name (or ``unknown``) and an error code only.
@@ -223,6 +225,12 @@ async def _loop(
         try:
             turn = await conv.turn(tuple(results), reminder=reminder)
         except ProviderError as exc:
+            if exc.billed:  # answered but unreadable: charged at the turn's ceiling, never 0
+                counters.turns += 1
+                counters.cost_micros += price.prompt_micros(estimate) + price.output_micros(
+                    spec.max_tokens
+                )
+                await host.record(run_id, counters)
             raise _Stop(exc.category) from None
         counters.turns += 1
         counters.usage = counters.usage + turn.usage

@@ -8,7 +8,9 @@ Both adapters (M3c P2, P3) build on this module; it sends nothing itself.
   provider's one API host as ``base_url`` (``classbeat.egress.MODEL_HOSTS``, the host its catalog
   entries carry), the provider's **one-host** allowlisted ``httpx.AsyncClient``
   (``allowlisted_async_client(provider=...)``: an OpenAI client can never reach DeepSeek's host or
-  the other way round), ``max_retries=2``, ``timeout=120`` per attempt, and ``organization``,
+  the other way round), ``max_retries=2``, a per-attempt timeout of the adapter's whole turn
+  budget (``attempt_seconds`` = ``turn_seconds``, ADR 0012 §3 amended 2026-10-31, so a slow answer
+  is never cut and sent again; 120 s only where no turn budget is given), and ``organization``,
   ``project``, ``admin_api_key``, ``webhook_secret`` and ``websocket_base_url`` all ``None``. The
   SDK still reads ``OPENAI_*`` variables for the values given as ``None``; the client is never
   built while any refused SDK variable is set (``classbeat.config.model_sdk_environment_problems``,
@@ -18,6 +20,9 @@ Both adapters (M3c P2, P3) build on this module; it sends nothing itself.
 - **A bounded request** (``bounded_request``): one turn, retries included, ends within
   ``turn_seconds``; any failure becomes ``ProviderError(category)`` raised with neither a cause
   nor a context, after one log line with the exception class, the status and the request id.
+- **A billed answer that cannot be read** (``read_answer``): once the API has answered, a failure
+  to read the answer (its usage included, or no usage at all) is ``ProviderError("internal",
+  billed=True)``, which the loop charges at the turn's ceiling, never at 0 (ADR 0006 §5).
 - **Errors** (``category_of``) by SDK exception class and status code, never by message text:
   rate limits, server errors, timeouts and connection errors are ``model_unavailable``;
   ``AuthenticationError``, ``PermissionDeniedError``, ``NotFoundError`` and 402 (DeepSeek's
@@ -29,6 +34,9 @@ Both adapters (M3c P2, P3) build on this module; it sends nothing itself.
   ``input = prompt - cached - written``, ``cache_read = cached``, ``cache_write = written`` and
   ``output`` = completion tokens, reasoning included; a model without a write charge has its
   write rate equal to its input rate in the price table, so the cost is the same either way.
+- **Tool arguments** (``openai_arguments.parse_arguments``): JSON text nested deeper than its
+  ``MAX_ARGUMENT_DEPTH``, or not JSON, is passed on as the text it is, so the loop answers
+  ``invalid_input`` (a tool error the model can correct), never a crash or ``internal``.
 - **Strict tool schemas** (``strict_schema``, ``tool_input``): strict function mode needs every
   property in ``required`` and ``additionalProperties: false`` on every object. An optional
   property becomes a union with ``null``, and a ``null`` the model then sends for one is dropped
@@ -44,7 +52,6 @@ The key lives in the SDK client only; nothing here logs, stores or repr()s it.
 
 import asyncio
 import copy
-import json
 import logging
 from collections.abc import Awaitable, Callable, Mapping
 from typing import Any, Final, Literal
@@ -53,8 +60,10 @@ import httpx
 import openai
 from pydantic import SecretStr
 
+from classbeat.agent import catalog
 from classbeat.agent.catalog import CatalogModel
 from classbeat.agent.provider import ProviderError, Usage
+from classbeat.agent.providers.openai_arguments import parse_arguments
 from classbeat.config import model_sdk_environment_problems
 from classbeat.egress import MODEL_HOSTS, OutboundBlocked, allowlisted_async_client
 
@@ -66,7 +75,7 @@ OpenAISDKProvider = Literal["openai", "deepseek"]
 # from DeepSeek's API documentation and records the date read).
 BASE_PATHS: Final[Mapping[OpenAISDKProvider, str]] = {"openai": "/v1", "deepseek": ""}
 MAX_RETRIES: Final = 2
-TIMEOUT_SECONDS: Final = 120.0
+TIMEOUT_SECONDS: Final = 120.0  # per attempt, only where no turn budget is given
 TURN_SECONDS: Final = 300.0
 _REQUEST_ID_MAX = 100
 # classbeat effort -> OpenAI ``reasoning.effort`` (the GPT-6 models take ``low`` to ``max``,
@@ -80,8 +89,11 @@ OPENAI_EFFORTS: Final[Mapping[str, str]] = {
 }
 # classbeat effort -> DeepSeek ``reasoning_effort`` (its thinking-mode guide and API reference,
 # read 2026-10-31: ``low``, ``high``, ``max``; it would quietly turn ``medium`` and ``xhigh`` into
-# ``high``, so those two are refused, never changed; ADR 0012 §3, amended 2026-10-31).
-DEEPSEEK_EFFORTS: Final[Mapping[str, str]] = {"low": "low", "high": "high", "max": "max"}
+# ``high``, so those two are refused, never changed; ADR 0012 §3, amended 2026-10-31). Derived
+# from the catalog's ``DEEPSEEK_EFFORTS``, the one list of them: each maps to its own name.
+DEEPSEEK_REASONING_EFFORTS: Final[Mapping[str, str]] = {
+    effort: effort for effort in catalog.DEEPSEEK_EFFORTS
+}
 
 
 class ModelOutboundBlocked(openai.OpenAIError):
@@ -112,9 +124,12 @@ def build_client(
     *,
     transport: httpx.AsyncBaseTransport | None = None,
     max_retries: int = MAX_RETRIES,
+    attempt_seconds: float = TIMEOUT_SECONDS,
 ) -> openai.AsyncOpenAI:
     """The SDK client of ``provider``. ``transport`` replaces the network under the allowlist in
-    tests (an ``httpx.MockTransport``); the allowlist check still runs on every request."""
+    tests (an ``httpx.MockTransport``); the allowlist check still runs on every request. The
+    adapters pass their ``turn_seconds`` as ``attempt_seconds``: one attempt may use the whole
+    turn, so a slow answer is never cut and sent again (each attempt may be billed)."""
     url = base_url(provider)
     refused = model_sdk_environment_problems()
     if refused:
@@ -132,12 +147,12 @@ def build_client(
         websocket_base_url=None,
         http_client=allowlisted_async_client(
             provider=provider,
-            timeout=TIMEOUT_SECONDS,
+            timeout=attempt_seconds,
             inner=transport,
             refused=ModelOutboundBlocked,
         ),
         max_retries=max_retries,
-        timeout=TIMEOUT_SECONDS,
+        timeout=attempt_seconds,
     )
 
 
@@ -211,15 +226,33 @@ async def bounded_request[T](
     ``ProviderError(category)`` with no ``__cause__`` and no ``__context__`` (raised outside the
     handler), so no provider text travels with it. A cancel goes through as it is."""
     category: str | None = None
+    billed = False
     try:
         async with asyncio.timeout(turn_seconds):
             return await request()
     except ProviderError as exc:
         category = exc.category  # raised again below, outside the handler (the #262 review)
+        billed = exc.billed
     except Exception as exc:
         category = category_of(exc)
         log_failure(exc, category)
-    raise ProviderError(category)
+    raise ProviderError(category, billed=billed)
+
+
+def read_answer[T](read: Callable[[], T]) -> T:
+    """``read()`` of an answer the API has already given, so one that was billed. A failure to
+    read it is ``ProviderError(category, billed=True)``: ``internal``, or the category a check
+    inside ``read`` raised. No provider text travels with it. Call it inside the request that
+    ``bounded_request`` runs."""
+    category: str | None = None
+    try:
+        return read()
+    except ProviderError as exc:
+        category = exc.category
+    except Exception as exc:
+        category = "internal"
+        log_failure(exc, category)
+    raise ProviderError(category, billed=True)
 
 
 # --- usage ---------------------------------------------------------------------------------
@@ -253,7 +286,10 @@ def normalise_usage(
 
 def responses_usage(usage: Any) -> Usage:
     """The Responses API's ``usage`` (``input_tokens``, ``input_tokens_details.cached_tokens``,
-    ``output_tokens`` with ``output_tokens_details.reasoning_tokens`` inside it)."""
+    ``output_tokens`` with ``output_tokens_details.reasoning_tokens`` inside it). No usage at all
+    is unreadable (``internal``), never counted as zeros."""
+    if usage is None:
+        raise ProviderError("internal")
     details = getattr(usage, "input_tokens_details", None)
     return normalise_usage(
         prompt_tokens=getattr(usage, "input_tokens", 0),
@@ -277,7 +313,10 @@ def _deepseek_cache_hits(usage: Any, prompt: int) -> int:
 def chat_usage(usage: Any) -> Usage:
     """Chat Completions' ``usage`` (``prompt_tokens``, ``prompt_tokens_details.cached_tokens``,
     ``completion_tokens`` with reasoning inside it). Without ``cached_tokens`` (DeepSeek reports
-    its own fields instead), the cache hits come from ``_deepseek_cache_hits``."""
+    its own fields instead), the cache hits come from ``_deepseek_cache_hits``. No usage at all is
+    unreadable (``internal``), never counted as zeros."""
+    if usage is None:
+        raise ProviderError("internal")
     details = getattr(usage, "prompt_tokens_details", None)
     prompt = getattr(usage, "prompt_tokens", 0)
     cached = getattr(details, "cached_tokens", None)
@@ -419,12 +458,10 @@ def strip_added_nulls(schema: Mapping[str, Any], value: Any) -> Any:
 
 def tool_input(schema: Mapping[str, Any], arguments: str) -> Any:
     """A tool call's ``arguments`` (JSON text) as the loop's ``ToolCall.input``. Text that is not
-    JSON is passed on as it is, so the loop answers ``invalid_input``; it is never guessed at."""
-    try:
-        parsed = json.loads(arguments)
-    except (TypeError, ValueError):
-        return arguments
-    return strip_added_nulls(schema, parsed)
+    JSON, or nests too deep (``parse_arguments``), is passed on as it is, so the loop answers
+    ``invalid_input``; it is never guessed at."""
+    parsed, value = parse_arguments(arguments)
+    return strip_added_nulls(schema, value) if parsed else value
 
 
 # --- effort --------------------------------------------------------------------------------
@@ -441,7 +478,7 @@ def provider_effort(entry: CatalogModel, effort: str) -> str | None:
             raise EffortRefused("OpenAI has no setting for this effort")
         return OPENAI_EFFORTS[effort]
     if entry.provider == "deepseek":
-        if effort not in DEEPSEEK_EFFORTS:
+        if effort not in DEEPSEEK_REASONING_EFFORTS:
             raise EffortRefused("DeepSeek has no setting for exactly this effort")
-        return DEEPSEEK_EFFORTS[effort]
+        return DEEPSEEK_REASONING_EFFORTS[effort]
     raise EffortRefused("not an OpenAI-SDK provider")

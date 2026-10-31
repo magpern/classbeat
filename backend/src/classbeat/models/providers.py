@@ -9,7 +9,9 @@ routes), and only with the provider's key file present and none of the refused m
 variables set. It checks neither ``data_policy`` nor ``CLASSBEAT_DEEPSEEK_ENABLED``: the live eval
 of an ``owner_pending`` or disabled model runs on synthetic data with the owner's go-ahead (ADR 0012
 §2, §6); ``resolve_route`` checks both for a job's route before this is called. Anthropic and
-OpenAI (M3c P2) build their adapters; DeepSeek has none yet (M3c P3) and is refused here.
+OpenAI (M3c P2) build their adapters here. DeepSeek's adapter exists (M3c P3,
+``DeepSeekProvider``, built only through ``deepseek_provider``) but is not built here yet, so a
+DeepSeek choice is refused.
 """
 
 from classbeat.agent import catalog

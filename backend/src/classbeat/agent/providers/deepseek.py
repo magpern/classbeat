@@ -34,12 +34,14 @@ and the error codes.
 - **Turn**: each call's ``arguments`` parsed as JSON, or passed on as the text they are, for the
   loop to refuse; usage by ``chat_usage`` (cache hits are ``cached_tokens``, no cache write);
   ``model`` as the API reports it. A model the catalog does not list for DeepSeek, or an effort its
-  entry does not take, is ``model_config`` before any request.
+  entry does not take, is ``model_config`` before any request. Once DeepSeek has answered,
+  anything that cannot be read (no usage included), and ``insufficient_system_resource``, is a
+  ``billed`` failure (``read_answer``): the loop charges it at the turn's ceiling (cost errs high).
+- **Timeout**: one attempt may take the whole ``turn_seconds`` (``attempt_seconds``), as for OpenAI.
 
 Every failure is a ``ProviderError`` raised outside any exception handler (``bounded_request``).
 """
 
-import json
 from collections.abc import Sequence
 from typing import Any, Final
 
@@ -56,6 +58,7 @@ from classbeat.agent.provider import (
     ToolResult,
     Turn,
 )
+from classbeat.agent.providers.openai_arguments import parse_arguments
 from classbeat.agent.providers.openai_common import (
     MAX_RETRIES,
     TURN_SECONDS,
@@ -65,6 +68,7 @@ from classbeat.agent.providers.openai_common import (
     chat_usage,
     printable,
     provider_effort,
+    read_answer,
 )
 
 _STOPS: Final[dict[str, StopReason]] = {
@@ -104,13 +108,9 @@ def _effort(spec: StageSpec) -> str | None:
 
 
 def _arguments(text: Any) -> Any:
-    """The call's arguments as JSON, or as they came: the loop refuses what is not an object."""
-    if not isinstance(text, str):
-        return text
-    try:
-        return json.loads(text)
-    except ValueError:
-        return text
+    """The call's arguments as JSON, or as they came (not JSON, or nested too deep:
+    ``parse_arguments``): the loop refuses what is not an object."""
+    return parse_arguments(text)[1]
 
 
 class DeepSeekProvider:
@@ -129,7 +129,11 @@ class DeepSeekProvider:
         tests; the allowlist check still runs on every request."""
         self._turn_seconds = turn_seconds
         self._client = build_client(
-            "deepseek", api_key, transport=transport, max_retries=max_retries
+            "deepseek",
+            api_key,
+            transport=transport,
+            max_retries=max_retries,
+            attempt_seconds=turn_seconds,
         )
 
     def __repr__(self) -> str:
@@ -198,25 +202,30 @@ class DeepSeekConversation:
             extra_body={"thinking": dict(THINKING)},
             stream=False,
         )
-        [choice] = response.choices  # one choice was asked for; anything else is ``internal``
-        message = choice.message
-        finish = str(choice.finish_reason or "")
-        if finish in _UNAVAILABLE:
-            raise ProviderError("model_unavailable")
-        calls = tuple(
-            ToolCall(c.id, c.function.name, _arguments(c.function.arguments))
-            for c in message.tool_calls or ()
-            if c.type == "function"
-        )
-        turn = Turn(
-            stop=_STOPS.get(finish, "other"),
-            text=message.content or "",
-            tool_calls=calls,
-            usage=chat_usage(response.usage),
-            model=str(response.model),
-            request_id=printable(getattr(response, "_request_id", None)),
-        )
-        return turn, _assistant(message)
+        return read_answer(lambda: _read(response))
+
+
+def _read(response: Any) -> tuple[Turn, dict[str, Any]]:
+    """The turn and the next request's ``assistant`` message of an answer (``read_answer``)."""
+    [choice] = response.choices  # one choice was asked for; anything else is ``internal``
+    message = choice.message
+    finish = str(choice.finish_reason or "")
+    if finish in _UNAVAILABLE:
+        raise ProviderError("model_unavailable")
+    calls = tuple(
+        ToolCall(c.id, c.function.name, _arguments(c.function.arguments))
+        for c in message.tool_calls or ()
+        if c.type == "function"
+    )
+    turn = Turn(
+        stop=_STOPS.get(finish, "other"),
+        text=message.content or "",
+        tool_calls=calls,
+        usage=chat_usage(response.usage),
+        model=str(response.model),
+        request_id=printable(getattr(response, "_request_id", None)),
+    )
+    return turn, _assistant(message)
 
 
 def _assistant(message: Any) -> dict[str, Any]:
