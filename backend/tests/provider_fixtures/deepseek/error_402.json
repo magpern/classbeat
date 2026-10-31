@@ -1,0 +1,14 @@
+{
+ "status": 402,
+ "headers": {
+  "x-request-id": "req_fixture_402"
+ },
+ "body": {
+  "error": {
+   "message": "Insufficient Balance",
+   "type": "unknown_error",
+   "param": null,
+   "code": null
+  }
+ }
+}
