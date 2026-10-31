@@ -14,6 +14,7 @@ from sqlalchemy import text
 from sqlalchemy.engine import Connection, make_url
 
 from authtools import Env, running_env
+from classbeat import auth
 from classbeat.admin.routes import admin_area_routes, gate_problems
 from classbeat.connections import CATEGORIES
 
@@ -182,7 +183,7 @@ async def test_the_list_searches_by_prefix_pages_and_summarises_the_plan(
              "ORDER BY created_at LIMIT 1"),
         {"u": actor.user_id},
     ).scalar_one()  # fmt: skip
-    assert params == {"q": "AN", "offset": 0, "limit": 2}
+    assert params == {"q_length": 2, "offset": 0, "limit": 2}  # the text is not stored
     assert audit(superuser, actor.user_id) == [("user.list", "ok", None)] * 3
 
 
@@ -395,6 +396,61 @@ async def test_delete_needs_the_typed_email_and_removes_the_account_and_its_rows
     assert (await actor.get(f"{USERS}/{target}")).status_code == 404
 
 
+async def test_delete_ends_the_targets_jobs_and_settles_credits_first_and_a_refusal_touches_none(
+    env: Env, make_actor: Any, superuser: Connection, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The operator's delete takes the same path as the user's own (ADR 0014 section 3): the open
+    job is cancelled and its credit released before the row goes; a refused delete changes
+    nothing."""
+    actor = await stepped_admin(env, make_actor)
+    target = await env.user("rider2@example.com")
+    class_id = superuser.execute(
+        text("INSERT INTO classes (owner_id, title) VALUES (:o, 'Ride') RETURNING id"),
+        {"o": target},
+    ).scalar_one()
+    job = superuser.execute(
+        text(
+            "INSERT INTO jobs (owner_id, kind, state, input, idempotency_key, request_hash, "
+            "credit_state, class_id, next_seq) VALUES (:o, 'test_kind', 'queued', '{}', :k, :h, "
+            "'reserved', :c, 1) RETURNING id"
+        ),
+        {"o": target, "k": secrets.token_urlsafe(18), "h": bytes(32), "c": class_id},
+    ).scalar_one()
+    superuser.execute(
+        text(
+            "INSERT INTO credit_ledger (owner_id, job_id, period, plan_id, state) VALUES (:o, :j, "
+            "CAST(date_trunc('month', now() AT TIME ZONE 'UTC') AS date), 'free', 'reserved')"
+        ),
+        {"o": target, "j": job},
+    )
+
+    def states() -> tuple[str, str, str]:
+        row = superuser.execute(
+            text(
+                "SELECT j.state, j.credit_state, l.state AS ledger FROM jobs j "
+                "JOIN credit_ledger l ON l.job_id = j.id WHERE j.id = :j"
+            ),
+            {"j": job},
+        ).one()
+        return (row.state, row.credit_state, row.ledger)
+
+    refused = await actor.call("DELETE", f"{USERS}/{target}", {"email": "other@example.com"})
+    assert refused.status_code == 409
+    assert states() == ("queued", "reserved", "reserved")  # nothing was touched
+
+    seen: list[tuple[str, str, str]] = []
+    original = auth.delete_account
+
+    async def spy(db: Any, user_id: Any) -> bool:
+        seen.append(states())  # what the database holds when the row is about to go
+        return await original(db, user_id)
+
+    monkeypatch.setattr(auth, "delete_account", spy)
+    done = await actor.call("DELETE", f"{USERS}/{target}", {"email": "rider2@example.com"})
+    assert done.status_code == 204, done.text
+    assert seen == [("cancelled", "released", "released")]
+
+
 async def test_no_route_changes_a_role(env: Env, make_actor: Any) -> None:
     actor = await stepped_admin(env, make_actor)
     target = await env.user("t@example.com")
@@ -528,6 +584,7 @@ async def test_the_search_text_is_bounded_and_every_accepted_search_is_audited(
     assert audit(superuser, actor.user_id) == expected
     if status == 200:
         stored = superuser.execute(
-            text("SELECT params->>'q' FROM admin_audit WHERE actor_id = :u"), {"u": actor.user_id}
+            text("SELECT params FROM admin_audit WHERE actor_id = :u"), {"u": actor.user_id}
         ).scalar_one()
-        assert stored == q
+        assert stored["q_length"] == len(q.strip())  # only the length (ADR 0014 section 5)
+        assert "q" not in stored

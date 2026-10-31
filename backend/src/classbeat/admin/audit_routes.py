@@ -147,7 +147,12 @@ async def list_audit(
         "until": until,
     }
     params: dict[str, Any] = {
-        **{k: v for k, v in filters.items() if v is not None and k != "action_prefix"},
+        **{
+            k: v
+            for k, v in filters.items()
+            if v is not None and k not in ("action_prefix", "actor_email")
+        },
+        "actor_email_set": True if email is not None else None,
         "action": action,
         "before": before,
         "limit": limit,

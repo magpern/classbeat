@@ -21,7 +21,7 @@ SYSTEM_TABLES: MappingProxyType[str, str] = MappingProxyType(
         "mfa_totp": "admin and step-up TOTP secrets (AES-GCM), read during sign-in",
         "mfa_recovery_codes": "TOTP recovery codes (HMAC only), read during sign-in",
         "rate_limits": "counters keyed by an HMAC of the bucket, before any user is known",
-        "auth_events": "security event log; keeps a null user_id after the user is deleted",
+        "auth_events": "security event log; a user's events go with the user (migration 0015)",
         "connection_keks": "check values of the KEK ids (ADR 0004), read at startup before "
         "any user; reached only through classbeat.crypto.keks",
         # ADR 0011 section 1 (M5).

@@ -230,7 +230,7 @@ auth_events = Table(
     "auth_events",
     metadata,
     _id(),
-    _user_fk(set_null=True),
+    _user_fk(nullable=True),  # null for an event with no user; cascades (migration 0015)
     Column("kind", Text, nullable=False),
     Column("ip", Text),
     _ts("at", nullable=False, default_now=True),

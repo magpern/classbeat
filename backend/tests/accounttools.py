@@ -20,6 +20,7 @@ class Person:
         self.rider: Rider = found.rider
         self.env: SongEnv = found.env
         self.user_id: UUID = found.owner
+        self.third_email = f"third-{self.user_id.hex[:12]}@example.com"  # not the id as text
         self.ip = f"2001:db8:{self.user_id.hex[:4]}::{self.user_id.hex[4:8]}"  # one per person
         self.email: str = self.env.sql(
             "SELECT email FROM users WHERE id = :u", u=self.user_id
@@ -109,13 +110,22 @@ class Person:
         third = self.sql(
             "INSERT INTO users (email, email_normalized, email_verified_at) "
             "VALUES (:e, :e, now()) RETURNING id",
-            e=f"third-{u}@example.com",
+            e=self.third_email,
         ).scalar_one()
         self.sql(
             "INSERT INTO entitlements (owner_id, features, source, granted_by) "
             "VALUES (:third, ARRAY['song_picking'], 'grant', :u)",
             third=third,
             u=u,
+        )
+        # What an operator's delete of this account leaves: the id as the target's text, which
+        # ADR 0014 section 5 retains as a bare id (``RETAINED``).
+        self.sql(
+            "INSERT INTO admin_audit (actor_email, action, target_kind, target_id, outcome, "
+            "request_id, ip_hash) VALUES ('operator@example.com', 'user.delete', 'user', :id, "
+            "'ok', 'req-2', :ip_hash)",
+            id=str(u),
+            ip_hash=bytes(32),
         )
         self.sql(
             "INSERT INTO admin_audit (actor_email, action, target_user_id, outcome, request_id, "
@@ -138,7 +148,8 @@ def references_with_rows(who: Person) -> dict[tuple[str, str], int]:
 
 def hits(who: Person) -> dict[str, int]:
     """Where the user's id, address or IP still appears, over every column of every table of the
-    schema (read from the catalog): uuid columns by id, text-like columns by address and IP."""
+    schema (read from the catalog): uuid columns by id; text, varchar, jsonb and inet columns by
+    address, IP and the id written as text."""
     found: dict[str, int] = {}
     columns = who.sql(
         "SELECT table_name, column_name, data_type FROM information_schema.columns c "
@@ -150,8 +161,15 @@ def hits(who: Person) -> dict[str, int]:
         if kind == "uuid":
             where, params = f'"{column}" = :u', {"u": who.user_id}
         else:
-            where = f'"{column}"::text ILIKE :email OR "{column}"::text LIKE :ip'
-            params = {"email": f"%{who.email}%", "ip": f"%{who.ip}%"}
+            where = (
+                f'"{column}"::text ILIKE :email OR "{column}"::text LIKE :ip '
+                f'OR "{column}"::text ILIKE :uid'  # the id written as text (a log line, a detail)
+            )
+            params = {
+                "email": f"%{who.email}%",
+                "ip": f"%{who.ip}%",
+                "uid": f"%{who.user_id}%",
+            }
         count = who.sql(
             f'SELECT count(*) FROM "{table}" WHERE {where}',  # noqa: S608
             **params,

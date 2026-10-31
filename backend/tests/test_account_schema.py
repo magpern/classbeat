@@ -79,7 +79,7 @@ def test_the_cascades_are_what_the_list_says_and_events_cascade(admin: Connectio
         ).all()
     )
     assert rows["auth_events.user_id"] == "c"  # migration 0015: the address goes with the user
-    assert RETAINED.keys() == {("admin_audit", "actor_email")}
+    assert RETAINED.keys() == {("admin_audit", "actor_email"), ("admin_audit", "target_id")}
 
 
 def test_every_owned_table_is_exported_or_has_a_reason(admin: Connection) -> None:
