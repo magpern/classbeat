@@ -290,6 +290,9 @@ exemption during a run is `classbeat.connections`' own status, `last_error` and 
 writes, which are conditional on `wrapped_dek` (ADR 0004 §4) and touch no job data. A restrictive
 insert policy comparing `lease_version` is not added; the helper and the guard carry the rule.
 
+**Amendment (2026-10-31, ADR 0009 §5.4, accepted in #198):** those writes are conditional on
+`generation` (compared together with `id`), not on `wrapped_dek`; see the note in ADR 0004 §4.
+
 ```sql
 UPDATE jobs SET updated_at = now()
  WHERE id = :job_id AND owner_id = :owner_id AND lease_version = :v AND state = 'running'
@@ -356,6 +359,11 @@ Every failure maps to one category (the same words as ADR 0004 §5 where they ov
 | `model_refused`, `model_config`, `invalid_output`, `limit_exceeded` | no | ADR 0006 §2, §5 |
 | `uncertain_write` | no | §7 |
 | `outbound_blocked`, `internal` | no | ADR 0006 §9; anything else |
+
+**Amendment (2026-10-31, ADR 0009 §6 and §8, accepted in #198):** for Spotify, "a 401 or 403 (the
+status flips)" is narrowed: only the token endpoint's `invalid_grant` or an app-setup code, and a
+401 on the one repeat of a read after a refresh, flip the connection; a 403 is `forbidden` or
+`not_allowlisted` and leaves its status alone. MOWL keeps the row above.
 
 Retryable: back to `queued` with `available_at = now() + min(30 s · 2^(attempt-1), 15 min)`
 with ±20 % jitter (for `rate_limited`, at least its hint, capped at 1 h). A retry starts the

@@ -35,9 +35,9 @@ function control<T>(method: 'GET' | 'POST', path: string): T {
   return JSON.parse(inContainer('web', CONTROL, method, path)) as T
 }
 
-// The browser's visit to the authorize page, then what classbeat's connect does: the token
-// exchange with PKCE and GET /me. Prints the user id and the granted scope, never a token.
-const CONNECT = String.raw`
+// The browser's visit to the authorize page, then the token exchange with PKCE: leaves `token`
+// (never printed) and `back` (the callback's query) for the snippet that follows.
+const TOKEN = String.raw`
 import base64, hashlib, json, secrets, sys
 import urllib.error as e, urllib.parse as p, urllib.request as u
 client, redirect = sys.argv[1], sys.argv[2]
@@ -60,9 +60,29 @@ form = p.urlencode({"grant_type": "authorization_code", "code": back["code"][0],
     "redirect_uri": redirect, "client_id": client, "code_verifier": verifier}).encode()
 token = json.load(opener.open(u.Request("https://accounts.spotify.com/api/token", data=form,
     headers={"Content-Type": "application/x-www-form-urlencoded"}), timeout=15))
+`
+
+// What classbeat's connect does after the exchange: GET /me. Prints the user id and the granted
+// scope, never a token.
+const CONNECT = TOKEN + String.raw`
 me = json.load(opener.open(u.Request("https://api.spotify.com/v1/me",
     headers={"Authorization": "Bearer " + token["access_token"]}), timeout=15))
 print(json.dumps({"user": me["id"], "scope": token["scope"], "state": back["state"][0]}))
+`
+
+// The read-back a playlist write verifies with (ADR 0008 section 2, A3), in the worker: classbeat's
+// credentials for the new token, the library's paged `playlist_items` (50 entries a page) and
+// `classbeat.playlists.common.observed_ids`. Prints the observed track ids, never a token.
+const READ_BACK = TOKEN + String.raw`
+import time
+from mowl import spotify_web
+from classbeat.connections.credentials import build_credentials
+from classbeat.playlists import common
+u.install_opener(u.build_opener(u.ProxyHandler({})))
+payload = {"access_token": token["access_token"], "refresh_token": token.get("refresh_token", ""),
+    "expires_at": time.time() + float(token["expires_in"])}
+creds = build_credentials("spotify", payload, {"client_id": client})
+print(json.dumps(common.observed_ids(spotify_web.playlist_items(creds, sys.argv[3]))))
 `
 
 const UNAUTHENTICATED_ME = [
@@ -115,6 +135,20 @@ test('the worker reaches the fake Spotify too', () => {
   expect(inContainer('worker', UNAUTHENTICATED_ME)).toBe('401')
   const state = control<FakeState>('GET', 'state')
   expect(state.requests.map((r) => [r.host, r.path, r.outcome])).toEqual([['api.spotify.com', '/v1/me', 'answered']])
+})
+
+// #198 item 19: A3's paged read-back is unreachable through a pick (a final list holds at most 40
+// songs, one page), so it is covered here at the playlist-read level: 120 tracks over three pages.
+test('the worker reads a 120-track playlist back in order over three pages (A3)', () => {
+  const { id } = control<{ id: string }>('POST', `playlist?owner=${USER_A}&name=E2E%20read&tracks=120`)
+  const observed = JSON.parse(inContainer('worker', READ_BACK, CLIENT_A, CALLBACK, id)) as (string | null)[]
+  const expected = Array.from({ length: 120 }, (_, i) => `FakeTrack${String(i).padStart(13, '0')}`)
+  expect(observed).toEqual(expected)
+  const state = control<FakeState>('GET', 'state')
+  const reads = state.requests.filter((r) => r.host === 'api.spotify.com')
+  expect(reads.map((r) => [r.path, r.token_app, r.token_user, r.outcome])).toEqual(
+    Array.from({ length: 3 }, () => [`/v1/playlists/${id}/items`, CLIENT_A, USER_A, 'answered']),
+  )
 })
 
 test('the fake Spotify publishes no port: it is reachable only inside the compose network', () => {

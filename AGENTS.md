@@ -592,7 +592,8 @@ plan limit, refunds, an admin with TOTP granting a plan and refunding a credit, 
 and `nextTotp` in `helpers.ts`; the session shows an admin as a user until two-factor is on, so enrolment is on
 `/account#security`),
 `class-usage.spec.ts` and `fake-spotify.spec.ts` (web connects through the fake with PKCE, the worker
-reaches it too, it publishes no port).
+reaches it too and reads a 120-track playlist back in order over three pages, A3 at the playlist-read
+level since a pick's final list is one page, it publishes no port).
 
 The fakes' state is shared, so Playwright runs one worker. The Playwright context blocks every
 origin but the stack's. They use public test values only and are never part of the default stack.
