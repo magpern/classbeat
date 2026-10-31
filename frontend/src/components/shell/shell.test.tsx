@@ -44,7 +44,9 @@ describe('navigation by width', () => {
     const links = within(mainNav()).getAllByRole('link')
     expect(links.map((l) => l.getAttribute('aria-label'))).toEqual(['New class', 'Home', 'My classes', 'Music', 'Account'])
     expect(within(mainNav()).queryByText('Music')).toBeNull()
-    expect(screen.queryByText('Classes this month')).toBeNull()
+    // The rail keeps the meter, compact: the number, the full words for screen readers.
+    expect(await screen.findByText('Classes this month:', { exact: false })).toHaveClass('sr-only')
+    expect(screen.getByText('4')).toBeInTheDocument()
   })
 
   it('1440 px: a sidebar with labels, the classes meter and the avatar with the name', async () => {
@@ -102,6 +104,18 @@ describe('keyboard', () => {
 })
 
 describe('avatar menu and Admin', () => {
+  it.each([
+    [390, 'bottom'],
+    [800, 'top'],
+    [1440, 'top'],
+  ] as const)('at %i px the menu opens %s', async (width, side) => {
+    setWidth(width)
+    stubApi()
+    renderAt('/classes')
+    await userEvent.click(await screen.findByRole('button', { name: 'ann@example.test' }))
+    expect(await screen.findByRole('menu')).toHaveAttribute('data-side', side)
+  })
+
   it('has Account and Sign out, and no Admin for a normal user', async () => {
     setWidth(390)
     stubApi()

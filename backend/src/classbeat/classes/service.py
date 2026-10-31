@@ -42,13 +42,23 @@ LEFT JOIN class_revisions cur
 LEFT JOIN jobs oj
     ON oj.owner_id = c.owner_id AND oj.class_id = c.id AND oj.state IN {OPEN_JOB}
 LEFT JOIN LATERAL (
-    SELECT jsonb_agg(jsonb_build_array((iv.i ->> 'zone')::int, (iv.i ->> 'sec')::int)
-        ORDER BY sg.ord, iv.ord) AS profile
-    FROM jsonb_array_elements(CASE WHEN jsonb_typeof(cur.content -> 'segments') = 'array'
-        THEN cur.content -> 'segments' ELSE '[]'::jsonb END) WITH ORDINALITY AS sg(seg, ord)
-    CROSS JOIN LATERAL jsonb_array_elements(CASE WHEN jsonb_typeof(sg.seg -> 'intervals') = 'array'
-        THEN sg.seg -> 'intervals' ELSE '[]'::jsonb END) WITH ORDINALITY AS iv(i, ord)
-    WHERE jsonb_typeof(iv.i -> 'zone') = 'number' AND jsonb_typeof(iv.i -> 'sec') = 'number'
+    SELECT jsonb_agg(jsonb_build_array(t.zone, t.sec) ORDER BY t.seg_ord, t.iv_ord) AS profile
+    FROM (
+        -- Only whole numbers are cast; an interval with any other zone or length is left out
+        -- (a bad value must not fail the whole list).
+        SELECT sg.ord AS seg_ord, iv.ord AS iv_ord,
+            CASE WHEN jsonb_typeof(iv.i -> 'zone') = 'number'
+                AND (iv.i ->> 'zone') ~ '^[0-9][0-9]?$' THEN (iv.i ->> 'zone')::int END AS zone,
+            CASE WHEN jsonb_typeof(iv.i -> 'sec') = 'number'
+                AND (iv.i ->> 'sec') ~ '^[0-9]+$' AND length(iv.i ->> 'sec') <= 6
+                THEN (iv.i ->> 'sec')::int END AS sec
+        FROM jsonb_array_elements(CASE WHEN jsonb_typeof(cur.content -> 'segments') = 'array'
+            THEN cur.content -> 'segments' ELSE '[]'::jsonb END) WITH ORDINALITY AS sg(seg, ord)
+        CROSS JOIN LATERAL jsonb_array_elements(
+            CASE WHEN jsonb_typeof(sg.seg -> 'intervals') = 'array'
+            THEN sg.seg -> 'intervals' ELSE '[]'::jsonb END) WITH ORDINALITY AS iv(i, ord)
+    ) t
+    WHERE t.zone IS NOT NULL AND t.sec IS NOT NULL
 ) pf ON true
 LEFT JOIN LATERAL (
     SELECT count(*) OVER () AS n, s.revision_number, s.updated_at, s.content_hash,

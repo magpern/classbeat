@@ -51,14 +51,18 @@ export interface ClassSummary {
   profile: [number, number][]
 }
 
-/** Absent or malformed means no profile: a card then shows no sketch rather than failing the list. */
+/**
+ * Absent means no profile. An interval that is not a pair of whole numbers (zone 0 to 99,
+ * seconds 0 or more) is skipped, so one bad interval never fails the list or hides the rest.
+ */
 function decodeProfile(value: unknown): [number, number][] {
   if (!Array.isArray(value)) return []
   const out: [number, number][] = []
   for (const entry of value as unknown[]) {
-    if (!Array.isArray(entry) || entry.length !== 2) return []
+    if (!Array.isArray(entry) || entry.length !== 2) continue
     const [zone, sec] = entry as unknown[]
-    if (!Number.isInteger(zone) || !Number.isInteger(sec) || (sec as number) < 0) return []
+    if (!Number.isInteger(zone) || !Number.isInteger(sec)) continue
+    if ((zone as number) < 0 || (zone as number) > 99 || (sec as number) < 0) continue
     out.push([zone as number, sec as number])
   }
   return out
