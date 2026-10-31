@@ -1,7 +1,8 @@
 import { useState } from 'react'
 import { confirmEmailChange } from '../api/auth'
 import { useSession } from '../auth/SessionContext'
-import { Card, Notice, useAction } from '../components/forms'
+import { Notice, useAction } from '../components/forms'
+import { AuthCard as Card } from '../components/auth/AuthCard'
 import { Link, useMailToken } from '../router/Router'
 
 /**

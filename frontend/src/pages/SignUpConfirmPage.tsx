@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from 'react'
 import { confirmSignUp } from '../api/auth'
-import { Card, Field, Notice, useAction } from '../components/forms'
+import { Field, Notice, useAction } from '../components/forms'
+import { AuthCard as Card } from '../components/auth/AuthCard'
 import { Link, useMailToken } from '../router/Router'
 
 /**
