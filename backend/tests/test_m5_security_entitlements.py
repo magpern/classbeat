@@ -185,6 +185,7 @@ def test_t89_only_redeem_and_trial_reach_add_entitlement() -> None:
     ],
 )
 def test_the_entitlement_guard_sees_every_spelling(source: str) -> None:
+    """Threats: T89."""
     assert entitling_refs(source) != []
 
 
@@ -204,17 +205,22 @@ def test_the_entitlement_guard_sees_every_spelling(source: str) -> None:
 )
 def test_the_entitlement_guard_resolves_relative_imports(source: str, package: str) -> None:
     """#227 part 2 (PR #268 review): a relative import, aliased or not, is resolved against the
-    module's package before the allowlist is applied."""
+    module's package before the allowlist is applied.
+
+    Threats: T89.
+    """
     assert entitling_refs(source, package) != []
 
 
 def test_a_relative_import_of_another_module_is_not_flagged() -> None:
+    """Threats: T89."""
     assert entitling_refs("from .entitle_view import ranks", "classbeat.plans") == []
     assert entitling_refs("from . import tables", "classbeat.plans") == []
     assert entitling_refs("from .tables import FEATURES as F", "classbeat.plans") == []
 
 
 def test_the_entitlement_guard_ignores_docstrings_and_other_names() -> None:
+    """Threats: T89."""
     source = '"""Calls add_entitlement."""\nfrom classbeat.plans.entitle import plan_ranks\n'
     assert entitling_refs(source) == []
 

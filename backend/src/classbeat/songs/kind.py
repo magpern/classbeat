@@ -36,6 +36,7 @@ from typing import Final
 
 from classbeat.design.kind import current_runtime, group_model
 from classbeat.jobs import KINDS, Complete, JobFailure, JobKind, JobRun, Outcome
+from classbeat.quota.route import with_route_key
 from classbeat.songs import config
 from classbeat.songs.admit import admit, approve_check
 from classbeat.songs.inputs import DesignWithSongsInput
@@ -99,7 +100,8 @@ DESIGN_WITH_SONGS: Final = KINDS.register(
         STAGES,
         run,
         consumes_credit=True,
-        admit=admit,
+        admit=with_route_key(admit),
         approve_check=approve_check,
+        server_fields=frozenset({"route_key"}),
     )
 )

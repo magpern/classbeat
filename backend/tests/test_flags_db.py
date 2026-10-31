@@ -150,6 +150,7 @@ async def test_the_database_at_invite_tightens_an_open_environment(
 async def test_the_database_cannot_open_sign_ups(
     clean_auth: None, app_database_url: str, database_url: str
 ) -> None:
+    """Threats: T94."""
     async with running_env(app_database_url, signup_mode="invite") as env:
         with stored(database_url, signup_mode="open"):  # not a storable value
             response = await sign_up(env, None)

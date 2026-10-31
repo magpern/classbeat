@@ -119,7 +119,7 @@ async def test_the_route_key_is_fixed_at_creation_and_never_from_the_browser(
     )
     assert created.status_code == 201, created.text
     row = denv.ops.row(UUID(created.json()["id"]))
-    assert row.input["route_key"] == "default"
+    assert row.input["route_key"] == "pro"
     jobs = denv.ops.sql("SELECT count(*) FROM jobs WHERE owner_id = :o", o=browser.user_id)
     assert jobs.scalar_one() == 1
 

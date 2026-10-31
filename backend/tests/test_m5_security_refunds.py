@@ -13,6 +13,8 @@ Already covered elsewhere and not repeated here: two users' parallel reservation
 interfere (QT1, ``test_quota_ledger.py``); every terminal state settles once under twenty
 parallel settles (``test_quota_jobs.py``); maint and the app role cannot change an audit row
 (``test_admin_audit.py``, ``test_t92_*``).
+
+Threats covered: T85, T86, T96.
 """
 
 import asyncio
@@ -92,6 +94,7 @@ async def cancel(browser: Browser, job_id: UUID) -> str:
 async def test_cancelling_a_queued_job_refunds_its_credit_once(
     admin: Connection, browsers: Any, env: Any
 ) -> None:
+    """Threats: T86, T96."""
     alice: Browser = await browsers()
     job_id = await created(alice)
     assert credit(admin, job_id) == ("reserved", None, "reserved")
@@ -104,6 +107,7 @@ async def test_cancelling_a_queued_job_refunds_its_credit_once(
 async def test_cancelling_a_waiting_job_refunds_its_credit_once(
     admin: Connection, browsers: Any, env: Any, jenv: JobsEnv
 ) -> None:
+    """Threats: T86, T96."""
     alice: Browser = await browsers()
     job_id, _ = await waiting_job(jenv, alice)
     assert credit(admin, job_id) == ("reserved", None, "reserved")
@@ -142,6 +146,7 @@ def end(conn: Connection, job_id: UUID, state: str) -> None:
 async def test_cancelling_a_running_job_keeps_its_credit_until_the_run_ends(
     admin: Connection, browsers: Any, env: Any, ends: str, settled: str, reason: str | None
 ) -> None:
+    """Threats: T86, T96."""
     alice: Browser = await browsers()
     job_id = await created(alice)
     start(admin, job_id)
@@ -168,7 +173,10 @@ async def test_parallel_reservations_across_a_month_boundary_hold_three_per_mont
 ) -> None:
     """The transactions that start before midnight UTC reserve in the old month, the ones
     after it in the new one: ``quota_periods`` gives each month its own lock row, so each
-    month holds exactly three, and the old month's three never block the new month's."""
+    month holds exactly three, and the old month's three never block the new month's.
+
+    Threats: T85.
+    """
     owner = new_user(admin)  # free: 3 classes a month
     old, new_month = date(2026, 10, 1), date(2026, 11, 1)
     turns = itertools.cycle([old, new_month])

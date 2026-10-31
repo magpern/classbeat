@@ -27,6 +27,16 @@
   class name, the status and the request id only.
 - **Usage:** input, output, cache read and cache write tokens of each answer, as the API reports
   them; the loop prices them (``classbeat.agent.prices``).
+- **A billed turn that does not end in a readable answer** (the rule of the OpenAI-SDK adapters,
+  #306; #219): once the stream has begun with a 2xx, ``message_start`` has reported the input and
+  the provider is billing. Whatever then ends the turn is ``ProviderError(category, billed=True)``
+  and costs the ceiling: a read timeout or the turn bound (``model_unavailable``), an API error
+  event inside the stream (its category; an unknown type is ``internal``), a connection cut
+  mid-way, events the SDK cannot assemble, a stream that ends without a stop reason, and usage
+  that is missing or not whole numbers (``internal``). The SDK never sends a stream again, so no
+  retry adds a second charge. The loop records the ceiling (prompt estimate plus ``max_tokens``),
+  never 0 (ADR 0006 section 5, cost errs high). Only a cache count left out reads as 0. Unbilled:
+  an error status, and any failure before the stream began (a refused connection, the allowlist).
 
 The key lives in the SDK client only; nothing here logs, stores or repr()s it.
 """
@@ -213,12 +223,27 @@ def _block_param(block: Any) -> dict[str, Any]:
     return data
 
 
+def _count(value: object, *, optional: bool) -> int:
+    """A token count: a whole number of at least 0. A cache count the API leaves out (``None``)
+    is 0; a missing input or output count, or any that is not a whole number, is unreadable
+    (``internal``), never 0: the answer was billed (ADR 0006 section 5, cost errs high)."""
+    if optional and value is None:
+        return 0
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        raise ProviderError("internal")
+    return value
+
+
 def _usage(usage: Any) -> Usage:
+    if usage is None:
+        raise ProviderError("internal")
     return Usage(
-        input_tokens=usage.input_tokens,
-        output_tokens=usage.output_tokens,
-        cache_read_tokens=usage.cache_read_input_tokens or 0,
-        cache_write_tokens=usage.cache_creation_input_tokens or 0,
+        input_tokens=_count(getattr(usage, "input_tokens", None), optional=False),
+        output_tokens=_count(getattr(usage, "output_tokens", None), optional=False),
+        cache_read_tokens=_count(getattr(usage, "cache_read_input_tokens", None), optional=True),
+        cache_write_tokens=_count(
+            getattr(usage, "cache_creation_input_tokens", None), optional=True
+        ),
     )
 
 
@@ -268,6 +293,7 @@ class AnthropicConversation:
         self._turn_seconds = turn_seconds
         self._messages: list[dict[str, Any]] = []
         self.requests = 0
+        self._streaming = False
 
     def __repr__(self) -> str:
         return f"AnthropicConversation(stage={self._spec.stage!r}, requests={self.requests})"
@@ -304,6 +330,7 @@ class AnthropicConversation:
             output_config={"effort": spec.effort},  # pyright: ignore[reportArgumentType]
             messages=messages,  # pyright: ignore[reportArgumentType]
         ) as stream:
+            self._streaming = True  # a 2xx: the provider has started billing this turn
             final = await stream.get_final_message()
             return final, stream.request_id
 
@@ -311,22 +338,49 @@ class AnthropicConversation:
         user = self._next_user(results, reminder)
         messages = [*self._messages, user]
         self.requests += 1
+        self._streaming = False
+        category: str | None = None
+        billed = False
+        final: Any = None
+        request_id: str | None = None
         try:
             async with asyncio.timeout(self._turn_seconds):
                 final, request_id = await self._request(messages)
-            turn = self._turn(final, request_id)
         except ProviderError:
             raise
         except Exception as exc:  # not CancelledError: a cancel goes through as it is
             category = category_of(exc)
             _log_failure(exc, category)
-            raise ProviderError(category) from None
-        self._messages = [*messages, {"role": "assistant", "content": turn_blocks(final)}]
+            # Once the stream began, whatever ends it (a read timeout, the turn bound, an error
+            # event, a cut connection, events the SDK cannot assemble) was billed from
+            # ``message_start`` on, and the SDK never sends a stream again: the ceiling, not 0.
+            billed = self._streaming
+        if category is not None:  # raised outside the handler: no cause, no context
+            raise ProviderError(category, billed=billed) from None
+        turn, blocks = self._read(final, request_id)
+        self._messages = [*messages, {"role": "assistant", "content": blocks}]
         return turn
+
+    def _read(self, final: Any, request_id: str | None) -> tuple[Turn, list[dict[str, Any]]]:
+        """The answer the API has given, so one that was billed. A failure to read it (usage
+        missing or malformed, a broken shape) is ``ProviderError("internal", billed=True)``, which
+        the loop charges at the turn's ceiling, never at 0. No provider text travels with it."""
+        category = "internal"
+        try:
+            return self._turn(final, request_id), turn_blocks(final)
+        except ProviderError as exc:
+            category = exc.category
+        except Exception as exc:
+            _log_failure(exc, category)
+        raise ProviderError(category, billed=True)
 
     def _turn(self, final: Any, request_id: str | None) -> Turn:
         blocks = list(final.content)
-        stop: StopReason = _STOPS.get(final.stop_reason or "") or "other"
+        if (
+            not final.stop_reason
+        ):  # a stream cut cleanly after message_start: usage is a placeholder
+            raise ProviderError("internal")
+        stop: StopReason = _STOPS.get(final.stop_reason) or "other"
         text = "".join(b.text for b in blocks if b.type == "text")
         calls = tuple(ToolCall(b.id, b.name, b.input) for b in blocks if b.type == "tool_use")
         return Turn(

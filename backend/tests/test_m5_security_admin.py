@@ -13,6 +13,8 @@ A route added later has no valid request in ``BODIES`` or its path values in
 ``target_with_entitlement`` until its PR adds them: the tests then fail and name it, so the fuzz
 cannot silently skip a route. AD3's usage, jobs and refund routes, AD2's invites and redeem
 codes and AD4's settings and plan limits (#314) are covered.
+
+Threats covered: T90, T92, T95.
 """
 
 import secrets
@@ -55,9 +57,20 @@ BODIES: dict[tuple[str, str], dict[str, Any]] = {
     # AD4 (#314): a flag write (the banner, path value ``key``) and a plan's limits (``plan_id``).
     ("PUT", "/api/admin/settings/{key}"): {"value": {"text": "Fuzz banner", "level": "info"}},
     ("PATCH", "/api/admin/plans/{plan_id}"): {"classes_per_month": 10},
+    # AD5 (#223): a model route (path values ``route_key`` and ``stage_group``).
+    ("PUT", "/api/admin/models/routes/{route_key}/{stage_group}"): {
+        "provider": "anthropic",
+        "model": "claude-opus-5-5",
+        "effort": "medium",
+    },
 }
 # The path values that need no row of their own: a flag key and a plan id.
-FIXED_VALUES = {"key": "banner", "plan_id": "pro"}
+FIXED_VALUES = {
+    "key": "banner",
+    "plan_id": "pro",
+    "route_key": "pro",
+    "stage_group": "design",
+}
 
 
 @pytest.fixture
@@ -195,6 +208,7 @@ async def target_with_entitlement(env: Env, conn: Connection) -> dict[str, str]:
 async def test_every_admin_route_refuses_a_non_admin_and_audits_the_admin_refusals(
     env: Env, make_actor: Any, superuser: Connection
 ) -> None:
+    """Threats: T90, T92."""
     values = {"user_id": str(uuid.uuid4()), "entitlement_id": str(uuid.uuid4()),
               "ledger_id": str(uuid.uuid4()), "invite_id": str(uuid.uuid4()),
               "code_id": str(uuid.uuid4()), **FIXED_VALUES}  # fmt: skip
@@ -282,6 +296,7 @@ def fuzz_cases(
 async def test_every_string_input_of_every_admin_route_is_refused_and_audited_once(
     env: Env, make_actor: Any, superuser: Connection
 ) -> None:
+    """Threats: T90, T92, T95."""
     actor = await admin(env, make_actor)
     values = await target_with_entitlement(env, superuser)
     settings_before, plans_before = settings_and_plans(superuser)
@@ -323,6 +338,10 @@ async def test_every_string_input_of_every_admin_route_is_refused_and_audited_on
         "DELETE /api/admin/settings/{key} path:key",
         "PATCH /api/admin/plans/{plan_id} path:plan_id",
         "PATCH /api/admin/plans/{plan_id} body:classes_per_month",
+        "PUT /api/admin/models/routes/{route_key}/{stage_group} path:route_key",
+        "PUT /api/admin/models/routes/{route_key}/{stage_group} path:stage_group",
+        "PUT /api/admin/models/routes/{route_key}/{stage_group} body:model",
+        "DELETE /api/admin/models/routes/{route_key}/{stage_group} path:route_key",
     ):
         assert any(t.startswith(ad3) for t in tried), ad3  # fmt: skip
     state = superuser.execute(
@@ -364,7 +383,10 @@ async def test_an_input_refusal_after_the_gate_writes_one_refused_row(
 ) -> None:  # fmt: skip
     """ADR 0011 section 10 (PR #281 review, Architect): an admin request that passes the gate
     and is refused for its input leaves a ``refused`` row, FastAPI's validation 422 and a route's
-    own 422 raised before its session alike, with the route and method as params."""
+    own 422 raised before its session alike, with the route and method as params.
+
+    Threats: T92.
+    """
     actor = await admin(env, make_actor)
     response = await actor.get(f"/api/admin/audit{path_suffix}?{urlencode(query)}")
     assert response.status_code == 422, response.text
@@ -380,7 +402,10 @@ async def test_an_input_refusal_after_the_gate_writes_one_refused_row(
 async def test_a_refusal_inside_a_session_is_not_audited_twice(
     env: Env, make_actor: Any, superuser: Connection
 ) -> None:
-    """``admin_session`` writes the row of its own ``AdminRefused``; the handler adds none."""
+    """``admin_session`` writes the row of its own ``AdminRefused``; the handler adds none.
+
+    Threats: T92.
+    """
     actor = await admin(env, make_actor)
     response = await actor.get(f"/api/admin/users/{uuid.uuid4()}")
     assert response.status_code == 404
@@ -391,7 +416,10 @@ async def test_a_nul_in_the_grant_note_is_422_not_a_500(
     env: Env, make_actor: Any, superuser: Connection
 ) -> None:
     """PR #282 final review: ``entitlements.note`` refuses a NUL, which was a 500 with an
-    ``error`` row. The note is now ``bounded_text``: 422, one ``refused`` row, nothing stored."""
+    ``error`` row. The note is now ``bounded_text``: 422, one ``refused`` row, nothing stored.
+
+    Threats: T95.
+    """
     actor = await admin(env, make_actor)
     target = await env.user("t@example.com")
     for note in ("a\x00b", "line\nbreak", "\x7f"):

@@ -6,6 +6,8 @@
 - A body that is not JSON (refused by FastAPI before any dependency) meets the admin gate first:
   a non-admin gets the same 403 as with a valid body, and an admin's 422 has its row.
 - Guard 11 past ``classbeat/admin/`` is ``test_m5_security_guard11_reach.py``.
+
+Threats covered: T89, T90, T92, T93.
 """
 
 import uuid
@@ -50,7 +52,10 @@ async def test_revoking_another_users_live_entitlement_is_404_and_it_stays_live(
     env: Env, make_actor: Any, superuser: Connection
 ) -> None:
     """PR #277 review: the old test revoked an already-revoked entitlement through the wrong
-    user, which a missing owner check would also have answered with a refusal."""
+    user, which a missing owner check would also have answered with a refusal.
+
+    Threats: T89, T90.
+    """
     admin_id = await env.user("a@example.com", role="admin")
     actor = await make_actor(admin_id, mfa=True)
     await env.run("UPDATE sessions SET stepup_at = now() WHERE user_id = :u", u=admin_id)
@@ -73,7 +78,10 @@ async def test_another_integrity_error_inside_the_session_stays_an_error(
     env: Env, superuser: Connection
 ) -> None:
     """A foreign key of another table, raised by the action itself, is an ``error`` row and
-    the original exception, not ``AdminRefused`` 404."""
+    the original exception, not ``AdminRefused`` 404.
+
+    Threats: T92.
+    """
     db = env.app.state.admin_db
     actor = new_admin(superuser)
     target = await env.user("t@example.com")
@@ -97,7 +105,10 @@ async def test_an_integrity_error_of_the_audit_row_itself_is_not_a_404(
 ) -> None:
     """Only ``admin_audit_target_user_id_fkey`` means "no such user". Another constraint of
     the audit row (a target kind its check refuses), with an unknown target user, re-raises
-    instead of being taken for a missing user."""
+    instead of being taken for a missing user.
+
+    Threats: T92.
+    """
     db = env.app.state.admin_db
     actor = new_admin(superuser)
     target = Target(user_id=uuid.uuid4(), kind="Not A Kind")
@@ -111,6 +122,7 @@ async def test_an_integrity_error_of_the_audit_row_itself_is_not_a_404(
 
 
 async def test_an_unknown_target_user_alone_is_the_404(env: Env, superuser: Connection) -> None:
+    """Threats: T92."""
     db = env.app.state.admin_db
     actor = new_admin(superuser)
     with pytest.raises(AdminRefused) as raised:
@@ -155,7 +167,10 @@ async def test_a_body_that_is_not_json_meets_the_gate_first(
     would get a 422 (learning the route takes a JSON body) where a valid body gets the 403, and an
     admin's refusal would leave no row. The gate runs first: a non-admin's answer is the same 403
     whatever the body, an admin without step-up gets ``stepup_required`` with its row, and a
-    stepped-up admin gets the 422 with one ``invalid_input`` row of the route's template."""
+    stepped-up admin gets the 422 with one ``invalid_input`` row of the route's template.
+
+    Threats: T90, T92, T93.
+    """
     plain_id = await env.user("plain@example.com")
     plain = await make_actor(plain_id, mfa=True)
     admin_id = await env.user("a@example.com", role="admin")

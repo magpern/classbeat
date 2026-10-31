@@ -255,6 +255,7 @@ async def test_a_flag_write_is_stored_audited_and_takes_effect(
 async def test_the_banner_is_stored_as_text_and_its_text_is_not_in_the_audit_row(
     env: Env, make_actor: Any, superuser: Connection
 ) -> None:
+    """Threats: T95."""
     actor = await stepped_admin(env, make_actor)
     markup = "<b>Maintenance</b> tonight <img src=x onerror=alert(1)>"
     response = await put(actor, "banner", {"text": markup, "level": "warning"})
@@ -334,7 +335,10 @@ async def test_a_banner_that_is_not_plain_text_is_refused_and_the_public_banner_
 ) -> None:
     """#227: ``PUT /api/admin/settings/banner`` refuses bidi, zero-width and other format
     characters (and separators), 422 ``invalid_value`` with its ``refused`` row; the stored
-    banner and what ``/api/settings/public`` serves stay as they were."""
+    banner and what ``/api/settings/public`` serves stay as they were.
+
+    Threats: T95.
+    """
     actor = await stepped_admin(env, make_actor)
     store(superuser, "banner", {"text": "kept", "level": "info"})
     response = await put(actor, "banner", {"text": banner_text, "level": "warning"})
