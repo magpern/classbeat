@@ -252,17 +252,24 @@ describe('account page', () => {
       'POST /api/auth/mfa/totp/start': {
         secret: 'JBSWY3DPEHPK3PXP',
         otpauth_uri: 'otpauth://totp/x',
-        qr_svg: '<svg xmlns="http://www.w3.org/2000/svg"></svg>',
+        qr_svg:
+          '<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12"><g transform="scale(4)">' +
+          '<path onload="alert(1)" fill="#fff" d="M0 0h3v3h-3z"/><script>alert(1)</script>' +
+          '<image href="https://evil.example/x.png"/><a href="https://evil.example"><path d="M1 1"/></a></g></svg>',
         pending: 'sealed',
       },
       'POST /api/auth/mfa/totp/confirm': { recovery_codes: ['AAAAA11111', 'BBBBB22222'] },
     })
     renderAt('/account')
     fireEvent.click(await screen.findByRole('button', { name: 'Set up an authenticator app' }))
-    expect(await screen.findByAltText('QR code for your authenticator app')).toHaveAttribute(
-      'src',
-      expect.stringContaining('data:image/svg+xml'),
-    )
+    // Drawn inline (no data: URL, which the CSP's img-src does not allow), shapes only.
+    const qr = await screen.findByRole('img', { name: 'QR code for your authenticator app' })
+    expect(qr.tagName.toLowerCase()).toBe('svg')
+    expect(qr.getAttribute('viewBox')).toBe('0 0 12 12')
+    expect(qr.querySelector('g')?.getAttribute('transform')).toBe('scale(4)')
+    expect(qr.querySelector('path')?.getAttribute('d')).toBe('M0 0h3v3h-3z')
+    expect(qr.querySelector('script, image, foreignObject, a')).toBeNull()
+    expect(qr.querySelector('path')?.getAttribute('onload')).toBeNull()
     expect(screen.getByText('JBSWY3DPEHPK3PXP')).toBeInTheDocument()
     type('Code from the app', '123456')
     fireEvent.click(screen.getByRole('button', { name: 'Turn on two-factor' }))

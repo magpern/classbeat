@@ -24,6 +24,7 @@ import { Link, useRouter } from '../../router/Router'
 import { Notice, useAction } from '../forms'
 import { Button } from '../ui/button'
 import { Card, CardTitle } from '../ui/card'
+import { CoverMosaic } from './CoverArt'
 import { SongRows } from './SongRows'
 
 export const PRIVACY_TEXT =
@@ -227,13 +228,18 @@ function Approval({
   const replace = [...marks].sort((a, b) => a - b).map((position) => position - 1)
   return (
     <section className="flex flex-col gap-4" aria-labelledby="songs-title">
-      <h1 id="songs-title" className="m-0 font-display text-3xl font-bold text-text">
-        Songs for your class
-      </h1>
-      <p className="m-0 text-text">
-        {list.songs.length} songs, {minutes(list.totalSec)} in total. You asked for{' '}
-        {minutes(list.targetSec)}.
-      </p>
+      <header className="flex flex-wrap items-end gap-4">
+        <CoverMosaic songs={list.songs} />
+        <div className="flex min-w-0 flex-col gap-2">
+          <h1 id="songs-title" className="m-0 font-display text-3xl font-bold text-text">
+            Songs for your class
+          </h1>
+          <p className="m-0 text-text">
+            {list.songs.length} songs, {minutes(list.totalSec)} in total. You asked for{' '}
+            {minutes(list.targetSec)}.
+          </p>
+        </div>
+      </header>
       {list.note !== '' ? <p className="m-0 text-muted">{list.note}</p> : null}
       {list.omittedNoBpm > 0 ? (
         <Notice>

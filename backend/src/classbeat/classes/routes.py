@@ -42,6 +42,7 @@ from classbeat.classes.schemas import (
     UnknownBpmOut,
 )
 from classbeat.context import UserContext
+from classbeat.covers import cover_url
 
 router = APIRouter(prefix="/api/classes", tags=["classes"])
 
@@ -212,6 +213,7 @@ async def _song_list(
                 bpm=s.bpm,
                 length_sec=s.length_sec,
                 new=s.new,
+                cover=cover_url(s.cover),  # the pinned host only, again (ADR 0013 section 9)
             )
             for i, s in enumerate(c.songs, start=1)
         ],

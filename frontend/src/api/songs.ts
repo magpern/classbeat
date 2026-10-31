@@ -25,6 +25,8 @@ export interface Song {
   bpm: number
   lengthSec: number
   isNew: boolean
+  /** The album cover URL, shown only through `CoverArt` (ADR 0013 section 9), or null. */
+  cover: string | null
 }
 
 export interface SongList {
@@ -54,6 +56,8 @@ function decodeSong(value: unknown): Song {
     bpm: count(item, 'bpm'),
     lengthSec: count(item, 'length_sec'),
     isNew: flag(item, 'new'),
+    // Older lists (v: 1) have no cover; CoverArt checks the host again before it shows one.
+    cover: optionalText(item, 'cover'),
   }
 }
 

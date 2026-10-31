@@ -163,8 +163,13 @@ async def test_no_planted_value_reaches_the_provider(monkeypatch: pytest.MonkeyP
     spare = next(n for n, (_, role) in enumerate(pool) if role == "recovery")
     music = mowl_music(monkeypatch, reg, refs, mowl, spare)
     wanted = [(reg.entries()[r].spotify_id, role) for r, role in pool]
-    tracks, omitted = analysed_pool(music.analysis["map"], wanted)
+    # the album covers the search found (ADR 0013 section 9): real i.scdn.co URLs, carried by the
+    # backend beside the ids, so the check below that no request holds one can fail
+    covers = {e.spotify_id: e.cover for e in reg.entries()}
+    assert all(c is not None and c.startswith("https://i.scdn.co/image/") for c in covers.values())
+    tracks, omitted = analysed_pool(music.analysis["map"], wanted, covers)
     assert omitted == 1
+    assert all(t.cover == covers[t.spotify_id] for t in tracks)
     index = {t.spotify_id: n for n, t in enumerate(tracks)}
     final = [(src, index[reg.entries()[ref].spotify_id], role) for src, ref, role in picked]
     script = [
@@ -178,11 +183,19 @@ async def test_no_planted_value_reaches_the_provider(monkeypatch: pytest.MonkeyP
     host = MemoryHost()
     pooled = await run_pool(w, fake, host)
     assert [p.ref for p in pooled.output.picks] == refs
+    assert [p.cover for p in pooled.output.picks] == [
+        covers[p.spotify_id] for p in pooled.output.picks
+    ]
     chosen = await run_choose(ChooseContext.build(w.plan, tracks, omitted), fake, host)
     assert fake.remaining == 0
+    planted_covers = [s.cover for s in chosen.output.songs]
+    assert planted_covers == [covers[s.spotify_id] for s in chosen.output.songs]
+    assert all(planted_covers)
 
     sent = everything_sent(fake)
     forbidden = [*sp.values(), *mowl.values(), *(e.spotify_id for e in reg.entries())]
+    forbidden += [c for c in covers.values() if c is not None]  # every cover, whole and
+    forbidden += [c.rsplit("/", 1)[1] for c in covers.values() if c is not None]  # its digest
     forbidden += [
         "FakeTrack",
         "FakeAlbum",
