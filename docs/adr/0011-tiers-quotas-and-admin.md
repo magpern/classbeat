@@ -367,6 +367,8 @@ it:
 
 **Amendment 2026-10-31 (FL1, Architect):** `closed` is the emergency brake and also stops confirmation. While the effective sign-up mode is `closed`, confirming a pending sign-up, password or provider, answers 403 `signups_closed`; the pending row and its invite stay, so it can still be confirmed if sign-ups reopen before it expires (24 hours). `invite` and `open` do not affect confirmation: the row was admitted when it was made. A provider flow or hand-off that carried an invite consumes it when the account is created, whatever the mode is by then, so the invite cannot be reused. ADR 0003 section 5's confirmation steps are read with this addition.
 
+**Amendment 2026-10-31 (AD4, Architect):** `classbeat_maint` has no `DELETE` on `app_settings` (ง5), so the admin clears a flag by storing the JSON `null`; every reader takes a `null` value as no row, so the environment's value applies. Reads of a stored value that does not validate fall back to the key's stricter default; writes of one are refused with 422 and an audit row.
+
 Feature codes in M5: `song_picking`. `swedebeat` and `billing` are shown, read-only and off; the
 admin can't turn them on (ยง8). Plan limits are edited on `plans`, not in `app_settings`.
 

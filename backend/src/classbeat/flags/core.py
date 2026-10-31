@@ -18,6 +18,8 @@ never logged, since it may hold an admin's free text.
 """
 
 import logging
+import re
+import unicodedata
 from dataclasses import dataclass
 from typing import Any, Final, Literal
 
@@ -96,3 +98,67 @@ def banner_setting(stored: Any) -> Banner | None:
             return Banner(text, level) if text.strip() else None  # pyright: ignore[reportArgumentType]
     _invalid("banner")
     return None
+
+
+# --- validation at write time (the admin area, ADR 0011 section 6) ---------------------------
+
+
+class FlagRefused(Exception):
+    """A value the admin may not store: ``reason`` is the audit and response code."""
+
+    def __init__(self, reason: str) -> None:
+        super().__init__(reason)
+        self.reason = reason
+
+
+KEYS: Final = ("signup_mode", "song_picking", "trial", "banner")
+_PLAN_ID: Final = re.compile(r"^[a-z_]{1,30}$")
+
+
+def _no_controls(text: str) -> bool:
+    return not any(unicodedata.category(c) == "Cc" for c in text)
+
+
+def validate_for_write(key: str, value: Any, *, trial_days_max: int) -> Any:
+    """The canonical value to store for ``key``, or ``FlagRefused``. Stricter than the read side:
+    the read side falls back, the write side refuses.
+
+    - ``signup_mode``: ``invite`` or ``closed``; ``open`` comes only from the environment
+      (``environment_only``).
+    - ``song_picking``: ``off``, ``granted`` or ``on``.
+    - ``trial``: exactly ``{plan, days}``, a plan code and ``days`` from 0 to ``trial_days_max``
+      (``above_environment_bound`` over it). Whether the plan exists and ranks at most
+      ``instructor`` is checked against ``plans`` by the caller.
+    - ``banner``: exactly ``{text, level}``; text of 1 to 280 characters with no control
+      character, level ``info`` or ``warning``."""
+    if key == "signup_mode":
+        if value == "open":
+            raise FlagRefused("environment_only")
+        if value not in _SIGNUP_STORED:
+            raise FlagRefused("invalid_value")
+        return value
+    if key == "song_picking":
+        if value not in _SONG_STORED:
+            raise FlagRefused("invalid_value")
+        return value
+    if key == "trial":
+        if not isinstance(value, dict) or set(value) != {"plan", "days"}:  # pyright: ignore[reportUnknownArgumentType]
+            raise FlagRefused("invalid_value")
+        plan, days = value["plan"], value["days"]
+        if not isinstance(plan, str) or not _PLAN_ID.fullmatch(plan):
+            raise FlagRefused("invalid_value")
+        if type(days) is not int or days < 0:
+            raise FlagRefused("invalid_value")
+        if days > trial_days_max:
+            raise FlagRefused("above_environment_bound")
+        return {"plan": plan, "days": days}
+    if key == "banner":
+        if not isinstance(value, dict) or set(value) != {"text", "level"}:  # pyright: ignore[reportUnknownArgumentType]
+            raise FlagRefused("invalid_value")
+        text, level = value["text"], value["level"]
+        if not isinstance(text, str) or level not in _LEVELS or not text.strip():
+            raise FlagRefused("invalid_value")
+        if len(text) > BANNER_MAX_CHARS or not _no_controls(text):
+            raise FlagRefused("invalid_value")
+        return {"text": text, "level": level}
+    raise FlagRefused("unknown_key")

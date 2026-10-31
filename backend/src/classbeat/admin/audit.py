@@ -160,6 +160,31 @@ class RefundParams(Params):
     """An admin refund (AD3 #221): the target (user, ledger row) says everything."""
 
 
+PlanCode = Annotated[str, StringConstraints(pattern=r"^[a-z_]{1,30}$")]
+
+
+class SettingSetParams(Params):
+    """A flag write (AD4 #222): the key and what the value means, never free text. A banner's
+    text stays in ``app_settings`` (only its level and length are logged); a refused value logs
+    the key alone."""
+
+    key: Annotated[str, StringConstraints(pattern=r"^[a-z][a-z_]{0,39}$")]
+    value: Literal["invite", "closed", "off", "granted", "on"] | None = None
+    plan: PlanCode | None = None
+    days: Annotated[int, Field(ge=0, le=1_000_000)] | None = None
+    level: Literal["info", "warning"] | None = None
+    text_length: Annotated[int, Field(ge=0, le=100_000)] | None = None
+
+
+class PlanUpdateParams(Params):
+    """A plan limit edit (AD4 #222): the limits asked for (refused ones included)."""
+
+    classes_per_month: Annotated[int, Field(ge=-(10**12), le=10**12)] | None = None
+    revisions_per_class: Annotated[int, Field(ge=-(10**12), le=10**12)] | None = None
+    concurrent_jobs: Annotated[int, Field(ge=-(10**12), le=10**12)] | None = None
+    monthly_cost_micros: Annotated[int, Field(ge=-(10**12), le=10**12)] | None = None
+
+
 # Action code -> its params model. ``admin.request`` is the gate's own (ADR 0011 section 6:
 # mfa_required, stepup_required and rate_limited of an admin).
 ACTIONS: dict[str, type[Params]] = {
@@ -186,6 +211,11 @@ ACTIONS: dict[str, type[Params]] = {
 }
 # The audit log (AD4 #222).
 ACTIONS["audit.list"] = AuditListParams
+# Settings, flags and plan limits (AD4 #222, classbeat.admin.settings).
+ACTIONS["settings.read"] = NoParams
+ACTIONS["setting.set"] = SettingSetParams
+ACTIONS["setting.clear"] = NoParams
+ACTIONS["plan.update"] = PlanUpdateParams
 
 
 class UnknownAction(ValueError):
