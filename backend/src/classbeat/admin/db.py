@@ -301,10 +301,16 @@ async def _record_failure(
         outcome, reason = "refused", exc.reason
     else:
         outcome, reason = "error", "internal"
-    try:
-        await db.record(actor, action, outcome, reason, target=target, params=params)
-    except Exception as failure:  # the original exception matters more
-        logger.error("admin audit row not written", extra={"error_type": type(failure).__name__})
+    # The params may be what failed (a value the table refuses), so a second try keeps the row
+    # without them: a refused or failing action always leaves its row (#282 review).
+    for stored in dict.fromkeys((params, "{}")):
+        try:
+            await db.record(actor, action, outcome, reason, target=target, params=stored)
+            return
+        except Exception as failure:  # the original exception matters more
+            logger.error(
+                "admin audit row not written", extra={"error_type": type(failure).__name__}
+            )
 
 
 @asynccontextmanager

@@ -16,9 +16,17 @@ from sqlalchemy import Engine, create_engine, text
 from sqlalchemy.engine import Connection, make_url
 from sqlalchemy.exc import DBAPIError
 
+from admintools import new_admin
 from authtools import Env, running_env
 from classbeat.admin import audit_routes
-from classbeat.admin.audit import ACTIONS, checked_params
+from classbeat.admin.audit import (
+    ACTIONS,
+    MAX_PARAMS_BYTES,
+    Target,
+    UnknownAction,
+    checked_params,
+    json_bytes,
+)
 
 AUDIT = "/api/admin/audit"
 ROW_KEYS = {
@@ -208,6 +216,13 @@ async def test_an_unknown_cursor_is_404_and_audited_refused(
         {"action": "user read"},
         {"target_kind": "Users"},
         {"target_id": "x" * 101},
+        {"target_id": "a\x00b"},  # NUL: jsonb refuses it, so it never reaches a row
+        {"actor_email": "a\x00b@example.test"},
+        {"actor_email": "a\x1bb@example.test"},  # any control character (Cc)
+        {"target_id": "a\x7fb"},
+        {"target_id": "é" * 100},  # 100 characters, 600 bytes once JSON-encoded
+        {"actor_email": "é" * 320},  # 320 characters, 1920 bytes once encoded
+        {"actor_email": "\U0001f600" * 60},  # 12 bytes each once encoded
         {"outcome": "maybe"},
         {"since": "2026-10-01T00:00:00"},  # no time zone
         {"since": "2026-10-02T00:00:00Z", "until": "2026-10-01T00:00:00Z"},
@@ -270,15 +285,97 @@ async def test_a_row_shows_only_the_readable_columns_and_never_the_ip_hash(
     assert base64.b64encode(ip_hash).decode() not in response.text
 
 
-def test_the_filter_params_fit_the_audit_schema() -> None:
+@pytest.mark.parametrize(
+    ("email", "target_id"),
+    [
+        ("a" * 320, "t" * 100),  # the most characters
+        ('"' * 320, "\\" * 100),  # two bytes each once escaped: exactly the byte bounds
+        ("é" * 106, "é" * 33),  # six bytes each: just inside the byte bounds
+        ("\U0001f600" * 53, "\U0001f600" * 16),  # twelve bytes each
+    ],
+)
+def test_the_largest_accepted_filter_fits_the_audit_row(email: str, target_id: str) -> None:
+    """Measured in encoded bytes, not characters: every value the filter accepts fits
+    ``MAX_PARAMS_BYTES`` with every other field at its maximum."""
     assert "audit.list" in ACTIONS
+    assert json_bytes(email) <= 640
+    assert json_bytes(target_id) <= 200
     full = {
-        "actor_id": str(uuid4()), "actor_email": "a" * 300 + "@example.test",
-        "action": "a" * 60, "target_user_id": str(uuid4()), "target_kind": "k" * 40,
-        "target_id": "t" * 100, "outcome": "refused", "since": "2026-10-01T00:00:00+00:00",
-        "until": "2026-10-02T00:00:00+00:00", "before": str(uuid4()), "limit": 100,
+        "actor_id": str(uuid4()), "actor_email": email, "action": "a" * 60,
+        "target_user_id": str(uuid4()), "target_kind": "k" * 40, "target_id": target_id,
+        "outcome": "refused", "since": "2026-10-01T00:00:00.123456+14:00",
+        "until": "2026-10-02T00:00:00.123456-12:00", "before": str(uuid4()), "limit": 100,
     }  # fmt: skip
-    assert checked_params("audit.list", full)  # the largest filter still fits 2048 bytes
+    assert len(checked_params("audit.list", full).encode()) <= MAX_PARAMS_BYTES
+
+
+def test_checked_params_never_returns_a_value_jsonb_refuses() -> None:
+    with pytest.raises(UnknownAction):
+        checked_params("admin.request", {"method": "GET", "route": "/api/admin/a\x00"})
+    with pytest.raises(UnknownAction):
+        checked_params("audit.list", {"target_id": "a\x00b"})
+
+
+async def test_a_failure_whose_params_the_table_refuses_still_writes_its_row(
+    env: Env, superuser: Connection
+) -> None:
+    """The error path does not depend on the params that may have caused the error: a row the
+    table refuses with them is written without them (#282 review)."""
+    from classbeat.admin import db as admin_db
+
+    actor = new_admin(superuser)
+    poisoned = '{"target_id": "a\\u0000b"}'  # what a NUL becomes once encoded
+    await admin_db._record_failure(  # pyright: ignore[reportPrivateUsage]
+        env.app.state.admin_db, actor, "audit.list", Target(), poisoned, RuntimeError("boom")
+    )
+    rows = superuser.execute(
+        text("SELECT outcome, reason, params FROM admin_audit WHERE request_id = :r"),
+        {"r": actor.request_id},
+    ).all()
+    assert [tuple(r) for r in rows] == [("error", "internal", {})]
+
+
+async def test_since_is_inclusive_and_until_exclusive(admin: Any, superuser: Connection) -> None:
+    actor, _ = admin
+    at_since = plant(superuser, hours_ago=3, action="code.create")
+    inside = plant(superuser, hours_ago=2, action="code.create")
+    at_until = plant(superuser, hours_ago=1, action="code.create")
+    since, until = (
+        superuser.execute(
+            text("SELECT created_at FROM admin_audit WHERE id = :i"), {"i": i}
+        ).scalar_one().isoformat()
+        for i in (at_since, at_until)
+    )  # fmt: skip
+    body = await page(actor, action="code.create", since=since, until=until)
+    assert ids(body) == [inside, at_since]
+
+
+async def test_rows_with_the_same_instant_are_paged_by_id_without_a_gap(
+    admin: Any, superuser: Connection
+) -> None:
+    """One transaction's rows share ``created_at`` (``now()``); the cursor's ``id`` half keeps a
+    page boundary between them from skipping or repeating one."""
+    actor, _ = admin
+    instant = superuser.execute(text("SELECT now() - interval '1 hour'")).scalar_one()
+    planted = [
+        superuser.execute(
+            text(
+                "INSERT INTO admin_audit (created_at, actor_email, action, outcome, request_id, "
+                "ip_hash) VALUES (:t, 'x@example.test', 'user.enable', 'ok', 'r', :h) "
+                "RETURNING id"
+            ),
+            {"t": instant, "h": secrets.token_bytes(32)},
+        ).scalar_one()
+        for _ in range(4)
+    ]
+    seen: list[UUID] = []
+    body = await page(actor, action="user.enable", limit=1)
+    while True:
+        seen += ids(body)
+        if body["next_before"] is None:
+            break
+        body = await page(actor, action="user.enable", limit=1, before=body["next_before"])
+    assert seen == sorted(planted, key=str, reverse=True)
 
 
 # --- the gate ----------------------------------------------------------------------------------

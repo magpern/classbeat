@@ -32,7 +32,13 @@ from fastapi import Query, Request
 from pydantic import AwareDatetime, BaseModel, ConfigDict
 from sqlalchemy import text
 
-from classbeat.admin.audit import OUTCOMES
+from classbeat.admin.audit import (
+    OUTCOMES,
+    FilterEmail,
+    FilterTargetId,
+    UnknownAction,
+    checked_params,
+)
 from classbeat.admin.db import AdminDb, AdminRefused, admin_session
 from classbeat.admin.routes import AdminActor, admin_db, admin_router
 
@@ -52,6 +58,7 @@ _COLUMNS = (
 _LIST = text(
     f"SELECT {_COLUMNS} FROM admin_audit WHERE "  # noqa: S608
     "(CAST(:actor_id AS uuid) IS NULL OR actor_id = CAST(:actor_id AS uuid)) "
+    # Postgres lower() against Python's str.lower(): the same for the ASCII emails users hold.
     "AND (CAST(:actor_email AS text) IS NULL OR lower(actor_email) = CAST(:actor_email AS text)) "
     "AND (CAST(:action AS text) IS NULL OR action = CAST(:action AS text)) "
     "AND (CAST(:action_prefix AS text) IS NULL "
@@ -106,11 +113,11 @@ async def list_audit(
     request: Request,
     actor: AdminActor,
     actor_id: UUID | None = None,
-    actor_email: Annotated[str | None, Query(min_length=1, max_length=320)] = None,
+    actor_email: Annotated[FilterEmail | None, Query()] = None,
     action: Annotated[str | None, Query(pattern=ACTION_FILTER)] = None,
     target_user_id: UUID | None = None,
     target_kind: Annotated[str | None, Query(pattern=KIND_FILTER)] = None,
-    target_id: Annotated[str | None, Query(min_length=1, max_length=100)] = None,
+    target_id: Annotated[FilterTargetId | None, Query()] = None,
     outcome: Annotated[str | None, Query(pattern=OUTCOME_FILTER)] = None,
     since: Annotated[AwareDatetime | None, Query()] = None,
     until: Annotated[AwareDatetime | None, Query()] = None,
@@ -139,6 +146,10 @@ async def list_audit(
         "before": before,
         "limit": limit,
     }
+    try:  # the normalised filter (a lowered email can grow) must fit its audit row, or 422
+        checked_params("audit.list", params)
+    except UnknownAction:
+        raise AdminRefused("filter_invalid", 422) from None
     async with admin_session(_db(request), actor, "audit.list", params=params) as session:
         cursor_at, cursor_id = None, None
         if before is not None:

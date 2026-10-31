@@ -10,12 +10,14 @@ or params its model rejects, before it opens a connection. The admin feature mod
 import json
 import logging
 import time
+import unicodedata
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import Annotated, Any, Final, Literal
 from uuid import UUID
 
 from pydantic import (
+    AfterValidator,
     AwareDatetime,
     BaseModel,
     ConfigDict,
@@ -48,16 +50,43 @@ class RequestParams(Params):
     route: Annotated[str, StringConstraints(pattern=ROUTE_PATTERN)]
 
 
+def json_bytes(value: str) -> int:
+    """How many bytes ``value`` takes inside a JSON string as ``checked_params`` writes it
+    (escapes included: a non-ASCII character is 6 or 12 bytes, not 1)."""
+    return len(json.dumps(value).encode()) - 2
+
+
+def bounded_text(max_bytes: int) -> AfterValidator:
+    """Free text that is safe to store in ``params``: no control character (Unicode ``Cc``, NUL
+    included, which ``jsonb`` refuses) and at most ``max_bytes`` once JSON-encoded, so a bound in
+    characters can never push the params past ``MAX_PARAMS_BYTES``."""
+
+    def check(value: str) -> str:
+        if any(unicodedata.category(c) == "Cc" for c in value):
+            raise ValueError("control characters are not allowed")
+        if json_bytes(value) > max_bytes:
+            raise ValueError(f"at most {max_bytes} bytes once encoded")
+        return value
+
+    return AfterValidator(check)
+
+
+# The audit filter's two free-text fields, bounded so the largest accepted filter still fits
+# MAX_PARAMS_BYTES (``tests/test_admin_audit.py`` measures the worst case).
+FilterEmail = Annotated[str, StringConstraints(min_length=1, max_length=320), bounded_text(640)]
+FilterTargetId = Annotated[str, StringConstraints(min_length=1, max_length=100), bounded_text(200)]
+
+
 class AuditListParams(Params):
     """The audit log's filter (AD4 #222, ``classbeat.admin.audit_routes``): ids, codes, the
     period and the page; ``actor_email`` is an admin's email, as ``actor_email`` itself."""
 
     actor_id: UUID | None = None
-    actor_email: Annotated[str, StringConstraints(max_length=320)] | None = None
+    actor_email: FilterEmail | None = None
     action: Annotated[str, StringConstraints(pattern=r"^[a-z][a-z0-9_.]{0,59}$")] | None = None
     target_user_id: UUID | None = None
     target_kind: Annotated[str, StringConstraints(pattern=r"^[a-z][a-z0-9_]{0,39}$")] | None = None
-    target_id: Annotated[str, StringConstraints(max_length=100)] | None = None
+    target_id: FilterTargetId | None = None
     outcome: Literal["ok", "refused", "error"] | None = None
     since: AwareDatetime | None = None
     until: AwareDatetime | None = None
@@ -90,6 +119,8 @@ def checked_params(action: str, params: Mapping[str, Any] | None) -> str:
     encoded = json.dumps(value.model_dump(mode="json"), separators=(",", ":"), sort_keys=True)
     if len(encoded.encode()) > MAX_PARAMS_BYTES:
         raise UnknownAction(f"params too large for admin action {action!r}")
+    if "\\u0000" in encoded:  # jsonb refuses NUL: the row could never be written
+        raise UnknownAction(f"params rejected for admin action {action!r}")
     return encoded
 
 
