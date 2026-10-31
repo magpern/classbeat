@@ -34,5 +34,6 @@ only a privacy policy). The owner may find the end-user terms in the app's setti
 | M2 | Is there a partner or developer programme, documented API, or rate limits we should respect? |
 | M3 | Would you object to a later paid service doing this, and on what terms? |
 | M4 | Where are the current end-user terms published? |
+| M5 | The app offers a QR-code sign-in. May a third-party website use it, so a user can connect their MOWL account by scanning a code in the app and the site never sees their password? Would it hand the site the same kind of access token as the email-and-password sign-in, what is its lifetime, and can the user revoke it? Not explored yet: how the flow works is unknown, and finding out needs a passive capture with the owner's own account, which needs the owner's authorization for that session. |
 
 Swedebeat questions wait until its features are planned (they stay behind a disabled flag).
