@@ -32,6 +32,7 @@ A reverse proxy in front of the app needs the same cap (Caddy: ``request_body ma
 SWAG: ``client_max_body_size``): docs/runbooks/vps-deploy.md, "Request body size".
 """
 
+import contextlib
 import logging
 import time
 from collections.abc import Mapping
@@ -39,7 +40,7 @@ from typing import Any, Final
 
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
-from classbeat.auth import client_ip
+from classbeat.auth import bucket_ip, client_ip
 from classbeat.headers import CONTENT_SECURITY_POLICY, REFERRER_POLICY
 
 DEFAULT_BODY_LIMIT: Final = 64 * 1024
@@ -50,9 +51,11 @@ DEFERRED_PREFIXES: Final = ("/api/admin",)
 BODY_TOO_LARGE: Final = "body_too_large"
 logger = logging.getLogger(__name__)
 # One log line per client address per this many seconds (a flood of oversized bodies must not flood
-# the log); the line after a quiet spell says how many it stood for. At most ``_LOG_TRACKED``
-# addresses are remembered (the table is cleared when full: a flood from many addresses logs more,
-# never grows without bound).
+# the log); the line after a quiet spell says how many it stood for. An IPv4 address is its own key,
+# an IPv6 one is keyed by its /64 (``auth.bucket_ip``: one holder of a /64 owns 2**64 addresses and
+# must not log once per address or flush the table); the line still names the address itself. At
+# most ``_LOG_TRACKED`` keys are remembered (the table is cleared when full: a flood from many
+# addresses logs more, never grows without bound).
 LOG_INTERVAL_SECONDS: Final = 10.0
 _LOG_TRACKED: Final = 4096
 _logged: dict[str, tuple[float, int]] = {}
@@ -121,14 +124,15 @@ def _log_refusal(scope: Scope) -> None:
     """A rate-limited line for a refused body: method, path without the query string, status and
     client address. Never the body, a header, the query or a cookie."""
     ip = _client(scope)
+    key = bucket_ip(ip)
     now = time.monotonic()
-    last, suppressed = _logged.get(ip, (-LOG_INTERVAL_SECONDS, 0))
+    last, suppressed = _logged.get(key, (-LOG_INTERVAL_SECONDS, 0))
     if now - last < LOG_INTERVAL_SECONDS:
-        _logged[ip] = (last, suppressed + 1)
+        _logged[key] = (last, suppressed + 1)
         return
     if len(_logged) >= _LOG_TRACKED:
         _logged.clear()
-    _logged[ip] = (now, 0)
+    _logged[key] = (now, 0)
     logger.warning(
         "request body refused",
         extra={
@@ -142,7 +146,10 @@ def _log_refusal(scope: Scope) -> None:
 
 
 async def _refuse(scope: Scope, send: Send) -> None:
-    _log_refusal(scope)
+    # A handler or filter that raises (a full disk, a broken sink) must never turn the 413 into a
+    # 500: the refusal is the contract, the line is best effort.
+    with contextlib.suppress(Exception):
+        _log_refusal(scope)
     await send(
         {
             "type": "http.response.start",

@@ -504,6 +504,58 @@ async def test_the_log_line_is_rate_limited_per_address_and_counts_what_it_skipp
     assert (last.client_ip, last.suppressed) == ("203.0.113.9", 4)  # type: ignore[attr-defined]
 
 
+async def test_an_ipv6_address_is_keyed_by_its_slash_64(
+    caplog: pytest.LogCaptureFixture, clock: type[Clock]
+) -> None:
+    """One holder of a /64 logs once per interval, not once per address, and cannot flush the
+    table with fresh addresses; another /64 has its own line, and the line names the address."""
+    app = BodyLimit(Probe())
+    for n in range(5):
+        await run(app, hostile_scope(f"2001:db8:1:2::{n:x}"), [SECRET_BODY])
+    assert len(bodylimit._logged) == 1  # pyright: ignore[reportPrivateUsage]
+    (first,) = refusal_records(caplog)
+    assert first.client_ip == "2001:db8:1:2::"  # type: ignore[attr-defined]
+    await run(app, hostile_scope("2001:db8:1:3::1"), [SECRET_BODY])
+    assert len(refusal_records(caplog)) == 2
+    clock.now += bodylimit.LOG_INTERVAL_SECONDS
+    await run(app, hostile_scope("2001:db8:1:2:ffff::9"), [SECRET_BODY])
+    last = refusal_records(caplog)[-1]
+    assert (last.client_ip, last.suppressed) == ("2001:db8:1:2:ffff::9", 4)  # type: ignore[attr-defined]
+
+
+class RaisingHandler(logging.Handler):
+    def emit(self, record: logging.LogRecord) -> None:
+        raise RuntimeError("the sink is broken")
+
+
+class RaisingFilter(logging.Filter):
+    def filter(self, record: logging.LogRecord) -> bool:
+        raise RuntimeError("the filter is broken")
+
+
+@pytest.mark.parametrize("broken", ["handler", "filter"])
+@pytest.mark.parametrize("how", ["declared", "chunked", "streamed"])
+async def test_a_failing_log_call_never_turns_the_413_into_a_500(
+    broken: str, how: str, monkeypatch: pytest.MonkeyPatch, clock: type[Clock]
+) -> None:
+    log = logging.getLogger(bodylimit.__name__)
+    monkeypatch.setattr(log, "propagate", False)
+    monkeypatch.setattr(log, "handlers", [])
+    monkeypatch.setattr(log, "filters", [])
+    if broken == "handler":
+        log.addHandler(RaisingHandler())
+    else:
+        log.addFilter(RaisingFilter())
+        log.addHandler(logging.NullHandler())
+    scope = hostile_scope()
+    if how == "chunked":
+        scope["headers"] = [(b"transfer-encoding", b"chunked")]
+    if how == "streamed":
+        scope["headers"] = []
+    sent, _ = await run(BodyLimit(Probe()), scope, [b"x" * 40_000] * 3)
+    refused(sent)
+
+
 async def test_the_table_of_remembered_addresses_is_bounded(
     monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture, clock: type[Clock]
 ) -> None:
