@@ -15,7 +15,7 @@ from dataclasses import dataclass, field
 from typing import Annotated, Any, Final
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, StringConstraints, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints, ValidationError
 
 logger = logging.getLogger(__name__)
 
@@ -41,10 +41,40 @@ class RequestParams(Params):
     route: Annotated[str, StringConstraints(pattern=ROUTE_PATTERN)]
 
 
+class NoParams(Params):
+    """An action whose target says everything (a read or write of one user or row)."""
+
+
+class UserListParams(Params):
+    """The Users list's filter (AD1 #218): an email prefix (never a full credential) and paging."""
+
+    q: Annotated[str, StringConstraints(max_length=254)] | None = None
+    offset: Annotated[int, Field(ge=0, le=10_000)] = 0
+    limit: Annotated[int, Field(ge=1, le=100)] = 50
+
+
+class GrantParams(Params):
+    """An entitlement grant (AD1 #218): what was granted, and whether a note was given (the note
+    itself stays on the entitlement)."""
+
+    plan_id: Annotated[str, StringConstraints(pattern=r"^[a-z_]{1,30}$")] | None = None
+    features: Annotated[list[Code], Field(max_length=10)] = []
+    ends_at: Annotated[str, StringConstraints(max_length=40)] | None = None
+    note: bool = False
+
+
 # Action code -> its params model. ``admin.request`` is the gate's own (ADR 0011 section 6:
 # mfa_required, stepup_required and rate_limited of an admin).
 ACTIONS: dict[str, type[Params]] = {
     "admin.request": RequestParams,
+    # Users (AD1 #218, classbeat.admin.users).
+    "user.list": UserListParams,
+    "user.read": NoParams,
+    "user.grant": GrantParams,
+    "user.revoke": NoParams,
+    "user.disable": NoParams,
+    "user.enable": NoParams,
+    "user.delete": NoParams,
 }
 
 
