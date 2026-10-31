@@ -1,0 +1,13 @@
+{
+ "name": "std_hard_15",
+ "about": "Hard 15 minutes with one sprint.",
+ "brief": {
+  "length_min": 15,
+  "intensity": "hard",
+  "sprints": 1
+ },
+ "music": {
+  "tracks": 5
+ },
+ "expect": {}
+}

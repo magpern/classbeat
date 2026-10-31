@@ -169,7 +169,9 @@ def build(
     music_map: dict[str, Any],
     step: MusicStep,
     *,
-    origin: Literal["design_draft", "revise_draft", "design_with_songs"] = "design_draft",
+    origin: Literal[
+        "design_draft", "revise_draft", "design_with_songs", "revise_songs"
+    ] = "design_draft",
     base_revision_id: UUID | None = None,
     base_hash: bytes | None = None,
     request_message_id: UUID | None = None,

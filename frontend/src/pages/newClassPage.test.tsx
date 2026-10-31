@@ -156,6 +156,31 @@ describe('the new-class form', () => {
     expect(document.body).not.toHaveTextContent(why)
   })
 
+  it('words a quota refusal with the numbers and the period end', async () => {
+    fakeApi({
+      ...READY,
+      'POST /api/jobs': () =>
+        json(
+          { detail: { reason: 'quota', quota: 'classes', limit: 3, used: 3, period_end: '2026-11-01T00:00:00Z', plan: 'free' } },
+          409,
+        ),
+    })
+    renderAt('/classes/new')
+    await fill()
+    fireEvent.click(screen.getByRole('button', { name: 'Design the class' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'You have used your 3 classes for October. More from 1 November.',
+    )
+  })
+
+  it('words busy with the limit of the plan', async () => {
+    fakeApi({ ...READY, 'POST /api/jobs': () => json({ detail: { reason: 'busy', limit: 2 } }, 429) })
+    renderAt('/classes/new')
+    await fill()
+    fireEvent.click(screen.getByRole('button', { name: 'Design the class' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('allows 2 designs at a time')
+  })
+
   it('asks the user to connect MOWL first', async () => {
     fakeApi({ ...SESSION_ROUTES })
     renderAt('/classes/new')

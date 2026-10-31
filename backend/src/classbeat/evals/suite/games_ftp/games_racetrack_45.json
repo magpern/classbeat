@@ -1,0 +1,18 @@
+{
+ "name": "games_racetrack_45",
+ "about": "Moderate 45 minutes with a Racetrack game.",
+ "brief": {
+  "length_min": 45,
+  "intensity": "moderate",
+  "climbs": 1,
+  "text": "Include a Racetrack game for the team."
+ },
+ "music": {
+  "tracks": 13
+ },
+ "expect": {
+  "games": [
+   "racetrack"
+  ]
+ }
+}
