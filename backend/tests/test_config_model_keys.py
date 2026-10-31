@@ -144,6 +144,24 @@ def test_the_variable_is_named_never_its_value(monkeypatch: pytest.MonkeyPatch, 
     assert "planted-secret-value" not in str(problems)
 
 
+@pytest.mark.parametrize(
+    "name",
+    ["openai_api_key", "Anthropic_Log", "deepseek_base_url", "sslkeylogfile", "OpenAI_Org_Id"],
+)
+def test_a_name_in_any_case_is_refused(name: str) -> None:
+    """Linux environment names are case-sensitive and the SDKs only read upper case, but a name
+    in another case is refused too (a mistyped or tool-written variable is a leak path all the
+    same; the #238 review). The environment is passed in, so this holds on Windows as well."""
+    assert model_sdk_environment_problems({name: "planted", "PATH": "/bin"}) == [name]
+
+
+def test_the_refusal_reads_the_process_environment_by_default(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("OPENAI_LOG", "debug")
+    assert model_sdk_environment_problems() == ["OPENAI_LOG"]
+
+
 @pytest.mark.parametrize("name", ["CLASSBEAT_DEEPSEEK_ENABLED", "MY_OPENAI_NOTE", "NOT_ANTHROPIC"])
 def test_other_variables_are_not_refused(monkeypatch: pytest.MonkeyPatch, name: str) -> None:
     monkeypatch.setenv(name, "x")

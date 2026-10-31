@@ -3,6 +3,7 @@
 import ipaddress
 import os
 import re
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Any, Literal
 from urllib.parse import urlsplit
@@ -463,11 +464,12 @@ MODEL_SDK_REFUSED_PREFIXES = ("ANTHROPIC_", "OPENAI_", "DEEPSEEK_")
 MODEL_SDK_REFUSED_ENVIRONMENT = ("SSLKEYLOGFILE",)
 
 
-def model_sdk_environment_problems() -> list[str]:
-    """The names (never the values) of the refused model SDK variables that are set."""
+def model_sdk_environment_problems(environ: Mapping[str, str] | None = None) -> list[str]:
+    """The names (never the values) of the refused model SDK variables that are set, in
+    ``environ`` (the process environment by default), whatever their case."""
     return sorted(
         name
-        for name in os.environ
+        for name in (os.environ if environ is None else environ)
         if name.upper().startswith(MODEL_SDK_REFUSED_PREFIXES)
         or name.upper() in MODEL_SDK_REFUSED_ENVIRONMENT
     )

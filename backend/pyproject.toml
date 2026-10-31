@@ -16,6 +16,9 @@ dependencies = [
     # The domain library (ADR 0001): v0.7.0 built from its tag WITHOUT the bundled Swedebeat app
     # key (scripts/build-mowl-wheel.sh; threat model, accepted risks). Pinned by uv.lock's hash.
     "mowl-workouts==0.7.0",
+    # ADR 0012 section 3: 2.54.0 is the last release on httpx (3.x requires httpx2, which the
+    # egress allowlist is not built on); the `httpx2` extra is never installed. Review with #120.
+    "openai==2.54.0",
     "psycopg[binary]>=3.2",
     "pydantic>=2.10",
     "pydantic-settings>=2.7",
