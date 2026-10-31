@@ -291,6 +291,9 @@ The admin area (ADR 0011 section 5): `CLASSBEAT_MAINT_DATABASE_URL` (compose set
 `classbeat_maint` from `docker/postgres/maint/`) connect the admin routes as that role; without either
 they answer 503 `admin_unavailable` and the rest of the app works, and web refuses to start when the
 role is not exactly `classbeat_maint` (guard 11, `tests/test_maint_privileges.py`, checks its grants).
+Admin Codes (`classbeat.admin.codes`, AD2): `/api/admin/invites` and `/api/admin/redeem-codes` list, create
+and `.../{id}/disable`; a new invite or code is in its create response only (never a list, audit row or log),
+disabling an invite expires it, and the invite statements live in `classbeat.auth` (guard 8).
 The model (ADR 0006 section 9): `CLASSBEAT_MODEL_PROVIDER` is `anthropic` (the default) or `fake`
 (compose takes `MODEL_PROVIDER` from `.env`, `fake` in `.env.example`, so the dev stack and CI never
 call a model). `anthropic` needs the `anthropic_api_key` secret file, mounted on the **worker only**
