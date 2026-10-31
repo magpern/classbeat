@@ -39,7 +39,7 @@ from classbeat.songs import config
 from classbeat.songs.admit import admit, approve_check
 from classbeat.songs.inputs import DesignWithSongsInput
 from classbeat.songs.phase2 import PHASE_TWO, run_phase_two
-from classbeat.songs.pick import run_phase_one
+from classbeat.songs.pick import SeedSpec, run_phase_one
 
 KIND: Final = "design_with_songs"
 PHASE_ONE: Final = ("pool_search", "pool_write", "pool_analyse", "choose")
@@ -79,6 +79,9 @@ async def run(job_run: JobRun) -> Outcome:
     return await run_phase_one(
         job_run,
         given,
+        brief=given.brief,
+        seed=SeedSpec.of(given.seed),
+        origin=KIND,
         keyring=runtime.keyring,
         provider=provider,
         agent=runtime.agent,

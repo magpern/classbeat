@@ -369,6 +369,36 @@ user's requests along the parent chain and **a fact that the songs changed** (th
 intervals to the new music). A `revise_draft` request that asks for other songs gets the stage prompt's
 instruction to say that "Change songs" is the way and to change nothing else.
 
+*Contract, issue SJ3 (2026-10-31).* `POST /api/jobs` with `kind: "revise_songs"` takes one of
+two inputs (both with `mowl_connection_id` and `spotify_connection_id`):
+
+- **pick** (Change songs): `{class_id, base_revision_id, mode: "pick", replace: [int] | "all",
+  request}`. `replace` is positions in the base draft's picked songs (0-based, each once, at least
+  one) or `"all"`; `request` is 1 to 2000 visible characters. The user's message row is inserted
+  with the job. Phase 1 searches with the class's stored brief whose free text leads with the
+  request (cut to the brief's 2000 characters).
+- **resume** (Create the playlist again): `{class_id, base_revision_id, mode: "resume", resume:
+  {song_list_revision_id}}`, with **no** `replace` and **no** `request` (a 422 if either is sent,
+  empty or not): the resume runs phase 2 for the list a `revise_songs` job approved, with that
+  job's request (its message row; no new one). `base_revision_id` is the class's current revision
+  and must be the approved job's base (`stale_base` otherwise).
+
+Refusals (409): `song_picking_off`, `invalid_input`, `stale_base`, `revision_limit`,
+`not_song_picked`, then for a pick `chat_full`, `not_connected`, `consent_missing`, `pool_busy`,
+`invalid_input` (a `replace` slot outside the list), and for a resume `not_connected`,
+`receipt_invalid`, `stale_base`, `account_changed`, `write_unresolved`. A receipt is resumed by the
+kind that approved it: a `design_with_songs` resume names a list a `design_with_songs` job
+approved, a `revise_songs` resume one a `revise_songs` job approved; and "Ask for changes" (`seed`)
+seeds `design_with_songs` only from a list `design_with_songs` made. The final transaction moves
+`current_revision_id` and `music_source` (the new final playlist) together by compare-and-set from
+the base; the draft counts as a chat revision (`revision_limit`).
+
+*The stored brief, issue SJ3 (2026-10-31).* `GET /api/classes/{id}` returns `brief`: the class's
+stored brief (`classes.brief`, set with its first design), or before that the brief of the class's
+newest `design_with_songs` job; `null` when neither exists. The owner's own rows only (the route's
+row security and `owner_id`). The page seeds Ask for changes and a `design_with_songs` resume from
+it instead of from browser storage; the job inputs keep `brief` as in §4.
+
 **Music the user already has** (a MOWL playlist, a Swedebeat mix) skips all of this: `design_draft`
 is unchanged, needs no Spotify connection, and `song_picking` being off affects nothing there.
 
@@ -442,7 +472,7 @@ token in any body except where noted; ADR 0009 §2 has the connection routes):
 |---|---|
 | `POST /api/jobs` with `design_with_songs`, `revise_songs` | §4, §6; 409 reasons `song_picking_off`, `consent_missing`, `pool_busy`, `class_busy`, `stale_base`, `revision_limit`, `chat_full`, `not_song_picked`, `invalid_input`, `not_connected` (and `hash_mismatch`-style `receipt_invalid` for resume) |
 | `POST /api/jobs/{id}/approve`, `/cancel` | unchanged shape; new refusal `account_changed` |
-| `GET /api/classes/{id}` | gains `songs`: `{state: none|waiting|approved, job_id, revision_id, content_hash, expires_at}` and, for the current draft, `playlist: {name, link?}` (the owner's own link) |
+| `GET /api/classes/{id}` | gains `songs`: `{state: none|waiting|approved, job_id, revision_id, content_hash, expires_at}` and, for the current draft, `playlist: {name, link?}` (the owner's own link); and `brief` (§6, SJ3) |
 | `GET /api/classes/{id}/revisions/{rid}` | for a `song_list`: the songs as in §5 without ids, `total_sec`, `target_sec`, `new` marks, the note as plain text |
 | `GET /api/jobs/{id}` | the existing state; failures carry the category and the plain sentence (ADR 0009 §8 and below) |
 | `/api/operations/...` | unchanged; the final-playlist kinds appear with `actionable_at` |
