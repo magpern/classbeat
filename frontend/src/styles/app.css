@@ -120,3 +120,35 @@ body {
   letter-spacing: -0.015em;
   text-wrap: balance;
 }
+
+/* The official Spotify logo (Spotify's Design guidelines): the black file on light surfaces, the
+   white file on dark ones; never recoloured. Clear space is half the icon height, and the logo is
+   never smaller than 70px wide. */
+.spotify-attribution {
+  margin: 0;
+  padding: 0.75rem 0;
+  line-height: 0;
+}
+.spotify-attribution img {
+  display: block;
+  width: 5.5rem;
+  min-width: 70px;
+  height: auto;
+}
+.spotify-attribution__light {
+  display: none !important;
+}
+:root[data-theme='light'] .spotify-attribution__light {
+  display: block !important;
+}
+:root[data-theme='light'] .spotify-attribution__dark {
+  display: none !important;
+}
+@media (prefers-color-scheme: light) {
+  :root[data-theme='system'] .spotify-attribution__light {
+    display: block !important;
+  }
+  :root[data-theme='system'] .spotify-attribution__dark {
+    display: none !important;
+  }
+}

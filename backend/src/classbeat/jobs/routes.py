@@ -42,7 +42,7 @@ import json
 import re
 from collections.abc import Mapping
 from dataclasses import asdict
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Annotated, Any
 from uuid import UUID
 
@@ -59,7 +59,7 @@ from classbeat.jobs.credits import CreditLedger
 from classbeat.jobs.inputs import JobInput, jsonb_size
 from classbeat.jobs.kinds import KIND_NAME, KINDS, JobKind, KindRegistry, Refused
 from classbeat.jobs.progress import read_revision
-from classbeat.jobs.sentences import failure_sentence
+from classbeat.jobs.sentences import job_sentence
 from classbeat.jobs.user import Admission, CreateAdmit, JobLimitPolicy, NewJob
 from classbeat.usage import job_usage
 
@@ -129,7 +129,14 @@ class JobOut(BaseModel):
     @classmethod
     def of(cls, view: service.JobView) -> "JobOut":
         out = cls.model_validate(view, from_attributes=True)
-        out.error_message = failure_sentence(view.error_category)
+        out.error_message = job_sentence(
+            view.state,
+            view.error_category,
+            view.spotify_failure,
+            view.spotify_retry_after,
+            view.available_at,
+            datetime.now(UTC),
+        )
         return out
 
 

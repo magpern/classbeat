@@ -34,7 +34,8 @@ INPUT_SIZE = "jobs_input"
 _VIEW = text(
     "SELECT id, kind, state, stage, class_id, cancel_requested_at IS NOT NULL AS "
     "cancel_requested, approval_revision_id, expires_at, approved_at, error_category, "
-    "created_at, updated_at, finished_at FROM jobs WHERE id = :job_id AND owner_id = :owner_id"
+    "created_at, updated_at, finished_at, available_at, spotify_failure, spotify_retry_after "
+    "FROM jobs WHERE id = :job_id AND owner_id = :owner_id"
 )
 
 
@@ -55,6 +56,10 @@ class JobView:
     created_at: datetime
     updated_at: datetime
     finished_at: datetime | None
+    # For the page's sentence only (ADR 0009 section 8), never shown as such.
+    available_at: datetime
+    spotify_failure: str | None
+    spotify_retry_after: int | None
 
 
 async def _view(db: AsyncSession, ctx: UserContext, job_id: UUID) -> JobView | None:

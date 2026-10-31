@@ -1,5 +1,6 @@
 import { get, post } from './client'
 import { count, flag, list, object, optionalCount, optionalText, text } from './decode'
+import { isTrackLink } from './classes'
 import { decodeJob, type Brief, type Job } from './jobs'
 
 // Song picking (ADR 0008 sections 4 to 6 and 9): the song list a job waits on, the approval, and
@@ -27,6 +28,8 @@ export interface Song {
   isNew: boolean
   /** The album cover URL, shown only through `CoverArt` (ADR 0013 section 9), or null. */
   cover: string | null
+  /** The server-built link back to Spotify (ADR 0008 section 9), only when it is a track link. */
+  openSpotify: string | null
 }
 
 export interface SongList {
@@ -46,6 +49,11 @@ export interface SongList {
   note: string
 }
 
+/** A link from the API is kept only when it is a Spotify track link. */
+function trackLink(link: string | null): string | null {
+  return link !== null && isTrackLink(link) ? link : null
+}
+
 function decodeSong(value: unknown): Song {
   const item = object(value, 'song')
   return {
@@ -58,6 +66,7 @@ function decodeSong(value: unknown): Song {
     isNew: flag(item, 'new'),
     // Older lists (v: 1) have no cover; CoverArt checks the host again before it shows one.
     cover: optionalText(item, 'cover'),
+    openSpotify: trackLink(optionalText(item, 'open_spotify')),
   }
 }
 
