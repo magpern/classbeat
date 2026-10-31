@@ -35,7 +35,7 @@ URIs, MOWL ids (``classbeat.agent.model_input``; the stages see refs, indexes an
 """
 
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any, Literal
 from uuid import UUID
 
@@ -109,13 +109,7 @@ def stage_config(agent: AgentConfig, config: SongConfig, *, turns: int, calls: i
         job_cost_micros=config.cost_micros,
         turn_output_reserve=agent.limits.turn_output_reserve,
     )
-    return AgentConfig(
-        model=agent.model,
-        effort=agent.effort,
-        max_tokens=agent.max_tokens,
-        limits=limits,
-        prices=agent.prices,
-    )
+    return replace(agent, limits=limits)  # the model, effort and route stay the group's
 
 
 async def _seeded(run: JobRun, seed: SeedSpec | None) -> Seeded | None:

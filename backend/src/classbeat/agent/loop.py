@@ -50,11 +50,17 @@ REMINDER: Final = "Finish by calling {tool} with the final draft."
 
 @dataclass(frozen=True, slots=True)
 class AgentConfig:
+    """``route_key`` and ``eval_result_id``: the model route the stage's provider, model and
+    effort came from (ADR 0012 section 5), recorded with every run; ``None`` for the bootstrap
+    choice, ``fake`` and anything outside a job."""
+
     model: str = "claude-opus-5-5"
     effort: str = "medium"
     max_tokens: int = 32_000
     limits: Limits = field(default_factory=Limits)
     prices: PriceTable = DEFAULT_PRICES
+    route_key: str | None = None
+    eval_result_id: UUID | None = None
 
     @classmethod
     def from_settings(
@@ -76,6 +82,8 @@ class RunInfo:
     model: str
     effort: str
     prompt_version: str
+    route_key: str | None = None
+    eval_result_id: UUID | None = None
 
 
 @dataclass
@@ -148,7 +156,15 @@ async def run_stage(
         max_tokens=config.max_tokens,
         final_tool=stage.final_tool,
     )
-    info = RunInfo(stage.name, provider.name, config.model, config.effort, stage.prompt_version)
+    info = RunInfo(
+        stage.name,
+        provider.name,
+        config.model,
+        config.effort,
+        stage.prompt_version,
+        config.route_key,
+        config.eval_result_id,
+    )
     run_id, spent_before = await host.begin(info)
     counters = Counters()
     try:

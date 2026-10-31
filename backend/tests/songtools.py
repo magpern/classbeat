@@ -33,7 +33,7 @@ from mowl import library
 from sqlalchemy import text
 from sqlalchemy.engine import Connection
 
-from agentfake import CONFIG
+from agentfake import CONFIG, FactoryModels
 from authtools import ORIGIN
 from classbeat import connections, design, songs
 from classbeat.agent.providers.fake import FakeProvider, FakeScript
@@ -452,7 +452,9 @@ async def songenv(
     made = SongEnv(spot, spotify_admin, mowl)
     previous = common.runtime()
     common.configure(common.Runtime(http=spot.http))
-    design.configure(Runtime(keyring=spot.ring, provider=made.new_provider, agent=CONFIG))
+    design.configure(
+        Runtime(keyring=spot.ring, models=FactoryModels(made.new_provider), agent=CONFIG)
+    )
     songs.configure(songs.SongConfig(enabled=True, sync_wait_seconds=0.3))
     try:
         yield made

@@ -9,7 +9,9 @@
   413 ``too_large`` for a body over ``BODY_MAX_BYTES`` (also on approve). A kind with ``admit``
   (``classbeat.jobs.kinds``) may refuse with its own reason (409 ``{reason}`` and whole-number
   counts, unless the reason has a status above); an input naming one of the kind's server fields
-  is 422 ``invalid_input``: only ``admit`` sets those.
+  is 422 ``invalid_input``: only ``admit`` sets those. So is one naming a field every input of the
+  kind's model leaves to the server (``JobInput.SERVER_FIELDS``: a model job's ``route_key``, set at
+  creation, ADR 0012 section 5).
 - ``GET /api/jobs/{id}``: the job's state.
 - ``GET /api/jobs/{id}/revision``: the draft the job stored, for the draft summary: 409
   ``no_revision`` while it has none. Answers only ``{revision_id, number, kind, content,
@@ -232,9 +234,10 @@ async def create_job(
     except ValidationError as error:
         return _invalid(error)
     kind = kinds.get(body.kind)
-    if kind is None or not issubclass(kind.input_model, JobInput):
+    model = None if kind is None else kind.input_model
+    if kind is None or model is None or not issubclass(model, JobInput):
         return _refuse("unknown_kind", 422)
-    if kind.server_fields & body.input.keys():
+    if (kind.server_fields | model.SERVER_FIELDS) & body.input.keys():
         return _invalid()  # set by the server only; never echoed
     try:
         parsed = kind.parse_input(body.input)

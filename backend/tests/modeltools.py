@@ -20,7 +20,11 @@ from classbeat.cli import add_subcommands
 from classbeat.config import Settings
 from classbeat.egress import MODEL_HOSTS
 from classbeat.models.cli import run
-from classbeat.models.versions import running_prompt_versions, running_suite_version
+from classbeat.models.versions import (
+    running_manifest_digest,
+    running_prompt_versions,
+    running_suite_version,
+)
 
 ZEROS = "0" * 64
 OPUS = "claude-opus-5-5"
@@ -73,8 +77,10 @@ def add_result(
     prompt_versions: dict[str, str] | None = None,
     age_minutes: float = 0,
     cost: int = 120_000,
+    manifest_digest: str | None = None,
 ) -> uuid.UUID:
-    """A result row inserted as the superuser, ``age_minutes`` before now (setup only)."""
+    """A result row inserted as the superuser, ``age_minutes`` before now (setup only); the
+    running suite's version and digest unless given."""
     result_id = uuid.uuid4()
     verdict: dict[str, Any] = {"passed": passed, "status": "passed" if passed else "failed"}
     admin.execute(
@@ -83,7 +89,7 @@ def add_result(
             "manifest_digest, provider, model, effort, stage_group, prompt_versions, "
             "classbeat_version, results_sha256, verdict, passed, total_cost_micros, "
             "authorization_note) VALUES (:id, :run, :at, :suite, :digest, :provider, :model, "
-            ":effort, :group, CAST(:prompts AS jsonb), '0.3.0', :digest, CAST(:verdict AS jsonb), "
+            ":effort, :group, CAST(:prompts AS jsonb), '0.3.0', :sha, CAST(:verdict AS jsonb), "
             ":passed, :cost, 'owner go-ahead 2026-10-31')"
         ),
         {
@@ -91,7 +97,8 @@ def add_result(
             "run": uuid.uuid4(),
             "at": datetime.now(UTC) - timedelta(minutes=age_minutes),
             "suite": running_suite_version() if suite_version is None else suite_version,
-            "digest": ZEROS,
+            "digest": running_manifest_digest() if manifest_digest is None else manifest_digest,
+            "sha": ZEROS,
             "provider": provider,
             "model": model,
             "effort": effort,
@@ -108,7 +115,8 @@ def add_result(
 
 
 def clear_gate(admin: Connection) -> None:
-    admin.execute(text("TRUNCATE model_routes, model_eval_results"))
+    # CASCADE: ``agent_runs.eval_result_id`` (migration 0010) references the results.
+    admin.execute(text("TRUNCATE model_routes, model_eval_results CASCADE"))
 
 
 def settings(app_url: str, **overrides: Any) -> Settings:

@@ -17,6 +17,7 @@ from typing import Any
 import pytest
 from mowl import music, spotify, workout
 
+from agentfake import FactoryModels
 from classbeat import design
 from classbeat.agent import Provenance, WorkoutDraft
 from classbeat.design import Runtime
@@ -220,7 +221,11 @@ async def test_a_provider_that_cannot_be_built_is_model_config_before_any_call(
         raise RuntimeError("no provider")
 
     design.configure(
-        Runtime(keyring=denv.ops.keyring, provider=unavailable, agent=denv.runtime().agent)
+        Runtime(
+            keyring=denv.ops.keyring,
+            models=FactoryModels(unavailable),
+            agent=denv.runtime().agent,
+        )
     )
     owner, conn = await owner_with_mowl(denv)
     job_id = denv.job(owner, conn)

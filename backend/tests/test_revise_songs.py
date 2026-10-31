@@ -8,8 +8,10 @@ from uuid import UUID
 
 import pytest
 
+from agentfake import FactoryModels
 from classbeat.agent import model_input
 from classbeat.agent.revise import SYSTEM_PROMPT
+from classbeat.design import kind as design
 from classbeat.design import limits as design_limits
 from classbeat.songs import pick
 from revisesongtools import (
@@ -103,6 +105,10 @@ async def test_changing_one_song_gives_a_new_playlist_and_a_revised_draft(
     # Usage per job: each stage's agent run is the job's own.
     stages = songenv.sql("SELECT stage FROM agent_runs WHERE job_id = :id", id=job_id).all()
     assert sorted(s.stage for s in stages) == ["choose_songs", "pick_pool", "revise"]
+    # The song change's pick is the songs group, its revise the design group (one each).
+    models = design.current_runtime().models  # pyright: ignore[reportOptionalMemberAccess]
+    assert isinstance(models, FactoryModels)
+    assert models.asked[-2:] == [("default", "songs"), ("default", "design")]
     assert songenv.row(job_id).credit_state == "none"
     # The model was told the songs changed and never sent an id.
     sent = json.dumps([[str(t) for t in p.sent] for p in songenv.providers[-1:]])

@@ -17,7 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 
 from classbeat.agent import catalog
 from classbeat.agent.catalog import CatalogModel
-from classbeat.agent.providers import AnthropicProvider, ProviderUnavailable
+from classbeat.agent.providers import AnthropicProvider, OpenAIProvider, ProviderUnavailable
 from classbeat.config import Settings
 from classbeat.db import system_session
 from classbeat.evals.gate import CategoryVerdict, GroupVerdict, Status
@@ -39,6 +39,7 @@ from classbeat.models.store import ResultInvalid, record_result
 from classbeat.models.versions import (
     GROUP_STAGES,
     all_prompt_versions,
+    running_manifest_digest,
     running_prompt_versions,
     running_suite_version,
 )
@@ -189,6 +190,8 @@ def test_the_suite_version_is_the_manifests_without_loading_the_eval_package() -
     from classbeat.evals.suite import load_suite
 
     assert running_suite_version() == load_suite().manifest.suite_version
+    # The stored digest stands for the running suite: load_suite refuses one that is not.
+    assert running_manifest_digest() == load_suite().manifest.digest
 
 
 def test_the_web_side_of_the_gate_loads_no_provider_no_sdk_and_no_eval_code() -> None:
@@ -311,6 +314,9 @@ async def test_set_route_needs_a_current_passing_newest_result(
     missing = {"design": running_prompt_versions("design")["design"]}
     add_result(admin, prompt_versions=missing, age_minutes=4)
     assert await refused(factory, web, "anthropic", OPUS, "medium") == "prompt_versions"
+    # A newer pass recorded on another suite of the same version (#215: the manifest digest).
+    add_result(admin, manifest_digest="c" * 64, age_minutes=3)
+    assert await refused(factory, web, "anthropic", OPUS, "medium") == "manifest_digest"
     # The songs group's prompts do not matter to a design result.
     extra = {**running_prompt_versions("design"), "pick_pool": "e" * 64}
     good = add_result(admin, prompt_versions=extra, age_minutes=1)
@@ -512,6 +518,40 @@ async def test_a_stale_route_is_used_and_flagged_with_each_reason(
     with monkeypatch.context() as m:
         m.setattr(routes_module, "running_suite_version", lambda: 99)
         assert (await resolve(factory, s)).stale == ("suite_version",)
+    # The suite's cases changed under the same version (#215): only the manifest digest.
+    with monkeypatch.context() as m:
+        m.setattr(routes_module, "running_manifest_digest", lambda: "c" * 64)
+        assert (await resolve(factory, s)).stale == ("manifest_digest",)
+        assert (await _routes(factory))[0].stale == ("manifest_digest",)
+        assert await refused(factory, s, "anthropic", OPUS, "medium") == "manifest_digest"
+
+
+async def test_the_newest_result_is_deterministic_within_one_transaction(
+    admin: Connection, factory: Factory, app_database_url: str, kek_dir: Path
+) -> None:
+    """Two results recorded in one transaction share ``recorded_at`` (``now()``): the later
+    insert is the newer one (``seq``, migration 0010), whatever their random ids (#215)."""
+    s = worker(app_database_url, kek_dir, "anthropic")
+    for _ in range(6):  # uuid4 ids: a random order would show within a few rounds
+        clear_gate(admin)
+        async with system_session(factory) as db:
+            for status in ("passed", "failed"):
+                await record_result(db, **_values(verdict=verdict(status)))
+        assert await refused(factory, s, "anthropic", OPUS, "medium") == "result_failed"
+        async with system_session(factory) as db:
+            [newer, older] = await list_results(db)
+        assert (newer.passed, older.passed, newer.recorded_at) == (False, True, older.recorded_at)
+    # The other order: the pass is the newer one, and the failure before it does not stale it.
+    clear_gate(admin)
+    async with system_session(factory) as db:
+        for status in ("failed", "passed"):
+            await record_result(db, **_values(verdict=verdict(status)))
+    await enable(factory, s, "anthropic", OPUS, "medium")
+    assert (await resolve(factory, s)).stale == ()
+    # A failure recorded after the route's pass in one transaction is newer: stale.
+    async with system_session(factory) as db:
+        await record_result(db, **_values(verdict=verdict("failed")))
+    assert (await resolve(factory, s)).stale == ("newer_failure",)
 
 
 # --- record_result ----------------------------------------------------------------------------
@@ -525,11 +565,11 @@ def verdict(status: Status) -> dict[str, Any]:
     ).as_json()  # fmt: skip
 
 
-async def record(factory: Factory, **changes: Any) -> Any:
-    values: dict[str, Any] = {
+def _values(**changes: Any) -> dict[str, Any]:
+    return {
         "run_id": uuid.uuid4(),
         "suite_version": running_suite_version(),
-        "manifest_digest": ZEROS,
+        "manifest_digest": running_manifest_digest(),
         "provider": "anthropic",
         "model": OPUS,
         "effort": "medium",
@@ -542,8 +582,11 @@ async def record(factory: Factory, **changes: Any) -> Any:
         "authorization_note": "owner go-ahead in chat, 2026-10-31",
         **changes,
     }
+
+
+async def record(factory: Factory, **changes: Any) -> Any:
     async with system_session(factory) as db:
-        return await record_result(db, **values)
+        return await record_result(db, **_values(**changes))
 
 
 async def test_record_result_stores_the_verdict_and_its_passed(
@@ -607,6 +650,17 @@ def test_provider_for_choice_builds_a_catalog_anthropic_model_with_its_key(
     assert isinstance(provider, AnthropicProvider)
 
 
+def test_provider_for_choice_builds_openai_with_its_key_and_needs_it(
+    app_database_url: str, kek_dir: Path, catalog_plus: AcceptedEntries
+) -> None:
+    choice = ModelChoice("openai", catalog_plus.openai.model, "medium")
+    built = provider_for_choice(worker(app_database_url, kek_dir, "openai"), choice)
+    assert isinstance(built, OpenAIProvider)  # built only; nothing is sent
+    (kek_dir / "openai_api_key").unlink()
+    with pytest.raises(ProviderUnavailable, match="key file"):
+        provider_for_choice(worker(app_database_url, kek_dir, "anthropic"), choice)
+
+
 @pytest.mark.parametrize(
     ("choice", "rule"),
     [
@@ -614,7 +668,6 @@ def test_provider_for_choice_builds_a_catalog_anthropic_model_with_its_key(
         (ModelChoice("anthropic", "fake", "medium"), "catalog"),
         (ModelChoice("anthropic", "claude-opus-9", "medium"), "catalog"),
         (ModelChoice("anthropic", OPUS, "ultra"), "effort"),
-        (ModelChoice("openai", "gpt-allowed", "medium"), "no adapter"),
         (ModelChoice("deepseek", "deepseek-ok", "medium"), "no adapter"),
     ],
 )

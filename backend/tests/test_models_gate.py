@@ -1,7 +1,7 @@
-"""Migration 0008 (ADR 0012 section 5; #211): the exact DDL, the NULL-proof CHECKs, the composite
-foreign key, the app role's privileges, and every must-fail and must-succeed case of PR #229 (73
-and 8), run as ``classbeat_app``. ``10-roles.sql`` run again is in ``test_models_privileges.py``;
-``record_result`` and the routes in ``test_models_routes.py``."""
+"""Migration ``0009_models`` (ADR 0012 section 5; #211): the exact DDL, the NULL-proof CHECKs, the
+composite foreign key, the app role's privileges, and every must-fail and must-succeed case of
+PR #229 (73 and 8), run as ``classbeat_app``. ``10-roles.sql`` run again is in
+``test_models_privileges.py``; ``record_result`` and the routes in ``test_models_routes.py``."""
 
 import importlib.util
 import json
@@ -180,7 +180,9 @@ def test_every_check_refuses_null_by_itself(admin: Connection) -> None:
     """With NOT NULL taken away (a temp copy of each table and its CHECKs), each checked column
     set to NULL is still refused by its CHECK: none passes by evaluating to NULL."""
 
-    for table, good in (("model_eval_results", GOOD_RESULT), ("model_routes", GOOD_ROUTE)):
+    # ``seq`` (migration 0010) is an identity column the copy does not carry: the row names it.
+    results = {**GOOD_RESULT, "seq": 1}
+    for table, good in (("model_eval_results", results), ("model_routes", GOOD_ROUTE)):
         probe = f"probe_{table}"
         admin.execute(text(f"CREATE TEMP TABLE {probe} (LIKE {table} INCLUDING CONSTRAINTS)"))
         for column in good:
