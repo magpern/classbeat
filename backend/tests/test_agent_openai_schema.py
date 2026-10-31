@@ -263,3 +263,70 @@ def test_the_transform_closes_and_requires_every_object_itself() -> None:
     inner = strict["properties"]["inner"]["anyOf"][0]
     assert (inner["additionalProperties"], inner["required"]) == (False, ["b"])
     assert strict["properties"]["inner"]["anyOf"][1] == {"type": "null"}
+
+
+# --- the #262 review follow-ups ------------------------------------------------------------
+
+
+def test_a_required_null_is_kept_exactly(monkeypatch: pytest.MonkeyPatch) -> None:
+    original = _draft_input(monkeypatch).input_model.model_json_schema()
+    assert strip_added_nulls(original, {"draft": None}) == {"draft": None}
+    nested = {"draft": {**good_draft(), "name": None}}
+    assert strip_added_nulls(original, nested) == nested
+
+
+def test_every_optional_nullable_field_defaults_to_none(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Dropping a null the model sent for an optional field leaves the field at its default:
+    the same value only when a field that takes null has the default None."""
+
+    def nullable(node: Mapping[str, Any]) -> bool:
+        return node.get("type") == "null" or any(nullable(b) for b in node.get("anyOf", ()))
+
+    checked = 0
+    for _, tool in _tools(monkeypatch):
+        original = tool.input_model.model_json_schema()
+        for obj in [original, *original.get("$defs", {}).values()]:
+            required = set(obj.get("required", ()))
+            for name, prop in obj.get("properties", {}).items():
+                if name not in required and nullable(prop):
+                    assert "default" in prop, (tool.name, name)
+                    assert prop["default"] is None, (tool.name, name)
+                    checked += 1
+    assert checked > 0
+
+
+def _two_objects() -> dict[str, Any]:
+    a = {"type": "object", "properties": {"x": {"type": "integer"}}, "required": []}
+    return {
+        "type": "object",
+        "$defs": {"A": a},
+        "properties": {
+            "either": {
+                "anyOf": [
+                    {"$ref": "#/$defs/A"},
+                    {"type": "object", "properties": {"y": {"type": "string"}}},
+                    {"type": "null"},
+                ]
+            }
+        },
+        "required": ["either"],
+    }
+
+
+def test_a_union_of_two_object_types_is_refused() -> None:
+    with pytest.raises(ValueError, match="union of two object types"):
+        strict_schema(_two_objects())
+    nested = {"type": "object", "properties": {"list": {"type": "array", "items": _two_objects()}}}
+    with pytest.raises(ValueError, match="union of two object types"):
+        strict_schema(nested)
+
+
+def test_one_object_and_null_is_still_accepted() -> None:
+    schema = _two_objects()
+    schema["properties"]["either"]["anyOf"].pop(1)
+    assert strict_schema(schema)["properties"]["either"]["anyOf"][1] == {"type": "null"}
+
+
+def test_stripping_never_guesses_inside_a_union_of_two_objects() -> None:
+    value = {"either": {"x": None, "y": None}}
+    assert strip_added_nulls(_two_objects(), value) == value

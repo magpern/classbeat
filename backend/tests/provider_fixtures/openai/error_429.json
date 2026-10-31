@@ -1,0 +1,14 @@
+{
+ "status": 429,
+ "headers": {
+  "x-request-id": "req_fixture_429"
+ },
+ "body": {
+  "error": {
+   "message": "hand-written fixture error",
+   "type": "rate_limit_exceeded",
+   "param": null,
+   "code": "rate_limit_exceeded"
+  }
+ }
+}

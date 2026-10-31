@@ -261,7 +261,7 @@ async def test_the_views_show_what_the_page_needs_and_no_provider_ids(
     [row] = listed.json()["classes"]
     shown = await mine.browser.get(base)
     texts.append(shown.text)
-    extra = {"songs", "playlist", "spotify_playlists"}  # the single class adds the song state
+    extra = {"songs", "playlist", "spotify_playlists", "brief"}  # the single class adds these
     assert {k: v for k, v in shown.json().items() if k not in extra} == row
     assert shown.json()["songs"] == {
         "state": "none", "job_id": None, "revision_id": None, "content_hash": None,
