@@ -23,8 +23,8 @@ from jobtools import engine_for
 from queue_guard import check_queue
 from role_guard import check_roles
 
-# The current body (0008 replaced 0007's), as the migration creates it.
-LEDGER_RESTORE = migration_module("ledger_guard_owner").LEDGER_GUARD
+# The current body (0009 replaced 0008's), as the migration creates it.
+LEDGER_RESTORE = migration_module("m5_hardening").LEDGER_GUARD
 
 
 @pytest.fixture
@@ -139,6 +139,11 @@ MISSING = {
         "DROP TRIGGER credit_ledger_guard ON public.credit_ledger",
         "CREATE TRIGGER credit_ledger_guard BEFORE UPDATE ON public.credit_ledger "
         "FOR EACH ROW EXECUTE FUNCTION public.credit_ledger_guard()",
+    ),
+    "redeem_codes_guard": (
+        "DROP TRIGGER redeem_codes_guard ON public.redeem_codes",
+        "CREATE TRIGGER redeem_codes_guard BEFORE UPDATE ON public.redeem_codes "
+        "FOR EACH ROW EXECUTE FUNCTION public.redeem_codes_guard()",
     ),
     "admin_audit_guard": (
         "DROP TRIGGER admin_audit_guard ON public.admin_audit",

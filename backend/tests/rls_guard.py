@@ -34,7 +34,19 @@ REQUIRED_POLICIES: dict[str, set[tuple[str, str | None, str | None]]] = {
     # ADR 0011 section 1: the app role adds only code and trial entitlements; a ledger row is
     # inserted only as ``reserved`` and updated only from ``reserved`` to a settled state (the
     # trigger narrows that further by role).
-    "entitlements": {("INSERT", None, "(source = ANY (ARRAY['code'::text, 'trial'::text]))")},
+    # Migration 0009 (#271): it starts by now and ends within 366 days, and a trial is a plan
+    # only, ranked at most instructor.
+    "entitlements": {
+        (
+            "INSERT",
+            None,
+            "((source = ANY (ARRAY['code'::text, 'trial'::text])) AND (starts_at <= now()) "
+            "AND (ends_at IS NOT NULL) AND (ends_at <= (now() + make_interval(days => 366))) "
+            "AND ((source <> 'trial'::text) OR ((code_id IS NULL) AND (cardinality(features) = 0) "
+            "AND (( SELECT p.rank\n   FROM plans p\n  WHERE (p.id = entitlements.plan_id)) <= "
+            "( SELECT p.rank\n   FROM plans p\n  WHERE (p.id = 'instructor'::text))))))",
+        )
+    },
     "credit_ledger": {
         (
             "INSERT",

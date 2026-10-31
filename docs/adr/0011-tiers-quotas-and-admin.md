@@ -75,6 +75,24 @@ digest. `refunded_by` and `revoked_by` carry no foreign key, because a `SET NULL
 admin would be a ledger change the trigger refuses. After an admin's account is deleted, those
 columns keep a dangling admin id, which is an opaque UUID and no personal data.
 
+**Note (2026-10-31, #271): the database enforces the app's terms too.** Migration
+`0009_m5_hardening` makes three checks of `classbeat.plans` and the settle hold for any SQL run as
+`classbeat_app`, not only for our code paths:
+- `entitlements_app_sources` also requires `starts_at <= now()` and an `ends_at` that is set and at
+  most `now() + 366 days`, and for a trial a plan only (no code, no features) ranked at most
+  `instructor` (a missing plan refuses).
+- `credit_ledger_guard`'s app settle requires `reason` NULL for `committed`, one of `failed`,
+  `cancelled`, `expired` for `released`, and `settled_at = now()` (§3's settle statement);
+  `admin_refund` is only the maint refund's, which must also set `refunded_by`.
+- A third guard trigger, `redeem_codes_guard`, lets the app only add one use to a live code
+  (`redeemed_count = old + 1`, at most `max_redemptions`, not disabled or expired, no other column);
+  every other role must leave the count as it is. ADR 0005 section 3's amendment of 2026-10-31
+  admits it.
+
+`docker/postgres/init/10-roles.sql`, when run again after the migrations, now restores the grants
+of the table above after its blanket re-grant (before this note a re-run gave the app full DML on
+every M5 table, `admin_audit` included); `tests/test_roles_rerun.py` checks it.
+
 **The app role's grants on the new tables** (guard 2 checks them as an allowlist; the default
 privileges of ADR 0002 §4 are revoked table by table where narrower):
 

@@ -11,9 +11,10 @@ QUEUE_DIGESTS: dict[str, str] = {
     "queue_unsettled": "d10ba360a070524788e466b18e35460a",
     "queue_stats": "e55e920eddc871afbb4d5b0780770158",
 }
-# The M5 guard trigger functions (migration 0007), from the migrated database. The same digests
-# are written into the queue check of docker/postgres/queue/20-queue.sql.
+# The M5 guard trigger functions (migrations 0007 to 0009), from the migrated database. The same
+# digests are written into the queue check of docker/postgres/queue/20-queue.sql.
 GUARD_TRIGGER_DIGESTS: dict[str, str] = {
-    "credit_ledger_guard": "daf9a170dc7880c3fba48740e37556ec",
+    "credit_ledger_guard": "3f35fac02d6276ef49d4980f49ba2861",
     "admin_audit_guard": "d804e00683bfbe2f82eedc0b9a2c5682",
+    "redeem_codes_guard": "b0b580c9990b2a1fb23d82c89344d7e8",
 }
