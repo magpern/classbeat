@@ -1,14 +1,24 @@
 import { useEffect, useState } from 'react'
-import { getUsage } from '../../api/usage'
+import { getPlan, type Plan } from '../../api/plan'
+import { classesLine } from '../account/Plan'
+import { Progress } from '../ui/progress'
 
-/** "Classes this month" in the sidebar. The limit comes with the plan API; until then, the count. */
+function share(plan: Plan): number {
+  const limit = plan.limits.classesPerMonth
+  return limit > 0 ? Math.min(100, (plan.classesHeld / limit) * 100) : 0
+}
+
+/**
+ * "Classes this month" meter of the sidebar and the icon rail: classes held against the limit of
+ * the plan, worded by `classesLine` of the account page. A plan that cannot be read hides it.
+ */
 export function ClassesThisMonth({ compact = false }: { compact?: boolean }) {
-  const [count, setCount] = useState<number | null>(null)
+  const [plan, setPlan] = useState<Plan | null>(null)
   useEffect(() => {
     const abort = new AbortController()
-    getUsage(abort.signal).then(
-      (usage) => {
-        if (!abort.signal.aborted) setCount(usage.classesDesigned)
+    getPlan(abort.signal).then(
+      (found) => {
+        if (!abort.signal.aborted) setPlan(found)
       },
       () => undefined,
     )
@@ -16,22 +26,30 @@ export function ClassesThisMonth({ compact = false }: { compact?: boolean }) {
       abort.abort()
     }
   }, [])
-  if (count === null) return null
+  if (plan === null) return null
+  const limit = plan.limits.classesPerMonth
+  const label = `Classes this month: ${classesLine(plan)}`
   if (compact) {
-    // The icon rail: the number with a short mark, the full words for screen readers.
+    // The icon rail: held over limit with the bar, the full words for screen readers.
     return (
-      <p className="m-0 w-full rounded-md bg-raised px-1 py-2 text-center text-text tabular-nums">
-        <span className="sr-only">Classes this month: </span>
-        <strong>{String(count)}</strong>
-        <span aria-hidden="true" className="block text-[0.6875rem] text-muted">
-          /mo
-        </span>
-      </p>
+      <div className="flex w-full flex-col items-center gap-1 rounded-md bg-raised px-1 py-2 tabular-nums">
+        <p className="m-0 text-center text-text">
+          <span className="sr-only">{label}</span>
+          <strong aria-hidden="true">
+            {String(plan.classesHeld)}/{String(limit)}
+          </strong>
+        </p>
+        <Progress value={share(plan)} aria-label="Classes this month" className="h-1 w-10" />
+      </div>
     )
   }
   return (
-    <p className="m-0 rounded-md bg-raised px-3 py-2 text-[0.8125rem] text-muted">
-      Classes this month <strong className="ml-1 text-text tabular-nums">{String(count)}</strong>
-    </p>
+    <div className="flex flex-col gap-2 rounded-md bg-raised px-3 py-2 text-[0.8125rem]">
+      <p className="m-0 text-muted">
+        Classes this month
+        <strong className="ml-1 block text-text tabular-nums">{classesLine(plan)}</strong>
+      </p>
+      <Progress value={share(plan)} aria-label="Classes this month" className="h-1.5" />
+    </div>
   )
 }
