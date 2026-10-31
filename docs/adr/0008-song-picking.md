@@ -134,6 +134,12 @@ MOWL's) so by default "none found" is inconclusive and the user decides. Two fou
 a full 20 pages → inconclusive. A stray empty private playlist of the user's own is the accepted
 residue of **Do it anyway** (accepted risk, threat model).
 
+> **Amendment, 2026-10-31 (Architect; issue #198 item 1):** "none found after the lag → `failed`" applies
+> only to the user's (or an admin's) **Check again**. The job's own check after an uncertain create leaves
+> the row `uncertain` and stops with `uncertain_write`. A job takes over a `failed` create row for a retry
+> only when the failure was recorded by the call itself (`resolved_by = 'worker'`); a row resolved by a
+> user or an admin ends the job `uncertain_write` and nothing is sent (`backend/src/classbeat/playlists/create.py`).
+
 **`spotify_replace_items`** (absolute: sets the playlist to exactly this ordered list; idempotent in its
 outcome, so repeating it is safe, unlike a create). Key: pool `<job_id>:pool:<h16>` (`h16` = first 16 hex
 of the URI hash, because a retried stage may propose other candidates, and a hash mismatch under one

@@ -25,6 +25,11 @@ row (#117 item 7). The queue functions do not change; instead:
   ``prepare``: a ``pending`` row of another job, or any ``uncertain`` row, of the class blocks a
   new write (409 ``write_unresolved``) until the user resolves it with Check again or Do it
   anyway. It runs ``resolve`` first in the same transaction.
+- ``playlist_unresolved(db, ctx, class_id)`` is the same rule for the class's final-playlist
+  writes, at a resume's admit (ADR 0008 sections 2 and 6): a ``pending`` or ``uncertain``
+  ``spotify_create_playlist`` / ``spotify_replace_items`` row of the class means a playlist may
+  exist that nobody has decided on, so no resume creates another until the user's Check again or
+  Do it anyway. It runs ``resolve`` first in the same transaction.
 
 Only ids and counts are logged, never a row's context or result.
 """
@@ -66,6 +71,13 @@ _UNRESOLVED = text(
     "OR (state = 'pending' AND job_id IS DISTINCT FROM CAST(:job_id AS uuid))) LIMIT 1"
 )
 
+_PLAYLIST_UNRESOLVED = text(
+    "SELECT 1 FROM external_operations "
+    "WHERE owner_id = :owner_id AND class_id = :class_id "
+    "AND kind IN ('spotify_create_playlist', 'spotify_replace_items') "
+    "AND state IN ('pending', 'uncertain') LIMIT 1"
+)
+
 
 async def resolve(db: AsyncSession, ctx: UserContext) -> int:
     """Mark the user's orphaned ``pending`` class writes ``uncertain`` in the caller's
@@ -97,4 +109,12 @@ async def write_unresolved(
             "job_id": None if job_id is None else str(job_id),
         },
     )
+    return found.first() is not None
+
+
+async def playlist_unresolved(db: AsyncSession, ctx: UserContext, class_id: UUID) -> bool:
+    """True when a resume of ``class_id`` must be refused (``write_unresolved``): a final-playlist
+    write of that class is still ``pending`` or ``uncertain``. Runs ``resolve`` first."""
+    await resolve(db, ctx)
+    found = await db.execute(_PLAYLIST_UNRESOLVED, {"owner_id": ctx.user_id, "class_id": class_id})
     return found.first() is not None
