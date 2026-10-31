@@ -5,8 +5,9 @@
   never a number the model stated. ``workout.validate()`` runs on it again just before it is
   stored. ``content_hash`` is SHA-256 of its canonical JSON (ADR 0004 section 2's rule: sorted
   keys, no spaces, UTF-8).
-- **music**: ``{source: "mowl_spotify_playlist", link_id, fingerprint, unknown_bpm}``: the user's
-  ``mowl_playlist_links`` row, the fingerprint of the analysed track list
+- **music**: ``{source: "mowl_spotify_playlist", link_id, fingerprint, unknown_bpm}`` (plus
+  ``song_list_id``, the approved ``song_list`` revision, on a draft of ``design_with_songs``):
+  the user's ``mowl_playlist_links`` row, the fingerprint of the analysed track list
   (``classbeat.design.music.fingerprint``) and the tracks MOWL had no BPM for yet, by index and
   title, so the user is told (their bars were a guess at 120 BPM). No MOWL or Spotify id, no map.
   The revision is the user's own and is deleted with its class or account (ADR 0010).
@@ -99,6 +100,9 @@ class RevisionMusic(BaseModel):
     link_id: UUID
     fingerprint: str = Field(pattern=r"^[0-9a-f]{64}$")
     unknown_bpm: list[UnknownBpmTrack] = Field(max_length=500)
+    # ADR 0008 section 4: a draft designed on picked songs names the approved ``song_list``
+    # revision it was made from; absent on every other draft (stored exactly as before).
+    song_list_id: UUID | None = None
 
 
 def canonical(value: Any) -> bytes:
@@ -165,10 +169,11 @@ def build(
     music_map: dict[str, Any],
     step: MusicStep,
     *,
-    origin: Literal["design_draft", "revise_draft"] = "design_draft",
+    origin: Literal["design_draft", "revise_draft", "design_with_songs"] = "design_draft",
     base_revision_id: UUID | None = None,
     base_hash: bytes | None = None,
     request_message_id: UUID | None = None,
+    song_list_id: UUID | None = None,
 ) -> DraftRevision:
     """The revision to store; ``invalid_output`` if the draft no longer validates, or (a revise)
     if it is the base draft again: a revision that changes nothing is not stored."""
@@ -185,6 +190,7 @@ def build(
         link_id=step.link_id,
         fingerprint=step.fingerprint,
         unknown_bpm=[UnknownBpmTrack(index=u.index, title=u.title) for u in step.unknown_bpm],
+        song_list_id=song_list_id,
     )
     content_hash = hashlib.sha256(canonical(content)).digest()
     if base_hash is not None and content_hash == base_hash:
@@ -199,7 +205,7 @@ def build(
     return DraftRevision(
         content=content,
         content_hash=content_hash,
-        music=music.model_dump(mode="json"),
+        music=music.model_dump(mode="json", exclude_none=True),
         provenance=made.model_dump(mode="json"),
         parent_id=base_revision_id,
     )

@@ -224,9 +224,9 @@ docker compose --profile maint run --rm maint python -m classbeat keys wipe --co
 uv run alembic upgrade head    # migrations as the owner role, CLASSBEAT_MIGRATIONS_DATABASE_URL
 ```
 
-The domain library `mowl` (`mowl-workouts`) is pinned as `backend/vendor/mowl_workouts-0.6.0-py3-none-any.whl`,
-built from the v0.6.0 tag (commit `0319fcb8`; vendored wheel SHA-256 `d3957a80…`, release asset
-`5ea21460…`) **without** the bundled Swedebeat app key by `scripts/build-mowl-wheel.sh`
+The domain library `mowl` (`mowl-workouts`) is pinned as `backend/vendor/mowl_workouts-0.7.0-py3-none-any.whl`,
+built from the v0.7.0 tag (commit `88d08f05`; vendored wheel SHA-256 `866650a0…`, release asset
+`0ff5f60e…`) **without** the bundled Swedebeat app key by `scripts/build-mowl-wheel.sh`
 (needs `gh` access to the private repo; it checks the tag's commit, the missing key file and that
 every other file and the `Requires-Dist` lines match the release wheel). After a rebuild run `uv lock`. classbeat leaves out
 the library's `mcp` dependency (`exclude-dependencies`): it never runs the MCP server, and `mcp`'s
@@ -241,6 +241,10 @@ the vendored wheel's SHA-256 are recorded in full in the header of `scripts/buil
 always sets `False`: the library never reaches the token endpoint) and `spotify_max_retry_wait`
 (classbeat sets `0`: the library never sleeps on a 429). Never use its name-based `save_playlist` or
 `find_playlist_tracks` (CLI only).
+0.7.0 adds `image` to the `playlist_items` and `search_tracks` track entries (ADR 0013 §9): the
+URL of the album's smallest image at least 64 px wide, or `None`, never requested by the library
+and not host-checked there. classbeat ignores it until UI7: nothing stores, returns or shows it,
+and it never goes into model input.
 
 Database tests need a throwaway Postgres whose application database has the roles of
 `docker/postgres/init/10-roles.sql` (ADR 0002 section 4). Give it a name and port of its own
@@ -364,7 +368,8 @@ the candidates just written; after it the pick fails `pool_not_synced` (retried 
 `classbeat.jobs.service` (the jobs API), `classbeat.jobs.progress` (the SSE stream's reads),
 `classbeat.operations.user` (the user's Check again / Do it anyway), `classbeat.operations.orphans`
 (marking orphaned class writes `uncertain` before a view or action), `classbeat.saving.reads` (the
-save and update reconcilers' read-only read of the saved revision, SV1), `classbeat.keys_cli` and the
+save and update reconcilers' read-only read of the saved revision, SV1), `classbeat.plans.account`,
+`classbeat.plans.redeem` and `classbeat.plans.trial` (the user's plan read, redeem and trial, PL1), `classbeat.keys_cli` and the
 `classbeat.connections`, `classbeat.auth`, `classbeat.classes` (the class API), `classbeat.usage`
 (the usage reads, US1) and `classbeat.db` packages may open a `user_session`
 (`tests/test_session_guard.py`); job kinds live outside `classbeat.jobs`.
@@ -377,6 +382,9 @@ design not counted), `CLASSBEAT_CHAT_MAX_REQUESTS` (50 user requests per class) 
 `FakeProvider` script, a synthetic Spotify catalogue and a synthetic MOWL analysis (no Spotify, MOWL or
 model contact). They run in CI (`backend/tests/test_evals_pick_smoke.py`) and are not part of
 `smoke --live`.
+Plans (ADR 0011 sections 2 and 4, PL1): `GET /api/account/plan`, `POST /api/account/redeem` (10 per user and 30 per IP
+and hour) and `POST /api/account/trial`; `CLASSBEAT_TRIAL_DAYS_MAX` (30, 0 to 366; 0 turns trials off) clamps the
+stored `trial` setting's days when a trial starts, and a trial's plan is clamped to at most `instructor`.
 Progress (ADR 0005 section 6): `GET /api/jobs/{id}/events` streams a job's events as SSE (`Last-Event-ID`,
 5 open streams per user and web process); each web process keeps one `LISTEN job_events` connection.
 OAuth sign-in (ADR 0003 section 5): `CLASSBEAT_OAUTH_<PROVIDER>_CLIENT_ID` and the

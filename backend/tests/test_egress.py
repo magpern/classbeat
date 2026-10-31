@@ -57,7 +57,8 @@ class FakeHTTPS(urllib.request.BaseHandler):
 
 
 def _opener(fake: FakeHTTPS) -> urllib.request.OpenerDirector:
-    return build_allowlist_opener(WORKER_ALLOWLIST, https_handler=fake)
+    # The worker's list with Anthropic usable (its key present, ADR 0012 §2), as in production.
+    return build_allowlist_opener(egress.worker_allowlist(["anthropic"]), https_handler=fake)
 
 
 @pytest.mark.parametrize(
@@ -248,10 +249,13 @@ def test_the_mowl_library_call_goes_through_the_installed_opener(
         api.call(None, "GET", "v1/ping")
 
 
-def test_the_worker_list_is_exactly_mowl_anthropic_and_the_two_spotify_hosts() -> None:
-    expected = {"api.mowl.com", "api.anthropic.com", "api.spotify.com", "accounts.spotify.com"}
+def test_the_worker_list_is_exactly_mowl_and_the_two_spotify_hosts_without_a_model() -> None:
+    """ADR 0012 §2: a model host joins only for a usable provider (``test_egress_models.py``)."""
+    expected = {"api.mowl.com", "api.spotify.com", "accounts.spotify.com"}
     assert frozenset(expected) == egress.WORKER_HOSTS
     assert WORKER_ALLOWLIST.hosts == egress.WORKER_HOSTS
+    assert egress.worker_allowlist().hosts == egress.WORKER_HOSTS
+    assert egress.worker_hosts(["anthropic"]) == frozenset({*expected, "api.anthropic.com"})
 
 
 def test_the_model_client_list_is_the_model_host_alone() -> None:

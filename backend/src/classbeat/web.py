@@ -26,6 +26,7 @@ from classbeat.jobs.events_routes import router as job_events_router
 from classbeat.jobs.hub import EventHub
 from classbeat.jobs.routes import router as jobs_router
 from classbeat.operations.routes import router as operations_router
+from classbeat.plans.routes import router as plans_router
 from classbeat.playlists.runtime import playlists_runtime
 from classbeat.spotify.routes import api as spotify_router
 from classbeat.spotify.routes import callback as spotify_callback_router
@@ -146,6 +147,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(job_events_router)
     app.include_router(jobs_router)
     app.include_router(usage_router)
+    app.include_router(plans_router)
     app.include_router(operations_router)
     app.include_router(music_router)
     app.include_router(classes_router)

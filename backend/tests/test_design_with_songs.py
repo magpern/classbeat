@@ -10,10 +10,11 @@ from typing import Any
 import pytest
 from mowl import spotify_web
 
+from classbeat.connections import ConnectionFailure
 from classbeat.db import user_session
 from classbeat.design.revision import canonical
 from classbeat.playlists import common
-from classbeat.songs import song_list
+from classbeat.songs import search, song_list
 from ctx import make_context
 from songtools import CHOSEN, POOL, SongEnv, song_id
 
@@ -57,6 +58,8 @@ async def test_a_pick_ends_waiting_with_its_song_list(songenv: SongEnv) -> None:
         "source": "claude_pick",
         "fingerprint": common.ids_hash(CHOSEN).hex(),
         "spotify_user_id": "rider-one",
+        # The connections' generations the pick used: phase 2 refuses after a reconnect.
+        "generations": {"mowl": 1, "spotify": 1},
     }
     provenance = stored.provenance
     assert provenance["origin"] == "design_with_songs"
@@ -101,6 +104,26 @@ async def test_the_spotify_search_runs_off_the_event_loop(
     await songenv.waiting(rider)
     assert len(threads) == 2
     assert loop_thread not in threads
+
+
+async def test_a_search_that_loses_the_connection_records_its_category(
+    songenv: SongEnv, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """#198 item 15: a search failure that is no tool error ends the agent run with the job's
+    category, not ``internal``."""
+
+    async def lost(*args: Any, **kwargs: Any) -> Any:
+        raise ConnectionFailure("not_connected")
+
+    monkeypatch.setattr(search.common, "call", lost)
+    rider = await songenv.rider()
+    job_id = await songenv.created(rider)
+    row = await songenv.run(job_id)
+    assert (row.state, row.error_category) == ("failed", "not_connected")
+    outcomes = songenv.sql(
+        "SELECT stage, outcome FROM agent_runs WHERE job_id = :id", id=job_id
+    ).all()
+    assert [(r.stage, r.outcome) for r in outcomes] == [("pick_pool", "not_connected")]
 
 
 def test_the_hash_covers_the_exact_ids_and_order() -> None:

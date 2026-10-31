@@ -15,7 +15,13 @@ The only place in ``classbeat`` that builds an HTTP client or an ``urllib`` open
   a same-host one comes back to the SDK as a 3xx response, which the model provider maps to
   ``internal`` after one attempt (intended: the API never redirects). ``refused`` lets the SDK
   see a refusal as an error it does not retry (``classbeat.agent.providers.anthropic``). Its
-  list is the model host alone (``MODEL_ALLOWLIST``).
+  list is its provider's one host (``MODEL_ALLOWLISTS``, ADR 0012 §2): an OpenAI client can never
+  reach DeepSeek's host or the other way round, although both use the ``openai`` SDK.
+
+**Model hosts on the worker list** (ADR 0012 §2): ``MODEL_HOSTS`` names each provider's one API
+host. The worker's urllib list (``worker_allowlist``) holds a model host only for a provider the
+worker can use (its key file present; DeepSeek also needs ``CLASSBEAT_DEEPSEEK_ENABLED``), which
+``classbeat.config.worker_model_providers`` decides from the settings.
 
 **The Spotify client** (ADR 0009 §10): ``spotify_async_client()`` is the ``httpx.AsyncClient`` of
 ``classbeat.spotify.http`` (the token endpoint and ``GET /me``), in the web process (connect) and
@@ -59,10 +65,11 @@ import ssl
 import threading
 import time
 import urllib.request
-from collections.abc import AsyncIterator, Callable, Iterator
+from collections.abc import AsyncIterator, Callable, Iterable, Iterator, Mapping
 from contextlib import contextmanager
 from dataclasses import dataclass
-from typing import Any, Final
+from types import MappingProxyType
+from typing import Any, Final, Literal
 from urllib.parse import urlsplit
 
 import certifi
@@ -73,13 +80,20 @@ logger = logging.getLogger(__name__)
 HTTPS = "https"
 HTTPS_PORT = 443
 MOWL_HOST = "api.mowl.com"  # the library's base URL
-MODEL_HOST = "api.anthropic.com"
+# The model providers classbeat may use (ADR 0012 §1); ``fake`` is not one (no host).
+ModelProviderName = Literal["anthropic", "openai", "deepseek"]
+# Each provider's one API host (ADR 0012 §2). Code, not a setting.
+MODEL_HOSTS: Final[Mapping[ModelProviderName, str]] = MappingProxyType(
+    {"anthropic": "api.anthropic.com", "openai": "api.openai.com", "deepseek": "api.deepseek.com"}
+)
+MODEL_HOST = MODEL_HOSTS["anthropic"]
 SPOTIFY_API_HOST = "api.spotify.com"
 SPOTIFY_ACCOUNTS_HOST = "accounts.spotify.com"  # the authorize page and the token endpoint
 SPOTIFY_HOSTS = frozenset({SPOTIFY_API_HOST, SPOTIFY_ACCOUNTS_HOST})
-# M3a: the MOWL API and the model API; M4 (ADR 0009 §10): the Spotify API and token endpoint,
-# which the library reaches over urllib.
-WORKER_HOSTS = frozenset({MOWL_HOST, MODEL_HOST}) | SPOTIFY_HOSTS
+# The worker's urllib hosts without a model host: the MOWL API (M3a) and the Spotify API and
+# token endpoint (M4, ADR 0009 §10), which the library reaches over urllib. A model host joins
+# them only for a provider the worker can use (``worker_hosts``, ADR 0012 §2).
+WORKER_HOSTS = frozenset({MOWL_HOST}) | SPOTIFY_HOSTS
 MODEL_TIMEOUT_SECONDS = 120.0  # ADR 0006 §2
 # The Spotify client's total deadline per request unless the caller gives one (ADR 0009 §6:
 # ``CLASSBEAT_SPOTIFY_REFRESH_TIMEOUT_SECONDS`` defaults to 10).
@@ -111,7 +125,7 @@ def tls_client_context(*, cafile: str | None = None) -> ssl.SSLContext:
     trust store), but without the key log. ``create_default_context`` sets ``keylog_filename``
     from ``SSLKEYLOGFILE``, which opens that file at once and then appends every session's
     secrets to it, enough to decrypt a capture of the traffic (the model key, MOWL tokens). This
-    context never opens one; the worker also refuses to start with ``anthropic`` while
+    context never opens one; the worker also refuses to start with a real model provider while
     ``SSLKEYLOGFILE`` is set (``classbeat.config.MODEL_SDK_REFUSED_ENVIRONMENT``)."""
     context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
     if cafile is None:
@@ -169,8 +183,30 @@ class Allowlist:
 
 
 WORKER_ALLOWLIST = Allowlist(WORKER_HOSTS)
-# The model client's list: the model API alone, although the worker's urllib list is wider.
-MODEL_ALLOWLIST = Allowlist(frozenset({MODEL_HOST}))
+# Each model client's list: its provider's one host, although the worker's urllib list is wider.
+MODEL_ALLOWLISTS: Final[Mapping[ModelProviderName, Allowlist]] = MappingProxyType(
+    {provider: Allowlist(frozenset({host})) for provider, host in MODEL_HOSTS.items()}
+)
+MODEL_ALLOWLIST = MODEL_ALLOWLISTS["anthropic"]
+
+
+def worker_hosts(model_providers: Iterable[str]) -> frozenset[str]:
+    """The worker's urllib hosts with the model host of each of ``model_providers`` (the ones
+    the worker can use, ``classbeat.config.worker_model_providers``). An unknown name is
+    refused, never ignored."""
+    hosts = set(WORKER_HOSTS)
+    for provider in model_providers:
+        if provider not in MODEL_HOSTS:
+            raise ValueError("unknown model provider")
+        hosts.add(MODEL_HOSTS[provider])  # pyright: ignore[reportArgumentType]
+    return frozenset(hosts)
+
+
+def worker_allowlist(model_providers: Iterable[str] = ()) -> Allowlist:
+    """The worker's urllib list for these usable model providers (ADR 0012 §2)."""
+    return Allowlist(worker_hosts(model_providers))
+
+
 # The Spotify client's list, in the web process and the worker alike (ADR 0009 §10).
 SPOTIFY_ALLOWLIST = Allowlist(SPOTIFY_HOSTS)
 
@@ -514,10 +550,13 @@ def build_allowlist_opener(
     return opener
 
 
-def install_worker_allowlist() -> urllib.request.OpenerDirector:
-    """Install the worker's opener for every ``urllib.request.urlopen`` in the process."""
+def install_worker_allowlist(model_providers: Iterable[str] = ()) -> urllib.request.OpenerDirector:
+    """Install the worker's opener for every ``urllib.request.urlopen`` in the process.
+
+    ``model_providers`` are the providers the worker can use (``worker_model_providers``); their
+    hosts join the list. Without them (before the settings are read) it holds no model host."""
     global _worker_process
-    opener = build_allowlist_opener(WORKER_ALLOWLIST)
+    opener = build_allowlist_opener(worker_allowlist(model_providers))
     urllib.request.install_opener(opener)
     _worker_process = True
     return opener
@@ -639,14 +678,16 @@ def model_network_transport() -> httpx.AsyncHTTPTransport:
 
 
 def allowlisted_async_client(
-    allowlist: Allowlist = MODEL_ALLOWLIST,
     *,
+    provider: ModelProviderName = "anthropic",
     timeout: float = MODEL_TIMEOUT_SECONDS,
     inner: httpx.AsyncBaseTransport | None = None,
     refused: Callable[[OutboundBlocked], Exception] | None = None,
 ) -> httpx.AsyncClient:
     """The ``httpx.AsyncClient`` for the model SDK (``AsyncAnthropic(http_client=...)``).
 
+    Its list is ``provider``'s one host (``MODEL_ALLOWLISTS``); a caller names the provider and
+    never hands in a list (the guard refuses one), so no caller can widen it (ADR 0012 §2).
     ``trust_env=False`` on the client: no proxy or ``NETRC`` from the environment. The
     environment's ``SSL_CERT_*`` is ignored because the transport is handed ``tls_client_context``
     (httpx's own trust store, ``certifi``) instead of building one itself, which also means no
@@ -655,6 +696,9 @@ def allowlisted_async_client(
     ``OutboundBlocked`` into the exception the caller's library does not retry (raised ``from``
     it, so the refusal stays its cause).
     """
+    allowlist = MODEL_ALLOWLISTS.get(provider)
+    if allowlist is None:
+        raise ValueError("unknown model provider")
     network = inner if inner is not None else model_network_transport()
     return httpx.AsyncClient(
         transport=AllowlistTransport(allowlist, network, refused),

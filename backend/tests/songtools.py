@@ -1,4 +1,5 @@
-"""Helpers for the ``design_with_songs`` tests (ADR 0008, issue SJ1). TEST ONLY, never the network.
+"""Helpers for the ``design_with_songs`` tests (ADR 0008, issues SJ1 and SJ2). TEST ONLY, never
+the network.
 
 One world per test: the app with song picking on (``spot``), the in-process fake Spotify with an
 invented catalogue (``CATALOGUE``: 20 tracks of 240 s, ``alpha`` finds tracks 0 to 9 and ``beta``
@@ -22,6 +23,7 @@ import urllib.request
 import uuid
 from collections.abc import AsyncIterator, Callable
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any
 from uuid import UUID
 
@@ -222,6 +224,21 @@ CHOSEN = [song_id(i) for _, i, _ in LIST_8]
 POOL = [song_id(r) for r, _ in POOL_14]
 
 
+DESIGN_SCRIPT = Path(__file__).parent / "agent_scripts" / "good_first_draft.json"
+
+
+def design_script() -> dict[str, Any]:
+    """Phase 2's model: the ``design`` stage's good first draft (30 minutes on the 8 songs).
+    Phase 2's scripts carry ``drafts``; ``SongEnv.waiting`` goes back to ``pick_script`` then."""
+    return json.loads(DESIGN_SCRIPT.read_text(encoding="utf-8"))
+
+
+def failing_script(error: str) -> dict[str, Any]:
+    """A model that answers its first turn with ``error`` (``overloaded``: retried; ``auth``:
+    ``model_config``, not retried)."""
+    return {"drafts": {}, "turns": [{"error": error}]}
+
+
 def new_key() -> str:
     return secrets.token_urlsafe(18)
 
@@ -252,6 +269,10 @@ class Rider:
 
     async def approve(self, job_id: object, revision_id: object, digest: str) -> httpx.Response:
         return await self.browser.approve(job_id, revision_id, digest)
+
+    async def resume(self, class_id: object, revision_id: object) -> httpx.Response:
+        resume = {"song_list_revision_id": str(revision_id)}
+        return await self.create(class_id=str(class_id), mode="resume", resume=resume)
 
 
 @dataclass
@@ -343,10 +364,21 @@ class SongEnv:
 
     async def waiting(self, rider: Rider, **extra: Any) -> tuple[UUID, UUID, str]:
         """A pick of ``rider`` run to its wait: (job id, revision id, content hash hex)."""
+        if "drafts" in self.script:
+            self.script = pick_script()  # a phase-2 script set by an earlier step
         job_id = await self.created(rider, **extra)
         row = await self.run(job_id)
         assert row.state == "waiting_for_approval", (row.state, row.error_category)
         return job_id, row.approval_revision_id, bytes(row.approval_hash).hex()
+
+    async def approved(self, rider: Rider, **extra: Any) -> tuple[UUID, UUID]:
+        """A pick of ``rider`` run to its wait and approved: (job id, revision id); the next
+        run's model is ``design_script``."""
+        job_id, revision_id, digest = await self.waiting(rider, **extra)
+        answer = await rider.approve(job_id, revision_id, digest)
+        assert answer.status_code == 200, answer.text
+        self.script = design_script()
+        return job_id, revision_id
 
     # --- reads -----------------------------------------------------------------------------
 
@@ -380,6 +412,19 @@ class SongEnv:
             o=owner,
             k=kind,
         ).all()
+
+    def class_playlists(self, owner: UUID) -> list[Any]:
+        return self.sql(
+            "SELECT * FROM class_playlists WHERE owner_id = :o ORDER BY created_at", o=owner
+        ).all()
+
+    def creates(self) -> int:
+        """Playlist creates the fake Spotify saw (the pool's and every final one)."""
+        return sum(1 for s in self.api() if (s.method, s.path) == ("POST", "/v1/me/playlists"))
+
+    def writes(self) -> int:
+        """Every Spotify write the fake saw (creates and item writes)."""
+        return sum(1 for s in self.api() if s.method in ("POST", "PUT", "DELETE"))
 
     def api(self) -> list[Seen]:
         return self.fake.requests("api.spotify.com")
