@@ -13,8 +13,17 @@ import { startError } from '../api/songMessages'
 import { createPickJob, type PickInput } from '../api/songs'
 import { getSpotifyStatus } from '../api/spotify'
 import { MusicChoice, type Music, type SongsAvailability } from '../components/songs/MusicChoice'
-import { SelectField, TextAreaField } from '../components/classes/fields'
-import { Card, Field, Notice, useAction } from '../components/forms'
+import { EffortCards } from '../components/newclass/EffortCards'
+import { SelectInput, TextArea, TextInput } from '../components/newclass/inputs'
+import { PlaylistTiles } from '../components/newclass/PlaylistTiles'
+import { SideCard } from '../components/newclass/SideCard'
+import { Stepper } from '../components/newclass/Stepper'
+import { StylePicker } from '../components/newclass/StylePicker'
+import { Notice, useAction } from '../components/forms'
+import { Button } from '../components/ui/button'
+import { Card, CardTitle } from '../components/ui/card'
+import { ChipButton } from '../components/ui/chip'
+import { EFFORTS, sketchProfile } from '../lib/sketch'
 import { RequireAuth } from '../components/RequireAuth'
 import { BRIEF_TOO_LONG, briefBytes, MAX_BRIEF_BYTES } from '../lib/brief'
 import { newIdempotencyKey, rememberInput, rememberPick } from '../lib/submittedInput'
@@ -50,7 +59,7 @@ const CREATE_ERRORS: Record<string, string> = {
   invalid_input: `The class was not accepted. Check the fields; the style and description together may be over ${String(MAX_BRIEF_BYTES)} bytes.`,
 }
 
-/** Whether "Let Claude pick the songs" is offered, and what it still needs (ADR 0008 section 9). */
+/** Whether "Pick songs for me" is offered, and what it still needs (ADR 0008 section 9). */
 async function songsAvailability(
   connections: Connection[],
   signal: AbortSignal,
@@ -118,9 +127,9 @@ function NewClass() {
   }, [reload])
 
   return (
-    <div className="stack">
-      <h1>Design a class</h1>
-      {source.status === 'loading' ? <p>Loading your MOWL music</p> : null}
+    <div className="mx-auto flex w-full max-w-5xl flex-col gap-5">
+      <h1 className="m-0 font-display text-3xl font-extrabold">Design a class</h1>
+      {source.status === 'loading' ? <p className="m-0 text-muted">Loading your MOWL music</p> : null}
       {source.status === 'no_mowl' ? (
         <Notice>
           {source.reconnect
@@ -133,17 +142,16 @@ function NewClass() {
       {source.status === 'playlists_failed' ? (
         <>
           <Notice kind="error">{source.message}</Notice>
-          <p>
-            <button
-              type="button"
-              className="button"
+          <p className="m-0">
+            <Button
+              variant="secondary"
               onClick={() => {
                 setSource({ status: 'loading' })
                 setReload((n) => n + 1)
               }}
             >
               Try again
-            </button>
+            </Button>
           </p>
         </>
       ) : null}
@@ -153,6 +161,8 @@ function NewClass() {
     </div>
   )
 }
+
+const LENGTHS = [30, 45, 60, 90] as const
 
 function whole(value: string): number {
   return value.trim() === '' ? Number.NaN : Number(value)
@@ -188,6 +198,7 @@ function ClassForm({
   const [problem, setProblem] = useState<string | null>(null)
   // One key per user action: the same form values keep the key, so a repeated click or a retry
   // after a lost answer returns the same job instead of starting a second one.
+  const lengthInput = useRef<HTMLInputElement>(null)
   const attempt = useRef<{ fingerprint: string; key: string } | null>(null)
 
   const submit = (event: FormEvent) => {
@@ -262,136 +273,145 @@ function ClassForm({
     }, createError)
   }
 
+  const lengthNumber = whole(length)
+  const effort = EFFORTS.find((e) => e.value === intensity)
+  const chosenPlaylist = playlists.find((p) => p.spotifyPlaylistId === playlist)
+  const picking = music === 'pick' && songs.kind === 'ready'
+  const summary = [
+    { label: 'Length', value: Number.isInteger(lengthNumber) ? `${String(lengthNumber)} min` : 'Not set' },
+    { label: 'Effort', value: effort ? `${effort.label}, zones ${String(effort.low)} to ${String(effort.high)}` : '' },
+    { label: 'Climbs', value: climbs },
+    { label: 'Sprints', value: sprints },
+    { label: 'Races', value: races },
+    {
+      label: 'Music',
+      value: picking
+        ? 'Songs picked for you'
+        : chosenPlaylist
+          ? chosenPlaylist.name || 'Untitled playlist'
+          : 'No playlist chosen yet',
+    },
+  ]
+  const profile = sketchProfile({
+    length: lengthNumber,
+    effort: intensity,
+    climbs: whole(climbs),
+    sprints: whole(sprints),
+    races: whole(races),
+  })
+
   if (playlists.length === 0 && songs.kind !== 'ready') {
     return (
-      <Card title="No playlists found" wide>
-        <p>
+      <Card>
+        <CardTitle>No playlists found</CardTitle>
+        <p className="m-0 text-muted">
           MOWL lists no Spotify playlists for your account. Add one in the Intelligent Cycling app,
           then reload this page.
         </p>
       </Card>
     )
   }
+  const section = 'flex flex-col gap-4'
   return (
-    <form className="panel" onSubmit={submit} noValidate aria-label="New class">
-      {problem ? <Notice kind="error">{problem}</Notice> : null}
-      {action.error ? <Notice kind="error">{action.error}</Notice> : null}
-      <Field
-        label="Class name"
-        value={title}
-        maxLength={100}
-        onChange={(e) => {
-          setTitle(e.target.value)
-        }}
-        required
-      />
-      <MusicChoice songs={songs} value={music} onChange={setMusic} />
-      {music === 'playlist' ? (
-      <SelectField
-        label="Playlist"
-        value={playlist}
-        onChange={(e) => {
-          setPlaylist(e.target.value)
-        }}
-        hint="classbeat adds this playlist to your MOWL music so it can read the songs. It stays private to you."
-        required
-      >
-        <option value="">Choose a playlist</option>
-        {playlists.map((p) => (
-          <option key={p.spotifyPlaylistId} value={p.spotifyPlaylistId}>
-            {p.name || 'Untitled playlist'}
-          </option>
-        ))}
-      </SelectField>
-      ) : null}
-      <Field
-        label="Length in minutes"
-        type="number"
-        inputMode="numeric"
-        min={10}
-        max={180}
-        value={length}
-        onChange={(e) => {
-          setLength(e.target.value)
-        }}
-      />
-      <SelectField
-        label="Intensity"
-        value={intensity}
-        onChange={(e) => {
-          setIntensity(e.target.value as Brief['intensity'])
-        }}
-      >
-        <option value="easy">Easy</option>
-        <option value="moderate">Moderate</option>
-        <option value="hard">Hard</option>
-      </SelectField>
-      <Field
-        label="Climbs"
-        type="number"
-        inputMode="numeric"
-        min={0}
-        max={10}
-        value={climbs}
-        onChange={(e) => {
-          setClimbs(e.target.value)
-        }}
-      />
-      <Field
-        label="Sprints"
-        type="number"
-        inputMode="numeric"
-        min={0}
-        max={20}
-        value={sprints}
-        onChange={(e) => {
-          setSprints(e.target.value)
-        }}
-      />
-      <Field
-        label="Races"
-        type="number"
-        inputMode="numeric"
-        min={0}
-        max={5}
-        value={races}
-        onChange={(e) => {
-          setRaces(e.target.value)
-        }}
-      />
-      <SelectField
-        label="FTP test"
-        value={ftp}
-        onChange={(e) => {
-          setFtp(e.target.value)
-        }}
-      >
-        <option value="">None</option>
-        <option value="3">3 minutes</option>
-        <option value="5">5 minutes</option>
-        <option value="20">20 minutes</option>
-      </SelectField>
-      <Field
-        label="Style"
-        value={style}
-        maxLength={60}
-        hint="For example: hills, intervals, endurance."
-        onChange={(e) => {
-          setStyle(e.target.value)
-        }}
-      />
-      <TextAreaField
-        label="Anything else"
-        value={notes}
-        maxLength={2000}
-        hint="Tell classbeat what the class should feel like."
-        onChange={(e) => {
-          setNotes(e.target.value)
-        }}
-      />
-      <button className="button" type="submit" disabled={action.busy}>
-        Design the class
-      </button>
+    <form
+      className="grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_20rem]"
+      onSubmit={submit}
+      noValidate
+      aria-label="New class"
+    >
+      <div className="flex min-w-0 flex-col gap-5">
+        {problem ? <Notice kind="error">{problem}</Notice> : null}
+        {action.error ? <Notice kind="error">{action.error}</Notice> : null}
+        <Card className={section}>
+          <CardTitle className="mb-0">The basics</CardTitle>
+          <TextInput
+            label="Class name"
+            value={title}
+            maxLength={100}
+            onChange={(e) => {
+              setTitle(e.target.value)
+            }}
+            required
+          />
+          <div className="flex flex-col gap-2">
+            <span className="text-[0.9375rem] font-medium text-text">Class length</span>
+            <div role="group" aria-label="Common lengths" className="flex flex-wrap gap-2">
+              {LENGTHS.map((m) => (
+                <ChipButton
+                  key={m}
+                  pressed={length === String(m)}
+                  onClick={() => {
+                    setLength(String(m))
+                  }}
+                >
+                  {String(m)} min
+                </ChipButton>
+              ))}
+              <ChipButton
+                pressed={!LENGTHS.some((m) => String(m) === length)}
+                onClick={() => {
+                  lengthInput.current?.focus()
+                }}
+              >
+                Other length
+              </ChipButton>
+            </div>
+            <TextInput
+              ref={lengthInput}
+              label="Length in minutes"
+              type="number"
+              inputMode="numeric"
+              min={10}
+              max={180}
+              value={length}
+              onChange={(e) => {
+                setLength(e.target.value)
+              }}
+            />
+          </div>
+        </Card>
+        <Card className={section}>
+          <CardTitle className="mb-0">Music</CardTitle>
+          <MusicChoice songs={songs} value={music} onChange={setMusic} />
+          {music === 'playlist' ? <PlaylistTiles playlists={playlists} value={playlist} onChange={setPlaylist} /> : null}
+          <StylePicker value={style} onChange={setStyle} />
+        </Card>
+        <Card className={section}>
+          <CardTitle className="mb-0">The ride</CardTitle>
+          <EffortCards value={intensity} onChange={setIntensity} />
+          <div className="grid gap-4 sm:grid-cols-3">
+            <Stepper label="Climbs" noun="climbs" value={climbs} min={0} max={10} onChange={setClimbs} />
+            <Stepper label="Sprints" noun="sprints" value={sprints} min={0} max={20} onChange={setSprints} />
+            <Stepper label="Races" noun="races" value={races} min={0} max={5} onChange={setRaces} />
+          </div>
+          <SelectInput
+            label="FTP test"
+            value={ftp}
+            onChange={(e) => {
+              setFtp(e.target.value)
+            }}
+          >
+            <option value="">None</option>
+            <option value="3">3 minutes</option>
+            <option value="5">5 minutes</option>
+            <option value="20">20 minutes</option>
+          </SelectInput>
+        </Card>
+        <Card className={section}>
+          <TextArea
+            label="Anything else?"
+            value={notes}
+            maxLength={2000}
+            hint="Tell classbeat what the class should feel like."
+            onChange={(e) => {
+              setNotes(e.target.value)
+            }}
+          />
+        </Card>
+      </div>
+      <div className="lg:sticky lg:top-4">
+        <SideCard profile={profile} summary={summary} busy={action.busy} />
+      </div>
     </form>
   )
 }

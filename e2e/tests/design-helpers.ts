@@ -63,11 +63,11 @@ export async function startDesign(page: Page, title: string, playlistName: strin
   await page.getByRole('link', { name: 'New class' }).click()
   const form = page.getByRole('form', { name: 'New class' })
   await form.getByLabel('Class name').fill(title)
-  await form.getByLabel('Playlist').selectOption({ label: playlistName })
+  await form.getByRole('radio', { name: playlistName }).check({ force: true })
   await form.getByLabel('Length in minutes').fill('30')
   await form.getByLabel('Climbs').fill('1')
   await form.getByLabel('Sprints').fill('2')
-  await form.getByRole('button', { name: 'Design the class' }).click()
+  await form.getByRole('button', { name: 'Design my class' }).click()
   await expect(page).toHaveURL(/\/jobs\/[0-9a-f-]{36}$/)
   return jobId(page)
 }
