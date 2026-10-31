@@ -112,7 +112,11 @@ describe('the class page', () => {
     expect(await screen.findByTestId('tss-note')).toHaveTextContent(
       'approximate: zone 7 has no exact TSS weight',
     )
-    expect(screen.getByTestId('tss')).toHaveTextContent(/^≈ 26\.[34]$/)
+    const hidden = within(screen.getByTestId('tss')).getByText(
+      /^26\.[34], approximate: zone 7 has no exact TSS weight$/,
+    )
+    expect(hidden).toHaveClass('sr-only')
+    expect(screen.getByTestId('tss')).toHaveTextContent(/^≈ 26\.[34]/)
   })
 
   it('lists two versions with the current one marked, and views the other', async () => {

@@ -47,11 +47,12 @@ describe('My classes', () => {
     expect(screen.queryByText(/≈/)).toBeNull()
   })
 
-  it('marks a TSS with a zone 7 interval as approximate, with the note as its accessible label', async () => {
+  it('marks a TSS with a zone 7 interval as approximate, with the note as visually hidden text', async () => {
     renderAtWith([classBody({ profile: [[3, 600], [7, 30]] })])
-    const tss = await screen.findByLabelText(/approximate: zone 7 has no exact TSS weight/)
-    expect(tss).toHaveAttribute('aria-label', expect.stringMatching(/^\d+(\.\d)?, approximate: zone 7/))
-    expect(tss).toHaveTextContent(/^≈ \d/)
+    const note = await screen.findByText(/^\d+(\.\d)?, approximate: zone 7 has no exact TSS weight$/)
+    expect(note).toHaveClass('sr-only')
+    expect(note.parentElement).toHaveTextContent(/^≈ \d/)
+    expect(note.previousElementSibling).toHaveAttribute('aria-hidden', 'true')
   })
 
   it('shows saved state and "changes not in MOWL yet"', async () => {

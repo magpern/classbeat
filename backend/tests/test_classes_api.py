@@ -957,7 +957,26 @@ async def test_the_approximate_tss_flag_is_the_stored_one_or_read_from_a_zone_7_
     shown = (await mine.browser.get(f"/api/classes/{mine.class_id}/revisions/{mine.r1}")).json()
     assert shown["tss_approximate"] is False
 
-    # A stored flag wins over the content; without one (older revisions) a zone 7 interval sets it.
+    # An older revision has no stored flag: its zone 7 interval sets it in the revision answer.
+    zone7 = {**DRAFT, "segments": [{**DRAFT["segments"][0]}, {**DRAFT["segments"][1]}]}
+    zone7["segments"][1] = {
+        **zone7["segments"][1],
+        "intervals": [{**zone7["segments"][1]["intervals"][0], "zone": 7}],
+    }
+    mine.sql(
+        "UPDATE class_revisions SET content = CAST(:c AS jsonb) WHERE id = :r",
+        c=json.dumps(zone7),
+        r=mine.r1,
+    )
+    old = (await mine.browser.get(f"/api/classes/{mine.class_id}/revisions/{mine.r1}")).json()
+    assert "tss_approximate" not in old["provenance"]
+    assert old["tss_approximate"] is True
+    # A stored flag wins over the content.
+    mine.sql(
+        "UPDATE class_revisions SET content = CAST(:c AS jsonb) WHERE id = :r",
+        c=json.dumps(DRAFT),
+        r=mine.r1,
+    )
     mine.sql(
         "UPDATE class_revisions SET provenance = provenance || CAST(:p AS jsonb) WHERE id = :r",
         p=json.dumps({"tss_approximate": True}),
