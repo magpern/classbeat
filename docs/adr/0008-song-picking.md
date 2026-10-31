@@ -378,10 +378,10 @@ instruction to say that "Change songs" is the way and to change nothing else.
 revise, and the stage would refuse the unchanged draft as `invalid_output`, so the pointer would
 never reach the user. The `revise` stage therefore has a second final tool, `songs_requested` (no
 input; not offered to `revise_songs`, whose request is the songs). The stage ends `SongsRequested`
-and the job ends **`use_change_songs`** (a new `jobs.error_category`, migration 0009): no
+and the job ends **`use_change_songs`** (a new `jobs.error_category`, migration 0011): no
 revision, no assistant message, no revision counted against `CLASSBEAT_REVISIONS_PER_CLASS`, the
 user's request stays in the chat, and the run's usage is recorded as for any run. The class page
-shows "This request is only about the songs. Use Change songs to pick other ones." with a Change
+shows "This request is only about the songs, so nothing changed. Use Change songs to pick other ones." with a Change
 songs button. A request that mixes songs and other changes still ends `submit_draft`: the design
 part is applied and the note says "Change songs" is the way for the rest. The smoke set has the
 case `revise_other_songs` (suite version 6). The stage's `prompt_version` changes with this.
