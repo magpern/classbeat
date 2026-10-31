@@ -21,7 +21,9 @@
 #      extension, event trigger, language, server or publication DDL, no DROP but the forms --clean writes, no DO or SET ROLE, no
 #      role grants, no file or program access, only `LANGUAGE plpgsql` and `LANGUAGE sql`, only
 #      the two SELECT forms pg_dump writes, COPY only as `COPY public.<table> (...) FROM stdin;`.
-#      A denylist cannot be complete; it catches the obvious and the accidental.
+#      A denylist cannot be complete; it catches the obvious and the accidental. It reads the SQL
+#      line by line, so a keyword split across lines, or a statement built at run time with EXECUTE
+#      inside a function body, is not seen: the signature is the control, not this list.
 #
 # The image is the compose `db` service's postgres image (override with BACKUP_PG_IMAGE).
 # Exit 0: accepted. Exit 1: refused, with every reason on stderr. Exit 2: usage or tool error.

@@ -8,7 +8,9 @@
 # The archive is authenticated BEFORE anything runs as the database superuser (SR-06, #355):
 #   .dump.gpg  decrypted and verified by gpg; it must carry a valid signature by exactly the key
 #              with the fingerprint given by --expect-signer (or RESTORE_EXPECT_SIGNER), the
-#              primary key's, and by no other. The signer's public key must be in the keyring.
+#              primary key's (a signature by a subkey of that primary counts; pinning a subkey's
+#              own fingerprint is refused), and by no other. The signer's public key must be in
+#              the keyring.
 #   .dump      the detached signature <name>.dump.sig must verify with the public key in
 #              --verify-key (or RESTORE_VERIFY_KEY), a PEM file kept OUTSIDE the backup
 #              directory. A .sha256 file next to the archive is never accepted.
@@ -42,12 +44,12 @@ while [ $# -gt 0 ]; do
     --expect-signer) [ $# -ge 2 ] || die "--expect-signer needs a fingerprint"; expect="$2"; shift 2 ;;
     --verify-key) [ $# -ge 2 ] || die "--verify-key needs a file"; vkey="$2"; shift 2 ;;
     --verify-only) verify_only=1; shift ;;
-    -h|--help) sed -n '2,31p' "$0"; exit 0 ;;
+    -h|--help) sed -n '2,33p' "$0"; exit 0 ;;
     -*) die "unknown argument: $1" ;;
     *) [ -z "$file" ] || die "one archive only"; file="$1"; shift ;;
   esac
 done
-[ -n "$file" ] || { sed -n '2,31p' "$0" >&2; exit 2; }
+[ -n "$file" ] || { sed -n '2,33p' "$0" >&2; exit 2; }
 [ -f "$file" ] || die "no such file: $file"
 
 umask 077
@@ -58,8 +60,8 @@ dump="$tmp/archive.dump"
 # --- 1. authenticate ------------------------------------------------------------------------
 if [[ "$file" == *.dump.gpg ]]; then
   command -v gpg > /dev/null || die "gpg is not installed"
-  [[ "$expect" =~ ^[0-9A-Fa-f]{40}$ ]] \
-    || die "an encrypted archive needs --expect-signer with the signer's full 40-digit fingerprint"
+  [ -n "$expect" ] || die "an encrypted archive needs --expect-signer (the signer's primary key fingerprint)"
+  [[ "$expect" =~ ^[0-9A-Fa-f]{40}$ ]] || die "--expect-signer must be a full 40-digit fingerprint"
   expect="${expect^^}"
   cp -- "$file" "$tmp/copy.gpg"
   gpg --batch --yes --status-file "$tmp/status" --decrypt --output "$dump" "$tmp/copy.gpg" 2> /dev/null \
@@ -68,10 +70,11 @@ if [[ "$file" == *.dump.gpg ]]; then
   if grep -qE '^\[GNUPG:\] (BADSIG|ERRSIG|EXPSIG|EXPKEYSIG|REVKEYSIG|NO_PUBKEY|BADMDC|DECRYPTION_FAILED|NODATA)' "$tmp/status"; then
     die "the signature is bad, expired, revoked or from an unknown key; refusing"
   fi
-  # Every valid signature must be the expected key's (its primary fingerprint), and there must be one.
+  # Every valid signature must be by the expected key as its PRIMARY (the last field of VALIDSIG; the
+  # third is the key that signed, a subkey's own when a subkey did), and there must be one.
   sigs="$(grep -c '^\[GNUPG:\] VALIDSIG ' "$tmp/status" || true)"
   [ "$sigs" -ge 1 ] || die "the archive is not signed; refusing"
-  other="$(awk -v e="$expect" '$1 == "[GNUPG:]" && $2 == "VALIDSIG" { if (toupper($3) != e && toupper($NF) != e) n++ } END { print n + 0 }' "$tmp/status")"
+  other="$(awk -v e="$expect" '$1 == "[GNUPG:]" && $2 == "VALIDSIG" { if (toupper($NF) != e) n++ } END { print n + 0 }' "$tmp/status")"
   [ "$other" = 0 ] || die "the archive carries a signature by a key other than $expect; refusing"
   echo "restore.sh: decrypted; signature verified for $expect"
 elif [[ "$file" == *.dump ]]; then
@@ -81,7 +84,8 @@ elif [[ "$file" == *.dump ]]; then
   [ -f "$file.sig" ] || die "no signature $file.sig; refusing"
   arch_real="$(cd "$(dirname "$file")" && pwd -P)"
   key_real="$(cd "$(dirname "$vkey")" && pwd -P)"
-  [ "$key_real" != "$arch_real" ] || die "the verification key must be kept outside the backup directory"
+  # The same test as backup.sh: not the backup directory and not below it.
+  case "$key_real/" in "$arch_real"/*) die "the verification key must be kept outside the backup directory" ;; esac
   cp -- "$file" "$tmp/copy.dump"
   cp -- "$file.sig" "$tmp/copy.sig"
   out="$(openssl dgst -sha256 -verify "$vkey" -signature "$tmp/copy.sig" "$tmp/copy.dump" 2>&1)" \
