@@ -7,7 +7,10 @@ writing no second event. User events carry ``lease_version`` 0.
 
 ``create`` and ``approve`` first take the owner's ``pg_advisory_xact_lock`` (``lock_owner``), so
 two creations, two approvals, or a creation and an approval of one user are serialized before
-either counts the per-user limit (``CLASSBEAT_JOBS_PER_USER``: ``queued`` and ``running``).
+either counts the per-user limit (``queued`` and ``running``). The limit is a ``JobLimitPolicy``
+resolved inside the transaction (M5: the plan's ``concurrent_jobs`` under
+``CLASSBEAT_JOBS_PER_USER``, ``classbeat.quota.PlanJobLimitPolicy``) or a fixed number; ``busy``
+carries it as ``counts["limit"]``.
 The lock is always taken before any job row lock, and no worker path takes it, so it adds no
 lock cycle.
 
@@ -115,6 +118,16 @@ async def active_jobs(db: AsyncSession, ctx: UserContext) -> int:
     return (await db.execute(_ACTIVE, {"owner_id": ctx.user_id})).scalar_one()
 
 
+class JobLimitPolicy(Protocol):
+    """The user's concurrent-job limit (ADR 0011 section 4), read in the caller's transaction."""
+
+    async def limit_for(self, db: AsyncSession, ctx: UserContext) -> int: ...
+
+
+async def job_limit(db: AsyncSession, ctx: UserContext, limit: "int | JobLimitPolicy") -> int:
+    return limit if isinstance(limit, int) else await limit.limit_for(db, ctx)
+
+
 async def _event(db: AsyncSession, ctx: UserContext, job_id: UUID, seq: int, kind: str) -> None:
     await db.execute(
         _EVENT,
@@ -175,11 +188,17 @@ class Created:
 
 
 async def create(
-    db: AsyncSession, ctx: UserContext, new: NewJob, *, limit: int, ledger: CreditLedger
+    db: AsyncSession,
+    ctx: UserContext,
+    new: NewJob,
+    *,
+    limit: int | JobLimitPolicy,
+    ledger: CreditLedger,
 ) -> Created:
     """``(new) -> queued`` in the caller's transaction, under the owner lock, in ADR 0005
-    section 2's order. A refusal writes nothing; ``QuotaRefused`` from the ledger propagates
-    and the caller's transaction rolls back."""
+    section 2's order. A refusal writes nothing; ``QuotaRefused`` from the ledger (or from a
+    kind's ``admit``) propagates and the caller's transaction rolls back. The ledger reserves
+    last, after every other check, so no credit is held by a refused request."""
     require_context(ctx)
     owner = {"owner_id": ctx.user_id}
     await lock_owner(db, ctx)
@@ -197,8 +216,9 @@ async def create(
             return Created(None, created=False, reason="class_not_found")
         if (await db.execute(_CLASS_OPEN, {**owner, "class_id": class_id})).first() is not None:
             return Created(None, created=False, reason="class_busy")
-    if await active_jobs(db, ctx) >= limit:
-        return Created(None, created=False, reason="busy")
+    allowed = await job_limit(db, ctx, limit)
+    if await active_jobs(db, ctx) >= allowed:
+        return Created(None, created=False, reason="busy", counts={"limit": allowed})
     stored = new.input
     after_insert = None
     if new.admit is not None:

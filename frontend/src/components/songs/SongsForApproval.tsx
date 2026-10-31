@@ -13,6 +13,7 @@ import {
 import {
   currentConnectionIds,
   digest,
+  classContext,
   followUpBrief,
   isNotConnected,
   minutes,
@@ -24,6 +25,7 @@ import { Link, useRouter } from '../../router/Router'
 import { Notice, useAction } from '../forms'
 import { Button } from '../ui/button'
 import { Card, CardTitle } from '../ui/card'
+import { CoverMosaic } from './CoverArt'
 import { SongRows } from './SongRows'
 
 export const PRIVACY_TEXT =
@@ -81,10 +83,12 @@ function useNewPick(job: Job, list: SongList) {
           if (!(error instanceof ApiError && error.status === 409)) throw error
         }
         const ids = await currentConnectionIds()
+        // The class's own brief; this tab's remembered form only when the class has none.
+        const context = await classContext(job.classId)
         const kept = recallPick(job.id)
         const input: PickInput = {
           class_id: job.classId,
-          brief: followUpBrief(kept?.brief ?? null, list.targetSec, note),
+          brief: followUpBrief(context.brief ?? kept?.brief ?? null, list.targetSec, note),
           mode: 'pick',
           ...(replace !== null && replace.length > 0
             ? { seed: { song_list_revision_id: list.id, replace } }
@@ -186,7 +190,7 @@ function Approval({
         setRefusal(found)
         setProblem(found.text)
         setBusy(false)
-        locked.current = found.final
+        locked.current = false
       },
     )
   }
@@ -227,13 +231,18 @@ function Approval({
   const replace = [...marks].sort((a, b) => a - b).map((position) => position - 1)
   return (
     <section className="flex flex-col gap-4" aria-labelledby="songs-title">
-      <h1 id="songs-title" className="m-0 font-display text-3xl font-bold text-text">
-        Songs for your class
-      </h1>
-      <p className="m-0 text-text">
-        {list.songs.length} songs, {minutes(list.totalSec)} in total. You asked for{' '}
-        {minutes(list.targetSec)}.
-      </p>
+      <header className="flex flex-wrap items-end gap-4">
+        <CoverMosaic songs={list.songs} />
+        <div className="flex min-w-0 flex-col gap-2">
+          <h1 id="songs-title" className="m-0 font-display text-3xl font-bold text-text">
+            Songs for your class
+          </h1>
+          <p className="m-0 text-text">
+            {list.songs.length} songs, {minutes(list.totalSec)} in total. You asked for{' '}
+            {minutes(list.targetSec)}.
+          </p>
+        </div>
+      </header>
       {list.note !== '' ? <p className="m-0 text-muted">{list.note}</p> : null}
       {list.omittedNoBpm > 0 ? (
         <Notice>

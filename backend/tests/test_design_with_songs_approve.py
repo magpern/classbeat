@@ -26,8 +26,9 @@ from spotifyfake import CLIENT_A, USER_B
 pytestmark = pytest.mark.usefixtures("songenv")
 
 
-def refused(response: Any, reason: str, status: int = 409) -> None:
-    assert (response.status_code, response.json()) == (status, {"detail": {"reason": reason}})
+def refused(response: Any, reason: str, status: int = 409, **counts: int) -> None:
+    detail = {"reason": reason, **counts}
+    assert (response.status_code, response.json()) == (status, {"detail": detail})
 
 
 async def nothing_started(songenv: SongEnv, job_id: UUID, before: tuple[Any, ...]) -> None:
@@ -165,7 +166,7 @@ async def test_the_per_user_limit_and_the_credit_seam(songenv: SongEnv) -> None:
         )
         for _ in range(songenv.spot.env.settings.jobs_per_user)
     ]
-    refused(await rider.approve(job_id, revision, digest), "busy", 429)
+    refused(await rider.approve(job_id, revision, digest), "busy", 429, limit=2)
     songenv.sql("DELETE FROM jobs WHERE id = ANY(:ids)", ids=planted)
 
     class NoCredit(UnmeteredLedger):

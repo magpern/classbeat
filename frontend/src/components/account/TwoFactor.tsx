@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type FormEvent } from 'react'
+import { createElement, useCallback, useEffect, useState, type FormEvent, type ReactNode } from 'react'
 import {
   confirmTotp,
   getMfaStatus,
@@ -12,6 +12,38 @@ import {
 import { useGuard } from '../../auth/prompts'
 import { useSession } from '../../auth/SessionContext'
 import { Field, Notice, Section, useAction } from '../forms'
+
+// The QR code is drawn inline from the server's SVG (ADR 0003 section 7): the CSP's `img-src`
+// allows no `data:` URL (ADR 0013 section 9). Only shapes and their geometry and paint are
+// copied, as React elements: no markup is inserted, and nothing in it can load or run.
+const QR_ELEMENTS = new Set(['g', 'path', 'rect'])
+const QR_ATTRIBUTES = ['d', 'fill', 'stroke', 'transform', 'x', 'y', 'width', 'height'] as const
+
+function qrShapes(parent: Element, prefix: string): ReactNode[] {
+  return [...parent.children].flatMap((child, i) => {
+    if (!QR_ELEMENTS.has(child.localName)) return []
+    const props: Record<string, string> = {}
+    for (const name of QR_ATTRIBUTES) {
+      const value = child.getAttribute(name)
+      if (value !== null) props[name] = value
+    }
+    const key = `${prefix}.${String(i)}`
+    return [createElement(child.localName, { key, ...props }, ...qrShapes(child, key))]
+  })
+}
+
+function QrCode({ svg, label }: { svg: string; label: string }) {
+  const root = new DOMParser().parseFromString(svg, 'image/svg+xml').documentElement
+  if (root.localName !== 'svg') return null
+  const width = root.getAttribute('width') ?? ''
+  const height = root.getAttribute('height') ?? ''
+  const box = /^\d+(\.\d+)?$/.test(width) && /^\d+(\.\d+)?$/.test(height) ? `0 0 ${width} ${height}` : undefined
+  return (
+    <svg className="qr" role="img" aria-label={label} viewBox={root.getAttribute('viewBox') ?? box}>
+      {qrShapes(root, 'qr')}
+    </svg>
+  )
+}
 
 /** Shown once after enrolment or regeneration. */
 function RecoveryCodes({ codes }: { codes: string[] }) {
@@ -86,11 +118,7 @@ export function TotpEnroll({ onEnrolled }: { onEnrolled?: () => void }) {
   return (
     <>
       <p>Scan this code with an authenticator app, or type the key by hand.</p>
-      <img
-        className="qr"
-        alt="QR code for your authenticator app"
-        src={`data:image/svg+xml;charset=utf-8,${encodeURIComponent(enrollment.qrSvg)}`}
-      />
+      <QrCode svg={enrollment.qrSvg} label="QR code for your authenticator app" />
       <p>
         Key: <code>{enrollment.secret}</code>
       </p>
@@ -151,6 +179,7 @@ export function TwoFactor() {
   const { refresh } = useSession()
   const [status, setStatus] = useState<MfaStatus | null>(null)
   const [codes, setCodes] = useState<string[] | null>(null)
+  const [confirmingRemove, setConfirmingRemove] = useState(false)
   const action = useAction()
 
   const load = useCallback(async () => {
@@ -176,6 +205,7 @@ export function TwoFactor() {
     })
   }
   const remove = () => {
+    setConfirmingRemove(false)
     void action.run(async () => {
       await guard(removeTotp)
       setCodes(null)
@@ -208,14 +238,37 @@ export function TwoFactor() {
           >
             New recovery codes
           </button>
-          <button
-            className="button button--secondary"
-            type="button"
-            disabled={action.busy}
-            onClick={remove}
-          >
-            Remove two-factor
-          </button>
+          {confirmingRemove ? (
+            <div className="notice" role="group" aria-label="Confirm removing two-factor">
+              <p>
+                Without two-factor, a stolen password is enough to change this account. Your
+                recovery codes stop working too.
+              </p>
+              <button className="button" type="button" disabled={action.busy} onClick={remove}>
+                Yes, remove two-factor
+              </button>
+              <button
+                className="button button--secondary"
+                type="button"
+                onClick={() => {
+                  setConfirmingRemove(false)
+                }}
+              >
+                Keep two-factor
+              </button>
+            </div>
+          ) : (
+            <button
+              className="button button--secondary"
+              type="button"
+              disabled={action.busy}
+              onClick={() => {
+                setConfirmingRemove(true)
+              }}
+            >
+              Remove two-factor
+            </button>
+          )}
         </>
       ) : (
         <>

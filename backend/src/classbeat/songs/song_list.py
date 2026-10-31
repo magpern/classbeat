@@ -3,13 +3,20 @@
 A ``class_revisions`` row with ``kind = 'song_list'``: immutable (ADR 0007 section 2), never a
 class's current revision, never revised or saved as a draft.
 
-- **content** (``SongListContent``, version ``v: 1``, at most 64 KB as canonical JSON)::
+- **content** (``SongListContent``, version ``v: 2``, at most 64 KB as canonical JSON)::
 
-      {"v": 1, "mode": "pick" | "replace", "target_sec": 2700, "total_sec": 2688,
+      {"v": 2, "mode": "pick" | "replace", "target_sec": 2700, "total_sec": 2688,
        "crossfade_sec": 9.0,
        "songs": [{"spotify_id": "...", "title": "...", "artist": "...", "role": "climb",
-                  "bpm": 92.0, "length_sec": 241, "new": true}],
+                  "bpm": 92.0, "length_sec": 241, "new": true,
+                  "cover": "https://i.scdn.co/image/<40 hex>" | null}],
        "omitted_no_bpm": 2, "note": "..."}
+
+  ``v: 2`` (ADR 0013 section 9) adds ``cover``, the album cover URL from the search hit (or the
+  kept song's stored one), kept only when ``classbeat.covers.cover_url`` accepts it and ``null``
+  otherwise; it is checked again whenever content is parsed, so a stored URL that no longer
+  passes reads as ``null``. ``v: 1`` content (no ``cover`` key) stays readable and reads as no
+  cover. The hash covers ``cover`` like every other field.
 
   Built from ``classbeat.agent.ChosenList``, which ``choose_songs`` builds from the analysed pool:
   every id, title, artist, BPM and length is MOWL's analysis or a kept song's stored value, never
@@ -43,17 +50,18 @@ from dataclasses import dataclass
 from typing import Annotated, Any, Final, Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator, model_validator
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from classbeat.agent.choose_songs import ChosenList
 from classbeat.agent.schemas import MAX_SONGS, Role
+from classbeat.covers import cover_url
 from classbeat.design.revision import MAX_CONTENT_BYTES, canonical
 from classbeat.jobs import FencedSession, JobFailure
 from classbeat.playlists import common
 
-VERSION: Final = 1
+VERSION: Final = 2
 MUSIC_SOURCE: Final = "claude_pick"
 MAX_TEXT: Final = 200
 MAX_NOTE: Final = 300
@@ -71,6 +79,13 @@ class Song(BaseModel):
     bpm: float = Field(gt=0, le=400)
     length_sec: int = Field(ge=1, le=7200)
     new: bool
+    cover: str | None = None  # v: 2 (ADR 0013 section 9); absent in v: 1
+
+    @field_validator("cover", mode="before")
+    @classmethod
+    def _pinned_host(cls, value: object) -> str | None:
+        """Anything but an album cover URL on the pinned host is ``None``, never an error."""
+        return cover_url(value)
 
 
 class SongListContent(BaseModel):
@@ -78,7 +93,7 @@ class SongListContent(BaseModel):
 
     model_config = ConfigDict(extra="forbid", strict=True)
 
-    v: Literal[1]
+    v: Literal[1, 2]
     mode: Literal["pick", "replace"]
     target_sec: int = Field(ge=1)
     total_sec: int = Field(ge=0)
@@ -86,6 +101,12 @@ class SongListContent(BaseModel):
     songs: list[Song] = Field(min_length=1, max_length=MAX_SONGS)
     omitted_no_bpm: int = Field(ge=0)
     note: str = Field(max_length=MAX_NOTE)
+
+    @model_validator(mode="after")
+    def _cover_is_v2(self) -> "SongListContent":
+        if self.v == 1 and any("cover" in s.model_fields_set for s in self.songs):
+            raise ValueError("cover is a v: 2 field")
+        return self
 
     def track_ids(self) -> tuple[str, ...]:
         return tuple(s.spotify_id for s in self.songs)
@@ -216,6 +237,7 @@ def build(
                     bpm=round(float(s.bpm), 1),
                     length_sec=int(s.length_sec),
                     new=s.new,
+                    cover=cover_url(s.cover),
                 )
                 for s in chosen.songs
             ],

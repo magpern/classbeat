@@ -26,6 +26,13 @@ from ctx import make_context
 from jobapi import Browser
 from plantools import grant, plant_code, set_trial
 
+
+@pytest.fixture
+def users_plan() -> None:
+    """These tests are about the plan itself: their users start on ``free`` (no grant)."""
+    return None
+
+
 PLAN = "/api/account/plan"
 REDEEM = "/api/account/redeem"
 SRC = Path(__file__).resolve().parents[1] / "src" / "classbeat"

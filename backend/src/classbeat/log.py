@@ -91,7 +91,9 @@ SECRET_KEYS = frozenset(
 )
 
 
-QUIET_LOGGERS = ("mowl", "anthropic", "httpx", "httpcore", "urllib3")
+# ``openai``: the OpenAI SDK (OpenAIProvider, DeepSeekProvider) logs whole request bodies at
+# DEBUG, the brief, the music and DeepSeek's reasoning text among them (ADR 0012 §3).
+QUIET_LOGGERS = ("mowl", "anthropic", "openai", "httpx", "httpcore", "urllib3")
 
 
 def redact(value: str) -> str:

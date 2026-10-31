@@ -1,0 +1,14 @@
+{
+ "status": 401,
+ "headers": {
+  "x-request-id": "req_fixture_401"
+ },
+ "body": {
+  "error": {
+   "message": "Authentication Fails",
+   "type": "authentication_error",
+   "param": null,
+   "code": null
+  }
+ }
+}

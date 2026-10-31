@@ -36,8 +36,9 @@ from jobtools import digest, engine_for
 pytestmark = pytest.mark.usefixtures("jenv")
 
 
-def refused(response: Any, reason: str, status: int = 409) -> None:
-    assert (response.status_code, response.json()) == (status, {"detail": {"reason": reason}})
+def refused(response: Any, reason: str, status: int = 409, **counts: int) -> None:
+    detail = {"reason": reason, **counts}
+    assert (response.status_code, response.json()) == (status, {"detail": detail})
 
 
 async def nothing_started(jenv: JobsEnv, job_id: UUID, kinds: list[str]) -> None:
@@ -139,7 +140,7 @@ async def test_the_per_user_limit_and_the_credit_seam(
     job_id, revision = await waiting_job(jenv, alice)
     kinds = jenv.kinds(job_id)
     first, second = plant_running(jenv, alice.user_id), plant_running(jenv, alice.user_id)
-    refused(await alice.approve(job_id, revision, LIST_HASH), "busy", 429)
+    refused(await alice.approve(job_id, revision, LIST_HASH), "busy", 429, limit=2)
     jenv.sql("DELETE FROM jobs WHERE id IN (:a, :b)", a=first, b=second)
 
     class Refusing(UnmeteredLedger):
@@ -236,5 +237,5 @@ async def test_approve_counts_the_limit_only_after_the_owner_lock(
         plant_running(jenv, alice.user_id)  # the limit (2) is now reached
         holder.commit()
         response = await task
-    refused(response, "busy", 429)
+    refused(response, "busy", 429, limit=2)
     assert jenv.row(job_id).state == "waiting_for_approval"

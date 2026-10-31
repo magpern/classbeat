@@ -26,8 +26,9 @@ failed. Rules, all parameters from the manifest:
 What makes a whole file fail (every group ``failed``, whatever its runs): another
 ``suite_version`` or manifest digest than the manifest's, a case the manifest does not name, a
 run whose category is not its case's, the same run (case and repeat) twice, or a row whose
-``passed`` is not what its outcome and checks say. A run passes when it ended ``submitted`` with
-at least one check and every check passed; the row's own ``passed`` is never trusted alone.
+``passed`` is not what its outcome and checks say. A run passes when it ended ``submitted`` (or
+the outcome the manifest lists for the case in ``expected_outcomes``: ``pool_too_small``) with at
+least one check and every check passed; the row's own ``passed`` is never trusted alone.
 
 Precedence: a file failure gives ``failed``; else ``incomplete``; else ``failed`` when any rule
 failed; else ``passed``. ``GroupVerdict.as_json()`` is what ``model_eval_results.verdict``
@@ -71,9 +72,10 @@ class _Row(BaseModel):
     cost_micros: int = Field(ge=0)
     checks: list[_CheckRow]
 
-    @property
-    def ok(self) -> bool:
-        return self.outcome == "submitted" and bool(self.checks) and all(c.ok for c in self.checks)
+    def ok_as(self, expected: str) -> bool:
+        """Passed: ended as the manifest expects (``submitted`` unless it says otherwise), with
+        at least one check and every check passed."""
+        return self.outcome == expected and bool(self.checks) and all(c.ok for c in self.checks)
 
 
 class _Doc(BaseModel):
@@ -144,6 +146,10 @@ class Verdict:
     groups: dict[Group, GroupVerdict]  # only the groups the file has runs of
 
 
+def _ok(row: _Row, manifest: Manifest) -> bool:
+    return row.ok_as(manifest.expected_outcome(row.case))
+
+
 def _check_failed(row: _Row, check: str, outcome_checks: Mapping[str, str]) -> bool:
     if outcome_checks.get(row.outcome) == check:
         return True
@@ -169,7 +175,7 @@ def _file_rules(doc: _Doc, manifest: Manifest) -> list[str]:
         if (row.case, row.repeat) in seen:
             rules.append("duplicate_run")
         seen.add((row.case, row.repeat))
-        if row.passed != row.ok:
+        if row.passed != row.ok_as(manifest.expected_outcome(row.case)):
             rules.append("inconsistent_row")
     return list(dict.fromkeys(rules))
 
@@ -197,7 +203,7 @@ def _group(
             continue
         mine = [row for row in rows if index[row.case][0] == category]
         live = [row for row in mine if row.outcome not in not_run_outcomes]
-        passes = sum(row.ok for row in live)
+        passes = sum(_ok(row, manifest) for row in live)
         failed: list[str] = []
         if any(len({row.repeat for row in mine if row.case == n}) < r.repeat for n in names):
             failed.append("repeats")
@@ -215,7 +221,7 @@ def _group(
             ran = [row for row in runs if row.outcome not in not_run_outcomes]
             if runs and not ran:
                 incomplete = True  # every run of the case was an outage
-            elif ran and not any(row.ok for row in ran):
+            elif ran and not any(_ok(row, manifest) for row in ran):
                 never_passed = True
         if never_passed:
             failed.append("each_case_once")
@@ -247,7 +253,7 @@ def _group(
         manifest.suite_version,
         manifest.digest,
         len(rows),
-        sum(row.ok for row in counted),
+        sum(_ok(row, manifest) for row in counted),
         len(rows) - len(counted),
         median,
         tuple(rules),

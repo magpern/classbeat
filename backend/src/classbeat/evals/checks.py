@@ -30,11 +30,13 @@ The suite's checks (ADR 0012 section 4), run only for a case whose ``expect`` as
   holds the library's rules for them);
 - ``ftp_warmup``: the FTP test starts at least ``ftp_warmup_min_sec`` into the class;
 - ``sprints_on_drops``: every sprint (a burst, as above) starts within one bar of a drop, when
-  the music has a drop;
+  the music has a drop; no sprints at all fails when the brief asked for sprints or races;
 - ``phrase_changes``: no zone change more than 1 s off a phrase boundary, drop, breakdown or
   track change when one is within 8 s (phrases from ``mowl.music.phrases``, events from the map);
 - ``revision``, ``kept_length``, ``kept_cooldown``, ``kept_efforts``: the asked change
-  (``RevisionExpect``) is made, and what it did not touch is kept, measured against the base.
+  (``RevisionExpect``) is made, and what it did not touch is kept, measured against the base
+  (``kept_efforts``: climbs, races and FTP tests for ``easier`` too, whose sprints may soften;
+  for ``shorter`` no kind of effort the base had may vanish).
 
 A check's detail holds numbers and rule names only, never draft or music text.
 """
@@ -322,9 +324,13 @@ def _bar_sec(music_map: dict[str, Any], t: float) -> float:
     return BEATS_PER_BAR * 60.0 / float(music.song_at(music_map, t)["bpm"])
 
 
-def sprints_on_drops(spec: dict[str, Any], music_map: dict[str, Any]) -> Check:
+def sprints_on_drops(spec: dict[str, Any], music_map: dict[str, Any], expected: int = 0) -> Check:
+    """``expected``: the sprints and races the brief asked for; a class with none of them fails
+    when some were asked, whatever the music holds (nothing starts on a drop if nothing starts)."""
     drops = [float(e["t"]) for e in music_map["events"] if e["kind"] == "drop"]
     starts = [t for t, _, i in _timed(spec) if _is_burst(i)]
+    if expected and not starts:
+        return Check("sprints_on_drops", False, f"no sprints, {expected} asked")
     if not drops:
         return Check("sprints_on_drops", True, f"{len(starts)} sprints, no drop in the music")
     on = [t for t in starts if any(abs(t - d) <= _bar_sec(music_map, d) for d in drops)]
@@ -426,18 +432,17 @@ def revision_checks(
             f"cooldown {cool_sec} s, the base {base_sec} s",
         )
     )
-    if want.kind in ("more_sprints", "climb_moved"):
-        now, was = _efforts(spec), _efforts(base)
-        if want.kind == "more_sprints":  # the sprints are what changed
-            now, was = now[:-1], was[:-1]
-        out.append(
-            Check(
-                "kept_efforts",
-                now == was,
-                f"climbs, races, FTP tests{'' if want.kind == 'more_sprints' else ', sprints'} "
-                f"{list(now)}, the base {list(was)}",
-            )
-        )
+    now, was = _efforts(spec), _efforts(base)
+    if want.kind in ("more_sprints", "easier"):  # the sprints are what changed or may soften
+        now, was = now[:-1], was[:-1]
+    if want.kind == "shorter":  # a shorter class may cut some, but no kind of effort entirely
+        kept = all(n > 0 for n, w in zip(now, was, strict=True) if w > 0)
+        detail = f"efforts present: {[n > 0 for n in now]}, the base {[w > 0 for w in was]}"
+    else:
+        kept = now == was
+        what = "climbs, races, FTP tests"
+        detail = f"{what}{'' if len(now) == 3 else ', sprints'} {list(now)}, the base {list(was)}"
+    out.append(Check("kept_efforts", kept, detail))
     return out
 
 
@@ -466,7 +471,7 @@ def suite_checks(case: Case, result: DesignResult, music_map: dict[str, Any] | N
         if music_map is None:
             raise ValueError("the music_sync checks need the music map")
         if sync.sprints_on_drops:
-            out.append(sprints_on_drops(spec, music_map))
+            out.append(sprints_on_drops(spec, music_map, case.brief.sprints + case.brief.races))
         if sync.phrase_changes:
             out.append(phrase_changes(spec, music_map, sync.max_off_phrase))
     if expect.revision is not None and case.revise is not None:

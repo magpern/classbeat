@@ -2,6 +2,11 @@
 base draft and the instructor's request, ending with ``submit_draft`` and an optional ``note``.
 
 - ``get_music`` and ``preview_draft`` are the ``design`` stage's, over the music of this run.
+- ``songs_requested()`` (ADR 0008 section 6, issue #278): the other final tool. A request that asks
+  for other songs and for nothing else changes nothing, so the stage ends with ``SongsRequested``
+  and the job ends ``use_change_songs`` (no revision; the class page points to "Change songs").
+  It is not offered to ``revise_songs``, whose request is the songs. A request that also asks for
+  other changes still ends with ``submit_draft``.
 - ``submit_draft(draft, note)``: the checks of ``design``; on success the stage ends with a
   ``ReviseResult``: the checked ``DesignResult`` and the note (at most 300 characters, control
   characters removed). The note is for the user's page only: it is stored with the answer, shown
@@ -27,7 +32,14 @@ from classbeat.agent.design import (
     design_stage,
 )
 from classbeat.agent.model_input import MusicData
-from classbeat.agent.schemas import Brief, DraftInput, MusicInput, ReviseInput, WorkoutDraft
+from classbeat.agent.schemas import (
+    Brief,
+    DraftInput,
+    MusicInput,
+    ReviseInput,
+    SongsRequestedInput,
+    WorkoutDraft,
+)
 from classbeat.agent.stage import Stage, Tool, ToolAnswer
 
 STAGE: Final = "revise"
@@ -56,10 +68,13 @@ the duration, the TSS, a quality report and warnings, or the errors to fix.
 that tells the instructor what you changed. The revision is not done until you do. A draft \
 identical to the base draft is not a revision and is refused.
 
-You cannot change the songs. If the new request asks for other songs or other music, change \
-nothing for that part and say in note that "Change songs" on the class page is the way to change \
-them; make only the other changes the request asks for. When you are told the songs were just \
-changed for this request, they already are: refit the draft to the new music instead.
+You cannot change the songs. If the new request asks for other songs or other music and for \
+nothing else, there is nothing to revise: call songs_requested instead of submit_draft, and the \
+instructor is pointed to "Change songs" on the class page. If it asks for other songs and for \
+other changes too, change nothing for the songs, make only the other changes, and say in note \
+that "Change songs" on the class page is the way to change them. When you are told the songs \
+were just changed for this request, they already are (and songs_requested is not offered): refit \
+the draft to the new music instead.
 
 The rules the app enforces: one cooldown segment, last, of at least 60 s; interval lengths in \
 whole seconds; zones 1 to 7; a game or an FTP test is separated from the next one by a regular \
@@ -84,6 +99,18 @@ class ReviseResult:
 
     result: DesignResult
     note: str
+
+
+SONGS_REQUESTED_TOOL: Final = "songs_requested"
+SONGS_REQUESTED_DESCRIPTION: Final = (
+    "Finish without a revision when the request asks for other songs or other music and for "
+    "nothing else. Takes no input; the instructor is pointed to Change songs."
+)
+
+
+@dataclass(frozen=True)
+class SongsRequested:
+    """The other end of the stage: the request was only about the songs (nothing was revised)."""
 
 
 @dataclass(frozen=True)
@@ -144,6 +171,7 @@ def revise_stage(ctx: ReviseContext) -> Stage:
                 "accepted": True,
                 "duration": mmss(result.duration_sec),
                 "tss": result.tss,
+                "tss_approximate": result.tss_approximate,
                 "quality": result.quality,
                 "warnings": result.warnings,
             },
@@ -154,6 +182,22 @@ def revise_stage(ctx: ReviseContext) -> Stage:
         tool = tools[name]
         return Tool(tool.name, tool.kind, description, tool.input_model, tool.handler)
 
+    def songs_requested(args: SongsRequestedInput) -> ToolAnswer:
+        return ToolAnswer({"accepted": True}, output=SongsRequested())
+
+    exits = (
+        ()
+        if ctx.songs_changed
+        else (
+            Tool(
+                SONGS_REQUESTED_TOOL,
+                "compute",
+                SONGS_REQUESTED_DESCRIPTION,
+                SongsRequestedInput,
+                songs_requested,
+            ),
+        )
+    )
     return Stage(
         name=STAGE,
         system=SYSTEM_PROMPT,
@@ -161,9 +205,18 @@ def revise_stage(ctx: ReviseContext) -> Stage:
             described("get_music", GET_MUSIC_DESCRIPTION),
             described("preview_draft", PREVIEW_DESCRIPTION),
             Tool(FINAL_TOOL, "compute", SUBMIT_DESCRIPTION, ReviseInput, submit_draft),
+            *exits,
         ),
         final_tool=FINAL_TOOL,
+        also_final=tuple(t.name for t in exits),
     )
 
 
-__all__ = ["DraftInput", "MusicInput", "ReviseContext", "ReviseResult", "revise_stage"]
+__all__ = [
+    "DraftInput",
+    "MusicInput",
+    "ReviseContext",
+    "ReviseResult",
+    "SongsRequested",
+    "revise_stage",
+]

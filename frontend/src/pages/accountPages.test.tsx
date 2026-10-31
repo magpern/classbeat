@@ -115,7 +115,7 @@ describe('account page', () => {
         return new Response(null, { status: 204 })
       },
     })
-    renderAt('/account')
+    renderAt('/account#security')
     fireEvent.click(await screen.findByRole('button', { name: 'Unlink GitHub' }))
     await waitFor(() => {
       expect(screen.queryByRole('button', { name: 'Unlink GitHub' })).toBeNull()
@@ -126,7 +126,7 @@ describe('account page', () => {
 
   it('refuses to unlink the last method with a clear message', async () => {
     fakeApi({ ...base, 'DELETE /api/auth/identities/i1': reason(409, 'last_sign_in_method') })
-    renderAt('/account')
+    renderAt('/account#security')
     fireEvent.click(await screen.findByRole('button', { name: 'Unlink GitHub' }))
     expect(await screen.findByRole('alert')).toHaveTextContent(/only way to sign in/)
   })
@@ -141,7 +141,7 @@ describe('account page', () => {
         return { status: 'ok' }
       },
     })
-    renderAt('/account')
+    renderAt('/account#security')
     await screen.findByRole('button', { name: 'Unlink GitHub' })
     type('New password', 'a brand new passphrase')
     type('Repeat the new password', 'a brand new passphrase')
@@ -164,7 +164,7 @@ describe('account page', () => {
       'POST /api/auth/password/change': reason(403, 'reauth_required'),
       'POST /api/auth/oauth/github/start': { authorization_url: 'https://idp.example/a' },
     })
-    renderAt('/account')
+    renderAt('/account#security')
     await screen.findByRole('button', { name: 'Unlink GitHub' })
     type('New password', 'a brand new passphrase')
     type('Repeat the new password', 'a brand new passphrase')
@@ -209,7 +209,7 @@ describe('account page', () => {
         return { ok: true }
       },
     })
-    renderAt('/account')
+    renderAt('/account#security')
     await screen.findByRole('button', { name: 'Unlink GitHub' })
     type('New email address', 'new@example.test')
     fireEvent.click(screen.getByRole('button', { name: 'Change email' }))
@@ -222,7 +222,7 @@ describe('account page', () => {
 
   it('cancelling the prompt leaves the change undone without an error', async () => {
     fakeApi({ ...base, 'POST /api/auth/password/change': reason(403, 'reauth_required') })
-    renderAt('/account')
+    renderAt('/account#security')
     await screen.findByRole('button', { name: 'Unlink GitHub' })
     type('New password', 'a brand new passphrase')
     type('Repeat the new password', 'a brand new passphrase')
@@ -237,7 +237,7 @@ describe('account page', () => {
 
   it('signs out everywhere', async () => {
     const api = fakeApi({ ...base, 'POST /api/auth/logout-all': new Response(null, { status: 204 }) })
-    renderAt('/account')
+    renderAt('/account#security')
     fireEvent.click(await screen.findByRole('button', { name: 'Sign out everywhere' }))
     await waitFor(() => {
       expect(api.to('POST', '/api/auth/logout-all')).toHaveLength(1)
@@ -252,17 +252,24 @@ describe('account page', () => {
       'POST /api/auth/mfa/totp/start': {
         secret: 'JBSWY3DPEHPK3PXP',
         otpauth_uri: 'otpauth://totp/x',
-        qr_svg: '<svg xmlns="http://www.w3.org/2000/svg"></svg>',
+        qr_svg:
+          '<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12"><g transform="scale(4)">' +
+          '<path onload="alert(1)" fill="#fff" d="M0 0h3v3h-3z"/><script>alert(1)</script>' +
+          '<image href="https://evil.example/x.png"/><a href="https://evil.example"><path d="M1 1"/></a></g></svg>',
         pending: 'sealed',
       },
       'POST /api/auth/mfa/totp/confirm': { recovery_codes: ['AAAAA11111', 'BBBBB22222'] },
     })
-    renderAt('/account')
+    renderAt('/account#security')
     fireEvent.click(await screen.findByRole('button', { name: 'Set up an authenticator app' }))
-    expect(await screen.findByAltText('QR code for your authenticator app')).toHaveAttribute(
-      'src',
-      expect.stringContaining('data:image/svg+xml'),
-    )
+    // Drawn inline (no data: URL, which the CSP's img-src does not allow), shapes only.
+    const qr = await screen.findByRole('img', { name: 'QR code for your authenticator app' })
+    expect(qr.tagName.toLowerCase()).toBe('svg')
+    expect(qr.getAttribute('viewBox')).toBe('0 0 12 12')
+    expect(qr.querySelector('g')?.getAttribute('transform')).toBe('scale(4)')
+    expect(qr.querySelector('path')?.getAttribute('d')).toBe('M0 0h3v3h-3z')
+    expect(qr.querySelector('script, image, foreignObject, a')).toBeNull()
+    expect(qr.querySelector('path')?.getAttribute('onload')).toBeNull()
     expect(screen.getByText('JBSWY3DPEHPK3PXP')).toBeInTheDocument()
     type('Code from the app', '123456')
     fireEvent.click(screen.getByRole('button', { name: 'Turn on two-factor' }))

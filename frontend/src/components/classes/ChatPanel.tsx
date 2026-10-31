@@ -3,12 +3,20 @@ import { ApiError } from '../../api/client'
 import { classReasonText, describeChange, isStale } from '../../api/classMessages'
 import type { ClassMessage, ClassSummary, RevisionSummary } from '../../api/classes'
 import { getConnections } from '../../api/connections'
-import { retryLabel, reviseFailureText, stageLabel } from '../../api/jobMessages'
+import {
+  retryLabel,
+  reviseFailureText,
+  stageLabel,
+  USE_CHANGE_SONGS,
+  USE_NEW_CLASS_FOR_SONGS,
+} from '../../api/jobMessages'
 import { cancelJob, createReviseJob, getJob, isTerminal, type Job } from '../../api/jobs'
 import { useJobProgress } from '../../hooks/useJobProgress'
 import { newIdempotencyKey } from '../../lib/submittedInput'
 import { Link } from '../../router/Router'
 import { Notice, useAction } from '../forms'
+import { CHANGE_SONGS_ID } from '../songs/ChangeSongs'
+import { Button } from '../ui/button'
 import { UncertainAttach } from './UncertainAttach'
 
 export const MAX_REQUEST_CHARS = 2000
@@ -65,7 +73,16 @@ function ReviseRun({ jobId, onFinished }: { jobId: string; onFinished: () => voi
 }
 
 /** What became of a request that got no answer: the job's failure, in plain words. */
-function Unanswered({ message, latest }: { message: ClassMessage; latest: boolean }) {
+function Unanswered({
+  message,
+  latest,
+  canChangeSongs,
+}: {
+  message: ClassMessage
+  latest: boolean
+  /** The class's songs were picked by Claude, so the class page has Change songs. */
+  canChangeSongs: boolean
+}) {
   const [job, setJob] = useState<Job | null>(null)
   const [failed, setFailed] = useState(false)
   const [resolved, setResolved] = useState(false)
@@ -103,6 +120,25 @@ function Unanswered({ message, latest }: { message: ClassMessage; latest: boolea
       </div>
     )
   }
+  if (job.state === 'failed' && job.errorCategory === 'use_change_songs') {
+    return (
+      <div className="chat__outcome" role="status" data-testid="use-change-songs">
+        <p>{canChangeSongs ? USE_CHANGE_SONGS : USE_NEW_CLASS_FOR_SONGS}</p>
+        {canChangeSongs ? (
+          <Button
+            variant="secondary"
+            onClick={() => {
+              const panel = document.getElementById(CHANGE_SONGS_ID)
+              panel?.scrollIntoView({ block: 'start' })
+              panel?.focus()
+            }}
+          >
+            Change songs
+          </Button>
+        ) : null}
+      </div>
+    )
+  }
   if (job.state === 'failed') {
     const sentence = reviseFailureText(job.errorCategory)
     return (
@@ -128,11 +164,13 @@ function History({
   numbers,
   openJobId,
   onView,
+  canChangeSongs,
 }: {
   messages: ClassMessage[]
   numbers: ReadonlyMap<string, number>
   openJobId: string | null
   onView: (revisionId: string) => void
+  canChangeSongs: boolean
 }) {
   const answered = new Set(
     messages.filter((m) => m.role === 'assistant' && m.jobId !== null).map((m) => m.jobId),
@@ -153,7 +191,11 @@ function History({
               <p className="chat__who">You asked</p>
               <p className="chat__text">{m.body}</p>
               {m.jobId !== null && !answered.has(m.jobId) && m.jobId !== openJobId ? (
-                <Unanswered message={m} latest={m.seq === latestUnanswered} />
+                <Unanswered
+                  message={m}
+                  latest={m.seq === latestUnanswered}
+                  canChangeSongs={canChangeSongs}
+                />
               ) : null}
             </li>
           )
@@ -294,6 +336,7 @@ export function ChatPanel({
         numbers={numbers}
         openJobId={running?.id ?? null}
         onView={onView}
+        canChangeSongs={summary.songs.state === 'approved' && summary.songs.revisionId !== null}
       />
       {revising && running ? (
         <ReviseRun key={running.id} jobId={running.id} onFinished={onReload} />
