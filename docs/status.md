@@ -13,7 +13,7 @@ GitHub hold the detail.
 | M2 | `mowl-workouts` v0.4.0, isolation, encryption, connect MOWL | done, except the token-lifetime check (waits for the owner) |
 | M3a | Jobs, Anthropic loop, design on existing music | done (2026-10-29); live smoke run once: 14 of 15 passed |
 | M3b | Class page, revisions, save to MOWL, usage and cost | done technically (2026-10-30, on fakes): [ADR 0007](adr/0007-classes-revisions-and-saving.md), issues #141 to #151 |
-| M4 | Song picking (beta), Spotify BYOK | in progress: design accepted 2026-10-31 ([ADR 0008](adr/0008-song-picking.md), [ADR 0009](adr/0009-spotify-connection.md), #198); issues in milestone "M4 Song picking and Spotify": #173 to #185 closed, #186 open until its part 2 merges; not marked done technically |
+| M4 | Song picking (beta), Spotify BYOK | done technically (2026-10-31, on fakes; design accepted 2026-10-31: [ADR 0008](adr/0008-song-picking.md), [ADR 0009](adr/0009-spotify-connection.md), #198); issues in milestone "M4 Song picking and Spotify" (#173 to #186). Live activation is the owner's, one authorised step at a time: [docs/runbooks/m4-live-activation.md](runbooks/m4-live-activation.md); none has been run |
 | M3c | Eval suite, OpenAI and DeepSeek adapters | done technically (on replayed providers, #219): [ADR 0012](adr/0012-eval-suite-and-model-providers.md); the owner's live steps are in [docs/runbooks/m3c-model-enable.md](runbooks/m3c-model-enable.md) |
 | M5 | Tiers, quotas, codes, admin | done technically, on fakes, once this E2E PR (#228) is merged (the security suite #227 is in) ([ADR 0011](adr/0011-tiers-quotas-and-admin.md)); issues in milestone "M5 Tiers and admin". Live activation is the owner's |
 | MU | Night Studio UI (ADR 0013) | design accepted 2026-10-30 ([ADR 0013](adr/0013-ui-design-night-studio.md), roadmap Amendment 8); issues #242, #243, #246 to #251, #253 to #255; runs beside M4 and M5, done before M6 |
@@ -102,22 +102,40 @@ GitHub hold the detail.
   comments). The ADR 0007 amendments (brief limit, usage month before the account, counting
   rules, the class API's saved summary) are written in the ADR's "Amendments after
   implementation".
-- **M4 in progress** (song picking, Spotify BYOK): ADR 0008 (song picking) and ADR 0009 (the Spotify
+- **M4 design accepted** (song picking, Spotify BYOK): ADR 0008 (song picking) and ADR 0009 (the Spotify
   connection) were accepted on 2026-10-31 (#198 item 6, with their dated amendments), and roadmap
-  Amendment 5 is in effect. Of their 14 issues, #173 to #185 are closed and #186 stays open until its part 2 merges. Nothing live is run; the
+  Amendment 5 is in effect. Of their 14 issues, #173 to #185 are closed and #186 closes with its part 2 (the entry below). Nothing live is run; the
   owner-authorized live steps are in ADR 0008 §11. The superseded-by notes that ADR 0009 owed are written:
   ADR 0004 §4, ADR 0005 §3 and §4's category table, and ADR 0007 §9 (the guard is `generation`,
   compared together with `id`; for Spotify only the flips of ADR 0009 §6). The M4 review follow-ups
   (#198) are done on `main`; item 19 (A3's paging, unreachable with 40 songs) is covered at the
   playlist-read level in `e2e/tests/fake-spotify.spec.ts`. None of #198's items needs a live step.
-- **M4 T3 (#186), part 1:** the e2e stack turns song picking on (test-only); `spotify-connect.spec.ts`
-  covers the wizard (callback copy, a Client ID that is not 32 hex characters, an unknown Client ID, cancel,
-  allow-list refusal, a changed state), the working-playlist consent, Disconnect, two users on different
-  Client IDs, a confirmed account switch and every error category's page text. The live-activation
-  checklist is [docs/runbooks/m4-live-activation.md](runbooks/m4-live-activation.md) (ADR 0008 §11; agents
-  run no step without the owner's go-ahead for that step). Part 2 (pick, approval, superseded and expired
-  lists, partial failure and resume, Change songs) closes #186; M4 is not technically done until it
-  merges and its "done when" is checked against the roadmap row.
+- **M4 done technically (#186 part 2, 2026-10-31), on fakes only:** nothing live was run. Part 1
+  (`spotify-connect.spec.ts`: wizard, consent, Disconnect, two users on different Client IDs, every
+  error category's page text) and part 2 (`song-pick.spec.ts`: pick, approval, refusals, partial failure,
+  Change songs) check the roadmap M4 "done when" like this (E2E = Playwright against the compose stack
+  with fake Spotify, fake MOWL and the recorded model; backend = pytest named in the right column):
+
+  | Done-when item | E2E spec | Backend test |
+  |---|---|---|
+  | A1 to A3: brief to a draft with one Approve; private (`public: false`, `collaborative: false`) final playlist with exactly the approved ids in order; MOWL lists them | `song-pick`: "a pick, one Approve, and a private playlist of exactly the approved songs, in order" | `test_playlists_writes.py::test_a_final_playlist_is_created_for_its_class_then_filled_and_verified`; 120 items over three pages: `fake-spotify.spec.ts` and `test_spotify_fake.py` |
+  | A drop, duplicate or reorder makes the read-back `playlist_mismatch` | `song-pick`: "a playlist that does not match the approved songs fails the job" | `test_playlists_writes.py::test_a_final_fill_whose_read_back_differs_is_a_mismatch_and_not_retried` |
+  | Superseded approval | `song-pick`: "a newer list replaced this one while it waits" (still waiting, refused as superseded) and "a newer pick stops the older list" (the stale tab of a stopped pick) | `test_design_with_songs_approve.py::test_expired_superseded_and_hash_mismatch_start_nothing` |
+  | Expired approval | `song-pick`: "a list that was not approved in time expires" | same test, and `test_an_expired_list_makes_no_call_and_releases_its_credit_once` (the TTL floor is backend only) |
+  | Hash mismatch, a double click and a second tab, another user's job or revision (404), disconnect while waiting, quota refused | `song-pick`: "songs changed behind the page make the approval refuse on the hash", "two users on different Client IDs pick at once" (404 on read and approve), "a Spotify account switch while songs wait" | `test_any_change_to_the_stored_list_is_a_hash_mismatch`, `test_a_double_click_and_a_second_tab_are_one_approval`, `test_another_users_job_or_revision_is_not_found`, `test_a_disconnect_while_waiting_is_not_connected`, `test_the_per_user_limit_and_the_credit_seam` (all `test_design_with_songs_approve.py`), `test_spotify_quota.py` |
+  | Ownership: a working or final playlist that is not the user's own, public, collaborative, gone or edited to another user's id: nothing written | `song-pick`: "a working playlist that is not the user's own is never written to" | `test_playlists_writes.py::test_no_write_reaches_a_pool_playlist_that_is_public_collaborative_or_gone`, `test_a_pool_id_edited_to_another_users_playlist_sends_no_write`, `test_a_class_playlist_id_edited_to_another_users_playlist_sends_no_write` |
+  | Partial-failure reconcile and resume | `song-pick`: "a playlist that does not match", "a lost answer to the playlist create is reconciled", "a playlist write that may not have happened is left to the user", "Change songs: a failed write is resumed" | `test_playlists_writes.py::test_failure_injection_at_every_request_of_a_pool_replace` and the create/fill tests there; `test_playlists_reconcile.py` |
+  | Every error category | `spotify-connect`: "every error category has its plain sentence on the Spotify page, and none shows a provider message", "a token endpoint that refuses the app" | `test_spotify_errors.py` |
+  | Concurrent users on different Client IDs, tokens, music and playlists never mix | `song-pick` and `spotify-connect`: "two users on different Client IDs ... never mix" (every fake request carries the token of the playlist's owner and of that user's own app) | `test_owner_filter.py`, `test_spotify_connect.py` |
+  | A callback cannot connect the wrong account; another Spotify account needs a confirmed switch | `spotify-connect`: "a callback with a changed state connects nothing", "another Spotify account for the same user needs a confirmed switch", "an account that is not on the app allow-list is refused" | `test_spotify_account.py`, `test_spotify_connect.py` |
+  | Change songs | `song-pick`: "Change songs: one song replaced, a new playlist after one Approve, the old one untouched" | `test_revise_songs.py` |
+
+  Live activation stays the owner's (ADR 0008 section 11; agents run a step only with the owner's
+  go-ahead for that step, logged under "Live activation log"): steps 1 to 7 of the runbook, and the
+  checks it measures: MOWL follows edits of an attached playlist, the `/items` shape and page size,
+  the listing lag (`CLASSBEAT_SPOTIFY_LISTING_LAG_SECONDS`, `CLASSBEAT_MOWL_LISTING_LAG_SECONDS`), the
+  `/me` 403 for a user off the allow-list, the `invalid_grant` body, and the cost per song-picked class
+  against the ADR 0008 section 3 ceiling.
 - **M3c design** (eval suite, providers, the enable gate): ADR 0012 is Proposed, roadmap Amendment 6,
   threat model T79 to T84. Owner questions with defaults are in ADR 0012 (OpenAI data, DeepSeek kept
   disabled, stale routes, thresholds, a full-suite run for Opus, provider keys); agents build to the
@@ -221,6 +239,10 @@ GitHub hold the detail.
   and records the date of the first 401 or 403 (or that none came within 30 days); no write to
   the account, nothing else signed in. Agents run it only with the owner's go-ahead for that run,
   logged under "Live activation log".
+
+- **M4 live activation** (runbook [m4-live-activation.md](runbooks/m4-live-activation.md), ADR 0008 §11): create the
+  Spotify Development Mode app and add the allow-list users, then give a go-ahead for each of steps 2 to 7 (connect, one
+  pick, one Approve, one Change songs, the cost reading, Disconnect). Until then `CLASSBEAT_SONG_PICKING` stays off.
 
 ## Live activation log
 

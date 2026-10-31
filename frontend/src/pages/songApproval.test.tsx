@@ -323,6 +323,42 @@ describe('Ask for changes and the brief', () => {
     expect(input.brief).toEqual(kept)
   })
 
+  it('prefers the class brief to the form kept in this tab when both are there and differ', async () => {
+    const kept = { ...BRIEF, text: 'From the tab', length_min: 60 }
+    const own = { ...BRIEF, text: 'From the class', length_min: 45 }
+    window.sessionStorage.setItem(
+      `classbeat.pick-input.${JOB_ID}`,
+      JSON.stringify({ class_id: CLASS_ID, brief: kept, mode: 'pick', mowl_connection_id: 'x', spotify_connection_id: 'y' }),
+    )
+    const api = fakeApi({ ...base, [`GET ${CLASS_PATH}`]: classBody({ brief: own }) })
+    renderAt(`/jobs/${JOB_ID}`)
+    fireEvent.click(await screen.findByRole('button', { name: 'Replace Rolling <i>hills</i>' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Ask for changes' }))
+    await waitFor(() => {
+      expect(window.location.pathname).toBe(`/jobs/${NEW_JOB.id}`)
+    })
+    const input = (api.to('POST', '/api/jobs')[0]?.body as { input: Record<string, unknown> }).input
+    expect(input.brief).toEqual(own)
+  })
+
+  it('says the songs were stopped when the class cannot be read after the cancel, and a second try goes on', async () => {
+    let reads = 0
+    const api = fakeApi({
+      ...base,
+      [`GET ${CLASS_PATH}`]: () => (++reads === 1 ? reason(500, 'internal') : json(classBody({ brief: BRIEF }))),
+      [`POST ${JOB}/cancel`]: () => reason(409, 'not_waiting'), // already stopped by the first try
+    })
+    renderAt(`/jobs/${JOB_ID}`)
+    fireEvent.click(await screen.findByRole('button', { name: 'Replace Rolling <i>hills</i>' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Ask for changes' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent(/These songs were stopped, but classbeat could not read the class/)
+    expect(api.to('POST', '/api/jobs')).toHaveLength(0)
+    fireEvent.click(screen.getByRole('button', { name: 'Ask for changes' }))
+    await waitFor(() => {
+      expect(window.location.pathname).toBe(`/jobs/${NEW_JOB.id}`)
+    })
+  })
+
   it('rebuilds the length from the list when there is neither', async () => {
     const api = fakeApi({ ...base, [`GET ${CLASS_PATH}`]: classBody({ brief: null }) })
     renderAt(`/jobs/${JOB_ID}`)

@@ -8,6 +8,7 @@ import {
   reviseFailureText,
   stageLabel,
   USE_CHANGE_SONGS,
+  USE_FINISH_SONGS,
   USE_NEW_CLASS_FOR_SONGS,
 } from '../../api/jobMessages'
 import { cancelJob, createReviseJob, getJob, isTerminal, type Job } from '../../api/jobs'
@@ -18,6 +19,9 @@ import { Notice, useAction } from '../forms'
 import { CHANGE_SONGS_ID } from '../songs/ChangeSongs'
 import { Button } from '../ui/button'
 import { UncertainAttach } from './UncertainAttach'
+
+/** Where the class's songs stand, for the answer to a request that only asks for other songs. */
+type SongsWay = 'change' | 'own' | 'pending'
 
 export const MAX_REQUEST_CHARS = 2000
 
@@ -76,13 +80,14 @@ function ReviseRun({ jobId, onFinished }: { jobId: string; onFinished: () => voi
 function Unanswered({
   message,
   latest,
-  canChangeSongs,
+  songs,
 }: {
   message: ClassMessage
   latest: boolean
-  /** The class's songs were picked by Claude, so the class page has Change songs. */
-  canChangeSongs: boolean
+  /** Where the class's songs stand: Change songs is there, a playlist of the user's own, or a pick not done. */
+  songs: SongsWay
 }) {
+  const canChangeSongs = songs === 'change'
   const [job, setJob] = useState<Job | null>(null)
   const [failed, setFailed] = useState(false)
   const [resolved, setResolved] = useState(false)
@@ -123,7 +128,7 @@ function Unanswered({
   if (job.state === 'failed' && job.errorCategory === 'use_change_songs') {
     return (
       <div className="chat__outcome" role="status" data-testid="use-change-songs">
-        <p>{canChangeSongs ? USE_CHANGE_SONGS : USE_NEW_CLASS_FOR_SONGS}</p>
+        <p>{songs === 'change' ? USE_CHANGE_SONGS : songs === 'own' ? USE_NEW_CLASS_FOR_SONGS : USE_FINISH_SONGS}</p>
         {canChangeSongs ? (
           <Button
             variant="secondary"
@@ -164,13 +169,13 @@ function History({
   numbers,
   openJobId,
   onView,
-  canChangeSongs,
+  songs,
 }: {
   messages: ClassMessage[]
   numbers: ReadonlyMap<string, number>
   openJobId: string | null
   onView: (revisionId: string) => void
-  canChangeSongs: boolean
+  songs: SongsWay
 }) {
   const answered = new Set(
     messages.filter((m) => m.role === 'assistant' && m.jobId !== null).map((m) => m.jobId),
@@ -194,7 +199,7 @@ function History({
                 <Unanswered
                   message={m}
                   latest={m.seq === latestUnanswered}
-                  canChangeSongs={canChangeSongs}
+                  songs={songs}
                 />
               ) : null}
             </li>
@@ -336,7 +341,13 @@ export function ChatPanel({
         numbers={numbers}
         openJobId={running?.id ?? null}
         onView={onView}
-        canChangeSongs={summary.songs.state === 'approved' && summary.songs.revisionId !== null}
+        songs={
+          summary.songs.state === 'approved' && summary.songs.revisionId !== null
+            ? 'change'
+            : summary.songs.state === 'none'
+              ? 'own'
+              : 'pending'
+        }
       />
       {revising && running ? (
         <ReviseRun key={running.id} jobId={running.id} onFinished={onReload} />

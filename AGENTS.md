@@ -549,6 +549,8 @@ cd e2e
 npm ci
 npx playwright install chromium          # once (CI: --with-deps)
 npm test                                 # or E2E_BASE_URL=http://127.0.0.1:20007 npm test
+# fake-spotify.spec.ts runs `docker compose config`: set COMPOSE_FILE=compose.yaml:compose.e2e.yaml (`;` on Windows)
+# and COMPOSE_PROFILES=e2e as CI does, or it does not see the fake services.
 npx playwright show-report               # HTML report after a failure
 cd .. && dc down -v
 ```
@@ -588,9 +590,27 @@ from the web container without following the redirect and hands the page the ans
 user is one global setting, so a spec sets `signInAtSpotify(user)` before each connect and the specs run one
 after the other. The live-activation steps for the owner are `docs/runbooks/m4-live-activation.md`.
 
+Song picks run end to end in the e2e stack. The fake MOWL wraps any Spotify playlist classbeat attaches and,
+on every read, lists what the fake Spotify's playlist holds now (MOWL follows edits, ADR 0008 section 2): the
+fake Spotify computes that list (`FakeSpotify.playlist_track_ids` and `mowl_entries` in `spotifycore.py`, also
+used by the in-process `FakeMowlPool`, so the two fakes cannot drift) and serves it on its test control
+(`GET /__e2e/mowl-tracks?playlist=<id>`); the fake MOWL asks that from the compose network with the Spotify
+fake's certificate unchecked (the shared CA bundle is written after the MOWL fake starts; the call is
+test-only and internal). The seeded fake Spotify gives every catalogue track four minutes
+(`/__e2e/durations?ms=`), which the recorded design is written for. The pick model is `e2e_pick.json` (search by
+artist name, `the invented band` then `placeholder collective`, then the 14-candidate pool and the 8-song
+list) and the change model `e2e_change.json` (slot 3 replaced); a spec points the worker's script link at
+one before each phase (`useModelScript`), and back at `good_first_draft` (or `revise_good` for a change)
+before the approval, because the second phase is a new run of the model. `e2e/tests/song-helpers.ts` has
+`readyToPick`, `startPick`, `untilState`, `fakePlaylists` and `sql` (a statement as the database superuser in
+the stack's db container, for what a test cannot wait for, such as an approval past its date: constants only).
+
 The specs: `design-draft.spec.ts` (draft, cancel while running, uncertain attach),
 `spotify-connect.spec.ts` (the Spotify wizard, consent, Disconnect, two users on different Client IDs and
-every error category's page text),
+every error category's page text), `song-pick.spec.ts` (a pick and one Approve to a private playlist of exactly
+the approved songs, a stale tab after a newer pick, an expired list, an account switch while waiting, a partial
+write and Create the playlist again, a lost create answer reconciled, an undecided write, Change songs and its
+resume, two users on different Client IDs picking at once, a working playlist that is not the user's own),
 `class-save.spec.ts` (change, save, update, uncertain writes, another MOWL account),
 `m5-quota.spec.ts` and `m5-admin.spec.ts` (M5 done-when: parallel creates from several browser contexts of one session, the
 plan limit, refunds, an admin with TOTP granting a plan and refunding a credit, a redeem code; helpers in `m5-helpers.ts`,
