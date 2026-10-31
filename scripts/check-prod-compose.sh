@@ -43,8 +43,10 @@ q '[.services | to_entries[] | select(.value.secrets // [] | map(.source) | inde
 q '.services.web.environment.CLASSBEAT_TRUSTED_PROXIES == .services.caddy.networks.edge.ipv4_address' \
   || fail "the trusted proxy must be caddy's fixed address on edge"
 q '.services.web.environment.CLASSBEAT_ENVIRONMENT == "prod"' || fail "web must run as prod"
-q '[.services[] | select((.logging.options["max-size"] // null) == null)] | length == 0' \n  || fail "every service needs log rotation"
+q '[.services[] | select((.logging.options["max-size"] // null) == null)] | length == 0' \
+  || fail "every service needs log rotation"
 
 docker run --rm -e ACME_EMAIL -e CLASSBEAT_DOMAIN -v "$native/Caddyfile:/etc/caddy/Caddyfile:ro" \
-  caddy:2.10.2 caddy validate --config /etc/caddy/Caddyfile >"$tmp/caddy.log" 2>&1 \n  || { cat "$tmp/caddy.log" >&2; fail "caddy validate failed"; }
+  caddy:2.10.2 caddy validate --config /etc/caddy/Caddyfile >"$tmp/caddy.log" 2>&1 \
+  || { cat "$tmp/caddy.log" >&2; fail "caddy validate failed"; }
 echo "compose.prod.yaml and Caddyfile: ok"
