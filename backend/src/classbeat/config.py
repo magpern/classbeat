@@ -184,7 +184,7 @@ class Settings(BaseSettings):
     smtp_username: str | None = None
     # From the file ``smtp_password`` (never the environment).
     smtp_password: SecretStr | None = None
-    # Opt-in: a PEM certificate (or CA) file, mounted read-only, that the SMTP server's
+    # Opt-in: Bridge's own PEM leaf certificate, mounted read-only, that the SMTP server's
     # certificate must chain to instead of the system store (a self-signed Proton Mail Bridge).
     # Verification and the hostname check stay on. Unset: the system store.
     smtp_ca_file: Path | None = None

@@ -22,6 +22,7 @@ done
 
 export CLASSBEAT_VERSION=0.0.0 CLASSBEAT_DOMAIN=classbeat.example.test ACME_EMAIL=ops@example.test
 export SMTP_HOST=smtp.example.test SMTP_SENDER=noreply@example.test
+export SMTP_CA_FILE=/run/smtp-ca/bridge.pem
 export COMPOSE_PROJECT_NAME=classbeat-prod-check
 json="$(docker compose -f "$native/${tmp##*/}/compose.prod.yaml" config --format json)"
 
@@ -46,6 +47,8 @@ q '[.services | to_entries[] | select(.value.secrets // [] | map(.source) | inde
   || fail "postgres_password belongs to db and db-functions only"
 q '.services.web.environment.CLASSBEAT_TRUSTED_PROXIES == .services.caddy.networks.edge.ipv4_address' \
   || fail "the trusted proxy must be caddy's fixed address on edge"
+q '[.services | to_entries[] | select(.value.environment // {} | has("CLASSBEAT_SMTP_CA_FILE")) | .key] == ["web"]'   || fail "CLASSBEAT_SMTP_CA_FILE belongs to web only (migrate would fail on an unmounted file)"
+q '.services.web.environment.CLASSBEAT_SMTP_CA_FILE == "/run/smtp-ca/bridge.pem"'   || fail "web must get SMTP_CA_FILE"
 q '.services.web.environment.CLASSBEAT_ENVIRONMENT == "prod"' || fail "web must run as prod"
 q '[.services[] | select((.logging.options["max-size"] // null) == null)] | length == 0' \
   || fail "every service needs log rotation"

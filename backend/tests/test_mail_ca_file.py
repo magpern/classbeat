@@ -57,8 +57,10 @@ class StarttlsServer:
     """An SMTP server (own thread) that offers STARTTLS with one certificate and takes one
     message. ``delivered`` is set only when a message arrived over the TLS session."""
 
-    def __init__(self, cert: Path, key: Path) -> None:
+    def __init__(self, cert: Path, key: Path, *, offer_starttls: bool = True) -> None:
         self.delivered = threading.Event()
+        self.auth_seen = threading.Event()
+        self._offer_starttls = offer_starttls
         self._context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
         self._context.load_cert_chain(cert, key)
         self._sock = socket.socket()
@@ -102,7 +104,13 @@ class StarttlsServer:
         while line := stream.readline().decode().strip():
             verb = line.split(" ", 1)[0].upper()
             if verb == "EHLO":
-                say("250 fake" if secure else "250-fake\r\n250 STARTTLS")
+                if secure or not self._offer_starttls:
+                    say("250-fake\r\n250 AUTH PLAIN LOGIN")
+                else:
+                    say("250-fake\r\n250-AUTH PLAIN LOGIN\r\n250 STARTTLS")
+            elif verb == "AUTH":
+                self.auth_seen.set()
+                say("235 ok")
             elif verb == "STARTTLS":
                 say("220 go ahead")
                 tls = self._context.wrap_socket(conn, server_side=True)
@@ -122,9 +130,16 @@ class StarttlsServer:
                 say("250 ok")
 
 
-def mailer(port: int, ca_file: Path | None) -> Mailer:
+def mailer(port: int, ca_file: Path | None, *, login: bool = False) -> Mailer:
     return Mailer(
-        settings(smtp_host="127.0.0.1", smtp_port=port, smtp_tls="starttls", smtp_ca_file=ca_file)
+        settings(
+            smtp_host="127.0.0.1",
+            smtp_port=port,
+            smtp_tls="starttls",
+            smtp_ca_file=ca_file,
+            smtp_username="bridge-user" if login else None,
+            smtp_password="bridge-pass" if login else None,
+        )
     )
 
 
@@ -206,3 +221,39 @@ def test_the_file_comes_from_the_environment(
     cert, _ = self_signed(tmp_path, "bridge")
     monkeypatch.setenv("CLASSBEAT_SMTP_CA_FILE", str(cert))
     assert Settings().smtp_ca_file == cert
+
+
+async def test_no_login_is_sent_when_the_certificate_is_refused(tmp_path: Path) -> None:
+    served, key = self_signed(tmp_path, "served")
+    pinned, _ = self_signed(tmp_path, "pinned")
+    server = StarttlsServer(served, key)
+    try:
+        with pytest.raises(MailError):
+            await mailer(server.port, pinned, login=True).send(MESSAGE)
+        assert not server.auth_seen.is_set()
+    finally:
+        server.close()
+
+
+async def test_no_login_is_sent_when_the_server_offers_no_starttls(tmp_path: Path) -> None:
+    cert, key = self_signed(tmp_path, "bridge")
+    server = StarttlsServer(cert, key, offer_starttls=False)
+    try:
+        with pytest.raises(MailError):
+            await mailer(server.port, cert, login=True).send(MESSAGE)
+        assert not server.auth_seen.is_set()
+    finally:
+        server.close()
+
+
+async def test_the_login_is_sent_after_the_pinned_certificate_is_accepted(
+    tmp_path: Path,
+) -> None:
+    cert, key = self_signed(tmp_path, "bridge")
+    server = StarttlsServer(cert, key)
+    try:
+        await mailer(server.port, cert, login=True).send(MESSAGE)
+        assert server.auth_seen.is_set()
+        assert server.delivered.is_set()
+    finally:
+        server.close()
