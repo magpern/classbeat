@@ -32,6 +32,7 @@ from classbeat.auth.sessions import (
 )
 from classbeat.auth.tables import identities, invites, pending_signups
 from classbeat.config import Settings
+from classbeat.flags import effective as flags
 from classbeat.mail import MailMessage
 
 REAUTH_MAX_AGE = 300  # seconds: auth_time must be within the last 5 minutes
@@ -175,8 +176,9 @@ async def _sign_in(db: AsyncSession, req: Request) -> Outcome:
         return await _session_for(db, req, user_id)
     if ident.email_verified and ident.email and await find_user(db, ident.email) is not None:
         return _fail("account_exists")  # nothing is created or linked
-    gated = settings.signup_mode != "open"
-    if settings.signup_mode == "closed" or (gated and req.flow.invite_id is None):
+    mode = await flags.signup_mode(db, settings.signup_mode)  # stricter of env and database
+    gated = mode != "open"
+    if mode == "closed" or (gated and req.flow.invite_id is None):
         return _fail("invite_required")
     if gated and not await _invite_valid(db, req.flow.invite_id):
         return _fail("invite_invalid")
@@ -232,16 +234,17 @@ async def create_provider_account(
 ) -> UUID:
     """One savepoint: consume the invite, create the user (verified) and the identity.
     Raises ``Refused`` with ``invite_invalid`` or ``account_exists``; nothing is left behind."""
+    mode = await flags.signup_mode(db, settings.signup_mode)
     try:
         async with db.begin_nested():
-            await consume_invite(db, invite_id, settings.signup_mode)
+            await consume_invite(db, invite_id, mode)
             user_id = await create_user(db, email)
             await db.execute(
                 insert(identities).values(
                     user_id=user_id, provider=provider, subject=subject, email_at_link=email
                 )
             )
-            if invite_id is not None and settings.signup_mode != "open":
+            if invite_id is not None and mode != "open":
                 await db.execute(
                     update(invites).where(invites.c.id == invite_id).values(used_by=user_id)
                 )
@@ -279,12 +282,13 @@ async def _hand_off(db: AsyncSession, req: Request) -> Outcome:
             )
         )
     browser = secrets.token_urlsafe(32)
+    mode = await flags.signup_mode(db, req.settings.signup_mode)
     await db.execute(
         insert(pending_signups).values(
             provider=req.flow.provider,
             subject=req.identity.subject,
             browser_hash=token_hash(browser),
-            invite_id=req.flow.invite_id if req.settings.signup_mode != "open" else None,
+            invite_id=req.flow.invite_id if mode != "open" else None,
             expires_at=func.now() + HANDOFF_LIFETIME,
         )
     )

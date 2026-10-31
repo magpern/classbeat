@@ -320,6 +320,13 @@ class SongEnv:
         owner = await env.user(f"songs-{uuid.uuid4().hex[:10]}@example.com")
         if self.plan is not None:  # ``plantools.users_plan``
             grant_plan(self.admin, owner, self.plan)
+        # The default ``song_picking`` flag is ``granted`` (ADR 0011 section 7): a rider has the
+        # feature, as an admin grants it to the owner's testers.
+        self.sql(
+            "INSERT INTO entitlements (owner_id, features, source) "
+            "VALUES (:o, ARRAY['song_picking'], 'grant')",
+            o=owner,
+        )
         ctx = make_context(owner)
         await self.spot.seed(ctx, client_id, spotify_user)
         if consent:

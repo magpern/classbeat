@@ -31,6 +31,7 @@ from classbeat.auth.ratelimit import SIGN_IN_IP, SIGNUP_ADDRESS, SIGNUP_IP, Buck
 from classbeat.auth.tables import invites, pending_signups
 from classbeat.db import system_session
 from classbeat.emailnorm import normalize_email
+from classbeat.flags import effective as flags
 from classbeat.mail import MailMessage, send_logged
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
@@ -90,10 +91,12 @@ async def sign_up(body: SignUpIn, request: Request, background: BackgroundTasks)
         request,
         [Bucket(SIGNUP_ADDRESS, normalized), Bucket(SIGNUP_IP, bucket_ip(request_ip(request)))],
     )
-    if settings.signup_mode == "closed":
+    async with system_session(factory(request)) as db:
+        mode = await flags.signup_mode(db, settings.signup_mode)  # stricter of env and database
+    if mode == "closed":
         raise refuse(403, "signups_closed")
     invite_id = None
-    if settings.signup_mode == "invite":
+    if mode == "invite":
         # Checked before hashing, so a bad invite never occupies the hashing pool.
         async with system_session(factory(request)) as db:
             invite_id = await valid_invite(db, body.invite_code)
