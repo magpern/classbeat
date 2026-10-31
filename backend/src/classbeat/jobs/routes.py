@@ -13,7 +13,9 @@
   413 ``too_large`` for a body over ``BODY_MAX_BYTES`` (also on approve). A kind with ``admit``
   (``classbeat.jobs.kinds``) may refuse with its own reason (409 ``{reason}`` and whole-number
   counts, unless the reason has a status above); an input naming one of the kind's server fields
-  is 422 ``invalid_input``: only ``admit`` sets those.
+  is 422 ``invalid_input``: only ``admit`` sets those. So is one naming a field every input of the
+  kind's model leaves to the server (``JobInput.SERVER_FIELDS``: a model job's ``route_key``, set at
+  creation, ADR 0012 section 5).
 - ``GET /api/jobs/{id}``: the job's state.
 - ``GET /api/jobs/{id}/revision``: the draft the job stored, for the draft summary: 409
   ``no_revision`` while it has none. Answers only ``{revision_id, number, kind, content,
@@ -40,7 +42,7 @@ import json
 import re
 from collections.abc import Mapping
 from dataclasses import asdict
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Annotated, Any
 from uuid import UUID
 
@@ -57,7 +59,7 @@ from classbeat.jobs.credits import CreditLedger
 from classbeat.jobs.inputs import JobInput, jsonb_size
 from classbeat.jobs.kinds import KIND_NAME, KINDS, JobKind, KindRegistry, Refused
 from classbeat.jobs.progress import read_revision
-from classbeat.jobs.sentences import failure_sentence
+from classbeat.jobs.sentences import job_sentence
 from classbeat.jobs.user import Admission, CreateAdmit, JobLimitPolicy, NewJob
 from classbeat.usage import job_usage
 
@@ -127,7 +129,14 @@ class JobOut(BaseModel):
     @classmethod
     def of(cls, view: service.JobView) -> "JobOut":
         out = cls.model_validate(view, from_attributes=True)
-        out.error_message = failure_sentence(view.error_category)
+        out.error_message = job_sentence(
+            view.state,
+            view.error_category,
+            view.spotify_failure,
+            view.spotify_retry_after,
+            view.available_at,
+            datetime.now(UTC),
+        )
         return out
 
 
@@ -242,9 +251,10 @@ async def create_job(
     except ValidationError as error:
         return _invalid(error)
     kind = kinds.get(body.kind)
-    if kind is None or not issubclass(kind.input_model, JobInput):
+    model = None if kind is None else kind.input_model
+    if kind is None or model is None or not issubclass(model, JobInput):
         return _refuse("unknown_kind", 422)
-    if kind.server_fields & body.input.keys():
+    if (kind.server_fields | model.SERVER_FIELDS) & body.input.keys():
         return _invalid()  # set by the server only; never echoed
     try:
         parsed = kind.parse_input(body.input)

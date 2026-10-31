@@ -19,7 +19,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from classbeat.auth import mails
-from classbeat.auth.accounts import create_user, find_user
+from classbeat.auth.accounts import create_user, find_user, use_invite
 from classbeat.auth.clientip import bucket_ip
 from classbeat.auth.deps import request_ip
 from classbeat.auth.events import record_event
@@ -31,6 +31,7 @@ from classbeat.auth.ratelimit import SIGN_IN_IP, SIGNUP_ADDRESS, SIGNUP_IP, Buck
 from classbeat.auth.tables import invites, pending_signups
 from classbeat.db import system_session
 from classbeat.emailnorm import normalize_email
+from classbeat.flags import effective as flags
 from classbeat.mail import MailMessage, send_logged
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
@@ -90,10 +91,12 @@ async def sign_up(body: SignUpIn, request: Request, background: BackgroundTasks)
         request,
         [Bucket(SIGNUP_ADDRESS, normalized), Bucket(SIGNUP_IP, bucket_ip(request_ip(request)))],
     )
-    if settings.signup_mode == "closed":
+    async with system_session(factory(request)) as db:
+        mode = await flags.signup_mode(db, settings.signup_mode)  # stricter of env and database
+    if mode == "closed":
         raise refuse(403, "signups_closed")
     invite_id = None
-    if settings.signup_mode == "invite":
+    if mode == "invite":
         # Checked before hashing, so a bad invite never occupies the hashing pool.
         async with system_session(factory(request)) as db:
             invite_id = await valid_invite(db, body.invite_code)
@@ -131,9 +134,11 @@ class _Refused(Exception):
 async def confirm_sign_up(
     body: ConfirmIn, request: Request, response: Response, background: BackgroundTasks
 ) -> Created:
-    # Deliberately ignores signup_mode: a pending sign-up made while sign-ups were open (or
-    # invited) stays confirmable until it expires, even after a switch to "closed"; its invite
-    # was valid when it was made and is still consumed at confirmation.
+    # While the effective sign-up mode is "closed" (the emergency brake, ADR 0011 section 7,
+    # amendment 2026-10-31) no pending sign-up is confirmed, password or provider: 403
+    # signups_closed. The pending row and its invite stay, so it can still be confirmed if sign-ups
+    # reopen before it expires. "invite" and "open" do not matter here: the row was admitted when
+    # it was made, and its invite is consumed at confirmation.
     ip = request_ip(request)
     digest = token_hash(body.token)
     async with system_session(factory(request)) as db:
@@ -155,6 +160,9 @@ async def confirm_sign_up(
         # Unknown or expired token: only the IP is counted (no account to name).
         await reserve(request, [Bucket(SIGN_IN_IP, bucket_ip(ip))])
         raise refuse(400, "invalid_token")
+    async with system_session(factory(request)) as db:
+        if await flags.signup_mode(db, request.app.state.settings.signup_mode) == "closed":
+            raise refuse(403, "signups_closed")
     if row.provider is not None:
         await confirm_provider_signup(request, response, background, digest, row)
         return Created()
@@ -194,19 +202,8 @@ async def _create_account(db: AsyncSession, digest: bytes, ip: str) -> None:
     ).first()
     if pending is None:
         raise _Refused(400, "invalid_token")  # a parallel confirmation won
-    if pending.invite_id is not None:
-        used = await db.execute(
-            update(invites)
-            .where(
-                invites.c.id == pending.invite_id,
-                invites.c.used_at.is_(None),
-                invites.c.expires_at > func.now(),
-            )
-            .values(used_at=func.now())
-            .returning(invites.c.id)
-        )
-        if used.first() is None:
-            raise _Refused(409, "invite_invalid")  # rolls back: the pending row stays
+    if pending.invite_id is not None and not await use_invite(db, pending.invite_id):
+        raise _Refused(409, "invite_invalid")  # rolls back: the pending row stays
     created = None
     try:
         async with db.begin_nested():

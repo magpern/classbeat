@@ -215,6 +215,11 @@ export async function deleteUser(id: string, typedEmail: string): Promise<void> 
   await request('DELETE', userPath(id), { body: { email: typedEmail } })
 }
 
+/** Refunds a used (committed) credit: the user gets the class back this month. */
+export async function refundCredit(id: string, ledgerId: string): Promise<void> {
+  await post(`${userPath(id)}/credits/${encodeURIComponent(ledgerId)}/refund`)
+}
+
 // --- codes -------------------------------------------------------------------------------------
 
 export interface Person {
@@ -373,6 +378,20 @@ const ADMIN_REASONS: Record<string, string> = {
   stepup_required: 'This change needs a two-factor code.',
   mfa_required: 'Confirm your two-factor code to continue.',
   invalid_code: 'That code is not right. Try again.',
+  // Usage, jobs and the audit log (#226).
+  bad_month: 'Pick a month to show.',
+  period_invalid: 'The start of the period must be before its end.',
+  filter_invalid: 'That filter is too long. Shorten it and try again.',
+  // Refunds (#221) and Settings (#222).
+  already_refunded: 'That credit was refunded already.',
+  not_committed: 'Only a used credit can be refunded. A running class still holds its credit, and a released one was given back already.',
+  environment_only: 'Open sign-up can only be set on the server.',
+  invalid_value: 'That value is not allowed here.',
+  above_environment_bound: 'That is more than the server allows.',
+  plan_above_instructor: 'A trial cannot be of a plan above Instructor.',
+  unknown_key: 'There is no such setting.',
+  out_of_range: 'That number is outside the allowed range.',
+  nothing_to_change: 'Nothing was changed.',
 }
 
 /** The text for an admin API error. */

@@ -45,33 +45,6 @@
   font-variant-numeric: tabular-nums;
 }
 
-.timeline {
-  margin: 0;
-}
-
-.timeline__svg {
-  display: block;
-  width: 100%;
-  height: 8rem;
-  border: 1px solid var(--cb-line);
-  border-radius: var(--cb-radius-sm);
-  background: var(--cb-raised);
-}
-
-.timeline__edge {
-  stroke: var(--cb-line);
-  stroke-width: 1;
-  vector-effect: non-scaling-stroke;
-}
-
-.timeline__bar[data-zone='1'] { fill: var(--cb-zone-1); }
-.timeline__bar[data-zone='2'] { fill: var(--cb-zone-2); }
-.timeline__bar[data-zone='3'] { fill: var(--cb-zone-3); }
-.timeline__bar[data-zone='4'] { fill: var(--cb-zone-4); }
-.timeline__bar[data-zone='5'] { fill: var(--cb-zone-5); }
-.timeline__bar[data-zone='6'] { fill: var(--cb-zone-6); }
-.timeline__bar[data-zone='7'] { fill: var(--cb-zone-7); }
-
 .revisions li {
   align-items: flex-start;
   flex-wrap: wrap;

@@ -92,16 +92,26 @@ decision, never an agent's: an agent never merges without the gate, even when to
 Agents merge only with:
 
 ```bash
-gh pr merge <n> --squash --match-head-commit <reviewed-sha> --subject "<PR title> (#<n>)"
+gh pr merge <n> --squash --match-head-commit <reviewed-sha>
 ```
 
-and only when CI is green, the `PASS` is for that SHA, no blocking comment is open and the
-branch is up to date. Never `--auto`, never `--admin`, never an approving review, never a
-change to the ruleset to get a merge through.
+and only when CI is green, the `PASS` is for that SHA and no blocking comment is open. With the
+merge queue this **enqueues** the PR: the queue squashes it on top of `main` (and whatever is
+ahead of it), runs `ci` and `pr-title` on that merged result, and lands it only if they pass;
+`--match-head-commit` makes GitHub refuse it if the head moved after the review. The squash
+commit's title is the PR title (with ` (#<n>)`), so there is no `--subject`, and the PR title
+must be the Conventional Commits subject (`pr-title` checks it on the PR and checks the queued
+commits' subjects again in the merge group). The branch need not be up to date with `main`; a
+queue failure leaves the PR open, to be fixed and enqueued again (a new head needs a new
+review). Never `--auto`, never `--admin`, never an approving review, never a change to the
+ruleset to get a merge through.
 
-The ruleset on `main` (GitHub Pro): pull request required, required checks `ci` and
-`pr-title`, branch up to date, no direct pushes, squash only, zero required approvals.
-`CODEOWNERS` (`* @magpern`) is informational.
+The ruleset on `main` (GitHub Pro): pull request required, merge queue (squash), required
+checks `ci` and `pr-title`, no strict up-to-date requirement (the queue tests each PR merged on
+top of `main` and what is ahead of it, so a branch need not be rebased by hand), no direct pushes,
+squash only, zero required approvals. `CODEOWNERS` (`* @magpern`) is informational. The
+Architect switches the ruleset to this after #307 merges; until then it still requires the
+branch to be up to date.
 
 ## Branches, worktrees and commits
 
@@ -291,6 +301,11 @@ The admin area (ADR 0011 section 5): `CLASSBEAT_MAINT_DATABASE_URL` (compose set
 `classbeat_maint` from `docker/postgres/maint/`) connect the admin routes as that role; without either
 they answer 503 `admin_unavailable` and the rest of the app works, and web refuses to start when the
 role is not exactly `classbeat_maint` (guard 11, `tests/test_maint_privileges.py`, checks its grants).
+Admin Codes (`classbeat.admin.codes`, AD2): `/api/admin/invites` and `/api/admin/redeem-codes` list, create
+and `.../{id}/disable`; a new invite or code is in its create response only (never a list, audit row or log),
+disabling an invite expires it, and the invite statements live in `classbeat.auth` (guard 8).
+Admin Settings (`classbeat.admin.settings`, AD4): `GET /api/admin/settings` (every flag with its effective value and source, the plans, the environment's bounds, the read-only settings), `PUT /api/admin/settings/{key}` (a flag through `classbeat.flags.core.validate_for_write`: `open` sign-up, an invalid value, a trial over `CLASSBEAT_TRIAL_DAYS_MAX` or above `instructor`, and any other key are 422 and a `refused` audit row), `DELETE /api/admin/settings/{key}` (clears the value to the JSON `null`, because maint has no `DELETE` on `app_settings`) and `PATCH /api/admin/plans/{id}` (the four limits, under the table's range and the environment's bounds; held credits are untouched). Audit params hold the key and what the value means, never banner text.
+Admin Model routes (`classbeat.admin.models`, AD5): `GET /api/admin/models` (plans with their `route_key`, routes with the result they stand on and why they are stale, results, the catalog), `PUT`/`DELETE /api/admin/models/routes/{route_key}/{stage_group}` (ADR 0012's `set_route`/`clear_route` inside the audited maint transaction; a `RouteRefused` is 409 with its reason, `no_route` 404). A model job's `route_key` is the effective plan's `plans.route_key`, set by `classbeat.quota.route.with_route_key` in each of the four kinds' `admit` and never taken from the browser. maint holds `SELECT` on `model_eval_results` and `SELECT, INSERT, UPDATE, DELETE` on `model_routes` (guard 11).
 The model (ADR 0006 section 9): `CLASSBEAT_MODEL_PROVIDER` is `anthropic` (the default) or `fake`
 (compose takes `MODEL_PROVIDER` from `.env`, `fake` in `.env.example`, so the dev stack and CI never
 call a model). `anthropic` needs the `anthropic_api_key` secret file, mounted on the **worker only**
@@ -305,9 +320,10 @@ earlier if pip-audit reports an advisory against 0.125.0, the API needs somethin
 Authlib needs `httpx2` itself; Dependabot ignores `anthropic` majors until then, and pip-audit
 must stay clean. With `anthropic` the worker refuses to start (and the provider to build) when
 `ANTHROPIC_LOG`, `ANTHROPIC_CUSTOM_HEADERS` or `SSLKEYLOGFILE` is set; the provider's price entries in `classbeat.agent.prices` are to be verified before
-live use. The worker's outbound requests go only to `https://api.mowl.com`, `https://api.anthropic.com`,
-`https://api.spotify.com` and `https://accounts.spotify.com` (`WORKER_HOSTS` in `classbeat.egress`, ADR 0009
-section 10; the model client alone is limited to the model host). The Spotify token endpoint and `GET /me`
+live use. The worker's outbound requests go only to `https://api.mowl.com`, `https://api.spotify.com` and
+`https://accounts.spotify.com` plus the host of each model provider whose key file holds a key (`api.anthropic.com`,
+`api.openai.com`; `api.deepseek.com` only with `CLASSBEAT_DEEPSEEK_ENABLED` too; `worker_model_providers`, `worker_hosts`
+in `classbeat.egress`, ADR 0009 section 10, ADR 0012 section 2); each model client alone is limited to its own provider's host. The one exception to the DeepSeek rule: the owner's live eval of a disabled DeepSeek model installs that host for that command only (`install_choice_allowlist`); jobs never get it. The Spotify token endpoint and `GET /me`
 (`classbeat.spotify.http`) use `egress.spotify_async_client()`, in the web process (connect) and the
 worker (refresh) alike, whose list is the two Spotify hosts and nothing else. The list is code, not a
 setting. `classbeat.egress` is the only module allowed to build an HTTP client or `urllib` opener;
@@ -351,6 +367,16 @@ format 2 and prints the verdict per group (`gate.evaluate` against the digest-ve
 writes one `model_eval_results` row per group through `classbeat.models.store.record_result`; the verdict
 `enable` relies on. Each run needs the owner's go-ahead; agents and CI never run it (the offline test is
 `backend/tests/test_evals_suite_live.py`).
+Models, routes and the enable gate (ADR 0012 sections 2 and 5, M3c): `docker compose exec worker python -m classbeat models
+list | results [--provider P] [--model M] | enable KEY GROUP PROVIDER MODEL EFFORT [--yes] | disable KEY GROUP`. A route
+(`default` is the only key until M5) sends a stage group (`design`, `songs`) to a model and exists only on a recorded passing
+`suite --live --record` result of the running suite version, manifest digest and prompt versions; `enable` prints the result it
+relies on and needs `--yes`. Secret files (worker only): `anthropic_api_key`, `openai_api_key`, `deepseek_api_key`; settings:
+`CLASSBEAT_MODEL_PROVIDER` (`anthropic` or `fake`), `CLASSBEAT_AGENT_MODEL` and `_EFFORT` (the bootstrap, used with no route),
+`CLASSBEAT_DEEPSEEK_ENABLED` (false). OpenAI and DeepSeek catalog entries ship `data_policy: owner_pending`, so no route to them
+can be set until the owner's answers (a reviewed catalog change); DeepSeek also needs the setting. The owner's steps for live evals
+and enabling are `docs/runbooks/m3c-model-enable.md`; the end-to-end offline proof is `backend/tests/test_m3c_done_when.py` and
+`test_m3c_done_when_jobs.py` (replayed provider transcripts via `tests/m3ctools.py`).
 Song picking and the Spotify connection (ADR 0008, ADR 0009): `CLASSBEAT_SONG_PICKING` (default off; off,
 every Spotify route answers 404 `feature_off`; the owner switches it on, roadmap Amendment 1; with it on,
 `CLASSBEAT_PUBLIC_BASE_URL` may not be `localhost`, use `127.0.0.1`, because Spotify does not accept
@@ -358,10 +384,16 @@ every Spotify route answers 404 `feature_off`; the owner switches it on, roadmap
 ceiling across their stages and attempts, 0 to 100000000), `CLASSBEAT_SPOTIFY_FLOW_TTL_SECONDS` (600, 60 to 600;
 how long a connect flow lives), `CLASSBEAT_SPOTIFY_REFRESH_MARGIN_SECONDS` (120, 0 to 1800; a token with less
 than this left is refreshed), `CLASSBEAT_SPOTIFY_REFRESH_TIMEOUT_SECONDS` (10, above 0 and at most 20; the
-refresh request's total deadline) and `CLASSBEAT_SPOTIFY_LISTING_LAG_SECONDS` (unset, at most 86400; lets the
+refresh request's total deadline), `CLASSBEAT_SPOTIFY_LISTING_LAG_SECONDS` (unset, at most 86400; lets the
 reconciler mark an uncertain playlist create `failed` when the user's listing shows no playlist with its `ref`
 and the call returned at least that long ago; leave it unset until the owner has measured Spotify's listing
-delay at live activation). There is no Client ID setting and no Client Secret: each user enters their own
+delay at live activation) and `CLASSBEAT_SPOTIFY_CALLS_PER_JOB` (300, 1 to 10000; the Spotify requests one job may
+send across its stages and attempts, token refreshes included, counted per request and redirect hop by
+`egress.RequestBudget` and stored in `jobs.spotify_calls` with each stage and each attempt's ending; the request over it is never
+sent and the job ends `limit_exceeded`). Three attempts in a row ending with a Spotify 429 end the job
+`quota_exhausted` (a MOWL 429 does not count; `jobs.spotify_rate_limits`), and the job keeps the last Spotify
+`Retry-After` (`jobs.spotify_retry_after`, cleared when an attempt finishes or fails without a Spotify 429; a cancel, an `operation_busy` requeue, a hand-back or a failure before the kind runs leaves it as it is) so the page's sentence names the minutes or hours (ADR 0009 section 8;
+migration 0013). There is no Client ID setting and no Client Secret: each user enters their own
 Spotify app's Client ID on the account page, and the callback is the fixed
 `<CLASSBEAT_PUBLIC_BASE_URL>/oauth/spotify/callback`.
 The Spotify playlist writes live in `classbeat.playlists` (ADR 0008 section 2): the external-operation
@@ -409,6 +441,7 @@ is the plan's under an environment bound: `CLASSBEAT_CLASSES_PER_MONTH_MAX` (200
 `CLASSBEAT_MONTHLY_COST_MICROS_MAX` (300000000, $300), `CLASSBEAT_JOBS_PER_USER` and `CLASSBEAT_REVISIONS_PER_CLASS`.
 Refusals: 409 `quota` (`quota` `classes` or `cost`, `limit`, `used`, `period_end`, `plan`; no money for `cost`) and 429
 `busy` with the plan's `limit`.
+Flags (ADR 0011 section 7, FL1): `classbeat.flags` reads the `app_settings` rows per request and joins them with the environment, stricter wins: the stored `signup_mode` (`invite` or `closed`) can tighten `CLASSBEAT_SIGNUP_MODE` and never open it; `song_picking` (`off`, `granted` (default), `on`) is `off` while `CLASSBEAT_SONG_PICKING` is off, and `granted` admits only users whose effective features include `song_picking`; `trial` and `banner` (text of at most 280 characters, level `info` or `warning`) are validated. An invalid stored value falls back to the key's stricter default and is logged by key only. `GET /api/settings/public` (no sign-in) returns `{banner, signup_mode}` and nothing else.
 Progress (ADR 0005 section 6): `GET /api/jobs/{id}/events` streams a job's events as SSE (`Last-Event-ID`,
 5 open streams per user and web process); each web process keeps one `LISTEN job_events` connection.
 OAuth sign-in (ADR 0003 section 5): `CLASSBEAT_OAUTH_<PROVIDER>_CLIENT_ID` and the
@@ -588,16 +621,37 @@ CI runs the same in the `e2e` job (when the stack changed) and uploads `playwrig
 
 ### CI: what runs, and when
 
-CI is expensive (every job bills at least a minute, ~15 minutes for a full run), so a pull request
-only runs what its change needs. `ci.yml` has no `push` trigger: `main` only receives squashes of
-an up-to-date, already-tested branch. It runs on `pull_request`, weekly (Monday 04:00 UTC, which
-picks up new advisories) and on `workflow_dispatch`; the last two run everything.
+CI is expensive (every job bills at least a minute; a full run took 11 to 17 minutes before the
+backend tests were sharded, see #307 for the timings now), so a pull request only runs what its
+change needs. `ci.yml` has no `push` trigger: `main` only receives squashes the merge queue has
+tested. It runs on `pull_request`, on `merge_group` (the queue's merged result: the PR squashed on
+top of `main` and the groups ahead of it; the required checks `ci` and `pr-title` must pass there
+before the squash lands), weekly (Monday 04:00 UTC, which picks up new advisories) and on
+`workflow_dispatch`; the last two run everything. A newer push cancels a pull request's older run;
+a merge group's run is never cancelled by concurrency (`cancel-in-progress` is true only for
+`pull_request`).
+
+The `pr-title` workflow also runs on `merge_group`. A merge group has no PR title, so there it runs
+commitlint on the subject of every commit the queue would land (`git log --format=%s
+base_sha..head_sha`, the squash commits, each titled with its PR's title as the queue built it):
+a title edited after the PR was enqueued is checked too. A missing SHA or an empty range fails it.
+On the pull request it lints the title with ` (#<number>)` appended, the subject the squash gets,
+so a title that fits the 100-character `header-max-length` only without the suffix fails there
+and not in every merge group (keep titles to about 90 characters). Both events use
+`scripts/commitlint-subject.sh`; a self-test step shows a 100-character title failing with the
+suffix.
+
+The backend test shard count has one source: the `shard` list of the `backend-tests` matrix.
+`scripts/ci-shards.sh` (run in `changes`, tested in `checks`) reads it, refuses another axis, an
+`include` or `exclude`, or anything but `1..N`, and passes N to the shard check and to every shard
+(never `strategy.job-total`).
 
 | Job | Runs | What it does |
 |---|---|---|
-| `changes` | always | `scripts/ci-changes.sh`: `git diff` against the PR base gives the outputs `backend` (`backend/`, `docker/postgres/`), `frontend` (`frontend/`), `stack` (`backend/`, `frontend/`, `e2e/`, `docker/`, `Dockerfile`, `compose*.yaml`, `.dockerignore`, `.env.example`, `.trivyignore`, `scripts/worktree.sh`) and `all`. Renames count at both paths; names are read NUL-separated; if the diff cannot be computed everything runs. `all` is true on schedule/dispatch and when `.github/`, `.gitattributes` or `scripts/ci-changes.sh`, `ci-gate.sh` or `test-ci-gate.sh` change (CI changes test themselves) and makes the others true |
+| `changes` | always | `scripts/ci-changes.sh`: `git diff` of the PR's base and head (or the merge group's `base_sha` and `head_sha`) gives the outputs `backend` (`backend/`, `docker/postgres/`), `frontend` (`frontend/`), `stack` (`backend/`, `frontend/`, `e2e/`, `docker/`, `Dockerfile`, `compose*.yaml`, `.dockerignore`, `.env.example`, `.trivyignore`, `scripts/worktree.sh`) and `all`. Renames count at both paths; names are read NUL-separated; if the diff cannot be computed (an unknown commit, a missing SHA) everything runs. `all` is true on schedule/dispatch and when `.github/`, `.gitattributes` or `scripts/ci-changes.sh`, `ci-gate.sh`, `ci-shards.sh` or `test-ci-gate.sh` change (CI changes test themselves) and makes the others true |
 | `checks` | always | the cheap checks as steps of one job (below) |
-| `backend` | `backend` | ruff, format, pyright, the queue functions' md5 regenerated on the pinned image (fails when `queue_digests.py` is stale), pytest against Postgres |
+| `backend` | `backend` | once per run: ruff, format, pyright, the queue functions' md5 regenerated on the pinned image (fails when `queue_digests.py` is stale), and the shard check: `backend/tests/shards.py check N` compares pytest's own collection with the split, so every test file runs in exactly one shard and none is empty |
+| `backend-tests` | `backend` | pytest in a matrix of 3 shards (`fail-fast: false`), each its own runner and Postgres service; a file's shard is `sha256(path) % N + 1` (`tests/shards.py list K N`), so the split needs no list and no dependency. Change the shard count only in the matrix (`shard: [1, 2, 3]`); `changes` reads it from there (`scripts/ci-shards.sh`) and passes it to the check and every shard |
 | `frontend` | `frontend` | lint, typecheck, Vitest, build |
 | `e2e` | `stack` | the stack, the checks below, the Trivy image scan, then Playwright |
 | `ci` | always | the required check; see the gate below |
@@ -607,8 +661,11 @@ A docs-only PR therefore runs `changes`, `checks` and `ci` (plus `pr-title`).
 **The `ci` gate** (`scripts/ci-gate.sh`, tested by `scripts/test-ci-gate.sh` in `checks`) fails
 unless `changes` and `checks` succeeded and every other job either succeeded or was skipped while
 its filter output is `false`. A job that is needed (filter `true`) but skipped, cancelled or failed
-fails the gate, and so does a job missing from `needs`, a short result list or malformed input (it fails closed). Add a new job to
-`needs` of `ci`, to `ci-gate.sh` (and its filter) and to the tests.
+fails the gate, and so does a job missing from `needs`, a short result list or malformed input (it fails closed). The
+`backend-tests` matrix has one result in `needs` (success only when every shard succeeded), gated
+by the `backend` filter: a failed or cancelled shard, or the matrix skipped while `backend` is
+true, fails the gate. Add a new job to `needs` of `ci`, to `ci-gate.sh` (and its filter) and to
+the tests.
 
 ### Security checks (CI)
 
@@ -616,15 +673,15 @@ The `checks` job runs these as steps; the image scan is a step of `e2e`:
 
 | Step | What it checks |
 |---|---|
-| Secret scan | gitleaks over the pull request's own commits; the weekly and manual runs scan the whole history |
+| Secret scan | gitleaks over the pull request's own commits (a merge group's: `base_sha..head_sha`); the weekly and manual runs scan the whole history |
 | bash -n, shellcheck | every `scripts/*.sh` |
 | CI gate and change-filter tests | `scripts/test-ci-gate.sh` |
-| Postgres image pinned alike | compose's `db` and `db-functions` and the `backend` job's service use the same exact `postgres` tag (the queue functions' md5 depends on it) |
+| Postgres image pinned alike | compose's `db` and `db-functions` and the `backend` and `backend-tests` jobs' services use the same exact `postgres` tag (the queue functions' md5 depends on it) |
 | uv version, actionlint | `setup-uv`'s version equals the Dockerfile's uv tag (`scripts/ci-uv-version.sh`); actionlint (with shellcheck) on every workflow |
 | pip-audit | `uv export --frozen` (production, then all groups) through `pip-audit` (pinned) |
 | npm audit | `npm audit --audit-level=high` in `frontend/` and `e2e/` |
 | Trivy repository scan | Trivy on the repository (vulnerabilities, Dockerfile misconfiguration; compose is not scanned) |
-| `e2e`: stack checks | builds the stack once: `/api/ready` and the SPA answer, `web` and `worker` run as non-root, no secret value appears in `docker inspect` (the empty model key is replaced by a random canary first), only `worker` mounts `anthropic_api_key` and runs `fake`, no container has a model key variable, `postgres_password` is mounted on `db` and `db-functions` only (never web, worker, migrate or maint), and `database_maint_password` on `db-functions` and `web` only |
+| `e2e`: stack checks | builds the stack once: `/api/ready` and the SPA answer, `web` and `worker` run as non-root, no secret value appears in `docker inspect` (the empty model key is replaced by a random canary first), only `worker` mounts the three model keys (`anthropic_api_key`, `openai_api_key`, `deepseek_api_key`, a random canary each) and runs `fake`, no container has a model key variable, `postgres_password` is mounted on `db` and `db-functions` only (never web, worker, migrate or maint), and `database_maint_password` on `db-functions` and `web` only |
 | `e2e`: Trivy image scan | Trivy on the image the running stack was built from (never pushed); then Playwright runs |
 
 Trivy and gitleaks are checksum-verified release binaries. `pip-audit` (exact version) lives in

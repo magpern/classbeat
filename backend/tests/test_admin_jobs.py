@@ -166,11 +166,13 @@ async def test_a_bad_window_is_422_and_reads_nothing(
     actor = await stepped_admin(env, make_actor)
     response = await actor.get(f"{JOBS}?days={days}")
     assert response.status_code == 422, response.text
-    assert audit(superuser, actor.user_id) == []
+    # Nothing read, and the refusal has its row (ADR 0011 section 10, #227).
+    assert audit(superuser, actor.user_id) == [("admin.request", "refused", "invalid_input")]
 
 
 async def test_an_empty_queue_answers_empty_lists(env: Env, make_actor: Any) -> None:
     actor = await stepped_admin(env, make_actor)
     body = (await actor.get(JOBS)).json()
-    assert body == {"days": 7, "states": [], "waiting_approvals": [], "failures": [],
-                    "uncertain_operations": []}  # fmt: skip
+    assert body == {"days": 7, "states": [], "waiting_approvals": [], "waiting_truncated": False,
+                    "failures": [], "uncertain_operations": [],
+                    "uncertain_truncated": False}  # fmt: skip

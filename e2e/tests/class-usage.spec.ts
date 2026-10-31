@@ -112,7 +112,9 @@ test('usage is the sum of the jobs, saving adds none and deleting the class keep
 
   // Deleting the class takes the class, its versions and its conversation, and not the usage.
   await page.goto(`/classes/${id}`)
-  await page.getByRole('button', { name: 'Delete class' }).click()
+  // Delete class is in the header's ··· menu.
+  await page.getByRole('button', { name: 'More actions' }).click()
+  await page.getByRole('menuitem', { name: 'Delete class' }).click()
   await page.getByRole('button', { name: 'Yes, delete this class' }).click()
   await expect(page.getByRole('heading', { name: 'Class deleted' })).toBeVisible()
   await expect(page.getByText('The 1 workout classbeat saved to your MOWL account stays there')).toBeVisible()

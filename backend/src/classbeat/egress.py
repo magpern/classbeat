@@ -67,6 +67,7 @@ import time
 import urllib.request
 from collections.abc import AsyncIterator, Callable, Iterable, Iterator, Mapping
 from contextlib import contextmanager
+from contextvars import ContextVar
 from dataclasses import dataclass
 from types import MappingProxyType
 from typing import Any, Final, Literal
@@ -233,6 +234,66 @@ def blocked(host: str | None, *, after_request: bool = False) -> OutboundBlocked
     return OutboundBlocked(shown, after_request=after_request)
 
 
+# --- the per-job request budget (ADR 0009 section 8) -------------------------------------------
+
+
+class RequestBudgetExhausted(Exception):
+    """A request to a budgeted host would have gone over its job's budget, so it was **never
+    sent** (``CLASSBEAT_SPOTIFY_CALLS_PER_JOB``). No text, no host, no count."""
+
+    def __init__(self) -> None:
+        super().__init__("request budget used up")
+
+
+class RequestBudget:
+    """How many requests to ``hosts`` one job may still make: ``limit`` in all, ``used`` of them
+    already (across its stages and attempts; the runner reads and stores ``used``). Every
+    request and every redirect hop to one of the hosts takes one before it is sent; the one that
+    would go over ``limit`` raises ``RequestBudgetExhausted`` instead. Thread-safe: the library's
+    calls run in worker threads (``asyncio.to_thread`` carries the context)."""
+
+    def __init__(self, hosts: frozenset[str], limit: int, used: int = 0) -> None:
+        if limit < 0 or used < 0:
+            raise ValueError("a request budget is not negative")
+        self.hosts = hosts
+        self.limit = limit
+        self._used = used
+        self._lock = threading.Lock()
+
+    @property
+    def used(self) -> int:
+        with self._lock:
+            return self._used
+
+    def take(self, host: str) -> None:
+        if host.lower() not in self.hosts:
+            return
+        with self._lock:
+            if self._used >= self.limit:
+                raise RequestBudgetExhausted
+            self._used += 1
+
+
+_request_budget: ContextVar[RequestBudget | None] = ContextVar("request_budget", default=None)
+
+
+@contextmanager
+def request_budget(budget: RequestBudget) -> Iterator[RequestBudget]:
+    """Inside the block (and in threads started from it with the context, as ``asyncio.to_thread``
+    does), every urllib and ``spotify_async_client`` request to the budget's hosts is counted."""
+    token = _request_budget.set(budget)
+    try:
+        yield budget
+    finally:
+        _request_budget.reset(token)
+
+
+def _spend(host: str | None) -> None:
+    budget = _request_budget.get()
+    if budget is not None and host is not None:
+        budget.take(host)
+
+
 # --- urllib --------------------------------------------------------------------------------
 
 
@@ -258,6 +319,7 @@ class _AllowlistGuard(urllib.request.BaseHandler):
 
     def default_open(self, req: urllib.request.Request) -> None:
         _check_urllib_request(self._allowlist, req)
+        _spend(urlsplit(req.full_url).hostname)  # counted once per request or hop, before sending
         return None  # go on to https_open
 
 
@@ -648,6 +710,7 @@ class AllowlistTransport(httpx.AsyncBaseTransport):
         url = request.url
         host = url.raw_host.decode("ascii", errors="replace")
         self._allowlist.check(url.scheme, host, url.port, bool(url.userinfo))
+        _spend(host)  # before sending; the model hosts are never in a budget
         response = await self._inner.handle_async_request(request)
         location = response.headers.get("location")
         if response.is_redirect and location is not None:

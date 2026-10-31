@@ -33,7 +33,7 @@ from mowl import library
 from sqlalchemy import text
 from sqlalchemy.engine import Connection
 
-from agentfake import CONFIG
+from agentfake import CONFIG, FactoryModels
 from authtools import ORIGIN
 from classbeat import connections, design, songs
 from classbeat.agent.providers.fake import FakeProvider, FakeScript
@@ -274,6 +274,7 @@ class SongEnv:
     script: dict[str, Any] = field(default_factory=pick_script)
     providers: list[FakeProvider] = field(default_factory=lambda: list[FakeProvider]())
     clients: list[httpx.AsyncClient] = field(default_factory=lambda: list[httpx.AsyncClient]())
+    calls_per_job: int = 300  # ``CLASSBEAT_SPOTIFY_CALLS_PER_JOB`` of the worker side
     plan: str | None = None  # granted to each rider (``plantools.users_plan``)
 
     @property
@@ -310,6 +311,13 @@ class SongEnv:
         owner = await env.user(f"songs-{uuid.uuid4().hex[:10]}@example.com")
         if self.plan is not None:  # ``plantools.users_plan``
             grant_plan(self.admin, owner, self.plan)
+        # The default ``song_picking`` flag is ``granted`` (ADR 0011 section 7): a rider has the
+        # feature, as an admin grants it to the owner's testers.
+        self.sql(
+            "INSERT INTO entitlements (owner_id, features, source) "
+            "VALUES (:o, ARRAY['song_picking'], 'grant')",
+            o=owner,
+        )
         ctx = make_context(owner)
         await self.spot.seed(ctx, client_id, spotify_user)
         if consent:
@@ -352,7 +360,10 @@ class SongEnv:
             execution,
             self.factory,
             self.registry(),
-            RunConfig(lease_seconds=self.spot.env.settings.job_lease_seconds),
+            RunConfig(
+                lease_seconds=self.spot.env.settings.job_lease_seconds,
+                spotify_calls_per_job=self.calls_per_job,
+            ),
             asyncio.Event(),
         )
         return self.row(job_id)
@@ -449,7 +460,9 @@ async def songenv(
     made = SongEnv(spot, spotify_admin, mowl, plan=users_plan)
     previous = common.runtime()
     common.configure(common.Runtime(http=spot.http))
-    design.configure(Runtime(keyring=spot.ring, provider=made.new_provider, agent=CONFIG))
+    design.configure(
+        Runtime(keyring=spot.ring, models=FactoryModels(made.new_provider), agent=CONFIG)
+    )
     songs.configure(songs.SongConfig(enabled=True, sync_wait_seconds=0.3))
     try:
         yield made

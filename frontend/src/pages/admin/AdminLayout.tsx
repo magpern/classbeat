@@ -27,6 +27,10 @@ export function AdminForbidden() {
 const SECTIONS = [
   { to: '/admin/users', label: 'Users' },
   { to: '/admin/codes', label: 'Codes' },
+  { to: '/admin/usage', label: 'Usage' },
+  { to: '/admin/jobs', label: 'Jobs' },
+  { to: '/admin/audit', label: 'Audit log' },
+  { to: '/admin/settings', label: 'Settings' },
 ] as const
 
 function AdminNav() {

@@ -224,9 +224,6 @@ async def test_an_unknown_cursor_is_404_and_audited_refused(
         {"target_id": "é" * 100},  # 100 characters, 600 bytes once JSON-encoded
         {"actor_email": "é" * 320},  # 320 characters, 1920 bytes once encoded
         {"actor_email": "\U0001f600" * 60},  # 12 bytes each once encoded
-        # 636 bytes as sent, but lower() makes each "i" + U+0307: 742 bytes, caught by the
-        # route's own check of the lowered filter (filter_invalid), not by the query's bound.
-        {"actor_email": "İ" * 106},
         {"outcome": "maybe"},
         {"since": "2026-10-01T00:00:00"},  # no time zone
         {"since": "2026-10-02T00:00:00Z", "until": "2026-10-01T00:00:00Z"},
@@ -246,6 +243,39 @@ async def test_a_bad_filter_is_422_and_writes_no_ok_row(
         ).scalar_one()
         == 0
     )
+
+
+async def test_the_email_filter_lowers_ascii_letters_only_on_both_sides(
+    admin: Any, superuser: Connection
+) -> None:
+    """``normalize_email`` on the filter and the same ASCII-only lowering of the column, so
+    neither the database's locale nor Unicode case mapping decides a match (#227): ``İ`` stays
+    ``İ`` (``str.lower`` would make it two characters), and 106 of them, 636 bytes, are a
+    normal 200 rather than a filter that outgrows its audit row."""
+    actor, _ = admin
+    planted = plant(superuser, actor_email="İnfo@Example.TEST", action="user.read")
+    assert ids(await page(actor, actor_email=" İNFO@example.test ")) == [planted]
+    assert ids(await page(actor, actor_email="i̇nfo@example.test")) == []
+    assert (await page(actor, actor_email="İ" * 106))["rows"] == []
+
+
+async def test_a_filter_whose_normal_form_outgrows_its_row_is_422_and_audited(
+    admin: Any, superuser: Connection, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The route's own check after normalising stays as defence in depth: a normal form too
+    large for ``params`` is 422 ``filter_invalid`` with one ``refused`` row, never a 500."""
+    actor, admin_id = admin
+    monkeypatch.setattr(audit_routes, "normalize_email", lambda value: value * 3)
+    response = await actor.get(f"{AUDIT}?{urlencode({'actor_email': 'é' * 106})}")
+    assert (response.status_code, response.json()) == (
+        422,
+        {"detail": {"reason": "filter_invalid"}},
+    )
+    rows = superuser.execute(
+        text("SELECT action, outcome, reason FROM admin_audit WHERE actor_id = :a"),
+        {"a": admin_id},
+    ).all()
+    assert [tuple(r) for r in rows] == [("admin.request", "refused", "filter_invalid")]
 
 
 # --- what a read records and shows -------------------------------------------------------------

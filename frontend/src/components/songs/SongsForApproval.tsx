@@ -27,6 +27,7 @@ import { Button } from '../ui/button'
 import { Card, CardTitle } from '../ui/card'
 import { CoverMosaic } from './CoverArt'
 import { SongRows } from './SongRows'
+import { SpotifyAttribution } from './SpotifyAttribution'
 
 export const PRIVACY_TEXT =
   'When you approve, classbeat creates a private playlist with these songs in your own Spotify account. A private playlist does not appear on your profile or in search, but anyone with its link can open it.'
@@ -242,16 +243,18 @@ function Approval({
   const replace = [...marks].sort((a, b) => a - b).map((position) => position - 1)
   return (
     <section className="flex flex-col gap-4" aria-labelledby="songs-title">
-      <header className="flex flex-wrap items-end gap-4">
-        <CoverMosaic songs={list.songs} />
+      <header className="flex flex-col items-start gap-4 rounded-lg border border-line bg-surface p-4 sm:flex-row sm:items-end sm:p-6">
+        <CoverMosaic songs={list.songs} className="size-40 shrink-0 sm:size-48" />
         <div className="flex min-w-0 flex-col gap-2">
-          <h1 id="songs-title" className="m-0 font-display text-3xl font-bold text-text">
+          <p className="m-0 text-[0.8125rem] font-medium uppercase tracking-wide text-muted">Playlist for approval</p>
+          <h1 id="songs-title" className="m-0 break-words font-display text-3xl font-extrabold text-text sm:text-4xl">
             Songs for your class
           </h1>
           <p className="m-0 text-text">
             {list.songs.length} songs, {minutes(list.totalSec)} in total. You asked for{' '}
             {minutes(list.targetSec)}.
           </p>
+          <SpotifyAttribution />
         </div>
       </header>
       {list.note !== '' ? <p className="m-0 text-muted">{list.note}</p> : null}

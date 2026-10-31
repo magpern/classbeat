@@ -75,6 +75,41 @@ def bounded_text(max_bytes: int) -> AfterValidator:
     return AfterValidator(check)
 
 
+# Format characters (Unicode ``Cf``: the bidi embeddings, overrides and isolates U+202A-202E and
+# U+2066-2069, zero-width characters, the BOM) and the line and paragraph separators: they change
+# how text shown in the admin pages reads without being visible themselves (#227, #279 review).
+_INVISIBLE_CATEGORIES: Final = frozenset({"Cf", "Zl", "Zp"})
+
+
+def no_format_characters() -> AfterValidator:
+    """Text an admin types to be shown to admins again (a code's label, a grant's note): no
+    format or separator character, checked apart from ``bounded_text``'s control characters."""
+
+    def check(value: str) -> str:
+        if any(unicodedata.category(c) in _INVISIBLE_CATEGORIES for c in value):
+            raise ValueError("format characters (bidi, zero-width) are not allowed")
+        return value
+
+    return AfterValidator(check)
+
+
+# Text an admin types that admins see again: no control character, bounded in encoded bytes (12
+# per character at most), and no format character. A code's label (AD2, trimmed) and a grant's
+# note (AD1).
+LabelText = Annotated[
+    str,
+    StringConstraints(strip_whitespace=True, min_length=1, max_length=80),
+    bounded_text(960),
+    no_format_characters(),
+]
+NoteText = Annotated[
+    str,
+    StringConstraints(min_length=1, max_length=200),
+    bounded_text(2400),
+    no_format_characters(),
+]
+
+
 # The Users list's search text (AD1 #218): no control character, and bounded in encoded bytes as
 # well as in characters (254 emoji would be 3048 bytes once encoded).
 UserQuery = Annotated[str, StringConstraints(max_length=254), bounded_text(1024)]
@@ -96,6 +131,29 @@ class GrantParams(Params):
     features: Annotated[list[Code], Field(max_length=10)] = []
     ends_at: Annotated[str, StringConstraints(max_length=40)] | None = None
     note: bool = False
+
+
+class CodesPageParams(Params):
+    """A page of the Codes lists (AD2 #220)."""
+
+    offset: Annotated[int, Field(ge=0, le=10_000)] = 0
+    limit: Annotated[int, Field(ge=1, le=100)] = 50
+
+
+class InviteCreateParams(Params):
+    """An invite's lifetime (AD2 #220); never the code."""
+
+    expires_days: Annotated[int, Field(ge=1, le=365)]
+
+
+class RedeemCodeCreateParams(Params):
+    """A redeem code's terms (AD2 #220); never the code, its hash or its label."""
+
+    plan_id: Annotated[str, StringConstraints(pattern=r"^[a-z_]{1,30}$")] | None = None
+    features: Annotated[list[Code], Field(max_length=16)] = []
+    grant_days: Annotated[int, Field(ge=1, le=366)]
+    max_redemptions: Annotated[int, Field(ge=1, le=1000)]
+    expires_at: Annotated[str, StringConstraints(max_length=40)]
 
 
 # The audit filter's two free-text fields, bounded so the largest accepted filter still fits
@@ -137,6 +195,47 @@ class RefundParams(Params):
     """An admin refund (AD3 #221): the target (user, ledger row) says everything."""
 
 
+PlanCode = Annotated[str, StringConstraints(pattern=r"^[a-z_]{1,30}$")]
+
+
+class SettingSetParams(Params):
+    """A flag write (AD4 #222): the key and what the value means, never free text. A banner's
+    text stays in ``app_settings`` (only its level and length are logged); a refused value logs
+    the key alone."""
+
+    key: Annotated[str, StringConstraints(pattern=r"^[a-z][a-z_]{0,39}$")]
+    value: Literal["invite", "closed", "off", "granted", "on"] | None = None
+    plan: PlanCode | None = None
+    days: Annotated[int, Field(ge=0, le=1_000_000)] | None = None
+    level: Literal["info", "warning"] | None = None
+    text_length: Annotated[int, Field(ge=0, le=100_000)] | None = None
+
+
+class PlanUpdateParams(Params):
+    """A plan limit edit (AD4 #222): the limits asked for (refused ones included)."""
+
+    classes_per_month: Annotated[int, Field(ge=-(10**12), le=10**12)] | None = None
+    revisions_per_class: Annotated[int, Field(ge=-(10**12), le=10**12)] | None = None
+    concurrent_jobs: Annotated[int, Field(ge=-(10**12), le=10**12)] | None = None
+    monthly_cost_micros: Annotated[int, Field(ge=-(10**12), le=10**12)] | None = None
+
+
+MODEL_PATTERN: Final = r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,99}$"
+
+
+class ModelRouteParams(Params):
+    """A model route write (AD5 #223): which route and what it was set to. Every field is
+    pattern-checked before the audit row, so a refusal can say what was asked without free text."""
+
+    route_key: Annotated[str, StringConstraints(pattern=r"^[a-z0-9_]{1,40}$")]
+    stage_group: Literal["design", "songs"]
+    provider: Annotated[str, StringConstraints(pattern=r"^[a-z][a-z0-9_]{0,29}$")] | None = None
+    model: (
+        Annotated[str, StringConstraints(pattern=r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,99}$")] | None
+    ) = None
+    effort: Annotated[str, StringConstraints(pattern=r"^[a-z][a-z0-9_]{0,19}$")] | None = None
+
+
 # Action code -> its params model. ``admin.request`` is the gate's own (ADR 0011 section 6:
 # mfa_required, stepup_required and rate_limited of an admin).
 ACTIONS: dict[str, type[Params]] = {
@@ -149,6 +248,13 @@ ACTIONS: dict[str, type[Params]] = {
     "user.disable": NoParams,
     "user.enable": NoParams,
     "user.delete": NoParams,
+    # Codes (AD2 #220, classbeat.admin.codes).
+    "invite.list": CodesPageParams,
+    "invite.create": InviteCreateParams,
+    "invite.disable": NoParams,
+    "code.list": CodesPageParams,
+    "code.create": RedeemCodeCreateParams,
+    "code.disable": NoParams,
     # Usage, cost and jobs; the admin refund (AD3 #221, classbeat.admin.usage and .jobs).
     "usage.read": UsageParams,
     "job.list": JobsParams,
@@ -156,6 +262,15 @@ ACTIONS: dict[str, type[Params]] = {
 }
 # The audit log (AD4 #222).
 ACTIONS["audit.list"] = AuditListParams
+# Settings, flags and plan limits (AD4 #222, classbeat.admin.settings).
+ACTIONS["setting.read"] = NoParams
+ACTIONS["setting.set"] = SettingSetParams
+ACTIONS["setting.clear"] = NoParams
+ACTIONS["plan.update"] = PlanUpdateParams
+# Model routes per route key (AD5 #223, classbeat.admin.models).
+ACTIONS["model.read"] = NoParams
+ACTIONS["model.route_set"] = ModelRouteParams
+ACTIONS["model.route_clear"] = ModelRouteParams
 
 
 class UnknownAction(ValueError):

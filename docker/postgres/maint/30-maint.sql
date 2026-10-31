@@ -132,6 +132,18 @@ GRANT UPDATE (state, reason, settled_at, refunded_by) ON public.credit_ledger TO
 GRANT SELECT (key, value, created_at, updated_at, updated_by) ON public.app_settings
   TO classbeat_maint;
 GRANT INSERT, UPDATE ON public.app_settings TO classbeat_maint;
+-- Model routes (ADR 0011 section 6, AD5 #223; ADR 0012 section 5): the recorded results are
+-- read only (maint can never record or change one); a route is read, set, changed and cleared
+-- through classbeat.models.routes. The database's own gate (the composite foreign key
+-- model_routes_passing_result) still refuses a route at anything but a pass.
+GRANT SELECT (id, run_id, recorded_at, suite_version, manifest_digest, provider, model, effort,
+              stage_group, prompt_versions, classbeat_version, results_sha256, verdict, passed,
+              total_cost_micros, authorization_note, seq)
+  ON public.model_eval_results TO classbeat_maint;
+GRANT SELECT (route_key, stage_group, provider, model, effort, eval_result_id, gate_passed,
+              set_at, set_by)
+  ON public.model_routes TO classbeat_maint;
+GRANT INSERT, UPDATE, DELETE ON public.model_routes TO classbeat_maint;
 -- The audit log: insert and read (never the IP's HMAC); its trigger refuses UPDATE and DELETE.
 GRANT SELECT (id, created_at, actor_id, actor_email, action, target_user_id, target_kind,
               target_id, params, outcome, reason, request_id)

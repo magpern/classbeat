@@ -50,11 +50,12 @@ from classbeat.agent.revise import ReviseContext, ReviseResult, SongsRequested, 
 from classbeat.agent.schemas import clean_text
 from classbeat.context import UserContext
 from classbeat.design import chat, diff, limits, revision
-from classbeat.design.kind import ClassMusicSource, current_runtime, new_provider
+from classbeat.design.kind import ClassMusicSource, current_runtime, group_model
 from classbeat.design.music import load_music
 from classbeat.jobs import KINDS, Complete, FencedSession, JobFailure, JobKind, JobRun
-from classbeat.jobs.inputs import JobInput
+from classbeat.jobs.inputs import ModelJobInput
 from classbeat.jobs.kinds import Admitted, Refused
+from classbeat.quota.route import with_route_key
 
 KIND: Final = "revise_draft"
 STAGES: Final = ("music", "revise")
@@ -72,7 +73,7 @@ Request = Annotated[str, Field(min_length=1, max_length=MAX_REQUEST), AfterValid
 Sha256Hex = Annotated[str, StringConstraints(pattern=r"^[0-9a-f]{64}$")]
 
 
-class ReviseDraftInput(JobInput):
+class ReviseDraftInput(ModelJobInput):
     CONNECTIONS: ClassVar[tuple[str, ...]] = ("mowl",)
 
     base_revision_id: UUID
@@ -168,7 +169,7 @@ async def run(job_run: JobRun) -> Complete:
         base_draft = WorkoutDraft.model_validate(base.content)
     except ValidationError:
         raise JobFailure("internal") from None
-    provider = new_provider(runtime)  # before any MOWL call; this run's own
+    model = await group_model(runtime, job_run, given.route_key, "design")  # before any MOWL call
     await job_run.stage("music")
     step = await load_music(
         job_run,
@@ -187,7 +188,11 @@ async def run(job_run: JobRun) -> Complete:
             music_changed=step.fingerprint != base.fingerprint,
         )
         outcome = await run_stage(
-            JobStageHost(job_run), provider, revise_stage(ctx), ctx.first_message(), runtime.agent
+            JobStageHost(job_run),
+            model.provider,
+            revise_stage(ctx),
+            ctx.first_message(),
+            model.agent,
         )
         if isinstance(outcome.output, SongsRequested):
             # The request only asks for other songs (ADR 0008 section 6): nothing is revised, no
@@ -252,7 +257,7 @@ REVISE_DRAFT: Final = KINDS.register(
         STAGES,
         run,
         consumes_credit=False,
-        admit=admit,
-        server_fields=frozenset({"base_revision_hash", "request_message_id"}),
+        admit=with_route_key(admit),
+        server_fields=frozenset({"base_revision_hash", "request_message_id", "route_key"}),
     )
 )

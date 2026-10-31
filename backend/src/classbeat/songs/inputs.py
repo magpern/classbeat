@@ -25,7 +25,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from classbeat.agent.schemas import MAX_SONGS, Brief
 from classbeat.design import revision
 from classbeat.design.revise import Request, Sha256Hex
-from classbeat.jobs.inputs import JobInput, jsonb_size
+from classbeat.jobs.inputs import ModelJobInput, jsonb_size
 
 Slot = Annotated[int, Field(ge=0, lt=MAX_SONGS)]
 Slots = Annotated[list[Slot], Field(max_length=MAX_SONGS)]
@@ -50,7 +50,7 @@ class Resume(BaseModel):
     song_list_revision_id: UUID
 
 
-class DesignWithSongsInput(JobInput):
+class DesignWithSongsInput(ModelJobInput):
     CONNECTIONS: ClassVar[tuple[str, ...]] = ("mowl", "spotify")
 
     brief: Brief
@@ -73,7 +73,7 @@ class DesignWithSongsInput(JobInput):
         return self
 
 
-class ReviseSongsInput(JobInput):
+class ReviseSongsInput(ModelJobInput):
     """``revise_songs`` (section 6, "Change songs"): ``{class_id, base_revision_id, mode,
     replace, request}`` for a pick, ``{class_id, base_revision_id, mode: "resume", resume}`` for a
     resume, plus both connection ids.

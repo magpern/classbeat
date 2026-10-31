@@ -57,6 +57,27 @@ describe('the Songs for approval page', () => {
     expect(document.body.textContent).not.toMatch(/spotify:|[A-Za-z0-9]{22}/)
   })
 
+  it('links a song back to Spotify only with the API link, and drops one that is not a track link', async () => {
+    const good = 'https://open.spotify.com/track/' + 'a'.repeat(22)
+    const base = listBody().songs
+    fakeApi(
+      approvalRoutes(
+        listBody({
+          songs: [
+            { ...base[0], open_spotify: good },
+            { ...base[1], open_spotify: 'https://open.spotify.com/track/short' },
+          ],
+        }),
+      ),
+    )
+    renderAt(`/jobs/${JOB_ID}`)
+    const links = await screen.findAllByRole('link', { name: /^OPEN SPOTIFY, / })
+    expect(links).toHaveLength(1)
+    expect(links[0]).toHaveAttribute('href', good)
+    expect(links[0]).toHaveTextContent('OPEN SPOTIFY')
+    expect(screen.getAllByTestId('song')[1]).not.toHaveTextContent('OPEN SPOTIFY')
+  })
+
   it('approves with the revision id and the hash only, and a double click is one request', async () => {
     let approved = false
     const api = fakeApi({
@@ -80,6 +101,8 @@ describe('the Songs for approval page', () => {
     })
     const [call] = api.to('POST', `${JOB}/approve`)
     expect(call?.body).toEqual({ revision_id: LIST_ID, content_hash: HASH })
+    // Byte-identical to the request before the restyle: the same two keys, in this order.
+    expect(JSON.stringify(call?.body)).toBe(JSON.stringify({ revision_id: LIST_ID, content_hash: HASH }))
     expect(call?.headers.get('X-CSRF-Token')).toBe('csrf-session')
     await waitFor(() => {
       expect(screen.getAllByRole('heading').map((h) => h.textContent)).toContain('Designing your class…')
