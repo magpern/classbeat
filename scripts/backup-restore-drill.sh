@@ -14,6 +14,9 @@
 #      swapped archive (another signer, no signature, a recomputed checksum), a tampered one, and
 #      a signed archive with objects classbeat does not have; the --no-encrypt path works only
 #      with its flag and a signing key. Throwaway gpg and openssl keys, in a keyring of its own.
+#      Hardening (#364): the verified private copy is what is restored (the original is swapped after
+#      the copy), a failing pg_dump or signature leaves no file, a key below the backup directory and
+#      a subkey pin are refused, and every refusal is asserted for its specific reason.
 #   4. scripts/restore.sh (--expect-signer) into the fresh destination project;
 #   5. before the app starts: the fingerprint equals the source's;
 #   6. start web and worker (the startup key check passes): the migrations are at head, the right
@@ -49,8 +52,10 @@ done
 fpr_of() { gpg --batch --with-colons --list-keys "drill-$1" | awk -F: '/^fpr:/ && !d { print $10; d = 1 }'; }
 R="$(fpr_of recipient)"; S="$(fpr_of signer)"; X="$(fpr_of attacker)"
 for k in sign attacker; do
-  openssl genpkey -algorithm EC -pkeyopt ec_paramgen_curve:P-256 -out "$work/keys/$k.key" 2> /dev/null
-  openssl pkey -in "$work/keys/$k.key" -pubout -out "$work/keys/$k.pub"
+  # The error is shown: native openssl under Git Bash with MSYS_NO_PATHCONV=1 cannot write /tmp paths.
+  openssl genpkey -algorithm EC -pkeyopt ec_paramgen_curve:P-256 -out "$work/keys/$k.key" 2> "$work/openssl.err" \
+    || { cat "$work/openssl.err" >&2; fail "openssl genpkey failed (see above; under Git Bash do not set MSYS_NO_PATHCONV)"; }
+  openssl pkey -in "$work/keys/$k.key" -pubout -out "$work/keys/$k.pub" || fail "openssl pkey -pubout failed"
 done
 bk() { scripts/backup.sh "$@" --gpg-recipient "$R" --gpg-sign "$S"; }  # the encrypted default
 rs() { scripts/restore.sh --expect-signer "$S" "$@"; }
@@ -197,14 +202,15 @@ step "2b. authenticity: the archive is checked before anything runs as the super
 refused() { # refused <label> <reason regex> <command...>: the command must fail, for that reason
   local label="$1" why="$2"; shift 2
   if "$@" > "$work/out.txt" 2>&1; then fail "$label: was accepted"; fi
-  grep -q "$why" "$work/out.txt" || { cat "$work/out.txt" >&2; fail "$label: refused, but not for the expected reason ($why)"; }
+  grep -q -e "$why" "$work/out.txt" || { cat "$work/out.txt" >&2; fail "$label: refused, but not for the expected reason ($why)"; }
   echo "refused: $label"
 }
 # Encrypted by default: no flags, one flag, or a short fingerprint write nothing.
 mkdir -p "$work/none"
 refused "backup with no encryption options" "refusing to write an unencrypted backup" scripts/backup.sh -o "$work/none"
 refused "backup with a recipient but no signer" "refusing to write an unencrypted backup" scripts/backup.sh -o "$work/none" --gpg-recipient "$R"
-refused "backup with a short fingerprint" "full 40-digit" scripts/backup.sh -o "$work/none" --gpg-recipient "${R:0:16}" --gpg-sign "$S"
+refused "backup with a short recipient fingerprint" "--gpg-recipient must be a full 40-digit" scripts/backup.sh -o "$work/none" --gpg-recipient "${R:0:16}" --gpg-sign "$S"
+refused "backup with a short signer fingerprint" "--gpg-sign must be a full 40-digit" scripts/backup.sh -o "$work/none" --gpg-recipient "$R" --gpg-sign "${S:0:16}"
 refused "--no-encrypt without a signing key" "still needs --sign-key" scripts/backup.sh -o "$work/none" --no-encrypt
 key_inside() { mkdir -p "$work/in"; cp "$work/keys/sign.key" "$work/in/k.key"; scripts/backup.sh -o "$work/in" --no-encrypt --sign-key "$work/in/k.key"; }
 refused "--no-encrypt with the signing key inside the backup directory" "outside the backup directory" key_inside
@@ -217,11 +223,13 @@ echo "ok: --no-encrypt backup, signed, verifies with the public key"
 refused "plain archive without --verify-key" "needs --verify-key" scripts/restore.sh --verify-only "$plain"
 pub_beside() { cp "$work/keys/sign.pub" "$work/plain/k.pub"; scripts/restore.sh --verify-only --verify-key "$work/plain/k.pub" "$plain"; }
 refused "plain archive with the verification key beside it" "outside the backup directory" pub_beside
+pub_below() { mkdir -p "$work/plain/sub/deeper"; cp "$work/keys/sign.pub" "$work/plain/sub/deeper/k.pub"; scripts/restore.sh --verify-only --verify-key "$work/plain/sub/deeper/k.pub" "$plain"; }
+refused "plain archive with the verification key in a subdirectory of the backup directory" "outside the backup directory" pub_below
 # The encrypted round trip itself is step 3. Here: the same archive, verify-only, wrong expectations.
 scripts/restore.sh --verify-only --expect-signer "$S" "$dump" > /dev/null || fail "the encrypted backup was not accepted"
 refused "encrypted archive with no --expect-signer" "needs --expect-signer" scripts/restore.sh --verify-only "$dump"
 refused "encrypted archive, a different expected signer" "other than" scripts/restore.sh --verify-only --expect-signer "$X" "$dump"
-refused "encrypted archive, a short expected signer" "needs --expect-signer" scripts/restore.sh --verify-only --expect-signer "${S:0:16}" "$dump"
+refused "encrypted archive, a short expected signer" "--expect-signer must be a full 40-digit" scripts/restore.sh --verify-only --expect-signer "${S:0:16}" "$dump"
 # A swapped archive: a valid dump of this database, made by someone who knows only the PUBLIC keys.
 mkdir -p "$work/attack"
 docker compose exec -T db pg_dump -U postgres -d classbeat --format=custom > "$work/attack/their.dump"
@@ -256,6 +264,73 @@ refused "tampered plain archive" "does not verify" scripts/restore.sh --verify-o
 cp "$plain" "$work/attack/badsig.dump"
 flip "$plain.sig" "$work/attack/badsig.dump.sig" 10
 refused "plain archive with a tampered signature" "does not verify" scripts/restore.sh --verify-only --verify-key "$work/keys/sign.pub" "$work/attack/badsig.dump"
+# Hardening cases (#364). Tools that are made to misbehave are shims first on PATH for one command.
+real_cp="$(command -v cp)"; real_docker="$(command -v docker)"; real_openssl="$(command -v openssl)"
+mkdir -p "$work/shim-cp" "$work/shim-docker" "$work/shim-openssl" "$work/swap"
+cat > "$work/shim-cp/cp" <<'SHIM'
+#!/usr/bin/env bash
+# After the archive is copied to restore.sh's private copy, replace the ORIGINAL with garbage
+# (a swap between verification and use). Whatever reads the original afterwards gets the garbage.
+"$REAL_CP" "$@" || exit $?
+for last; do :; done
+case "$last" in */copy.dump | */copy.gpg) printf 'swapped after the copy\n' > "$DRILL_SWAP" ;; esac
+SHIM
+cat > "$work/shim-docker/docker" <<'SHIM'
+#!/usr/bin/env bash
+# pg_dump fails after writing a little; everything else is the real docker.
+case " $* " in *" pg_dump "*) echo "PGDMP partial"; echo "pg_dump: simulated failure" >&2; exit 3 ;; esac
+exec "$REAL_DOCKER" "$@"
+SHIM
+cat > "$work/shim-openssl/openssl" <<'SHIM'
+#!/usr/bin/env bash
+# `openssl dgst` fails after creating its -out file; everything else is the real openssl.
+if [ "${1:-}" = dgst ]; then
+  prev=""; out=""
+  for a in "$@"; do [ "$prev" = -out ] && out="$a"; prev="$a"; done
+  [ -z "$out" ] || echo junk > "$out"
+  echo "openssl: simulated signing failure" >&2; exit 1
+fi
+exec "$REAL_OPENSSL" "$@"
+SHIM
+chmod +x "$work"/shim-*/*
+accepted() { # accepted <label> <command...>: the command must succeed and say it validated the archive
+  local label="$1"; shift
+  "$@" > "$work/out.txt" 2>&1 || { cat "$work/out.txt" >&2; fail "$label: was refused"; }
+  grep -q "authenticated and validated" "$work/out.txt" || { cat "$work/out.txt" >&2; fail "$label: did not reach validation"; }
+  echo "accepted: $label"
+}
+# (1a) The bytes that were verified are the bytes restored: the original is replaced after the copy.
+cp "$plain" "$work/swap/a.dump"; cp "$plain.sig" "$work/swap/a.dump.sig"
+accepted "plain archive replaced after verification (the private copy is used)" \
+  env REAL_CP="$real_cp" DRILL_SWAP="$work/swap/a.dump" PATH="$work/shim-cp:$PATH" \
+  scripts/restore.sh --verify-only --verify-key "$work/keys/sign.pub" "$work/swap/a.dump"
+cp "$dump" "$work/swap/a.dump.gpg"
+accepted "encrypted archive replaced after verification (the private copy is used)" \
+  env REAL_CP="$real_cp" DRILL_SWAP="$work/swap/a.dump.gpg" PATH="$work/shim-cp:$PATH" \
+  scripts/restore.sh --verify-only --expect-signer "$S" "$work/swap/a.dump.gpg"
+# (1b) A failing pg_dump must leave no archive (gpg would encrypt the empty stream: needs pipefail).
+mkdir -p "$work/pgfail"
+refused "backup with a failing pg_dump" "pg_dump or gpg failed" \
+  env REAL_DOCKER="$real_docker" PATH="$work/shim-docker:$PATH" scripts/backup.sh -o "$work/pgfail" --gpg-recipient "$R" --gpg-sign "$S"
+[ -z "$(find "$work/pgfail" -type f)" ] || fail "a backup with a failing pg_dump left a file"
+# (6) A failing signature leaves no .sig.partial behind.
+mkdir -p "$work/sigfail"
+refused "--no-encrypt backup with a failing signature" "signing failed" \
+  env REAL_OPENSSL="$real_openssl" PATH="$work/shim-openssl:$PATH" scripts/backup.sh -o "$work/sigfail" --no-encrypt --sign-key "$work/keys/sign.key"
+[ -z "$(find "$work/sigfail" -type f)" ] || fail "a failed signature left a file: $(find "$work/sigfail" -type f)"
+# (4) Only the PRIMARY fingerprint is a valid pin: a signing subkey's own fingerprint is refused.
+gpg --batch --pinentry-mode loopback --passphrase '' --quick-generate-key drill-subsigner default default never 2> /dev/null
+P="$(fpr_of subsigner)"
+gpg --batch --pinentry-mode loopback --passphrase '' --quick-add-key "$P" ed25519 sign never 2> /dev/null
+SUB="$(gpg --batch --with-colons --list-keys "$P" | awk -F: '/^sub:/ { w = ($12 ~ /s/); next } w && /^fpr:/ { print $10; exit }')"
+[[ "$SUB" =~ ^[0-9A-F]{40}$ ]] && [ "$SUB" != "$P" ] || fail "could not make a signing subkey"
+gpg --batch --yes --trust-model always --encrypt --sign --local-user "$SUB!" --recipient "$R" \
+  --output "$work/attack/by-subkey.dump.gpg" "$work/attack/their.dump"
+accepted "archive signed by a subkey, pinned by its primary fingerprint" \
+  scripts/restore.sh --verify-only --expect-signer "$P" "$work/attack/by-subkey.dump.gpg"
+refused "archive signed by a subkey, pinned by the subkey's own fingerprint" "other than" \
+  scripts/restore.sh --verify-only --expect-signer "$SUB" "$work/attack/by-subkey.dump.gpg"
+
 # A refused archive starts nothing: restoring the swapped one into the destination project does nothing.
 use "$dst"
 refused "restore of the swapped archive into $dst" "other than" rs "$work/attack/signed-by-x.dump.gpg"
