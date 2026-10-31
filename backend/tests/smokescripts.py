@@ -83,6 +83,15 @@ NOTES = {
 
 def revise_script(case: Case) -> FakeScript:
     """read the music, preview the revised draft, submit it with a note (a careful model)."""
+    if case.revise is not None and case.revise.outcome == "songs_requested":
+        # A request for other songs and nothing else: read the music, then songs_requested.
+        read = _turn(
+            _call("get_music", {}, expect={"ok": True}, contains=['"tracks"']), _usage(5200, 150)
+        )
+        done = _turn(_call("songs_requested", {}, expect={"accepted": True}), _usage(5500, 40))
+        return FakeScript.model_validate(
+            {"model": "fake-model", "drafts": {}, "turns": [read, done]}
+        )
     revised = make_draft(**REVISED[case.name], name=f"Invented {case.name.replace('_', ' ')}")
     read = _turn(
         _call("get_music", {}, expect={"ok": True}, contains=['"tracks"']), _usage(5200, 150)

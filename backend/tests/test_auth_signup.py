@@ -262,15 +262,23 @@ async def test_the_existing_address_branch_hashes_too_and_a_bad_invite_does_not(
     assert len(calls) == 1  # refused before hashing
 
 
-async def test_a_pending_signup_stays_confirmable_after_a_switch_to_closed(
+async def test_a_pending_signup_is_not_confirmed_while_closed_but_waits_for_a_reopening(
     app_database_url: str, clean_auth: None, smtp: SmtpFake
 ) -> None:
+    # ADR 0011 section 7, amendment 2026-10-31: "closed" also stops confirmation.
     mail = {"smtp_host": "127.0.0.1", "smtp_port": smtp.port, "smtp_tls": "none"}
     async with running_env(app_database_url, **mail) as env:
         await sign_up(Browser(env), await invite(env))
     token = smtp.to(EMAIL)[0].token()
     async with running_env(app_database_url, signup_mode="closed", **mail) as env:
+        refused = await confirm(Browser(env), token)
+        assert (refused.status_code, reason(refused)) == (403, "signups_closed")
+        assert await env.scalar("SELECT count(*) FROM pending_signups") == 1
+        assert await env.scalar("SELECT count(*) FROM users") == 0
+        assert await env.scalar("SELECT count(*) FROM invites WHERE used_at IS NOT NULL") == 0
+    async with running_env(app_database_url, **mail) as env:  # sign-ups reopen
         assert (await confirm(Browser(env), token)).status_code == 200
+        assert await env.scalar("SELECT count(*) FROM invites WHERE used_at IS NOT NULL") == 1
 
 
 async def test_validation_errors_on_auth_routes_do_not_echo_the_input(menv: Env) -> None:

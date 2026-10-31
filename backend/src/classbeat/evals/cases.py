@@ -91,6 +91,9 @@ class ReviseSpec(BaseModel):
     request: BriefText = Field(min_length=1)
     earlier_requests: list[BriefText] = Field(default_factory=lambda: list[str](), max_length=10)
     base: WorkoutDraft
+    # "songs_requested" (issue #278): the request only asks for other songs, so the stage ends
+    # with songs_requested and no draft; the case passes only if it does.
+    outcome: Literal["draft", "songs_requested"] = "draft"
 
 
 class Case(BaseModel):
