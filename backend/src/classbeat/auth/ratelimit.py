@@ -66,6 +66,11 @@ REDEEM_IP = Limit("redeem", "ip", 30, 3600)
 # hour (every request counts) and per IP.
 EXPORT_USER = Limit("export", "account", 5, 3600)
 EXPORT_IP = Limit("export", "ip", 20, 3600)
+# SR-05 (#354): ``GET /api/music/mowl-playlists`` makes a MOWL call with the user's token on every
+# request, and a GET can be triggered cross-site, so it is limited per user and per IP. Every
+# request counts (a refusal comes before the connection is opened and before any MOWL call).
+MOWL_PLAYLISTS_USER = Limit("mowl-playlists", "account", 30, 600)
+MOWL_PLAYLISTS_IP = Limit("mowl-playlists", "ip", 60, 600)
 
 OnSuccess = Literal["decrement", "delete"]
 
@@ -254,3 +259,8 @@ def redeem_buckets(user_id: str, ip: str) -> list[Bucket]:
 def export_buckets(user_id: str, ip: str) -> list[Bucket]:
     """A data export (ADR 0014 section 2): per user and per IP."""
     return [Bucket(EXPORT_USER, user_id), Bucket(EXPORT_IP, bucket_ip(ip))]
+
+
+def mowl_playlists_buckets(user_id: str, ip: str) -> list[Bucket]:
+    """A listing of the user's Spotify playlists at MOWL (SR-05): per user and per IP."""
+    return [Bucket(MOWL_PLAYLISTS_USER, user_id), Bucket(MOWL_PLAYLISTS_IP, bucket_ip(ip))]

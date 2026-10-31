@@ -209,6 +209,13 @@ GitHub hold the detail.
       provider re-authentication (#291); the delete-class confirmation scroll and focus (#301); Z1 to Z7 label
       tests (#301); CSP and Referrer-Policy on an unhandled 500 (#293); a test for the QR attribute allow-list
       (#293). Left open from it: the song strip's start times against the analysed music (needs a backend field).
+- **M6, rate limit on the MOWL playlist listing (#354, SR-05 of the security review, in review, not merged):**
+  `GET /api/music/mowl-playlists` now uses the fixed-window limiter of the other provider-calling routes: 30 per
+  user and 60 per IP per 10 minutes, every request counts, a refusal (429 `rate_limited` with `Retry-After`) comes
+  before the connection is opened and before any MOWL call; a parallel test shows the limit cannot be overshot.
+  Other provider-calling GET routes checked: `GET /oauth/{provider}/callback` was already limited per IP
+  (`OAUTH_IP`); `GET /spotify/callback` only exchanges a single-use `state` that a limited `POST /api/spotify/start`
+  created, so it is bounded by that limit; the remaining GET routes read the database only. M6 is **not done**.
 - **M6, GDPR export and delete (#337 merged as #348; review follow-ups #349 in review):** [ADR 0014](adr/0014-account-export-and-deletion.md),
   threat model T98 to T100 and T102. M6 is **not done**; only this item of its "done when" is built. Checklist:
   - [x] `POST /api/account/export` (one JSON file of the user's own rows, connections as status only, no
@@ -241,6 +248,12 @@ GitHub hold the detail.
   logs of the whole Playwright run for the value of every secret file. Not covered by this PR, so M6 stays open: the
   rest of the security review (headers, rate limits and egress against the live shape, dependency findings), backups
   and restore, GDPR export and delete, the VPS and its network rules.
+- **M6, web outbound allowlist and redirects (#353, SR-03 of the security review, in review, not merged):** the web
+  process now installs an allowlisted urllib opener at start (`python -m classbeat`; `api.mowl.com` and `api.spotify.com`,
+  `https` on 443, no environment proxy, a redirect only to the same host), so the MOWL token cannot follow a redirect to another host; the
+  OAuth sign-in clients no longer read the environment or follow redirects. Tests use fake upstreams that record what
+  each host receives. Threat model T19 now says what is enforced. **Not done:** no host allowlist for the OAuth
+  sign-in clients or the mail relay, and no network-level egress rule (SR-04). M6 is **not done**.
 - Releases: v0.1.0 (cut partway through M0); v0.2.0 is not cut yet (deferred to save Actions quota). Image
   `ghcr.io/magpern/classbeat`, private.
 
