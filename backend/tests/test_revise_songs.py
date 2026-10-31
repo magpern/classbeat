@@ -282,7 +282,8 @@ async def test_the_class_shows_its_stored_brief_to_its_owner_only(songenv: SongE
 
 def test_the_revise_prompt_points_other_songs_to_change_songs() -> None:
     assert '"Change songs" on the class page' in SYSTEM_PROMPT
-    assert "change nothing for that part" in SYSTEM_PROMPT
+    assert "change nothing for the songs" in SYSTEM_PROMPT
+    assert "call songs_requested instead of submit_draft" in SYSTEM_PROMPT
     head = model_input.SONGS_CHANGED
     assert head.startswith("The songs were just changed")
 
