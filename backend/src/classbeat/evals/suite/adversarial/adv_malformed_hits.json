@@ -1,0 +1,25 @@
+{
+ "name": "adv_malformed_hits",
+ "about": "Search answers that are broken: no title, no artist, an id that is no Spotify id, a title that is not text.",
+ "brief": {
+  "length_min": 30,
+  "intensity": "moderate",
+  "climbs": 1,
+  "sprints": 2
+ },
+ "catalogue": {
+  "size": 40,
+  "malformed": {
+   "3": "no_title",
+   "4": "no_artist",
+   "5": "bad_id",
+   "6": "title_not_text",
+   "13": "no_title"
+  }
+ },
+ "expect": {
+  "forbidden_text": [
+   "PWNED"
+  ]
+ }
+}

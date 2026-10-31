@@ -1,9 +1,11 @@
+import { lazy, Suspense } from 'react'
 import { GuardProvider } from './auth/GuardProvider'
 import { SessionProvider, useSession } from './auth/SessionContext'
 import { Banner } from './components/Banner'
+import { Card } from './components/forms'
+import { RequireAuth } from './components/RequireAuth'
 import { AppShell } from './components/shell/AppShell'
 import { AccountPage } from './pages/AccountPage'
-import { AdminPage } from './pages/AdminPage'
 import { ClassPage } from './pages/ClassPage'
 import { ClassesPage } from './pages/ClassesPage'
 import { EmailChangePage } from './pages/EmailChangePage'
@@ -20,6 +22,35 @@ import { SignUpPage } from './pages/SignUpPage'
 import { SpotifyPage } from './pages/SpotifyPage'
 import { Link, RouterProvider, useRouter } from './router/Router'
 
+// The admin area is its own chunk, fetched only for a session whose role is admin (ADR 0011
+// section 6); the server's answer decides what it shows.
+const AdminPage = lazy(() => import('./pages/AdminPage'))
+
+function Admin() {
+  const { session } = useSession()
+  return (
+    <RequireAuth>
+      {session?.user?.role === 'admin' ? (
+        <Suspense
+          fallback={
+            <Card title="Admin">
+              <p>Loading</p>
+            </Card>
+          }
+        >
+          <AdminPage />
+        </Suspense>
+      ) : (
+        <Card title="Admin">
+          <p role="alert" className="notice" data-kind="error">
+            Your account is not an admin account.
+          </p>
+        </Card>
+      )}
+    </RequireAuth>
+  )
+}
+
 function Routes() {
   const { pathname } = useRouter()
   const { session } = useSession()
@@ -28,6 +59,7 @@ function Routes() {
   if (job?.[1] !== undefined) return <JobPage key={job[1]} jobId={job[1]} />
   const cls = /^\/classes\/([0-9a-fA-F-]{36})$/.exec(path)
   if (cls?.[1] !== undefined) return <ClassPage key={cls[1]} classId={cls[1]} />
+  if (path === '/admin' || path.startsWith('/admin/')) return <Admin />
   switch (path) {
     case '/':
       return session?.authenticated === true ? <HomePage /> : <LandingPage />
@@ -53,8 +85,6 @@ function Routes() {
       return <AccountPage />
     case '/account/spotify':
       return <SpotifyPage />
-    case '/admin':
-      return <AdminPage />
     default:
       return (
         <section className="card">

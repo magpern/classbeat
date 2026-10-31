@@ -1,0 +1,17 @@
+{
+ "name": "cost_lean_30",
+ "about": "A 30 minute class read and submitted without a preview: two turns, bounded.",
+ "brief": {
+  "length_min": 30,
+  "intensity": "moderate",
+  "climbs": 1,
+  "sprints": 2
+ },
+ "music": {
+  "tracks": 9
+ },
+ "expect": {
+  "max_turns": 3,
+  "max_cost_micros": 80000
+ }
+}

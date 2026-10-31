@@ -11,10 +11,10 @@ longest (no end first, then the latest end); ``None`` for ``free`` without an en
 Overlapping entitlements don't add up, so that end is when the plan stops applying, unless a
 lower-ranked one takes over.
 
-**Limits** are the plan's, under the environment's caps that exist today
-(``CLASSBEAT_JOBS_PER_USER`` and ``CLASSBEAT_REVISIONS_PER_CLASS``, ADR 0011 sections 3 and 4).
-The money bounds of section 4 (``CLASSBEAT_CLASSES_PER_MONTH_MAX``,
-``CLASSBEAT_MONTHLY_COST_MICROS_MAX``) come with QT1, which applies them here too.
+**Limits** are the plan's under the environment's bounds (``classbeat.quota.effective``, the
+same values the ledger and the policies use): ``CLASSBEAT_JOBS_PER_USER``,
+``CLASSBEAT_REVISIONS_PER_CLASS``, ``CLASSBEAT_CLASSES_PER_MONTH_MAX`` and, for the cost share,
+``CLASSBEAT_MONTHLY_COST_MICROS_MAX`` (ADR 0011 sections 3 and 4).
 
 **Held** is ADR 0011 section 3's count: ledger rows of the period that are ``committed``, or
 ``reserved`` with a job.
@@ -31,6 +31,7 @@ from classbeat.context import UserContext
 from classbeat.db import user_session
 from classbeat.plans.resolve import effective_features, effective_plan
 from classbeat.plans.trial import TrialOffer, had_trial, trial_offer
+from classbeat.quota.bounds import Bounds, effective
 
 _SOURCE = text(
     "SELECT e.source, e.ends_at FROM entitlements e WHERE e.owner_id = :o "
@@ -83,30 +84,31 @@ def cost_share(cost_micros: int, cap_micros: int) -> float:
 
 
 async def _account_plan(
-    db: AsyncSession, ctx: UserContext, *, jobs_cap: int, revisions_cap: int, trial_days_max: int
+    db: AsyncSession, ctx: UserContext, *, bounds: Bounds, trial_days_max: int
 ) -> AccountPlan:
     plan = await effective_plan(db, ctx)
     features = await effective_features(db, ctx)
     source = (await db.execute(_SOURCE, {"o": ctx.user_id, "p": plan.id})).one_or_none()
-    bounds = (await db.execute(_BOUNDS)).one()
+    span = (await db.execute(_BOUNDS)).one()
     held = (await db.execute(_HELD, {"o": ctx.user_id})).scalar_one()
     cost = (
-        await db.execute(_COST, {"o": ctx.user_id, "starts": bounds.starts, "ends": bounds.ends})
+        await db.execute(_COST, {"o": ctx.user_id, "starts": span.starts, "ends": span.ends})
     ).scalar_one()
     offer = None if await had_trial(db, ctx) else await trial_offer(db, trial_days_max)
+    limits = effective(plan, bounds)
     return AccountPlan(
         plan_id=plan.id,
         plan_name=plan.name,
         source=None if source is None else source.source,
         ends_at=None if source is None else source.ends_at,
         limits=Limits(
-            classes_per_month=plan.classes_per_month,
-            revisions_per_class=min(plan.revisions_per_class, revisions_cap),
-            concurrent_jobs=min(plan.concurrent_jobs, jobs_cap),
+            classes_per_month=limits.classes_per_month,
+            revisions_per_class=limits.revisions_per_class,
+            concurrent_jobs=limits.concurrent_jobs,
         ),
         classes_held=int(held),
-        period_end=bounds.ends,
-        cost_share=cost_share(int(cost), plan.monthly_cost_micros),
+        period_end=span.ends,
+        cost_share=cost_share(int(cost), limits.monthly_cost_micros),
         features=tuple(sorted(features)),
         trial=offer,
     )
@@ -116,15 +118,8 @@ async def account_plan(
     factory: async_sessionmaker[AsyncSession],
     ctx: UserContext,
     *,
-    jobs_cap: int,
-    revisions_cap: int,
+    bounds: Bounds,
     trial_days_max: int,
 ) -> AccountPlan:
     async with user_session(factory, ctx) as db:
-        return await _account_plan(
-            db,
-            ctx,
-            jobs_cap=jobs_cap,
-            revisions_cap=revisions_cap,
-            trial_days_max=trial_days_max,
-        )
+        return await _account_plan(db, ctx, bounds=bounds, trial_days_max=trial_days_max)

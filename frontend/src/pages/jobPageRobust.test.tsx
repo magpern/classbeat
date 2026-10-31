@@ -227,10 +227,10 @@ describe('Design again', () => {
       [`GET /api/jobs/${NEXT}`]: { ...jobBody('cancelled'), id: NEXT },
     })
     renderAt(`/jobs/${JOB_ID}`)
-    fireEvent.click(await screen.findByRole('button', { name: 'Design again' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Try again' }))
     expect(await screen.findByRole('alert')).toHaveTextContent('already has a design running')
     expect(document.body).not.toHaveTextContent('class_busy')
-    fireEvent.click(screen.getByRole('button', { name: 'Design again' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Try again' }))
     await waitFor(() => {
       expect(window.location.pathname).toBe(`/jobs/${NEXT}`)
     })
@@ -253,11 +253,11 @@ describe('Design again after MOWL was connected again', () => {
       'POST /api/jobs': reason(409, 'not_connected'),
     })
     renderAt(`/jobs/${JOB_ID}`)
-    fireEvent.click(await screen.findByRole('button', { name: 'Design again' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Try again' }))
     expect(await screen.findByRole('alert')).toHaveTextContent('connected again since')
     expect(window.sessionStorage.getItem(`classbeat.design-input.${JOB_ID}`)).toBeNull()
     expect(window.sessionStorage.getItem(`classbeat.design-again-key.${JOB_ID}`)).toBeNull()
-    expect(screen.queryByRole('button', { name: 'Design again' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Try again' })).toBeNull()
     fireEvent.click(screen.getByRole('button', { name: 'Start a new design' }))
     await waitFor(() => {
       expect(window.location.pathname).toBe('/classes/new')

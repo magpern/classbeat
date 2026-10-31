@@ -1,4 +1,5 @@
 import { ApiError } from '../api/client'
+import { getClass } from '../api/classes'
 import { getConnections } from '../api/connections'
 import type { Brief } from '../api/jobs'
 import { isClassBusy } from '../api/songMessages'
@@ -48,6 +49,14 @@ export function followUpBrief(kept: Brief | null, targetSec: number, note: strin
     style: '',
     text: extra.slice(0, MAX_BRIEF_TEXT),
   }
+}
+
+/** The class's brief and current draft, read when a follow-up job is made. */
+export async function classContext(
+  classId: string,
+): Promise<{ brief: Brief | null; currentRevisionId: string | null }> {
+  const found = await getClass(classId)
+  return { brief: found.brief, currentRevisionId: found.currentRevisionId }
 }
 
 export class NotConnected extends Error {

@@ -7,7 +7,6 @@ except the admin area's invite functions (AD2 #220), which take its ``admin_sess
 
 import hashlib
 import secrets
-from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Any
@@ -186,15 +185,6 @@ async def disable_invite(db: AsyncSession, invite_id: UUID) -> tuple[bool, Invit
         )
     ).first() is not None
     return changed, await get_invite(db, invite_id)
-
-
-async def account_emails(db: AsyncSession, ids: Iterable[UUID]) -> dict[UUID, str]:
-    """The email address of each of ``ids`` that is still an account (for "created by")."""
-    wanted = sorted(set(ids))
-    if not wanted:
-        return {}
-    rows = await db.execute(select(users.c.id, users.c.email).where(users.c.id.in_(wanted)))
-    return {row.id: row.email for row in rows.all()}
 
 
 async def _set_role(db: AsyncSession, user: UserRow, role: str, kind: str) -> None:

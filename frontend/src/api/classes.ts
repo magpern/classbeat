@@ -11,7 +11,7 @@ import {
   text,
   type JsonObject,
 } from './decode'
-import { decodeDraftContent, decodeUnknownBpm, type DraftContent } from './jobs'
+import { decodeDraftContent, decodeUnknownBpm, type Brief, type DraftContent } from './jobs'
 
 // The class API (ADR 0007 section 12, backend/src/classbeat/classes/routes.py). Server text is
 // data: decoded into typed fields and rendered as text by React, never as HTML.
@@ -91,19 +91,55 @@ export interface ClassSummary {
   openJob: OpenJob | null
   /** The current version's intervals as [zone, seconds], in order (empty without one). */
   profile: [number, number][]
+  /** The brief the class was designed for; null when there is none (or on the list). */
+  brief: Brief | null
   /** Only the class page's answer has these; the list's rows read as none. */
   songs: ClassSongs
   playlist: ClassPlaylist | null
 }
 
-/** Absent or malformed means no profile: a card then shows no sketch rather than failing the list. */
+const INTENSITIES: readonly unknown[] = ['easy', 'moderate', 'hard']
+
+/** The class's brief; anything malformed reads as none, and callers then use their fallback. */
+function decodeBrief(value: unknown): Brief | null {
+  if (!isObject(value)) return null
+  const whole = (key: string): number | null => {
+    const n = value[key]
+    return typeof n === 'number' && Number.isInteger(n) ? n : null
+  }
+  const length = whole('length_min')
+  const climbs = whole('climbs')
+  const sprints = whole('sprints')
+  const races = whole('races')
+  const ftp = value.ftp_test
+  if (length === null || climbs === null || sprints === null || races === null) return null
+  if (!INTENSITIES.includes(value.intensity)) return null
+  if (ftp !== null && ftp !== 3 && ftp !== 5 && ftp !== 20) return null
+  if (typeof value.style !== 'string' || typeof value.text !== 'string') return null
+  return {
+    length_min: length,
+    intensity: value.intensity as Brief['intensity'],
+    climbs,
+    sprints,
+    races,
+    ftp_test: ftp,
+    style: value.style,
+    text: value.text,
+  }
+}
+
+/**
+ * Absent means no profile. An interval that is not a pair of whole numbers (zone 0 to 99,
+ * seconds 0 or more) is skipped, so one bad interval never fails the list or hides the rest.
+ */
 function decodeProfile(value: unknown): [number, number][] {
   if (!Array.isArray(value)) return []
   const out: [number, number][] = []
   for (const entry of value as unknown[]) {
-    if (!Array.isArray(entry) || entry.length !== 2) return []
+    if (!Array.isArray(entry) || entry.length !== 2) continue
     const [zone, sec] = entry as unknown[]
-    if (!Number.isInteger(zone) || !Number.isInteger(sec) || (sec as number) < 0) return []
+    if (!Number.isInteger(zone) || !Number.isInteger(sec)) continue
+    if ((zone as number) < 0 || (zone as number) > 99 || (sec as number) < 0) continue
     out.push([zone as number, sec as number])
   }
   return out
@@ -136,6 +172,7 @@ function decodeClass(value: unknown): ClassSummary {
     },
     openJob,
     profile: decodeProfile(item.profile),
+    brief: decodeBrief(item.brief),
     songs: decodeSongs(item.songs),
     playlist: decodePlaylist(item.playlist),
   }
@@ -192,6 +229,8 @@ export async function listRevisions(
 
 export interface Revision extends RevisionSummary, DraftContent {
   unknownBpm: { index: number; title: string }[]
+  /** ADR 0012 section 7: the backend's flag, set when the version has a zone 7 interval. */
+  tssApproximate: boolean
   /** The content exactly as the server sent it: what the version hash is taken over. */
   raw: unknown
 }
@@ -209,6 +248,7 @@ export async function getRevision(
     ...decodeRevisionSummary(body),
     ...decodeDraftContent(body.content),
     unknownBpm: decodeUnknownBpm(body),
+    tssApproximate: optionalFlag(body, 'tss_approximate') ?? false,
     raw: body.content,
   }
 }

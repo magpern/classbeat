@@ -19,7 +19,6 @@ if TYPE_CHECKING:
         AccountError,
         InviteRow,
         UserRow,
-        account_emails,
         create_admin_invite,
         create_invite,
         create_user,
@@ -40,6 +39,7 @@ if TYPE_CHECKING:
         find_accounts,
         get_account,
     )
+    from classbeat.auth.admin_lookup import account_emails
     from classbeat.auth.clientip import bucket_ip, client_ip
     from classbeat.auth.cookies import (
         CSRF_COOKIE,
@@ -130,7 +130,6 @@ _EXPORTS: dict[str, str] = {
     "UserRow": "accounts",
     "create_invite": "accounts",
     "InviteRow": "accounts",
-    "account_emails": "accounts",
     "create_admin_invite": "accounts",
     "disable_invite": "accounts",
     "get_invite": "accounts",
@@ -147,6 +146,7 @@ _EXPORTS: dict[str, str] = {
     "disable_account": "admin_accounts",
     "enable_account": "admin_accounts",
     "find_accounts": "admin_accounts",
+    "account_emails": "admin_lookup",
     "bucket_ip": "clientip",
     "client_ip": "clientip",
     "CSRF_COOKIE": "cookies",
