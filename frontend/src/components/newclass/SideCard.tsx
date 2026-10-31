@@ -7,10 +7,13 @@ export function SideCard({
   profile,
   summary,
   busy,
+  classesLeft,
 }: {
   profile: [number, number][]
   summary: { label: string; value: string }[]
   busy: boolean
+  /** Classes left this month from the plan API; null hides the line. */
+  classesLeft: number | null
 }) {
   return (
     <Card className="flex flex-col gap-4" role="region" aria-labelledby="so-far-title">
@@ -27,6 +30,13 @@ export function SideCard({
           </div>
         ))}
       </dl>
+      {classesLeft === null ? null : (
+        <p className="m-0 text-[0.8125rem] text-muted">
+          {classesLeft > 0
+            ? `Uses 1 of your ${String(classesLeft)} classes left this month`
+            : 'You have no classes left this month.'}
+        </p>
+      )}
       <Button type="submit" disabled={busy} className="w-full">
         Design my class
       </Button>

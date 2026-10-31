@@ -167,7 +167,7 @@ describe('the new-class form', () => {
     })
     renderAt('/classes/new')
     await fill()
-    fireEvent.click(screen.getByRole('button', { name: 'Design the class' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Design my class' }))
     expect(await screen.findByRole('alert')).toHaveTextContent(
       'You have used your 3 classes for October. More from 1 November.',
     )
@@ -177,7 +177,7 @@ describe('the new-class form', () => {
     fakeApi({ ...READY, 'POST /api/jobs': () => json({ detail: { reason: 'busy', limit: 2 } }, 429) })
     renderAt('/classes/new')
     await fill()
-    fireEvent.click(screen.getByRole('button', { name: 'Design the class' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Design my class' }))
     expect(await screen.findByRole('alert')).toHaveTextContent('allows 2 designs at a time')
   })
 
@@ -244,6 +244,26 @@ describe('the new-class form', () => {
     expect(group.querySelectorAll('input[type="radio"]')).toHaveLength(2)
     expect(screen.getByRole('radio', { name: 'Hard' })).toBeChecked()
     expect(screen.getByRole('region', { name: 'Your class so far' })).toBeInTheDocument()
+  })
+
+  it('shows the classes left this month when the plan is known, and nothing otherwise', async () => {
+    fakeApi({
+      ...READY,
+      'GET /api/account/plan': {
+        plan: 'free', name: 'Free', source: null, ends_at: null,
+        limits: { classes_per_month: 3, revisions_per_class: 5, concurrent_jobs: 1 },
+        classes_held: 1, period_end: '2026-11-01T00:00:00Z', cost_share: 0, features: [], trial: null,
+      },
+    })
+    renderAt('/classes/new')
+    expect(await screen.findByText('Uses 1 of your 2 classes left this month')).toBeInTheDocument()
+  })
+
+  it('hides the classes line when the plan cannot be read', async () => {
+    fakeApi(READY)
+    renderAt('/classes/new')
+    await screen.findByLabelText('Class name')
+    expect(screen.queryByText(/classes left this month/)).toBeNull()
   })
 
   it('is for signed-in users only', async () => {

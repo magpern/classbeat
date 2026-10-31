@@ -11,6 +11,7 @@ import {
 import { errorMessage } from '../api/messages'
 import { startError } from '../api/songMessages'
 import { createPickJob, type PickInput } from '../api/songs'
+import { getPlan } from '../api/plan'
 import { getSpotifyStatus } from '../api/spotify'
 import { MusicChoice, type Music, type SongsAvailability } from '../components/songs/MusicChoice'
 import { EffortCards } from '../components/newclass/EffortCards'
@@ -200,6 +201,22 @@ function ClassForm({
   // One key per user action: the same form values keep the key, so a repeated click or a retry
   // after a lost answer returns the same job instead of starting a second one.
   const lengthInput = useRef<HTMLInputElement>(null)
+  // Classes left this month, from the plan API; hidden while unknown or when the call fails.
+  const [classesLeft, setClassesLeft] = useState<number | null>(null)
+  useEffect(() => {
+    const abort = new AbortController()
+    getPlan(abort.signal).then(
+      (plan) => {
+        if (!abort.signal.aborted) {
+          setClassesLeft(Math.max(0, plan.limits.classesPerMonth - plan.classesHeld))
+        }
+      },
+      () => undefined,
+    )
+    return () => {
+      abort.abort()
+    }
+  }, [])
   const attempt = useRef<{ fingerprint: string; key: string } | null>(null)
 
   const submit = (event: FormEvent) => {
@@ -411,7 +428,7 @@ function ClassForm({
         </Card>
       </div>
       <div className="lg:sticky lg:top-4">
-        <SideCard profile={profile} summary={summary} busy={action.busy} />
+        <SideCard profile={profile} summary={summary} busy={action.busy} classesLeft={classesLeft} />
       </div>
     </form>
   )
