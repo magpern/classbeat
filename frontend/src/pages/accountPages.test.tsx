@@ -274,11 +274,14 @@ describe('account page', () => {
   })
 })
 
+const ADMIN_SESSION = { ...SIGNED_IN, user: { ...SIGNED_IN.user, role: 'admin' } }
+
 describe('admin page', () => {
   it('asks an enrolled admin for a code and then shows the area', async () => {
     let verified = false
     const api = fakeApi({
-      'GET /api/auth/session': SIGNED_IN,
+      'GET /api/auth/session': ADMIN_SESSION,
+      'GET /api/admin/users?offset=0&limit=50': { users: [], next_offset: null },
       'GET /api/admin/whoami': () =>
         verified ? { id: 'u1', email: 'ann@example.test', role: 'admin' } : reason(403, 'mfa_required'),
       'GET /api/auth/mfa': { totp_enabled: true, recovery_codes_left: 9 },
@@ -296,7 +299,7 @@ describe('admin page', () => {
 
   it('offers enrolment to an admin without a second factor', async () => {
     fakeApi({
-      'GET /api/auth/session': SIGNED_IN,
+      'GET /api/auth/session': ADMIN_SESSION,
       'GET /api/admin/whoami': reason(403, 'mfa_required'),
       'GET /api/auth/mfa': MFA_OFF,
     })
@@ -305,7 +308,7 @@ describe('admin page', () => {
   })
 
   it('turns non-admins away', async () => {
-    fakeApi({ 'GET /api/auth/session': SIGNED_IN, 'GET /api/admin/whoami': reason(403, 'forbidden') })
+    fakeApi({ 'GET /api/auth/session': ADMIN_SESSION, 'GET /api/admin/whoami': reason(403, 'forbidden') })
     renderAt('/admin')
     expect(await screen.findByText(/not an admin account/)).toBeInTheDocument()
   })
