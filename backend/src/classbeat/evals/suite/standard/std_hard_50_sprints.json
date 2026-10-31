@@ -1,0 +1,13 @@
+{
+ "name": "std_hard_50_sprints",
+ "about": "Hard 50 minutes with four sprints.",
+ "brief": {
+  "length_min": 50,
+  "intensity": "hard",
+  "sprints": 4
+ },
+ "music": {
+  "tracks": 14
+ },
+ "expect": {}
+}

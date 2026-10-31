@@ -1,0 +1,14 @@
+{
+ "name": "std_moderate_90",
+ "about": "Moderate 90 minutes with two climbs and four sprints.",
+ "brief": {
+  "length_min": 90,
+  "intensity": "moderate",
+  "climbs": 2,
+  "sprints": 4
+ },
+ "music": {
+  "tracks": 25
+ },
+ "expect": {}
+}
