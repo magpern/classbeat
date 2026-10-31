@@ -223,7 +223,10 @@ async def test_the_per_user_limit_counts_jobs_of_every_kind(
     assert (await create(alice, FREE)).status_code == 201  # the limit (2) is now reached
     for kind in (KIND, FREE, ADMITTED):
         response = await create(alice, kind)
-        assert (response.status_code, response.json()) == (429, {"detail": {"reason": "busy"}})
+        assert (response.status_code, response.json()) == (
+            429,
+            {"detail": {"reason": "busy", "limit": 2}},
+        )
     assert admits.calls == 0  # the limit is counted before admit runs
     assert count(jenv, "jobs", alice.user_id) == 2
 

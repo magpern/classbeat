@@ -6,7 +6,8 @@ credit (a class is one credit however often it is revised) and writes nothing ou
 
 **Create time** (``admit``, in the create transaction under the owner lock, the class row locked):
 ``invalid_input`` unless the base is a ``draft`` of the class; ``stale_base`` unless it is the
-class's current revision; ``revision_limit`` and ``chat_full`` (``classbeat.design.limits``).
+class's current revision; ``revision_limit`` (``classbeat.design.limits``), then the month's
+model cost cap (``classbeat.quota.check_cost``: 409 ``quota`` ``cost``), then ``chat_full``.
 It stores the base's hash and inserts the user's ``class_messages`` row with the job.
 
 **Pipeline** (stages ``music``, ``revise``), every attempt from the top with a new provider, so a
@@ -42,6 +43,7 @@ from pydantic import (
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from classbeat import quota
 from classbeat.agent import Brief, WorkoutDraft, run_stage
 from classbeat.agent.records import JobStageHost
 from classbeat.agent.revise import ReviseContext, ReviseResult, SongsRequested, revise_stage
@@ -100,6 +102,7 @@ async def admit(db: AsyncSession, ctx: UserContext, parsed: BaseModel) -> Admitt
     allowed = await chat_limits.policy.limit_for(db, ctx, class_id)
     if state.chat_revisions >= allowed:
         return Refused("revision_limit", {"limit": allowed, "count": state.chat_revisions})
+    await quota.check_cost(db, ctx)  # QuotaRefused ``cost``: 409 ``quota`` (ADR 0011 section 4)
     if state.requests >= chat_limits.max_requests:
         return Refused("chat_full", {"limit": chat_limits.max_requests, "count": state.requests})
     message_id = uuid.uuid4()

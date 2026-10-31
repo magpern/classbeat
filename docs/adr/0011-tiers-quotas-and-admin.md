@@ -388,7 +388,7 @@ admin can't turn them on (§8). Plan limits are edited on `plans`, not in `app_s
 | `GET /api/account/plan` | effective plan and source, its end, limits, classes held and the period's end, cost this period as a share of the cap (no dollar figure), effective features, whether a trial is available |
 | `POST /api/account/redeem`, `POST /api/account/trial` | §2 |
 | `GET /api/settings/public` | banner and sign-up mode (no auth) |
-| `POST /api/jobs`, approve, revise kinds | 409 `quota` `{reason: classes | cost, limit, used, period_end, plan}`; 429 `busy` with the plan's limit; `revision_limit` unchanged |
+| `POST /api/jobs`, approve, revise kinds | 409 `{reason: quota, quota: classes \| cost, limit, used, period_end, plan}` (`period_end` the ISO date the next period starts; `limit` and `used` for `classes` only, so a cost refusal shows no money, as the account page; QT1, as FE1 reads it); 429 `{reason: busy, limit}` with the plan's limit; `revision_limit` unchanged |
 | `/api/admin/*` | §6 |
 
 Account page "Plan and usage" (roadmap §8): plan, "3 of 30 classes this month", redeem a code,

@@ -1,6 +1,6 @@
 {
- "suite_version": 4,
- "digest": "115188823f67e6103de0e10e970e9df4dc2f36365be4fe306ee9f36a0cc20f32",
+ "suite_version": 5,
+ "digest": "b301755128b1b6b8e15d4b7e9c3f1cd6b9b4f70bc6946f2f4feb6828d4f152dd",
  "rules": {
   "repeat": 3,
   "pass_share": 0.9,
@@ -61,12 +61,24 @@
    ]
   },
   "missing_music": {
-   "design": ["music_no_sections", "music_too_short", "music_unknown_bpm"]
+   "design": [
+    "music_no_sections", "music_too_short", "music_unknown_bpm",
+    "mm_music_short_60", "mm_no_bpm_at_all", "mm_no_sections_short", "mm_revise_unknown_bpm"
+   ],
+   "songs": ["mm_pool_too_small", "mm_unknown_bpm_pick"]
   },
   "adversarial": {
-   "design": ["adversarial_brief", "adversarial_music", "revise_adversarial_music"],
-   "songs": ["injected_title"]
+   "design": [
+    "adversarial_brief", "adversarial_music", "revise_adversarial_music",
+    "adv_brief_requests", "adv_malformed_music", "adv_oversized_music", "adv_tool_requests",
+    "revise_adv_requests"
+   ],
+   "songs": ["injected_title", "adv_malformed_hits", "adv_oversized_hits", "adv_pool_requests"]
   },
-  "cost": {}
- }
+  "cost": {
+   "design": ["cost_lean_30", "cost_one_fix_45", "cost_revise_lean"],
+   "songs": ["cost_pick_30", "cost_replace_two"]
+  }
+ },
+ "expected_outcomes": {"mm_pool_too_small": "pool_too_small"}
 }

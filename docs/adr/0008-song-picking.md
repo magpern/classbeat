@@ -384,7 +384,7 @@ user's request stays in the chat, and the run's usage is recorded as for any run
 shows "This request is only about the songs. Use Change songs to pick other ones." with a Change
 songs button. A request that mixes songs and other changes still ends `submit_draft`: the design
 part is applied and the note says "Change songs" is the way for the rest. The smoke set has the
-case `revise_other_songs` (suite version 4). The stage's `prompt_version` changes with this.
+case `revise_other_songs` (suite version 5). The stage's `prompt_version` changes with this.
 
 *Contract, issue SJ3 (2026-10-31).* `POST /api/jobs` with `kind: "revise_songs"` takes one of
 two inputs (both with `mowl_connection_id` and `spotify_connection_id`):

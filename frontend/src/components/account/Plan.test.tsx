@@ -30,6 +30,14 @@ describe('the plan refusal sentences', () => {
     expect(text).not.toContain('$')
   })
 
+  it('words the backend cost body, which has no limit or used and a date-only end', () => {
+    const body = { detail: { reason: 'quota', quota: 'cost', period_end: '2026-11-01', plan: 'free' } }
+    const error = new ApiError(409, 'quota', null, body)
+    expect(planRefusalText(error)).toBe(quotaText(error))
+    expect(quotaText(error)).toContain('for October')
+    expect(quotaText(error)).toContain('More from 1 November.')
+  })
+
   it('uses the singular and degrades without numbers', () => {
     expect(quotaText(quota({ quota: 'classes', limit: 1, used: 1 }))).toContain('your 1 class for')
     expect(quotaText(new ApiError(409, 'quota', null, undefined))).toBe(

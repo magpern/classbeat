@@ -1,8 +1,9 @@
 """Limits of revising by chat (ADR 0007 section 4).
 
 ``RevisionPolicy.limit_for(db, ctx, class_id)`` is the per-tier seam (as the credit ledger of ADR
-0005 section 5): M3b ships ``SettingRevisionPolicy``, ``CLASSBEAT_REVISIONS_PER_CLASS`` for
-everyone; M5 replaces it with one that reads the user's entitlements. ``ChatLimits`` holds the
+0005 section 5): ``SettingRevisionPolicy`` is ``CLASSBEAT_REVISIONS_PER_CLASS`` for everyone (the
+default here); the web app configures M5's ``classbeat.quota.PlanRevisionPolicy``, the plan's
+``revisions_per_class`` under that setting (ADR 0011 section 3). ``ChatLimits`` holds the
 two other settings. Web and worker are separate processes: the web app calls ``configure`` when it
 is created (``classbeat.web``), the worker takes the context size through ``Runtime``. Without
 ``configure`` the defaults of the settings apply.

@@ -14,6 +14,7 @@ from uuid import UUID
 
 import httpx
 import pytest
+from sqlalchemy import create_engine
 
 from authtools import ORIGIN, Env, session_cookie
 from classbeat import connections
@@ -24,6 +25,7 @@ from classbeat.jobs.routes import job_kinds
 from classbeat.jobs.user import OWNER_LOCK_NAMESPACE
 from ctx import make_context
 from jobcore import KIND, SONG_LIST, JobsEnv, content_hash, run_next, store_draft, store_list
+from jobtools import grant_plan
 
 FAKE_TOKEN = "fake-mowl-token-for-tests"  # a public test value
 UNKNOWN = "00000000-0000-4000-8000-000000000000"
@@ -141,12 +143,17 @@ class Browser:
 
 
 @pytest.fixture
-async def browsers(env: Env) -> AsyncIterator[Any]:
+async def browsers(env: Env, database_url: str, users_plan: str | None) -> AsyncIterator[Any]:
+    """``make()``: a signed-in browser of a new user, granted ``users_plan`` (``plantools``)."""
     env.app.dependency_overrides[job_kinds] = api_registry
     clients: list[httpx.AsyncClient] = []
+    superuser = create_engine(database_url, isolation_level="AUTOCOMMIT")
 
     async def make(email: str | None = None, *, mowl: bool = True) -> Browser:
         user_id = await env.user(email or f"jobs-{secrets.token_hex(4)}@example.com")
+        if users_plan is not None:
+            with superuser.connect() as connection:
+                grant_plan(connection, user_id, users_plan)
         issued = await env.login(user_id)
         client = httpx.AsyncClient(transport=httpx.ASGITransport(app=env.app), base_url=ORIGIN)
         clients.append(client)
@@ -158,10 +165,13 @@ async def browsers(env: Env) -> AsyncIterator[Any]:
             )  # fmt: skip
         return browser
 
-    yield make
-    env.app.dependency_overrides.clear()
-    for client in clients:
-        await client.aclose()
+    try:
+        yield make
+    finally:
+        env.app.dependency_overrides.clear()
+        for client in clients:
+            await client.aclose()
+        superuser.dispose()
 
 
 async def waiting_job(jenv: JobsEnv, browser: Browser) -> tuple[UUID, UUID]:

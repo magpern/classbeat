@@ -12,6 +12,8 @@ from uuid import uuid4
 
 import pytest
 
+from advscripts import ADV_NAMES
+from advscripts import provider_for_case as adv_provider
 from agentfake import CONFIG
 from classbeat.agent import DesignContext
 from classbeat.agent.design import check
@@ -48,7 +50,8 @@ RELEASED: dict[int, str] = {
     1: "beabe1887df6236e30bd4b040104281e78d1b02ee2d8adecca0bee32557651b5",
     2: "77fecc25fc25fb081f40e0bae1b2b8e83cbd4a611d42fd346e3f3672b64befd4",
     3: "2784a043380717f56842be5fd91517d801dea05a1db44ec9f4647b061bc6a383",
-    4: "115188823f67e6103de0e10e970e9df4dc2f36365be4fe306ee9f36a0cc20f32",
+    4: "ceb3883f4002f8ee0e33819ca5512008da6bbded81dd02e8787f6e0c987c1827",
+    5: "b301755128b1b6b8e15d4b7e9c3f1cd6b9b4f70bc6946f2f4feb6828d4f152dd",
 }
 
 SUITE = load_suite()
@@ -147,7 +150,7 @@ def test_the_check_constants_hold_every_upper_case_constant_of_the_check_modules
     constants = suite.check_constants()
     for name in ("DURATION_TOLERANCE", "HARD_SHARE", "TSS_PER_HOUR", "TOLERATED_ISSUES", "ZONE7"):
         assert f"checks.{name}" in constants
-    assert "pick.TRACK_SEC" in constants
+    assert "pick_world.TRACK_SEC" in constants
     assert "music.LOUDNESS" in constants
     assert constants["agent.songs.TOLERANCE"] == 0.10
     json.dumps(constants, allow_nan=False)
@@ -160,14 +163,16 @@ def test_the_suite_holds_every_smoke_and_song_case_once_in_its_group() -> None:
     index = MANIFEST.case_index()
     assert set(SUITE.design_cases) == {c.name for c in load_cases()} | DESIGN_OWN
     assert set(SUITE.song_cases) == {c.name for c in load_pick_cases()} | SONG_OWN
-    assert (len(DESIGN_OWN), len(SONG_OWN)) == (29, 8)  # #206 and #208
-    assert (len(SUITE.design_cases), len(SUITE.song_cases)) == (48, 11)
-    assert len(index) == 59
+    assert (len(DESIGN_OWN), len(SONG_OWN)) == (29 + 12, 8 + 7)  # #206, #208 and #209
+    assert (len(SUITE.design_cases), len(SUITE.song_cases)) == (19 + 41, 3 + 15)
+    assert len(index) == 19 + 41 + 3 + 15
     assert all(index[n][1] == "design" for n in SUITE.design_cases)
     assert all(index[n][1] == "songs" for n in SUITE.song_cases)
     assert set(MANIFEST.categories) == set(suite.CATEGORY_GROUPS)
     assert {n for n, (cat, _) in index.items() if cat == "adversarial"} == {
         "adversarial_brief", "adversarial_music", "revise_adversarial_music", "injected_title",
+        "adv_brief_requests", "adv_malformed_hits", "adv_malformed_music", "adv_oversized_hits",
+        "adv_oversized_music", "adv_pool_requests", "adv_tool_requests", "revise_adv_requests",
     }  # fmt: skip
     assert {n for n, (cat, _) in index.items() if cat == "revisions"} >= {
         "revise_easier", "revise_more_sprints", "revise_other_songs",
@@ -284,12 +289,20 @@ def test_the_header_is_exactly_the_adrs() -> None:
         suite_results(header(started_at=datetime(2026, 10, 30)), [])
 
 
+def design_script_provider(case: Any) -> Any:
+    if case.name in ADV_NAMES:
+        return adv_provider(case)
+    return suite_provider(case) if case.name in SUITE_OWN else design_provider(case)
+
+
 async def _real_rows(repeat: int = 0) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
     for name, case in sorted(SUITE.design_cases.items()):
         result = await run_case(
             case,
-            suite_provider(case) if name in SUITE_OWN else design_provider(case),
+            adv_provider(case)
+            if name in ADV_NAMES
+            else (suite_provider(case) if name in SUITE_OWN else design_provider(case)),
             CONFIG,
             repeat=repeat,
             zone7_tss_margin=MANIFEST.zone7_tss_margin,
@@ -297,6 +310,8 @@ async def _real_rows(repeat: int = 0) -> list[dict[str, Any]]:
         rows.append(suite_row(result, SUITE.category_of(name)))
     for name, case in sorted(SUITE.song_cases.items()):
         provider = song_provider(case) if case.quality else pick_provider(case)
+        if name in ADV_NAMES:
+            provider = adv_provider(case)
         result, _, _ = await run_pick_case(
             case, provider, CONFIG, (POOL_LIMITS, CHOOSE_LIMITS), MANIFEST.bpm_bands
         )

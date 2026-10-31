@@ -390,6 +390,12 @@ model contact). They run in CI (`backend/tests/test_evals_pick_smoke.py`) and ar
 Plans (ADR 0011 sections 2 and 4, PL1): `GET /api/account/plan`, `POST /api/account/redeem` (10 per user and 30 per IP
 and hour) and `POST /api/account/trial`; `CLASSBEAT_TRIAL_DAYS_MAX` (30, 0 to 366; 0 turns trials off) clamps the
 stored `trial` setting's days when a trial starts, and a trial's plan is clamped to at most `instructor`.
+Quotas (ADR 0011 sections 3 and 4, QT1): the jobs API reserves a credit through `classbeat.quota.MeteredLedger`
+(the period's `quota_periods` row locked, then the held count) and counts the plan's `concurrent_jobs`; every limit
+is the plan's under an environment bound: `CLASSBEAT_CLASSES_PER_MONTH_MAX` (200, 0 to 10000),
+`CLASSBEAT_MONTHLY_COST_MICROS_MAX` (300000000, $300), `CLASSBEAT_JOBS_PER_USER` and `CLASSBEAT_REVISIONS_PER_CLASS`.
+Refusals: 409 `quota` (`quota` `classes` or `cost`, `limit`, `used`, `period_end`, `plan`; no money for `cost`) and 429
+`busy` with the plan's `limit`.
 Progress (ADR 0005 section 6): `GET /api/jobs/{id}/events` streams a job's events as SSE (`Last-Event-ID`,
 5 open streams per user and web process); each web process keeps one `LISTEN job_events` connection.
 OAuth sign-in (ADR 0003 section 5): `CLASSBEAT_OAUTH_<PROVIDER>_CLIENT_ID` and the

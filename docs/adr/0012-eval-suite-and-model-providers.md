@@ -250,6 +250,18 @@ Rules, all from the manifest, with these defaults:
 
 The verdict is never read from a file: whoever needs it computes it from the runs.
 
+**Amendment (2026-10-31, #209): expected outcomes.** A `missing_music` case may be right to end in a
+failure category instead of a list: `pool_too_small` (fewer usable tracks than songs once the tracks
+without a BPM are left out), where the right result is that nothing was stored. The manifest has an
+`expected_outcomes` map from a song case to that category (only `pool_too_small` is allowed, only for
+song cases; it is covered by the digest). The gate counts a run as passed when it ended `submitted`,
+or in the outcome the **manifest** lists for that case, and every check passed (such a run's checks are
+`expected_outcome` and `nothing_stored`). The outcome comes from the manifest, never from the results
+file, so a file cannot claim one, and a row whose `passed` disagrees with this rule is `inconsistent_row`.
+The case file says the same in `expect.outcome`; `load_suite` refuses a case and a manifest that
+disagree. Everything else is unchanged: any other non-`submitted` outcome is still a failed run (or not
+run, §4.3).
+
 **4.4 The live command.** `python -m classbeat.evals suite --live --provider P --model M --effort E
 --repeat N --max-usd N --out FILE [--record --authorization TEXT]` replaces nothing (`smoke --live`
 stays as it is). It generalises `live.py`'s preconditions to any catalog model: `--live`, no `CI`, the

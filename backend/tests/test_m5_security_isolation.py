@@ -26,6 +26,13 @@ from jobtools import as_user, engine_for, new_job, new_user
 from plantools import grant, plant_code, set_trial
 from test_plans_schema import REFUSED, ledger, row
 
+
+@pytest.fixture
+def users_plan() -> None:
+    """These tests are about the plan itself: their users start on ``free`` (no grant)."""
+    return None
+
+
 OWNED = ("entitlements", "code_redemptions", "credit_ledger", "quota_periods")
 PERIOD = "CAST(date_trunc('month', now()) AS date)"
 LAST_PERIOD = "CAST(date_trunc('month', now()) - interval '1 month' AS date)"
