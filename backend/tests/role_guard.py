@@ -32,7 +32,9 @@ QUEUE_SIGNATURES = {
 }
 # The M5 guard trigger functions (migration 0007, ADR 0011 section 1): SECURITY INVOKER, owned by
 # classbeat_owner, executable by nobody else (firing a trigger needs no EXECUTE).
-GUARD_TRIGGER_FUNCTIONS = frozenset({"credit_ledger_guard()", "admin_audit_guard()"})
+GUARD_TRIGGER_FUNCTIONS = frozenset(
+    {"credit_ledger_guard()", "admin_audit_guard()", "redeem_codes_guard()"}
+)
 TABLE_PRIVILEGES = {"SELECT", "INSERT", "UPDATE", "DELETE"}
 # Tables where the app role gets less than full DML: the KEK check values are recorded and read,
 # never changed or forgotten by the app (migration 0003; ``keys wipe`` deletes as the owner);

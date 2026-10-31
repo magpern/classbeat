@@ -37,20 +37,34 @@ SELECT c.id, c.title, c.created_at, c.updated_at, c.current_revision_id,
     (SELECT count(*) FROM saved_workouts d
         WHERE d.owner_id = c.owner_id AND d.class_id = c.id AND d.detached_at IS NOT NULL
     ) AS detached_count,
-    coalesce(pf.profile, '[]'::jsonb) AS profile
+    coalesce(pf.profile, '[]'::jsonb) AS profile,
+    CASE WHEN jsonb_typeof(cur.provenance -> 'tss_approximate') = 'boolean'
+        THEN (cur.provenance ->> 'tss_approximate')::boolean
+        ELSE EXISTS (SELECT 1 FROM jsonb_array_elements(coalesce(pf.profile, '[]'::jsonb)) z
+            WHERE z ->> 0 = '7') END AS tss_approximate
 FROM classes c
 LEFT JOIN class_revisions cur
     ON cur.owner_id = c.owner_id AND cur.class_id = c.id AND cur.id = c.current_revision_id
 LEFT JOIN jobs oj
     ON oj.owner_id = c.owner_id AND oj.class_id = c.id AND oj.state IN {OPEN_JOB}
 LEFT JOIN LATERAL (
-    SELECT jsonb_agg(jsonb_build_array((iv.i ->> 'zone')::int, (iv.i ->> 'sec')::int)
-        ORDER BY sg.ord, iv.ord) AS profile
-    FROM jsonb_array_elements(CASE WHEN jsonb_typeof(cur.content -> 'segments') = 'array'
-        THEN cur.content -> 'segments' ELSE '[]'::jsonb END) WITH ORDINALITY AS sg(seg, ord)
-    CROSS JOIN LATERAL jsonb_array_elements(CASE WHEN jsonb_typeof(sg.seg -> 'intervals') = 'array'
-        THEN sg.seg -> 'intervals' ELSE '[]'::jsonb END) WITH ORDINALITY AS iv(i, ord)
-    WHERE jsonb_typeof(iv.i -> 'zone') = 'number' AND jsonb_typeof(iv.i -> 'sec') = 'number'
+    SELECT jsonb_agg(jsonb_build_array(t.zone, t.sec) ORDER BY t.seg_ord, t.iv_ord) AS profile
+    FROM (
+        -- Only whole numbers are cast; an interval with any other zone or length is left out
+        -- (a bad value must not fail the whole list).
+        SELECT sg.ord AS seg_ord, iv.ord AS iv_ord,
+            CASE WHEN jsonb_typeof(iv.i -> 'zone') = 'number'
+                AND (iv.i ->> 'zone') ~ '^[0-9][0-9]?$' THEN (iv.i ->> 'zone')::int END AS zone,
+            CASE WHEN jsonb_typeof(iv.i -> 'sec') = 'number'
+                AND (iv.i ->> 'sec') ~ '^[0-9]+$' AND length(iv.i ->> 'sec') <= 6
+                THEN (iv.i ->> 'sec')::int END AS sec
+        FROM jsonb_array_elements(CASE WHEN jsonb_typeof(cur.content -> 'segments') = 'array'
+            THEN cur.content -> 'segments' ELSE '[]'::jsonb END) WITH ORDINALITY AS sg(seg, ord)
+        CROSS JOIN LATERAL jsonb_array_elements(
+            CASE WHEN jsonb_typeof(sg.seg -> 'intervals') = 'array'
+            THEN sg.seg -> 'intervals' ELSE '[]'::jsonb END) WITH ORDINALITY AS iv(i, ord)
+    ) t
+    WHERE t.zone IS NOT NULL AND t.sec IS NOT NULL
 ) pf ON true
 LEFT JOIN LATERAL (
     SELECT count(*) OVER () AS n, s.revision_number, s.updated_at, s.content_hash,
