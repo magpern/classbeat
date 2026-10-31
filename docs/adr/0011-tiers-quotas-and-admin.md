@@ -337,6 +337,17 @@ included (409 `target_is_admin`): demoting an admin stays the CLI's (ADR 0003 §
 lock themselves or another admin out from the browser. A delete records the target's id in
 `target_id` (text), because the foreign key nulls `target_user_id` in the same transaction.
 
+**Reaching the code prompt (#330).** The session's `role` is `user` until the TOTP check passes
+(and again after 12 hours), so the page cannot tell such an admin from a user. `GET
+/api/auth/session` therefore carries `session.admin_pending_mfa`: true only when the caller's own
+stored role is `admin` and the check is missing or older than 12 hours, false for every other
+account (a real non-admin sees `false`, never anything about admin routes). It reads the session
+row already loaded for the request, writes and audits nothing, and decides nothing: `/api/admin/*`
+keeps its own `403 forbidden` / `403 mfa_required`. The page fetches the lazy admin chunk for
+`role == admin` or `admin_pending_mfa`, and `AdminLayout` shows the code prompt (or the first-time
+enrolment) from the `mfa_required` answer of `whoami`; after the check the session is fetched
+again and the area opens.
+
 | Area | Reads | Writes (step-up) |
 |---|---|---|
 | Users | list (email, created, role, disabled, effective plan and its source and end, classes held this period of the limit, cost this period) with search by email prefix and paging; detail adds entitlements (with notes), the credit ledger of the last three periods, and **connection status only**: MOWL (status, connected, last used), Spotify (status, so whether a Client ID is set, and the last error category, ADR 0009 §8), Swedebeat (status). Never a token, ciphertext, Client ID value, playlist id, brief or class content | grant and revoke entitlements; disable and enable (disable revokes all the user's sessions, ADR 0003 §3; a disabled user's jobs end as T53); delete (the ADR 0003 account deletion for the target, with the target's email typed to confirm); refund a committed credit. Never role changes: granting and revoking admin stay CLI-only (ADR 0003 §7) |

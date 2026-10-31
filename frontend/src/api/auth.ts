@@ -26,6 +26,8 @@ export interface SessionDetails {
   recentAuth: boolean
   mfa: boolean
   stepup: boolean
+  /** An admin account whose TOTP check is missing or lapsed: `role` is `user` until it passes. */
+  adminPendingMfa: boolean
 }
 
 export interface SessionState {
@@ -48,6 +50,7 @@ export async function getSession(signal?: AbortSignal): Promise<SessionState> {
       recentAuth: flag(session, 'recent_auth'),
       mfa: flag(session, 'mfa'),
       stepup: flag(session, 'stepup'),
+      adminPendingMfa: flag(session, 'admin_pending_mfa'),
     },
   }
 }
