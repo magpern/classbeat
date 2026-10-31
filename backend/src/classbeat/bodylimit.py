@@ -39,7 +39,7 @@ from typing import Any, Final
 
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
-from classbeat.auth.clientip import client_ip
+from classbeat.auth import client_ip
 from classbeat.headers import CONTENT_SECURITY_POLICY, REFERRER_POLICY
 
 DEFAULT_BODY_LIMIT: Final = 64 * 1024
