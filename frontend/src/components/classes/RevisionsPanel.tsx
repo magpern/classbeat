@@ -46,7 +46,7 @@ export function RevisionsPanel({
               <button
                 type="button"
                 className="button button--secondary"
-                aria-label={`View version ${String(r.number)}`}
+                aria-label={`${r.id === viewingId ? 'Viewing' : 'View'} version ${String(r.number)}`}
                 disabled={r.id === viewingId}
                 onClick={() => {
                   onView(r.id)

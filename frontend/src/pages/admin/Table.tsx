@@ -18,7 +18,7 @@ export function DataTable({
 }) {
   if (rows.length === 0) return <p className="text-muted">{empty}</p>
   return (
-    <div className="overflow-x-auto">
+    <div className="relative overflow-x-auto" tabIndex={0} role="region" aria-label={caption}>
       <table className="w-full border-collapse text-left text-[0.9375rem]">
         <caption className="sr-only">{caption}</caption>
         <thead className="text-muted">

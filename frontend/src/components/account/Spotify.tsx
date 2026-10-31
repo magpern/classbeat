@@ -216,7 +216,7 @@ export function SpotifyConnection() {
               <li>
                 Copy classbeat&rsquo;s callback URL:
                 <div className="field">
-                  <code data-testid="spotify-callback-url">{status.callbackUrl}</code>{' '}
+                  <code data-testid="spotify-callback-url" className="break-all">{status.callbackUrl}</code>{' '}
                   <button
                     className="button button--secondary"
                     type="button"

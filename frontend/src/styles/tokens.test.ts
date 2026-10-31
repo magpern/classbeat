@@ -51,6 +51,63 @@ describe('colour literals', () => {
   })
 })
 
+// The other ways to write a colour (UI10, the MU done-when "no colour outside tokens.css"): a CSS
+// colour keyword in a colour property or a style object, and a Tailwind palette utility. The
+// palette is reset in tailwind.css (`--color-*: initial`), so such a utility would not even paint;
+// the guard keeps it from being written. `transparent`, `currentColor` and `inherit` are not colours.
+const KEYWORDS =
+  'aliceblue antiquewhite aqua aquamarine azure beige bisque black blanchedalmond blue blueviolet brown burlywood cadetblue chartreuse chocolate coral cornflowerblue cornsilk crimson cyan darkblue darkcyan darkgoldenrod darkgray darkgreen darkgrey darkkhaki darkmagenta darkolivegreen darkorange darkorchid darkred darksalmon darkseagreen darkslateblue darkslategray darkslategrey darkturquoise darkviolet deeppink deepskyblue dimgray dimgrey dodgerblue firebrick floralwhite forestgreen fuchsia gainsboro ghostwhite gold goldenrod gray green greenyellow grey honeydew hotpink indianred indigo ivory khaki lavender lavenderblush lawngreen lemonchiffon lightblue lightcoral lightcyan lightgoldenrodyellow lightgray lightgreen lightgrey lightpink lightsalmon lightseagreen lightskyblue lightslategray lightslategrey lightsteelblue lightyellow lime limegreen linen magenta maroon mediumaquamarine mediumblue mediumorchid mediumpurple mediumseagreen mediumslateblue mediumspringgreen mediumturquoise mediumvioletred midnightblue mintcream mistyrose moccasin navajowhite navy oldlace olive olivedrab orange orangered orchid palegoldenrod palegreen paleturquoise palevioletred papayawhip peachpuff peru pink plum powderblue purple rebeccapurple red rosybrown royalblue saddlebrown salmon sandybrown seagreen seashell sienna silver skyblue slateblue slategray slategrey snow springgreen steelblue tan teal thistle tomato turquoise violet wheat white whitesmoke yellow yellowgreen'.split(
+    ' ',
+  )
+const KEYWORD = String.raw`\b(?:${KEYWORDS.join('|')})\b`
+// CSS: a keyword in the value of a property that takes a colour.
+const CSS_PROPERTY = String.raw`(?:color|background(?:-color|-image)?|border(?:-(?:top|right|bottom|left|block|inline)(?:-(?:start|end))?)?(?:-color)?|outline(?:-color)?|fill|stroke|stop-color|flood-color|caret-color|accent-color|text-decoration(?:-color)?|box-shadow|text-shadow|column-rule(?:-color)?)`
+const CSS_KEYWORD = new RegExp(String.raw`(?:^|[;{\s])${CSS_PROPERTY}\s*:[^;{}]*${KEYWORD}`, 'i')
+// ts/tsx: a keyword as the value of a colour key in a style object.
+const STYLE_KEYWORD = new RegExp(
+  String.raw`\b(?:color|background|backgroundColor|borderColor|outlineColor|fill|stroke|stopColor|caretColor|accentColor)\s*:\s*['"` + '`' + String.raw`][^'"` + '`' + String.raw`]*${KEYWORD}`,
+  'i',
+)
+const PALETTE =
+  /\b(?:bg|text|border|ring|fill|stroke|from|via|to|outline|decoration|divide|accent|caret|shadow|placeholder)-(?:white|black|(?:slate|gray|zinc|neutral|stone|red|orange|amber|yellow|lime|green|emerald|teal|cyan|sky|blue|indigo|violet|purple|fuchsia|pink|rose)-\d{2,3})\b/
+
+function otherColour(name: string, source: string): string | null {
+  const code = withoutComments(source)
+  if (name.endsWith('.css')) return CSS_KEYWORD.exec(code)?.[0] ?? null
+  return STYLE_KEYWORD.exec(code)?.[0] ?? PALETTE.exec(code)?.[0] ?? null
+}
+
+describe('colour keywords and palette utilities', () => {
+  it('the checker recognises them (a planted colour is found)', () => {
+    expect(otherColour('x.css', '.a { color: white; }')).not.toBeNull()
+    expect(otherColour('x.css', '.a { border-top: 1px solid red; }')).not.toBeNull()
+    expect(otherColour('x.css', '.a { background: linear-gradient(black, var(--cb-bg)); }')).not.toBeNull()
+    expect(otherColour('x.tsx', "<div style={{ backgroundColor: 'tomato' }} />")).not.toBeNull()
+    expect(otherColour('x.tsx', '<div className="bg-red-500 p-2" />')).not.toBeNull()
+    expect(otherColour('x.tsx', '<div className="text-white" />')).not.toBeNull()
+    expect(otherColour('x.tsx', '<div className="hover:border-blue-600" />')).not.toBeNull()
+  })
+
+  it('does not take tokens, transparent, currentColor or ordinary words for colours', () => {
+    expect(otherColour('x.css', '.a { color: var(--cb-text); border: 1px solid transparent; fill: currentColor; }')).toBeNull()
+    expect(otherColour('x.css', '.a { white-space: pre-wrap; content: "red"; }')).toBeNull()
+    expect(otherColour('x.tsx', '<div className="bg-surface text-muted border-line white-space" />')).toBeNull()
+    expect(otherColour('x.tsx', "const color = 'brand'")).toBeNull()
+  })
+
+  it.each(Object.entries(sources))('%s has none', (name, source) => {
+    expect(otherColour(name, source)).toBeNull()
+  })
+
+  it('the page shell files outside src have none either', () => {
+    for (const file of [join(srcDir, '..', 'index.html'), join(srcDir, '..', 'public', 'theme-init.js')]) {
+      const code = withoutComments(readFileSync(file, 'utf8'))
+      expect(code, file).not.toMatch(COLOUR)
+      expect(code, file).not.toMatch(/style\s*=/i)
+    }
+  })
+})
+
 // WCAG contrast from the token values (ADR 0013 sections 2 and 10).
 function block(css: string, selector: string): string {
   const start = css.indexOf(selector + ' {')

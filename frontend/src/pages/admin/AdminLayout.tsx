@@ -36,7 +36,7 @@ const SECTIONS = [
 function AdminNav() {
   const { pathname } = useRouter()
   return (
-    <nav aria-label="Admin" className="mb-6 flex gap-1 border-b border-line">
+    <nav aria-label="Admin" className="mb-6 flex flex-wrap gap-x-1 border-b border-line">
       {SECTIONS.map((section) => {
         const active =
           pathname.startsWith(section.to) || (section.to === '/admin/users' && /^\/admin\/?$/.test(pathname))

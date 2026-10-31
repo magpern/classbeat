@@ -225,6 +225,8 @@ jobs:
       - run: npm run typecheck
       - run: npm test
       - run: npm run build
+      # First-load JavaScript from the build's own output, at most 250 kB gzip (ADR 0013 section 11).
+      - run: npm run check:bundle
 
   backend:
     # Once per run: the database checks, lint, format, types and the shard check. The tests run in

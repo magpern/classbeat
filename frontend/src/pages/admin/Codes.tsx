@@ -206,7 +206,7 @@ function Invites({ onCreated }: { onCreated: (code: string) => void }) {
       {list.items === null && list.error === null ? <p>Loading</p> : null}
       {list.items !== null && list.items.length === 0 ? <p className="text-muted">No invites yet.</p> : null}
       {list.items !== null && list.items.length > 0 ? (
-        <div className="overflow-x-auto">
+        <div className="relative overflow-x-auto" tabIndex={0} role="region" aria-label="Invites">
           <table className="w-full border-collapse text-left text-[0.9375rem]">
             <thead className="text-muted">
               <tr>
@@ -375,7 +375,7 @@ function RedeemCodes({ onCreated }: { onCreated: (code: string) => void }) {
       {list.items === null && list.error === null ? <p>Loading</p> : null}
       {list.items !== null && list.items.length === 0 ? <p className="text-muted">No redeem codes yet.</p> : null}
       {list.items !== null && list.items.length > 0 ? (
-        <div className="overflow-x-auto">
+        <div className="relative overflow-x-auto" tabIndex={0} role="region" aria-label="Redeem codes">
           <table className="w-full border-collapse text-left text-[0.9375rem]">
             <thead className="text-muted">
               <tr>
