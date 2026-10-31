@@ -33,6 +33,7 @@ CATEGORIES = ("standard", "music_sync", "games_ftp", "revisions")
 SMOKE = {
     "climbs_45", "default_30", "easy_30", "hard_45_sprints", "long_60", "long_text_30",
     "minimum_10", "ftp_20_60", "ftp_5_45", "races_40", "revise_easier", "revise_more_sprints",
+    "revise_other_songs",
 }  # fmt: skip
 OWN: dict[str, list[Case]] = {
     cat: [SUITE.design_cases[n] for n in SUITE.manifest.cases_of(cat, "design") if n not in SMOKE]
