@@ -248,6 +248,14 @@ GitHub hold the detail.
   logs of the whole Playwright run for the value of every secret file. Not covered by this PR, so M6 stays open: the
   rest of the security review (headers, rate limits and egress against the live shape, dependency findings), backups
   and restore, GDPR export and delete, the VPS and its network rules.
+- **M6, request body cap (#351, SR-01 of the security review; in review, not merged).** M6 is **not done**. A global
+  ASGI `BodyLimit` (`classbeat.bodylimit`, 64 KiB, outside the auth middleware, inside the security headers) answers a
+  fixed 413 `body_too_large` for every route but `/api/admin` (which keeps its own equal limiter and contract); threat
+  model T103; `test_m6_security_body_limit.py`. On a local stack a 200 MB anonymous login body took the web container
+  from about 95 MiB to at least 264 MiB (sampled) and answered 422 after 13.5 s before; after, it stays at about 97 MiB
+  (three parallel 200 MB posts peaked at about 111 MiB) and the sender is refused with 413 and cut off early. Each refusal writes a rate-limited log line (method, path without query, status, client address; #360). **The home beta behind SWAG needs `client_max_body_size 1m` at the
+  proxy** (runbook section 8a): that is the owner's configuration and is not done. Still open: SR-02 (#352) and the
+  rest of the review's findings, backups and restore, the VPS.
 - **M6, web outbound allowlist and redirects (#353, SR-03 of the security review, in review, not merged):** the web
   process now installs an allowlisted urllib opener at start (`python -m classbeat`; `api.mowl.com` and `api.spotify.com`,
   `https` on 443, no environment proxy, a redirect only to the same host), so the MOWL token cannot follow a redirect to another host; the

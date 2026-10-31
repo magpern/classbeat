@@ -10,7 +10,8 @@
   "cost", limit, used, period_end, plan}`` (``limit`` and ``used`` for ``classes`` only, a cost
   refusal shows no money; ``period_end`` the ISO date the next period starts) and ``busy``
   carries the plan's ``limit`` (also on approve);
-  413 ``too_large`` for a body over ``BODY_MAX_BYTES`` (also on approve). A kind with ``admit``
+  413 ``too_large`` for a body over ``BODY_MAX_BYTES`` (also on approve; the app-wide
+  ``bodylimit.BodyLimit`` is equal and answers first, as ``body_too_large``). A kind with ``admit``
   (``classbeat.jobs.kinds``) may refuse with its own reason (409 ``{reason}`` and whole-number
   counts, unless the reason has a status above); an input naming one of the kind's server fields
   is 422 ``invalid_input``: only ``admit`` sets those. So is one naming a field every input of the
@@ -67,7 +68,8 @@ router = APIRouter(prefix="/api/jobs", tags=["jobs"])
 
 IDEMPOTENCY_KEY = re.compile(r"^[A-Za-z0-9_-]{16,64}$")
 INPUT_MAX_BYTES = 16384  # jobs.input's check (migration 0004), measured as jsonb prints it
-# A request body of the jobs API is read only up to this (#115 item 8; an app-wide cap is M6's).
+# A request body of the jobs API is read only up to this (#115 item 8). The app-wide cap
+# (``classbeat.bodylimit``, #351) is equal and answers first; this is the second line.
 BODY_MAX_BYTES = 65536
 
 _STATUS = {"not_found": 404, "class_not_found": 404, "busy": 429, "too_large": 422}
