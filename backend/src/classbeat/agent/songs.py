@@ -23,6 +23,7 @@ from mowl import spotify
 from classbeat.agent import model_input
 from classbeat.agent.registry import MAX_TEXT, normalised
 from classbeat.agent.schemas import MAX_POOL, MAX_SONGS, Brief
+from classbeat.covers import cover_url
 
 SONG_SEC: Final = 240
 CROSSFADE_SEC: Final = float(spotify.CROSSFADE_SEC)
@@ -43,12 +44,13 @@ class PoolTrack:
     length_sec: int
     drops: tuple[float, ...] = ()  # seconds from the start of the track
     breakdowns: tuple[float, ...] = ()
+    cover: str | None = field(default=None, repr=False)  # the backend's; never in ``pool_view``
 
 
 @dataclass(frozen=True, slots=True)
 class KeptSong:
     """A song of the seed list that stays (replace mode): its slot (position in the list), role
-    and analysed data. It keeps both."""
+    and analysed data. It keeps both, and its stored cover (never in ``kept_view``)."""
 
     slot: int
     spotify_id: str = field(repr=False)
@@ -57,6 +59,7 @@ class KeptSong:
     role: str
     bpm: float
     length_sec: int
+    cover: str | None = field(default=None, repr=False)
 
 
 @dataclass(frozen=True)
@@ -169,12 +172,16 @@ def pool_view(track: PoolTrack, index: int) -> dict[str, Any]:
 
 
 def analysed_pool(
-    analysis_map: Mapping[str, Any], wanted: Sequence[tuple[str, str]]
+    analysis_map: Mapping[str, Any],
+    wanted: Sequence[tuple[str, str]],
+    covers: Mapping[str, str | None] | None = None,
 ) -> tuple[list[PoolTrack], int]:
     """The pool tracks MOWL analysed, in the order of ``wanted`` (``(spotify_id, role)`` pairs
     from the submitted pool), and how many were left out: a track MOWL does not list, or lists
     without a BPM, is omitted and counted in ``omitted_no_bpm``. Title, artist, BPM and length
-    are MOWL's, drops and breakdowns are seconds from the start of the track."""
+    are MOWL's, drops and breakdowns are seconds from the start of the track. ``covers`` maps a
+    Spotify id to the search's album cover (checked again here); MOWL's answer gives none."""
+    covers = covers or {}
     m = model_input.music_map(analysis_map)
     by_id: dict[str, Mapping[str, Any]] = {}
     for track in m["tracks"]:
@@ -213,6 +220,7 @@ def analysed_pool(
                 length_sec=round(float(track["sec"])),
                 drops=tuple(float(e["t"]) - start for e in marks if e["kind"] == "drop"),
                 breakdowns=tuple(float(e["t"]) - start for e in marks if e["kind"] == "breakdown"),
+                cover=cover_url(covers.get(spotify_id)),
             )
         )
     return out, omitted

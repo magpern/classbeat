@@ -201,3 +201,70 @@ async def test_the_app_refuses_to_start_without_the_app_secret_key(
     with pytest.raises(RuntimeError, match="app_secret_key"):
         async with running(app):
             pytest.fail("the app must not start")
+
+
+# --- the security headers (ADR 0013 section 9, issue #251) ------------------------------------
+
+CSP_EXPECTED = {
+    "default-src": ["'self'"],
+    "script-src": ["'self'"],
+    "style-src": ["'self'"],
+    "img-src": ["'self'", "https://i.scdn.co"],
+    "font-src": ["'self'"],
+    "connect-src": ["'self'"],
+    "media-src": ["'none'"],
+    "object-src": ["'none'"],
+    "frame-src": ["'none'"],
+    "worker-src": ["'none'"],
+    "manifest-src": ["'self'"],
+    "base-uri": ["'none'"],
+    "form-action": ["'self'"],
+    "frame-ancestors": ["'none'"],
+}
+
+
+def csp_of(response: httpx.Response) -> dict[str, list[str]]:
+    assert len(response.headers.get_list("content-security-policy")) == 1  # one policy, no merge
+    directives: dict[str, list[str]] = {}
+    for part in response.headers["content-security-policy"].split(";"):
+        name, *values = part.split()
+        assert name not in directives, name
+        directives[name] = values
+    return directives
+
+
+def assert_secure_headers(response: httpx.Response, path: str) -> None:
+    assert csp_of(response) == CSP_EXPECTED, path
+    assert response.headers.get_list("referrer-policy") == ["no-referrer"], path
+
+
+async def test_every_response_carries_the_csp_and_no_referrer(
+    unreachable_database_url: str, static_dir: Path
+) -> None:
+    """The SPA page, its files and the fallback, the API (200, 404 and 503) and a 401 from the
+    auth layer all carry the one policy: images only from us and the pinned cover host, nothing
+    inline, no framing, and no referrer."""
+    async with make_client(unreachable_database_url, static_dir=static_dir) as client:
+        for path in ("/", "/classes/42", "/assets/app.js", "/index.html"):
+            response = await client.get(path)
+            assert response.status_code == 200, path
+            assert_secure_headers(response, path)
+        for path, status in (
+            ("/api/health", 200),
+            ("/api/ready", 503),
+            ("/api/nope", 404),
+            ("/api/classes", 401),
+        ):
+            response = await client.get(path)
+            assert response.status_code == status, path
+            assert_secure_headers(response, path)
+
+
+def test_the_policy_allows_no_other_image_host_and_nothing_unsafe() -> None:
+    from classbeat.headers import CONTENT_SECURITY_POLICY
+
+    assert "unsafe" not in CONTENT_SECURITY_POLICY
+    assert "data:" not in CONTENT_SECURITY_POLICY
+    assert "*" not in CONTENT_SECURITY_POLICY
+    assert CONTENT_SECURITY_POLICY.count("https://") == 1
+    assert "img-src 'self' https://i.scdn.co;" in CONTENT_SECURITY_POLICY

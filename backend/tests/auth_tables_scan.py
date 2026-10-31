@@ -79,6 +79,7 @@ SUBMODULES = frozenset(
     {
         "accounts",
         "admin_accounts",
+        "admin_lookup",
         "admin_routes",
         "clientip",
         "cookies",

@@ -536,7 +536,7 @@ async def test_the_newest_result_is_deterministic_within_one_transaction(
     admin: Connection, factory: Factory, app_database_url: str, kek_dir: Path
 ) -> None:
     """Two results recorded in one transaction share ``recorded_at`` (``now()``): the later
-    insert is the newer one (``seq``, migration 0011), whatever their random ids (#215)."""
+    insert is the newer one (``seq``, migration 0012), whatever their random ids (#215)."""
     s = worker(app_database_url, kek_dir, "anthropic")
     for _ in range(6):  # uuid4 ids: a random order would show within a few rounds
         clear_gate(admin)

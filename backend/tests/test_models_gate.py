@@ -180,7 +180,7 @@ def test_every_check_refuses_null_by_itself(admin: Connection) -> None:
     """With NOT NULL taken away (a temp copy of each table and its CHECKs), each checked column
     set to NULL is still refused by its CHECK: none passes by evaluating to NULL."""
 
-    # ``seq`` (migration 0011) is an identity column the copy does not carry: the row names it.
+    # ``seq`` (migration 0012) is an identity column the copy does not carry: the row names it.
     results = {**GOOD_RESULT, "seq": 1}
     for table, good in (("model_eval_results", results), ("model_routes", GOOD_ROUTE)):
         probe = f"probe_{table}"

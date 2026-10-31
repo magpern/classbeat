@@ -19,7 +19,7 @@ back by a model.
 
 import json
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Final
 
 from classbeat.agent import model_input
@@ -107,6 +107,8 @@ class ChosenSong:
     bpm: float
     length_sec: int
     new: bool  # from the pool (True) or kept (False)
+    # The pool track's or the kept song's album cover (ADR 0013 section 9), never the model's.
+    cover: str | None = field(default=None, repr=False)
 
 
 @dataclass(frozen=True)
@@ -203,13 +205,17 @@ def check_list(ctx: ChooseContext, args: SongList) -> ChosenList:
             if n != k.slot:
                 errors.append(f"song {n}: kept song {s.index} keeps its slot, position {k.slot}")
             chosen.append(
-                ChosenSong(k.spotify_id, k.title, k.artist, k.role, k.bpm, k.length_sec, False)
+                ChosenSong(
+                    k.spotify_id, k.title, k.artist, k.role, k.bpm, k.length_sec, False, k.cover
+                )
             )
             title, artist = k.title, k.artist
         else:
             t = ctx.tracks[s.index]
             chosen.append(
-                ChosenSong(t.spotify_id, t.title, t.artist, s.role, t.bpm, t.length_sec, True)
+                ChosenSong(
+                    t.spotify_id, t.title, t.artist, s.role, t.bpm, t.length_sec, True, t.cover
+                )
             )
             title, artist = t.title, t.artist
         key = key_of(title, artist)

@@ -649,7 +649,7 @@ Accepted during G2 (#215), from the PR #267 review (2026-10-31):
   `evals/suite/manifest.json`, which `load_suite` and `tests/test_evals_suite.py` hold equal to the
   suite's files, read without importing `classbeat.evals`. A route whose result has another digest
   is **stale** with the reason `manifest_digest` (used and flagged, like the other three reasons).
-- **"Newest" is deterministic.** Migration `0011_model_jobs` gives `model_eval_results` an identity
+- **"Newest" is deterministic.** Migration `0012_model_jobs` gives `model_eval_results` an identity
   column `seq` (`GENERATED ALWAYS`): newest is `recorded_at DESC, seq DESC`, so two results recorded
   in one transaction (one `now()`) are ordered by insertion, never by their random ids. The
   newer-failure check compares `(recorded_at, seq)`.
