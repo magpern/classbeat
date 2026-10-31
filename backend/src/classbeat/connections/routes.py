@@ -25,6 +25,7 @@ from classbeat import auth
 from classbeat.connections.errors import ConnectionFailure
 from classbeat.connections.mowl_account import PROVIDER, connect_mowl
 from classbeat.connections.repository import ConnectionInfo, disconnect, list_connections
+from classbeat.connections.swedebeat_account import swedebeat_access, swedebeat_email
 from classbeat.context import UserContext
 from classbeat.db import system_session
 from classbeat.emailnorm import normalize_email
@@ -55,6 +56,8 @@ class MowlConnectIn(BaseModel):
 class ConnectionOut(BaseModel):
     id: UUID  # the caller's own credential row id: the id a job input names (ADR 0005 s. 2)
     provider: str
+    # The provider account's email where the account page shows it (Swedebeat only, ADR 0015).
+    account: str | None = None
     status: str
     last_error: str | None
     connected_at: datetime
@@ -62,10 +65,11 @@ class ConnectionOut(BaseModel):
     expires_at: datetime | None
 
     @classmethod
-    def of(cls, info: ConnectionInfo) -> "ConnectionOut":
+    def of(cls, info: ConnectionInfo, account: str | None = None) -> "ConnectionOut":
         return cls(
             id=info.id,
             provider=info.provider,
+            account=account,
             status=info.status,
             last_error=info.last_error,
             connected_at=info.connected_at,
@@ -74,11 +78,20 @@ class ConnectionOut(BaseModel):
         )
 
 
+class SwedebeatAccessOut(BaseModel):
+    """Whether the Swedebeat card may show its form (ADR 0015): the flag is on, and this server
+    holds Swedebeat's app key. Neither says anything about the user's own connection."""
+
+    enabled: bool
+    available: bool
+
+
 class ConnectionsOut(BaseModel):
     connections: list[ConnectionOut]
+    swedebeat: SwedebeatAccessOut
 
 
-def _failure_response(failure: ConnectionFailure) -> JSONResponse:
+def failure_response(failure: ConnectionFailure) -> JSONResponse:
     headers: dict[str, str] = {}
     if failure.category == "rate_limited":
         headers["Retry-After"] = str(failure.retry_after or DEFAULT_RETRY_AFTER)
@@ -89,7 +102,7 @@ def _failure_response(failure: ConnectionFailure) -> JSONResponse:
     )
 
 
-async def _event(request: Request, ctx: UserContext, kind: str, **detail: str) -> None:
+async def event(request: Request, ctx: UserContext, kind: str, **detail: str) -> None:
     """An ``auth_events`` row: the provider and, on failure, the category. Never a secret."""
     async with system_session(request.app.state.session_factory) as db:
         await auth.record_event(
@@ -101,8 +114,17 @@ async def _event(request: Request, ctx: UserContext, kind: str, **detail: str) -
 async def get_connections(
     request: Request, ctx: Annotated[UserContext, Depends(auth.require_user)]
 ) -> ConnectionsOut:
-    rows = await list_connections(request.app.state.session_factory, ctx)
-    return ConnectionsOut(connections=[ConnectionOut.of(row) for row in rows])
+    factory = request.app.state.session_factory
+    rows = await list_connections(factory, ctx)
+    access = await swedebeat_access(request.app.state.settings, factory)
+    held = any(row.provider == "swedebeat" for row in rows)
+    email = await swedebeat_email(factory, ctx) if held else None
+    return ConnectionsOut(
+        connections=[
+            ConnectionOut.of(row, email if row.provider == "swedebeat" else None) for row in rows
+        ],
+        swedebeat=SwedebeatAccessOut(enabled=access.enabled, available=access.available),
+    )
 
 
 @router.post(
@@ -129,15 +151,13 @@ async def connect_mowl_route(
     except ConnectionFailure as error:
         failure = error
     if failure is not None:
-        await _event(
-            request, ctx, "connection_failed", provider=PROVIDER, category=failure.category
-        )
-        return _failure_response(failure)
+        await event(request, ctx, "connection_failed", provider=PROVIDER, category=failure.category)
+        return failure_response(failure)
     await attempt.succeed()
-    await _event(request, ctx, "connection_connected", provider=PROVIDER)
+    await event(request, ctx, "connection_connected", provider=PROVIDER)
     rows = [row for row in await list_connections(factory, ctx) if row.provider == PROVIDER]
     if not rows:  # a parallel disconnect removed it meanwhile
-        return _failure_response(ConnectionFailure("not_connected"))
+        return failure_response(ConnectionFailure("not_connected"))
     return ConnectionOut.of(rows[0])
 
 
@@ -147,5 +167,5 @@ async def disconnect_mowl(
 ) -> Response:
     """Delete the token. Answers 204 whether or not a connection existed."""
     if await disconnect(request.app.state.session_factory, ctx, PROVIDER):
-        await _event(request, ctx, "connection_disconnected", provider=PROVIDER)
+        await event(request, ctx, "connection_disconnected", provider=PROVIDER)
     return Response(status_code=204)

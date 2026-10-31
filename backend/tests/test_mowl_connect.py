@@ -58,7 +58,8 @@ async def test_connect_stores_the_token_encrypted_and_shows_the_status(
     assert (shown["provider"], shown["status"], shown["last_error"]) == ("mowl", "connected", None)
     assert shown["expires_at"] is None  # the token's lifetime is unknown (ADR 0004 section 6)
     assert set(shown) == {
-        "id", "provider", "status", "last_error", "connected_at", "last_used_at", "expires_at"
+        "id", "provider", "account", "status", "last_error", "connected_at", "last_used_at",
+        "expires_at",
     }  # fmt: skip
     assert mowl_api.requests == ["POST " + mowl_api_path("auth"), "GET " + mowl_api_path("ticket")]
 
@@ -201,7 +202,7 @@ async def test_a_user_reads_and_deletes_only_their_own_connection_through_the_ro
     assert (await alice.post(CONNECT, body())).status_code == 200
     alice_id = (await alice.get("/api/connections")).json()["connections"][0]["id"]
     # Bob has no connection: he sees none of Alice's, and deleting "his" changes nothing of hers.
-    assert (await bob.get("/api/connections")).json() == {"connections": []}
+    assert (await bob.get("/api/connections")).json()["connections"] == []
     assert (await bob.call("DELETE", CONNECT)).status_code == 204
     assert await owned(env, "SELECT count(*) FROM connections", "alice@example.com") == 1
     # With a connection of his own, each sees and loses only theirs.
@@ -221,7 +222,7 @@ async def test_disconnect_deletes_the_token(env: Env, make_actor: Any) -> None:
     assert (await actor.post(CONNECT, body())).status_code == 200
     assert (await actor.call("DELETE", CONNECT)).status_code == 204
     assert await owned(env, "SELECT count(*) FROM connections") == 0
-    assert (await actor.get("/api/connections")).json() == {"connections": []}
+    assert (await actor.get("/api/connections")).json()["connections"] == []
     assert (await actor.call("DELETE", CONNECT)).status_code == 204  # nothing left: still 204
     kinds = await env.scalar(
         "SELECT array_agg(kind ORDER BY at, id) FROM auth_events WHERE kind LIKE 'connection_%'"

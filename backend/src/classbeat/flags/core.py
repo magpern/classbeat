@@ -9,6 +9,9 @@ The database can tighten what the environment allows, never loosen it:
   environment's and the stored one (``closed`` above ``invite`` above ``open``). ``open`` comes
   only from ``CLASSBEAT_SIGNUP_MODE``; a stored ``open`` is invalid.
 - ``song_picking``: stored ``off``, ``granted`` or ``on``; absent means ``granted``.
+- ``swedebeat_enabled``: stored ``off`` or ``on``; absent means ``on``, but only under the
+  environment's kill switch (``CLASSBEAT_SWEDEBEAT_ENABLED``, off by default): the database
+  can switch Swedebeat off for everyone, never on past the environment (ADR 0015).
 - ``trial``: ``{plan, days}``; absent or invalid is off.
 - ``banner``: ``{text, level}``; absent or invalid is none. Its text is plain text: no control
   character (``Cc``), no format character (``Cf``: the bidi embeddings, overrides and isolates,
@@ -16,8 +19,8 @@ The database can tighten what the environment allows, never loosen it:
   ``Zp``), on the write side and again when it is read for ``/api/settings/public`` (#227).
 
 A stored value that does not validate falls back to the key's default, which is its stricter
-choice (``invite``, ``granted``, trial off, no banner), and is logged by key only: the value is
-never logged, since it may hold an admin's free text.
+choice (``invite``, ``granted``, Swedebeat off, trial off, no banner), and is logged by key only:
+the value is never logged, since it may hold an admin's free text.
 """
 
 import logging
@@ -36,6 +39,7 @@ BANNER_MAX_CHARS: Final = 280
 _STRICTNESS: Final[dict[str, int]] = {"open": 0, "invite": 1, "closed": 2}
 _SIGNUP_STORED: Final = ("invite", "closed")
 _SONG_STORED: Final = ("off", "granted", "on")
+_SWEDEBEAT_STORED: Final = ("off", "on")
 _LEVELS: Final = ("info", "warning")
 # What banner text may not hold (#227, the #303 review's note 5 for the admin's free text): the
 # control characters, the format characters (bidi controls such as U+202E, which reorder what
@@ -88,6 +92,19 @@ def song_picking_setting(environment_on: bool, stored: Any) -> SongPicking:
     return stored  # pyright: ignore[reportReturnType]
 
 
+def swedebeat_setting(environment_on: bool, stored: Any) -> bool:
+    """Whether the Swedebeat connection is on: never while the environment's switch is off; else
+    the stored ``off``/``on`` (absent is on; an invalid value is off, the stricter reading)."""
+    if not environment_on:
+        return False
+    if stored is None:
+        return True
+    if not isinstance(stored, str) or stored not in _SWEDEBEAT_STORED:
+        _invalid("swedebeat_enabled")
+        return False
+    return stored == "on"
+
+
 def trial_setting(stored: Any) -> TrialSetting | None:
     """The stored ``{plan, days}``; ``None`` (off) when absent, malformed or ``days`` is 0."""
     if stored is None:
@@ -129,7 +146,7 @@ class FlagRefused(Exception):
         self.reason = reason
 
 
-KEYS: Final = ("signup_mode", "song_picking", "trial", "banner")
+KEYS: Final = ("signup_mode", "song_picking", "swedebeat_enabled", "trial", "banner")
 _PLAN_ID: Final = re.compile(r"^[a-z_]{1,30}$")
 
 
@@ -140,6 +157,7 @@ def validate_for_write(key: str, value: Any, *, trial_days_max: int) -> Any:
     - ``signup_mode``: ``invite`` or ``closed``; ``open`` comes only from the environment
       (``environment_only``).
     - ``song_picking``: ``off``, ``granted`` or ``on``.
+    - ``swedebeat_enabled``: ``off`` or ``on``.
     - ``trial``: exactly ``{plan, days}``, a plan code and ``days`` from 0 to ``trial_days_max``
       (``above_environment_bound`` over it). Whether the plan exists and ranks at most
       ``instructor`` is checked against ``plans`` by the caller.
@@ -153,6 +171,10 @@ def validate_for_write(key: str, value: Any, *, trial_days_max: int) -> Any:
         return value
     if key == "song_picking":
         if value not in _SONG_STORED:
+            raise FlagRefused("invalid_value")
+        return value
+    if key == "swedebeat_enabled":
+        if value not in _SWEDEBEAT_STORED:
             raise FlagRefused("invalid_value")
         return value
     if key == "trial":

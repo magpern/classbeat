@@ -16,7 +16,7 @@ trap 'rm -rf "$tmp"' EXIT
 cp compose.prod.yaml "$tmp/"
 mkdir "$tmp/secrets"
 for n in postgres_password database_owner_password database_password database_maint_password \
-  app_secret_key connection_kek smtp_password anthropic_api_key openai_api_key deepseek_api_key; do
+  app_secret_key connection_kek smtp_password anthropic_api_key openai_api_key deepseek_api_key swedebeat_app; do
   : > "$tmp/secrets/$n"
 done
 
@@ -36,6 +36,10 @@ q '.networks.backend.internal == true' || fail "the backend network must be inte
 q '.services.web.read_only == true' || fail "web must be read-only"
 q '[.services.web.secrets[].source] | (index("anthropic_api_key") // -1) < 0' \
   || fail "web must not mount a model key"
+q '[.services | to_entries[] | select(.value.secrets // [] | map(.source) | index("swedebeat_app")) | .key] == ["web"]' \
+  || fail "swedebeat_app belongs to web only"
+q '.services.web.environment.CLASSBEAT_SWEDEBEAT_ENABLED == "false"' \
+  || fail "Swedebeat must be off by default"
 q '[.services.worker.secrets[].source] | index("database_maint_password") == null' \
   || fail "worker must not mount the maint password"
 q '[.services | to_entries[] | select(.value.secrets // [] | map(.source) | index("postgres_password")) | .key] | sort == ["db","db-functions"]' \

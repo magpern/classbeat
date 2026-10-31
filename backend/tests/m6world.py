@@ -31,12 +31,19 @@ from uuid import UUID
 
 import httpx
 import pytest
+from pydantic import SecretStr
 from sqlalchemy import text
 from sqlalchemy.engine import Connection, make_url
 
 from authtools import APP_SECRET, TEST_KEK, Env, running_env, session_cookie
 from classbeat import auth, saving
-from classbeat.egress import WORKER_ALLOWLIST, build_allowlist_opener
+from classbeat.egress import (
+    SWEDEBEAT_WWW_HOST,
+    WORKER_ALLOWLIST,
+    WORKER_HOSTS,
+    Allowlist,
+    build_allowlist_opener,
+)
 from classbeat.jobs import KindRegistry, queue
 from classbeat.jobs.runner import Execution, RunConfig, execute
 from classbeat.log import JsonFormatter, configure_logging
@@ -62,10 +69,15 @@ from spotifytools import (
     Spot,
     make_fake,
 )
+from swedebeatcore import LOGIN_PATH, SEARCH_PATH, FakeSwedebeat
+from swedebeatfake import EMAIL as SWEDEBEAT_EMAIL
+from swedebeatfake import PASSWORD as SWEDEBEAT_PASSWORD
+from swedebeatfake import make_app_key
 
 RESET_PHRASE = "second-horse-battery-staple-9"
 BAD_PHRASE = "wrong-horse-battery-staple-0"
 MOWL_BAD_PHRASE = "not-the-mowl-password-77"
+SWEDEBEAT_BAD_PHRASE = "not-the-swedebeat-password-41"
 RIDER = "rider@example.com"
 CHANGER = "changer@example.com"
 
@@ -120,8 +132,7 @@ def leaks(haystack: str | bytes, known: Known, names: set[str] | None = None) ->
             found.append(name)
     return sorted(found)
 
-
-# --- capture ---------------------------------------------------------------------------------
+    # --- capture ---------------------------------------------------------------------------------
 
 
 @dataclass
@@ -240,19 +251,29 @@ class M6Network(urllib.request.BaseHandler):
     """The worker's network and the web app's MOWL sign-in: Spotify's hosts first, then MOWL
     (sign-in, programs and segments, the music reads)."""
 
-    def __init__(self, songs: SongEnv, programs: FakeMowlPrograms, login: FakeMowl) -> None:
+    def __init__(
+        self,
+        songs: SongEnv,
+        programs: FakeMowlPrograms,
+        login: FakeMowl,
+        swedebeat: FakeSwedebeat,
+    ) -> None:
         self.network = Network(songs.spot.library, songs.mowl)
         self.programs = programs
         self.login = login
+        self.swedebeat = swedebeat
 
     def __hash__(self) -> int:
         return id(self)
 
     def https_open(self, req: urllib.request.Request) -> Any:
+        parts = urlsplit(req.full_url)
+        path = parts.path
+        if parts.hostname in ("www.swedebeat.se", "cloud.swedebeat.se"):
+            return self._swedebeat(req, path)
         answer = self.network.spotify.https_open(req)
         if answer is not None:
             return answer
-        path = urlsplit(req.full_url).path
         if path.startswith("/v1/Authentication/"):
             data = req.data if isinstance(req.data, bytes) else b""
             form = {k: v[0] for k, v in parse_qs(data.decode()).items()}
@@ -262,12 +283,23 @@ class M6Network(urllib.request.BaseHandler):
             return self.programs.https_open(req)
         return self.network.mowl.https_open(req)
 
+    def _swedebeat(self, req: urllib.request.Request, path: str) -> Any:
+        if path == LOGIN_PATH:
+            data = req.data if isinstance(req.data, bytes) else b""
+            status, body = self.swedebeat.login(json.loads(data))
+        elif path == SEARCH_PATH:
+            status, body = self.swedebeat.search(req.full_url, req.get_header("X-auth-token"))
+        else:
+            status, body = 404, {"message": "not found"}
+        return self.network.mowl._answer(req, status, body)  # pyright: ignore[reportPrivateUsage]
+
 
 @dataclass
 class World:
     songs: SongEnv
     programs: FakeMowlPrograms
     login: FakeMowl
+    swedebeat: FakeSwedebeat
     smtp: SmtpFake
     oidc: FakeProviders
     clients: list[httpx.AsyncClient] = field(default_factory=lambda: list[httpx.AsyncClient]())
@@ -344,13 +376,23 @@ async def world(
 ) -> AsyncIterator[World]:
     programs = FakeMowlPrograms()
     login = FakeMowl(token=TOKEN_A)
-    network = M6Network(songenv, programs, login)
+    app = make_app_key()  # a throwaway key made for this run, never Swedebeat's
+    swedebeat = FakeSwedebeat(app["key"], app["iv"])
+    swedebeat.add_account(SWEDEBEAT_EMAIL, SWEDEBEAT_PASSWORD)
+    network = M6Network(songenv, programs, login, swedebeat)
+    # The worker's hosts and, for the web app's Swedebeat sign-in, Swedebeat's sign-in host (and
+    # the catalogue host, for the fake's recorded calls).
+    allowed = Allowlist(WORKER_HOSTS | {SWEDEBEAT_WWW_HOST, "cloud.swedebeat.se"})
     monkeypatch.setattr(
-        urllib.request, "_opener", build_allowlist_opener(WORKER_ALLOWLIST, https_handler=network)
+        urllib.request, "_opener", build_allowlist_opener(allowed, https_handler=network)
+    )
+    env = songenv.spot.env
+    env.app.state.settings = env.settings.model_copy(
+        update={"swedebeat_enabled": True, "swedebeat_app": SecretStr(json.dumps(app))}
     )
     saving.configure(saving.Runtime(songenv.ring))
     saving.configure_listing_lag(None)
-    made = World(songenv, programs, login, smtp, fake)
+    made = World(songenv, programs, login, swedebeat, smtp, fake)
     try:
         yield made
     finally:
@@ -480,6 +522,30 @@ async def full_flows(world: World, admin: Connection, known: Known) -> dict[str,
     assert good.status_code == 200, good.text
     mowl_connection = UUID(good.json()["id"])
 
+    # --- Swedebeat connect: a wrong password, a taken session, then the confirmed sign-in --------
+    known.add("swedebeat_password", SWEDEBEAT_PASSWORD)
+    known.add("swedebeat_wrong_password", SWEDEBEAT_BAD_PHRASE)
+    known.add("swedebeat_app_key", world.swedebeat.key)
+    known.add("swedebeat_app_iv", world.swedebeat.iv)
+    wrong = await actor.post(
+        "/api/connections/swedebeat", {"email": SWEDEBEAT_EMAIL, "password": SWEDEBEAT_BAD_PHRASE}
+    )
+    assert wrong.status_code == 400, wrong.text
+    world.swedebeat.hold(SWEDEBEAT_EMAIL, "phone-device-0001")
+    taken = await actor.post(
+        "/api/connections/swedebeat", {"email": SWEDEBEAT_EMAIL, "password": SWEDEBEAT_PASSWORD}
+    )
+    assert taken.status_code == 409, taken.text
+    signed_in = await actor.post(
+        "/api/connections/swedebeat",
+        {"email": SWEDEBEAT_EMAIL, "password": SWEDEBEAT_PASSWORD, "force": True},
+    )
+    assert signed_in.status_code == 200, signed_in.text
+    [issued] = world.swedebeat.tokens
+    known.add("swedebeat_token", issued)
+    known.add("swedebeat_device_id", world.swedebeat.logins[-1]["device_id"])
+    out["swedebeat_connection"] = UUID(signed_in.json()["id"])
+
     # --- Spotify connect: an unknown app first, then the real dance ------------------------
     admin.execute(
         text("INSERT INTO entitlements (owner_id, features, source) "
@@ -575,10 +641,20 @@ async def full_flows(world: World, admin: Connection, known: Known) -> dict[str,
         json={"email": MOWL_EMAIL, "password": MOWL_PASSWORD},
     )
     assert no_csrf.status_code == 403, no_csrf.text
+    no_csrf_swedebeat = await world.client().post(
+        "/api/connections/swedebeat",
+        headers=session_cookie(session_token) | {"Origin": str(env.client.base_url).rstrip("/")},
+        json={"email": SWEDEBEAT_EMAIL, "password": SWEDEBEAT_PASSWORD},
+    )
+    assert no_csrf_swedebeat.status_code == 403, no_csrf_swedebeat.text
     odd_body = await actor.post(
         "/api/connections/mowl", {"email": "not an address", "password": MOWL_PASSWORD}
     )
     assert odd_body.status_code == 422, odd_body.text
+    odd_swedebeat = await actor.post(
+        "/api/connections/swedebeat", {"email": "not an address", "password": SWEDEBEAT_PASSWORD}
+    )
+    assert odd_swedebeat.status_code == 422, odd_swedebeat.text
     spotify_bad = await actor.client.get(
         "/oauth/spotify/callback",
         params={"code": "bogus-code", "state": "bogus-state"},

@@ -20,3 +20,4 @@ Reviewer reviews each in its PR (AGENTS.md, "Decisions and ADRs").
 | [0012](0012-eval-suite-and-model-providers.md) | Eval suite, OpenAI and DeepSeek adapters, and the model enable gate (M3c) | Accepted |
 | [0013](0013-ui-design-night-studio.md) | UI design: the Night Studio look, navigation and components | Accepted |
 | [0014](0014-account-export-and-deletion.md) | Account data export and account deletion (M6, GDPR) | Proposed |
+| [0015](0015-swedebeat-connection.md) | The Swedebeat connection: connect, status, disconnect, the app key (S1) | Accepted |

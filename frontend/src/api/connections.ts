@@ -1,5 +1,5 @@
 import { del, get, post } from './client'
-import { list, object, optionalText, text } from './decode'
+import { flag, list, object, optionalText, text } from './decode'
 
 // Provider connections (ADR 0004, backend/src/classbeat/connections/routes.py). Statuses and
 // error categories come from the backend; nothing secret is ever part of these answers.
@@ -14,6 +14,14 @@ export interface Connection {
   lastError: string | null
   connectedAt: string
   lastUsedAt: string | null
+  /** The provider account's email, where the page shows it (Swedebeat only). */
+  account: string | null
+}
+
+/** Whether the Swedebeat card may show its form (ADR 0015): the flag is on and the server holds the app key. */
+export interface SwedebeatAccess {
+  enabled: boolean
+  available: boolean
 }
 
 function decodeConnection(value: unknown): Connection {
@@ -25,6 +33,7 @@ function decodeConnection(value: unknown): Connection {
     lastError: optionalText(item, 'last_error'),
     connectedAt: text(item, 'connected_at'),
     lastUsedAt: optionalText(item, 'last_used_at'),
+    account: optionalText(item, 'account'),
   }
 }
 
@@ -40,4 +49,36 @@ export async function connectMowl(email: string, password: string): Promise<Conn
 
 export async function disconnectMowl(): Promise<void> {
   await del('/api/connections/mowl')
+}
+
+/** The connections and the Swedebeat access block; an answer without the block means off. */
+export async function getConnectionsView(): Promise<{
+  connections: Connection[]
+  swedebeat: SwedebeatAccess
+}> {
+  const body = object(await get('/api/connections'), 'connections')
+  const access = body.swedebeat === undefined ? null : object(body.swedebeat, 'swedebeat')
+  return {
+    connections: list(body, 'connections').map(decodeConnection),
+    swedebeat:
+      access === null
+        ? { enabled: false, available: false }
+        : { enabled: flag(access, 'enabled'), available: flag(access, 'available') },
+  }
+}
+
+/**
+ * Sends the Swedebeat email and password once, in the JSON body (never the URL). `force` is true
+ * only after the user confirmed that another device (the Swedebeat app) may be signed out.
+ */
+export async function connectSwedebeat(
+  email: string,
+  password: string,
+  force: boolean,
+): Promise<Connection> {
+  return decodeConnection(await post('/api/connections/swedebeat', { email, password, force }))
+}
+
+export async function disconnectSwedebeat(): Promise<void> {
+  await del('/api/connections/swedebeat')
 }

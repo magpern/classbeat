@@ -264,7 +264,7 @@ async def test_owned_endpoints_do_not_leak_the_other_users_ids(env: Env, make_ac
     assert (await alice.actor.call("DELETE", CONNECT)).status_code == 204
     shown = (await bob.actor.get("/api/connections")).json()["connections"]
     assert [c["status"] for c in shown] == ["connected"]
-    assert (await alice.actor.get("/api/connections")).json() == {"connections": []}
+    assert (await alice.actor.get("/api/connections")).json()["connections"] == []
 
 
 async def test_one_users_rate_limit_does_not_throttle_the_other(

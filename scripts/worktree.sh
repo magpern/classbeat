@@ -8,7 +8,7 @@ set -euo pipefail
 
 SELF="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/$(basename "${BASH_SOURCE[0]}")"
 SECRETS=(postgres_password database_owner_password database_password database_maint_password
-  app_secret_key connection_kek anthropic_api_key openai_api_key deepseek_api_key)
+  app_secret_key connection_kek anthropic_api_key openai_api_key deepseek_api_key swedebeat_app)
 
 die() { echo "worktree.sh: $*" >&2; exit 1; }
 
@@ -59,10 +59,12 @@ cmd_init() {
   local name bytes
   for name in "${SECRETS[@]}"; do
     if [ ! -f "secrets/$name" ]; then
-      if [[ "$name" == *_api_key ]]; then
+      if [[ "$name" == *_api_key || "$name" == swedebeat_app ]]; then
         # ADR 0006 section 9, ADR 0012 section 2: the model keys are empty placeholders, never
         # a real key (an empty file is no key; the worker refuses MODEL_PROVIDER=anthropic until
         # the owner puts the key here, and uses no OpenAI or DeepSeek host without its key).
+        # swedebeat_app (ADR 0015 section 4) is the same: empty is no key, web only; a release
+        # image holds the key itself, so this file is only for a runtime override.
         : > "secrets/$name"
         chmod 644 "secrets/$name" 2>/dev/null || true
         echo "created secrets/$name (empty placeholder)"

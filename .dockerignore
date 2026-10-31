@@ -13,3 +13,4 @@
 frontend/dist
 docs
 *.md
+**/swedebeat_app*

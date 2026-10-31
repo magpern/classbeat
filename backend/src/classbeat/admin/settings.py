@@ -9,7 +9,7 @@ read only.
 - ``GET /settings``: every flag key with its effective value and where it comes from
   (``environment`` or ``database``), the value stored and whether it validates, the environment's
   own value; the plans with their limits; the environment's upper bounds; the read-only settings
-  (per-job ceilings, billing and Swedebeat, shown off).
+  (per-job ceilings and billing, shown off).
 - ``PUT /settings/{key}`` ``{value}``: stores a flag through ``classbeat.flags`` validation. The
   database can tighten the environment, never loosen it, so ``open`` sign-up is refused
   (422 ``environment_only``), as is any value that does not validate (422 ``invalid_value``), a
@@ -140,7 +140,6 @@ class ReadOnlyOut(Out):
     agent_job_cost_micros: int
     song_job_cost_micros: int
     billing_enabled: bool
-    swedebeat_enabled: bool
 
 
 class SettingsOut(Out):
@@ -234,6 +233,10 @@ def _flag(
         environment = "on" if settings.song_picking else "off"
         effective = core.song_picking_setting(settings.song_picking, stored)
         source = "database" if settings.song_picking and stored is not None else "environment"
+    elif key == "swedebeat_enabled":
+        environment = "on" if settings.swedebeat_enabled else "off"
+        effective = "on" if core.swedebeat_setting(settings.swedebeat_enabled, stored) else "off"
+        source = "database" if settings.swedebeat_enabled and stored is not None else "environment"
     elif key == "trial":
         environment = {"plan": None, "days": 0}
         trial = core.trial_setting(stored)
@@ -284,7 +287,6 @@ async def _view(session: AsyncSession, settings: Settings) -> SettingsOut:
             agent_job_cost_micros=settings.agent_job_cost_micros,
             song_job_cost_micros=settings.song_job_cost_micros,
             billing_enabled=False,  # M7: no billing code exists (ADR 0011 section 8)
-            swedebeat_enabled=False,  # no feature exists to switch (roadmap section 10)
         ),
     )
 
@@ -296,7 +298,7 @@ async def _flag_view(session: AsyncSession, settings: Settings, key: str) -> Fla
 
 def _set_params(key: str, value: Any) -> dict[str, Any]:
     """The audit params of a validated write: what it means, never free text."""
-    if key in ("signup_mode", "song_picking"):
+    if key in ("signup_mode", "song_picking", "swedebeat_enabled"):
         return {"key": key, "value": value}
     if key == "trial":
         return {"key": key, "plan": value["plan"], "days": value["days"]}

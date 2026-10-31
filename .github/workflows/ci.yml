@@ -463,6 +463,13 @@ jobs:
             fi
             printf 'ci-canary-not-a-key-%s' "$(openssl rand -hex 16)" > "secrets/$key"
           done
+          # Swedebeat's app key (ADR 0015 section 4) is web's only and empty from init. A random
+          # canary of the right shape (32 and 16 characters, never Swedebeat's) lets the checks
+          # below prove where it goes. The image built here has no key of its own.
+          [ -f secrets/swedebeat_app ] && [ ! -s secrets/swedebeat_app ] \
+            || { echo "::error::init must create an empty secrets/swedebeat_app"; exit 1; }
+          printf '{"key": "%s", "iv": "%s"}' "$(openssl rand -hex 16)" "$(openssl rand -hex 8)" \
+            > secrets/swedebeat_app
 
       - name: Start the stack
         working-directory: .
@@ -554,6 +561,31 @@ jobs:
             || { echo "::error::web does not have the database_maint_password secret"; exit 1; }
           docker compose exec -T worker sh -c '! test -e /run/secrets/database_maint_password' \
             || { echo "::error::the worker can read database_maint_password"; exit 1; }
+
+      # ADR 0015 section 4: Swedebeat's app key never reaches this image (only the release
+      # workflow passes it), and the runtime secret is on web only.
+      - name: Check the Swedebeat app key is not in the image and is mounted on web only
+        working-directory: .
+        run: |
+          set -euo pipefail
+          for svc in web worker; do
+            docker compose exec -T "$svc" sh -c 'test ! -e /app/swedebeat_app.json' \
+              || { echo "::error::$svc has a baked-in Swedebeat app key file"; exit 1; }
+          done
+          docker compose exec -T web test -s /run/secrets/swedebeat_app \
+            || { echo "::error::web does not have the swedebeat_app secret"; exit 1; }
+          docker compose exec -T worker sh -c '! test -e /run/secrets/swedebeat_app' \
+            || { echo "::error::the worker can read swedebeat_app"; exit 1; }
+          mapfile -t containers < <(docker compose ps -aq)
+          web="$(docker compose ps -q web)"
+          for c in "${containers[@]}"; do
+            if [ "$c" != "$web" ] && docker inspect \
+              --format '{{range .Mounts}}{{println .Source .Destination}}{{end}}' "$c" \
+              | grep -q 'swedebeat_app'; then
+              echo "::error::a container other than web mounts swedebeat_app"
+              exit 1
+            fi
+          done
 
       # ADR 0006 section 9, ADR 0012 section 2: each model key is a file on the worker only,
       # never an env variable.

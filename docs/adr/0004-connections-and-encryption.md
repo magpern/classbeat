@@ -326,6 +326,8 @@ degrades to a reconnect prompt, never to a failure that loses work.
   up separately (M6 restore drill).
 - Losing the current KEK means every user reconnects and re-enrolls TOTP; there is no recovery
   path by design.
-- `mowl-workouts` follow-ups (before Swedebeat or M4): hide `swedebeat_device_id` from `repr`,
+- Swedebeat (ADR 0015, 2026-10-31): its connection follows §3 to §6 unchanged (payload `{token, device_id}`,
+  `public` holds the email only, the same categories plus `device_in_use` and `app_key_unavailable` that are never
+  stored). `mowl-workouts` follow-ups (before Swedebeat or M4): hide `swedebeat_device_id` from `repr`,
   and structured errors (a status attribute) so §5 doesn't depend on `__cause__`.
 - Threat model T40 to T44 and three accepted risks follow from this ADR.

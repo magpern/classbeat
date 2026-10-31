@@ -39,6 +39,7 @@ async def env(app_database_url: str, maint_database_url: str) -> AsyncIterator[E
         database_maint_password=url.password,
         signup_mode="open",
         song_picking=True,
+        swedebeat_enabled=True,
         classes_per_month_max=CLASSES_MAX,
         monthly_cost_micros_max=COST_MAX,
         trial_days_max=TRIAL_DAYS_MAX,
@@ -175,7 +176,13 @@ async def test_the_read_shows_each_flag_with_its_effective_value_and_source(
 ) -> None:
     actor = await stepped_admin(env, make_actor)
     body = (await actor.get(SETTINGS)).json()
-    assert [f["key"] for f in body["flags"]] == ["signup_mode", "song_picking", "trial", "banner"]
+    assert [f["key"] for f in body["flags"]] == [
+        "signup_mode",
+        "song_picking",
+        "swedebeat_enabled",
+        "trial",
+        "banner",
+    ]
     signup = flag(await actor.get(SETTINGS), "signup_mode")
     assert (signup["effective"], signup["source"], signup["environment"]) == (
         "open", "environment", "open",
@@ -204,7 +211,8 @@ async def test_the_read_shows_each_flag_with_its_effective_value_and_source(
         "trial_days": TRIAL_DAYS_MAX,
     }
     read_only = view.json()["read_only"]
-    assert (read_only["billing_enabled"], read_only["swedebeat_enabled"]) == (False, False)
+    assert read_only["billing_enabled"] is False
+    assert "swedebeat_enabled" not in read_only  # a real flag now (ADR 0015)
     assert read_only["agent_job_cost_micros"] > 0
     assert ("setting.read", "ok", None) in audit(superuser, actor.user_id)
 
@@ -223,6 +231,40 @@ async def test_an_invalid_stored_value_reads_as_invalid_with_the_stricter_defaul
     assert (song["stored_valid"], song["effective"]) == (False, "granted")
     banner = flag(view, "banner")
     assert (banner["stored_valid"], banner["effective"]) == (False, None)
+
+
+async def test_swedebeat_is_a_real_flag_on_under_the_environment_and_off_when_stored_off(
+    env: Env, make_actor: Any, superuser: Connection
+) -> None:
+    """Threats: T94 (ADR 0015 section 6)."""
+    actor = await stepped_admin(env, make_actor)
+    first = flag(await actor.get(SETTINGS), "swedebeat_enabled")
+    assert (first["effective"], first["source"], first["environment"]) == (
+        "on", "environment", "on",
+    )  # fmt: skip
+    assert (await put(actor, "swedebeat_enabled", "off")).status_code == 200
+    assert stored(superuser, "swedebeat_enabled") == "off"
+    off = flag(await actor.get(SETTINGS), "swedebeat_enabled")
+    assert (off["effective"], off["source"], off["stored_valid"]) == ("off", "database", True)
+    assert (await put(actor, "swedebeat_enabled", "on")).status_code == 200
+    assert flag(await actor.get(SETTINGS), "swedebeat_enabled")["effective"] == "on"
+    rows = [r for r in rows_of(superuser, actor.user_id) if r.action == "setting.set"]
+    assert given(rows[0].params) == {"key": "swedebeat_enabled", "value": "off"}
+    store(superuser, "swedebeat_enabled", "maybe")  # an invalid stored value reads as off
+    bad = flag(await actor.get(SETTINGS), "swedebeat_enabled")
+    assert (bad["stored_valid"], bad["effective"]) == (False, "off")
+
+
+async def test_swedebeat_stays_off_while_the_environment_switch_is_off_whatever_is_stored(
+    env: Env, make_actor: Any
+) -> None:
+    actor = await stepped_admin(env, make_actor)
+    env.app.state.settings = env.settings.model_copy(update={"swedebeat_enabled": False})
+    assert (await put(actor, "swedebeat_enabled", "on")).status_code == 200
+    view = flag(await actor.get(SETTINGS), "swedebeat_enabled")
+    assert (view["effective"], view["environment"], view["source"]) == (
+        "off", "off", "environment",
+    )  # fmt: skip
 
 
 # --- flag writes ------------------------------------------------------------------------------
@@ -277,6 +319,8 @@ async def test_the_banner_is_stored_as_text_and_its_text_is_not_in_the_audit_row
         ("signup_mode", 3, "invalid_value"),
         ("signup_mode", None, "invalid_value"),
         ("song_picking", "yes", "invalid_value"),
+        ("swedebeat_enabled", "yes", "invalid_value"),
+        ("swedebeat_enabled", True, "invalid_value"),
         ("trial", {"plan": "instructor", "days": TRIAL_DAYS_MAX + 1}, "above_environment_bound"),
         ("trial", {"plan": "pro", "days": 7}, "plan_above_instructor"),
         ("trial", {"plan": "nosuchplan", "days": 7}, "unknown_plan"),

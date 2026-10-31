@@ -2,7 +2,7 @@
 # Microsoft sign-in on against it, for the Playwright E2E tests (e2e/tests/oauth.spec.ts), and a
 # fake MOWL API for MOWL connect (e2e/tests/mowl.spec.ts), the new-class form and the design run
 # (e2e/tests/new-class.spec.ts, design-draft.spec.ts), and a fake Spotify (ADR 0009 section 13;
-# e2e/tests/fake-spotify.spec.ts).
+# e2e/tests/fake-spotify.spec.ts), and a fake Swedebeat (ADR 0015; e2e/tests/swedebeat.spec.ts).
 #
 #   docker compose -f compose.yaml -f compose.e2e.yaml --profile e2e up -d --build --wait
 #   (or COMPOSE_FILE=compose.yaml:compose.e2e.yaml COMPOSE_PROFILES=e2e in the environment)
@@ -16,8 +16,9 @@
 # The fakes answer the providers' real hostnames (compose network aliases), so classbeat needs no
 # test-only setting and its provider endpoints stay hard-coded (ADR 0003 section 5; the MOWL base
 # URL is the mowl-workouts library's own; the Spotify hosts are classbeat's and the library's).
-# Web and worker trust one bundle of the three fakes' throwaway CAs: oidc-fake writes its CA,
-# mowl-fake adds its own, spotify-fake adds its own and writes the bundle they mount. No fake
+# Web and worker trust one bundle of the fakes' throwaway CAs: oidc-fake writes its CA, mowl-fake
+# adds its own, spotify-fake adds its own and swedebeat-fake adds its own; web mounts the last
+# bundle, the worker (which never calls Swedebeat) the Spotify one. No fake
 # publishes a port: each is reachable only inside the compose network.
 
 services:
@@ -102,8 +103,40 @@ services:
       timeout: 3s
       retries: 30
 
+  # Answers as www.swedebeat.se and cloud.swedebeat.se. The fake is backend/tests/swedebeatcore.py,
+  # mounted read-only; server.py only carries HTTP. It decodes the library's AES login fields
+  # with the TEST key e2e/fake-swedebeat/app.json, which web gets as its swedebeat_app secret
+  # (below). That key is a public test value and is not Swedebeat's.
+  swedebeat-fake:
+    profiles: [e2e]
+    image: ${COMPOSE_PROJECT_NAME:-classbeat}:local
+    pull_policy: never
+    restart: "no"
+    user: "0:0" # writes the CA bundle to a shared volume and binds :443 (test-only service)
+    command: ["python", "/fake/server.py"]
+    volumes:
+      - ./e2e/fake-swedebeat:/fake:ro
+      - ./backend/tests/swedebeatcore.py:/fake-core/swedebeatcore.py:ro
+      - spotify-ca:/spotify-ca:ro
+      - swedebeat-ca:/ca
+    networks:
+      default:
+        aliases:
+          - www.swedebeat.se
+          - cloud.swedebeat.se
+    depends_on:
+      spotify-fake:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "test", "-s", "/ca/bundle.pem"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
   web:
     environment:
+      # ADR 0015: the Swedebeat connection is on in the e2e stack only.
+      CLASSBEAT_SWEDEBEAT_ENABLED: "true"
       CLASSBEAT_OAUTH_GOOGLE_CLIENT_ID: e2e-fake-google-client
       CLASSBEAT_OAUTH_MICROSOFT_CLIENT_ID: e2e-fake-microsoft-client
       # Song picking is on in the e2e stack (ADR 0008 section 10): the Spotify routes answer and the
@@ -117,13 +150,15 @@ services:
       - oauth_google_client_secret
       - oauth_microsoft_client_secret
     volumes:
-      - spotify-ca:/fake-ca:ro
+      - swedebeat-ca:/fake-ca:ro
     depends_on:
       oidc-fake:
         condition: service_healthy
       mowl-fake:
         condition: service_healthy
       spotify-fake:
+        condition: service_healthy
+      swedebeat-fake:
         condition: service_healthy
 
   # The worker drafts classes against the same fake MOWL, with the FakeProvider replaying a
@@ -159,6 +194,10 @@ services:
         condition: service_healthy
 
 secrets:
+  # The TEST app key for the fake Swedebeat (a public test value, not Swedebeat's): replaces the
+  # empty secrets/swedebeat_app in this stack only.
+  swedebeat_app:
+    file: ./e2e/fake-swedebeat/app.json
   oauth_google_client_secret:
     file: ./e2e/fake-oidc/client-secret.txt
   oauth_microsoft_client_secret:
@@ -168,3 +207,4 @@ volumes:
   oidc-ca:
   mowl-ca:
   spotify-ca:
+  swedebeat-ca:

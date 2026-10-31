@@ -3,6 +3,7 @@ import { logout, logoutAll } from '../api/auth'
 import { oauthOutcomeMessage } from '../api/messages'
 import { useSession } from '../auth/SessionContext'
 import { Connections } from '../components/account/Connections'
+import { Swedebeat } from '../components/account/Swedebeat'
 import { ChangeEmail, ChangePassword } from '../components/account/Credentials'
 import { DeleteAccount } from '../components/account/DeleteAccount'
 import { Devices } from '../components/account/Devices'
@@ -140,9 +141,7 @@ function Account() {
         <TabsContent value="connections" className="flex flex-col gap-4">
           <Connections />
           <SpotifySummary />
-          <Section title="Swedebeat">
-            <p className="text-muted">Coming later.</p>
-          </Section>
+          <Swedebeat />
         </TabsContent>
         <TabsContent value="plan" className="flex flex-col gap-4">
           <Plan />

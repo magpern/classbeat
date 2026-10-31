@@ -13,7 +13,6 @@ clear are named in ``STORED_ON_PURPOSE`` with the reason; anything else found fa
 
 import asyncio
 import json
-import uuid
 
 import pytest
 from sqlalchemy.engine import Connection, make_url
@@ -27,30 +26,12 @@ __all__ = ["spot", "spotify_admin", "world"]  # fixtures
 # Secrets that are in the database in the clear, by design, and why. Empty means every secret of
 # the flows is hashed, encrypted or absent.
 STORED_ON_PURPOSE: dict[str, str] = {}
-# Made up at run time: nothing here looks like a credential to a scanner.
-SWEDEBEAT_TOKEN = "-".join(["swede", uuid.uuid4().hex, uuid.uuid4().hex])
-SWEDEBEAT_DEVICE = "-".join(["device", uuid.uuid4().hex])
 
 
 async def dump(world: World, admin: Connection, monkeypatch: pytest.MonkeyPatch, url: str):
     known = Known()
     with capture(monkeypatch):
         ids = await full_flows(world, admin, known)
-    # Swedebeat has no connect route yet (its sign-in is the library's, not an API of ours): the
-    # connection is stored through the same repository call a route would use, so its token and
-    # device id are covered by the same dump.
-    from classbeat import connections
-    from ctx import make_context
-
-    await connections.save(
-        world.env.factory,
-        world.env.app.state.keyring,
-        make_context(ids["rider"]),
-        "swedebeat",
-        {"token": SWEDEBEAT_TOKEN, "device_id": SWEDEBEAT_DEVICE},
-    )
-    known.add("swedebeat_token", SWEDEBEAT_TOKEN)
-    known.add("swedebeat_device_id", SWEDEBEAT_DEVICE)
     dsn = make_url(url).set(drivername="postgresql").render_as_string(hide_password=False)
     tables, copied, dumped = await asyncio.to_thread(dump_database, dsn)
     return known, ids, tables, copied, dumped
