@@ -54,6 +54,12 @@ class SessionInfo:
         return "user"
 
     @property
+    def admin_pending_mfa(self) -> bool:
+        """An admin account whose TOTP check is missing or older than 12 hours (``role`` is
+        ``user`` meanwhile). False for every other account."""
+        return self.stored_role == "admin" and self.role != "admin"
+
+    @property
     def recent_mfa(self) -> bool:
         """TOTP passed within the 12-hour window."""
         return _within(self.mfa_at, self.now, ADMIN_MFA_WINDOW)
