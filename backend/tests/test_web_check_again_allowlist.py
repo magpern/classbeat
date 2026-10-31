@@ -30,7 +30,11 @@ def web_only(monkeypatch: pytest.MonkeyPatch) -> Callable[[], None]:
         [network] = [h for h in current.handlers if hasattr(h, "https_open")]
         web = build_allowlist_opener(WEB_URLLIB_ALLOWLIST, https_handler=network)
         monkeypatch.setattr(urllib.request, "_opener", web)
-        assert egress.WEB_URLLIB_ALLOWLIST.hosts == {"api.mowl.com", "api.spotify.com"}
+        assert egress.WEB_URLLIB_ALLOWLIST.hosts == {
+            "api.mowl.com",
+            "api.spotify.com",
+            "www.swedebeat.se",
+        }
 
     return swap
 

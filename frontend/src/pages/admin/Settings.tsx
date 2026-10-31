@@ -30,7 +30,8 @@ export const REASONS = {
   trialsOff: 'Trials are switched off on the server (CLASSBEAT_TRIAL_DAYS_MAX is 0).',
   trialPlan: 'A trial cannot be of a plan above Instructor.',
   billing: 'Billing does not exist yet. It comes with a later milestone and cannot be switched on here.',
-  swedebeat: 'There is no Swedebeat feature to switch on yet.',
+  swedebeatOff:
+    'Swedebeat is switched off on the server (CLASSBEAT_SWEDEBEAT_ENABLED). This setting has no effect until the server switches it on.',
 }
 
 const TRIAL_MAX_PLAN = 'instructor'
@@ -115,6 +116,7 @@ export function Settings() {
 const TITLES: Record<string, string> = {
   signup_mode: 'Sign-up',
   song_picking: 'Song picking',
+  swedebeat_enabled: 'Swedebeat',
   trial: 'Trial',
   banner: 'Banner',
 }
@@ -152,6 +154,7 @@ function FlagCard({ item, view, onChanged }: { item: Flag; view: SettingsView; o
       {action.error !== null ? <Notice kind="error">{action.error}</Notice> : null}
       {key === 'signup_mode' ? <SignupForm item={item} busy={action.busy} onSave={(v) => { save(() => setFlag(key, v)) }} /> : null}
       {key === 'song_picking' ? <SongForm item={item} busy={action.busy} onSave={(v) => { save(() => setFlag(key, v)) }} /> : null}
+      {key === 'swedebeat_enabled' ? <SwedebeatForm item={item} busy={action.busy} onSave={(v) => { save(() => setFlag(key, v)) }} /> : null}
       {key === 'trial' ? <TrialForm item={item} view={view} busy={action.busy} onSave={(v) => { save(() => setFlag(key, v)) }} /> : null}
       {key === 'banner' ? <BannerForm item={item} busy={action.busy} onSave={(v) => { save(() => setFlag(key, v)) }} /> : null}
       {item.stored !== null ? (
@@ -219,6 +222,35 @@ function SongForm({ item, busy, onSave }: { item: Flag; busy: boolean; onSave: (
         Save
       </Button>
       {forbidden ? <Reason id="reason-song-picking">{REASONS.songPickingOff}</Reason> : null}
+    </form>
+  )
+}
+
+function SwedebeatForm({ item, busy, onSave }: { item: Flag; busy: boolean; onSave: (v: string) => void }) {
+  const [value, setValue] = useState(asText(item.stored) ?? 'on')
+  const forbidden = item.environment === 'off'
+  const submit = (event: FormEvent) => {
+    event.preventDefault()
+    onSave(value)
+  }
+  return (
+    <form onSubmit={submit} aria-label="Change Swedebeat" className="flex flex-wrap items-end gap-2">
+      <SelectField
+        label="Swedebeat sign-in for"
+        value={value}
+        disabled={forbidden}
+        aria-describedby={forbidden ? 'reason-swedebeat' : undefined}
+        onChange={(e) => {
+          setValue(e.target.value)
+        }}
+      >
+        <option value="off">Nobody</option>
+        <option value="on">Everyone</option>
+      </SelectField>
+      <Button type="submit" disabled={busy || forbidden}>
+        Save
+      </Button>
+      {forbidden ? <Reason id="reason-swedebeat">{REASONS.swedebeatOff}</Reason> : null}
     </form>
   )
 }
@@ -321,11 +353,6 @@ function ReadOnlySettings({ view }: { view: SettingsView }) {
           <Switch id="setting-billing" checked={r.billingEnabled} disabled aria-describedby="reason-billing" />
           <label htmlFor="setting-billing">Billing</label>
           <Reason id="reason-billing">{REASONS.billing}</Reason>
-        </li>
-        <li className="flex flex-wrap items-center gap-2">
-          <Switch id="setting-swedebeat" checked={r.swedebeatEnabled} disabled aria-describedby="reason-swedebeat" />
-          <label htmlFor="setting-swedebeat">Swedebeat</label>
-          <Reason id="reason-swedebeat">{REASONS.swedebeat}</Reason>
         </li>
       </ul>
     </Section>

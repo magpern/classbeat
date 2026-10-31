@@ -229,7 +229,7 @@ Each item gives the content and its **primary action**, if any (at most one, §1
   Primary action: **Design a class**.
 - **Account.** A profile header (avatar, name, email, Change email), then the tabs:
   - **Connections:** cards for MOWL, Spotify (with the working-playlist consent as a switch) and
-    Swedebeat (coming later).
+    Swedebeat (coming soon while the flag is off; the connect card of ADR 0015 §8 once on).
   - **Plan and usage:** a meter, the renew date and "Have a code?". Tokens and cost move behind
     "Show usage details".
   - **Sign-in and security:** rows for password, linked providers, two-step sign-in and signed-in

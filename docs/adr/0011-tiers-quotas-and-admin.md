@@ -390,14 +390,17 @@ it:
 
 **Amendment 2026-10-31 (#319, #227):** the banner's text is plain text: every character of Unicode categories `Cc`, `Cf`, `Zl` and `Zp` is refused when it is written (422 `invalid_value`) and makes a stored banner read as none, so an emoji sequence joined by U+200D (ZWJ, a `Cf` character, for example a family or a flag-and-symbol emoji) is refused by design, while single emoji, accented letters and combining marks are kept.
 
-Feature codes in M5: `song_picking`. `swedebeat` and `billing` are shown, read-only and off; the
-admin can't turn them on (§8). Plan limits are edited on `plans`, not in `app_settings`.
+Feature codes in M5: `song_picking`. `billing` is shown, read-only and off; the admin can't turn it on
+(§8). `swedebeat_enabled` became a real flag on 2026-10-31 (ADR 0015 §6): it is not a feature code, it is
+switched for everyone. Plan limits are edited on `plans`, not in `app_settings`.
 
 ### 8. What stays off
 
 - **Billing:** `CLASSBEAT_BILLING_ENABLED` (default `false`) is shown; there is no Paddle code, no
   price shown to users, no `subscription` writer and no webhook. M7.
-- **Swedebeat:** no feature exists to switch (roadmap §10); the flag is shown off.
+- **Swedebeat:** *superseded 2026-10-31 (S1, #362, [ADR 0015](0015-swedebeat-connection.md) §6, roadmap
+  Amendment 9):* `swedebeat_enabled` is a real flag in §7's table: stored `off` or `on` (absent is `on`), only
+  under `CLASSBEAT_SWEDEBEAT_ENABLED` (default `false`, the kill switch); it is no longer read-only.
 - **Priority queue for Pro:** it changes the queue's `SECURITY DEFINER` claim and its digests;
   with a beta of a few testers it buys nothing; deferred to M7 (§11, Q8).
 - **Feature gates by tier** (races, games, FTP tests, history, multi-week series): M5 stores

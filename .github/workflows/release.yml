@@ -82,17 +82,33 @@ jobs:
             type=semver,pattern={{major}}.{{minor}}
             type=sha,format=short
 
+      # Swedebeat's app key goes into the image from the owner's repository secret SWEDEBEAT_APP
+      # (ADR 0015 section 4): checked here and again by the Dockerfile, passed only as a BuildKit
+      # secret (never a build argument, never printed), and this is the only workflow that has it.
+      - name: Check the Swedebeat app key secret
+        env:
+          SWEDEBEAT_APP: ${{ secrets.SWEDEBEAT_APP }}
+        run: |
+          set -euo pipefail
+          test -n "$SWEDEBEAT_APP" || { echo "::error::Set the SWEDEBEAT_APP repository secret"; exit 1; }
+          printf '%s' "$SWEDEBEAT_APP" | python3 -c "import json, sys; d = json.load(sys.stdin); assert set(d) == {'key', 'iv'} and len(d['key']) == 32 and len(d['iv']) == 16" 2>/dev/null \
+            || { echo "::error::SWEDEBEAT_APP must be JSON with a 32-character key and a 16-character iv"; exit 1; }
+
       - uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        env:
+          SWEDEBEAT_APP: ${{ secrets.SWEDEBEAT_APP }}
         with:
           context: .
+          secret-envs: swedebeat_app=SWEDEBEAT_APP # gitleaks:allow
+          build-args: REQUIRE_SWEDEBEAT_APP=1
           platforms: linux/amd64,linux/arm64
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           provenance: mode=max
           sbom: true
-          cache-from: type=gha,scope=release
-          cache-to: type=gha,scope=release,mode=max
+          # No layer cache in either direction: the image holds the app key, and a cache export
+          # would copy that layer into the Actions cache.
 
   release:
     name: GitHub Release

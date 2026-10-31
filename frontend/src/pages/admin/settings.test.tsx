@@ -45,7 +45,9 @@ function plan(id: string, name: string, rank: number, limits: [number, number, n
   }
 }
 
-function view(overrides: { songPicking?: string; trialDays?: number; signupStored?: string | null } = {}) {
+function view(
+  overrides: { songPicking?: string; swedebeat?: string; trialDays?: number; signupStored?: string | null } = {},
+) {
   const stored = overrides.signupStored ?? null
   return {
     flags: [
@@ -58,6 +60,7 @@ function view(overrides: { songPicking?: string; trialDays?: number; signupStore
         updated_by: stored === null ? null : ANN,
       }),
       flagRow('song_picking', { effective: 'off', environment: overrides.songPicking ?? 'off' }),
+      flagRow('swedebeat_enabled', { effective: 'off', environment: overrides.swedebeat ?? 'off' }),
       flagRow('trial', { environment: { plan: null, days: 0 } }),
       flagRow('banner', {}),
     ],
@@ -77,7 +80,6 @@ function view(overrides: { songPicking?: string; trialDays?: number; signupStore
       agent_job_cost_micros: 1_500_000,
       song_job_cost_micros: 3_000_000,
       billing_enabled: false,
-      swedebeat_enabled: false,
     },
   }
 }
@@ -102,7 +104,7 @@ async function enterStepUpCode() {
 
 describe('admin settings', () => {
   it('shows what the environment forbids as disabled, with the reason', async () => {
-    adminApi({ [`GET ${SETTINGS}`]: view({ songPicking: 'off', trialDays: 0 }) })
+    adminApi({ [`GET ${SETTINGS}`]: view({ songPicking: 'off', swedebeat: 'off', trialDays: 0 }) })
     renderAt('/admin/settings')
     const song = await screen.findByLabelText('Song picking for')
     expect(song).toBeDisabled()
@@ -114,14 +116,14 @@ describe('admin settings', () => {
     const signup = screen.getByLabelText('Sign-up mode')
     expect(within(signup).getByRole('option', { name: 'Open (server only)' })).toBeDisabled()
     expect(signup).toHaveAccessibleDescription(REASONS.openSignup)
-    for (const [name, why] of [
-      ['Billing', REASONS.billing],
-      ['Swedebeat', REASONS.swedebeat],
-    ]) {
-      const toggle = screen.getByRole('switch', { name })
-      expect(toggle).toBeDisabled()
-      expect(toggle).toHaveAccessibleDescription(why)
-    }
+    const swedebeat = screen.getByLabelText('Swedebeat sign-in for')
+    expect(swedebeat).toBeDisabled()
+    expect(swedebeat).toHaveAccessibleDescription(REASONS.swedebeatOff)
+    expect(within(card('Swedebeat')).getByRole('button', { name: 'Save' })).toBeDisabled()
+    const billing = screen.getByRole('switch', { name: 'Billing' })
+    expect(billing).toBeDisabled()
+    expect(billing).toHaveAccessibleDescription(REASONS.billing)
+    expect(screen.queryByRole('switch', { name: 'Swedebeat' })).toBeNull() // a real flag now, not read-only
     expect(screen.getByText('$1.50')).toBeInTheDocument()
   })
 
@@ -133,6 +135,27 @@ describe('admin settings', () => {
     expect(trialPlan).toBeEnabled()
     expect(within(trialPlan).getByRole('option', { name: 'Pro (not for trials)' })).toBeDisabled()
     expect(within(trialPlan).getByRole('option', { name: 'Instructor' })).toBeEnabled()
+  })
+
+  it('lets the admin switch Swedebeat off or on when the server allows it', async () => {
+    const api = adminApi({
+      [`GET ${SETTINGS}`]: view({ swedebeat: 'on' }),
+      'PUT /api/admin/settings/swedebeat_enabled': flagRow('swedebeat_enabled', {
+        source: 'database',
+        effective: 'off',
+        environment: 'on',
+        stored: 'off',
+      }),
+    })
+    renderAt('/admin/settings')
+    const select = await screen.findByLabelText('Swedebeat sign-in for')
+    expect(select).toBeEnabled()
+    fireEvent.change(select, { target: { value: 'off' } })
+    fireEvent.click(within(card('Swedebeat')).getByRole('button', { name: 'Save' }))
+    await waitFor(() => {
+      expect(api.to('PUT', '/api/admin/settings/swedebeat_enabled')).toHaveLength(1)
+    })
+    expect(api.to('PUT', '/api/admin/settings/swedebeat_enabled')[0]?.body).toEqual({ value: 'off' })
   })
 
   it('saves a flag through the step-up and shows where the value comes from', async () => {
