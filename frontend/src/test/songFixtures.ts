@@ -70,3 +70,14 @@ export function connectionsBody(spotify = true) {
     ],
   }
 }
+
+export const BRIEF = {
+  length_min: 45,
+  intensity: 'hard',
+  climbs: 2,
+  sprints: 0,
+  races: 0,
+  ftp_test: null,
+  style: 'hills',
+  text: 'Hills',
+}
