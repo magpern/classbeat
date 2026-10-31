@@ -13,7 +13,7 @@ GitHub hold the detail.
 | M2 | `mowl-workouts` v0.4.0, isolation, encryption, connect MOWL | done, except the token-lifetime check (waits for the owner) |
 | M3a | Jobs, Anthropic loop, design on existing music | done (2026-10-29); live smoke run once: 14 of 15 passed |
 | M3b | Class page, revisions, save to MOWL, usage and cost | done technically (2026-10-30, on fakes): [ADR 0007](adr/0007-classes-revisions-and-saving.md), issues #141 to #151 |
-| M4 | Song picking (beta), Spotify BYOK | in progress: design accepted 2026-10-31 ([ADR 0008](adr/0008-song-picking.md), [ADR 0009](adr/0009-spotify-connection.md), #198); issues #173 to #186 closed, but #186's part 2 (the song-picking e2e specs) is not on `main`, so not marked done technically |
+| M4 | Song picking (beta), Spotify BYOK | in progress: design accepted 2026-10-31 ([ADR 0008](adr/0008-song-picking.md), [ADR 0009](adr/0009-spotify-connection.md), #198); issues in milestone "M4 Song picking and Spotify": #173 to #185 closed, #186 open until its part 2 merges; not marked done technically |
 | M3c | Eval suite, OpenAI and DeepSeek adapters | done technically (on replayed providers, #219): [ADR 0012](adr/0012-eval-suite-and-model-providers.md); the owner's live steps are in [docs/runbooks/m3c-model-enable.md](runbooks/m3c-model-enable.md) |
 | M5 | Tiers, quotas, codes, admin | M5 design accepted, development started ([ADR 0011](adr/0011-tiers-quotas-and-admin.md)); issues in milestone "M5 Tiers and admin" |
 | MU | Night Studio UI (ADR 0013) | design accepted 2026-10-30 ([ADR 0013](adr/0013-ui-design-night-studio.md), roadmap Amendment 8); issues #242, #243, #246 to #251, #253 to #255; runs beside M4 and M5, done before M6 |
@@ -104,7 +104,7 @@ GitHub hold the detail.
   implementation".
 - **M4 in progress** (song picking, Spotify BYOK): ADR 0008 (song picking) and ADR 0009 (the Spotify
   connection) were accepted on 2026-10-31 (#198 item 6, with their dated amendments), and roadmap
-  Amendment 5 is in effect. Their 14 issues (#173 to #186) are closed. Nothing live is run; the
+  Amendment 5 is in effect. Of their 14 issues, #173 to #185 are closed and #186 stays open until its part 2 merges. Nothing live is run; the
   owner-authorized live steps are in ADR 0008 §11. The superseded-by notes that ADR 0009 owed are written:
   ADR 0004 §4, ADR 0005 §3 and §4's category table, and ADR 0007 §9 (the guard is `generation`,
   compared together with `id`; for Spotify only the flips of ADR 0009 §6). The M4 review follow-ups
@@ -116,9 +116,8 @@ GitHub hold the detail.
   Client IDs, a confirmed account switch and every error category's page text. The live-activation
   checklist is [docs/runbooks/m4-live-activation.md](runbooks/m4-live-activation.md) (ADR 0008 §11; agents
   run no step without the owner's go-ahead for that step). Part 2 (pick, approval, superseded and expired
-  lists, partial failure and resume, Change songs) was meant to close #186. #186 is closed, but part 2
-  (branch `186-m4-e2e-picks`) has no PR and is not on `main` (2026-10-31); M4 is not technically done
-  until it merges and its "done when" is checked against the roadmap row.
+  lists, partial failure and resume, Change songs) closes #186; M4 is not technically done until it
+  merges and its "done when" is checked against the roadmap row.
 - **M3c design** (eval suite, providers, the enable gate): ADR 0012 is Proposed, roadmap Amendment 6,
   threat model T79 to T84. Owner questions with defaults are in ADR 0012 (OpenAI data, DeepSeek kept
   disabled, stale routes, thresholds, a full-suite run for Opus, provider keys); agents build to the

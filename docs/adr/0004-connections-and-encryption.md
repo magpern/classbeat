@@ -224,8 +224,9 @@ the CLI.
   > **Amendment, 2026-10-31 (ADR 0009 §5.4 and §6, accepted in #198):** superseded for every
   > provider: the guard is `connections.generation`, compared together with `id` (`WHERE id = :id
   > AND generation = :read_generation`), raised only by a connect, reconnect or Client ID change,
-  > never by a refresh or a rewrap. For Spotify, ADR 0009 §6 also narrows when a flip to
-  > `needs_reconnect` happens.
+  > never by a refresh or a rewrap. A Spotify flip to `needs_reconnect` also compares the
+  > `wrapped_dek` it read (a refresh in between keeps `generation` but changes the data key, so a
+  > stale 401 flips nothing), and ADR 0009 §6 narrows when such a flip happens.
 - **Rate limits** (ADR 0003 §9 mechanism: reserve first, 429 with `Retry-After`): connect
   attempts count requests, and a success releases its slots. 5 per user, 20 per IP and 5 per
   normalized MOWL email (HMAC-keyed like ADR 0003's buckets) per 15 minutes, so the route
