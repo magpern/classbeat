@@ -168,10 +168,35 @@ async def create_admin_invite(
     return code, row
 
 
+async def use_invite(db: AsyncSession, invite_id: UUID) -> bool:
+    """Consume an invite at sign-up: its row locked (``FOR UPDATE``) and checked unused and
+    unexpired, then marked used. ``False`` when it is used, expired or disabled, including by
+    an admin disable that committed while this transaction waited for the lock (Postgres
+    re-checks the conditions on the row's newest version)."""
+    live = await db.execute(
+        select(invites.c.id)
+        .where(
+            invites.c.id == invite_id,
+            invites.c.used_at.is_(None),
+            invites.c.expires_at > func.now(),
+        )
+        .with_for_update()
+    )
+    if live.first() is None:
+        return False
+    await db.execute(update(invites).where(invites.c.id == invite_id).values(used_at=func.now()))
+    return True
+
+
 async def disable_invite(db: AsyncSession, invite_id: UUID) -> tuple[bool, InviteRow | None]:
-    """Expire an unused, unexpired invite now, so the unchanged M1 consume path (``used_at IS
-    NULL AND expires_at > now()``) refuses it. ``(changed, row)``; ``row`` is ``None`` when there
-    is no such invite. A used or expired invite is left as it is (``changed`` false)."""
+    """Expire an unused, unexpired invite, so the consume path (``use_invite``) refuses it.
+    ``(changed, row)``; ``row`` is ``None`` when there is no such invite. A used or expired
+    invite is left as it is (``changed`` false).
+
+    ``expires_at`` becomes ``created_at``, not ``now()`` (#227, Architect on the #279 review):
+    ``now()`` is the transaction's start, so a sign-up confirm that began before the disable
+    committed would still see ``expires_at > now()`` for its own, earlier ``now()``.
+    ``created_at`` is in the past for every transaction that can know the invite."""
     changed = (
         await db.execute(
             update(invites)
@@ -180,7 +205,7 @@ async def disable_invite(db: AsyncSession, invite_id: UUID) -> tuple[bool, Invit
                 invites.c.used_at.is_(None),
                 invites.c.expires_at > func.now(),
             )
-            .values(expires_at=func.now())
+            .values(expires_at=invites.c.created_at)
             .returning(invites.c.id)
         )
     ).first() is not None
