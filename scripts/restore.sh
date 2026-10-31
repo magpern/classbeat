@@ -93,7 +93,7 @@ else
 fi
 
 # --- 2. validate ----------------------------------------------------------------------------
-"$here/validate-backup.sh" "$dump" || die "the archive is authentic but not a classbeat backup; refusing"
+bash "$here/validate-backup.sh" "$dump" || die "the archive is authentic but not a classbeat backup; refusing"
 if [ "$verify_only" = 1 ]; then
   echo "restore.sh: authenticated and validated; --verify-only, nothing was started"
   exit 0
