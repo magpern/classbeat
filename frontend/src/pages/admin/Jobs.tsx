@@ -58,6 +58,22 @@ export function Jobs() {
   return (
     <section aria-labelledby="admin-jobs-title">
       <SectionTitle id="admin-jobs-title">Jobs</SectionTitle>
+      {/* Kept mounted while a window loads or fails, so focus and the choice stay. */}
+      <form className="mb-4 flex flex-wrap items-end gap-2" onSubmit={(e) => { e.preventDefault() }}>
+        <SelectField
+          label="Failures in the last"
+          value={String(days)}
+          onChange={(e) => {
+            navigate(`${pathname}?days=${e.target.value}`)
+          }}
+        >
+          {JOB_WINDOWS.map((d) => (
+            <option key={d} value={String(d)}>
+              {d} days
+            </option>
+          ))}
+        </SelectField>
+      </form>
       {error !== null ? <Notice kind="error">{error}</Notice> : null}
       {data === null && error === null ? <p>Loading</p> : null}
       {data !== null ? (
@@ -96,21 +112,6 @@ export function Jobs() {
           />
 
           <SubTitle>Recent failures</SubTitle>
-          <form className="mb-2 flex flex-wrap items-end gap-2" onSubmit={(e) => { e.preventDefault() }}>
-            <SelectField
-              label="Failures in the last"
-              value={String(days)}
-              onChange={(e) => {
-                navigate(`${pathname}?days=${e.target.value}`)
-              }}
-            >
-              {JOB_WINDOWS.map((d) => (
-                <option key={d} value={String(d)}>
-                  {d} days
-                </option>
-              ))}
-            </SelectField>
-          </form>
           <DataTable
             caption="Failed jobs by kind and category"
             head={['Kind', 'Category', 'Failures', 'Latest']}
