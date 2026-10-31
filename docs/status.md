@@ -253,7 +253,7 @@ GitHub hold the detail.
   fixed 413 `body_too_large` for every route but `/api/admin` (which keeps its own equal limiter and contract); threat
   model T103; `test_m6_security_body_limit.py`. On a local stack a 200 MB anonymous login body took the web container
   from about 95 MiB to at least 264 MiB (sampled) and answered 422 after 13.5 s before; after, it stays at about 97 MiB
-  (three parallel 200 MB posts peaked at about 111 MiB) and the sender is refused with 413 and cut off early. Each refusal writes a rate-limited log line (method, path without query, status, client address; #360). **The home beta behind SWAG needs `client_max_body_size 1m` at the
+  (three parallel 200 MB posts peaked at about 111 MiB) and the sender is refused with 413 and cut off early. Each refusal writes a rate-limited log line (method, path without query, status, client address; #360), one per client address per 10 s (an IPv6 client by its /64), and a failing log call (a raising handler or filter) never turns the 413 into a 500 (#365). **The home beta behind SWAG needs `client_max_body_size 1m` at the
   proxy** (runbook section 8a): that is the owner's configuration and is not done. Still open: SR-02 (#352) and the
   rest of the review's findings, backups and restore, the VPS.
 - **M6, web outbound allowlist and redirects (#353, SR-03 of the security review, in review, not merged):** the web
