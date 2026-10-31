@@ -71,11 +71,17 @@ class CreateResult:
     created: bool
     job: JobView | None
     reason: str | None = None  # see ``user.Created``, plus quota and too_large
-    counts: Mapping[str, int] = field(default_factory=dict[str, int])  # with admit's reason
+    # With admit's reason, busy (``limit``) and quota (``QuotaRefused.detail``).
+    counts: Mapping[str, int | str] = field(default_factory=dict[str, int | str])
 
 
 async def create(
-    factory: Factory, ctx: UserContext, new: user.NewJob, *, limit: int, ledger: CreditLedger
+    factory: Factory,
+    ctx: UserContext,
+    new: user.NewJob,
+    *,
+    limit: int | user.JobLimitPolicy,
+    ledger: CreditLedger,
 ) -> CreateResult:
     require_context(ctx)
     for retry in (False, True):
@@ -85,8 +91,8 @@ async def create(
                 if done.job_id is None:
                     return CreateResult(False, None, done.reason, done.counts)
                 return CreateResult(done.created, await _view(db, ctx, done.job_id))
-        except QuotaRefused:
-            return CreateResult(False, None, "quota")
+        except QuotaRefused as refused:  # the ledger's, or a revise kind's cost cap
+            return CreateResult(False, None, "quota", refused.detail())
         except IntegrityError as error:
             # The owner lock serializes creations, so these are backstops, not the normal path.
             name = _constraint(error)
@@ -116,6 +122,7 @@ class ApproveResult:
     accepted: bool
     job: JobView | None
     reason: str | None = None
+    counts: Mapping[str, int | str] = field(default_factory=dict[str, int | str])
 
 
 async def approve(
@@ -126,13 +133,15 @@ async def approve(
     content_hash: bytes,
     *,
     kinds: KindRegistry,
-    limit: int,
+    limit: int | user.JobLimitPolicy,
     ledger: CreditLedger,
 ) -> ApproveResult:
     """Approve with every check of ADR 0005 section 2, in one transaction: the owner lock, the
     job row lock and its checks (``user.approve``), then ``admit`` below: the connections of the
     kind's ``CONNECTIONS``, the kind's ``approve_check`` (ADR 0008 section 5), the per-user limit
-    and the credit seam, in that order."""
+    and the credit seam, in that order. ``busy`` carries the limit; a ledger's ``QuotaRefused``
+    (the cost cap) answers ``quota`` with its numbers and rolls the transaction back."""
+    counts: dict[str, int | str] = {}
 
     async def admit(db: AsyncSession, waiting: user.Waiting) -> str | None:
         kind = kinds.get(waiting.kind)
@@ -156,14 +165,21 @@ async def approve(
             reason = await kind.approve_check(db, ctx, approving)
             if reason is not None:
                 return reason
-        if await user.active_jobs(db, ctx) >= limit:  # the owner lock is held (user.approve)
+        allowed = await user.job_limit(db, ctx, limit)
+        if await user.active_jobs(db, ctx) >= allowed:  # the owner lock is held (user.approve)
+            counts["limit"] = allowed
             return "busy"
         if waiting.credit_state == "reserved" and not await ledger.allows(db, ctx, waiting.job_id):
             return "quota"
         return None
 
-    async with user_session(factory, ctx) as db:
-        done = await user.approve(db, ctx, job_id, revision_id, content_hash, admit=admit)
-        if done.state is None:
-            return ApproveResult(False, None, done.reason)
-        return ApproveResult(done.accepted, await _view(db, ctx, job_id), done.reason)
+    try:
+        async with user_session(factory, ctx) as db:
+            done = await user.approve(db, ctx, job_id, revision_id, content_hash, admit=admit)
+            if done.state is None:
+                return ApproveResult(False, None, done.reason)
+            return ApproveResult(
+                done.accepted, await _view(db, ctx, job_id), done.reason, dict(counts)
+            )
+    except QuotaRefused as refused:
+        return ApproveResult(False, None, "quota", refused.detail())

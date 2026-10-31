@@ -24,6 +24,7 @@ from classbeat.context import UserContext
 from classbeat.plans.account import account_plan
 from classbeat.plans.redeem import redeem_code
 from classbeat.plans.trial import start_trial
+from classbeat.quota.bounds import Bounds
 
 router = APIRouter(prefix="/api/account", tags=["plan"])
 
@@ -74,8 +75,7 @@ async def get_plan(
     found = await account_plan(
         request.app.state.session_factory,
         ctx,
-        jobs_cap=settings.jobs_per_user,
-        revisions_cap=settings.revisions_per_class,
+        bounds=Bounds.from_settings(settings),
         trial_days_max=settings.trial_days_max,
     )
     return PlanOut(
