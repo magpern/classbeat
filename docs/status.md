@@ -17,7 +17,7 @@ GitHub hold the detail.
 | M3c | Eval suite, OpenAI and DeepSeek adapters | done technically (on replayed providers, #219): [ADR 0012](adr/0012-eval-suite-and-model-providers.md); the owner's live steps are in [docs/runbooks/m3c-model-enable.md](runbooks/m3c-model-enable.md) |
 | M5 | Tiers, quotas, codes, admin | done technically, on fakes, once this E2E PR (#228) is merged (the security suite #227 is in) ([ADR 0011](adr/0011-tiers-quotas-and-admin.md)); issues in milestone "M5 Tiers and admin". Live activation is the owner's |
 | MU | Night Studio UI (ADR 0013) | design accepted 2026-10-30 ([ADR 0013](adr/0013-ui-design-night-studio.md), roadmap Amendment 8); issues #242, #243, #246 to #251, #253 to #255; runs beside M4 and M5, done before M6 |
-| M6 | Security review, backups, GDPR, VPS | in progress, **not done**: the automated security matrices (#339: log secrecy, ciphertext-only dump, 403 and 404 route matrices) are in review; still to do: the end-to-end security review, backups and restore. **VPS configuration ready, not deployed** (#341): `compose.prod.yaml`, `Caddyfile`, [vps-deploy.md](runbooks/vps-deploy.md), checked locally only (see the runbook's "Local smoke"); the deploy, DNS, TLS, server, mail account and secrets are the owner's steps. GDPR export and delete is in review ([ADR 0014](adr/0014-account-export-and-deletion.md), #337). The independent security review and the backup restore drill are not done. **Backups, in review (#338):** backup and restore scripts, a restore drill (run locally and in the `e2e` job) and [runbook](runbooks/backup-restore.md); the schedule and an off-host copy on the VPS are not done |
+| M6 | Security review, backups, GDPR, VPS | in progress, **not done**: the automated security matrices (#339: log secrecy, ciphertext-only dump, 403 and 404 route matrices) are in review; still to do: the end-to-end security review, backups and restore. **VPS configuration ready, not deployed** (#341): `compose.prod.yaml`, `Caddyfile`, [vps-deploy.md](runbooks/vps-deploy.md), checked locally only (see the runbook's "Local smoke"); the deploy, DNS, TLS, server, mail account and secrets are the owner's steps. GDPR export and delete is built (#337 merged as #348), its review follow-ups are in review (#349, [ADR 0014](adr/0014-account-export-and-deletion.md)). The independent security review and the backup restore drill are not done. **Backups (#338 merged; security review finding SR-06 fixed in #355, in review):** backup and restore scripts, a restore drill (run locally and in the `e2e` job) and [runbook](runbooks/backup-restore.md). Backups are now encrypted and signed by default (`--no-encrypt` is an explicit accepted-risk option, still awaiting the owner's sign-off for production use) and restore authenticates the archive against a pinned signer fingerprint (or a public key kept outside the backup directory) and validates its contents before running anything as the database superuser. Not done: the schedule and an off-host copy on the VPS, generating and placing the real recipient and signing keys, the independent review's other findings |
 | M7 | Commercial (deferred) | deferred |
 
 ## Now
@@ -216,9 +216,9 @@ GitHub hold the detail.
   Other provider-calling GET routes checked: `GET /oauth/{provider}/callback` was already limited per IP
   (`OAUTH_IP`); `GET /spotify/callback` only exchanges a single-use `state` that a limited `POST /api/spotify/start`
   created, so it is bounded by that limit; the remaining GET routes read the database only. M6 is **not done**.
-- **M6, GDPR export and delete (#337, in review, not merged):** [ADR 0014](adr/0014-account-export-and-deletion.md),
-  threat model T98 to T100. M6 is **not done**; only this item of its "done when" is built. Checklist:
-  - [x] `GET /api/account/export` (one JSON file of the user's own rows, connections as status only, no
+- **M6, GDPR export and delete (#337 merged as #348; review follow-ups #349 in review):** [ADR 0014](adr/0014-account-export-and-deletion.md),
+  threat model T98 to T100 and T102. M6 is **not done**; only this item of its "done when" is built. Checklist:
+  - [x] `POST /api/account/export` (one JSON file of the user's own rows, connections as status only, no
     hash or ciphertext; recent authentication and the step-up; 5 per hour) and `POST /api/account/delete`
     (typed address checked on the server, open jobs cancelled, credits settled, then the cascade);
     the unconfirmed `DELETE /api/auth/account` is removed.
@@ -227,9 +227,13 @@ GitHub hold the detail.
     and every owned table's export entry, read from the live schema; a catalog-driven scan of every column for
     the deleted user's id, address and IP; two-user tests for the export (also on a superuser session).
   - [x] Account tab "Your data": Download my data and Delete my account (ADR 0013 components).
+  - [x] Follow-ups of the #348 review ([#349](https://github.com/magpern/classbeat/issues/349)): the
+    delete scan covers text and jsonb (the id written as text) and the docs say what it does; the admin audit
+    log stores no search text or email filter; every column of the exported account tables is included or
+    excluded against the live schema; the export is a POST; the Users-screen delete ends jobs first.
   - [ ] Not covered, by decision (ADR 0014 §1 and §2): the admin audit log is not in the export (operator-only
     table, the operator answers a request); `admin_audit.actor_email` of an admin outlives their account;
-    the admin's Users-screen delete does not cancel jobs first. Playlists in the user's Spotify and workouts
+    the bare `target_id` of an acted-on account outlives it (ADR 0014 §5). Playlists in the user's Spotify and workouts
     in their MOWL stay there.
   - [ ] Still open in M6: the independent security review, the backup restore drill (#343), Caddy and the VPS
     (#342, owner-authorised deploy). Nothing here ran against a live account.
@@ -247,9 +251,9 @@ GitHub hold the detail.
 - **M6, request body cap (#351, SR-01 of the security review; in review, not merged).** M6 is **not done**. A global
   ASGI `BodyLimit` (`classbeat.bodylimit`, 64 KiB, outside the auth middleware, inside the security headers) answers a
   fixed 413 `body_too_large` for every route but `/api/admin` (which keeps its own equal limiter and contract); threat
-  model T102; `test_m6_security_body_limit.py`. On a local stack a 200 MB anonymous login body took the web container
+  model T103; `test_m6_security_body_limit.py`. On a local stack a 200 MB anonymous login body took the web container
   from about 95 MiB to at least 264 MiB (sampled) and answered 422 after 13.5 s before; after, it stays at about 97 MiB
-  (three parallel 200 MB posts peaked at about 111 MiB) and the sender is refused with 413 and cut off early. **The home beta behind SWAG needs `client_max_body_size 1m` at the
+  (three parallel 200 MB posts peaked at about 111 MiB) and the sender is refused with 413 and cut off early. Each refusal writes a rate-limited log line (method, path without query, status, client address; #360). **The home beta behind SWAG needs `client_max_body_size 1m` at the
   proxy** (runbook section 8a): that is the owner's configuration and is not done. Still open: SR-02 (#352) and the
   rest of the review's findings, backups and restore, the VPS.
 - **M6, web outbound allowlist and redirects (#353, SR-03 of the security review, in review, not merged):** the web

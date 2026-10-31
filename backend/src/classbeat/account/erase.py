@@ -3,7 +3,8 @@
 1. **Confirmation**: the typed email must be the account's (normalized), checked before anything
    changes. The route has already required recent authentication and, with two-factor on, a
    step-up.
-2. **Open jobs end**: every ``queued`` and ``waiting_for_approval`` job is cancelled at once, a
+2. **Open jobs end** (the operator's delete of an account takes the same step, ``end_jobs_of``):
+   every ``queued`` and ``waiting_for_approval`` job is cancelled at once, a
    ``running`` one is asked to stop (``classbeat.jobs.user.cancel``, the same transition as the
    user's Cancel) and given ``wait`` seconds to reach a checkpoint. The credit of every ended
    job is then settled exactly as the worker's settle step does (``classbeat.jobs.credits``): the
@@ -20,6 +21,7 @@ removes it). Anything in the user's own MOWL or Spotify account stays there.
 
 import asyncio
 import time
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from uuid import UUID
 
@@ -32,6 +34,7 @@ from classbeat.db import system_session, user_session
 from classbeat.emailnorm import normalize_email
 from classbeat.jobs import credits, user
 from classbeat.jobs.credits import CreditLedger
+from classbeat.jobs.issuer import owner_context
 
 Factory = async_sessionmaker[AsyncSession]
 
@@ -92,6 +95,26 @@ async def end_jobs(
         if await credits.settle_one(factory, ledger, ctx.user_id, job_id) is not None:
             settled += 1
     return Ended(len(ids), running, settled)
+
+
+async def end_jobs_of(
+    factory: Factory, user_id: UUID, ledger: CreditLedger, *, wait: float = RUNNING_WAIT_SECONDS
+) -> Ended:
+    """``end_jobs`` for the operator's delete of someone else's account: the same path, as the
+    target's own context (what the worker's settle step uses)."""
+    return await end_jobs(factory, owner_context(user_id), ledger, wait=wait)
+
+
+def make_job_ender(factory: Factory, ledger: CreditLedger) -> Callable[[UUID], Awaitable[Ended]]:
+    """``end_jobs_of`` bound to the web app's session factory and ledger. ``web`` installs it as
+    ``app.state.end_account_jobs`` and the operator's delete calls it through that value: the work
+    runs in the target's own ``user_session``s, never on the maint session, and guard 11 (no
+    advisory lock or NOTIFY on the admin path) is about the latter."""
+
+    async def end(user_id: UUID) -> Ended:
+        return await end_jobs_of(factory, user_id, ledger)
+
+    return end
 
 
 async def delete_row(factory: Factory, ctx: UserContext) -> bool:

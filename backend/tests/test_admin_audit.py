@@ -259,23 +259,43 @@ async def test_the_email_filter_lowers_ascii_letters_only_on_both_sides(
     assert (await page(actor, actor_email="İ" * 106))["rows"] == []
 
 
-async def test_a_filter_whose_normal_form_outgrows_its_row_is_422_and_audited(
-    admin: Any, superuser: Connection, monkeypatch: pytest.MonkeyPatch
+async def test_no_filter_that_names_a_person_is_audited_as_a_value(
+    admin: Any, superuser: Connection
 ) -> None:
-    """The route's own check after normalising stays as defence in depth: a normal form too
-    large for ``params`` is 422 ``filter_invalid`` with one ``refused`` row, never a 500."""
+    """``actor_id``, ``target_user_id`` and the free-text ``target_id`` could be anyone's id or
+    address, and the row outlives their account (ADR 0014 section 5): only that they were set."""
     actor, admin_id = admin
-    monkeypatch.setattr(audit_routes, "normalize_email", lambda value: value * 3)
-    response = await actor.get(f"{AUDIT}?{urlencode({'actor_email': 'é' * 106})}")
-    assert (response.status_code, response.json()) == (
-        422,
-        {"detail": {"reason": "filter_invalid"}},
+    someone = new_user(superuser, "someone@example.test")
+    await page(
+        actor, actor_id=str(someone), target_user_id=str(someone), target_id="someone@example.test"
     )
-    rows = superuser.execute(
-        text("SELECT action, outcome, reason FROM admin_audit WHERE actor_id = :a"),
-        {"a": admin_id},
-    ).all()
-    assert [tuple(r) for r in rows] == [("admin.request", "refused", "filter_invalid")]
+    stored = superuser.execute(
+        text("SELECT params FROM admin_audit WHERE actor_id = :a"), {"a": admin_id}
+    ).scalar_one()
+    assert str(someone) not in json.dumps(stored)
+    assert "someone@example.test" not in json.dumps(stored)
+    assert (stored["actor_id_set"], stored["target_user_id_set"], stored["target_id_set"]) == (
+        True,
+        True,
+        True,
+    )
+    for stored_name in ("actor_id", "target_user_id", "target_id", "actor_email"):
+        with pytest.raises(UnknownAction):
+            checked_params("audit.list", {stored_name: str(someone)})
+
+
+async def test_an_email_filter_is_audited_as_set_never_as_text(
+    admin: Any, superuser: Connection
+) -> None:
+    """The filter text could be anyone's address, and an audit row outlives that person's account
+    (ADR 0014 section 5): the row says that a filter was used, not what it said."""
+    actor, admin_id = admin
+    await page(actor, actor_email="Somebody.Else@Example.test")
+    stored = superuser.execute(
+        text("SELECT params::text FROM admin_audit WHERE actor_id = :a"), {"a": admin_id}
+    ).scalar_one()
+    assert "somebody" not in stored.lower()
+    assert '"actor_email_set": true' in stored
 
 
 # --- what a read records and shows -------------------------------------------------------------
@@ -291,12 +311,12 @@ async def test_a_read_is_audited_once_with_its_filter(admin: Any, superuser: Con
         {"a": admin_id},
     ).all()
     assert (row.action, row.outcome) == ("audit.list", "ok")
-    unset = ("actor_id", "target_kind", "target_id", "outcome", "since", "until", "before")
+    unset = ("actor_id_set", "target_kind", "target_id_set", "outcome", "since", "until", "before")
     assert row.params == {
         "action": "user.",
-        "actor_email": "a@example.test",  # trimmed and lowered, as the filter applies it
+        "actor_email_set": True,  # the text itself is not stored (ADR 0014 section 5)
         "limit": 7,
-        "target_user_id": str(target),
+        "target_user_id_set": True,  # a person's id is audited as set, never as a value
         **dict.fromkeys(unset),
     }
 
@@ -335,8 +355,8 @@ def test_the_largest_accepted_filter_fits_the_audit_row(email: str, target_id: s
     assert json_bytes(email) <= 640
     assert json_bytes(target_id) <= 200
     full = {
-        "actor_id": str(uuid4()), "actor_email": email, "action": "a" * 60,
-        "target_user_id": str(uuid4()), "target_kind": "k" * 40, "target_id": target_id,
+        "actor_id_set": True, "actor_email_set": True, "action": "a" * 60,
+        "target_user_id_set": True, "target_kind": "k" * 40, "target_id_set": True,
         "outcome": "refused", "since": "2026-10-01T00:00:00.123456+14:00",
         "until": "2026-10-02T00:00:00.123456-12:00", "before": str(uuid4()), "limit": 100,
     }  # fmt: skip
@@ -351,7 +371,11 @@ def test_checked_params_refuses_a_real_nul_and_keeps_a_literal_one() -> None:
         checked_params("user.grant", {"plan_id": "pro", "ends_at": "2026\x00"})
     literal = checked_params("user.grant", {"plan_id": "pro", "ends_at": "\\u0000"})
     assert json.loads(literal)["ends_at"] == "\\u0000"
-    assert checked_params("user.list", {"q": "\\u0000"})
+    assert checked_params("user.list", {"q_length": 7})
+    with pytest.raises(UnknownAction):  # the search text itself is never a stored field
+        checked_params("user.list", {"q": "an@example.test"})
+    with pytest.raises(UnknownAction):
+        checked_params("audit.list", {"actor_email": "an@example.test"})
 
 
 async def record_failure(env: Env, actor: Any, params: str) -> None:

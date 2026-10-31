@@ -288,7 +288,8 @@ async def list_users(
     limit: Annotated[int, Query(ge=1, le=100)] = 50,
 ) -> UserPage:
     prefix = q.strip() if q and q.strip() else None
-    params = {"q": prefix, "offset": offset, "limit": limit}
+    # The text is a prefix of someone's email: only its length is audited (ADR 0014 section 5).
+    params = {"q_length": len(prefix) if prefix else None, "offset": offset, "limit": limit}
     async with admin_session(_db(request), actor, "user.list", params=params) as session:
         accounts = await auth.find_accounts(session, prefix=prefix, offset=offset, limit=limit + 1)
         page = await _summaries(session, accounts[:limit], _bounds(request))
@@ -423,10 +424,19 @@ async def delete_user(
         write=True,
         target=Target(user_id=user_id, kind="user", id=str(user_id)),  # survives the delete
     ) as session:
-        found = await _target(session, user_id, lock=True)
+        # Checked without the row lock: ending the target's jobs commits in the target's own
+        # sessions, whose inserts take a key-share lock this transaction's ``FOR UPDATE`` would
+        # block (ADR 0014 section 3).
+        found = await _target(session, user_id)
         if found.role == "admin":
             raise AdminRefused("target_is_admin", 409)
         if normalize_email(body.email) != found.email_normalized:
             raise AdminRefused("email_mismatch", 409)
+        # Through a value installed by ``web``: the jobs code is not reached from the admin
+        # package (guard 11), and it runs in the target's own sessions, not this one.
+        await request.app.state.end_account_jobs(user_id)
+        found = await _target(session, user_id, lock=True)  # the role may have changed meanwhile
+        if found.role == "admin":
+            raise AdminRefused("target_is_admin", 409)
         await auth.delete_account(session, user_id)
     return Response(status_code=204)

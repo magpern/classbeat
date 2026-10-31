@@ -4,7 +4,9 @@ Both need recent authentication and, once the user's TOTP is confirmed, a step-u
 (``auth.require_recent_auth``, ADR 0003 section 6); the POST passes the CSRF and origin checks
 of ``classbeat.auth``.
 
-- ``GET /api/account/export``: the user's own data as one JSON download. 5 per user and 20 per IP
+- ``POST /api/account/export``: the user's own data as one JSON download. A POST on purpose: the
+  auth middleware's CSRF and origin checks refuse a cross-site request, so a page elsewhere can't
+  use the user's recent-authentication window to burn the allowance. 5 per user and 20 per IP
   and hour, every request counted.
 - ``POST /api/account/delete {confirm_email}``: 400 ``confirmation_mismatch`` unless the typed
   address is the account's; otherwise open jobs end, credits settle, the account goes (204) and
@@ -40,8 +42,8 @@ def ledger(request: Request) -> quota.MeteredLedger:
     return quota.MeteredLedger(quota.Bounds.from_settings(request.app.state.settings))
 
 
-@router.get("/export", responses={403: {}, 404: {}, 429: {}})
-async def get_export(
+@router.post("/export", responses={403: {}, 404: {}, 429: {}})
+async def post_export(
     request: Request, ctx: Annotated[UserContext, Depends(auth.require_recent_auth)]
 ) -> Response:
     attempt = await request.app.state.limiter.begin(

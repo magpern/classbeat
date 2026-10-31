@@ -1,4 +1,4 @@
-"""M6 security review SR-01 (#351; threat model T102): a cap on the request body of every web route.
+"""M6 security review SR-01 (#351; threat model T103): a cap on the request body of every web route.
 
 ``classbeat.bodylimit.BodyLimit`` refuses a body over 64 KiB with a fixed 413 before any session,
 CSRF or database work, by ``Content-Length`` without reading a byte and otherwise by counting what

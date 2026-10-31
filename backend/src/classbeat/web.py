@@ -14,6 +14,7 @@ from sqlalchemy import text
 
 # saving registers save_workout (SV1); playlists the Spotify writes for Check again (OP1)
 from classbeat import __version__, auth, playlists, quota, saving, songs
+from classbeat.account import erase
 from classbeat.account.routes import router as account_router
 from classbeat.admin import routes as admin_routes
 from classbeat.admin.db import AdminDb
@@ -116,6 +117,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             app.state.session_factory = create_session_factory(engine)
             # Refuses to start without a valid connection_kek, or with a key swapped under an
             # unchanged id (ADR 0004 section 2).
+            # The operator's delete of an account ends the target's jobs through this value
+            # (ADR 0014 section 3); the admin package does not import the jobs code (guard 11).
+            app.state.end_account_jobs = erase.make_job_ender(
+                app.state.session_factory,
+                quota.MeteredLedger(quota.Bounds.from_settings(settings)),
+            )
             app.state.keyring = await load_keyring(
                 app.state.session_factory, settings.connection_kek_id
             )

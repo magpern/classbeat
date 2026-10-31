@@ -1,4 +1,4 @@
-"""A cap on the request body of every web route (M6 security review SR-01, #351; threat model T102).
+"""A cap on the request body of every web route (M6 security review SR-01, #351; threat model T103).
 
 ``BodyLimit`` is a plain ASGI middleware, installed inside ``SecurityHeaders`` (so its refusal
 carries the security headers) and outside ``AuthMiddleware`` and everything else, so a body is

@@ -170,7 +170,7 @@ docker compose -f compose.prod.yaml exec web python -m classbeat admin grant you
 ## 8a. Request body size (every proxy in front of the app)
 
 The app refuses a request body over 64 KiB with 413 on every route (`classbeat.bodylimit`, #351,
-threat model T102), but a proxy should stop an oversized body first so it never reaches the app's
+threat model T103), but a proxy should stop an oversized body first so it never reaches the app's
 network buffers. Caddy does (`request_body { max_size 1MB }` in the `Caddyfile`). **Any other proxy
 needs the same cap, and the home beta behind SWAG does:** SWAG is nginx and ships
 `client_max_body_size 0` (unlimited). In its `nginx.conf` or the site's proxy config set
