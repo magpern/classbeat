@@ -263,6 +263,17 @@ SELECT
           JOIN pg_catalog.pg_proc f ON f.oid = m[1]::oid
          WHERE f.pronamespace = 'pg_catalog'::regnamespace
            AND f.proname IN (__SQL_TEXT_BUILTINS__)
+        ORDER BY 1),
+    ARRAY(
+        SELECT __GUARD_FUNCTION__
+          FROM pg_catalog.pg_proc p JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+         WHERE coalesce(__GUARD_FUNCTION__ IN (__GUARD_FUNCTIONS__), false)
+        UNION ALL
+        SELECT __GUARD_TRIGGER__
+          FROM pg_catalog.pg_trigger t JOIN pg_catalog.pg_class c ON c.oid = t.tgrelid
+          JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+         WHERE NOT t.tgisinternal
+           AND coalesce(__GUARD_TRIGGER__ IN (__GUARD_TRIGGERS__), false)
         ORDER BY 1)
 """.replace("__SQL_TEXT_BUILTINS__", ", ".join(f"'{name}'" for name in SQL_TEXT_BUILTINS))
     .replace("__GUARD_FUNCTION__", GUARD_FUNCTION_SIGNATURE)
@@ -272,14 +283,14 @@ SELECT
 )
 # 16384 is FirstNormalObjectId: below it is only what initdb created (pg_catalog, information_schema
 # and the two rules of the pg_settings view). Anything at or above it, in any schema, is user-made.
-COLUMN_COUNT = 7
+COLUMN_COUNT = 8
 
 
 def queue_problems(row: Sequence[Any] | None) -> list[str]:
     """Problems for one ``QUEUE_QUERY`` row; empty when the queue matches ADR 0005 section 3."""
     if row is None or len(row) != COLUMN_COUNT:
-        raise ValueError("the queue query must return seven columns")
-    attributes, memberships, settings, dependencies, privileges, functions, foreign = row
+        raise ValueError("the queue query must return eight columns")
+    attributes, memberships, settings, dependencies, privileges, functions, foreign, guards = row
     if attributes is None:
         return [f"the role {QUEUE_ROLE} does not exist (run docker/postgres/queue/20-queue.sql)"]
     found: list[str] = []
@@ -301,6 +312,14 @@ def queue_problems(row: Sequence[Any] | None) -> list[str]:
             "user-defined functions, operators, triggers or rules, or expressions calling a "
             "built-in that runs SQL text, exist besides the queue functions (ADR 0005 section 3): "
             + ", ".join(foreign)
+        )
+    # The M5 guard triggers must be there too, not only allowed (review of #233): a dropped or
+    # disabled ledger trigger would let maint release a reservation.
+    expected_guards = sorted([*guard_function_signatures(), *guard_trigger_signatures()])
+    if sorted(guards) != expected_guards:
+        found.append(
+            "the M5 guard triggers (credit_ledger_guard, admin_audit_guard) are missing or differ "
+            "from their pinned definition (ADR 0005 section 3, amendment of 2026-10-30)"
         )
     by_name: dict[str, list[list[str]]] = {}
     for item in functions:
