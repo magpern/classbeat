@@ -17,7 +17,7 @@ GitHub hold the detail.
 | M3c | Eval suite, OpenAI and DeepSeek adapters | done technically (on replayed providers, #219): [ADR 0012](adr/0012-eval-suite-and-model-providers.md); the owner's live steps are in [docs/runbooks/m3c-model-enable.md](runbooks/m3c-model-enable.md) |
 | M5 | Tiers, quotas, codes, admin | done technically, on fakes, once this E2E PR (#228) is merged (the security suite #227 is in) ([ADR 0011](adr/0011-tiers-quotas-and-admin.md)); issues in milestone "M5 Tiers and admin". Live activation is the owner's |
 | MU | Night Studio UI (ADR 0013) | design accepted 2026-10-30 ([ADR 0013](adr/0013-ui-design-night-studio.md), roadmap Amendment 8); issues #242, #243, #246 to #251, #253 to #255; runs beside M4 and M5, done before M6 |
-| M6 | Security review, backups, GDPR, VPS | in progress, **not done**: the automated security matrices (#339: log secrecy, ciphertext-only dump, 403 and 404 route matrices) are in review; still to do: the end-to-end security review, backups and restore. **VPS configuration ready, not deployed** (#341): `compose.prod.yaml`, `Caddyfile`, [vps-deploy.md](runbooks/vps-deploy.md), checked locally only (see the runbook's "Local smoke"); the deploy, DNS, TLS, server, mail account and secrets are the owner's steps. GDPR export and delete is in review ([ADR 0014](adr/0014-account-export-and-deletion.md), #337). The independent security review and the backup restore drill are not done |
+| M6 | Security review, backups, GDPR, VPS | in progress, **not done**: the automated security matrices (#339: log secrecy, ciphertext-only dump, 403 and 404 route matrices) are in review; still to do: the end-to-end security review, backups and restore. **VPS configuration ready, not deployed** (#341): `compose.prod.yaml`, `Caddyfile`, [vps-deploy.md](runbooks/vps-deploy.md), checked locally only (see the runbook's "Local smoke"); the deploy, DNS, TLS, server, mail account and secrets are the owner's steps. GDPR export and delete is in review ([ADR 0014](adr/0014-account-export-and-deletion.md), #337). The independent security review and the backup restore drill are not done. **Backups, in review (#338):** backup and restore scripts, a restore drill (run locally and in the `e2e` job) and [runbook](runbooks/backup-restore.md); the schedule and an off-host copy on the VPS are not done |
 | M7 | Commercial (deferred) | deferred |
 
 ## Now
@@ -209,6 +209,13 @@ GitHub hold the detail.
       provider re-authentication (#291); the delete-class confirmation scroll and focus (#301); Z1 to Z7 label
       tests (#301); CSP and Referrer-Policy on an unhandled 500 (#293); a test for the QR attribute allow-list
       (#293). Left open from it: the song strip's start times against the analysed music (needs a backend field).
+- **M6, rate limit on the MOWL playlist listing (#354, SR-05 of the security review, in review, not merged):**
+  `GET /api/music/mowl-playlists` now uses the fixed-window limiter of the other provider-calling routes: 30 per
+  user and 60 per IP per 10 minutes, every request counts, a refusal (429 `rate_limited` with `Retry-After`) comes
+  before the connection is opened and before any MOWL call; a parallel test shows the limit cannot be overshot.
+  Other provider-calling GET routes checked: `GET /oauth/{provider}/callback` was already limited per IP
+  (`OAUTH_IP`); `GET /spotify/callback` only exchanges a single-use `state` that a limited `POST /api/spotify/start`
+  created, so it is bounded by that limit; the remaining GET routes read the database only. M6 is **not done**.
 - **M6, GDPR export and delete (#337, in review, not merged):** [ADR 0014](adr/0014-account-export-and-deletion.md),
   threat model T98 to T100. M6 is **not done**; only this item of its "done when" is built. Checklist:
   - [x] `GET /api/account/export` (one JSON file of the user's own rows, connections as status only, no
@@ -245,6 +252,12 @@ GitHub hold the detail.
   (three parallel 200 MB posts peaked at about 111 MiB) and the sender is refused with 413 and cut off early. **The home beta behind SWAG needs `client_max_body_size 1m` at the
   proxy** (runbook section 8a): that is the owner's configuration and is not done. Still open: SR-02 (#352) and the
   rest of the review's findings, backups and restore, the VPS.
+- **M6, web outbound allowlist and redirects (#353, SR-03 of the security review, in review, not merged):** the web
+  process now installs an allowlisted urllib opener at start (`python -m classbeat`; `api.mowl.com` and `api.spotify.com`,
+  `https` on 443, no environment proxy, a redirect only to the same host), so the MOWL token cannot follow a redirect to another host; the
+  OAuth sign-in clients no longer read the environment or follow redirects. Tests use fake upstreams that record what
+  each host receives. Threat model T19 now says what is enforced. **Not done:** no host allowlist for the OAuth
+  sign-in clients or the mail relay, and no network-level egress rule (SR-04). M6 is **not done**.
 - Releases: v0.1.0 (cut partway through M0); v0.2.0 is not cut yet (deferred to save Actions quota). Image
   `ghcr.io/magpern/classbeat`, private.
 

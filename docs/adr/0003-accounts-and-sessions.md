@@ -440,6 +440,8 @@ Fixed windows are counted in `rate_limits` with one upsert per check. There is n
 - **IPv6:** IPv4-mapped addresses are unmapped first; IPv6 is bucketed by its /64 prefix.
 - **Bounded hashing:** argon2 runs in a bounded thread pool (`CLASSBEAT_PASSWORD_HASH_WORKERS`,
   default 4). A request that waits more than 5 s for a worker gets 503.
+- **Provider-calling routes** are limited too: MOWL connect (above), Spotify connect start, and
+  `GET /api/music/mowl-playlists` (30 per user and 60 per IP per 10 minutes, every request counts; #354).
 - **When a limit trips:** the request gets 429 with `Retry-After`. There is no permanent lockout.
 - **Client IP:** the peer address. When the peer is in `CLASSBEAT_TRUSTED_PROXIES` (Caddy on the
   VPS; empty by default), it is the right-most `X-Forwarded-For` entry that is not a trusted
