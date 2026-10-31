@@ -22,6 +22,7 @@ from typing import Any
 import pytest
 from sqlalchemy import event, text
 from sqlalchemy.engine import Connection, make_url
+from sqlalchemy.exc import OperationalError
 
 from authtools import Env, running_env
 from classbeat.auth.accounts import use_invite
@@ -121,6 +122,52 @@ async def test_a_disable_that_meets_a_consume_in_flight_waits_and_answers_invite
         {"i": invite_id},
     ).one()
     assert tuple(used) == (True, True)  # used, and its expiry untouched by the disable
+
+
+async def test_a_disable_between_the_consumes_read_and_its_write_cannot_slip_in(
+    env: Env, make_actor: Any, superuser: Connection
+) -> None:
+    """The window inside ``use_invite``: right after its read of the invite, a disable runs on
+    another connection. With the read ``FOR UPDATE`` the disable cannot take the row (it times
+    out here) and the invite ends used, not disabled; without it the disable would commit and
+    the consume's write would still mark the disabled invite used."""
+    actor = await stepped_admin(env, make_actor)
+    invite_id = uuid.UUID((await actor.post(INVITES, {"expires_days": 7})).json()["invite"]["id"])
+    outcome: list[str] = []
+    other = superuser.engine.connect().execution_options(isolation_level="AUTOCOMMIT")
+
+    def between(_conn: Any, _cursor: Any, statement: str, *_: Any) -> None:
+        if outcome or not statement.lstrip().startswith("SELECT invites.id"):
+            return
+        other.execute(text("SET lock_timeout = '300ms'"))
+        try:
+            other.execute(
+                text(
+                    "UPDATE invites SET expires_at = created_at "
+                    "WHERE id = :i AND used_at IS NULL AND expires_at > now()"
+                ),
+                {"i": invite_id},
+            )
+            outcome.append("disabled")
+        except OperationalError:
+            outcome.append("blocked")
+
+    try:
+        async with env.db() as confirm:
+            engine = confirm.get_bind().engine
+            event.listen(engine, "after_cursor_execute", between)
+            try:
+                assert await use_invite(confirm, invite_id) is True
+            finally:
+                event.remove(engine, "after_cursor_execute", between)
+    finally:
+        other.close()
+    assert outcome == ["blocked"]
+    row = superuser.execute(
+        text("SELECT used_at IS NOT NULL, expires_at > created_at FROM invites WHERE id = :i"),
+        {"i": invite_id},
+    ).one()
+    assert tuple(row) == (True, True)  # used, never also disabled
 
 
 async def test_use_invite_refuses_a_used_an_expired_and_an_unknown_invite(
