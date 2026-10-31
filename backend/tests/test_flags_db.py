@@ -2,6 +2,7 @@
 the password and OAuth paths, ``GET /api/settings/public`` and the song-picking admit. The rows
 are written as the superuser, as ``classbeat_maint`` would. Fakes only."""
 
+import asyncio
 import json
 from collections.abc import Iterator
 from contextlib import contextmanager
@@ -15,8 +16,9 @@ from authtools import Env, running_env
 from classbeat import auth, songs
 from flows import PASSWORD, Browser, reason
 from jobtools import engine_for
-from oauthtools import CLIENT_IDS, location, sign_in_with
+from oauthtools import CLIENT_IDS, location, sign_in_with, start
 from oidcfake import FakeProviders
+from revisesongtools import change, picked
 from smtpfake import SmtpFake
 
 PUBLIC = "/api/settings/public"
@@ -191,6 +193,98 @@ async def test_the_database_at_invite_tightens_an_open_environment_for_oauth(
             assert await env.scalar("SELECT count(*) FROM users") == 0
 
 
+async def test_a_flow_started_under_invite_is_refused_at_the_callback_once_closed_is_stored(
+    clean_auth: None, app_database_url: str, database_url: str
+) -> None:
+    """The callback is the authoritative gate: the flow carries a valid invite from its start,
+    then ``closed`` is stored before the provider returns. Nothing is created."""
+    fake = FakeProviders(CLIENT_IDS)
+    async with running_env(
+        app_database_url,
+        signup_mode="invite",
+        oauth_google_client_id=CLIENT_IDS["google"],
+        oauth_google_client_secret=fake.secret,
+    ) as env:
+        env.app.state.oauth.transport = fake.transport
+        code = await invite(env)
+        browser = Browser(env)
+        started = await start(browser, "google", "sign_in", invite_code=code)
+        assert started.status_code == 200
+        assert await env.scalar("SELECT invite_id IS NOT NULL FROM oauth_flows") is True
+        with stored(database_url, signup_mode="closed"):
+            response = await browser.get(fake.complete(started.json()["authorization_url"]))
+        assert location(response) == "/signin?oauth=invite_required"
+        assert not browser.signed_in
+        assert await env.scalar("SELECT count(*) FROM users") == 0
+        assert await env.scalar("SELECT count(*) FROM pending_signups") == 0
+        assert await env.scalar("SELECT used_at IS NULL FROM invites") is True
+
+
+# --- pending sign-ups: closed stops confirmation, a hand-off's invite is always consumed ------
+
+
+async def hand_off_row(env: Env, fake: FakeProviders, smtp: SmtpFake, code: str) -> tuple[Any, str]:
+    """A provider hand-off with an invite, its email filled in: the browser and the mail token."""
+    browser = Browser(env)
+    response = await sign_in_with(browser, fake, "microsoft", invite=code)
+    assert location(response) == "/signin?oauth=email_needed"
+    sent = await browser.post("/api/auth/oauth/pending/email", {"email": "new@example.com"})
+    assert sent.status_code == 202
+    await asyncio.sleep(0.3)
+    [mail] = smtp.to("new@example.com")
+    return browser, mail.token()
+
+
+def provider_env(
+    app_database_url: str, fake: FakeProviders, smtp: SmtpFake, **extra: object
+) -> Any:
+    return running_env(
+        app_database_url,
+        smtp_host="127.0.0.1",
+        smtp_port=smtp.port,
+        smtp_tls="none",
+        oauth_microsoft_client_id=CLIENT_IDS["microsoft"],
+        oauth_microsoft_client_secret=fake.secret,
+        **extra,
+    )
+
+
+async def test_a_provider_confirmation_is_refused_while_closed_and_keeps_its_row_and_invite(
+    clean_auth: None, app_database_url: str, database_url: str, smtp: SmtpFake
+) -> None:
+    fake = FakeProviders(CLIENT_IDS)
+    async with provider_env(app_database_url, fake, smtp) as env:
+        env.app.state.oauth.transport = fake.transport
+        browser, token = await hand_off_row(env, fake, smtp, await invite(env))
+        with stored(database_url, signup_mode="closed"):
+            refused = await browser.post("/api/auth/signup/confirm", {"token": token})
+            assert (refused.status_code, reason(refused)) == (403, "signups_closed")
+            assert await env.scalar("SELECT count(*) FROM pending_signups") == 1
+            assert await env.scalar("SELECT count(*) FROM users") == 0
+            assert await env.scalar("SELECT used_at IS NULL FROM invites") is True
+        # Sign-ups reopen before the row expires: it confirms.
+        assert (await browser.post("/api/auth/signup/confirm", {"token": token})).status_code == 200
+        assert await env.scalar("SELECT count(*) FROM users") == 1
+        assert await env.scalar("SELECT used_at IS NOT NULL FROM invites") is True
+
+
+async def test_a_hand_off_that_carried_an_invite_consumes_it_whatever_the_mode_is_by_then(
+    clean_auth: None, app_database_url: str, database_url: str, smtp: SmtpFake
+) -> None:
+    fake = FakeProviders(CLIENT_IDS)
+    async with provider_env(app_database_url, fake, smtp, signup_mode="open") as env:
+        env.app.state.oauth.transport = fake.transport
+        code = await invite(env)
+        with stored(database_url, signup_mode="invite"):  # the effective mode is invite
+            browser, token = await hand_off_row(env, fake, smtp, code)
+            assert await env.scalar("SELECT invite_id IS NOT NULL FROM pending_signups") is True
+        # The stored row is gone: the effective mode is the environment's, open.
+        assert (await browser.post("/api/auth/signup/confirm", {"token": token})).status_code == 200
+        assert await env.scalar("SELECT count(*) FROM users") == 1
+        assert await env.scalar("SELECT used_at IS NOT NULL FROM invites") is True
+        assert await env.scalar("SELECT used_by IS NOT NULL FROM invites") is True
+
+
 # --- song picking -----------------------------------------------------------------------------
 
 
@@ -206,7 +300,11 @@ def refused(response: Any) -> bool:
 
 
 def take_feature(songenv: Any, rider: Any) -> None:
-    songenv.sql("DELETE FROM entitlements WHERE owner_id = :o", o=rider.user_id)
+    """Remove the ``song_picking`` feature entitlement only; a plan grant stays."""
+    songenv.sql(
+        "DELETE FROM entitlements WHERE owner_id = :o AND 'song_picking' = ANY (features)",
+        o=rider.user_id,
+    )
 
 
 @pytest.fixture
@@ -255,3 +353,21 @@ class TestSongPicking:
         put(songenv, "whatever")
         assert (await with_feature.create()).status_code == 201
         assert refused(await without.create())
+
+    async def test_revise_songs_follows_the_flag_too(self, songenv: Any) -> None:
+        rider = await songenv.rider()
+        class_id, base, _ = await picked(songenv, rider)  # admitted while it had the feature
+        jobs = songenv.sql("SELECT count(*) FROM jobs").scalar_one()
+        take_feature(songenv, rider)
+        # Under the default ``granted`` a user without the feature is refused, with no job.
+        assert refused(await change(rider, class_id, base))
+        assert songenv.sql("SELECT count(*) FROM jobs").scalar_one() == jobs
+        # ``off`` refuses a user who has the feature.
+        songenv.sql(
+            "INSERT INTO entitlements (owner_id, features, source) "
+            "VALUES (:o, ARRAY['song_picking'], 'grant')",
+            o=rider.user_id,
+        )
+        put(songenv, "off")
+        assert refused(await change(rider, class_id, base))
+        assert songenv.sql("SELECT count(*) FROM jobs").scalar_one() == jobs

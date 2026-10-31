@@ -134,9 +134,11 @@ class _Refused(Exception):
 async def confirm_sign_up(
     body: ConfirmIn, request: Request, response: Response, background: BackgroundTasks
 ) -> Created:
-    # Deliberately ignores signup_mode: a pending sign-up made while sign-ups were open (or
-    # invited) stays confirmable until it expires, even after a switch to "closed"; its invite
-    # was valid when it was made and is still consumed at confirmation.
+    # While the effective sign-up mode is "closed" (the emergency brake, ADR 0011 section 7,
+    # amendment 2026-10-31) no pending sign-up is confirmed, password or provider: 403
+    # signups_closed. The pending row and its invite stay, so it can still be confirmed if sign-ups
+    # reopen before it expires. "invite" and "open" do not matter here: the row was admitted when
+    # it was made, and its invite is consumed at confirmation.
     ip = request_ip(request)
     digest = token_hash(body.token)
     async with system_session(factory(request)) as db:
@@ -158,6 +160,9 @@ async def confirm_sign_up(
         # Unknown or expired token: only the IP is counted (no account to name).
         await reserve(request, [Bucket(SIGN_IN_IP, bucket_ip(ip))])
         raise refuse(400, "invalid_token")
+    async with system_session(factory(request)) as db:
+        if await flags.signup_mode(db, request.app.state.settings.signup_mode) == "closed":
+            raise refuse(403, "signups_closed")
     if row.provider is not None:
         await confirm_provider_signup(request, response, background, digest, row)
         return Created()

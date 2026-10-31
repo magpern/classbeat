@@ -204,10 +204,12 @@ async def _session_for(db: AsyncSession, req: Request, user_id: UUID) -> Outcome
     return Outcome("ok", issued=issued, device_token=device, next="signed_in")
 
 
-async def consume_invite(db: AsyncSession, invite_id: UUID | None, mode: str) -> None:
-    """The conditional ``UPDATE`` of a password sign-up. Raises ``Refused('invite_invalid')``
-    when the invite is gone; the caller's savepoint rolls everything back."""
-    if mode == "open" or invite_id is None:
+async def consume_invite(db: AsyncSession, invite_id: UUID | None) -> None:
+    """The conditional ``UPDATE`` of a provider sign-up. An invite the flow or hand-off carried
+    is consumed whatever the sign-up mode is by then, so it cannot be used again. Raises
+    ``Refused('invite_invalid')`` when the invite is gone; the caller's savepoint rolls
+    everything back."""
+    if invite_id is None:
         return
     used = await db.execute(
         update(invites)
@@ -234,17 +236,16 @@ async def create_provider_account(
 ) -> UUID:
     """One savepoint: consume the invite, create the user (verified) and the identity.
     Raises ``Refused`` with ``invite_invalid`` or ``account_exists``; nothing is left behind."""
-    mode = await flags.signup_mode(db, settings.signup_mode)
     try:
         async with db.begin_nested():
-            await consume_invite(db, invite_id, mode)
+            await consume_invite(db, invite_id)
             user_id = await create_user(db, email)
             await db.execute(
                 insert(identities).values(
                     user_id=user_id, provider=provider, subject=subject, email_at_link=email
                 )
             )
-            if invite_id is not None and mode != "open":
+            if invite_id is not None:
                 await db.execute(
                     update(invites).where(invites.c.id == invite_id).values(used_by=user_id)
                 )
@@ -282,13 +283,12 @@ async def _hand_off(db: AsyncSession, req: Request) -> Outcome:
             )
         )
     browser = secrets.token_urlsafe(32)
-    mode = await flags.signup_mode(db, req.settings.signup_mode)
     await db.execute(
         insert(pending_signups).values(
             provider=req.flow.provider,
             subject=req.identity.subject,
             browser_hash=token_hash(browser),
-            invite_id=req.flow.invite_id if mode != "open" else None,
+            invite_id=req.flow.invite_id,
             expires_at=func.now() + HANDOFF_LIFETIME,
         )
     )
