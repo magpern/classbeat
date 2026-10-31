@@ -76,9 +76,9 @@ ACTIONS: dict[str, type[Params]] = {
     "invite.list": CodesPageParams,
     "invite.create": InviteCreateParams,
     "invite.disable": CodesTargetParams,
-    "redeem_code.list": CodesPageParams,
-    "redeem_code.create": RedeemCodeCreateParams,
-    "redeem_code.disable": CodesTargetParams,
+    "code.list": CodesPageParams,
+    "code.create": RedeemCodeCreateParams,
+    "code.disable": CodesTargetParams,
 }
 
 

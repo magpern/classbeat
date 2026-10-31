@@ -174,7 +174,7 @@ async def test_unknown_ids_are_404_and_audited(
         assert response.headers["cache-control"] == "no-store"
     assert audit(superuser, actor.user_id) == [
         ("invite.disable", "refused", "not_found"),
-        ("redeem_code.disable", "refused", "not_found"),
+        ("code.disable", "refused", "not_found"),
     ]
     kinds = superuser.execute(
         text("SELECT target_kind, target_id FROM admin_audit ORDER BY created_at, id")
@@ -334,13 +334,13 @@ async def test_a_created_code_redeems_through_pl1_and_a_disabled_one_is_code_inv
         == 1
     )
     assert audit(superuser, actor.user_id) == [
-        ("redeem_code.create", "ok", None),
-        ("redeem_code.list", "ok", None),
-        ("redeem_code.disable", "ok", None),
-        ("redeem_code.disable", "refused", "already_disabled"),
+        ("code.create", "ok", None),
+        ("code.list", "ok", None),
+        ("code.disable", "ok", None),
+        ("code.disable", "refused", "already_disabled"),
     ]
     params = superuser.execute(
-        text("SELECT params FROM admin_audit WHERE action = 'redeem_code.create'")
+        text("SELECT params FROM admin_audit WHERE action = 'code.create'")
     ).scalar_one()
     assert set(params) == {"plan_id", "features", "grant_days", "max_redemptions", "expires_at"}
 
@@ -421,9 +421,9 @@ async def test_an_unknown_plan_and_a_past_expiry_are_refused_and_audited(
     assert features_only.json()["redeem_code"]["plan_id"] is None
     assert superuser.execute(text("SELECT count(*) FROM redeem_codes")).scalar_one() == 1
     assert audit(superuser, actor.user_id) == [
-        ("redeem_code.create", "refused", "unknown_plan"),
-        ("redeem_code.create", "refused", "expires_in_past"),
-        ("redeem_code.create", "ok", None),
+        ("code.create", "refused", "unknown_plan"),
+        ("code.create", "refused", "expires_in_past"),
+        ("code.create", "ok", None),
     ]
 
 

@@ -275,7 +275,7 @@ async def list_redeem_codes(
     request: Request, actor: AdminActor, offset: Offset = 0, limit: Limit = 50
 ) -> RedeemCodePage:
     params = {"offset": offset, "limit": limit}
-    async with admin_session(_db(request), actor, "redeem_code.list", params=params) as session:
+    async with admin_session(_db(request), actor, "code.list", params=params) as session:
         rows = (await session.execute(_LIST_CODES, {"offset": offset, "limit": limit + 1})).all()
         page = await _codes_out(session, list(rows[:limit]))
     return RedeemCodePage(
@@ -298,7 +298,7 @@ async def create_redeem_code(
     async with admin_session(
         _db(request),
         actor,
-        "redeem_code.create",
+        "code.create",
         write=True,
         target=Target(kind="redeem_code", id=str(code_id)),
         params=params,
@@ -336,7 +336,7 @@ async def disable_redeem_code(request: Request, actor: AdminActor, code_id: UUID
     async with admin_session(
         _db(request),
         actor,
-        "redeem_code.disable",
+        "code.disable",
         write=True,
         target=Target(kind="redeem_code", id=str(code_id)),
     ) as session:
