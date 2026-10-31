@@ -3,21 +3,20 @@
 The change request needs recent authentication (and step-up with a confirmed TOTP) and answers
 the same whether or not the new address is in use; only the mail differs. The confirmation needs
 a signed-in session of the user the token was issued to, so a victim clicking a link from
-someone else's account changes nothing. Deleting the account deletes the ``users`` row; the
-foreign keys cascade.
+someone else's account changes nothing. Account deletion moved to ``classbeat.account`` (ADR 0014:
+it needs a typed confirmation).
 """
 
 from typing import Annotated
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, Response
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
-from sqlalchemy import delete, select, update
+from sqlalchemy import select, update
 from sqlalchemy.exc import IntegrityError
 
 from classbeat.auth import mails
 from classbeat.auth.accounts import find_user
 from classbeat.auth.clientip import bucket_ip
-from classbeat.auth.cookies import clear_session_cookie
 from classbeat.auth.deps import current_session, request_ip, require_recent_auth, require_user
 from classbeat.auth.events import record_event
 from classbeat.auth.flowtools import EmailAddress, factory, mailer, reserve
@@ -147,16 +146,3 @@ async def confirm_email_change(
         raise refuse(exc.status, exc.reason) from None
     background.add_task(send_logged, mailer(request), mails.email_changed_notice(old_email))
     return Changed(email=new_email)
-
-
-@router.delete("/account", status_code=204)
-async def delete_account(
-    request: Request,
-    response: Response,
-    ctx: Annotated[UserContext, Depends(require_recent_auth)],
-) -> None:
-    """Delete the user (recent auth, and step-up with a confirmed TOTP); rows cascade."""
-    async with system_session(factory(request)) as db:
-        await record_event(db, "account_deleted", ip=request_ip(request))
-        await db.execute(delete(users).where(users.c.id == ctx.user_id))
-    clear_session_cookie(response)

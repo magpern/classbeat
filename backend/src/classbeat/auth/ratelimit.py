@@ -62,6 +62,10 @@ ADMIN_USER = Limit("admin", "account", 60, 60)
 # a success too, so the route can't be used to try codes faster than this.
 REDEEM_USER = Limit("redeem", "account", 10, 3600)
 REDEEM_IP = Limit("redeem", "ip", 30, 3600)
+# ADR 0014 section 2: the data export reads every owned table, so it is limited per user and
+# hour (every request counts) and per IP.
+EXPORT_USER = Limit("export", "account", 5, 3600)
+EXPORT_IP = Limit("export", "ip", 20, 3600)
 
 OnSuccess = Literal["decrement", "delete"]
 
@@ -245,3 +249,8 @@ def admin_buckets(user_id: str) -> list[Bucket]:
 def redeem_buckets(user_id: str, ip: str) -> list[Bucket]:
     """A redeem-code attempt (ADR 0011 section 2): per user and per IP."""
     return [Bucket(REDEEM_USER, user_id), Bucket(REDEEM_IP, bucket_ip(ip))]
+
+
+def export_buckets(user_id: str, ip: str) -> list[Bucket]:
+    """A data export (ADR 0014 section 2): per user and per IP."""
+    return [Bucket(EXPORT_USER, user_id), Bucket(EXPORT_IP, bucket_ip(ip))]
