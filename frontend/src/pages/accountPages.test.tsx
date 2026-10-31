@@ -179,12 +179,13 @@ describe('account page', () => {
       return_to: string
     }
     expect(sent.purpose).toBe('reauth')
-    expect(sent.return_to).toBe('/account?oauth=reauthed')
+    expect(sent.return_to).toBe('/account?oauth=reauthed#security') // the tab is carried through
 
     // The page the provider sends the user back to shows the hint.
     cleanup()
     renderAt(sent.return_to)
     expect(await screen.findByText(/Repeat the change you were making/)).toBeInTheDocument()
+    expect(screen.getByRole('tab', { name: 'Sign-in and security' })).toHaveAttribute('aria-selected', 'true')
   })
 
   it('does not treat inherited object keys as outcome codes', async () => {

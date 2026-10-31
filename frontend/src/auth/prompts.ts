@@ -22,10 +22,13 @@ export function useGuard(): Guard {
   return guard
 }
 
-/** Appended to the return address of a provider re-authentication; AccountPage shows the hint. */
-export function reauthReturnTo(path: string, search: string): string {
+/**
+ * Appended to the return address of a provider re-authentication; AccountPage shows the hint.
+ * The fragment is kept, so the Account tab the user was on (`#data`) is the one they come back to.
+ */
+export function reauthReturnTo(path: string, search: string, hash = ''): string {
   const params = new URLSearchParams(search)
   params.set('oauth', 'reauthed')
-  return `${path}?${params.toString()}`
+  return `${path}?${params.toString()}${hash}`
 }
 
