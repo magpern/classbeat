@@ -32,7 +32,7 @@ def applied_revisions(database_url: str) -> list[str]:
 
 def test_the_revisions_form_one_line() -> None:
     script = ScriptDirectory.from_config(alembic_config())
-    assert script.get_heads() == ["0013_spotify_quota"]
+    assert script.get_heads() == ["0014_plan_route_keys"]
     assert script.get_base() == "0001_baseline"
 
 
@@ -53,7 +53,7 @@ def test_upgrade_head_then_downgrade_base(
     config = alembic_config()
     try:
         command.upgrade(config, "head")
-        assert applied_revisions(database_url) == ["0013_spotify_quota"]
+        assert applied_revisions(database_url) == ["0014_plan_route_keys"]
         command.downgrade(config, "base")
         assert applied_revisions(database_url) == []
     finally:
@@ -151,3 +151,24 @@ JOBS = [
     "model_eval_results",
     "model_routes",
 ]
+
+
+def test_0014_gives_each_plan_its_own_route_key_and_the_downgrade_restores_default(
+    owner_database_url: str, database_url: str
+) -> None:
+    engine = create_engine(database_url)
+
+    def keys() -> list[tuple[str, str]]:
+        with engine.connect() as connection:
+            rows = connection.execute(text("SELECT id, route_key FROM plans ORDER BY rank")).all()
+        return [(r[0], r[1]) for r in rows]
+
+    try:
+        with migrated(owner_database_url, "0013_spotify_quota"):
+            assert keys() == [("free", "default"), ("instructor", "default"), ("pro", "default")]
+            command.upgrade(alembic_config(), "0014_plan_route_keys")
+            assert keys() == [("free", "free"), ("instructor", "instructor"), ("pro", "pro")]
+            command.downgrade(alembic_config(), "0013_spotify_quota")
+            assert keys() == [("free", "default"), ("instructor", "default"), ("pro", "default")]
+    finally:
+        engine.dispose()

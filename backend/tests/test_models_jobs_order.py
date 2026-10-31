@@ -40,7 +40,7 @@ async def test_revise_draft_resolves_its_route_before_the_music_is_read(
 
     row = renv.denv.ops.row(job_id)
     assert (row.state, row.error_category) == ("failed", "model_config")
-    assert models.asked == [("default", "design")]
+    assert models.asked == [("pro", "design")]
     assert len(fake_mowl.requests) == requests  # pyright: ignore[reportAttributeAccessIssue]
     assert renv.denv.agent_runs(job_id) == []
 
@@ -56,7 +56,7 @@ async def test_the_pick_phase_resolves_the_songs_group_before_any_request(
     row = await songenv.run(job_id)
 
     assert (row.state, row.error_category) == ("failed", "model_config")
-    assert models.asked == [("default", "songs")]
+    assert models.asked == [("pro", "songs")]
     assert songenv.counts() == before  # no Spotify, no MOWL, no model turn
 
 
@@ -71,7 +71,7 @@ async def test_the_design_phase_resolves_the_design_group_before_any_request(
     row = await songenv.run(job_id)
 
     assert (row.state, row.error_category) == ("failed", "model_config")
-    assert models.asked == [("default", "design")]
+    assert models.asked == [("pro", "design")]
     assert songenv.counts() == before
 
 
@@ -90,7 +90,7 @@ async def test_change_songs_resolves_the_songs_group_before_any_request(
     row = await songenv.run(job_id)
 
     assert (row.state, row.error_category) == ("failed", "model_config")
-    assert models.asked == [("default", "songs")]
+    assert models.asked == [("pro", "songs")]
     assert songenv.counts() == before
 
 
@@ -106,7 +106,7 @@ async def test_the_revise_phase_of_change_songs_resolves_the_design_group_first(
     row = await songenv.run(job_id)
 
     assert (row.state, row.error_category) == ("failed", "model_config")
-    assert models.asked == [("default", "design")]
+    assert models.asked == [("pro", "design")]
     assert songenv.counts() == before
 
 

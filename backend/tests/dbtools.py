@@ -116,6 +116,8 @@ def truncate_auth(admin_url: str) -> None:
             # the migration's seed goes back in (the effective plan falls back to ``free``).
             if connection.execute(text("SELECT to_regclass('public.plans')")).scalar_one():
                 connection.execute(text(tiers_migration().PLAN_SEED))
+                # ... with the key migration 0014 gave each plan: its own id.
+                connection.execute(text("UPDATE plans SET route_key = id"))
     finally:
         engine.dispose()
 

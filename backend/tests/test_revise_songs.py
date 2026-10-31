@@ -108,7 +108,7 @@ async def test_changing_one_song_gives_a_new_playlist_and_a_revised_draft(
     # The song change's pick is the songs group, its revise the design group (one each).
     models = design.current_runtime().models  # pyright: ignore[reportOptionalMemberAccess]
     assert isinstance(models, FactoryModels)
-    assert models.asked[-2:] == [("default", "songs"), ("default", "design")]
+    assert models.asked[-2:] == [("pro", "songs"), ("pro", "design")]
     assert songenv.row(job_id).credit_state == "none"
     # The model was told the songs changed and never sent an id.
     sent = json.dumps([[str(t) for t in p.sent] for p in songenv.providers[-1:]])
