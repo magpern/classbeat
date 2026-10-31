@@ -23,7 +23,7 @@ from jobtools import engine_for
 from queue_guard import check_queue
 from role_guard import check_roles
 
-# The current body (0009 replaced 0008's), as the migration creates it.
+# The current body (0010 replaced 0008's), as the migration creates it.
 LEDGER_RESTORE = migration_module("m5_hardening").LEDGER_GUARD
 
 

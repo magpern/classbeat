@@ -11,7 +11,7 @@ QUEUE_DIGESTS: dict[str, str] = {
     "queue_unsettled": "d10ba360a070524788e466b18e35460a",
     "queue_stats": "e55e920eddc871afbb4d5b0780770158",
 }
-# The M5 guard trigger functions (migrations 0007 to 0009), from the migrated database. The same
+# The M5 guard trigger functions (migrations 0007 to 0010), from the migrated database. The same
 # digests are written into the queue check of docker/postgres/queue/20-queue.sql.
 GUARD_TRIGGER_DIGESTS: dict[str, str] = {
     "credit_ledger_guard": "3f35fac02d6276ef49d4980f49ba2861",

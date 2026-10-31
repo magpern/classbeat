@@ -1,3 +1,6 @@
+import { isSongKind } from './songs'
+import { pickStageLabel, songFailure } from './songMessages'
+
 // Plain sentences for a job's failure categories (ADR 0005 section 4) and stages. The category
 // code is never shown, and no provider or model text ever reaches these pages.
 
@@ -103,7 +106,11 @@ const FALLBACK: FailureText = {
 }
 
 /** The text of a failure category; `uncertain_write` has its own component. */
-export function failureText(category: string | null): FailureText {
+export function failureText(category: string | null, kind = ''): FailureText {
+  if (isSongKind(kind)) {
+    const song = songFailure(category)
+    if (song !== null) return song
+  }
   return category !== null && Object.hasOwn(FAILURES, category) ? FAILURES[category]! : FALLBACK
 }
 
@@ -118,6 +125,8 @@ const STAGES: Record<string, string> = {
 }
 
 export function stageLabel(stage: string | null): string {
+  const song = pickStageLabel(stage)
+  if (song !== null) return song
   return stage !== null && Object.hasOwn(STAGES, stage) ? STAGES[stage]! : 'Getting started'
 }
 

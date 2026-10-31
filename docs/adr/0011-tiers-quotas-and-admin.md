@@ -76,7 +76,7 @@ admin would be a ledger change the trigger refuses. After an admin's account is 
 columns keep a dangling admin id, which is an opaque UUID and no personal data.
 
 **Note (2026-10-31, #271): the database enforces the app's terms too.** Migration
-`0009_m5_hardening` makes three checks of `classbeat.plans` and the settle hold for any SQL run as
+`0010_m5_hardening` makes three checks of `classbeat.plans` and the settle hold for any SQL run as
 `classbeat_app`, not only for our code paths:
 - `entitlements_app_sources` also requires `starts_at <= now()` and an `ends_at` that is set and at
   most `now() + 366 days`, and for a trial a plan only (no code, no features) ranked at most
@@ -88,6 +88,20 @@ columns keep a dangling admin id, which is an opaque UUID and no personal data.
   (`redeemed_count = old + 1`, at most `max_redemptions`, not disabled or expired, no other column);
   every other role must leave the count as it is. ADR 0005 section 3's amendment of 2026-10-31
   admits it.
+
+Decided with it (Architect, 2026-10-31):
+- The settle-reason check is defence in depth and is enough. That the reason matches how the job
+  actually ended is application code's job (the settle reads the job's state): the app role can
+  update `jobs` anyway, so a database check of the job's state would add nothing against SQL run
+  as that role.
+- **Accepted risk:** the database does not check a code entitlement's plan, features or days
+  against its `redeem_codes` row. `classbeat.plans.redeem` enforces those terms; the database
+  enforces only the source and the 366-day ceiling, so SQL injected as the app role could add a
+  code entitlement of any plan or features for up to 366 days, naming any existing code.
+- No role other than the app may change `redeemed_count`, the owner and the superuser included.
+  A data migration that must correct counts disables the trigger inside that migration, as the
+  owner (`ALTER TABLE public.redeem_codes DISABLE TRIGGER redeem_codes_guard`, then `ENABLE`, in
+  the same transaction).
 
 `docker/postgres/init/10-roles.sql`, when run again after the migrations, now restores the grants
 of the table above after its blanket re-grant (before this note a re-run gave the app full DML on

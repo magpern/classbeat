@@ -34,7 +34,7 @@ REQUIRED_POLICIES: dict[str, set[tuple[str, str | None, str | None]]] = {
     # ADR 0011 section 1: the app role adds only code and trial entitlements; a ledger row is
     # inserted only as ``reserved`` and updated only from ``reserved`` to a settled state (the
     # trigger narrows that further by role).
-    # Migration 0009 (#271): it starts by now and ends within 366 days, and a trial is a plan
+    # Migration 0010 (#271): it starts by now and ends within 366 days, and a trial is a plan
     # only, ranked at most instructor.
     "entitlements": {
         (

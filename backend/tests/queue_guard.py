@@ -15,7 +15,7 @@ from classbeat.db.queue_check import QUEUE_FUNCTIONS, QUEUE_VERSION
 from classbeat.db.queue_digests import GUARD_TRIGGER_DIGESTS, QUEUE_DIGESTS
 
 QUEUE, APP, OWNER = "classbeat_queue", "classbeat_app", "classbeat_owner"
-# The M5 guard triggers of migrations 0007 and 0009 (ADR 0011 section 1): function = trigger
+# The M5 guard triggers of migrations 0007 and 0010 (ADR 0011 section 1): function = trigger
 # name -> (table, the events of a row-level BEFORE trigger). pg_trigger.tgtype bits: ROW 1,
 # BEFORE 2, INSERT 4, DELETE 8, UPDATE 16, TRUNCATE 32, INSTEAD 64.
 GUARD_TRIGGERS = {

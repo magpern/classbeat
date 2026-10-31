@@ -6,6 +6,7 @@ import copy
 import dataclasses
 import json
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
@@ -23,7 +24,7 @@ from classbeat.evals import checks, gate, suite
 from classbeat.evals.cases import load_cases
 from classbeat.evals.checks import run_checks, tss_bounds_for
 from classbeat.evals.music import build_music
-from classbeat.evals.pick import load_pick_cases, run_pick_case
+from classbeat.evals.pick import PickCaseResult, limits_check, load_pick_cases, run_pick_case
 from classbeat.evals.runner import (
     SuiteHeader,
     run_case,
@@ -37,16 +38,23 @@ from pickfake import CHOOSE_LIMITS, POOL_LIMITS
 from pickscripts import provider_for_case as pick_provider
 from smokescripts import good_draft
 from smokescripts import provider_for_case as design_provider
+from songscripts import provider_for as song_provider
+from suitescripts import provider_for_case as suite_provider
 
 # Each released suite_version and its digest. Append only: a released version's digest never
 # changes. Changing a case, a check, a threshold or the manifest: bump suite_version, set the
 # manifest's digest to ``suite.current_digest()`` and add the new pair here.
 RELEASED: dict[int, str] = {
     1: "beabe1887df6236e30bd4b040104281e78d1b02ee2d8adecca0bee32557651b5",
+    2: "77fecc25fc25fb081f40e0bae1b2b8e83cbd4a611d42fd346e3f3672b64befd4",
+    3: "2784a043380717f56842be5fd91517d801dea05a1db44ec9f4647b061bc6a383",
 }
 
 SUITE = load_suite()
 MANIFEST = SUITE.manifest
+SUITE_OWN = {p.stem for p in Path(suite.__file__).parent.glob("suite/*/*.json")}
+DESIGN_OWN = SUITE_OWN & set(SUITE.design_cases)
+SONG_OWN = SUITE_OWN & set(SUITE.song_cases)
 
 
 def released(version: int, digest: str) -> bool:
@@ -94,6 +102,7 @@ def _changed(edit: Any) -> str:
         lambda d, c, s, k: c["pick_30"]["catalogue"].update(size=11),
         lambda d, c, s, k: k.update({"checks.DURATION_TOLERANCE": 0.06}),  # a check constant
         lambda d, c, s, k: s.update({"checks.py": s["checks.py"] + "\n# a change\n"}),  # a check
+        lambda d, c, s, k: s.update({"runner.py": s["runner.py"] + "\n# a change\n"}),
         lambda d, c, s, k: d["rules"].update(pass_share=0.8),  # a threshold
         lambda d, c, s, k: d["groups"]["design"].update(median_cost_micros=750001),
         lambda d, c, s, k: d.update(zone7_tss_margin=0.2),
@@ -101,7 +110,8 @@ def _changed(edit: Any) -> str:
         lambda d, c, s, k: d.update(suite_version=d["suite_version"] + 1),
     ],
     ids=[
-        "case", "song_case", "check_constant", "check_source", "pass_share", "median_cost",
+        "case", "song_case", "check_constant", "check_source", "runner_source", "pass_share",
+        "median_cost",
         "zone7_margin", "category", "version",
     ],
 )  # fmt: skip
@@ -147,16 +157,18 @@ def test_the_check_constants_hold_every_upper_case_constant_of_the_check_modules
 
 def test_the_suite_holds_every_smoke_and_song_case_once_in_its_group() -> None:
     index = MANIFEST.case_index()
-    assert set(SUITE.design_cases) == {c.name for c in load_cases()}  # the 18
-    assert set(SUITE.song_cases) == {c.name for c in load_pick_cases()}  # the 3
-    assert len(index) == 21
+    assert set(SUITE.design_cases) == {c.name for c in load_cases()} | DESIGN_OWN
+    assert set(SUITE.song_cases) == {c.name for c in load_pick_cases()} | SONG_OWN
+    assert (len(DESIGN_OWN), len(SONG_OWN)) == (29, 8)  # #206 and #208
+    assert (len(SUITE.design_cases), len(SUITE.song_cases)) == (47, 11)
+    assert len(index) == 58
     assert all(index[n][1] == "design" for n in SUITE.design_cases)
     assert all(index[n][1] == "songs" for n in SUITE.song_cases)
     assert set(MANIFEST.categories) == set(suite.CATEGORY_GROUPS)
     assert {n for n, (cat, _) in index.items() if cat == "adversarial"} == {
         "adversarial_brief", "adversarial_music", "revise_adversarial_music", "injected_title",
     }  # fmt: skip
-    assert {n for n, (cat, _) in index.items() if cat == "revisions"} == {
+    assert {n for n, (cat, _) in index.items() if cat == "revisions"} >= {
         "revise_easier", "revise_more_sprints",
     }  # fmt: skip
 
@@ -276,15 +288,16 @@ async def _real_rows(repeat: int = 0) -> list[dict[str, Any]]:
     for name, case in sorted(SUITE.design_cases.items()):
         result = await run_case(
             case,
-            design_provider(case),
+            suite_provider(case) if name in SUITE_OWN else design_provider(case),
             CONFIG,
             repeat=repeat,
             zone7_tss_margin=MANIFEST.zone7_tss_margin,
         )
         rows.append(suite_row(result, SUITE.category_of(name)))
     for name, case in sorted(SUITE.song_cases.items()):
+        provider = song_provider(case) if case.quality else pick_provider(case)
         result, _, _ = await run_pick_case(
-            case, pick_provider(case), CONFIG, (POOL_LIMITS, CHOOSE_LIMITS)
+            case, provider, CONFIG, (POOL_LIMITS, CHOOSE_LIMITS), MANIFEST.bpm_bands
         )
         rows.append(
             song_suite_row(
@@ -327,7 +340,9 @@ async def test_the_recorded_smoke_runs_pass_the_gate_in_both_groups() -> None:
     assert set(verdict.groups) == {"design", "songs"}
     for group in verdict.groups.values():
         assert group.status == "passed", group.as_json()
-        assert group.runs == (54 if group.group == "design" else 9)
+        assert group.runs == 3 * len(
+            SUITE.design_cases if group.group == "design" else SUITE.song_cases
+        )
 
 
 # --- zone 7 (section 7) ------------------------------------------------------------------------
@@ -363,3 +378,12 @@ def test_the_zone7_margin_widens_only_a_zone7_class_upper_tss_bound() -> None:
     assert tss_ok(spec, 0.1)  # zone 7 and the margin: inside
     assert not tss_ok(spec, 0.0)  # the smoke set: no margin
     assert not tss_ok(result.spec, 0.1)  # no zone 7: no margin
+
+
+def test_a_song_run_carries_the_limits_check_the_gate_needs() -> None:
+    within = PickCaseResult("pick_30", "submitted", turns=4, tool_calls=4, cost_micros=1000)
+    assert limits_check(within, (POOL_LIMITS, CHOOSE_LIMITS)).ok
+    over = dataclasses.replace(within, turns=POOL_LIMITS.max_turns + CHOOSE_LIMITS.max_turns + 1)
+    assert not limits_check(over, (POOL_LIMITS, CHOOSE_LIMITS)).ok
+    costly = dataclasses.replace(within, cost_micros=10**9)
+    assert not limits_check(costly, (POOL_LIMITS, CHOOSE_LIMITS)).ok

@@ -242,7 +242,7 @@ def test_the_app_role_adds_only_code_and_trial_entitlements(admin: Connection, a
     for source in ("grant", "subscription"):
         with pytest.raises(DBAPIError, match="row-level security"):
             entitle(app, user, source)
-    # Migration 0009: the app's rows always end (tests/test_plans_hardening.py has the limits).
+    # Migration 0010: the app's rows always end (tests/test_plans_hardening.py has the limits).
     soon = datetime.now(UTC) + timedelta(days=30)
     entitle(app, user, "trial", ends_at=soon)
     entitle(app, user, "code", code_id=code(admin), ends_at=soon)
@@ -286,7 +286,7 @@ def test_the_app_role_can_only_count_a_redemption(admin: Connection, app: Engine
         update_as(app, user, "UPDATE redeem_codes SET redeemed_count = 1 WHERE id = :i", i=code_id)
         == 1
     )
-    # Used up: migration 0009's trigger refuses it before the check constraint would.
+    # Used up: migration 0010's trigger refuses it before the check constraint would.
     with pytest.raises(DBAPIError, match=REFUSED):
         update_as(app, user, "UPDATE redeem_codes SET redeemed_count = 2 WHERE id = :i", i=code_id)
     for statement in (

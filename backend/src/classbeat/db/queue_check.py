@@ -92,7 +92,7 @@ SQL_TEXT_BUILTINS = (
 )
 
 # The M5 guard triggers (ADR 0011 section 1), the one amendment to the invariant above: "the five
-# queue functions plus the M5 guard triggers, pinned by digest". Migrations 0007 and 0009 make
+# queue functions plus the M5 guard triggers, pinned by digest". Migrations 0007 and 0010 make
 # them as classbeat_owner; SECURITY INVOKER plpgsql that calls only built-ins and runs no SQL
 # text, on tables no queue function touches. Each is admitted only exactly: the function by name,
 # the md5 of its definition (``GUARD_TRIGGER_DIGESTS``), its owner and its ACL (the owner's

@@ -93,7 +93,7 @@ def test_open_reserved_jobs_of_two_users_get_a_reserved_row_and_nothing_else(
     monkeypatch.setenv("CLASSBEAT_MIGRATIONS_DATABASE_URL", owner_database_url)
     command.upgrade(alembic_config(), tiers_revision()[0])
     assert ledger_rows(before) == expected
-    # The RLS guard knows the head's policies (0009 narrows the entitlements one).
+    # The RLS guard knows the head's policies (0010 narrows the entitlements one).
     command.upgrade(alembic_config(), "head")
     assert check_tables(before, SYSTEM_TABLES) == []
 

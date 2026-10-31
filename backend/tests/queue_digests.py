@@ -3,7 +3,7 @@
 The expected ``md5(pg_get_functiondef(oid))`` of each queue function depends on the exact text
 of ``docker/postgres/queue/20-queue.sql`` and on how the pinned Postgres image renders it; that
 of the three M5 guard trigger functions on the migrations that make them (``0007_tiers`` to
-``0009_m5_hardening``). Run it against a database migrated to head where ``20-queue.sql``
+``0010_m5_hardening``). Run it against a database migrated to head where ``20-queue.sql``
 has run (as the test superuser):
 
     uv run python tests/queue_digests.py --check   # CI: fails (with a diff) when it is stale
@@ -24,7 +24,7 @@ from sqlalchemy import create_engine, text
 
 TARGET = Path(__file__).resolve().parent.parent / "src" / "classbeat" / "db" / "queue_digests.py"
 NAMES = ("queue_claim", "queue_reap", "queue_expire", "queue_unsettled", "queue_stats")
-# The three M5 guard trigger functions (ADR 0011 section 1), made by migrations 0007 and 0009 as
+# The three M5 guard trigger functions (ADR 0011 section 1), made by migrations 0007 and 0010 as
 # the owner:
 # the only other user code the queue check admits, pinned the same way (and in 20-queue.sql).
 HOOK_NAMES = ("credit_ledger_guard", "admin_audit_guard", "redeem_codes_guard")
@@ -37,7 +37,7 @@ pinned Postgres image; CI regenerates it and fails when it is stale. Do not edit
 QUEUE_DIGESTS: dict[str, str] = {
 '''
 HOOK_HEADER = """}
-# The M5 guard trigger functions (migrations 0007 to 0009), from the migrated database. The same
+# The M5 guard trigger functions (migrations 0007 to 0010), from the migrated database. The same
 # digests are written into the queue check of docker/postgres/queue/20-queue.sql.
 GUARD_TRIGGER_DIGESTS: dict[str, str] = {
 """

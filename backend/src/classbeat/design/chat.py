@@ -26,7 +26,7 @@ _BASE = text(
 )
 _CHAT_REVISIONS = text(
     "SELECT count(*) FROM class_revisions WHERE owner_id = :owner_id AND class_id = :class_id "
-    "AND provenance ->> 'origin' = 'revise_draft'"
+    "AND kind = 'draft' AND provenance ->> 'origin' IN ('revise_draft', 'revise_songs')"
 )
 _REQUESTS = text(
     "SELECT count(*) FROM class_messages WHERE owner_id = :owner_id AND class_id = :class_id "
@@ -61,6 +61,12 @@ _CHAIN = text(
     "SELECT m.body FROM chain c JOIN class_messages m ON m.id = CAST(c.message_id AS uuid) "
     "AND m.owner_id = :owner_id AND m.class_id = :class_id AND m.role = 'user' "
     "ORDER BY c.depth DESC"
+)
+
+
+_REQUEST = text(
+    "SELECT body FROM class_messages WHERE owner_id = :owner_id AND class_id = :class_id "
+    "AND id = :id AND role = 'user'"
 )
 
 
@@ -165,3 +171,11 @@ async def load_base(
         row.fingerprint,
         tuple(r.body for r in chain),
     )
+
+
+async def request_body(
+    db: AsyncSession, owner_id: UUID, class_id: UUID, message_id: UUID
+) -> str | None:
+    """The text of the user's own request message of that class, or None."""
+    params = {"owner_id": owner_id, "class_id": class_id, "id": message_id}
+    return (await db.execute(_REQUEST, params)).scalar_one_or_none()

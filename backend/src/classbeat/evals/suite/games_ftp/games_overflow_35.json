@@ -1,0 +1,17 @@
+{
+ "name": "games_overflow_35",
+ "about": "Easy 35 minutes with a Overflow game.",
+ "brief": {
+  "length_min": 35,
+  "intensity": "easy",
+  "text": "Include a Overflow game for the team."
+ },
+ "music": {
+  "tracks": 11
+ },
+ "expect": {
+  "games": [
+   "overflow"
+  ]
+ }
+}

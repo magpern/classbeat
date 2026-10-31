@@ -1,4 +1,4 @@
-"""Migration 0009 (#271, ADR 0011 note of 2026-10-31): the database refuses, for SQL run as the app
+"""Migration 0010 (#271, ADR 0011 note of 2026-10-31): the database refuses, for SQL run as the app
 role, an entitlement ``add_entitlement`` would not add, a ledger settle the settle would not write
 and a redeem count other than one more use of a live code; maint's refund needs its reason and
 admin."""

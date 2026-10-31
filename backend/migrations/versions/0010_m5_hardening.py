@@ -1,7 +1,7 @@
 """M5 hardening: entitlement terms, ledger settles and redeem counts in the database (#271)
 
-Revision ID: 0009_m5_hardening
-Revises: 0008_ledger_guard_owner
+Revision ID: 0010_m5_hardening
+Revises: 0009_models
 Create Date: 2026-10-31
 
 Defence in depth for what ``classbeat.plans`` and the settle already do (ADR 0011 sections 1 to
@@ -26,8 +26,8 @@ from collections.abc import Sequence
 
 from alembic import op
 
-revision: str = "0009_m5_hardening"
-down_revision: str | Sequence[str] | None = "0008_ledger_guard_owner"
+revision: str = "0010_m5_hardening"
+down_revision: str | Sequence[str] | None = "0009_models"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

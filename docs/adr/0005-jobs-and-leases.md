@@ -216,7 +216,7 @@ arguments, columns, `WHEN` or constraint. Anything else is still refused. The di
 on either function for any role but `classbeat_owner`.
 
 **Amendment (2026-10-31, ADR 0011 section 1, #271):** a third guard trigger function is admitted
-the same way, `public.redeem_codes_guard()` of migration `0009_m5_hardening` (`SECURITY INVOKER`
+the same way, `public.redeem_codes_guard()` of migration `0010_m5_hardening` (`SECURITY INVOKER`
 plpgsql by `classbeat_owner`, built-ins only), with its trigger `redeem_codes_guard` on
 `public.redeem_codes` (row-level `BEFORE UPDATE`, `tgtype` 19). The same migration replaces the
 body of `credit_ledger_guard()` (a new digest). No queue function touches `redeem_codes`. All three

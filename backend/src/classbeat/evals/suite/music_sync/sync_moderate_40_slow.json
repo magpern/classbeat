@@ -1,0 +1,18 @@
+{
+ "name": "sync_moderate_40_slow",
+ "about": "Moderate 40 minutes to slow music (long phrases).",
+ "brief": {
+  "length_min": 40,
+  "intensity": "moderate",
+  "sprints": 2
+ },
+ "music": {
+  "bpm": 92,
+  "bpm_step": 2,
+  "tracks": 12
+ },
+ "expect": {
+  "music_sync": {},
+  "changes_on_music_min": 0.9
+ }
+}

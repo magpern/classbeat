@@ -1,0 +1,19 @@
+{
+ "name": "games_fast_lane_ghost_50",
+ "about": "Moderate 50 minutes with a Fast Lane game and a Ghost Target game.",
+ "brief": {
+  "length_min": 50,
+  "intensity": "moderate",
+  "climbs": 1,
+  "text": "Include a Fast Lane game and a Ghost Target game for the team."
+ },
+ "music": {
+  "tracks": 14
+ },
+ "expect": {
+  "games": [
+   "fast_lane",
+   "ghost_target"
+  ]
+ }
+}

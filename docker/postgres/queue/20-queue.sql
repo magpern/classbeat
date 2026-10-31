@@ -12,7 +12,7 @@
 -- owns), re-grants exactly the list below, and replaces the functions with their ACLs and
 -- version comment. Migrations never create these functions, and no other user-defined function,
 -- operator, trigger or rule may exist (the check below; the one exception is the three M5 guard
--- triggers of migrations 0007 to 0009, admitted exactly and pinned by digest). The functions'
+-- triggers of migrations 0007 to 0010, admitted exactly and pinned by digest). The functions'
 -- search_path is pg_catalog, pg_temp (public left out, every table schema-qualified; Postgres
 -- never looks up functions or operators in pg_temp), so no object in public can shadow a
 -- built-in they call.
@@ -211,7 +211,7 @@ BEGIN
        AND (p.oid >= 16384 OR n.nspname = 'public'
             OR (n.nspname NOT IN ('pg_catalog', 'information_schema', 'pg_toast')
                 AND n.nspname !~ '^pg_(toast_)?temp_[0-9]+$'))
-       -- The three M5 guard trigger functions (migrations 0007 to 0009, ADR 0011 section 1),
+       -- The three M5 guard trigger functions (migrations 0007 to 0010, ADR 0011 section 1),
        -- exactly: name, md5 of the definition, owner and ACL (classbeat/db/queue_check.py says
        -- the same). The literals below are longer than a line: they are compared whole.
        AND NOT coalesce(CASE WHEN p.prokind = 'f' AND n.nspname = 'public'
