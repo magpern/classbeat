@@ -9,10 +9,13 @@ import pytest
 from pydantic import BaseModel
 
 from classbeat import design, songs
+from classbeat.db import system_session
 from classbeat.jobs import KINDS
 from classbeat.jobs.kinds import Admitted, Refused
+from classbeat.models.routes import RouteUnusable, bootstrap_choice, resolve_route, set_route
 from designtools import DesignEnv, FakeMowlMusic
 from jobapi import Browser
+from modeltools import OPUS, add_result
 from optools import TOKEN_A
 from revisetools import ReviseEnv
 from test_design_api import body
@@ -40,7 +43,7 @@ def set_plan_keys(denv: DesignEnv, **keys: str) -> None:
 @pytest.fixture(autouse=True)
 def restore_plan_keys(denv: DesignEnv) -> Any:
     yield
-    denv.ops.sql("UPDATE plans SET route_key = 'default'")
+    denv.ops.sql("UPDATE plans SET route_key = id")  # migration 0014: a key of its own
 
 
 async def create(browser: Browser, name: str, sent: dict[str, Any] | None = None) -> Any:
@@ -132,3 +135,33 @@ async def test_the_wrapper_keeps_a_refusal_and_the_kinds_own_fields(
         fields = admitted(await with_route_key(adds)(db, ctx, EMPTY))
         assert fields == {"request_message_id": "kept", "route_key": "pro_route"}
         assert admitted(await with_route_key()(db, ctx, EMPTY)) == {"route_key": "pro_route"}
+
+
+async def test_a_route_set_for_pro_applies_to_a_pro_users_job_and_not_to_a_free_users(
+    browsers: Any, denv: DesignEnv, fake_mowl: FakeMowlMusic
+) -> None:
+    """Migration 0014: each plan's key is its id. The route is on ``pro`` only, so the pro user's
+    job resolves it (here: found, and unusable without the worker's key file) and the free user's
+    job gets the bootstrap choice."""
+    browser: Browser = await browsers()
+    denv.app.app.dependency_overrides.clear()
+    await denv.ops.connect(browser.user_id, TOKEN_A)
+    add_result(denv.admin)
+    web = denv.app.settings
+    async with system_session(denv.ops.factory) as db:
+        await set_route(db, "pro", "design", "anthropic", OPUS, "medium", "admin", settings=web)
+    pro_job = await create(browser, "route-key-pro-job-0001")
+    assert stored_key(denv, pro_job) == "pro"
+    await denv.run_next()
+    revoke = "UPDATE entitlements SET revoked_at = now() WHERE owner_id = :o"
+    denv.ops.sql(revoke, o=browser.user_id)
+    free_job = await create(browser, "route-key-free-job-001")
+    assert stored_key(denv, free_job) == "free"
+    async with system_session(denv.ops.factory) as db:
+        with pytest.raises(RouteUnusable) as found:
+            await resolve_route(db, "pro", "design", settings=web)
+        assert found.value.reason == "no_key"  # the route exists; its key file is the worker's
+        assert await resolve_route(db, "free", "design", settings=web) == bootstrap_choice(web)
+        assert await resolve_route(db, "instructor", "design", settings=web) == bootstrap_choice(
+            web
+        )

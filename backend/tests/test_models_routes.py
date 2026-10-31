@@ -792,3 +792,17 @@ async def test_the_cli_lists_enables_with_yes_only_and_disables(
     assert (code, err.strip()) == (1, "refused: no_route")
     # No secret in any output: the key files hold the canary.
     assert all(CANARY not in text_ for text_ in outputs)
+
+
+async def test_a_plan_key_without_a_route_uses_the_bootstrap_choice_and_default_covers_no_plan(
+    admin: Connection, factory: Factory, web: Settings, kek_dir: Path, app_database_url: str
+) -> None:
+    """ADR 0012 section 5 with migration 0014: a route for ``default`` is not found for the plan
+    keys ``free``, ``instructor`` and ``pro``; they answer the bootstrap choice, no error."""
+    add_result(admin)
+    await enable(factory, web, "anthropic", OPUS, "medium")  # on ``default``
+    worker_settings = worker(app_database_url, kek_dir, "anthropic")
+    bootstrap = routes_module.bootstrap_choice(worker_settings)
+    for key in ("free", "instructor", "pro"):
+        assert await resolve(factory, worker_settings, key=key) == bootstrap
+    assert (await resolve(factory, worker_settings)).route_key == DEFAULT_ROUTE_KEY
