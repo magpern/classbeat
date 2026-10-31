@@ -71,7 +71,8 @@ agent-run test against a real account, the owner's authorization for that specif
 | Creating the pool and final playlists in a user's Spotify account (private) | Allowed | Needs Spotify S1, S2, S3 |
 | Keeping track lists, timing and shared analyses for saved classes | Allowed while a class refers to them, then deleted | Needs Spotify S4 |
 | Any paid or public use, or users the owner doesn't know | Not allowed | Needs all of the above, S5, MOWL M3, and agreements (M7) |
-| Swedebeat features | Disabled flag; fakes only (its app key isn't used, see the threat model) | Needs Swedebeat |
+| Swedebeat connection (connect, status, disconnect) | Built against fakes (S1, ADR 0015); the app key is baked into the release image by the owner's decision of 2026-10-31 (threat model, T102); **live use only with the owner's authorization** | Needs the owner's `SWEDEBEAT_APP` secret and go-ahead |
+| Other Swedebeat features | Not built; each needs its own issue | Needs Swedebeat S2 and later |
 
 The questions stay in [docs/providers/questions.md](../providers/questions.md), unsent, for a
 later public or paid phase.
@@ -102,3 +103,10 @@ later public or paid phase.
   Authorization Code (with PKCE), Client Credentials and the deprecated Implicit grant (see
   [Spotify's authorization guide](https://developer.spotify.com/documentation/web-api/concepts/authorization)),
   none of them a QR or device flow, so PKCE (ADR 0009) stays the only Spotify sign-in.
+
+**Amendment 2026-10-31 (S1, #362; roadmap Amendment 9):** Swedebeat is no longer "disabled flag, no
+feature". Its connection is built and verified on fakes ([ADR 0015](0015-swedebeat-connection.md)); the
+condition at the top of this ADR ("every feature's live path except Swedebeat may be switched on once it
+is technically complete") now covers it, except that its live path needs the owner's secret, the
+`SWEDEBEAT_ENABLED` switch and the owner's go-ahead for each live check. The risk the owner accepts
+for the app key is T102.

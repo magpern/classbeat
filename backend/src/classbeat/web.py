@@ -21,6 +21,7 @@ from classbeat.classes.routes import music_router as class_music_router
 from classbeat.classes.routes import router as classes_router
 from classbeat.config import Settings, check_web_has_no_model_key
 from classbeat.connections.routes import router as connections_router
+from classbeat.connections.swedebeat_routes import router as swedebeat_router
 from classbeat.crypto.keks import load_keyring
 from classbeat.db import create_engine, create_session_factory, verify_database_role
 from classbeat.design import configure_limits
@@ -163,6 +164,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     admin_routes.install(app)  # every /api/admin route of the admin area (ADR 0011 section 6)
     app.include_router(spotify_router)
     app.include_router(connections_router)
+    app.include_router(swedebeat_router)
     app.include_router(job_events_router)
     app.include_router(jobs_router)
     app.include_router(usage_router)

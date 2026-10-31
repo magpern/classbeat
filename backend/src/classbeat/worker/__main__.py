@@ -9,6 +9,7 @@ from classbeat import design, playlists, saving, songs
 from classbeat.config import (
     ModelProviderRefused,
     Settings,
+    check_worker_has_no_swedebeat_app,
     check_worker_model_provider,
     worker_model_providers,
 )
@@ -69,6 +70,7 @@ def main() -> int:
     configure_logging(settings.log_level)
     try:
         check_worker_model_provider(settings)
+        check_worker_has_no_swedebeat_app(settings)
     except ModelProviderRefused as refused:
         logger.error("worker refused to start", extra={"reason": str(refused)})
         return 2

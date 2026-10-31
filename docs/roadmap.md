@@ -171,6 +171,34 @@ The owner's decisions apply now. The design that carries them out is
     - covers load only from `i.scdn.co`, through `CoverArt`, behind the CSP header;
     - UI10's viewport, axe and bundle checks are green in CI.
 
+## Amendment 9 (2026-10-31, owner decisions: Swedebeat; ADR 0015)
+
+The owner's decisions apply now; [ADR 0015](adr/0015-swedebeat-connection.md) carries them out
+(issue #362). Where they differ, this amendment wins over Revision 6 and Amendments 1 and 7.
+
+- **Swedebeat moves from "disabled flag, no feature" to "built against fakes, live use owner-gated".**
+  Swedebeat matters for gym instructors; it stays optional per user and nothing else may require it.
+  - §1, §3, §10 and Amendment 1's "every feature except Swedebeat": the Swedebeat **connection**
+    (connect, status, disconnect; the user's email and password once, the token and a stable
+    device id encrypted per user, ADR 0004) is built and tested on fakes (milestone S1, first issue
+    #362). Its use (catalogue matching and whatever follows) is later work under the same rule.
+  - **Live use needs the owner**: no agent makes a live Swedebeat call or handles a real Swedebeat
+    password; the owner's steps are in [the runbook](runbooks/swedebeat-connect.md).
+  - ADR 0011 §7 and §8: `swedebeat_enabled` is a real admin flag (stricter wins, default off: the
+    environment's `CLASSBEAT_SWEDEBEAT_ENABLED` is the kill switch and the database can only switch
+    it off), no longer a read-only line.
+- **Swedebeat's app key is used and baked into the production image at build time** (owner, 2026-10-31),
+  from the GitHub secret `SWEDEBEAT_APP`, in the release workflow only. The "classbeat doesn't use that
+  key" of the threat model's accepted risks and the "its app key isn't used" of ADR 0010's table are
+  replaced: pull-request, CI and e2e images never contain it, the vendored `mowl-workouts` wheel still
+  carries none (the image adds the key, the wheel does not), the web app gets it from the image or from
+  an optional runtime secret file, and the worker never. The image sits in a private GHCR package; a
+  leak means rotating the secret and releasing again (runbook). AGENTS.md's "never use credentials
+  embedded in third-party apps" is read as: agents never read, copy or create this key; the owner
+  provides it to the build.
+- **§10, track F:** nothing changes for MOWL and Spotify. Swedebeat's authorization is not sought;
+  the use of its key is the owner's risk acceptance (threat model, T102).
+
 *Revision 6 — frozen for implementation. Song picking is a **core** feature with Claude
 choosing the final songs from real BPM and sections (the pool stage from `mowl-workouts`);
 the instructor approves once, then the class is created hands-off. **Spotify is

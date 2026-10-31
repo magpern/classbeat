@@ -102,11 +102,16 @@ services:
       # The admin area's audited role (ADR 0011 section 5); the password is the
       # database_maint_password secret, on web only. Without it the admin routes answer 503.
       CLASSBEAT_MAINT_DATABASE_URL: postgresql+psycopg://classbeat_maint@db:5432/classbeat
+      # ADR 0015: the Swedebeat connection is off unless the owner switches it on here.
+      CLASSBEAT_SWEDEBEAT_ENABLED: ${SWEDEBEAT_ENABLED:-false}
+    # swedebeat_app (ADR 0015 section 4) is web's only: Swedebeat's app key as a runtime
+    # override of the key a release image holds. Empty from init (empty is no key).
     secrets:
       - database_password
       - app_secret_key
       - connection_kek
       - database_maint_password
+      - swedebeat_app
     ports:
       - "127.0.0.1:${WEB_PORT:-8000}:8000"
     healthcheck:
@@ -191,6 +196,9 @@ secrets:
     file: ./secrets/openai_api_key
   deepseek_api_key:
     file: ./secrets/deepseek_api_key
+  # ADR 0015 section 4: Swedebeat's app key, JSON {"key", "iv"}; empty or absent is no key.
+  swedebeat_app:
+    file: ./secrets/swedebeat_app
 
 volumes:
   db-data:

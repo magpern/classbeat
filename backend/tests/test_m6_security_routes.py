@@ -93,6 +93,8 @@ CLASSIFIED: dict[tuple[str, str], str] = {
     ("GET", "/api/connections"): "session",
     ("POST", "/api/connections/mowl"): "session",
     ("DELETE", "/api/connections/mowl"): "session",
+    ("POST", "/api/connections/swedebeat"): "session",
+    ("DELETE", "/api/connections/swedebeat"): "session",
     ("GET", "/api/connections/spotify"): "session",
     ("POST", "/api/connections/spotify/start"): "session",
     ("DELETE", "/api/connections/spotify"): "session",

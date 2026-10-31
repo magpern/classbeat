@@ -19,6 +19,7 @@ GitHub hold the detail.
 | MU | Night Studio UI (ADR 0013) | design accepted 2026-10-30 ([ADR 0013](adr/0013-ui-design-night-studio.md), roadmap Amendment 8); issues #242, #243, #246 to #251, #253 to #255; runs beside M4 and M5, done before M6 |
 | M6 | Security review, backups, GDPR, VPS | in progress, **not done**: the automated security matrices (#339: log secrecy, ciphertext-only dump, 403 and 404 route matrices) are in review; still to do: the end-to-end security review, backups and restore. **VPS configuration ready, not deployed** (#341): `compose.prod.yaml`, `Caddyfile`, [vps-deploy.md](runbooks/vps-deploy.md), checked locally only (see the runbook's "Local smoke"); the deploy, DNS, TLS, server, mail account and secrets are the owner's steps. GDPR export and delete is in review ([ADR 0014](adr/0014-account-export-and-deletion.md), #337). The independent security review and the backup restore drill are not done. **Backups, in review (#338):** backup and restore scripts, a restore drill (run locally and in the `e2e` job) and [runbook](runbooks/backup-restore.md); the schedule and an off-host copy on the VPS are not done |
 | M7 | Commercial (deferred) | deferred |
+| S1 | Swedebeat connection (owner decision 2026-10-31) | **built on fakes only, in review** (#362, [ADR 0015](adr/0015-swedebeat-connection.md), roadmap Amendment 9): connect, status, disconnect, a stable device id per user, the `swedebeat_enabled` admin flag, the account card, a fake Swedebeat in the e2e stack. **Live use is an owner step**: nothing has been sent to Swedebeat, the app key is not in this repository and the owner has not yet created the `SWEDEBEAT_APP` secret, so no image holds it ([runbook](runbooks/swedebeat-connect.md)). Using the connection (catalogue matching) is not started |
 
 ## Now
 
@@ -255,6 +256,7 @@ GitHub hold the detail.
 
 ## Waiting for the owner
 
+- **Swedebeat (S1, #362):** create the GitHub secret `SWEDEBEAT_APP` (`gh secret set SWEDEBEAT_APP --repo magpern/classbeat < swedebeat_app.json`), cut a release, set `SWEDEBEAT_ENABLED=true`, and authorize one live check of the connection with your own Swedebeat account (the real "another device" wording and the token's lifetime are unknown; [runbook](runbooks/swedebeat-connect.md)). Until the secret exists, release builds fail at the key check and no image holds the key; the connect route answers `app_key_unavailable`.
 - **M5 product questions** ([ADR 0011](adr/0011-tiers-quotas-and-admin.md) §11, Q1 to Q10): limits and
   cost caps per tier, which plan the testers get, trial on or off, quota period, refund on cancel,
   overlapping codes, Free feature gates, the Pro priority queue, audit-log retention, prices. Agents

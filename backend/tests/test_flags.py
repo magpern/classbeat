@@ -185,3 +185,34 @@ def test_a_missing_row_logs_nothing(caplog: pytest.LogCaptureFixture) -> None:
         core.trial_setting(None)
         core.banner_setting(None)
     assert caplog.records == []
+
+
+@pytest.mark.parametrize(
+    ("environment_on", "stored", "expected"),
+    [
+        (False, None, False),  # the kill switch: off whatever the database says
+        (False, "on", False),
+        (False, "off", False),
+        (True, None, True),
+        (True, "on", True),
+        (True, "off", False),  # the database tightens
+        (True, "maybe", False),  # invalid: the stricter reading
+        (True, True, False),
+        (True, 1, False),
+    ],
+)
+def test_swedebeat_is_on_only_under_the_environment_and_never_loosened(
+    environment_on: bool, stored: Any, expected: bool
+) -> None:
+    """Threats: T94 (ADR 0015 section 6)."""
+    assert core.swedebeat_setting(environment_on, stored) is expected
+
+
+def test_swedebeat_writes_are_off_or_on_only() -> None:
+    assert core.validate_for_write("swedebeat_enabled", "on", trial_days_max=30) == "on"
+    assert core.validate_for_write("swedebeat_enabled", "off", trial_days_max=30) == "off"
+    for bad in ("yes", True, 1, None, {"on": True}):
+        with pytest.raises(core.FlagRefused) as refused:
+            core.validate_for_write("swedebeat_enabled", bad, trial_days_max=30)
+        assert refused.value.reason == "invalid_value"
+    assert "swedebeat_enabled" in core.KEYS

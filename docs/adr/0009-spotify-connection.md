@@ -400,7 +400,10 @@ is run against the `v0.6.0` tag by the local Architect: it checks the tag's comm
 Swedebeat key file is absent and that every other file and the `Requires-Dist` lines match the release
 wheel; the result is `backend/vendor/mowl_workouts-0.6.0-py3-none-any.whl`, `uv lock` is refreshed, and
 the header constants of the script (tag commit, release asset digest, wheel SHA-256) are updated, all in
-classbeat issue L1's PR. The old 0.5.0 wheel is removed in the same PR. Whether MOWL re-reads a
+classbeat issue L1's PR. The old 0.5.0 wheel is removed in the same PR. *(2026-10-31, ADR 0015 §4: the
+wheel check is unchanged and stays true, the bundled key file is absent from the **wheel**; the release **image**
+now adds Swedebeat's key as its own file, `/app/swedebeat_app.json`, from a build secret, and passes it to the
+library through `Credentials.swedebeat_app`.)* Whether MOWL re-reads a
 Spotify playlist whose content changed is a MOWL fact the library cannot give (ADR 0008 §2, §11).
 
 ### 13. The fake Spotify and tests

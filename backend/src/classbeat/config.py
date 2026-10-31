@@ -1,6 +1,7 @@
 """Application settings, read from the environment (prefix ``CLASSBEAT_``) and secret files."""
 
 import ipaddress
+import json
 import os
 import re
 from collections.abc import Mapping
@@ -31,6 +32,7 @@ SECRET_FILE_FIELDS = (
     "anthropic_api_key",
     "openai_api_key",
     "deepseek_api_key",
+    "swedebeat_app",
 )
 # Each model provider's key file (ADR 0006 §9, ADR 0012 §2): worker only, never the web app.
 MODEL_KEY_FIELDS = {
@@ -43,6 +45,25 @@ PLAIN_SMTP_HOSTS = frozenset({"localhost", "mailpit"})
 MIN_APP_SECRET_BYTES = 32
 # ADR 0004 section 2: the id of the current KEK (the ``connection_kek`` secret file).
 CONNECTION_KEK_ID = re.compile(r"kek-[a-z0-9-]{1,28}")
+
+
+def swedebeat_app_keys(value: SecretStr) -> dict[str, str] | None:
+    """The ``swedebeat_app`` file's key and iv if it is a JSON object whose ``key`` is 32 and
+    ``iv`` 16 single-byte characters (the library encodes both as latin-1); else ``None``."""
+    try:
+        data = json.loads(value.get_secret_value())
+    except ValueError:
+        return None
+    if not isinstance(data, dict) or set(data) != {"key", "iv"}:  # pyright: ignore[reportUnknownArgumentType]
+        return None
+    key, iv = data["key"], data["iv"]
+    if not isinstance(key, str) or not isinstance(iv, str):
+        return None
+    try:
+        sized = len(key.encode("latin-1")) == 32 and len(iv.encode("latin-1")) == 16
+    except UnicodeEncodeError:
+        return None
+    return {"key": key, "iv": iv} if sized else None
 
 
 def secrets_dir() -> Path:
@@ -258,6 +279,17 @@ class Settings(BaseSettings):
     # ADR 0012 §2: off, the DeepSeek host is not on the worker's list and no DeepSeek provider is
     # built for a job. The owner turns it on only after ADR 0012 §6 holds.
     deepseek_enabled: bool = False
+    # ADR 0015: the Swedebeat connection. ``swedebeat_enabled`` is the environment's kill switch
+    # (off by default; the admin flag ``swedebeat_enabled`` can only tighten it, ADR 0011 section
+    # 7). Swedebeat's AES app key (JSON ``{"key", "iv"}``: 32 and 16 characters) comes from, in
+    # this order: the optional secret file ``swedebeat_app`` (a runtime Docker secret, web only,
+    # never the environment; the home server's way) and the file ``swedebeat_app_file`` that a
+    # release image build writes (the owner's GitHub secret ``SWEDEBEAT_APP``, ADR 0015 section
+    # 4; absent from every PR, CI and e2e image). With neither, connecting answers
+    # ``app_key_unavailable``.
+    swedebeat_enabled: bool = False
+    swedebeat_app: SecretStr | None = None
+    swedebeat_app_file: Path = Path("/app/swedebeat_app.json")
 
     @classmethod
     def settings_customise_sources(
@@ -320,6 +352,30 @@ class Settings(BaseSettings):
         if not key.isascii() or any(c.isspace() or not c.isprintable() for c in key):
             raise ValueError(f"{info.field_name} has whitespace, control or non-ASCII characters")
         return value
+
+    @field_validator("swedebeat_app")
+    @classmethod
+    def _check_swedebeat_app(cls, value: SecretStr | None) -> SecretStr | None:
+        if value is None or not value.get_secret_value().strip():
+            return None  # the empty placeholder: no key on this server
+        if swedebeat_app_keys(value) is None:
+            # The message names the file, never its content.
+            raise ValueError(
+                "swedebeat_app must be JSON with a 32-character key and a 16-character iv"
+            )
+        return value
+
+    def swedebeat_keys(self) -> dict[str, str] | None:
+        """``{"key", "iv"}`` for the library's ``Credentials.swedebeat_app``, or ``None``: the
+        runtime secret first, else the file a release image holds (read per call; a missing,
+        unreadable or malformed file is no key)."""
+        if self.swedebeat_app is not None:
+            return swedebeat_app_keys(self.swedebeat_app)
+        try:
+            text = self.swedebeat_app_file.read_text(encoding="utf-8")
+        except (OSError, ValueError):
+            return None
+        return swedebeat_app_keys(SecretStr(text))
 
     def model_key(self, provider: str) -> SecretStr | None:
         """The key file of ``provider`` (``None`` when missing or empty, or not a provider)."""
@@ -531,6 +587,15 @@ def check_worker_model_provider(settings: Settings) -> None:
         )
     if settings.model_provider == "fake" and settings.environment == "prod":
         raise ModelProviderRefused("model_provider fake is not allowed when environment is prod")
+
+
+def check_worker_has_no_swedebeat_app(settings: Settings) -> None:
+    """Swedebeat's app key is the web app's only (ADR 0015 section 4): no worker job signs in to
+    Swedebeat, so a readable ``swedebeat_app`` file refuses the worker's start."""
+    if settings.swedebeat_app is not None:
+        raise ModelProviderRefused(
+            "the worker must not see the swedebeat_app secret file (web only)"
+        )
 
 
 def check_web_has_no_model_key(settings: Settings) -> None:

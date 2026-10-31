@@ -4,9 +4,10 @@ The only place in ``classbeat`` that builds an HTTP client or an ``urllib`` open
 ``tests/egress_scan.py`` fails on any other). Two paths leave the worker:
 
 - **urllib**, used by the provider library (``mowl-workouts`` calls ``urllib.request.urlopen``).
-  The web process installs the same opener with ``WEB_URLLIB_HOSTS``, MOWL and the Spotify API
-  (``install_web_allowlist``, SR-03): its library calls are MOWL's connect, the playlist listing
-  and the save/update/attach checks, and the Spotify reads of Check again.
+  The web process installs the same opener with ``WEB_URLLIB_HOSTS``, MOWL, the Spotify API and
+  Swedebeat's sign-in host (``install_web_allowlist``, SR-03): its library calls are MOWL's
+  connect, the playlist listing and the save/update/attach checks, the Spotify reads of Check
+  again and the Swedebeat sign-in (ADR 0015).
   ``install_worker_allowlist()`` installs, before anything else in the worker, a process-wide
   opener with an empty ``ProxyHandler`` (no ``HTTPS_PROXY`` or ``NO_PROXY`` setting reroutes a
   call) and a guard that refuses every request, redirect hops included, that is not ``https`` to
@@ -89,6 +90,10 @@ logger = logging.getLogger(__name__)
 HTTPS = "https"
 HTTPS_PORT = 443
 MOWL_HOST = "api.mowl.com"  # the library's base URL
+# Swedebeat (ADR 0015): the web process signs a user in at ``www.swedebeat.se`` (the library's
+# ``downloader/login.php``). ``cloud.swedebeat.se`` (the catalogue, where the token is also sent)
+# is on no list: nothing in classbeat calls it yet, and it joins a list when a feature does.
+SWEDEBEAT_WWW_HOST = "www.swedebeat.se"
 # The model providers classbeat may use (ADR 0012 §1); ``fake`` is not one (no host).
 ModelProviderName = Literal["anthropic", "openai", "deepseek"]
 # Each provider's one API host (ADR 0012 §2). Code, not a setting.
@@ -107,9 +112,11 @@ WORKER_HOSTS = frozenset({MOWL_HOST}) | SPOTIFY_HOSTS
 # MOWL's (connect, ``GET /api/music/mowl-playlists``, the save/update/attach checks) and the
 # Spotify API's (the user's Check again of a playlist create or replace reads through
 # ``spotify_web``). Not ``accounts.spotify.com``: classbeat never lets the library refresh a
-# token (``spotify_refresh_enabled=False``), the httpx Spotify client does. Not Swedebeat, not a
-# model host. Each token stays on its own host: a redirect is followed to the same host only.
-WEB_URLLIB_HOSTS = frozenset({MOWL_HOST, SPOTIFY_API_HOST})
+# token (``spotify_refresh_enabled=False``), the httpx Spotify client does. Swedebeat's sign-in
+# host joins them for the Swedebeat connect (ADR 0015); the sign-in sends the user's encoded
+# email and password there and receives the token, and sends no token. Not ``cloud.swedebeat.se``,
+# not a model host. Each token stays on its own host: a redirect is followed to the same host only.
+WEB_URLLIB_HOSTS = frozenset({MOWL_HOST, SPOTIFY_API_HOST, SWEDEBEAT_WWW_HOST})
 MODEL_TIMEOUT_SECONDS = 120.0  # ADR 0006 §2
 # The Spotify client's total deadline per request unless the caller gives one (ADR 0009 §6:
 # ``CLASSBEAT_SPOTIFY_REFRESH_TIMEOUT_SECONDS`` defaults to 10).
@@ -643,8 +650,9 @@ def install_worker_allowlist(model_providers: Iterable[str] = ()) -> urllib.requ
 def install_web_allowlist() -> urllib.request.OpenerDirector:
     """Install the web process's urllib opener (SR-03, threat model T19): the worker's opener
     (``https`` to port 443 only, no environment proxy, every redirect hop checked, a redirect
-    only to the same host) with the list ``WEB_URLLIB_ALLOWLIST`` (``api.mowl.com`` and
-    ``api.spotify.com``; a token never follows a redirect from one to the other).
+    only to the same host) with the list ``WEB_URLLIB_ALLOWLIST`` (``api.mowl.com``,
+    ``api.spotify.com`` and ``www.swedebeat.se``; a token never follows a redirect from one to
+    another).
 
     Unlike ``install_worker_allowlist`` it does not set the worker flag: the web-only call sites
     (OAuth sign-in, account mail) keep working. Called once by ``python -m classbeat`` before the

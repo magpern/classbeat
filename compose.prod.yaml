@@ -13,7 +13,7 @@
 #   ACME_EMAIL         contact address for the certificate authority                      required
 #   SMTP_HOST, SMTP_SENDER                                                                required
 #   SMTP_PORT, SMTP_TLS, SMTP_USERNAME, ADMIN_EMAILS, SIGNUP_MODE, CONNECTION_KEK_ID,
-#   MODEL_PROVIDER, DEEPSEEK_ENABLED                                                      optional
+#   MODEL_PROVIDER, DEEPSEEK_ENABLED, SWEDEBEAT_ENABLED                                   optional
 #   CADDY_HTTP_PORT, CADDY_HTTPS_PORT  host ports (80 and 443; only the local smoke changes them)
 # Secrets are files under ./secrets (mounted as Docker secrets, never environment variables).
 #
@@ -166,12 +166,16 @@ services:
       # Caddy's fixed address on `edge` (see the networks below): the only peer whose
       # X-Forwarded-For is believed (ADR 0003 section 9). Caddy overwrites the header itself.
       CLASSBEAT_TRUSTED_PROXIES: 172.29.80.10
+      # ADR 0015: off unless the owner switches the Swedebeat connection on.
+      CLASSBEAT_SWEDEBEAT_ENABLED: ${SWEDEBEAT_ENABLED:-false}
+    # swedebeat_app: Swedebeat's app key if the image does not hold it (ADR 0015 section 4).
     secrets:
       - database_password
       - app_secret_key
       - connection_kek
       - database_maint_password
       - smtp_password
+      - swedebeat_app
     # No `ports`: reachable only from caddy over `edge`.
     expose:
       - "8000"
@@ -240,6 +244,8 @@ secrets:
     file: ./secrets/openai_api_key
   deepseek_api_key:
     file: ./secrets/deepseek_api_key
+  swedebeat_app:
+    file: ./secrets/swedebeat_app
 
 volumes:
   db-data:

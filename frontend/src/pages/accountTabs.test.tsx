@@ -58,7 +58,7 @@ describe('account tabs', () => {
     const panel = screen.getByRole('tabpanel')
     expect(panel).toHaveAttribute('aria-labelledby', tabs[0]?.id)
     expect(within(panel).getByRole('heading', { name: 'Swedebeat' })).toBeInTheDocument()
-    expect(within(panel).getByText('Coming later.')).toBeInTheDocument()
+    expect(await within(panel).findByText('Swedebeat is coming soon.')).toBeInTheDocument()
   })
 
   it('move with the arrow keys and keep the open tab in the address', async () => {
