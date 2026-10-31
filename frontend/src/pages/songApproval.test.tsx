@@ -80,6 +80,8 @@ describe('the Songs for approval page', () => {
     })
     const [call] = api.to('POST', `${JOB}/approve`)
     expect(call?.body).toEqual({ revision_id: LIST_ID, content_hash: HASH })
+    // Byte-identical to the request before the restyle: the same two keys, in this order.
+    expect(JSON.stringify(call?.body)).toBe(JSON.stringify({ revision_id: LIST_ID, content_hash: HASH }))
     expect(call?.headers.get('X-CSRF-Token')).toBe('csrf-session')
     await waitFor(() => {
       expect(screen.getAllByRole('heading').map((h) => h.textContent)).toContain('Designing your class…')

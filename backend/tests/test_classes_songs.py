@@ -501,3 +501,80 @@ async def test_the_queries_filter_on_the_owner_themselves_with_rls_out_of_the_wa
     assert await song_views.get_song_list(around_rls, ctx, my_class, my_list) is not None
     left = await song_views.playlists_left(around_rls, ctx)
     assert [r.class_id for r in left.class_playlists] == [my_class]
+
+
+async def test_the_music_playlists_are_the_callers_own_with_a_mosaic_and_the_owners_link(
+    songenv: SongEnv,
+) -> None:
+    mine = await songenv.rider()
+    theirs = await songenv.rider()
+    job_id, list_rev, _ = await songenv.waiting(mine)
+    class_id = class_of(songenv, job_id)
+    theirs_job, theirs_rev, _ = await songenv.waiting(theirs)
+    theirs_class = class_of(songenv, theirs_job)
+    admin = songenv.admin
+    row = insert(
+        admin, "class_playlists", owner_id=mine.user_id, class_id=class_id,
+        revision_id=list_rev, playlist_id=PLAYLIST, spotify_user_id=USER_A,
+        name="Tuesday climb", state="created",
+    )  # fmt: skip
+    insert(
+        admin, "class_playlists", owner_id=theirs.user_id, class_id=theirs_class,
+        revision_id=theirs_rev, playlist_id=OTHER_PLAYLIST, spotify_user_id=USER_A,
+        name="Theirs", state="verified", content_hash=content_digest({}), track_count=3,
+    )  # fmt: skip
+    got = await mine.browser.get("/api/music/class-playlists")
+    assert got.status_code == 200, got.text
+    [only] = got.json()["playlists"]
+    stored = songenv.revision(list_rev).content["songs"]
+    assert (only["class_id"], only["name"], only["link"]) == (str(class_id), "Tuesday climb", None)
+    assert [s["title"] for s in only["songs"]] == [s["title"] for s in stored[:4]]
+    assert [s["cover"] for s in only["songs"]] == [cover_url(s["cover"]) for s in stored[:4]]
+    assert len(only["songs"]) <= 4
+    # Only a verified playlist has the owner's link, built by the API.
+    admin.exec_driver_sql(
+        "UPDATE class_playlists SET state = 'verified', content_hash = %s, track_count = 8 "
+        "WHERE id = %s", (content_digest({}), row),
+    )  # fmt: skip
+    link = f"https://open.spotify.com/playlist/{PLAYLIST}"
+    shown = await mine.browser.get("/api/music/class-playlists")
+    assert [p["link"] for p in shown.json()["playlists"]] == [link]
+    assert shown.text.count(PLAYLIST) == shown.text.count(link) == 1
+    # Never another user's playlist, id, name or class.
+    for bad in (OTHER_PLAYLIST, "Theirs", str(theirs_class), *forbidden(songenv)):
+        assert bad not in shown.text, bad
+    assert [
+        p["name"]
+        for p in (await theirs.browser.get("/api/music/class-playlists")).json()["playlists"]
+    ] == ["Theirs"]
+
+
+async def test_a_class_without_a_playlist_is_not_listed_and_a_detached_one_has_no_link(
+    songenv: SongEnv,
+) -> None:
+    rider = await songenv.rider()
+    job_id, list_rev, _ = await songenv.waiting(rider)
+    class_id = class_of(songenv, job_id)
+    empty = await rider.browser.get("/api/music/class-playlists")
+    assert (empty.status_code, empty.json()) == (200, {"playlists": []})
+    insert(
+        songenv.admin, "class_playlists", owner_id=rider.user_id, class_id=class_id,
+        revision_id=list_rev, playlist_id=PLAYLIST, spotify_user_id=USER_A,
+        name="Tuesday climb", state="verified", content_hash=content_digest({}), track_count=3,
+    )  # fmt: skip
+    songenv.sql("UPDATE class_playlists SET detached_at = now() WHERE class_id = :c", c=class_id)
+    [only] = (await rider.browser.get("/api/music/class-playlists")).json()["playlists"]
+    assert (only["link"], only["detached"], only["note"]) == (
+        None, True, "In your earlier Spotify account."
+    )  # fmt: skip
+    # The song list it came from is gone: the playlist stays, with no songs.
+    songenv.sql("UPDATE class_playlists SET revision_id = NULL WHERE class_id = :c", c=class_id)
+    [again] = (await rider.browser.get("/api/music/class-playlists")).json()["playlists"]
+    assert again["songs"] == []
+
+
+async def test_the_music_playlists_need_a_signed_in_user(songenv: SongEnv) -> None:
+    rider = await songenv.rider()
+    rider.browser.client.cookies.clear()
+    response = await rider.browser.client.get("/api/music/class-playlists")
+    assert response.status_code == 401

@@ -34,7 +34,7 @@ export function SongRows({
               {song.position}
             </span>
             <CoverArt src={song.cover} label={song.title} />
-            <div className="min-w-0 flex-1">
+            <div className="min-w-40 flex-1 basis-40">
               <p className="m-0 break-words font-medium text-text">{song.title}</p>
               <p className="m-0 break-words text-[0.9375rem] text-muted">{song.artist}</p>
             </div>

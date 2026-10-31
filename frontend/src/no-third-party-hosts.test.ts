@@ -71,6 +71,14 @@ describe('no third-party hosts', () => {
     expect(remoteUrls(COVER_ART, 'const a = "https://i.scdn.co"')).toHaveLength(1)
   })
 
+  it('no app source names or builds a Spotify URL (links come only from the API)', () => {
+    const naming = Object.entries(scripts)
+      .filter(([path]) => !path.startsWith('./test/'))
+      .filter(([, source]) => /open\.spotify\.com|spotify:(?:track|playlist|album|artist)|spotify\.link/i.test(source))
+      .map(([path]) => path)
+    expect(naming).toEqual([])
+  })
+
   it('only CoverArt renders an image element', () => {
     // src/test/ holds test fixtures (hostile text such as an <img> in a description), not app code.
     const withImg = Object.entries(scripts)
