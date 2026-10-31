@@ -266,13 +266,21 @@ async def test_a_deepseek_route_with_the_setting_switched_off_fails_model_config
     assert fake_mowl.requests == []
 
 
-async def test_a_stale_route_is_used_and_logged_once_per_process(
+@pytest.mark.parametrize("reason", ["manifest_digest", "suite_version", "prompt_versions"])
+async def test_a_route_stale_for_a_suite_or_code_change_is_used_and_logged_once_per_process(
     denv: DesignEnv, fake_mowl: FakeMowlMusic, kek_dir: Path, app_database_url: str,
     accepted: None, gate: None, caplog: pytest.LogCaptureFixture,
+    monkeypatch: pytest.MonkeyPatch, reason: str,
 ) -> None:  # fmt: skip
     s = worker(app_database_url, kek_dir, "anthropic", "openai")
     result_id = await enable(denv, s, age_minutes=10)
-    add_result(denv.admin, "openai", SOL, "medium", "design", passed=False)  # newer, failing
+    changed = {
+        "manifest_digest": ("running_manifest_digest", lambda: "c" * 64),
+        "suite_version": ("running_suite_version", lambda: 99),
+        "prompt_versions": ("running_prompt_versions", lambda group: {"design": "d" * 64}),
+    }
+    name, value = changed[reason]
+    monkeypatch.setattr(routes_module, name, value)  # a deploy after the route was set
     builds = use(denv, s)
     jobs = [await owner_job(denv), await owner_job(denv)]
     with caplog.at_level(logging.WARNING, logger="classbeat.models.routes"):
@@ -280,14 +288,41 @@ async def test_a_stale_route_is_used_and_logged_once_per_process(
         await denv.run_next()
 
     assert [denv.ops.row(j).state for j in jobs] == ["completed", "completed"]
-    assert [c.stale for c in builds.chosen] == [("newer_failure",), ("newer_failure",)]
+    assert [c.stale for c in builds.chosen] == [(reason,), (reason,)]
     assert [runs(denv, j)[0].eval_result_id for j in jobs] == [result_id, result_id]
     lines = [r for r in caplog.records if r.getMessage() == "model route stale"]
     assert [(r.route_key, r.stage_group, r.reason) for r in lines] == [  # pyright: ignore[reportAttributeAccessIssue]
-        ("default", "design", "newer_failure")
+        ("default", "design", reason)
     ]
     assert set(vars(lines[0])) >= {"route_key", "stage_group", "reason"}
     assert CANARY not in caplog.text
+
+
+async def test_a_route_with_a_newer_failing_result_fails_model_config_before_any_request(
+    denv: DesignEnv, fake_mowl: FakeMowlMusic, kek_dir: Path, app_database_url: str,
+    accepted: None, gate: None, caplog: pytest.LogCaptureFixture,
+) -> None:  # fmt: skip
+    """A newer failure means no standing pass (ADR 0012 amendment, G2): refused, not used,
+    even when other reasons also apply; no fallback to the bootstrap."""
+    s = worker(app_database_url, kek_dir, "anthropic", "openai")
+    await enable(denv, s, age_minutes=10)
+    add_result(denv.admin, "openai", SOL, "medium", "design", passed=False)  # newer, failing
+    builds = use(denv, s)
+    job_id = await owner_job(denv)
+    with caplog.at_level(logging.WARNING, logger="classbeat.models.routes"):
+        await denv.run_next()
+
+    row = denv.ops.row(job_id)
+    assert (row.state, row.error_category) == ("failed", "model_config")
+    assert builds.chosen == []
+    assert builds.replays == []
+    assert fake_mowl.requests == []
+    assert runs(denv, job_id) == []
+    [line] = [r for r in caplog.records if r.getMessage() == "model route unusable"]
+    assert (line.route_key, line.stage_group, line.reason) == (  # pyright: ignore[reportAttributeAccessIssue]
+        "default", "design", "newer_failure",
+    )  # fmt: skip
+    assert not [r for r in caplog.records if r.getMessage() == "model route stale"]
 
 
 async def test_fake_bypasses_routes(

@@ -478,7 +478,7 @@ async def test_a_deepseek_route_is_unusable_once_the_setting_is_off(
 # --- staleness --------------------------------------------------------------------------------
 
 
-async def test_a_stale_route_is_used_and_flagged_with_each_reason(
+async def test_a_stale_route_is_flagged_with_each_reason_and_a_newer_failure_refused(
     admin: Connection,
     factory: Factory,
     app_database_url: str,
@@ -492,23 +492,24 @@ async def test_a_stale_route_is_used_and_flagged_with_each_reason(
     # A newer failing result for the same provider, model, effort and group.
     add_result(admin, passed=False, age_minutes=5)
     add_result(admin, passed=False, effort="high", age_minutes=4)  # another effort: not this
-    choice = await resolve(factory, s)
-    assert (choice.eval_result_id, choice.stale) == (result, ("newer_failure",))
-    assert (await _routes(factory))[0].stale == ("newer_failure",)
+    # No standing pass: the worker refuses the route (G2), the listing shows why.
+    assert await unusable(factory, s) == "newer_failure"
+    [view] = await _routes(factory)
+    assert (view.result.id, view.stale) == (result, ("newer_failure",))
     # A deploy changed a prompt or a tool schema.
     changed = {**running_prompt_versions("design"), "design": "d" * 64}
     every = ("prompt_versions", "suite_version", "newer_failure")
     with monkeypatch.context() as m:
         m.setattr(routes_module, "running_prompt_versions", lambda group: changed)
-        assert (await resolve(factory, s)).stale == ("prompt_versions", "newer_failure")
+        assert (await _routes(factory))[0].stale == ("prompt_versions", "newer_failure")
         # The suite moved on.
         m.setattr(routes_module, "running_suite_version", lambda: 99)
-        assert (await resolve(factory, s)).stale == every
         assert (await _routes(factory))[0].stale == every
+        assert await unusable(factory, s) == "newer_failure"  # with other reasons too
         # A new route for a stale result is refused (not the newest pass of the current code).
         assert await refused(factory, s, "anthropic", OPUS, "medium") == "suite_version"
     assert await refused(factory, s, "anthropic", OPUS, "medium") == "result_failed"
-    # Each reason alone: only the prompt versions, only the suite version.
+    # Each other reason alone: the route is used and flagged (ADR 0012 section 5).
     clear_gate(admin)
     add_result(admin)
     await enable(factory, s, "anthropic", OPUS, "medium")
@@ -548,10 +549,11 @@ async def test_the_newest_result_is_deterministic_within_one_transaction(
             await record_result(db, **_values(verdict=verdict(status)))
     await enable(factory, s, "anthropic", OPUS, "medium")
     assert (await resolve(factory, s)).stale == ()
-    # A failure recorded after the route's pass in one transaction is newer: stale.
+    # A failure recorded after the route's pass in one transaction is newer: refused.
     async with system_session(factory) as db:
         await record_result(db, **_values(verdict=verdict("failed")))
-    assert (await resolve(factory, s)).stale == ("newer_failure",)
+    assert await unusable(factory, s) == "newer_failure"
+    assert (await _routes(factory))[0].stale == ("newer_failure",)
 
 
 # --- record_result ----------------------------------------------------------------------------
@@ -731,7 +733,7 @@ async def test_the_cli_lists_enables_with_yes_only_and_disables(
     add_result(admin, passed=False)
     code, out, err = await models_cli(s, "list")
     outputs += [out, err]
-    assert "usable stale: newer_failure" in out
+    assert "unusable: newer_failure stale: newer_failure" in out
     (kek_dir / "anthropic_api_key").write_text("", "utf-8")  # an empty file is no key
     code, out, err = await models_cli(settings(app_database_url), "list")
     outputs += [out, err]

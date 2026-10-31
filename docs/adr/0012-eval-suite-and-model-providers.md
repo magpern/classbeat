@@ -629,3 +629,13 @@ Accepted during G2 (#215), from the PR #267 review (2026-10-31):
   references `model_eval_results`, `RESTRICT`) and the same two fields in
   `class_revisions.provenance` (`null` for the bootstrap choice and `fake`; absent on revisions
   stored before G2).
+- **A newer failure is refused, not used** (Architect, 2026-10-31, on the #267 review's item 4).
+  It replaces "the route keeps working" in section 5's **Staleness** for this one reason. A route
+  whose result has a newer failing result for the same provider, model, effort and group no longer
+  has a standing pass: `resolve_route` raises `RouteUnusable("newer_failure")`, so the job fails
+  `model_config` before any request, logs the usual "model route unusable" line (key, group and
+  reason), and does not fall back to the bootstrap. This also covers a failure recorded between
+  `set_route`'s check and its write. `list_routes` still shows the route as stale with that
+  reason, and `models list` shows it as `unusable: newer_failure`. The other stale reasons
+  (`prompt_versions`, `suite_version`, `manifest_digest`) keep section 5's behaviour: the route is
+  used and warned about once per process.
