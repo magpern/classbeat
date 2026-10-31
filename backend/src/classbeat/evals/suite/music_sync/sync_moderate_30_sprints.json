@@ -1,0 +1,16 @@
+{
+ "name": "sync_moderate_30_sprints",
+ "about": "Moderate 30 minutes, two sprints on drops.",
+ "brief": {
+  "length_min": 30,
+  "intensity": "moderate",
+  "sprints": 2
+ },
+ "music": {
+  "tracks": 9
+ },
+ "expect": {
+  "music_sync": {},
+  "changes_on_music_min": 0.9
+ }
+}

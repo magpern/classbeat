@@ -26,6 +26,14 @@ if TYPE_CHECKING:
         reset_mfa,
         revoke_admin,
     )
+    from classbeat.auth.admin_accounts import (
+        AccountRow,
+        delete_account,
+        disable_account,
+        enable_account,
+        find_accounts,
+        get_account,
+    )
     from classbeat.auth.admin_lookup import account_emails
     from classbeat.auth.clientip import bucket_ip, client_ip
     from classbeat.auth.cookies import (
@@ -122,6 +130,12 @@ _EXPORTS: dict[str, str] = {
     "grant_admin_if_listed": "accounts",
     "reset_mfa": "accounts",
     "revoke_admin": "accounts",
+    "AccountRow": "admin_accounts",
+    "get_account": "admin_accounts",
+    "delete_account": "admin_accounts",
+    "disable_account": "admin_accounts",
+    "enable_account": "admin_accounts",
+    "find_accounts": "admin_accounts",
     "account_emails": "admin_lookup",
     "bucket_ip": "clientip",
     "client_ip": "clientip",
@@ -228,6 +242,7 @@ __all__ = [
     "DEVICE_COOKIE",
     "SESSION_COOKIE",
     "AccountError",
+    "AccountRow",
     "Attempt",
     "Bucket",
     "EmailAddress",
@@ -257,11 +272,16 @@ __all__ = [
     "current_context",
     "current_session",
     "decrypt_totp_secret",
+    "delete_account",
     "derive_key",
     "detach_state",
+    "disable_account",
+    "enable_account",
     "encrypt_totp_secret",
+    "find_accounts",
     "find_user",
     "forget_devices",
+    "get_account",
     "grant_admin",
     "grant_admin_if_listed",
     "hmac_digest",

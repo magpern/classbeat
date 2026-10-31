@@ -78,6 +78,7 @@ TABLE_NAMES = (
 SUBMODULES = frozenset(
     {
         "accounts",
+        "admin_accounts",
         "admin_lookup",
         "admin_routes",
         "clientip",

@@ -1,0 +1,17 @@
+{
+ "name": "sync_moderate_60_long_tracks",
+ "about": "Moderate 60 minutes to six minute tracks.",
+ "brief": {
+  "length_min": 60,
+  "intensity": "moderate",
+  "sprints": 3
+ },
+ "music": {
+  "track_sec": 360,
+  "tracks": 12
+ },
+ "expect": {
+  "music_sync": {},
+  "changes_on_music_min": 0.9
+ }
+}

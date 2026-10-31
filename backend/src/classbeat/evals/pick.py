@@ -311,7 +311,22 @@ async def run_pick_case(
         result.outcome = failure.category
         return result, catalogue, registry
     result.checks = pick_checks(case, plan, result, catalogue, sent_text(provider), bands)
+    result.checks.append(limits_check(result, limits))
     return result, catalogue, registry
+
+
+def limits_check(result: PickCaseResult, limits: tuple[Limits, Limits]) -> PickCheck:
+    """The suite's ``limits`` check of a song run (ADR 0012 section 4.3: every run passes it):
+    both stages' turns and tool calls within their sum, the cost within the job ceiling."""
+    turns = limits[0].max_turns + limits[1].max_turns
+    calls = limits[0].max_tool_calls + limits[1].max_tool_calls
+    ceiling = max(limits[0].job_cost_micros, limits[1].job_cost_micros)
+    return PickCheck(
+        "limits",
+        result.turns <= turns and result.tool_calls <= calls and result.cost_micros <= ceiling,
+        f"{result.turns} turns of {turns}, {result.tool_calls} tool calls of {calls}, "
+        f"cost {result.cost_micros} of {ceiling} micro-dollars",
+    )
 
 
 def sent_text(provider: ModelProvider) -> str:

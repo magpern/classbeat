@@ -6,6 +6,7 @@ import { ChangeEmail, ChangePassword } from '../components/account/Credentials'
 import { SpotifySummary } from '../components/account/Spotify'
 import { SignInMethods } from '../components/account/SignInMethods'
 import { TwoFactor } from '../components/account/TwoFactor'
+import { Plan } from '../components/account/Plan'
 import { Usage } from '../components/account/Usage'
 import { Notice, Section, useAction } from '../components/forms'
 import { RequireAuth } from '../components/RequireAuth'
@@ -51,6 +52,7 @@ function Account() {
       ) : null}
       <Connections />
       <SpotifySummary />
+      <Plan />
       <Usage />
       <SignInMethods />
       <ChangeEmail current={email} />

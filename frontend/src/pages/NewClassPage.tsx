@@ -16,6 +16,7 @@ import { MusicChoice, type Music, type SongsAvailability } from '../components/s
 import { SelectField, TextAreaField } from '../components/classes/fields'
 import { Card, Field, Notice, useAction } from '../components/forms'
 import { RequireAuth } from '../components/RequireAuth'
+import { planRefusalText } from '../api/planMessages'
 import { BRIEF_TOO_LONG, briefBytes, MAX_BRIEF_BYTES } from '../lib/brief'
 import { newIdempotencyKey, rememberInput, rememberPick } from '../lib/submittedInput'
 import { readPreset } from '../lib/presets'
@@ -43,9 +44,7 @@ function playlistError(error: unknown): string {
 
 const CREATE_ERRORS: Record<string, string> = {
   not_connected: 'MOWL is not connected. Connect it on your account page first.',
-  quota: 'You have used up what your plan allows for now.',
   class_busy: 'This class already has a design running.',
-  busy: 'You already have designs running. Wait for one to finish, then try again.',
   idempotency_mismatch: 'That did not work. Check the form and try again.',
   invalid_input: `The class was not accepted. Check the fields; the style and description together may be over ${String(MAX_BRIEF_BYTES)} bytes.`,
 }
@@ -71,6 +70,8 @@ async function songsAvailability(
 }
 
 function createError(error: unknown): string {
+  const refusal = planRefusalText(error)
+  if (refusal !== null) return refusal
   if (error instanceof ApiError && error.reason !== null) {
     const known = Object.hasOwn(CREATE_ERRORS, error.reason) ? CREATE_ERRORS[error.reason] : undefined
     if (known !== undefined) return known
