@@ -28,7 +28,10 @@ second request on, the provider's own count replaces the estimate for everything
 recorded (the fence refuses the ``agent_runs`` update), so the job's cost across attempts may
 undercount by that one turn per lost lease; the next holder does not guess it (ADR 0006 section 6,
 accepted there). **And after a failed request:** a request that fails after the provider
-started billing it (an error mid-stream, a timeout) returns no usage, so it isn't counted either.
+started billing it returns no usage. For an OpenAI-SDK adapter, and for Anthropic once its stream
+has begun (an error event, a read timeout, the turn bound, a cut connection), the loop counts the
+turn at its ceiling instead (``ProviderError.billed``); a cancel mid-stream is still not counted
+(ADR 0006 section 6).
 The SDK also retries silently inside a turn (``max_retries=2``: a connection error or a timeout
 before the response headers, 408, 409, 429, 5xx; never once the stream has started; the
 provider's ``x-should-retry`` header can override that list for one answer, which leaves the
