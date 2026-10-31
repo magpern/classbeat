@@ -4,6 +4,7 @@ is audited once with its filter; a row shows ADR 0011 section 1's columns but ne
 the view is read only and neither the app role nor ``classbeat_maint`` can change an audit row
 (T92). Fakes only."""
 
+import json
 import secrets
 from collections.abc import AsyncIterator, Iterator
 from typing import Any
@@ -223,6 +224,9 @@ async def test_an_unknown_cursor_is_404_and_audited_refused(
         {"target_id": "é" * 100},  # 100 characters, 600 bytes once JSON-encoded
         {"actor_email": "é" * 320},  # 320 characters, 1920 bytes once encoded
         {"actor_email": "\U0001f600" * 60},  # 12 bytes each once encoded
+        # 636 bytes as sent, but lower() makes each "i" + U+0307: 742 bytes, caught by the
+        # route's own check of the lowered filter (filter_invalid), not by the query's bound.
+        {"actor_email": "İ" * 106},
         {"outcome": "maybe"},
         {"since": "2026-10-01T00:00:00"},  # no time zone
         {"since": "2026-10-02T00:00:00Z", "until": "2026-10-01T00:00:00Z"},
@@ -309,30 +313,68 @@ def test_the_largest_accepted_filter_fits_the_audit_row(email: str, target_id: s
     assert len(checked_params("audit.list", full).encode()) <= MAX_PARAMS_BYTES
 
 
-def test_checked_params_never_returns_a_value_jsonb_refuses() -> None:
+def test_checked_params_refuses_a_real_nul_and_keeps_a_literal_one() -> None:
+    """The NUL check looks at the values, not the encoded text: ``user.grant``'s ``ends_at`` is
+    free text without a control-character rule, so only this check stands between a NUL and a
+    row ``jsonb`` refuses."""
     with pytest.raises(UnknownAction):
-        checked_params("admin.request", {"method": "GET", "route": "/api/admin/a\x00"})
-    with pytest.raises(UnknownAction):
-        checked_params("audit.list", {"target_id": "a\x00b"})
+        checked_params("user.grant", {"plan_id": "pro", "ends_at": "2026\x00"})
+    literal = checked_params("user.grant", {"plan_id": "pro", "ends_at": "\\u0000"})
+    assert json.loads(literal)["ends_at"] == "\\u0000"
+    assert checked_params("user.list", {"q": "\\u0000"})
 
 
-async def test_a_failure_whose_params_the_table_refuses_still_writes_its_row(
-    env: Env, superuser: Connection
-) -> None:
-    """The error path does not depend on the params that may have caused the error: a row the
-    table refuses with them is written without them (#282 review)."""
+async def record_failure(env: Env, actor: Any, params: str) -> None:
     from classbeat.admin import db as admin_db
 
-    actor = new_admin(superuser)
-    poisoned = '{"target_id": "a\\u0000b"}'  # what a NUL becomes once encoded
     await admin_db._record_failure(  # pyright: ignore[reportPrivateUsage]
-        env.app.state.admin_db, actor, "audit.list", Target(), poisoned, RuntimeError("boom")
+        env.app.state.admin_db, actor, "audit.list", Target(), params, RuntimeError("boom")
     )
-    rows = superuser.execute(
-        text("SELECT outcome, reason, params FROM admin_audit WHERE request_id = :r"),
-        {"r": actor.request_id},
-    ).all()
-    assert [tuple(r) for r in rows] == [("error", "internal", {})]
+
+
+def rows_of(conn: Connection, actor: Any) -> list[tuple[Any, ...]]:
+    return [
+        tuple(r)
+        for r in conn.execute(
+            text("SELECT outcome, reason, params FROM admin_audit WHERE request_id = :r"),
+            {"r": actor.request_id},
+        )
+    ]
+
+
+async def test_a_failure_whose_params_the_table_refuses_is_written_without_them(
+    env: Env, superuser: Connection, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Only when the database refuses the params themselves (``DataError``) is the row written
+    again without them, and that is logged (#282 review)."""
+    actor = new_admin(superuser)
+    await record_failure(env, actor, '{"target_id": "a\\u0000b"}')  # an encoded NUL
+    assert rows_of(superuser, actor) == [("error", "internal", {})]
+    assert "admin audit row written without params" in caplog.text
+
+
+async def test_any_other_failure_to_write_the_row_is_not_retried_without_params(
+    env: Env,
+    superuser: Connection,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    from sqlalchemy.exc import OperationalError
+
+    db = env.app.state.admin_db
+    calls: list[str] = []
+
+    async def failing(*args: Any, params: str = "{}", **kwargs: Any) -> None:
+        calls.append(params)
+        raise OperationalError("INSERT", {}, Exception("connection lost"))
+
+    monkeypatch.setattr(db, "record", failing)
+    actor = new_admin(superuser)
+    await record_failure(env, actor, '{"limit":50}')
+    assert calls == ['{"limit":50}']  # once, with its params
+    assert "admin audit row not written" in caplog.text
+    assert "without params" not in caplog.text
+    assert rows_of(superuser, actor) == []
 
 
 async def test_since_is_inclusive_and_until_exclusive(admin: Any, superuser: Connection) -> None:

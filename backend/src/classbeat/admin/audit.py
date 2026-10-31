@@ -54,24 +54,6 @@ class NoParams(Params):
     """An action whose target says everything (a read or write of one user or row)."""
 
 
-class UserListParams(Params):
-    """The Users list's filter (AD1 #218): an email prefix (never a full credential) and paging."""
-
-    q: Annotated[str, StringConstraints(max_length=254)] | None = None
-    offset: Annotated[int, Field(ge=0, le=10_000)] = 0
-    limit: Annotated[int, Field(ge=1, le=100)] = 50
-
-
-class GrantParams(Params):
-    """An entitlement grant (AD1 #218): what was granted, and whether a note was given (the note
-    itself stays on the entitlement)."""
-
-    plan_id: Annotated[str, StringConstraints(pattern=r"^[a-z_]{1,30}$")] | None = None
-    features: Annotated[list[Code], Field(max_length=10)] = []
-    ends_at: Annotated[str, StringConstraints(max_length=40)] | None = None
-    note: bool = False
-
-
 def json_bytes(value: str) -> int:
     """How many bytes ``value`` takes inside a JSON string as ``checked_params`` writes it
     (escapes included: a non-ASCII character is 6 or 12 bytes, not 1)."""
@@ -91,6 +73,29 @@ def bounded_text(max_bytes: int) -> AfterValidator:
         return value
 
     return AfterValidator(check)
+
+
+# The Users list's search text (AD1 #218): no control character, and bounded in encoded bytes as
+# well as in characters (254 emoji would be 3048 bytes once encoded).
+UserQuery = Annotated[str, StringConstraints(max_length=254), bounded_text(1024)]
+
+
+class UserListParams(Params):
+    """The Users list's filter (AD1 #218): an email prefix (never a full credential) and paging."""
+
+    q: UserQuery | None = None
+    offset: Annotated[int, Field(ge=0, le=10_000)] = 0
+    limit: Annotated[int, Field(ge=1, le=100)] = 50
+
+
+class GrantParams(Params):
+    """An entitlement grant (AD1 #218): what was granted, and whether a note was given (the note
+    itself stays on the entitlement)."""
+
+    plan_id: Annotated[str, StringConstraints(pattern=r"^[a-z_]{1,30}$")] | None = None
+    features: Annotated[list[Code], Field(max_length=10)] = []
+    ends_at: Annotated[str, StringConstraints(max_length=40)] | None = None
+    note: bool = False
 
 
 # The audit filter's two free-text fields, bounded so the largest accepted filter still fits
@@ -146,12 +151,27 @@ def checked_params(action: str, params: Mapping[str, Any] | None) -> str:
         value = model.model_validate(dict(params or {}))
     except ValidationError:
         raise UnknownAction(f"params rejected for admin action {action!r}") from None
-    encoded = json.dumps(value.model_dump(mode="json"), separators=(",", ":"), sort_keys=True)
+    dumped = value.model_dump(mode="json")
+    if _holds_nul(dumped):  # jsonb refuses a NUL in a string: the row could never be written
+        raise UnknownAction(f"params rejected for admin action {action!r}")
+    encoded = json.dumps(dumped, separators=(",", ":"), sort_keys=True)
     if len(encoded.encode()) > MAX_PARAMS_BYTES:
         raise UnknownAction(f"params too large for admin action {action!r}")
-    if "\\u0000" in encoded:  # jsonb refuses NUL: the row could never be written
-        raise UnknownAction(f"params rejected for admin action {action!r}")
     return encoded
+
+
+def _holds_nul(value: object) -> bool:
+    """Whether a dumped value has a real NUL character in a key or string. A literal backslash
+    followed by ``u0000`` is six ordinary characters, which ``jsonb`` stores fine."""
+    if isinstance(value, str):
+        return "\x00" in value
+    if isinstance(value, dict):
+        items: dict[object, object] = value  # pyright: ignore[reportUnknownVariableType]
+        return any(_holds_nul(k) or _holds_nul(v) for k, v in items.items())
+    if isinstance(value, list):
+        values: list[object] = value  # pyright: ignore[reportUnknownVariableType]
+        return any(_holds_nul(v) for v in values)
+    return False
 
 
 @dataclass(frozen=True, slots=True)
