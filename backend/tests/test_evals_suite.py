@@ -12,6 +12,7 @@ from uuid import uuid4
 
 import pytest
 
+from advscripts import provider_for_case as adv_provider
 from agentfake import CONFIG
 from classbeat.agent import DesignContext
 from classbeat.agent.design import check
@@ -34,7 +35,6 @@ from classbeat.evals.runner import (
     suite_row,
 )
 from classbeat.evals.suite import Manifest, SuiteError, load_suite, suite_digest
-from advscripts import provider_for_case as adv_provider
 from pickfake import CHOOSE_LIMITS, POOL_LIMITS
 from pickscripts import provider_for_case as pick_provider
 from smokescripts import good_draft
