@@ -209,6 +209,13 @@ GitHub hold the detail.
       provider re-authentication (#291); the delete-class confirmation scroll and focus (#301); Z1 to Z7 label
       tests (#301); CSP and Referrer-Policy on an unhandled 500 (#293); a test for the QR attribute allow-list
       (#293). Left open from it: the song strip's start times against the analysed music (needs a backend field).
+- **M6, rate limit on the MOWL playlist listing (#354, SR-05 of the security review, in review, not merged):**
+  `GET /api/music/mowl-playlists` now uses the fixed-window limiter of the other provider-calling routes: 30 per
+  user and 60 per IP per 10 minutes, every request counts, a refusal (429 `rate_limited` with `Retry-After`) comes
+  before the connection is opened and before any MOWL call; a parallel test shows the limit cannot be overshot.
+  Other provider-calling GET routes checked: `GET /oauth/{provider}/callback` was already limited per IP
+  (`OAUTH_IP`); `GET /spotify/callback` only exchanges a single-use `state` that a limited `POST /api/spotify/start`
+  created, so it is bounded by that limit; the remaining GET routes read the database only. M6 is **not done**.
 - **M6, GDPR export and delete (#337, in review, not merged):** [ADR 0014](adr/0014-account-export-and-deletion.md),
   threat model T98 to T100. M6 is **not done**; only this item of its "done when" is built. Checklist:
   - [x] `GET /api/account/export` (one JSON file of the user's own rows, connections as status only, no

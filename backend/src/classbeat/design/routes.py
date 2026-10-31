@@ -11,14 +11,20 @@ names, shown back to them).
 A failure answers with its category only, as the connection routes do: ``not_connected``,
 ``needs_reconnect`` and ``decrypt_failed`` 409, ``rate_limited`` 429 with ``Retry-After``,
 ``upstream_unavailable`` and ``key_unavailable`` 503, anything else 502. A request the web's
-outbound allowlist refuses (none is installed yet; threat model T19) answers 502
+outbound allowlist refuses (threat model T19) answers 502
 ``outbound_blocked``.
 
 **A GET writes no state** (Architect decision on #119): a 401 or 403 answers ``needs_reconnect``
 without flipping the connection, and no ``last_used_at`` or ``last_error`` is recorded (the
 job's own reads do that). The one write left is ``open_connection``'s own: a row whose secret no
 longer decrypts flips to ``needs_reconnect`` (ADR 0004 section 5, a key-integrity event). No
-CSRF (a GET, no state) and no rate limit yet (M6).
+CSRF (a GET, no state).
+
+**Rate limited** (SR-05, #354) with the fixed-window limiter of the other provider-calling routes
+(``auth.mowl_playlists_buckets``: 30 per user and 60 per IP per 10 minutes, every request counts):
+a refused request answers 429 ``rate_limited`` with ``Retry-After`` before the connection is
+opened and before any MOWL call. The cross-site GET that could trigger single calls (a
+``SameSite=Lax`` cookie travels on a top-level navigation) is bounded by it.
 """
 
 import re
@@ -89,6 +95,11 @@ def _listed(answer: object) -> list[PlaylistOut]:
 async def mowl_playlists(
     request: Request, ctx: Annotated[UserContext, Depends(auth.require_user)]
 ) -> PlaylistsOut | JSONResponse:
+    attempt = await request.app.state.limiter.begin(
+        auth.mowl_playlists_buckets(str(ctx.user_id), auth.request_ip(request))
+    )
+    if not attempt.allowed:
+        raise auth.RateLimited(attempt.retry_after)
     failure: ConnectionFailure | None = None
     answer: object = None
     try:
