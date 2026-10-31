@@ -8,7 +8,8 @@
 # touches any other project. Steps:
 #   1. start the source stack, seed two users with encrypted connections, sign in once;
 #   2. fingerprint the data (row counts per table, owners, ACLs, RLS flags and policies, roles);
-#   3. scripts/backup.sh, then destroy the source stack and its volume;
+#   3. scripts/backup.sh (the decoded dump must hold no plaintext token or password; that check is
+#      first shown to find a planted token), then destroy the source stack and its volume;
 #   4. scripts/restore.sh into the fresh destination project;
 #   5. before the app starts: the fingerprint equals the source's;
 #   6. start web and worker (the startup key check passes): the migrations are at head, the right
@@ -33,15 +34,25 @@ work="$(mktemp -d)"
 step() { printf '\n== %s\n' "$*"; }
 fail() { echo "DRILL FAILED: $*" >&2; exit 1; }
 
-free_port() {
+# A port is free when nothing answers on it and (where python exists) it can be bound: on Windows
+# a port inside an excluded range refuses the bind although nothing listens.
+py="$(command -v python3 || command -v python || true)"
+port_ok() {
+  if (exec 3<> "/dev/tcp/127.0.0.1/$1") 2> /dev/null; then return 1; fi
+  [ -z "$py" ] || "$py" -c 'import socket,sys; s=socket.socket(); s.bind(("127.0.0.1", int(sys.argv[1])))' "$1" 2> /dev/null
+}
+free_port() { # free_port <ports already taken...>
   local p
-  for _ in $(seq 1 50); do
+  for _ in $(seq 1 100); do
     p=$((50000 + RANDOM % 10000))
-    if ! (exec 3<> "/dev/tcp/127.0.0.1/$p") 2> /dev/null; then echo "$p"; return; fi
+    case " $* " in *" $p "*) continue ;; esac
+    if port_ok "$p"; then echo "$p"; return; fi
   done
   fail "no free port"
 }
-web_port="$(free_port)"; db_port="$(free_port)"; mail_port="$(free_port)"
+web_port="$(free_port)"
+db_port="$(free_port "$web_port")"
+mail_port="$(free_port "$web_port" "$db_port")"
 
 use() { # use <project>: every docker compose call after it targets that project
   export COMPOSE_PROJECT_NAME="$1" WEB_PORT="$web_port" DB_PORT="$db_port" MAILPIT_PORT="$mail_port"
@@ -83,7 +94,8 @@ fingerprint() {
   echo "# tables: owner, rls, forced rls, acl, policies"
   sql -c "SELECT c.relname, pg_get_userbyid(c.relowner), c.relrowsecurity, c.relforcerowsecurity,
                  coalesce(c.relacl, acldefault('r', c.relowner))::text,  -- a NULL ACL means the owner-only default
-                 coalesce((SELECT string_agg(polname || ':' || pg_get_expr(polqual, polrelid), ',' ORDER BY polname)
+                 coalesce((SELECT string_agg(concat_ws(':', polname, polcmd, polpermissive, polroles::regrole[]::text,
+                                pg_get_expr(polqual, polrelid), pg_get_expr(polwithcheck, polrelid)), ',' ORDER BY polname)
                              FROM pg_policy p WHERE p.polrelid = c.oid), '')
             FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
            WHERE n.nspname = 'public' AND c.relkind = 'r' ORDER BY 1"
@@ -111,11 +123,31 @@ grep -q '|t|t|' "$work/before.txt" || fail "the source has no table with forced 
 echo "fingerprint of the source: $(grep -c . "$work/before.txt") lines, users=$users_n connections=$conns_n"
 
 step "2. backup, then destroy the source"
+# pg_dump -Fc compresses table data, so the archive is decoded (pg_restore -f -) before searching.
+dump_has_secret() { docker compose exec -T db pg_restore -f - < "$1" | grep -aE "$DRILL_TOKEN|$DRILL_PASSWORD" > /dev/null; }  # no -q: read it all, no SIGPIPE
+# Self-test of that check: plant the token in a table, back up, the check must FIND it.
+sql -c "CREATE TABLE drill_plant AS SELECT '$DRILL_TOKEN-planted'::text AS v" > /dev/null
+planted="$(scripts/backup.sh -o "$work/planted" 2> /dev/null)"
+dump_has_secret "$planted" || fail "self-test: the plaintext check did not find a planted token"
+sql -c "DROP TABLE drill_plant" > /dev/null
+echo "self-test: the plaintext check finds a planted token"
 dump="$(scripts/backup.sh -o "$work/backups" 2> /dev/null)"
 [ -s "$dump" ] && [ -s "$dump.sha256" ] || fail "no backup file"
 echo "backup: $(basename "$dump") ($(wc -c < "$dump") bytes)"
-if grep -aqE "$DRILL_TOKEN|$DRILL_PASSWORD" "$dump"; then fail "plaintext token or password in the backup"; fi
-echo "no plaintext token or password in the dump"
+if dump_has_secret "$dump"; then fail "plaintext token or password in the backup"; fi
+echo "no plaintext token or password in the decoded dump"
+# --keep: invalid values are refused before anything is deleted; a valid one prunes old backups
+# only and never the new one.
+mkdir -p "$work/keep"
+for d in 20200101T000000Z 20200102T000000Z 20200103T000000Z; do touch "$work/keep/classbeat-$d.dump"; done
+for bad in 0 00 000 abc -1 1.5 ""; do
+  if scripts/backup.sh -o "$work/keep" --keep "$bad" > /dev/null 2>&1; then fail "--keep '$bad' was accepted"; fi
+done
+[ "$(find "$work/keep" -type f | wc -l)" = 3 ] || fail "a refused --keep changed the backup directory"
+kept="$(scripts/backup.sh -o "$work/keep" --keep 2 2> /dev/null)"
+[ -s "$kept" ] && [ "$(find "$work/keep" -name 'classbeat-*.dump' | wc -l)" = 2 ] \
+  && [ -e "$work/keep/classbeat-20200103T000000Z.dump" ] || fail "--keep 2 did not keep exactly the newest two"
+echo "backup.sh --keep: bad values refused untouched; --keep 2 keeps the new backup and the newest old one"
 # The restore image: the source's, retagged for the destination project (no second build).
 docker tag "$src:local" "$dst:local"
 docker compose --profile '*' down -v --remove-orphans > /dev/null

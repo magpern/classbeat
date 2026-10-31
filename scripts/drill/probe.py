@@ -32,6 +32,7 @@ import urllib.request
 from pathlib import Path
 
 from sqlalchemy import text
+from sqlalchemy.exc import DBAPIError
 
 from classbeat.auth import PasswordHasher, normalize_password
 from classbeat.auth.accounts import create_user
@@ -108,6 +109,28 @@ async def rls(factory, emails: list[str]) -> int:
             if leaked:
                 return fail(f"{email} can read another user's connection by owner_id")
         print(f"{email}: sees only their own rows")
+    # Writes: a user may neither hand a row to another owner nor insert one for another owner.
+    first, second = list(contexts.values())[:2]
+    zero12 = "'\\x" + "00" * 12 + "'"
+    statements = {
+        "UPDATE to another owner": "UPDATE connections SET owner_id = :other WHERE owner_id = :me",
+        "INSERT for another owner": (
+            "INSERT INTO connections (id, owner_id, provider, status, secret, secret_nonce, "
+            "wrapped_dek, dek_nonce, key_id) VALUES (gen_random_uuid(), :other, 'spotify', "
+            f"'connected', '\\x00', {zero12}, decode(repeat('00', 48), 'hex'), {zero12}, 'kek-1')"
+        ),
+    }
+    for label, statement in statements.items():
+        try:
+            async with user_session(factory, first) as db:
+                await db.execute(text(statement), {"me": first.user_id, "other": second.user_id})
+                await db.rollback()
+        except DBAPIError as error:
+            if "row-level security" not in str(error).lower():
+                return fail(f"{label}: refused, but not by row level security: {error}")
+            print(f"write refused by RLS: {label}")
+            continue
+        return fail(f"{label}: was not refused by row level security")
     return 0
 
 

@@ -47,8 +47,11 @@ scripts/backup.sh -o /srv/classbeat-backups --keep 14 --gpg-recipient KEYID
 password on a command line). The superuser is required: every owned table has forced row level
 security, and a dump as `classbeat_owner` would silently skip rows. The script checks that
 `pg_restore --list` can read the archive, writes mode 600 and a `.sha256`, and prints the file name.
-Without `--gpg-recipient` it warns that the file is not encrypted. `--keep N` deletes older
-`classbeat-*.dump*` files in the directory. Stack selection is the usual compose one
+Without `--gpg-recipient` it warns that the file is not encrypted. With it, `pg_dump` is piped
+straight into `gpg`: no plaintext dump touches the disk (the encrypted archive is then not read back,
+that needs the private key; the drill and a monthly restore are its test). `--keep N` (a positive
+whole number, checked before anything is written or deleted) deletes older `classbeat-*.dump*`
+files in the directory, never the backup it just made. Stack selection is the usual compose one
 (`COMPOSE_PROJECT_NAME`, `.env`, `COMPOSE_FILE`).
 
 **Recommended schedule and retention** (to be installed on the VPS by the owner): daily at 03:00
@@ -67,8 +70,10 @@ scripts/restore.sh /srv/classbeat-backups/classbeat-20261031T030000Z.dump.gpg
 docker compose up -d --wait web worker
 ```
 
-`restore.sh` verifies the checksum, decrypts a `.gpg` file with your gpg key, starts `db`, **refuses
-a database that already holds tables**, runs `migrate` and `db-functions` (the schema, plus the
+`restore.sh` verifies the checksum, decrypts a `.gpg` file with your gpg key (to a mode 600 temporary
+file, removed on exit), **refuses the default project `classbeat` and a project whose volume
+`<project>_db-data` already exists** (before it starts anything), starts `db`, **refuses a database
+that already holds tables**, runs `migrate` and `db-functions` (the schema, plus the
 `classbeat_queue` and `classbeat_maint` roles the dump refers to), runs `pg_restore --clean
 --if-exists --single-transaction --exit-on-error`, then runs `migrate` (a backup from an older
 release is upgraded to the image's head; a backup newer than the image fails loudly) and
@@ -91,16 +96,21 @@ failure):
 
 1. Source stack up; two users with passwords and an encrypted MOWL connection each; one sign-in.
 2. A fingerprint of the database: row counts of every table, table owners, ACLs, RLS flags and
-   policies, function owners, digests and ACLs, the `classbeat%` roles' attributes, migration head.
-3. `scripts/backup.sh`; the dump must not contain the seeded token or password in plaintext; the
-   source stack and volume are destroyed.
+   the full policy definitions (command, permissive or restrictive, roles, USING and WITH CHECK), function owners, digests and ACLs, the `classbeat%` roles' attributes, migration head.
+3. `scripts/backup.sh`; the decoded dump (`pg_restore -f -`: the archive compresses its data, so the
+   raw bytes cannot be searched) must not contain the seeded token or password, and that check is
+   first shown to find a token planted in a table; `--keep` is exercised (bad values refused with
+   nothing deleted, a valid one prunes old files only); the source stack and volume are destroyed.
 4. `scripts/restore.sh` into the fresh `-dst` project; the fingerprint must be identical.
 5. Web and worker start (the KEK check passes); migrations are at head; the right key decrypts both
    connections to the seeded tokens; with no user a session sees 0 connection rows and each user
-   sees only their own; both users sign in over HTTP and a wrong password gets 401.
+   sees only their own; both users sign in over HTTP and a wrong password gets 401; writes that must be refused by RLS (moving a row to another owner,
+   inserting a row for another owner) are refused.
 6. Wrong keys: a different key under the same id is refused at startup (`KekError`); a different key
    under another id starts but gets `key_unavailable` for the old rows; the same wrong key used
-   without the startup check fails authentication (`decrypt_failed`).
+   without the startup check fails authentication (`decrypt_failed`). These probes call the same
+   functions web and worker call at startup (`load_keyring`) rather than restarting web; a
+   wrong `connection_kek` file under the right id was also checked by hand to make web refuse to start.
 
 CI runs it in the `e2e` job (on any change to the stack, the scripts or `docker/`), as a step before
 Playwright. It adds about three minutes to a job that already runs for many; the second image build

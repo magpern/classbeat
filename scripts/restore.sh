@@ -44,7 +44,12 @@ if [[ "$file" == *.gpg ]]; then
 fi
 
 project="$(docker compose config --format json | sed -n 's/^ *"name": *"\([^"]*\)".*/\1/p' | head -n 1)"
-echo "restore.sh: restoring into compose project '${project:-?}'"
+[ -n "$project" ] || die "cannot tell the compose project name"
+[ "$project" != classbeat ] \
+  || die "refusing the default project 'classbeat' (the live stack); set COMPOSE_PROJECT_NAME to a new name"
+[ -z "$(docker volume ls -q --filter "name=^${project}_db-data$")" ] \
+  || die "the volume ${project}_db-data exists: restore only into a fresh project (docker compose down -v first, or pick a new name)"
+echo "restore.sh: restoring into compose project '$project'"
 
 docker compose up -d --wait db
 psql_db() { docker compose exec -T db psql -U postgres -d classbeat -X -At -v ON_ERROR_STOP=1 "$@"; }
