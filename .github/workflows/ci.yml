@@ -29,6 +29,8 @@ jobs:
       frontend: ${{ steps.filter.outputs.frontend }}
       stack: ${{ steps.filter.outputs.stack }}
       all: ${{ steps.filter.outputs.all }}
+      # The backend test shard count, from the backend-tests matrix's shard list (the one source).
+      shards: ${{ steps.shards.outputs.total }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -42,6 +44,13 @@ jobs:
           BASE_SHA: ${{ github.event_name == 'merge_group' && github.event.merge_group.base_sha || github.event.pull_request.base.sha }}
           HEAD_SHA: ${{ github.event_name == 'merge_group' && github.event.merge_group.head_sha || github.event.pull_request.head.sha }}
         run: scripts/ci-changes.sh
+
+      # Fails the run when the matrix is not exactly `shard: [1..N]` (scripts/ci-shards.sh).
+      - id: shards
+        run: |
+          set -euo pipefail
+          total="$(scripts/ci-shards.sh)"
+          echo "total=$total" >> "$GITHUB_OUTPUT"
 
   # Everything cheap that must run on every change, as steps of one runner (one billed
   # minute-rounding instead of seven). Trivy and gitleaks are checksum-verified release binaries.
@@ -306,24 +315,27 @@ jobs:
         run: uv run pyright
 
       # The backend-tests matrix runs each test file in exactly one shard (tests/shards.py
-      # compares pytest's own collection with the split).
+      # compares pytest's own collection with the split). The shard count comes from one place,
+      # the matrix's `shard` list (scripts/ci-shards.sh in `changes`), here and in every shard.
       - name: Every test file is in exactly one shard
+        env:
+          TOTAL: ${{ needs.changes.outputs.shards }}
         run: |
           set -euo pipefail
-          total="$(yq -r '.jobs["backend-tests"].strategy.matrix.shard | length' ../.github/workflows/ci.yml)"
-          shards="$(yq -r '.jobs["backend-tests"].strategy.matrix.shard | join(" ")' ../.github/workflows/ci.yml)"
-          [ "$shards" = "$(seq -s ' ' 1 "$total")" ] || { echo "::error::the backend-tests matrix must be the shards 1 to N"; exit 1; }
-          uv run python tests/shards.py check "$total"
+          [[ $TOTAL =~ ^[1-9][0-9]*$ ]] || { echo "::error::no shard count from changes"; exit 1; }
+          uv run python tests/shards.py check "$TOTAL"
 
   # pytest in parallel shards, each with its own Postgres (tests/shards.py: a stable hash of the
   # file path). The `ci` gate sees one result for the matrix: failure or cancelled if any shard is.
   backend-tests:
-    name: Backend tests (${{ matrix.shard }}/${{ strategy.job-total }})
+    name: Backend tests (shard ${{ matrix.shard }})
     needs: changes
     if: needs.changes.outputs.backend == 'true'
     runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
+      # The only place the shard count is set: scripts/ci-shards.sh reads it from this list and
+      # refuses another axis, include or exclude.
       matrix:
         shard: [1, 2, 3]
     defaults:
@@ -382,9 +394,12 @@ jobs:
       - name: Tests
         env:
           SHARD: ${{ matrix.shard }}
-          TOTAL: ${{ strategy.job-total }}
+          # The count from the matrix's shard list, computed once in `changes` and passed to the
+          # shard check and every shard alike; never strategy.job-total.
+          TOTAL: ${{ needs.changes.outputs.shards }}
         run: |
           set -euo pipefail
+          [[ $TOTAL =~ ^[1-9][0-9]*$ ]] || { echo "::error::no shard count from changes"; exit 1; }
           mapfile -t files < <(uv run python tests/shards.py list "$SHARD" "$TOTAL")
           [ "${#files[@]}" -gt 0 ] || { echo "::error::shard $SHARD of $TOTAL is empty"; exit 1; }
           echo "shard $SHARD of $TOTAL: ${#files[@]} test files"

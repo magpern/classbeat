@@ -92,12 +92,19 @@ decision, never an agent's: an agent never merges without the gate, even when to
 Agents merge only with:
 
 ```bash
-gh pr merge <n> --squash --match-head-commit <reviewed-sha> --subject "<PR title> (#<n>)"
+gh pr merge <n> --squash --match-head-commit <reviewed-sha>
 ```
 
-and only when CI is green, the `PASS` is for that SHA, no blocking comment is open and the
-branch is up to date. Never `--auto`, never `--admin`, never an approving review, never a
-change to the ruleset to get a merge through.
+and only when CI is green, the `PASS` is for that SHA and no blocking comment is open. With the
+merge queue this **enqueues** the PR: the queue squashes it on top of `main` (and whatever is
+ahead of it), runs `ci` and `pr-title` on that merged result, and lands it only if they pass;
+`--match-head-commit` makes GitHub refuse it if the head moved after the review. The squash
+commit's title is the PR title (with ` (#<n>)`), so there is no `--subject`, and the PR title
+must be the Conventional Commits subject (`pr-title` checks it on the PR and checks the queued
+commits' subjects again in the merge group). The branch need not be up to date with `main`; a
+queue failure leaves the PR open, to be fixed and enqueued again (a new head needs a new
+review). Never `--auto`, never `--admin`, never an approving review, never a change to the
+ruleset to get a merge through.
 
 The ruleset on `main` (GitHub Pro): pull request required, merge queue (squash), required
 checks `ci` and `pr-title`, no strict up-to-date requirement (the queue tests each PR merged on
@@ -569,16 +576,22 @@ before the squash lands), weekly (Monday 04:00 UTC, which picks up new advisorie
 a merge group's run is never cancelled by concurrency (`cancel-in-progress` is true only for
 `pull_request`).
 
-The `pr-title` workflow also runs on `merge_group` and succeeds there without a title: a merge
-group has none, and the title was already checked on the pull request (editing it re-runs the
-check there).
+The `pr-title` workflow also runs on `merge_group`. A merge group has no PR title, so there it runs
+commitlint on the subject of every commit the queue would land (`git log --format=%s
+base_sha..head_sha`, the squash commits, each titled with its PR's title as the queue built it):
+a title edited after the PR was enqueued is checked too. A missing SHA or an empty range fails it.
+
+The backend test shard count has one source: the `shard` list of the `backend-tests` matrix.
+`scripts/ci-shards.sh` (run in `changes`, tested in `checks`) reads it, refuses another axis, an
+`include` or `exclude`, or anything but `1..N`, and passes N to the shard check and to every shard
+(never `strategy.job-total`).
 
 | Job | Runs | What it does |
 |---|---|---|
-| `changes` | always | `scripts/ci-changes.sh`: `git diff` of the PR's base and head (or the merge group's `base_sha` and `head_sha`) gives the outputs `backend` (`backend/`, `docker/postgres/`), `frontend` (`frontend/`), `stack` (`backend/`, `frontend/`, `e2e/`, `docker/`, `Dockerfile`, `compose*.yaml`, `.dockerignore`, `.env.example`, `.trivyignore`, `scripts/worktree.sh`) and `all`. Renames count at both paths; names are read NUL-separated; if the diff cannot be computed (an unknown commit, a missing SHA) everything runs. `all` is true on schedule/dispatch and when `.github/`, `.gitattributes` or `scripts/ci-changes.sh`, `ci-gate.sh` or `test-ci-gate.sh` change (CI changes test themselves) and makes the others true |
+| `changes` | always | `scripts/ci-changes.sh`: `git diff` of the PR's base and head (or the merge group's `base_sha` and `head_sha`) gives the outputs `backend` (`backend/`, `docker/postgres/`), `frontend` (`frontend/`), `stack` (`backend/`, `frontend/`, `e2e/`, `docker/`, `Dockerfile`, `compose*.yaml`, `.dockerignore`, `.env.example`, `.trivyignore`, `scripts/worktree.sh`) and `all`. Renames count at both paths; names are read NUL-separated; if the diff cannot be computed (an unknown commit, a missing SHA) everything runs. `all` is true on schedule/dispatch and when `.github/`, `.gitattributes` or `scripts/ci-changes.sh`, `ci-gate.sh`, `ci-shards.sh` or `test-ci-gate.sh` change (CI changes test themselves) and makes the others true |
 | `checks` | always | the cheap checks as steps of one job (below) |
 | `backend` | `backend` | once per run: ruff, format, pyright, the queue functions' md5 regenerated on the pinned image (fails when `queue_digests.py` is stale), and the shard check: `backend/tests/shards.py check N` compares pytest's own collection with the split, so every test file runs in exactly one shard and none is empty |
-| `backend-tests` | `backend` | pytest in a matrix of 3 shards (`fail-fast: false`), each its own runner and Postgres service; a file's shard is `sha256(path) % N + 1` (`tests/shards.py list K N`), so the split needs no list and no dependency. Change the shard count only in the matrix (`shard: [1, 2, 3]`); the check reads it from there |
+| `backend-tests` | `backend` | pytest in a matrix of 3 shards (`fail-fast: false`), each its own runner and Postgres service; a file's shard is `sha256(path) % N + 1` (`tests/shards.py list K N`), so the split needs no list and no dependency. Change the shard count only in the matrix (`shard: [1, 2, 3]`); `changes` reads it from there (`scripts/ci-shards.sh`) and passes it to the check and every shard |
 | `frontend` | `frontend` | lint, typecheck, Vitest, build |
 | `e2e` | `stack` | the stack, the checks below, the Trivy image scan, then Playwright |
 | `ci` | always | the required check; see the gate below |
