@@ -10,6 +10,8 @@ streams in (a chunked body, or one whose ``Content-Length`` lies). Two parts:
   ``test_m6_security_routes`` classifies) given a body one byte over the cap.
 """
 
+import json
+import logging
 from collections.abc import AsyncIterator
 from typing import Any
 
@@ -397,3 +399,156 @@ def test_the_body_limit_is_installed_inside_the_security_headers_and_outside_aut
 
 def test_the_classification_still_covers_routes_with_bodies() -> None:
     assert any(m in {"POST", "PUT", "PATCH"} for m, _ in CLASSIFIED)
+
+
+# --- the log line of a refusal (#360) -----------------------------------------------------------
+
+SECRET_BODY = b"SECRETBODY-" + b"x" * LIMIT
+
+
+@pytest.fixture(autouse=True)
+def _fresh_log_state(monkeypatch: pytest.MonkeyPatch) -> None:
+    bodylimit._logged.clear()  # pyright: ignore[reportPrivateUsage]
+
+
+class Clock:
+    now = 1000.0
+
+
+@pytest.fixture
+def clock(monkeypatch: pytest.MonkeyPatch) -> type[Clock]:
+    Clock.now = 1000.0
+    monkeypatch.setattr(bodylimit.time, "monotonic", lambda: Clock.now)
+    return Clock
+
+
+def refusal_records(caplog: pytest.LogCaptureFixture) -> list[logging.LogRecord]:
+    return [r for r in caplog.records if r.name == bodylimit.__name__]
+
+
+def hostile_scope(client: str = "203.0.113.9", forwarded: bytes | None = None) -> dict[str, Any]:
+    headers = [
+        (b"content-length", str(len(SECRET_BODY)).encode()),
+        (b"cookie", b"__Host-classbeat_session=SESSIONSECRET"),
+        (b"authorization", b"Bearer TOKENSECRET"),
+        (b"x-csrf-token", b"CSRFSECRET"),
+    ]
+    if forwarded is not None:
+        headers.append((b"x-forwarded-for", forwarded))
+    return {
+        "type": "http",
+        "method": "POST",
+        "path": "/api/auth/password/reset/complete",
+        "query_string": b"code=OAUTHCODESECRET&state=STATESECRET",
+        "headers": headers,
+        "client": (client, 50000),
+    }
+
+
+async def test_a_refused_body_is_logged_with_method_path_status_and_address_only(
+    caplog: pytest.LogCaptureFixture, clock: type[Clock]
+) -> None:
+    caplog.set_level(logging.INFO)
+    await run(BodyLimit(Probe()), hostile_scope(), [SECRET_BODY])
+    (record,) = refusal_records(caplog)
+    assert record.levelno == logging.WARNING
+    assert (record.method, record.path, record.status, record.client_ip) == (  # type: ignore[attr-defined]
+        "POST",
+        "/api/auth/password/reset/complete",
+        413,
+        "203.0.113.9",
+    )
+    from classbeat.log import JsonFormatter
+
+    line = JsonFormatter().format(record)
+    for secret in ("SECRETBODY", "SESSIONSECRET", "TOKENSECRET", "CSRFSECRET", "OAUTHCODESECRET",
+                   "STATESECRET", "code=", "?"):  # fmt: skip
+        assert secret not in line, secret
+    assert set(json.loads(line)) == {
+        "ts", "level", "logger", "message", "method", "path", "status", "client_ip", "suppressed",
+    }  # fmt: skip
+
+
+@pytest.mark.parametrize("how", ["declared", "chunked", "streamed"])
+async def test_every_way_of_being_refused_is_logged(
+    how: str, caplog: pytest.LogCaptureFixture, clock: type[Clock]
+) -> None:
+    scope = hostile_scope()
+    if how == "chunked":
+        scope["headers"] = [(b"transfer-encoding", b"chunked")]
+    if how == "streamed":
+        scope["headers"] = []
+    await run(BodyLimit(Probe()), scope, [b"x" * 40_000] * 3)
+    assert len(refusal_records(caplog)) == 1
+
+
+async def test_an_accepted_body_and_a_request_without_one_are_not_logged(
+    caplog: pytest.LogCaptureFixture, clock: type[Clock]
+) -> None:
+    await run(BodyLimit(Probe()), scope_of(), [b"{}"])
+    await run(BodyLimit(Probe("ignore")), scope_of("/api/classes", "GET"), [])
+    assert refusal_records(caplog) == []
+
+
+async def test_the_log_line_is_rate_limited_per_address_and_counts_what_it_skipped(
+    caplog: pytest.LogCaptureFixture, clock: type[Clock]
+) -> None:
+    app = BodyLimit(Probe())
+    for _ in range(5):
+        await run(app, hostile_scope("203.0.113.9"), [SECRET_BODY])
+    await run(app, hostile_scope("203.0.113.10"), [SECRET_BODY])  # another address: its own line
+    assert [r.client_ip for r in refusal_records(caplog)] == ["203.0.113.9", "203.0.113.10"]  # type: ignore[attr-defined]
+    clock.now += bodylimit.LOG_INTERVAL_SECONDS
+    await run(app, hostile_scope("203.0.113.9"), [SECRET_BODY])
+    last = refusal_records(caplog)[-1]
+    assert (last.client_ip, last.suppressed) == ("203.0.113.9", 4)  # type: ignore[attr-defined]
+
+
+async def test_the_table_of_remembered_addresses_is_bounded(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture, clock: type[Clock]
+) -> None:
+    monkeypatch.setattr(bodylimit, "_LOG_TRACKED", 3)
+    app = BodyLimit(Probe())
+    for n in range(10):
+        await run(app, hostile_scope(f"203.0.113.{n}"), [SECRET_BODY])
+    assert len(bodylimit._logged) <= 3  # pyright: ignore[reportPrivateUsage]
+    assert len(refusal_records(caplog)) == 10
+
+
+async def test_the_logged_address_is_the_one_the_rest_of_the_app_uses(
+    caplog: pytest.LogCaptureFixture, clock: type[Clock]
+) -> None:
+    """Behind a trusted proxy the forwarded client; a header from anyone else is not believed."""
+    import ipaddress
+    from types import SimpleNamespace
+
+    trusted = SimpleNamespace(
+        state=SimpleNamespace(
+            settings=SimpleNamespace(trusted_proxy_networks=(ipaddress.ip_network("10.0.0.0/8"),))
+        )
+    )
+    app = BodyLimit(Probe())
+    await run(app, {**hostile_scope("10.1.2.3", b"198.51.100.7"), "app": trusted}, [SECRET_BODY])
+    await run(app, {**hostile_scope("203.0.113.9", b"198.51.100.8"), "app": trusted}, [SECRET_BODY])
+    assert [r.client_ip for r in refusal_records(caplog)] == ["198.51.100.7", "203.0.113.9"]  # type: ignore[attr-defined]
+
+
+async def test_the_real_app_logs_a_refusal_without_the_query_string(
+    env: Env, caplog: pytest.LogCaptureFixture, clock: type[Clock]
+) -> None:
+    caplog.set_level(logging.INFO)
+    response = await env.client.post(
+        "/api/auth/login?code=OAUTHCODESECRET",
+        content=padded(LIMIT + 1),
+        headers={"Content-Type": "application/json", "Cookie": "a=SESSIONSECRET"},
+    )
+    check_refused_response(response)
+    (record,) = refusal_records(caplog)
+    assert (record.method, record.path, record.status) == ("POST", "/api/auth/login", 413)  # type: ignore[attr-defined]
+    assert isinstance(record.client_ip, str)  # type: ignore[attr-defined]
+    assert record.client_ip  # type: ignore[attr-defined]
+    from classbeat.log import JsonFormatter
+
+    line = JsonFormatter().format(record)
+    assert "OAUTHCODESECRET" not in line
+    assert "SESSIONSECRET" not in line

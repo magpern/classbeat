@@ -32,11 +32,14 @@ A reverse proxy in front of the app needs the same cap (Caddy: ``request_body ma
 SWAG: ``client_max_body_size``): docs/runbooks/vps-deploy.md, "Request body size".
 """
 
+import logging
+import time
 from collections.abc import Mapping
-from typing import Final
+from typing import Any, Final
 
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
+from classbeat.auth.clientip import client_ip
 from classbeat.headers import CONTENT_SECURITY_POLICY, REFERRER_POLICY
 
 DEFAULT_BODY_LIMIT: Final = 64 * 1024
@@ -45,6 +48,14 @@ ROUTE_LIMITS: Final[Mapping[str, int]] = {}
 # Paths whose own, equal, limiter answers (see the module docstring).
 DEFERRED_PREFIXES: Final = ("/api/admin",)
 BODY_TOO_LARGE: Final = "body_too_large"
+logger = logging.getLogger(__name__)
+# One log line per client address per this many seconds (a flood of oversized bodies must not flood
+# the log); the line after a quiet spell says how many it stood for. At most ``_LOG_TRACKED``
+# addresses are remembered (the table is cleared when full: a flood from many addresses logs more,
+# never grows without bound).
+LOG_INTERVAL_SECONDS: Final = 10.0
+_LOG_TRACKED: Final = 4096
+_logged: dict[str, tuple[float, int]] = {}
 _REFUSAL_BODY: Final = b'{"detail":{"reason":"body_too_large"}}'
 
 
@@ -93,7 +104,45 @@ def _replay(messages: list[Message], receive: Receive) -> Receive:
     return replayed
 
 
-async def _refuse(send: Send) -> None:
+def _client(scope: Scope) -> str:
+    """The client address as the rest of the app reads it (``auth.deps.request_ip``): the peer,
+    or behind a trusted proxy the right-most ``X-Forwarded-For`` entry that is not one."""
+    app = scope.get("app")
+    settings: Any = getattr(getattr(app, "state", None), "settings", None)
+    networks = settings.trusted_proxy_networks if settings is not None else ()
+    peer = scope.get("client")
+    forwarded = [
+        v.decode("latin-1") for k, v in scope.get("headers", []) if k == b"x-forwarded-for"
+    ]
+    return client_ip(peer[0] if peer else None, forwarded, networks)
+
+
+def _log_refusal(scope: Scope) -> None:
+    """A rate-limited line for a refused body: method, path without the query string, status and
+    client address. Never the body, a header, the query or a cookie."""
+    ip = _client(scope)
+    now = time.monotonic()
+    last, suppressed = _logged.get(ip, (-LOG_INTERVAL_SECONDS, 0))
+    if now - last < LOG_INTERVAL_SECONDS:
+        _logged[ip] = (last, suppressed + 1)
+        return
+    if len(_logged) >= _LOG_TRACKED:
+        _logged.clear()
+    _logged[ip] = (now, 0)
+    logger.warning(
+        "request body refused",
+        extra={
+            "method": str(scope.get("method", "")),
+            "path": str(scope.get("path", "")),
+            "status": 413,
+            "client_ip": ip,
+            "suppressed": suppressed,
+        },
+    )
+
+
+async def _refuse(scope: Scope, send: Send) -> None:
+    _log_refusal(scope)
     await send(
         {
             "type": "http.response.start",
@@ -130,7 +179,7 @@ class BodyLimit:
             return
         limit = self.routes.get(path, self.default)
         if _declared_too_large(scope, limit):
-            await _refuse(send)
+            await _refuse(scope, send)
             return
 
         if _chunked(scope):
@@ -140,7 +189,7 @@ class BodyLimit:
             # it to the app.
             buffered = await _read_up_to(receive, limit)
             if buffered is None:
-                await _refuse(send)
+                await _refuse(scope, send)
                 return
             receive = _replay(buffered, receive)
 
@@ -176,4 +225,4 @@ class BodyLimit:
             if not tripped:
                 raise
         if tripped and not started:
-            await _refuse(send)
+            await _refuse(scope, send)

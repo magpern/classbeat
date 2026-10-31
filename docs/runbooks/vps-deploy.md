@@ -179,9 +179,16 @@ needs the same cap, and the home beta behind SWAG does:** SWAG is nginx and ship
 client_max_body_size 1m;
 ```
 
-then reload it, and check from outside: `curl -s -o /dev/null -w '%{http_code}
-' -X POST
---data-binary @<a 2 MB file> https://$DOMAIN/api/auth/login` is `413`, and a small body is not.
+then reload it, and check from outside (a 2 MB file; the answer must be `413`, and a small body must not be):
+
+```bash
+head -c 2000000 /dev/zero > /tmp/big.bin
+curl -s -o /dev/null -w '%{http_code}
+' -X POST --data-binary @/tmp/big.bin "https://$DOMAIN/api/auth/login"
+```
+
+The app logs each refusal it makes (method, path without the query, status and client address; at most
+one line per address every 10 seconds, with the number it skipped), so a flood that reaches it is visible.
 Without this the app still answers 413 and does not buffer more than the cap, but the proxy
 buffers the whole body first (nginx to disk or memory) before it does.
 
