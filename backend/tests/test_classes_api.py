@@ -947,6 +947,63 @@ async def test_the_list_profile_is_the_current_revision_and_never_another_users(
     assert (await mine.browser.get(f"/api/classes/{theirs.class_id}")).status_code == 404
 
 
+async def test_the_approximate_tss_flag_is_the_stored_one_or_read_from_a_zone_7_interval(
+    two: tuple[Plant, Plant],
+) -> None:
+    mine, theirs = two
+    assert by_class(await mine.browser.get("/api/classes"), mine)["tss_approximate"] is False
+    detail = (await mine.browser.get(f"/api/classes/{mine.class_id}")).json()
+    assert detail["tss_approximate"] is False
+    shown = (await mine.browser.get(f"/api/classes/{mine.class_id}/revisions/{mine.r1}")).json()
+    assert shown["tss_approximate"] is False
+
+    # An older revision has no stored flag: its zone 7 interval sets it in the revision answer.
+    zone7 = {**DRAFT, "segments": [{**DRAFT["segments"][0]}, {**DRAFT["segments"][1]}]}
+    zone7["segments"][1] = {
+        **zone7["segments"][1],
+        "intervals": [{**zone7["segments"][1]["intervals"][0], "zone": 7}],
+    }
+    mine.sql(
+        "UPDATE class_revisions SET content = CAST(:c AS jsonb) WHERE id = :r",
+        c=json.dumps(zone7),
+        r=mine.r1,
+    )
+    old = (await mine.browser.get(f"/api/classes/{mine.class_id}/revisions/{mine.r1}")).json()
+    assert "tss_approximate" not in old["provenance"]
+    assert old["tss_approximate"] is True
+    # A stored flag wins over the content.
+    mine.sql(
+        "UPDATE class_revisions SET content = CAST(:c AS jsonb) WHERE id = :r",
+        c=json.dumps(DRAFT),
+        r=mine.r1,
+    )
+    mine.sql(
+        "UPDATE class_revisions SET provenance = provenance || CAST(:p AS jsonb) WHERE id = :r",
+        p=json.dumps({"tss_approximate": True}),
+        r=mine.r1,
+    )
+    assert by_class(await mine.browser.get("/api/classes"), mine)["tss_approximate"] is True
+    revision_url = f"/api/classes/{mine.class_id}/revisions/{mine.r1}"
+    assert (await mine.browser.get(revision_url)).json()["tss_approximate"] is True
+
+    theirs.sql(
+        "UPDATE class_revisions SET content = CAST(:c AS jsonb) WHERE id = :r",
+        c=json.dumps(
+            {
+                **DRAFT,
+                "segments": [{"name": "X", "kind": "main", "intervals": [{"sec": 9, "zone": 7}]}],
+            }
+        ),
+        r=theirs.r1,
+    )
+    assert by_class(await theirs.browser.get("/api/classes"), theirs)["tss_approximate"] is True
+    assert by_class(await mine.browser.get("/api/classes"), mine)["tss_approximate"] is True
+
+
+def by_class(response: Any, plant: Plant) -> dict[str, Any]:
+    return {c["id"]: c for c in response.json()["classes"]}[str(plant.class_id)]
+
+
 async def test_a_bad_interval_is_left_out_of_the_profile_and_never_fails_the_list(
     two: tuple[Plant, Plant],
 ) -> None:

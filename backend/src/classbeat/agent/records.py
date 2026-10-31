@@ -182,6 +182,9 @@ class Provenance(BaseModel):
     # ``prompt_version`` of every stage that ran (``pick_pool``, ``choose_songs``).
     schema_version: int | None = Field(default=None, ge=1)
     stage_versions: dict[str, str] | None = None
+    # ADR 0012 section 7, on a draft: the fitted draft has a zone 7 interval, so its TSS is a
+    # guess. Computed by the backend; absent on revisions stored before it and on song lists.
+    tss_approximate: bool | None = None
 
     @model_validator(mode="after")
     def _lineage(self) -> Self:
@@ -199,7 +202,7 @@ class Provenance(BaseModel):
         """A revision that was not made from picked songs is stored exactly as before: the two
         song fields are left out when unset (additive, ADR 0008 section 3)."""
         out: dict[str, Any] = handler(self)
-        for key in ("schema_version", "stage_versions"):
+        for key in ("schema_version", "stage_versions", "tss_approximate"):
             if out.get(key) is None:
                 out.pop(key, None)
         return out
@@ -226,6 +229,7 @@ def provenance(
     base_revision_id: UUID | None = None,
     request_message_id: UUID | None = None,
     schema_version: int | None = None,
+    tss_approximate: bool | None = None,
 ) -> Provenance:
     """From the job's stage runs (the last one made the content) and the map it was fitted to;
     ``origin`` and the two ids say what the revision was made from (ADR 0007 section 2).
@@ -260,6 +264,7 @@ def provenance(
         base_revision_id=base_revision_id,
         request_message_id=request_message_id,
         schema_version=schema_version,
+        tss_approximate=tss_approximate,
         stage_versions=(
             {r.info.stage: r.info.prompt_version for r in runs} if schema_version else None
         ),

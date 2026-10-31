@@ -7,6 +7,7 @@ import secrets
 import uuid
 from collections.abc import AsyncIterator
 from typing import Any
+from urllib.parse import urlencode
 
 import pytest
 from sqlalchemy import text
@@ -497,3 +498,31 @@ async def test_no_admin_response_contains_a_planted_secret(
     for response in responses:
         body = response.text
         assert not [n for n in needles if n and n in body], response.request.url
+
+
+# --- the search text's bounds (#282 review) -----------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("q", "status"),
+    [
+        ("\\u0000", 200),  # a literal backslash and "u0000": six ordinary characters
+        ("a\x00b", 422),  # a real NUL, which jsonb can't store
+        ("a\x1bb", 422),  # any control character
+        ("\U0001f600" * 254, 422),  # 254 characters, 3048 bytes once encoded
+        ("é" * 170, 200),  # 1020 bytes once encoded: inside the bound
+    ],
+)
+async def test_the_search_text_is_bounded_and_every_accepted_search_is_audited(
+    env: Env, make_actor: Any, superuser: Connection, q: str, status: int
+) -> None:
+    actor = await stepped_admin(env, make_actor)
+    response = await actor.get(f"{USERS}?{urlencode({'q': q})}")
+    assert response.status_code == status, response.text
+    expected = [("user.list", "ok", None)] if status == 200 else []
+    assert audit(superuser, actor.user_id) == expected
+    if status == 200:
+        stored = superuser.execute(
+            text("SELECT params->>'q' FROM admin_audit WHERE actor_id = :u"), {"u": actor.user_id}
+        ).scalar_one()
+        assert stored == q

@@ -196,6 +196,8 @@ export async function listRevisions(
 
 export interface Revision extends RevisionSummary, DraftContent {
   unknownBpm: { index: number; title: string }[]
+  /** ADR 0012 section 7: the backend's flag, set when the version has a zone 7 interval. */
+  tssApproximate: boolean
   /** The content exactly as the server sent it: what the version hash is taken over. */
   raw: unknown
 }
@@ -213,6 +215,7 @@ export async function getRevision(
     ...decodeRevisionSummary(body),
     ...decodeDraftContent(body.content),
     unknownBpm: decodeUnknownBpm(body),
+    tssApproximate: optionalFlag(body, 'tss_approximate') ?? false,
     raw: body.content,
   }
 }

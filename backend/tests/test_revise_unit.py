@@ -9,7 +9,9 @@ import pytest
 
 from agentfake import CONFIG, MemoryHost, analysed, brief, from_dict, good_draft
 from classbeat.agent import DesignContext, WorkoutDraft, design_stage, run_stage
+from classbeat.agent.dispatcher import dispatch
 from classbeat.agent.model_input import revise_message
+from classbeat.agent.provider import ToolCall
 from classbeat.agent.revise import ReviseContext, ReviseResult, SongsRequested, revise_stage
 from classbeat.agent.schemas import ReviseInput
 from classbeat.design import diff
@@ -182,3 +184,16 @@ async def test_songs_requested_takes_no_input(monkeypatch: pytest.MonkeyPatch) -
     done = await run_stage(MemoryHost(), fake, revise_stage(ctx), ctx.first_message(), CONFIG)
     assert isinstance(done.output, SongsRequested)
     assert done.corrections == 1  # the extra field was refused first
+
+
+def test_the_revise_submit_result_carries_the_approximate_flag(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    stage = revise_stage(context(monkeypatch))
+    for zone, flagged in ((None, False), (7, True)):
+        draft = good_draft()
+        if zone is not None:
+            draft["segments"][1]["intervals"][0]["zone"] = zone
+        done = dispatch(stage, ToolCall("c1", "submit_draft", {"draft": draft, "note": "n"}))
+        assert json.loads(done.result.content)["tss_approximate"] is flagged
+        assert done.output.result.tss_approximate is flagged

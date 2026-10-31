@@ -29,6 +29,7 @@ from classbeat.agent.stage import Stage, Tool, ToolAnswer, ToolError
 
 STAGE: Final = "design"
 FINAL_TOOL: Final = "submit_draft"
+ZONE7: Final = 7  # the zone whose TSS weight is a guess (ADR 0012 section 7)
 
 SYSTEM_PROMPT: Final = """\
 You design indoor-cycling classes for instructors who ride with the Intelligent Cycling (MOWL) \
@@ -99,6 +100,7 @@ class DesignResult:
     warnings: list[str]
     duration_sec: int
     tss: float
+    tss_approximate: bool  # a zone 7 interval in the fitted draft (ADR 0012 section 7)
     map_version: int
     crossfade_sec: float
 
@@ -126,6 +128,12 @@ def _placeholder_rpm(spec: dict[str, Any]) -> dict[str, Any]:
             if i.get("rpm") == "beat":
                 i["rpm"] = [0, 0]
     return out
+
+
+def has_zone7(spec: dict[str, Any]) -> bool:
+    """Whether the fitted spec has a zone 7 interval, whose TSS weight is a guess (ADR 0012
+    section 7). Computed from the draft the backend fitted, never from anything the model says."""
+    return any(interval["zone"] == ZONE7 for s in spec["segments"] for interval in s["intervals"])
 
 
 def check(draft: WorkoutDraft, m: dict[str, Any]) -> DesignResult:
@@ -157,6 +165,7 @@ def check(draft: WorkoutDraft, m: dict[str, Any]) -> DesignResult:
         warnings=model_input.music_warnings(m, total),
         duration_sec=total,
         tss=round(workout.tss(fitted), 1),
+        tss_approximate=has_zone7(fitted),
         map_version=int(m.get("version", music.MAP_VERSION)),
         crossfade_sec=float(m["crossfade"]),
     )
@@ -178,6 +187,7 @@ def design_stage(ctx: DesignContext) -> Stage:
                 "duration": mmss(result.duration_sec),
                 "duration_sec": result.duration_sec,
                 "tss": result.tss,
+                "tss_approximate": result.tss_approximate,
                 "timeline": result.timeline,
                 "quality": result.quality,
                 "warnings": result.warnings,
@@ -191,6 +201,7 @@ def design_stage(ctx: DesignContext) -> Stage:
                 "accepted": True,
                 "duration": mmss(result.duration_sec),
                 "tss": result.tss,
+                "tss_approximate": result.tss_approximate,
                 "quality": result.quality,
                 "warnings": result.warnings,
             },
