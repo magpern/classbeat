@@ -50,8 +50,9 @@ security, and a dump as `classbeat_owner` would silently skip rows. The script c
 Without `--gpg-recipient` it warns that the file is not encrypted. With it, `pg_dump` is piped
 straight into `gpg`: no plaintext dump touches the disk (the encrypted archive is then not read back,
 that needs the private key; the drill and a monthly restore are its test). `--keep N` (a positive
-whole number, checked before anything is written or deleted) deletes older `classbeat-*.dump*`
-files in the directory, never the backup it just made. Stack selection is the usual compose one
+whole number, checked before anything is written or deleted) deletes older files named exactly
+`classbeat-<UTC timestamp>.dump[.gpg]` in the directory (anything else is left alone), never the
+backup it just made. Stack selection is the usual compose one
 (`COMPOSE_PROJECT_NAME`, `.env`, `COMPOSE_FILE`).
 
 **Recommended schedule and retention** (to be installed on the VPS by the owner): daily at 03:00
@@ -72,8 +73,8 @@ docker compose up -d --wait web worker
 
 `restore.sh` verifies the checksum, decrypts a `.gpg` file with your gpg key (to a mode 600 temporary
 file, removed on exit), **refuses the default project `classbeat` and a project whose volume
-`<project>_db-data` already exists** (before it starts anything), starts `db`, **refuses a database
-that already holds tables**, runs `migrate` and `db-functions` (the schema, plus the
+`<project>_db-data` already exists** (before it starts anything), starts `db`, and only then **refuses a database that already holds
+tables** (it has started that project's `db`, but wrote nothing), runs `migrate` and `db-functions` (the schema, plus the
 `classbeat_queue` and `classbeat_maint` roles the dump refers to), runs `pg_restore --clean
 --if-exists --single-transaction --exit-on-error`, then runs `migrate` (a backup from an older
 release is upgraded to the image's head; a backup newer than the image fails loudly) and
@@ -98,8 +99,9 @@ failure):
 2. A fingerprint of the database: row counts of every table, table owners, ACLs, RLS flags and
    the full policy definitions (command, permissive or restrictive, roles, USING and WITH CHECK), function owners, digests and ACLs, the `classbeat%` roles' attributes, migration head.
 3. `scripts/backup.sh`; the decoded dump (`pg_restore -f -`: the archive compresses its data, so the
-   raw bytes cannot be searched) must not contain the seeded token or password, and that check is
-   first shown to find a token planted in a table; `--keep` is exercised (bad values refused with
+   raw bytes cannot be searched) must not contain the seeded token or password as text or as hex (a
+   bytea column such as `connections.secret` is printed as hex), and that check is first shown to
+   find a token planted in a text column and in a bytea column (both hex cases are searched); `--keep` is exercised (bad values refused with
    nothing deleted, a valid one prunes old files only); the source stack and volume are destroyed.
 4. `scripts/restore.sh` into the fresh `-dst` project; the fingerprint must be identical.
 5. Web and worker start (the KEK check passes); migrations are at head; the right key decrypts both

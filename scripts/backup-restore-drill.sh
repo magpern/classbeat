@@ -31,6 +31,7 @@ unset COMPOSE_FILE COMPOSE_PROFILES COMPOSE_PATH_SEPARATOR
 export MSYS_NO_PATHCONV=1
 
 work="$(mktemp -d)"
+trap 'rm -rf "$work"' EXIT # replaced by the full cleanup once the projects are known
 step() { printf '\n== %s\n' "$*"; }
 fail() { echo "DRILL FAILED: $*" >&2; exit 1; }
 
@@ -95,7 +96,8 @@ fingerprint() {
   sql -c "SELECT c.relname, pg_get_userbyid(c.relowner), c.relrowsecurity, c.relforcerowsecurity,
                  coalesce(c.relacl, acldefault('r', c.relowner))::text,  -- a NULL ACL means the owner-only default
                  coalesce((SELECT string_agg(concat_ws(':', polname, polcmd, polpermissive, polroles::regrole[]::text,
-                                pg_get_expr(polqual, polrelid), pg_get_expr(polwithcheck, polrelid)), ',' ORDER BY polname)
+                                'using=' || coalesce(pg_get_expr(polqual, polrelid), '<none>'),
+                                'check=' || coalesce(pg_get_expr(polwithcheck, polrelid), '<none>')), ',' ORDER BY polname)
                              FROM pg_policy p WHERE p.polrelid = c.oid), '')
             FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
            WHERE n.nspname = 'public' AND c.relkind = 'r' ORDER BY 1"
@@ -124,13 +126,24 @@ echo "fingerprint of the source: $(grep -c . "$work/before.txt") lines, users=$u
 
 step "2. backup, then destroy the source"
 # pg_dump -Fc compresses table data, so the archive is decoded (pg_restore -f -) before searching.
-dump_has_secret() { docker compose exec -T db pg_restore -f - < "$1" | grep -aE "$DRILL_TOKEN|$DRILL_PASSWORD" > /dev/null; }  # no -q: read it all, no SIGPIPE
+# A bytea column is printed as hex, so each value is searched as text and as lower and upper hex.
+hex_of() { printf '%s' "$1" | od -An -tx1 | tr -d ' 
+'; }
+patterns() { # patterns <value>: the text and both hex spellings, as an extended regex
+  local h; h="$(hex_of "$1")"
+  printf '%s|%s|%s' "$1" "$h" "$(printf '%s' "$h" | tr 'a-f' 'A-F')"
+}
+dump_has() { docker compose exec -T db pg_restore -f - < "$1" | grep -aE "$2" > /dev/null; }  # no -q: read it all, no SIGPIPE
+dump_has_secret() { dump_has "$1" "$(patterns "$DRILL_TOKEN")|$(patterns "$DRILL_PASSWORD")"; }
 # Self-test of that check: plant the token in a table, back up, the check must FIND it.
-sql -c "CREATE TABLE drill_plant AS SELECT '$DRILL_TOKEN-planted'::text AS v" > /dev/null
+sql -c "CREATE TABLE drill_plant_text AS SELECT 'text-$DRILL_TOKEN'::text AS v" > /dev/null
+sql -c "CREATE TABLE drill_plant_bytea AS SELECT convert_to('bytea-$DRILL_TOKEN', 'UTF8') AS v" > /dev/null
 planted="$(scripts/backup.sh -o "$work/planted" 2> /dev/null)"
-dump_has_secret "$planted" || fail "self-test: the plaintext check did not find a planted token"
-sql -c "DROP TABLE drill_plant" > /dev/null
-echo "self-test: the plaintext check finds a planted token"
+dump_has "$planted" "text-$DRILL_TOKEN" || fail "self-test: a planted text value was not found"
+dump_has "$planted" "$(patterns "bytea-$DRILL_TOKEN" | cut -d'|' -f2,3)" || fail "self-test: a planted bytea value was not found"
+dump_has_secret "$planted" || fail "self-test: the combined check missed the planted values"
+sql -c "DROP TABLE drill_plant_text, drill_plant_bytea" > /dev/null
+echo "self-test: the check finds a token planted in a text column and in a bytea column"
 dump="$(scripts/backup.sh -o "$work/backups" 2> /dev/null)"
 [ -s "$dump" ] && [ -s "$dump.sha256" ] || fail "no backup file"
 echo "backup: $(basename "$dump") ($(wc -c < "$dump") bytes)"
@@ -140,14 +153,18 @@ echo "no plaintext token or password in the decoded dump"
 # only and never the new one.
 mkdir -p "$work/keep"
 for d in 20200101T000000Z 20200102T000000Z 20200103T000000Z; do touch "$work/keep/classbeat-$d.dump"; done
+touch "$work/keep/classbeat-notes.dump" "$work/keep/classbeat-20200101T000000Z.dump.bak" "$work/keep/other.txt" # never pruned
 for bad in 0 00 000 abc -1 1.5 ""; do
   if scripts/backup.sh -o "$work/keep" --keep "$bad" > /dev/null 2>&1; then fail "--keep '$bad' was accepted"; fi
 done
-[ "$(find "$work/keep" -type f | wc -l)" = 3 ] || fail "a refused --keep changed the backup directory"
+[ "$(find "$work/keep" -type f | wc -l)" = 6 ] || fail "a refused --keep changed the backup directory"
 kept="$(scripts/backup.sh -o "$work/keep" --keep 2 2> /dev/null)"
-[ -s "$kept" ] && [ "$(find "$work/keep" -name 'classbeat-*.dump' | wc -l)" = 2 ] \
+[ -s "$kept" ] && [ "$(find "$work/keep" -type f -name 'classbeat-2*Z.dump' | wc -l)" = 2 ] \
   && [ -e "$work/keep/classbeat-20200103T000000Z.dump" ] || fail "--keep 2 did not keep exactly the newest two"
-echo "backup.sh --keep: bad values refused untouched; --keep 2 keeps the new backup and the newest old one"
+for decoy in classbeat-notes.dump classbeat-20200101T000000Z.dump.bak other.txt; do
+  [ -e "$work/keep/$decoy" ] || fail "--keep deleted $decoy, which is not a backup file"
+done
+echo "backup.sh --keep: bad values refused untouched; --keep 2 keeps the new backup and the newest old one; files that are not backups are left alone"
 # The restore image: the source's, retagged for the destination project (no second build).
 docker tag "$src:local" "$dst:local"
 docker compose --profile '*' down -v --remove-orphans > /dev/null

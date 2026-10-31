@@ -75,7 +75,9 @@ echo "$final"
 if [ -n "$keep" ]; then
   shopt -s nullglob
   # Names start with a UTC timestamp, so a reverse sort is newest first.
-  mapfile -t all < <(printf '%s\n' "$out"/classbeat-*.dump "$out"/classbeat-*.dump.gpg | sort -r)
+  # Only the exact names this script writes: classbeat-<YYYYmmddTHHMMSSZ>.dump[.gpg].
+  mapfile -t all < <(printf '%s\n' "$out"/classbeat-*.dump "$out"/classbeat-*.dump.gpg \
+    | grep -E '/classbeat-[0-9]{8}T[0-9]{6}Z\.dump(\.gpg)?$' | sort -r || true)
   if [ "${#all[@]}" -gt "$keep" ]; then
     for old in "${all[@]:$keep}"; do
       [ "$old" != "$final" ] || continue # never the backup just made
