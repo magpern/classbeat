@@ -7,7 +7,11 @@ stage submits (a revise case also holds the base draft and the requests).
   library's music map with ``mowl.spotify.build_map``;
 - ``checks``: the checks on a submitted draft; the ones ``mowl.quality.report`` covers use it;
 - ``runner``: one case through ``classbeat.agent.run_stage`` with a given provider;
-- ``live``, ``__main__``: ``python -m classbeat.evals smoke --live``, the owner's command.
+- ``live``, ``__main__``: ``python -m classbeat.evals smoke --live``, the owner's command;
+- ``suite``: the regression suite of ADR 0012 section 4 (``suite/manifest.json``: the cases by
+  category and stage group, the gate's thresholds, ``suite_version`` and its digest);
+- ``gate``: the suite's verdict per stage group from a results file of format 2
+  (``runner.suite_results``).
 
 In CI every case runs against ``FakeProvider`` scripts (``tests/test_evals_smoke.py``): no model,
 no network. The live command is the only code here that builds a real provider, and it is never

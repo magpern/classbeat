@@ -242,6 +242,24 @@ def track_id(i: int) -> str:
     return f"FakeTrack{i:013d}"  # 22 letters and digits
 
 
+# Spotify's album cover sizes, largest first, as its answers list them.
+ALBUM_IMAGE_SIZES = (640, 300, 64)
+
+
+def album_images(album_id: str) -> list[dict[str, Any]]:
+    """An album's ``images`` shaped like Spotify's: ``i.scdn.co/image/`` plus 40 hex digits, with
+    width and height, largest first. Invented, but stable per album and size."""
+    return [
+        {
+            "url": "https://i.scdn.co/image/"
+            + hashlib.sha256(f"{album_id}:{size}".encode()).hexdigest()[:40],
+            "height": size,
+            "width": size,
+        }
+        for size in ALBUM_IMAGE_SIZES
+    ]
+
+
 def _catalogue() -> dict[str, dict[str, Any]]:
     tracks: dict[str, dict[str, Any]] = {}
     for i in range(CATALOGUE_SIZE):
@@ -602,7 +620,7 @@ class FakeSpotify:
                 "id": t["album_id"],
                 "name": t["album"],
                 "release_date": t["release_date"],
-                "images": [{"url": f"https://i.scdn.co/image/{t['album_id']}"}],
+                "images": album_images(t["album_id"]),
             },
         }
 

@@ -21,6 +21,7 @@ from sqlalchemy.engine import make_url
 
 import netguard
 from authtools import TEST_KEK, Env
+from classbeat.config import MODEL_SDK_REFUSED_ENVIRONMENT, MODEL_SDK_REFUSED_PREFIXES
 from smtpfake import SmtpFake
 
 pytest_plugins = [
@@ -39,6 +40,7 @@ pytest_plugins = [
     "updatetools",
     "playlisttools",
     "songtools",
+    "plantools",
 ]  # + jobs core, jobs API, external operations
 
 if sys.platform == "win32":
@@ -48,9 +50,14 @@ if sys.platform == "win32":
 
 @pytest.fixture(autouse=True)
 def _isolated_environment(monkeypatch: pytest.MonkeyPatch) -> None:
-    """No CLASSBEAT_* setting leaks in from the machine running the tests."""
+    """No CLASSBEAT_* setting, and no model SDK variable the worker refuses (ADR 0012 §2), leaks
+    in from the machine running the tests (a developer's shell may set ``ANTHROPIC_*``)."""
     for name in list(os.environ):
-        if name.startswith("CLASSBEAT_") and name != "CLASSBEAT_TEST_DATABASE_URL":
+        if (
+            (name.startswith("CLASSBEAT_") and name != "CLASSBEAT_TEST_DATABASE_URL")
+            or name.upper().startswith(MODEL_SDK_REFUSED_PREFIXES)
+            or (name.upper() in MODEL_SDK_REFUSED_ENVIRONMENT)
+        ):
             monkeypatch.delenv(name)
 
 

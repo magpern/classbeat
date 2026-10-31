@@ -20,14 +20,17 @@ def test_only_the_allowed_modules_use_the_envelope_and_the_key_tables() -> None:
     violations = []
     for path in sorted((SRC / "classbeat").rglob("*.py")):
         module = _module(path)
-        violations += [(module, line, why) for line, why in scan_source(path.read_text(), module)]
+        violations += [
+            (module, line, why)
+            for line, why in scan_source(path.read_text(encoding="utf-8"), module)
+        ]
     assert violations == []
 
 
 def test_the_envelope_is_imported_by_exactly_the_three_users() -> None:
     importers = set()
     for path in sorted((SRC / "classbeat").rglob("*.py")):
-        text = path.read_text()
+        text = path.read_text(encoding="utf-8")
         if "classbeat.crypto.envelope import" in text:
             importers.add(_module(path).split(".")[1])
     assert importers == {"auth", "connections", "crypto"}

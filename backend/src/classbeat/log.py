@@ -81,6 +81,8 @@ SECRET_KEYS = frozenset(
         "api_key",
         "x-api-key",
         "anthropic_api_key",
+        "openai_api_key",
+        "deepseek_api_key",
         "code",
         "code_verifier",
         "state",

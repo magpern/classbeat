@@ -16,6 +16,10 @@ together or not at all:
 It fails a run by raising ``JobFailure(category)``, also from inside ``store`` (a last check
 in the final transaction): the store is rolled back and the attempt ends with that category.
 
+``release`` (optional, on both outcomes) drops what ``store`` kept for the last transaction, such
+as a connection's credentials: the runner calls it once the attempt is over, whether ``store``
+ran or not (a cancel, a lost lease or shutdown before it; #122 item 4).
+
 Two seams for the kinds of ADR 0007 (section 3, K1):
 
 - ``consumes_credit`` (default true): a kind that is false creates its job with
@@ -72,11 +76,13 @@ REASON = KIND_NAME  # a refusal reason is a code, never text from the input
 @dataclass(frozen=True, slots=True)
 class Complete:
     store: Callable[[FencedSession], Awaitable[UUID | None]] | None = None
+    release: Callable[[], None] | None = None
 
 
 @dataclass(frozen=True, slots=True)
 class AwaitApproval:
     store: Callable[[FencedSession], Awaitable[tuple[UUID, bytes]]]
+    release: Callable[[], None] | None = None
 
 
 Outcome = Complete | AwaitApproval

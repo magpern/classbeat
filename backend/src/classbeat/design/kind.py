@@ -58,6 +58,15 @@ class MusicChoice(BaseModel):
     spotify_playlist_id: SpotifyPlaylistId
 
 
+class ClassMusicSource(MusicChoice):
+    """``classes.music_source`` as stored: the music choice, and for a class designed on picked
+    songs (ADR 0008 section 4) ``origin = "song_pick"`` and its ``class_playlists`` row. Never a
+    job input: ``design_draft`` takes ``MusicChoice``, which forbids both fields."""
+
+    origin: Literal["song_pick"] | None = None
+    class_playlist_id: UUID | None = None
+
+
 class DesignDraftInput(JobInput):
     CONNECTIONS: ClassVar[tuple[str, ...]] = ("mowl",)
 
@@ -133,6 +142,7 @@ async def run(job_run: JobRun) -> Complete:
         given.music.spotify_playlist_id,
         connection_id=given.mowl_connection_id,
     )
+    handed_over = False  # the outcome's ``release`` closes the step from then on
     try:
         ctx = DesignContext.build(given.brief, step.data)
         stage = design_stage(ctx)
@@ -142,14 +152,10 @@ async def run(job_run: JobRun) -> Complete:
         if not isinstance(outcome.output, DesignResult):
             raise JobFailure("internal")
         draft = revision.build(outcome.output, outcome, ctx.map, step)
-    except BaseException:
-        step.close()
-        raise
 
-    async def store(fs: FencedSession) -> UUID:
-        """In the final fenced transaction: the connection guard, then the revision. A
-        ``not_connected`` here rolls it back and ends the job with that category."""
-        try:
+        async def store(fs: FencedSession) -> UUID:
+            """In the final fenced transaction: the connection guard, then the revision. A
+            ``not_connected`` here rolls it back and ends the job with that category."""
             await step.still_current(fs)
             revision_id = await draft.store(fs)
             await revision.adopt_first(
@@ -159,10 +165,15 @@ async def run(job_run: JobRun) -> Complete:
                 given.music.model_dump(mode="json"),
             )
             return revision_id
-        finally:
-            step.close()
 
-    return Complete(store)
+        # The runner releases the step once the attempt is over, whether ``store`` ran or not
+        # (a cancel, a lost lease or shutdown before it; #122 item 4).
+        complete = Complete(store, release=step.close)
+        handed_over = True
+        return complete
+    finally:
+        if not handed_over:
+            step.close()
 
 
 DESIGN_DRAFT: Final = KINDS.register(JobKind(KIND, DesignDraftInput, STAGES, run))

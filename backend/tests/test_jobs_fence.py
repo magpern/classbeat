@@ -7,7 +7,7 @@ import uuid
 import pytest
 from sqlalchemy import text
 
-from classbeat.db import user_session
+from classbeat.db import DatabaseRoleError, user_session
 from classbeat.jobs import (
     Complete,
     FencedSession,
@@ -251,6 +251,70 @@ async def test_a_lost_lease_abandons_the_pipeline_but_not_a_call_in_flight(jenv:
     assert reached == ["call returned"]
     assert (execution.result, execution.settled) == ("lost", True)
     assert jenv.row(job_id).state == "running"  # the reaper's, once the lease expires
+
+
+DRIFT = "the job queue does not match ADR 0005 section 3: planted by the test"
+
+
+async def test_a_role_error_met_by_the_heartbeat_waits_for_a_call_in_flight_then_stops_the_run(
+    jenv: JobsEnv,
+) -> None:
+    """#140 item 6: ``mark_fatal`` (what the heartbeat does on ``DatabaseRoleError``) during an
+    external call does not abandon the call; once it is over the run is abandoned and the runner
+    raises the error, with nothing recorded (the worker hands the lease back)."""
+    _, job_id = jenv.job()
+    reached: list[str] = []
+
+    async def run(job_run: JobRun) -> Complete:
+        async with job_run.external_call(5):
+            job_run.mark_fatal(DatabaseRoleError(DRIFT))
+            await asyncio.sleep(0.2)  # still in the call: not abandoned
+            reached.append("call returned")
+        await asyncio.sleep(60)  # abandoned here, once the call is over
+        reached.append("after")
+        return Complete()
+
+    execution = await claim(jenv)
+    started = time.monotonic()
+    with pytest.raises(DatabaseRoleError, match="planted"):
+        await asyncio.wait_for(
+            execute(execution, jenv.factory, registry_for(run), RunConfig(), asyncio.Event()), 10
+        )
+    assert time.monotonic() - started < 2  # only the abandon can end the run this early
+    assert reached == ["call returned"]
+    assert execution.needs_hand_back()
+    assert (jenv.row(job_id).state, jenv.row(job_id).attempt) == ("running", 1)
+
+
+async def test_a_checkpoint_after_a_role_error_raises_it_without_a_transaction(
+    jenv: JobsEnv, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from classbeat.jobs import run as run_module
+
+    jenv.job()
+    lease = await _lease(jenv, await claim(jenv))
+    run = JobRun(
+        jenv.factory,
+        lease,
+        kind=KIND,
+        input=None,  # pyright: ignore[reportArgumentType]
+        attempt=1,
+        approved=False,
+        lease_seconds=30,
+        shutdown=asyncio.Event(),
+    )
+    opened: list[object] = []
+    real = run_module.fenced_session
+
+    def counting(*args: object):
+        opened.append(args)
+        return real(*args)  # pyright: ignore[reportArgumentType]
+
+    monkeypatch.setattr(run_module, "fenced_session", counting)
+    run.mark_fatal(DatabaseRoleError(DRIFT))
+    with pytest.raises(DatabaseRoleError, match="planted"):
+        await run.checkpoint()
+    assert opened == []
 
 
 async def test_a_stale_write_racing_a_concurrent_reaper_never_lands_after_it(

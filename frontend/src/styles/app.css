@@ -8,8 +8,8 @@
 
 body {
   margin: 0;
-  background: var(--cb-color-bg);
-  color: var(--cb-color-text);
+  background: var(--cb-bg);
+  color: var(--cb-text);
   font-family: var(--cb-font-sans);
   font-size: var(--cb-text-base);
   line-height: var(--cb-leading-base);
@@ -17,13 +17,13 @@ body {
 }
 
 :focus-visible {
-  outline: 2px solid var(--cb-color-focus);
+  outline: 2px solid var(--cb-brand);
   outline-offset: 2px;
 }
 
 .app-header {
-  background: var(--cb-color-surface);
-  border-bottom: 1px solid var(--cb-color-border);
+  background: var(--cb-surface);
+  border-bottom: 1px solid var(--cb-line);
 }
 
 .app-header__inner {
@@ -55,11 +55,11 @@ body {
 }
 
 .logo__tile {
-  fill: var(--cb-color-primary);
+  fill: var(--cb-brand);
 }
 
 .logo__bars {
-  fill: var(--cb-color-on-primary);
+  fill: var(--cb-on-brand);
 }
 
 .api-status {
@@ -68,10 +68,10 @@ body {
   gap: var(--cb-space-2);
   margin: 0;
   padding: var(--cb-space-1) var(--cb-space-3);
-  border: 1px solid var(--cb-color-border);
+  border: 1px solid var(--cb-line);
   border-radius: var(--cb-radius-full);
-  background: var(--cb-color-surface-sunken);
-  color: var(--cb-color-text-muted);
+  background: var(--cb-raised);
+  color: var(--cb-muted);
   font-size: var(--cb-text-sm);
   font-variant-numeric: tabular-nums;
 }
@@ -80,15 +80,15 @@ body {
   width: 0.5rem;
   height: 0.5rem;
   border-radius: var(--cb-radius-full);
-  background: var(--cb-color-text-muted);
+  background: var(--cb-muted);
 }
 
 .api-status[data-state='ok'] .api-status__dot {
-  background: var(--cb-color-success);
+  background: var(--cb-ok);
 }
 
 .api-status[data-state='unreachable'] .api-status__dot {
-  background: var(--cb-color-danger);
+  background: var(--cb-bad);
 }
 
 .app-main {
@@ -106,8 +106,8 @@ body {
   margin: 0 0 var(--cb-space-4);
   padding: var(--cb-space-1) var(--cb-space-3);
   border-radius: var(--cb-radius-full);
-  background: var(--cb-color-accent-soft);
-  color: var(--cb-color-accent);
+  background: var(--cb-warn-soft);
+  color: var(--cb-warn);
   font-size: var(--cb-text-sm);
   font-weight: var(--cb-weight-medium);
 }

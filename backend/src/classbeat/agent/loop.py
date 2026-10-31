@@ -18,9 +18,12 @@ then repeats:
 
 A provider failure ends the run with its category (``model_unavailable`` is retried by the job,
 ADR 0005 section 4). The run's ``agent_runs`` row gets its outcome, then ``JobFailure(category)``
-is raised; a cancel (``RunStopped("cancelled")``) records ``cancelled`` and re-raises. A lost lease
-records nothing more (the fence refuses it) and neither does a shutdown hand-back: that row keeps
-outcome NULL with the counters of what it spent, and the next attempt opens a new row.
+is raised; a cancel (``RunStopped("cancelled")``) records ``cancelled`` and re-raises. Anything
+else raised inside the run (a lent read's job failure, such as a lost Spotify connection during
+``search_tracks``) records the category the job fails with (``classbeat.jobs.failure_of``,
+``internal`` for an unknown error) and propagates. A lost lease records nothing more (the fence
+refuses it) and neither does a shutdown hand-back: that row keeps outcome NULL with the counters
+of what it spent, and the next attempt opens a new row.
 
 Model text, tool arguments and results stay in memory for the run and are never logged or stored;
 events carry the tool's stage name (or ``unknown``) and an error code only.
@@ -40,7 +43,7 @@ from classbeat.agent.prices import DEFAULT_PRICES, Price, PriceTable
 from classbeat.agent.provider import ModelProvider, ProviderError, StageSpec, ToolResult, Usage
 from classbeat.agent.stage import Stage
 from classbeat.config import Settings
-from classbeat.jobs.errors import JobFailure, LeaseLost, RunStopped
+from classbeat.jobs.errors import JobFailure, LeaseLost, RunStopped, failure_of
 
 REMINDER: Final = "Finish by calling {tool} with the final draft."
 
@@ -164,8 +167,8 @@ async def run_stage(
         raise
     except (LeaseLost, asyncio.CancelledError):
         raise
-    except Exception:
-        await host.finish(run_id, counters, "internal")
+    except Exception as exc:  # a lent read's job failure keeps its category (#198 item 15)
+        await host.finish(run_id, counters, failure_of(exc).category)
         raise
     await host.finish(run_id, counters, "submitted")
     return StageOutcome(

@@ -20,7 +20,7 @@ from classbeat.jobs.credits import UnmeteredLedger
 from classbeat.jobs.routes import credit_ledger
 from ctx import make_context
 from jobtools import new_job
-from songtools import KIND, Rider, SongEnv
+from songtools import KIND, Rider, SongEnv, design_script
 from spotifyfake import CLIENT_A, USER_B
 
 pytestmark = pytest.mark.usefixtures("songenv")
@@ -56,10 +56,10 @@ async def test_approve_once_queues_the_next_phase_and_a_replay_is_a_no_op(
     again = await rider.approve(job_id, revision, digest)
     assert (again.status_code, again.json()["state"]) == (200, "queued")
     assert songenv.kinds(job_id).count("approved") == 1
-    # Phase 2 is issue SJ2: until it lands the approved phase fails closed (and releases credit).
-    assert (await songenv.run(job_id)).state == "failed"
+    songenv.script = design_script()
+    assert (await songenv.run(job_id)).state == "completed"  # phase 2 (SJ2)
     after = await rider.approve(job_id, revision, digest)
-    assert (after.status_code, after.json()["state"]) == (200, "failed")
+    assert (after.status_code, after.json()["state"]) == (200, "completed")
     assert songenv.kinds(job_id).count("approved") == 1
 
 

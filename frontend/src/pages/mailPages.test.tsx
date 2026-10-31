@@ -156,12 +156,12 @@ describe('reset page', () => {
       },
     })
     renderAt('/reset#token=reset-token')
-    expect(await screen.findByRole('link', { name: 'ann@example.test' })).toBeInTheDocument()
+    expect(await screen.findByRole('button', { name: 'ann@example.test' })).toBeInTheDocument()
     type('New password', 'a brand new passphrase')
     fireEvent.click(screen.getByRole('button', { name: 'Change password' }))
     expect(await screen.findByText('Password changed')).toBeInTheDocument()
     await waitFor(() => {
-      expect(screen.queryByRole('link', { name: 'ann@example.test' })).toBeNull()
+      expect(screen.queryByRole('button', { name: 'ann@example.test' })).toBeNull()
     })
     const nav = screen.getByRole('navigation', { name: 'Account' })
     expect(within(nav).getByRole('link', { name: 'Sign in' })).toBeInTheDocument()

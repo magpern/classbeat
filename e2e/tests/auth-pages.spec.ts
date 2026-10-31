@@ -12,9 +12,10 @@ test('sign up with an invite, confirm by mail, sign in and out', async ({ page }
   await expect(page.getByRole('navigation', { name: 'Account' })).toContainText('Sign in')
 
   await signInThroughUi(page, email)
-  await expect(page.getByRole('navigation', { name: 'Account' })).toContainText(email)
+  await expect(page.getByRole('button', { name: email })).toBeVisible()
 
-  await page.getByRole('button', { name: 'Sign out', exact: true }).first().click()
+  await page.getByRole('button', { name: email }).click()
+  await page.getByRole('menuitem', { name: 'Sign out' }).click()
   await expect(page.getByRole('heading', { name: 'Sign in' })).toBeVisible()
   await page.goto('/account')
   await expect(page.getByRole('heading', { name: 'Sign in first' })).toBeVisible()

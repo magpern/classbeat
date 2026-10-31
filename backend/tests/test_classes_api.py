@@ -913,3 +913,35 @@ async def test_the_listing_pages_with_a_cursor(browsers: Any, jobs_admin: Connec
     for cursor in ("!!", "e30", "W10", naive_cursor):  # not base64, {}, [], a naive time
         refused = await browser.get(f"/api/classes?cursor={cursor}")
         assert reason(refused) == (422, "invalid_cursor")
+
+
+async def test_the_list_profile_is_the_current_revision_and_never_another_users(
+    two: tuple[Plant, Plant],
+) -> None:
+    mine, theirs = two
+    # Their current revision has a zone and a length no draft of mine has.
+    foreign_content = {
+        **DRAFT,
+        "segments": [{"name": "X", "kind": "main", "intervals": [{"sec": 777, "zone": 7}]}],
+    }
+    theirs.sql(
+        "UPDATE class_revisions SET content = CAST(:c AS jsonb) WHERE id = :r",
+        c=json.dumps(foreign_content),
+        r=theirs.r1,
+    )
+    no_current = new_class(mine.admin, mine.owner, "Empty")
+
+    listed = (await mine.browser.get("/api/classes")).json()["classes"]
+    by_id = {c["id"]: c for c in listed}
+    assert by_id[str(mine.class_id)]["profile"] == [[2, 60], [3, 120], [5, 300]]
+    assert by_id[str(no_current)]["profile"] == []
+    assert "777" not in json.dumps(listed)
+
+    theirs_listed = (await theirs.browser.get("/api/classes")).json()["classes"]
+    assert [c["profile"] for c in theirs_listed] == [[[7, 777]]]
+    assert str(mine.class_id) not in json.dumps(theirs_listed)
+
+    # The detail answer carries the same field, for the owner only.
+    detail = await mine.browser.get(f"/api/classes/{mine.class_id}")
+    assert detail.json()["profile"] == [[2, 60], [3, 120], [5, 300]]
+    assert (await mine.browser.get(f"/api/classes/{theirs.class_id}")).status_code == 404

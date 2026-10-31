@@ -5,8 +5,22 @@ generic checks: both connections are the user's current ones, the class is their
 job, the per-user limit), in this order, each refusal writing nothing:
 
 1. ``song_picking_off`` unless ``CLASSBEAT_SONG_PICKING`` is on (``classbeat.songs.config``);
-2. ``receipt_invalid`` for ``mode = "resume"``: phase 2 and its receipt rule are issue SJ2, so
-   until then no resume is admitted (fail closed);
+2. for ``mode = "resume"`` (section 6), instead of steps 3 to 6: ``not_connected`` (the Spotify
+   row), then **the receipt rule**, ``receipt_invalid`` unless all hold, then ``account_changed``
+   (the connected Spotify account must be the list's):
+
+   - the named list is the class's **newest** ``song_list`` and still hashes to its stored hash;
+   - a job of that class was **approved** on it (``approval_revision_id`` and ``approved_at``) and
+     ended ``failed``, ``cancelled`` or ``expired`` (the receipt: the user's click);
+   - **no** job of the class whose approved or resumed list it is has ``completed`` (the receipt
+     is spent once its list is done) or is still ``queued`` or ``running`` (another resume in
+     flight). After a resume that failed, the user may resume again against the same receipt.
+
+   An expired, superseded or never-approved list therefore cannot be resumed. Last,
+   ``write_unresolved`` while a final-playlist write of the class is ``pending`` or ``uncertain``
+   (``classbeat.operations.orphans.playlist_unresolved``, after ``resolve``): a resume never makes
+   another playlist before the user's Check again or Do it anyway on it. The new job reserves the
+   credit again (the failed one released it);
 3. ``not_connected`` unless the Spotify row is ``connected`` with a Spotify user id (share-locked
    for the rest of the transaction);
 4. ``consent_missing`` unless the user's pool consent is given for that Spotify account;
@@ -43,6 +57,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from classbeat import connections
 from classbeat.context import UserContext
 from classbeat.jobs.kinds import SONG_KIND_NAMES, Admitted, Approving, Refused
+from classbeat.operations import orphans
 from classbeat.songs import config, song_list
 from classbeat.songs.inputs import DesignWithSongsInput, Seed
 
@@ -62,6 +77,62 @@ _NEWEST_LIST = text(
     "WHERE r.owner_id = :owner_id AND r.class_id = :class_id AND r.kind = 'song_list' "
     "ORDER BY r.number DESC LIMIT 1"
 )
+
+
+# Jobs of the class that approved or resumed the list ``revision_id``, by state.
+_FOR_LIST = text(
+    "SELECT state, approved_at IS NOT NULL AND approval_revision_id = :revision_id AS approved "
+    "FROM jobs WHERE owner_id = :owner_id AND class_id = :class_id AND ("
+    "(approval_revision_id = :revision_id AND approved_at IS NOT NULL) OR "
+    "(kind = ANY(:kinds) AND input -> 'resume' ->> 'song_list_revision_id' = :revision_text))"
+)
+RECEIPT_ENDED: Final = ("failed", "cancelled", "expired")
+
+
+async def receipt_valid(
+    db: AsyncSession, owner_id: UUID, class_id: UUID, revision_id: UUID
+) -> song_list.SongListRevision | None:
+    """The list a resume may start phase 2 for (module docstring, step 2), or None."""
+    newest = (await db.execute(_NEWEST_LIST, {"owner_id": owner_id, "class_id": class_id})).first()
+    if newest is None or newest.id != revision_id:
+        return None
+    rows = (
+        await db.execute(
+            _FOR_LIST,
+            {
+                "owner_id": owner_id,
+                "class_id": class_id,
+                "revision_id": revision_id,
+                "revision_text": str(revision_id),
+                "kinds": list(SONG_KIND_NAMES),
+            },
+        )
+    ).all()
+    if any(r.state in ("completed", "queued", "running") for r in rows):
+        return None  # spent, or another resume (or the approved phase itself) in flight
+    if not any(r.approved and r.state in RECEIPT_ENDED for r in rows):
+        return None  # never approved
+    return await song_list.load(db, owner_id, class_id, revision_id)
+
+
+async def _admit_resume(
+    db: AsyncSession, ctx: UserContext, parsed: DesignWithSongsInput
+) -> Admitted | Refused:
+    if parsed.resume is None or parsed.class_id is None:  # the input model refuses both
+        return Refused("receipt_invalid")
+    account = await connections.spotify_account_in(db, ctx, parsed.spotify_connection_id)
+    if account is None:
+        return Refused("not_connected")
+    found = await receipt_valid(
+        db, ctx.user_id, parsed.class_id, parsed.resume.song_list_revision_id
+    )
+    if found is None:
+        return Refused("receipt_invalid")
+    if found.account != account:
+        return Refused("account_changed")
+    if await orphans.playlist_unresolved(db, ctx, parsed.class_id):
+        return Refused("write_unresolved")  # the user decides the earlier write first
+    return Admitted()
 
 
 async def pool_busy(db: AsyncSession, owner_id: UUID) -> bool:
@@ -96,7 +167,7 @@ async def admit(db: AsyncSession, ctx: UserContext, parsed: BaseModel, /) -> Adm
     if not config.current().enabled:
         return Refused("song_picking_off")
     if parsed.mode == "resume":
-        return Refused("receipt_invalid")  # SJ2 adds phase 2 and the receipt rule
+        return await _admit_resume(db, ctx, parsed)
     account = await connections.spotify_account_in(db, ctx, parsed.spotify_connection_id)
     if account is None:
         return Refused("not_connected")
