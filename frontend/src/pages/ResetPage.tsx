@@ -7,7 +7,8 @@ import {
 } from '../api/auth'
 import { errorMessage, providerName } from '../api/messages'
 import { useSession } from '../auth/SessionContext'
-import { Card, Field, Notice, useAction } from '../components/forms'
+import { Field, Notice, useAction } from '../components/forms'
+import { AuthCard as Card } from '../components/auth/AuthCard'
 import { Link, useMailToken } from '../router/Router'
 
 /** `/reset`: ask for a link. `/reset#token=...`: choose a new password. */

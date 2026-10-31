@@ -265,7 +265,7 @@ describe('the new-class form', () => {
     })
     renderAt('/classes/new')
     await screen.findByLabelText('Class name')
-    expect(screen.queryByRole('button', { name: 'Let Claude pick the songs' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Pick songs for me' })).toBeNull()
   })
 
   it('links to the wizard without Spotify, and to the consent without it', async () => {
@@ -276,7 +276,7 @@ describe('the new-class form', () => {
       'GET /api/connections/spotify': { ...(READY['GET /api/connections/spotify'] as object), status: 'not_connected' },
     })
     renderAt('/classes/new')
-    const pick = await screen.findByRole('button', { name: 'Let Claude pick the songs' })
+    const pick = await screen.findByRole('button', { name: 'Pick songs for me' })
     expect(pick).toBeDisabled()
     expect(screen.getByRole('link', { name: 'Connect Spotify' })).toHaveAttribute('href', '/account/spotify')
   })
@@ -288,7 +288,7 @@ describe('the new-class form', () => {
       'GET /api/connections/spotify': { ...(READY['GET /api/connections/spotify'] as object), pool_consent: false },
     })
     renderAt('/classes/new')
-    expect(await screen.findByRole('button', { name: 'Let Claude pick the songs' })).toBeDisabled()
+    expect(await screen.findByRole('button', { name: 'Pick songs for me' })).toBeDisabled()
     expect(screen.getByText(/Allow the working playlist in your Spotify settings first/)).toBeInTheDocument()
   })
 
@@ -297,9 +297,9 @@ describe('the new-class form', () => {
     renderAt('/classes/new')
     fireEvent.change(await screen.findByLabelText('Class name'), { target: { value: 'Songs class' } })
     expect(screen.getByLabelText('Playlist')).toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: 'Let Claude pick the songs' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Pick songs for me' }))
     expect(screen.queryByLabelText('Playlist')).toBeNull()
-    fireEvent.click(screen.getByRole('button', { name: 'Design the class' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Design my class' }))
     await waitFor(() => {
       expect(window.location.pathname).toBe(`/jobs/${NEW_JOB.id}`)
     })
@@ -319,8 +319,8 @@ describe('the new-class form', () => {
     fakeApi({ ...READY, 'POST /api/jobs': () => reason(409, 'pool_busy') })
     renderAt('/classes/new')
     fireEvent.change(await screen.findByLabelText('Class name'), { target: { value: 'Songs class' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Let Claude pick the songs' }))
-    fireEvent.click(screen.getByRole('button', { name: 'Design the class' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Pick songs for me' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Design my class' }))
     expect(await screen.findByRole('alert')).toHaveTextContent('Another song pick is still running')
   })
 })

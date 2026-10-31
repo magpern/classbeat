@@ -40,6 +40,7 @@ def make_draft(
     races: int = 0,
     ftp: int | None = None,
     ftp_lead: int = 300,
+    games: tuple[str, ...] = (),
     name: str = "Invented smoke class",
     description: str = "A class made for the smoke set.",
 ) -> dict[str, Any]:
@@ -83,6 +84,16 @@ def make_draft(
                 iv(150, 4, [80, 90]),
                 iv(25, 7, [95, 105]),
                 iv(60, 1, [80, 90]),
+            )
+        )
+    for n, game in enumerate(games):
+        segments.append(
+            seg(
+                f"Game {n + 1}",
+                "main",
+                iv(120, 3, [80, 90]),
+                iv(60, 5, [85, 95], game=game),
+                iv(60, 1, [75, 85]),
             )
         )
     if ftp:

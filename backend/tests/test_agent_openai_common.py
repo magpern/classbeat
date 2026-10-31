@@ -264,11 +264,17 @@ async def test_a_turn_is_bounded_in_time() -> None:
 
 async def test_a_provider_error_and_a_cancel_go_through_as_they_are() -> None:
     async def config() -> None:
-        raise ProviderError("model_config")
+        try:
+            raise KeyError("provider text")
+        except KeyError:
+            raise ProviderError("model_config")  # noqa: B904 - its context is the point
 
     with pytest.raises(ProviderError) as raised:
         await bounded_request(config)
     assert raised.value.category == "model_config"
+    # raised again outside any handler: neither that context nor its text travels (#262 review)
+    assert raised.value.__context__ is None
+    assert raised.value.__cause__ is None
 
     async def cancelled() -> None:
         raise asyncio.CancelledError
@@ -299,9 +305,23 @@ def test_a_missing_or_malformed_count_is_zero(bad: object) -> None:
     assert usage == Usage(input_tokens=100, output_tokens=0, cache_read_tokens=0)
 
 
-def test_more_cached_than_prompt_tokens_is_not_trusted() -> None:
+def test_cache_writes_are_taken_out_of_the_input() -> None:
+    usage = normalise_usage(
+        prompt_tokens=1000, cached_tokens=600, written_tokens=300, output_tokens=250
+    )
+    assert usage == Usage(
+        input_tokens=100, output_tokens=250, cache_read_tokens=600, cache_write_tokens=300
+    )
+
+
+@pytest.mark.parametrize(("cached", "written"), [(11, 0), (0, 11), (6, 5)])
+def test_more_cached_and_written_than_prompt_tokens_is_not_trusted(
+    cached: int, written: int
+) -> None:
     with pytest.raises(ProviderError) as raised:
-        normalise_usage(prompt_tokens=10, cached_tokens=11, output_tokens=1)
+        normalise_usage(
+            prompt_tokens=10, cached_tokens=cached, written_tokens=written, output_tokens=1
+        )
     assert raised.value.category == "internal"
 
 
@@ -309,24 +329,24 @@ def test_the_responses_and_chat_usage_shapes() -> None:
     responses = ResponseUsage.model_validate(
         {
             "input_tokens": 900,
-            # SDK 2.54 also reports cache writes; they stay input tokens (ADR 0012 §3).
+            # Cache writes are billed apart from GPT-5.6 on (ADR 0012 §3, amended 2026-10-31).
             "input_tokens_details": {"cached_tokens": 800, "cache_write_tokens": 50},
             "output_tokens": 300,
             "output_tokens_details": {"reasoning_tokens": 200},
             "total_tokens": 1200,
         }
     )
-    assert responses_usage(responses) == Usage(100, 300, 800, 0)
+    assert responses_usage(responses) == Usage(50, 300, 800, 50)
     chat = CompletionUsage.model_validate(
         {
             "prompt_tokens": 500,
             "completion_tokens": 70,
             "total_tokens": 570,
-            "prompt_tokens_details": {"cached_tokens": 128},
+            "prompt_tokens_details": {"cached_tokens": 128, "cache_write_tokens": 100},
             "completion_tokens_details": {"reasoning_tokens": 40},
         }
     )
-    assert chat_usage(chat) == Usage(372, 70, 128, 0)
+    assert chat_usage(chat) == Usage(272, 70, 128, 100)
     bare = CompletionUsage.model_validate(
         {"prompt_tokens": 5, "completion_tokens": 1, "total_tokens": 6}
     )
@@ -345,8 +365,14 @@ def _entry(provider: str, efforts: tuple[str, ...]) -> CatalogModel:
 
 
 def test_openai_effort_maps_to_reasoning_effort() -> None:
-    entry = _entry("openai", ("low", "medium", "high", "xhigh"))
-    assert [provider_effort(entry, e) for e in entry.efforts] == ["low", "medium", "high", "xhigh"]
+    entry = _entry("openai", ("low", "medium", "high", "xhigh", "max"))
+    assert [provider_effort(entry, e) for e in entry.efforts] == [
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+        "max",
+    ]
 
 
 def test_deepseek_has_no_effort_parameter() -> None:
@@ -357,7 +383,7 @@ def test_deepseek_has_no_effort_parameter() -> None:
     ("provider", "efforts", "effort"),
     [
         ("openai", ("medium",), "high"),  # not listed in the catalog
-        ("openai", ("medium", "max"), "max"),  # listed, but OpenAI has no such setting
+        ("openai", ("medium",), "max"),
         ("deepseek", ("medium",), "low"),
         ("openai", ("medium",), "turbo"),
     ],

@@ -1,0 +1,64 @@
+{
+ "headers": {
+  "x-request-id": "req_fixture_end_turn"
+ },
+ "body": {
+  "id": "resp_fixture_end_turn",
+  "object": "response",
+  "created_at": 1793404800,
+  "status": "completed",
+  "error": null,
+  "incomplete_details": null,
+  "instructions": null,
+  "max_output_tokens": 32000,
+  "model": "gpt-6.1-sol-2026-09-15",
+  "output": [
+   {
+    "type": "reasoning",
+    "id": "rs_fixture_1",
+    "summary": [],
+    "encrypted_content": "gAAAAB-fixture-encrypted-reasoning-not-real"
+   },
+   {
+    "type": "message",
+    "id": "msg_fixture_1",
+    "status": "completed",
+    "role": "assistant",
+    "content": [
+     {
+      "type": "output_text",
+      "text": "Here is my plan.",
+      "annotations": [],
+      "logprobs": []
+     },
+     {
+      "type": "output_text",
+      "text": " Done.",
+      "annotations": [],
+      "logprobs": []
+     }
+    ]
+   }
+  ],
+  "parallel_tool_calls": true,
+  "reasoning": {
+   "effort": "medium",
+   "summary": null
+  },
+  "store": false,
+  "tool_choice": "auto",
+  "tools": [],
+  "usage": {
+   "input_tokens": 1200,
+   "input_tokens_details": {
+    "cached_tokens": 0,
+    "cache_write_tokens": 1024
+   },
+   "output_tokens": 40,
+   "output_tokens_details": {
+    "reasoning_tokens": 10
+   },
+   "total_tokens": 1240
+  }
+ }
+}

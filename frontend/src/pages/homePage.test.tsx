@@ -131,7 +131,7 @@ describe('presets', () => {
     expect(await screen.findByLabelText('Length in minutes')).toHaveValue(30)
     expect(screen.getByLabelText('Sprints')).toHaveValue(6)
     expect(screen.getByLabelText('Climbs')).toHaveValue(0)
-    expect(screen.getByLabelText('Intensity')).toHaveValue('hard')
+    expect(screen.getByRole('radio', { name: 'Hard' })).toBeChecked()
   })
 
   it('the link on Home opens the form with those values', async () => {
@@ -144,6 +144,6 @@ describe('presets', () => {
     renderAt('/')
     await userEvent.click(await screen.findByRole('link', { name: '60 min endurance' }))
     expect(await screen.findByLabelText('Length in minutes')).toHaveValue(60)
-    expect(screen.getByLabelText('Intensity')).toHaveValue('easy')
+    expect(screen.getByRole('radio', { name: 'Easy' })).toBeChecked()
   })
 })

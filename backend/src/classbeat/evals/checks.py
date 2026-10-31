@@ -24,6 +24,18 @@ passes when all of them do. They look only at the fitted spec the backend comput
 - ``forbidden_text``: none of the case's strings (injection text) in what the draft says;
 - ``limits``: turns, tool calls and cost within the run's limits and the case's own bounds.
 
+The suite's checks (ADR 0012 section 4), run only for a case whose ``expect`` asks for them:
+
+- ``games``: each game the case lists exactly once, and no other (``workout.validate`` already
+  holds the library's rules for them);
+- ``ftp_warmup``: the FTP test starts at least ``ftp_warmup_min_sec`` into the class;
+- ``sprints_on_drops``: every sprint (a burst, as above) starts within one bar of a drop, when
+  the music has a drop;
+- ``phrase_changes``: no zone change more than 1 s off a phrase boundary, drop, breakdown or
+  track change when one is within 8 s (phrases from ``mowl.music.phrases``, events from the map);
+- ``revision``, ``kept_length``, ``kept_cooldown``, ``kept_efforts``: the asked change
+  (``RevisionExpect``) is made, and what it did not touch is kept, measured against the base.
+
 A check's detail holds numbers and rule names only, never draft or music text.
 """
 
@@ -32,13 +44,13 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Any, Final
 
-from mowl import workout
+from mowl import music, workout
 
 from classbeat.agent.design import DesignResult
 from classbeat.agent.limits import Limits
 from classbeat.agent.loop import StageOutcome
 from classbeat.design.revision import canonical, fitted_draft
-from classbeat.evals.cases import Case, Range
+from classbeat.evals.cases import Case, Range, RevisionExpect
 
 DURATION_TOLERANCE: Final = 0.05
 MUSIC_FILL: Final = 0.9
@@ -64,6 +76,14 @@ TSS_PER_HOUR: Final[dict[str, Range]] = {
 # fixed cycle (evals.music.LOUDNESS) unrelated to any design, so here it is a warning to the model,
 # not a measure of the design.
 TOLERATED_ISSUES: Final = frozenset({"beat_off", "loudness_mismatch"})
+# The suite's music sync (ADR 0012 section 4): a change this close to a boundary is on it (fitted
+# starts are whole seconds); a boundary this close makes a change mid-phrase avoidable.
+ON_BOUNDARY_SEC: Final = 1.0
+PHRASE_WINDOW_SEC: Final = 8.0
+BEATS_PER_BAR: Final = 4
+# Revisions: easier is at most this share of the base's TSS; the cooldown keeps within this.
+EASIER_TSS: Final = 0.95
+COOLDOWN_KEEP_SEC: Final = 60
 
 
 @dataclass(frozen=True, slots=True)
@@ -78,14 +98,16 @@ def _intervals(spec: dict[str, Any]) -> list[tuple[dict[str, Any], dict[str, Any
 
 
 def _bursts(spec: dict[str, Any]) -> list[dict[str, Any]]:
-    return [
-        i
-        for _, i in _intervals(spec)
-        if not i.get("standing")
+    return [i for _, i in _intervals(spec) if _is_burst(i)]
+
+
+def _is_burst(i: dict[str, Any]) -> bool:
+    return (
+        not i.get("standing")
         and i["zone"] >= 6
         and i["sec"] <= BURST_MAX_SEC
         and "ftp_test" not in i
-    ]
+    )
 
 
 MAX_NOTE: Final = 300  # characters, as the tool allows
@@ -161,7 +183,9 @@ def run_checks(
     note: str = "",
     *,
     zone7_tss_margin: float = 0.0,
+    music_map: dict[str, Any] | None = None,
 ) -> list[Check]:
+    """``music_map`` is the map the stage was given; the ``music_sync`` checks need it."""
     spec, brief, expect = result.spec, case.brief, case.expect
     total = result.duration_sec
     checks: list[Check] = []
@@ -183,6 +207,8 @@ def run_checks(
         add("validate", False, "the fitted spec fails workout.validate")
 
     asked = brief.length_min * 60
+    if expect.revision is not None and expect.revision.length_min is not None:
+        asked = expect.revision.length_min * 60  # the request asked for another length
     if expect.duration == "asked":
         ok = abs(total - asked) <= DURATION_TOLERANCE * asked and total <= music_sec + 1
         add("duration", ok, f"{total} s for {asked} s asked, music {math.floor(music_sec)} s")
@@ -254,6 +280,8 @@ def run_checks(
         )
         add("note", len(note) <= MAX_NOTE, f"a note of {len(note)} characters")
 
+    checks.extend(suite_checks(case, result, music_map))
+
     lowered = [t.lower() for t in _texts(result, note)]
     leaked = [
         n for n, bad in enumerate(expect.forbidden_text) if any(bad.lower() in t for t in lowered)
@@ -275,3 +303,172 @@ def run_checks(
 
 def failed(checks: Sequence[Check]) -> list[str]:
     return [c.name for c in checks if not c.ok]
+
+
+# --- the suite's checks (ADR 0012 section 4) ---------------------------------------------------
+
+
+def _timed(spec: dict[str, Any]) -> list[tuple[int, dict[str, Any], dict[str, Any]]]:
+    """(start in seconds, segment, interval) of every interval of a (fitted) spec."""
+    out: list[tuple[int, dict[str, Any], dict[str, Any]]] = []
+    t = 0
+    for seg, i in _intervals(spec):
+        out.append((t, seg, i))
+        t += i["sec"]
+    return out
+
+
+def _bar_sec(music_map: dict[str, Any], t: float) -> float:
+    return BEATS_PER_BAR * 60.0 / float(music.song_at(music_map, t)["bpm"])
+
+
+def sprints_on_drops(spec: dict[str, Any], music_map: dict[str, Any]) -> Check:
+    drops = [float(e["t"]) for e in music_map["events"] if e["kind"] == "drop"]
+    starts = [t for t, _, i in _timed(spec) if _is_burst(i)]
+    if not drops:
+        return Check("sprints_on_drops", True, f"{len(starts)} sprints, no drop in the music")
+    on = [t for t in starts if any(abs(t - d) <= _bar_sec(music_map, d) for d in drops)]
+    return Check(
+        "sprints_on_drops",
+        len(on) == len(starts),
+        f"{len(on)} of {len(starts)} sprints start within a bar of a drop",
+    )
+
+
+def phrase_changes(spec: dict[str, Any], music_map: dict[str, Any], allowed: int) -> Check:
+    bounds = [*music.phrases(music_map), *(float(e["t"]) for e in music_map["events"])]
+    timed = _timed(spec)
+    changes = [
+        t
+        for (t, _, i), (_, _, before) in zip(timed[1:], timed[:-1], strict=True)
+        if i["zone"] != before["zone"]
+    ]
+    off = 0
+    for t in changes:
+        near = min((abs(t - b) for b in bounds), default=math.inf)
+        off += ON_BOUNDARY_SEC < near <= PHRASE_WINDOW_SEC
+    return Check(
+        "phrase_changes",
+        off <= allowed,
+        f"{off} of {len(changes)} zone changes mid-phrase, at most {allowed}",
+    )
+
+
+def _hard_share(spec: dict[str, Any]) -> float:
+    total = sum(i["sec"] for _, i in _intervals(spec))
+    hard = sum(i["sec"] for _, i in _intervals(spec) if i["zone"] >= HARD_ZONE)
+    return hard / total if total else 0.0
+
+
+def _is_climb(seg: dict[str, Any]) -> bool:
+    return "climb" in str(seg["name"]).lower() or _climbs({"segments": [seg]}) > 0
+
+
+def _efforts(spec: dict[str, Any]) -> tuple[int, int, int, int]:
+    """Climbs, races, FTP tests and sprints (bursts that are not races) of a spec."""
+    bursts = _bursts(spec)
+    races = sum(RACE_SEC[0] <= i["sec"] <= RACE_SEC[1] and i["zone"] == ZONE7 for i in bursts)
+    ftp = sum("ftp_test" in i for _, i in _intervals(spec))
+    return _climbs(spec), races, ftp, len(bursts) - races
+
+
+def _mains(spec: dict[str, Any]) -> list[dict[str, Any]]:
+    return [s for s in spec["segments"] if s["kind"] == "main"]
+
+
+def _predicate(
+    want: RevisionExpect, spec: dict[str, Any], base: dict[str, Any], tss: float
+) -> tuple[bool, str]:
+    if want.kind == "more_sprints":
+        now, before = len(_bursts(spec)), len(_bursts(base))
+        return now >= before + want.by, f"{now} sprints, {before} before, {want.by} more asked"
+    if want.kind == "easier":
+        before, share, base_share = workout.tss(base), _hard_share(spec), _hard_share(base)
+        ok = tss <= EASIER_TSS * before and share <= base_share
+        return (
+            ok,
+            f"TSS {tss} from {before}, zone {HARD_ZONE}+ share {share:.2f} from {base_share:.2f}",
+        )
+    if want.kind == "shorter":
+        asked = (want.length_min or 0) * 60
+        total = workout.total_seconds(spec)
+        return abs(total - asked) <= DURATION_TOLERANCE * asked, f"{total} s for {asked} s asked"
+    mains = _mains(spec)
+    at = mains[0] if want.climb_at == "start" else mains[-1]
+    return bool(mains) and _is_climb(
+        at
+    ), f"the {want.climb_at} main segment is a climb: {_is_climb(at)}"
+
+
+def revision_checks(
+    want: RevisionExpect, result: DesignResult, base: dict[str, Any]
+) -> list[Check]:
+    spec = result.spec
+    ok, detail = _predicate(want, spec, base, result.tss)
+    out = [Check("revision", ok, f"{want.kind}: {detail}")]
+    total, before = workout.total_seconds(spec), workout.total_seconds(base)
+    if want.kind != "shorter":
+        out.append(
+            Check(
+                "kept_length",
+                abs(total - before) <= DURATION_TOLERANCE * before,
+                f"{total} s, the base {before} s",
+            )
+        )
+    cool, base_cool = spec["segments"][-1], base["segments"][-1]
+    cool_sec, base_sec = workout.seconds(cool), workout.seconds(base_cool)
+    out.append(
+        Check(
+            "kept_cooldown",
+            cool["kind"] == "cooldown"
+            and cool_sec >= workout.MIN_COOLDOWN_SEC
+            and abs(cool_sec - base_sec) <= COOLDOWN_KEEP_SEC,
+            f"cooldown {cool_sec} s, the base {base_sec} s",
+        )
+    )
+    if want.kind in ("more_sprints", "climb_moved"):
+        now, was = _efforts(spec), _efforts(base)
+        if want.kind == "more_sprints":  # the sprints are what changed
+            now, was = now[:-1], was[:-1]
+        out.append(
+            Check(
+                "kept_efforts",
+                now == was,
+                f"climbs, races, FTP tests{'' if want.kind == 'more_sprints' else ', sprints'} "
+                f"{list(now)}, the base {list(was)}",
+            )
+        )
+    return out
+
+
+def suite_checks(case: Case, result: DesignResult, music_map: dict[str, Any] | None) -> list[Check]:
+    """The checks a suite case's ``expect`` asks for; none for a smoke case."""
+    spec, expect = result.spec, case.expect
+    out: list[Check] = []
+    if expect.games:
+        found = sorted(str(i["game"]) for _, i in _intervals(spec) if i.get("game"))
+        out.append(
+            Check(
+                "games", found == sorted(expect.games), f"games {found} for {sorted(expect.games)}"
+            )
+        )
+    if expect.ftp_warmup_min_sec is not None:
+        starts = [t for t, _, i in _timed(spec) if "ftp_test" in i]
+        out.append(
+            Check(
+                "ftp_warmup",
+                len(starts) == 1 and starts[0] >= expect.ftp_warmup_min_sec,
+                f"FTP test at {starts} s, at least {expect.ftp_warmup_min_sec} s",
+            )
+        )
+    sync = expect.music_sync
+    if sync is not None:
+        if music_map is None:
+            raise ValueError("the music_sync checks need the music map")
+        if sync.sprints_on_drops:
+            out.append(sprints_on_drops(spec, music_map))
+        if sync.phrase_changes:
+            out.append(phrase_changes(spec, music_map, sync.max_off_phrase))
+    if expect.revision is not None and case.revise is not None:
+        out += revision_checks(expect.revision, result, case.revise.base.to_spec())
+    return out
