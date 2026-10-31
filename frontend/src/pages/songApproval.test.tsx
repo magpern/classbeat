@@ -1,9 +1,11 @@
 import { act, fireEvent, screen, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it } from 'vitest'
-import { classRoutes } from '../test/classFixtures'
+import { classBody, classRoutes } from '../test/classFixtures'
 import { fakeApi, json, reason } from '../test/fakeApi'
 import { CLASS_ID, JOB_ID, SESSION_ROUTES, jobBody, openStream } from '../test/jobFixtures'
 import {
+  BRIEF,
+  CLASS_PATH,
   HASH,
   LIST_ID,
   LIST_PATH,
@@ -121,6 +123,7 @@ describe('the Songs for approval page', () => {
       [`POST ${JOB}/approve`]: () => reason(409, 'expired'),
       [`POST ${JOB}/cancel`]: jobBody('cancelled', { kind: 'design_with_songs' }),
       'GET /api/connections': connectionsBody(),
+      [`GET ${CLASS_PATH}`]: classBody({ brief: BRIEF }),
       'POST /api/jobs': () => json(NEW_JOB, 201),
     })
     renderAt(`/jobs/${JOB_ID}`)
@@ -171,6 +174,7 @@ describe('Ask for changes', () => {
     ...approvalRoutes(),
     [`POST ${JOB}/cancel`]: jobBody('cancelled', { kind: 'design_with_songs' }),
     'GET /api/connections': connectionsBody(),
+    [`GET ${CLASS_PATH}`]: classBody({ brief: BRIEF }),
   }
 
   it('needs a replace mark, then cancels the waiting job before it creates the seeded job', async () => {
@@ -200,8 +204,8 @@ describe('Ask for changes', () => {
     const input = (create?.body as { input: Record<string, unknown> }).input
     expect(input.seed).toEqual({ song_list_revision_id: LIST_ID, replace: [1] })
     expect(input.mode).toBe('pick')
-    expect((input.brief as { text: string; length_min: number }).text).toBe('More rock')
-    expect((input.brief as { length_min: number }).length_min).toBe(10)
+    // The class's own brief, with the note appended.
+    expect(input.brief).toEqual({ ...BRIEF, text: 'Hills\nMore rock' })
     expect(create?.headers.get('Idempotency-Key')).toMatch(/^[A-Za-z0-9_-]{16,64}$/)
   })
 
@@ -268,5 +272,72 @@ describe('the class page reaches the approval', () => {
     })
     renderAt(`/classes/${CLASS_ID}`)
     expect(await screen.findByRole('link', { name: 'Review the songs' })).toHaveAttribute('href', `/jobs/${JOB_ID}`)
+  })
+})
+
+describe('Ask for changes and the brief', () => {
+  const base = {
+    ...approvalRoutes(),
+    [`POST ${JOB}/cancel`]: jobBody('cancelled', { kind: 'design_with_songs' }),
+    'GET /api/connections': connectionsBody(),
+    'POST /api/jobs': () => json(NEW_JOB, 201),
+  }
+
+  it('falls back to the form kept in this tab when the class has no brief', async () => {
+    const kept = { ...BRIEF, text: 'From the tab', length_min: 60 }
+    window.sessionStorage.setItem(
+      `classbeat.pick-input.${JOB_ID}`,
+      JSON.stringify({ class_id: CLASS_ID, brief: kept, mode: 'pick', mowl_connection_id: 'x', spotify_connection_id: 'y' }),
+    )
+    const api = fakeApi({ ...base, [`GET ${CLASS_PATH}`]: classBody({ brief: null }) })
+    renderAt(`/jobs/${JOB_ID}`)
+    fireEvent.click(await screen.findByRole('button', { name: 'Replace Rolling <i>hills</i>' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Ask for changes' }))
+    await waitFor(() => {
+      expect(window.location.pathname).toBe(`/jobs/${NEW_JOB.id}`)
+    })
+    const input = (api.to('POST', '/api/jobs')[0]?.body as { input: Record<string, unknown> }).input
+    expect(input.brief).toEqual(kept)
+  })
+
+  it('rebuilds the length from the list when there is neither', async () => {
+    const api = fakeApi({ ...base, [`GET ${CLASS_PATH}`]: classBody({ brief: null }) })
+    renderAt(`/jobs/${JOB_ID}`)
+    fireEvent.click(await screen.findByRole('button', { name: 'Replace Rolling <i>hills</i>' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Ask for changes' }))
+    await waitFor(() => {
+      expect(window.location.pathname).toBe(`/jobs/${NEW_JOB.id}`)
+    })
+    const input = (api.to('POST', '/api/jobs')[0]?.body as { input: { brief: { length_min: number } } }).input
+    expect(input.brief.length_min).toBe(10)
+  })
+
+  it('treats a malformed class brief as none', async () => {
+    const api = fakeApi({ ...base, [`GET ${CLASS_PATH}`]: classBody({ brief: { length_min: 'long' } }) })
+    renderAt(`/jobs/${JOB_ID}`)
+    fireEvent.click(await screen.findByRole('button', { name: 'Replace Rolling <i>hills</i>' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Ask for changes' }))
+    await waitFor(() => {
+      expect(api.to('POST', '/api/jobs')).toHaveLength(1)
+    })
+    const input = (api.to('POST', '/api/jobs')[0]?.body as { input: { brief: { intensity: string } } }).input
+    expect(input.brief.intensity).toBe('moderate')
+  })
+
+  it('a double click on Ask for changes is one cancel and one create', async () => {
+    const api = fakeApi({ ...base, [`GET ${CLASS_PATH}`]: classBody({ brief: BRIEF }) })
+    renderAt(`/jobs/${JOB_ID}`)
+    fireEvent.click(await screen.findByRole('button', { name: 'Replace Rolling <i>hills</i>' }))
+    const ask = screen.getByRole('button', { name: 'Ask for changes' })
+    // Both clicks land before React re-renders, so only the in-flight guard can stop the second.
+    act(() => {
+      ask.click()
+      ask.click()
+    })
+    await waitFor(() => {
+      expect(window.location.pathname).toBe(`/jobs/${NEW_JOB.id}`)
+    })
+    expect(api.to('POST', `${JOB}/cancel`)).toHaveLength(1)
+    expect(api.to('POST', '/api/jobs')).toHaveLength(1)
   })
 })

@@ -11,7 +11,7 @@ import {
   text,
   type JsonObject,
 } from './decode'
-import { decodeDraftContent, decodeUnknownBpm, type DraftContent } from './jobs'
+import { decodeDraftContent, decodeUnknownBpm, type Brief, type DraftContent } from './jobs'
 
 // The class API (ADR 0007 section 12, backend/src/classbeat/classes/routes.py). Server text is
 // data: decoded into typed fields and rendered as text by React, never as HTML.
@@ -91,9 +91,41 @@ export interface ClassSummary {
   openJob: OpenJob | null
   /** The current version's intervals as [zone, seconds], in order (empty without one). */
   profile: [number, number][]
+  /** The brief the class was designed for; null when there is none (or on the list). */
+  brief: Brief | null
   /** Only the class page's answer has these; the list's rows read as none. */
   songs: ClassSongs
   playlist: ClassPlaylist | null
+}
+
+const INTENSITIES: readonly unknown[] = ['easy', 'moderate', 'hard']
+
+/** The class's brief; anything malformed reads as none, and callers then use their fallback. */
+function decodeBrief(value: unknown): Brief | null {
+  if (!isObject(value)) return null
+  const whole = (key: string): number | null => {
+    const n = value[key]
+    return typeof n === 'number' && Number.isInteger(n) ? n : null
+  }
+  const length = whole('length_min')
+  const climbs = whole('climbs')
+  const sprints = whole('sprints')
+  const races = whole('races')
+  const ftp = value.ftp_test
+  if (length === null || climbs === null || sprints === null || races === null) return null
+  if (!INTENSITIES.includes(value.intensity)) return null
+  if (ftp !== null && ftp !== 3 && ftp !== 5 && ftp !== 20) return null
+  if (typeof value.style !== 'string' || typeof value.text !== 'string') return null
+  return {
+    length_min: length,
+    intensity: value.intensity as Brief['intensity'],
+    climbs,
+    sprints,
+    races,
+    ftp_test: ftp,
+    style: value.style,
+    text: value.text,
+  }
 }
 
 /** Absent or malformed means no profile: a card then shows no sketch rather than failing the list. */
@@ -136,6 +168,7 @@ function decodeClass(value: unknown): ClassSummary {
     },
     openJob,
     profile: decodeProfile(item.profile),
+    brief: decodeBrief(item.brief),
     songs: decodeSongs(item.songs),
     playlist: decodePlaylist(item.playlist),
   }
