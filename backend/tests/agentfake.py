@@ -183,6 +183,21 @@ class FactoryModels:
 
 
 @dataclass
+class RefusingModels:
+    """A ``ModelSource`` whose route is unusable: every group is refused with ``model_config``,
+    as ``RouteModels`` does for a route that cannot be used. ``asked`` keeps each
+    ``(route_key, group)`` asked for."""
+
+    asked: list[tuple[str, str]] = field(default_factory=lambda: list[tuple[str, str]]())
+
+    async def __call__(
+        self, run: JobRun, route_key: str, group: str, agent: AgentConfig
+    ) -> GroupModel:
+        self.asked.append((route_key, group))
+        raise JobFailure("model_config")
+
+
+@dataclass
 class MemoryHost:
     """A ``StageHost`` without a database: it keeps what the worker's host would write."""
 

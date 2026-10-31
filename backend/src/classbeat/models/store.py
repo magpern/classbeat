@@ -69,7 +69,7 @@ class ResultRow:
     passed: bool
     total_cost_micros: int
     authorization_note: str
-    seq: int = 0  # the database's insertion order (identity, migration 0012)
+    seq: int  # the database's insertion order (identity, migration 0012)
 
 
 @dataclass(frozen=True, slots=True)

@@ -7,7 +7,10 @@
   ``classbeat.agent.providers``.
 - Only ``classbeat.design.kind`` (``runtime_from_settings``, the worker's runtime) and the eval
   command (``classbeat.evals``, M3c EV5) may import ``classbeat.models.providers``: so a job's
-  provider comes from ``Runtime.models``, never from the settings directly.
+  provider comes from ``Runtime.models``, never from the settings directly. The kind module may
+  import **only** ``RouteModels`` from it, by ``from ... import`` (the module re-exports
+  ``provider_for`` and ``deepseek_provider``, which a job must not call).
+- Relative imports are resolved against the importing module before any rule applies.
 - The kinds' ``Runtime`` has no provider factory field, only ``models``.
 - DeepSeek's eval-only path (Architect, 2026-10-31): only ``classbeat.evals`` may name
   ``eval_provider_for_choice`` (the eval command's factory), and only it and
@@ -30,6 +33,9 @@ ADAPTERS = "classbeat.agent.providers"
 ROUTED = "classbeat.models.providers"
 ADAPTER_IMPORTERS = ("classbeat.agent.providers", "classbeat.evals", ROUTED)
 ROUTED_IMPORTERS = ("classbeat.design.kind", "classbeat.evals")
+# The names a module other than the eval command may take from ``classbeat.models.providers``.
+ROUTED_NAMES = {"classbeat.design.kind": frozenset({"RouteModels"})}
+DEEPSEEK_FACTORIES = ("deepseek_provider", "provider_for_choice")
 EVAL_ONLY_KEYWORDS = {
     "eval_allow_disabled_deepseek": ("classbeat.evals", ROUTED),
     "allow_disabled": ("classbeat.evals", ROUTED),
@@ -48,15 +54,35 @@ def _within(module: str, prefixes: tuple[str, ...]) -> bool:
     return any(module == p or module.startswith(p + ".") for p in prefixes)
 
 
-def _imported(tree: ast.AST) -> list[tuple[int, str]]:
-    """Every module an import names, ``from a import b`` as both ``a`` and ``a.b``."""
+def _absolute(node: ast.ImportFrom, module: str, package: bool) -> str | None:
+    """The module a ``from`` import names, a relative one resolved against ``module`` (a package
+    ``__init__`` is the package itself); None when it climbs out of the tree."""
+    if node.level == 0:
+        return node.module
+    base = module.split(".") if package else module.split(".")[:-1]
+    keep = len(base) - (node.level - 1)
+    if keep < 1:
+        return None
+    return ".".join([*base[:keep], *([node.module] if node.module else [])])
+
+
+def _imported(
+    tree: ast.AST, module: str, package: bool, problems: list[tuple[int, str]]
+) -> list[tuple[int, str]]:
+    """Every module an import names, ``from a import b`` as both ``a`` and ``a.b``. A ``from``
+    import of the routes source is left to ``scan``, which checks the names it takes."""
     found: list[tuple[int, str]] = []
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):
             found += [(node.lineno, a.name) for a in node.names]
-        elif isinstance(node, ast.ImportFrom) and node.module and node.level == 0:
-            found.append((node.lineno, node.module))
-            found += [(node.lineno, f"{node.module}.{a.name}") for a in node.names]
+        elif isinstance(node, ast.ImportFrom):
+            source = _absolute(node, module, package)
+            if source is None:
+                found.append((node.lineno, "<outside the package>"))
+                problems.append((node.lineno, "a relative import that leaves the package"))
+            elif source != ROUTED:
+                found.append((node.lineno, source))
+                found += [(node.lineno, f"{source}.{a.name}") for a in node.names]
         elif (
             isinstance(node, ast.Call)
             and isinstance(node.func, ast.Name | ast.Attribute)
@@ -70,14 +96,24 @@ def _imported(tree: ast.AST) -> list[tuple[int, str]]:
     return found
 
 
-def scan(source: str, module: str) -> list[tuple[int, str]]:
+def scan(source: str, module: str, package: bool = False) -> list[tuple[int, str]]:
     problems: list[tuple[int, str]] = []
-    for line, name in _imported(ast.parse(source)):
+    tree = ast.parse(source)
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom) and _absolute(node, module, package) == ROUTED:
+            if _within(module, ("classbeat.evals", ROUTED)):
+                continue
+            allowed = ROUTED_NAMES.get(module, frozenset())
+            for alias in node.names:
+                if alias.name not in allowed:
+                    problems.append((node.lineno, f"imports {alias.name} from {ROUTED}"))
+    for line, name in _imported(tree, module, package, problems):
         if _within(name, (ADAPTERS,)) and not _within(module, ADAPTER_IMPORTERS):
             problems.append((line, f"imports {name}: providers come from a route's choice"))
-        if _within(name, (ROUTED,)) and not _within(module, (*ROUTED_IMPORTERS, ROUTED)):
-            problems.append((line, f"imports {name}: only the worker's runtime builds it"))
-    for node in ast.walk(ast.parse(source)):
+        if _within(name, (ROUTED,)) and not _within(module, ("classbeat.evals", ROUTED)):
+            problems.append((line, f"imports {name}: only RouteModels, by name, from the kind"))
+    aliases = _deepseek_aliases(tree)
+    for node in ast.walk(tree):
         named = (
             (isinstance(node, ast.Name) and node.id == EVAL_FACTORY)
             or (isinstance(node, ast.Attribute) and node.attr == EVAL_FACTORY)
@@ -94,23 +130,48 @@ def scan(source: str, module: str) -> list[tuple[int, str]]:
                 if (
                     kw.arg is None
                     and not _within(module, ("classbeat.evals", ROUTED))
-                    and _names_deepseek_factory(node)
+                    and _names_deepseek_factory(node, aliases)
                 ):
                     problems.append((node.lineno, "passes **kwargs to a DeepSeek factory"))
+        # A keyword name built as data (``**{"allow_disabled": True}``) is the same thing.
+        if (
+            isinstance(node, ast.Constant)
+            and isinstance(node.value, str)
+            and node.value in EVAL_ONLY_KEYWORDS
+            and not _within(module, EVAL_ONLY_KEYWORDS[node.value])
+        ):
+            problems.append((node.lineno, f"names {node.value}: the eval command only"))
     return problems
 
 
-def _names_deepseek_factory(call: ast.Call) -> bool:
+def _deepseek_aliases(tree: ast.AST) -> set[str]:
+    """Names for a DeepSeek factory: ``import ... as d`` and ``f = deepseek_provider``."""
+    found: set[str] = set(DEEPSEEK_FACTORIES)
+    for _ in range(3):  # an alias of an alias
+        for node in ast.walk(tree):
+            if isinstance(node, ast.ImportFrom | ast.Import):
+                found |= {
+                    a.asname for a in node.names if a.asname and a.name.split(".")[-1] in found
+                }
+            elif isinstance(node, ast.Assign):
+                value = node.value
+                name = value.id if isinstance(value, ast.Name) else getattr(value, "attr", "")
+                if name in found:
+                    found |= {t.id for t in node.targets if isinstance(t, ast.Name)}
+    return found
+
+
+def _names_deepseek_factory(call: ast.Call, aliases: set[str]) -> bool:
     func = call.func
     name = func.id if isinstance(func, ast.Name) else getattr(func, "attr", "")
-    return name in ("deepseek_provider", "provider_for_choice")
+    return name in aliases
 
 
 def test_job_providers_come_only_from_the_routes_source() -> None:
     violations = [
         (_module(path), line, why)
         for path in sorted((SRC / "classbeat").rglob("*.py"))
-        for line, why in scan(path.read_text("utf-8"), _module(path))
+        for line, why in scan(path.read_text("utf-8"), _module(path), path.stem == "__init__")
     ]
     assert violations == []
 
@@ -118,6 +179,7 @@ def test_job_providers_come_only_from_the_routes_source() -> None:
 def test_the_allowlists_are_exactly_the_reviewed_ones() -> None:
     assert ADAPTER_IMPORTERS == ("classbeat.agent.providers", "classbeat.evals", ROUTED)
     assert ROUTED_IMPORTERS == ("classbeat.design.kind", "classbeat.evals")
+    assert dict(ROUTED_NAMES) == {"classbeat.design.kind": frozenset({"RouteModels"})}
     assert EVAL_ONLY_KEYWORDS == {
         "eval_allow_disabled_deepseek": ("classbeat.evals", ROUTED),
         "allow_disabled": ("classbeat.evals", ROUTED),
@@ -143,6 +205,12 @@ def test_the_runtime_takes_a_model_source_and_no_provider_factory() -> None:
         "def f():\n    from classbeat.agent.providers import OpenAIProvider\n",
         "from classbeat.models.providers import provider_for_choice\n",
         "from classbeat.models import providers\n",
+        "from classbeat.models.providers import RouteModels\n",  # the kinds use the runtime
+        "from ..agent.providers import provider_for\n",
+        "from ..agent.providers.anthropic import AnthropicProvider\n",
+        "from ..models.providers import provider_for_choice\n",
+        "from ..models import providers\n",
+        "from .. import agent\nfrom ..agent import providers\n",
     ],
 )
 @pytest.mark.parametrize("module", ["classbeat.songs.kind", "classbeat.design.revise"])
@@ -194,6 +262,37 @@ def test_the_routes_source_never_takes_the_eval_path() -> None:
         )
     }
     assert takers == {"provider_for_choice", EVAL_FACTORY}
+
+
+@pytest.mark.parametrize(
+    "planted",
+    [
+        "from classbeat.models.providers import provider_for\n",
+        "from classbeat.models.providers import deepseek_provider\n",
+        "from classbeat.models.providers import RouteModels, provider_for_choice\n",
+        "from classbeat.models.providers import *\n",
+        "import classbeat.models.providers\n",
+        "from classbeat.models import providers\n",
+        "from classbeat.models.providers import deepseek_provider as d\nd(s, **o)\n",
+        "f = providers.deepseek_provider\nf(s, **{'allow_disabled': True})\n",
+        "g = deepseek_provider\nf = g\nf(s, **extra)\n",
+        "from ..models.providers import provider_for\n",
+    ],
+)
+def test_the_kind_module_may_take_only_route_models_from_the_routes_source(planted: str) -> None:
+    assert scan(planted, "classbeat.design.kind") != []
+    kept = "from classbeat.models.providers import RouteModels\n"
+    assert scan(kept, "classbeat.design.kind") == []
+
+
+def test_a_relative_import_is_resolved_against_the_importing_module() -> None:
+    relative = "from ..agent.providers import provider_for\n"
+    assert scan(relative, "classbeat.songs.kind") != []
+    assert scan(relative, "classbeat.evals.live") == []  # classbeat.agent.providers is the same
+    sibling = "from .providers import provider_for\n"
+    assert scan(sibling, "classbeat.agent") == []  # a module: classbeat.providers
+    assert scan(sibling, "classbeat.agent", True) != []  # a package: classbeat.agent.providers
+    assert scan("from ..... import x\n", "classbeat.songs.kind") != []  # climbs out of the tree
 
 
 def test_the_allowed_modules_pass_and_others_do_not() -> None:
