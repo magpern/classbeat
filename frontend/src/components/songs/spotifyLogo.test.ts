@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto'
 import { readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { createElement } from 'react'
 import { describe, expect, it } from 'vitest'
 
 // The official Spotify logo files, downloaded 2026-10-31 from
@@ -26,5 +27,28 @@ describe('the bundled Spotify logo', () => {
       expect(svg, name).toMatch(/^<\?xml[^>]*\?><svg /)
       expect(svg, name).not.toMatch(/<script|<foreignObject|<image|<a[\s>]|\son\w+=|href=|data:|javascript:/i)
     }
+  })
+})
+
+describe('the logo attribution', () => {
+  it('is readable as "Spotify" in either theme: neither image is aria-hidden', async () => {
+    const { render } = await import('@testing-library/react')
+    const { SpotifyAttribution } = await import('./SpotifyAttribution')
+    const { container } = render(createElement(SpotifyAttribution))
+    const images = [...container.querySelectorAll('img')]
+    expect(images).toHaveLength(2)
+    for (const img of images) {
+      expect(img.getAttribute('alt')).toBe('Spotify')
+      expect(img.hasAttribute('aria-hidden')).toBe(false)
+    }
+  })
+
+  it('is never inlined as a data: URI by the build', async () => {
+    const { inlineLimit } = await import('../../../vite.config')
+    for (const name of Object.keys(PINNED)) {
+      expect(inlineLimit(join(BRAND, name))).toBe(false)
+      expect(inlineLimit(join(BRAND, name).replaceAll('/', String.fromCharCode(92)))).toBe(false)
+    }
+    expect(inlineLimit('/x/src/assets/other.svg')).toBeUndefined()
   })
 })

@@ -42,7 +42,7 @@ export function SongRows({
                   href={song.openSpotify}
                   target="_blank"
                   rel="noopener noreferrer"
-                  aria-label={`Open ${song.title} in Spotify`}
+                  aria-label={`OPEN SPOTIFY, ${song.title}`}
                   className="text-[0.75rem] font-medium uppercase tracking-wide"
                 >
                   OPEN SPOTIFY

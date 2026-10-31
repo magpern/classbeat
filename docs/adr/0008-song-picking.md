@@ -493,8 +493,9 @@ token in any body except where noted; ADR 0009 §2 has the connection routes):
 > track id, only for a list that was loaded and passed its content-hash check, and only when the id is
 > exactly 22 letters and digits (otherwise `null`). The bare id is never a field of its own; the frontend
 > never builds or stores a Spotify URL and shows the link only when the API gave one that matches the
-> track link shape. The page shows it as **OPEN SPOTIFY**. The official logo asset is a separate
-> follow-up; a text attribution stands in until then.
+> track link shape. The page shows it as **OPEN SPOTIFY**. The page also
+> shows the official Spotify logo (full logo, unmodified, white on dark and black on light, bundled and
+> never inlined) beside Spotify's songs and covers, as the guidelines ask.
 
 Plain sentences added for the page: `consent_missing` ("allow the working playlist in your Spotify
 settings first"), `pool_unusable` ("your working playlist was changed: make it private again or set it

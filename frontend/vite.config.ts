@@ -20,10 +20,17 @@ function apiProxyTarget(value: string | undefined): string {
   return value
 }
 
+// The Spotify logo files are never inlined as data: URIs: the CSP allows images from 'self' only.
+// Every other asset keeps Vite's default rule (undefined).
+export function inlineLimit(file: string): boolean | undefined {
+  return file.replaceAll(String.fromCharCode(92), '/').includes('/src/assets/brand/') ? false : undefined
+}
+
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '')
   return {
     plugins: [react(), tailwindcss()],
+    build: { assetsInlineLimit: inlineLimit },
     server: {
       proxy: {
         '/api': { target: apiProxyTarget(env.API_PROXY_TARGET) },

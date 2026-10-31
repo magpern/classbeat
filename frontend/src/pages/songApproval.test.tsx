@@ -71,7 +71,7 @@ describe('the Songs for approval page', () => {
       ),
     )
     renderAt(`/jobs/${JOB_ID}`)
-    const links = await screen.findAllByRole('link', { name: /in Spotify$/ })
+    const links = await screen.findAllByRole('link', { name: /^OPEN SPOTIFY, / })
     expect(links).toHaveLength(1)
     expect(links[0]).toHaveAttribute('href', good)
     expect(links[0]).toHaveTextContent('OPEN SPOTIFY')
