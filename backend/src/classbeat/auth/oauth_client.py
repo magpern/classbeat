@@ -62,7 +62,10 @@ def _max_age(cache_control: str | None) -> float | None:
 
 async def _fetch_jwks_with(transport: httpx.AsyncBaseTransport | None, url: str) -> Jwks:
     refuse_in_worker(urlsplit(url).hostname)  # web only (ADR 0006 section 9)
-    async with httpx.AsyncClient(transport=transport, timeout=TIMEOUT) as client:
+    # No redirect followed and no proxy from the environment (SR-03): the host is the provider's.
+    async with httpx.AsyncClient(
+        transport=transport, timeout=TIMEOUT, trust_env=False, follow_redirects=False
+    ) as client:
         response = await client.get(url)
         response.raise_for_status()
         return Jwks(response.json(), _max_age(response.headers.get("cache-control")))
@@ -94,6 +97,10 @@ def _client(provider: Provider, redirect_uri: str, transport: Any) -> Any:
         code_challenge_method="S256",
         timeout=TIMEOUT,
         transport=transport,
+        # SR-03: no proxy or netrc from the environment, and a redirect is never followed (the
+        # client secret goes in the token request's body, the GitHub token in a header).
+        trust_env=False,
+        follow_redirects=False,
     )
 
 

@@ -237,6 +237,12 @@ GitHub hold the detail.
   logs of the whole Playwright run for the value of every secret file. Not covered by this PR, so M6 stays open: the
   rest of the security review (headers, rate limits and egress against the live shape, dependency findings), backups
   and restore, GDPR export and delete, the VPS and its network rules.
+- **M6, web outbound allowlist and redirects (#353, SR-03 of the security review, in review, not merged):** the web
+  process now installs an allowlisted urllib opener at start (`python -m classbeat`; MOWL's host, `https` on 443, no
+  environment proxy, a redirect only to the same host), so the MOWL token cannot follow a redirect to another host; the
+  OAuth sign-in clients no longer read the environment or follow redirects. Tests use fake upstreams that record what
+  each host receives. Threat model T19 now says what is enforced. **Not done:** no host allowlist for the OAuth
+  sign-in clients or the mail relay, and no network-level egress rule (SR-04). M6 is **not done**.
 - Releases: v0.1.0 (cut partway through M0); v0.2.0 is not cut yet (deferred to save Actions quota). Image
   `ghcr.io/magpern/classbeat`, private.
 
