@@ -94,7 +94,7 @@ describe('the Songs for approval page', () => {
     ['not_waiting', 409, /can no longer be approved/, true],
     ['not_connected', 409, /Spotify or MOWL is not connected/, false],
     ['busy', 429, /already have designs running/, false],
-    ['quota', 409, /used up what your plan allows/, false],
+    ['quota', 409, /You have used your classes for this month/, false],
   ]
   for (const [code, status, text, final] of REFUSALS) {
     it(`says ${code} in plain words ${final ? 'and offers no second try' : 'and lets the user fix it'}`, async () => {

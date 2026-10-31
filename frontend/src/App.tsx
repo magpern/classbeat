@@ -1,5 +1,6 @@
 import { GuardProvider } from './auth/GuardProvider'
 import { SessionProvider, useSession } from './auth/SessionContext'
+import { Banner } from './components/Banner'
 import { AppShell } from './components/shell/AppShell'
 import { AccountPage } from './pages/AccountPage'
 import { AdminPage } from './pages/AdminPage'
@@ -71,6 +72,7 @@ export function App() {
     <RouterProvider>
       <SessionProvider>
         <GuardProvider>
+          <Banner />
           <AppShell>
             <Routes />
           </AppShell>

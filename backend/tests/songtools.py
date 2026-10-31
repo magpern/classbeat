@@ -341,11 +341,12 @@ class SongEnv:
     def registry(self) -> KindRegistry:
         registry = KindRegistry()
         registry.register(songs.DESIGN_WITH_SONGS)
+        registry.register(songs.REVISE_SONGS)
         return registry
 
     async def claim(self) -> Execution | None:
         lease = self.spot.env.settings.job_lease_seconds
-        row = await queue.claim(self.factory, "sj1-w", lease, [KIND])
+        row = await queue.claim(self.factory, "sj1-w", lease, [KIND, songs.REVISE_SONGS.name])
         return None if row is None else Execution(row)
 
     async def run(self, job_id: UUID) -> Any:

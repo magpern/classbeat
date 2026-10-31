@@ -1,0 +1,488 @@
+{
+ "name": "rev_more_sprints_60",
+ "about": "Hard hour with two sprints and a race; one more sprint asked.",
+ "brief": {
+  "length_min": 60,
+  "intensity": "hard",
+  "climbs": 1,
+  "sprints": 2,
+  "races": 1
+ },
+ "music": {
+  "tracks": 17
+ },
+ "expect": {
+  "revision": {
+   "kind": "more_sprints",
+   "by": 1
+  }
+ },
+ "revise": {
+  "request": "One more sprint, please.",
+  "earlier_requests": [],
+  "base": {
+   "name": "Invented base class",
+   "description": "The class as it stands.",
+   "segments": [
+    {
+     "name": "Warm-up",
+     "kind": "warmup",
+     "intervals": [
+      {
+       "sec": 200,
+       "zone": 2,
+       "rpm": [
+        80,
+        90
+       ],
+       "standing": false,
+       "cue": ""
+      },
+      {
+       "sec": 101,
+       "zone": 3,
+       "rpm": [
+        80,
+        90
+       ],
+       "standing": false,
+       "cue": ""
+      }
+     ]
+    },
+    {
+     "name": "Climb 1",
+     "kind": "main",
+     "intervals": [
+      {
+       "sec": 149,
+       "zone": 4,
+       "rpm": [
+        68,
+        76
+       ],
+       "standing": false,
+       "cue": ""
+      },
+      {
+       "sec": 31,
+       "zone": 5,
+       "rpm": [
+        65,
+        75
+       ],
+       "standing": true,
+       "cue": ""
+      },
+      {
+       "sec": 90,
+       "zone": 4,
+       "rpm": [
+        68,
+        76
+       ],
+       "standing": false,
+       "cue": ""
+      },
+      {
+       "sec": 60,
+       "zone": 1,
+       "rpm": [
+        75,
+        85
+       ],
+       "standing": false,
+       "cue": ""
+      }
+     ]
+    },
+    {
+     "name": "Sprint 1",
+     "kind": "main",
+     "intervals": [
+      {
+       "sec": 122,
+       "zone": 4,
+       "rpm": [
+        80,
+        90
+       ],
+       "standing": false,
+       "cue": ""
+      },
+      {
+       "sec": 27,
+       "zone": 6,
+       "rpm": [
+        90,
+        100
+       ],
+       "standing": false,
+       "cue": ""
+      },
+      {
+       "sec": 60,
+       "zone": 1,
+       "rpm": [
+        75,
+        85
+       ],
+       "standing": false,
+       "cue": ""
+      }
+     ]
+    },
+    {
+     "name": "Sprint 2",
+     "kind": "main",
+     "intervals": [
+      {
+       "sec": 119,
+       "zone": 4,
+       "rpm": [
+        80,
+        90
+       ],
+       "standing": false,
+       "cue": ""
+      },
+      {
+       "sec": 25,
+       "zone": 6,
+       "rpm": [
+        90,
+        100
+       ],
+       "standing": false,
+       "cue": ""
+      },
+      {
+       "sec": 60,
+       "zone": 1,
+       "rpm": [
+        75,
+        85
+       ],
+       "standing": false,
+       "cue": ""
+      }
+     ]
+    },
+    {
+     "name": "Race 1",
+     "kind": "main",
+     "intervals": [
+      {
+       "sec": 156,
+       "zone": 4,
+       "rpm": [
+        80,
+        90
+       ],
+       "standing": false,
+       "cue": ""
+      },
+      {
+       "sec": 25,
+       "zone": 7,
+       "rpm": [
+        95,
+        105
+       ],
+       "standing": false,
+       "cue": ""
+      },
+      {
+       "sec": 60,
+       "zone": 1,
+       "rpm": [
+        80,
+        90
+       ],
+       "standing": false,
+       "cue": ""
+      }
+     ]
+    },
+    {
+     "name": "Tempo 1",
+     "kind": "main",
+     "intervals": [
+      {
+       "sec": 179,
+       "zone": 4,
+       "rpm": [
+        80,
+        90
+       ],
+       "standing": false,
+       "cue": ""
+      },
+      {
+       "sec": 60,
+       "zone": 5,
+       "rpm": [
+        85,
+        95
+       ],
+       "standing": false,
+       "cue": ""
+      },
+      {
+       "sec": 60,
+       "zone": 3,
+       "rpm": [
+        80,
+        90
+       ],
+       "standing": false,
+       "cue": ""
+      }
+     ]
+    },
+    {
+     "name": "Tempo 2",
+     "kind": "main",
+     "intervals": [
+      {
+       "sec": 181,
+       "zone": 4,
+       "rpm": [
+        80,
+        90
+       ],
+       "standing": false,
+       "cue": ""
+      },
+      {
+       "sec": 60,
+       "zone": 5,
+       "rpm": [
+        85,
+        95
+       ],
+       "standing": false,
+       "cue": ""
+      },
+      {
+       "sec": 59,
+       "zone": 3,
+       "rpm": [
+        80,
+        90
+       ],
+       "standing": false,
+       "cue": ""
+      }
+     ]
+    },
+    {
+     "name": "Tempo 3",
+     "kind": "main",
+     "intervals": [
+      {
+       "sec": 180,
+       "zone": 4,
+       "rpm": [
+        80,
+        90
+       ],
+       "standing": false,
+       "cue": ""
+      },
+      {
+       "sec": 61,
+       "zone": 5,
+       "rpm": [
+        85,
+        95
+       ],
+       "standing": false,
+       "cue": ""
+      },
+      {
+       "sec": 60,
+       "zone": 3,
+       "rpm": [
+        80,
+        90
+       ],
+       "standing": false,
+       "cue": ""
+      }
+     ]
+    },
+    {
+     "name": "Tempo 4",
+     "kind": "main",
+     "intervals": [
+      {
+       "sec": 185,
+       "zone": 4,
+       "rpm": [
+        80,
+        90
+       ],
+       "standing": false,
+       "cue": ""
+      },
+      {
+       "sec": 60,
+       "zone": 5,
+       "rpm": [
+        85,
+        95
+       ],
+       "standing": false,
+       "cue": ""
+      },
+      {
+       "sec": 60,
+       "zone": 3,
+       "rpm": [
+        80,
+        90
+       ],
+       "standing": false,
+       "cue": ""
+      }
+     ]
+    },
+    {
+     "name": "Tempo 5",
+     "kind": "main",
+     "intervals": [
+      {
+       "sec": 171,
+       "zone": 4,
+       "rpm": [
+        80,
+        90
+       ],
+       "standing": false,
+       "cue": ""
+      },
+      {
+       "sec": 60,
+       "zone": 5,
+       "rpm": [
+        85,
+        95
+       ],
+       "standing": false,
+       "cue": ""
+      },
+      {
+       "sec": 64,
+       "zone": 3,
+       "rpm": [
+        80,
+        90
+       ],
+       "standing": false,
+       "cue": ""
+      }
+     ]
+    },
+    {
+     "name": "Tempo 6",
+     "kind": "main",
+     "intervals": [
+      {
+       "sec": 180,
+       "zone": 4,
+       "rpm": [
+        80,
+        90
+       ],
+       "standing": false,
+       "cue": ""
+      },
+      {
+       "sec": 60,
+       "zone": 5,
+       "rpm": [
+        85,
+        95
+       ],
+       "standing": false,
+       "cue": ""
+      },
+      {
+       "sec": 60,
+       "zone": 3,
+       "rpm": [
+        80,
+        90
+       ],
+       "standing": false,
+       "cue": ""
+      }
+     ]
+    },
+    {
+     "name": "Tempo 7",
+     "kind": "main",
+     "intervals": [
+      {
+       "sec": 125,
+       "zone": 4,
+       "rpm": [
+        80,
+        90
+       ],
+       "standing": false,
+       "cue": ""
+      },
+      {
+       "sec": 59,
+       "zone": 5,
+       "rpm": [
+        85,
+        95
+       ],
+       "standing": false,
+       "cue": ""
+      },
+      {
+       "sec": 60,
+       "zone": 3,
+       "rpm": [
+        80,
+        90
+       ],
+       "standing": false,
+       "cue": ""
+      }
+     ]
+    },
+    {
+     "name": "Cooldown",
+     "kind": "cooldown",
+     "intervals": [
+      {
+       "sec": 151,
+       "zone": 2,
+       "rpm": [
+        80,
+        90
+       ],
+       "standing": false,
+       "cue": ""
+      },
+      {
+       "sec": 120,
+       "zone": 1,
+       "rpm": [
+        70,
+        80
+       ],
+       "standing": false,
+       "cue": ""
+      }
+     ]
+    }
+   ]
+  }
+ }
+}

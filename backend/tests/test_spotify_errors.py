@@ -83,6 +83,11 @@ def test_no_category_comes_from_message_text() -> None:
         (400, "invalid_client", "app_misconfigured"),
         (401, "invalid_client", "app_misconfigured"),
         (400, "invalid_request", "app_misconfigured"),
+        # The other app-setup codes (#198 item 17b, ADR 0009 section 6's amendment).
+        (400, "invalid_scope", "app_misconfigured"),
+        (400, "unauthorized_client", "app_misconfigured"),
+        (401, "unauthorized_client", "app_misconfigured"),
+        (400, "unsupported_response_type", "app_misconfigured"),
         # No recognised code: not the app's setup, and never a flip (#198 item 2).
         (400, None, "upstream_unavailable"),
         (401, None, "upstream_unavailable"),
@@ -100,7 +105,10 @@ def test_the_token_endpoints_category_comes_only_from_a_recognised_code(
     from classbeat.spotify.errors import by_oauth_code
 
     assert by_oauth_code(status, code, None) == category
-    recognised = code in ("invalid_grant", "invalid_client", "invalid_request")
+    recognised = code in (
+        "invalid_grant", "invalid_client", "invalid_request", "invalid_scope",
+        "unauthorized_client", "unsupported_response_type",
+    )  # fmt: skip
     assert (category in SPOTIFY_FLIP_CATEGORIES) == (recognised and status < 500)
 
 

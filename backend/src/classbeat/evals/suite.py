@@ -59,6 +59,7 @@ DIGEST_SOURCES: Final = (
     "checks.py",
     "music.py",
     "pick.py",
+    "runner.py",
     "song_checks.py",
     "suite.py",
     "gate.py",
