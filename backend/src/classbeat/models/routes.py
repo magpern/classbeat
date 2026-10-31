@@ -9,25 +9,33 @@ row with them; nothing here commits.
   model is in the catalog with that effort, its ``data_policy`` is ``allowed`` (OpenAI and
   DeepSeek ship ``owner_pending``), DeepSeek only with ``CLASSBEAT_DEEPSEEK_ENABLED``, and the
   **newest** recorded result for that provider, model, effort and group with the current
-  ``suite_version`` passed with the running code's prompt versions of that group's stages. It
-  then upserts the route at that result (the foreign key checks the rest). It **never reads a
-  key file**: M5 calls it from the web process, which must never see a model key (ADR 0012 §2).
+  ``suite_version`` passed, was recorded on the running suite (its ``manifest_digest``), and has
+  the running code's prompt versions of that group's stages. It then upserts the route at that
+  result (the foreign key checks the rest). It **never reads a key file**: M5 calls it from the
+  web process, which must never see a model key (ADR 0012 §2).
 - ``resolve_route`` (the worker, at the start of every model stage) answers the route's choice
   after checking again what can change without a new result: the catalog entry and effort, the
   provider's key file, ``data_policy: allowed`` for a non-Anthropic provider and the DeepSeek
   setting. A route failing one is **unusable**: ``RouteUnusable`` (a ``JobFailure`` of category
   ``model_config``, before any request; no fallback). With no route the answer is the bootstrap
   choice: ``anthropic`` with ``CLASSBEAT_AGENT_MODEL`` and ``_EFFORT``.
-- **Stale** (a route keeps working, flagged): the result's prompt versions are not the running
-  code's (``prompt_versions``), its ``suite_version`` is not the current one (``suite_version``),
-  or a newer result for the same provider, model, effort and group failed (``newer_failure``).
+- **Stale**: the result's prompt versions are not the running code's (``prompt_versions``), its
+  ``suite_version`` is not the current one (``suite_version``), its ``manifest_digest`` is not the
+  running suite's (``manifest_digest``, #215), or a newer result for the same provider, model,
+  effort and group failed (``newer_failure``). A route stale for the first three keeps working,
+  flagged: ``resolve_route`` logs each (route key, group, reason) once per process ("model route
+  stale", no data) and answers the choice with its reasons. A **newer failure** means the model
+  no longer has a standing pass, so the worker refuses that route like an unusable one
+  (``RouteUnusable("newer_failure")``, ``model_config`` before any request; ADR 0012 amendment of
+  2026-10-31, G2). ``list_routes`` still shows it as stale, and the CLI shows it as unusable.
+- "Newest" is ``recorded_at``, then the insertion order ``seq`` (``store``), so it is
+  deterministic for results recorded in one transaction.
 
 ``provider_for_choice`` (building the provider) lives in ``classbeat.models.providers``, which
 only the worker imports: this module never loads a provider adapter or a model SDK.
 """
 
 import logging
-import re
 import uuid
 from dataclasses import dataclass, field
 from typing import Final, Literal
@@ -38,18 +46,18 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from classbeat.agent import catalog
 from classbeat.config import Settings
 from classbeat.jobs.errors import JobFailure
+from classbeat.jobs.inputs import ROUTE_KEY
 from classbeat.models import store
 from classbeat.models.store import STAGE_GROUPS, ResultRow, RouteRow
 from classbeat.models.versions import (
     group_prompt_versions,
+    running_manifest_digest,
     running_prompt_versions,
     running_suite_version,
 )
 
 log = logging.getLogger(__name__)
 
-ROUTE_KEY: Final = re.compile(r"[a-z0-9_]{1,40}")
-DEFAULT_ROUTE_KEY: Final = "default"
 MAX_ACTOR: Final = 200
 
 RefusedReason = Literal[
@@ -63,14 +71,20 @@ RefusedReason = Literal[
     "no_result",
     "suite_version",
     "result_failed",
+    "manifest_digest",
     "prompt_versions",
     "no_route",
     "foreign_key",
 ]
 UnusableReason = Literal[
-    "not_in_catalog", "effort_not_in_catalog", "no_key", "data_policy", "deepseek_disabled"
+    "not_in_catalog",
+    "effort_not_in_catalog",
+    "no_key",
+    "data_policy",
+    "deepseek_disabled",
+    "newer_failure",  # stale because a newer result failed: no standing pass (G2)
 ]
-StaleReason = Literal["prompt_versions", "suite_version", "newer_failure"]
+StaleReason = Literal["prompt_versions", "suite_version", "manifest_digest", "newer_failure"]
 
 
 class RouteRefused(Exception):
@@ -171,6 +185,8 @@ def _stale_without_newer(row: ResultRow) -> tuple[StaleReason, ...]:
         reasons.append("prompt_versions")
     if row.suite_version != running_suite_version():
         reasons.append("suite_version")
+    if row.manifest_digest != running_manifest_digest():
+        reasons.append("manifest_digest")
     return tuple(reasons)
 
 
@@ -211,6 +227,8 @@ async def gate_result(
         raise RouteRefused("no_result" if any_result is None else "suite_version")
     if not newest.passed:
         raise RouteRefused("result_failed")
+    if newest.manifest_digest != running_manifest_digest():
+        raise RouteRefused("manifest_digest")
     recorded = group_prompt_versions(stage_group, newest.prompt_versions)
     if recorded != running_prompt_versions(stage_group):
         raise RouteRefused("prompt_versions")
@@ -320,18 +338,38 @@ async def resolve_route(
     if found is None:
         return bootstrap_choice(settings)
     reason = unusable_reason(settings, found.provider, found.model, found.effort)
+    row = await store.result_of(db, found.eval_result_id)
+    stale = await staleness(db, row)
+    if reason is None and "newer_failure" in stale:
+        reason = "newer_failure"
     if reason is not None:
         log.warning(
             "model route unusable",
             extra={"route_key": route_key, "stage_group": stage_group, "reason": reason},
         )
         raise RouteUnusable(reason)
-    row = await store.result_of(db, found.eval_result_id)
+    for why in stale:
+        _warn_stale(route_key, stage_group, why)
     return ModelChoice(
         found.provider,
         found.model,
         found.effort,
         route_key=route_key,
         eval_result_id=found.eval_result_id,
-        stale=await staleness(db, row),
+        stale=stale,
+    )
+
+
+_warned: set[tuple[str, str, StaleReason]] = set()
+
+
+def _warn_stale(route_key: str, stage_group: str, reason: StaleReason) -> None:
+    """One warning per process for each stale route key, group and reason (ADR 0012 section 5);
+    the route keeps working (``newer_failure`` never gets here: it is refused)."""
+    if (route_key, stage_group, reason) in _warned:
+        return
+    _warned.add((route_key, stage_group, reason))
+    log.warning(
+        "model route stale",
+        extra={"route_key": route_key, "stage_group": stage_group, "reason": reason},
     )

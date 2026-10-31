@@ -21,7 +21,7 @@ from urllib.error import HTTPError, URLError
 
 from mowl.errors import MowlError
 
-from classbeat.egress import OutboundBlocked
+from classbeat.egress import OutboundBlocked, RequestBudgetExhausted
 
 logger = logging.getLogger(__name__)
 
@@ -81,6 +81,9 @@ class ConnectionFailure(Exception):
         # The provider's HTTP status, when there was one (a number, never a message): the
         # Spotify access path tells a 401 to refresh and repeat apart from other refusals.
         self.http_status = http_status
+        # ``"spotify"`` when ``classbeat.spotify.spotify_call`` raised it (ADR 0009 section 8:
+        # a Spotify rate limit counts towards ``quota_exhausted``, a MOWL one does not).
+        self.provider: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -203,8 +206,8 @@ def log_outcome(outcome: Outcome, action: str) -> None:
     )
 
 
-def _outbound_blocked(exc: BaseException) -> OutboundBlocked | None:
-    """The allowlist refusal anywhere in ``exc``'s chain: itself, or any ``__cause__`` or
+def _in_chain[E: BaseException](exc: BaseException, kind: type[E]) -> E | None:
+    """An exception of ``kind`` anywhere in ``exc``'s chain: itself, or any ``__cause__`` or
     ``__context__`` (both links followed, cycles and depth bounded), since a library may wrap it
     or raise something else while handling it."""
     pending: list[BaseException] = [exc]
@@ -214,10 +217,15 @@ def _outbound_blocked(exc: BaseException) -> OutboundBlocked | None:
         if id(current) in seen:
             continue
         seen.add(id(current))
-        if isinstance(current, OutboundBlocked):
+        if isinstance(current, kind):
             return current
         pending += [e for e in (current.__cause__, current.__context__) if e is not None]
     return None
+
+
+def _outbound_blocked(exc: BaseException) -> OutboundBlocked | None:
+    """The allowlist refusal anywhere in ``exc``'s chain."""
+    return _in_chain(exc, OutboundBlocked)
 
 
 Classifier = Callable[[BaseException], Outcome]
@@ -237,7 +245,9 @@ async def run_library_call[T](
     their own). Any ``Exception`` becomes ``ConnectionFailure(category)`` with no chain, except
     a request the worker's outbound allowlist refused (ADR 0006 §9): that is raised again as a
     fresh ``OutboundBlocked`` (host only, no chain), so the job fails ``outbound_blocked`` and the
-    connection's ``last_error`` is not touched (the refusal is not the connection's fault).
+    connection's ``last_error`` is not touched (the refusal is not the connection's fault); and a
+    request over the job's budget (``egress.RequestBudgetExhausted``, never sent), raised again
+    fresh the same way (the job fails ``limit_exceeded``).
 
     ``single_request``: the call is exactly one HTTP request (``mowl.api.attach_spotify``), so a
     refusal or a request that never left proves it had no effect (``not_applied``). A call made
@@ -251,17 +261,22 @@ async def run_library_call[T](
     blocked_host: str | None = None
     blocked_after_request = False
     refused = False
+    over_budget = False
     try:
         return await asyncio.to_thread(call)
     except Exception as exc:
         found = _outbound_blocked(exc)
-        if found is not None:
+        if _in_chain(exc, RequestBudgetExhausted) is not None:
+            over_budget = True
+        elif found is not None:
             blocked_host = found.host
             blocked_after_request = found.after_request
         else:
             outcome = _classified(exc, classifier, library_error, sign_in)
             refused = single_request and not_applied(exc, library_error=library_error)
     # Outside the except block: no __context__. ``exc`` is already unbound here.
+    if over_budget:  # the job's request budget: that request was never sent
+        raise RequestBudgetExhausted
     if blocked_host is not None:
         raise OutboundBlocked(blocked_host, after_request=blocked_after_request)
     assert outcome is not None  # noqa: S101 - set in the except block

@@ -9,10 +9,10 @@ import pytest
 
 from agentfake import CONFIG, MemoryHost, analysed, brief, from_dict, good_draft, provider
 from classbeat.agent import DesignContext, DesignResult, design_stage, run_stage
-from classbeat.agent.limits import Limits
-from classbeat.agent.loop import AgentConfig
+from classbeat.agent.limits import Limits, tokens_for
+from classbeat.agent.loop import AgentConfig, _spec_chars  # pyright: ignore[reportPrivateUsage]
 from classbeat.agent.prices import DEFAULT_PRICES, FAKE_PRICE
-from classbeat.agent.provider import Usage
+from classbeat.agent.provider import ProviderError, Usage
 from classbeat.agent.providers.fake import FakeProvider, ScriptMismatch
 from classbeat.jobs.errors import JobFailure, LeaseLost, RunStopped
 
@@ -361,3 +361,44 @@ async def test_an_abandoned_run_writes_nothing_more(ctx: DesignContext) -> None:
     with pytest.raises(asyncio.CancelledError):
         await task
     assert host.outcomes() == [None]
+
+
+class _Unreadable:
+    """A provider whose first answer cannot be read: ``billed`` says whether it was answered."""
+
+    name = "fake"  # FAKE_PRICE
+
+    def __init__(self, *, billed: bool) -> None:
+        self.billed = billed
+        self.specs: list[Any] = []
+
+    def start(self, spec: Any) -> "_Unreadable":
+        self.specs.append(spec)
+        return self
+
+    async def turn(self, results: Any, *, reminder: str | None = None) -> Any:
+        raise ProviderError("internal", billed=self.billed)
+
+
+async def test_a_billed_turn_that_cannot_be_read_is_charged_at_its_ceiling(
+    ctx: DesignContext,
+) -> None:
+    """ADR 0006 §5, #299 item 2: the prompt estimate at the dearest input rate plus max_tokens of
+    output, as one turn, recorded before the run fails; never 0."""
+    fake, host = _Unreadable(billed=True), MemoryHost()
+    assert await failure(ctx, fake, host, max_tokens=32_000) == "internal"  # pyright: ignore[reportArgumentType]
+    [record] = host.runs.values()
+    counters = record["counters"]
+    [spec] = fake.specs
+    prompt = FAKE_PRICE.prompt_micros(tokens_for(_spec_chars(spec)))  # pyright: ignore[reportPrivateUsage]
+    assert counters.cost_micros == prompt + FAKE_PRICE.output_micros(32_000) > 640_000
+    assert (counters.turns, record["records"]) == (1, 1)
+    assert host.outcomes() == ["internal"]
+
+
+async def test_an_unanswered_request_costs_nothing(ctx: DesignContext) -> None:
+    fake, host = _Unreadable(billed=False), MemoryHost()
+    assert await failure(ctx, fake, host) == "internal"  # pyright: ignore[reportArgumentType]
+    [record] = host.runs.values()
+    assert record["records"] == 0
+    assert (record["counters"].turns, record["counters"].cost_micros) == (0, 0)

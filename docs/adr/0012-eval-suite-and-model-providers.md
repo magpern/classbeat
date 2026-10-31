@@ -102,6 +102,33 @@ every adapter's captured request body).
   provider's one-host allowlisted httpx.AsyncClient>, max_retries=2, timeout=120,
   organization=None, project=None)`; each turn, retries included, is bounded by `turn_seconds` as
   Anthropic's is. A request the allowlist refuses is raised unretried as `outbound_blocked`.
+  *Amended 2026-10-31 (#299), long requests:* the adapters are not streamed, and the per-attempt
+  timeout is the adapter's whole `turn_seconds` (the stage's time, `CLASSBEAT_AGENT_STAGE_SECONDS`,
+  300 s by default), no longer 120 s. A high-effort answer of up to `max_tokens` can take longer
+  than 120 s; cut there, the SDK would send it again, and each attempt may be billed. The SDK's two
+  retries now serve the quick failures only (429, 5xx, a lost connection), inside the same turn
+  bound, and a turn that runs out of time fails `model_unavailable` once. Reversible: one argument
+  (`attempt_seconds`) in `openai_common.build_client`, tested on the scripted transport. *Was:*
+  `timeout=120` per attempt.
+- **A billed answer that cannot be read** (amended 2026-10-31, #299): the adapters take the raw
+  answer from the SDK (`with_raw_response`), so error statuses and retries are as before, and
+  every step after a 2xx, decoding the body included, is checked. A failure there is
+  `ProviderError("internal", billed=True)`: a body that is not JSON, a broken shape, or usage
+  that is missing or malformed (a missing or non-whole prompt or output count; a cache count
+  that is there but not a whole number). Only a cache count left out reads as 0. The loop records
+  such a turn at its ceiling (the prompt estimate at the dearest input rate plus `max_tokens` of
+  output), never at 0 (ADR 0006 §5: cost errs high). So is DeepSeek's
+  `insufficient_system_resource`, which fails `model_unavailable`. A request with no answer (a
+  timeout, an error status) costs nothing, as before.
+  *Known gap:* a connection dropped while a 200 body is being read is an `APIConnectionError`
+  like a refused connection (httpx reads the body before the SDK sees the status), so the SDK
+  retries it and that attempt, which the provider may have billed, is recorded at 0; a retry that
+  then succeeds is recorded with its own usage only. Telling the two apart needs a response hook
+  in the egress client, and charging for it would add a surcharge to a turn that did succeed.
+  That is not worth it for a rare event that the turn bound already limits.
+- **Tool arguments** (amended 2026-10-31, #299): arguments that are not JSON, or nest deeper than
+  32 levels (`MAX_ARGUMENT_DEPTH`), go to the loop as their text, which it answers `invalid_input`
+  (a tool error the model can correct), never a crash or `internal`.
 - **Errors** by SDK exception class, never by message text, with the same table as ADR 0006 §2:
   `RateLimitError`, `InternalServerError`, other 5xx, `APITimeoutError`, `APIConnectionError` →
   `model_unavailable`; `AuthenticationError`, `PermissionDeniedError`, `NotFoundError` →
@@ -123,9 +150,8 @@ every adapter's captured request body).
   validates every input itself (ADR 0006 §4).
 - **Effort**: classbeat's `low | medium | high | xhigh | max` maps per catalog model to the provider's
   own setting (OpenAI `reasoning.effort`, which takes `low` to `max` on the GPT-6 models, read
-  2026-10-31; DeepSeek: model choice only, no effort parameter). An effort
-  the model does not list in the catalog is refused when the route or the eval run is set up, never
-  silently changed.
+  2026-10-31; DeepSeek `reasoning_effort`, see below). An effort the model does not list in the
+  catalog is refused when the route or the eval run is set up, never silently changed.
 
 **`OpenAIProvider`** (`classbeat.agent.providers.openai_responses`): the **Responses API**, because it
 carries the model's reasoning between tool turns, which multi-turn tool use needs (Chat Completions
@@ -140,11 +166,37 @@ calls → `tool_use`; with none → `end_turn`; `incomplete` for `max_output_tok
 refusal item or `content_filter` → `refusal`; anything else → `other`.
 
 **`DeepSeekProvider`** (`classbeat.agent.providers.deepseek`): the same SDK and shared layer on
-**Chat Completions** (what DeepSeek's API offers), `base_url` the DeepSeek host. Tool calls as
-`tools` with `strict` where the model supports it; the reasoning text a reasoning model returns is
-**not** sent back (the provider's documentation asks for that) and is kept in memory only like any
-model text. Stops from `finish_reason`: `tool_calls` → `tool_use`, `stop` → `end_turn`, `length` →
-`max_tokens`, `content_filter` → `refusal`, else `other`. The developer takes the exact request rules
+**Chat Completions** (what DeepSeek's API offers), `base_url` the DeepSeek host root,
+`https://api.deepseek.com` (DeepSeek's documented OpenAI-SDK base URL, no `/v1`). Stops from
+`finish_reason`: `tool_calls` → `tool_use`, `stop` → `end_turn`, `length` → `max_tokens`,
+`content_filter` → `refusal`, else `other`.
+
+*Amended 2026-10-31 (#205), from DeepSeek's API documentation read that day (docs only):*
+
+- **The reasoning text goes back.** DeepSeek's thinking-mode guide: when a request has tools, the
+  `reasoning_content` of every earlier assistant turn must be passed back in all later requests,
+  or the API answers 400. Every stage has tools, so each assistant message goes back with its
+  `reasoning_content`, from the conversation's memory only, to DeepSeek only, within the same stage
+  run. It is never logged (the `openai` SDK logger is quiet, as `anthropic`'s), never put in a
+  `Turn`, an event, a stored row, a revision or an eval result; a planted marker test checks each.
+  *Was:* "the reasoning text a reasoning model returns is **not** sent back".
+- **Effort.** DeepSeek has `reasoning_effort` `low`, `high` and `max`, and quietly turns `medium`
+  and `xhigh` into `high`. classbeat maps the three one to one and its DeepSeek catalog entries
+  list only those; `medium` and `xhigh` are refused (`model_config`, before any request), never
+  changed, so **a DeepSeek route or eval run names an explicit effort** (the default `medium`
+  does not fit it). Thinking is sent `enabled` explicitly. *Was:* "model choice only, no effort
+  parameter".
+- **Tools are not strict.** DeepSeek's strict mode is a beta behind `https://api.deepseek.com/beta`
+  (the same host); until it leaves beta the tools go as plain `function` tools with the stage's
+  own schemas, at the root URL, and the loop's own validation refuses a malformed call (as it
+  does for every provider, ADR 0006 §4; tested). Strict via `/beta` is a follow-up. *Was:* "with
+  `strict` where the model supports it".
+- **Errors and stops.** 402 (insufficient balance) is `model_config`; `finish_reason`
+  `insufficient_system_resource` is a failed turn, `model_unavailable`; `aborted` is `other`.
+- **Prices.** DeepSeek bills off-peak hours at half rate; the price table keeps the peak rates (a
+  cost never undershoots). There is no cache-write charge.
+
+The developer takes the exact request rules
 (which models support tool calls and strict mode, the reasoning field's name) from DeepSeek's published
 API documentation, writes them into the module docstring with the date read, and the fixtures follow
 them; nothing is learned by calling the API.
@@ -224,6 +276,18 @@ Rules, all from the manifest, with these defaults:
   and too few runs cannot pass it.
 
 The verdict is never read from a file: whoever needs it computes it from the runs.
+
+**Amendment (2026-10-31, #209): expected outcomes.** A `missing_music` case may be right to end in a
+failure category instead of a list: `pool_too_small` (fewer usable tracks than songs once the tracks
+without a BPM are left out), where the right result is that nothing was stored. The manifest has an
+`expected_outcomes` map from a song case to that category (only `pool_too_small` is allowed, only for
+song cases; it is covered by the digest). The gate counts a run as passed when it ended `submitted`,
+or in the outcome the **manifest** lists for that case, and every check passed (such a run's checks are
+`expected_outcome` and `nothing_stored`). The outcome comes from the manifest, never from the results
+file, so a file cannot claim one, and a row whose `passed` disagrees with this rule is `inconsistent_row`.
+The case file says the same in `expect.outcome`; `load_suite` refuses a case and a manifest that
+disagree. Everything else is unchanged: any other non-`submitted` outcome is still a failed run (or not
+run, §4.3).
 
 **4.4 The live command.** `python -m classbeat.evals suite --live --provider P --model M --effort E
 --repeat N --max-usd N --out FILE [--record --authorization TEXT]` replaces nothing (`smoke --live`
@@ -512,6 +576,13 @@ carry it per run, where the `tss` check of a case with zone 7 widens its upper b
   routes per tier and a suite verdict per stage; two groups match how the suite is scored. A later ADR
   can split a group.
 - **Cross-provider fallback on outages**: rejected (§3).
+- **Long OpenAI-SDK requests** (#299): *streaming* (as the Anthropic adapter does), where the timeout
+  counts between chunks rather than for the whole answer, works for any length. But it adds a second
+  way to read an answer (events, a final usage chunk, a stream cut midway), and the turn is bounded
+  by `turn_seconds` anyway. A *per-model and effort timeout table* needs measured times we do not
+  have, and each entry could only be below the turn bound. The whole turn as the per-attempt timeout
+  is the smallest change and is reversible. Streaming stays the next step if live runs show answers
+  that need more than the stage's time.
 
 ## Consequences
 
@@ -603,3 +674,39 @@ Accepted by the Architect during G1 (#211, PR #267):
 - **Clearing a route that does not exist is refused.** `clear_route` raises
   `RouteRefused("no_route")` when there is no route for that key and group. M5's admin answers it
   with 409, like the other refusals, and does not report it as a silent success.
+
+Accepted during G2 (#215), from the PR #267 review (2026-10-31):
+
+- **The manifest digest is part of the gate.** `set_route` also refuses
+  (`RouteRefused("manifest_digest")`) when the newest passing result was recorded on another suite
+  than the running one: its `manifest_digest` differs from the digest stored in
+  `evals/suite/manifest.json`, which `load_suite` and `tests/test_evals_suite.py` hold equal to the
+  suite's files, read without importing `classbeat.evals`. A route whose result has another digest
+  is **stale** with the reason `manifest_digest` (used and flagged, like the other three reasons).
+- **"Newest" is deterministic.** Migration `0012_model_jobs` gives `model_eval_results` an identity
+  column `seq` (`GENERATED ALWAYS`): newest is `recorded_at DESC, seq DESC`, so two results recorded
+  in one transaction (one `now()`) are ordered by insertion, never by their random ids. The
+  newer-failure check compares `(recorded_at, seq)`.
+- **The route key is a server-only job input field.** The four model kinds' inputs are
+  `ModelJobInput`, with `route_key` (default `"default"`) stored with the input at creation, so
+  every attempt and the approved phase of a job that waited use the same key. A browser that
+  sends `route_key` is refused 422 (`JobInput.SERVER_FIELDS`); M5 (#223) sets it in the create path.
+- **Where a group resolves.** A kind resolves each stage group once per attempt, at the start of
+  that group's work and before any MOWL or Spotify call of it (`design_draft` and `revise_draft`:
+  `design`; `design_with_songs` and `revise_songs`: `songs` for the pick, `design` for the approved
+  phase), through `Runtime.models` (`classbeat.models.providers.RouteModels` in the worker). Only
+  that path builds a job's provider (`tests/test_models_jobs_guard.py`).
+- **Provenance.** `agent_runs.route_key` and `agent_runs.eval_result_id` (both or neither; the id
+  references `model_eval_results`, `RESTRICT`) and the same two fields in
+  `class_revisions.provenance` (`null` for the bootstrap choice and `fake`; absent on revisions
+  stored before G2).
+- **A newer failure is refused, not used** (Architect, 2026-10-31, on the #267 review's item 4).
+  It replaces "the route keeps working" in section 5's **Staleness** for this one reason. A route
+  whose result has a newer failing result for the same provider, model, effort and group no longer
+  has a standing pass: `resolve_route` raises `RouteUnusable("newer_failure")`, so the job fails
+  `model_config` before any request, logs the usual "model route unusable" line (key, group and
+  reason), and does not fall back to the bootstrap. This also covers a failure recorded between
+  `set_route`'s check and its write. `list_routes` still shows the route as stale with that
+  reason, and `models list` shows it as `unusable: newer_failure`. The other stale reasons
+  (`prompt_versions`, `suite_version`, `manifest_digest`) keep section 5's behaviour: the route is
+  used and warned about once per process.

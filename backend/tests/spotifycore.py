@@ -244,11 +244,17 @@ def track_id(i: int) -> str:
 
 # Spotify's album cover sizes, largest first, as its answers list them.
 ALBUM_IMAGE_SIZES = (640, 300, 64)
+# An album whose every image is narrower than the library's 64 px minimum: its tracks get no
+# ``image`` (``mowl.spotify_web._album_image``'s "else None"), so no cover (ADR 0013 section 9).
+NARROW_ALBUM = "FakeAlbumNarrow0000000"
+NARROW_IMAGE_SIZES = (63, 32)
 
 
 def album_images(album_id: str) -> list[dict[str, Any]]:
     """An album's ``images`` shaped like Spotify's: ``i.scdn.co/image/`` plus 40 hex digits, with
-    width and height, largest first. Invented, but stable per album and size."""
+    width and height, largest first. Invented, but stable per album and size. ``NARROW_ALBUM``
+    has only images under 64 px."""
+    sizes = NARROW_IMAGE_SIZES if album_id == NARROW_ALBUM else ALBUM_IMAGE_SIZES
     return [
         {
             "url": "https://i.scdn.co/image/"
@@ -256,7 +262,7 @@ def album_images(album_id: str) -> list[dict[str, Any]]:
             "height": size,
             "width": size,
         }
-        for size in ALBUM_IMAGE_SIZES
+        for size in sizes
     ]
 
 

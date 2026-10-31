@@ -214,6 +214,12 @@ class Settings(BaseSettings):
     # ADR 0011 section 4: the environment's upper bound on a trial's length. A stored
     # ``trial.days`` above it is clamped when a trial starts; 0 turns trials off.
     trial_days_max: int = Field(default=30, ge=0, le=366)
+    # ADR 0011 section 4: the environment's upper bounds on every plan's money limits; a plan's
+    # effective ``classes_per_month`` and ``monthly_cost_micros`` are the smaller of the row
+    # and these. ``CLASSBEAT_JOBS_PER_USER`` and ``CLASSBEAT_REVISIONS_PER_CLASS`` bound the
+    # plan's concurrent jobs and revisions per class alike.
+    classes_per_month_max: int = Field(default=200, ge=0, le=10_000)
+    monthly_cost_micros_max: int = Field(default=300_000_000, ge=0, le=100_000_000_000)
     chat_max_requests: int = Field(default=50, ge=1, le=200)
     chat_context_requests: int = Field(default=10, ge=1, le=30)
     # ADR 0007 section 8: how long a new MOWL workout may take to appear in My Workouts. Unset
@@ -235,6 +241,9 @@ class Settings(BaseSettings):
     # with its ``ref`` stays uncertain; set (by the owner, after measuring it at live activation),
     # such a create whose call returned at least this long ago is ``failed``. A day at most.
     spotify_listing_lag_seconds: float | None = Field(default=None, gt=0, le=86400)
+    # ADR 0009 section 8: the Spotify requests one job may send across its stages and attempts
+    # (the token refreshes included); the request over it is never sent (``limit_exceeded``).
+    spotify_calls_per_job: int = Field(default=300, ge=1, le=10_000)
     # ADR 0008 section 2: how long a pick waits for MOWL's track list of the pool playlist to
     # show exactly the candidates just written (``pool_not_synced`` after it).
     spotify_pool_sync_wait_seconds: float = Field(default=120.0, ge=0, le=600)

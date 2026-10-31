@@ -6,10 +6,16 @@
   the same key and body again is 200 with the same job; the same key with another body is 409
   ``idempotency_mismatch``. Also 409 ``class_busy``, ``not_connected``, ``quota``; 404
   ``class_not_found``; 429 ``busy`` (the per-user limit); 400 for the header; 422 for the body;
+  ``quota`` (ADR 0011 section 9, FE1's contract) is ``{reason: "quota", quota: "classes" |
+  "cost", limit, used, period_end, plan}`` (``limit`` and ``used`` for ``classes`` only, a cost
+  refusal shows no money; ``period_end`` the ISO date the next period starts) and ``busy``
+  carries the plan's ``limit`` (also on approve);
   413 ``too_large`` for a body over ``BODY_MAX_BYTES`` (also on approve). A kind with ``admit``
   (``classbeat.jobs.kinds``) may refuse with its own reason (409 ``{reason}`` and whole-number
   counts, unless the reason has a status above); an input naming one of the kind's server fields
-  is 422 ``invalid_input``: only ``admit`` sets those.
+  is 422 ``invalid_input``: only ``admit`` sets those. So is one naming a field every input of the
+  kind's model leaves to the server (``JobInput.SERVER_FIELDS``: a model job's ``route_key``, set at
+  creation, ADR 0012 section 5).
 - ``GET /api/jobs/{id}``: the job's state.
 - ``GET /api/jobs/{id}/revision``: the draft the job stored, for the draft summary: 409
   ``no_revision`` while it has none. Answers only ``{revision_id, number, kind, content,
@@ -36,7 +42,7 @@ import json
 import re
 from collections.abc import Mapping
 from dataclasses import asdict
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Annotated, Any
 from uuid import UUID
 
@@ -45,16 +51,16 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from classbeat import auth
+from classbeat import auth, quota
 from classbeat.agent.schemas import WorkoutDraft
 from classbeat.context import UserContext
 from classbeat.jobs import service
-from classbeat.jobs.credits import CreditLedger, UnmeteredLedger
+from classbeat.jobs.credits import CreditLedger
 from classbeat.jobs.inputs import JobInput, jsonb_size
 from classbeat.jobs.kinds import KIND_NAME, KINDS, JobKind, KindRegistry, Refused
 from classbeat.jobs.progress import read_revision
-from classbeat.jobs.sentences import failure_sentence
-from classbeat.jobs.user import Admission, CreateAdmit, NewJob
+from classbeat.jobs.sentences import job_sentence
+from classbeat.jobs.user import Admission, CreateAdmit, JobLimitPolicy, NewJob
 from classbeat.usage import job_usage
 
 router = APIRouter(prefix="/api/jobs", tags=["jobs"])
@@ -72,9 +78,14 @@ def job_kinds() -> KindRegistry:
     return KINDS
 
 
-def credit_ledger() -> CreditLedger:
-    """The credit seam (ADR 0005 section 5); M5 replaces it."""
-    return UnmeteredLedger()
+def credit_ledger(request: Request) -> CreditLedger:
+    """The credit seam (ADR 0005 section 5): M5's metered ledger (ADR 0011 section 3)."""
+    return quota.MeteredLedger(quota.Bounds.from_settings(request.app.state.settings))
+
+
+def job_limit(request: Request) -> JobLimitPolicy:
+    """The concurrent-job limit: the plan's, under ``CLASSBEAT_JOBS_PER_USER`` (section 4)."""
+    return quota.PlanJobLimitPolicy(request.app.state.settings.jobs_per_user)
 
 
 class CreateIn(BaseModel):
@@ -118,7 +129,14 @@ class JobOut(BaseModel):
     @classmethod
     def of(cls, view: service.JobView) -> "JobOut":
         out = cls.model_validate(view, from_attributes=True)
-        out.error_message = failure_sentence(view.error_category)
+        out.error_message = job_sentence(
+            view.state,
+            view.error_category,
+            view.spotify_failure,
+            view.spotify_retry_after,
+            view.available_at,
+            datetime.now(UTC),
+        )
         return out
 
 
@@ -137,7 +155,7 @@ class RevisionOut(BaseModel):
 
 
 def _refuse(
-    reason: str, status: int | None = None, counts: Mapping[str, int] | None = None
+    reason: str, status: int | None = None, counts: Mapping[str, int | str] | None = None
 ) -> JSONResponse:
     return JSONResponse(
         {"detail": {**(counts or {}), "reason": reason}},
@@ -219,6 +237,7 @@ async def create_job(
     ctx: Annotated[UserContext, Depends(auth.require_user)],
     kinds: Annotated[KindRegistry, Depends(job_kinds)],
     ledger: Annotated[CreditLedger, Depends(credit_ledger)],
+    limit: Annotated[JobLimitPolicy, Depends(job_limit)],
     idempotency_key: Annotated[str | None, Header()] = None,
 ) -> JobOut | JSONResponse:
     if idempotency_key is None:
@@ -232,9 +251,10 @@ async def create_job(
     except ValidationError as error:
         return _invalid(error)
     kind = kinds.get(body.kind)
-    if kind is None or not issubclass(kind.input_model, JobInput):
+    model = None if kind is None else kind.input_model
+    if kind is None or model is None or not issubclass(model, JobInput):
         return _refuse("unknown_kind", 422)
-    if kind.server_fields & body.input.keys():
+    if (kind.server_fields | model.SERVER_FIELDS) & body.input.keys():
         return _invalid()  # set by the server only; never echoed
     try:
         parsed = kind.parse_input(body.input)
@@ -255,13 +275,8 @@ async def create_job(
         consumes_credit=kind.consumes_credit,
         admit=_bound_admit(kind, parsed),
     )
-    settings = request.app.state.settings
     result = await service.create(
-        request.app.state.session_factory,
-        ctx,
-        new,
-        limit=settings.jobs_per_user,
-        ledger=ledger,
+        request.app.state.session_factory, ctx, new, limit=limit, ledger=ledger
     )
     if result.job is None:
         return _refuse(result.reason or "invalid_input", counts=result.counts)
@@ -351,6 +366,7 @@ async def approve_job(
     ctx: Annotated[UserContext, Depends(auth.require_user)],
     kinds: Annotated[KindRegistry, Depends(job_kinds)],
     ledger: Annotated[CreditLedger, Depends(credit_ledger)],
+    limit: Annotated[JobLimitPolicy, Depends(job_limit)],
 ) -> JobOut | JSONResponse:
     wanted = _job_id(job_id)
     if wanted is None:
@@ -368,11 +384,11 @@ async def approve_job(
         body.revision_id,
         bytes.fromhex(body.content_hash),
         kinds=kinds,
-        limit=request.app.state.settings.jobs_per_user,
+        limit=limit,
         ledger=ledger,
     )
     if result.job is None:
-        return _refuse(result.reason or "not_found")
+        return _refuse(result.reason or "not_found", counts=result.counts)
     if not result.accepted:
-        return _refuse(result.reason or "not_waiting")
+        return _refuse(result.reason or "not_waiting", counts=result.counts)
     return JobOut.of(result.job)

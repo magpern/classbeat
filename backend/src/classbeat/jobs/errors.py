@@ -13,7 +13,7 @@ from typing import Final
 from sqlalchemy.exc import DisconnectionError, OperationalError
 
 from classbeat.connections import ConnectionFailure
-from classbeat.egress import OutboundBlocked
+from classbeat.egress import OutboundBlocked, RequestBudgetExhausted
 
 # ADR 0005 section 4, ADR 0007 section 1, ADR 0008 section 1 and ADR 0009 section 8; the same list
 # as the ``jobs.error_category`` check of migration 0006. Which of the new ones are retried is
@@ -58,6 +58,8 @@ CATEGORIES: Final = (
     "pool_not_synced",
     "playlist_mismatch",
     "pool_too_small",
+    # ADR 0008 section 6 (migration 0011): a revise request that only asks for other songs.
+    "use_change_songs",
 )
 # Retried by the worker (a new attempt with backoff). ``lease_lost`` is retried by the reaper and
 # ``operation_busy`` is requeued without an attempt (``classbeat.jobs.transitions``).
@@ -102,16 +104,29 @@ _FROM_CONNECTION: Final = {
 }
 
 
+# ADR 0009 section 8: this many attempts in a row ending with a Spotify 429 are
+# ``quota_exhausted`` (a MOWL rate limit does not count).
+QUOTA_RATE_LIMITS: Final = 3
+MAX_HINT_SECONDS: Final = 86_400  # a longer Retry-After is kept as a day
+
+# A provider's ``Retry-After`` (seconds) is kept for these (ADR 0009 section 8's sentences).
+HINTED: Final = frozenset({"rate_limited", "quota_exhausted"})
+
+
 class JobFailure(Exception):
     """A run failed with ``category``. ``args == (category,)``; ``retry_after`` (seconds) only
-    for ``rate_limited``."""
+    for ``rate_limited`` and ``quota_exhausted``; ``provider`` is ``"spotify"`` for a failure
+    of a Spotify request (``ConnectionFailure.provider``), else None."""
 
-    def __init__(self, category: str, retry_after: float | None = None) -> None:
+    def __init__(
+        self, category: str, retry_after: float | None = None, *, provider: str | None = None
+    ) -> None:
         if category not in CATEGORIES:
             category = "internal"
         super().__init__(category)
         self.category = category
-        self.retry_after = retry_after if category == "rate_limited" else None
+        self.retry_after = retry_after if category in HINTED else None
+        self.provider = provider
 
 
 class LeaseLost(Exception):
@@ -133,7 +148,9 @@ def failure_of(exc: BaseException) -> JobFailure:
         return exc
     if isinstance(exc, ConnectionFailure):
         category = _FROM_CONNECTION.get(exc.category, "internal")
-        return JobFailure(category, exc.retry_after)
+        return JobFailure(category, exc.retry_after, provider=exc.provider)
+    if isinstance(exc, RequestBudgetExhausted):  # ADR 0009 section 8: the per-job call cap
+        return JobFailure("limit_exceeded")
     if isinstance(exc, OutboundBlocked):
         return JobFailure("outbound_blocked")
     if isinstance(exc, OperationalError | DisconnectionError):

@@ -23,7 +23,7 @@ from uuid import UUID
 import pytest
 from sqlalchemy.engine import Connection
 
-from agentfake import CONFIG, FakeLibrary, provider, synthetic_tracks
+from agentfake import CONFIG, FactoryModels, FakeLibrary, provider, synthetic_tracks
 from authtools import Env
 from classbeat import design
 from classbeat.agent.providers.fake import FakeProvider
@@ -138,7 +138,9 @@ class DesignEnv:
         return made
 
     def runtime(self) -> Runtime:
-        return Runtime(keyring=self.ops.keyring, provider=self.new_provider, agent=CONFIG)
+        return Runtime(
+            keyring=self.ops.keyring, models=FactoryModels(self.new_provider), agent=CONFIG
+        )
 
     def input(self, connection_id: UUID, source_id: str = PLAYLIST, **extra: Any) -> dict[str, Any]:
         return {

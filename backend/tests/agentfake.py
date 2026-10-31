@@ -20,8 +20,12 @@ from mowl.credentials import Credentials
 
 from classbeat.agent.loop import AgentConfig, Counters, RunInfo
 from classbeat.agent.model_input import MusicData
+from classbeat.agent.provider import ModelProvider
 from classbeat.agent.providers.fake import FakeProvider, FakeScript
 from classbeat.agent.schemas import Brief
+from classbeat.jobs import JobFailure
+from classbeat.jobs.run import JobRun
+from classbeat.models.jobs import GroupModel
 
 SCRIPTS = Path(__file__).resolve().parent / "agent_scripts"
 
@@ -157,6 +161,40 @@ def good_draft() -> dict[str, Any]:
 
 
 CONFIG = AgentConfig(model="fake-model")
+
+
+@dataclass
+class FactoryModels:
+    """A ``ModelSource`` (``classbeat.models.jobs``) for the kind tests: a new provider from
+    ``factory`` for every stage group and attempt, the agent config unchanged, as the worker's
+    ``fake`` bypass answers. ``asked`` keeps each ``(route_key, group)`` asked for."""
+
+    factory: Callable[[], ModelProvider]
+    asked: list[tuple[str, str]] = field(default_factory=lambda: list[tuple[str, str]]())
+
+    async def __call__(
+        self, run: JobRun, route_key: str, group: str, agent: AgentConfig
+    ) -> GroupModel:
+        self.asked.append((route_key, group))
+        try:
+            return GroupModel(self.factory(), agent)
+        except Exception:
+            raise JobFailure("model_config") from None
+
+
+@dataclass
+class RefusingModels:
+    """A ``ModelSource`` whose route is unusable: every group is refused with ``model_config``,
+    as ``RouteModels`` does for a route that cannot be used. ``asked`` keeps each
+    ``(route_key, group)`` asked for."""
+
+    asked: list[tuple[str, str]] = field(default_factory=lambda: list[tuple[str, str]]())
+
+    async def __call__(
+        self, run: JobRun, route_key: str, group: str, agent: AgentConfig
+    ) -> GroupModel:
+        self.asked.append((route_key, group))
+        raise JobFailure("model_config")
 
 
 @dataclass

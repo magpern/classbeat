@@ -12,6 +12,8 @@ from uuid import uuid4
 
 import pytest
 
+from advscripts import ADV_NAMES
+from advscripts import provider_for_case as adv_provider
 from agentfake import CONFIG
 from classbeat.agent import DesignContext
 from classbeat.agent.design import check
@@ -48,6 +50,9 @@ RELEASED: dict[int, str] = {
     1: "beabe1887df6236e30bd4b040104281e78d1b02ee2d8adecca0bee32557651b5",
     2: "77fecc25fc25fb081f40e0bae1b2b8e83cbd4a611d42fd346e3f3672b64befd4",
     3: "2784a043380717f56842be5fd91517d801dea05a1db44ec9f4647b061bc6a383",
+    4: "ceb3883f4002f8ee0e33819ca5512008da6bbded81dd02e8787f6e0c987c1827",
+    5: "adb3e8ff185a904c68acae037eb6c465f6262819ece65e1c361a6aba4e27470c",
+    6: "027a8a2f3fa5634b392e148a1faf27834c33eb4d53d2385fe334dfca2d47c51d",
 }
 
 SUITE = load_suite()
@@ -146,7 +151,7 @@ def test_the_check_constants_hold_every_upper_case_constant_of_the_check_modules
     constants = suite.check_constants()
     for name in ("DURATION_TOLERANCE", "HARD_SHARE", "TSS_PER_HOUR", "TOLERATED_ISSUES", "ZONE7"):
         assert f"checks.{name}" in constants
-    assert "pick.TRACK_SEC" in constants
+    assert "pick_world.TRACK_SEC" in constants
     assert "music.LOUDNESS" in constants
     assert constants["agent.songs.TOLERANCE"] == 0.10
     json.dumps(constants, allow_nan=False)
@@ -159,17 +164,19 @@ def test_the_suite_holds_every_smoke_and_song_case_once_in_its_group() -> None:
     index = MANIFEST.case_index()
     assert set(SUITE.design_cases) == {c.name for c in load_cases()} | DESIGN_OWN
     assert set(SUITE.song_cases) == {c.name for c in load_pick_cases()} | SONG_OWN
-    assert (len(DESIGN_OWN), len(SONG_OWN)) == (29, 8)  # #206 and #208
-    assert (len(SUITE.design_cases), len(SUITE.song_cases)) == (47, 11)
-    assert len(index) == 58
+    assert (len(DESIGN_OWN), len(SONG_OWN)) == (29 + 12, 8 + 7)  # #206, #208 and #209
+    assert (len(SUITE.design_cases), len(SUITE.song_cases)) == (19 + 41, 3 + 15)
+    assert len(index) == 19 + 41 + 3 + 15
     assert all(index[n][1] == "design" for n in SUITE.design_cases)
     assert all(index[n][1] == "songs" for n in SUITE.song_cases)
     assert set(MANIFEST.categories) == set(suite.CATEGORY_GROUPS)
     assert {n for n, (cat, _) in index.items() if cat == "adversarial"} == {
         "adversarial_brief", "adversarial_music", "revise_adversarial_music", "injected_title",
+        "adv_brief_requests", "adv_malformed_hits", "adv_malformed_music", "adv_oversized_hits",
+        "adv_oversized_music", "adv_pool_requests", "adv_tool_requests", "revise_adv_requests",
     }  # fmt: skip
     assert {n for n, (cat, _) in index.items() if cat == "revisions"} >= {
-        "revise_easier", "revise_more_sprints",
+        "revise_easier", "revise_more_sprints", "revise_other_songs",
     }  # fmt: skip
 
 
@@ -283,12 +290,20 @@ def test_the_header_is_exactly_the_adrs() -> None:
         suite_results(header(started_at=datetime(2026, 10, 30)), [])
 
 
+def design_script_provider(case: Any) -> Any:
+    if case.name in ADV_NAMES:
+        return adv_provider(case)
+    return suite_provider(case) if case.name in SUITE_OWN else design_provider(case)
+
+
 async def _real_rows(repeat: int = 0) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
     for name, case in sorted(SUITE.design_cases.items()):
         result = await run_case(
             case,
-            suite_provider(case) if name in SUITE_OWN else design_provider(case),
+            adv_provider(case)
+            if name in ADV_NAMES
+            else (suite_provider(case) if name in SUITE_OWN else design_provider(case)),
             CONFIG,
             repeat=repeat,
             zone7_tss_margin=MANIFEST.zone7_tss_margin,
@@ -296,6 +311,8 @@ async def _real_rows(repeat: int = 0) -> list[dict[str, Any]]:
         rows.append(suite_row(result, SUITE.category_of(name)))
     for name, case in sorted(SUITE.song_cases.items()):
         provider = song_provider(case) if case.quality else pick_provider(case)
+        if name in ADV_NAMES:
+            provider = adv_provider(case)
         result, _, _ = await run_pick_case(
             case, provider, CONFIG, (POOL_LIMITS, CHOOSE_LIMITS), MANIFEST.bpm_bands
         )
@@ -339,7 +356,7 @@ async def test_the_recorded_smoke_runs_pass_the_gate_in_both_groups() -> None:
     verdict = gate.evaluate(suite_results(header(), rows), MANIFEST)
     assert set(verdict.groups) == {"design", "songs"}
     for group in verdict.groups.values():
-        assert group.status == "passed", group.as_json()
+        assert group.status == "passed", json.dumps(group.as_json())[:2500]
         assert group.runs == 3 * len(
             SUITE.design_cases if group.group == "design" else SUITE.song_cases
         )

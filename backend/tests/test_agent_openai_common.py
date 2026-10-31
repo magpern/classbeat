@@ -164,6 +164,7 @@ async def test_a_server_error_is_retried_twice_then_unavailable() -> None:
     [
         (400, openai.BadRequestError, "internal"),
         (401, openai.AuthenticationError, "model_config"),
+        (402, openai.APIStatusError, "model_config"),  # DeepSeek's insufficient balance
         (403, openai.PermissionDeniedError, "model_config"),
         (404, openai.NotFoundError, "model_config"),
         (409, openai.ConflictError, "internal"),
@@ -299,10 +300,32 @@ def test_cached_tokens_are_taken_out_of_the_input() -> None:
     )
 
 
-@pytest.mark.parametrize("bad", [None, -5, "12", 1.5, True])
-def test_a_missing_or_malformed_count_is_zero(bad: object) -> None:
-    usage = normalise_usage(prompt_tokens=100, cached_tokens=bad, output_tokens=bad)
+def test_a_cache_count_left_out_is_zero_and_a_real_zero_stays_zero() -> None:
+    usage = normalise_usage(prompt_tokens=100, cached_tokens=None, output_tokens=0)
     assert usage == Usage(input_tokens=100, output_tokens=0, cache_read_tokens=0)
+
+
+@pytest.mark.parametrize("bad", [None, -5, "12", 1.5, True])
+@pytest.mark.parametrize("field", ["prompt_tokens", "output_tokens"])
+def test_a_missing_or_malformed_prompt_or_output_count_is_unreadable(
+    field: str, bad: object
+) -> None:
+    """#299, the #306 review: never read as 0, so a billed answer is never recorded at 0."""
+    counts: dict[str, object] = {"prompt_tokens": 100, "cached_tokens": 0, "output_tokens": 10}
+    counts[field] = bad
+    with pytest.raises(ProviderError) as raised:
+        normalise_usage(**counts)  # pyright: ignore[reportArgumentType]
+    assert raised.value.category == "internal"
+
+
+@pytest.mark.parametrize("bad", [-5, "12", 1.5, True])
+@pytest.mark.parametrize("field", ["cached_tokens", "written_tokens"])
+def test_a_malformed_cache_count_is_unreadable(field: str, bad: object) -> None:
+    counts: dict[str, object] = {"prompt_tokens": 100, "cached_tokens": 0, "output_tokens": 10}
+    counts[field] = bad
+    with pytest.raises(ProviderError) as raised:
+        normalise_usage(**counts)  # pyright: ignore[reportArgumentType]
+    assert raised.value.category == "internal"
 
 
 def test_cache_writes_are_taken_out_of_the_input() -> None:
@@ -353,6 +376,35 @@ def test_the_responses_and_chat_usage_shapes() -> None:
     assert chat_usage(bare) == Usage(5, 1, 0, 0)
 
 
+@pytest.mark.parametrize(
+    ("fields", "expected"),
+    [
+        # DeepSeek's own cache fields, without ``prompt_tokens_details`` (#287 review, item 1)
+        ({"prompt_cache_hit_tokens": 300, "prompt_cache_miss_tokens": 200}, Usage(200, 70, 300, 0)),
+        # they don't add up to the prompt, or one is missing: no hits, the cost errs high
+        ({"prompt_cache_hit_tokens": 300, "prompt_cache_miss_tokens": 100}, Usage(500, 70, 0, 0)),
+        ({"prompt_cache_hit_tokens": 300}, Usage(500, 70, 0, 0)),
+        ({"prompt_cache_hit_tokens": -1, "prompt_cache_miss_tokens": 501}, Usage(500, 70, 0, 0)),
+        # the OpenAI field, when it is there, is what counts
+        (
+            {
+                "prompt_tokens_details": {"cached_tokens": 100},
+                "prompt_cache_hit_tokens": 300,
+                "prompt_cache_miss_tokens": 200,
+            },
+            Usage(400, 70, 100, 0),
+        ),
+    ],
+)
+def test_chat_usage_falls_back_to_deepseeks_cache_fields(
+    fields: dict[str, Any], expected: Usage
+) -> None:
+    usage = CompletionUsage.model_validate(
+        {"prompt_tokens": 500, "completion_tokens": 70, "total_tokens": 570, **fields}
+    )
+    assert chat_usage(usage) == expected
+
+
 # --- effort --------------------------------------------------------------------------------
 
 
@@ -375,8 +427,16 @@ def test_openai_effort_maps_to_reasoning_effort() -> None:
     ]
 
 
-def test_deepseek_has_no_effort_parameter() -> None:
-    assert provider_effort(_entry("deepseek", ("medium",)), "medium") is None
+def test_deepseek_effort_maps_to_reasoning_effort_one_to_one() -> None:
+    entry = _entry("deepseek", ("low", "high", "max"))
+    assert [provider_effort(entry, e) for e in entry.efforts] == ["low", "high", "max"]
+
+
+@pytest.mark.parametrize("effort", ["medium", "xhigh"])
+def test_deepseek_refuses_the_efforts_it_would_quietly_change(effort: str) -> None:
+    """DeepSeek turns ``medium`` and ``xhigh`` into ``high``: refused even when listed."""
+    with pytest.raises(EffortRefused):
+        provider_effort(_entry("deepseek", (effort,)), effort)
 
 
 @pytest.mark.parametrize(

@@ -1,5 +1,6 @@
 import { get, post } from './client'
 import { count, flag, list, object, optionalCount, optionalText, text } from './decode'
+import { isTrackLink } from './classes'
 import { decodeJob, type Brief, type Job } from './jobs'
 
 // Song picking (ADR 0008 sections 4 to 6 and 9): the song list a job waits on, the approval, and
@@ -25,6 +26,10 @@ export interface Song {
   bpm: number
   lengthSec: number
   isNew: boolean
+  /** The album cover URL, shown only through `CoverArt` (ADR 0013 section 9), or null. */
+  cover: string | null
+  /** The server-built link back to Spotify (ADR 0008 section 9), only when it is a track link. */
+  openSpotify: string | null
 }
 
 export interface SongList {
@@ -44,6 +49,11 @@ export interface SongList {
   note: string
 }
 
+/** A link from the API is kept only when it is a Spotify track link. */
+function trackLink(link: string | null): string | null {
+  return link !== null && isTrackLink(link) ? link : null
+}
+
 function decodeSong(value: unknown): Song {
   const item = object(value, 'song')
   return {
@@ -54,6 +64,9 @@ function decodeSong(value: unknown): Song {
     bpm: count(item, 'bpm'),
     lengthSec: count(item, 'length_sec'),
     isNew: flag(item, 'new'),
+    // Older lists (v: 1) have no cover; CoverArt checks the host again before it shows one.
+    cover: optionalText(item, 'cover'),
+    openSpotify: trackLink(optionalText(item, 'open_spotify')),
   }
 }
 
@@ -123,18 +136,28 @@ export async function createPickJob(input: PickInput, idempotencyKey: string): P
 }
 
 /** What `POST /api/jobs` takes for `revise_songs` (ADR 0008 section 6, issue SJ3). */
-export interface ReviseSongsInput {
+interface ReviseSongsBase {
   class_id: string
+  /** The class's current draft (the server refuses another with stale_base). */
   base_revision_id: string
-  /** Positions in the class's picked songs, or all of them. */
-  replace: number[] | 'all'
-  request: string
-  mode: 'pick' | 'resume'
-  /** Create the playlist again: the approved list to run phase 2 for. */
-  resume?: { song_list_revision_id: string }
   mowl_connection_id: string
   spotify_connection_id: string
 }
+
+export interface ReviseSongsPick extends ReviseSongsBase {
+  mode: 'pick'
+  /** Positions in the class's picked songs, or all of them. */
+  replace: number[] | 'all'
+  request: string
+}
+
+/** A resume names its list and nothing to change: `replace` or `request` is refused with a 422. */
+export interface ReviseSongsResume extends ReviseSongsBase {
+  mode: 'resume'
+  resume: { song_list_revision_id: string }
+}
+
+export type ReviseSongsInput = ReviseSongsPick | ReviseSongsResume
 
 export async function createReviseSongsJob(
   input: ReviseSongsInput,

@@ -126,6 +126,31 @@ class ClassDetailOut(ClassOut):
     brief: Brief | None = None
 
 
+class MosaicSongOut(BaseModel):
+    """One of the up to four songs of a playlist's mosaic: its title (for the initials tile) and
+    its album cover on the pinned host, or null. No Spotify id."""
+
+    title: str
+    cover: str | None = None
+
+
+class MusicPlaylistOut(BaseModel):
+    """A playlist classbeat made in the owner's own Spotify, for the Music page. ``link`` is the
+    owner's own, built by the API from the stored id of a verified playlist (ADR 0013 section 4)."""
+
+    class_id: UUID
+    class_title: str
+    name: str
+    link: str | None = None
+    detached: bool = False
+    note: str | None = None
+    songs: list[MosaicSongOut]
+
+
+class MusicPlaylistsOut(BaseModel):
+    playlists: list[MusicPlaylistOut]
+
+
 class ClassesOut(BaseModel):
     """One page of the user's classes, newest first. ``next_cursor`` is the opaque ``cursor`` of
     the next page, ``None`` on the last."""
@@ -247,7 +272,10 @@ class DeletedOut(BaseModel):
 
 
 class SongOut(BaseModel):
-    """A song of a list as the page shows it: no Spotify id."""
+    """A song of a list as the page shows it: no bare Spotify id. ``cover`` is the album cover URL
+    on the pinned host (ADR 0013 section 9, checked again just before it is returned) or null.
+    ``open_spotify`` is the server-built link back to the song (ADR 0008 section 9, Amendment 6)
+    or null."""
 
     position: int
     title: str
@@ -256,6 +284,8 @@ class SongOut(BaseModel):
     bpm: float
     length_sec: int
     new: bool
+    cover: str | None = None
+    open_spotify: str | None = None
 
 
 class SongListOut(BaseModel):

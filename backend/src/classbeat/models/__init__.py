@@ -5,13 +5,14 @@
 - ``routes``: ``set_route``, ``clear_route``, ``list_routes``, ``list_results``,
   ``resolve_route`` and their types (what M5's admin and G2's jobs call);
 - ``versions``: the running prompt versions per stage group and the suite version;
-- ``providers``: ``provider_for_choice`` (worker only; not imported here, so the web process
-  never loads a provider adapter);
+- ``jobs``: what a model job's stage group runs on (``GroupModel``, ``ModelSource``);
+- ``providers``: ``provider_for_choice`` and ``RouteModels``, the worker's ``ModelSource`` (worker
+  only; not imported here, so the web process never loads a provider adapter);
 - ``cli``: ``python -m classbeat models list|results|enable|disable``.
 """
 
+from classbeat.jobs.inputs import DEFAULT_ROUTE_KEY
 from classbeat.models.routes import (
-    DEFAULT_ROUTE_KEY,
     ModelChoice,
     ResultView,
     RouteRefused,

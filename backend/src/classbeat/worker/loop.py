@@ -44,8 +44,9 @@ from classbeat.db import (
     queue_verified,
     verify_database_role,
 )
-from classbeat.jobs import KINDS, CreditLedger, KindRegistry, UnmeteredLedger, queue, settle
+from classbeat.jobs import KINDS, CreditLedger, KindRegistry, queue, settle
 from classbeat.jobs.runner import Execution, RunConfig, execute, hand_back
+from classbeat.quota import MeteredLedger
 from classbeat.worker.listen import listen
 
 logger = logging.getLogger(__name__)
@@ -112,12 +113,14 @@ class Worker:
         self.engine = engine
         self.factory = create_session_factory(engine)
         self.registry = registry
-        self.ledger: CreditLedger = ledger or UnmeteredLedger()
+        # Settle commits and releases through the metered ledger (ADR 0011 section 3).
+        self.ledger: CreditLedger = ledger or MeteredLedger()
         self.id = worker_id()
         self.config = RunConfig(
             lease_seconds=settings.job_lease_seconds,
             approval_ttl_hours=settings.approval_ttl_hours,
             busy_requeue_limit=settings.job_busy_requeue_limit,
+            spotify_calls_per_job=settings.spotify_calls_per_job,
         )
         self.shutdown = asyncio.Event()  # set on SIGTERM: runs stop at their next checkpoint
         self.wake = asyncio.Event()

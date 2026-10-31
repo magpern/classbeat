@@ -374,6 +374,17 @@ runs the music step, then ADR 0007 §3's `revise` stage with the base draft, the
 user's requests along the parent chain and **a fact that the songs changed** (the model re-times the
 intervals to the new music). A `revise_draft` request that asks for other songs gets the stage prompt's
 instruction to say that "Change songs" is the way and to change nothing else.
+*Amended (2026-10-31, issue #278):* a request that asks **only** for other songs has nothing to
+revise, and the stage would refuse the unchanged draft as `invalid_output`, so the pointer would
+never reach the user. The `revise` stage therefore has a second final tool, `songs_requested` (no
+input; not offered to `revise_songs`, whose request is the songs). The stage ends `SongsRequested`
+and the job ends **`use_change_songs`** (a new `jobs.error_category`, migration 0009): no
+revision, no assistant message, no revision counted against `CLASSBEAT_REVISIONS_PER_CLASS`, the
+user's request stays in the chat, and the run's usage is recorded as for any run. The class page
+shows "This request is only about the songs. Use Change songs to pick other ones." with a Change
+songs button. A request that mixes songs and other changes still ends `submit_draft`: the design
+part is applied and the note says "Change songs" is the way for the rest. The smoke set has the
+case `revise_other_songs` (suite version 6). The stage's `prompt_version` changes with this.
 
 *Contract, issue SJ3 (2026-10-31).* `POST /api/jobs` with `kind: "revise_songs"` takes one of
 two inputs (both with `mowl_connection_id` and `spotify_connection_id`):
@@ -480,9 +491,22 @@ token in any body except where noted; ADR 0009 §2 has the connection routes):
 | `POST /api/jobs` with `design_with_songs`, `revise_songs` | §4, §6; 409 reasons `song_picking_off`, `consent_missing`, `pool_busy`, `class_busy`, `stale_base`, `revision_limit`, `chat_full`, `not_song_picked`, `invalid_input`, `not_connected` (and `hash_mismatch`-style `receipt_invalid` for resume) |
 | `POST /api/jobs/{id}/approve`, `/cancel` | unchanged shape; new refusal `account_changed` |
 | `GET /api/classes/{id}` | gains `songs`: `{state: none|waiting|approved, job_id, revision_id, content_hash, expires_at}` and, for the current draft, `playlist: {name, link?}` (the owner's own link); and `brief` (§6, SJ3) |
-| `GET /api/classes/{id}/revisions/{rid}` | for a `song_list`: the songs as in §5 without ids, `total_sec`, `target_sec`, `new` marks, the note as plain text |
+| `GET /api/classes/{id}/revisions/{rid}` | for a `song_list`: the songs as in §5 without bare ids (each with `open_spotify`, see the amendment below), `total_sec`, `target_sec`, `new` marks, the note as plain text |
 | `GET /api/jobs/{id}` | the existing state; failures carry the category and the plain sentence (ADR 0009 §8 and below) |
 | `/api/operations/...` | unchanged; the final-playlist kinds appear with `actionable_at` |
+
+> **Amendment, 2026-10-31 (UI8, issue #253; Spotify Design and Branding Guidelines, read 2026-10-31 at
+> https://developer.spotify.com/documentation/design):** the guidelines require a link back to Spotify
+> wherever Spotify metadata (track and artist names, artwork) is shown, using the strings OPEN SPOTIFY,
+> PLAY ON SPOTIFY or LISTEN ON SPOTIFY. Songs for approval shows them before any playlist exists, so
+> "no Spotify id in any body" gets one exception: each song of a `song_list` view carries
+> `open_spotify`, a link `https://open.spotify.com/track/<id>` that **the server builds** from the stored
+> track id, only for a list that was loaded and passed its content-hash check, and only when the id is
+> exactly 22 letters and digits (otherwise `null`). The bare id is never a field of its own; the frontend
+> never builds or stores a Spotify URL and shows the link only when the API gave one that matches the
+> track link shape. The page shows it as **OPEN SPOTIFY**. The page also
+> shows the official Spotify logo (full logo, unmodified, white on dark and black on light, bundled and
+> never inlined) beside Spotify's songs and covers, as the guidelines ask.
 
 Plain sentences added for the page: `consent_missing` ("allow the working playlist in your Spotify
 settings first"), `pool_unusable` ("your working playlist was changed: make it private again or set it

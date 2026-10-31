@@ -365,6 +365,10 @@ it:
 | `trial` | `{plan, days}` | `days = 0` (default) is off |
 | `banner` | `{text, level}` | text ≤ 280 characters, `info` or `warning`, rendered as text; served to everyone by `GET /api/settings/public` (with the effective sign-up mode) |
 
+**Amendment 2026-10-31 (FL1, Architect):** `closed` is the emergency brake and also stops confirmation. While the effective sign-up mode is `closed`, confirming a pending sign-up, password or provider, answers 403 `signups_closed`; the pending row and its invite stay, so it can still be confirmed if sign-ups reopen before it expires (24 hours). `invite` and `open` do not affect confirmation: the row was admitted when it was made. A provider flow or hand-off that carried an invite consumes it when the account is created, whatever the mode is by then, so the invite cannot be reused. ADR 0003 section 5's confirmation steps are read with this addition.
+
+**Amendment 2026-10-31 (AD4, proposed in the PR, confirmed by the Architect on 2026-10-31):** `classbeat_maint` has no `DELETE` on `app_settings` (§5), so the admin clears a flag by storing the JSON `null`; every reader takes a `null` value as no row, so the environment's value applies. Reads of a stored value that does not validate fall back to the key's stricter default; writes of one are refused with 422 and an audit row. A plan limit is refused above the environment's bound for each of the four limits, `CLASSBEAT_JOBS_PER_USER` and `CLASSBEAT_REVISIONS_PER_CLASS` included.
+
 Feature codes in M5: `song_picking`. `swedebeat` and `billing` are shown, read-only and off; the
 admin can't turn them on (§8). Plan limits are edited on `plans`, not in `app_settings`.
 
@@ -388,7 +392,7 @@ admin can't turn them on (§8). Plan limits are edited on `plans`, not in `app_s
 | `GET /api/account/plan` | effective plan and source, its end, limits, classes held and the period's end, cost this period as a share of the cap (no dollar figure), effective features, whether a trial is available |
 | `POST /api/account/redeem`, `POST /api/account/trial` | §2 |
 | `GET /api/settings/public` | banner and sign-up mode (no auth) |
-| `POST /api/jobs`, approve, revise kinds | 409 `quota` `{reason: classes | cost, limit, used, period_end, plan}`; 429 `busy` with the plan's limit; `revision_limit` unchanged |
+| `POST /api/jobs`, approve, revise kinds | 409 `{reason: quota, quota: classes \| cost, limit, used, period_end, plan}` (`period_end` the ISO date the next period starts; `limit` and `used` for `classes` only, so a cost refusal shows no money, as the account page; QT1, as FE1 reads it); 429 `{reason: busy, limit}` with the plan's limit; `revision_limit` unchanged |
 | `/api/admin/*` | §6 |
 
 Account page "Plan and usage" (roadmap §8): plan, "3 of 30 classes this month", redeem a code,

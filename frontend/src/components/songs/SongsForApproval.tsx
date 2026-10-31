@@ -13,6 +13,7 @@ import {
 import {
   currentConnectionIds,
   digest,
+  classContext,
   followUpBrief,
   isNotConnected,
   minutes,
@@ -24,7 +25,9 @@ import { Link, useRouter } from '../../router/Router'
 import { Notice, useAction } from '../forms'
 import { Button } from '../ui/button'
 import { Card, CardTitle } from '../ui/card'
+import { CoverMosaic } from './CoverArt'
 import { SongRows } from './SongRows'
+import { SpotifyAttribution } from './SpotifyAttribution'
 
 export const PRIVACY_TEXT =
   'When you approve, classbeat creates a private playlist with these songs in your own Spotify account. A private playlist does not appear on your profile or in search, but anyone with its link can open it.'
@@ -81,10 +84,12 @@ function useNewPick(job: Job, list: SongList) {
           if (!(error instanceof ApiError && error.status === 409)) throw error
         }
         const ids = await currentConnectionIds()
+        // The class's own brief; this tab's remembered form only when the class has none.
+        const context = await classContext(job.classId)
         const kept = recallPick(job.id)
         const input: PickInput = {
           class_id: job.classId,
-          brief: followUpBrief(kept?.brief ?? null, list.targetSec, note),
+          brief: followUpBrief(context.brief ?? kept?.brief ?? null, list.targetSec, note),
           mode: 'pick',
           ...(replace !== null && replace.length > 0
             ? { seed: { song_list_revision_id: list.id, replace } }
@@ -186,7 +191,7 @@ function Approval({
         setRefusal(found)
         setProblem(found.text)
         setBusy(false)
-        locked.current = found.final
+        locked.current = false
       },
     )
   }
@@ -227,13 +232,20 @@ function Approval({
   const replace = [...marks].sort((a, b) => a - b).map((position) => position - 1)
   return (
     <section className="flex flex-col gap-4" aria-labelledby="songs-title">
-      <h1 id="songs-title" className="m-0 font-display text-3xl font-bold text-text">
-        Songs for your class
-      </h1>
-      <p className="m-0 text-text">
-        {list.songs.length} songs, {minutes(list.totalSec)} in total. You asked for{' '}
-        {minutes(list.targetSec)}.
-      </p>
+      <header className="flex flex-col items-start gap-4 rounded-lg border border-line bg-surface p-4 sm:flex-row sm:items-end sm:p-6">
+        <CoverMosaic songs={list.songs} className="size-40 shrink-0 sm:size-48" />
+        <div className="flex min-w-0 flex-col gap-2">
+          <p className="m-0 text-[0.8125rem] font-medium uppercase tracking-wide text-muted">Playlist for approval</p>
+          <h1 id="songs-title" className="m-0 break-words font-display text-3xl font-extrabold text-text sm:text-4xl">
+            Songs for your class
+          </h1>
+          <p className="m-0 text-text">
+            {list.songs.length} songs, {minutes(list.totalSec)} in total. You asked for{' '}
+            {minutes(list.targetSec)}.
+          </p>
+          <SpotifyAttribution />
+        </div>
+      </header>
       {list.note !== '' ? <p className="m-0 text-muted">{list.note}</p> : null}
       {list.omittedNoBpm > 0 ? (
         <Notice>

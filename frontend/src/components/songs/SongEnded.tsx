@@ -12,7 +12,7 @@ import {
   type PickInput,
   type ReviseSongsInput,
 } from '../../api/songs'
-import { currentConnectionIds, followUpBrief, isNotConnected } from '../../lib/songs'
+import { classContext, currentConnectionIds, followUpBrief, isNotConnected } from '../../lib/songs'
 import { actionKey, dropActionKey, forgetInput, recallPick, rememberPick } from '../../lib/submittedInput'
 import { Link, useRouter } from '../../router/Router'
 import { Notice, useAction } from '../forms'
@@ -43,12 +43,14 @@ function useResume(job: Job) {
     void action.run(async () => {
       const ids = await currentConnectionIds()
       const list = await getSongList(job.classId, revisionId)
-      const kept = recallPick(job.id)
       let created: Job
       if (job.kind === PICK_KIND) {
+        // The class's own brief; this tab's remembered form only when the class has none.
+        const context = await classContext(job.classId)
+        const kept = recallPick(job.id)
         const input: PickInput = {
           class_id: job.classId,
-          brief: followUpBrief(kept?.brief ?? null, list.targetSec, ''),
+          brief: followUpBrief(context.brief ?? kept?.brief ?? null, list.targetSec, ''),
           mode: 'resume',
           resume: { song_list_revision_id: revisionId },
           mowl_connection_id: ids.mowl,
@@ -57,13 +59,11 @@ function useResume(job: Job) {
         created = await createPickJob(input, actionKey(scope))
         rememberPick(created.id, input)
       } else {
-        // Built against ADR 0008 section 6 (issue SJ3): the class's current draft is the base.
+        // ADR 0008 section 6: the class's current draft is the base; nothing to change is sent.
         const base = await currentRevisionId(job.classId)
         const input: ReviseSongsInput = {
           class_id: job.classId,
           base_revision_id: base,
-          replace: [],
-          request: '',
           mode: 'resume',
           resume: { song_list_revision_id: revisionId },
           mowl_connection_id: ids.mowl,

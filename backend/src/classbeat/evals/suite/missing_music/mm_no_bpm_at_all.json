@@ -1,0 +1,27 @@
+{
+ "name": "mm_no_bpm_at_all",
+ "about": "MOWL has no BPM for any track: the bars are a guess and the model is told.",
+ "brief": {
+  "length_min": 30,
+  "intensity": "moderate",
+  "climbs": 1,
+  "sprints": 2
+ },
+ "music": {
+  "tracks": 9,
+  "no_bpm": [
+   0,
+   1,
+   2,
+   3,
+   4,
+   5,
+   6,
+   7,
+   8
+  ]
+ },
+ "expect": {
+  "changes_on_music_min": 0.5
+ }
+}

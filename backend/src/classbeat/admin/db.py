@@ -39,7 +39,7 @@ from uuid import UUID
 
 from sqlalchemy import event, text
 from sqlalchemy.engine import URL
-from sqlalchemy.exc import DisconnectionError, IntegrityError, OperationalError
+from sqlalchemy.exc import DataError, DisconnectionError, IntegrityError, OperationalError
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
     AsyncSession,
@@ -107,12 +107,16 @@ class MaintRoleError(RuntimeError):
 
 class AdminRefused(Exception):
     """An admin action refused for a reason the admin may see (409 ``target_is_admin``, ...):
-    ``admin_session`` records it as ``outcome = 'refused'`` and re-raises it."""
+    ``admin_session`` records it as ``outcome = 'refused'`` and re-raises it. One raised outside
+    an ``admin_session`` (an input check before it, ``period_invalid``) is recorded by the
+    admin area's handler instead (``classbeat.admin.routes.install``); ``audited`` tells them
+    apart, so no refusal gets two rows."""
 
     def __init__(self, reason: str, status: int = 409) -> None:
         super().__init__(reason)
         self.reason = reason
         self.status = status
+        self.audited = False
 
 
 class Actor:
@@ -308,6 +312,7 @@ async def _record_failure(
     db: AdminDb, actor: Actor, action: str, target: Target, params: str, exc: Exception
 ) -> None:
     if isinstance(exc, AdminRefused):
+        exc.audited = True  # this session's refusal: the handler must not add a second row
         if not db.limiter.allow(actor.user_id):
             return
         outcome, reason = "refused", exc.reason
@@ -315,7 +320,21 @@ async def _record_failure(
         outcome, reason = "error", "internal"
     try:
         await db.record(actor, action, outcome, reason, target=target, params=params)
+        return
+    except DataError:
+        # The table refused the params themselves (a value jsonb can't hold): keep the row
+        # without them, so a refused or failing action still leaves its row (#282 review).
+        # Any other failure is not retried: a row without params would hide what it was.
+        if params == "{}":
+            logger.error("admin audit row not written", extra={"error_type": "DataError"})
+            return
     except Exception as failure:  # the original exception matters more
+        logger.error("admin audit row not written", extra={"error_type": type(failure).__name__})
+        return
+    try:
+        await db.record(actor, action, outcome, reason, target=target, params="{}")
+        logger.warning("admin audit row written without params", extra={"action": action})
+    except Exception as failure:
         logger.error("admin audit row not written", extra={"error_type": type(failure).__name__})
 
 

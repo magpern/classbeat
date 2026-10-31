@@ -26,6 +26,13 @@ from ctx import make_context
 from jobapi import Browser
 from plantools import grant, plant_code, set_trial
 
+
+@pytest.fixture
+def users_plan() -> None:
+    """These tests are about the plan itself: their users start on ``free`` (no grant)."""
+    return None
+
+
 PLAN = "/api/account/plan"
 REDEEM = "/api/account/redeem"
 SRC = Path(__file__).resolve().parents[1] / "src" / "classbeat"
@@ -84,17 +91,32 @@ async def test_t89_the_app_role_cannot_give_itself_a_plan_by_direct_sql(
 
 
 class _Calls(ast.NodeVisitor):
-    """Every way a module can reach ``add_entitlement`` or its module."""
+    """Every way a module can reach ``add_entitlement`` or its module. ``package`` is the
+    package the source lives in, against which a relative import is resolved (#227 part 2:
+    ``from .entitle import add_entitlement as x`` got past the guard)."""
 
-    def __init__(self) -> None:
+    def __init__(self, package: str) -> None:
         self.found: list[str] = []
+        self.package = package
+
+    def _absolute(self, node: ast.ImportFrom) -> str:
+        if not node.level:
+            return node.module or ""
+        parts = self.package.split(".") if self.package else []
+        if node.level - 1 > len(parts) or not parts:
+            return f"<unresolved relative import level {node.level}>.{node.module or ''}"
+        base = parts[: len(parts) - (node.level - 1)]
+        return ".".join([*base, *([node.module] if node.module else [])])
 
     def visit_Import(self, node: ast.Import) -> None:
         self.found += [a.name for a in node.names if a.name.startswith("classbeat.plans.entitle")]
 
     def visit_ImportFrom(self, node: ast.ImportFrom) -> None:
-        module = node.module or ""
-        if module == "classbeat.plans.entitle":
+        module = self._absolute(node)
+        if module.startswith("<unresolved"):  # fail closed: no package to resolve it against
+            if "entitle" in module or any("entitle" in a.name for a in node.names):
+                self.found.append(module)
+        elif module == "classbeat.plans.entitle":
             self.found += [f"{module}.{a.name}" for a in node.names if a.name == "add_entitlement"]
         elif module.startswith("classbeat.plans") and any(a.name == "entitle" for a in node.names):
             self.found.append(f"{module}.entitle")
@@ -110,7 +132,9 @@ class _Calls(ast.NodeVisitor):
         self.generic_visit(node)
 
     def visit_Constant(self, node: ast.Constant) -> None:
-        if isinstance(node.value, str) and "add_entitlement" in node.value:
+        if isinstance(node.value, str) and (
+            "add_entitlement" in node.value or "plans.entitle" in node.value
+        ):  # getattr(m, "add_entitlement"), importlib.import_module("classbeat.plans.entitle")
             self.found.append("string")
 
 
@@ -121,7 +145,7 @@ ENTITLING = {
 }
 
 
-def entitling_refs(source: str) -> list[str]:
+def entitling_refs(source: str, package: str = "") -> list[str]:
     tree = ast.parse(source)
     for node in ast.walk(tree):  # docstrings may name it
         body = getattr(node, "body", None)
@@ -129,7 +153,7 @@ def entitling_refs(source: str) -> list[str]:
             first: Any = body[0]
             if isinstance(first, ast.Expr) and isinstance(first.value, ast.Constant):
                 first.value = ast.Constant(value=None)
-    calls = _Calls()
+    calls = _Calls(package)
     calls.visit(tree)
     return calls.found
 
@@ -138,8 +162,10 @@ def test_t89_only_redeem_and_trial_reach_add_entitlement() -> None:
     offenders = {}
     for path in SRC.rglob("*.py"):
         parts = path.relative_to(SRC.parent).with_suffix("").parts
-        module = ".".join(parts[:-1] if parts[-1] == "__init__" else parts)
-        found = entitling_refs(path.read_text(encoding="utf-8"))
+        is_package = parts[-1] == "__init__"
+        module = ".".join(parts[:-1] if is_package else parts)
+        package = module if is_package else ".".join(parts[:-1])
+        found = entitling_refs(path.read_text(encoding="utf-8"), package)
         if found and module not in ENTITLING:
             offenders[module] = found
     assert offenders == {}
@@ -160,6 +186,32 @@ def test_t89_only_redeem_and_trial_reach_add_entitlement() -> None:
 )
 def test_the_entitlement_guard_sees_every_spelling(source: str) -> None:
     assert entitling_refs(source) != []
+
+
+@pytest.mark.parametrize(
+    ("source", "package"),
+    [
+        ("from .entitle import add_entitlement as give", "classbeat.plans"),
+        ("from .entitle import add_entitlement", "classbeat.plans"),
+        ("from . import entitle", "classbeat.plans"),
+        ("from . import entitle as e", "classbeat.plans"),
+        ("from ..plans.entitle import add_entitlement as give", "classbeat.admin"),
+        ("from ..plans import entitle", "classbeat.jobs"),
+        ("from ...plans import entitle", "classbeat.saving.update"),
+        ("from .entitle import add_entitlement as give", ""),  # unknown package: fail closed
+        ("import importlib\nimportlib.import_module('classbeat.plans.entitle')", "classbeat"),
+    ],
+)
+def test_the_entitlement_guard_resolves_relative_imports(source: str, package: str) -> None:
+    """#227 part 2 (PR #268 review): a relative import, aliased or not, is resolved against the
+    module's package before the allowlist is applied."""
+    assert entitling_refs(source, package) != []
+
+
+def test_a_relative_import_of_another_module_is_not_flagged() -> None:
+    assert entitling_refs("from .entitle_view import ranks", "classbeat.plans") == []
+    assert entitling_refs("from . import tables", "classbeat.plans") == []
+    assert entitling_refs("from .tables import FEATURES as F", "classbeat.plans") == []
 
 
 def test_the_entitlement_guard_ignores_docstrings_and_other_names() -> None:

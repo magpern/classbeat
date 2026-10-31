@@ -69,6 +69,8 @@ async def run(args: argparse.Namespace, settings: Settings, out: TextIO, err: Te
                     print("no routes: every job uses the bootstrap model", file=out)
                 for v in views:
                     unusable = routes.unusable_reason(settings, v.provider, v.model, v.effort)
+                    if unusable is None and "newer_failure" in v.stale:
+                        unusable = "newer_failure"  # the worker refuses it (no standing pass)
                     state = f"unusable: {unusable}" if unusable else "usable"
                     stale = f" stale: {', '.join(v.stale)}" if v.stale else ""
                     print(
