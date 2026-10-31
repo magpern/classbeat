@@ -12,10 +12,17 @@ import logging
 import time
 from collections.abc import Mapping
 from dataclasses import dataclass, field
-from typing import Annotated, Any, Final
+from typing import Annotated, Any, Final, Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, StringConstraints, ValidationError
+from pydantic import (
+    AwareDatetime,
+    BaseModel,
+    ConfigDict,
+    Field,
+    StringConstraints,
+    ValidationError,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -41,11 +48,30 @@ class RequestParams(Params):
     route: Annotated[str, StringConstraints(pattern=ROUTE_PATTERN)]
 
 
+class AuditListParams(Params):
+    """The audit log's filter (AD4 #222, ``classbeat.admin.audit_routes``): ids, codes, the
+    period and the page; ``actor_email`` is an admin's email, as ``actor_email`` itself."""
+
+    actor_id: UUID | None = None
+    actor_email: Annotated[str, StringConstraints(max_length=320)] | None = None
+    action: Annotated[str, StringConstraints(pattern=r"^[a-z][a-z0-9_.]{0,59}$")] | None = None
+    target_user_id: UUID | None = None
+    target_kind: Annotated[str, StringConstraints(pattern=r"^[a-z][a-z0-9_]{0,39}$")] | None = None
+    target_id: Annotated[str, StringConstraints(max_length=100)] | None = None
+    outcome: Literal["ok", "refused", "error"] | None = None
+    since: AwareDatetime | None = None
+    until: AwareDatetime | None = None
+    before: UUID | None = None
+    limit: Annotated[int, Field(ge=1, le=100)] = 50
+
+
 # Action code -> its params model. ``admin.request`` is the gate's own (ADR 0011 section 6:
 # mfa_required, stepup_required and rate_limited of an admin).
 ACTIONS: dict[str, type[Params]] = {
     "admin.request": RequestParams,
 }
+# The audit log (AD4 #222).
+ACTIONS["audit.list"] = AuditListParams
 
 
 class UnknownAction(ValueError):
