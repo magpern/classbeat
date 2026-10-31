@@ -1,6 +1,6 @@
-import { MiniProfile } from '../classes/MiniProfile'
 import { Button } from '../ui/button'
 import { Card, CardTitle } from '../ui/card'
+import { SketchBars } from './SketchBars'
 
 /** "Your class so far": a sketch on the stage, a summary and the page's one primary button. */
 export function SideCard({
@@ -20,7 +20,7 @@ export function SideCard({
       <CardTitle id="so-far-title" className="mb-0">
         Your class so far
       </CardTitle>
-      <MiniProfile profile={profile} />
+      <SketchBars profile={profile} />
       <p className="m-0 text-[0.8125rem] text-muted">A rough sketch of your numbers. Claude designs the real class.</p>
       <dl className="m-0 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-[0.9375rem]">
         {summary.map((row) => (
