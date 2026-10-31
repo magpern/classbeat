@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useReducer, useState } from 'react'
+import { useCallback, useEffect, useReducer, useRef, useState } from 'react'
 import { ApiError } from '../api/client'
 import { readJobEvents, type JobEvent } from '../api/jobEvents'
 import { getJob, isTerminal, type Job } from '../api/jobs'
@@ -77,6 +77,8 @@ export interface JobProgress {
   problem: 'not_found' | 'signed_out' | 'failed' | null
   /** Replaces the shown job (after the page cancelled it, say), unless it is already over. */
   setJob: (job: Job) => void
+  /** Follows the job again after it left a waiting state (the approval was accepted). */
+  follow: () => void
 }
 
 /**
@@ -89,12 +91,15 @@ export function useJobProgress(jobId: string): JobProgress {
   const [job, setJobState] = useState<Job | null>(null)
   const [problem, setProblem] = useState<JobProgress['problem']>(null)
   const [progress, dispatch] = useReducer(foldEvent, INITIAL)
+  const [round, setRound] = useState(0)
+  // The newest event seen survives a restart, so no event is folded twice.
+  const seen = useRef(0)
 
   useEffect(() => {
     const abort = new AbortController()
     const { signal } = abort
     void (async () => {
-      let after = 0
+      let after = seen.current
       let wait = MIN_WAIT_MS
       while (!signal.aborted) {
         let current: Job
@@ -123,6 +128,7 @@ export function useJobProgress(jobId: string): JobProgress {
         try {
           ended = await readJobEvents(jobId, after, signal, (event) => {
             after = event.seq
+            seen.current = event.seq
             received += 1
             dispatch(event)
           })
@@ -155,12 +161,16 @@ export function useJobProgress(jobId: string): JobProgress {
     return () => {
       abort.abort()
     }
-  }, [jobId])
+  }, [jobId, round])
 
   // A late answer (the cancel call, say) never replaces a state the stream already settled.
   const setJob = useCallback((next: Job) => {
     setJobState((previous) => (previous !== null && isTerminal(previous.state) ? previous : next))
   }, [])
 
-  return { job, progress, problem, setJob }
+  const follow = useCallback(() => {
+    setRound((n) => n + 1)
+  }, [])
+
+  return { job, progress, problem, setJob, follow }
 }

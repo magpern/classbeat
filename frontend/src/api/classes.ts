@@ -37,6 +37,48 @@ export interface SavedSummary {
   detachedCount: number
 }
 
+/** The class's newest song list (ADR 0008 section 9). */
+export interface ClassSongs {
+  /** `none`, `waiting`, `approved`, `expired`, `superseded` or `cancelled`. */
+  state: string
+  jobId: string | null
+  revisionId: string | null
+  contentHash: string | null
+  expiresAt: string | null
+}
+
+export interface ClassPlaylist {
+  name: string
+  /** The owner's own link, only when the server built it from a verified playlist. */
+  link: string | null
+}
+
+const SPOTIFY_PLAYLIST_LINK = /^https:\/\/open\.spotify\.com\/playlist\/[A-Za-z0-9]{22}$/
+
+function decodePlaylist(value: unknown): ClassPlaylist | null {
+  if (value === null || value === undefined) return null
+  const item = object(value, 'playlist')
+  const link = optionalText(item, 'link')
+  return {
+    name: text(item, 'name'),
+    link: link !== null && SPOTIFY_PLAYLIST_LINK.test(link) ? link : null,
+  }
+}
+
+function decodeSongs(value: unknown): ClassSongs {
+  if (value === null || value === undefined) {
+    return { state: 'none', jobId: null, revisionId: null, contentHash: null, expiresAt: null }
+  }
+  const item = object(value, 'songs')
+  return {
+    state: text(item, 'state'),
+    jobId: optionalText(item, 'job_id'),
+    revisionId: optionalText(item, 'revision_id'),
+    contentHash: optionalText(item, 'content_hash'),
+    expiresAt: optionalText(item, 'expires_at'),
+  }
+}
+
 export interface ClassSummary {
   id: string
   title: string
@@ -49,6 +91,9 @@ export interface ClassSummary {
   openJob: OpenJob | null
   /** The current version's intervals as [zone, seconds], in order (empty without one). */
   profile: [number, number][]
+  /** Only the class page's answer has these; the list's rows read as none. */
+  songs: ClassSongs
+  playlist: ClassPlaylist | null
 }
 
 /** Absent or malformed means no profile: a card then shows no sketch rather than failing the list. */
@@ -91,6 +136,8 @@ function decodeClass(value: unknown): ClassSummary {
     },
     openJob,
     profile: decodeProfile(item.profile),
+    songs: decodeSongs(item.songs),
+    playlist: decodePlaylist(item.playlist),
   }
 }
 
