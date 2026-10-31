@@ -603,15 +603,15 @@ jobs:
       - run: npm run typecheck
       - run: npx playwright install --with-deps chromium
 
-      - name: Run the tests
-        run: npx playwright test
-
       # M6 (#338): back up, destroy, restore into a fresh project and verify (rows, RLS, sign-in,
       # right key decrypts, wrong key fails). Own compose projects; the image build is a cache hit.
       - name: Backup and restore drill
         working-directory: .
         timeout-minutes: 10
         run: scripts/backup-restore-drill.sh ci
+
+      - name: Run the tests
+        run: npx playwright test
 
       - name: Upload the report
         if: failure()

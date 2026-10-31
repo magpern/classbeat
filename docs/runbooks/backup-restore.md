@@ -102,7 +102,7 @@ failure):
    under another id starts but gets `key_unavailable` for the old rows; the same wrong key used
    without the startup check fails authentication (`decrypt_failed`).
 
-CI runs it in the `e2e` job (on any change to the stack, the scripts or `docker/`), as a step after
+CI runs it in the `e2e` job (on any change to the stack, the scripts or `docker/`), as a step before
 Playwright. It adds about three minutes to a job that already runs for many; the second image build
 is a layer-cache hit.
 
