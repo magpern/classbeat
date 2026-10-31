@@ -75,9 +75,6 @@ class Execution:
     settled: bool = False  # its attempt was recorded, or it is not this worker's to record
     result: str | None = None  # the state written, or "lost"
     extra: dict[str, Any] = field(default_factory=dict)
-    # The job's Spotify request budget for this attempt, and the count the row holds.
-    budget: egress.RequestBudget | None = None
-    calls_saved: int = 0
 
     def needs_hand_back(self) -> bool:
         return not self.settled
@@ -92,14 +89,15 @@ async def _record(execution: Execution, factory: Factory, write: Any) -> None:
     requests the attempt sent are stored in the same transaction (ADR 0009 section 8)."""
     if execution.lease is None:
         raise RuntimeError("no lease to record on")
-    used = None if execution.budget is None else execution.budget.used
+    run = execution.run
+    used = None if run is None else run.unsaved_calls()
     try:
         async with fenced_session(factory, execution.lease) as fs:
-            if used is not None and used != execution.calls_saved:
+            if used is not None:
                 await transitions.save_spotify_calls(fs, used)
             execution.result = await write(fs)
-        if used is not None:
-            execution.calls_saved = used
+        if run is not None:
+            run.saved_calls(used)
     except LeaseLost:
         execution.result = "lost"
     execution.settled = True
@@ -241,14 +239,14 @@ async def execute(
         lease_seconds=config.lease_seconds,
         shutdown=shutdown,
     )
-    execution.run = run
-    execution.calls_saved = row.spotify_calls
-    execution.budget = egress.RequestBudget(
+    run.calls_saved = row.spotify_calls
+    run.budget = egress.RequestBudget(
         egress.SPOTIFY_HOSTS, config.spotify_calls_per_job, row.spotify_calls
     )
+    execution.run = run
     _log(execution, "job started", kind=kind.name, attempt=row.attempt)
     try:
-        with egress.request_budget(execution.budget):  # the kind's task inherits the context
+        with egress.request_budget(run.budget):  # the kind's task inherits the context
             outcome = await _pipeline(run, kind.run)
     except RunStopped as stopped:
         await _stopped(execution, factory, stopped.reason)
