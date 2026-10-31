@@ -26,7 +26,7 @@ from classbeat.db import create_engine, create_session_factory, verify_database_
 from classbeat.design import configure_limits
 from classbeat.design.routes import router as music_router  # registers design_draft (J3)
 from classbeat.flags.routes import router as settings_router
-from classbeat.headers import SecurityHeaders
+from classbeat.headers import SecurityHeaders, unhandled_error
 from classbeat.jobs.events_routes import StreamLimiter
 from classbeat.jobs.events_routes import router as job_events_router
 from classbeat.jobs.hub import EventHub
@@ -182,4 +182,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # Added last, so it is the outermost middleware: the CSP and Referrer-Policy go on every
     # response, the auth middleware's own answers included (ADR 0013 section 9).
     app.add_middleware(SecurityHeaders)
+    # Starlette answers an unhandled exception outside that middleware: its 500 adds the headers.
+    app.add_exception_handler(Exception, unhandled_error)
     return app

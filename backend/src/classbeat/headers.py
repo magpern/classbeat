@@ -9,12 +9,14 @@ T20, T93 and T97).
   classbeat URL.
 
 ``SecurityHeaders`` is a plain ASGI middleware, so it adds both to every HTTP response (the SPA,
-its files, the API, errors and the SSE stream) without buffering a body.
+its files, the API, errors, an unhandled 500 included, and the SSE stream) without buffering a body.
 """
 
 from typing import Final
 
 from starlette.datastructures import MutableHeaders
+from starlette.requests import Request
+from starlette.responses import PlainTextResponse, Response
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from classbeat.covers import COVER_HOST
@@ -37,6 +39,22 @@ CSP_DIRECTIVES: Final = (
 )
 CONTENT_SECURITY_POLICY: Final = "; ".join(CSP_DIRECTIVES)
 REFERRER_POLICY: Final = "no-referrer"
+
+
+async def unhandled_error(_request: Request, _exc: Exception) -> Response:
+    """The answer to an exception no route handled (registered for ``Exception``).
+
+    Starlette's ``ServerErrorMiddleware`` sits outside every middleware we add, so without this
+    its plain 500 would leave without the two headers (T93). The body is the one it sends itself.
+    """
+    return PlainTextResponse(
+        "Internal Server Error",
+        status_code=500,
+        headers={
+            "Content-Security-Policy": CONTENT_SECURITY_POLICY,
+            "Referrer-Policy": REFERRER_POLICY,
+        },
+    )
 
 
 class SecurityHeaders:
