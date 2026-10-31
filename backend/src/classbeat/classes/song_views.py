@@ -15,6 +15,9 @@ through row security, so another user's class, revision or playlist is simply no
 - ``playlists_of``: the class's final playlists. A playlist's link is built here from the stored
   id (``https://open.spotify.com/playlist/<id>``), never from Spotify data, and goes only into the
   owner's own class view and class delete answer (ADR 0008 section 2, "Privacy wording").
+- ``music_playlists``: every playlist classbeat made for the user, for the Music page (ADR 0013
+  sections 4 and 9): the class, the name, the owner's link (as ``playlists_of`` builds it) and up
+  to four of its songs (title and the pinned-host cover) from the ``song_list`` it was made from.
 - ``playlists_left``: the data of the Disconnect and consent dialogs (names, never a link).
 
 No id of Spotify appears anywhere else, and nothing here logs.
@@ -30,6 +33,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from classbeat.context import UserContext, require_context
+from classbeat.covers import cover_url
 from classbeat.db import user_session
 from classbeat.playlists.common import POOL_NAME, SPOTIFY_ID
 from classbeat.songs import song_list
@@ -39,6 +43,7 @@ Factory = async_sessionmaker[AsyncSession]
 
 DETACHED_NOTE: Final = "In your earlier Spotify account."
 PLAYLIST_URL: Final = "https://open.spotify.com/playlist/"
+TRACK_URL: Final = "https://open.spotify.com/track/"
 SongsStateName = Literal["none", "waiting", "approved", "expired", "superseded", "cancelled"]
 ListStatus = Literal["waiting", "approved", "expired", "superseded", "cancelled"]
 
@@ -80,6 +85,12 @@ _LEFT_CLASSES = text(
     "WHERE p.owner_id = :owner_id "
     "ORDER BY p.created_at, p.id LIMIT 500"
 )
+_MUSIC_PLAYLISTS = text(
+    "SELECT p.class_id, c.title AS class_title, p.name, p.playlist_id, p.state, p.revision_id, "
+    "p.detached_at IS NOT NULL AS detached FROM class_playlists p "
+    "JOIN classes c ON c.owner_id = p.owner_id AND c.id = p.class_id "
+    "WHERE p.owner_id = :owner_id ORDER BY p.created_at DESC, p.id LIMIT :limit"
+)
 _POOL_EXISTS = text(
     "SELECT 1 FROM spotify_pool WHERE owner_id = :owner_id AND playlist_id IS NOT NULL"
 )
@@ -98,6 +109,13 @@ def link_of(playlist_id: str) -> str | None:
     """The owner's own link to a playlist they hold, built from a stored id; None when the id is
     not 22 letters and digits (it never reaches a URL then)."""
     return PLAYLIST_URL + playlist_id if SPOTIFY_ID.fullmatch(playlist_id) else None
+
+
+def track_link(spotify_id: str) -> str | None:
+    """The link back to one song in Spotify (its design guidelines ask for one wherever Spotify
+    metadata is shown), built here from the stored track id of a checked list; None when the id
+    is not 22 letters and digits (it never reaches a URL then)."""
+    return TRACK_URL + spotify_id if SPOTIFY_ID.fullmatch(spotify_id) else None
 
 
 def list_status(
@@ -239,6 +257,63 @@ async def get_song_list(
         row.approved_at,
         stored.content,
     )
+
+
+MUSIC_PLAYLISTS_LIMIT: Final = 100
+MOSAIC_SONGS: Final = 4
+
+
+@dataclass(frozen=True, slots=True)
+class MosaicSong:
+    title: str
+    cover: str | None
+
+
+@dataclass(frozen=True, slots=True)
+class MusicPlaylist:
+    class_id: UUID
+    class_title: str
+    name: str
+    link: str | None
+    detached: bool
+    note: str | None
+    songs: tuple[MosaicSong, ...]
+
+
+async def music_playlists(factory: Factory, ctx: UserContext) -> tuple[MusicPlaylist, ...]:
+    """The caller's own playlists, newest first (at most 100). Another user's class or playlist is
+    never read: every statement filters on ``owner_id`` as well as running under row security.
+    A playlist whose song list no longer checks is listed without songs, never with others."""
+    require_context(ctx)
+    out: list[MusicPlaylist] = []
+    async with user_session(factory, ctx) as db:
+        rows = (
+            await db.execute(
+                _MUSIC_PLAYLISTS, {"owner_id": ctx.user_id, "limit": MUSIC_PLAYLISTS_LIMIT}
+            )
+        ).all()
+        for r in rows:
+            detached = bool(r.detached)
+            songs: tuple[MosaicSong, ...] = ()
+            if r.revision_id is not None:
+                stored = await song_list.load(db, ctx.user_id, r.class_id, r.revision_id)
+                if stored is not None:
+                    songs = tuple(
+                        MosaicSong(plain(s.title), cover_url(s.cover))
+                        for s in stored.content.songs[:MOSAIC_SONGS]
+                    )
+            out.append(
+                MusicPlaylist(
+                    r.class_id,
+                    plain(r.class_title),
+                    r.name,
+                    link_of(r.playlist_id) if r.state == "verified" and not detached else None,
+                    detached,
+                    DETACHED_NOTE if detached else None,
+                    songs,
+                )
+            )
+    return tuple(out)
 
 
 @dataclass(frozen=True, slots=True)
