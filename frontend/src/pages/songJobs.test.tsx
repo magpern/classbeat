@@ -519,6 +519,18 @@ describe('a request that only asks for other songs (use_change_songs)', () => {
     expect(within(outcome).queryByRole('button', { name: 'Change songs' })).toBeNull()
   })
 
+  it.each(['waiting', 'expired', 'cancelled', 'superseded'])(
+    'does not call the class one with a playlist of its own when the newest pick is %s',
+    async (state) => {
+      fakeApi(routes({ songs: { ...SONGS, state } }))
+      renderAt(`/classes/${CLASS_ID}`)
+      const outcome = await screen.findByTestId('use-change-songs')
+      expect(outcome).toHaveTextContent(/Finish or retry the song pick/)
+      expect(outcome.textContent).not.toContain('playlist of your own')
+      expect(within(outcome).queryByRole('button', { name: 'Change songs' })).toBeNull()
+    },
+  )
+
   it('words it on the job page too, without the code', async () => {
     fakeApi({
       ...SESSION_ROUTES,

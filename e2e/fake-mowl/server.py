@@ -49,6 +49,8 @@ import socket
 import ssl
 import tempfile
 import threading
+import urllib.error
+import urllib.request
 import uuid
 from collections import Counter
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -99,6 +101,7 @@ class Playlist:
         self.gate = threading.Event()  # set: held reads go on (and later ones are not held)
         self.owners: set[str] = set()  # tokens that attached it
         self.uncertain_done: set[str] = set()  # tokens whose first attach was answered with a 500
+        self.live = False  # wraps a playlist of the fake Spotify: it lists what that holds now
 
 
 # Public test data. Hill Climb and Sprints are the new-class form's (new-class.spec.ts); the
@@ -113,6 +116,51 @@ PLAYLISTS = [
 BY_SPOTIFY = {p.spotify_id: p for p in PLAYLISTS}
 BY_MOWL = {p.mowl_id: p for p in PLAYLISTS}
 TRACK_COUNT = 8
+
+# Playlists classbeat's song picking makes in the fake Spotify (the pool and the final playlist) and
+# attaches here. MOWL is assumed to follow edits of an attached playlist (ADR 0008 section 2), so a
+# live playlist lists, on every read, what the fake Spotify's playlist holds now: the fake Spotify
+# (backend/tests/spotifycore.py, the code the backend tests run) computes that list, and this fake asks
+# its test control. The call is test-only and internal to the compose network: the fake Spotify's
+# certificate is not checked here, because the shared CA bundle is written after this service starts.
+SPOTIFY_CONTROL = "https://api.spotify.com/__e2e/mowl-tracks?playlist="
+FIRST_LIVE_MOWL_ID = 7100
+_UNCHECKED = ssl.create_default_context()
+_UNCHECKED.check_hostname = False
+_UNCHECKED.verify_mode = ssl.CERT_NONE
+_DIRECT = urllib.request.build_opener(
+    urllib.request.ProxyHandler({}), urllib.request.HTTPSHandler(context=_UNCHECKED)
+)
+
+
+def spotify_playlist(spotify_id: str) -> dict[str, object] | None:
+    """The fake Spotify's view of a playlist for MOWL (name and tracks), or None if it has none."""
+    try:
+        with _DIRECT.open(SPOTIFY_CONTROL + spotify_id, timeout=10) as answer:
+            found: dict[str, object] = json.load(answer)
+            return found
+    except urllib.error.HTTPError:
+        return None
+
+
+def live_playlist(spotify_id: str) -> Playlist | None:
+    """The fake MOWL playlist wrapping this fake Spotify playlist; made on its first attach."""
+    with LOCK:
+        known = BY_SPOTIFY.get(spotify_id)
+    if known is not None:
+        return known
+    if len(spotify_id) != 22 or not spotify_id.isalnum():
+        return None
+    found = spotify_playlist(spotify_id)
+    if found is None:
+        return None
+    with LOCK:
+        if spotify_id not in BY_SPOTIFY:
+            mowl_id = FIRST_LIVE_MOWL_ID + len(BY_MOWL)
+            made = Playlist(spotify_id, str(found["name"]), mowl_id)
+            made.live = True
+            BY_SPOTIFY[spotify_id], BY_MOWL[mowl_id] = made, made
+        return BY_SPOTIFY[spotify_id]
 
 
 def track_id(i: int) -> str:
@@ -302,7 +350,7 @@ class Handler(BaseHTTPRequestHandler):
         except (ValueError, KeyError, TypeError):
             self.reply(400, {"Error": "bad request"})
             return
-        playlist = BY_SPOTIFY.get(wanted) if isinstance(wanted, str) else None
+        playlist = live_playlist(wanted) if isinstance(wanted, str) else None
         if playlist is None:
             self.reply(200, {"Data": None, "Error": "Unknown playlist"})
             return
@@ -432,6 +480,15 @@ class Handler(BaseHTTPRequestHandler):
             playlist.gate.wait(HOLD_SECONDS)
             with LOCK:
                 playlist.held -= 1
+        if playlist.live:
+            held = spotify_playlist(playlist.spotify_id)
+            self.ok(
+                [
+                    {**e, "PlaylistID": playlist.mowl_id, "Url": "x"}
+                    for e in (held["tracks"] if held is not None else [])  # type: ignore[union-attr]
+                ]
+            )
+            return
         self.ok(tracks())
 
     def control(self, action: str, query: dict[str, list[str]]) -> None:

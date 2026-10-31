@@ -38,6 +38,9 @@ COVERED = {
     "revise_songs_requested",
     # used by the e2e specs (e2e/tests/class-save.spec.ts): a revise that changes the description
     "revise_description",
+    # used by the e2e specs (e2e/tests/song-pick.spec.ts): a song pick and a change of one song
+    "e2e_pick",
+    "e2e_change",
 }
 
 SPEC = StageSpec("design", "s", (), "m", "fake-model", "medium", 32_000, "submit_draft")
