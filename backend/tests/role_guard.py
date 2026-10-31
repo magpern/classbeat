@@ -50,6 +50,10 @@ RESTRICTED_APP_PRIVILEGES = {
     "redeem_codes": {"SELECT"},
     "credit_ledger": {"SELECT", "INSERT", "UPDATE"},
     "quota_periods": {"SELECT", "INSERT", "UPDATE"},
+    # ADR 0012 section 5 (M3c): eval results are append-only for the app (no UPDATE, DELETE or
+    # TRUNCATE, also after 10-roles.sql runs again); ``model_routes`` keeps full DML (deleting a
+    # route disables a model) and, like every table, no TRUNCATE.
+    "model_eval_results": {"SELECT", "INSERT"},
 }
 # The only column-level privileges in public, exactly: (table, column) -> {(grantee, privilege)}.
 # ``redeem_codes.redeemed_count`` is what a redeem increments (ADR 0011 section 2).
