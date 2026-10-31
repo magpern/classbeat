@@ -1,0 +1,16 @@
+{
+ "name": "sync_hard_45_sprints",
+ "about": "Hard 45 minutes, four sprints on drops.",
+ "brief": {
+  "length_min": 45,
+  "intensity": "hard",
+  "sprints": 4
+ },
+ "music": {
+  "tracks": 13
+ },
+ "expect": {
+  "music_sync": {},
+  "changes_on_music_min": 0.9
+ }
+}
