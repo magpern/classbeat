@@ -11,9 +11,9 @@ Related: [ADR 0006](0006-agent-runs.md) (the agent loop, `model_input`, provenan
 ## Context
 
 The designer already knows a few "typical class" habits, but they are prose in the system prompt
-(`classbeat.agent.design.SYSTEM_PROMPT`, "a guide, not a rule"), written from the library's own
-rides. #388 adds measured evidence: an owner-run, read-only analysis of **a professional studio
-library** (209 indoor-cycling programs, aggregate statistics only, raw data kept outside any
+(`classbeat.agent.design.SYSTEM_PROMPT`, "a guide, not a rule"), written from the workout library's
+own rides. #388 adds measured evidence: an owner-run, read-only analysis of **a professional studio
+library**, a reference set of public classes available to the owner's account (209 indoor-cycling programs, aggregate statistics only, raw data kept outside any
 repository) says how a professional class is typically built per class type and length. Headlines
 that matter to this decision, all medians or shares over many classes:
 
@@ -30,7 +30,7 @@ that matter to this decision, all medians or shares over many classes:
 
 What exists today (read from `main`):
 
-- **Hard rules** are the library's `workout.validate()` (one cool-down segment, last, at least 60 s;
+- **Hard rules** are the workout library's `workout.validate()` (one cool-down segment, last, at least 60 s;
   zones 1 to 7; at most one FTP test of 3, 5 or 20 minutes; at most three hours). `check()` in
   `agent/design.py` runs it before and after fitting; a failure is a `ToolError('invalid_draft')`
   the model must fix, and nothing is stored.
@@ -56,7 +56,7 @@ deterministically by the backend and reported as a **note**, never as a refusal.
 
 | | Hard validation | Soft rule |
 |---|---|---|
-| Source | `workout.validate()`, the library | a **profile** file (§2) |
+| Source | `workout.validate()`, the workout library | a **profile** file (§2) |
 | On violation | `ToolError('invalid_draft')`, the model must fix, nothing stored | a `RuleHit`; the draft is accepted and stored |
 | Who may override | nobody | the **brief** (always), the model (deliberately), the user (dismiss, §4) |
 | Counts against a run | yes (`limits`, `standard` checks) | never by itself (§5) |
@@ -70,11 +70,17 @@ There is no `error` severity: a soft rule cannot block.
 
 **The brief always wins.** A rule is evaluated against the draft, and the brief can switch it off:
 a rule carries `brief_overrides`, the brief fields that make its expectation wrong (the intensity
-`easy` or `hard`, `sprints`, `races`, `ftp_test`, a non-empty `style` or `text`). When one applies,
+`easy` or `hard`, `sprints`, `races`, `ftp_test`, a non-empty `style` or `text`), read from the
+**stored brief** only. Two limits are deliberate: a revise request's text is not in `classes.brief`
+and is **not** passed to the engine, so "make it harder" in chat does not mark a hit as explained
+(the model sees the request and may deviate; the note then stays as `warn` or `info` until the
+user dismisses it); and a **derived** `class_type` (§2) never counts as explained by the brief:
+only a field the user set themselves does, so `interval` derived from `sprints` does not make its
+own deviations "explained". When one applies,
 the hit is still computed but its severity is lowered to `info` and marked `explained_by_brief`, so
 the UI can say "you asked for this". Length is never a rule: `total_minutes` is in the profile for
 the record but no rule is generated from it (the instructor chose the length; the 2 to 5 minute gap
-between label and timeline is a fact about the library, not a defect).
+between label and timeline is a fact about the studio library, not a defect).
 
 The model may deviate on purpose: the prompt says so (§3) and the eval suite asserts it (§5). A hit
 that remains at submit is stored as part of the revision's computed view, not as a model decision.
@@ -143,9 +149,11 @@ A profile file contains **numbers and ids only**:
 is never an error and never a warning.
 
 **Provenance.** `class_revisions.provenance` gains `rules: {profile, version, digest}` (or
-absent), validated by the same Pydantic model as the rest. The rules are not part of
+absent), validated by the same Pydantic model as the rest. It records which profile the **model
+saw** when it made that revision; it is not used to recompute notes (§4). The rules are not part of
 `prompt_version` (§3 keeps them out of the system prompt), so a profile change does not
-invalidate the model gate's `prompt_version` match, but `compare` and the results header record
+invalidate the model gate's `prompt_version` match (P4 touches neither the system prompt nor any
+tool name, description or schema, so `prompt_version` does not change), but `compare` and the results header record
 `rules_version` (§5).
 
 ### 3. How the model receives them
@@ -178,10 +186,14 @@ and the tool result's `rules` is capped at 5 entries; a draft with no hits costs
 
 ### 4. How the user sees them
 
-The hits are a **pure function** of the revision's segments, the class's brief and the profile
-version, so they are **recomputed on read** by `GET` of a revision and not stored per revision (no
-stale copy; an old revision shows the hits of the profile version it was made with, taken from its
-provenance, or none if that profile file no longer exists).
+The hits are a **pure function** of the revision's segments, the class's stored brief and the
+**current** profile, so they are **recomputed on read** by `GET` of a revision. **Nothing is stored
+per revision**, and superseded profile versions are not kept in the image. An old revision
+therefore always shows notes under today's rules, however old it is. If the revision's provenance
+`rules.digest` differs from the loaded file's (or the profile no longer exists, in which case there
+are no notes), the block adds one muted line, "Notes use the current rules", and nothing else: no
+error, no blocked action. The provenance digest answers "what did the model see?", never "what do
+we show?". If no profile applies to the class today, no block is shown.
 
 - **Where.** The class page's revision view (`RevisionView`) gets a quiet "Pattern notes" block
   under the stat tiles, only when there is at least one visible hit. Each note is one line: the
@@ -190,8 +202,11 @@ provenance, or none if that profile file no longer exists).
   disables Save, Approve or any other action, and nothing is announced by `role="alert"`
   (`role="status"` at most, once).
 - **Dismiss** is per class and per rule id, and persists across that class's revisions: a new
-  column `classes.dismissed_rules jsonb NOT NULL DEFAULT '[]'` (a list of rule ids, at most 32, a
-  `PATCH` of the class, owner-scoped like every class write; no new table, so no new RLS surface).
+  column `classes.dismissed_rules jsonb NOT NULL DEFAULT '[]'` (a list of rule ids, at most 32).
+  There is no class `PATCH` route today (`classes/routes.py` has GET, POST `/current` and DELETE),
+  so the dismiss and undo route is **new**, owner-scoped like every class write; no new table and
+  `classes` is already forced-RLS, so no new RLS surface (the app role's column `UPDATE` grant is
+  checked in P5). The column is created by P1b, before the designer reads it.
   A dismissed rule is not shown and not sent to the model on a revise stage of that class, so
   "I like it this way" is also a message to the next revision. Undo is offered once ("Show again").
 - **Wording.** Each sentence is written in classbeat's words and says what is usual, never that
@@ -248,13 +263,13 @@ The repository is public and the source is somebody's product, so:
    `source` fields and in the UI. The ADR, the profile files and the rationales are written so.
 3. **Reproducibility notes are private.** The collection and aggregation scripts, the raw
    snapshot, the exact programs read and the commands used live outside the repository (the
-   owner's private notes and the private mowl-workouts repository). The public profile says only
+   owner's private notes). The public profile says only
    `source`, `n`, `evidence` and the snapshot date. Re-running the analysis is an owner step.
 4. **Mechanical checks.** The schema allows no free text and no extra fields; a test fails on any
    profile string outside the closed enums and the `source` constant; rationales are an allowlist in code, reviewed word by word. A denylist of names cannot live in the public
    repository, so the **owner-run** hygiene script (private) greps the whole repo for the names it
    holds; the PR checklist of every change under `design/profiles/` and `evals/` asks for it.
-5. **No Spotify, MOWL or Swedebeat content is involved.** Profiles are about structure, not music;
+5. **No third-party content is involved** (no Spotify, MOWL or Swedebeat data, no track title). Profiles are about structure, not music;
    the threat model's data classes (Spotify-derived data, ADR 0010) are untouched, and the rules
    never read a track title.
 6. **Statistics are not scores.** The ADR and the UI never claim a class is "good" or "bad" or
@@ -262,7 +277,8 @@ The repository is public and the source is somebody's product, so:
 
 ### 7. Running (reserved, no data)
 
-Running classes with incline are on the roadmap (M8), but **no running statistics exist**: the
+Running classes with incline are tracked as GitHub milestone M8 and issue #373 (`docs/roadmap.md`
+does not mention them), but **no running statistics exist**: the
 running categories were not available when the collection ran. This ADR therefore only reserves
 the slot: `sport` is in the schema and in `select_profile`, the directory
 `profiles/running/` is documented and empty, and `select_profile` returns `None` for any
@@ -281,11 +297,12 @@ merge is used.
 | # | Title | Scope | Done when | Review | Depends on |
 |---|---|---|---|---|---|
 | P1 | `feat(design): rule profile schema, loader and hygiene tests` | `profiles/schema.json`, `index.json`, `classbeat.design.rules.profile` (load, validate, digest, `select_profile` for an explicit class type and length), the closed enums, `RATIONALES`, the first profiles from the private aggregates for the **strong** cycling classes only (30, 45, 60 x plain, interval), the version-without-digest test, the no-free-text test | a profile with an unknown field, a free string, or a `p5` basis with n < 25 is refused; `select_profile` matches within 3 minutes and returns `None` otherwise; digests stable | Sonnet | this ADR |
+| P1b | `feat(web): dismissed_rules column and class dismissal route` | migration for `classes.dismissed_rules jsonb NOT NULL DEFAULT '[]'` (cap 32 ids; RLS unchanged; export and deletion verified, test added; app-role column grant checked), new owner-scoped route to dismiss and undo a rule id on a class, 404 matrix | cross-user 404s; cap and unknown-id validation (ids from the profile enum); export and deletion cover the column | Opus | none |
 | P2 | `feat(design): soft-rule engine` | pure `evaluate(spec, brief, profile) -> list[RuleHit]` over the fitted spec for the v1 metric catalogue, severity lowering for `brief_overrides`, ordering and cap 5, dismissal filter | pair fixtures for every shipped rule (inside / outside), override and cap tests; no import of the agent or the database | Sonnet | P1 |
 | P3 | `feat(agent): class_type in the brief and profile selection` | optional `Brief.class_type`, the derivation when absent, job input and `classes.brief` validation, `select_profile(brief)` wiring; the new-class form is **not** changed | an old brief still validates and designs as before; derivation table tested; brief size guard unchanged | Opus | P1 |
-| P4 | `feat(agent): rules section and tool result for design and revise` | `model_input` section (cap, wording, absent when `None`), `rules` in `preview_draft` / `submit_draft`, provenance `rules`, dismissed rules excluded on revise, caps and planted-value tests (no brief or music text in the section), `prompt_version` unchanged | a replay run shows the section and hits; no profile -> byte-identical input to today; `submit_draft` accepts a draft with every rule violated | Opus | P2, P3 |
-| P5 | `feat(web): pattern notes API and per-class dismissal` | migration for `classes.dismissed_rules` (RLS unchanged, retention and export updated), revision `GET` returns computed `ruleHits`, `PATCH` class dismiss / undo, owner-only and 404 matrix tests | cross-user 404s; a dismissed rule stays dismissed on the next revision; hits recomputed from the provenance's profile version; export and deletion cover the column | Opus | P2, P4 |
-| P6 | `feat(web): "Pattern notes" block on the class page` | `RevisionView` block, copy per §4, dismiss and undo, muted `explained_by_brief`, no alert role, nothing disables an action, a11y and 44 px targets | component and page tests, axe clean; a revision with no hits renders as today | Sonnet | P5 |
+| P4 | `feat(agent): rules section and tool result for design and revise` | `model_input` section (cap, wording, absent when `None`), `rules` in `preview_draft` / `submit_draft`, provenance `rules`, dismissed rules (P1b's column) excluded on revise, caps and planted-value tests (no brief or music text in the section) | a replay run shows the section and hits; no profile -> byte-identical input to today; `submit_draft` accepts a draft with every rule violated; **no tool name, description or schema and no system prompt text is edited, so every stage's `prompt_version` is unchanged (test)** | Opus | P2, P3, P1b |
+| P5 | `feat(web): pattern notes on the revision API` | revision `GET` returns `ruleHits` computed from the stored brief and the **current** profile, the "notes use the current rules" flag when the provenance digest differs, dismissed rules filtered, owner-only and 404 tests | cross-user 404s; a dismissed rule stays hidden on the next revision; a changed profile changes old revisions' notes and sets the flag; nothing stored per revision | Sonnet | P2, P1b, P4 |
+| P6 | `feat(web): "Pattern notes" block on the class page` | `RevisionView` block, copy per §4, dismiss and undo, muted `explained_by_brief`, no alert role, nothing disables an action, a11y and 44 px targets | component and page tests, axe clean; a revision with no hits renders as today | Sonnet | P5, P1b |
 | P7 | `test(evals): class_patterns category` | the `class_patterns` manifest category and cases of §5 (fixtures, scripted runs, brief-wins predicates), `rules_version` in the results header and `compare`, suite digest and `suite_version` bump | the gate's verdict covers the new category; replay green; live baseline is an owner-run step, not part of done | Sonnet | P4 |
 | P8 | `docs(runbook): refresh rule profiles from new aggregates` | owner runbook: how aggregates become a profile (the generator script stays private), the PR checklist of §6, when to bump versions, how to add a sport | a reviewer can follow it without the private notes; contains no source name | Sonnet | P1 |
 | P9 | `feat(design): running profiles` | **blocked on data.** A running analysis under §6, then profiles and, if needed, an incline metric | not started until aggregate data exists | Opus (schema bump) | owner's data, P1 |
@@ -326,14 +343,13 @@ and P7 have a baseline; it is not in this list.
   test of whether they are too tight. A rule that fires on most good drafts is dropped by a profile
   version, not tuned silently.
 - A schema change (new metric) needs a code release; a data change is a reviewed file.
-- The statistics describe one library and one time; the UI says "usual", never "correct".
+- The statistics describe one studio library and one time; the UI says "usual", never "correct".
 
 ## Threat model
 
 No new row. The profiles are trusted repository data, read-only and not influenced by users; the
 model gets no new tool and no write path, and the section is built from enumerated fields, so the
-existing prompt-injection rows (T8) already cover it. Spotify, MOWL and Swedebeat content is not
-involved. The next free row ids on `main` are T112 and up (ADR 0016 holds T108 to T111); this ADR
+existing prompt-injection rows (T8) already cover it. No third-party content is involved. The next free row ids on `main` are T112 and up (ADR 0016 holds T108 to T111); this ADR
 claims none.
 
 ## Owner questions (defaults the issues build to)
