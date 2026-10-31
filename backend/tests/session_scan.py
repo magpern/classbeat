@@ -28,7 +28,10 @@ by the packages that own data and their own transactions:
 - ``classbeat.classes`` (ADR 0007 section 1, C2: the user's own reads of their classes, the
   current-revision pick and the class delete in a web request, never the worker);
 - ``classbeat.keys_cli`` (the operator's ``keys wipe``, which predates this guard: it runs as the
-  owner role from the CLI, never in the worker, and deletes connections and TOTP per owner).
+  owner role from the CLI, never in the worker, and deletes connections and TOTP per owner);
+- `classbeat.plans.account`, `classbeat.plans.redeem` and `classbeat.plans.trial` (ADR 0011
+  sections 2 and 9, PL1: the user's own plan read, code redemption and trial start in a web
+  request; only `classbeat.plans.routes` reaches them, never the worker).
 
 A later owned-data package joins the list in its own PR, with its reason. Anything else, the
 worker and agent code included, fails ``scan_source``: a reference to ``user_session`` or
@@ -56,6 +59,10 @@ ALLOWED_MODULES = (
     "classbeat.operations.orphans",  # ADR 0007 section 8 (X2)
     "classbeat.saving.reads",  # the save reconciler's read of the revision (SV1)
     "classbeat.keys_cli",
+    # The user's own plan read, redeem and trial in a web request (ADR 0011 section 2, PL1).
+    "classbeat.plans.account",
+    "classbeat.plans.redeem",
+    "classbeat.plans.trial",
 )
 NAMES = frozenset({"user_session", "_owned_session"})
 SESSION_MODULE = "classbeat.db.session"

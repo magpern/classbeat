@@ -76,6 +76,34 @@ def test_no_category_comes_from_message_text() -> None:
     assert classify_use(ValueError("503 upstream")).category == "unknown"
 
 
+@pytest.mark.parametrize(
+    ("status", "code", "category"),
+    [
+        (400, "invalid_grant", "invalid_grant"),
+        (400, "invalid_client", "app_misconfigured"),
+        (401, "invalid_client", "app_misconfigured"),
+        (400, "invalid_request", "app_misconfigured"),
+        # No recognised code: not the app's setup, and never a flip (#198 item 2).
+        (400, None, "upstream_unavailable"),
+        (401, None, "upstream_unavailable"),
+        (400, {"status": 400, "message": "invalid_client"}, "upstream_unavailable"),
+        (401, "server_error", "upstream_unavailable"),
+        (400, "", "upstream_unavailable"),
+        (403, None, "invalid_response"),
+        (503, "invalid_client", "upstream_unavailable"),
+    ],
+)
+def test_the_token_endpoints_category_comes_only_from_a_recognised_code(
+    status: int, code: object, category: str
+) -> None:
+    from classbeat.connections.repository import SPOTIFY_FLIP_CATEGORIES
+    from classbeat.spotify.errors import by_oauth_code
+
+    assert by_oauth_code(status, code, None) == category
+    recognised = code in ("invalid_grant", "invalid_client", "invalid_request")
+    assert (category in SPOTIFY_FLIP_CATEGORIES) == (recognised and status < 500)
+
+
 # --- on connect: the callback's result ----------------------------------------------------------
 
 
@@ -94,6 +122,15 @@ async def _connect_result(spot: Spot, **kw: Any) -> dict[str, str]:
             {"result": "upstream_unavailable"},
         ),
         ({"kind": "refuse", "path": "/api/token"}, {"result": "upstream_unavailable"}),
+        # A 400 or 401 without an OAuth ``error`` code is no misconfiguration (#198 item 2).
+        (
+            {"kind": "status", "status": 400, "path": "/api/token"},
+            {"result": "upstream_unavailable"},
+        ),
+        (
+            {"kind": "status", "status": 401, "path": "/api/token"},
+            {"result": "upstream_unavailable"},
+        ),
         ({"kind": "trickle", "delay": 0.2, "path": "/v1/me"}, {"result": "upstream_unavailable"}),
         (
             {"kind": "rate_limited", "retry_after": 90, "path": "/api/token"},

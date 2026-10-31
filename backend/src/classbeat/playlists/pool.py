@@ -192,7 +192,7 @@ async def create_pool(run: JobRun, keyring: KeyRing, opened: OpenConnection, poo
     """The pool playlist, created under this job's own key and a new ``ref``."""
     key = create.pool_key(run.lease.job_id)
     guard = _guard(run, opened, pool, SPOTIFY_CREATE_KIND, key, None)
-    request = create.pool_request(run.lease.job_id, pool.id, guard)
+    request = create.pool_request(run.lease.owner_id, run.lease.job_id, pool.id, guard)
     return await create.create(run, keyring, opened, request, common.POOL_NAME)
 
 
