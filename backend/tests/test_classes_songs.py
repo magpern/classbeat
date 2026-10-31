@@ -6,9 +6,11 @@ Spotify id, track id, account id or fingerprint is in any body except the owner'
 link; a superseded or expired list is reported as such.
 """
 
+import re
 import uuid
 from collections.abc import AsyncIterator
 from datetime import UTC, datetime
+from types import SimpleNamespace
 from typing import Any
 from uuid import UUID
 
@@ -84,11 +86,14 @@ async def test_a_waiting_list_is_reported_on_the_class_and_shown_without_ids(
     assert [s["position"] for s in body["songs"]] == list(range(1, len(stored["songs"]) + 1))
     for shown_song, kept in zip(body["songs"], stored["songs"], strict=True):
         assert set(shown_song) == {
-            "position", "title", "artist", "role", "bpm", "length_sec", "new", "cover"
+            "position", "title", "artist", "role", "bpm", "length_sec", "new", "cover",
+            "open_spotify",
         }  # fmt: skip
         assert (shown_song["title"], shown_song["new"]) == (kept["title"], kept["new"])
         assert shown_song["cover"] == kept["cover"]
-        assert kept["spotify_id"] not in got.text
+        # no bare id field; only the server-built link back (ADR 0008 section 9, amendment)
+        assert shown_song["open_spotify"] == f"https://open.spotify.com/track/{kept['spotify_id']}"
+        assert got.text.count(kept["spotify_id"]) == 1
     # ADR 0013 section 9: v: 2, each song's cover the album's narrowest image of at least 64 px
     # from the search, and none for the song whose album has only narrower ones
     assert stored["v"] == 2
@@ -103,7 +108,9 @@ async def test_a_waiting_list_is_reported_on_the_class_and_shown_without_ids(
             assert cover_url(kept["cover"]) == kept["cover"]
     assert song_id(NARROW_SONG) in [s["spotify_id"] for s in stored["songs"]]
     assert body["omitted_no_bpm"] == stored["omitted_no_bpm"]
-    clean(songenv, got)
+    # the only place an id may appear is inside the server-built link (ADR 0008 section 9)
+    unlinked = SimpleNamespace(text=re.sub(r"https://open\.spotify\.com/track/\w+", "", got.text))
+    clean(songenv, unlinked)
 
 
 async def test_a_notes_markup_and_control_characters_arrive_as_plain_text(
@@ -578,3 +585,27 @@ async def test_the_music_playlists_need_a_signed_in_user(songenv: SongEnv) -> No
     rider.browser.client.cookies.clear()
     response = await rider.browser.client.get("/api/music/class-playlists")
     assert response.status_code == 401
+
+
+@pytest.mark.parametrize(
+    "bad",
+    ["", "short", "a" * 21, "a" * 23, "a" * 21 + "/", "../" + "a" * 19, "a" * 21 + chr(10)],
+)
+def test_an_invalid_track_id_gets_no_link(bad: str) -> None:
+    assert song_views.track_link(bad) is None
+
+
+def test_a_valid_track_id_gets_the_track_link() -> None:
+    assert song_views.track_link("a" * 22) == "https://open.spotify.com/track/" + "a" * 22
+
+
+async def test_a_foreign_list_shows_no_link_and_no_id(songenv: SongEnv) -> None:
+    owner = await songenv.rider()
+    job_id, revision_id, _ = await songenv.waiting(owner)
+    path = f"/api/classes/{class_of(songenv, job_id)}/revisions/{revision_id}"
+    other = await songenv.rider()
+    got = await other.browser.get(path)
+    assert got.status_code == 404
+    kept = songenv.revision(revision_id).content["songs"]
+    assert "open.spotify.com" not in got.text
+    assert not any(s["spotify_id"] in got.text for s in kept)

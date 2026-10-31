@@ -37,6 +37,17 @@ export function SongRows({
             <div className="min-w-40 flex-1 basis-40">
               <p className="m-0 break-words font-medium text-text">{song.title}</p>
               <p className="m-0 break-words text-[0.9375rem] text-muted">{song.artist}</p>
+              {song.openSpotify !== null ? (
+                <a
+                  href={song.openSpotify}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  aria-label={`Open ${song.title} in Spotify`}
+                  className="text-[0.75rem] font-medium uppercase tracking-wide"
+                >
+                  OPEN SPOTIFY
+                </a>
+              ) : null}
             </div>
             <Chip>{roleLabel(song.role)}</Chip>
             <span className="text-[0.9375rem] text-muted">{Math.round(song.bpm)} BPM</span>

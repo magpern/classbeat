@@ -43,6 +43,7 @@ Factory = async_sessionmaker[AsyncSession]
 
 DETACHED_NOTE: Final = "In your earlier Spotify account."
 PLAYLIST_URL: Final = "https://open.spotify.com/playlist/"
+TRACK_URL: Final = "https://open.spotify.com/track/"
 SongsStateName = Literal["none", "waiting", "approved", "expired", "superseded", "cancelled"]
 ListStatus = Literal["waiting", "approved", "expired", "superseded", "cancelled"]
 
@@ -108,6 +109,13 @@ def link_of(playlist_id: str) -> str | None:
     """The owner's own link to a playlist they hold, built from a stored id; None when the id is
     not 22 letters and digits (it never reaches a URL then)."""
     return PLAYLIST_URL + playlist_id if SPOTIFY_ID.fullmatch(playlist_id) else None
+
+
+def track_link(spotify_id: str) -> str | None:
+    """The link back to one song in Spotify (its design guidelines ask for one wherever Spotify
+    metadata is shown), built here from the stored track id of a checked list; None when the id
+    is not 22 letters and digits (it never reaches a URL then)."""
+    return TRACK_URL + spotify_id if SPOTIFY_ID.fullmatch(spotify_id) else None
 
 
 def list_status(

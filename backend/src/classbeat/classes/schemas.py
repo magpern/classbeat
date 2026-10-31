@@ -272,8 +272,10 @@ class DeletedOut(BaseModel):
 
 
 class SongOut(BaseModel):
-    """A song of a list as the page shows it: no Spotify id. ``cover`` is the album cover URL on
-    the pinned host (ADR 0013 section 9, checked again just before it is returned) or null."""
+    """A song of a list as the page shows it: no bare Spotify id. ``cover`` is the album cover URL
+    on the pinned host (ADR 0013 section 9, checked again just before it is returned) or null.
+    ``open_spotify`` is the server-built link back to the song (ADR 0008 section 9, Amendment 6)
+    or null."""
 
     position: int
     title: str
@@ -283,6 +285,7 @@ class SongOut(BaseModel):
     length_sec: int
     new: bool
     cover: str | None = None
+    open_spotify: str | None = None
 
 
 class SongListOut(BaseModel):

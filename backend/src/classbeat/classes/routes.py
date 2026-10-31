@@ -251,6 +251,7 @@ async def _song_list(
                 length_sec=s.length_sec,
                 new=s.new,
                 cover=cover_url(s.cover),  # the pinned host only, again (ADR 0013 section 9)
+                open_spotify=song_views.track_link(s.spotify_id),
             )
             for i, s in enumerate(c.songs, start=1)
         ],
