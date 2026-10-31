@@ -101,6 +101,29 @@ async def test_an_invalid_design_input_is_refused_by_the_api(
     assert "not-a-spotify-id" not in response.text
 
 
+async def test_the_route_key_is_fixed_at_creation_and_never_from_the_browser(
+    browsers: Any, denv: DesignEnv
+) -> None:
+    """ADR 0012 section 5: the job input carries ``route_key`` from creation (``default`` until
+    M5 fills it from the plan); a browser that sends one is refused and nothing is created."""
+    browser: Browser = await browsers()
+    denv.app.app.dependency_overrides.clear()
+    for value in ("pro", "default"):
+        sent = body(browser)
+        sent["input"]["route_key"] = value
+        key = {"Idempotency-Key": f"g2-route-{value}-key-0001"}
+        refused = await browser.post("/api/jobs", sent, key)
+        assert refused.status_code == 422, refused.text
+    created = await browser.post(
+        "/api/jobs", body(browser), {"Idempotency-Key": "g2-route-ok-0001"}
+    )
+    assert created.status_code == 201, created.text
+    row = denv.ops.row(UUID(created.json()["id"]))
+    assert row.input["route_key"] == "default"
+    jobs = denv.ops.sql("SELECT count(*) FROM jobs WHERE owner_id = :o", o=browser.user_id)
+    assert jobs.scalar_one() == 1
+
+
 def connection_row(denv: DesignEnv, owner: UUID) -> Any:
     return denv.ops.sql(
         "SELECT status, last_error, last_used_at, updated_at FROM connections WHERE owner_id = :o",

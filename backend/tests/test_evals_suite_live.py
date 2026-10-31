@@ -28,7 +28,7 @@ from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from classbeat.agent.provider import ModelProvider
-from classbeat.agent.providers import FakeProvider, OpenAIProvider
+from classbeat.agent.providers import DeepSeekProvider, FakeProvider, OpenAIProvider
 from classbeat.agent.providers.fake import FakeScript
 from classbeat.config import Settings
 from classbeat.db import system_session
@@ -44,7 +44,7 @@ from classbeat.evals.suite import (
     read_manifest_data,
     suite_digest,
 )
-from classbeat.models.providers import provider_for_choice
+from classbeat.models.providers import eval_provider_for_choice
 from classbeat.models.routes import ModelChoice
 from classbeat.models.store import file_sha256
 from classbeat.models.versions import running_prompt_versions
@@ -273,7 +273,7 @@ def test_the_cli_wires_exactly_the_real_factory_and_installer(
                   "--authorization", "go")  # fmt: skip
     assert code == 0
     (call,) = entry
-    assert call["provider_factory"] is provider_for_choice
+    assert call["provider_factory"] is eval_provider_for_choice  # DeepSeek's eval-only path
     assert call["install"] is suite_live.install_choice_allowlist
     assert "suite" not in call  # the digest-verified load_suite(), never one from an argument
     assert callable(call["open_session"])
@@ -367,6 +367,8 @@ def test_a_provider_that_is_not_the_choices_adapter_is_refused(
 def test_the_provider_kind_is_the_adapter_class() -> None:
     real = OpenAIProvider(SecretStr(TEST_KEY), transport=httpx.MockTransport(_never))
     assert suite_live.provider_kind(real) == "openai"
+    deepseek = DeepSeekProvider(SecretStr(TEST_KEY), transport=httpx.MockTransport(_never))
+    assert suite_live.provider_kind(deepseek) == "deepseek"  # #297 follow-up: not refused
     assert suite_live.provider_kind(NamedOpenAI.from_file(
         Path(__file__).parent / "agent_scripts" / "good_first_draft.json")) is None  # fmt: skip
 

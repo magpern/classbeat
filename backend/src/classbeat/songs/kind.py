@@ -26,14 +26,15 @@
 
 Registered in ``classbeat.jobs.KINDS`` on import, by the worker (which runs it) and the web app
 (the jobs API validates with the same registry). The worker's runtime is ``design_draft``'s
-(``classbeat.design.current_runtime``: the key ring, a new model provider per run, the agent
-settings) plus ``classbeat.songs.config``; a run without a runtime fails ``internal``.
+(``classbeat.design.current_runtime``: the key ring, the model of each stage group from the job's
+``route_key``, the agent settings) plus ``classbeat.songs.config``; a run without a runtime fails
+``internal``.
 """
 
 from collections.abc import Awaitable, Callable
 from typing import Final
 
-from classbeat.design.kind import current_runtime, new_provider
+from classbeat.design.kind import current_runtime, group_model
 from classbeat.jobs import KINDS, Complete, JobFailure, JobKind, JobRun, Outcome
 from classbeat.songs import config
 from classbeat.songs.admit import admit, approve_check
@@ -52,13 +53,14 @@ async def _phase_two(run: JobRun, given: DesignWithSongsInput) -> Complete:
     runtime = current_runtime()
     if runtime is None:
         raise JobFailure("internal")
-    provider = new_provider(runtime)  # before any Spotify or MOWL call; this run's own
+    # Phase 2 runs the ``design`` group, before any Spotify or MOWL call; its own provider.
+    model = await group_model(runtime, run, given.route_key, "design")
     return await run_phase_two(
         run,
         given,
         keyring=runtime.keyring,
-        provider=provider,
-        agent=runtime.agent,
+        provider=model.provider,
+        agent=model.agent,
         config=config.current(),
     )
 
@@ -75,7 +77,8 @@ async def run(job_run: JobRun) -> Outcome:
         if job_run.approved and given.mode != "pick":
             raise JobFailure("internal")  # a resume never waits
         return await phase_two(job_run, given)
-    provider = new_provider(runtime)  # before any Spotify or MOWL call; this run's own
+    # Phase 1 runs the ``songs`` group, before any Spotify or MOWL call; its own provider.
+    model = await group_model(runtime, job_run, given.route_key, "songs")
     return await run_phase_one(
         job_run,
         given,
@@ -83,8 +86,8 @@ async def run(job_run: JobRun) -> Outcome:
         seed=SeedSpec.of(given.seed),
         origin=KIND,
         keyring=runtime.keyring,
-        provider=provider,
-        agent=runtime.agent,
+        provider=model.provider,
+        agent=model.agent,
         config=config.current(),
     )
 
