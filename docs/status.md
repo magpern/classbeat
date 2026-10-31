@@ -17,7 +17,7 @@ GitHub hold the detail.
 | M3c | Eval suite, OpenAI and DeepSeek adapters | done technically (on replayed providers, #219): [ADR 0012](adr/0012-eval-suite-and-model-providers.md); the owner's live steps are in [docs/runbooks/m3c-model-enable.md](runbooks/m3c-model-enable.md) |
 | M5 | Tiers, quotas, codes, admin | done technically, on fakes, once this E2E PR (#228) is merged (the security suite #227 is in) ([ADR 0011](adr/0011-tiers-quotas-and-admin.md)); issues in milestone "M5 Tiers and admin". Live activation is the owner's |
 | MU | Night Studio UI (ADR 0013) | design accepted 2026-10-30 ([ADR 0013](adr/0013-ui-design-night-studio.md), roadmap Amendment 8); issues #242, #243, #246 to #251, #253 to #255; runs beside M4 and M5, done before M6 |
-| M6 | Security review, backups, GDPR, VPS | not started; starts after MU. **VPS configuration ready, not deployed** (#341): `compose.prod.yaml`, `Caddyfile`, [vps-deploy.md](runbooks/vps-deploy.md), checked locally only (see the runbook's "Local smoke"); the deploy, DNS, TLS, server, mail account and secrets are the owner's steps. Security review, backups and restore drill, GDPR export/delete are not done |
+| M6 | Security review, backups, GDPR, VPS | **not done**; in progress: the automated security matrices (#339, PR open: log secrecy, ciphertext-only dump, 403 and 404 route matrices; still to do: the end-to-end security review, backups, GDPR export and delete). **VPS configuration ready, not deployed** (#341): `compose.prod.yaml`, `Caddyfile`, [vps-deploy.md](runbooks/vps-deploy.md), checked locally only (see the runbook's "Local smoke"); the deploy, DNS, TLS, server, mail account and secrets are the owner's steps. Security review, backups and restore drill, GDPR export/delete are not done |
 | M7 | Commercial (deferred) | deferred |
 
 ## Now
@@ -209,6 +209,17 @@ GitHub hold the detail.
       provider re-authentication (#291); the delete-class confirmation scroll and focus (#301); Z1 to Z7 label
       tests (#301); CSP and Referrer-Policy on an unhandled 500 (#293); a test for the QR attribute allow-list
       (#293). Left open from it: the song strip's start times against the analysed music (needs a backend field).
+- **M6 started, not done.** #339 (`test(security)`) adds the automated checks the M6 "done when" names, all on fakes
+  and in CI: `backend/tests/test_m6_security_logs.py` (no secret in any log record or error response over the full
+  fake flows: sign-in, reset by mail, OAuth sign-up, MOWL and Spotify connect, a pick, its approval, the design run,
+  Save and an admin session; no never-returned credential in any response), `test_m6_security_dump.py` (a full
+  `COPY`/`pg_dump --data-only` of every table after those flows holds ciphertext only), and
+  `test_m6_security_routes.py` (the app's route table against a classification: every `/api/admin` route is 403 for a
+  non-admin and for an admin without a current TOTP check, every owned-id route is 404 for another user's ids with the
+  body an unknown id gets, and a new route fails until it is classified; the classification is also checked against each route's own dependencies, so a `public` route that needs a session fails). The real `pg_dump` is not run in CI (client version); the data is read with `COPY`. The `e2e` job also greps the web and worker
+  logs of the whole Playwright run for the value of every secret file. Not covered by this PR, so M6 stays open: the
+  rest of the security review (headers, rate limits and egress against the live shape, dependency findings), backups
+  and restore, GDPR export and delete, the VPS and its network rules.
 - Releases: v0.1.0 (cut partway through M0); v0.2.0 is not cut yet (deferred to save Actions quota). Image
   `ghcr.io/magpern/classbeat`, private.
 
