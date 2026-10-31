@@ -189,7 +189,7 @@ export function Swedebeat() {
               setEmail(e.target.value)
               // A "sign in here anyway" answer was for the account just tried: another email
               // is a new attempt and starts without force.
-              //MUT
+              setTaken(false)
             }}
             required
           />

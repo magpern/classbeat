@@ -154,7 +154,9 @@ describe('Swedebeat connection on the account page', () => {
     fireEvent.click(swedebeat.getByRole('button', { name: 'Connect Swedebeat' }))
     await swedebeat.findByTestId('swedebeat-device-warning')
     fireEvent.change(swedebeat.getByLabelText('Swedebeat email'), { target: { value: 'other@example.test' } })
-    expect(swedebeat.queryByTestId('swedebeat-device-warning')).toBeNull()
+    await waitFor(() => {
+      expect(swedebeat.queryByTestId('swedebeat-device-warning')).toBeNull()
+    })
     fireEvent.change(swedebeat.getByLabelText('Swedebeat password'), { target: { value: PASSWORD } })
     fireEvent.click(swedebeat.getByRole('button', { name: 'Connect Swedebeat' }))
     expect(await swedebeat.findByText('Swedebeat is connected.')).toBeInTheDocument()
