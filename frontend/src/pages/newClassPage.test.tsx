@@ -71,7 +71,7 @@ describe('the new-class form', () => {
     })
     expect(call?.headers.get('X-CSRF-Token')).toBe('csrf-session')
     expect(call?.headers.get('Idempotency-Key')).toMatch(/^[A-Za-z0-9_-]{16,64}$/)
-    expect(await screen.findByRole('heading', { name: 'Designing your class…' })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: 'Designing Tuesday climb…' })).toBeInTheDocument()
   })
 
   it('refuses a brief over 4096 bytes before sending, counting bytes and not characters', async () => {
@@ -234,6 +234,13 @@ describe('the new-class form', () => {
     expect(screen.getByLabelText('Style')).toHaveValue('Pop')
     fireEvent.click(screen.getByRole('button', { name: '90s' }))
     expect(screen.getByLabelText('Style')).toHaveValue('Pop, 90s')
+    expect(screen.getByRole('button', { name: 'Pop' })).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByRole('button', { name: '90s' })).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByRole('button', { name: 'Rock' })).toHaveAttribute('aria-pressed', 'false')
+    fireEvent.click(screen.getByRole('button', { name: 'Pop' }))
+    expect(screen.getByRole('button', { name: 'Pop' })).toHaveAttribute('aria-pressed', 'false')
+    expect(screen.getByLabelText('Style')).toHaveValue('90s')
+    expect(document.body).not.toHaveTextContent(/zones? \d/i)
   })
 
   it('lists the playlists as radio tiles in one group and prefills from a preset', async () => {

@@ -24,7 +24,9 @@ Disable and delete refuse a target whose role is ``admin``, the acting admin inc
 ``target_is_admin``). No route changes ``users.role``.
 
 The effective plan here is ``classbeat.plans.resolve``'s rule written as one set query over the
-page (highest-ranked plan of the active entitlements, ``free`` when none); the account tables'
+page (highest-ranked plan of the active entitlements, ``free`` when none), and its class limit is
+the effective one the ledger enforces (``classbeat.quota.bounds.effective_classes``: the stored
+``classes_per_month`` under ``CLASSBEAT_CLASSES_PER_MONTH_MAX``); the account tables'
 statements live in ``classbeat.auth`` and the connection status in ``classbeat.connections``
 (guards 8 and 4).
 """
@@ -39,12 +41,13 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from classbeat import auth
-from classbeat.admin.audit import Target
+from classbeat.admin.audit import Target, UserQuery
 from classbeat.admin.db import AdminDb, AdminRefused, admin_session
 from classbeat.admin.routes import AdminActor, admin_db, admin_router
 from classbeat.connections import connection_statuses
 from classbeat.emailnorm import normalize_email
 from classbeat.plans.tables import FEATURES
+from classbeat.quota.bounds import Bounds, effective_classes
 
 router = admin_router()
 
@@ -213,13 +216,19 @@ def _db(request: Request) -> AdminDb:
     return db
 
 
+def _bounds(request: Request) -> Bounds:
+    return Bounds.from_settings(request.app.state.settings)
+
+
 def _user(user_id: UUID) -> Target:
     """The target of a user action: ``target_user_id`` (nulled when the account goes, ADR 0011
     section 1); an id that is no user is answered 404 by ``admin_session``."""
     return Target(user_id=user_id)
 
 
-async def _summaries(session: AsyncSession, accounts: list[auth.AccountRow]) -> list[UserOut]:
+async def _summaries(
+    session: AsyncSession, accounts: list[auth.AccountRow], bounds: Bounds
+) -> list[UserOut]:
     if not accounts:
         return []
     rows = await session.execute(_PLAN_SUMMARY, {"ids": [a.id for a in accounts]})
@@ -237,7 +246,7 @@ async def _summaries(session: AsyncSession, accounts: list[auth.AccountRow]) -> 
                 plan=PlanOut(id=p.plan_id, name=p.plan_name, source=p.source, ends_at=p.ends_at),
                 features=list(p.features),
                 classes_held=int(p.held),
-                classes_limit=int(p.classes_per_month),
+                classes_limit=effective_classes(int(p.classes_per_month), bounds),
                 cost_micros=int(p.cost),
             )
         )
@@ -272,7 +281,7 @@ async def _target(session: AsyncSession, user_id: UUID, *, lock: bool = False) -
 async def list_users(
     request: Request,
     actor: AdminActor,
-    q: Annotated[str | None, Query(max_length=254)] = None,
+    q: Annotated[UserQuery | None, Query()] = None,
     offset: Annotated[int, Query(ge=0, le=10_000)] = 0,
     limit: Annotated[int, Query(ge=1, le=100)] = 50,
 ) -> UserPage:
@@ -280,7 +289,7 @@ async def list_users(
     params = {"q": prefix, "offset": offset, "limit": limit}
     async with admin_session(_db(request), actor, "user.list", params=params) as session:
         accounts = await auth.find_accounts(session, prefix=prefix, offset=offset, limit=limit + 1)
-        page = await _summaries(session, accounts[:limit])
+        page = await _summaries(session, accounts[:limit], _bounds(request))
     return UserPage(users=page, next_offset=offset + limit if len(accounts) > limit else None)
 
 
@@ -288,7 +297,7 @@ async def list_users(
 async def read_user(request: Request, actor: AdminActor, user_id: UUID) -> UserDetail:
     async with admin_session(_db(request), actor, "user.read", target=_user(user_id)) as session:
         found = await _target(session, user_id)
-        (summary,) = await _summaries(session, [found])
+        (summary,) = await _summaries(session, [found], _bounds(request))
         entitlements = await session.execute(_ENTITLEMENTS, {"o": user_id, "n": ENTITLEMENT_ROWS})
         ledger = await session.execute(_LEDGER, {"o": user_id, "n": LEDGER_ROWS})
         statuses = await connection_statuses(session, user_id)

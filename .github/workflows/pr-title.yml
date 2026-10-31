@@ -2,9 +2,16 @@ name: PR title
 
 # PRs are squash-merged, so the PR title becomes the commit on main: check it against
 # commitlint.config.cjs. A separate workflow, so editing the title re-runs only this check.
+#
+# `pr-title` is a required check, so it must also report in the merge queue (`merge_group`). A
+# merge group has no PR title. Instead the job checks the subjects of the commits the queue is
+# about to land (`git log --format=%s base_sha..head_sha`): the squash commits, whose subject is
+# each PR's title as it was when the queue built the group. A title edited after the PR was
+# enqueued is checked there too, so it can't land unchecked.
 on:
   pull_request:
     types: [opened, edited, reopened, synchronize]
+  merge_group:
 
 permissions:
   contents: read
@@ -14,10 +21,12 @@ jobs:
     name: pr-title
     runs-on: ubuntu-24.04
     steps:
-      # No token left in .git/config while third-party lint code runs.
+      # No token left in .git/config while third-party lint code runs. A merge group needs the
+      # history between its base and head.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          fetch-depth: ${{ github.event_name == 'merge_group' && 0 || 1 }}
 
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
@@ -26,6 +35,7 @@ jobs:
 
       # The title goes through an environment variable, never into the script text.
       - name: Check the title with commitlint
+        if: github.event_name == 'pull_request'
         env:
           PR_TITLE: ${{ github.event.pull_request.title }}
         run: |
@@ -34,3 +44,26 @@ jobs:
             --package @commitlint/cli@21.2.3 \
             --package @commitlint/config-conventional@21.2.3 \
             -- commitlint --verbose
+
+      # Every commit the merge group would land, each subject on its own. Fails closed: a missing
+      # or unknown SHA, or an empty range, fails the check.
+      - name: Check the queued squash subjects with commitlint
+        if: github.event_name == 'merge_group'
+        env:
+          BASE_SHA: ${{ github.event.merge_group.base_sha }}
+          HEAD_SHA: ${{ github.event.merge_group.head_sha }}
+        run: |
+          set -euo pipefail
+          [ -n "$BASE_SHA" ] && [ -n "$HEAD_SHA" ] || { echo "::error::merge group without base or head SHA"; exit 1; }
+          git cat-file -e "${BASE_SHA}^{commit}"
+          git cat-file -e "${HEAD_SHA}^{commit}"
+          mapfile -t commits < <(git rev-list --reverse "${BASE_SHA}..${HEAD_SHA}")
+          [ "${#commits[@]}" -gt 0 ] || { echo "::error::no commits in ${BASE_SHA}..${HEAD_SHA}"; exit 1; }
+          for c in "${commits[@]}"; do
+            subject="$(git log -1 --format=%s "$c")"
+            echo "checking $c: $subject"
+            printf '%s\n' "$subject" | npx --yes \
+              --package @commitlint/cli@21.2.3 \
+              --package @commitlint/config-conventional@21.2.3 \
+              -- commitlint --verbose
+          done

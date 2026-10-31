@@ -1,0 +1,14 @@
+{
+ "status": 422,
+ "headers": {
+  "x-request-id": "req_fixture_422"
+ },
+ "body": {
+  "error": {
+   "message": "Invalid Parameters",
+   "type": "invalid_request_error",
+   "param": null,
+   "code": null
+  }
+ }
+}

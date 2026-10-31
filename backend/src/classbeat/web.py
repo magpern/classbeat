@@ -13,7 +13,7 @@ from pydantic import BaseModel
 from sqlalchemy import text
 
 # saving registers save_workout (SV1); playlists the Spotify writes for Check again (OP1)
-from classbeat import __version__, auth, playlists, saving, songs
+from classbeat import __version__, auth, playlists, quota, saving, songs
 from classbeat.admin import routes as admin_routes
 from classbeat.admin.db import AdminDb
 from classbeat.classes.routes import router as classes_router
@@ -23,6 +23,8 @@ from classbeat.crypto.keks import load_keyring
 from classbeat.db import create_engine, create_session_factory, verify_database_role
 from classbeat.design import configure_limits
 from classbeat.design.routes import router as music_router  # registers design_draft (J3)
+from classbeat.flags.routes import router as settings_router
+from classbeat.headers import SecurityHeaders
 from classbeat.jobs.events_routes import StreamLimiter
 from classbeat.jobs.events_routes import router as job_events_router
 from classbeat.jobs.hub import EventHub
@@ -30,6 +32,7 @@ from classbeat.jobs.routes import router as jobs_router
 from classbeat.operations.routes import router as operations_router
 from classbeat.plans.routes import router as plans_router
 from classbeat.playlists.runtime import playlists_runtime
+from classbeat.quota import PlanRevisionPolicy
 from classbeat.spotify.routes import api as spotify_router
 from classbeat.spotify.routes import callback as spotify_callback_router
 from classbeat.usage.routes import router as usage_router
@@ -143,7 +146,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         openapi_url="/api/openapi.json" if docs_enabled else None,
     )
     app.state.settings = settings
-    configure_limits(settings)  # revise_draft's admit reads them (ADR 0007 section 4)
+    # The revise kinds' admit reads them (ADR 0007 section 4): the plan's revisions per class
+    # under the setting, and the money bounds of the cost cap (ADR 0011 sections 3 and 4).
+    configure_limits(settings, PlanRevisionPolicy(settings.revisions_per_class))
+    quota.configure(settings)
     # design_with_songs' admit reads the feature switch (ADR 0008 section 10); importing
     # classbeat.songs registered the kind.
     songs.configure(songs.SongConfig.from_settings(settings))
@@ -159,6 +165,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(jobs_router)
     app.include_router(usage_router)
     app.include_router(plans_router)
+    app.include_router(settings_router)
     app.include_router(operations_router)
     app.include_router(music_router)
     app.include_router(classes_router)
@@ -168,4 +175,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             _add_single_page_app(app, settings.static_dir)
         else:
             logger.warning("static_dir does not exist; not serving static files")
+    # Added last, so it is the outermost middleware: the CSP and Referrer-Policy go on every
+    # response, the auth middleware's own answers included (ADR 0013 section 9).
+    app.add_middleware(SecurityHeaders)
     return app

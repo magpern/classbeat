@@ -1,6 +1,6 @@
 {
- "suite_version": 3,
- "digest": "2784a043380717f56842be5fd91517d801dea05a1db44ec9f4647b061bc6a383",
+ "suite_version": 6,
+ "digest": "027a8a2f3fa5634b392e148a1faf27834c33eb4d53d2385fe334dfca2d47c51d",
  "rules": {
   "repeat": 3,
   "pass_share": 0.9,
@@ -49,7 +49,7 @@
   },
   "revisions": {
    "design": [
-    "revise_easier", "revise_more_sprints",
+    "revise_easier", "revise_more_sprints", "revise_other_songs",
     "rev_climb_to_end_45", "rev_climb_to_start_40", "rev_easier_40", "rev_easier_50_to_easy",
     "rev_more_sprints_30", "rev_more_sprints_60", "rev_shorter_45_to_30", "rev_shorter_75_to_60"
    ]
@@ -61,12 +61,24 @@
    ]
   },
   "missing_music": {
-   "design": ["music_no_sections", "music_too_short", "music_unknown_bpm"]
+   "design": [
+    "music_no_sections", "music_too_short", "music_unknown_bpm",
+    "mm_music_short_60", "mm_no_bpm_at_all", "mm_no_sections_short", "mm_revise_unknown_bpm"
+   ],
+   "songs": ["mm_pool_too_small", "mm_unknown_bpm_pick"]
   },
   "adversarial": {
-   "design": ["adversarial_brief", "adversarial_music", "revise_adversarial_music"],
-   "songs": ["injected_title"]
+   "design": [
+    "adversarial_brief", "adversarial_music", "revise_adversarial_music",
+    "adv_brief_requests", "adv_malformed_music", "adv_oversized_music", "adv_tool_requests",
+    "revise_adv_requests"
+   ],
+   "songs": ["injected_title", "adv_malformed_hits", "adv_oversized_hits", "adv_pool_requests"]
   },
-  "cost": {}
- }
+  "cost": {
+   "design": ["cost_lean_30", "cost_one_fix_45", "cost_revise_lean"],
+   "songs": ["cost_pick_30", "cost_replace_two"]
+  }
+ },
+ "expected_outcomes": {"mm_pool_too_small": "pool_too_small"}
 }

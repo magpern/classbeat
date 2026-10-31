@@ -20,7 +20,8 @@ Both adapters (M3c P2, P3) build on this module; it sends nothing itself.
   nor a context, after one log line with the exception class, the status and the request id.
 - **Errors** (``category_of``) by SDK exception class and status code, never by message text:
   rate limits, server errors, timeouts and connection errors are ``model_unavailable``;
-  ``AuthenticationError``, ``PermissionDeniedError`` and ``NotFoundError`` are ``model_config``;
+  ``AuthenticationError``, ``PermissionDeniedError``, ``NotFoundError`` and 402 (DeepSeek's
+  insufficient balance) are ``model_config``;
   ``BadRequestError`` and the rest are ``internal``; an allowlist refusal is ``outbound_blocked``.
 - **Usage** (``normalise_usage``): the OpenAI APIs count cached reads and cache writes inside the
   prompt tokens, and from GPT-5.6 on bill a write (30-minute lifetime, the default and the only
@@ -34,9 +35,9 @@ Both adapters (M3c P2, P3) build on this module; it sends nothing itself.
   from the parsed input (``strip_added_nulls``) before the loop validates it against the stage's
   own model, unchanged (ADR 0006 §4): the transform never loosens what the loop accepts.
 - **Effort** (``provider_effort``): classbeat's effort maps per catalog model to the provider's
-  own setting (OpenAI ``reasoning.effort``; DeepSeek: none, the model choice is the effort). An
-  effort the catalog entry does not list, or one the provider has no setting for, is refused
-  (``EffortRefused``), never changed.
+  own setting (OpenAI ``reasoning.effort``; DeepSeek ``reasoning_effort``, ``low``, ``high`` and
+  ``max`` only). An effort the catalog entry does not list, or one the provider has no exact
+  setting for, is refused (``EffortRefused``), never changed.
 
 The key lives in the SDK client only; nothing here logs, stores or repr()s it.
 """
@@ -77,6 +78,10 @@ OPENAI_EFFORTS: Final[Mapping[str, str]] = {
     "xhigh": "xhigh",
     "max": "max",
 }
+# classbeat effort -> DeepSeek ``reasoning_effort`` (its thinking-mode guide and API reference,
+# read 2026-10-31: ``low``, ``high``, ``max``; it would quietly turn ``medium`` and ``xhigh`` into
+# ``high``, so those two are refused, never changed; ADR 0012 §3, amended 2026-10-31).
+DEEPSEEK_EFFORTS: Final[Mapping[str, str]] = {"low": "low", "high": "high", "max": "max"}
 
 
 class ModelOutboundBlocked(openai.OpenAIError):
@@ -162,6 +167,8 @@ def category_of(exc: BaseException) -> str:
         exc, openai.AuthenticationError | openai.PermissionDeniedError | openai.NotFoundError
     ):
         return "model_config"
+    if isinstance(exc, openai.APIStatusError) and exc.status_code == 402:
+        return "model_config"  # DeepSeek's "Insufficient Balance": the operator's to fix
     if isinstance(exc, openai.RateLimitError | openai.InternalServerError):
         return "model_unavailable"
     if isinstance(exc, openai.APIStatusError):
@@ -256,13 +263,29 @@ def responses_usage(usage: Any) -> Usage:
     )
 
 
+def _deepseek_cache_hits(usage: Any, prompt: int) -> int:
+    """DeepSeek's documented cache fields (``prompt_cache_hit_tokens`` and
+    ``prompt_cache_miss_tokens``, their API reference, read 2026-10-31): the hits, when both are
+    whole numbers that add up to the prompt; else 0, so the cost errs high, never low."""
+    hit = getattr(usage, "prompt_cache_hit_tokens", None)
+    miss = getattr(usage, "prompt_cache_miss_tokens", None)
+    if not all(isinstance(n, int) and not isinstance(n, bool) and n >= 0 for n in (hit, miss)):
+        return 0
+    return hit if hit + miss == prompt else 0  # pyright: ignore[reportOptionalOperand, reportReturnType]
+
+
 def chat_usage(usage: Any) -> Usage:
     """Chat Completions' ``usage`` (``prompt_tokens``, ``prompt_tokens_details.cached_tokens``,
-    ``completion_tokens`` with reasoning inside it)."""
+    ``completion_tokens`` with reasoning inside it). Without ``cached_tokens`` (DeepSeek reports
+    its own fields instead), the cache hits come from ``_deepseek_cache_hits``."""
     details = getattr(usage, "prompt_tokens_details", None)
+    prompt = getattr(usage, "prompt_tokens", 0)
+    cached = getattr(details, "cached_tokens", None)
+    if cached is None:
+        cached = _deepseek_cache_hits(usage, prompt)
     return normalise_usage(
-        prompt_tokens=getattr(usage, "prompt_tokens", 0),
-        cached_tokens=getattr(details, "cached_tokens", 0),
+        prompt_tokens=prompt,
+        cached_tokens=cached,
         written_tokens=getattr(details, "cache_write_tokens", 0),
         output_tokens=getattr(usage, "completion_tokens", 0),
     )
@@ -409,8 +432,8 @@ def tool_input(schema: Mapping[str, Any], arguments: str) -> Any:
 
 def provider_effort(entry: CatalogModel, effort: str) -> str | None:
     """The provider's setting for classbeat's ``effort`` on ``entry``: OpenAI's
-    ``reasoning.effort`` value, or ``None`` for DeepSeek (no effort parameter). Refused unless
-    the catalog entry lists the effort and the provider can express it."""
+    ``reasoning.effort`` or DeepSeek's ``reasoning_effort`` value. Refused unless the catalog
+    entry lists the effort and the provider can express it exactly."""
     if effort not in entry.efforts:
         raise EffortRefused("the model does not list this effort in the catalog")
     if entry.provider == "openai":
@@ -418,5 +441,7 @@ def provider_effort(entry: CatalogModel, effort: str) -> str | None:
             raise EffortRefused("OpenAI has no setting for this effort")
         return OPENAI_EFFORTS[effort]
     if entry.provider == "deepseek":
-        return None
+        if effort not in DEEPSEEK_EFFORTS:
+            raise EffortRefused("DeepSeek has no setting for exactly this effort")
+        return DEEPSEEK_EFFORTS[effort]
     raise EffortRefused("not an OpenAI-SDK provider")
