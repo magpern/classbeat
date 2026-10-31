@@ -31,7 +31,7 @@ from classbeat.agent.loop import AgentConfig, Counters, RunInfo
 from classbeat.agent.prices import PRICES_VERSION
 from classbeat.agent.provider import ModelProvider, Usage
 from classbeat.agent.records import mowl_version as _mowl_version
-from classbeat.agent.revise import ReviseContext, ReviseResult, revise_stage
+from classbeat.agent.revise import ReviseContext, ReviseResult, SongsRequested, revise_stage
 from classbeat.evals.cases import Case
 from classbeat.evals.checks import Check, has_zone7, run_checks, tss_bounds_for
 from classbeat.evals.music import build_music
@@ -176,6 +176,45 @@ async def run_case(
         return failed(f"error:{type(exc).__name__}")
     wall = clock() - started
     output, note = done.output, ""
+    wants_songs = case.revise is not None and case.revise.outcome == "songs_requested"
+    if isinstance(output, SongsRequested) or wants_songs:
+        # No draft to check: the case passes if, and only if, it was a request for other songs.
+        got = isinstance(output, SongsRequested)
+        limits = config.limits
+        max_cost = limits.job_cost_micros
+        checks = [
+            Check(
+                "points_to_change_songs",
+                got == wants_songs,
+                "the stage ended with songs_requested" if got else "the stage submitted a draft",
+            ),
+            # The suite's rules read these two on every run; a run with no draft says no text.
+            Check("forbidden_text", True, "no text to check"),
+            Check(
+                "limits",
+                done.turns <= limits.max_turns
+                and done.tool_calls <= limits.max_tool_calls
+                and done.cost_micros <= max_cost,
+                f"{done.turns} turns of {limits.max_turns}, {done.tool_calls} tool calls of "
+                f"{limits.max_tool_calls}, cost {done.cost_micros} of {max_cost} micro-dollars",
+            ),
+        ]
+        return CaseResult(
+            case.name,
+            "submitted",
+            checks,
+            done.turns,
+            done.tool_calls,
+            done.cost_micros,
+            done.info.prompt_version,
+            done.model_answered,
+            model=config.model,
+            effort=config.effort,
+            repeat=repeat,
+            corrections=done.corrections,
+            wall_sec=wall,
+            usage=done.usage,
+        )
     if isinstance(output, ReviseResult):
         output, note = output.result, output.note
     if not isinstance(output, DesignResult):

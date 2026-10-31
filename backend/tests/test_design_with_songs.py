@@ -17,6 +17,7 @@ from classbeat.playlists import common
 from classbeat.songs import search, song_list
 from ctx import make_context
 from songtools import CHOSEN, POOL, SongEnv, song_id
+from spotifycore import album_images
 
 pytestmark = pytest.mark.usefixtures("songenv")
 
@@ -37,7 +38,7 @@ async def test_a_pick_ends_waiting_with_its_song_list(songenv: SongEnv) -> None:
     # The hash is SHA-256 of the canonical content, and it is what the job waits on.
     assert bytes(stored.content_hash) == hashlib.sha256(canonical(content)).digest()
     assert bytes(stored.content_hash).hex() == digest
-    assert content["v"] == 1
+    assert content["v"] == 2  # v: 2 adds each song's cover (ADR 0013 section 9)
     assert content["mode"] == "pick"
     assert (content["target_sec"], content["total_sec"]) == (1800, 1857)
     assert content["crossfade_sec"] == 9.0
@@ -53,6 +54,8 @@ async def test_a_pick_ends_waiting_with_its_song_list(songenv: SongEnv) -> None:
         "bpm": 100.0,
         "length_sec": 240,
         "new": True,
+        # the search hit's album cover, the narrowest image of at least 64 px
+        "cover": album_images("FakeAlbum" + "0" * 13)[-1]["url"],
     }
     assert stored.music == {
         "source": "claude_pick",

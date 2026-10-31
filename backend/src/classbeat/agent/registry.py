@@ -7,8 +7,9 @@ registry lives in memory for one pick job (at most ``MAX_ENTRIES`` tracks) and i
 the model can only name a track it was shown, and only by its ref.
 
 What it keeps of a track is the cleaned, cut text the model was shown (control and format
-characters removed, 120 characters), its length in whole seconds and its year. The same Spotify
-id found by two searches is one entry with one ref.
+characters removed, 120 characters), its length in whole seconds and its year, and, for the
+backend alone, the album cover URL when it passes ``classbeat.covers.cover_url`` (ADR 0013
+section 9). The same Spotify id found by two searches is one entry with one ref.
 """
 
 import re
@@ -18,6 +19,7 @@ from dataclasses import dataclass, field
 from typing import Any, Final
 
 from classbeat.agent.schemas import clean_text
+from classbeat.covers import cover_url
 
 MAX_ENTRIES: Final = 300
 MAX_TEXT: Final = 120
@@ -35,6 +37,9 @@ class Entry:
     year: int | None
     duration_sec: int
     spotify_id: str = field(repr=False)
+    # The album cover (ADR 0013 section 9), host-checked; the backend's, like the id: ``shown``
+    # never includes it, so it never reaches a model.
+    cover: str | None = field(default=None, repr=False)
 
     def key(self) -> tuple[str, str]:
         return normalised(self.title), normalised(self.artist)
@@ -132,6 +137,7 @@ class SearchRegistry:
             year=_year(hit.get("year")),
             duration_sec=sec,
             spotify_id=tid,
+            cover=cover_url(hit.get("image")),
         )
         self._entries.append(entry)
         self._by_id[tid] = entry.ref

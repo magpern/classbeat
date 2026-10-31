@@ -138,6 +138,13 @@ class ReviseInput(DraftInput):
     note: Note = Field(default="", description="One sentence on what you changed (optional).")
 
 
+class SongsRequestedInput(BaseModel):
+    """``songs_requested`` of the ``revise`` stage: the request asks for other songs and for
+    nothing else, so there is nothing to revise. It takes no data."""
+
+    model_config = STRICT
+
+
 class MusicInput(BaseModel):
     """``get_music``: without ``track`` the music summary; with it, that track's sections."""
 

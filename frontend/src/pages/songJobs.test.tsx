@@ -1,7 +1,7 @@
-import { fireEvent, screen, waitFor } from '@testing-library/react'
+import { fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { beforeEach, describe, expect, it } from 'vitest'
 import { SONG_FAILURE_CATEGORIES } from '../api/songMessages'
-import { classBody, classRoutes, REV1 } from '../test/classFixtures'
+import { classBody, classRoutes, message, REV1 } from '../test/classFixtures'
 import { fakeApi, json, reason } from '../test/fakeApi'
 import { CLASS_ID, JOB_ID, OPERATION_ID, SESSION_ROUTES, jobBody, openStream, sse } from '../test/jobFixtures'
 import {
@@ -483,6 +483,50 @@ describe('a song job with an undecided MOWL attach', () => {
     expect(resume()).toBeNull()
     fireEvent.click(screen.getAllByRole('button', { name: 'Check again' })[1]!) // the attach
     expect(await screen.findByRole('button', { name: 'Create the playlist again' })).toBeInTheDocument()
+  })
+})
+
+describe('a request that only asks for other songs (use_change_songs)', () => {
+  const SONGS = { state: 'approved', job_id: JOB_ID, revision_id: LIST_ID, content_hash: HASH, expires_at: null }
+  const REVISE_JOB = 'b1111111-1111-4111-8111-111111111111'
+
+  function routes(cls: Record<string, unknown>) {
+    return {
+      ...SESSION_ROUTES,
+      ...classRoutes({ cls, messages: [message(1, 'user', 'Other <b>songs</b> please')] }),
+      [`GET /api/jobs/${REVISE_JOB}`]: jobBody('failed', { id: REVISE_JOB, error_category: 'use_change_songs' }),
+      [`GET ${LIST_PATH}`]: listBody({ status: 'approved' }),
+    }
+  }
+
+  it('says so in plain words and the Change songs button leads to the panel', async () => {
+    fakeApi(routes({ songs: SONGS }))
+    const { container } = renderAt(`/classes/${CLASS_ID}`)
+    const outcome = await screen.findByTestId('use-change-songs')
+    expect(outcome).toHaveTextContent('This request is only about the songs, so nothing changed.')
+    expect(outcome.textContent).not.toContain('use_change_songs')
+    expect(container.querySelector('b')).toBeNull()
+    const panel = await screen.findByRole('region', { name: 'Change songs' })
+    fireEvent.click(within(outcome).getByRole('button', { name: 'Change songs' }))
+    expect(panel).toHaveFocus()
+  })
+
+  it('points to a new class when the class uses a playlist of the user’s own', async () => {
+    fakeApi(routes({}))
+    renderAt(`/classes/${CLASS_ID}`)
+    const outcome = await screen.findByTestId('use-change-songs')
+    expect(outcome).toHaveTextContent(/uses a playlist of your own.*design a new class/)
+    expect(within(outcome).queryByRole('button', { name: 'Change songs' })).toBeNull()
+  })
+
+  it('words it on the job page too, without the code', async () => {
+    fakeApi({
+      ...SESSION_ROUTES,
+      [`GET ${JOB}`]: jobBody('failed', { kind: 'revise_draft', error_category: 'use_change_songs' }),
+    })
+    renderAt(`/jobs/${JOB_ID}`)
+    expect(await screen.findByText('This request is only about the songs')).toBeInTheDocument()
+    expect(document.body.textContent).not.toContain('use_change_songs')
   })
 })
 
