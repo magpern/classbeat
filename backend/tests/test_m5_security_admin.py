@@ -9,10 +9,11 @@
   422's row stores the route's template and method, never the raw input (#303 review).
 - The planted-value test across every admin route is ``test_m5_security_admin_secrets.py``.
 
-A route added later (AD2 #279 codes and invites, FL1 #216 flags) has no valid request in
+A route added later (the settings API of #222 part 2, say) has no valid request in
 ``BODIES`` or its path values in ``target_with_entitlement`` until its PR adds them: the tests
 then fail and name it, so the fuzz cannot silently skip a route. AD3's usage, jobs and refund
-routes are covered.
+routes and AD2's invites and redeem codes are covered; the settings API (#222 part 2) is the
+next to add (TODO at ``BODIES``).
 """
 
 import secrets
@@ -42,6 +43,19 @@ BAD_VALUES = {
 BODIES: dict[tuple[str, str], dict[str, Any]] = {
     ("POST", "/api/admin/users/{user_id}/entitlements"): {"plan_id": "pro"},
     ("DELETE", "/api/admin/users/{user_id}"): {"email": "wrong@example.com"},
+    # AD2 (#279): the invite and redeem-code creates.
+    ("POST", "/api/admin/invites"): {"expires_days": 7},
+    ("POST", "/api/admin/redeem-codes"): {
+        "label": "Spring",
+        "plan_id": "pro",
+        "features": [],
+        "grant_days": 30,
+        "max_redemptions": 5,
+        "expires_at": "2999-01-01T00:00:00+00:00",
+    },
+    # TODO(#222 part 2, the settings API): its routes need a valid body here and their path
+    # values in ``target_with_entitlement``; until then the gate, fuzz and planted-value tests
+    # fail on them and name the route (by design).
 }
 
 
@@ -149,7 +163,28 @@ async def target_with_entitlement(env: Env, conn: Connection) -> dict[str, str]:
         ),
         {"o": target},
     ).scalar_one()
-    return {"user_id": str(target), "entitlement_id": str(entitlement), "ledger_id": str(ledger)}
+    invite = conn.execute(
+        text(
+            "INSERT INTO invites (code_hash, expires_at) VALUES (:h, now() + interval '7 days') "
+            "RETURNING id"
+        ),
+        {"h": secrets.token_bytes(32)},
+    ).scalar_one()
+    code = conn.execute(
+        text(
+            "INSERT INTO redeem_codes (code_hash, label, plan_id, grant_days, max_redemptions, "
+            "expires_at) VALUES (:h, 'Fuzz', 'pro', 30, 5, now() + interval '30 days') "
+            "RETURNING id"
+        ),
+        {"h": secrets.token_bytes(32)},
+    ).scalar_one()
+    return {
+        "user_id": str(target),
+        "entitlement_id": str(entitlement),
+        "ledger_id": str(ledger),
+        "invite_id": str(invite),
+        "code_id": str(code),
+    }
 
 
 # --- the gate on every route ------------------------------------------------------------------
@@ -159,7 +194,8 @@ async def test_every_admin_route_refuses_a_non_admin_and_audits_the_admin_refusa
     env: Env, make_actor: Any, superuser: Connection
 ) -> None:
     values = {"user_id": str(uuid.uuid4()), "entitlement_id": str(uuid.uuid4()),
-              "ledger_id": str(uuid.uuid4())}  # fmt: skip
+              "ledger_id": str(uuid.uuid4()), "invite_id": str(uuid.uuid4()),
+              "code_id": str(uuid.uuid4())}  # fmt: skip
     plain = await env.user("plain@example.com")
     plain_actor = await make_actor(plain, mfa=True)
     await env.run("UPDATE sessions SET stepup_at = now() WHERE user_id = :u", u=plain)
@@ -260,12 +296,26 @@ async def test_every_string_input_of_every_admin_route_is_refused_and_audited_on
         "GET /api/admin/usage query:month",
         "GET /api/admin/jobs query:days",
         "POST /api/admin/users/{user_id}/credits/{ledger_id}/refund path:ledger_id",
+        "POST /api/admin/invites body:expires_days",
+        "POST /api/admin/invites/{invite_id}/disable path:invite_id",
+        "GET /api/admin/redeem-codes query:offset",
+        "POST /api/admin/redeem-codes body:label",
+        "POST /api/admin/redeem-codes/{code_id}/disable path:code_id",
     ):
         assert any(t.startswith(ad3) for t in tried), ad3  # fmt: skip
     state = superuser.execute(
         text("SELECT state FROM credit_ledger WHERE id = :l"), {"l": values["ledger_id"]}
     ).scalar_one()
     assert state == "committed"  # no fuzzed refund went through
+    live = superuser.execute(
+        text(
+            "SELECT (SELECT expires_at > now() FROM invites WHERE id = :i), "
+            "(SELECT disabled_at IS NULL FROM redeem_codes WHERE id = :c), "
+            "(SELECT count(*) FROM redeem_codes WHERE label <> 'Fuzz')"
+        ),
+        {"i": values["invite_id"], "c": values["code_id"]},
+    ).one()
+    assert tuple(live) == (True, True, 0)  # nothing disabled, no fuzzed code created
     # Nothing the fuzz sent changed the target (read as the superuser, past RLS).
     kept = superuser.execute(
         text(
