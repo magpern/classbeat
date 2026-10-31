@@ -44,9 +44,10 @@ from classbeat.admin.audit import Target
 from classbeat.admin.db import AdminDb, AdminRefused, admin_session
 from classbeat.admin.routes import AdminActor, admin_db, admin_router
 from classbeat.config import Settings
+from classbeat.db import system_session
 from classbeat.flags import core
 from classbeat.flags.core import FlagRefused
-from classbeat.plans.entitle import TRIAL_MAX_PLAN
+from classbeat.plans.entitle import TRIAL_MAX_PLAN, plan_ranks
 
 router = admin_router()
 
@@ -307,7 +308,7 @@ def _set_params(key: str, value: Any) -> dict[str, Any]:
 
 @router.get(SETTINGS, response_model=SettingsOut)
 async def read_settings(request: Request, actor: AdminActor) -> SettingsOut:
-    async with admin_session(_db(request), actor, "settings.read") as session:
+    async with admin_session(_db(request), actor, "setting.read") as session:
         return await _view(session, request.app.state.settings)
 
 
@@ -321,11 +322,17 @@ async def set_flag(request: Request, actor: AdminActor, key: KeyPath, body: Sett
     refusal: str | None = None
     try:
         canonical = core.validate_for_write(key, body.value, trial_days_max=settings.trial_days_max)
-        if len(json.dumps(canonical).encode()) > MAX_VALUE_BYTES:
+        if _stored_bytes(canonical) > MAX_VALUE_BYTES:
             refusal = "invalid_value"
     except FlagRefused as exc:
         refusal = exc.reason
-    params = {"key": key} if refusal is not None else _set_params(key, canonical)
+    params: dict[str, Any] = {"key": key} if refusal is not None else _set_params(key, canonical)
+    if key == "trial" and refusal is None:
+        # Read before the audited transaction (plans is a system table), so a refusal row for a
+        # plan that does not exist records only the reason, never the string the admin typed.
+        refusal = await _trial_plan_refusal(request, canonical["plan"])
+        if refusal == "unknown_plan":
+            params = {"key": key}
     async with admin_session(
         _db(request),
         actor,
@@ -340,6 +347,20 @@ async def set_flag(request: Request, actor: AdminActor, key: KeyPath, body: Sett
             await _check_trial_plan(session, canonical["plan"])
         await session.execute(_UPSERT, {"k": key, "v": json.dumps(canonical), "by": actor.user_id})
         return await _flag_view(session, settings, key)
+
+
+def _stored_bytes(value: Any) -> int:
+    """The bytes ``value::text`` takes in ``app_settings`` (the ``app_settings_value`` check):
+    UTF-8, as jsonb prints it (a space after each colon and comma)."""
+    return len(json.dumps(value, ensure_ascii=False, separators=(", ", ": ")).encode())
+
+
+async def _trial_plan_refusal(request: Request, plan: str) -> str | None:
+    async with system_session(request.app.state.session_factory) as db:
+        ranks = await plan_ranks(db, plan, TRIAL_MAX_PLAN)
+    if plan not in ranks:
+        return "unknown_plan"
+    return "plan_above_instructor" if ranks[plan] > ranks[TRIAL_MAX_PLAN] else None
 
 
 async def _check_trial_plan(session: AsyncSession, plan: str) -> None:

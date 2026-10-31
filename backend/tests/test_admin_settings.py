@@ -206,7 +206,7 @@ async def test_the_read_shows_each_flag_with_its_effective_value_and_source(
     read_only = view.json()["read_only"]
     assert (read_only["billing_enabled"], read_only["swedebeat_enabled"]) == (False, False)
     assert read_only["agent_job_cost_micros"] > 0
-    assert ("settings.read", "ok", None) in audit(superuser, actor.user_id)
+    assert ("setting.read", "ok", None) in audit(superuser, actor.user_id)
 
 
 async def test_an_invalid_stored_value_reads_as_invalid_with_the_stricter_default(
@@ -309,15 +309,11 @@ async def test_a_value_the_environment_or_the_schema_forbids_is_422_and_audited_
     )
     [row] = [r for r in rows_of(superuser, actor.user_id) if r.action == "setting.set"]
     assert (row.outcome, row.reason, row.target_id) == ("refused", why, key)
-    # A refused value is not logged; a trial the plans table refuses (shape fine) names its plan.
-    expected = {
-        "key": key,
-        **(
-            {"plan": value["plan"], "days": value["days"]}
-            if why in ("plan_above_instructor", "unknown_plan")
-            else {}
-        ),
-    }
+    # A refused value is not logged. A trial the plans table refuses for its rank names its plan
+    # (a real plan code); one for an unknown plan records only the reason.
+    expected = {"key": key}
+    if why == "plan_above_instructor":
+        expected |= {"plan": value["plan"], "days": value["days"]}
     assert given(row.params) == expected
 
 
@@ -497,3 +493,57 @@ async def test_a_refused_write_leaves_the_audit_log_free_of_the_rejected_values(
     await actor.call("PATCH", f"{PLANS}/{uuid.uuid4().hex[:8]}", {"classes_per_month": 1})
     dump = superuser.execute(text("SELECT string_agg(params::text, ' ') FROM admin_audit")).scalar()
     assert secret not in (dump or "")
+
+
+async def test_a_trial_of_exactly_the_environments_days_is_accepted(
+    env: Env, make_actor: Any, superuser: Connection
+) -> None:
+    actor = await stepped_admin(env, make_actor)
+    exact = {"plan": "instructor", "days": TRIAL_DAYS_MAX}
+    assert (await put(actor, "trial", exact)).status_code == 200
+    assert stored(superuser, "trial") == exact
+    zero = await put(actor, "trial", {"plan": "instructor", "days": 0})  # off
+    assert zero.status_code == 200
+
+
+async def test_an_unknown_trial_plan_is_refused_without_logging_the_name(
+    env: Env, make_actor: Any, superuser: Connection
+) -> None:
+    actor = await stepped_admin(env, make_actor)
+    response = await put(actor, "trial", {"plan": "secretplanname", "days": 3})
+    assert (response.status_code, reason(response)) == (422, "unknown_plan")
+    assert stored(superuser, "trial") is None
+    dump = superuser.execute(text("SELECT string_agg(params::text, ' ') FROM admin_audit")).scalar()
+    assert "secretplanname" not in (dump or "")
+    [row] = [r for r in rows_of(superuser, actor.user_id) if r.action == "setting.set"]
+    assert (row.outcome, row.reason) == ("refused", "unknown_plan")
+
+
+async def test_a_valid_banner_of_280_multibyte_characters_is_accepted(
+    env: Env, make_actor: Any, superuser: Connection
+) -> None:
+    """The 2048-byte limit of ``app_settings`` is measured on UTF-8 bytes as jsonb prints them,
+    not on an ASCII-escaped encoding, so 280 emoji (1120 bytes) fit."""
+    actor = await stepped_admin(env, make_actor)
+    banner = {"text": "🚴" * 280, "level": "info"}
+    assert (await put(actor, "banner", banner)).status_code == 200
+    assert stored(superuser, "banner") == banner
+    assert (await Browser(env).get(PUBLIC)).json()["banner"] == banner
+
+
+async def test_the_settings_read_runs_in_a_read_only_transaction(
+    env: Env, make_actor: Any, superuser: Connection, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from classbeat.admin import settings as settings_module
+
+    actor = await stepped_admin(env, make_actor)
+
+    async def writes(session: Any, _settings: Any) -> None:
+        await session.execute(
+            text("INSERT INTO app_settings (key, value) VALUES ('banner', '\"x\"'::jsonb)")
+        )
+
+    monkeypatch.setattr(settings_module, "_view", writes)
+    response = await actor.get(SETTINGS)
+    assert response.status_code == 500  # the write was refused by the database
+    assert stored(superuser, "banner") is None

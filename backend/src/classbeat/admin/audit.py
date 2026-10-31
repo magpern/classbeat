@@ -212,7 +212,7 @@ ACTIONS: dict[str, type[Params]] = {
 # The audit log (AD4 #222).
 ACTIONS["audit.list"] = AuditListParams
 # Settings, flags and plan limits (AD4 #222, classbeat.admin.settings).
-ACTIONS["settings.read"] = NoParams
+ACTIONS["setting.read"] = NoParams
 ACTIONS["setting.set"] = SettingSetParams
 ACTIONS["setting.clear"] = NoParams
 ACTIONS["plan.update"] = PlanUpdateParams
