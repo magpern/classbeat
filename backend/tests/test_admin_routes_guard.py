@@ -190,6 +190,7 @@ async def test_a_write_needs_a_recent_stepup(
 async def test_the_admin_rate_limit_refuses_with_an_audit_row(
     env: Env, make_actor: Any, superuser: Connection, one_minute: None
 ) -> None:
+    """Threats: T93."""
     user_id = await env.user("a@example.com", role="admin")
     actor = await make_actor(user_id, mfa=True)
     statuses = [(await actor.get(PROBE)).status_code for _ in range(61)]

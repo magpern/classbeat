@@ -19,6 +19,8 @@ kinds and so the NOTIFY of ``jobs.events``), which no admin route runs.
 What it cannot see is a call made through a value (a callback passed in, ``getattr`` with a
 computed name, ``importlib``); the admin package uses none of them for database work, and
 ``VALUE_ROOTS`` names the one object the gate calls through ``request.app.state``.
+
+Threats covered: T91.
 """
 
 import ast
@@ -257,6 +259,7 @@ def relative_imports(items: dict[str, Item]) -> list[str]:
 
 
 def test_guard_11_follows_every_name_the_admin_path_reaches() -> None:
+    """Threats: T91."""
     items = reach(admin_modules(), values=VALUE_ROOTS)
     keys = set(items)
     # The PR #277 review's examples, the gate's helpers, and two and three levels down.
@@ -361,7 +364,10 @@ def test_the_reach_follows_every_way_the_probe_reaches_a_forbidden_statement(pro
       imports ``deep.relative_target`` locally and relatively;
     - ``<probe>.deep.chained(...)``, an attribute chain through the package (G5).
 
-    ``helpers.unused`` and ``deep.never``, which nothing on the chain names, are not followed."""
+    ``helpers.unused`` and ``deep.never``, which nothing on the chain names, are not followed.
+
+    Threats: T91.
+    """
     items = reach([importlib.import_module(f"{probe}.entry")], prefix=probe)
     flagged = {p.split(":")[0] for p in problems(items)}
     assert flagged == {
