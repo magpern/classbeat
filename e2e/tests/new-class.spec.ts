@@ -23,6 +23,9 @@ test('a user without MOWL is sent to connect it, then starts a design from a pla
   await page.getByRole('link', { name: 'New class' }).click()
   const form = page.getByRole('form', { name: 'New class' })
   await form.getByLabel('Class name').fill('E2E climb')
+  // Song picking is off in this stack (CLASSBEAT_SONG_PICKING unset): the song choice is not offered
+  // and the form is the playlist form (the pick flow itself is the T3 spec, ADR 0008 section 12).
+  await expect(form.getByRole('button', { name: 'Let Claude pick the songs' })).toHaveCount(0)
   await expect(form.getByText(/classbeat adds this playlist to your MOWL music/)).toBeVisible()
   await form.getByLabel('Playlist').selectOption({ label: 'E2E Hill Climb' })
   await form.getByRole('button', { name: 'Design the class' }).click()

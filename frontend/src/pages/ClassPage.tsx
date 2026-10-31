@@ -6,6 +6,7 @@ import { DeleteClass } from '../components/classes/DeleteClass'
 import { SavePanel } from '../components/classes/SavePanel'
 import { RevisionView } from '../components/classes/RevisionView'
 import { RevisionsPanel } from '../components/classes/RevisionsPanel'
+import { ChangeSongs } from '../components/songs/ChangeSongs'
 import { Card, Notice, useAction } from '../components/forms'
 import { RequireAuth } from '../components/RequireAuth'
 import { useClassData, useRevision, type ClassData } from '../hooks/useClassData'
@@ -135,6 +136,29 @@ function ClassBody({
           <Link to={`/jobs/${summary.openJob.id}`}>See how it is going</Link>
         </Notice>
       ) : null}
+      {summary.openJob !== null && summary.openJob.kind !== 'design_draft' && summary.openJob.kind !== 'revise_draft' ? (
+        <Notice>
+          {summary.openJob.state === 'waiting_for_approval'
+            ? 'Songs are waiting for your approval. '
+            : 'The songs of this class are being worked on. '}
+          <Link to={`/jobs/${summary.openJob.id}`}>
+            {summary.openJob.state === 'waiting_for_approval' ? 'Review the songs' : 'See how it is going'}
+          </Link>
+        </Notice>
+      ) : null}
+      {summary.playlist !== null ? (
+        <p data-testid="playlist">
+          Your Spotify playlist: <strong>{summary.playlist.name}</strong>
+          {summary.playlist.link !== null ? (
+            <>
+              {' '}
+              <a href={summary.playlist.link} target="_blank" rel="noopener noreferrer">
+                Open in Spotify
+              </a>
+            </>
+          ) : null}
+        </p>
+      ) : null}
       {notice ? <Notice kind="error">{notice}</Notice> : null}
       {pick.error ? <Notice kind="error">{pick.error}</Notice> : null}
 
@@ -186,6 +210,7 @@ function ClassBody({
         <RevisionView revision={shown.revision} musicChanged={answeredBy?.change?.musicChanged === true} />
       ) : null}
 
+      <ChangeSongs summary={summary} />
       <RevisionsPanel
         revisions={revisions}
         viewingId={viewingId}
