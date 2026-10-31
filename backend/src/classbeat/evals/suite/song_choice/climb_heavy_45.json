@@ -1,0 +1,13 @@
+{
+ "name": "climb_heavy_45",
+ "about": "A 45 minute class built on four climbs.",
+ "brief": {
+  "length_min": 45,
+  "intensity": "moderate",
+  "climbs": 4
+ },
+ "catalogue": {
+  "size": 50
+ },
+ "quality": true
+}

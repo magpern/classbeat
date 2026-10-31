@@ -59,6 +59,7 @@ def drop_tables(owner_url: str, *tables: str) -> None:
 
 BACKEND_DIR = Path(__file__).resolve().parent.parent
 QUEUE_SCRIPT = BACKEND_DIR.parent / "docker" / "postgres" / "queue" / "20-queue.sql"
+MAINT_SCRIPT = BACKEND_DIR.parent / "docker" / "postgres" / "maint" / "30-maint.sql"
 AUTH_TABLES = (
     "users, identities, invites, sessions, known_devices, pending_signups, auth_tokens, "
     "oauth_flows, mfa_totp, mfa_recovery_codes, rate_limits, auth_events"
@@ -81,6 +82,9 @@ def migrated(owner_url: str, revision: str = "head") -> Iterator[None]:
         if revision == "head":
             # compose's db-functions step: the queue role, grants and functions (ADR 0005 s. 3).
             install_queue(os.environ["CLASSBEAT_TEST_DATABASE_URL"])
+            # ... and the admin role classbeat_maint (ADR 0011 section 5); its password is set
+            # by the tests that connect as it (``maint_database_url``).
+            install_maint(os.environ["CLASSBEAT_TEST_DATABASE_URL"])
         yield
     finally:
         _forget_v2_totp(owner_url)
@@ -116,15 +120,20 @@ def truncate_auth(admin_url: str) -> None:
         engine.dispose()
 
 
-def tiers_migration() -> ModuleType:
-    """The M5 migration module (``*_tiers.py``, whatever revision it is chained onto)."""
-    (path,) = (BACKEND_DIR / "migrations" / "versions").glob("*_tiers.py")
-    spec = importlib.util.spec_from_file_location("tiers_migration", path)
+def migration_module(suffix: str) -> ModuleType:
+    """The migration module ``*_<suffix>.py``, whatever revision it is chained onto."""
+    (path,) = (BACKEND_DIR / "migrations" / "versions").glob(f"*_{suffix}.py")
+    spec = importlib.util.spec_from_file_location(f"migration_{suffix}", path)
     assert spec is not None
     assert spec.loader is not None
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
+
+
+def tiers_migration() -> ModuleType:
+    """The M5 migration module (``*_tiers.py``)."""
+    return migration_module("tiers")
 
 
 def install_queue(admin_url: str) -> None:
@@ -139,6 +148,29 @@ def install_queue(admin_url: str) -> None:
             cursor = raw.cursor()
             try:
                 cursor.execute(QUEUE_SCRIPT.read_text(encoding="utf-8"))
+            finally:
+                cursor.close()
+            raw.commit()
+    finally:
+        engine.dispose()
+
+
+def install_maint(admin_url: str) -> None:
+    """Run ``docker/postgres/maint/30-maint.sql`` as the superuser in one transaction, as
+    ``db-functions`` does (its password step, ``31-maint-password.psql``, is psql only)."""
+    run_script(admin_url, MAINT_SCRIPT.read_text(encoding="utf-8"))
+
+
+def run_script(admin_url: str, sql: str) -> None:
+    """Plain SQL as the superuser in one transaction (no parameters: a ``%`` stays)."""
+    engine = create_engine(admin_url)
+    try:
+        with engine.connect() as connection:
+            raw = connection.connection.dbapi_connection
+            assert raw is not None
+            cursor = raw.cursor()
+            try:
+                cursor.execute(sql)
             finally:
                 cursor.close()
             raw.commit()

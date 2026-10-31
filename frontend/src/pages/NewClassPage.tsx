@@ -9,18 +9,23 @@ import {
   type Playlist,
 } from '../api/jobs'
 import { errorMessage } from '../api/messages'
+import { startError } from '../api/songMessages'
+import { createPickJob, type PickInput } from '../api/songs'
+import { getSpotifyStatus } from '../api/spotify'
+import { MusicChoice, type Music, type SongsAvailability } from '../components/songs/MusicChoice'
 import { SelectField, TextAreaField } from '../components/classes/fields'
 import { Card, Field, Notice, useAction } from '../components/forms'
 import { RequireAuth } from '../components/RequireAuth'
 import { BRIEF_TOO_LONG, briefBytes, MAX_BRIEF_BYTES } from '../lib/brief'
-import { newIdempotencyKey, rememberInput } from '../lib/submittedInput'
-import { Link, useRouter } from '../router/Router'
+import { newIdempotencyKey, rememberInput, rememberPick } from '../lib/submittedInput'
+import { readPreset } from '../lib/presets'
+import { Link, useQuery, useRouter } from '../router/Router'
 
 type Source =
   | { status: 'loading' }
   | { status: 'no_mowl'; reconnect: boolean }
   | { status: 'playlists_failed'; message: string }
-  | { status: 'ready'; connection: Connection; playlists: Playlist[] }
+  | { status: 'ready'; connection: Connection; playlists: Playlist[]; songs: SongsAvailability }
 
 const PLAYLIST_ERRORS: Record<string, string> = {
   upstream_unavailable: 'MOWL could not be reached. Try again in a few minutes.',
@@ -43,6 +48,26 @@ const CREATE_ERRORS: Record<string, string> = {
   busy: 'You already have designs running. Wait for one to finish, then try again.',
   idempotency_mismatch: 'That did not work. Check the form and try again.',
   invalid_input: `The class was not accepted. Check the fields; the style and description together may be over ${String(MAX_BRIEF_BYTES)} bytes.`,
+}
+
+/** Whether "Let Claude pick the songs" is offered, and what it still needs (ADR 0008 section 9). */
+async function songsAvailability(
+  connections: Connection[],
+  signal: AbortSignal,
+): Promise<SongsAvailability> {
+  let status
+  try {
+    status = await getSpotifyStatus(signal)
+  } catch {
+    return { kind: 'off' }
+  }
+  if (status === null) return { kind: 'off' }
+  const spotify = connections.find((c) => c.provider === 'spotify')
+  if (spotify === undefined || spotify.status !== 'connected' || status.status !== 'connected') {
+    return { kind: 'needs_spotify' }
+  }
+  if (!status.poolConsent) return { kind: 'needs_consent' }
+  return { kind: 'ready', spotifyConnectionId: spotify.id }
 }
 
 function createError(error: unknown): string {
@@ -76,7 +101,8 @@ function NewClass() {
           return
         }
         const playlists = await getMowlPlaylists(abort.signal)
-        setSource({ status: 'ready', connection: mowl, playlists })
+        const songs = await songsAvailability(connections, abort.signal)
+        setSource({ status: 'ready', connection: mowl, playlists, songs })
       } catch (error) {
         if (abort.signal.aborted) return
         if (error instanceof ApiError && error.status === 409) {
@@ -122,7 +148,7 @@ function NewClass() {
         </>
       ) : null}
       {source.status === 'ready' ? (
-        <ClassForm connection={source.connection} playlists={source.playlists} />
+        <ClassForm connection={source.connection} playlists={source.playlists} songs={source.songs} />
       ) : null}
     </div>
   )
@@ -139,19 +165,23 @@ function inRange(value: number, min: number, max: number): boolean {
 function ClassForm({
   connection,
   playlists,
+  songs,
 }: {
   connection: Connection
   playlists: Playlist[]
+  songs: SongsAvailability
 }) {
   const { navigate } = useRouter()
+  const preset = readPreset(useQuery())
   const action = useAction()
   const [title, setTitle] = useState('')
   const [playlist, setPlaylist] = useState('')
-  const [length, setLength] = useState('45')
-  const [intensity, setIntensity] = useState<Brief['intensity']>('moderate')
-  const [climbs, setClimbs] = useState('0')
-  const [sprints, setSprints] = useState('0')
-  const [races, setRaces] = useState('0')
+  const [music, setMusic] = useState<Music>('playlist')
+  const [length, setLength] = useState(preset.length)
+  const [intensity, setIntensity] = useState<Brief['intensity']>(preset.intensity)
+  const [climbs, setClimbs] = useState(preset.climbs)
+  const [sprints, setSprints] = useState(preset.sprints)
+  const [races, setRaces] = useState(preset.races)
   const [ftp, setFtp] = useState('')
   const [style, setStyle] = useState('')
   const [notes, setNotes] = useState('')
@@ -171,7 +201,7 @@ function ClassForm({
     const name = title.trim()
     let invalid: string | null = null
     if (name === '' || name.length > 100) invalid = 'Give the class a name of up to 100 characters.'
-    else if (playlist === '') invalid = 'Choose a playlist.'
+    else if (music === 'playlist' && playlist === '') invalid = 'Choose a playlist.'
     else if (!inRange(brief.length_min, 10, 180)) invalid = 'The length is 10 to 180 minutes.'
     else if (!inRange(brief.climbs, 0, 10)) invalid = 'Climbs are 0 to 10.'
     else if (!inRange(brief.sprints, 0, 20)) invalid = 'Sprints are 0 to 20.'
@@ -194,6 +224,26 @@ function ClassForm({
     }
     setProblem(invalid)
     if (invalid !== null || fullBrief === null) return
+    if (music === 'pick' && songs.kind === 'ready') {
+      const pickInput: PickInput = {
+        title: name,
+        brief: fullBrief,
+        mode: 'pick',
+        mowl_connection_id: connection.id,
+        spotify_connection_id: songs.spotifyConnectionId,
+      }
+      const pickFingerprint = JSON.stringify(pickInput)
+      if (attempt.current?.fingerprint !== pickFingerprint) {
+        attempt.current = { fingerprint: pickFingerprint, key: newIdempotencyKey() }
+      }
+      const pickKey = attempt.current.key
+      void action.run(async () => {
+        const job = await createPickJob(pickInput, pickKey)
+        rememberPick(job.id, pickInput)
+        navigate(`/jobs/${job.id}`)
+      }, startError)
+      return
+    }
     const input: DesignInput = {
       title: name,
       brief: fullBrief,
@@ -212,7 +262,7 @@ function ClassForm({
     }, createError)
   }
 
-  if (playlists.length === 0) {
+  if (playlists.length === 0 && songs.kind !== 'ready') {
     return (
       <Card title="No playlists found" wide>
         <p>
@@ -235,6 +285,8 @@ function ClassForm({
         }}
         required
       />
+      <MusicChoice songs={songs} value={music} onChange={setMusic} />
+      {music === 'playlist' ? (
       <SelectField
         label="Playlist"
         value={playlist}
@@ -251,6 +303,7 @@ function ClassForm({
           </option>
         ))}
       </SelectField>
+      ) : null}
       <Field
         label="Length in minutes"
         type="number"
