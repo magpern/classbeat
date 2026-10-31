@@ -107,16 +107,23 @@ every adapter's captured request body).
   `model_unavailable`; `AuthenticationError`, `PermissionDeniedError`, `NotFoundError` →
   `model_config`; `BadRequestError` and the rest → `internal`. Logs get the class name, status and
   request id only.
-- **Usage**: the OpenAI APIs report cached prompt tokens as a part of the prompt tokens and have no
-  cache-write charge. Normalised: `input_tokens = prompt - cached`, `cache_read_tokens = cached`,
-  `cache_write_tokens = 0`, `output_tokens` = completion tokens including reasoning tokens.
+- **Usage** (amended 2026-10-31, #204): the OpenAI APIs report cached reads (`cached_tokens`) and
+  cache writes (`cache_write_tokens`) as parts of the prompt tokens. OpenAI's pricing page and
+  prompt-caching guide (read 2026-10-31, docs only) bill a write separately from GPT-5.6 on: 1.25
+  times input for the default 30-minute lifetime, 2.5 times for the 12-hour one, which classbeat
+  never asks for. Normalised: `input_tokens = prompt - cached - written`, `cache_read_tokens =
+  cached`, `cache_write_tokens = written`, `output_tokens` = completion tokens including reasoning
+  tokens; cached plus written above the prompt is `internal`. Each price entry has its write rate (a
+  model without a write charge would list its input rate, so the cost is the same). *Was:* "no
+  cache-write charge", `cache_write_tokens = 0`.
 - **Tool schemas**: the providers' strict function mode needs every property listed in `required`
   (optional ones as a union with `null`) and `additionalProperties: false`. A pure transform turns each
   stage's Pydantic schema into that form and drops the added `null`s from the parsed input before the
   loop validates it; a test runs every tool of every stage through it and back. The loop still
   validates every input itself (ADR 0006 §4).
 - **Effort**: classbeat's `low | medium | high | xhigh | max` maps per catalog model to the provider's
-  own setting (OpenAI `reasoning.effort`, DeepSeek: model choice only, no effort parameter). An effort
+  own setting (OpenAI `reasoning.effort`, which takes `low` to `max` on the GPT-6 models, read
+  2026-10-31; DeepSeek: model choice only, no effort parameter). An effort
   the model does not list in the catalog is refused when the route or the eval run is set up, never
   silently changed.
 
