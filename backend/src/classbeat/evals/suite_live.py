@@ -47,7 +47,7 @@ import sys
 import uuid
 from collections.abc import AsyncIterator, Callable, Iterator
 from contextlib import AbstractAsyncContextManager, asynccontextmanager
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from decimal import Decimal
 from pathlib import Path
@@ -63,7 +63,14 @@ from classbeat.agent.providers import AnthropicProvider, OpenAIProvider, Provide
 from classbeat.config import Settings, model_sdk_environment_problems
 from classbeat.egress import install_worker_allowlist
 from classbeat.evals.gate import evaluate
-from classbeat.evals.live import MAX_REPEAT, MAX_USD_LIMIT, MICROS, usd
+from classbeat.evals.live import (
+    MAX_REPEAT,
+    MAX_USD_LIMIT,
+    MICROS,
+    usd,
+    with_job_ceiling,
+    with_model,
+)
 from classbeat.evals.pick import PickCaseResult, run_pick_case
 from classbeat.evals.runner import (
     SuiteHeader,
@@ -182,8 +189,9 @@ class Budgets:
 
     @classmethod
     def build(cls, settings: Settings, choice: ModelChoice) -> "Budgets":
-        config = replace(AgentConfig.from_settings(settings), model=choice.model)
-        config = replace(config, effort=choice.effort)
+        config = with_model(
+            AgentConfig.from_settings(settings), model=choice.model, effort=choice.effort
+        )
         price = config.prices.lookup(choice.provider, choice.model)
         if price is None:
             raise SuiteRefused(f"the model {choice.model} has no price in classbeat.agent.prices")
@@ -255,7 +263,14 @@ def _authorization(record: bool, authorization: str | None) -> str | None:
 
 
 def _limited(limits: Limits, micros: int) -> Limits:
-    return replace(limits, job_cost_micros=min(limits.job_cost_micros, micros))
+    return Limits(
+        limits.max_turns,
+        limits.max_tool_calls,
+        limits.max_corrections,
+        limits.stage_seconds,
+        min(limits.job_cost_micros, micros),
+        limits.turn_output_reserve,
+    )
 
 
 async def _one(
@@ -270,7 +285,7 @@ async def _one(
     category = suite.category_of(run.case)
     margin = suite.manifest.zone7_tss_margin
     if run.group == "design":
-        config = replace(budgets.design, limits=_limited(budgets.design.limits, left))
+        config = with_job_ceiling(budgets.design, min(budgets.design.limits.job_cost_micros, left))
         case = suite.design_cases[run.case]
         result = await run_case(case, provider, config, repeat=run.repeat, zone7_tss_margin=margin)
         lines = failed_check_lines(result)
