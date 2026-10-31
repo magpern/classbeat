@@ -17,7 +17,7 @@ GitHub hold the detail.
 | M3c | Eval suite, OpenAI and DeepSeek adapters | done technically (on replayed providers, #219): [ADR 0012](adr/0012-eval-suite-and-model-providers.md); the owner's live steps are in [docs/runbooks/m3c-model-enable.md](runbooks/m3c-model-enable.md) |
 | M5 | Tiers, quotas, codes, admin | done technically, on fakes, once this E2E PR (#228) is merged (the security suite #227 is in) ([ADR 0011](adr/0011-tiers-quotas-and-admin.md)); issues in milestone "M5 Tiers and admin". Live activation is the owner's |
 | MU | Night Studio UI (ADR 0013) | design accepted 2026-10-30 ([ADR 0013](adr/0013-ui-design-night-studio.md), roadmap Amendment 8); issues #242, #243, #246 to #251, #253 to #255; runs beside M4 and M5, done before M6 |
-| M6 | Security review, backups, GDPR, VPS | not started; starts after MU |
+| M6 | Security review, backups, GDPR, VPS | started with backups: backup and restore scripts, drill (run locally and in the `e2e` job) and [runbook](runbooks/backup-restore.md), #338. Not done: independent security review, GDPR export/delete verification, Caddy and VPS (owner-authorized deploy), the backup schedule on the VPS and an off-host copy. Starts in full after MU |
 | M7 | Commercial (deferred) | deferred |
 
 ## Now

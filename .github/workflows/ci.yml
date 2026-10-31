@@ -606,6 +606,13 @@ jobs:
       - name: Run the tests
         run: npx playwright test
 
+      # M6 (#338): back up, destroy, restore into a fresh project and verify (rows, RLS, sign-in,
+      # right key decrypts, wrong key fails). Own compose projects; the image build is a cache hit.
+      - name: Backup and restore drill
+        working-directory: .
+        timeout-minutes: 10
+        run: scripts/backup-restore-drill.sh ci
+
       - name: Upload the report
         if: failure()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
