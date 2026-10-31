@@ -404,7 +404,8 @@ async def test_code_input_is_validated(
     response = await actor.post(CODES, code_body(**overrides))
     assert response.status_code == 422, response.text
     assert superuser.execute(text("SELECT count(*) FROM redeem_codes")).scalar_one() == 0
-    assert audit(superuser, actor.user_id) == []  # a schema refusal opens no maint connection
+    # A schema refusal is audited as an input refusal only (#227): no code.create row, no code.
+    assert audit(superuser, actor.user_id) == [("admin.request", "refused", "invalid_input")]
 
 
 async def test_an_unknown_plan_and_a_past_expiry_are_refused_and_audited(

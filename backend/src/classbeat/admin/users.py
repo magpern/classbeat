@@ -41,7 +41,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from classbeat import auth
-from classbeat.admin.audit import Target, UserQuery
+from classbeat.admin.audit import Target, UserQuery, bounded_text
 from classbeat.admin.db import AdminDb, AdminRefused, admin_session
 from classbeat.admin.routes import AdminActor, admin_db, admin_router
 from classbeat.connections import connection_statuses
@@ -194,7 +194,10 @@ class GrantIn(In):
     plan_id: Annotated[str, StringConstraints(pattern=r"^[a-z_]{1,30}$")] | None = None
     features: Annotated[list[str], Field(max_length=len(FEATURES))] = []
     ends_at: AwareDatetime | None = None
-    note: Annotated[str, StringConstraints(min_length=1, max_length=200)] | None = None
+    # No control character: ``entitlements.note`` refuses a NUL, which was a 500 (#227).
+    note: (
+        Annotated[str, StringConstraints(min_length=1, max_length=200), bounded_text(2400)] | None
+    ) = None
 
     @model_validator(mode="after")
     def _grants_something(self) -> "GrantIn":
@@ -206,7 +209,7 @@ class GrantIn(In):
 
 
 class DeleteIn(In):
-    email: Annotated[str, StringConstraints(min_length=1, max_length=320)]
+    email: Annotated[str, StringConstraints(min_length=1, max_length=320), bounded_text(3840)]
 
 
 def _db(request: Request) -> AdminDb:

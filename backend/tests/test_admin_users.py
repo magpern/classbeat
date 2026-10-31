@@ -519,7 +519,12 @@ async def test_the_search_text_is_bounded_and_every_accepted_search_is_audited(
     actor = await stepped_admin(env, make_actor)
     response = await actor.get(f"{USERS}?{urlencode({'q': q})}")
     assert response.status_code == status, response.text
-    expected = [("user.list", "ok", None)] if status == 200 else []
+    # A refused search writes the gate's row, never an ``ok`` one (ADR 0011 section 10, #227).
+    expected = (
+        [("user.list", "ok", None)]
+        if status == 200
+        else [("admin.request", "refused", "invalid_input")]
+    )
     assert audit(superuser, actor.user_id) == expected
     if status == 200:
         stored = superuser.execute(
