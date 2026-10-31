@@ -119,8 +119,13 @@ router = admin_router()
 
 
 def install(app: Any) -> None:
-    """The admin router and the handler that turns an ``AdminRefused`` into its response."""
+    """The admin router, the feature modules' routers, and the handler that turns an
+    ``AdminRefused`` into its response."""
+    from classbeat.admin import jobs, usage  # the feature modules import this one
+
     app.include_router(router)
+    for feature in (usage.router, jobs.router):  # each feature module's own ``admin_router()``
+        app.include_router(feature)
 
     @app.exception_handler(AdminRefused)
     async def admin_refused(_: Request, exc: Exception) -> JSONResponse:

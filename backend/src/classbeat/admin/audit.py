@@ -15,7 +15,7 @@ from dataclasses import dataclass, field
 from typing import Annotated, Any, Final
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, StringConstraints, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints, ValidationError
 
 logger = logging.getLogger(__name__)
 
@@ -41,10 +41,30 @@ class RequestParams(Params):
     route: Annotated[str, StringConstraints(pattern=ROUTE_PATTERN)]
 
 
+class UsageParams(Params):
+    """The Usage and cost view's period (AD3 #221): a UTC month, ``YYYY-MM``."""
+
+    month: Annotated[str, StringConstraints(pattern=r"^\d{4}-\d{2}$")]
+
+
+class JobsParams(Params):
+    """The Jobs view's window for recent failures (AD3 #221), in days."""
+
+    days: Annotated[int, Field(ge=1, le=90)]
+
+
+class RefundParams(Params):
+    """An admin refund (AD3 #221): the target (user, ledger row) says everything."""
+
+
 # Action code -> its params model. ``admin.request`` is the gate's own (ADR 0011 section 6:
 # mfa_required, stepup_required and rate_limited of an admin).
 ACTIONS: dict[str, type[Params]] = {
     "admin.request": RequestParams,
+    # Usage, cost and jobs; the admin refund (AD3 #221, classbeat.admin.usage and .jobs).
+    "usage.read": UsageParams,
+    "job.list": JobsParams,
+    "refund.credit": RefundParams,
 }
 
 
