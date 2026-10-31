@@ -1,7 +1,7 @@
 """Model jobs record their route; results get a monotonic order (ADR 0012 section 5, M3c G2)
 
-Revision ID: 0010_model_jobs
-Revises: 0009_models
+Revision ID: 0011_model_jobs
+Revises: 0010_m5_hardening
 Create Date: 2026-10-31
 
 M3c G2 (#215).
@@ -24,8 +24,8 @@ from collections.abc import Sequence
 
 from alembic import op
 
-revision: str = "0010_model_jobs"
-down_revision: str | Sequence[str] | None = "0009_models"
+revision: str = "0011_model_jobs"
+down_revision: str | Sequence[str] | None = "0010_m5_hardening"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

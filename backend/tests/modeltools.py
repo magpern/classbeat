@@ -115,7 +115,7 @@ def add_result(
 
 
 def clear_gate(admin: Connection) -> None:
-    # CASCADE: ``agent_runs.eval_result_id`` (migration 0010) references the results.
+    # CASCADE: ``agent_runs.eval_result_id`` (migration 0011) references the results.
     admin.execute(text("TRUNCATE model_routes, model_eval_results CASCADE"))
 
 

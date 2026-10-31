@@ -5,7 +5,7 @@ This is the **only** module under ``backend/src/classbeat`` that names the resul
 the only module that may import ``record_result`` (``tests/test_models_guard.py``). Every
 function runs on the caller's open session and never commits: the caller owns the transaction.
 
-What the database itself refuses (migrations ``0009_models`` and ``0010_model_jobs``): a result
+What the database itself refuses (migrations ``0009_models`` and ``0011_model_jobs``): a result
 whose ``passed`` is not the JSON boolean ``passed`` of its object verdict, a ``fake`` or unknown
 provider, any NULL, any ``UPDATE`` or ``DELETE`` of a result by the app role, and a route at
 anything but a pass for exactly its provider, model, effort and stage group.
@@ -41,7 +41,7 @@ _INSERT_RESULT = text(
     "RETURNING recorded_at"
 )
 _SELECT_RESULTS = f"SELECT {_SELECT_COLUMNS} FROM model_eval_results"  # noqa: S608
-# ``seq`` (migration 0010) is the insertion order: two results recorded in one transaction share
+# ``seq`` (migration 0011) is the insertion order: two results recorded in one transaction share
 # ``recorded_at`` (``now()``) and are still ordered, the later one first.
 _NEWEST = " ORDER BY recorded_at DESC, seq DESC"
 _ROUTE_COLUMNS = "route_key, stage_group, provider, model, effort, eval_result_id, set_at, set_by"
@@ -69,7 +69,7 @@ class ResultRow:
     passed: bool
     total_cost_micros: int
     authorization_note: str
-    seq: int = 0  # the database's insertion order (identity, migration 0010)
+    seq: int = 0  # the database's insertion order (identity, migration 0011)
 
 
 @dataclass(frozen=True, slots=True)
