@@ -8,11 +8,12 @@ import json
 import statistics
 import unicodedata
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 from typing import Any
 
 import pytest
 
-from advscripts import ID, design_script, provider_for_case
+from advscripts import ADV_NAMES, ID, design_script, provider_for_case
 from agentfake import CONFIG
 from classbeat.agent.dispatcher import MAX_RESULT_BYTES
 from classbeat.agent.providers.fake import FakeProvider
@@ -24,10 +25,13 @@ from classbeat.evals.suite import Manifest, SuiteError, load_suite
 from pickfake import CHOOSE_LIMITS, POOL_LIMITS
 from pickscripts import provider_for_case as smoke_pick_provider
 from smokescripts import provider_for_case as smoke_design_provider
+from songscripts import provider_for as song_provider
+from suitescripts import provider_for_case as suite_provider
 
 SUITE = load_suite()
 MANIFEST = SUITE.manifest
 INDEX = MANIFEST.case_index()
+SUITE_OWN = {p.stem for p in Path(suite.__file__).parent.glob("suite/*/*.json")}
 LIMITS = (POOL_LIMITS, CHOOSE_LIMITS)
 
 # The cases of this issue, exactly (a dropped or added one fails here, not only by the digest).
@@ -59,6 +63,7 @@ HOSTILE = ["adv_tool_requests", "adv_malformed_music", "adv_oversized_music", "r
 
 def test_the_own_cases_are_exactly_these_in_their_categories_and_groups() -> None:
     assert len(OWN_NAMES) == 19
+    assert ADV_NAMES == OWN_NAMES  # the scripts and the tests name the same cases
     assert (len(DESIGN), len(SONGS)) == (12, 7)
     for category, by_group in OWN.items():
         for group, names in by_group.items():
@@ -363,10 +368,12 @@ def header() -> SuiteHeader:
 
 
 def any_provider(case: Any) -> FakeProvider:
-    """The recorded script of any case of the suite: the smoke set's, or this issue's."""
-    if case.name in OWN_NAMES:
+    """The recorded script of any case of the suite."""
+    if case.name in ADV_NAMES:
         return provider_for_case(case)
-    return smoke_pick_provider(case) if isinstance(case, PickCase) else smoke_design_provider(case)
+    if isinstance(case, PickCase):
+        return song_provider(case) if case.quality else smoke_pick_provider(case)
+    return suite_provider(case) if case.name in SUITE_OWN else smoke_design_provider(case)
 
 
 async def own_rows(repeat: int) -> list[dict[str, Any]]:
@@ -379,7 +386,9 @@ async def own_rows(repeat: int) -> list[dict[str, Any]]:
         )  # fmt: skip
         rows.append(suite_row(result, MANIFEST.case_index()[name][0]))
     for name, song in sorted(SUITE.song_cases.items()):
-        got, _, _ = await run_pick_case(song, any_provider(song), CONFIG, LIMITS)
+        got, _, _ = await run_pick_case(
+            song, any_provider(song), CONFIG, LIMITS, MANIFEST.bpm_bands
+        )
         rows.append(
             song_suite_row(
                 got, INDEX[name][0], repeat=repeat, model=CONFIG.model, effort=CONFIG.effort

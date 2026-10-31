@@ -2,6 +2,8 @@
 
 - ``classbeat.songs.kind``: ``design_with_songs`` (registered in ``classbeat.jobs.KINDS`` on
   import, for both the worker and the web app), with the ``phase_two`` seam of issue SJ2;
+- ``classbeat.songs.revise``: ``revise_songs`` ("Change songs" in a revision, issue SJ3), registered
+  the same way, built on phase 1 and phase 2 below;
 - ``classbeat.songs.inputs``: its input model (``seed`` for "Ask for changes", ``resume``);
 - ``classbeat.songs.admit``: ``admit`` (``song_picking_off``, ``receipt_invalid``,
   ``consent_missing``, ``pool_busy``, the seed rule) and ``approve_check`` (the list re-hashed,
@@ -23,10 +25,12 @@ from classbeat.songs import song_list
 from classbeat.songs.config import SongConfig, configure
 from classbeat.songs.inputs import DesignWithSongsInput, Resume, Seed
 from classbeat.songs.kind import DESIGN_WITH_SONGS, KIND
+from classbeat.songs.revise import REVISE_SONGS
 
 __all__ = [
     "DESIGN_WITH_SONGS",
     "KIND",
+    "REVISE_SONGS",
     "DesignWithSongsInput",
     "Resume",
     "Seed",

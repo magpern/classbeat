@@ -36,9 +36,10 @@ from mowl import workout
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from classbeat.agent import songs
-from classbeat.evals import checks, music, pick
+from classbeat.evals import checks, music, pick, pick_world, song_checks
 from classbeat.evals.cases import Case
 from classbeat.evals.pick import PickCase
+from classbeat.evals.song_checks import Band
 
 Group = Literal["design", "songs"]
 GROUPS: Final[tuple[Group, ...]] = ("design", "songs")
@@ -53,8 +54,18 @@ CATEGORY_GROUPS: Final[dict[str, frozenset[str]]] = {
     "adversarial": frozenset({"design", "songs"}),
     "cost": frozenset({"design", "songs"}),
 }
-DIGEST_SOURCES: Final = ("cases.py", "checks.py", "music.py", "pick.py", "suite.py", "gate.py")
-CONSTANT_MODULES: Final[tuple[ModuleType, ...]] = (checks, music, pick)
+DIGEST_SOURCES: Final = (
+    "cases.py",
+    "checks.py",
+    "music.py",
+    "pick.py",
+    "pick_world.py",
+    "runner.py",
+    "song_checks.py",
+    "suite.py",
+    "gate.py",
+)
+CONSTANT_MODULES: Final[tuple[ModuleType, ...]] = (checks, music, pick, pick_world, song_checks)
 CONSTANT_NAME: Final = re.compile(r"^[A-Z][A-Z0-9_]*$")
 HEX64: Final = re.compile(r"^[0-9a-f]{64}$")
 CASE_NAME = r"^[a-z0-9_]{1,40}$"
@@ -100,6 +111,8 @@ class Manifest(BaseModel):
     rules: Rules
     groups: dict[Group, GroupRules]
     zone7_tss_margin: float = Field(ge=0, le=1)  # section 7: widens a zone 7 class's TSS bound
+    # section 4.1: the BPM band of each role (a role with none is not judged)
+    bpm_bands: dict[str, Band] = Field(default_factory=lambda: dict[str, Band]())
     # category -> stage group -> case names
     categories: dict[str, dict[Group, list[str]]]
     # A song case whose right end is a failure category, not a list (``pool_too_small``: too few

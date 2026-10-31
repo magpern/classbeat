@@ -1,0 +1,14 @@
+{
+ "name": "long_songs_60",
+ "about": "A long 60 minute class with three climbs and four sprints.",
+ "brief": {
+  "length_min": 60,
+  "intensity": "hard",
+  "climbs": 3,
+  "sprints": 4
+ },
+ "catalogue": {
+  "size": 60
+ },
+ "quality": true
+}

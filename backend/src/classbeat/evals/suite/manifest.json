@@ -1,6 +1,6 @@
 {
- "suite_version": 2,
- "digest": "19bdd02a13e8e4c92f3c284b1a7cc6b1d1031d83d2292c459a0d22134a2f782a",
+ "suite_version": 4,
+ "digest": "ceb3883f4002f8ee0e33819ca5512008da6bbded81dd02e8787f6e0c987c1827",
  "rules": {
   "repeat": 3,
   "pass_share": 0.9,
@@ -15,17 +15,51 @@
   "songs": {"median_cost_micros": 1000000, "job_ceiling_micros": 3000000}
  },
  "zone7_tss_margin": 0.1,
+ "bpm_bands": {
+  "warmup": {"low": 80, "high": 125},
+  "build": {"low": 100, "high": 145},
+  "climb": {"low": 60, "high": 80, "doubles": true},
+  "sprint": {"low": 120, "min_drops": 1},
+  "race": {"low": 120, "min_drops": 1},
+  "interval": {"low": 100, "high": 170},
+  "recovery": {"low": 60, "high": 125},
+  "cooldown": {"low": 70, "high": 125}
+ },
  "categories": {
   "standard": {
    "design": [
     "climbs_45", "default_30", "easy_30", "hard_45_sprints", "long_60", "long_text_30",
-    "minimum_10"
+    "minimum_10",
+    "std_easy_20", "std_easy_75_climb", "std_hard_15", "std_hard_50_sprints",
+    "std_moderate_25_text", "std_moderate_35_climbs", "std_moderate_90"
    ]
   },
-  "music_sync": {},
-  "games_ftp": {"design": ["ftp_20_60", "ftp_5_45", "races_40"]},
-  "revisions": {"design": ["revise_easier", "revise_more_sprints"]},
-  "song_choice": {"songs": ["pick_30", "replace_two"]},
+  "music_sync": {
+   "design": [
+    "sync_easy_30", "sync_hard_35_fast", "sync_hard_40_races", "sync_hard_45_sprints",
+    "sync_moderate_30_sprints", "sync_moderate_40_slow", "sync_moderate_60_long_tracks"
+   ]
+  },
+  "games_ftp": {
+   "design": [
+    "ftp_20_60", "ftp_5_45", "races_40",
+    "ftp_20_75", "ftp_3_30", "ftp_5_40_race", "games_fast_lane_ghost_50", "games_overflow_35",
+    "games_power_pull_40", "games_racetrack_45"
+   ]
+  },
+  "revisions": {
+   "design": [
+    "revise_easier", "revise_more_sprints",
+    "rev_climb_to_end_45", "rev_climb_to_start_40", "rev_easier_40", "rev_easier_50_to_easy",
+    "rev_more_sprints_30", "rev_more_sprints_60", "rev_shorter_45_to_30", "rev_shorter_75_to_60"
+   ]
+  },
+  "song_choice": {
+   "songs": [
+    "pick_30", "replace_two", "thin_catalogue_20", "short_15", "easy_songs_30", "long_songs_60",
+    "climb_heavy_45", "sprint_heavy_45", "era_2000_2012", "replace_three"
+   ]
+  },
   "missing_music": {
    "design": [
     "music_no_sections", "music_too_short", "music_unknown_bpm",

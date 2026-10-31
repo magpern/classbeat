@@ -22,6 +22,14 @@ from pickscripts import script_for as pick_script_for
 from smokedrafts import make_draft
 from smokescripts import _short_cooldown  # pyright: ignore[reportPrivateUsage]
 
+# The cases of this module (issue #209); every other case of the suite has its own scripts.
+ADV_NAMES = frozenset({
+    "adv_brief_requests", "adv_malformed_music", "adv_oversized_music", "adv_tool_requests",
+    "revise_adv_requests", "adv_malformed_hits", "adv_oversized_hits", "adv_pool_requests",
+    "mm_music_short_60", "mm_no_bpm_at_all", "mm_no_sections_short", "mm_revise_unknown_bpm",
+    "mm_pool_too_small", "mm_unknown_bpm_pick", "cost_lean_30", "cost_one_fix_45",
+    "cost_revise_lean", "cost_pick_30", "cost_replace_two",
+})  # fmt: skip
 ID = "7ouMYWpwJ422jRcDASZB7P"  # a Spotify id the model must never get from a title or a brief
 REVISED = {"total": 1800, "intensity": "moderate", "climbs": 2, "sprints": 1}
 
