@@ -181,6 +181,31 @@ GitHub hold the detail.
 
   Mockups of every main screen are on the owner's design canvas. The issues are in GitHub
   milestone "MU Night Studio UI" (#12).
+- **MU done-when** (roadmap Amendment 8; checked by UI10, [#255](https://github.com/magpern/classbeat/issues/255)):
+  - [x] Every page uses the ADR 0013 tokens and components, no colour outside `tokens.css`: UI1 to UI9
+    (#258, #261, #301, #283, #288, #291, #293, #308, #270) and the admin pages (M5 FE2 and FE3). Evidence:
+    `frontend/src/styles/tokens.test.ts` scans every `src` css, ts and tsx file for hex, `rgb(`, `hsl(` and
+    the other colour functions, CSS colour keywords and Tailwind palette utilities, plus `index.html` and
+    `public/theme-init.js`.
+  - [x] The class profile follows ADR 0013 section 7: UI3 (#301). Open, tracked in [#331](https://github.com/magpern/classbeat/issues/331):
+    the song strip lays songs back to back from 0 because the class API has no start times (not compared
+    with the analysed music), tests for the Z1 to Z7 grid labels, and the delete confirmation not scrolled
+    or focused at 390 px.
+  - [x] Covers load only from `i.scdn.co`, through `CoverArt`, behind the CSP header: `e2e/tests/mu-covers.spec.ts`
+    (the real header, covers from the host, a cover from another host shown as a tile, the browser refusing
+    other hosts and `data:`, no referrer or cookie on the cover request) and `src/no-third-party-hosts.test.ts`.
+  - [x] UI10's viewport, axe and bundle checks: `e2e/tests/mu-pages.spec.ts` (24 pages at 390 and 1440 px in
+    the dark and light theme: no sideways scroll, primary action visible, no serious or critical axe
+    violation, quiet console), `mu-covers.spec.ts` (Songs for approval) and `npm run check:bundle` in the
+    `frontend` job (first-load JavaScript 173 kB gzip of 250 kB).
+  - **Open after UI10**, not part of its scope:
+    - [#330](https://github.com/magpern/classbeat/issues/330): an admin without a current TOTP check cannot
+      reach the TOTP prompt (the SPA gates `/admin` on the session role, which is `user` until the check passes).
+    - [#331](https://github.com/magpern/classbeat/issues/331): Radix Dialog scroll lock refused by
+      `style-src 'self'` (one console error per open, page behind a modal scrolls); the Account tab carried
+      through reauth (#291); the delete confirmation scroll/focus at 390 px (#301); Z1 to Z7 label tests (#301);
+      song strip start times (#301); CSP and Referrer-Policy headers on an unhandled 500 (#293); a test for
+      the TOTP QR attribute allow-list (#293).
 - Releases: v0.1.0 (cut partway through M0); v0.2.0 is not cut yet (deferred to save Actions quota). Image
   `ghcr.io/magpern/classbeat`, private.
 

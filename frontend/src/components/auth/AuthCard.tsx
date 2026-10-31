@@ -2,9 +2,9 @@ import { useId, type ReactNode } from 'react'
 
 /**
  * The card of the focus pages (Sign in, Sign up and the mail-link pages): centred, narrow, with
- * the Archivo title. Same props as the card of `forms.tsx`, so the pages only change the import.
+ * the Archivo title. Same props as the card of `forms.tsx` (without `wide`), so the pages only change the import.
  */
-export function AuthCard({ title, children }: { title: string; children: ReactNode; wide?: boolean }) {
+export function AuthCard({ title, children }: { title: string; children: ReactNode }) {
   const id = useId()
   return (
     <section

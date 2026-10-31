@@ -30,16 +30,16 @@ export function ClassesThisMonth({ compact = false }: { compact?: boolean }) {
   const limit = plan.limits.classesPerMonth
   const label = `Classes this month: ${classesLine(plan)}`
   if (compact) {
-    // The icon rail: held over limit with the bar, the full words for screen readers.
+    // The icon rail: the number, and the bar carries the full words once (a screen reader reads
+    // the meter a single time).
     return (
       <div className="flex w-full flex-col items-center gap-1 rounded-md bg-raised px-1 py-2 tabular-nums">
         <p className="m-0 text-center text-text">
-          <span className="sr-only">{label}</span>
           <strong aria-hidden="true">
             {String(plan.classesHeld)}/{String(limit)}
           </strong>
         </p>
-        <Progress value={share(plan)} aria-label="Classes this month" className="h-1 w-10" />
+        <Progress value={share(plan)} aria-label={label} className="h-1 w-10" />
       </div>
     )
   }

@@ -31,7 +31,9 @@ export function AvatarMenu({
       <DropdownMenuTrigger asChild>
         <button
           type="button"
-          aria-label={email}
+          // With the name beside it the visible text names the button (WCAG 2.5.3, axe
+          // label-content-name-mismatch); on its own the avatar is named by the address.
+          aria-label={showName ? undefined : email}
           className="inline-flex min-h-11 min-w-11 cursor-pointer items-center gap-3 rounded-full border-0 bg-transparent p-0 text-text hover:bg-raised"
         >
           <span

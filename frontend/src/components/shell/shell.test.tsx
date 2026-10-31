@@ -44,10 +44,11 @@ describe('navigation by width', () => {
     const links = within(mainNav()).getAllByRole('link')
     expect(links.map((l) => l.getAttribute('aria-label'))).toEqual(['New class', 'Home', 'My classes', 'Music', 'Account'])
     expect(within(mainNav()).queryByText('Music')).toBeNull()
-    // The rail keeps the meter, compact: the number, the full words for screen readers.
-    expect(await screen.findByText('Classes this month: 2 of 3 classes in October')).toHaveClass('sr-only')
+    // The rail keeps the meter, compact: the number, and the bar says the full words once.
+    const bar = await screen.findByRole('progressbar', { name: 'Classes this month: 2 of 3 classes in October' })
+    expect(bar).toHaveAttribute('aria-valuenow', '67')
     expect(screen.getByText('2/3')).toBeInTheDocument()
-    expect(screen.getByRole('progressbar', { name: 'Classes this month' })).toHaveAttribute('aria-valuenow', '67')
+    expect(screen.queryByText('Classes this month: 2 of 3 classes in October')).toBeNull()
   })
 
   it('1440 px: a sidebar with labels, the classes meter and the avatar with the name', async () => {
@@ -94,7 +95,8 @@ describe('keyboard', () => {
     for (let i = 0; i < 12 && reached.length < 7; i++) {
       await userEvent.tab()
       const active = document.activeElement
-      const name = active?.getAttribute('aria-label') ?? active?.textContent ?? ''
+      // The sidebar's avatar button is named by its visible text (the aria-hidden initial is not part of it).
+      const name = active?.getAttribute('aria-label') ?? active?.querySelector('span:not([aria-hidden])')?.textContent ?? active?.textContent ?? ''
       if (['classbeat home', 'New class', 'Home', 'My classes', 'Music', 'Account', 'ann@example.test'].includes(name)) {
         reached.push(name)
       }

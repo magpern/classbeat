@@ -498,8 +498,13 @@ npm run build        # typecheck, then Vite writes frontend/dist
   images (the TOTP QR code is drawn as inline SVG for this reason), no other host.
 - Pin exact versions of every package added; licences must be MIT, ISC, Apache-2.0 or OFL.
   Accepted exception (Architect, #258): `lightningcss` (MPL-2.0), a build-time dependency of Tailwind's Vite
-  plugin; unmodified and not shipped in the bundle.
-- CI runs the same five commands in the `frontend` job.
+  plugin; unmodified and not shipped in the bundle. Second, named by ADR 0013 section 10 and issue #255:
+  `@axe-core/playwright` and its `axe-core` (both MPL-2.0), dev dependencies of `e2e/` only, unmodified, never
+  built into the image or the bundle.
+- Bundle budget (ADR 0013 section 11): `npm run check:bundle` (`scripts/bundle-size.ts`, after `npm run build`)
+  gzips the scripts `dist/index.html` loads first (entry and static preloads, not lazy chunks like the admin
+  area) and fails above 250 kB (1000 bytes per kB, as Vite reports); `src/bundleSize.test.ts` tests the rules.
+- CI runs the same commands in the `frontend` job, then `check:bundle`.
 
 ### Stack and worktrees
 
@@ -614,6 +619,15 @@ and `nextTotp` in `helpers.ts`; the session shows an admin as a user until two-f
 `class-usage.spec.ts` and `fake-spotify.spec.ts` (web connects through the fake with PKCE, the worker
 reaches it too and reads a 120-track playlist back in order over three pages, A3 at the playlist-read
 level since a pick's final list is one page, it publishes no port).
+
+The MU done-when specs (ADR 0013 sections 9 and 10, `mu-helpers.ts`): `mu-pages.spec.ts` walks one signed-in
+browser through 24 pages (landing, sign in/up, reset, Home, My classes, New class, Designing held mid-run, ready,
+Class, the five Account tabs, Music, Spotify, the six admin sections) and audits each at 390 x 844 and 1440 x 900
+in the dark and the light theme: no sideways scroll, the primary action visible and inside the window, no serious
+or critical `@axe-core/playwright` violation (WCAG 2.2 A/AA tags), and no console error. The admin is made with
+`admin grant`; turning on two-factor on the account page with a code computed from the shown key (`totpCode`)
+passes the admin's TOTP check for the session. `mu-covers.spec.ts` serves Songs for approval from API answers the
+test makes (the stack's fakes run no song pick) over the real CSP header, and the cover host from a page route.
 
 The fakes' state is shared, so Playwright runs one worker. The Playwright context blocks every
 origin but the stack's. They use public test values only and are never part of the default stack.

@@ -120,7 +120,7 @@ export function TotpEnroll({ onEnrolled }: { onEnrolled?: () => void }) {
       <p>Scan this code with an authenticator app, or type the key by hand.</p>
       <QrCode svg={enrollment.qrSvg} label="QR code for your authenticator app" />
       <p>
-        Key: <code>{enrollment.secret}</code>
+        Key: <code className="break-all">{enrollment.secret}</code>
       </p>
       {action.error ? <Notice kind="error">{action.error}</Notice> : null}
       <form onSubmit={confirm}>

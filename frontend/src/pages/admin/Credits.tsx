@@ -47,7 +47,7 @@ export function Credits({ userId, ledger, onChanged }: { userId: string; ledger:
       {ledger.length === 0 ? (
         <p className="text-muted">No classes in these months.</p>
       ) : (
-        <div className="overflow-x-auto">
+        <div className="relative overflow-x-auto" tabIndex={0} role="region" aria-label="Credits">
           <table className="w-full border-collapse text-left text-[0.9375rem]">
             <caption className="sr-only">Credits</caption>
             <thead className="text-muted">

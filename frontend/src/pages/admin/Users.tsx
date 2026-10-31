@@ -64,7 +64,7 @@ export function Users() {
       {page === null && error === null ? <p>Loading</p> : null}
       {page !== null && page.users.length === 0 ? <p className="text-muted">No users found.</p> : null}
       {page !== null && page.users.length > 0 ? (
-        <div className="overflow-x-auto">
+        <div className="relative overflow-x-auto" tabIndex={0} role="region" aria-label="Users">
           <table className="w-full border-collapse text-left text-[0.9375rem]">
             <thead className="text-muted">
               <tr>
