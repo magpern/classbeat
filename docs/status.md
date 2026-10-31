@@ -17,7 +17,7 @@ GitHub hold the detail.
 | M3c | Eval suite, OpenAI and DeepSeek adapters | done technically (on replayed providers, #219): [ADR 0012](adr/0012-eval-suite-and-model-providers.md); the owner's live steps are in [docs/runbooks/m3c-model-enable.md](runbooks/m3c-model-enable.md) |
 | M5 | Tiers, quotas, codes, admin | done technically, on fakes, once this E2E PR (#228) is merged (the security suite #227 is in) ([ADR 0011](adr/0011-tiers-quotas-and-admin.md)); issues in milestone "M5 Tiers and admin". Live activation is the owner's |
 | MU | Night Studio UI (ADR 0013) | design accepted 2026-10-30 ([ADR 0013](adr/0013-ui-design-night-studio.md), roadmap Amendment 8); issues #242, #243, #246 to #251, #253 to #255; runs beside M4 and M5, done before M6 |
-| M6 | Security review, backups, GDPR, VPS | not started; starts after MU |
+| M6 | Security review, backups, GDPR, VPS | not started; starts after MU. **VPS configuration ready, not deployed** (#341): `compose.prod.yaml`, `Caddyfile`, [vps-deploy.md](runbooks/vps-deploy.md), checked locally only (see the runbook's "Local smoke"); the deploy, DNS, TLS, server, mail account and secrets are the owner's steps. Security review, backups and restore drill, GDPR export/delete are not done |
 | M7 | Commercial (deferred) | deferred |
 
 ## Now
@@ -243,6 +243,11 @@ GitHub hold the detail.
 - **M4 live activation** (runbook [m4-live-activation.md](runbooks/m4-live-activation.md), ADR 0008 §11): create the
   Spotify Development Mode app and add the allow-list users, then give a go-ahead for each of steps 2 to 7 (connect, one
   pick, one Approve, one Change songs, the cost reading, Disconnect). Until then `CLASSBEAT_SONG_PICKING` stays off.
+
+- **VPS deploy (M6, #341):** the owner provides a server, a domain with DNS, an SMTP account and the
+  secret files, then authorizes the first deploy and follows [vps-deploy.md](runbooks/vps-deploy.md). Nothing
+  has been deployed or contacted; the real SSE route, the worker start and the mail path have not run
+  under `compose.prod.yaml` (runbook, "Local smoke").
 
 ## Live activation log
 
