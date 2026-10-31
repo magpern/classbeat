@@ -56,6 +56,10 @@ CONNECT_PROVIDER_EMAIL = Limit("connect", "provider-email", 5, 15 * 60)
 # connection releases its slot (the callback, ``RateLimiter.release``).
 SPOTIFY_START_USER = Limit("spotify-start", "account", 10, 3600)
 SPOTIFY_START_IP = Limit("spotify-start", "ip", 30, 3600)
+# ADR 0011 section 2: redeem-code attempts, per user and per IP and hour. Every attempt counts,
+# a success too, so the route can't be used to try codes faster than this.
+REDEEM_USER = Limit("redeem", "account", 10, 3600)
+REDEEM_IP = Limit("redeem", "ip", 30, 3600)
 
 OnSuccess = Literal["decrement", "delete"]
 
@@ -229,3 +233,8 @@ def connect_buckets(provider: str, user_id: str, ip: str, email_normalized: str)
 def spotify_start_buckets(user_id: str, ip: str) -> list[Bucket]:
     """A Spotify connect start (ADR 0009 section 4): per user and per IP."""
     return [Bucket(SPOTIFY_START_USER, user_id), Bucket(SPOTIFY_START_IP, bucket_ip(ip))]
+
+
+def redeem_buckets(user_id: str, ip: str) -> list[Bucket]:
+    """A redeem-code attempt (ADR 0011 section 2): per user and per IP."""
+    return [Bucket(REDEEM_USER, user_id), Bucket(REDEEM_IP, bucket_ip(ip))]
