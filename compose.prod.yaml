@@ -123,6 +123,9 @@ services:
     command: ["alembic", "upgrade", "head"]
     environment:
       <<: *app-env
+      # Opt-in (docs/runbooks/proton-bridge-smtp.md): a mounted PEM that the SMTP certificate must
+      # match instead of the system store. Web only; unset keeps full system-store verification.
+      CLASSBEAT_SMTP_CA_FILE: ${SMTP_CA_FILE:-}
       CLASSBEAT_MIGRATIONS_DATABASE_URL: postgresql+psycopg://classbeat_owner@db:5432/classbeat
     secrets:
       - source: database_owner_password

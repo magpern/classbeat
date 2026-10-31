@@ -2,8 +2,9 @@
 
 Settings choose the host, port, sender and TLS mode (``starttls``, ``tls`` or ``none``; ``none``
 is refused for any host but loopback or the compose ``mailpit`` service, see ``Settings``). The
-password comes from the ``smtp_password`` secret file. ``smtplib`` is blocking, so a send runs in
-a worker thread.
+``smtp_ca_file`` (opt-in) swaps the system trust store for that one PEM file, with the same
+verification and hostname check. The password comes from the ``smtp_password`` secret file.
+``smtplib`` is blocking, so a send runs in a worker thread.
 
 Mail is sent after the response (``send_logged`` is a background task). A failed send is logged
 with the exception class only: never the recipient, the subject, the body or the exception text
@@ -44,6 +45,7 @@ class Mailer:
         self._port = settings.smtp_port
         self._sender = settings.smtp_sender
         self._tls = settings.smtp_tls
+        self._ca_file = str(settings.smtp_ca_file) if settings.smtp_ca_file else None
         self._username = settings.smtp_username
         self._password = (
             settings.smtp_password.get_secret_value() if settings.smtp_password else None
@@ -66,7 +68,9 @@ class Mailer:
             raise MailError("smtp_host is not configured")
         refuse_in_worker(self._host)
         built = self._build(message)
-        context = tls_client_context()  # verifying, and never a TLS key log (SSLKEYLOGFILE)
+        context = tls_client_context(
+            cafile=self._ca_file
+        )  # verifying, and never a TLS key log (SSLKEYLOGFILE)
         if self._tls == "tls":
             client: smtplib.SMTP = smtplib.SMTP_SSL(
                 self._host, self._port, timeout=SMTP_TIMEOUT_SECONDS, context=context

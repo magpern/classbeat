@@ -4,6 +4,7 @@ import ipaddress
 import json
 import os
 import re
+import ssl
 from collections.abc import Mapping
 from pathlib import Path
 from typing import Any, Literal
@@ -183,6 +184,10 @@ class Settings(BaseSettings):
     smtp_username: str | None = None
     # From the file ``smtp_password`` (never the environment).
     smtp_password: SecretStr | None = None
+    # Opt-in: a PEM certificate (or CA) file, mounted read-only, that the SMTP server's
+    # certificate must chain to instead of the system store (a self-signed Proton Mail Bridge).
+    # Verification and the hostname check stay on. Unset: the system store.
+    smtp_ca_file: Path | None = None
 
     # OAuth sign-in (section 5). A provider is on only when its client id and its secret file
     # (``oauth_<provider>_client_secret``, never the environment) both exist.
@@ -415,6 +420,25 @@ class Settings(BaseSettings):
             raise ValueError(
                 "smtp_tls=none is only allowed for a loopback host or the mailpit service"
             )
+        return self
+
+    @field_validator("smtp_ca_file", mode="before")
+    @classmethod
+    def _empty_smtp_ca_file_is_unset(cls, value: object) -> object:
+        return None if isinstance(value, str) and not value.strip() else value
+
+    @model_validator(mode="after")
+    def _check_smtp_ca_file(self) -> "Settings":
+        path = self.smtp_ca_file
+        if path is None:
+            return self
+        if self.smtp_tls == "none":
+            raise ValueError("smtp_ca_file cannot be combined with smtp_tls=none")
+        try:
+            ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT).load_verify_locations(cafile=str(path))
+        except (OSError, ssl.SSLError):
+            # The path and the OS error text stay out of the message.
+            raise ValueError("smtp_ca_file must be a readable PEM certificate file") from None
         return self
 
     @field_validator("smtp_port")
