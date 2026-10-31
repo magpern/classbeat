@@ -328,7 +328,7 @@ def song_suite_row(
         "tool_calls": r.tool_calls,
         "cost_micros": r.cost_micros,
         "checks": [{"name": c.name, "ok": c.ok, "detail": c.detail} for c in r.checks],
-        "scores": {},
+        "scores": dict(r.scores),
     }
 
 

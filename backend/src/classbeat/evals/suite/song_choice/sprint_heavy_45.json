@@ -1,0 +1,13 @@
+{
+ "name": "sprint_heavy_45",
+ "about": "A hard 45 minute class with eight sprints.",
+ "brief": {
+  "length_min": 45,
+  "intensity": "hard",
+  "sprints": 8
+ },
+ "catalogue": {
+  "size": 50
+ },
+ "quality": true
+}

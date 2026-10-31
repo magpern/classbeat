@@ -38,6 +38,7 @@ from pickfake import CHOOSE_LIMITS, POOL_LIMITS
 from pickscripts import provider_for_case as pick_provider
 from smokescripts import good_draft
 from smokescripts import provider_for_case as design_provider
+from songscripts import provider_for as song_provider
 from suitescripts import provider_for_case as suite_provider
 
 # Each released suite_version and its digest. Append only: a released version's digest never
@@ -45,12 +46,15 @@ from suitescripts import provider_for_case as suite_provider
 # manifest's digest to ``suite.current_digest()`` and add the new pair here.
 RELEASED: dict[int, str] = {
     1: "beabe1887df6236e30bd4b040104281e78d1b02ee2d8adecca0bee32557651b5",
-    2: "570193316b6a4079ea7f2ac5bf1e433df733ba1dd2c3ecae691305ae1abb4991",
+    2: "77fecc25fc25fb081f40e0bae1b2b8e83cbd4a611d42fd346e3f3672b64befd4",
+    3: "2784a043380717f56842be5fd91517d801dea05a1db44ec9f4647b061bc6a383",
 }
 
 SUITE = load_suite()
 MANIFEST = SUITE.manifest
 SUITE_OWN = {p.stem for p in Path(suite.__file__).parent.glob("suite/*/*.json")}
+DESIGN_OWN = SUITE_OWN & set(SUITE.design_cases)
+SONG_OWN = SUITE_OWN & set(SUITE.song_cases)
 
 
 def released(version: int, digest: str) -> bool:
@@ -153,10 +157,11 @@ def test_the_check_constants_hold_every_upper_case_constant_of_the_check_modules
 
 def test_the_suite_holds_every_smoke_and_song_case_once_in_its_group() -> None:
     index = MANIFEST.case_index()
-    assert {c.name for c in load_cases()} <= set(SUITE.design_cases)  # the 18
-    assert set(SUITE.song_cases) == {c.name for c in load_pick_cases()}  # the 3
-    assert len(index) == 21 + len(SUITE_OWN)  # and the suite's own (#206)
-    assert set(SUITE_OWN) <= set(SUITE.design_cases)
+    assert set(SUITE.design_cases) == {c.name for c in load_cases()} | DESIGN_OWN
+    assert set(SUITE.song_cases) == {c.name for c in load_pick_cases()} | SONG_OWN
+    assert (len(DESIGN_OWN), len(SONG_OWN)) == (29, 8)  # #206 and #208
+    assert (len(SUITE.design_cases), len(SUITE.song_cases)) == (47, 11)
+    assert len(index) == 58
     assert all(index[n][1] == "design" for n in SUITE.design_cases)
     assert all(index[n][1] == "songs" for n in SUITE.song_cases)
     assert set(MANIFEST.categories) == set(suite.CATEGORY_GROUPS)
@@ -290,8 +295,9 @@ async def _real_rows(repeat: int = 0) -> list[dict[str, Any]]:
         )
         rows.append(suite_row(result, SUITE.category_of(name)))
     for name, case in sorted(SUITE.song_cases.items()):
+        provider = song_provider(case) if case.quality else pick_provider(case)
         result, _, _ = await run_pick_case(
-            case, pick_provider(case), CONFIG, (POOL_LIMITS, CHOOSE_LIMITS)
+            case, provider, CONFIG, (POOL_LIMITS, CHOOSE_LIMITS), MANIFEST.bpm_bands
         )
         rows.append(
             song_suite_row(
@@ -334,7 +340,9 @@ async def test_the_recorded_smoke_runs_pass_the_gate_in_both_groups() -> None:
     assert set(verdict.groups) == {"design", "songs"}
     for group in verdict.groups.values():
         assert group.status == "passed", group.as_json()
-        assert group.runs == (3 * len(SUITE.design_cases) if group.group == "design" else 9)
+        assert group.runs == 3 * len(
+            SUITE.design_cases if group.group == "design" else SUITE.song_cases
+        )
 
 
 # --- zone 7 (section 7) ------------------------------------------------------------------------

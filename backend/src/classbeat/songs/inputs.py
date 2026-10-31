@@ -10,8 +10,8 @@ seed?: {song_list_revision_id, replace: [int]}, mowl_connection_id, spotify_conn
 - ``seed`` ("Ask for changes", section 5): a pick that keeps the seed list's other songs in their
   slots and replaces the ones at ``replace`` (positions in that list, each once). Only with
   ``mode = "pick"`` and an existing class (``class_id``); ``admit`` checks the rest.
-- ``resume`` names an approved list to start phase 2 for (section 6, issue SJ2): exactly when
-  ``mode = "resume"``. Until SJ2 ``admit`` refuses every resume (``receipt_invalid``).
+- ``resume`` names an approved list to start phase 2 for (section 6): exactly when
+  ``mode = "resume"``, and only with an existing class; ``admit`` checks the receipt.
 
 No field is a server field, and nothing in the input reaches a Spotify or MOWL request: the pool,
 the playlists and every id written come from the user's own rows.
@@ -64,6 +64,8 @@ class DesignWithSongsInput(JobInput):
             raise ValueError("the brief is too long")
         if (self.mode == "resume") != (self.resume is not None):
             raise ValueError("resume names its list exactly in mode resume")
+        if self.resume is not None and self.class_id is None:
+            raise ValueError("a resume belongs to an existing class")
         if self.seed is not None and (self.mode != "pick" or self.class_id is None):
             raise ValueError("a seed belongs to a pick of an existing class")
         return self

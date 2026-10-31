@@ -3,6 +3,7 @@
 import ipaddress
 import os
 import re
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Any, Literal
 from urllib.parse import urlsplit
@@ -21,6 +22,7 @@ DEFAULT_SECRETS_DIR = "/run/secrets"
 SECRET_FILE_FIELDS = (
     "database_password",
     "database_owner_password",
+    "database_maint_password",
     "app_secret_key",
     "smtp_password",
     "oauth_google_client_secret",
@@ -120,6 +122,11 @@ class Settings(BaseSettings):
     )
     # From the file ``database_owner_password``; replaces the password in the URL above.
     database_owner_password: SecretStr | None = None
+    # The admin role (``classbeat_maint``, ADR 0011 section 5): web only, never the worker. The
+    # admin area works only with both the URL and the ``database_maint_password`` file; without
+    # either its routes answer 503 ``admin_unavailable``.
+    maint_database_url: SecretStr | None = None
+    database_maint_password: SecretStr | None = None
     static_dir: Path | None = None
     # The worker's claim poll when no ``jobs_queued`` notification arrives (ADR 0005 section 3).
     worker_poll_seconds: float = 2.0
@@ -204,6 +211,9 @@ class Settings(BaseSettings):
     # design is not counted), user requests stored per class, and how many earlier requests
     # along the revision chain go back to the model.
     revisions_per_class: int = Field(default=25, ge=1, le=200)
+    # ADR 0011 section 4: the environment's upper bound on a trial's length. A stored
+    # ``trial.days`` above it is clamped when a trial starts; 0 turns trials off.
+    trial_days_max: int = Field(default=30, ge=0, le=366)
     chat_max_requests: int = Field(default=50, ge=1, le=200)
     chat_context_requests: int = Field(default=10, ge=1, le=30)
     # ADR 0007 section 8: how long a new MOWL workout may take to appear in My Workouts. Unset
@@ -260,9 +270,11 @@ class Settings(BaseSettings):
     def _upper_log_level(cls, value: object) -> object:
         return value.upper() if isinstance(value, str) else value
 
-    @field_validator("database_url", "migrations_database_url")
+    @field_validator("database_url", "migrations_database_url", "maint_database_url")
     @classmethod
-    def _check_database_url(cls, value: SecretStr, info: ValidationInfo) -> SecretStr:
+    def _check_database_url(cls, value: SecretStr | None, info: ValidationInfo) -> SecretStr | None:
+        if value is None:
+            return None
         try:
             url = make_url(value.get_secret_value())
         except ArgumentError:
@@ -405,6 +417,14 @@ class Settings(BaseSettings):
         """The owner role's URL, with ``database_owner_password`` substituted when it is set."""
         return _with_password(self.migrations_database_url, self.database_owner_password)
 
+    def maint_sqlalchemy_url(self) -> URL | None:
+        """The admin role's URL with its password, or ``None`` when either is missing (an empty
+        password file counts as none). Only ``classbeat.admin.db`` may call it (guard 11)."""
+        password = self.database_maint_password
+        if self.maint_database_url is None or password is None or not password.get_secret_value():
+            return None
+        return _with_password(self.maint_database_url, password)
+
 
 def _is_local_host(host: str) -> bool:
     if host.lower() in PLAIN_SMTP_HOSTS:
@@ -463,11 +483,12 @@ MODEL_SDK_REFUSED_PREFIXES = ("ANTHROPIC_", "OPENAI_", "DEEPSEEK_")
 MODEL_SDK_REFUSED_ENVIRONMENT = ("SSLKEYLOGFILE",)
 
 
-def model_sdk_environment_problems() -> list[str]:
-    """The names (never the values) of the refused model SDK variables that are set."""
+def model_sdk_environment_problems(environ: Mapping[str, str] | None = None) -> list[str]:
+    """The names (never the values) of the refused model SDK variables that are set, in
+    ``environ`` (the process environment by default), whatever their case."""
     return sorted(
         name
-        for name in os.environ
+        for name in (os.environ if environ is None else environ)
         if name.upper().startswith(MODEL_SDK_REFUSED_PREFIXES)
         or name.upper() in MODEL_SDK_REFUSED_ENVIRONMENT
     )

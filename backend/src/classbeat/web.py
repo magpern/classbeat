@@ -14,6 +14,8 @@ from sqlalchemy import text
 
 # saving registers save_workout (SV1); playlists the Spotify writes for Check again (OP1)
 from classbeat import __version__, auth, playlists, saving, songs
+from classbeat.admin import routes as admin_routes
+from classbeat.admin.db import AdminDb
 from classbeat.classes.routes import router as classes_router
 from classbeat.config import Settings, check_web_has_no_model_key
 from classbeat.connections.routes import router as connections_router
@@ -26,6 +28,7 @@ from classbeat.jobs.events_routes import router as job_events_router
 from classbeat.jobs.hub import EventHub
 from classbeat.jobs.routes import router as jobs_router
 from classbeat.operations.routes import router as operations_router
+from classbeat.plans.routes import router as plans_router
 from classbeat.playlists.runtime import playlists_runtime
 from classbeat.spotify.routes import api as spotify_router
 from classbeat.spotify.routes import callback as spotify_callback_router
@@ -111,6 +114,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 app.state.session_factory, settings.connection_kek_id
             )
             auth.attach_state(app, settings, app.state.session_factory)
+            # The admin area's audited role (ADR 0011 section 5): refuses to start on a wrong
+            # role; without its credentials the admin routes answer 503 admin_unavailable.
+            app.state.admin_db = AdminDb.from_settings(settings)
+            if app.state.admin_db is not None:
+                await app.state.admin_db.verify()
             app.state.stream_limiter = StreamLimiter()
             app.state.event_hub = EventHub(engine)
             app.state.event_hub.start()  # LISTEN job_events (ADR 0005 section 6)
@@ -120,6 +128,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             if hub is not None:
                 await hub.stop()
             auth.detach_state(app)
+            admin_db = getattr(app.state, "admin_db", None)
+            if admin_db is not None:
+                await admin_db.dispose()
             await engine.dispose()
 
     docs_enabled = settings.environment != "prod"
@@ -141,11 +152,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # ``/oauth/{provider}/callback``, which would otherwise answer it with a 404.
     app.include_router(spotify_callback_router)
     auth.install(app)
+    admin_routes.install(app)  # every /api/admin route of the admin area (ADR 0011 section 6)
     app.include_router(spotify_router)
     app.include_router(connections_router)
     app.include_router(job_events_router)
     app.include_router(jobs_router)
     app.include_router(usage_router)
+    app.include_router(plans_router)
     app.include_router(operations_router)
     app.include_router(music_router)
     app.include_router(classes_router)

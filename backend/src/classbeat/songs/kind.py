@@ -18,10 +18,11 @@
   pool playlist is left as it is), settle releases the credit once, and a later approval is
   refused ``expired``. A cancel while waiting is immediate. Approved, the job is ``queued`` with
   ``attempt = 0`` and the next claim runs the approved phase.
-- **Phase 2** (``mode = "pick"`` after Approve; ``mode = "resume"``) is issue SJ2 (#181): until it
-  lands, an approved job fails ``internal`` at its first claim (the credit is released) and
-  ``admit`` refuses every resume. ``phase_two`` is the seam it replaces; it gets the run and the
-  input and must end with ``Complete`` (a job waits at most once).
+- **Phase 2** (``classbeat.songs.phase2``, issue SJ2): the approved job (``mode = "pick"`` after
+  Approve) or a resume (``mode = "resume"``, a new job admitted against a receipt, which never
+  waits) runs ``prepare``, ``create``, ``fill``, ``attach``, ``music`` and ``design`` and ends
+  with ``Complete``: the final private playlist, verified, analysed in MOWL, and the class's
+  first design (a job waits at most once). ``phase_two`` is the seam the tests replace.
 
 Registered in ``classbeat.jobs.KINDS`` on import, by the worker (which runs it) and the web app
 (the jobs API validates with the same registry). The worker's runtime is ``design_draft``'s
@@ -37,20 +38,32 @@ from classbeat.jobs import KINDS, Complete, JobFailure, JobKind, JobRun, Outcome
 from classbeat.songs import config
 from classbeat.songs.admit import admit, approve_check
 from classbeat.songs.inputs import DesignWithSongsInput
+from classbeat.songs.phase2 import PHASE_TWO, run_phase_two
 from classbeat.songs.pick import run_phase_one
 
 KIND: Final = "design_with_songs"
 PHASE_ONE: Final = ("pool_search", "pool_write", "pool_analyse", "choose")
-STAGES: Final = PHASE_ONE  # SJ2 adds phase 2's stages
+STAGES: Final = PHASE_ONE + PHASE_TWO
 
 PhaseTwo = Callable[[JobRun, DesignWithSongsInput], Awaitable[Complete]]
 
 
-async def _not_built(run: JobRun, given: DesignWithSongsInput) -> Complete:
-    raise JobFailure("internal")  # SJ2 (#181) builds phase 2
+async def _phase_two(run: JobRun, given: DesignWithSongsInput) -> Complete:
+    runtime = current_runtime()
+    if runtime is None:
+        raise JobFailure("internal")
+    provider = new_provider(runtime)  # before any Spotify or MOWL call; this run's own
+    return await run_phase_two(
+        run,
+        given,
+        keyring=runtime.keyring,
+        provider=provider,
+        agent=runtime.agent,
+        config=config.current(),
+    )
 
 
-phase_two: PhaseTwo = _not_built
+phase_two: PhaseTwo = _phase_two
 
 
 async def run(job_run: JobRun) -> Outcome:
@@ -58,10 +71,10 @@ async def run(job_run: JobRun) -> Outcome:
     given = job_run.input
     if runtime is None or not isinstance(given, DesignWithSongsInput):
         raise JobFailure("internal")
-    if job_run.approved:
+    if job_run.approved or given.mode == "resume":
+        if job_run.approved and given.mode != "pick":
+            raise JobFailure("internal")  # a resume never waits
         return await phase_two(job_run, given)
-    if given.mode != "pick":  # a resume never waits; admit refuses it until SJ2
-        raise JobFailure("internal")
     provider = new_provider(runtime)  # before any Spotify or MOWL call; this run's own
     return await run_phase_one(
         job_run,

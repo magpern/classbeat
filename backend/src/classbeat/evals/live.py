@@ -18,8 +18,9 @@ It cannot run by accident. It refuses (exit 2, one line, no values) unless **all
 The ceiling is the worst case: every case may spend the per-job ceiling plus one turn's over-run
 (``max_tokens`` minus the output reserve, section 5), or ``--max-usd`` plus one over-run when that
 is lower: each case runs with the money left as its job ceiling, and the run stops once nothing
-is left. Cases run one after the other with one provider each; the worker's outbound allowlist
-(``api.anthropic.com`` only in effect) is installed before the provider is built. The key is
+is left. Cases run one after the other with one provider each; the worker's outbound allowlist with
+the run's model host (``install_model_allowlist``: ``api.anthropic.com``, ADR 0012 §2) is installed
+before the provider is built. The key is
 never printed; failures print their category or exception class only. Each failed check is printed
 with its detail (numbers and rule names). Results (a table, and JSON with ``--out``) hold per run
 the model, effort, prompt version and repeat index, the outcome, the metrics (turns, tool calls,
@@ -87,6 +88,12 @@ def run_ceiling_micros(config: AgentConfig, cases: int, budget_micros: int | Non
     if budget_micros is None:
         return full
     return min(full, budget_micros + each - config.limits.job_cost_micros)
+
+
+def install_model_allowlist() -> object:
+    """The worker's list with this run's model host, built as the worker's entry point builds it
+    for a usable provider (ADR 0012 §2). The smoke set runs Anthropic only (precondition 3)."""
+    return install_worker_allowlist(("anthropic",))
 
 
 def check_preconditions(settings: Settings, args_live: bool) -> None:
@@ -217,7 +224,7 @@ def main_live(
     out: TextIO = sys.stdout,
     err: TextIO = sys.stderr,
     provider_factory: Callable[[Settings], ModelProvider] = provider_for,
-    install: Callable[[], object] = install_worker_allowlist,
+    install: Callable[[], object] = install_model_allowlist,
 ) -> int:
     try:
         check_preconditions(settings, live)
@@ -245,7 +252,8 @@ def main_live(
         print(plan_text(config, cases, budget, repeat), file=out)
         if budget is None:
             raise LiveRefused("not run: pass --max-usd N to accept spending up to N dollars")
-        install()  # before the provider is built: every request goes through the allowlist
+        # Before the provider is built: every request goes through the allowlist.
+        install()
         provider_factory(settings)  # builds once to fail early on a missing key; discarded
     except LiveRefused as refused:
         print(str(refused), file=err)

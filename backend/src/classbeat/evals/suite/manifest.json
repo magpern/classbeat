@@ -1,6 +1,6 @@
 {
- "suite_version": 2,
- "digest": "570193316b6a4079ea7f2ac5bf1e433df733ba1dd2c3ecae691305ae1abb4991",
+ "suite_version": 3,
+ "digest": "2784a043380717f56842be5fd91517d801dea05a1db44ec9f4647b061bc6a383",
  "rules": {
   "repeat": 3,
   "pass_share": 0.9,
@@ -15,6 +15,16 @@
   "songs": {"median_cost_micros": 1000000, "job_ceiling_micros": 3000000}
  },
  "zone7_tss_margin": 0.1,
+ "bpm_bands": {
+  "warmup": {"low": 80, "high": 125},
+  "build": {"low": 100, "high": 145},
+  "climb": {"low": 60, "high": 80, "doubles": true},
+  "sprint": {"low": 120, "min_drops": 1},
+  "race": {"low": 120, "min_drops": 1},
+  "interval": {"low": 100, "high": 170},
+  "recovery": {"low": 60, "high": 125},
+  "cooldown": {"low": 70, "high": 125}
+ },
  "categories": {
   "standard": {
    "design": [
@@ -44,7 +54,12 @@
     "rev_more_sprints_30", "rev_more_sprints_60", "rev_shorter_45_to_30", "rev_shorter_75_to_60"
    ]
   },
-  "song_choice": {"songs": ["pick_30", "replace_two"]},
+  "song_choice": {
+   "songs": [
+    "pick_30", "replace_two", "thin_catalogue_20", "short_15", "easy_songs_30", "long_songs_60",
+    "climb_heavy_45", "sprint_heavy_45", "era_2000_2012", "replace_three"
+   ]
+  },
   "missing_music": {
    "design": ["music_no_sections", "music_too_short", "music_unknown_bpm"]
   },

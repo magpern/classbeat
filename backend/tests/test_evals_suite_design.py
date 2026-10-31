@@ -38,6 +38,7 @@ OWN: dict[str, list[Case]] = {
     cat: [SUITE.design_cases[n] for n in SUITE.manifest.cases_of(cat, "design") if n not in SMOKE]
     for cat in CATEGORIES
 }
+COUNTS = {"standard": 7, "music_sync": 7, "games_ftp": 7, "revisions": 8}
 ALL = [c for cat in CATEGORIES for c in OWN[cat]]
 BY_NAME = {c.name: c for c in ALL}
 # The checks each category's cases add to the smoke set's.
@@ -65,9 +66,9 @@ def ok_of(result: CaseResult) -> dict[str, bool]:
 # --- the cases ----------------------------------------------------------------------------------
 
 
-def test_each_category_has_at_least_six_new_cases_on_synthetic_music() -> None:
+def test_each_category_has_its_new_cases_on_synthetic_music() -> None:
     for cat in CATEGORIES:
-        assert len(OWN[cat]) >= 6, cat
+        assert len(OWN[cat]) == COUNTS[cat], cat  # at least 6 each (the issue)
         assert all(INDEX[c.name] == (cat, "design") for c in OWN[cat])
     for case in ALL:
         assert not case.music.titles
@@ -83,12 +84,12 @@ def test_the_cases_cover_lengths_intensities_games_ftp_tests_and_revision_kinds(
         assert {c.brief.intensity for c in OWN[cat]} == {"easy", "moderate", "hard"}, cat
     games = {g for c in OWN["games_ftp"] for g in c.expect.games}
     assert games == set(workout.GAMES)
-    assert {c.brief.ftp_test for c in OWN["games_ftp"]} >= {3, 5, 20}
+    assert {c.brief.ftp_test for c in OWN["games_ftp"]} == {None, 3, 5, 20}
     kinds = {c.expect.revision.kind for c in OWN["revisions"] if c.expect.revision}
     assert kinds == {"more_sprints", "easier", "shorter", "climb_moved"}
     assert all(c.revise is not None and c.expect.revision for c in OWN["revisions"])
     assert all(c.expect.music_sync is not None for c in OWN["music_sync"])
-    assert sum(c.brief.sprints + c.brief.races > 0 for c in OWN["music_sync"]) >= 5
+    assert sum(c.brief.sprints + c.brief.races > 0 for c in OWN["music_sync"]) == 6
 
 
 @pytest.mark.parametrize("case", ALL, ids=lambda c: c.name)
