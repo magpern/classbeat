@@ -160,6 +160,22 @@ test('a newer pick stops the older list: a stale tab cannot approve it and says 
   await stale.close()
 })
 
+test('a newer list replaced this one while it waits: the approval refuses as superseded and writes nothing', async ({ page }) => {
+  const id = await waitingPick(page, 'pick-newer', 'E2E replaced list ride')
+  const writes = spotifyWrites().length
+  // A newer song list of the class appears behind the page (the database superuser), as a newer pick would make.
+  sql(
+    `INSERT INTO class_revisions (id, owner_id, class_id, number, kind, content, content_hash, music, provenance) ` +
+      `SELECT gen_random_uuid(), owner_id, class_id, 99, 'song_list', '{"songs": []}'::jsonb, ` +
+      `decode(repeat('ab', 32), 'hex'), '{}'::jsonb, '{}'::jsonb FROM jobs WHERE id = '${id}'`,
+  )
+  await page.getByRole('button', { name: 'Approve songs' }).click()
+  await expect(page.getByRole('alert')).toContainText('A newer list of songs has replaced these, so they cannot be approved any more.')
+  expect((await getJob(page, id)).state).toBe('waiting_for_approval') // nothing started
+  expect(spotifyWrites()).toHaveLength(writes)
+  expect(finalPlaylists()).toEqual([])
+})
+
 test('a list that was not approved in time expires and writes nothing to Spotify', async ({ page }) => {
   test.setTimeout(150_000) // the sweep that marks the job expired runs every 30 seconds
   const id = await waitingPick(page, 'pick-exp', 'E2E expiring ride')
