@@ -584,6 +584,11 @@ The `pr-title` workflow also runs on `merge_group`. A merge group has no PR titl
 commitlint on the subject of every commit the queue would land (`git log --format=%s
 base_sha..head_sha`, the squash commits, each titled with its PR's title as the queue built it):
 a title edited after the PR was enqueued is checked too. A missing SHA or an empty range fails it.
+On the pull request it lints the title with ` (#<number>)` appended, the subject the squash gets,
+so a title that fits the 100-character `header-max-length` only without the suffix fails there
+and not in every merge group (keep titles to about 90 characters). Both events use
+`scripts/commitlint-subject.sh`; a self-test step shows a 100-character title failing with the
+suffix.
 
 The backend test shard count has one source: the `shard` list of the `backend-tests` matrix.
 `scripts/ci-shards.sh` (run in `changes`, tested in `checks`) reads it, refuses another axis, an
