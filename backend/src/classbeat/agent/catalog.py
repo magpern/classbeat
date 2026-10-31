@@ -13,7 +13,9 @@ excepted) is in the catalog (``tests/test_agent_catalog.py``).
   (ADR 0010, Amendment 1). OpenAI's and DeepSeek's entries ship ``owner_pending`` until the owner
   decides (ADR 0012 owner questions 1 and 2); their entries and prices are added by their
   adapter issues (M3c P2, P3) from the providers' published pages, marked "verify before live
-  use", with a new ``PRICES_VERSION``.
+  use", with a new ``PRICES_VERSION``. OpenAI's (P2) are the four current GPT-6 models of its
+  models page, read 2026-10-31; DeepSeek's (P3) the two of its models and pricing page, read
+  the same day. DeepSeek is also off unless ``CLASSBEAT_DEEPSEEK_ENABLED`` (ADR 0012 §2).
 
 ``fake`` is not in the catalog: it stays a worker setting for dev and CI.
 """
@@ -66,10 +68,34 @@ def _anthropic(model: str) -> CatalogModel:
     return CatalogModel("anthropic", model, EFFORTS, MODEL_HOSTS["anthropic"], "allowed")
 
 
+def _openai(model: str) -> CatalogModel:
+    # Each takes ``reasoning.effort`` low to max (OpenAI's models page, read 2026-10-31; verify
+    # before live use). ``owner_pending``: synthetic data only (ADR 0012 §6).
+    return CatalogModel("openai", model, EFFORTS, MODEL_HOSTS["openai"], "owner_pending")
+
+
+# DeepSeek's ``reasoning_effort`` takes low, high and max; it turns medium and xhigh into high, so
+# those are not listed: a DeepSeek route or eval run names one of the three (ADR 0012 §3).
+DEEPSEEK_EFFORTS: Final[tuple[Effort, ...]] = ("low", "high", "max")
+
+
+def _deepseek(model: str) -> CatalogModel:
+    # Its models and pricing page, read 2026-10-31; verify before live use.
+    return CatalogModel(
+        "deepseek", model, DEEPSEEK_EFFORTS, MODEL_HOSTS["deepseek"], "owner_pending"
+    )
+
+
 CATALOG: Final[tuple[CatalogModel, ...]] = (
     _anthropic("claude-opus-5-5"),
     _anthropic("claude-sonnet-5-5"),
     _anthropic("claude-haiku-5-5"),
+    _openai("gpt-6-astra"),
+    _openai("gpt-6.1-sol"),
+    _openai("gpt-6.1-terra"),
+    _openai("gpt-6-luna"),
+    _deepseek("deepseek-flash"),
+    _deepseek("deepseek-v4-pro"),
 )
 
 

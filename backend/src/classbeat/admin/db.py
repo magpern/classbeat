@@ -39,7 +39,7 @@ from uuid import UUID
 
 from sqlalchemy import event, text
 from sqlalchemy.engine import URL
-from sqlalchemy.exc import DisconnectionError, IntegrityError, OperationalError
+from sqlalchemy.exc import DataError, DisconnectionError, IntegrityError, OperationalError
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
     AsyncSession,
@@ -315,7 +315,21 @@ async def _record_failure(
         outcome, reason = "error", "internal"
     try:
         await db.record(actor, action, outcome, reason, target=target, params=params)
+        return
+    except DataError:
+        # The table refused the params themselves (a value jsonb can't hold): keep the row
+        # without them, so a refused or failing action still leaves its row (#282 review).
+        # Any other failure is not retried: a row without params would hide what it was.
+        if params == "{}":
+            logger.error("admin audit row not written", extra={"error_type": "DataError"})
+            return
     except Exception as failure:  # the original exception matters more
+        logger.error("admin audit row not written", extra={"error_type": type(failure).__name__})
+        return
+    try:
+        await db.record(actor, action, outcome, reason, target=target, params="{}")
+        logger.warning("admin audit row written without params", extra={"action": action})
+    except Exception as failure:
         logger.error("admin audit row not written", extra={"error_type": type(failure).__name__})
 
 

@@ -107,18 +107,24 @@ every adapter's captured request body).
   `model_unavailable`; `AuthenticationError`, `PermissionDeniedError`, `NotFoundError` →
   `model_config`; `BadRequestError` and the rest → `internal`. Logs get the class name, status and
   request id only.
-- **Usage**: the OpenAI APIs report cached prompt tokens as a part of the prompt tokens and have no
-  cache-write charge. Normalised: `input_tokens = prompt - cached`, `cache_read_tokens = cached`,
-  `cache_write_tokens = 0`, `output_tokens` = completion tokens including reasoning tokens.
+- **Usage** (amended 2026-10-31, #204): the OpenAI APIs report cached reads (`cached_tokens`) and
+  cache writes (`cache_write_tokens`) as parts of the prompt tokens. OpenAI's pricing page and
+  prompt-caching guide (read 2026-10-31, docs only) bill a write separately from GPT-5.6 on: 1.25
+  times input for the default 30-minute lifetime, 2.5 times for the 12-hour one, which classbeat
+  never asks for. Normalised: `input_tokens = prompt - cached - written`, `cache_read_tokens =
+  cached`, `cache_write_tokens = written`, `output_tokens` = completion tokens including reasoning
+  tokens; cached plus written above the prompt is `internal`. Each price entry has its write rate (a
+  model without a write charge would list its input rate, so the cost is the same). *Was:* "no
+  cache-write charge", `cache_write_tokens = 0`.
 - **Tool schemas**: the providers' strict function mode needs every property listed in `required`
   (optional ones as a union with `null`) and `additionalProperties: false`. A pure transform turns each
   stage's Pydantic schema into that form and drops the added `null`s from the parsed input before the
   loop validates it; a test runs every tool of every stage through it and back. The loop still
   validates every input itself (ADR 0006 §4).
 - **Effort**: classbeat's `low | medium | high | xhigh | max` maps per catalog model to the provider's
-  own setting (OpenAI `reasoning.effort`, DeepSeek: model choice only, no effort parameter). An effort
-  the model does not list in the catalog is refused when the route or the eval run is set up, never
-  silently changed.
+  own setting (OpenAI `reasoning.effort`, which takes `low` to `max` on the GPT-6 models, read
+  2026-10-31; DeepSeek `reasoning_effort`, see below). An effort the model does not list in the
+  catalog is refused when the route or the eval run is set up, never silently changed.
 
 **`OpenAIProvider`** (`classbeat.agent.providers.openai_responses`): the **Responses API**, because it
 carries the model's reasoning between tool turns, which multi-turn tool use needs (Chat Completions
@@ -133,11 +139,37 @@ calls → `tool_use`; with none → `end_turn`; `incomplete` for `max_output_tok
 refusal item or `content_filter` → `refusal`; anything else → `other`.
 
 **`DeepSeekProvider`** (`classbeat.agent.providers.deepseek`): the same SDK and shared layer on
-**Chat Completions** (what DeepSeek's API offers), `base_url` the DeepSeek host. Tool calls as
-`tools` with `strict` where the model supports it; the reasoning text a reasoning model returns is
-**not** sent back (the provider's documentation asks for that) and is kept in memory only like any
-model text. Stops from `finish_reason`: `tool_calls` → `tool_use`, `stop` → `end_turn`, `length` →
-`max_tokens`, `content_filter` → `refusal`, else `other`. The developer takes the exact request rules
+**Chat Completions** (what DeepSeek's API offers), `base_url` the DeepSeek host root,
+`https://api.deepseek.com` (DeepSeek's documented OpenAI-SDK base URL, no `/v1`). Stops from
+`finish_reason`: `tool_calls` → `tool_use`, `stop` → `end_turn`, `length` → `max_tokens`,
+`content_filter` → `refusal`, else `other`.
+
+*Amended 2026-10-31 (#205), from DeepSeek's API documentation read that day (docs only):*
+
+- **The reasoning text goes back.** DeepSeek's thinking-mode guide: when a request has tools, the
+  `reasoning_content` of every earlier assistant turn must be passed back in all later requests,
+  or the API answers 400. Every stage has tools, so each assistant message goes back with its
+  `reasoning_content`, from the conversation's memory only, to DeepSeek only, within the same stage
+  run. It is never logged (the `openai` SDK logger is quiet, as `anthropic`'s), never put in a
+  `Turn`, an event, a stored row, a revision or an eval result; a planted marker test checks each.
+  *Was:* "the reasoning text a reasoning model returns is **not** sent back".
+- **Effort.** DeepSeek has `reasoning_effort` `low`, `high` and `max`, and quietly turns `medium`
+  and `xhigh` into `high`. classbeat maps the three one to one and its DeepSeek catalog entries
+  list only those; `medium` and `xhigh` are refused (`model_config`, before any request), never
+  changed, so **a DeepSeek route or eval run names an explicit effort** (the default `medium`
+  does not fit it). Thinking is sent `enabled` explicitly. *Was:* "model choice only, no effort
+  parameter".
+- **Tools are not strict.** DeepSeek's strict mode is a beta behind `https://api.deepseek.com/beta`
+  (the same host); until it leaves beta the tools go as plain `function` tools with the stage's
+  own schemas, at the root URL, and the loop's own validation refuses a malformed call (as it
+  does for every provider, ADR 0006 §4; tested). Strict via `/beta` is a follow-up. *Was:* "with
+  `strict` where the model supports it".
+- **Errors and stops.** 402 (insufficient balance) is `model_config`; `finish_reason`
+  `insufficient_system_resource` is a failed turn, `model_unavailable`; `aborted` is `other`.
+- **Prices.** DeepSeek bills off-peak hours at half rate; the price table keeps the peak rates (a
+  cost never undershoots). There is no cache-write charge.
+
+The developer takes the exact request rules
 (which models support tool calls and strict mode, the reasoning field's name) from DeepSeek's published
 API documentation, writes them into the module docstring with the date read, and the fixtures follow
 them; nothing is learned by calling the API.

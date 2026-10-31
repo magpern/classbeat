@@ -301,6 +301,38 @@ def test_the_result_is_computed_by_the_backend(stage: Stage, data: MusicData) ->
     assert (result.map_version, result.crossfade_sec) == (12, spotify.CROSSFADE_SEC)
 
 
+def test_a_zone_7_interval_sets_the_approximate_flag_from_the_fitted_draft(
+    stage: Stage, data: MusicData
+) -> None:
+    plain = good_draft()
+    zones = {i["zone"] for s in plain["segments"] for i in s["intervals"]}
+    assert 7 not in zones
+    for tool in ("preview_draft", "submit_draft"):
+        body, done = call(stage, tool, {"draft": plain})
+        assert body["tss_approximate"] is False
+    assert done.output.tss_approximate is False
+
+    sprint = good_draft()
+    sprint["segments"][1]["intervals"][0]["zone"] = 7
+    for tool in ("preview_draft", "submit_draft"):
+        body, done = call(stage, tool, {"draft": sprint})
+        assert body["tss_approximate"] is True
+    assert done.output.tss_approximate is True
+    assert (
+        check(
+            WorkoutDraft.model_validate(sprint), DesignContext.build(brief(), data).map
+        ).tss_approximate
+        is True
+    )
+
+
+def test_the_flag_is_not_an_input_the_model_can_set(stage: Stage) -> None:
+    draft = good_draft()
+    draft["tss_approximate"] = True
+    _, done = call(stage, "preview_draft", {"draft": draft})
+    assert done.error == "invalid_input"
+
+
 # --- crossfade ------------------------------------------------------------------------------
 
 

@@ -16,6 +16,20 @@ against https://platform.claude.com/docs/en/about-claude/pricing before live act
 M3b) and edit them here. Only the configured default model is priced: a model the table doesn't
 price fails the run ``model_config`` before any request, so a new model is priced (and passes the
 section 11 suite) before it is used.
+
+**OpenAI (P2): verify before live use.** Standard-tier list prices from OpenAI's pricing page,
+read 2026-10-31 (docs only, never a bill). A prompt above 272K tokens bills the whole request at
+the long-context rates. OpenAI counts cached reads and cache writes inside the input tokens and,
+from GPT-5.6 on, bills a write at 1.25 times input for the default 30-minute lifetime (its
+prompt-caching guide; ADR 0012 §3, amended 2026-10-31); the provider never asks for the 12-hour
+one (2.5 times). ``classbeat.agent.providers.openai_common.normalise_usage`` splits them apart,
+so each part is priced once. The OpenAI entries are ``owner_pending`` (ADR 0012 §6).
+
+**DeepSeek (P3): verify before live use.** List prices from DeepSeek's models and pricing page,
+read 2026-10-31 (docs only): cache miss as ``input``, cache hit as ``cache_read``. DeepSeek bills
+off-peak hours at half these rates; the table has one rate, so it keeps the **peak** (dearer)
+ones and a cost never undershoots. It has no cache-write charge: ``cache_write`` is the input
+rate and the adapter reports ``cache_write = 0``. The entries are ``owner_pending``.
 """
 
 import math
@@ -28,7 +42,7 @@ from classbeat.agent.provider import Usage
 
 # Bump when any price below changes: each agent_runs row keeps the version it was priced with
 # (ADR 0007 section 10), and no stored row is re-priced.
-PRICES_VERSION: Final = "2026-10-29"
+PRICES_VERSION: Final = "2026-10-31.2"
 
 ANY_MODEL: Final = "*"
 
@@ -125,4 +139,52 @@ ANTHROPIC_PRICES: Final = {
     ),
 }
 
-DEFAULT_PRICES: Final = PriceTable({("fake", ANY_MODEL): FAKE_PRICE, **ANTHROPIC_PRICES})
+OPENAI_LONG_CONTEXT_TOKENS: Final = 272_000  # "short context" is at most 272K input tokens
+
+
+def _openai(short: tuple[str, str, str, str], long: tuple[str, str, str, str]) -> Price:
+    """(input, cached read, 30-minute write, output) per million, short then long context."""
+
+    given, read, write, output = (Decimal(v) for v in short)
+    long_input, long_read, long_write, long_output = (Decimal(v) for v in long)
+    return Price(
+        input=given,
+        output=output,
+        cache_write=write,
+        cache_read=read,
+        above_tokens=OPENAI_LONG_CONTEXT_TOKENS,
+        above=Price(
+            input=long_input, output=long_output, cache_write=long_write, cache_read=long_read
+        ),
+    )
+
+
+# Verify before live use (see above).
+OPENAI_PRICES: Final = {
+    ("openai", "gpt-6-astra"): _openai(("10", "1", "12.5", "50"), ("20", "2", "25", "75")),
+    ("openai", "gpt-6.1-sol"): _openai(("2", "0.1", "2.5", "10"), ("4", "0.2", "5", "15")),
+    ("openai", "gpt-6.1-terra"): _openai(("1", "0.05", "1.25", "5"), ("2", "0.1", "2.5", "7.5")),
+    ("openai", "gpt-6-luna"): _openai(
+        ("0.1", "0.01", "0.125", "0.5"), ("0.2", "0.02", "0.25", "0.75")
+    ),
+}
+
+# Verify before live use (see above). Peak rates; no cache-write charge (write = input).
+DEEPSEEK_PRICES: Final = {
+    ("deepseek", "deepseek-flash"): Price(
+        input=Decimal("0.3"),
+        output=Decimal("1.2"),
+        cache_write=Decimal("0.3"),
+        cache_read=Decimal("0.006"),
+    ),
+    ("deepseek", "deepseek-v4-pro"): Price(
+        input=Decimal("1.32"),
+        output=Decimal("3.96"),
+        cache_write=Decimal("1.32"),
+        cache_read=Decimal("0.044"),
+    ),
+}
+
+DEFAULT_PRICES: Final = PriceTable(
+    {("fake", ANY_MODEL): FAKE_PRICE, **ANTHROPIC_PRICES, **OPENAI_PRICES, **DEEPSEEK_PRICES}
+)

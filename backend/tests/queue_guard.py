@@ -15,12 +15,13 @@ from classbeat.db.queue_check import QUEUE_FUNCTIONS, QUEUE_VERSION
 from classbeat.db.queue_digests import GUARD_TRIGGER_DIGESTS, QUEUE_DIGESTS
 
 QUEUE, APP, OWNER = "classbeat_queue", "classbeat_app", "classbeat_owner"
-# The M5 guard triggers of migration 0007 (ADR 0011 section 1): function = trigger name -> (table,
-# the events of a row-level BEFORE trigger). pg_trigger.tgtype bits: ROW 1, BEFORE 2, INSERT 4,
-# DELETE 8, UPDATE 16, TRUNCATE 32, INSTEAD 64.
+# The M5 guard triggers of migrations 0007 and 0010 (ADR 0011 section 1): function = trigger
+# name -> (table, the events of a row-level BEFORE trigger). pg_trigger.tgtype bits: ROW 1,
+# BEFORE 2, INSERT 4, DELETE 8, UPDATE 16, TRUNCATE 32, INSTEAD 64.
 GUARD_TRIGGERS = {
     "credit_ledger_guard": ("credit_ledger", 16),
     "admin_audit_guard": ("admin_audit", 8 | 16),
+    "redeem_codes_guard": ("redeem_codes", 16),
 }
 SEARCH_PATH = ["search_path=pg_catalog, pg_temp"]
 ACL = {f"{QUEUE}=X/{QUEUE}", f"{APP}=X/{QUEUE}"}

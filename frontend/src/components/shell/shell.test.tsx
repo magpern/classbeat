@@ -1,7 +1,7 @@
 import { screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it } from 'vitest'
-import { SIGNED_IN, fakeApi, USAGE_NONE } from '../../test/fakeApi'
+import { PLAN_FREE, SIGNED_IN, fakeApi, USAGE_NONE } from '../../test/fakeApi'
 import { JOB_ID } from '../../test/jobFixtures'
 import { setWidth } from '../../test/layout'
 import { renderAt } from '../../test/render'
@@ -13,7 +13,7 @@ function stubApi(session: object = SIGNED_IN) {
   return fakeApi({
     'GET /api/auth/session': session,
     'GET /api/classes': { classes: [] },
-    'GET /api/usage': { ...USAGE_NONE, classes_designed: 4 },
+    'GET /api/account/plan': { ...PLAN_FREE, classes_held: 2 },
   })
 }
 
@@ -44,7 +44,10 @@ describe('navigation by width', () => {
     const links = within(mainNav()).getAllByRole('link')
     expect(links.map((l) => l.getAttribute('aria-label'))).toEqual(['New class', 'Home', 'My classes', 'Music', 'Account'])
     expect(within(mainNav()).queryByText('Music')).toBeNull()
-    expect(screen.queryByText('Classes this month')).toBeNull()
+    // The rail keeps the meter, compact: the number, the full words for screen readers.
+    expect(await screen.findByText('Classes this month: 2 of 3 classes in October')).toHaveClass('sr-only')
+    expect(screen.getByText('2/3')).toBeInTheDocument()
+    expect(screen.getByRole('progressbar', { name: 'Classes this month' })).toHaveAttribute('aria-valuenow', '67')
   })
 
   it('1440 px: a sidebar with labels, the classes meter and the avatar with the name', async () => {
@@ -55,7 +58,8 @@ describe('navigation by width', () => {
     const links = within(mainNav()).getAllByRole('link')
     expect(links.map((l) => l.textContent)).toEqual(['New class', 'Home', 'My classes', 'Music', 'Account'])
     expect(await screen.findByText('Classes this month')).toBeInTheDocument()
-    expect(screen.getByText('4')).toBeInTheDocument()
+    expect(screen.getByText('2 of 3 classes in October')).toBeInTheDocument()
+    expect(screen.getByRole('progressbar', { name: 'Classes this month' })).toHaveAttribute('aria-valuenow', '67')
     expect(screen.getByRole('button', { name: 'ann@example.test' })).toHaveTextContent('ann@example.test')
   })
 
@@ -102,6 +106,18 @@ describe('keyboard', () => {
 })
 
 describe('avatar menu and Admin', () => {
+  it.each([
+    [390, 'bottom'],
+    [800, 'top'],
+    [1440, 'top'],
+  ] as const)('at %i px the menu opens %s', async (width, side) => {
+    setWidth(width)
+    stubApi()
+    renderAt('/classes')
+    await userEvent.click(await screen.findByRole('button', { name: 'ann@example.test' }))
+    expect(await screen.findByRole('menu')).toHaveAttribute('data-side', side)
+  })
+
   it('has Account and Sign out, and no Admin for a normal user', async () => {
     setWidth(390)
     stubApi()

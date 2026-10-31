@@ -7,6 +7,7 @@ import secrets
 import uuid
 from collections.abc import Iterator
 from contextlib import contextmanager
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import pytest
@@ -241,12 +242,14 @@ def test_the_app_role_adds_only_code_and_trial_entitlements(admin: Connection, a
     for source in ("grant", "subscription"):
         with pytest.raises(DBAPIError, match="row-level security"):
             entitle(app, user, source)
-    entitle(app, user, "trial", ends_at=None)
-    entitle(app, user, "code", code_id=code(admin))
+    # Migration 0010: the app's rows always end (tests/test_plans_hardening.py has the limits).
+    soon = datetime.now(UTC) + timedelta(days=30)
+    entitle(app, user, "trial", ends_at=soon)
+    entitle(app, user, "code", code_id=code(admin), ends_at=soon)
     with pytest.raises(IntegrityError, match="entitlements_code"):
-        entitle(app, user, "code")
+        entitle(app, user, "code", ends_at=soon)
     with pytest.raises(IntegrityError, match="entitlements_one_trial"):
-        entitle(app, user, "trial")
+        entitle(app, user, "trial", ends_at=soon)
     for statement in (
         "UPDATE entitlements SET ends_at = NULL",
         "UPDATE entitlements SET revoked_at = NULL",
@@ -283,7 +286,8 @@ def test_the_app_role_can_only_count_a_redemption(admin: Connection, app: Engine
         update_as(app, user, "UPDATE redeem_codes SET redeemed_count = 1 WHERE id = :i", i=code_id)
         == 1
     )
-    with pytest.raises(IntegrityError, match="redeem_codes_redeemed_count"):
+    # Used up: migration 0010's trigger refuses it before the check constraint would.
+    with pytest.raises(DBAPIError, match=REFUSED):
         update_as(app, user, "UPDATE redeem_codes SET redeemed_count = 2 WHERE id = :i", i=code_id)
     for statement in (
         "UPDATE redeem_codes SET max_redemptions = 1000",

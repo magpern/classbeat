@@ -58,7 +58,7 @@ test('sign up and sign in with Google through the fake provider', async ({ page 
   await page.getByRole('button', { name: 'Continue with Google' }).click()
   await expect(page.getByRole('button', { name: email })).toBeVisible()
 
-  await page.goto('/account')
+  await page.goto('/account#security')
   await expect(page.getByRole('button', { name: 'Unlink Google' })).toBeVisible()
   // The only sign-in method cannot be unlinked.
   await page.getByRole('button', { name: 'Unlink Google' }).click()
