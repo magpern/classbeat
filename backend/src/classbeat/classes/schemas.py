@@ -48,6 +48,8 @@ class ClassOut(BaseModel):
     # The current revision's intervals as [zone, seconds], in order: enough for a mini profile
     # and a length, nothing else (ADR 0013 section 11, UI2). Empty without a current revision.
     profile: list[tuple[int, int]] = []
+    # ADR 0012 section 7: the current revision has a zone 7 interval, so its TSS is approximate.
+    tss_approximate: bool = False
 
     @classmethod
     def of(cls, row: Any) -> "ClassOut":
@@ -79,6 +81,7 @@ class ClassOut(BaseModel):
             open_job_id=row.open_job_id,
             open_job=job,
             profile=[(int(z), int(sec)) for z, sec in row.profile],
+            tss_approximate=bool(row.tss_approximate),
         )
 
 
@@ -205,6 +208,8 @@ class RevisionOut(RevisionSummaryOut):
     content: dict[str, Any]
     unknown_bpm: list[UnknownBpmOut]
     provenance: ProvenanceOut
+    # ADR 0012 section 7: the draft has a zone 7 interval, so its TSS is approximate.
+    tss_approximate: bool = False
 
 
 class MessageOut(BaseModel):

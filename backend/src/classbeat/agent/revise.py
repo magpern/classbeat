@@ -129,6 +129,7 @@ def revise_stage(ctx: ReviseContext) -> Stage:
                 "accepted": True,
                 "duration": mmss(result.duration_sec),
                 "tss": result.tss,
+                "tss_approximate": result.tss_approximate,
                 "quality": result.quality,
                 "warnings": result.warnings,
             },

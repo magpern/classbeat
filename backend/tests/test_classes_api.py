@@ -945,3 +945,41 @@ async def test_the_list_profile_is_the_current_revision_and_never_another_users(
     detail = await mine.browser.get(f"/api/classes/{mine.class_id}")
     assert detail.json()["profile"] == [[2, 60], [3, 120], [5, 300]]
     assert (await mine.browser.get(f"/api/classes/{theirs.class_id}")).status_code == 404
+
+
+async def test_the_approximate_tss_flag_is_the_stored_one_or_read_from_a_zone_7_interval(
+    two: tuple[Plant, Plant],
+) -> None:
+    mine, theirs = two
+    assert by_class(await mine.browser.get("/api/classes"), mine)["tss_approximate"] is False
+    detail = (await mine.browser.get(f"/api/classes/{mine.class_id}")).json()
+    assert detail["tss_approximate"] is False
+    shown = (await mine.browser.get(f"/api/classes/{mine.class_id}/revisions/{mine.r1}")).json()
+    assert shown["tss_approximate"] is False
+
+    # A stored flag wins over the content; without one (older revisions) a zone 7 interval sets it.
+    mine.sql(
+        "UPDATE class_revisions SET provenance = provenance || CAST(:p AS jsonb) WHERE id = :r",
+        p=json.dumps({"tss_approximate": True}),
+        r=mine.r1,
+    )
+    assert by_class(await mine.browser.get("/api/classes"), mine)["tss_approximate"] is True
+    revision_url = f"/api/classes/{mine.class_id}/revisions/{mine.r1}"
+    assert (await mine.browser.get(revision_url)).json()["tss_approximate"] is True
+
+    theirs.sql(
+        "UPDATE class_revisions SET content = CAST(:c AS jsonb) WHERE id = :r",
+        c=json.dumps(
+            {
+                **DRAFT,
+                "segments": [{"name": "X", "kind": "main", "intervals": [{"sec": 9, "zone": 7}]}],
+            }
+        ),
+        r=theirs.r1,
+    )
+    assert by_class(await theirs.browser.get("/api/classes"), theirs)["tss_approximate"] is True
+    assert by_class(await mine.browser.get("/api/classes"), mine)["tss_approximate"] is True
+
+
+def by_class(response: Any, plant: Plant) -> dict[str, Any]:
+    return {c["id"]: c for c in response.json()["classes"]}[str(plant.class_id)]
