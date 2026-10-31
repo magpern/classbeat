@@ -284,6 +284,11 @@ and retired ones are `connection_kek_<id>`; `smtp_password` (optional) is the SM
 (`CLASSBEAT_SMTP_HOST`, `_PORT`, `_SENDER`, `_USERNAME` and `_TLS` = `starttls`, `tls` or `none`;
 `none` only for loopback or the compose `mailpit`; compose points them at mailpit); the matching
 `CLASSBEAT_DATABASE_PASSWORD` and `CLASSBEAT_DATABASE_OWNER_PASSWORD` variables are ignored.
+The admin area (ADR 0011 section 5): `CLASSBEAT_MAINT_DATABASE_URL` (compose sets it on web) and the
+`database_maint_password` secret file (web and `db-functions` only, which creates the role
+`classbeat_maint` from `docker/postgres/maint/`) connect the admin routes as that role; without either
+they answer 503 `admin_unavailable` and the rest of the app works, and web refuses to start when the
+role is not exactly `classbeat_maint` (guard 11, `tests/test_maint_privileges.py`, checks its grants).
 The model (ADR 0006 section 9): `CLASSBEAT_MODEL_PROVIDER` is `anthropic` (the default) or `fake`
 (compose takes `MODEL_PROVIDER` from `.env`, `fake` in `.env.example`, so the dev stack and CI never
 call a model). `anthropic` needs the `anthropic_api_key` secret file, mounted on the **worker only**
@@ -368,7 +373,8 @@ the candidates just written; after it the pick fails `pool_not_synced` (retried 
 `classbeat.jobs.service` (the jobs API), `classbeat.jobs.progress` (the SSE stream's reads),
 `classbeat.operations.user` (the user's Check again / Do it anyway), `classbeat.operations.orphans`
 (marking orphaned class writes `uncertain` before a view or action), `classbeat.saving.reads` (the
-save and update reconcilers' read-only read of the saved revision, SV1), `classbeat.keys_cli` and the
+save and update reconcilers' read-only read of the saved revision, SV1), `classbeat.plans.account`,
+`classbeat.plans.redeem` and `classbeat.plans.trial` (the user's plan read, redeem and trial, PL1), `classbeat.keys_cli` and the
 `classbeat.connections`, `classbeat.auth`, `classbeat.classes` (the class API), `classbeat.usage`
 (the usage reads, US1) and `classbeat.db` packages may open a `user_session`
 (`tests/test_session_guard.py`); job kinds live outside `classbeat.jobs`.
@@ -381,6 +387,9 @@ design not counted), `CLASSBEAT_CHAT_MAX_REQUESTS` (50 user requests per class) 
 `FakeProvider` script, a synthetic Spotify catalogue and a synthetic MOWL analysis (no Spotify, MOWL or
 model contact). They run in CI (`backend/tests/test_evals_pick_smoke.py`) and are not part of
 `smoke --live`.
+Plans (ADR 0011 sections 2 and 4, PL1): `GET /api/account/plan`, `POST /api/account/redeem` (10 per user and 30 per IP
+and hour) and `POST /api/account/trial`; `CLASSBEAT_TRIAL_DAYS_MAX` (30, 0 to 366; 0 turns trials off) clamps the
+stored `trial` setting's days when a trial starts, and a trial's plan is clamped to at most `instructor`.
 Progress (ADR 0005 section 6): `GET /api/jobs/{id}/events` streams a job's events as SSE (`Last-Event-ID`,
 5 open streams per user and web process); each web process keeps one `LISTEN job_events` connection.
 OAuth sign-in (ADR 0003 section 5): `CLASSBEAT_OAUTH_<PROVIDER>_CLIENT_ID` and the
@@ -556,7 +565,7 @@ The `checks` job runs these as steps; the image scan is a step of `e2e`:
 | pip-audit | `uv export --frozen` (production, then all groups) through `pip-audit` (pinned) |
 | npm audit | `npm audit --audit-level=high` in `frontend/` and `e2e/` |
 | Trivy repository scan | Trivy on the repository (vulnerabilities, Dockerfile misconfiguration; compose is not scanned) |
-| `e2e`: stack checks | builds the stack once: `/api/ready` and the SPA answer, `web` and `worker` run as non-root, no secret value appears in `docker inspect` (the empty model key is replaced by a random canary first), only `worker` mounts `anthropic_api_key` and runs `fake`, no container has a model key variable, and `postgres_password` is mounted on `db` and `db-functions` only (never web, worker, migrate or maint) |
+| `e2e`: stack checks | builds the stack once: `/api/ready` and the SPA answer, `web` and `worker` run as non-root, no secret value appears in `docker inspect` (the empty model key is replaced by a random canary first), only `worker` mounts `anthropic_api_key` and runs `fake`, no container has a model key variable, `postgres_password` is mounted on `db` and `db-functions` only (never web, worker, migrate or maint), and `database_maint_password` on `db-functions` and `web` only |
 | `e2e`: Trivy image scan | Trivy on the image the running stack was built from (never pushed); then Playwright runs |
 
 Trivy and gitleaks are checksum-verified release binaries. `pip-audit` (exact version) lives in

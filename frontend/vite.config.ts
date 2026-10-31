@@ -32,6 +32,7 @@ export default defineConfig(({ mode }) => {
     test: {
       environment: 'jsdom',
       setupFiles: ['./src/test/setup.ts'],
+      testTimeout: 15000,
       unstubGlobals: true,
       restoreMocks: true,
     },

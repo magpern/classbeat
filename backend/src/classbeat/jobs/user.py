@@ -18,7 +18,9 @@ is inserted with ``credit_state = 'none'`` and the ledger is not called.
 
 ``approve`` checks what the job row can tell: the wait, its expiry, the revision (the newest
 ``song_list`` of the class; a revision id that is not one of the user's own song lists of that
-class is ``not_found``, like a foreign job) and the content hash; then the caller's ``admit``
+class is ``not_found``, like a foreign job; this applies only while the job waits: a job that is
+no longer ``waiting_for_approval`` answers ``not_waiting`` or ``expired`` for any revision, and a
+repeat of its own approval stays the 200 no-op) and the content hash; then the caller's ``admit``
 (the jobs API: connections, the kind's ``approve_check``, the per-user limit and the credit
 seam, ADR 0005 section 2) in the same transaction. Accepted, it starts a new **phase**:
 ``attempt = 0``, ``approved_at = now()``, state ``queued``, available at once, and it wakes the

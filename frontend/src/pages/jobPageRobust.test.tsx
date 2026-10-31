@@ -1,3 +1,4 @@
+import userEvent from '@testing-library/user-event'
 import { act, fireEvent, renderHook, screen, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it } from 'vitest'
 import { useJobProgress } from '../hooks/useJobProgress'
@@ -275,7 +276,11 @@ describe('the remembered form input', () => {
     renderAt(`/jobs/${JOB_ID}`)
     await screen.findByRole('heading', { name: 'You stopped this design' })
     expect(window.sessionStorage.getItem(`classbeat.design-input.${JOB_ID}`)).not.toBeNull()
-    fireEvent.click(screen.getByRole('button', { name: 'Sign out' }))
+    // The focus layout has no navigation: sign out from another page of the same session.
+    window.history.pushState(null, '', '/music')
+    window.dispatchEvent(new PopStateEvent('popstate'))
+    await userEvent.click(await screen.findByRole('button', { name: 'ann@example.test' }))
+    await userEvent.click(await screen.findByRole('menuitem', { name: 'Sign out' }))
     await waitFor(() => {
       expect(window.sessionStorage.getItem(`classbeat.design-input.${JOB_ID}`)).toBeNull()
     })

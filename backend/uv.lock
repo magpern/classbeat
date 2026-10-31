@@ -259,7 +259,7 @@ requires-dist = [
     { name = "authlib", specifier = "==1.9.1" },
     { name = "certifi", specifier = ">=2026.10.23" },
     { name = "cryptography", specifier = "==50.0.2" },
-    { name = "fastapi", specifier = ">=0.115" },
+    { name = "fastapi", specifier = ">=0.138" },
     { name = "httpx", specifier = "==0.28.1" },
     { name = "joserfc", specifier = "==1.7.7" },
     { name = "mowl-workouts", path = "vendor/mowl_workouts-0.7.0-py3-none-any.whl" },

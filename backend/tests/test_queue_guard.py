@@ -136,11 +136,11 @@ async def test_drift_is_found_refused_and_repaired(
 
 
 async def test_the_check_reports_a_missing_role_and_a_malformed_row() -> None:
-    missing = queue_problems((None, 0, 0, [], [], [], []))
+    missing = queue_problems((None, 0, 0, [], [], [], [], []))
     assert missing == [
         "the role classbeat_queue does not exist (run docker/postgres/queue/20-queue.sql)"
     ]
-    with pytest.raises(ValueError, match="seven columns"):
+    with pytest.raises(ValueError, match="eight columns"):
         queue_problems((None,))
     assert "classbeat_queue" in QUEUE_QUERY
 

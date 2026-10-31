@@ -116,7 +116,13 @@ def by_status(status: int, retry_after: int | None, *, connect: bool) -> str:
 
 def by_oauth_code(status: int, code: object, retry_after: int | None) -> str:
     """The category of a token endpoint's error answer: its OAuth ``error`` code (a short
-    enumerated value, never its description), else its status."""
+    enumerated value, never its description), else its status.
+
+    Only a recognised code says what is wrong (``invalid_grant``, ``APP_ERROR_CODES``). A 400 or
+    401 **without** one (no JSON, no ``error``, or a code not listed) is not Spotify's OAuth
+    answer about this app or token, so it neither names a misconfiguration nor flips the
+    connection: ``upstream_unavailable``, retried like an outage (ADR 0009 section 8; #198 item
+    2)."""
     if status == 429 or 500 <= status <= 599:
         return by_status(status, retry_after, connect=False)
     if code == "invalid_grant":
@@ -124,7 +130,7 @@ def by_oauth_code(status: int, code: object, retry_after: int | None) -> str:
     if isinstance(code, str) and code in APP_ERROR_CODES:
         return "app_misconfigured"
     if status in (400, 401):
-        return "app_misconfigured"
+        return "upstream_unavailable"
     return "invalid_response"
 
 

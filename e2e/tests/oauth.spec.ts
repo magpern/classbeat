@@ -48,14 +48,15 @@ test('sign up and sign in with Google through the fake provider', async ({ page 
   await page.goto('/signin')
   await page.getByLabel(/Invite code/).fill(createInvite())
   await page.getByRole('button', { name: 'Continue with Google' }).click()
-  await expect(page.getByRole('navigation', { name: 'Account' })).toContainText(email)
+  await expect(page.getByRole('button', { name: email })).toBeVisible()
 
-  await page.getByRole('button', { name: 'Sign out', exact: true }).first().click()
+  await page.getByRole('button', { name: email }).click()
+  await page.getByRole('menuitem', { name: 'Sign out' }).click()
   await expect(page.getByRole('heading', { name: 'Sign in' })).toBeVisible()
 
   // Second time: the identity exists, no invite.
   await page.getByRole('button', { name: 'Continue with Google' }).click()
-  await expect(page.getByRole('navigation', { name: 'Account' })).toContainText(email)
+  await expect(page.getByRole('button', { name: email })).toBeVisible()
 
   await page.goto('/account')
   await expect(page.getByRole('button', { name: 'Unlink Google' })).toBeVisible()
@@ -98,5 +99,5 @@ test('Microsoft: an unverified email is handed off to the address page and confi
   // Signing in with Microsoft now finds the identity.
   await page.goto('/signin')
   await page.getByRole('button', { name: 'Continue with Microsoft' }).click()
-  await expect(page.getByRole('navigation', { name: 'Account' })).toContainText(email)
+  await expect(page.getByRole('button', { name: email })).toBeVisible()
 })
