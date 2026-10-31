@@ -1,7 +1,7 @@
 """The user's trial (ADR 0011 sections 2, 4 and 7): ``POST /api/account/trial``.
 
-The ``trial`` setting (``{plan, days}`` in ``app_settings``, read directly per request; FL1's
-``classbeat.flags`` will own the setting later) says what a trial is. It is clamped **when used**,
+The ``trial`` setting (``{plan, days}`` in ``app_settings``, read per request through
+``classbeat.flags``) says what a trial is. It is clamped **when used**,
 as the plan limits are, so a stored value above a later-lowered bound never applies:
 
 - ``days`` to ``CLASSBEAT_TRIAL_DAYS_MAX``; 0 (the default, or no row) is off;
@@ -14,18 +14,18 @@ the partial unique index decides, whatever the timing, and a second one is ``tri
 import logging
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Literal
+from typing import Literal
 
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from classbeat.context import UserContext
 from classbeat.db import user_session
+from classbeat.flags import effective as flags
 from classbeat.plans.entitle import TRIAL_MAX_PLAN, add_entitlement, plan_ranks
 
 logger = logging.getLogger(__name__)
 
-_SETTING = text("SELECT value FROM app_settings WHERE key = 'trial'")
 _HAD_TRIAL = text(
     "SELECT EXISTS (SELECT 1 FROM entitlements WHERE owner_id = :o AND source = 'trial')"
 )
@@ -48,26 +48,12 @@ class TrialStarted:
 TrialRefusal = Literal["trial_off", "trial_used"]
 
 
-def _stored(value: Any) -> tuple[str, int] | None:
-    if not isinstance(value, dict):
-        return None
-    plan, days = value.get("plan"), value.get("days")  # pyright: ignore[reportUnknownMemberType]
-    if not isinstance(plan, str) or type(days) is not int or days < 0:
-        return None
-    return plan, days
-
-
 async def trial_offer(db: AsyncSession, days_max: int) -> TrialOffer | None:
     """The clamped trial setting, or ``None`` when trials are off."""
-    value = (await db.execute(_SETTING)).scalar_one_or_none()
-    if value is None:
-        return None
-    stored = _stored(value)
+    stored = await flags.trial(db)  # None: absent, malformed (logged by key) or 0 days
     if stored is None:
-        logger.warning("trial setting is malformed; trials are off")
         return None
-    plan_id, days = stored
-    days = min(days, days_max)
+    plan_id, days = stored.plan, min(stored.days, days_max)
     if days <= 0:
         return None
     ranks = await plan_ranks(db, plan_id, TRIAL_MAX_PLAN)
