@@ -110,6 +110,27 @@ async def test_the_cap_counts_across_attempts(songenv: SongEnv) -> None:
     assert first.spotify_calls + (sent(songenv) - before) == needed
 
 
+async def test_the_count_is_saved_with_each_stage_not_only_the_attempt_s_ending(
+    songenv: SongEnv, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """ADR 0009 section 8: a worker that dies mid-attempt loses at most its stage's count."""
+    rider = await songenv.rider()
+    job_id = await songenv.created(rider)
+    before = sent(songenv)
+    seen: list[tuple[int, int]] = []
+    read = songenv.mowl._read  # pyright: ignore[reportPrivateUsage]
+
+    def watching(req: urllib.request.Request, path: str, token: str) -> Any:
+        if _TRACKS.match(path) and not seen:  # the pool_analyse stage, after the pool's writes
+            seen.append((songenv.row(job_id).spotify_calls, sent(songenv) - before))
+        return read(req, path, token)
+
+    monkeypatch.setattr(songenv.mowl, "_read", watching)
+    await songenv.run(job_id)
+    [(stored, spent)] = seen
+    assert stored == spent > 0
+
+
 async def test_the_token_endpoint_counts_too(songenv: SongEnv) -> None:
     rider = await songenv.rider()
     await songenv.spot.seed(make_context(rider.user_id), CLIENT_A, USER_A, expires_in=10)
@@ -172,6 +193,7 @@ async def test_two_spotify_rate_limits_and_a_mowl_one_are_not_three_in_a_row(
         0,
     )
     assert third.spotify_failure is None
+    assert [r.spotify_retry_after for r in [*rows, third]] == [30, 30, None]  # the hint is gone
     assert await message(rider, job_id) is None
 
 
@@ -182,9 +204,10 @@ async def test_an_attempt_that_ends_well_resets_the_row(songenv: SongEnv) -> Non
     rows = [await songenv.run(job_id) for _ in range(2)]
     assert [r.spotify_rate_limits for r in rows] == [1, 2]
     row = await songenv.run(job_id)
-    assert (row.state, row.spotify_rate_limits, row.spotify_failure) == (
+    assert (row.state, row.spotify_rate_limits, row.spotify_failure, row.spotify_retry_after) == (
         "waiting_for_approval",
         0,
+        None,
         None,
     )
 

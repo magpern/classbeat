@@ -118,8 +118,9 @@ async def test_no_planted_or_made_value_leaves_its_place_over_the_whole_flow(
         "SELECT kind, payload FROM job_events WHERE job_id = :j ORDER BY seq", j=job_id
     ).all()
     assert leaked(everything, json.dumps([[e.kind, e.payload] for e in events])) == []
-    # 3. Every log record.
-    assert leaked(everything, logs.out.getvalue()) == []
+    # 3. Every log record: no planted or made value, and no song's title or artist either.
+    names = [t["name"] for t in tracks] + [t["artist"] for t in tracks]
+    assert leaked([*everything, *names], logs.out.getvalue()) == []
     # 4. The API: the job, its revision, the class's revisions; the class page shows only the
     # owner's own final playlist.
     answers = [
