@@ -169,9 +169,12 @@ async def test_the_409_reason_comes_from_the_one_locked_read(
 # --- the Jobs view's 200-row caps -------------------------------------------------------------
 
 
-def plant_waiting_and_uncertain(conn: Connection, owner: uuid.UUID, n: int) -> None:
+def plant_waiting_and_uncertain(
+    conn: Connection, owner: uuid.UUID, n: int, uncertain: int | None = None
+) -> None:
     for _ in range(n):
         new_job(conn, owner, "design_with_songs", "waiting_for_approval", credit_state="reserved")
+    n = n if uncertain is None else uncertain
     class_id = new_class(conn, owner)
     conn.execute(
         text(
@@ -202,3 +205,22 @@ async def test_the_jobs_view_says_when_a_list_hit_its_cap(
     )
     states = {s["state"]: s["count"] for s in body["states"]}
     assert states["waiting_for_approval"] == n  # the counts are never capped
+
+
+@pytest.mark.parametrize(("waiting", "uncertain"), [
+    (LIST_ROWS + 1, LIST_ROWS), (LIST_ROWS, LIST_ROWS + 1),
+])  # fmt: skip
+async def test_each_truncation_flag_follows_its_own_list(
+    env: Env, make_actor: Any, superuser: Connection, waiting: int, uncertain: int
+) -> None:
+    """#303 delta review, note 2: one list over the cap and the other exactly at it, both ways,
+    so a flag computed from the wrong list (or from both) fails."""
+    actor = await stepped_admin(env, make_actor)
+    rider = await env.user("rider@example.com")
+    plant_waiting_and_uncertain(superuser, rider, waiting, uncertain=uncertain)
+    body = (await actor.get("/api/admin/jobs")).json()
+    assert (body["waiting_truncated"], body["uncertain_truncated"]) == (
+        waiting > LIST_ROWS,
+        uncertain > LIST_ROWS,
+    )
+    assert len(body["waiting_approvals"]) == len(body["uncertain_operations"]) == LIST_ROWS

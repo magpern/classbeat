@@ -18,9 +18,11 @@ An admin refused at 1 (``mfa_required``), 2 or 4 gets an ``admin.request`` audit
 ``outcome = 'refused'``, within the limiter's 20 per admin and 100 per minute. So does an admin
 past the gate whose request is then refused for its input (ADR 0011 section 10, #227): FastAPI's
 own 422 (reason ``invalid_input``) or an ``AdminRefused`` raised before any ``admin_session``
-(its own reason, ``period_invalid`` say). A body that is not JSON is refused by FastAPI before any
-dependency runs; the gate then runs in the validation handler first, so a non-admin still gets
-the 403 and an admin's 422 still has its row. Every response carries ``Cache-Control: no-store``.
+(its own reason, ``period_invalid`` say). A body FastAPI cannot read (not JSON, 422; nested too
+deep, 400 ``body_unreadable``) or over ``MAX_BODY_BYTES`` (413 ``body_too_large``,
+``AdminBodyLimit``) is refused before any dependency runs; the gate then runs in the handler
+first, so a non-admin still gets the 403 and an admin's refusal still has its row. Every
+response carries ``Cache-Control: no-store``.
 """
 
 import re
@@ -28,10 +30,12 @@ import secrets
 from typing import Annotated, Any, NoReturn
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
-from fastapi.exception_handlers import request_validation_exception_handler
+from fastapi.exception_handlers import http_exception_handler, request_validation_exception_handler
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from fastapi.routing import APIRoute, iter_route_contexts
+from starlette.exceptions import HTTPException as StarletteHTTPException
+from starlette.middleware import Middleware
 
 from classbeat import auth
 from classbeat.admin.audit import METHOD_PATTERN, ROUTE_PATTERN
@@ -137,10 +141,11 @@ async def _audit_input_refusal(request: Request, reason: str) -> None:
 
 
 async def _gate_before_validation(request: Request) -> JSONResponse | None:
-    """FastAPI refuses a body that is not JSON before any dependency runs, so ``admin_gate``
-    would not have run: a non-admin would get the 422 (learning that the route takes a JSON
-    body) instead of the 403, and an admin's refusal would have no row (#303 review). The gate
-    runs here then, with its own refusals and rows; ``None`` once it passed (the actor is set)."""
+    """FastAPI refuses a body it cannot read (not JSON: 422; nested too deep: 400; over
+    ``MAX_BODY_BYTES``: 413) before any dependency runs, so ``admin_gate`` would not have run: a
+    non-admin would learn that the route takes a JSON body instead of getting the 403, and an
+    admin's refusal would have no row (#303 reviews). The gate runs here then, with its own
+    refusals and rows; ``None`` once it passed (the actor is set)."""
     route: Any = request.scope.get("route")
     if getattr(request.state, "admin_actor", None) is not None or not isinstance(route, APIRoute):
         return None
@@ -159,10 +164,56 @@ async def _gate_before_validation(request: Request) -> JSONResponse | None:
     return None
 
 
+# The largest admin request body (#227 follow-up). The largest valid body today is a code's
+# create (an 80-character label and a few short fields), well under 4 KiB; 64 KiB leaves room for
+# the settings API (a 280-character banner) without letting a body be large enough to matter.
+MAX_BODY_BYTES = 64 * 1024
+BODY_TOO_LARGE = "body_too_large"
+BODY_UNREADABLE = "body_unreadable"
+_BODY_STATUSES = {400: BODY_UNREADABLE, 413: BODY_TOO_LARGE}
+
+
+class AdminBodyLimit:
+    """ASGI middleware: an ``/api/admin`` request body over ``MAX_BODY_BYTES``, by its
+    ``Content-Length`` or as it streams in (a chunked body has none), is refused 413 when the
+    route reads it. The refusal is raised from ``receive``, so FastAPI's body parsing re-raises it
+    before any dependency, and the admin area's handler runs the gate first. A route that reads
+    no body never sees it."""
+
+    def __init__(self, app: Any, max_bytes: int = MAX_BODY_BYTES) -> None:
+        self.app, self.max_bytes = app, max_bytes
+
+    async def __call__(self, scope: Any, receive: Any, send: Any) -> None:
+        if scope.get("type") != "http" or not str(scope.get("path", "")).startswith("/api/admin"):
+            await self.app(scope, receive, send)
+            return
+        declared = next(
+            (v for k, v in scope.get("headers", []) if k.lower() == b"content-length"), None
+        )
+        too_large = declared is not None and (
+            not declared.isdigit() or int(declared) > self.max_bytes
+        )
+        seen = 0
+
+        async def limited() -> Any:
+            nonlocal seen
+            if too_large:
+                raise HTTPException(status_code=413, detail={"reason": BODY_TOO_LARGE})
+            message = await receive()
+            if message.get("type") == "http.request":
+                seen += len(message.get("body", b""))
+                if seen > self.max_bytes:
+                    raise HTTPException(status_code=413, detail={"reason": BODY_TOO_LARGE})
+            return message
+
+        await self.app(scope, limited, send)
+
+
 def install(app: Any) -> None:
     """The admin router, the feature modules' routers, the handler that turns an
-    ``AdminRefused`` into its response, and the audit row of an admin request's 422. Call it
-    after ``auth.install``: it wraps the validation handler installed there."""
+    ``AdminRefused`` into its response, the audit row of an admin request's 422, 400 or 413, and
+    the body limit. Call it after ``auth.install``: it wraps the validation handler installed
+    there."""
     # The feature modules import this one.
     from classbeat.admin import audit_routes, codes, jobs, usage, users
 
@@ -186,6 +237,32 @@ def install(app: Any) -> None:
         response = await previous(request, exc)
         response.headers["Cache-Control"] = "no-store"
         return response
+
+    previous_http = app.exception_handlers.get(StarletteHTTPException, http_exception_handler)
+
+    @app.exception_handler(StarletteHTTPException)
+    async def body_refused(request: Request, exc: Exception) -> Response:
+        """A body FastAPI could not read (400) or ``AdminBodyLimit`` refused (413) on an admin
+        route: the gate first, then the refusal with its row. Every other HTTP error (the
+        gate's own included) goes to the previous handler unchanged."""
+        status = getattr(exc, "status_code", None)
+        reason = _BODY_STATUSES.get(status) if isinstance(status, int) else None
+        if reason is None or not request.url.path.startswith("/api/admin"):
+            return await previous_http(request, exc)
+        refused = await _gate_before_validation(request)
+        if refused is not None:
+            return refused
+        await _audit_input_refusal(request, reason)
+        response = await previous_http(request, exc)
+        response.headers["Cache-Control"] = "no-store"
+        return response
+
+    # Innermost, not ``add_middleware`` (outermost): ``AuthMiddleware`` is a ``BaseHTTPMiddleware``,
+    # whose task group would wrap the 413 raised from ``receive`` in an ``ExceptionGroup``, which
+    # FastAPI's body parsing turns into its generic 400. Inside it, the 413 reaches FastAPI as is.
+    if app.middleware_stack is not None:  # pragma: no cover
+        raise RuntimeError("admin.install must run before the app starts")
+    app.user_middleware.append(Middleware(AdminBodyLimit))
 
     @app.exception_handler(AdminRefused)
     async def admin_refused(request: Request, exc: Exception) -> JSONResponse:

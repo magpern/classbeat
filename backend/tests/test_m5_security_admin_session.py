@@ -5,18 +5,11 @@
   ``error``, never the 404 ``not_found`` that only an unknown target user gets.
 - A body that is not JSON (refused by FastAPI before any dependency) meets the admin gate first:
   a non-admin gets the same 403 as with a valid body, and an admin's 422 has its row.
-- Guard 11 (no NOTIFY, LISTEN or advisory lock) reaches past ``classbeat/admin/``: every module
-  defining a ``classbeat`` name the admin package uses (what runs inside ``admin_session``,
-  such as ``auth.admin_accounts`` and ``connections.status``) is scanned too.
+- Guard 11 past ``classbeat/admin/`` is ``test_m5_security_guard11_reach.py``.
 """
 
-import ast
-import importlib
-import inspect
-import secrets
 import uuid
 from collections.abc import AsyncIterator
-from pathlib import Path
 from typing import Any
 
 import pytest
@@ -30,9 +23,6 @@ from authtools import ORIGIN, Env, running_env, session_cookie
 from classbeat.admin.audit import Target
 from classbeat.admin.db import AdminRefused, admin_session
 from classbeat.admin.routes import admin_area_routes
-from maint_guard import forbidden_calls
-
-SRC = Path(__file__).resolve().parents[1] / "src" / "classbeat"
 
 
 @pytest.fixture
@@ -216,91 +206,3 @@ def audit_of(conn: Connection, actor_id: object) -> list[tuple[str, str | None]]
             {"a": actor_id},
         )
     ]
-
-
-# --- guard 11 past the admin package ----------------------------------------------------------
-
-# A name that matches the guard's pattern without being SQL: SQLAlchemy's ``event.listen``
-# (``classbeat.db.session``'s transaction guard), not ``LISTEN``. Pinned to its one line.
-NOT_SQL = {("classbeat.db.session", "listen"): "event.listen(session.sync_session"}
-
-
-def used_modules(path: Path, prefix: str = "classbeat") -> set[str]:
-    """The ``classbeat`` modules that define what ``path`` imports or uses: ``from x import
-    y`` resolves to ``y``'s own module, and ``auth.y`` (a package re-export) to the module
-    that defines ``y``."""
-    tree = ast.parse(path.read_text(encoding="utf-8"))
-    aliases: dict[str, str] = {}
-    found: set[str] = set()
-
-    def owner(obj: Any, fallback: str) -> str:
-        module = obj if inspect.ismodule(obj) else inspect.getmodule(obj)
-        return module.__name__ if module is not None else fallback
-
-    for node in ast.walk(tree):
-        if isinstance(node, ast.Import):
-            aliases |= {a.asname or a.name: a.name for a in node.names}
-        elif isinstance(node, ast.ImportFrom) and node.module and not node.level:
-            module = importlib.import_module(node.module)
-            for alias in node.names:
-                obj = getattr(module, alias.name, None)
-                if inspect.ismodule(obj):
-                    aliases[alias.asname or alias.name] = obj.__name__
-                found.add(owner(obj, node.module) if obj is not None else node.module)
-        elif isinstance(node, ast.ImportFrom) and node.level:
-            raise AssertionError(f"{path}: a relative import; spell it out for this guard")
-    for node in ast.walk(tree):
-        if isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name):
-            name = aliases.get(node.value.id)
-            if name and name.startswith(prefix):
-                obj = getattr(importlib.import_module(name), node.attr, None)
-                if obj is not None:
-                    found.add(owner(obj, name))
-    return {m for m in found if m == prefix or m.startswith(prefix + ".")}
-
-
-def reached() -> dict[str, Path]:
-    modules: set[str] = set()
-    for path in sorted((SRC / "admin").rglob("*.py")):
-        modules |= used_modules(path)
-    return {m: Path(inspect.getfile(importlib.import_module(m))) for m in sorted(modules)}
-
-
-def test_guard_11_scans_every_module_the_admin_package_reaches() -> None:
-    modules = reached()
-    # The PR #277 review's examples, and the gate's own helpers.
-    assert {
-        "classbeat.auth.admin_accounts",
-        "classbeat.connections.status",
-        "classbeat.auth.ratelimit",
-    } <= set(modules)
-    found = []
-    for module, path in modules.items():
-        source = path.read_text(encoding="utf-8")
-        lines = source.splitlines()
-        for line, what in forbidden_calls(source):
-            allowed = NOT_SQL.get((module, what.lower()))
-            if allowed is not None and allowed in lines[line - 1]:
-                continue
-            found.append(f"{module}:{line}: {what}")
-    assert found == []
-
-
-def test_guard_11_reach_catches_a_lock_in_a_used_module(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """The scan above is not vacuous: a used module that takes an advisory lock is found."""
-    package = tmp_path / f"cbprobe_{secrets.token_hex(4)}"
-    package.mkdir()
-    (package / "__init__.py").write_text("from .locks import grab\n", encoding="utf-8")
-    (package / "locks.py").write_text(
-        "def grab(db):\n    return db.execute('SELECT pg_advisory_xact_lock(1)')\n",
-        encoding="utf-8",
-    )
-    monkeypatch.syspath_prepend(str(tmp_path))
-    user = tmp_path / "user.py"
-    user.write_text(f"import {package.name} as p\n\ndef f(db):\n    p.grab(db)\n", "utf-8")
-    found = used_modules(user, prefix=package.name)
-    assert found == {f"{package.name}.locks"}  # the defining module, not the re-exporting package
-    source = Path(inspect.getfile(importlib.import_module(f"{package.name}.locks"))).read_text()
-    assert [what for _, what in forbidden_calls(source)] == ["pg_advisory_xact_lock"]

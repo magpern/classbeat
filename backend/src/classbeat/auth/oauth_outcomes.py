@@ -17,7 +17,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from classbeat.auth import mails
-from classbeat.auth.accounts import create_user, find_user, grant_admin_if_listed
+from classbeat.auth.accounts import create_user, find_user, grant_admin_if_listed, use_invite
 from classbeat.auth.devices import remember_device
 from classbeat.auth.events import record_event
 from classbeat.auth.keys import Keys, token_hash
@@ -211,17 +211,7 @@ async def consume_invite(db: AsyncSession, invite_id: UUID | None) -> None:
     everything back."""
     if invite_id is None:
         return
-    used = await db.execute(
-        update(invites)
-        .where(
-            invites.c.id == invite_id,
-            invites.c.used_at.is_(None),
-            invites.c.expires_at > func.now(),
-        )
-        .values(used_at=func.now())
-        .returning(invites.c.id)
-    )
-    if used.first() is None:
+    if not await use_invite(db, invite_id):
         raise Refused("invite_invalid")
 
 

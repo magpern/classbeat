@@ -19,7 +19,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from classbeat.auth import mails
-from classbeat.auth.accounts import create_user, find_user
+from classbeat.auth.accounts import create_user, find_user, use_invite
 from classbeat.auth.clientip import bucket_ip
 from classbeat.auth.deps import request_ip
 from classbeat.auth.events import record_event
@@ -202,19 +202,8 @@ async def _create_account(db: AsyncSession, digest: bytes, ip: str) -> None:
     ).first()
     if pending is None:
         raise _Refused(400, "invalid_token")  # a parallel confirmation won
-    if pending.invite_id is not None:
-        used = await db.execute(
-            update(invites)
-            .where(
-                invites.c.id == pending.invite_id,
-                invites.c.used_at.is_(None),
-                invites.c.expires_at > func.now(),
-            )
-            .values(used_at=func.now())
-            .returning(invites.c.id)
-        )
-        if used.first() is None:
-            raise _Refused(409, "invite_invalid")  # rolls back: the pending row stays
+    if pending.invite_id is not None and not await use_invite(db, pending.invite_id):
+        raise _Refused(409, "invite_invalid")  # rolls back: the pending row stays
     created = None
     try:
         async with db.begin_nested():

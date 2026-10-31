@@ -75,6 +75,41 @@ def bounded_text(max_bytes: int) -> AfterValidator:
     return AfterValidator(check)
 
 
+# Format characters (Unicode ``Cf``: the bidi embeddings, overrides and isolates U+202A-202E and
+# U+2066-2069, zero-width characters, the BOM) and the line and paragraph separators: they change
+# how text shown in the admin pages reads without being visible themselves (#227, #279 review).
+_INVISIBLE_CATEGORIES: Final = frozenset({"Cf", "Zl", "Zp"})
+
+
+def no_format_characters() -> AfterValidator:
+    """Text an admin types to be shown to admins again (a code's label, a grant's note): no
+    format or separator character, checked apart from ``bounded_text``'s control characters."""
+
+    def check(value: str) -> str:
+        if any(unicodedata.category(c) in _INVISIBLE_CATEGORIES for c in value):
+            raise ValueError("format characters (bidi, zero-width) are not allowed")
+        return value
+
+    return AfterValidator(check)
+
+
+# Text an admin types that admins see again: no control character, bounded in encoded bytes (12
+# per character at most), and no format character. A code's label (AD2, trimmed) and a grant's
+# note (AD1).
+LabelText = Annotated[
+    str,
+    StringConstraints(strip_whitespace=True, min_length=1, max_length=80),
+    bounded_text(960),
+    no_format_characters(),
+]
+NoteText = Annotated[
+    str,
+    StringConstraints(min_length=1, max_length=200),
+    bounded_text(2400),
+    no_format_characters(),
+]
+
+
 # The Users list's search text (AD1 #218): no control character, and bounded in encoded bytes as
 # well as in characters (254 emoji would be 3048 bytes once encoded).
 UserQuery = Annotated[str, StringConstraints(max_length=254), bounded_text(1024)]
