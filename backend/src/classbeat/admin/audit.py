@@ -50,6 +50,28 @@ class RequestParams(Params):
     route: Annotated[str, StringConstraints(pattern=ROUTE_PATTERN)]
 
 
+class NoParams(Params):
+    """An action whose target says everything (a read or write of one user or row)."""
+
+
+class UserListParams(Params):
+    """The Users list's filter (AD1 #218): an email prefix (never a full credential) and paging."""
+
+    q: Annotated[str, StringConstraints(max_length=254)] | None = None
+    offset: Annotated[int, Field(ge=0, le=10_000)] = 0
+    limit: Annotated[int, Field(ge=1, le=100)] = 50
+
+
+class GrantParams(Params):
+    """An entitlement grant (AD1 #218): what was granted, and whether a note was given (the note
+    itself stays on the entitlement)."""
+
+    plan_id: Annotated[str, StringConstraints(pattern=r"^[a-z_]{1,30}$")] | None = None
+    features: Annotated[list[Code], Field(max_length=10)] = []
+    ends_at: Annotated[str, StringConstraints(max_length=40)] | None = None
+    note: bool = False
+
+
 def json_bytes(value: str) -> int:
     """How many bytes ``value`` takes inside a JSON string as ``checked_params`` writes it
     (escapes included: a non-ASCII character is 6 or 12 bytes, not 1)."""
@@ -98,6 +120,14 @@ class AuditListParams(Params):
 # mfa_required, stepup_required and rate_limited of an admin).
 ACTIONS: dict[str, type[Params]] = {
     "admin.request": RequestParams,
+    # Users (AD1 #218, classbeat.admin.users).
+    "user.list": UserListParams,
+    "user.read": NoParams,
+    "user.grant": GrantParams,
+    "user.revoke": NoParams,
+    "user.disable": NoParams,
+    "user.enable": NoParams,
+    "user.delete": NoParams,
 }
 # The audit log (AD4 #222).
 ACTIONS["audit.list"] = AuditListParams

@@ -224,7 +224,7 @@ flips)" of ADR 0005 §4's category table for this provider). Because a refresh d
 alone cannot tell a stale 401 from a current one, so a flip to `needs_reconnect` happens **only** in
 these two cases:
 
-- *The token endpoint* answers `invalid_grant` or `invalid_client` to a refresh. The flip is written in
+- *The token endpoint* answers `invalid_grant` or an app-setup code (`app_misconfigured`, amendment above) to a refresh. The flip is written in
   the refresh transaction itself, under the row lock and after the re-read, conditional on `id` and
   `generation`; it therefore always concerns the refresh token the row holds now.
 - *A 401 on an API call* whose access token is still the row's current one. A 401 first forces one
@@ -275,19 +275,20 @@ the three category checks of ADR 0007 §1):
 | Category | From | Retry | What the page says |
 |---|---|---|---|
 | `invalid_grant` | token endpoint 400 `invalid_grant`; or 401 on the repeat of a read after one refresh (the only two that flip the status, §6) | no (reconnect) | "Spotify no longer accepts the connection. Reconnect Spotify." |
-| `app_misconfigured` | token endpoint `invalid_client` / `invalid_request`; `redirect_uri` mismatch reported by Spotify as `error` on the callback | no | "Spotify does not recognise this app setup. Check the Client ID and the redirect URI in your Spotify app." |
+| `app_misconfigured` | token endpoint `invalid_client`, `invalid_request`, `invalid_scope`, `unauthorized_client` or `unsupported_response_type` (§6 amendment, 2026-10-31); `redirect_uri` mismatch reported by Spotify as `error` on the callback | no | "Spotify does not recognise this app setup. Check the Client ID and the redirect URI in your Spotify app." |
 | `not_allowlisted` | 403 on the first `GET /me` of a connect | no | "Spotify refused this account. In your Spotify app's *User Management* add this account's name and email (Development Mode allows 5 people), and make sure the app's owner has Spotify Premium." |
 | `forbidden` | any other 403 | no | "Spotify refused this request for your account or playlist." (the ownership checks of ADR 0008 §2 run first, so this is rare) |
 | `rate_limited` | 429 with `Retry-After` ≤ 3600 s | yes, waits at least the hint | "Spotify asks to slow down; trying again in about N minutes." |
 | `quota_exhausted` | 429 with `Retry-After` > 3600 s, or 3 `rate_limited` retries in a row on one job | no | "Your Spotify app has used up its allowance for now. Try again in about N hours." |
-| `upstream_unavailable` | 5xx, timeout, connection error, DNS | yes | "Spotify is not answering." |
+| `upstream_unavailable` | 5xx, timeout, connection error, DNS; a token-endpoint 400 or 401 with no recognised error code (§6 amendment, 2026-10-31) | yes | "Spotify is not answering." |
 | `not_found` | 404 on a playlist classbeat addressed by id | no | the caller words it (ADR 0008 §2: "the working playlist is gone") |
 | `scope_mismatch`, `invalid_response` | §1, §5 | no | "Spotify did not give the access classbeat needs. Connect again and allow it." |
 | `account_changed` | §5 | no | "This is a different Spotify account than before. Confirm to switch (classbeat forgets the working playlist)." |
 | `access_denied` | the user pressed Cancel on Spotify's page | no | "Spotify was not connected." |
 
-Only `invalid_grant` and `app_misconfigured` (from the token endpoint) flip the connection to
-`needs_reconnect`, by the rules of §6; every other category leaves the status alone. `last_error`
+Only `invalid_grant` and `app_misconfigured` (from the token endpoint, for any of the app-setup codes above)
+flip the connection to `needs_reconnect`, by the rules of §6; every other category leaves the status alone,
+including the `upstream_unavailable` of a token-endpoint 400 or 401 with no recognised error code. `last_error`
 stores the category; a provider message is never stored or shown. The admin area shows the
 last category only (roadmap, "Admin area"). **Quota:** besides what Spotify answers, classbeat caps its
 own use: `CLASSBEAT_SPOTIFY_CALLS_PER_JOB` (default 300 requests per job, counted in the fenced usage

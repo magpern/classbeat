@@ -25,6 +25,10 @@ yields read-write; its audit row commits or rolls back with the action. When the
 the transaction rolls back (the ``ok`` row with it) and one row with ``outcome = 'refused'``
 (``AdminRefused``) or ``'error'`` is written in its own short transaction. The caller cannot
 commit or roll back the session.
+
+**An unknown target user.** The audit row is the first statement, so a ``target`` naming a user
+that does not exist fails its foreign key there: ``admin_session`` then raises ``AdminRefused``
+404 ``not_found`` and records it with the id as text (``target_id``) and no ``target_user_id``.
 """
 
 import logging
@@ -35,7 +39,7 @@ from uuid import UUID
 
 from sqlalchemy import event, text
 from sqlalchemy.engine import URL
-from sqlalchemy.exc import DisconnectionError, OperationalError
+from sqlalchemy.exc import DisconnectionError, IntegrityError, OperationalError
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
     AsyncSession,
@@ -82,6 +86,9 @@ EXPECTED_TIMEOUTS_MS: Final = [
     "lock_timeout=5000",
     "statement_timeout=30000",
 ]
+
+# The audit row's target user does not exist: the action answers 404 ``not_found`` (#218).
+TARGET_USER_FK: Final = "admin_audit_target_user_id_fkey"
 
 _READ_WRITE = text("SET TRANSACTION READ WRITE")
 _READ_ONLY = text("SET TRANSACTION READ ONLY")
@@ -274,6 +281,11 @@ class AdminDb:
             )
 
 
+def _constraint(exc: IntegrityError) -> str | None:
+    diag = getattr(exc.orig, "diag", None)
+    return getattr(diag, "constraint_name", None)
+
+
 def _row(
     actor: Actor, action: str, target: Target, params: str, outcome: str, reason: str | None
 ) -> dict[str, Any]:
@@ -333,9 +345,16 @@ async def admin_session(
             guard = TransactionGuard(session)
             try:
                 await session.execute(_READ_WRITE)
-                await session.execute(
-                    _INSERT_AUDIT, _row(actor, action, target, encoded, "ok", None)
-                )
+                try:
+                    await session.execute(
+                        _INSERT_AUDIT, _row(actor, action, target, encoded, "ok", None)
+                    )
+                except IntegrityError as exc:
+                    if target.user_id is None or _constraint(exc) != TARGET_USER_FK:
+                        raise
+                    # No such user: 404, audited with the id as text (#218).
+                    target = Target(kind=target.kind or "user", id=target.id or str(target.user_id))
+                    raise AdminRefused("not_found", 404) from None
                 if not write:
                     await session.execute(_READ_ONLY)
                 yield session
