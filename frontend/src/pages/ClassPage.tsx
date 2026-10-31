@@ -1,12 +1,11 @@
-import { useCallback, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { classReasonText, isStale } from '../api/classMessages'
 import { getRevision, pickCurrent, type RevisionSummary } from '../api/classes'
-import { ChatPanel } from '../components/classes/ChatPanel'
-import { DeleteClass } from '../components/classes/DeleteClass'
-import { SavePanel } from '../components/classes/SavePanel'
+import { getSongList, type Song } from '../api/songs'
+import { classStatus } from '../lib/classCards'
+import { Chip } from '../components/ui/chip'
 import { RevisionView } from '../components/classes/RevisionView'
-import { RevisionsPanel } from '../components/classes/RevisionsPanel'
-import { ChangeSongs } from '../components/songs/ChangeSongs'
+import { SideColumn } from '../components/classes/SideColumn'
 import { Card, Notice, useAction } from '../components/forms'
 import { RequireAuth } from '../components/RequireAuth'
 import { useClassData, useRevision, type ClassData } from '../hooks/useClassData'
@@ -94,6 +93,23 @@ function ClassBody({
     chosen !== null && revisions.some((r) => r.id === chosen) ? chosen : summary.currentRevisionId
   const shown = useRevision(classId, viewingId)
   const busy = summary.openJob !== null
+  // The approved song list, for the strip under the axis; none (hidden) until there is one.
+  const songRevisionId = summary.songs.state === 'approved' ? summary.songs.revisionId : null
+  const [loadedSongs, setLoadedSongs] = useState<{ id: string; songs: Song[] } | null>(null)
+  useEffect(() => {
+    if (songRevisionId === null) return
+    const abort = new AbortController()
+    getSongList(classId, songRevisionId, abort.signal).then(
+      (found) => {
+        if (!abort.signal.aborted) setLoadedSongs({ id: songRevisionId, songs: found.songs })
+      },
+      () => undefined,
+    )
+    return () => {
+      abort.abort()
+    }
+  }, [classId, songRevisionId])
+  const songs = loadedSongs !== null && loadedSongs.id === songRevisionId ? loadedSongs.songs : null
 
   const reloadWithNotice = useCallback(() => {
     reload()
@@ -125,11 +141,14 @@ function ClassBody({
   const viewing = revisions.find((r) => r.id === viewingId)
   const answeredBy = messages.find((m) => m.resultRevisionId === viewingId && m.role === 'assistant')
   return (
-    <div className="class-page">
-      <p>
+    <div className="mx-auto flex w-full max-w-6xl flex-col gap-5">
+      <p className="m-0">
         <Link to="/classes">My classes</Link>
       </p>
-      <h1>{summary.title}</h1>
+      <header className="flex flex-wrap items-center gap-3">
+        <h1 className="m-0 font-display text-3xl font-extrabold">{summary.title}</h1>
+        <Chip tone={classStatus(summary).tone}>{classStatus(summary).label}</Chip>
+      </header>
       {summary.openJob !== null && summary.openJob.kind !== 'revise_draft' ? (
         <Notice>
           {summary.openJob.state === 'waiting_for_approval'
@@ -198,31 +217,32 @@ function ClassBody({
         </div>
       ) : null}
 
-      {shown.status === 'loading' ? <p>Loading the version</p> : null}
-      {shown.status === 'failed' ? (
-        <Notice kind="error">This version could not be loaded. Reload the page to try again.</Notice>
-      ) : null}
-      {shown.status === 'ready' ? (
-        <RevisionView revision={shown.revision} musicChanged={answeredBy?.change?.musicChanged === true} />
-      ) : null}
-
-      <ChangeSongs summary={summary} />
-      <RevisionsPanel
-        revisions={revisions}
-        viewingId={viewingId}
-        onView={setChosen}
-        onUse={use}
-        busy={pick.busy || busy}
-      />
-      <SavePanel summary={summary} onReload={reload} />
-      <ChatPanel
-        summary={summary}
-        revisions={revisions}
-        messages={messages}
-        onReload={reload}
-        onView={setChosen}
-      />
-      <DeleteClass summary={summary} onDeleted={onDeleted} onReload={reload} />
+      <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_22rem]">
+        <div className="flex min-w-0 flex-col gap-3">
+          {shown.status === 'loading' ? <p className="m-0">Loading the version</p> : null}
+          {shown.status === 'failed' ? (
+            <Notice kind="error">This version could not be loaded. Reload the page to try again.</Notice>
+          ) : null}
+          {shown.status === 'ready' ? (
+            <RevisionView
+              revision={shown.revision}
+              musicChanged={answeredBy?.change?.musicChanged === true}
+              songs={songs}
+            />
+          ) : null}
+        </div>
+        <SideColumn
+          summary={summary}
+          revisions={revisions}
+          messages={messages}
+          viewingId={viewingId}
+          busy={pick.busy || busy}
+          onView={setChosen}
+          onUse={use}
+          reload={reload}
+          onDeleted={onDeleted}
+        />
+      </div>
     </div>
   )
 }

@@ -91,6 +91,8 @@ export interface ClassSummary {
   openJob: OpenJob | null
   /** The current version's intervals as [zone, seconds], in order (empty without one). */
   profile: [number, number][]
+  /** ADR 0012 section 7: the backend's flag, set when the current version has a zone 7 interval. */
+  tssApproximate: boolean
   /** Only the class page's answer has these; the list's rows read as none. */
   songs: ClassSongs
   playlist: ClassPlaylist | null
@@ -140,6 +142,7 @@ function decodeClass(value: unknown): ClassSummary {
     },
     openJob,
     profile: decodeProfile(item.profile),
+    tssApproximate: optionalFlag(item, 'tss_approximate') ?? false,
     songs: decodeSongs(item.songs),
     playlist: decodePlaylist(item.playlist),
   }

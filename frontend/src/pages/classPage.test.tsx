@@ -83,7 +83,7 @@ describe('the class page', () => {
     expect(screen.getByTestId('duration')).toHaveTextContent('22:00')
     expect(screen.getByTestId('tss')).toHaveTextContent(/^26\.[34]$/)
     expect(screen.getByRole('img', { name: /Effort over time.*3 segments, 22:00/ })).toBeInTheDocument()
-    expect(container.querySelectorAll('.timeline__bar')).toHaveLength(4)
+    expect(container.querySelectorAll('[data-bar]')).toHaveLength(4)
     expect(screen.getByRole('region', { name: 'Climb' })).toBeInTheDocument()
     expect(screen.getByTestId('unknown-bpm')).toHaveTextContent('Song <i>without</i> BPM')
     expect(screen.getByTestId('music-changed')).toBeInTheDocument()
