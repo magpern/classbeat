@@ -6,9 +6,11 @@ from typing import Any
 from uuid import UUID
 
 import pytest
+from pydantic import BaseModel
 
 from classbeat import design, songs
 from classbeat.jobs import KINDS
+from classbeat.jobs.kinds import Admitted, Refused
 from designtools import DesignEnv, FakeMowlMusic
 from jobapi import Browser
 from optools import TOKEN_A
@@ -16,6 +18,18 @@ from revisetools import ReviseEnv
 from test_design_api import body
 
 pytestmark = pytest.mark.usefixtures("jenv")
+
+
+class Nothing(BaseModel):
+    pass
+
+
+EMPTY = Nothing()
+
+
+def admitted(outcome: Any) -> Any:
+    assert isinstance(outcome, Admitted)
+    return dict(outcome.fields)
 
 
 def set_plan_keys(denv: DesignEnv, **keys: str) -> None:
@@ -92,7 +106,7 @@ def test_every_model_kind_sets_the_key_in_its_create_path() -> None:
         assert KINDS.get(kind.name) is kind
         assert "route_key" in kind.server_fields, kind.name
         assert kind.admit is not None
-        assert kind.admit.__qualname__ == "with_route_key.<locals>.admit", kind.name
+        assert getattr(kind.admit, "__qualname__", "") == "with_route_key.<locals>.admit", kind.name
 
 
 async def test_the_wrapper_keeps_a_refusal_and_the_kinds_own_fields(
@@ -100,7 +114,6 @@ async def test_the_wrapper_keeps_a_refusal_and_the_kinds_own_fields(
 ) -> None:
     from classbeat.context import UserContext
     from classbeat.db import user_session
-    from classbeat.jobs.kinds import Admitted, Refused
     from classbeat.quota.route import with_route_key
     from ctx import make_context
 
@@ -115,7 +128,7 @@ async def test_the_wrapper_keeps_a_refusal_and_the_kinds_own_fields(
         return Admitted({"request_message_id": "kept", "route_key": "from_the_kind"})
 
     async with user_session(denv.ops.factory, ctx) as db:
-        assert await with_route_key(refuses)(db, ctx, None) == Refused("nope")
-        fields = (await with_route_key(adds)(db, ctx, None)).fields
+        assert await with_route_key(refuses)(db, ctx, EMPTY) == Refused("nope")
+        fields = admitted(await with_route_key(adds)(db, ctx, EMPTY))
         assert fields == {"request_message_id": "kept", "route_key": "pro_route"}
-        assert (await with_route_key()(db, ctx, None)).fields == {"route_key": "pro_route"}
+        assert admitted(await with_route_key()(db, ctx, EMPTY)) == {"route_key": "pro_route"}
