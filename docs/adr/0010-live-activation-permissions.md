@@ -98,5 +98,7 @@ later public or paid phase.
   Finding out needs a passive capture with the owner's own account, which needs the owner's
   authorization for that session, and a QR connect would rest on one more undocumented MOWL
   endpoint. The question for MOWL is M5 in [docs/providers/questions.md](../providers/questions.md).
-  Spotify has no equivalent for third-party apps: its QR sign-in is for its own and partner
-  devices, and PKCE (ADR 0009) stays the only Spotify sign-in.
+  For Spotify nothing equivalent is known: the Web API's documented sign-in flows are
+  Authorization Code (with PKCE), Client Credentials and the deprecated Implicit grant (see
+  [Spotify's authorization guide](https://developer.spotify.com/documentation/web-api/concepts/authorization)),
+  none of them a QR or device flow, so PKCE (ADR 0009) stays the only Spotify sign-in.
