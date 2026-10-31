@@ -15,7 +15,7 @@ from dataclasses import dataclass, field
 from typing import Annotated, Any, Final
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, StringConstraints, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints, ValidationError
 
 logger = logging.getLogger(__name__)
 
@@ -41,10 +41,44 @@ class RequestParams(Params):
     route: Annotated[str, StringConstraints(pattern=ROUTE_PATTERN)]
 
 
+class CodesPageParams(Params):
+    """A page of the Codes lists (AD2 #220)."""
+
+    offset: Annotated[int, Field(ge=0, le=10_000)] = 0
+    limit: Annotated[int, Field(ge=1, le=100)] = 50
+
+
+class InviteCreateParams(Params):
+    """An invite's lifetime (AD2 #220); never the code."""
+
+    expires_days: Annotated[int, Field(ge=1, le=365)]
+
+
+class RedeemCodeCreateParams(Params):
+    """A redeem code's terms (AD2 #220); never the code, its hash or its label."""
+
+    plan_id: Annotated[str, StringConstraints(pattern=r"^[a-z_]{1,30}$")] | None = None
+    features: Annotated[list[Code], Field(max_length=16)] = []
+    grant_days: Annotated[int, Field(ge=1, le=366)]
+    max_redemptions: Annotated[int, Field(ge=1, le=1000)]
+    expires_at: Annotated[str, StringConstraints(max_length=40)]
+
+
+class CodesTargetParams(Params):
+    """A disable of one invite or code: the target says everything (AD2 #220)."""
+
+
 # Action code -> its params model. ``admin.request`` is the gate's own (ADR 0011 section 6:
 # mfa_required, stepup_required and rate_limited of an admin).
 ACTIONS: dict[str, type[Params]] = {
     "admin.request": RequestParams,
+    # Codes (AD2 #220, classbeat.admin.codes).
+    "invite.list": CodesPageParams,
+    "invite.create": InviteCreateParams,
+    "invite.disable": CodesTargetParams,
+    "redeem_code.list": CodesPageParams,
+    "redeem_code.create": RedeemCodeCreateParams,
+    "redeem_code.disable": CodesTargetParams,
 }
 
 
