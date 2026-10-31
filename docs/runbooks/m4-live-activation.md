@@ -26,6 +26,8 @@ of this. **Live activation** is separate.
 - `main` is green, the e2e job passes, and `docs/status.md` shows M4 technically done.
 - The owner's local stack runs the fake model or the real one by choice; step 6 needs the real one
   and the owner's go-ahead for that model run ([status.md](../status.md), "Waiting for the owner").
+- The `song_picking` flag (ADR 0011 section 7) is `granted` by default: besides `CLASSBEAT_SONG_PICKING=true`,
+  the owner's account needs a plan with the `song_picking` feature, or the flag set to `on` in the admin area.
 - The stack's public address is `http://127.0.0.1:<WEB_PORT>` (not `localhost`: Spotify does not
   accept `localhost` as a redirect URI, and classbeat refuses to start with song picking on and a
   `localhost` base URL).

@@ -21,12 +21,22 @@ import { CLIENT_A, CLIENT_B, USER_B, USER_A, control, fakeState, playSpotify, re
 
 test.setTimeout(90_000) // a pick runs the worker twice
 
+// The song_picking flag (ADR 0011 section 7) is "granted" by default: only users whose plan has the
+// feature may pick. The specs admit everyone, as the admin area's "on" does, and put it back after.
+test.beforeAll(() => {
+  sql(
+    `INSERT INTO app_settings (key, value) VALUES ('song_picking', '"on"') ` +
+      `ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`,
+  )
+})
+
 test.beforeEach(() => {
   resetSpotify()
 })
 
 test.afterAll(() => {
   resetSpotify()
+  sql(`DELETE FROM app_settings WHERE key = 'song_picking'`)
 })
 
 async function newUser(page: Page, tag: string): Promise<void> {
@@ -170,6 +180,21 @@ test('a list that was not approved in time expires and writes nothing to Spotify
   expect(spotifyWrites()).toHaveLength(writes)
 })
 
+test('songs changed behind the page make the approval refuse on the hash and write nothing', async ({ page }) => {
+  const id = await waitingPick(page, 'pick-hash', 'E2E changed list ride')
+  const writes = spotifyWrites().length
+  // The stored list is edited behind the page (the database superuser; the app cannot do this).
+  sql(
+    `UPDATE class_revisions SET content = jsonb_set(content, '{songs,0,title}', '"Another title"') ` +
+      `WHERE id = (SELECT approval_revision_id FROM jobs WHERE id = '${id}')`,
+  )
+  await page.getByRole('button', { name: 'Approve songs' }).click()
+  await expect(page.getByRole('alert')).toContainText('These songs changed after this page was loaded, so nothing was approved.')
+  expect((await getJob(page, id)).state).toBe('waiting_for_approval') // nothing started
+  expect(spotifyWrites()).toHaveLength(writes)
+  expect(finalPlaylists()).toEqual([])
+})
+
 test('a Spotify account switch while songs wait makes the approval refuse and write nothing', async ({ page, context }) => {
   const id = await waitingPick(page, 'pick-acct', 'E2E switched ride')
   const writes = spotifyWrites().length
@@ -303,6 +328,17 @@ test('two users on different Client IDs pick at once and never mix', async ({ br
     // The other's job is not there: 404 on every id of the other user.
     expect((await two.request.get(`/api/jobs/${a}`)).status()).toBe(404)
     expect((await one.request.get(`/api/jobs/${b}`)).status()).toBe(404)
+
+    // Nor can the other user approve it, with the real revision and hash: 404, and it stays waiting.
+    const revision = sql(`SELECT approval_revision_id FROM jobs WHERE id = '${a}'`)
+    const digest = sql(`SELECT encode(approval_hash, 'hex') FROM jobs WHERE id = '${a}'`)
+    const { csrf_token: csrf } = (await (await two.request.get('/api/auth/session')).json()) as { csrf_token: string }
+    const stolen = await two.request.post(`/api/jobs/${a}/approve`, {
+      data: { revision_id: revision, content_hash: digest },
+      headers: { Origin: new URL(two.url()).origin, 'X-CSRF-Token': csrf },
+    })
+    expect(stolen.status()).toBe(404)
+    expect((await getJob(one, a)).state).toBe('waiting_for_approval')
 
     const pools = fakePlaylists()
     expect(pools.map((p) => p.owner).sort()).toEqual([USER_A, USER_B])
