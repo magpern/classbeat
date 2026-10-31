@@ -183,12 +183,16 @@ UNREADABLE_OPENAI_USAGE = [
     {"input_tokens": "9", "output_tokens": -1},
     {"input_tokens": 9000, "output_tokens": 1.5},
     {"input_tokens": 9000, "output_tokens": 700, "input_tokens_details": {"cached_tokens": -1}},
+    {"input_tokens": 9000},  # one count left out (the #306 delta review)
+    {"output_tokens": 700},
 ]
 UNREADABLE_DEEPSEEK_USAGE = [
     {},
     {"prompt_tokens": None, "completion_tokens": None},
     {"prompt_tokens": "9", "completion_tokens": -1},
     {"prompt_tokens": 9000, "completion_tokens": True},
+    {"prompt_tokens": 9000},  # one count left out (the #306 delta review)
+    {"completion_tokens": 70},
 ]
 
 
