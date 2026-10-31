@@ -3,6 +3,7 @@ import { ApiError } from './client'
 // Plain-language texts for the `reason` codes of the auth API. Unknown codes get a generic
 // message; the raw code is never shown.
 const REASONS: Record<string, string> = {
+  confirmation_mismatch: 'That is not the email of this account. Nothing was deleted.',
   invalid_invite: 'That invite code is not valid, or it has already been used.',
   invite_invalid: 'The invite for this sign-up is no longer valid. Ask for a new one.',
   signups_closed: 'Sign-ups are closed right now.',

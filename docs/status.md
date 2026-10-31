@@ -17,7 +17,7 @@ GitHub hold the detail.
 | M3c | Eval suite, OpenAI and DeepSeek adapters | done technically (on replayed providers, #219): [ADR 0012](adr/0012-eval-suite-and-model-providers.md); the owner's live steps are in [docs/runbooks/m3c-model-enable.md](runbooks/m3c-model-enable.md) |
 | M5 | Tiers, quotas, codes, admin | done technically, on fakes, once this E2E PR (#228) is merged (the security suite #227 is in) ([ADR 0011](adr/0011-tiers-quotas-and-admin.md)); issues in milestone "M5 Tiers and admin". Live activation is the owner's |
 | MU | Night Studio UI (ADR 0013) | design accepted 2026-10-30 ([ADR 0013](adr/0013-ui-design-night-studio.md), roadmap Amendment 8); issues #242, #243, #246 to #251, #253 to #255; runs beside M4 and M5, done before M6 |
-| M6 | Security review, backups, GDPR, VPS | **not done**; in progress: the automated security matrices (#339, PR open: log secrecy, ciphertext-only dump, 403 and 404 route matrices; still to do: the end-to-end security review, backups, GDPR export and delete). **VPS configuration ready, not deployed** (#341): `compose.prod.yaml`, `Caddyfile`, [vps-deploy.md](runbooks/vps-deploy.md), checked locally only (see the runbook's "Local smoke"); the deploy, DNS, TLS, server, mail account and secrets are the owner's steps. Security review, backups and restore drill, GDPR export/delete are not done |
+| M6 | Security review, backups, GDPR, VPS | in progress, **not done**: the automated security matrices (#339: log secrecy, ciphertext-only dump, 403 and 404 route matrices) are in review; still to do: the end-to-end security review, backups and restore. **VPS configuration ready, not deployed** (#341): `compose.prod.yaml`, `Caddyfile`, [vps-deploy.md](runbooks/vps-deploy.md), checked locally only (see the runbook's "Local smoke"); the deploy, DNS, TLS, server, mail account and secrets are the owner's steps. GDPR export and delete is in review ([ADR 0014](adr/0014-account-export-and-deletion.md), #337). The independent security review and the backup restore drill are not done |
 | M7 | Commercial (deferred) | deferred |
 
 ## Now
@@ -209,6 +209,23 @@ GitHub hold the detail.
       provider re-authentication (#291); the delete-class confirmation scroll and focus (#301); Z1 to Z7 label
       tests (#301); CSP and Referrer-Policy on an unhandled 500 (#293); a test for the QR attribute allow-list
       (#293). Left open from it: the song strip's start times against the analysed music (needs a backend field).
+- **M6, GDPR export and delete (#337, in review, not merged):** [ADR 0014](adr/0014-account-export-and-deletion.md),
+  threat model T98 to T100. M6 is **not done**; only this item of its "done when" is built. Checklist:
+  - [x] `GET /api/account/export` (one JSON file of the user's own rows, connections as status only, no
+    hash or ciphertext; recent authentication and the step-up; 5 per hour) and `POST /api/account/delete`
+    (typed address checked on the server, open jobs cancelled, credits settled, then the cascade);
+    the unconfirmed `DELETE /api/auth/account` is removed.
+  - [x] Migration 0015: `auth_events` cascade with the user (the IP address went on living 30 days).
+  - [x] Guard 12 (`tests/gdpr_guard.py`): every foreign key to `users` and every user-looking `uuid` column,
+    and every owned table's export entry, read from the live schema; a catalog-driven scan of every column for
+    the deleted user's id, address and IP; two-user tests for the export (also on a superuser session).
+  - [x] Account tab "Your data": Download my data and Delete my account (ADR 0013 components).
+  - [ ] Not covered, by decision (ADR 0014 §1 and §2): the admin audit log is not in the export (operator-only
+    table, the operator answers a request); `admin_audit.actor_email` of an admin outlives their account;
+    the admin's Users-screen delete does not cancel jobs first. Playlists in the user's Spotify and workouts
+    in their MOWL stay there.
+  - [ ] Still open in M6: the independent security review, the backup restore drill (#343), Caddy and the VPS
+    (#342, owner-authorised deploy). Nothing here ran against a live account.
 - **M6 started, not done.** #339 (`test(security)`) adds the automated checks the M6 "done when" names, all on fakes
   and in CI: `backend/tests/test_m6_security_logs.py` (no secret in any log record or error response over the full
   fake flows: sign-in, reset by mail, OAuth sign-up, MOWL and Spotify connect, a pick, its approval, the design run,

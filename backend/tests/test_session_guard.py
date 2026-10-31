@@ -33,6 +33,7 @@ def test_the_allowlist_is_exactly_the_reviewed_one() -> None:
         "classbeat.db",
         "classbeat.classes",
         "classbeat.usage",
+        "classbeat.account",
     )
     assert ALLOWED_MODULES == (
         "classbeat.jobs.fence",
@@ -166,6 +167,14 @@ def test_refused_sources(source: str) -> None:
 
 def test_an_allowlisted_module_may_use_it() -> None:
     assert scan_source(REFUSED["import"], "classbeat.jobs.fence") == []
+
+
+def test_the_account_package_is_reached_only_from_its_routes() -> None:
+    """``classbeat.account`` opens user sessions for the user's own export and deletion (#337):
+    the erase and export modules only from its routes, and those only from the web app."""
+    assert importers("classbeat.account.erase") == {"classbeat.account.routes"}
+    assert importers("classbeat.account.export") == {"classbeat.account.routes"}
+    assert importers("classbeat.account.routes") == {"classbeat.web"}
 
 
 def test_the_save_reconcilers_read_is_reached_only_from_the_reconcilers() -> None:
