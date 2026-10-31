@@ -11,9 +11,11 @@ section 5. Migration 0014 gave each plan a route key of its own: `free`, `instru
   result on the running suite, and DeepSeek only while it is enabled.
 - A plan with **no route** for a stage group uses the bootstrap choice (Anthropic with
   `CLASSBEAT_AGENT_MODEL` and `_EFFORT`), exactly as before M3c. Nothing fails.
-- **An existing route on `default` no longer covers the paid plans** (or any seeded plan): after
-  migration 0014 no job resolves the `default` key. If you set routes on `default` earlier, set
-  them again on `free`, `instructor` and `pro`. Nothing breaks if you do not; those plans use the
-  bootstrap choice.
+- **An existing route on `default` no longer covers jobs created after migration 0014.** New jobs
+  carry their plan's key (`free`, `instructor`, `pro`); set routes again on those keys. Jobs created
+  **before** the upgrade still carry the key `default` in their stored input and still resolve a
+  `default` route, so **keep any `default` routes until the pre-upgrade jobs have finished** (queued,
+  running or waiting for approval). Once none is left, clear them. A plan without a route uses the
+  bootstrap choice, so nothing breaks either way.
 - A route to a provider whose key file is missing on the worker fails its jobs as `model_config`
   at resolution, never silently. Provider key files live on the worker only.
