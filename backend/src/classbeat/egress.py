@@ -4,10 +4,18 @@ The only place in ``classbeat`` that builds an HTTP client or an ``urllib`` open
 ``tests/egress_scan.py`` fails on any other). Two paths leave the worker:
 
 - **urllib**, used by the provider library (``mowl-workouts`` calls ``urllib.request.urlopen``).
+  The web process installs the same opener with ``WEB_URLLIB_HOSTS``, MOWL and the Spotify API
+  (``install_web_allowlist``, SR-03): its library calls are MOWL's connect, the playlist listing
+  and the save/update/attach checks, and the Spotify reads of Check again.
   ``install_worker_allowlist()`` installs, before anything else in the worker, a process-wide
   opener with an empty ``ProxyHandler`` (no ``HTTPS_PROXY`` or ``NO_PROXY`` setting reroutes a
   call) and a guard that refuses every request, redirect hops included, that is not ``https`` to
   an allowlisted host on port 443. It has no ``http``, ``ftp``, ``file`` or ``data`` handler.
+  **A redirect is followed only to the same host** (``_SameHostRedirectHandler``): urllib copies
+  every header, the library's ``authorization`` included, onto the next hop, so a hop to any
+  other host, allowlisted or not, is refused before it is sent (``OutboundBlocked`` with
+  ``after_request``). A same-host hop keeps the header (it is the host the token was meant for),
+  but must still be ``https`` on port 443 and passes the guard again.
 - **httpx**, for the model client (A2): ``allowlisted_async_client()`` returns an
   ``httpx.AsyncClient`` with ``trust_env=False`` whose transport applies the same check to every
   request, so every redirect hop too. The client does not follow redirects
@@ -95,6 +103,13 @@ SPOTIFY_HOSTS = frozenset({SPOTIFY_API_HOST, SPOTIFY_ACCOUNTS_HOST})
 # token endpoint (M4, ADR 0009 §10), which the library reaches over urllib. A model host joins
 # them only for a provider the worker can use (``worker_hosts``, ADR 0012 §2).
 WORKER_HOSTS = frozenset({MOWL_HOST}) | SPOTIFY_HOSTS
+# The web's urllib hosts (SR-03, #353): the provider library's calls in the web process are
+# MOWL's (connect, ``GET /api/music/mowl-playlists``, the save/update/attach checks) and the
+# Spotify API's (the user's Check again of a playlist create or replace reads through
+# ``spotify_web``). Not ``accounts.spotify.com``: classbeat never lets the library refresh a
+# token (``spotify_refresh_enabled=False``), the httpx Spotify client does. Not Swedebeat, not a
+# model host. Each token stays on its own host: a redirect is followed to the same host only.
+WEB_URLLIB_HOSTS = frozenset({MOWL_HOST, SPOTIFY_API_HOST})
 MODEL_TIMEOUT_SECONDS = 120.0  # ADR 0006 §2
 # The Spotify client's total deadline per request unless the caller gives one (ADR 0009 §6:
 # ``CLASSBEAT_SPOTIFY_REFRESH_TIMEOUT_SECONDS`` defaults to 10).
@@ -184,6 +199,7 @@ class Allowlist:
 
 
 WORKER_ALLOWLIST = Allowlist(WORKER_HOSTS)
+WEB_URLLIB_ALLOWLIST = Allowlist(WEB_URLLIB_HOSTS)
 # Each model client's list: its provider's one host, although the worker's urllib list is wider.
 MODEL_ALLOWLISTS: Final[Mapping[ModelProviderName, Allowlist]] = MappingProxyType(
     {provider: Allowlist(frozenset({host})) for provider, host in MODEL_HOSTS.items()}
@@ -621,6 +637,23 @@ def install_worker_allowlist(model_providers: Iterable[str] = ()) -> urllib.requ
     opener = build_allowlist_opener(worker_allowlist(model_providers))
     urllib.request.install_opener(opener)
     _worker_process = True
+    return opener
+
+
+def install_web_allowlist() -> urllib.request.OpenerDirector:
+    """Install the web process's urllib opener (SR-03, threat model T19): the worker's opener
+    (``https`` to port 443 only, no environment proxy, every redirect hop checked, a redirect
+    only to the same host) with the list ``WEB_URLLIB_ALLOWLIST`` (``api.mowl.com`` and
+    ``api.spotify.com``; a token never follows a redirect from one to the other).
+
+    Unlike ``install_worker_allowlist`` it does not set the worker flag: the web-only call sites
+    (OAuth sign-in, account mail) keep working. Called once by ``python -m classbeat`` before the
+    app is built; tests that run the app in-process do not install it. The operator commands
+    (``invite``, ``admin``, ``jobs``, ``keys``, ``models``) make no outbound request, so they do
+    not install it. An outbound proxy from the environment is no longer possible for the
+    library's calls (and, since ``trust_env=False``, for OAuth sign-in either)."""
+    opener = build_allowlist_opener(WEB_URLLIB_ALLOWLIST)
+    urllib.request.install_opener(opener)
     return opener
 
 
