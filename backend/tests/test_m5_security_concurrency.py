@@ -11,11 +11,12 @@ threat of ``docs/security/threat-model.md`` it covers.
 - T89: parallel trials give one per account, and one user's trial never uses another's.
 - T96: parallel settles of one ledger row change it once; an admin refund racing the settle
   never refunds a live reservation; the job's settle step (``classbeat.jobs.credits``) settles
-  each terminal state once with the ledger and ``credit_state`` agreeing.
+  each terminal state once through ``classbeat.quota.MeteredLedger``, with the ledger and
+  ``credit_state`` agreeing.
 
-Quota reservation under concurrency (T85: 20 reservations against a limit of 3, across a period
-boundary, approvals against ``concurrent_jobs``) needs ``classbeat.quota.MeteredLedger`` (QT1,
-#214), which is not on ``main`` yet; it is listed as remaining on #227.
+Quota reservation under concurrency (T85: 20 reservations against a limit of 3, the period's
+held count, creates and approvals against ``concurrent_jobs``) is QT1's (#214):
+``test_quota_ledger.py``, ``test_quota_jobs.py`` and ``test_quota_api.py``.
 """
 
 import asyncio
@@ -31,11 +32,11 @@ from sqlalchemy.engine import Connection
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-from classbeat.context import UserContext
 from classbeat.jobs.credits import settle_one
 from classbeat.plans.account import account_plan
 from classbeat.plans.redeem import Redeemed, redeem_code
 from classbeat.plans.trial import TrialStarted, start_trial
+from classbeat.quota import Bounds, MeteredLedger
 from ctx import make_context
 from jobtools import as_user, engine_for, new_job, new_user
 from plantools import plant_code, redeemed_count, set_trial
@@ -280,37 +281,6 @@ def test_t96_an_admin_refund_racing_the_settle_never_refunds_a_live_reservation(
             )
 
 
-class AdrLedger:
-    """ADR 0011 section 3's ``commit`` and ``release`` statements, the shape QT1's
-    ``MeteredLedger`` takes, so the settle step runs against the real policies and trigger."""
-
-    _UPDATE = text(
-        "UPDATE credit_ledger SET state = :s, reason = :r, settled_at = now() "
-        "WHERE owner_id = :o AND job_id = :j AND state = 'reserved'"
-    )
-
-    def __init__(self, reason: str) -> None:
-        self.reason = reason  # what a release records (failed, cancelled, expired)
-        self.calls: list[str] = []
-
-    async def reserve(self, db: AsyncSession, ctx: UserContext, job_id: UUID) -> None:
-        raise AssertionError("not reached")
-
-    async def allows(self, db: AsyncSession, ctx: UserContext, job_id: UUID) -> bool:
-        raise AssertionError("not reached")
-
-    async def _settle(self, db: AsyncSession, ctx: UserContext, job_id: UUID, state: str) -> None:
-        reason = None if state == "committed" else self.reason
-        await db.execute(self._UPDATE, {"s": state, "r": reason, "o": ctx.user_id, "j": job_id})
-        self.calls.append(state)
-
-    async def commit(self, db: AsyncSession, ctx: UserContext, job_id: UUID) -> None:
-        await self._settle(db, ctx, job_id, "committed")
-
-    async def release(self, db: AsyncSession, ctx: UserContext, job_id: UUID) -> None:
-        await self._settle(db, ctx, job_id, "released")
-
-
 @pytest.mark.parametrize(
     ("state", "columns", "expected"),
     [
@@ -333,20 +303,20 @@ async def test_t96_each_terminal_state_settles_once_with_the_ledger_and_job_agre
     entry = ledger(admin, user, job_id)
     other_user = new_user(admin)
     kept = ledger(admin, other_user, new_job(admin, other_user))  # another user's live credit
-    adr = AdrLedger(state if state in ("cancelled", "expired") else "failed")
+    metered = MeteredLedger(Bounds())
+    reason = state if state != "completed" else None  # how the job ended
     ctx = make_context(user)
-    before = await account_plan(factory, ctx, jobs_cap=2, revisions_cap=25, trial_days_max=30)
+    before = await account_plan(factory, ctx, bounds=Bounds(), trial_days_max=30)
     assert before.classes_held == 1
-    results = await asyncio.gather(*(settle_one(factory, adr, user, job_id) for _ in range(N)))
+    results = await asyncio.gather(*(settle_one(factory, metered, user, job_id) for _ in range(N)))
     assert sorted(r or "" for r in results) == [""] * (N - 1) + [expected]
-    assert adr.calls == [expected]
     credit_state = admin.execute(
         text("SELECT credit_state FROM jobs WHERE id = :j"), {"j": job_id}
     ).scalar_one()
     settled = row(admin, entry)
     assert (credit_state, settled.state) == (expected, expected)
-    assert settled.reason == (None if expected == "committed" else adr.reason)
-    after = await account_plan(factory, ctx, jobs_cap=2, revisions_cap=25, trial_days_max=30)
+    assert settled.reason == reason
+    after = await account_plan(factory, ctx, bounds=Bounds(), trial_days_max=30)
     # A released credit frees its slot at once; a committed one keeps counting.
     assert after.classes_held == (1 if expected == "committed" else 0)
     assert row(admin, kept).state == "reserved"

@@ -6,7 +6,8 @@
 - **admit** (the jobs API's create transaction, under the owner lock, the class row locked), each
   refusal writing nothing: ``song_picking_off``; ``invalid_input`` unless the base is a ``draft``
   of the class; ``stale_base`` unless it is the current revision; ``revision_limit`` (it makes one
-  chat revision, counted with ``revise_draft``'s); ``not_song_picked`` when the base draft has no
+  chat revision, counted with ``revise_draft``'s); the month's model cost cap (409 ``quota``
+  ``cost``, ``classbeat.quota.check_cost``); ``not_song_picked`` when the base draft has no
   ``music.song_list_id`` (a class on the user's own playlist keeps ``revise_draft``). Then:
 
   - mode ``pick``: ``chat_full``; ``not_connected``, ``consent_missing``, ``pool_busy``
@@ -46,7 +47,7 @@ from pydantic import BaseModel, ValidationError
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from classbeat import connections
+from classbeat import connections, quota
 from classbeat.agent import AgentConfig, Brief, JobStageHost, WorkoutDraft, run_stage
 from classbeat.agent.provider import ModelProvider
 from classbeat.agent.revise import ReviseContext, ReviseResult, revise_stage
@@ -111,6 +112,7 @@ async def admit(db: AsyncSession, ctx: UserContext, parsed: BaseModel, /) -> Adm
     allowed = await chat_limits.policy.limit_for(db, ctx, class_id)
     if state.chat_revisions >= allowed:
         return Refused("revision_limit", {"limit": allowed, "count": state.chat_revisions})
+    await quota.check_cost(db, ctx)  # QuotaRefused ``cost``: 409 ``quota`` (ADR 0011 section 4)
     list_id = await _base_list(db, owner, class_id, given.base_revision_id)
     if list_id is None:
         return Refused("not_song_picked")

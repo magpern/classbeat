@@ -1,11 +1,12 @@
 import { fireEvent, screen, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it } from 'vitest'
 import { SONG_FAILURE_CATEGORIES } from '../api/songMessages'
-import { classRoutes, REV1 } from '../test/classFixtures'
+import { classBody, classRoutes, REV1 } from '../test/classFixtures'
 import { fakeApi, json, reason } from '../test/fakeApi'
 import { CLASS_ID, JOB_ID, OPERATION_ID, SESSION_ROUTES, jobBody, openStream, sse } from '../test/jobFixtures'
 import {
   CLASS_PATH,
+  BRIEF,
   HASH,
   LIST_ID,
   LIST_PATH,
@@ -39,16 +40,16 @@ describe('the Designing page of a song pick', () => {
       })(),
     })
     renderAt(`/jobs/${JOB_ID}`)
-    expect(await screen.findByRole('heading', { name: 'Picking your songs…' })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: 'Finding songs for your class…' })).toBeInTheDocument()
     await waitFor(() => {
-      expect(screen.getByTestId('progress')).toHaveTextContent('Writing your working playlist in Spotify')
+      expect(screen.getByTestId('progress')).toHaveTextContent('Saving your working playlist')
     })
     const steps = screen.getAllByRole('listitem')
     expect(steps.map((s) => s.textContent)).toEqual([
-      'Finding songs that could fit (done)',
-      'Writing your working playlist in Spotify',
-      'Waiting for MOWL to analyse the songs',
-      'Choosing the songs for your class',
+      'Finding songs that fit (done)',
+      'Saving your working playlist',
+      'MOWL is listening to the music',
+      'Choosing the best songs for each part',
     ])
     expect(steps[1]).toHaveAttribute('aria-current', 'step')
   })
@@ -143,6 +144,7 @@ describe('a song job that failed', () => {
       ...SESSION_ROUTES,
       [`GET ${JOB}`]: songJob('failed', { error_category: 'playlist_mismatch', approved_at: '2026-10-30T10:00:00Z' }),
       'GET /api/connections': connectionsBody(),
+      [`GET ${CLASS_PATH}`]: classBody({ brief: BRIEF }),
       [`GET ${LIST_PATH}`]: listBody({ status: 'approved' }),
       'POST /api/jobs': () => json(NEW_JOB, 201),
     })
@@ -156,6 +158,7 @@ describe('a song job that failed', () => {
     expect((call?.body as { kind: string }).kind).toBe('design_with_songs')
     expect(input.mode).toBe('resume')
     expect(input.resume).toEqual({ song_list_revision_id: LIST_ID })
+    expect(input.brief).toEqual(BRIEF)
     expect(input.seed).toBeUndefined()
     expect(api.to('POST', `${JOB}/approve`)).toHaveLength(0)
   })
@@ -165,6 +168,7 @@ describe('a song job that failed', () => {
       ...SESSION_ROUTES,
       [`GET ${JOB}`]: songJob('failed', { error_category: 'playlist_mismatch', approved_at: '2026-10-30T10:00:00Z' }),
       'GET /api/connections': connectionsBody(),
+      [`GET ${CLASS_PATH}`]: classBody({ brief: BRIEF }),
       [`GET ${LIST_PATH}`]: listBody({ status: 'approved' }),
       'POST /api/jobs': () => reason(409, 'receipt_invalid'),
     })
@@ -188,6 +192,7 @@ describe('a song job that failed', () => {
       [OPS]: { operations: [operation] },
       [`POST /api/external-operations/${OPERATION_ID}/check-again`]: { ...operation, state: 'failed', resolved_by: 'reconciler' },
       'GET /api/connections': connectionsBody(),
+      [`GET ${CLASS_PATH}`]: classBody({ brief: BRIEF }),
       [`GET ${LIST_PATH}`]: listBody({ status: 'approved' }),
       'POST /api/jobs': () => json(NEW_JOB, 201),
     })
@@ -438,6 +443,7 @@ describe('a song job with an undecided MOWL attach', () => {
         return { ...attach, state: 'succeeded' }
       },
       'GET /api/connections': connectionsBody(),
+      [`GET ${CLASS_PATH}`]: classBody({ brief: BRIEF }),
       [`GET ${LIST_PATH}`]: listBody({ status: 'approved' }),
       'POST /api/jobs': () => json(NEW_JOB, 201),
     })
@@ -478,4 +484,72 @@ describe('a song job with an undecided MOWL attach', () => {
     fireEvent.click(screen.getAllByRole('button', { name: 'Check again' })[1]!) // the attach
     expect(await screen.findByRole('button', { name: 'Create the playlist again' })).toBeInTheDocument()
   })
+})
+
+describe('creating the playlist again for a revise_songs list', () => {
+  it('sends the contract shape: the current draft as base, the list, and nothing to change', async () => {
+    const api = fakeApi({
+      ...SESSION_ROUTES,
+      [`GET ${JOB}`]: jobBody('failed', {
+        kind: 'revise_songs',
+        approval_revision_id: LIST_ID,
+        approved_at: '2026-10-30T10:00:00Z',
+        error_category: 'playlist_mismatch',
+      }),
+      ...classRoutes(),
+      [`GET ${LIST_PATH}`]: listBody({ status: 'approved' }),
+      'GET /api/connections': connectionsBody(),
+      'POST /api/jobs': () => json({ ...NEW_JOB, kind: 'revise_songs' }, 201),
+    })
+    renderAt(`/jobs/${JOB_ID}`)
+    fireEvent.click(await screen.findByRole('button', { name: 'Create the playlist again' }))
+    await waitFor(() => {
+      expect(window.location.pathname).toBe(`/jobs/${NEW_JOB.id}`)
+    })
+    expect(api.to('POST', '/api/jobs')[0]?.body).toEqual({
+      kind: 'revise_songs',
+      input: {
+        class_id: CLASS_ID,
+        base_revision_id: REV1,
+        mode: 'resume',
+        resume: { song_list_revision_id: LIST_ID },
+        mowl_connection_id: MOWL_ID,
+        spotify_connection_id: SPOTIFY_ID,
+      },
+    })
+  })
+})
+
+describe('the refusals of starting a song job', () => {
+  const REFUSALS: [string, RegExp][] = [
+    ['stale_base', /class changed in the meantime/],
+    ['revision_limit', /most versions/],
+    ['not_song_picked', /not picked by Claude/],
+    ['receipt_invalid', /cannot be turned into a playlist again/],
+    ['chat_full', /conversation of this class is full/],
+    ['consent_missing', /Allow the working playlist/],
+    ['pool_busy', /Another song pick is still running/],
+    ['account_changed', /not the one these songs were chosen for/],
+    ['write_unresolved', /earlier step on Spotify is still undecided/],
+  ]
+  for (const [code, text] of REFUSALS) {
+    it(`words ${code} when a change is started`, async () => {
+      const SONGS = { state: 'approved', job_id: JOB_ID, revision_id: LIST_ID, content_hash: HASH, expires_at: null }
+      fakeApi({
+        ...SESSION_ROUTES,
+        ...classRoutes({ cls: { songs: SONGS } }),
+        [`GET ${LIST_PATH}`]: listBody({ status: 'approved' }),
+        'GET /api/connections': connectionsBody(),
+        'POST /api/jobs': () => reason(409, code),
+      })
+      renderAt(`/classes/${CLASS_ID}`)
+      const region = await screen.findByRole('region', { name: 'Change songs' })
+      await screen.findByRole('button', { name: 'Change all songs' })
+      fireEvent.change(region.querySelector('textarea')!, { target: { value: 'Different' } })
+      fireEvent.click(screen.getByRole('button', { name: 'Change all songs' }))
+      const alert = await screen.findByRole('alert')
+      expect(alert).toHaveTextContent(text)
+      expect(alert.textContent).not.toContain(code)
+    })
+  }
 })
