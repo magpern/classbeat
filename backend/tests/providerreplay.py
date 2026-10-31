@@ -90,11 +90,18 @@ class Replay:
         if n > len(self.answers):
             raise self._problem(f"request {n}: no recorded answer left")
         answer = self.answers[n - 1]
+        body = self.checked(request, n, answer.method, answer.path)
+        if answer.check is not None and not answer.check(body or {}):
+            raise self._problem(f"request {n}: the body shape is not the expected one")
+        return httpx.Response(answer.status, json=answer.body, headers=answer.headers)
+
+    def checked(self, request: httpx.Request, n: int, method: str, path: str) -> Any:
+        """Every check above but the body's shape; the parsed body (also kept in ``bodies``)."""
         url = request.url
         if (url.scheme, url.host, url.port) != ("https", self.host, None):
             raise self._problem(f"request {n}: not https to {self.host}")
-        if (request.method, url.path) != (answer.method, answer.path):
-            raise self._problem(f"request {n}: {request.method} {url.path}, not {answer.path}")
+        if (request.method, url.path) != (method, path):
+            raise self._problem(f"request {n}: {request.method} {url.path}, not {path}")
         if request.headers.get("authorization") != f"Bearer {self.key}":
             raise self._problem(f"request {n}: not the test key")
         for name in ("openai-organization", "openai-project"):
@@ -114,6 +121,4 @@ class Replay:
             if not isinstance(body, dict):
                 raise self._problem(f"request {n}: the body is not a JSON object")
         self.bodies.append(body)
-        if answer.check is not None and not answer.check(body or {}):
-            raise self._problem(f"request {n}: the body shape is not the expected one")
-        return httpx.Response(answer.status, json=answer.body, headers=answer.headers)
+        return body

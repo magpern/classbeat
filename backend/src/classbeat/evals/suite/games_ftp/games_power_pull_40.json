@@ -1,0 +1,17 @@
+{
+ "name": "games_power_pull_40",
+ "about": "Hard 40 minutes with a Power Pull game.",
+ "brief": {
+  "length_min": 40,
+  "intensity": "hard",
+  "text": "Include a Power Pull game for the team."
+ },
+ "music": {
+  "tracks": 12
+ },
+ "expect": {
+  "games": [
+   "power_pull"
+  ]
+ }
+}

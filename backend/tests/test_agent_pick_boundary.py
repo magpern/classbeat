@@ -16,6 +16,7 @@ error result, and nothing happens outside the stage: the searcher is asked only 
 asked, the registry holds only what was searched, the stored list comes from the analysis.
 """
 
+import dataclasses
 import json
 import unicodedata
 
@@ -23,13 +24,15 @@ import pytest
 from mowl import library, spotify_web
 from mowl.credentials import Credentials
 
-from agentfake import MemoryHost, Planted, install, synthetic_tracks
+from agentfake import CONFIG, MemoryHost, Planted, install, synthetic_tracks
 from classbeat.agent.choose_songs import ChooseContext
 from classbeat.agent.model_input import MusicData
 from classbeat.agent.pick_pool import PoolContext
+from classbeat.agent.provider import ModelProvider
 from classbeat.agent.registry import SearchRegistry
 from classbeat.agent.songs import PickPlan, analysed_pool
 from classbeat.evals.pick import SyntheticCatalogue, plan_for
+from openaifake import OPENAI_MODEL, scripted_openai
 from pickfake import (
     PLANTED_CLIENT,
     PLANTED_DISPLAY,
@@ -133,7 +136,12 @@ def plan_pool(reg: SearchRegistry) -> tuple[list[tuple[int, str]], list[tuple[st
     raise AssertionError("the fake catalogue has no triple on target")
 
 
-async def test_no_planted_value_reaches_the_provider(monkeypatch: pytest.MonkeyPatch) -> None:
+@pytest.mark.parametrize("adapter", ["fake", "openai"])
+async def test_no_planted_value_reaches_the_provider(
+    monkeypatch: pytest.MonkeyPatch, adapter: str
+) -> None:
+    """With ``openai`` the stages run through ``OpenAIProvider`` and the check reads the request
+    bodies it really sent (ADR 0012 §3); with ``fake``, what the loop gave the provider."""
     mowl = Planted()
     sp = planted_spotify(monkeypatch)
     reg = probe_registry(sp)
@@ -181,18 +189,30 @@ async def test_no_planted_value_reaches_the_provider(monkeypatch: pytest.MonkeyP
     ]
     fake = provider(*script)
     host = MemoryHost()
-    pooled = await run_pool(w, fake, host)
+    model: ModelProvider = fake
+    config = CONFIG
+    api = None
+    if adapter == "openai":
+        model, api = scripted_openai(fake, planted=[*sp.values(), *mowl.values()])
+        config = dataclasses.replace(CONFIG, model=OPENAI_MODEL)
+    pooled = await run_pool(w, model, host, config=config)
     assert [p.ref for p in pooled.output.picks] == refs
     assert [p.cover for p in pooled.output.picks] == [
         covers[p.spotify_id] for p in pooled.output.picks
     ]
-    chosen = await run_choose(ChooseContext.build(w.plan, tracks, omitted), fake, host)
+    ctx = ChooseContext.build(w.plan, tracks, omitted)
+    chosen = await run_choose(ctx, model, host, config=config)
     assert fake.remaining == 0
     planted_covers = [s.cover for s in chosen.output.songs]
     assert planted_covers == [covers[s.spotify_id] for s in chosen.output.songs]
     assert all(planted_covers)
 
     sent = everything_sent(fake)
+    if api is not None:
+        assert api.problems == []
+        assert len(api.bodies) == len(script)
+        raw = [r.content.decode("utf-8") for r in api.requests]
+        sent = " ".join([*raw, json.dumps(api.bodies, ensure_ascii=False)])
     forbidden = [*sp.values(), *mowl.values(), *(e.spotify_id for e in reg.entries())]
     forbidden += [c for c in covers.values() if c is not None]  # every cover, whole and
     forbidden += [c.rsplit("/", 1)[1] for c in covers.values() if c is not None]  # its digest
