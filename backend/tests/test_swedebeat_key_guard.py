@@ -9,6 +9,7 @@ put the key in a pull-request build, a build argument, a layer cache, a log or g
 """
 
 import json
+import os
 import re
 import shutil
 import subprocess
@@ -168,3 +169,61 @@ def test_the_init_script_creates_an_empty_placeholder_never_a_key() -> None:
     script = text("scripts/worktree.sh")
     assert "swedebeat_app)" in script
     assert '"$name" == swedebeat_app' in script
+
+
+def _key_step(tmp: Path, secret: Path, target: Path) -> str:
+    """The Dockerfile's key step as a shell script, its two paths pointed into ``tmp``."""
+    lines = text("Dockerfile").splitlines()
+    start = next(
+        i for i, line in enumerate(lines) if "--mount=type=secret,id=swedebeat_app" in line
+    )
+    block = [lines[start].split("RUN", 1)[1]]
+    while block[-1].rstrip().endswith("\\"):
+        start += 1
+        block.append(lines[start])
+    script = "\n".join(block)
+    script = re.sub(r"^\s*--mount=\S+\s*\\n", "", script)
+    script = script.replace("/run/secrets/swedebeat_app", secret.as_posix())
+    return script.replace("/app/swedebeat_app.json", target.as_posix())
+
+
+def _run_key_step(tmp_path: Path, secret: str | None, require: bool) -> tuple[int, Path]:
+    sh = shutil.which("sh")
+    if sh is None or shutil.which("python") is None:
+        pytest.skip("sh and python are needed to run the Dockerfile's key step")
+    secret_file = tmp_path / "secret"
+    if secret is not None:
+        secret_file.write_text(secret, encoding="utf-8")
+    target = tmp_path / "swedebeat_app.json"
+    env = {"REQUIRE_SWEDEBEAT_APP": "1" if require else "0", "PATH": os.environ["PATH"]}
+    done = subprocess.run(  # noqa: S603 - fixed arguments, a throwaway script
+        [sh, "-c", _key_step(tmp_path, secret_file, target)], env=env, capture_output=True
+    )
+    return done.returncode, target
+
+
+def test_a_release_build_without_the_key_fails_and_an_ordinary_build_does_not(
+    tmp_path: Path,
+) -> None:
+    # N2 of the #366 review: the Dockerfile itself must keep failing REQUIRE_SWEDEBEAT_APP=1
+    # without a key; the static pins above would pass a step that no longer fails.
+    good = json.dumps({"key": "k" * 32, "iv": "i" * 16})
+    for missing in (None, ""):  # no secret mounted at all, and an empty one
+        code, target = _run_key_step(tmp_path, missing, require=True)
+        assert code != 0, repr(missing)
+        assert not target.exists()
+        code, target = _run_key_step(tmp_path, missing, require=False)
+        assert code == 0, repr(missing)
+        assert not target.exists()
+    for bad in (
+        "not json",
+        json.dumps({"key": "short", "iv": "i" * 16}),
+        json.dumps({"key": "k" * 32, "iv": "i" * 16, "x": 1}),
+    ):
+        for require in (True, False):
+            code, target = _run_key_step(tmp_path, bad, require)
+            assert code != 0
+            assert not target.exists()
+    code, target = _run_key_step(tmp_path, good, require=True)
+    assert code == 0
+    assert json.loads(target.read_text(encoding="utf-8")) == json.loads(good)
