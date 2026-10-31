@@ -304,6 +304,7 @@ role is not exactly `classbeat_maint` (guard 11, `tests/test_maint_privileges.py
 Admin Codes (`classbeat.admin.codes`, AD2): `/api/admin/invites` and `/api/admin/redeem-codes` list, create
 and `.../{id}/disable`; a new invite or code is in its create response only (never a list, audit row or log),
 disabling an invite expires it, and the invite statements live in `classbeat.auth` (guard 8).
+Admin Settings (`classbeat.admin.settings`, AD4): `GET /api/admin/settings` (every flag with its effective value and source, the plans, the environment's bounds, the read-only settings), `PUT /api/admin/settings/{key}` (a flag through `classbeat.flags.core.validate_for_write`: `open` sign-up, an invalid value, a trial over `CLASSBEAT_TRIAL_DAYS_MAX` or above `instructor`, and any other key are 422 and a `refused` audit row), `DELETE /api/admin/settings/{key}` (clears the value to the JSON `null`, because maint has no `DELETE` on `app_settings`) and `PATCH /api/admin/plans/{id}` (the four limits, under the table's range and the environment's bounds; held credits are untouched). Audit params hold the key and what the value means, never banner text.
 The model (ADR 0006 section 9): `CLASSBEAT_MODEL_PROVIDER` is `anthropic` (the default) or `fake`
 (compose takes `MODEL_PROVIDER` from `.env`, `fake` in `.env.example`, so the dev stack and CI never
 call a model). `anthropic` needs the `anthropic_api_key` secret file, mounted on the **worker only**
@@ -371,10 +372,16 @@ every Spotify route answers 404 `feature_off`; the owner switches it on, roadmap
 ceiling across their stages and attempts, 0 to 100000000), `CLASSBEAT_SPOTIFY_FLOW_TTL_SECONDS` (600, 60 to 600;
 how long a connect flow lives), `CLASSBEAT_SPOTIFY_REFRESH_MARGIN_SECONDS` (120, 0 to 1800; a token with less
 than this left is refreshed), `CLASSBEAT_SPOTIFY_REFRESH_TIMEOUT_SECONDS` (10, above 0 and at most 20; the
-refresh request's total deadline) and `CLASSBEAT_SPOTIFY_LISTING_LAG_SECONDS` (unset, at most 86400; lets the
+refresh request's total deadline), `CLASSBEAT_SPOTIFY_LISTING_LAG_SECONDS` (unset, at most 86400; lets the
 reconciler mark an uncertain playlist create `failed` when the user's listing shows no playlist with its `ref`
 and the call returned at least that long ago; leave it unset until the owner has measured Spotify's listing
-delay at live activation). There is no Client ID setting and no Client Secret: each user enters their own
+delay at live activation) and `CLASSBEAT_SPOTIFY_CALLS_PER_JOB` (300, 1 to 10000; the Spotify requests one job may
+send across its stages and attempts, token refreshes included, counted per request and redirect hop by
+`egress.RequestBudget` and stored in `jobs.spotify_calls` with each attempt's ending; the request over it is never
+sent and the job ends `limit_exceeded`). Three attempts in a row ending with a Spotify 429 end the job
+`quota_exhausted` (a MOWL 429 does not count; `jobs.spotify_rate_limits`), and the job keeps the last Spotify
+`Retry-After` (`jobs.spotify_retry_after`) so the page's sentence names the minutes or hours (ADR 0009 section 8;
+migration 0013). There is no Client ID setting and no Client Secret: each user enters their own
 Spotify app's Client ID on the account page, and the callback is the fixed
 `<CLASSBEAT_PUBLIC_BASE_URL>/oauth/spotify/callback`.
 The Spotify playlist writes live in `classbeat.playlists` (ADR 0008 section 2): the external-operation
@@ -554,7 +561,19 @@ The fake Spotify (`e2e/fake-spotify/server.py`, service `spotify-fake`) answers 
 (`tests/spotifyfake.py`), so the two cannot drift; the `/__e2e/` control is reached from the web container.
 Web and worker trust the same CA bundle (`SSL_CERT_FILE`), now including the Spotify fake's CA.
 
+Song picking is on in the e2e stack only (`CLASSBEAT_SONG_PICKING: "true"` on web and worker in
+`compose.e2e.yaml`); the defaults keep it off. `e2e/tests/spotify-helpers.ts` holds the fake Spotify's public
+test data (`CLIENT_A` allows `USER_A`, `CLIENT_B` allows `USER_B`, `CLIENT_UNKNOWN` is no app), its control
+calls from the web container (`/__e2e/reset`, `sign-in?user=`, `deny`, `inject?...`, `state`: every request
+with the app and user of its token, never a token, code or verifier) and `playSpotify(page)`, which plays the
+browser's visit to `accounts.spotify.com/authorize` (the browser cannot reach the fake: the helper asks it
+from the web container without following the redirect and hands the page the answer). The fake's signed-in
+user is one global setting, so a spec sets `signInAtSpotify(user)` before each connect and the specs run one
+after the other. The live-activation steps for the owner are `docs/runbooks/m4-live-activation.md`.
+
 The specs: `design-draft.spec.ts` (draft, cancel while running, uncertain attach),
+`spotify-connect.spec.ts` (the Spotify wizard, consent, Disconnect, two users on different Client IDs and
+every error category's page text),
 `class-save.spec.ts` (change, save, update, uncertain writes, another MOWL account),
 `class-usage.spec.ts` and `fake-spotify.spec.ts` (web connects through the fake with PKCE, the worker
 reaches it too, it publishes no port).
@@ -584,6 +603,11 @@ The `pr-title` workflow also runs on `merge_group`. A merge group has no PR titl
 commitlint on the subject of every commit the queue would land (`git log --format=%s
 base_sha..head_sha`, the squash commits, each titled with its PR's title as the queue built it):
 a title edited after the PR was enqueued is checked too. A missing SHA or an empty range fails it.
+On the pull request it lints the title with ` (#<number>)` appended, the subject the squash gets,
+so a title that fits the 100-character `header-max-length` only without the suffix fails there
+and not in every merge group (keep titles to about 90 characters). Both events use
+`scripts/commitlint-subject.sh`; a self-test step shows a 100-character title failing with the
+suffix.
 
 The backend test shard count has one source: the `shard` list of the `backend-tests` matrix.
 `scripts/ci-shards.sh` (run in `changes`, tested in `checks`) reads it, refuses another axis, an

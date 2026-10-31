@@ -93,3 +93,12 @@ later public or paid phase.
 - Going beyond the circle (public, paid, or strangers) reopens this ADR: the questions are sent
   first and the "Beyond the circle" column applies.
 - M4 uses `POST /me/playlists` and the `/items` endpoints, with tests on the new response shape.
+- Open exploration (2026-10-31, not scheduled): the MOWL app has a QR-code sign-in that might let a
+  user connect without typing their password on our page. Nothing is known about how it works.
+  Finding out needs a passive capture with the owner's own account, which needs the owner's
+  authorization for that session, and a QR connect would rest on one more undocumented MOWL
+  endpoint. The question for MOWL is M5 in [docs/providers/questions.md](../providers/questions.md).
+  For Spotify nothing equivalent is known: the Web API's documented sign-in flows are
+  Authorization Code (with PKCE), Client Credentials and the deprecated Implicit grant (see
+  [Spotify's authorization guide](https://developer.spotify.com/documentation/web-api/concepts/authorization)),
+  none of them a QR or device flow, so PKCE (ADR 0009) stays the only Spotify sign-in.

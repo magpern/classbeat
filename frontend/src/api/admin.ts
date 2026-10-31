@@ -373,6 +373,10 @@ const ADMIN_REASONS: Record<string, string> = {
   stepup_required: 'This change needs a two-factor code.',
   mfa_required: 'Confirm your two-factor code to continue.',
   invalid_code: 'That code is not right. Try again.',
+  // Usage, jobs and the audit log (#226).
+  bad_month: 'Pick a month to show.',
+  period_invalid: 'The start of the period must be before its end.',
+  filter_invalid: 'That filter is too long. Shorten it and try again.',
 }
 
 /** The text for an admin API error. */
