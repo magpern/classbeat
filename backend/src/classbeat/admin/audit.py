@@ -220,6 +220,22 @@ class PlanUpdateParams(Params):
     monthly_cost_micros: Annotated[int, Field(ge=-(10**12), le=10**12)] | None = None
 
 
+MODEL_PATTERN: Final = r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,99}$"
+
+
+class ModelRouteParams(Params):
+    """A model route write (AD5 #223): which route and what it was set to. Every field is
+    pattern-checked before the audit row, so a refusal can say what was asked without free text."""
+
+    route_key: Annotated[str, StringConstraints(pattern=r"^[a-z0-9_]{1,40}$")]
+    stage_group: Literal["design", "songs"]
+    provider: Annotated[str, StringConstraints(pattern=r"^[a-z][a-z0-9_]{0,29}$")] | None = None
+    model: (
+        Annotated[str, StringConstraints(pattern=r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,99}$")] | None
+    ) = None
+    effort: Annotated[str, StringConstraints(pattern=r"^[a-z][a-z0-9_]{0,19}$")] | None = None
+
+
 # Action code -> its params model. ``admin.request`` is the gate's own (ADR 0011 section 6:
 # mfa_required, stepup_required and rate_limited of an admin).
 ACTIONS: dict[str, type[Params]] = {
@@ -251,6 +267,10 @@ ACTIONS["setting.read"] = NoParams
 ACTIONS["setting.set"] = SettingSetParams
 ACTIONS["setting.clear"] = NoParams
 ACTIONS["plan.update"] = PlanUpdateParams
+# Model routes per route key (AD5 #223, classbeat.admin.models).
+ACTIONS["model.read"] = NoParams
+ACTIONS["model.route_set"] = ModelRouteParams
+ACTIONS["model.route_clear"] = ModelRouteParams
 
 
 class UnknownAction(ValueError):

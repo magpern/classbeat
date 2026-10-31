@@ -55,6 +55,7 @@ from classbeat.design.music import load_music
 from classbeat.jobs import KINDS, Complete, FencedSession, JobFailure, JobKind, JobRun
 from classbeat.jobs.inputs import ModelJobInput
 from classbeat.jobs.kinds import Admitted, Refused
+from classbeat.quota.route import with_route_key
 
 KIND: Final = "revise_draft"
 STAGES: Final = ("music", "revise")
@@ -256,7 +257,7 @@ REVISE_DRAFT: Final = KINDS.register(
         STAGES,
         run,
         consumes_credit=False,
-        admit=admit,
-        server_fields=frozenset({"base_revision_hash", "request_message_id"}),
+        admit=with_route_key(admit),
+        server_fields=frozenset({"base_revision_hash", "request_message_id", "route_key"}),
     )
 )

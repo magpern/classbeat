@@ -92,6 +92,11 @@ _COLUMNS = {
     "created_at updated_at started_at finished_at",
     "external_operations": "id owner_id job_id kind state error_category created_at updated_at "
     "resolved_at pending_at call_ended_at",
+    "model_eval_results": "id run_id recorded_at suite_version manifest_digest provider model "
+    "effort stage_group prompt_versions classbeat_version results_sha256 verdict passed "
+    "total_cost_micros authorization_note seq",
+    "model_routes": "route_key stage_group provider model effort eval_result_id gate_passed "
+    "set_at set_by",
 }
 READABLE: dict[str, frozenset[str]] = {t: frozenset(c.split()) for t, c in _COLUMNS.items()}
 _UPDATES = {
@@ -115,6 +120,10 @@ EXPECTED: dict[tuple[str, str], frozenset[str]] = {
     ("app_settings", "INSERT"): frozenset({"*"}),
     ("app_settings", "UPDATE"): frozenset({"*"}),
     ("admin_audit", "INSERT"): frozenset({"*"}),
+    # AD5 #223: the routes are written whole; the results are never writable (no entry).
+    ("model_routes", "INSERT"): frozenset({"*"}),
+    ("model_routes", "UPDATE"): frozenset({"*"}),
+    ("model_routes", "DELETE"): frozenset({"*"}),
 }
 # Everything else maint may hold, as pg_shdepend-free ACL entries: CONNECT and USAGE.
 EXPECTED_OTHER = {"database:CONNECT", "schema:public:USAGE"}

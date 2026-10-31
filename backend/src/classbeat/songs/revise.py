@@ -59,6 +59,7 @@ from classbeat.flags import effective as flags
 from classbeat.jobs import KINDS, Complete, FencedSession, JobFailure, JobKind, JobRun, Outcome
 from classbeat.jobs.kinds import Admitted, Refused
 from classbeat.operations import orphans
+from classbeat.quota.route import with_route_key
 from classbeat.songs import admit as song_admit
 from classbeat.songs import config, song_list
 from classbeat.songs.config import SongConfig
@@ -357,8 +358,8 @@ REVISE_SONGS: Final = KINDS.register(
         STAGES,
         run,
         consumes_credit=False,
-        admit=admit,
+        admit=with_route_key(admit),
         approve_check=song_admit.approve_check,
-        server_fields=frozenset({"base_revision_hash", "request_message_id"}),
+        server_fields=frozenset({"base_revision_hash", "request_message_id", "route_key"}),
     )
 )
