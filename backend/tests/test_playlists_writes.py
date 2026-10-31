@@ -256,15 +256,25 @@ async def test_the_jobs_own_reconciliation_never_fails_a_create_on_the_listing_l
     assert len(penv.api(MINE, "POST")) == 1
 
 
+@pytest.mark.parametrize("purpose", ["pool", "final"])
 @pytest.mark.parametrize("resolved_by", ["user", "admin"])
 async def test_a_failed_create_its_call_did_not_record_is_never_taken_over(
-    penv: PlayEnv, resolved_by: str
+    penv: PlayEnv, resolved_by: str, purpose: str
 ) -> None:
-    """#198 item 1: only a ``failed`` row the call's own record wrote (a refusal: ``resolved_by =
-    'worker'``) is taken over. One the user resolved (Check again, Do it anyway) may have been
-    created: the next attempt ends ``uncertain_write`` and sends nothing."""
+    """#198 items 1 and 17a: only a ``failed`` row the call's own record wrote (a refusal:
+    ``resolved_by = 'worker'``) is taken over, through ``pool_request`` and ``final_request``
+    alike. One the user resolved (Check again, Do it anyway) may have been created: the next
+    attempt ends ``uncertain_write`` and sends nothing."""
     owner = await penv.user()
-    job_id = penv.job(owner)
+    if purpose == "pool":
+        job_id = penv.job(owner)
+    else:
+        class_id = new_class(penv.admin, owner)
+        revision_id, content_hash = penv.song_list(owner, class_id)
+        job_id = penv.job(
+            owner, class_id, action="final_create", revision_id=str(revision_id),
+            content_hash=content_hash.hex(),
+        )  # fmt: skip
     penv.fake.inject("refuse", method="POST", path=MINE)
     assert (await penv.run(job_id)).state == "queued"  # a refusal: retried
     [create] = penv.operations(owner)
@@ -283,6 +293,7 @@ async def test_a_failed_create_its_call_did_not_record_is_never_taken_over(
         "failed", resolved_by, create.pending_at
     )  # fmt: skip
     assert penv.fake.playlists == {}
+    assert penv.class_playlists(owner) == []
 
 
 # --- failure injection: the replace (pool and final fill) --------------------------------------

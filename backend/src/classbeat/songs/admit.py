@@ -10,8 +10,9 @@ job, the per-user limit), in this order, each refusal writing nothing:
    (the connected Spotify account must be the list's):
 
    - the named list is the class's **newest** ``song_list`` and still hashes to its stored hash;
-   - a job of that class was **approved** on it (``approval_revision_id`` and ``approved_at``) and
-     ended ``failed``, ``cancelled`` or ``expired`` (the receipt: the user's click);
+   - a job **of the same kind** of that class was **approved** on it (``approval_revision_id`` and
+     ``approved_at``) and ended ``failed``, ``cancelled`` or ``expired`` (the receipt: the user's
+     click; a ``revise_songs`` list is resumed by ``revise_songs``, ``classbeat.songs.revise``);
    - **no** job of the class whose approved or resumed list it is has ``completed`` (the receipt
      is spent once its list is done) or is still ``queued`` or ``running`` (another resume in
      flight). After a resume that failed, the user may resume again against the same receipt.
@@ -29,7 +30,8 @@ job, the per-user limit), in this order, each refusal writing nothing:
    shared by all of a user's classes (section 2). A job ``waiting_for_approval`` no longer needs
    the pool and does not count; nor does an approved one (phase 2 never touches the pool);
 6. for a ``seed`` (``invalid_input`` otherwise): the seed is the **newest** ``song_list`` revision
-   of the class, made by a job that ended ``cancelled`` or ``expired`` and was never approved, its
+   of the class, made by a ``design_with_songs`` job (a song change's list is changed again by
+   ``revise_songs``) that ended ``cancelled`` or ``expired`` and was never approved, its
    stored hash still matches its content (``song_list.load``), and every ``replace`` slot is a
    position in it.
 
@@ -47,7 +49,8 @@ the row checks and the connection checks of ``CONNECTIONS``; it only reads):
 Reasons are codes only; nothing of the rows is logged or returned.
 """
 
-from typing import Final
+from dataclasses import dataclass
+from typing import Any, Final
 from uuid import UUID
 
 from pydantic import BaseModel
@@ -59,7 +62,9 @@ from classbeat.context import UserContext
 from classbeat.jobs.kinds import SONG_KIND_NAMES, Admitted, Approving, Refused
 from classbeat.operations import orphans
 from classbeat.songs import config, song_list
-from classbeat.songs.inputs import DesignWithSongsInput, Seed
+from classbeat.songs.inputs import DesignWithSongsInput, ReviseSongsInput, Seed
+
+KIND: Final = "design_with_songs"
 
 SEED_ENDED: Final = ("cancelled", "expired")
 
@@ -72,27 +77,38 @@ _PICK_OPEN = text(
 )
 # The class's newest song list and the job that made it.
 _NEWEST_LIST = text(
-    "SELECT r.id, j.state, j.approved_at FROM class_revisions r "
+    "SELECT r.id, j.kind, j.state, j.approved_at FROM class_revisions r "
     "LEFT JOIN jobs j ON j.owner_id = r.owner_id AND j.id = r.job_id "
     "WHERE r.owner_id = :owner_id AND r.class_id = :class_id AND r.kind = 'song_list' "
     "ORDER BY r.number DESC LIMIT 1"
 )
 
 
-# Jobs of the class that approved or resumed the list ``revision_id``, by state.
+# Jobs of the class that approved or resumed the list ``revision_id``, by state; ``approved`` only
+# for a job of the resuming kind (a list is resumed by the kind that made it), newest first.
 _FOR_LIST = text(
-    "SELECT state, approved_at IS NOT NULL AND approval_revision_id = :revision_id AS approved "
+    "SELECT state, input, approved_at IS NOT NULL AND approval_revision_id = :revision_id "
+    "AND kind = :kind AS approved "
     "FROM jobs WHERE owner_id = :owner_id AND class_id = :class_id AND ("
     "(approval_revision_id = :revision_id AND approved_at IS NOT NULL) OR "
-    "(kind = ANY(:kinds) AND input -> 'resume' ->> 'song_list_revision_id' = :revision_text))"
+    "(kind = ANY(:kinds) AND input -> 'resume' ->> 'song_list_revision_id' = :revision_text)) "
+    "ORDER BY approved_at DESC NULLS LAST"
 )
 RECEIPT_ENDED: Final = ("failed", "cancelled", "expired")
 
 
+@dataclass(frozen=True)
+class Receipt:
+    """A valid receipt: the approved list and the input of the job that approved it."""
+
+    stored: song_list.SongListRevision
+    approved_input: dict[str, Any]
+
+
 async def receipt_valid(
-    db: AsyncSession, owner_id: UUID, class_id: UUID, revision_id: UUID
-) -> song_list.SongListRevision | None:
-    """The list a resume may start phase 2 for (module docstring, step 2), or None."""
+    db: AsyncSession, owner_id: UUID, class_id: UUID, revision_id: UUID, kind: str = KIND
+) -> Receipt | None:
+    """The list a resume of ``kind`` may start phase 2 for (module docstring, step 2), or None."""
     newest = (await db.execute(_NEWEST_LIST, {"owner_id": owner_id, "class_id": class_id})).first()
     if newest is None or newest.id != revision_id:
         return None
@@ -105,14 +121,19 @@ async def receipt_valid(
                 "revision_id": revision_id,
                 "revision_text": str(revision_id),
                 "kinds": list(SONG_KIND_NAMES),
+                "kind": kind,
             },
         )
     ).all()
     if any(r.state in ("completed", "queued", "running") for r in rows):
         return None  # spent, or another resume (or the approved phase itself) in flight
-    if not any(r.approved and r.state in RECEIPT_ENDED for r in rows):
-        return None  # never approved
-    return await song_list.load(db, owner_id, class_id, revision_id)
+    approved = next((r for r in rows if r.approved and r.state in RECEIPT_ENDED), None)
+    if approved is None or not isinstance(approved.input, dict):
+        return None  # never approved (by this kind)
+    stored = await song_list.load(db, owner_id, class_id, revision_id)
+    if stored is None:
+        return None
+    return Receipt(stored, approved.input)  # pyright: ignore[reportUnknownArgumentType]
 
 
 async def _admit_resume(
@@ -128,7 +149,7 @@ async def _admit_resume(
     )
     if found is None:
         return Refused("receipt_invalid")
-    if found.account != account:
+    if found.stored.account != account:
         return Refused("account_changed")
     if await orphans.playlist_unresolved(db, ctx, parsed.class_id):
         return Refused("write_unresolved")  # the user decides the earlier write first
@@ -151,6 +172,7 @@ async def seed_list(
         if (
             row is None
             or row.id != seed.song_list_revision_id
+            or row.kind != KIND  # a song change's list is changed again by revise_songs
             or row.state not in SEED_ENDED
             or row.approved_at is not None
         ):
@@ -161,6 +183,20 @@ async def seed_list(
     return found
 
 
+async def pick_checks(
+    db: AsyncSession, ctx: UserContext, spotify_connection_id: UUID
+) -> Refused | None:
+    """Steps 3 to 5 (both kinds' picks): ``not_connected``, ``consent_missing``, ``pool_busy``."""
+    account = await connections.spotify_account_in(db, ctx, spotify_connection_id)
+    if account is None:
+        return Refused("not_connected")
+    if not await connections.pool_consent_in(db, ctx, account):
+        return Refused("consent_missing")
+    if await pool_busy(db, ctx.user_id):
+        return Refused("pool_busy")
+    return None
+
+
 async def admit(db: AsyncSession, ctx: UserContext, parsed: BaseModel, /) -> Admitted | Refused:
     if not isinstance(parsed, DesignWithSongsInput):
         return Refused("invalid_input")
@@ -168,13 +204,9 @@ async def admit(db: AsyncSession, ctx: UserContext, parsed: BaseModel, /) -> Adm
         return Refused("song_picking_off")
     if parsed.mode == "resume":
         return await _admit_resume(db, ctx, parsed)
-    account = await connections.spotify_account_in(db, ctx, parsed.spotify_connection_id)
-    if account is None:
-        return Refused("not_connected")
-    if not await connections.pool_consent_in(db, ctx, account):
-        return Refused("consent_missing")
-    if await pool_busy(db, ctx.user_id):
-        return Refused("pool_busy")
+    refused = await pick_checks(db, ctx, parsed.spotify_connection_id)
+    if refused is not None:
+        return refused
     if parsed.seed is not None:
         if parsed.class_id is None:  # the input model refuses it already
             return Refused("invalid_input")
@@ -185,7 +217,7 @@ async def admit(db: AsyncSession, ctx: UserContext, parsed: BaseModel, /) -> Adm
 
 async def approve_check(db: AsyncSession, ctx: UserContext, approving: Approving, /) -> str | None:
     given = approving.input
-    if not isinstance(given, DesignWithSongsInput):
+    if not isinstance(given, DesignWithSongsInput | ReviseSongsInput):
         return "invalid_input"
     stored = await song_list.load(db, ctx.user_id, approving.class_id, approving.revision_id)
     if stored is None or stored.content_hash != approving.content_hash:
