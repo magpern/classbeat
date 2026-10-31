@@ -10,6 +10,7 @@ streams in (a chunked body, or one whose ``Content-Length`` lies). Two parts:
   ``test_m6_security_routes`` classifies) given a body one byte over the cap.
 """
 
+import asyncio
 import json
 import logging
 from collections.abc import AsyncIterator
@@ -409,6 +410,8 @@ SECRET_BODY = b"SECRETBODY-" + b"x" * LIMIT
 @pytest.fixture(autouse=True)
 def _fresh_log_state(monkeypatch: pytest.MonkeyPatch) -> None:
     bodylimit._logged.clear()  # pyright: ignore[reportPrivateUsage]
+    monkeypatch.setattr(bodylimit, "log_failures", 0)
+    monkeypatch.setattr(bodylimit, "_failure_reported", -bodylimit.LOG_INTERVAL_SECONDS)
 
 
 class Clock:
@@ -554,6 +557,47 @@ async def test_a_failing_log_call_never_turns_the_413_into_a_500(
         scope["headers"] = []
     sent, _ = await run(BodyLimit(Probe()), scope, [b"x" * 40_000] * 3)
     refused(sent)
+
+
+def _install_broken_log(monkeypatch: pytest.MonkeyPatch, error: BaseException) -> None:
+    class Broken(logging.Handler):
+        def emit(self, record: logging.LogRecord) -> None:
+            raise error
+
+    log = logging.getLogger(bodylimit.__name__)
+    monkeypatch.setattr(log, "propagate", False)
+    monkeypatch.setattr(log, "handlers", [Broken()])
+    monkeypatch.setattr(log, "filters", [])
+
+
+@pytest.mark.parametrize("error", [KeyboardInterrupt(), asyncio.CancelledError()])
+async def test_a_base_exception_from_the_log_call_still_propagates(
+    error: BaseException, monkeypatch: pytest.MonkeyPatch, clock: type[Clock]
+) -> None:
+    """Only ``Exception`` is swallowed: a cancellation or an interrupt is not the log's to hide."""
+    _install_broken_log(monkeypatch, error)
+    with pytest.raises(type(error)):
+        await run(BodyLimit(Probe()), hostile_scope(), [SECRET_BODY])
+
+
+async def test_a_swallowed_log_failure_is_counted_and_reported_once_per_interval_without_content(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], clock: type[Clock]
+) -> None:
+    _install_broken_log(monkeypatch, RuntimeError("SINKSECRET"))
+    app = BodyLimit(Probe())
+    for n in range(3):  # three addresses: each is its own log line, so three log calls
+        sent, _ = await run(app, hostile_scope(f"203.0.113.{n + 20}"), [SECRET_BODY])
+        refused(sent)
+    assert bodylimit.log_failures == 3
+    err = capsys.readouterr().err
+    assert err.count("\n") == 1
+    assert "RuntimeError" in err
+    assert "1 so far" in err
+    for secret in ("SINKSECRET", "203.0.113.9", "/api/auth", "SECRETBODY", "SESSIONSECRET"):
+        assert secret not in err
+    clock.now += bodylimit.LOG_INTERVAL_SECONDS
+    await run(app, hostile_scope("203.0.113.99"), [SECRET_BODY])
+    assert "4 so far" in capsys.readouterr().err
 
 
 async def test_the_table_of_remembered_addresses_is_bounded(

@@ -34,6 +34,7 @@ SWAG: ``client_max_body_size``): docs/runbooks/vps-deploy.md, "Request body size
 
 import contextlib
 import logging
+import sys
 import time
 from collections.abc import Mapping
 from typing import Any, Final
@@ -59,6 +60,11 @@ logger = logging.getLogger(__name__)
 LOG_INTERVAL_SECONDS: Final = 10.0
 _LOG_TRACKED: Final = 4096
 _logged: dict[str, tuple[float, int]] = {}
+# A log call that raised is swallowed (the 413 is the contract) but not silent: ``log_failures``
+# counts them (tests and a debugger can read it) and one last-resort line goes to stderr per
+# ``LOG_INTERVAL_SECONDS`` with the exception class name and the count, nothing from the request.
+log_failures = 0
+_failure_reported = -LOG_INTERVAL_SECONDS
 _REFUSAL_BODY: Final = b'{"detail":{"reason":"body_too_large"}}'
 
 
@@ -145,11 +151,28 @@ def _log_refusal(scope: Scope) -> None:
     )
 
 
+def _note_log_failure(exc: Exception) -> None:
+    global log_failures, _failure_reported
+    log_failures += 1
+    now = time.monotonic()
+    if now - _failure_reported < LOG_INTERVAL_SECONDS:
+        return
+    _failure_reported = now
+    with contextlib.suppress(Exception):
+        sys.stderr.write(
+            f"classbeat.bodylimit: the refusal log call failed ({type(exc).__name__}); "
+            f"{log_failures} so far\n"
+        )
+
+
 async def _refuse(scope: Scope, send: Send) -> None:
     # A handler or filter that raises (a full disk, a broken sink) must never turn the 413 into a
-    # 500: the refusal is the contract, the line is best effort.
-    with contextlib.suppress(Exception):
+    # 500: the refusal is the contract, the line is best effort. Only ``Exception`` is caught: a
+    # cancellation or KeyboardInterrupt still propagates.
+    try:
         _log_refusal(scope)
+    except Exception as exc:
+        _note_log_failure(exc)
     await send(
         {
             "type": "http.response.start",
