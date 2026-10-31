@@ -120,6 +120,9 @@ SELECT 'REVOKE UPDATE, DELETE ON TABLE public.class_messages FROM classbeat_app'
  WHERE to_regclass('public.class_messages') IS NOT NULL \gexec
 SELECT 'REVOKE DELETE ON TABLE public.agent_runs FROM classbeat_app'
  WHERE to_regclass('public.agent_runs') IS NOT NULL \gexec
+-- Eval results are append-only for the app (ADR 0012 section 5, the M3c migration).
+SELECT 'REVOKE UPDATE, DELETE, TRUNCATE ON TABLE public.model_eval_results FROM classbeat_app'
+ WHERE to_regclass('public.model_eval_results') IS NOT NULL \gexec
 REVOKE ALL ON ALL SEQUENCES IN SCHEMA public FROM PUBLIC, classbeat_app;
 GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO classbeat_app;
 REVOKE ALL ON ALL FUNCTIONS IN SCHEMA public FROM PUBLIC;
