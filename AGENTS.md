@@ -368,7 +368,8 @@ the candidates just written; after it the pick fails `pool_not_synced` (retried 
 `classbeat.jobs.service` (the jobs API), `classbeat.jobs.progress` (the SSE stream's reads),
 `classbeat.operations.user` (the user's Check again / Do it anyway), `classbeat.operations.orphans`
 (marking orphaned class writes `uncertain` before a view or action), `classbeat.saving.reads` (the
-save and update reconcilers' read-only read of the saved revision, SV1), `classbeat.keys_cli` and the
+save and update reconcilers' read-only read of the saved revision, SV1), `classbeat.plans.account`,
+`classbeat.plans.redeem` and `classbeat.plans.trial` (the user's plan read, redeem and trial, PL1), `classbeat.keys_cli` and the
 `classbeat.connections`, `classbeat.auth`, `classbeat.classes` (the class API), `classbeat.usage`
 (the usage reads, US1) and `classbeat.db` packages may open a `user_session`
 (`tests/test_session_guard.py`); job kinds live outside `classbeat.jobs`.
@@ -381,6 +382,9 @@ design not counted), `CLASSBEAT_CHAT_MAX_REQUESTS` (50 user requests per class) 
 `FakeProvider` script, a synthetic Spotify catalogue and a synthetic MOWL analysis (no Spotify, MOWL or
 model contact). They run in CI (`backend/tests/test_evals_pick_smoke.py`) and are not part of
 `smoke --live`.
+Plans (ADR 0011 sections 2 and 4, PL1): `GET /api/account/plan`, `POST /api/account/redeem` (10 per user and 30 per IP
+and hour) and `POST /api/account/trial`; `CLASSBEAT_TRIAL_DAYS_MAX` (30, 0 to 366; 0 turns trials off) clamps the
+stored `trial` setting's days when a trial starts, and a trial's plan is clamped to at most `instructor`.
 Progress (ADR 0005 section 6): `GET /api/jobs/{id}/events` streams a job's events as SSE (`Last-Event-ID`,
 5 open streams per user and web process); each web process keeps one `LISTEN job_events` connection.
 OAuth sign-in (ADR 0003 section 5): `CLASSBEAT_OAUTH_<PROVIDER>_CLIENT_ID` and the
