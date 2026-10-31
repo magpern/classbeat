@@ -11,6 +11,9 @@
 - **uncertain external operations**: owner (id and email), the operation's kind, since when
   (its ``updated_at``) and its job's state (``None`` once the job went with its class).
 
+Both lists stop at ``LIST_ROWS`` (200); ``waiting_truncated`` and ``uncertain_truncated`` say when
+there were more, so a full list never reads as all of them (#227, PR #281 review).
+
 Read only (ADR 0011 section 6: an uncertain operation stays the user's to resolve, ADR 0005
 section 7). Never a job's input, stage detail, keys or hashes, an operation's idempotency key,
 request hash, external id, result or request context, a playlist URL or class content: maint has
@@ -87,8 +90,11 @@ class JobsOut(Out):
     days: int
     states: list[StateCount]
     waiting_approvals: list[WaitingApproval]
+    # True when there were more than ``LIST_ROWS``: the list shows the first 200 only.
+    waiting_truncated: bool
     failures: list[Failure]
     uncertain_operations: list[UncertainOperation]
+    uncertain_truncated: bool
 
 
 def _db(request: Request) -> AdminDb:
@@ -104,9 +110,14 @@ async def read_jobs(
 ) -> JobsOut:
     async with admin_session(_db(request), actor, "job.list", params={"days": days}) as db:
         states = (await db.execute(_STATES)).all()
-        waiting = (await db.execute(_WAITING, {"n": LIST_ROWS})).all()
+        waiting = (await db.execute(_WAITING, {"n": LIST_ROWS + 1})).all()
         failures = (await db.execute(_FAILURES, {"days": days})).all()
-        uncertain = (await db.execute(_UNCERTAIN, {"n": LIST_ROWS})).all()
+        uncertain = (await db.execute(_UNCERTAIN, {"n": LIST_ROWS + 1})).all()
+        waiting_truncated, uncertain_truncated = (
+            len(waiting) > LIST_ROWS,
+            len(uncertain) > LIST_ROWS,
+        )
+        waiting, uncertain = waiting[:LIST_ROWS], uncertain[:LIST_ROWS]
         emails = await auth.account_emails(
             db, {r.owner_id for r in waiting} | {r.owner_id for r in uncertain}
         )
@@ -123,6 +134,7 @@ async def read_jobs(
             )
             for r in waiting
         ],
+        waiting_truncated=waiting_truncated,
         failures=[
             Failure(kind=r.kind, category=r.error_category, count=int(r.n), last_at=r.last_at)
             for r in failures
@@ -137,4 +149,5 @@ async def read_jobs(
             )
             for r in uncertain
         ],
+        uncertain_truncated=uncertain_truncated,
     )

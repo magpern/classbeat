@@ -13,7 +13,10 @@ in one ``admin_session`` on ``classbeat_maint``: the audit row first, reads read
   ``committed`` ledger row becomes ``refunded`` with ``reason = 'admin_refund'`` and
   ``refunded_by`` the admin, and the period's held count drops by one at once. A row of another
   user or none at all is 404 ``not_found``; a row already ``refunded`` is 409 ``already_refunded``;
-  a ``reserved`` or ``released`` row is 409 ``not_committed``, and nothing changes. The ``UPDATE``
+  a ``reserved`` or ``released`` row is 409 ``not_committed``, and nothing changes. The row is
+  locked (``FOR UPDATE``) and its state read once, so parallel refunds give one 200 and the rest
+  409 ``already_refunded``, and a refund racing a settle waits for it and answers from the
+  settled state. The ``UPDATE``
   names ``state = 'committed'`` itself, and the ledger trigger refuses maint every other change
   (``credit_ledger_guard``: a live reservation can never be refunded or released by an admin).
 
@@ -106,7 +109,9 @@ _REFUND = text(
     "RETURNING id, owner_id, job_id, period, plan_id, state, reason, settled_at, refunded_by, "
     "created_at"
 )
-_LEDGER_STATE = text("SELECT state FROM credit_ledger WHERE id = :l AND owner_id = :o")
+# The row is locked before anything is decided, so the 409's reason is the state the refund
+# itself saw, not a second read after a concurrent settle or refund (#227, PR #281 review).
+_LOCK_ROW = text("SELECT state FROM credit_ledger WHERE id = :l AND owner_id = :o FOR UPDATE")
 _HELD_IN_PERIOD = text(
     "SELECT count(*) FROM credit_ledger l "  # noqa: S608
     f"WHERE l.owner_id = :o AND l.period = :period AND {_HELD}"
@@ -378,12 +383,13 @@ async def refund_credit(
     target = Target(user_id=user_id, kind="credit_ledger", id=str(ledger_id))
     async with admin_session(_db(request), actor, "refund.credit", write=True, target=target) as db:
         ids = {"l": ledger_id, "o": user_id}
-        row = (await db.execute(_REFUND, {**ids, "by": actor.user_id})).one_or_none()
-        if row is None:
-            state = (await db.execute(_LEDGER_STATE, ids)).scalar_one_or_none()
-            if state is None:
-                raise AdminRefused("not_found", 404)
+        state = (await db.execute(_LOCK_ROW, ids)).scalar_one_or_none()
+        if state is None:
+            raise AdminRefused("not_found", 404)
+        if state != "committed":
             raise AdminRefused("already_refunded" if state == "refunded" else "not_committed", 409)
+        # It still names ``state = 'committed'``: the lock holds it; the statement is safe alone.
+        row = (await db.execute(_REFUND, {**ids, "by": actor.user_id})).one()
         held = (
             await db.execute(_HELD_IN_PERIOD, {"o": user_id, "period": row.period})
         ).scalar_one()

@@ -17,8 +17,9 @@ read only. An id that is no invite or code is 404 ``not_found``; a refused actio
 - ``POST /redeem-codes`` ``{label, plan_id, features, grant_days, max_redemptions,
   expires_at}``: a code from ``classbeat.plans.codes`` (16 random bytes, Crockford base32, only
   the SHA-256 stored).
-- ``POST /redeem-codes/{code_id}/disable``: sets ``disabled_at``, so PL1's redeem answers
-  ``code_invalid`` (409 ``already_disabled`` when it was).
+- ``POST /redeem-codes/{code_id}/disable``: sets ``disabled_at`` on an active code, so PL1's
+  redeem answers ``code_invalid``; 409 ``already_disabled``, ``already_expired`` or ``used_up``
+  otherwise, read from the code's locked row.
 
 **The code is in the create response only.** No list, audit row (``params`` never hold a code,
 hash or label) or log line carries it, and ``classbeat_maint`` cannot read either hash column.
@@ -38,7 +39,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from classbeat import auth
-from classbeat.admin.audit import Target
+from classbeat.admin.audit import LabelText, Target
 from classbeat.admin.db import AdminDb, AdminRefused, admin_session
 from classbeat.admin.routes import AdminActor, admin_db, admin_router
 from classbeat.plans.codes import new_code
@@ -59,7 +60,6 @@ _LIST_CODES = text(
     f"SELECT {_CODE_COLUMNS} FROM redeem_codes "  # noqa: S608
     "ORDER BY created_at DESC, id OFFSET :offset LIMIT :limit"
 )
-_GET_CODE = text(f"SELECT {_CODE_COLUMNS} FROM redeem_codes WHERE id = :i")  # noqa: S608
 _PLAN_EXISTS = text("SELECT 1 FROM plans WHERE id = :p")
 _IN_FUTURE = text("SELECT CAST(:e AS timestamptz) > now()")
 _INSERT_CODE = text(
@@ -67,18 +67,19 @@ _INSERT_CODE = text(
     "max_redemptions, expires_at, created_by) VALUES (:i, :h, :label, :p, :f, :d, :m, :e, :by) "
     f"RETURNING {_CODE_COLUMNS}"
 )
+# The code's row locked first, so its state (and the 409's reason) is the one the disable sees,
+# not a second read after a parallel redeem or disable (#227).
+_LOCK_CODE = text(f"SELECT {_CODE_COLUMNS} FROM redeem_codes WHERE id = :i FOR UPDATE")  # noqa: S608
 _DISABLE_CODE = text(
     "UPDATE redeem_codes SET disabled_at = now() WHERE id = :i AND disabled_at IS NULL "  # noqa: S608
     f"RETURNING {_CODE_COLUMNS}"
 )
+# A code no redeem can use any more answers as invites do (#279 review): nothing to disable.
+_NOT_ACTIVE = {"disabled": "already_disabled", "expired": "already_expired", "used_up": "used_up"}
 
-# A label is shown as text in the admin pages: printable, no control characters.
-Label = Annotated[
-    str,
-    StringConstraints(
-        strip_whitespace=True, min_length=1, max_length=80, pattern=r"^[^\x00-\x1f\x7f]+$"
-    ),
-]
+# A label is shown as text in the admin pages: no control character (C0 and C1), no format
+# character (bidi, zero-width; #227), at most 80 characters.
+Label = LabelText
 
 
 class Out(BaseModel):
@@ -340,10 +341,11 @@ async def disable_redeem_code(request: Request, actor: AdminActor, code_id: UUID
         write=True,
         target=Target(kind="redeem_code", id=str(code_id)),
     ) as session:
-        row = (await session.execute(_DISABLE_CODE, {"i": code_id})).one_or_none()
-        if row is None:
-            if (await session.execute(_GET_CODE, {"i": code_id})).first() is None:
-                raise AdminRefused("not_found", 404)
-            raise AdminRefused("already_disabled", 409)
+        locked = (await session.execute(_LOCK_CODE, {"i": code_id})).one_or_none()
+        if locked is None:
+            raise AdminRefused("not_found", 404)
+        if locked.state in _NOT_ACTIVE:
+            raise AdminRefused(_NOT_ACTIVE[locked.state], 409)
+        row = (await session.execute(_DISABLE_CODE, {"i": code_id})).one()
         (out,) = await _codes_out(session, [row])
     return out

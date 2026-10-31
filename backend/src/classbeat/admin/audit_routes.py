@@ -24,6 +24,7 @@ against its action's schema when the row was written (never a secret, code or to
 is audited once (``audit.list``) with its filter in ``params``.
 """
 
+import string
 from datetime import datetime
 from typing import Annotated, Any
 from uuid import UUID
@@ -41,6 +42,7 @@ from classbeat.admin.audit import (
 )
 from classbeat.admin.db import AdminDb, AdminRefused, admin_session
 from classbeat.admin.routes import AdminActor, admin_db, admin_router
+from classbeat.emailnorm import normalize_email
 
 router = admin_router()
 
@@ -50,6 +52,8 @@ OUTCOME_FILTER = "^(" + "|".join(OUTCOMES) + ")$"
 DEFAULT_LIMIT = 50
 MAX_LIMIT = 100
 
+_UPPER = string.ascii_uppercase
+_LOWER = string.ascii_lowercase
 _COLUMNS = (
     "id, created_at, actor_id, actor_email, action, target_user_id, target_kind, target_id, "
     "params, outcome, reason, request_id"
@@ -58,8 +62,10 @@ _COLUMNS = (
 _LIST = text(
     f"SELECT {_COLUMNS} FROM admin_audit WHERE "  # noqa: S608
     "(CAST(:actor_id AS uuid) IS NULL OR actor_id = CAST(:actor_id AS uuid)) "
-    # Postgres lower() against Python's str.lower(): the same for the ASCII emails users hold.
-    "AND (CAST(:actor_email AS text) IS NULL OR lower(actor_email) = CAST(:actor_email AS text)) "
+    # ``normalize_email`` on both sides: ASCII letters only, so neither the database's locale
+    # nor Unicode case mapping (``İ`` lowers to two characters) changes what matches (#227).
+    f"AND (CAST(:actor_email AS text) IS NULL OR translate(actor_email, '{_UPPER}', '{_LOWER}') "
+    "= CAST(:actor_email AS text)) "
     "AND (CAST(:action AS text) IS NULL OR action = CAST(:action AS text)) "
     "AND (CAST(:action_prefix AS text) IS NULL "
     "OR left(action, length(CAST(:action_prefix AS text))) = CAST(:action_prefix AS text)) "
@@ -125,8 +131,8 @@ async def list_audit(
     limit: Annotated[int, Query(ge=1, le=MAX_LIMIT)] = DEFAULT_LIMIT,
 ) -> AuditPage:
     if since is not None and until is not None and since >= until:
-        raise AdminRefused("period_invalid", 422)  # before any connection: nothing audited
-    email = actor_email.strip().lower() if actor_email and actor_email.strip() else None
+        raise AdminRefused("period_invalid", 422)  # audited by the AdminRefused handler
+    email = normalize_email(actor_email) if actor_email and actor_email.strip() else None
     prefix = action if action is not None and action.endswith(".") else None
     filters: dict[str, Any] = {
         "actor_id": actor_id,
@@ -146,7 +152,7 @@ async def list_audit(
         "before": before,
         "limit": limit,
     }
-    try:  # the normalised filter (a lowered email can grow) must fit its audit row, or 422
+    try:  # the normalised filter must still fit its audit row, or 422 (defence in depth)
         checked_params("audit.list", params)
     except UnknownAction:
         raise AdminRefused("filter_invalid", 422) from None
