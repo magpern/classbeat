@@ -18,7 +18,9 @@
 # URL is the mowl-workouts library's own; the Spotify hosts are classbeat's and the library's).
 # Web and worker trust one bundle of the fakes' throwaway CAs: oidc-fake writes its CA, mowl-fake
 # adds its own, spotify-fake adds its own and swedebeat-fake adds its own; web mounts the last
-# bundle, the worker (which never calls Swedebeat) the Spotify one. No fake
+# bundle, the worker (which never calls Swedebeat) the Spotify one. The MOWL media host (ADR 0016 §4)
+# is on no fake: the MOWL fake returns a link on an unlisted name and nothing answers it, since the
+# production list of media hosts is empty and the worker must refuse it. No fake
 # publishes a port: each is reachable only inside the compose network.
 
 services:
