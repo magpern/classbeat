@@ -582,3 +582,17 @@ as they are and edits only `evals/`); P2 and P3
 in parallel; EV5; G2 (after #182); Z7 (after #183, #184); T4 last. M3c is done technically when T4 is
 green: no route can be set without a recorded pass, which the database enforces, tested end to end on
 replayed providers. Enabling real models is the owner's live step.
+
+## Amendments after implementation (2026-10-31)
+
+Accepted by the Architect during G1 (#211, PR #267):
+
+- **Settings are a keyword-only parameter.** The section 5 signatures become
+  `set_route(db, route_key, stage_group, provider, model, effort, actor, *, settings)` and
+  `resolve_route(db, route_key, stage_group, *, settings)`. `set_route` reads only
+  `deepseek_enabled` from them, never a key file. `resolve_route` reads the provider's key file,
+  `deepseek_enabled` and the bootstrap `agent_model` and `agent_effort`. The other functions are
+  unchanged.
+- **Clearing a route that does not exist is refused.** `clear_route` raises
+  `RouteRefused("no_route")` when there is no route for that key and group. M5's admin answers it
+  with 409, like the other refusals, and does not report it as a silent success.
