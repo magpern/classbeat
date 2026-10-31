@@ -87,6 +87,7 @@ SUBMODULES = frozenset(
         "devices",
         "email_routes",
         "events",
+        "export",
         "flowtools",
         "hooks",
         "identity_routes",

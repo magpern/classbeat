@@ -63,6 +63,7 @@ if TYPE_CHECKING:
     )
     from classbeat.auth.devices import forget_devices, is_known_device, remember_device
     from classbeat.auth.events import record_event
+    from classbeat.auth.export import account_export
     from classbeat.auth.flowtools import EmailAddress
     from classbeat.auth.hooks import register_reset_link_sender, send_reset_link
     from classbeat.auth.keys import (
@@ -97,6 +98,7 @@ if TYPE_CHECKING:
         RateLimiter,
         admin_buckets,
         connect_buckets,
+        export_buckets,
         mfa_buckets,
         password_buckets,
         redeem_buckets,
@@ -180,6 +182,8 @@ _EXPORTS: dict[str, str] = {
     "token_hash": "keys",
     "SecurityNotifier": "notices",
     "register_security_notifier": "notices",
+    "account_export": "export",
+    "export_buckets": "ratelimit",
     "owner_active": "owners",
     "WipeEvent": "operator",
     "mark_wipe_mailed": "operator",
@@ -272,6 +276,7 @@ __all__ = [
     "UserRow",
     "WipeEvent",
     "account_emails",
+    "account_export",
     "admin_buckets",
     "attach_state",
     "bucket_ip",
@@ -291,6 +296,7 @@ __all__ = [
     "disable_invite",
     "enable_account",
     "encrypt_totp_secret",
+    "export_buckets",
     "find_accounts",
     "find_user",
     "forget_devices",
