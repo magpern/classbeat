@@ -45,7 +45,7 @@ describe('the usage panel on the account page', () => {
       revisions: 5,
       notes: ['estimate_at_list_prices', 'sdk_retries', 'lost_lease_turn', 'failed_stream_turn'],
     })
-    const { container } = renderAt('/account')
+    const { container } = renderAt('/account#plan')
     const facts = await screen.findByTestId('usage-facts')
     expect(within(facts).getByText('Tokens').nextSibling).toHaveTextContent('13,000')
     expect(within(facts).getByText('Estimated cost').nextSibling).toHaveTextContent('$0.42')
@@ -74,7 +74,7 @@ describe('the usage panel on the account page', () => {
       revisions: 0,
       notes: ['a_future_code'],
     })
-    renderAt('/account')
+    renderAt('/account#plan')
     const notes = await screen.findByTestId('usage-notes')
     expect(notes).toHaveTextContent(/another reason this figure may differ/)
     expect(notes).not.toHaveTextContent('a_future_code')
@@ -83,7 +83,7 @@ describe('the usage panel on the account page', () => {
 
   it('says so when usage cannot be loaded and offers to try again', async () => {
     account(json({}, 500))
-    renderAt('/account')
+    renderAt('/account#plan')
     expect(await screen.findByText('Your usage could not be loaded.')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Try again' })).toBeInTheDocument()
   })
