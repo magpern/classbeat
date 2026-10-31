@@ -5,7 +5,7 @@ import { useSession } from '../../auth/SessionContext'
 import { useRouter } from '../../router/Router'
 import { Field, Notice, useAction } from '../forms'
 import { Button } from '../ui/button'
-import { Dialog, DialogContent, DialogDescription, DialogTitle } from '../ui/dialog'
+import { Dialog, DialogContent, DialogDescription, DialogTitle, DialogTrigger } from '../ui/dialog'
 
 /**
  * Delete my account (ADR 0003 section 6). The user confirms by typing their email; the request
@@ -51,15 +51,12 @@ export function DeleteAccount({ email }: { email: string }) {
         }}
       >
         <div>
-          <Button
-            variant="danger"
-            disabled={action.busy}
-            onClick={() => {
-              setOpen(true)
-            }}
-          >
-            Delete my account
-          </Button>
+          {/* The trigger belongs to the dialog, so focus returns to it when the dialog closes. */}
+          <DialogTrigger asChild>
+            <Button variant="danger" disabled={action.busy}>
+              Delete my account
+            </Button>
+          </DialogTrigger>
         </div>
         {open ? (
           <DialogContent aria-describedby="delete-account-description">
