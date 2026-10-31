@@ -381,7 +381,7 @@ send across its stages and attempts, token refreshes included, counted per reque
 `egress.RequestBudget` and stored in `jobs.spotify_calls` with each stage and each attempt's ending; the request over it is never
 sent and the job ends `limit_exceeded`). Three attempts in a row ending with a Spotify 429 end the job
 `quota_exhausted` (a MOWL 429 does not count; `jobs.spotify_rate_limits`), and the job keeps the last Spotify
-`Retry-After` (`jobs.spotify_retry_after`, cleared by any other ending) so the page's sentence names the minutes or hours (ADR 0009 section 8;
+`Retry-After` (`jobs.spotify_retry_after`, cleared when an attempt finishes or fails without a Spotify 429; a cancel, an `operation_busy` requeue, a hand-back or a failure before the kind runs leaves it as it is) so the page's sentence names the minutes or hours (ADR 0009 section 8;
 migration 0013). There is no Client ID setting and no Client Secret: each user enters their own
 Spotify app's Client ID on the account page, and the callback is the fixed
 `<CLASSBEAT_PUBLIC_BASE_URL>/oauth/spotify/callback`.

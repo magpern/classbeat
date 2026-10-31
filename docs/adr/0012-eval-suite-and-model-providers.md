@@ -126,6 +126,11 @@ every adapter's captured request body).
   then succeeds is recorded with its own usage only. Telling the two apart needs a response hook
   in the egress client, and charging for it would add a surcharge to a turn that did succeed.
   That is not worth it for a rare event that the turn bound already limits.
+  *The Anthropic adapter follows the same rule (#219, found in the #306 review):* an answer whose
+  stream began with a 2xx but that cannot be assembled or read, or whose usage is missing or not
+  whole numbers, is `ProviderError("internal", billed=True)` and is recorded at the turn's ceiling,
+  not at 0. A missing cache count still reads as 0; an error status, a transport failure and an
+  API error event inside the stream are not billed.
 - **Tool arguments** (amended 2026-10-31, #299): arguments that are not JSON, or nest deeper than
   32 levels (`MAX_ARGUMENT_DEPTH`), go to the loop as their text, which it answers `invalid_input`
   (a tool error the model can correct), never a crash or `internal`.
