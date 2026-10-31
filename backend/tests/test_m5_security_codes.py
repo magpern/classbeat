@@ -10,6 +10,8 @@ items, and the format-character check of the #303 review (note 5).
 - Labels and grant notes refuse format characters (Unicode ``Cf``: the bidi embeddings,
   overrides and isolates U+202A-202E and U+2066-2069, zero-width characters), the line and
   paragraph separators, and C1 control characters, apart from ``bounded_text``'s check.
+
+Threats covered: T88, T92, T95.
 """
 
 import asyncio
@@ -90,7 +92,10 @@ async def test_a_confirm_that_began_before_a_disable_cannot_use_the_invite(
 ) -> None:
     """Two sessions: the sign-up confirm's transaction starts (its ``now()`` is fixed), the
     admin's disable commits on its own connection, then the confirm consumes. With ``expires_at
-    = now()`` the confirm's earlier ``now()`` would still see the invite valid."""
+    = now()`` the confirm's earlier ``now()`` would still see the invite valid.
+
+    Threats: T88.
+    """
     actor = await stepped_admin(env, make_actor)
     invite_id = uuid.UUID((await actor.post(INVITES, {"expires_days": 7})).json()["invite"]["id"])
     async with env.db() as confirm:  # the confirm's transaction, begun before the disable
@@ -108,6 +113,7 @@ async def test_a_confirm_that_began_before_a_disable_cannot_use_the_invite(
 async def test_a_disable_that_meets_a_consume_in_flight_waits_and_answers_invite_used(
     env: Env, make_actor: Any, superuser: Connection
 ) -> None:
+    """Threats: T88."""
     actor = await stepped_admin(env, make_actor)
     invite_id = uuid.UUID((await actor.post(INVITES, {"expires_days": 7})).json()["invite"]["id"])
     async with env.db() as confirm:
@@ -130,7 +136,10 @@ async def test_a_disable_between_the_consumes_read_and_its_write_cannot_slip_in(
     """The window inside ``use_invite``: right after its read of the invite, a disable runs on
     another connection. With the read ``FOR UPDATE`` the disable cannot take the row (it times
     out here) and the invite ends used, not disabled; without it the disable would commit and
-    the consume's write would still mark the disabled invite used."""
+    the consume's write would still mark the disabled invite used.
+
+    Threats: T88.
+    """
     actor = await stepped_admin(env, make_actor)
     invite_id = uuid.UUID((await actor.post(INVITES, {"expires_days": 7})).json()["invite"]["id"])
     outcome: list[str] = []
@@ -173,6 +182,8 @@ async def test_a_disable_between_the_consumes_read_and_its_write_cannot_slip_in(
 async def test_use_invite_refuses_a_used_an_expired_and_an_unknown_invite(
     env: Env, superuser: Connection
 ) -> None:
+    """Threats: T88."""
+
     def invite(expires: str, used: bool = False) -> uuid.UUID:
         return superuser.execute(
             text(
@@ -221,6 +232,7 @@ def plant_code(conn: Connection, state: str) -> uuid.UUID:
 async def test_a_code_disable_answers_from_the_codes_locked_state(
     env: Env, make_actor: Any, superuser: Connection, state: str, status: int, expected: str | None
 ) -> None:
+    """Threats: T88, T92."""
     actor = await stepped_admin(env, make_actor)
     code_id = plant_code(superuser, state)
     statements: list[str] = []
@@ -286,6 +298,7 @@ def code_body(label: str) -> dict[str, Any]:
 async def test_a_label_with_a_format_or_control_character_is_refused(
     env: Env, make_actor: Any, superuser: Connection, label: str
 ) -> None:
+    """Threats: T95."""
     actor = await stepped_admin(env, make_actor)
     response = await actor.post(CODES, code_body(label))
     assert response.status_code == 422, response.text
@@ -297,6 +310,7 @@ async def test_a_label_with_a_format_or_control_character_is_refused(
 async def test_a_grant_note_with_a_format_or_control_character_is_refused(
     env: Env, make_actor: Any, superuser: Connection, note: str
 ) -> None:
+    """Threats: T95."""
     actor = await stepped_admin(env, make_actor)
     target = await env.user("t@example.com")
     response = await actor.post(
@@ -309,6 +323,7 @@ async def test_a_grant_note_with_a_format_or_control_character_is_refused(
 async def test_ordinary_unicode_labels_and_notes_are_kept(
     env: Env, make_actor: Any, superuser: Connection
 ) -> None:
+    """Threats: T95."""
     actor = await stepped_admin(env, make_actor)
     target = await env.user("t@example.com")
     for text_ in ACCEPTED_TEXT:

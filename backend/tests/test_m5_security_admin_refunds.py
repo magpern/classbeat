@@ -9,6 +9,8 @@
   second read and no ``UPDATE`` for a credit that is not committed).
 - The Jobs view's waiting approvals and uncertain operations stop at 200 and say so
   (``waiting_truncated``, ``uncertain_truncated``); exactly 200 is not truncated.
+
+Threats covered: T86, T96.
 """
 
 import asyncio
@@ -63,6 +65,7 @@ def held(conn: Connection, owner: uuid.UUID) -> int:
 async def test_parallel_refunds_of_one_credit_refund_it_once(
     env: Env, make_actor: Any, superuser: Connection
 ) -> None:
+    """Threats: T86, T96."""
     actor = await stepped_admin(env, make_actor)
     rider = await env.user("rider@example.com")
     job = new_job(superuser, rider, "design_draft", "completed", credit_state="committed")
@@ -107,6 +110,7 @@ async def wait_for_maint_lock(conn: Connection, seconds: float = 10) -> None:
 async def test_a_refund_racing_a_settle_answers_from_the_settled_row(
     env: Env, make_actor: Any, superuser: Connection, ends: str, status: int, expected: str
 ) -> None:
+    """Threats: T86, T96."""
     actor = await stepped_admin(env, make_actor)
     rider = await env.user("rider@example.com")
     job = new_job(superuser, rider, "design_draft", ends, credit_state="reserved")
@@ -138,7 +142,10 @@ async def test_the_409_reason_comes_from_the_one_locked_read(
     env: Env, make_actor: Any, superuser: Connection, state: str, expected: str
 ) -> None:
     """One ``SELECT ... FOR UPDATE`` of the row decides; no ``UPDATE`` is tried and no second
-    read happens for a credit that is not committed (PR #281 review)."""
+    read happens for a credit that is not committed (PR #281 review).
+
+    Threats: T96.
+    """
     actor = await stepped_admin(env, make_actor)
     rider = await env.user("rider@example.com")
     job_credit = "committed" if state == "refunded" else state  # the job keeps its settle
@@ -192,6 +199,7 @@ def plant_waiting_and_uncertain(
 async def test_the_jobs_view_says_when_a_list_hit_its_cap(
     env: Env, make_actor: Any, superuser: Connection, n: int, truncated: bool
 ) -> None:
+    """Threats: T86 (the jobs a refund decision needs)."""
     actor = await stepped_admin(env, make_actor)
     rider = await env.user("rider@example.com")
     plant_waiting_and_uncertain(superuser, rider, n)
@@ -214,7 +222,10 @@ async def test_each_truncation_flag_follows_its_own_list(
     env: Env, make_actor: Any, superuser: Connection, waiting: int, uncertain: int
 ) -> None:
     """#303 delta review, note 2: one list over the cap and the other exactly at it, both ways,
-    so a flag computed from the wrong list (or from both) fails."""
+    so a flag computed from the wrong list (or from both) fails.
+
+    Threats: T86 (the jobs a refund decision needs).
+    """
     actor = await stepped_admin(env, make_actor)
     rider = await env.user("rider@example.com")
     plant_waiting_and_uncertain(superuser, rider, waiting, uncertain=uncertain)
