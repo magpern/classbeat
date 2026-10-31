@@ -19,6 +19,8 @@ retry restarts the stage from its beginning and the final store is the only writ
    base revision's is told to the model as a fact;
 3. the ``revise`` stage (``classbeat.agent.revise``) over the brief, the music summary, the base
    draft and the user's requests along the ``parent_id`` chain. No earlier note or model text;
+   A request that only asks for other songs ends the stage with ``songs_requested`` and the job
+   with ``use_change_songs`` (issue #278): no revision, no assistant message, usage recorded.
 4. the final fenced transaction (``Complete``): the connection guard, the revision (parent = base,
    provenance ``origin = revise_draft``; the base again is ``invalid_output``), the assistant
    message (the model's note and the backend's change summary), and the compare-and-set of
@@ -44,14 +46,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from classbeat import quota
 from classbeat.agent import Brief, WorkoutDraft, run_stage
 from classbeat.agent.records import JobStageHost
-from classbeat.agent.revise import ReviseContext, ReviseResult, revise_stage
+from classbeat.agent.revise import ReviseContext, ReviseResult, SongsRequested, revise_stage
 from classbeat.agent.schemas import clean_text
 from classbeat.context import UserContext
 from classbeat.design import chat, diff, limits, revision
-from classbeat.design.kind import ClassMusicSource, current_runtime, new_provider
+from classbeat.design.kind import ClassMusicSource, current_runtime, group_model
 from classbeat.design.music import load_music
 from classbeat.jobs import KINDS, Complete, FencedSession, JobFailure, JobKind, JobRun
-from classbeat.jobs.inputs import JobInput
+from classbeat.jobs.inputs import ModelJobInput
 from classbeat.jobs.kinds import Admitted, Refused
 
 KIND: Final = "revise_draft"
@@ -70,7 +72,7 @@ Request = Annotated[str, Field(min_length=1, max_length=MAX_REQUEST), AfterValid
 Sha256Hex = Annotated[str, StringConstraints(pattern=r"^[0-9a-f]{64}$")]
 
 
-class ReviseDraftInput(JobInput):
+class ReviseDraftInput(ModelJobInput):
     CONNECTIONS: ClassVar[tuple[str, ...]] = ("mowl",)
 
     base_revision_id: UUID
@@ -166,7 +168,7 @@ async def run(job_run: JobRun) -> Complete:
         base_draft = WorkoutDraft.model_validate(base.content)
     except ValidationError:
         raise JobFailure("internal") from None
-    provider = new_provider(runtime)  # before any MOWL call; this run's own
+    model = await group_model(runtime, job_run, given.route_key, "design")  # before any MOWL call
     await job_run.stage("music")
     step = await load_music(
         job_run,
@@ -185,8 +187,16 @@ async def run(job_run: JobRun) -> Complete:
             music_changed=step.fingerprint != base.fingerprint,
         )
         outcome = await run_stage(
-            JobStageHost(job_run), provider, revise_stage(ctx), ctx.first_message(), runtime.agent
+            JobStageHost(job_run),
+            model.provider,
+            revise_stage(ctx),
+            ctx.first_message(),
+            model.agent,
         )
+        if isinstance(outcome.output, SongsRequested):
+            # The request only asks for other songs (ADR 0008 section 6): nothing is revised, no
+            # revision is stored, no revision is counted; the run's usage is already recorded.
+            raise JobFailure("use_change_songs")
         if not isinstance(outcome.output, ReviseResult):
             raise JobFailure("internal")
         revised = outcome.output

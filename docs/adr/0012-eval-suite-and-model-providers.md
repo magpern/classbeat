@@ -674,3 +674,39 @@ Accepted by the Architect during G1 (#211, PR #267):
 - **Clearing a route that does not exist is refused.** `clear_route` raises
   `RouteRefused("no_route")` when there is no route for that key and group. M5's admin answers it
   with 409, like the other refusals, and does not report it as a silent success.
+
+Accepted during G2 (#215), from the PR #267 review (2026-10-31):
+
+- **The manifest digest is part of the gate.** `set_route` also refuses
+  (`RouteRefused("manifest_digest")`) when the newest passing result was recorded on another suite
+  than the running one: its `manifest_digest` differs from the digest stored in
+  `evals/suite/manifest.json`, which `load_suite` and `tests/test_evals_suite.py` hold equal to the
+  suite's files, read without importing `classbeat.evals`. A route whose result has another digest
+  is **stale** with the reason `manifest_digest` (used and flagged, like the other three reasons).
+- **"Newest" is deterministic.** Migration `0012_model_jobs` gives `model_eval_results` an identity
+  column `seq` (`GENERATED ALWAYS`): newest is `recorded_at DESC, seq DESC`, so two results recorded
+  in one transaction (one `now()`) are ordered by insertion, never by their random ids. The
+  newer-failure check compares `(recorded_at, seq)`.
+- **The route key is a server-only job input field.** The four model kinds' inputs are
+  `ModelJobInput`, with `route_key` (default `"default"`) stored with the input at creation, so
+  every attempt and the approved phase of a job that waited use the same key. A browser that
+  sends `route_key` is refused 422 (`JobInput.SERVER_FIELDS`); M5 (#223) sets it in the create path.
+- **Where a group resolves.** A kind resolves each stage group once per attempt, at the start of
+  that group's work and before any MOWL or Spotify call of it (`design_draft` and `revise_draft`:
+  `design`; `design_with_songs` and `revise_songs`: `songs` for the pick, `design` for the approved
+  phase), through `Runtime.models` (`classbeat.models.providers.RouteModels` in the worker). Only
+  that path builds a job's provider (`tests/test_models_jobs_guard.py`).
+- **Provenance.** `agent_runs.route_key` and `agent_runs.eval_result_id` (both or neither; the id
+  references `model_eval_results`, `RESTRICT`) and the same two fields in
+  `class_revisions.provenance` (`null` for the bootstrap choice and `fake`; absent on revisions
+  stored before G2).
+- **A newer failure is refused, not used** (Architect, 2026-10-31, on the #267 review's item 4).
+  It replaces "the route keeps working" in section 5's **Staleness** for this one reason. A route
+  whose result has a newer failing result for the same provider, model, effort and group no longer
+  has a standing pass: `resolve_route` raises `RouteUnusable("newer_failure")`, so the job fails
+  `model_config` before any request, logs the usual "model route unusable" line (key, group and
+  reason), and does not fall back to the bootstrap. This also covers a failure recorded between
+  `set_route`'s check and its write. `list_routes` still shows the route as stale with that
+  reason, and `models list` shows it as `unusable: newer_failure`. The other stale reasons
+  (`prompt_versions`, `suite_version`, `manifest_digest`) keep section 5's behaviour: the route is
+  used and warned about once per process.

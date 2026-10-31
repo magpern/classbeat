@@ -25,6 +25,7 @@ SAMPLES: dict[str, list[dict[str, Any]]] = {
     "MusicInput": [{}, {"track": 0}],
     "DraftInput": [{"draft": good_draft()}],
     "ReviseInput": [{"draft": good_draft()}, {"draft": good_draft(), "note": "Easier start."}],
+    "SongsRequestedInput": [{}],
     "SearchInput": [{"query": "rock"}, {"query": "rock", "year_from": 1990, "year_to": 2000}],
     "SongPool": [entries((0, "warmup"), (1, "build"))],
     "GetPoolInput": [{}],

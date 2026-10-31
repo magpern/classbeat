@@ -48,6 +48,9 @@ def _entry(columns: str, reviewed: str, *deleted_with: DeletionPath) -> Retentio
 RETENTION: Mapping[str, Retention] = MappingProxyType(
     {
         "classes": _entry("title brief music_source", "", "class", "account"),
+        # ``content`` of a ``song_list`` (ADR 0008 sections 5 and 8) holds the chosen songs'
+        # Spotify ids, titles, artists and, from ``v: 2``, their album cover URLs (``cover``, ADR
+        # 0013 section 9): all go with the class and the account, like the drafts beside them.
         "class_revisions": _entry(
             "content music provenance", "kind content_hash", "class", "account"
         ),
@@ -81,7 +84,7 @@ RETENTION: Mapping[str, Retention] = MappingProxyType(
         "agent_runs": _entry(
             "",
             "stage provider model model_answered effort prompt_version outcome job_kind "
-            "price_version",
+            "price_version route_key",
             "account",
         ),
         "connections": _entry(

@@ -98,6 +98,29 @@ class GrantParams(Params):
     note: bool = False
 
 
+class CodesPageParams(Params):
+    """A page of the Codes lists (AD2 #220)."""
+
+    offset: Annotated[int, Field(ge=0, le=10_000)] = 0
+    limit: Annotated[int, Field(ge=1, le=100)] = 50
+
+
+class InviteCreateParams(Params):
+    """An invite's lifetime (AD2 #220); never the code."""
+
+    expires_days: Annotated[int, Field(ge=1, le=365)]
+
+
+class RedeemCodeCreateParams(Params):
+    """A redeem code's terms (AD2 #220); never the code, its hash or its label."""
+
+    plan_id: Annotated[str, StringConstraints(pattern=r"^[a-z_]{1,30}$")] | None = None
+    features: Annotated[list[Code], Field(max_length=16)] = []
+    grant_days: Annotated[int, Field(ge=1, le=366)]
+    max_redemptions: Annotated[int, Field(ge=1, le=1000)]
+    expires_at: Annotated[str, StringConstraints(max_length=40)]
+
+
 # The audit filter's two free-text fields, bounded so the largest accepted filter still fits
 # MAX_PARAMS_BYTES (``tests/test_admin_audit.py`` measures the worst case).
 FilterEmail = Annotated[str, StringConstraints(min_length=1, max_length=320), bounded_text(640)]
@@ -121,6 +144,22 @@ class AuditListParams(Params):
     limit: Annotated[int, Field(ge=1, le=100)] = 50
 
 
+class UsageParams(Params):
+    """The Usage and cost view's period (AD3 #221): a UTC month, ``YYYY-MM``."""
+
+    month: Annotated[str, StringConstraints(pattern=r"^\d{4}-\d{2}$")]
+
+
+class JobsParams(Params):
+    """The Jobs view's window for recent failures (AD3 #221), in days."""
+
+    days: Annotated[int, Field(ge=1, le=90)]
+
+
+class RefundParams(Params):
+    """An admin refund (AD3 #221): the target (user, ledger row) says everything."""
+
+
 # Action code -> its params model. ``admin.request`` is the gate's own (ADR 0011 section 6:
 # mfa_required, stepup_required and rate_limited of an admin).
 ACTIONS: dict[str, type[Params]] = {
@@ -133,6 +172,17 @@ ACTIONS: dict[str, type[Params]] = {
     "user.disable": NoParams,
     "user.enable": NoParams,
     "user.delete": NoParams,
+    # Codes (AD2 #220, classbeat.admin.codes).
+    "invite.list": CodesPageParams,
+    "invite.create": InviteCreateParams,
+    "invite.disable": NoParams,
+    "code.list": CodesPageParams,
+    "code.create": RedeemCodeCreateParams,
+    "code.disable": NoParams,
+    # Usage, cost and jobs; the admin refund (AD3 #221, classbeat.admin.usage and .jobs).
+    "usage.read": UsageParams,
+    "job.list": JobsParams,
+    "refund.credit": RefundParams,
 }
 # The audit log (AD4 #222).
 ACTIONS["audit.list"] = AuditListParams

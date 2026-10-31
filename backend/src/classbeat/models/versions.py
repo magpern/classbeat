@@ -11,9 +11,15 @@
   which M5's admin calls ``set_route``, must not load the eval package;
   ``tests/test_agent_anthropic_run.py``). The digest check stays with the suite
   (``classbeat.evals.suite.load_suite``); a test asserts both read the same version.
+- ``running_manifest_digest()``: the manifest's stored ``digest``, read the same way. The suite
+  refuses to load when it is not the digest of the suite's files (``load_suite``), and
+  ``tests/test_evals_suite.py`` checks that it is, so it stands for the running suite without
+  hashing the case files here. A result whose ``manifest_digest`` differs was recorded on
+  another suite (#215, item 2 of the #267 review).
 """
 
 import json
+import re
 from functools import cache
 from pathlib import Path
 from types import SimpleNamespace
@@ -33,9 +39,9 @@ GROUP_STAGES: Final[dict[str, tuple[str, ...]]] = {
 
 
 def _no_context() -> Any:
-    # The fields ``revise_stage`` copies into its ``DesignContext`` at build time; the handlers
+    # The fields ``revise_stage`` reads or copies at build time; the handlers
     # that would read them are never called here.
-    return SimpleNamespace(brief=None, map={}, summary={})
+    return SimpleNamespace(brief=None, map={}, summary={}, songs_changed=False)
 
 
 def _stages() -> tuple[Stage, ...]:
@@ -65,10 +71,24 @@ def group_prompt_versions(group: str, recorded: dict[str, str]) -> dict[str, str
     return {name: recorded[name] for name in GROUP_STAGES[group] if name in recorded}
 
 
+def _manifest() -> dict[str, Any]:
+    data = json.loads(MANIFEST.read_text("utf-8"))
+    if not isinstance(data, dict):
+        raise ValueError("the suite manifest is not an object")
+    return cast(dict[str, Any], data)
+
+
 def running_suite_version() -> int:
     """The manifest's ``suite_version`` (an integer of at least 1; ``ValueError`` otherwise)."""
-    data = json.loads(MANIFEST.read_text("utf-8"))
-    version = data.get("suite_version") if isinstance(data, dict) else None
+    version = _manifest().get("suite_version")
     if isinstance(version, bool) or not isinstance(version, int) or version < 1:
         raise ValueError("the suite manifest has no valid suite_version")
     return version
+
+
+def running_manifest_digest() -> str:
+    """The manifest's stored ``digest`` (64 lowercase hex characters; ``ValueError`` otherwise)."""
+    digest = _manifest().get("digest")
+    if not isinstance(digest, str) or re.fullmatch(r"[0-9a-f]{64}", digest) is None:
+        raise ValueError("the suite manifest has no valid digest")
+    return digest

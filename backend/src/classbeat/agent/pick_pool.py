@@ -16,7 +16,7 @@ backend lends it, and it answers with the library's track dicts. Its failure is
 
 import inspect
 from collections.abc import Awaitable, Callable, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Final
 
 from classbeat.agent import model_input
@@ -89,11 +89,13 @@ class SearchUnavailable(Exception):
 
 @dataclass(frozen=True, slots=True)
 class PoolPick:
-    """One submitted candidate: the registry ref, the role, and the Spotify id (the backend's)."""
+    """One submitted candidate: the registry ref, the role, and the Spotify id and album cover
+    (the backend's; the cover is the registry's host-checked URL or None)."""
 
     ref: int
     role: str
     spotify_id: str
+    cover: str | None = field(default=None, repr=False)
 
 
 @dataclass(frozen=True)
@@ -180,10 +182,10 @@ def check_entries(ctx: PoolContext, entries: Sequence[PoolEntry]) -> PoolResult:
         raise ToolError("invalid_pool", errors)
     picks = []
     for e in entries:
-        spotify_id = reg.spotify_id(e.ref)
-        if spotify_id is None:  # checked above; never reached
+        entry = reg.get(e.ref)
+        if entry is None:  # checked above; never reached
             raise ToolError("out_of_range", ["a ref is not from your search results"])
-        picks.append(PoolPick(e.ref, e.role, spotify_id))
+        picks.append(PoolPick(e.ref, e.role, entry.spotify_id, entry.cover))
     return PoolResult(tuple(picks))
 
 

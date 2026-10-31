@@ -162,10 +162,10 @@ def test_it_prints_the_cost_ceiling_and_the_limits_then_stops_without_max_usd() 
     assert code == 2
     assert "--max-usd" in err
     assert nothing_ran(spy)
-    assert "18 cases" in out
+    assert "19 cases" in out
     assert "claude-opus-5-5" in out
-    # 18 cases x ($1.50 job ceiling + (32000 - 8000) tokens of output at $20 per million).
-    assert "estimated cost ceiling for this run: $35.64" in out
+    # 19 cases x ($1.50 job ceiling + (32000 - 8000) tokens of output at $20 per million).
+    assert "estimated cost ceiling for this run: $37.62" in out
     assert "12 turns, 40 tool calls, 3 corrections, 300 s, $1.50 job ceiling" in out
     assert PLANTED_KEY not in out + err
 
@@ -382,14 +382,14 @@ async def test_a_case_that_raises_still_counts_what_it_spent(
 @pytest.mark.usefixtures("key")
 @pytest.mark.parametrize(
     ("model", "ceiling"),
-    [("claude-sonnet-5-5", "$31.32"), ("claude-haiku-5-5", "$28.08")],
+    [("claude-sonnet-5-5", "$33.06"), ("claude-haiku-5-5", "$29.64")],
 )
 def test_the_plan_and_ceiling_use_the_chosen_models_prices(model: str, ceiling: str) -> None:
     spy = Spy()
     code, out, _ = run(spy, max_usd=None, model=model, effort="high")
     assert code == 2
     assert f"model {model}, effort high" in out
-    # 18 x ($1.50 + 24 000 output tokens at $10 (Sonnet) or at Haiku's upper tier, $2.50).
+    # 19 x ($1.50 + 24 000 output tokens at $10 (Sonnet) or at Haiku's upper tier, $2.50).
     assert f"estimated cost ceiling for this run: {ceiling}" in out
     assert nothing_ran(spy)
 
@@ -399,8 +399,8 @@ def test_repeat_multiplies_the_runs_and_the_ceiling() -> None:
     spy = Spy()
     code, out, _ = run(spy, max_usd=None, model="claude-sonnet-5-5", repeat=3)
     assert code == 2
-    assert "18 cases x 3 repeats = 54 runs" in out
-    assert "estimated cost ceiling for this run: $93.96" in out
+    assert "19 cases x 3 repeats = 57 runs" in out
+    assert "estimated cost ceiling for this run: $99.18" in out
     assert nothing_ran(spy)
 
 

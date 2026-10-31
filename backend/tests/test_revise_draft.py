@@ -90,7 +90,9 @@ async def test_the_model_hears_the_base_and_the_request_and_the_stage_is_its_own
     [fake] = renv.providers[1:]
     spec = fake.sent[0].spec
     assert spec.stage == "revise"
-    assert [t.name for t in spec.tools] == ["get_music", "preview_draft", "submit_draft"]
+    assert [t.name for t in spec.tools] == [
+        "get_music", "preview_draft", "submit_draft", "songs_requested",
+    ]  # fmt: skip
     assert "note" in spec.tools[2].input_schema["properties"]
     data = payload(spec.first_message)
     assert set(data) == {"brief", "music", "base_draft", "earlier_requests", "request"}
@@ -385,3 +387,28 @@ async def test_another_users_class_is_not_revised_by_a_guess(
     refused = await other.post("/api/jobs", body, {"Idempotency-Key": "r1-foreign-class-0001"})
     assert refused.status_code == 404, refused.text
     assert renv.messages(class_id) == []
+
+
+async def test_a_request_that_only_asks_for_other_songs_points_to_change_songs(
+    renv: ReviseEnv,
+) -> None:
+    class_id, base = await renv.design()
+    job_id, _ = await renv.revise(class_id, base, "revise_songs_requested", "Use other songs.")
+    row = renv.denv.ops.row(job_id)
+    assert (row.state, row.error_category, row.credit_state) == (
+        "failed",
+        "use_change_songs",
+        "none",
+    )
+    # Nothing is stored and nothing counts: the class is as it was, and the request stays.
+    assert len(renv.revisions(class_id)) == 1
+    assert renv.current(class_id) == base
+    [only] = renv.messages(class_id)
+    assert (only.role, only.job_id) == ("user", job_id)
+    # It is not retried, and what the model cost is recorded.
+    [run] = renv.denv.agent_runs(job_id)
+    assert (run.outcome, run.stage) == ("submitted", "revise")
+    assert run.input_tokens > 0
+    # The revision limit was not used: the same class can still be revised.
+    again, _ = await renv.revise(class_id, base, "revise_good", "Make the start easier.")
+    assert renv.denv.ops.row(again).state == "completed"

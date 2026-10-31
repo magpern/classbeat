@@ -50,7 +50,7 @@ from classbeat.evals.suite import (
     read_manifest_data,
     suite_digest,
 )
-from classbeat.models.providers import provider_for_choice
+from classbeat.models.providers import eval_provider_for_choice
 from classbeat.models.routes import ModelChoice
 from classbeat.models.store import file_sha256
 from classbeat.models.versions import running_prompt_versions
@@ -280,7 +280,7 @@ def test_the_cli_wires_exactly_the_real_factory_and_installer(
                   "--authorization", "go")  # fmt: skip
     assert code == 0
     (call,) = entry
-    assert call["provider_factory"] is provider_for_choice
+    assert call["provider_factory"] is eval_provider_for_choice  # DeepSeek's eval-only path
     assert call["install"] is suite_live.install_choice_allowlist
     assert "suite" not in call  # the digest-verified load_suite(), never one from an argument
     assert callable(call["open_session"])
@@ -337,11 +337,6 @@ def test_a_disabled_deepseek_choice_gets_its_host_and_jobs_still_do_not(
     assert installed == [("deepseek",)]
     assert MODEL_HOSTS["deepseek"] in worker_hosts(installed[0])
     assert MODEL_HOSTS["deepseek"] not in worker_hosts(worker_model_providers(settings))
-
-
-def test_the_deepseek_adapter_is_a_known_kind() -> None:
-    model = DeepSeekProvider(SecretStr(TEST_KEY), transport=httpx.MockTransport(_never))
-    assert suite_live.provider_kind(model) == "deepseek"
 
 
 # --- main_suite before the runs ---------------------------------------------------------------
@@ -416,6 +411,8 @@ def test_a_provider_that_is_not_the_choices_adapter_is_refused(
 def test_the_provider_kind_is_the_adapter_class() -> None:
     real = OpenAIProvider(SecretStr(TEST_KEY), transport=httpx.MockTransport(_never))
     assert suite_live.provider_kind(real) == "openai"
+    deepseek = DeepSeekProvider(SecretStr(TEST_KEY), transport=httpx.MockTransport(_never))
+    assert suite_live.provider_kind(deepseek) == "deepseek"  # #297 follow-up: not refused
     assert suite_live.provider_kind(NamedOpenAI.from_file(
         Path(__file__).parent / "agent_scripts" / "good_first_draft.json")) is None  # fmt: skip
 
