@@ -5,6 +5,7 @@ upstream that answers per host and records every request it receives, headers in
 redirect from one fake host to a second must never show the MOWL token to the second."""
 
 import io
+import ssl
 import urllib.request
 import urllib.response
 from collections.abc import Callable
@@ -61,8 +62,9 @@ def web_opener(monkeypatch: pytest.MonkeyPatch) -> Callable[[FakeUpstreams], Non
     return install
 
 
-def test_the_web_urllib_list_is_mowl_alone() -> None:
-    assert frozenset({"api.mowl.com"}) == egress.WEB_URLLIB_HOSTS
+def test_the_web_urllib_list_is_exactly_mowl_and_the_spotify_api() -> None:
+    """What the library reaches in the web process: MOWL, and Spotify's API for Check again."""
+    assert frozenset({"api.mowl.com", "api.spotify.com"}) == egress.WEB_URLLIB_HOSTS
     assert egress.WEB_URLLIB_ALLOWLIST.hosts == egress.WEB_URLLIB_HOSTS
 
 
@@ -70,7 +72,8 @@ def test_the_web_urllib_list_is_mowl_alone() -> None:
     "target",
     [
         "https://evil.example/steal",  # not on any list
-        "https://api.spotify.com/v1/me",  # on the worker's list, not the web's
+        "https://api.spotify.com/v1/me",  # on the web's list too, but another host
+        "https://accounts.spotify.com/api/token",  # on the worker's list, not the web's
         "https://api.anthropic.com/v1/messages",
         "http://api.mowl.com/v1/ping",  # same host, plain http
         "https://api.mowl.com:8443/v1/ping",  # same host, other port
@@ -89,6 +92,21 @@ def test_a_redirect_never_shows_the_mowl_token_to_a_second_host(
     assert raised.value.after_request is True  # the first request had been sent
     assert list(fake.received) == ["api.mowl.com"]  # the second host received nothing at all
     assert [r["authorization"] for r in fake.received["api.mowl.com"]] == [TOKEN]
+
+
+def test_a_spotify_redirect_never_shows_the_spotify_token_to_mowl(
+    web_opener: Callable[[FakeUpstreams], None], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from mowl import spotify_web
+
+    start = "https://api.spotify.com/v1/me"
+    fake = FakeUpstreams(redirects={start: "https://api.mowl.com/v1/ping"})
+    web_opener(fake)
+    creds = Credentials(spotify_access_token="spotify-test-token", spotify_refresh_enabled=False)
+    creds.spotify_expires_at = 4_000_000_000.0
+    with pytest.raises(OutboundBlocked):
+        spotify_web.me(creds)
+    assert list(fake.received) == ["api.spotify.com"]
 
 
 def test_the_token_is_on_the_wire_to_mowl_itself_so_the_checks_above_can_fail(
@@ -140,7 +158,7 @@ def test_installing_the_web_allowlist_sets_the_process_opener_and_not_the_worker
     assert getattr(urllib.request, "_opener") is opener  # noqa: B009
     assert not egress.worker_allowlist_installed()  # the web-only call sites keep working
     with pytest.raises(OutboundBlocked):
-        urllib.request.urlopen("https://api.spotify.com/v1/me", timeout=1)
+        urllib.request.urlopen("https://accounts.spotify.com/api/token", timeout=1)
     with pytest.raises(OutboundBlocked):
         urllib.request.urlopen("http://api.mowl.com/v1/ping", timeout=1)
 
@@ -245,3 +263,31 @@ async def test_a_github_api_redirect_is_not_followed_with_the_access_token() -> 
         )
     assert response.status_code == 302
     assert upstream.hosts == ["api.github.com"]
+
+
+async def test_the_jwks_client_ignores_the_environment_and_follows_no_redirect(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    kwargs: list[dict[str, Any]] = []
+    real = httpx.AsyncClient
+
+    def spy(**given: Any) -> httpx.AsyncClient:
+        kwargs.append(given)
+        return real(**given)
+
+    monkeypatch.setattr(oauth_client.httpx, "AsyncClient", spy)
+    transport = httpx.MockTransport(lambda request: httpx.Response(200, json={"keys": []}))
+    await oauth_client._fetch_jwks_with(  # pyright: ignore[reportPrivateUsage]
+        transport, PROVIDER.jwks_url or ""
+    )
+    [given] = kwargs
+    assert given["trust_env"] is False
+    assert given["follow_redirects"] is False
+
+
+def test_the_tls_context_of_the_sign_in_clients_verifies() -> None:
+    """``verify=`` is this context: a client with verification off would not be caught otherwise."""
+    context = egress.tls_client_context()
+    assert context.verify_mode == ssl.CERT_REQUIRED
+    assert context.check_hostname is True
+    assert context.keylog_filename is None
