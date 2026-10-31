@@ -9,6 +9,7 @@ terminal state releases.
 """
 
 import logging
+from datetime import date
 from typing import Protocol
 from uuid import UUID
 
@@ -26,10 +27,49 @@ Factory = async_sessionmaker[AsyncSession]
 
 
 class QuotaRefused(Exception):
-    """The ledger refuses a reservation (M5)."""
+    """The ledger refuses (ADR 0011 section 3): ``reason`` is ``classes`` (the month's classes
+    are held; ``limit`` and ``used`` count classes) or ``cost`` (the month's model cost reached
+    the plan's cap; ``limit`` and ``used`` in micro-dollars, never sent to the browser);
+    ``period_end`` is the first day of the next UTC month and ``plan`` the effective plan's id.
+    Raised inside the transaction, so nothing it would have created survives."""
+
+    def __init__(
+        self,
+        reason: str = "classes",
+        *,
+        limit: int | None = None,
+        used: int | None = None,
+        period_end: date | None = None,
+        plan: str | None = None,
+    ) -> None:
+        super().__init__(reason)
+        self.reason = reason
+        self.limit = limit
+        self.used = used
+        self.period_end = period_end
+        self.plan = plan
+
+    def detail(self) -> dict[str, int | str]:
+        """The 409 ``quota`` body's fields (FE1's contract): ``quota``, and ``limit``, ``used``
+        (classes only: a cost refusal shows no money), ``period_end`` (ISO date) and ``plan``
+        when known."""
+        body: dict[str, int | str] = {"quota": self.reason}
+        if self.reason == "classes":
+            if self.limit is not None:
+                body["limit"] = self.limit
+            if self.used is not None:
+                body["used"] = self.used
+        if self.period_end is not None:
+            body["period_end"] = self.period_end.isoformat()
+        if self.plan is not None:
+            body["plan"] = self.plan
+        return body
 
 
 class CreditLedger(Protocol):
+    """``allows`` answers False for a credit it won't let run, or raises ``QuotaRefused`` to
+    give the numbers (the metered ledger's cost cap)."""
+
     async def reserve(self, db: AsyncSession, ctx: UserContext, job_id: UUID) -> None: ...
     async def allows(self, db: AsyncSession, ctx: UserContext, job_id: UUID) -> bool: ...
     async def commit(self, db: AsyncSession, ctx: UserContext, job_id: UUID) -> None: ...

@@ -13,7 +13,7 @@ from pydantic import BaseModel
 from sqlalchemy import text
 
 # saving registers save_workout (SV1); playlists the Spotify writes for Check again (OP1)
-from classbeat import __version__, auth, playlists, saving, songs
+from classbeat import __version__, auth, playlists, quota, saving, songs
 from classbeat.admin import routes as admin_routes
 from classbeat.admin.db import AdminDb
 from classbeat.classes.routes import router as classes_router
@@ -30,6 +30,7 @@ from classbeat.jobs.routes import router as jobs_router
 from classbeat.operations.routes import router as operations_router
 from classbeat.plans.routes import router as plans_router
 from classbeat.playlists.runtime import playlists_runtime
+from classbeat.quota import PlanRevisionPolicy
 from classbeat.spotify.routes import api as spotify_router
 from classbeat.spotify.routes import callback as spotify_callback_router
 from classbeat.usage.routes import router as usage_router
@@ -143,7 +144,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         openapi_url="/api/openapi.json" if docs_enabled else None,
     )
     app.state.settings = settings
-    configure_limits(settings)  # revise_draft's admit reads them (ADR 0007 section 4)
+    # The revise kinds' admit reads them (ADR 0007 section 4): the plan's revisions per class
+    # under the setting, and the money bounds of the cost cap (ADR 0011 sections 3 and 4).
+    configure_limits(settings, PlanRevisionPolicy(settings.revisions_per_class))
+    quota.configure(settings)
     # design_with_songs' admit reads the feature switch (ADR 0008 section 10); importing
     # classbeat.songs registered the kind.
     songs.configure(songs.SongConfig.from_settings(settings))
