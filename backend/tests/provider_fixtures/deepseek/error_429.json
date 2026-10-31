@@ -1,0 +1,14 @@
+{
+ "status": 429,
+ "headers": {
+  "x-request-id": "req_fixture_429"
+ },
+ "body": {
+  "error": {
+   "message": "Rate Limit Reached",
+   "type": "rate_limit_error",
+   "param": null,
+   "code": null
+  }
+ }
+}

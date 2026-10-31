@@ -55,6 +55,7 @@ WORKER_ENTRYPOINTS = (
     "classbeat.agent.providers.anthropic",
     "classbeat.agent.providers.openai_common",  # the OpenAI-SDK layer (ADR 0012 section 3)
     "classbeat.agent.providers.openai_responses",  # OpenAIProvider (M3c P2)
+    "classbeat.agent.providers.deepseek",  # DeepSeekProvider (M3c P3)
     "classbeat.design",
     "classbeat.saving",
     "classbeat.evals.__main__",

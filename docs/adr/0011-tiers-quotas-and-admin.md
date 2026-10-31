@@ -75,6 +75,38 @@ digest. `refunded_by` and `revoked_by` carry no foreign key, because a `SET NULL
 admin would be a ledger change the trigger refuses. After an admin's account is deleted, those
 columns keep a dangling admin id, which is an opaque UUID and no personal data.
 
+**Note (2026-10-31, #271): the database enforces the app's terms too.** Migration
+`0010_m5_hardening` makes three checks of `classbeat.plans` and the settle hold for any SQL run as
+`classbeat_app`, not only for our code paths:
+- `entitlements_app_sources` also requires `starts_at <= now()` and an `ends_at` that is set and at
+  most `now() + 366 days`, and for a trial a plan only (no code, no features) ranked at most
+  `instructor` (a missing plan refuses).
+- `credit_ledger_guard`'s app settle requires `reason` NULL for `committed`, one of `failed`,
+  `cancelled`, `expired` for `released`, and `settled_at = now()` (§3's settle statement);
+  `admin_refund` is only the maint refund's, which must also set `refunded_by`.
+- A third guard trigger, `redeem_codes_guard`, lets the app only add one use to a live code
+  (`redeemed_count = old + 1`, at most `max_redemptions`, not disabled or expired, no other column);
+  every other role must leave the count as it is. ADR 0005 section 3's amendment of 2026-10-31
+  admits it.
+
+Decided with it (Architect, 2026-10-31):
+- The settle-reason check is defence in depth and is enough. That the reason matches how the job
+  actually ended is application code's job (the settle reads the job's state): the app role can
+  update `jobs` anyway, so a database check of the job's state would add nothing against SQL run
+  as that role.
+- **Accepted risk:** the database does not check a code entitlement's plan, features or days
+  against its `redeem_codes` row. `classbeat.plans.redeem` enforces those terms; the database
+  enforces only the source and the 366-day ceiling, so SQL injected as the app role could add a
+  code entitlement of any plan or features for up to 366 days, naming any existing code.
+- No role other than the app may change `redeemed_count`, the owner and the superuser included.
+  A data migration that must correct counts disables the trigger inside that migration, as the
+  owner (`ALTER TABLE public.redeem_codes DISABLE TRIGGER redeem_codes_guard`, then `ENABLE`, in
+  the same transaction).
+
+`docker/postgres/init/10-roles.sql`, when run again after the migrations, now restores the grants
+of the table above after its blanket re-grant (before this note a re-run gave the app full DML on
+every M5 table, `admin_audit` included); `tests/test_roles_rerun.py` checks it.
+
 **The app role's grants on the new tables** (guard 2 checks them as an allowlist; the default
 privileges of ADR 0002 §4 are revoked table by table where narrower):
 
@@ -356,7 +388,7 @@ admin can't turn them on (§8). Plan limits are edited on `plans`, not in `app_s
 | `GET /api/account/plan` | effective plan and source, its end, limits, classes held and the period's end, cost this period as a share of the cap (no dollar figure), effective features, whether a trial is available |
 | `POST /api/account/redeem`, `POST /api/account/trial` | §2 |
 | `GET /api/settings/public` | banner and sign-up mode (no auth) |
-| `POST /api/jobs`, approve, revise kinds | 409 `quota` `{reason: classes | cost, limit, used, period_end, plan}`; 429 `busy` with the plan's limit; `revision_limit` unchanged |
+| `POST /api/jobs`, approve, revise kinds | 409 `{reason: quota, quota: classes \| cost, limit, used, period_end, plan}` (`period_end` the ISO date the next period starts; `limit` and `used` for `classes` only, so a cost refusal shows no money, as the account page; QT1, as FE1 reads it); 429 `{reason: busy, limit}` with the plan's limit; `revision_limit` unchanged |
 | `/api/admin/*` | §6 |
 
 Account page "Plan and usage" (roadmap §8): plan, "3 of 30 classes this month", redeem a code,
