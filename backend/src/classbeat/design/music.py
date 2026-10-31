@@ -159,6 +159,16 @@ class MusicStep:
         if row is None or row.playlist_id != self.data.playlist_id:  # defence in depth, as above
             raise JobFailure("not_connected")
 
+    @property
+    def generation(self) -> int | None:
+        """The ``generation`` of the MOWL connection the music was read with (None once closed):
+        a song list records it, so phase 2 can tell a reconnect since (ADR 0008 section 4)."""
+        return None if self._opened is None else self._opened.generation
+
+    @property
+    def connection_id(self) -> UUID | None:
+        return None if self._opened is None else self._opened.id
+
     def close(self) -> None:
         """Drop the credentials (the run is over)."""
         self._opened = None

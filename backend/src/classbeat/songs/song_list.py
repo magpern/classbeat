@@ -17,10 +17,13 @@ class's current revision, never revised or saved as a draft.
 - **content_hash** = SHA-256 of the content's canonical JSON (sorted keys, no spaces, UTF-8; the
   same function as drafts, ``classbeat.design.revision.canonical``). It covers every id, title,
   number and the order, so any change to the stored content no longer matches it.
-- **music** = ``{source: "claude_pick", fingerprint, spotify_user_id}``: ``fingerprint`` is the
-  hex SHA-256 of the ordered Spotify ids (``classbeat.playlists.common.ids_hash``, what the final
-  playlist's read-back is compared with in phase 2), ``spotify_user_id`` the Spotify account the
-  pool was written to and the list made for (``account_changed`` at approval, ADR 0008 section 5).
+- **music** = ``{source: "claude_pick", fingerprint, spotify_user_id, generations}``:
+  ``fingerprint`` is the hex SHA-256 of the ordered Spotify ids
+  (``classbeat.playlists.common.ids_hash``, what the final playlist's read-back is compared with
+  in phase 2), ``spotify_user_id`` the Spotify account the
+  pool was written to and the list made for (``account_changed`` at approval, ADR 0008 section 5),
+  ``generations`` the MOWL and Spotify connection generations phase 1 used (the approved phase 2
+  refuses ``not_connected`` after a reconnect; a resume does not compare them).
 - **provenance** as ADR 0006 section 6, plus ``origin`` and the song stages' ``stage_versions``.
 - **parent_id**: the seed list a replace started from (the same class), else NULL.
 
@@ -88,6 +91,15 @@ class SongListContent(BaseModel):
         return tuple(s.spotify_id for s in self.songs)
 
 
+class Generations(BaseModel):
+    """The ``generation`` of each connection the list was made with (ADR 0009 section 5.4)."""
+
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    mowl: int = Field(ge=0)
+    spotify: int = Field(ge=0)
+
+
 class SongListMusic(BaseModel):
     """``class_revisions.music`` of a ``song_list``."""
 
@@ -96,6 +108,9 @@ class SongListMusic(BaseModel):
     source: Literal["claude_pick"]
     fingerprint: str = Field(pattern=r"^[0-9a-f]{64}$")
     spotify_user_id: str = Field(min_length=1, max_length=100)
+    # The connections phase 1 used; the approved phase 2 refuses (``not_connected``) when either
+    # was reconnected since. A resume uses the connections as they are now (section 6).
+    generations: Generations | None = None
 
 
 def content_hash(content: dict[str, Any]) -> bytes:
@@ -181,6 +196,7 @@ def build(
     account: str,
     provenance: dict[str, Any],
     parent_id: UUID | None = None,
+    generations: Generations | None = None,
 ) -> SongListRevision:
     """The revision of ``chosen`` for the Spotify account ``account``; ``invalid_output`` if it
     does not fit the content's rules or 64 KB."""
@@ -211,6 +227,7 @@ def build(
             source=MUSIC_SOURCE,
             fingerprint=fingerprint(content.track_ids()),
             spotify_user_id=account,
+            generations=generations,
         )
     except ValidationError:
         raise JobFailure("invalid_output") from None
