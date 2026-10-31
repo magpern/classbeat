@@ -29,6 +29,19 @@ export const USAGE_NONE = {
   notes: [],
 }
 
+export const PLAN_FREE = {
+  plan: 'free',
+  name: 'Free',
+  source: null,
+  ends_at: null,
+  limits: { classes_per_month: 3, revisions_per_class: 10, concurrent_jobs: 1 },
+  classes_held: 1,
+  period_end: '2026-11-01T00:00:00Z',
+  cost_share: 0.25,
+  features: [],
+  trial: null,
+}
+
 const ANONYMOUS = { authenticated: false, csrf_token: 'csrf-anon' }
 
 export const SIGNED_IN = {
@@ -54,6 +67,8 @@ export function fakeApi(routes: Record<string, Handler | object | string>) {
     'GET /api/connections/spotify': () => json({ detail: { reason: 'feature_off' } }, 404),
     'GET /api/external-operations': { operations: [] },
     'GET /api/usage': USAGE_NONE,
+    'GET /api/account/plan': PLAN_FREE,
+    'GET /api/settings/public': { banner: null, signup_mode: 'invite' },
     ...routes,
   }
   const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
