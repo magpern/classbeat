@@ -58,7 +58,7 @@ CATEGORIES: Final = (
     "pool_not_synced",
     "playlist_mismatch",
     "pool_too_small",
-    # ADR 0008 section 6 (migration 0010): a revise request that only asks for other songs.
+    # ADR 0008 section 6 (migration 0011): a revise request that only asks for other songs.
     "use_change_songs",
 )
 # Retried by the worker (a new attempt with backoff). ``lease_lost`` is retried by the reaper and

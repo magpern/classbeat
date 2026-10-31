@@ -1,7 +1,7 @@
 """The job category ``use_change_songs`` (ADR 0008 section 6, ADR 0009 section 8; issue #278)
 
-Revision ID: 0010_use_change_songs
-Revises: 0009_models
+Revision ID: 0011_use_change_songs
+Revises: 0010_m5_hardening
 Create Date: 2026-10-31
 
 A ``revise_draft`` request that only asks for other songs ends the job with this category: no
@@ -13,8 +13,8 @@ from collections.abc import Sequence
 
 from alembic import op
 
-revision: str = "0010_use_change_songs"
-down_revision: str | Sequence[str] | None = "0009_models"
+revision: str = "0011_use_change_songs"
+down_revision: str | Sequence[str] | None = "0010_m5_hardening"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
