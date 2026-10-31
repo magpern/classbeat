@@ -23,7 +23,10 @@ fenced write, leave the block, then checkpoint.
 
 The heartbeat extends the lease every lease/3 with ``GREATEST`` (it never shortens an extension
 made for a call) in its own short fenced transaction. Lost (0 rows, or 3 database errors in a
-row), it marks the run lost and abandons whatever is not an external call in flight.
+row), it marks the run lost and abandons whatever is not an external call in flight. A
+``DatabaseRoleError`` there (a drifted queue or a privileged role) is not a blip: it is kept as
+``fatal`` and abandons the run the same way; the next checkpoint raises it, and the runner raises
+it in place of the run's result, so the worker stops and hands the lease back (#140 item 6).
 """
 
 import asyncio
@@ -36,6 +39,7 @@ from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from classbeat.context import UserContext
+from classbeat.db import DatabaseRoleError
 from classbeat.jobs import transitions
 from classbeat.jobs.errors import LeaseLost, RunStopped
 from classbeat.jobs.fence import FencedSession, Lease, fenced_session
@@ -70,6 +74,7 @@ class JobRun:
         self.lost = False
         self.cancel_requested = False
         self.in_flight = 0
+        self.fatal: DatabaseRoleError | None = None  # met by the heartbeat: the worker stops
         self._on_lost: Callable[[], object] | None = None
 
     @property
@@ -80,6 +85,14 @@ class JobRun:
         if not self.lost:
             self.lost = True
             logger.warning("job lease lost", extra={"job_id": str(self.lease.job_id)})
+            if self._on_lost is not None and self.in_flight == 0:
+                self._on_lost()
+
+    def mark_fatal(self, error: DatabaseRoleError) -> None:
+        """The heartbeat met a drifted queue or a privileged role: abandon the run as for a lost
+        lease (not an external call in flight); ``fatal`` stops the worker (#140 item 6)."""
+        if self.fatal is None:
+            self.fatal = error
             if self._on_lost is not None and self.in_flight == 0:
                 self._on_lost()
 
@@ -100,6 +113,8 @@ class JobRun:
             raise
 
     async def checkpoint(self) -> None:
+        if self.fatal is not None:
+            raise self.fatal
         if self.lost:
             raise RunStopped("lost")
         if self.shutdown.is_set():
@@ -131,7 +146,8 @@ class JobRun:
             yield
         finally:
             self.in_flight -= 1
-            if self.lost and self.in_flight == 0 and self._on_lost is not None:
+            stopped = self.lost or self.fatal is not None
+            if stopped and self.in_flight == 0 and self._on_lost is not None:
                 self._on_lost()
 
     async def heartbeat(self) -> None:
@@ -145,6 +161,9 @@ class JobRun:
                     cancel = await fs.extend_lease(self.lease_seconds, heartbeat=True)
             except LeaseLost:
                 self.mark_lost()
+                return
+            except DatabaseRoleError as exc:  # not a blip: the worker stops (#140 item 6)
+                self.mark_fatal(exc)
                 return
             except Exception as exc:  # the database blinked; three in a row lose the run
                 errors += 1

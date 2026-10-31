@@ -171,6 +171,7 @@ async def run(job_run: JobRun) -> Complete:
         music.spotify_playlist_id,
         connection_id=given.mowl_connection_id,
     )
+    handed_over = False  # the outcome's ``release`` closes the step from then on
     try:
         ctx = ReviseContext.build(
             brief,
@@ -197,40 +198,42 @@ async def run(job_run: JobRun) -> Complete:
             request_message_id=request_message_id,
         )
         change = diff.summarize(base.content, draft.content)
-    except BaseException:
-        step.close()
-        raise
 
-    async def store(fs: FencedSession) -> UUID:
-        """The connection guard, the revision, the compare-and-set, the assistant message."""
-        try:
-            await step.still_current(fs)
-            revision_id = await draft.store(fs)
-            params = {
-                "revision_id": revision_id,
-                "job_id": fs.lease.job_id,
-                "owner_id": fs.lease.owner_id,
-                "base": base_id,
-            }
-            await fs.db.execute(_CAS, params)  # no row: kept, but not current
-            await chat.insert_message(
-                fs.db,
-                owner_id=fs.lease.owner_id,
-                class_id=class_id,
-                job_id=fs.lease.job_id,
-                role="assistant",
-                body=revised.note,
-                base_revision_id=base_id,
-                result_revision_id=revision_id,
-                change=change,
-            )
-            return revision_id
-        except chat.MessageRefused:
-            raise JobFailure("internal") from None
-        finally:
+        async def store(fs: FencedSession) -> UUID:
+            """The connection guard, the revision, the compare-and-set, the assistant message."""
+            try:
+                await step.still_current(fs)
+                revision_id = await draft.store(fs)
+                params = {
+                    "revision_id": revision_id,
+                    "job_id": fs.lease.job_id,
+                    "owner_id": fs.lease.owner_id,
+                    "base": base_id,
+                }
+                await fs.db.execute(_CAS, params)  # no row: kept, but not current
+                await chat.insert_message(
+                    fs.db,
+                    owner_id=fs.lease.owner_id,
+                    class_id=class_id,
+                    job_id=fs.lease.job_id,
+                    role="assistant",
+                    body=revised.note,
+                    base_revision_id=base_id,
+                    result_revision_id=revision_id,
+                    change=change,
+                )
+                return revision_id
+            except chat.MessageRefused:
+                raise JobFailure("internal") from None
+
+        # The runner releases the step once the attempt is over, whether ``store`` ran or not
+        # (a cancel, a lost lease or shutdown before it; #122 item 4).
+        complete = Complete(store, release=step.close)
+        handed_over = True
+        return complete
+    finally:
+        if not handed_over:
             step.close()
-
-    return Complete(store)
 
 
 REVISE_DRAFT: Final = KINDS.register(
