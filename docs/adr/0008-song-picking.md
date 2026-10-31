@@ -374,6 +374,17 @@ runs the music step, then ADR 0007 §3's `revise` stage with the base draft, the
 user's requests along the parent chain and **a fact that the songs changed** (the model re-times the
 intervals to the new music). A `revise_draft` request that asks for other songs gets the stage prompt's
 instruction to say that "Change songs" is the way and to change nothing else.
+*Amended (2026-10-31, issue #278):* a request that asks **only** for other songs has nothing to
+revise, and the stage would refuse the unchanged draft as `invalid_output`, so the pointer would
+never reach the user. The `revise` stage therefore has a second final tool, `songs_requested` (no
+input; not offered to `revise_songs`, whose request is the songs). The stage ends `SongsRequested`
+and the job ends **`use_change_songs`** (a new `jobs.error_category`, migration 0009): no
+revision, no assistant message, no revision counted against `CLASSBEAT_REVISIONS_PER_CLASS`, the
+user's request stays in the chat, and the run's usage is recorded as for any run. The class page
+shows "This request is only about the songs. Use Change songs to pick other ones." with a Change
+songs button. A request that mixes songs and other changes still ends `submit_draft`: the design
+part is applied and the note says "Change songs" is the way for the rest. The smoke set has the
+case `revise_other_songs` (suite version 6). The stage's `prompt_version` changes with this.
 
 *Contract, issue SJ3 (2026-10-31).* `POST /api/jobs` with `kind: "revise_songs"` takes one of
 two inputs (both with `mowl_connection_id` and `spotify_connection_id`):

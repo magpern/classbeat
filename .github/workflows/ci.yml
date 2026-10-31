@@ -1,9 +1,11 @@
 name: CI
 
-# Not on push to main: merges are squashes of an up-to-date, already-tested branch. The weekly
-# run (and a manual one) runs everything, which also picks up new advisories.
+# Not on push to main: main only receives squashes the merge queue has tested. A pull request and
+# a merge group (the queue's merged result, `merge_group`) run what their diff needs; the weekly run
+# (and a manual one) runs everything, which also picks up new advisories.
 on:
   pull_request:
+  merge_group:
   schedule:
     - cron: '0 4 * * 1' # Monday 04:00 UTC
   workflow_dispatch:
@@ -11,6 +13,8 @@ on:
 permissions:
   contents: read
 
+# Only a pull request's older run is cancelled. A merge group never is (its ref is unique per
+# group, and the queue itself drops a group it no longer needs).
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
@@ -25,6 +29,8 @@ jobs:
       frontend: ${{ steps.filter.outputs.frontend }}
       stack: ${{ steps.filter.outputs.stack }}
       all: ${{ steps.filter.outputs.all }}
+      # The backend test shard count, from the backend-tests matrix's shard list (the one source).
+      shards: ${{ steps.shards.outputs.total }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -34,9 +40,17 @@ jobs:
       - id: filter
         env:
           EVENT_NAME: ${{ github.event_name }}
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          # A merge group's base is the target branch tip, its head the queue's merged commit.
+          BASE_SHA: ${{ github.event_name == 'merge_group' && github.event.merge_group.base_sha || github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event_name == 'merge_group' && github.event.merge_group.head_sha || github.event.pull_request.head.sha }}
         run: scripts/ci-changes.sh
+
+      # Fails the run when the matrix is not exactly `shard: [1..N]` (scripts/ci-shards.sh).
+      - id: shards
+        run: |
+          set -euo pipefail
+          total="$(scripts/ci-shards.sh)"
+          echo "total=$total" >> "$GITHUB_OUTPUT"
 
   # Everything cheap that must run on every change, as steps of one runner (one billed
   # minute-rounding instead of seven). Trivy and gitleaks are checksum-verified release binaries.
@@ -61,16 +75,18 @@ jobs:
           echo "${SHA256}  gitleaks.tgz" | sha256sum --check
           tar -xzf gitleaks.tgz gitleaks
 
-      # A pull request's own commits (#116 item 8; the checkout holds every branch); the weekly
-      # and manual runs scan the whole history of every branch.
+      # A pull request's own commits (#116 item 8; the checkout holds every branch), or a merge
+      # group's commits on top of its base; the weekly and manual runs scan the whole history of
+      # every branch.
       - name: Secret scan
         env:
           EVENT_NAME: ${{ github.event_name }}
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          # A merge group's base is the target branch tip, its head the queue's merged commit.
+          BASE_SHA: ${{ github.event_name == 'merge_group' && github.event.merge_group.base_sha || github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event_name == 'merge_group' && github.event.merge_group.head_sha || github.event.pull_request.head.sha }}
         run: |
           set -euo pipefail
-          if [ "$EVENT_NAME" = pull_request ]; then
+          if [ "$EVENT_NAME" = pull_request ] || [ "$EVENT_NAME" = merge_group ]; then
             # A missing SHA or an empty range would make gitleaks report "no leaks" over 0
             # commits: fail instead. --diff-merges=first-parent makes `git log -p` show the diff
             # of a merge commit, so a secret added only in a hand-resolved merge is scanned.
@@ -107,9 +123,11 @@ jobs:
           db="$(yq -r '.services.db.image' compose.yaml)"
           fn="$(yq -r '.services["db-functions"].image' compose.yaml)"
           ci="$(yq -r '.jobs.backend.services.postgres.image' .github/workflows/ci.yml)"
-          echo "db=$db db-functions=$fn backend=$ci"
+          shards="$(yq -r '.jobs["backend-tests"].services.postgres.image' .github/workflows/ci.yml)"
+          echo "db=$db db-functions=$fn backend=$ci backend-tests=$shards"
           [[ "$db" =~ ^postgres:[0-9]+\.[0-9]+$ ]] || { echo "::error::compose db image must be an exact postgres tag"; exit 1; }
-          [ "$fn" = "$db" ] && [ "$ci" = "$db" ] || { echo "::error::db, db-functions and the backend job must use the same postgres image"; exit 1; }
+          [ "$fn" = "$db" ] && [ "$ci" = "$db" ] && [ "$shards" = "$db" ] \
+            || { echo "::error::db, db-functions and the backend jobs must use the same postgres image"; exit 1; }
 
       # Every setup-uv step's version equals the Dockerfile's uv tag (scripts/ci-uv-version.sh).
       - name: uv version matches the Dockerfile
@@ -209,6 +227,8 @@ jobs:
       - run: npm run build
 
   backend:
+    # Once per run: the database checks, lint, format, types and the shard check. The tests run in
+    # `backend-tests`.
     name: Backend
     needs: changes
     if: needs.changes.outputs.backend == 'true'
@@ -294,8 +314,96 @@ jobs:
       - name: Type check
         run: uv run pyright
 
+      # The backend-tests matrix runs each test file in exactly one shard (tests/shards.py
+      # compares pytest's own collection with the split). The shard count comes from one place,
+      # the matrix's `shard` list (scripts/ci-shards.sh in `changes`), here and in every shard.
+      - name: Every test file is in exactly one shard
+        env:
+          TOTAL: ${{ needs.changes.outputs.shards }}
+        run: |
+          set -euo pipefail
+          [[ $TOTAL =~ ^[1-9][0-9]*$ ]] || { echo "::error::no shard count from changes"; exit 1; }
+          uv run python tests/shards.py check "$TOTAL"
+
+  # pytest in parallel shards, each with its own Postgres (tests/shards.py: a stable hash of the
+  # file path). The `ci` gate sees one result for the matrix: failure or cancelled if any shard is.
+  backend-tests:
+    name: Backend tests (shard ${{ matrix.shard }})
+    needs: changes
+    if: needs.changes.outputs.backend == 'true'
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      # The only place the shard count is set: scripts/ci-shards.sh reads it from this list and
+      # refuses another axis, include or exclude.
+      matrix:
+        shard: [1, 2, 3]
+    defaults:
+      run:
+        working-directory: backend
+    services:
+      postgres:
+        # The same exact tag as compose's db (checked in `checks`): the queue md5 depends on it.
+        image: postgres:17.11
+        env:
+          # Throwaway database of this job only; not a secret.
+          POSTGRES_PASSWORD: test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      CLASSBEAT_TEST_DATABASE_URL: postgresql+psycopg://postgres:test@127.0.0.1:5432/classbeat
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Create the application database and its roles
+        # The script the compose db container runs (docker/postgres/init), against the service
+        # container. The test fixtures replace the role passwords with random ones.
+        working-directory: .
+        env:
+          PGHOST: 127.0.0.1
+          PGUSER: postgres
+          PGPASSWORD: test
+        run: |
+          set -euo pipefail
+          psql -v ON_ERROR_STOP=1 -d postgres -c 'CREATE DATABASE classbeat'
+          secrets="$RUNNER_TEMP/secrets"
+          mkdir -p "$secrets"
+          openssl rand -hex 16 > "$secrets/database_owner_password"
+          openssl rand -hex 16 > "$secrets/database_password"
+          export DATABASE_OWNER_PASSWORD_FILE="$secrets/database_owner_password"
+          export DATABASE_PASSWORD_FILE="$secrets/database_password"
+          psql -v ON_ERROR_STOP=1 -d classbeat -f docker/postgres/init/10-roles.sql
+          # Idempotent: a second run must succeed too.
+          psql -v ON_ERROR_STOP=1 -d classbeat -f docker/postgres/init/10-roles.sql
+
+      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+        with:
+          # Must equal the ghcr.io/astral-sh/uv tag in the Dockerfile (checked by the `checks` job).
+          version: 0.13.6
+
+      - name: Install dependencies
+        run: uv sync --locked
+
       - name: Tests
-        run: uv run pytest
+        env:
+          SHARD: ${{ matrix.shard }}
+          # The count from the matrix's shard list, computed once in `changes` and passed to the
+          # shard check and every shard alike; never strategy.job-total.
+          TOTAL: ${{ needs.changes.outputs.shards }}
+        run: |
+          set -euo pipefail
+          [[ $TOTAL =~ ^[1-9][0-9]*$ ]] || { echo "::error::no shard count from changes"; exit 1; }
+          mapfile -t files < <(uv run python tests/shards.py list "$SHARD" "$TOTAL")
+          [ "${#files[@]}" -gt 0 ] || { echo "::error::shard $SHARD of $TOTAL is empty"; exit 1; }
+          echo "shard $SHARD of $TOTAL: ${#files[@]} test files"
+          uv run pytest "${files[@]}"
 
   e2e:
     name: Stack, image scan and E2E (Playwright)
@@ -520,7 +628,7 @@ jobs:
   ci:
     name: ci
     if: always()
-    needs: [changes, checks, backend, frontend, e2e]
+    needs: [changes, checks, backend, backend-tests, frontend, e2e]
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

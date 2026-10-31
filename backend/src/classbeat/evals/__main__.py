@@ -6,7 +6,8 @@
 
 ``suite`` is two layers (ADR 0012 §4.4): this entry checks every precondition
 (``suite_live.check_preconditions``) and then calls ``suite_live.main_suite`` with the real
-provider factory (``classbeat.models.providers.provider_for_choice``), the real allowlist
+provider factory (``classbeat.models.providers.eval_provider_for_choice``: ``provider_for_choice``
+with DeepSeek's eval-only path, so a disabled DeepSeek model can be evaluated), the real allowlist
 installer and the worker's database session; no argument reaches those seams.
 
 In the stack, on the worker (the only container with the model key):
@@ -82,7 +83,7 @@ def main_suite_entry(settings: Settings, args: argparse.Namespace) -> int:
     except suite_live.SuiteRefused as refused:
         print(str(refused), file=sys.stderr)
         return suite_live.REFUSED
-    from classbeat.models.providers import provider_for_choice
+    from classbeat.models.providers import eval_provider_for_choice
 
     return suite_live.main_suite(
         settings,
@@ -92,7 +93,7 @@ def main_suite_entry(settings: Settings, args: argparse.Namespace) -> int:
         out_path=args.out,
         record_run=args.record,
         authorization=args.authorization,
-        provider_factory=provider_for_choice,
+        provider_factory=eval_provider_for_choice,
         install=suite_live.install_choice_allowlist,
         open_session=suite_live.worker_session(settings),
     )
