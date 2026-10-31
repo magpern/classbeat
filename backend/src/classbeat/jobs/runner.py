@@ -21,6 +21,7 @@ Only categories and exception type names are logged, never texts.
 import asyncio
 import contextlib
 import logging
+import math
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -28,9 +29,18 @@ from pydantic import ValidationError
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from classbeat import egress
 from classbeat.db import DatabaseRoleError
 from classbeat.jobs import transitions
-from classbeat.jobs.errors import JobFailure, LeaseLost, RunStopped, backoff_seconds, failure_of
+from classbeat.jobs.errors import (
+    MAX_HINT_SECONDS,
+    QUOTA_RATE_LIMITS,
+    JobFailure,
+    LeaseLost,
+    RunStopped,
+    backoff_seconds,
+    failure_of,
+)
 from classbeat.jobs.fence import Lease, fenced_session
 from classbeat.jobs.issuer import Claimed, issue, owner_context
 from classbeat.jobs.kinds import AwaitApproval, Complete, KindRegistry, Outcome
@@ -41,7 +51,7 @@ logger = logging.getLogger(__name__)
 Factory = async_sessionmaker[AsyncSession]
 
 _LOAD = text(
-    "SELECT kind, input, attempt, approved_at FROM jobs "
+    "SELECT kind, input, attempt, approved_at, spotify_calls FROM jobs "
     "WHERE id = :job_id AND owner_id = :owner_id AND lease_version = :v"
 )
 
@@ -51,6 +61,8 @@ class RunConfig:
     lease_seconds: int = 120
     approval_ttl_hours: int = 168
     busy_requeue_limit: int = 5
+    # ADR 0009 section 8: the Spotify requests one job may send, across its stages and attempts.
+    spotify_calls_per_job: int = 300
 
 
 @dataclass(eq=False)
@@ -63,6 +75,9 @@ class Execution:
     settled: bool = False  # its attempt was recorded, or it is not this worker's to record
     result: str | None = None  # the state written, or "lost"
     extra: dict[str, Any] = field(default_factory=dict)
+    # The job's Spotify request budget for this attempt, and the count the row holds.
+    budget: egress.RequestBudget | None = None
+    calls_saved: int = 0
 
     def needs_hand_back(self) -> bool:
         return not self.settled
@@ -73,15 +88,28 @@ def _log(execution: Execution, message: str, **extra: Any) -> None:
 
 
 async def _record(execution: Execution, factory: Factory, write: Any) -> None:
-    """Run ``write(fs)`` in a fenced transaction; a lost lease records nothing."""
+    """Run ``write(fs)`` in a fenced transaction; a lost lease records nothing. The Spotify
+    requests the attempt sent are stored in the same transaction (ADR 0009 section 8)."""
     if execution.lease is None:
         raise RuntimeError("no lease to record on")
+    used = None if execution.budget is None else execution.budget.used
     try:
         async with fenced_session(factory, execution.lease) as fs:
+            if used is not None and used != execution.calls_saved:
+                await transitions.save_spotify_calls(fs, used)
             execution.result = await write(fs)
+        if used is not None:
+            execution.calls_saved = used
     except LeaseLost:
         execution.result = "lost"
     execution.settled = True
+
+
+def _hint(retry_after: float | None) -> int | None:
+    """A Spotify ``Retry-After`` as the whole seconds the row keeps (1 to a day), or None."""
+    if retry_after is None or not math.isfinite(retry_after) or retry_after <= 0:
+        return None
+    return min(max(math.ceil(retry_after), 1), MAX_HINT_SECONDS)
 
 
 async def hand_back(execution: Execution, factory: Factory) -> None:
@@ -103,6 +131,9 @@ async def _finish(
     async def write(fs: Any) -> str:
         if fs.cancel_requested:
             return await transitions.cancel(fs)
+        await transitions.note_spotify_ending(  # the attempt ended well: no 429s in a row
+            fs, rate_limited=False, failure=None, retry_after=None, cap=QUOTA_RATE_LIMITS
+        )
         if isinstance(outcome, Complete):
             revision = None if outcome.store is None else await outcome.store(fs)
             return await transitions.complete(fs, revision)
@@ -120,12 +151,29 @@ async def _failed(
 ) -> None:
     category = failure.category
     delay = backoff_seconds(run.attempt, failure.retry_after)
+    spotify = failure.provider == "spotify"
+    rate_limited = spotify and category == "rate_limited"
+    noted = category if spotify and category in transitions.SPOTIFY_NOTED else None
+    hint = _hint(failure.retry_after) if spotify else None
 
     async def write(fs: Any) -> str:
         if fs.cancel_requested:
             return await transitions.cancel(fs)
         if category == "operation_busy":
             return await transitions.operation_busy(fs, delay, config.busy_requeue_limit)
+        in_a_row = await transitions.note_spotify_ending(
+            fs, rate_limited=rate_limited, failure=noted, retry_after=hint, cap=QUOTA_RATE_LIMITS
+        )
+        if rate_limited and in_a_row >= QUOTA_RATE_LIMITS:
+            # ADR 0009 section 8: three Spotify rate limits in a row on one job.
+            await transitions.note_spotify_ending(
+                fs,
+                rate_limited=True,
+                failure="quota_exhausted",
+                retry_after=None,
+                cap=QUOTA_RATE_LIMITS,
+            )
+            return await transitions.fail(fs, "quota_exhausted")
         return await transitions.retry(fs, category, delay)
 
     await _record(execution, factory, write)
@@ -194,9 +242,14 @@ async def execute(
         shutdown=shutdown,
     )
     execution.run = run
+    execution.calls_saved = row.spotify_calls
+    execution.budget = egress.RequestBudget(
+        egress.SPOTIFY_HOSTS, config.spotify_calls_per_job, row.spotify_calls
+    )
     _log(execution, "job started", kind=kind.name, attempt=row.attempt)
     try:
-        outcome = await _pipeline(run, kind.run)
+        with egress.request_budget(execution.budget):  # the kind's task inherits the context
+            outcome = await _pipeline(run, kind.run)
     except RunStopped as stopped:
         await _stopped(execution, factory, stopped.reason)
         return
