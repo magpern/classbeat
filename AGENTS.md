@@ -511,6 +511,8 @@ cd e2e
 npm ci
 npx playwright install chromium          # once (CI: --with-deps)
 npm test                                 # or E2E_BASE_URL=http://127.0.0.1:20007 npm test
+# fake-spotify.spec.ts runs `docker compose config`: set COMPOSE_FILE=compose.yaml:compose.e2e.yaml (`;` on Windows)
+# and COMPOSE_PROFILES=e2e as CI does, or it does not see the fake services.
 npx playwright show-report               # HTML report after a failure
 cd .. && dc down -v
 ```
