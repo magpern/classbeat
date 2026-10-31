@@ -10,7 +10,7 @@ import pytest
 from sqlalchemy import text
 
 from classbeat.connections import ConnectionFailure
-from classbeat.db import user_session
+from classbeat.db import DatabaseRoleError, user_session
 from classbeat.egress import OutboundBlocked
 from classbeat.jobs import AwaitApproval, Complete, JobFailure, JobRun, queue, settle, settle_one
 from classbeat.jobs.runner import RunConfig, execute
@@ -195,6 +195,99 @@ async def test_a_database_blip_while_storing_retries_the_attempt(jenv: JobsEnv) 
     [*_, (_, kind, payload, _)] = jenv.events(job_id)
     assert (kind, payload["category"]) == ("retry_scheduled", "upstream_unavailable")
     assert jenv.counts(job_id)[1] == 0  # the revision was rolled back
+
+
+@pytest.mark.parametrize("before_store", [None, "cancel", "lease_lost", "store_fails"])
+async def test_the_outcome_is_released_once_whether_its_store_ran_or_not(
+    jenv: JobsEnv, before_store: str | None
+) -> None:
+    """#122 item 4: ``release`` runs once the attempt is over, also when ``store`` never runs (a
+    cancel or a lost lease found by the final transaction) or raises."""
+    _, job_id = jenv.job()
+    calls: list[str] = []
+
+    async def store(fs):
+        calls.append("store")
+        if before_store == "store_fails":
+            raise JobFailure("not_connected")
+        return await store_draft(fs)
+
+    async def run(job_run: JobRun) -> Complete:
+        if before_store == "cancel":
+            jenv.sql("UPDATE jobs SET cancel_requested_at = now() WHERE id = :id", id=job_id)
+        elif before_store == "lease_lost":
+            jenv.sql("UPDATE jobs SET lease_version = lease_version + 1 WHERE id = :id", id=job_id)
+        return Complete(store, release=lambda: calls.append("release"))
+
+    execution = await run_next(jenv, registry_for(run))
+    expected = {
+        None: (["store", "release"], "completed"),
+        "cancel": (["release"], "cancelled"),
+        "lease_lost": (["release"], "lost"),
+        "store_fails": (["store", "release"], "failed"),
+    }[before_store]
+    assert (calls, execution.result) == expected
+
+
+DRIFT = "the job queue does not match ADR 0005 section 3: planted by the test"
+
+
+@pytest.mark.parametrize("ending", ["outcome", "job_failure"])
+async def test_a_role_error_met_by_the_heartbeat_is_raised_not_stored_or_retried(
+    jenv: JobsEnv, ending: str
+) -> None:
+    """#140 item 6: the heartbeat met ``DatabaseRoleError`` and the run still ended on its own:
+    with an outcome (the heartbeat's abandon came too late) or with a ``JobFailure`` from the call
+    it waited for. Either way the runner raises it (the worker stops and hands the lease back):
+    no store, no counted retry; the outcome is still released."""
+    _, job_id = jenv.job()
+    calls: list[str] = []
+
+    async def store(fs):
+        calls.append("store")
+        return await store_draft(fs)
+
+    async def run(job_run: JobRun) -> Complete:
+        if ending == "job_failure":
+            async with job_run.external_call(5):
+                job_run.mark_fatal(DatabaseRoleError(DRIFT))
+                raise JobFailure("upstream_unavailable")  # the call failed
+        job_run.fatal = DatabaseRoleError(DRIFT)  # as if met after the kind returned
+        return Complete(store, release=lambda: calls.append("release"))
+
+    execution = await claim(jenv)
+    with pytest.raises(DatabaseRoleError, match="planted"):
+        await execute(execution, jenv.factory, registry_for(run), RunConfig(), asyncio.Event())
+    assert calls == ([] if ending == "job_failure" else ["release"])
+    assert execution.needs_hand_back()
+    row = jenv.row(job_id)
+    assert (row.state, row.attempt, row.error_category) == ("running", 1, None)
+    assert "retry_scheduled" not in jenv.kinds(job_id)
+
+
+async def test_an_outcome_returned_as_shutdown_cancels_the_run_is_released(
+    jenv: JobsEnv,
+) -> None:
+    """#122 item 4: the kind returned its outcome, but the runner was cancelled before it handed
+    the outcome on (the worker's cancel after its shutdown wait): it is released all the same."""
+    jenv.job()
+    calls: list[str] = []
+    holder: dict[str, asyncio.Task[None]] = {}
+
+    async def run(job_run: JobRun) -> Complete:
+        # Runs before the runner resumes from ``await task``: it is cancelled with the outcome
+        # already returned.
+        asyncio.get_running_loop().call_soon(holder["runner"].cancel)
+        return Complete(store_draft, release=lambda: calls.append("release"))
+
+    execution = await claim(jenv)
+    holder["runner"] = asyncio.ensure_future(
+        execute(execution, jenv.factory, registry_for(run), RunConfig(), asyncio.Event())
+    )
+    with pytest.raises(asyncio.CancelledError):
+        await holder["runner"]
+    assert calls == ["release"]
+    assert execution.needs_hand_back()
 
 
 @pytest.mark.parametrize("where", ["checkpoint", "stage", "fenced"])

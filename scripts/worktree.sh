@@ -7,7 +7,8 @@
 set -euo pipefail
 
 SELF="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/$(basename "${BASH_SOURCE[0]}")"
-SECRETS=(postgres_password database_owner_password database_password database_maint_password app_secret_key connection_kek anthropic_api_key)
+SECRETS=(postgres_password database_owner_password database_password database_maint_password
+  app_secret_key connection_kek anthropic_api_key openai_api_key deepseek_api_key)
 
 die() { echo "worktree.sh: $*" >&2; exit 1; }
 
@@ -58,9 +59,10 @@ cmd_init() {
   local name bytes
   for name in "${SECRETS[@]}"; do
     if [ ! -f "secrets/$name" ]; then
-      if [ "$name" = "anthropic_api_key" ]; then
-        # ADR 0006 section 9: an empty placeholder, never a real key (an empty file is no key;
-        # the worker refuses MODEL_PROVIDER=anthropic until the owner puts the key here).
+      if [[ "$name" == *_api_key ]]; then
+        # ADR 0006 section 9, ADR 0012 section 2: the model keys are empty placeholders, never
+        # a real key (an empty file is no key; the worker refuses MODEL_PROVIDER=anthropic until
+        # the owner puts the key here, and uses no OpenAI or DeepSeek host without its key).
         : > "secrets/$name"
         chmod 644 "secrets/$name" 2>/dev/null || true
         echo "created secrets/$name (empty placeholder)"

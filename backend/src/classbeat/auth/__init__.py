@@ -85,6 +85,7 @@ if TYPE_CHECKING:
         connect_buckets,
         mfa_buckets,
         password_buckets,
+        redeem_buckets,
         spotify_start_buckets,
     )
     from classbeat.auth.reset_routes import make_reset_link_sender
@@ -172,6 +173,7 @@ _EXPORTS: dict[str, str] = {
     "connect_buckets": "ratelimit",
     "mfa_buckets": "ratelimit",
     "password_buckets": "ratelimit",
+    "redeem_buckets": "ratelimit",
     "spotify_start_buckets": "ratelimit",
     "admin_buckets": "ratelimit",
     "make_reset_link_sender": "reset_routes",
@@ -274,6 +276,7 @@ __all__ = [
     "pending_wipe_mails",
     "purge_expired",
     "record_event",
+    "redeem_buckets",
     "register_reset_link_sender",
     "register_security_notifier",
     "remember_device",

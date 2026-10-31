@@ -23,6 +23,9 @@ x-app: &app
     # section 2). On rotation: a new id in .env, the old file kept as connection_kek_<old id> and
     # listed under secrets of web and worker until `keys rewrap` reports zero rows for it.
     CLASSBEAT_CONNECTION_KEK_ID: ${CONNECTION_KEK_ID:-kek-1}
+    # ADR 0012 section 2: off, the DeepSeek host is never on the worker's list and no DeepSeek
+    # route can be set or used. Web and worker alike; the owner turns it on (ADR 0012 section 6).
+    CLASSBEAT_DEEPSEEK_ENABLED: ${DEEPSEEK_ENABLED:-false}
   secrets:
     - database_password
     - app_secret_key
@@ -128,12 +131,15 @@ services:
       # ADR 0006 section 9: `fake` (the default in .env.example) for the dev stack and CI;
       # `anthropic` needs a real key in secrets/anthropic_api_key, which init leaves empty.
       CLASSBEAT_MODEL_PROVIDER: ${MODEL_PROVIDER:-fake}
-    # The model API key is the worker's only: web, migrate and maint never mount it.
+    # The model API keys are the worker's only: web, migrate and maint never mount them
+    # (ADR 0006 section 9, ADR 0012 section 2).
     secrets:
       - database_password
       - app_secret_key
       - connection_kek
       - anthropic_api_key
+      - openai_api_key
+      - deepseek_api_key
 
   # Maintenance after a suspected KEK compromise (ADR 0004 section 2), never started by default:
   #   docker compose stop web worker
@@ -180,6 +186,11 @@ secrets:
   # Empty from `scripts/worktree.sh init` (never a real key); worker only.
   anthropic_api_key:
     file: ./secrets/anthropic_api_key
+  # ADR 0012 section 2: the same, for OpenAI and DeepSeek (empty from init; worker only).
+  openai_api_key:
+    file: ./secrets/openai_api_key
+  deepseek_api_key:
+    file: ./secrets/deepseek_api_key
 
 volumes:
   db-data:

@@ -43,6 +43,9 @@ def test_the_allowlist_is_exactly_the_reviewed_one() -> None:
         "classbeat.operations.orphans",
         "classbeat.saving.reads",
         "classbeat.keys_cli",
+        "classbeat.plans.account",
+        "classbeat.plans.redeem",
+        "classbeat.plans.trial",
     )
 
 
@@ -172,3 +175,16 @@ def test_the_save_reconcilers_read_is_reached_only_from_the_reconcilers() -> Non
         "classbeat.saving.operation",
         "classbeat.saving.update_operation",
     }
+
+
+def test_the_plan_services_are_reached_only_from_their_routes() -> None:
+    """``classbeat.plans.account``, ``redeem`` and ``trial`` open plain user sessions (the user's
+    own plan read, redeem and trial, PL1): only the plan routes import them (``account`` reads
+    the trial offer), and those only the web app."""
+    assert importers("classbeat.plans.redeem") == {"classbeat.plans.routes"}
+    assert importers("classbeat.plans.account") == {"classbeat.plans.routes"}
+    assert importers("classbeat.plans.trial") == {
+        "classbeat.plans.routes",
+        "classbeat.plans.account",
+    }
+    assert importers("classbeat.plans.routes") == {"classbeat.web"}

@@ -1,6 +1,6 @@
 # ADR 0012: Eval suite, model providers and the enable gate (M3c)
 
-Status: Proposed
+Status: Accepted
 
 ## Context
 
@@ -263,8 +263,10 @@ CREATE TABLE model_eval_results (
     effort             text        NOT NULL
         CHECK (coalesce(effort IN ('low', 'medium', 'high', 'xhigh', 'max'), false)),
     stage_group        text        NOT NULL CHECK (coalesce(stage_group IN ('design', 'songs'), false)),
-    prompt_versions    jsonb       NOT NULL CHECK (coalesce(jsonb_typeof(prompt_versions) = 'object', false)),
-    classbeat_version  text        NOT NULL CHECK (coalesce(char_length(classbeat_version) BETWEEN 1 AND 64, false)),
+    prompt_versions    jsonb       NOT NULL
+        CHECK (coalesce(jsonb_typeof(prompt_versions) = 'object', false)),
+    classbeat_version  text        NOT NULL
+        CHECK (coalesce(char_length(classbeat_version) BETWEEN 1 AND 64, false)),
     results_sha256     text        NOT NULL CHECK (coalesce(results_sha256 ~ '^[0-9a-f]{64}$', false)),
     verdict            jsonb       NOT NULL,
     passed             boolean     NOT NULL,
@@ -433,10 +435,10 @@ prompt version; they gain `route_key` and `eval_result_id` (NULL for the bootstr
   allowlist installer runs a small manifest, writes a format-2 file and `--record`s it into the test
   database; a fixture set that answers well makes a passing row, one that answers badly a failing row.
 - The gate: `enable` succeeds on the passing row; refuses on the failing row, a row of another effort or
-  model, an older `suite_version`, other prompt versions, DeepSeek with the setting off or `owner_pending`;
-  it succeeds without any key file present (the web process's view) and the worker then refuses the
-  route at resolution; the database refuses a hand-made route `INSERT` pointing at a failing or
-  mismatched result (the FK), and `UPDATE` or `DELETE` on `model_eval_results`.
+  model, an older `suite_version`, other prompt versions, DeepSeek with the setting off or
+  `owner_pending`; it succeeds without any key file present (the web process's view) and the worker then
+  refuses the route at resolution; the database refuses a hand-made route `INSERT` pointing at a
+  failing or mismatched result (the FK), and `UPDATE` or `DELETE` on `model_eval_results`.
 - Resolving: a design job with a route uses the route's provider (the replay one) and records
   `route_key` and `eval_result_id`; without a route it uses the bootstrap choice; a stale route
   (each of the three reasons) is used and flagged; an unusable route (catalog entry gone, key removed,
