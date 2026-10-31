@@ -305,6 +305,7 @@ Admin Codes (`classbeat.admin.codes`, AD2): `/api/admin/invites` and `/api/admin
 and `.../{id}/disable`; a new invite or code is in its create response only (never a list, audit row or log),
 disabling an invite expires it, and the invite statements live in `classbeat.auth` (guard 8).
 Admin Settings (`classbeat.admin.settings`, AD4): `GET /api/admin/settings` (every flag with its effective value and source, the plans, the environment's bounds, the read-only settings), `PUT /api/admin/settings/{key}` (a flag through `classbeat.flags.core.validate_for_write`: `open` sign-up, an invalid value, a trial over `CLASSBEAT_TRIAL_DAYS_MAX` or above `instructor`, and any other key are 422 and a `refused` audit row), `DELETE /api/admin/settings/{key}` (clears the value to the JSON `null`, because maint has no `DELETE` on `app_settings`) and `PATCH /api/admin/plans/{id}` (the four limits, under the table's range and the environment's bounds; held credits are untouched). Audit params hold the key and what the value means, never banner text.
+Admin Model routes (`classbeat.admin.models`, AD5): `GET /api/admin/models` (plans with their `route_key`, routes with the result they stand on and why they are stale, results, the catalog), `PUT`/`DELETE /api/admin/models/routes/{route_key}/{stage_group}` (ADR 0012's `set_route`/`clear_route` inside the audited maint transaction; a `RouteRefused` is 409 with its reason, `no_route` 404). A model job's `route_key` is the effective plan's `plans.route_key`, set by `classbeat.quota.route.with_route_key` in each of the four kinds' `admit` and never taken from the browser. maint holds `SELECT` on `model_eval_results` and `SELECT, INSERT, UPDATE, DELETE` on `model_routes` (guard 11).
 The model (ADR 0006 section 9): `CLASSBEAT_MODEL_PROVIDER` is `anthropic` (the default) or `fake`
 (compose takes `MODEL_PROVIDER` from `.env`, `fake` in `.env.example`, so the dev stack and CI never
 call a model). `anthropic` needs the `anthropic_api_key` secret file, mounted on the **worker only**
@@ -391,7 +392,7 @@ send across its stages and attempts, token refreshes included, counted per reque
 `egress.RequestBudget` and stored in `jobs.spotify_calls` with each stage and each attempt's ending; the request over it is never
 sent and the job ends `limit_exceeded`). Three attempts in a row ending with a Spotify 429 end the job
 `quota_exhausted` (a MOWL 429 does not count; `jobs.spotify_rate_limits`), and the job keeps the last Spotify
-`Retry-After` (`jobs.spotify_retry_after`, cleared by any other ending) so the page's sentence names the minutes or hours (ADR 0009 section 8;
+`Retry-After` (`jobs.spotify_retry_after`, cleared when an attempt finishes or fails without a Spotify 429; a cancel, an `operation_busy` requeue, a hand-back or a failure before the kind runs leaves it as it is) so the page's sentence names the minutes or hours (ADR 0009 section 8;
 migration 0013). There is no Client ID setting and no Client Secret: each user enters their own
 Spotify app's Client ID on the account page, and the callback is the fixed
 `<CLASSBEAT_PUBLIC_BASE_URL>/oauth/spotify/callback`.

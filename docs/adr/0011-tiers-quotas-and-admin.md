@@ -369,6 +369,8 @@ it:
 
 **Amendment 2026-10-31 (AD4, proposed in the PR, confirmed by the Architect on 2026-10-31):** `classbeat_maint` has no `DELETE` on `app_settings` (§5), so the admin clears a flag by storing the JSON `null`; every reader takes a `null` value as no row, so the environment's value applies. Reads of a stored value that does not validate fall back to the key's stricter default; writes of one are refused with 422 and an audit row. A plan limit is refused above the environment's bound for each of the four limits, `CLASSBEAT_JOBS_PER_USER` and `CLASSBEAT_REVISIONS_PER_CLASS` included.
 
+**Amendment 2026-10-31 (#319, #227):** the banner's text is plain text: every character of Unicode categories `Cc`, `Cf`, `Zl` and `Zp` is refused when it is written (422 `invalid_value`) and makes a stored banner read as none, so an emoji sequence joined by U+200D (ZWJ, a `Cf` character, for example a family or a flag-and-symbol emoji) is refused by design, while single emoji, accented letters and combining marks are kept.
+
 Feature codes in M5: `song_picking`. `swedebeat` and `billing` are shown, read-only and off; the
 admin can't turn them on (§8). Plan limits are edited on `plans`, not in `app_settings`.
 

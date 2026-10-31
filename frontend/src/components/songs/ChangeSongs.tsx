@@ -110,7 +110,7 @@ export function ChangeSongs({ summary }: { summary: ClassSummary }) {
     <Card
       id={CHANGE_SONGS_ID}
       tabIndex={-1}
-      className="flex flex-col gap-3"
+      className="flex scroll-mt-4 flex-col gap-3"
       aria-labelledby="change-songs-title"
       role="region"
     >

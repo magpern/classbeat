@@ -10,7 +10,10 @@ The database can tighten what the environment allows, never loosen it:
   only from ``CLASSBEAT_SIGNUP_MODE``; a stored ``open`` is invalid.
 - ``song_picking``: stored ``off``, ``granted`` or ``on``; absent means ``granted``.
 - ``trial``: ``{plan, days}``; absent or invalid is off.
-- ``banner``: ``{text, level}``; absent or invalid is none.
+- ``banner``: ``{text, level}``; absent or invalid is none. Its text is plain text: no control
+  character (``Cc``), no format character (``Cf``: the bidi embeddings, overrides and isolates,
+  zero-width characters, the soft hyphen, the BOM) and no line or paragraph separator (``Zl``,
+  ``Zp``), on the write side and again when it is read for ``/api/settings/public`` (#227).
 
 A stored value that does not validate falls back to the key's default, which is its stricter
 choice (``invite``, ``granted``, trial off, no banner), and is logged by key only: the value is
@@ -34,6 +37,15 @@ _STRICTNESS: Final[dict[str, int]] = {"open": 0, "invite": 1, "closed": 2}
 _SIGNUP_STORED: Final = ("invite", "closed")
 _SONG_STORED: Final = ("off", "granted", "on")
 _LEVELS: Final = ("info", "warning")
+# What banner text may not hold (#227, the #303 review's note 5 for the admin's free text): the
+# control characters, the format characters (bidi controls such as U+202E, which reorder what
+# the page shows; zero-width characters, which hide what it holds) and the line and paragraph
+# separators. Ordinary letters, marks, symbols and emoji are kept.
+_NOT_PLAIN_TEXT: Final = frozenset({"Cc", "Cf", "Zl", "Zp"})
+
+
+def _plain_text(text: str) -> bool:
+    return not any(unicodedata.category(c) in _NOT_PLAIN_TEXT for c in text)
 
 
 @dataclass(frozen=True, slots=True)
@@ -89,12 +101,18 @@ def trial_setting(stored: Any) -> TrialSetting | None:
 
 
 def banner_setting(stored: Any) -> Banner | None:
-    """The stored ``{text, level}``; ``None`` when absent, empty, too long or malformed."""
+    """The stored ``{text, level}``; ``None`` when absent, empty, too long, not plain text
+    (a value stored before the write side refused it, or written past it) or malformed."""
     if stored is None:
         return None
     if isinstance(stored, dict):
         text, level = stored.get("text"), stored.get("level")  # pyright: ignore[reportUnknownMemberType]
-        if isinstance(text, str) and level in _LEVELS and len(text) <= BANNER_MAX_CHARS:
+        if (
+            isinstance(text, str)
+            and level in _LEVELS
+            and len(text) <= BANNER_MAX_CHARS
+            and _plain_text(text)
+        ):
             return Banner(text, level) if text.strip() else None  # pyright: ignore[reportArgumentType]
     _invalid("banner")
     return None
@@ -115,10 +133,6 @@ KEYS: Final = ("signup_mode", "song_picking", "trial", "banner")
 _PLAN_ID: Final = re.compile(r"^[a-z_]{1,30}$")
 
 
-def _no_controls(text: str) -> bool:
-    return not any(unicodedata.category(c) == "Cc" for c in text)
-
-
 def validate_for_write(key: str, value: Any, *, trial_days_max: int) -> Any:
     """The canonical value to store for ``key``, or ``FlagRefused``. Stricter than the read side:
     the read side falls back, the write side refuses.
@@ -129,8 +143,8 @@ def validate_for_write(key: str, value: Any, *, trial_days_max: int) -> Any:
     - ``trial``: exactly ``{plan, days}``, a plan code and ``days`` from 0 to ``trial_days_max``
       (``above_environment_bound`` over it). Whether the plan exists and ranks at most
       ``instructor`` is checked against ``plans`` by the caller.
-    - ``banner``: exactly ``{text, level}``; text of 1 to 280 characters with no control
-      character, level ``info`` or ``warning``."""
+    - ``banner``: exactly ``{text, level}``; plain text of 1 to 280 characters (no control,
+      format or separator character), level ``info`` or ``warning``."""
     if key == "signup_mode":
         if value == "open":
             raise FlagRefused("environment_only")
@@ -158,7 +172,7 @@ def validate_for_write(key: str, value: Any, *, trial_days_max: int) -> Any:
         text, level = value["text"], value["level"]
         if not isinstance(text, str) or level not in _LEVELS or not text.strip():
             raise FlagRefused("invalid_value")
-        if len(text) > BANNER_MAX_CHARS or not _no_controls(text):
+        if len(text) > BANNER_MAX_CHARS or not _plain_text(text):
             raise FlagRefused("invalid_value")
         return {"text": text, "level": level}
     raise FlagRefused("unknown_key")
