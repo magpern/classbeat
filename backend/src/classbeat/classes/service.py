@@ -37,7 +37,11 @@ SELECT c.id, c.title, c.created_at, c.updated_at, c.current_revision_id,
     (SELECT count(*) FROM saved_workouts d
         WHERE d.owner_id = c.owner_id AND d.class_id = c.id AND d.detached_at IS NOT NULL
     ) AS detached_count,
-    coalesce(pf.profile, '[]'::jsonb) AS profile
+    coalesce(pf.profile, '[]'::jsonb) AS profile,
+    CASE WHEN jsonb_typeof(cur.provenance -> 'tss_approximate') = 'boolean'
+        THEN (cur.provenance ->> 'tss_approximate')::boolean
+        ELSE EXISTS (SELECT 1 FROM jsonb_array_elements(coalesce(pf.profile, '[]'::jsonb)) z
+            WHERE z ->> 0 = '7') END AS tss_approximate
 FROM classes c
 LEFT JOIN class_revisions cur
     ON cur.owner_id = c.owner_id AND cur.class_id = c.id AND cur.id = c.current_revision_id

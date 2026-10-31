@@ -17,6 +17,13 @@ from classbeat.plans import codes
 from jobapi import Browser
 from plantools import about, plant_code, redeemed_count
 
+
+@pytest.fixture
+def users_plan() -> None:
+    """These tests are about the plan itself: their users start on ``free`` (no grant)."""
+    return None
+
+
 REDEEM = "/api/account/redeem"
 
 

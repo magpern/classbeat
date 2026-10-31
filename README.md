@@ -29,10 +29,10 @@ uv run python tests/queue_digests.py --write   # CLASSBEAT_TEST_DATABASE_URL = t
 
 Commit the result. CI runs `--check` on the pinned image and fails with a diff when it is stale.
 
-The same file pins the two M5 guard trigger functions (`credit_ledger_guard`, `admin_audit_guard`;
-migrations `0007_tiers` and `0008_ledger_guard_owner`, ADR 0011 section 1), the only user code the
-queue check admits besides the queue functions; the startup check and guard 9 also require both to
-exist. After changing one (in a new migration), migrate to head, run `--write`, and put the new md5
+The same file pins the three M5 guard trigger functions (`credit_ledger_guard`, `admin_audit_guard`,
+`redeem_codes_guard`; migrations `0007_tiers` to `0010_m5_hardening`, ADR 0011 section 1), the only
+user code the queue check admits besides the queue functions; the startup check and guard 9 also
+require all three to exist. After changing one (in a new migration), migrate to head, run `--write`, and put the new md5
 into the allowlist of `20-queue.sql`'s user-code check too (`tests/test_queue_guard_triggers.py`
 fails while the two differ).
 

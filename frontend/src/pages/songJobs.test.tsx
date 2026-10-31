@@ -40,16 +40,16 @@ describe('the Designing page of a song pick', () => {
       })(),
     })
     renderAt(`/jobs/${JOB_ID}`)
-    expect(await screen.findByRole('heading', { name: 'Picking your songs…' })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: 'Finding songs for your class…' })).toBeInTheDocument()
     await waitFor(() => {
-      expect(screen.getByTestId('progress')).toHaveTextContent('Writing your working playlist in Spotify')
+      expect(screen.getByTestId('progress')).toHaveTextContent('Saving your working playlist')
     })
     const steps = screen.getAllByRole('listitem')
     expect(steps.map((s) => s.textContent)).toEqual([
-      'Finding songs that could fit (done)',
-      'Writing your working playlist in Spotify',
-      'Waiting for MOWL to analyse the songs',
-      'Choosing the songs for your class',
+      'Finding songs that fit (done)',
+      'Saving your working playlist',
+      'MOWL is listening to the music',
+      'Choosing the best songs for each part',
     ])
     expect(steps[1]).toHaveAttribute('aria-current', 'step')
   })

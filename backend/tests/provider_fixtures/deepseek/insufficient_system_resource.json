@@ -1,0 +1,37 @@
+{
+ "headers": {
+  "x-request-id": "req_fixture-insufficient"
+ },
+ "body": {
+  "id": "fixture-insufficient",
+  "object": "chat.completion",
+  "created": 1793404800,
+  "model": "deepseek-flash",
+  "system_fingerprint": "fp_fixture",
+  "choices": [
+   {
+    "index": 0,
+    "message": {
+     "role": "assistant",
+     "content": null,
+     "reasoning_content": "fixture-reasoning-marker: the user wants a hilly ride, so I read the music first."
+    },
+    "finish_reason": "insufficient_system_resource",
+    "logprobs": null
+   }
+  ],
+  "usage": {
+   "prompt_tokens": 800,
+   "completion_tokens": 0,
+   "total_tokens": 800,
+   "prompt_cache_hit_tokens": 0,
+   "prompt_cache_miss_tokens": 800,
+   "prompt_tokens_details": {
+    "cached_tokens": 0
+   },
+   "completion_tokens_details": {
+    "reasoning_tokens": 0
+   }
+  }
+ }
+}

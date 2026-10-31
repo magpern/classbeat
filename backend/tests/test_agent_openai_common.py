@@ -164,6 +164,7 @@ async def test_a_server_error_is_retried_twice_then_unavailable() -> None:
     [
         (400, openai.BadRequestError, "internal"),
         (401, openai.AuthenticationError, "model_config"),
+        (402, openai.APIStatusError, "model_config"),  # DeepSeek's insufficient balance
         (403, openai.PermissionDeniedError, "model_config"),
         (404, openai.NotFoundError, "model_config"),
         (409, openai.ConflictError, "internal"),
@@ -375,8 +376,16 @@ def test_openai_effort_maps_to_reasoning_effort() -> None:
     ]
 
 
-def test_deepseek_has_no_effort_parameter() -> None:
-    assert provider_effort(_entry("deepseek", ("medium",)), "medium") is None
+def test_deepseek_effort_maps_to_reasoning_effort_one_to_one() -> None:
+    entry = _entry("deepseek", ("low", "high", "max"))
+    assert [provider_effort(entry, e) for e in entry.efforts] == ["low", "high", "max"]
+
+
+@pytest.mark.parametrize("effort", ["medium", "xhigh"])
+def test_deepseek_refuses_the_efforts_it_would_quietly_change(effort: str) -> None:
+    """DeepSeek turns ``medium`` and ``xhigh`` into ``high``: refused even when listed."""
+    with pytest.raises(EffortRefused):
+        provider_effort(_entry("deepseek", (effort,)), effort)
 
 
 @pytest.mark.parametrize(

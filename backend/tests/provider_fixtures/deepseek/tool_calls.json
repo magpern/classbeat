@@ -1,0 +1,55 @@
+{
+ "headers": {
+  "x-request-id": "req_fixture-tool-calls"
+ },
+ "body": {
+  "id": "fixture-tool-calls",
+  "object": "chat.completion",
+  "created": 1793404800,
+  "model": "deepseek-flash",
+  "system_fingerprint": "fp_fixture",
+  "choices": [
+   {
+    "index": 0,
+    "message": {
+     "role": "assistant",
+     "content": null,
+     "reasoning_content": "fixture-reasoning-marker: the user wants a hilly ride, so I read the music first.",
+     "tool_calls": [
+      {
+       "id": "call_fixture_a",
+       "type": "function",
+       "function": {
+        "name": "get_music",
+        "arguments": "{}"
+       }
+      },
+      {
+       "id": "call_fixture_b",
+       "type": "function",
+       "function": {
+        "name": "get_music",
+        "arguments": "{\"track\": 2}"
+       }
+      }
+     ]
+    },
+    "finish_reason": "tool_calls",
+    "logprobs": null
+   }
+  ],
+  "usage": {
+   "prompt_tokens": 9000,
+   "completion_tokens": 700,
+   "total_tokens": 9700,
+   "prompt_cache_hit_tokens": 8000,
+   "prompt_cache_miss_tokens": 1000,
+   "prompt_tokens_details": {
+    "cached_tokens": 8000
+   },
+   "completion_tokens_details": {
+    "reasoning_tokens": 600
+   }
+  }
+ }
+}

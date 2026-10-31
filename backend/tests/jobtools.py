@@ -88,6 +88,15 @@ def engine_for(url: str, **kwargs: Any) -> Iterator[Engine]:
         engine.dispose()
 
 
+def grant_plan(conn: Connection, owner: uuid.UUID, plan: str) -> None:
+    """An open-ended admin grant of ``plan`` (as ``classbeat_maint`` writes it), as the
+    superuser; ``plantools.users_plan`` says which plan the jobs-API test users get."""
+    conn.execute(
+        text("INSERT INTO entitlements (owner_id, plan_id, source) VALUES (:o, :p, 'grant')"),
+        {"o": owner, "p": plan},
+    )
+
+
 def as_user(conn: Connection, user: uuid.UUID) -> None:
     """The transaction-local ``app.user_id`` that ``user_session`` sets (ADR 0002 section 5)."""
     conn.execute(text("SELECT set_config('app.user_id', :u, true)"), {"u": str(user)})

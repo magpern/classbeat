@@ -92,21 +92,23 @@ SQL_TEXT_BUILTINS = (
 )
 
 # The M5 guard triggers (ADR 0011 section 1), the one amendment to the invariant above: "the five
-# queue functions plus the two M5 guard triggers, pinned by digest". Migration 0007 makes them as
-# classbeat_owner; SECURITY INVOKER plpgsql that calls only built-ins and runs no SQL text, on
-# tables no queue function touches. Each is admitted only exactly: the function by name, the md5 of
-# its definition (``GUARD_TRIGGER_DIGESTS``), its owner and its ACL (the owner's EXECUTE only), the
-# trigger by name, table, function, ``tgtype`` (row-level BEFORE UPDATE = 19, BEFORE UPDATE OR
-# DELETE = 27), enabled, no arguments, no columns, no WHEN and no constraint. Anything else is
-# reported as user code. ``20-queue.sql`` and guard 9 admit exactly the same strings.
+# queue functions plus the M5 guard triggers, pinned by digest". Migrations 0007 and 0010 make
+# them as classbeat_owner; SECURITY INVOKER plpgsql that calls only built-ins and runs no SQL
+# text, on tables no queue function touches. Each is admitted only exactly: the function by name,
+# the md5 of its definition (``GUARD_TRIGGER_DIGESTS``), its owner and its ACL (the owner's
+# EXECUTE only), the trigger by name, table, function, ``tgtype`` (row-level BEFORE UPDATE = 19,
+# BEFORE UPDATE OR DELETE = 27), enabled, no arguments, no columns, no WHEN and no constraint.
+# Anything else is reported as user code. ``20-queue.sql`` and guard 9 admit exactly the same
+# strings.
 GUARD_OWNER = "classbeat_owner"
 GUARD_TRIGGERS: dict[str, tuple[str, int]] = {
     "credit_ledger_guard": ("credit_ledger", 19),
     "admin_audit_guard": ("admin_audit", 27),
+    "redeem_codes_guard": ("redeem_codes", 19),
 }
 GUARD_FUNCTION_SIGNATURE = (
     "CASE WHEN p.prokind = 'f' AND n.nspname = 'public' AND p.proname IN "
-    "('credit_ledger_guard', 'admin_audit_guard') THEN p.proname || '|' "
+    "('credit_ledger_guard', 'admin_audit_guard', 'redeem_codes_guard') THEN p.proname || '|' "
     "|| pg_catalog.md5(pg_catalog.pg_get_functiondef(p.oid)) || '|' "
     "|| pg_catalog.pg_get_userbyid(p.proowner) || '|' "
     "|| coalesce(pg_catalog.array_to_string(p.proacl, ','), '') END"
@@ -318,8 +320,9 @@ def queue_problems(row: Sequence[Any] | None) -> list[str]:
     expected_guards = sorted([*guard_function_signatures(), *guard_trigger_signatures()])
     if sorted(guards) != expected_guards:
         found.append(
-            "the M5 guard triggers (credit_ledger_guard, admin_audit_guard) are missing or differ "
-            "from their pinned definition (ADR 0005 section 3, amendment of 2026-10-30)"
+            "the M5 guard triggers (credit_ledger_guard, admin_audit_guard, redeem_codes_guard) "
+            "are missing or differ from their pinned definition (ADR 0005 section 3, amendments of "
+            "2026-10-30 and 2026-10-31)"
         )
     by_name: dict[str, list[list[str]]] = {}
     for item in functions:

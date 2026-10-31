@@ -24,6 +24,12 @@ from GPT-5.6 on, bills a write at 1.25 times input for the default 30-minute lif
 prompt-caching guide; ADR 0012 §3, amended 2026-10-31); the provider never asks for the 12-hour
 one (2.5 times). ``classbeat.agent.providers.openai_common.normalise_usage`` splits them apart,
 so each part is priced once. The OpenAI entries are ``owner_pending`` (ADR 0012 §6).
+
+**DeepSeek (P3): verify before live use.** List prices from DeepSeek's models and pricing page,
+read 2026-10-31 (docs only): cache miss as ``input``, cache hit as ``cache_read``. DeepSeek bills
+off-peak hours at half these rates; the table has one rate, so it keeps the **peak** (dearer)
+ones and a cost never undershoots. It has no cache-write charge: ``cache_write`` is the input
+rate and the adapter reports ``cache_write = 0``. The entries are ``owner_pending``.
 """
 
 import math
@@ -36,7 +42,7 @@ from classbeat.agent.provider import Usage
 
 # Bump when any price below changes: each agent_runs row keeps the version it was priced with
 # (ADR 0007 section 10), and no stored row is re-priced.
-PRICES_VERSION: Final = "2026-10-31"
+PRICES_VERSION: Final = "2026-10-31.2"
 
 ANY_MODEL: Final = "*"
 
@@ -163,6 +169,22 @@ OPENAI_PRICES: Final = {
     ),
 }
 
+# Verify before live use (see above). Peak rates; no cache-write charge (write = input).
+DEEPSEEK_PRICES: Final = {
+    ("deepseek", "deepseek-flash"): Price(
+        input=Decimal("0.3"),
+        output=Decimal("1.2"),
+        cache_write=Decimal("0.3"),
+        cache_read=Decimal("0.006"),
+    ),
+    ("deepseek", "deepseek-v4-pro"): Price(
+        input=Decimal("1.32"),
+        output=Decimal("3.96"),
+        cache_write=Decimal("1.32"),
+        cache_read=Decimal("0.044"),
+    ),
+}
+
 DEFAULT_PRICES: Final = PriceTable(
-    {("fake", ANY_MODEL): FAKE_PRICE, **ANTHROPIC_PRICES, **OPENAI_PRICES}
+    {("fake", ANY_MODEL): FAKE_PRICE, **ANTHROPIC_PRICES, **OPENAI_PRICES, **DEEPSEEK_PRICES}
 )
