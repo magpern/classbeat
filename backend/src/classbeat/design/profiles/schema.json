@@ -1,0 +1,228 @@
+{
+  "$defs": {
+    "ProfileRule": {
+      "additionalProperties": false,
+      "properties": {
+        "basis": {
+          "enum": [
+            "p5",
+            "p95",
+            "range_10"
+          ],
+          "title": "Basis",
+          "type": "string"
+        },
+        "brief_overrides": {
+          "items": {
+            "enum": [
+              "intensity:easy",
+              "intensity:hard",
+              "sprints",
+              "races",
+              "ftp_test",
+              "style",
+              "text"
+            ],
+            "type": "string"
+          },
+          "maxItems": 7,
+          "title": "Brief Overrides",
+          "type": "array"
+        },
+        "high": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "High"
+        },
+        "low": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Low"
+        },
+        "metric": {
+          "enum": [
+            "warmup_s_before_first_zone3",
+            "first_zone4plus_s",
+            "cooldown_s",
+            "max_zone",
+            "zone5plus_time_share",
+            "zone4plus_time_share",
+            "zone4plus_share_in_first_25pct",
+            "mean_zone",
+            "tss_per_minute",
+            "segments",
+            "intervals",
+            "standing_time_share",
+            "zone_step_over_one_share",
+            "no_games_or_cue_cards"
+          ],
+          "title": "Metric",
+          "type": "string"
+        },
+        "rationale_id": {
+          "enum": [
+            "warmup_ramp",
+            "hard_start_late",
+            "cooldown_easy",
+            "cooldown_not_long",
+            "hard_share_enough",
+            "hard_share_not_all",
+            "zone_ceiling",
+            "top_zone_present",
+            "top_zone_bounded",
+            "mean_zone_enough",
+            "mean_zone_bounded",
+            "load_enough",
+            "load_bounded",
+            "hard_not_early",
+            "standing_bounded"
+          ],
+          "title": "Rationale Id",
+          "type": "string"
+        },
+        "rule": {
+          "enum": [
+            "warmup_short",
+            "hard_start_late",
+            "cooldown_short",
+            "cooldown_long",
+            "hard_share_low",
+            "hard_share_high",
+            "zone_ceiling_exceeded",
+            "top_zone_share_low",
+            "top_zone_share_high",
+            "mean_zone_low",
+            "mean_zone_high",
+            "tss_rate_low",
+            "tss_rate_high",
+            "hard_too_early",
+            "standing_long"
+          ],
+          "title": "Rule",
+          "type": "string"
+        },
+        "severity": {
+          "enum": [
+            "info",
+            "warn"
+          ],
+          "title": "Severity",
+          "type": "string"
+        }
+      },
+      "required": [
+        "rule",
+        "metric",
+        "low",
+        "high",
+        "basis",
+        "severity",
+        "rationale_id",
+        "brief_overrides"
+      ],
+      "title": "ProfileRule",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "class_type": {
+      "enum": [
+        "plain",
+        "interval",
+        "hiit",
+        "journey",
+        "ftp_test"
+      ],
+      "title": "Class Type",
+      "type": "string"
+    },
+    "evidence": {
+      "enum": [
+        "strong",
+        "moderate",
+        "weak"
+      ],
+      "title": "Evidence",
+      "type": "string"
+    },
+    "id": {
+      "pattern": "^[a-z]+\\.[a-z_]+\\.[0-9]{1,3}$",
+      "title": "Id",
+      "type": "string"
+    },
+    "label_minutes": {
+      "maximum": 180,
+      "minimum": 5,
+      "title": "Label Minutes",
+      "type": "integer"
+    },
+    "n": {
+      "maximum": 100000,
+      "minimum": 1,
+      "title": "N",
+      "type": "integer"
+    },
+    "rules": {
+      "items": {
+        "$ref": "#/$defs/ProfileRule"
+      },
+      "maxItems": 16,
+      "title": "Rules",
+      "type": "array"
+    },
+    "schema": {
+      "const": 1,
+      "title": "Schema",
+      "type": "integer"
+    },
+    "snapshot": {
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+      "title": "Snapshot",
+      "type": "string"
+    },
+    "source": {
+      "const": "professional studio library",
+      "title": "Source",
+      "type": "string"
+    },
+    "sport": {
+      "const": "cycling",
+      "title": "Sport",
+      "type": "string"
+    },
+    "version": {
+      "maximum": 10000,
+      "minimum": 1,
+      "title": "Version",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "schema",
+    "id",
+    "version",
+    "sport",
+    "class_type",
+    "label_minutes",
+    "evidence",
+    "n",
+    "source",
+    "snapshot",
+    "rules"
+  ],
+  "title": "Profile",
+  "type": "object"
+}
