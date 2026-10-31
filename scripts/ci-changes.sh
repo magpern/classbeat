@@ -19,7 +19,7 @@ out="${GITHUB_OUTPUT:-/dev/stdout}"
 re_all='^(\.github/|\.gitattributes$|scripts/(ci-changes|ci-gate|ci-shards|test-ci-gate)\.sh$)'
 re_backend='^(backend/|docker/postgres/)'
 re_frontend='^frontend/'
-re_stack='^((backend|frontend|e2e|docker)/|scripts/(worktree|backup|restore|backup-restore-drill)\.sh$|scripts/drill/|Dockerfile$|compose[^/]*\.ya?ml$|\.dockerignore$|\.env\.example$|\.trivyignore$)'
+re_stack='^((backend|frontend|e2e|docker)/|scripts/(worktree|backup|restore|validate-backup|backup-restore-drill)\.sh$|scripts/drill/|Dockerfile$|compose[^/]*\.ya?ml$|\.dockerignore$|\.env\.example$|\.trivyignore$)'
 
 backend=false
 frontend=false
