@@ -164,11 +164,11 @@ def install(app: Any) -> None:
     ``AdminRefused`` into its response, and the audit row of an admin request's 422. Call it
     after ``auth.install``: it wraps the validation handler installed there."""
     # The feature modules import this one.
-    from classbeat.admin import audit_routes, jobs, usage, users
+    from classbeat.admin import audit_routes, codes, jobs, usage, users
 
     app.include_router(router)
     # Each feature module's own ``admin_router()``.
-    for feature in (users.router, audit_routes.router, usage.router, jobs.router):
+    for feature in (users.router, audit_routes.router, usage.router, jobs.router, codes.router):
         app.include_router(feature)
 
     previous = app.exception_handlers.get(

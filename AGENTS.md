@@ -243,8 +243,10 @@ always sets `False`: the library never reaches the token endpoint) and `spotify_
 `find_playlist_tracks` (CLI only).
 0.7.0 adds `image` to the `playlist_items` and `search_tracks` track entries (ADR 0013 §9): the
 URL of the album's smallest image at least 64 px wide, or `None`, never requested by the library
-and not host-checked there. classbeat ignores it until UI7: nothing stores, returns or shows it,
-and it never goes into model input.
+and not host-checked there. classbeat keeps it only as a song's `cover` in `song_list` content
+`v: 2` (UI7, #251), and only when `classbeat.covers.cover_url` accepts it (a whole-string match of
+`https://i\.scdn\.co/image/[0-9a-f]{40}`, checked before storing and again before returning;
+anything else is `null`); it never goes into model input or comes from model output.
 
 Database tests need a throwaway Postgres whose application database has the roles of
 `docker/postgres/init/10-roles.sql` (ADR 0002 section 4). Give it a name and port of its own
@@ -289,6 +291,9 @@ The admin area (ADR 0011 section 5): `CLASSBEAT_MAINT_DATABASE_URL` (compose set
 `classbeat_maint` from `docker/postgres/maint/`) connect the admin routes as that role; without either
 they answer 503 `admin_unavailable` and the rest of the app works, and web refuses to start when the
 role is not exactly `classbeat_maint` (guard 11, `tests/test_maint_privileges.py`, checks its grants).
+Admin Codes (`classbeat.admin.codes`, AD2): `/api/admin/invites` and `/api/admin/redeem-codes` list, create
+and `.../{id}/disable`; a new invite or code is in its create response only (never a list, audit row or log),
+disabling an invite expires it, and the invite statements live in `classbeat.auth` (guard 8).
 The model (ADR 0006 section 9): `CLASSBEAT_MODEL_PROVIDER` is `anthropic` (the default) or `fake`
 (compose takes `MODEL_PROVIDER` from `.env`, `fake` in `.env.example`, so the dev stack and CI never
 call a model). `anthropic` needs the `anthropic_api_key` secret file, mounted on the **worker only**
@@ -391,8 +396,8 @@ save and update reconcilers' read-only read of the saved revision, SV1), `classb
 (`tests/test_session_guard.py`); job kinds live outside `classbeat.jobs`.
 Revising by chat (ADR 0007 section 4): `CLASSBEAT_REVISIONS_PER_CLASS` (25 chat revisions per class, the first
 design not counted), `CLASSBEAT_CHAT_MAX_REQUESTS` (50 user requests per class) and
-`CLASSBEAT_CHAT_CONTEXT_REQUESTS` (10 earlier requests sent to the model); the smoke set has 18 cases
-(15 designs, 3 revisions). Beside them are three song-picking smoke cases (ADR 0008 section 3,
+`CLASSBEAT_CHAT_CONTEXT_REQUESTS` (10 earlier requests sent to the model); the smoke set has 19 cases
+(15 designs, 4 revisions). Beside them are three song-picking smoke cases (ADR 0008 section 3,
 `classbeat.evals.pick`; files in `classbeat/evals/smoke_pick/`): `pick_30`, `replace_two` and
 `injected_title`, each run through the real `pick_pool` and `choose_songs` stages against a recorded
 `FakeProvider` script, a synthetic Spotify catalogue and a synthetic MOWL analysis (no Spotify, MOWL or
@@ -407,6 +412,7 @@ is the plan's under an environment bound: `CLASSBEAT_CLASSES_PER_MONTH_MAX` (200
 `CLASSBEAT_MONTHLY_COST_MICROS_MAX` (300000000, $300), `CLASSBEAT_JOBS_PER_USER` and `CLASSBEAT_REVISIONS_PER_CLASS`.
 Refusals: 409 `quota` (`quota` `classes` or `cost`, `limit`, `used`, `period_end`, `plan`; no money for `cost`) and 429
 `busy` with the plan's `limit`.
+Flags (ADR 0011 section 7, FL1): `classbeat.flags` reads the `app_settings` rows per request and joins them with the environment, stricter wins: the stored `signup_mode` (`invite` or `closed`) can tighten `CLASSBEAT_SIGNUP_MODE` and never open it; `song_picking` (`off`, `granted` (default), `on`) is `off` while `CLASSBEAT_SONG_PICKING` is off, and `granted` admits only users whose effective features include `song_picking`; `trial` and `banner` (text of at most 280 characters, level `info` or `warning`) are validated. An invalid stored value falls back to the key's stricter default and is logged by key only. `GET /api/settings/public` (no sign-in) returns `{banner, signup_mode}` and nothing else.
 Progress (ADR 0005 section 6): `GET /api/jobs/{id}/events` streams a job's events as SSE (`Last-Event-ID`,
 5 open streams per user and web process); each web process keeps one `LISTEN job_events` connection.
 OAuth sign-in (ADR 0003 section 5): `CLASSBEAT_OAUTH_<PROVIDER>_CLIENT_ID` and the
@@ -453,7 +459,15 @@ npm run build        # typecheck, then Vite writes frontend/dist
   `localStorage` (try/catch, the page works without it); `public/theme-init.js` applies it before first paint.
 - Fonts are bundled (`@fontsource-variable/inter`, `@fontsource/archivo` 700 and 800, SIL OFL) and served from
   our origin; nothing is requested from a third-party host at runtime (`src/no-third-party-hosts.test.ts`
-  guards the sources). Pin exact versions of every package added; licences must be MIT, ISC, Apache-2.0 or OFL.
+  guards the sources), with **one allowed host**: album covers from `https://i.scdn.co`, named and shown only
+  in `components/songs/CoverArt.tsx` (`<img referrerpolicy="no-referrer" loading="lazy">`, initials tile
+  otherwise; the guard exempts that host in that file only, and only `CoverArt` renders an `<img>`).
+- The web process sends the app's Content-Security-Policy as a response header on every response
+  (`classbeat.headers`, never a `<meta>`): `'self'` for everything, `img-src 'self' https://i.scdn.co`, no
+  inline script or style, no `data:`, `object-src`/`base-uri`/`frame-ancestors 'none'`; plus
+  `Referrer-Policy: no-referrer`. New UI must work under it: no inline `<script>` or `<style>`, no `data:`
+  images (the TOTP QR code is drawn as inline SVG for this reason), no other host.
+- Pin exact versions of every package added; licences must be MIT, ISC, Apache-2.0 or OFL.
   Accepted exception (Architect, #258): `lightningcss` (MPL-2.0), a build-time dependency of Tailwind's Vite
   plugin; unmodified and not shipped in the bundle.
 - CI runs the same five commands in the `frontend` job.

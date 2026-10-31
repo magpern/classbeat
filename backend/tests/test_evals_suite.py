@@ -52,6 +52,7 @@ RELEASED: dict[int, str] = {
     3: "2784a043380717f56842be5fd91517d801dea05a1db44ec9f4647b061bc6a383",
     4: "ceb3883f4002f8ee0e33819ca5512008da6bbded81dd02e8787f6e0c987c1827",
     5: "adb3e8ff185a904c68acae037eb6c465f6262819ece65e1c361a6aba4e27470c",
+    6: "027a8a2f3fa5634b392e148a1faf27834c33eb4d53d2385fe334dfca2d47c51d",
 }
 
 SUITE = load_suite()
@@ -164,8 +165,8 @@ def test_the_suite_holds_every_smoke_and_song_case_once_in_its_group() -> None:
     assert set(SUITE.design_cases) == {c.name for c in load_cases()} | DESIGN_OWN
     assert set(SUITE.song_cases) == {c.name for c in load_pick_cases()} | SONG_OWN
     assert (len(DESIGN_OWN), len(SONG_OWN)) == (29 + 12, 8 + 7)  # #206, #208 and #209
-    assert (len(SUITE.design_cases), len(SUITE.song_cases)) == (18 + 41, 3 + 15)
-    assert len(index) == 18 + 41 + 3 + 15
+    assert (len(SUITE.design_cases), len(SUITE.song_cases)) == (19 + 41, 3 + 15)
+    assert len(index) == 19 + 41 + 3 + 15
     assert all(index[n][1] == "design" for n in SUITE.design_cases)
     assert all(index[n][1] == "songs" for n in SUITE.song_cases)
     assert set(MANIFEST.categories) == set(suite.CATEGORY_GROUPS)
@@ -175,7 +176,7 @@ def test_the_suite_holds_every_smoke_and_song_case_once_in_its_group() -> None:
         "adv_oversized_music", "adv_pool_requests", "adv_tool_requests", "revise_adv_requests",
     }  # fmt: skip
     assert {n for n, (cat, _) in index.items() if cat == "revisions"} >= {
-        "revise_easier", "revise_more_sprints",
+        "revise_easier", "revise_more_sprints", "revise_other_songs",
     }  # fmt: skip
 
 
@@ -355,7 +356,7 @@ async def test_the_recorded_smoke_runs_pass_the_gate_in_both_groups() -> None:
     verdict = gate.evaluate(suite_results(header(), rows), MANIFEST)
     assert set(verdict.groups) == {"design", "songs"}
     for group in verdict.groups.values():
-        assert group.status == "passed", group.as_json()
+        assert group.status == "passed", json.dumps(group.as_json())[:2500]
         assert group.runs == 3 * len(
             SUITE.design_cases if group.group == "design" else SUITE.song_cases
         )
