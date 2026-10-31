@@ -71,7 +71,7 @@ describe('the new-class form', () => {
     })
     expect(call?.headers.get('X-CSRF-Token')).toBe('csrf-session')
     expect(call?.headers.get('Idempotency-Key')).toMatch(/^[A-Za-z0-9_-]{16,64}$/)
-    expect(await screen.findByRole('heading', { name: 'Designing your class…' })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: 'Designing Tuesday climb…' })).toBeInTheDocument()
   })
 
   it('refuses a brief over 4096 bytes before sending, counting bytes and not characters', async () => {

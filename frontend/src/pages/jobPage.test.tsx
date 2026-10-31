@@ -49,6 +49,40 @@ describe('the Designing page', () => {
     expect(second?.headers.get('Last-Event-ID')).toBe('4')
   })
 
+  it.each([
+    ['pool_search', 'Finding songs that fit', 1],
+    ['pool_write', 'Saving your working playlist', 2],
+    ['pool_analyse', 'MOWL is listening to the music', 3],
+    ['choose', 'Choosing the best songs for each part', 4],
+  ])('words the phase-1 stage %s and counts the step', async (stage, label, step) => {
+    fakeApi({
+      ...SESSION_ROUTES,
+      [`GET ${JOB}`]: jobBody('running', { kind: 'design_with_songs' }),
+      [`GET ${EVENTS}`]: (() => {
+        let opened = 0
+        return () => (++opened > 1 ? openStream() : sse([1, 'queued'], [2, 'stage_started', { stage }]))
+      })(),
+    })
+    renderAt(`/jobs/${JOB_ID}`)
+    await waitFor(() => {
+      expect(screen.getByTestId('progress')).toHaveTextContent(label)
+    })
+    expect(screen.getByText(`Step ${String(step)} of 4`)).toBeInTheDocument()
+  })
+
+  it('shows no internal word and a ghost profile that pulses only without reduced motion', async () => {
+    fakeApi({
+      ...SESSION_ROUTES,
+      [`GET ${JOB}`]: jobBody('running'),
+      [`GET ${EVENTS}`]: () => openStream(),
+    })
+    renderAt(`/jobs/${JOB_ID}`)
+    await screen.findByRole('button', { name: 'Stop designing' })
+    expect(document.body.textContent).not.toMatch(/\b(jobs?|stages?|credits?|revisions?|tokens?)\b/i)
+    expect(screen.getByText(/You can close this page/)).toBeInTheDocument()
+    expect(document.querySelector('svg[class~="motion-safe:animate-pulse"]')).not.toBeNull()
+  })
+
   it('shows a scheduled retry in plain words and the designing stage', async () => {
     fakeApi({
       ...SESSION_ROUTES,
@@ -65,7 +99,7 @@ describe('the Designing page', () => {
     })
     renderAt(`/jobs/${JOB_ID}`)
     await waitFor(() => {
-      expect(screen.getByTestId('progress')).toHaveTextContent('Designing the class')
+      expect(screen.getByTestId('progress')).toHaveTextContent('Building your class')
     })
     expect(screen.getByTestId('progress')).toHaveTextContent('checked its draft 1 time')
   })
@@ -184,7 +218,7 @@ describe('a failed design', () => {
       [`GET /api/jobs/${NEXT}/revision`]: reason(409, 'no_revision'),
     })
     renderAt(`/jobs/${JOB_ID}`)
-    fireEvent.click(await screen.findByRole('button', { name: 'Design again' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Try again' }))
     await waitFor(() => {
       expect(window.location.pathname).toBe(`/jobs/${NEXT}`)
     })

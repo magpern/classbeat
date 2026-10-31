@@ -1,10 +1,9 @@
 import { useCallback, useEffect, useState } from 'react'
 import { planRefusalText } from '../api/planMessages'
 import { isSongKind } from '../api/songs'
-import { PICK_STAGES } from '../api/songMessages'
 import { SongEnded } from '../components/songs/SongEnded'
 import { SongsForApproval } from '../components/songs/SongsForApproval'
-import { failureText, retryLabel, stageLabel } from '../api/jobMessages'
+import { designSteps, failureText, retryLabel, stageLabel } from '../api/jobMessages'
 import {
   cancelJob,
   createDesignJob,
@@ -15,11 +14,15 @@ import {
 } from '../api/jobs'
 import { ApiError } from '../api/client'
 import { Card, Notice, useAction } from '../components/forms'
+import { DesigningSteps, stepNumber } from '../components/jobs/DesigningSteps'
+import { GhostProfile } from '../components/jobs/GhostProfile'
+import { Button } from '../components/ui/button'
+import { Card as Panel } from '../components/ui/card'
 import { DraftSummaryView } from '../components/classes/DraftSummaryView'
 import { UncertainAttach } from '../components/classes/UncertainAttach'
 import { RequireAuth } from '../components/RequireAuth'
 import { useJobProgress, type Progress } from '../hooks/useJobProgress'
-import { designAgainKey, forgetInput, recallInput, rememberInput } from '../lib/submittedInput'
+import { designAgainKey, forgetInput, recallInput, recallPick, rememberInput } from '../lib/submittedInput'
 import { Link, useRouter } from '../router/Router'
 
 export function JobPage({ jobId }: { jobId: string }) {
@@ -146,59 +149,50 @@ function Designing({
   }
   const waiting = job.state === 'queued' && progress.stage === null
   const picking = job.kind === 'design_with_songs' && job.approvedAt === null
+  // The class name comes from the form this browser remembered; without it the title says "your class".
+  const name = recallInput(job.id)?.title ?? recallPick(job.id)?.title ?? 'your class'
+  const steps = designSteps(job.kind, job.approvedAt !== null)
+  const current = progress.stage ?? job.stage
+  const step = stepNumber(steps, current)
   return (
-    <section className="panel" aria-labelledby="designing-title">
-      <h1 id="designing-title" className="panel__title">
-        {picking ? 'Picking your songs…' : 'Designing your class…'}
-      </h1>
-      {picking ? <PickStages current={progress.stage ?? job.stage} /> : null}
-      <div role="status" aria-live="polite" data-testid="progress">
-        {stopping ? (
-          <p>Stopping. This takes a moment.</p>
-        ) : progress.retry !== null ? (
-          <p>{retryLabel(progress.retry)}</p>
-        ) : waiting ? (
-          <p>Waiting for a free slot.</p>
-        ) : (
-          <p>{stageLabel(progress.stage ?? job.stage)}</p>
-        )}
-        {progress.operation === 'pending' ? <p>Adding your playlist to your MOWL music.</p> : null}
-        {progress.toolCalls > 0 ? (
-          <p className="muted">The designer has checked its draft {progress.toolCalls} time(s).</p>
+    <Panel className="mx-auto flex w-full max-w-2xl flex-col gap-5" role="region" aria-labelledby="designing-title">
+      <div className="flex flex-col gap-1">
+        <h1 id="designing-title" className="m-0 font-display text-3xl font-extrabold">
+          {picking ? `Finding songs for ${name}…` : `Designing ${name}…`}
+        </h1>
+        {step !== null ? (
+          <p className="m-0 text-muted tabular-nums">
+            Step {String(step)} of {String(steps.length)}
+          </p>
         ) : null}
       </div>
-      <p className="muted">You can leave this page. The design carries on and this address shows it.</p>
-      {action.error ? <Notice kind="error">{action.error}</Notice> : null}
-      <p>
-        <button
-          type="button"
-          className="button button--secondary"
-          disabled={action.busy || stopping}
-          onClick={stop}
-        >
-          Stop designing
-        </button>
+      <GhostProfile />
+      <DesigningSteps steps={steps} current={current} />
+      <div role="status" aria-live="polite" data-testid="progress" className="flex flex-col gap-1">
+        {stopping ? (
+          <p className="m-0">Stopping. This takes a moment.</p>
+        ) : progress.retry !== null ? (
+          <p className="m-0">{retryLabel(progress.retry)}</p>
+        ) : waiting ? (
+          <p className="m-0">Waiting for a free slot.</p>
+        ) : (
+          <p className="m-0">{stageLabel(current)}</p>
+        )}
+        {progress.operation === 'pending' ? <p className="m-0">Adding your playlist to your MOWL music.</p> : null}
+        {progress.toolCalls > 0 ? (
+          <p className="m-0 text-muted">The designer has checked its draft {progress.toolCalls} time(s).</p>
+        ) : null}
+      </div>
+      <p className="m-0 text-muted">
+        You can close this page. Your class carries on and this address shows it.
       </p>
-    </section>
-  )
-}
-
-/** The stages of picking songs in words, with the running one marked (ADR 0008 section 9). */
-function PickStages({ current }: { current: string | null }) {
-  const at = PICK_STAGES.findIndex((s) => s.stage === current)
-  return (
-    <ol className="m-0 flex list-none flex-col gap-1 p-0 text-muted" aria-label="Steps">
-      {PICK_STAGES.map((s, i) => (
-        <li
-          key={s.stage}
-          aria-current={i === at ? 'step' : undefined}
-          className={i === at ? 'font-medium text-text' : undefined}
-        >
-          {s.label}
-          {i < at ? ' (done)' : ''}
-        </li>
-      ))}
-    </ol>
+      {action.error ? <Notice kind="error">{action.error}</Notice> : null}
+      <p className="m-0">
+        <Button variant="secondary" disabled={action.busy || stopping} onClick={stop}>
+          Stop designing
+        </Button>
+      </p>
+    </Panel>
   )
 }
 
@@ -360,27 +354,22 @@ function Ended({
 }) {
   const { again, action, remembered } = useDesignAgain(job)
   return (
-    <section className="panel" aria-labelledby="ended-title">
-      <h1 id="ended-title" className="panel__title">
+    <Panel className="mx-auto flex w-full max-w-2xl flex-col gap-4" role="region" aria-labelledby="ended-title">
+      <h1 id="ended-title" className="m-0 font-display text-3xl font-extrabold">
         {title}
       </h1>
-      <p>{detail}</p>
+      <p className="m-0 text-muted">{detail}</p>
       {action.error ? <Notice kind="error">{action.error}</Notice> : null}
-      <p>
+      <p className="m-0 flex flex-wrap gap-3">
         {account ? (
-          <Link className="button" to="/account">
-            Go to your account
-          </Link>
+          <Button asChild>
+            <Link to="/account">Go to your account</Link>
+          </Button>
         ) : null}
-        <button
-          type="button"
-          className={account ? 'button button--secondary' : 'button'}
-          disabled={action.busy}
-          onClick={again}
-        >
-          {remembered ? 'Design again' : 'Start a new design'}
-        </button>
+        <Button variant={account ? 'secondary' : 'primary'} disabled={action.busy} onClick={again}>
+          {remembered ? (job.state === 'failed' ? 'Try again' : 'Design again') : 'Start a new design'}
+        </Button>
       </p>
-    </section>
+    </Panel>
   )
 }
