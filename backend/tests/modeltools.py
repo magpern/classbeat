@@ -5,6 +5,7 @@ import argparse
 import io
 import json
 import uuid
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
@@ -23,21 +24,41 @@ from classbeat.models.versions import running_prompt_versions, running_suite_ver
 
 ZEROS = "0" * 64
 OPUS = "claude-opus-5-5"
-# Test-only catalog entries: OpenAI and DeepSeek as they ship (``owner_pending``) and an OpenAI
-# entry the owner has allowed (what a "yes" to owner question 1 would make).
+# Test-only catalog entries for OpenAI and DeepSeek as they ship: ``owner_pending`` (the catalog
+# type refuses ``allowed`` for a provider outside ``USER_DATA_PROVIDERS``).
 PENDING_OPENAI = CatalogModel("openai", "gpt-test", ("low", "medium"), MODEL_HOSTS["openai"],
                               "owner_pending")  # fmt: skip
-ALLOWED_OPENAI = CatalogModel("openai", "gpt-allowed", ("medium",), MODEL_HOSTS["openai"],
-                              "allowed")  # fmt: skip
 DEEPSEEK_PENDING = CatalogModel("deepseek", "deepseek-test", ("medium",), MODEL_HOSTS["deepseek"],
                                 "owner_pending")  # fmt: skip
-DEEPSEEK_ALLOWED = CatalogModel("deepseek", "deepseek-ok", ("medium",), MODEL_HOSTS["deepseek"],
-                                "allowed")  # fmt: skip
-TEST_ENTRIES = (PENDING_OPENAI, ALLOWED_OPENAI, DEEPSEEK_PENDING, DEEPSEEK_ALLOWED)
 
 
-def extend_catalog(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(catalog, "CATALOG", (*catalog.CATALOG, *TEST_ENTRIES))
+@dataclass(frozen=True)
+class AcceptedEntries:
+    """``allowed`` OpenAI and DeepSeek entries, made only after the owner's "yes" is simulated."""
+
+    openai: CatalogModel
+    deepseek: CatalogModel
+
+
+def owner_accepts(monkeypatch: pytest.MonkeyPatch, *providers: str) -> None:
+    """Simulate, for one test, the owner's "yes" to ADR 0012 owner questions 1 and 2: the reviewed
+    change that adds a provider to ``catalog.USER_DATA_PROVIDERS``. The type's check itself is
+    unchanged (``test_the_catalog_type_refuses_allowed_for_openai_and_deepseek``)."""
+    accepted = frozenset({*catalog.USER_DATA_PROVIDERS, *providers})
+    monkeypatch.setattr(catalog, "USER_DATA_PROVIDERS", accepted)
+
+
+def extend_catalog(monkeypatch: pytest.MonkeyPatch) -> AcceptedEntries:
+    """The catalog plus the two ``owner_pending`` entries and, under a simulated owner "yes", an
+    ``allowed`` OpenAI and DeepSeek entry (for the paths only an accepted provider reaches)."""
+    owner_accepts(monkeypatch, "openai", "deepseek")
+    accepted = AcceptedEntries(
+        CatalogModel("openai", "gpt-allowed", ("medium",), MODEL_HOSTS["openai"], "allowed"),
+        CatalogModel("deepseek", "deepseek-ok", ("medium",), MODEL_HOSTS["deepseek"], "allowed"),
+    )
+    entries = (PENDING_OPENAI, accepted.openai, DEEPSEEK_PENDING, accepted.deepseek)
+    monkeypatch.setattr(catalog, "CATALOG", (*catalog.CATALOG, *entries))
+    return accepted
 
 
 def add_result(

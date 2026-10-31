@@ -44,12 +44,11 @@ from classbeat.models.versions import (
 )
 from jobtools import engine_for
 from modeltools import (
-    ALLOWED_OPENAI,
-    DEEPSEEK_ALLOWED,
     DEEPSEEK_PENDING,
     OPUS,
     PENDING_OPENAI,
     ZEROS,
+    AcceptedEntries,
     add_result,
     clear_gate,
     extend_catalog,
@@ -88,8 +87,8 @@ def web(app_database_url: str) -> Settings:
 
 
 @pytest.fixture
-def catalog_plus(monkeypatch: pytest.MonkeyPatch) -> None:
-    extend_catalog(monkeypatch)
+def catalog_plus(monkeypatch: pytest.MonkeyPatch) -> AcceptedEntries:
+    return extend_catalog(monkeypatch)
 
 
 def secret_files(directory: Path) -> list[str]:
@@ -239,7 +238,7 @@ async def _routes(factory: Factory) -> Any:
 
 
 async def test_set_route_refuses_a_model_or_effort_outside_the_catalog(
-    admin: Connection, factory: Factory, web: Settings, catalog_plus: None
+    admin: Connection, factory: Factory, web: Settings, catalog_plus: AcceptedEntries
 ) -> None:
     add_result(admin)
     assert await refused(factory, web, "anthropic", "claude-opus-9", "medium") == "not_in_catalog"
@@ -252,9 +251,13 @@ async def test_set_route_refuses_a_model_or_effort_outside_the_catalog(
 
 
 async def test_set_route_refuses_owner_pending_and_disabled_deepseek(
-    admin: Connection, factory: Factory, web: Settings, catalog_plus: None, app_database_url: str
+    admin: Connection,
+    factory: Factory,
+    web: Settings,
+    catalog_plus: AcceptedEntries,
+    app_database_url: str,
 ) -> None:
-    for entry in (PENDING_OPENAI, DEEPSEEK_PENDING, DEEPSEEK_ALLOWED):
+    for entry in (PENDING_OPENAI, DEEPSEEK_PENDING, catalog_plus.deepseek):
         add_result(admin, entry.provider, entry.model, "medium")
     assert await refused(factory, web, "openai", "gpt-test", "medium") == "data_policy"
     assert await refused(factory, web, "deepseek", "deepseek-ok", "medium") == "deepseek_disabled"
@@ -264,6 +267,16 @@ async def test_set_route_refuses_owner_pending_and_disabled_deepseek(
     on = settings(app_database_url, deepseek_enabled=True)
     assert await refused(factory, on, "deepseek", "deepseek-test", "medium") == "data_policy"
     await enable(factory, on, "deepseek", "deepseek-ok", "medium")  # allowed and on: it is set
+
+
+def test_the_catalog_type_refuses_allowed_for_openai_and_deepseek() -> None:
+    """The type's own check, unpatched: only an accepted provider's entry may be ``allowed``."""
+    assert frozenset({"anthropic"}) == catalog.USER_DATA_PROVIDERS
+    for provider in ("openai", "deepseek"):
+        host = catalog.MODEL_HOSTS[provider]
+        with pytest.raises(ValueError, match="owner accepted"):
+            CatalogModel(provider, "m-1", ("medium",), host, "allowed")  # type: ignore[arg-type]
+        CatalogModel(provider, "m-1", ("medium",), host, "owner_pending")  # type: ignore[arg-type]
 
 
 def test_openai_and_deepseek_ship_owner_pending() -> None:
@@ -388,7 +401,7 @@ async def test_a_route_to_another_provider_is_used_when_every_check_holds(
     admin: Connection,
     factory: Factory,
     web: Settings,
-    catalog_plus: None,
+    catalog_plus: AcceptedEntries,
     app_database_url: str,
     kek_dir: Path,
 ) -> None:
@@ -415,7 +428,7 @@ async def test_an_unusable_route_fails_model_config_with_no_fallback(
     admin: Connection,
     factory: Factory,
     web: Settings,
-    catalog_plus: None,
+    catalog_plus: AcceptedEntries,
     app_database_url: str,
     kek_dir: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -426,16 +439,15 @@ async def test_an_unusable_route_fails_model_config_with_no_fallback(
     await enable(factory, web, "openai", "gpt-allowed", "medium")
     s = worker(app_database_url, kek_dir, "openai", "anthropic")
     assert (await resolve(factory, s)).provider == "openai"
-    others = tuple(e for e in catalog.CATALOG if e is not ALLOWED_OPENAI)
+    allowed = catalog_plus.openai
+    others = tuple(e for e in catalog.CATALOG if e is not allowed)
     if change == "entry_gone":
         monkeypatch.setattr(catalog, "CATALOG", others)
     elif change == "effort_gone":
-        smaller = CatalogModel("openai", "gpt-allowed", ("low",), ALLOWED_OPENAI.host, "allowed")
+        smaller = CatalogModel("openai", "gpt-allowed", ("low",), allowed.host, "allowed")
         monkeypatch.setattr(catalog, "CATALOG", (*others, smaller))
     elif change == "policy_reverted":
-        pending = CatalogModel(
-            "openai", "gpt-allowed", ("medium",), ALLOWED_OPENAI.host, "owner_pending"
-        )
+        pending = CatalogModel("openai", "gpt-allowed", ("medium",), allowed.host, "owner_pending")
         monkeypatch.setattr(catalog, "CATALOG", (*others, pending))
     else:
         (kek_dir / "openai_api_key").write_text("", "utf-8")  # empty file = no key
@@ -444,7 +456,11 @@ async def test_an_unusable_route_fails_model_config_with_no_fallback(
 
 
 async def test_a_deepseek_route_is_unusable_once_the_setting_is_off(
-    admin: Connection, factory: Factory, catalog_plus: None, app_database_url: str, kek_dir: Path
+    admin: Connection,
+    factory: Factory,
+    catalog_plus: AcceptedEntries,
+    app_database_url: str,
+    kek_dir: Path,
 ) -> None:
     on = worker(app_database_url, kek_dir, "deepseek", deepseek_enabled=True)
     add_result(admin, "deepseek", "deepseek-ok", "medium")
@@ -603,7 +619,11 @@ def test_provider_for_choice_builds_a_catalog_anthropic_model_with_its_key(
     ],
 )
 def test_provider_for_choice_never_builds_fake_or_a_non_catalog_model(
-    app_database_url: str, kek_dir: Path, catalog_plus: None, choice: ModelChoice, rule: str
+    app_database_url: str,
+    kek_dir: Path,
+    catalog_plus: AcceptedEntries,
+    choice: ModelChoice,
+    rule: str,
 ) -> None:
     s = worker(app_database_url, kek_dir, "anthropic", "openai", "deepseek")
     with pytest.raises(ProviderUnavailable, match=rule):
