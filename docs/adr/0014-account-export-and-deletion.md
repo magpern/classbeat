@@ -35,7 +35,8 @@ Every row reachable from the `users` row, and every row that names the user:
 `admin_audit.target_id`. `admin_audit.actor_email`: The audit log is append-only and refuses updates
 and deletes (ADR 0011 section 5, T92); an admin's address stays beside what they did, for
 accountability (GDPR Art. 6(1)(f)). A user who never acted as an admin has no such row; the log
-records what an operator did *to* a user by the user's id only, which becomes null.
+records what an operator did *to* a user by the user's id: the foreign key `target_user_id`
+becomes null, and the id kept as text in `target_id` stays (section 5).
 
 Never shipped or stored by us and therefore not deleted by us: workouts saved to the user's MOWL
 account and playlists made in their Spotify account. They are the user's, in those services; the
@@ -159,6 +160,13 @@ scrubbed at delete; instead **nothing identifying another person is written into
   can say that an operator deleted or disabled account X) and `target_user_id` (nulled by the
   foreign key). After the account is deleted nothing in the database maps the id to a person.
 
+- **Every filter that names a person is stored as a flag.** The audit list's `actor_id`,
+  `target_user_id`, `actor_email` and the free-text `target_id` are audited as `actor_id_set`,
+  `target_user_id_set`, `actor_email_set` and `target_id_set`: any of them could be an id or an
+  address of someone who later deletes their account, and a filter's value is not a reason the
+  log needs. (`tests/test_admin_audit.py` plants all four; `checked_params` refuses the old
+  value fields.)
+
 **Retention rule.** The bare `target_id` and the `actor_email` of an admin stay for as long as the
 audit log does. The log has no purge today (a decision for the M6 security review, with the
 backup retention); when one is set it applies to these two fields. Rows written before #349 may
@@ -192,6 +200,18 @@ hold a search text; the beta has none in production (nothing is deployed).
   `classbeat.account.erase`; it is the operator's action, audited. It checks the target without a
   row lock, ends the jobs, then locks and rechecks the role: the jobs' inserts take a key-share lock
   that the `FOR UPDATE` of the audited transaction would block.
+  Consequences of that order, accepted: (a) **audit-first is not strict for the jobs**: the
+  target's jobs are cancelled and their credits released in their own transactions, which commit
+  *before* the audited transaction does. If the role recheck then refuses, the delete fails or the
+  process dies, the jobs stay cancelled and the log has a `refused` or `error` row, or, after a
+  crash, none; the account is still there and the operator repeats the delete (cancelling is
+  idempotent). A cancelled job is a user-visible effect without its audit row only in that crash
+  window; the delete itself, the thing that cannot be undone, is always audited with its row.
+  (b) The audited maint transaction (the pool is 2) stays open while running jobs are waited on,
+  up to 15 seconds, inside the 30 and 60 second timeouts. (c) The operator's path takes no owner
+  lock across the last cancel and the delete (the user's own path does); a job created in that
+  window is removed by the cascade with its ledger row, so nothing is lost or left reserved.
+  The user's own delete holds the owner lock only for the final delete, not during the wait.
   The admin package does not import the jobs code (guard 11: no advisory lock or NOTIFY on the
   admin path): `web` installs `erase.make_job_ender(...)` as `app.state.end_account_jobs` and the
   route calls that value, as the gate calls the rate limiter. The work runs in the target's own

@@ -23,6 +23,20 @@ def admin(clean_auth: None, database_url: str) -> Iterator[Connection]:
         yield connection
 
 
+# The system tables of other packages: none holds a user's data (the guard that keeps these names
+# out of ``classbeat.auth`` is the reason they are listed here and not there).
+OTHER_SYSTEM_TABLES = {
+    "alembic_version": "migration bookkeeping",
+    "connection_keks": "key-check values of the encryption keys",
+    "plans": "the same tiers for every user",
+    "redeem_codes": "multi-use plan codes (hash only); the user's redemptions are exported",
+    "app_settings": "operator settings, not per user",
+    "admin_audit": "operator-only log (ADR 0014 section 2 and 5)",
+    "model_eval_results": "recorded eval suite runs, not per user",
+    "model_routes": "which model each route uses, not per user",
+}
+
+
 def columns(conn: Connection) -> dict[str, dict[str, str]]:
     found: dict[str, dict[str, str]] = {}
     for table, column, kind in conn.execute(
@@ -44,7 +58,7 @@ def problems(
 ) -> list[str]:
     out: list[str] = []
     for table in sorted(system):
-        if table not in include and table not in not_exported:
+        if table not in include and table not in not_exported and table not in OTHER_SYSTEM_TABLES:
             out.append(f"{table}: a system table neither exported nor given a reason")
     for table in sorted(set(include) | set(exclude)):
         if table not in live:
@@ -64,6 +78,10 @@ def problems(
         for name, reason in exclude[table].items():
             if not reason.strip():
                 out.append(f"{table}.{name}: excluded without a reason")
+    for table in sorted(set(OTHER_SYSTEM_TABLES) - set(system)):
+        out.append(f"{table}: listed as a system table of another package but not one")
+    for table in sorted(set(OTHER_SYSTEM_TABLES) & (set(include) | set(not_exported))):
+        out.append(f"{table}: listed twice")
     for table in sorted(set(not_exported) & (set(include) | set(exclude))):
         out.append(f"{table}: both exported and not exported")
     for table, reason in not_exported.items():

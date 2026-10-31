@@ -296,6 +296,14 @@ write=False, target=…, params=…)`**, the only code that may build a session 
   A read-only transaction still allows `NOTIFY`/`pg_notify` and advisory locks, so admin code never
   calls them (guard 11 checks it).
 
+  One call is made through a value the guard cannot follow, on purpose (ADR 0014 section 3, #349):
+  the delete of an account ends the target's jobs through `request.app.state.end_account_jobs`,
+  installed by `web`. That code takes the owner advisory lock and notifies, in the *target's own*
+  `user_session`s on the app engine, never on the maint transaction this rule protects.
+  `tests/test_account_job_ender.py` pins what the value is, that only `web` sets it, that only
+  `classbeat.admin.users` calls it, and that nothing under `classbeat.admin` imports the jobs or
+  account code.
+
   A refused or failing action (either kind) writes an `outcome = 'refused' | 'error'` row in its
   own short transaction (the same `READ WRITE`, insert, commit). Reads are audited once per request,
   with the filter in `params`.

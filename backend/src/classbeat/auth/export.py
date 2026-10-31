@@ -15,9 +15,10 @@ Only what the user could see about themselves is returned:
 Never ``password_hash``, a token hash or any ciphertext.
 
 **Every column is decided.** ``INCLUDE`` lists the columns each statement reads (the selects are
-built from it) and ``EXCLUDE`` the others with the reason; ``NOT_EXPORTED`` gives the reason for
-every other system table. ``tests/test_account_export_schema.py`` reads the live schema and fails
-when a column or a system table is in neither, so a new column on ``users``, ``sessions`` or
+built from it) and ``EXCLUDE`` the others with the reason; ``NOT_EXPORTED`` the reason for
+the other account tables; the test lists every system table of other packages.
+``tests/test_account_export_schema.py`` reads the live schema and fails when a column or a system
+table is in none of them, so a new column on ``users``, ``sessions`` or
 ``identities`` cannot be silently left out, and a column with a secret cannot be included by
 accident (every ``EXCLUDE`` reason is read in review).
 """
@@ -83,20 +84,15 @@ EXCLUDE: dict[str, dict[str, str]] = {
     },
     "auth_events": {"id": "internal", "user_id": "the user's own id"},
 }
+# The other account tables. Every system table outside this package is decided in
+# ``tests/test_account_export_schema.py`` (``OTHER_SYSTEM_TABLES``): they hold no per-user data, and
+# naming them here would be naming tables other packages own (guards 8 and the results guard).
 NOT_EXPORTED: dict[str, str] = {
     "invites": "operator-issued codes (hash only); the user's link to one is not their data",
     "pending_signups": "sign-ups waiting for a mail link: no account yet; hashes only",
     "auth_tokens": "single-use reset and email-change tokens (hash only), short-lived",
     "oauth_flows": "in-flight sign-in flows: state hashes and a PKCE verifier, short-lived",
     "rate_limits": "counters keyed by an HMAC of the bucket; no user column",
-    "alembic_version": "migration bookkeeping",
-    "connection_keks": "key-check values of the encryption keys",
-    "plans": "the same tiers for every user",
-    "redeem_codes": "multi-use plan codes (hash only); the user's redemptions are exported",
-    "app_settings": "operator settings, not per user",
-    "admin_audit": "operator-only log (ADR 0014 section 2)",
-    "model_eval_results": "recorded eval suite runs, not per user",
-    "model_routes": "which model each route uses, not per user",
 }
 
 

@@ -60,7 +60,7 @@ class Person:
             "u": u,
             "sub": f"sub-{u}",
             "email": self.email,
-            "hash": f"h-{u}".encode(),
+            "hash": hashlib.sha256(f"h-{u}".encode()).digest(),  # opaque, not the id in clear
             "ip": self.ip,
             "agent": AGENT,
             "detail": json.dumps({"email": self.email}),
@@ -104,7 +104,7 @@ class Person:
         self.sql(
             "INSERT INTO invites (code_hash, used_by, created_by, expires_at, used_at) "
             "VALUES (:hash, :u, :u, now() + interval '1 day', now())",
-            hash=f"i-{u}".encode(),
+            hash=hashlib.sha256(f"i-{u}".encode()).digest(),
             u=u,
         )
         third = self.sql(

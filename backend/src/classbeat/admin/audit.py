@@ -166,15 +166,16 @@ FilterTargetId = Annotated[str, StringConstraints(min_length=1, max_length=100),
 
 class AuditListParams(Params):
     """The audit log's filter (AD4 #222, ``classbeat.admin.audit_routes``): ids, codes, the
-    period and the page. An email filter is stored only as ``actor_email_set``: the text could be
-    anyone's address (ADR 0014 section 5)."""
+    period and the page. A filter on a person (``actor_id``, ``actor_email``, ``target_user_id``,
+    ``target_id``) is stored only as ``<name>_set``: the value could be anyone's id or address,
+    and an audit row outlives that person's account (ADR 0014 section 5)."""
 
-    actor_id: UUID | None = None
+    actor_id_set: Literal[True] | None = None
     actor_email_set: Literal[True] | None = None
     action: Annotated[str, StringConstraints(pattern=r"^[a-z][a-z0-9_.]{0,59}$")] | None = None
-    target_user_id: UUID | None = None
+    target_user_id_set: Literal[True] | None = None
     target_kind: Annotated[str, StringConstraints(pattern=r"^[a-z][a-z0-9_]{0,39}$")] | None = None
-    target_id: FilterTargetId | None = None
+    target_id_set: Literal[True] | None = None
     outcome: Literal["ok", "refused", "error"] | None = None
     since: AwareDatetime | None = None
     until: AwareDatetime | None = None
