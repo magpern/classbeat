@@ -75,7 +75,14 @@ async def factory(app_database_url: str) -> AsyncIterator[Factory]:
 
 @pytest.fixture
 def app(app_database_url: str) -> Iterator[Engine]:
+    """The app role for the thread races, its connections opened before the race as the async
+    ``factory`` does (#227 part 2): a caller that first has to connect would start late and
+    could miss the race it is meant to be in."""
     with engine_for(app_database_url, pool_size=N + 2, max_overflow=0) as engine:
+        connections = [engine.connect() for _ in range(N + 2)]
+        for connection in connections:
+            connection.close()  # back to the pool, already open
+        assert engine.pool.checkedin() == N + 2  # pyright: ignore[reportAttributeAccessIssue]
         yield engine
 
 
