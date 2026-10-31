@@ -30,7 +30,7 @@ from classbeat.auth.oauth_idtoken import (
     verify_id_token,
 )
 from classbeat.auth.oauth_providers import GITHUB, GOOGLE, MICROSOFT, Provider
-from classbeat.egress import OutboundBlocked, refuse_in_worker
+from classbeat.egress import OutboundBlocked, refuse_in_worker, tls_client_context
 
 TIMEOUT = httpx.Timeout(10.0)
 GITHUB_API = "https://api.github.com"
@@ -64,7 +64,11 @@ async def _fetch_jwks_with(transport: httpx.AsyncBaseTransport | None, url: str)
     refuse_in_worker(urlsplit(url).hostname)  # web only (ADR 0006 section 9)
     # No redirect followed and no proxy from the environment (SR-03): the host is the provider's.
     async with httpx.AsyncClient(
-        transport=transport, timeout=TIMEOUT, trust_env=False, follow_redirects=False
+        transport=transport,
+        timeout=TIMEOUT,
+        trust_env=False,
+        follow_redirects=False,
+        verify=tls_client_context(),  # the system trust store (SSL_CERT_FILE), as before
     ) as client:
         response = await client.get(url)
         response.raise_for_status()
@@ -101,6 +105,7 @@ def _client(provider: Provider, redirect_uri: str, transport: Any) -> Any:
         # client secret goes in the token request's body, the GitHub token in a header).
         trust_env=False,
         follow_redirects=False,
+        verify=tls_client_context(),  # trust_env=False alone would drop SSL_CERT_FILE
     )
 
 
