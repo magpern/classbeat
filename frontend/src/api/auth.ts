@@ -322,10 +322,10 @@ export async function deleteAccount(confirmEmail: string): Promise<void> {
 }
 
 /**
- * The user's own data as one JSON document (`GET /api/account/export`, ADR 0014 section 2):
+ * The user's own data as one JSON document (`POST /api/account/export`, ADR 0014 section 2: a POST so a cross-site request cannot trigger it):
  * recent authentication, and a step-up once TOTP is set up; the caller runs it through the
  * guard. 5 a hour (429).
  */
 export async function exportMyData(): Promise<unknown> {
-  return get('/api/account/export')
+  return post('/api/account/export')
 }

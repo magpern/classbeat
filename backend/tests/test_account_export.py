@@ -11,6 +11,7 @@ from accounttools import AGENT, Person, person
 from classbeat.account.export import build_export
 from classbeat.account.registry import SECTIONS
 from ctx import make_context
+from jobapi import session_cookie
 from songtools import SongEnv
 
 pytestmark = pytest.mark.usefixtures("songenv")
@@ -56,7 +57,7 @@ def keys(value: Any) -> Iterator[str]:
 
 
 async def export(who: Person) -> Any:
-    return await who.rider.browser.get(URL)
+    return await who.rider.browser.post(URL)
 
 
 async def test_the_export_holds_my_rows_and_none_of_the_other_users(songenv: SongEnv) -> None:
@@ -143,7 +144,7 @@ async def test_the_export_needs_a_session_recent_authentication_and_the_step_up(
     songenv: SongEnv,
 ) -> None:
     mine = await person(songenv)
-    assert (await songenv.spot.env.client.get(URL)).status_code == 401
+    assert (await songenv.spot.env.client.post(URL)).status_code in (401, 403)
     songenv.sql("UPDATE sessions SET stepup_at = NULL")
     refused = await export(mine)  # a confirmed TOTP and no step-up
     assert (refused.status_code, refused.json()["detail"]["reason"]) == (403, "stepup_required")
@@ -159,3 +160,19 @@ async def test_the_export_is_limited_per_user_and_hour(songenv: SongEnv) -> None
     songenv.sql("UPDATE sessions SET stepup_at = now()")
     assert [(await export(mine)).status_code for _ in range(5)] == [200] * 5
     assert (await export(mine)).status_code == 429
+
+
+async def test_a_cross_site_request_cannot_use_the_session_to_burn_the_allowance(
+    songenv: SongEnv,
+) -> None:
+    """The export is a POST behind the CSRF and origin checks: a link, an image or a form on
+    another site sends the cookie but no token, and the count of exports stays at zero."""
+    mine = await person(songenv)
+    client, cookie = mine.rider.browser.client, session_cookie(mine.rider.browser.token)
+    for _ in range(8):
+        assert (await client.get(URL, headers=cookie)).status_code == 405
+        assert (await client.post(URL, headers=cookie)).status_code == 403  # no CSRF token
+        evil = cookie | {"Origin": "https://evil.example"}
+        assert (await client.post(URL, headers=evil)).status_code == 403
+    client.cookies.clear()
+    assert [(await export(mine)).status_code for _ in range(5)] == [200] * 5

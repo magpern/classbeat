@@ -302,7 +302,7 @@ describe('download my data', () => {
     const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => undefined)
     const api = fakeApi({
       ...base,
-      'GET /api/account/export': () => (fresh ? { format: 'classbeat-export', version: 1 } : reason(403, 'reauth_required')),
+      'POST /api/account/export': () => (fresh ? { format: 'classbeat-export', version: 1 } : reason(403, 'reauth_required')),
       'POST /api/auth/reauth': () => {
         fresh = true
         return { status: 'ok' }
@@ -315,14 +315,14 @@ describe('download my data', () => {
     await waitFor(() => {
       expect(click).toHaveBeenCalledTimes(1)
     })
-    expect(api.to('GET', '/api/account/export')).toHaveLength(2)
+    expect(api.to('POST', '/api/account/export')).toHaveLength(2)
     expect(JSON.parse((await saved[0]?.text()) ?? '')).toEqual({ format: 'classbeat-export', version: 1 })
     expect(await screen.findByText('Your data was saved to a file.')).toBeInTheDocument()
     click.mockRestore()
   })
 
   it('says so when too many exports were asked for', async () => {
-    fakeApi({ ...base, 'GET /api/account/export': () => json({ detail: { reason: 'rate_limited' } }, 429) })
+    fakeApi({ ...base, 'POST /api/account/export': () => json({ detail: { reason: 'rate_limited' } }, 429) })
     renderAt('/account#data')
     fireEvent.click(await screen.findByRole('button', { name: 'Download my data' }))
     expect(await screen.findByRole('alert')).toHaveTextContent('Too many attempts')

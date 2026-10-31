@@ -171,8 +171,11 @@ def test_an_allowlisted_module_may_use_it() -> None:
 
 def test_the_account_package_is_reached_only_from_its_routes() -> None:
     """``classbeat.account`` opens user sessions for the user's own export and deletion (#337):
-    the erase and export modules only from its routes, and those only from the web app."""
-    assert importers("classbeat.account.erase") == {"classbeat.account.routes"}
+    the export only from its routes, the erase module also from ``web`` (the operator's job
+    ender), and the routes only from the web app."""
+    # The operator's delete of an account takes the same step (ADR 0014 section 3).
+    # ``web`` installs the job ender the operator's delete calls through ``app.state``.
+    assert importers("classbeat.account.erase") == {"classbeat.account.routes", "classbeat.web"}
     assert importers("classbeat.account.export") == {"classbeat.account.routes"}
     assert importers("classbeat.account.routes") == {"classbeat.web"}
 

@@ -358,6 +358,9 @@ OWNER_CONTEXT_USERS = {
     "classbeat/jobs/issuer.py",
     "classbeat/jobs/runner.py",
     "classbeat/jobs/credits.py",
+    # The delete of an account ends the target's jobs as the target, for the user's own delete
+    # (which has a context already) and the operator's (ADR 0014 section 3).
+    "classbeat/account/erase.py",
 }
 
 

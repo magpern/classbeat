@@ -18,7 +18,7 @@ function saveAsFile(name: string, data: unknown): void {
 }
 
 /**
- * Download my data (ADR 0014 section 2): `GET /api/account/export` through the guard (recent
+ * Download my data (ADR 0014 section 2): `POST /api/account/export` through the guard (recent
  * authentication, and a step-up with two-factor on), saved as `classbeat-export-<date>.json`.
  */
 export function ExportData() {

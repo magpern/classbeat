@@ -114,6 +114,10 @@ def _db(request: Request) -> AdminDb:
     return db
 
 
+# The filters that name a person: audited as "set", never as a value (ADR 0014 section 5).
+PERSON_FILTERS = ("actor_id", "actor_email", "target_user_id", "target_id")
+
+
 @router.get("/audit", response_model=AuditPage)
 async def list_audit(
     request: Request,
@@ -147,7 +151,12 @@ async def list_audit(
         "until": until,
     }
     params: dict[str, Any] = {
-        **{k: v for k, v in filters.items() if v is not None and k != "action_prefix"},
+        **{
+            k: v
+            for k, v in filters.items()
+            if v is not None and k not in ("action_prefix", *PERSON_FILTERS)
+        },
+        **{f"{k}_set": True if filters[k] is not None else None for k in PERSON_FILTERS},
         "action": action,
         "before": before,
         "limit": limit,

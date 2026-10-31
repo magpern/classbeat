@@ -9,6 +9,7 @@ import pytest
 from accounttools import Person, hits, person, references_with_rows
 from classbeat import quota
 from classbeat.account import erase
+from classbeat.account.coverage import RETAINED
 from ctx import make_context
 from songtools import SongEnv
 
@@ -40,10 +41,11 @@ async def test_every_table_with_a_user_reference_has_a_row_before_and_none_after
     assert answer.status_code == 204, answer.text
     assert "Max-Age=0" in answer.headers["set-cookie"]  # the session cookie is cleared
 
-    # Nowhere in the schema is the user's id, address or IP left (admin_audit's actor_email is
-    # retained for operators only, and this user never acted as one).
+    # Nowhere in the schema is the user's id, address or IP left, as a uuid or written as text in a
+    # text, varchar, jsonb or inet column, except the bare id an operator's delete audits.
     left = hits(mine)
-    assert left == {}, left
+    assert left == {"admin_audit.target_id": 1}, left  # the one retained bare id (RETAINED)
+    assert ("admin_audit", "target_id") in RETAINED
     # The links that only named them stayed, unlinked.
     assert songenv.sql("SELECT count(*) FROM invites WHERE used_by IS NULL").scalar_one() == 1
     assert (
@@ -56,7 +58,7 @@ async def test_every_table_with_a_user_reference_has_a_row_before_and_none_after
         songenv.sql(
             "SELECT count(*) FROM entitlements e JOIN users u ON u.id = e.owner_id "
             "WHERE e.granted_by IS NULL AND u.email = :e",
-            e=f"third-{mine.user_id}@example.com",
+            e=mine.third_email,
         ).scalar_one()
         == 1
     )  # a grant I made to someone else stays, without me
@@ -72,7 +74,11 @@ async def test_the_scan_catches_a_row_the_deletion_would_miss(songenv: SongEnv) 
     try:
         songenv.sql("INSERT INTO gdpr_probe VALUES (:u, :email)", u=mine.user_id, email=mine.email)
         assert (await erase_account(mine)).status_code == 204
-        assert hits(mine) == {"gdpr_probe.id": 1, "gdpr_probe.note": 1}
+        assert hits(mine) == {
+            "gdpr_probe.id": 1,
+            "gdpr_probe.note": 1,
+            "admin_audit.target_id": 1,  # the retained bare id, as in the main test
+        }
     finally:
         songenv.sql("DROP TABLE gdpr_probe")
 

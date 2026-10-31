@@ -13,12 +13,20 @@ Only what the user could see about themselves is returned:
 - the user's security events (kind, address, time, detail).
 
 Never ``password_hash``, a token hash or any ciphertext.
+
+**Every column is decided.** ``INCLUDE`` lists the columns each statement reads (the selects are
+built from it) and ``EXCLUDE`` the others with the reason; ``NOT_EXPORTED`` the reason for
+the other account tables; the test lists every system table of other packages.
+``tests/test_account_export_schema.py`` reads the live schema and fails when a column or a system
+table is in none of them, so a new column on ``users``, ``sessions`` or
+``identities`` cannot be silently left out, and a column with a secret cannot be included by
+accident (every ``EXCLUDE`` reason is read in review).
 """
 
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import func, select
+from sqlalchemy import Column, Table, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from classbeat.auth.tables import (
@@ -31,6 +39,67 @@ from classbeat.auth.tables import (
     users,
 )
 
+INCLUDE: dict[str, tuple[str, ...]] = {
+    "users": ("id", "email", "role", "email_verified_at", "created_at", "disabled_at"),
+    "identities": ("provider", "subject", "email_at_link", "created_at"),
+    "sessions": ("created_at", "last_seen_at", "expires_at", "user_agent", "ip"),
+    "known_devices": ("created_at", "last_used_at"),
+    "mfa_totp": ("confirmed_at",),
+    "mfa_recovery_codes": ("used_at",),  # only to count the unused ones
+    "auth_events": ("kind", "ip", "at", "detail"),
+}
+EXCLUDE: dict[str, dict[str, str]] = {
+    "users": {
+        "password_hash": "a secret; only whether there is one is exported (has_password)",
+        "email_normalized": "the lookup form of email, derived",
+    },
+    "identities": {"id": "internal", "user_id": "the user's own id"},
+    "sessions": {
+        "id": "internal",
+        "user_id": "the user's own id",
+        "token_hash": "a secret",
+        "reauth_at": "internal security timing",
+        "mfa_at": "internal security timing",
+        "stepup_at": "internal security timing",
+    },
+    "known_devices": {
+        "id": "internal",
+        "user_id": "the user's own id",
+        "device_hash": "a secret",
+    },
+    "mfa_totp": {
+        "id": "internal",
+        "user_id": "the user's own id",
+        "secret_ciphertext": "a secret",
+        "nonce": "a secret's parameter",
+        "key_id": "internal key handling",
+        "wrapped_dek": "a wrapped key (ADR 0003 section 8)",
+        "dek_nonce": "a wrapped key's parameter",
+        "last_step": "internal replay guard",
+    },
+    "mfa_recovery_codes": {
+        "id": "internal",
+        "user_id": "the user's own id",
+        "code_hash": "a secret",
+    },
+    "auth_events": {"id": "internal", "user_id": "the user's own id"},
+}
+# The other account tables. Every system table outside this package is decided in
+# ``tests/test_account_export_schema.py`` (``OTHER_SYSTEM_TABLES``): they hold no per-user data, and
+# naming them here would be naming tables other packages own (guards 8 and the results guard).
+NOT_EXPORTED: dict[str, str] = {
+    "invites": "operator-issued codes (hash only); the user's link to one is not their data",
+    "pending_signups": "sign-ups waiting for a mail link: no account yet; hashes only",
+    "auth_tokens": "single-use reset and email-change tokens (hash only), short-lived",
+    "oauth_flows": "in-flight sign-in flows: state hashes and a PKCE verifier, short-lived",
+    "rate_limits": "counters keyed by an HMAC of the bucket; no user column",
+}
+
+
+def _cols(table: Table) -> list[Column[Any]]:
+    """The columns ``INCLUDE`` lists for ``table``, in that order."""
+    return [table.c[name] for name in INCLUDE[table.name]]
+
 
 def _iso(value: Any) -> str | None:
     return None if value is None else value.isoformat()
@@ -41,13 +110,8 @@ async def account_export(db: AsyncSession, user_id: UUID) -> dict[str, Any]:
     profile = (
         await db.execute(
             select(
-                users.c.id,
-                users.c.email,
-                users.c.role,
-                users.c.email_verified_at,
-                users.c.created_at,
-                users.c.disabled_at,
-                users.c.password_hash.is_not(None).label("has_password"),
+                *_cols(users),
+                users.c.password_hash.is_not(None).label("has_password"),  # the flag, not the hash
             ).where(users.c.id == user_id)
         )
     ).first()
@@ -55,38 +119,27 @@ async def account_export(db: AsyncSession, user_id: UUID) -> dict[str, Any]:
         return {}
     linked = (
         await db.execute(
-            select(
-                identities.c.provider,
-                identities.c.subject,
-                identities.c.email_at_link,
-                identities.c.created_at,
-            )
+            select(*_cols(identities))
             .where(identities.c.user_id == user_id)
             .order_by(identities.c.created_at, identities.c.id)
         )
     ).all()
     signed_in = (
         await db.execute(
-            select(
-                sessions.c.created_at,
-                sessions.c.last_seen_at,
-                sessions.c.expires_at,
-                sessions.c.user_agent,
-                sessions.c.ip,
-            )
+            select(*_cols(sessions))
             .where(sessions.c.user_id == user_id)
             .order_by(sessions.c.created_at, sessions.c.id)
         )
     ).all()
     devices = (
         await db.execute(
-            select(known_devices.c.created_at, known_devices.c.last_used_at)
+            select(*_cols(known_devices))
             .where(known_devices.c.user_id == user_id)
             .order_by(known_devices.c.created_at, known_devices.c.id)
         )
     ).all()
     confirmed = (
-        await db.execute(select(mfa_totp.c.confirmed_at).where(mfa_totp.c.user_id == user_id))
+        await db.execute(select(*_cols(mfa_totp)).where(mfa_totp.c.user_id == user_id))
     ).first()
     unused_codes = (
         await db.execute(
@@ -97,7 +150,7 @@ async def account_export(db: AsyncSession, user_id: UUID) -> dict[str, Any]:
     ).scalar_one()
     events = (
         await db.execute(
-            select(auth_events.c.kind, auth_events.c.ip, auth_events.c.at, auth_events.c.detail)
+            select(*_cols(auth_events))
             .where(auth_events.c.user_id == user_id)
             .order_by(auth_events.c.at, auth_events.c.id)
         )

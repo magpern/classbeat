@@ -433,7 +433,7 @@ design not counted), `CLASSBEAT_CHAT_MAX_REQUESTS` (50 user requests per class) 
 `FakeProvider` script, a synthetic Spotify catalogue and a synthetic MOWL analysis (no Spotify, MOWL or
 model contact). They run in CI (`backend/tests/test_evals_pick_smoke.py`) and are not part of
 `smoke --live`.
-Account data (ADR 0014, #337): `GET /api/account/export` (one JSON file, 5 per user and hour) and `POST /api/account/delete {confirm_email}`, both behind recent authentication and the step-up; deleting cancels open jobs and settles their credits first, then the cascade runs. Guard 12 (`tests/gdpr_guard.py`, lists in `classbeat.account.registry` and `classbeat.account.coverage`) fails CI for an owned table with no export entry and for a foreign key to `users` or a user-looking `uuid` column with no deletion decision.
+Account data (ADR 0014, #337, #349): `POST /api/account/export` (one JSON file, 5 per user and hour) and `POST /api/account/delete {confirm_email}`, both behind recent authentication and the step-up; deleting cancels open jobs and settles their credits first, then the cascade runs. Guard 12 (`tests/gdpr_guard.py`, lists in `classbeat.account.registry` and `classbeat.account.coverage`) fails CI for an owned table with no export entry and for a foreign key to `users` or a user-looking `uuid` column with no deletion decision.
 Plans (ADR 0011 sections 2 and 4, PL1): `GET /api/account/plan`, `POST /api/account/redeem` (10 per user and 30 per IP
 and hour) and `POST /api/account/trial`; `CLASSBEAT_TRIAL_DAYS_MAX` (30, 0 to 366; 0 turns trials off) clamps the
 stored `trial` setting's days when a trial starts, and a trial's plan is clamped to at most `instructor`.
