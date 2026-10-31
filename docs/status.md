@@ -17,7 +17,7 @@ GitHub hold the detail.
 | M3c | Eval suite, OpenAI and DeepSeek adapters | done technically (on replayed providers, #219): [ADR 0012](adr/0012-eval-suite-and-model-providers.md); the owner's live steps are in [docs/runbooks/m3c-model-enable.md](runbooks/m3c-model-enable.md) |
 | M5 | Tiers, quotas, codes, admin | done technically, on fakes, once this E2E PR (#228) is merged (the security suite #227 is in) ([ADR 0011](adr/0011-tiers-quotas-and-admin.md)); issues in milestone "M5 Tiers and admin". Live activation is the owner's |
 | MU | Night Studio UI (ADR 0013) | design accepted 2026-10-30 ([ADR 0013](adr/0013-ui-design-night-studio.md), roadmap Amendment 8); issues #242, #243, #246 to #251, #253 to #255; runs beside M4 and M5, done before M6 |
-| M6 | Security review, backups, GDPR, VPS | in progress, **not done**; GDPR export and delete is in review ([ADR 0014](adr/0014-account-export-and-deletion.md), #337); the independent security review, the backup restore drill and the VPS are open |
+| M6 | Security review, backups, GDPR, VPS | in progress, **not done**. **VPS configuration ready, not deployed** (#341): `compose.prod.yaml`, `Caddyfile`, [vps-deploy.md](runbooks/vps-deploy.md), checked locally only (see the runbook's "Local smoke"); the deploy, DNS, TLS, server, mail account and secrets are the owner's steps. GDPR export and delete is in review ([ADR 0014](adr/0014-account-export-and-deletion.md), #337). The independent security review and the backup restore drill are not done |
 | M7 | Commercial (deferred) | deferred |
 
 ## Now
@@ -187,10 +187,12 @@ GitHub hold the detail.
     `frontend/src/styles/tokens.test.ts` scans every `src` css, ts and tsx file for hex, `rgb(`, `hsl(` and
     the other colour functions, CSS colour keywords and Tailwind palette utilities, plus `index.html` and
     `public/theme-init.js`.
-  - [x] The class profile follows ADR 0013 section 7: UI3 (#301). Open, tracked in [#331](https://github.com/magpern/classbeat/issues/331):
-    the song strip lays songs back to back from 0 because the class API has no start times (not compared
-    with the analysed music), tests for the Z1 to Z7 grid labels, and the delete confirmation not scrolled
-    or focused at 390 px.
+  - [x] The class profile follows ADR 0013 section 7: UI3 (#301). Closed by #331: the delete confirmation is
+    scrolled into view and focused when the menu opens it, the Z1 to Z7 grid labels have a test, and the song
+    strip places each song at its start time (the lengths before it less the class's crossfade, the picker's own
+    rule, so the last song ends at the class's total). Still open: comparing those start times with the analysed
+    music's own; the class API sends only each song's length and the list's crossfade, so that needs a backend
+    field (per-song start from the MOWL analysis) first.
   - [x] Covers load only from `i.scdn.co`, through `CoverArt`, behind the CSP header: `e2e/tests/mu-covers.spec.ts`
     (the real header, covers from the host, a cover from another host shown as a tile, the browser refusing
     other hosts and `data:`, no referrer or cookie on the cover request) and `src/no-third-party-hosts.test.ts`.
@@ -199,13 +201,14 @@ GitHub hold the detail.
     violation, quiet console), `mu-covers.spec.ts` (Songs for approval) and `npm run check:bundle` in the
     `frontend` job (first-load JavaScript 173 kB gzip of 250 kB).
   - **Open after UI10**, not part of its scope:
-    - [#330](https://github.com/magpern/classbeat/issues/330): an admin without a current TOTP check cannot
-      reach the TOTP prompt (the SPA gates `/admin` on the session role, which is `user` until the check passes).
-    - [#331](https://github.com/magpern/classbeat/issues/331): Radix Dialog scroll lock refused by
-      `style-src 'self'` (one console error per open, page behind a modal scrolls); the Account tab carried
-      through reauth (#291); the delete confirmation scroll/focus at 390 px (#301); Z1 to Z7 label tests (#301);
-      song strip start times (#301); CSP and Referrer-Policy headers on an unhandled 500 (#293); a test for
-      the TOTP QR attribute allow-list (#293).
+    - [#330](https://github.com/magpern/classbeat/issues/330): done (#335 gates `/admin` on the role or
+      `adminPendingMfa`; the avatar menu's Admin link follows the same rule, in the #331 frontend PR).
+    - [#331](https://github.com/magpern/classbeat/issues/331), closed by its two PRs (#334 backend, the
+      frontend PR): the Dialog (and DropdownMenu) scroll lock is class-based, so the CSP refuses nothing and the
+      e2e console check has no allow-list (ADR 0013 section 8 amended); the Account tab is carried through a
+      provider re-authentication (#291); the delete-class confirmation scroll and focus (#301); Z1 to Z7 label
+      tests (#301); CSP and Referrer-Policy on an unhandled 500 (#293); a test for the QR attribute allow-list
+      (#293). Left open from it: the song strip's start times against the analysed music (needs a backend field).
 - **M6, GDPR export and delete (#337, in review, not merged):** [ADR 0014](adr/0014-account-export-and-deletion.md),
   threat model T98 to T100. M6 is **not done**; only this item of its "done when" is built. Checklist:
   - [x] `GET /api/account/export` (one JSON file of the user's own rows, connections as status only, no
@@ -260,6 +263,11 @@ GitHub hold the detail.
 - **M4 live activation** (runbook [m4-live-activation.md](runbooks/m4-live-activation.md), ADR 0008 §11): create the
   Spotify Development Mode app and add the allow-list users, then give a go-ahead for each of steps 2 to 7 (connect, one
   pick, one Approve, one Change songs, the cost reading, Disconnect). Until then `CLASSBEAT_SONG_PICKING` stays off.
+
+- **VPS deploy (M6, #341):** the owner provides a server, a domain with DNS, an SMTP account and the
+  secret files, then authorizes the first deploy and follows [vps-deploy.md](runbooks/vps-deploy.md). Nothing
+  has been deployed or contacted; the real SSE route, the worker start and the mail path have not run
+  under `compose.prod.yaml` (runbook, "Local smoke").
 
 ## Live activation log
 
