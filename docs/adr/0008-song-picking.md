@@ -391,7 +391,8 @@ two inputs (both with `mowl_connection_id` and `spotify_connection_id`):
 
 Refusals (409): `song_picking_off`, `invalid_input`, `stale_base`, `revision_limit`,
 `not_song_picked`, then for a pick `chat_full`, `not_connected`, `consent_missing`, `pool_busy`,
-`invalid_input` (a `replace` slot outside the list), and for a resume `not_connected`,
+`write_unresolved` (an undecided final-playlist write of the class), `invalid_input` (a `replace`
+slot outside the list), and for a resume `not_connected`,
 `receipt_invalid`, `stale_base`, `account_changed`, `write_unresolved`. A receipt is resumed by the
 kind that approved it: a `design_with_songs` resume names a list a `design_with_songs` job
 approved, a `revise_songs` resume one a `revise_songs` job approved; and "Ask for changes" (`seed`)

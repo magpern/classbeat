@@ -10,7 +10,9 @@
   ``music.song_list_id`` (a class on the user's own playlist keeps ``revise_draft``). Then:
 
   - mode ``pick``: ``chat_full``; ``not_connected``, ``consent_missing``, ``pool_busy``
-    (``classbeat.songs.admit.pick_checks``); ``invalid_input`` unless the base's list still loads
+    (``classbeat.songs.admit.pick_checks``); ``write_unresolved`` while a final-playlist write of
+    the class is undecided (so phase 1 is not paid for first); ``invalid_input`` unless the base's
+    list still loads
     and every ``replace`` slot is in it; the user's ``class_messages`` row is inserted with the job.
   - mode ``resume``: ``not_connected``; the receipt rule of ``design_with_songs``
     (``receipt_valid``) for a list a ``revise_songs`` job approved (``receipt_invalid``); that job's
@@ -23,7 +25,8 @@
   ``song_list`` (``provenance.origin = "revise_songs"``, parent: the base's list) marks the new
   songs ``new``. The approval is ``design_with_songs``' (``approve_check``).
 - **Phase 2** (approved, or ``mode = "resume"``): ``classbeat.songs.phase2.final_music`` (prepare,
-  a **new** final playlist with the full list, fill, attach, music); then the ``revise`` stage
+  which also requires the base to be still current before any Spotify write, a **new** final
+  playlist with the full list, fill, attach, music); then the ``revise`` stage
   (ADR 0007 section 3) on the base draft, the new music, the requests along the parent chain and
   the request, told the songs changed; the final transaction: ``final_checks``, the draft
   revision (parent: the base, ``music.song_list_id``), the compare-and-set of
@@ -119,6 +122,8 @@ async def admit(db: AsyncSession, ctx: UserContext, parsed: BaseModel, /) -> Adm
     refused = await song_admit.pick_checks(db, ctx, given.spotify_connection_id)
     if refused is not None:
         return refused
+    if await orphans.playlist_unresolved(db, ctx, class_id):
+        return Refused("write_unresolved")  # decided first, before phase 1 is paid for
     seed = await song_list.load(db, owner, class_id, list_id)
     if seed is None or (
         isinstance(given.replace, list)
@@ -217,7 +222,7 @@ async def run_revise_phase_two(
         raise JobFailure("internal")
     base_id, message_id = given.base_revision_id, given.request_message_id
     base_hash = bytes.fromhex(given.base_revision_hash)
-    p, final, step = await final_music(run, keyring, given, config)
+    p, final, step = await final_music(run, keyring, given, config, base_revision_id=base_id)
     handed_over = False  # the outcome's ``release`` closes the step from then on
     try:
         async with run.fenced() as fs:

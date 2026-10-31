@@ -10,7 +10,12 @@ It runs after the user's Approve (the same job, ``approved``) or for a **resume*
    class's **newest** ``song_list`` (``invalid_input`` otherwise: superseded) and still hash to
    its stored ``content_hash`` (``song_list.load``; ``invalid_input``); the Spotify account it was
    made for must be the connected one (``account_changed``); both connections must be the job's
-   and ``connected`` (``not_connected``). The approved phase also requires both connections to be
+   and ``connected`` (``not_connected``); no final-playlist write of the class may be undecided
+   (``uncertain_write``, ``orphans.playlist_unresolved``, behind ``admit``): any ``uncertain``
+   row, including the job's own, so a retry of the same job also stops on its own uncertain
+   create or fill, as Save's rule does; only the job's own ``pending`` rows are its to resolve by
+   key. For ``revise_songs`` the base draft must still be current (``invalid_input``). The
+   approved phase also requires both connections to be
    the **same generations** phase 1 recorded: a Spotify or MOWL reconnect between the pick and
    the run ends the job ``not_connected`` with no write (ADR 0008 Consequences: the approved list
    stays resumable, and a resume uses the connections as they are now). The playlist's tracks
@@ -130,8 +135,17 @@ async def _newest(fs: FencedSession, class_id: UUID) -> UUID | None:
     return (await fs.db.execute(_NEWEST, params)).scalar_one_or_none()
 
 
-async def prepare(run: JobRun, keyring: KeyRing, given: SongJob) -> Prepared:
-    """Stage ``prepare`` (module docstring, step 1)."""
+_CURRENT = text(
+    "SELECT current_revision_id FROM classes WHERE owner_id = :owner_id AND id = :class_id"
+)
+
+
+async def prepare(
+    run: JobRun, keyring: KeyRing, given: SongJob, *, base_revision_id: UUID | None = None
+) -> Prepared:
+    """Stage ``prepare`` (module docstring, step 1). ``base_revision_id`` (``revise_songs``): the
+    draft the change starts from must still be the class's current revision (``invalid_input``),
+    checked in the same transaction, before any Spotify write."""
     await run.stage("prepare")
     if run.ctx.connection("mowl") != given.mowl_connection_id:
         raise JobFailure("not_connected")
@@ -153,7 +167,11 @@ async def prepare(run: JobRun, keyring: KeyRing, given: SongJob) -> Prepared:
         if stored is None:
             raise JobFailure("invalid_input")  # the row is not what was approved
         if await orphans.playlist_unresolved(fs.db, fs.lease.ctx, job.class_id, fs.lease.job_id):
-            raise JobFailure("uncertain_write")  # behind admit: another final write is undecided
+            raise JobFailure("uncertain_write")  # behind admit: a final write is undecided
+        if base_revision_id is not None:
+            params = {"owner_id": fs.lease.owner_id, "class_id": job.class_id}
+            if (await fs.db.execute(_CURRENT, params)).scalar_one_or_none() != base_revision_id:
+                raise JobFailure("invalid_input")  # the base is no longer the current draft
         for opened in (spotify, mowl):
             if not await hold(fs.db, fs.lease.ctx, opened):
                 raise JobFailure("not_connected")
@@ -277,11 +295,16 @@ def music_source(final: ClassPlaylist) -> dict[str, Any]:
 
 
 async def final_music(
-    run: JobRun, keyring: KeyRing, given: SongJob, config: SongConfig
+    run: JobRun,
+    keyring: KeyRing,
+    given: SongJob,
+    config: SongConfig,
+    *,
+    base_revision_id: UUID | None = None,
 ) -> tuple[Prepared, ClassPlaylist, MusicStep]:
     """Steps 1 to 5 (both kinds): the approved list, its verified final playlist and its music.
     The caller owns the step from here (``close`` it, or hand it to the outcome's ``release``)."""
-    p = await prepare(run, keyring, given)
+    p = await prepare(run, keyring, given, base_revision_id=base_revision_id)
     final = await build_playlist(run, keyring, p)
     return p, final, await _music(run, keyring, given, p, final, config)
 

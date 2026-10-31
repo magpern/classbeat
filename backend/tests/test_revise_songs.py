@@ -114,6 +114,11 @@ async def test_changing_one_song_gives_a_new_playlist_and_a_revised_draft(
 async def test_all_replaces_every_song(songenv: SongEnv, monkeypatch: pytest.MonkeyPatch) -> None:
     rider = await songenv.rider()
     class_id, base, _ = await picked(songenv, rider)
+    songenv.sql(
+        "UPDATE classes SET brief = jsonb_set(brief, '{text}', '\"Indie rock only.\"') "
+        "WHERE id = :id",
+        id=class_id,
+    )
     seen: list[Any] = []
     build = pick.PickPlan.build
 
@@ -127,7 +132,8 @@ async def test_all_replaces_every_song(songenv: SongEnv, monkeypatch: pytest.Mon
     await songenv.run(UUID(answer.json()["id"]))  # the scripted choice does not matter here
     [plan] = seen
     assert (plan.mode, len(plan.replace), plan.kept) == ("replace", 8, ())
-    assert plan.brief.text.startswith(REQUEST)  # the request leads the brief's free text
+    # The request leads the brief's own free text.
+    assert plan.brief.text == f"{REQUEST}\n\nIndie rock only."
 
 
 async def test_a_class_on_its_own_playlist_is_not_song_picked(songenv: SongEnv) -> None:
@@ -192,9 +198,11 @@ async def test_a_resume_after_a_failure_reuses_the_playlist_and_designs(songenv:
     assert (await songenv.run(job_id)).error_category == "model_config"
     playlists = songenv.class_playlists(rider.user_id)
     assert [p.state for p in playlists] == ["verified", "verified"]
-    # FE3's first shape (an empty replace and request) is refused: a resume changes nothing.
-    sent = await resume_change(rider, class_id, base, list_id, replace=[], request="")
-    assert sent.status_code == 422
+    # A resume changes nothing: the input model refuses a replace or a request, even valid ones
+    # (FE3's first shape sent empty ones).
+    for extra in [{"replace": [1]}, {"request": "Harder songs"}, {"replace": "all"}]:
+        sent = await resume_change(rider, class_id, base, list_id, **extra)
+        assert sent.status_code == 422, extra
     # A design_with_songs resume cannot take a revise_songs list.
     refused(await rider.resume(class_id, list_id), "receipt_invalid")
     # The list was made to change ``base``: a resume from another current draft is stale.
@@ -277,3 +285,80 @@ def test_the_revise_prompt_points_other_songs_to_change_songs() -> None:
     assert "change nothing for that part" in SYSTEM_PROMPT
     head = model_input.SONGS_CHANGED
     assert head.startswith("The songs were just changed")
+
+
+def new_current_draft(songenv: SongEnv, class_id: UUID, base: UUID) -> UUID:
+    """Another draft of the class (a copy of ``base``) made current, as a revise would."""
+    other = uuid.uuid4()
+    songenv.sql(
+        "INSERT INTO class_revisions (id, owner_id, class_id, number, kind, content, "
+        "content_hash, music, provenance, parent_id) SELECT :id, owner_id, class_id, 90, kind, "
+        "content, content_hash, music, provenance, id FROM class_revisions WHERE id = :base",
+        id=other, base=base,
+    )  # fmt: skip
+    songenv.sql("UPDATE classes SET current_revision_id = :o WHERE id = :c", o=other, c=class_id)
+    return other
+
+
+async def test_a_pick_from_a_draft_that_is_not_current_is_stale_base(songenv: SongEnv) -> None:
+    rider = await songenv.rider()
+    class_id, base, _ = await picked(songenv, rider)
+    new_current_draft(songenv, class_id, base)
+    jobs, counts, said = (
+        jobs_of(songenv, rider.user_id),
+        songenv.counts(),
+        messages(songenv, class_id),
+    )
+    refused(await change(rider, class_id, base), "stale_base")
+    assert (jobs_of(songenv, rider.user_id), songenv.counts()) == (jobs, counts)
+    assert messages(songenv, class_id) == said
+
+
+async def test_phase_two_stops_at_prepare_when_the_base_is_no_longer_current(
+    songenv: SongEnv,
+) -> None:
+    rider = await songenv.rider()
+    class_id, base, _ = await picked(songenv, rider)
+    job_id, _ = await changed_approved(songenv, rider, class_id, base)
+    other = new_current_draft(songenv, class_id, base)
+    writes, playlists = songenv.writes(), len(songenv.class_playlists(rider.user_id))
+    row = await songenv.run(job_id)
+    assert (row.state, row.error_category) == ("failed", "invalid_input")
+    assert songenv.stages(job_id)[-1] == "prepare"
+    assert (songenv.writes(), len(songenv.class_playlists(rider.user_id))) == (writes, playlists)
+    assert current(songenv, class_id) == other
+
+
+def make_uncertain(songenv: SongEnv, owner: UUID, class_id: UUID) -> None:
+    """The class's final fill marked ``uncertain`` (as an undecided write is)."""
+    songenv.sql(
+        "UPDATE external_operations SET state = 'uncertain' WHERE owner_id = :o "
+        "AND kind = 'spotify_replace_items' AND class_id = :c",
+        o=owner, c=class_id,
+    )  # fmt: skip
+
+
+async def test_a_pick_waits_for_an_undecided_playlist_write(songenv: SongEnv) -> None:
+    rider = await songenv.rider()
+    class_id, base, _ = await picked(songenv, rider)
+    make_uncertain(songenv, rider.user_id, class_id)
+    jobs, counts, said = (
+        jobs_of(songenv, rider.user_id),
+        songenv.counts(),
+        messages(songenv, class_id),
+    )
+    refused(await change(rider, class_id, base), "write_unresolved")
+    assert (jobs_of(songenv, rider.user_id), songenv.counts()) == (jobs, counts)
+    assert messages(songenv, class_id) == said
+
+
+async def test_a_resume_waits_for_an_undecided_playlist_write(songenv: SongEnv) -> None:
+    rider = await songenv.rider()
+    class_id, base, _ = await picked(songenv, rider)
+    job_id, list_id = await changed_approved(songenv, rider, class_id, base)
+    songenv.script = failing_script("auth")
+    assert (await songenv.run(job_id)).error_category == "model_config"
+    make_uncertain(songenv, rider.user_id, class_id)
+    jobs, counts = jobs_of(songenv, rider.user_id), songenv.counts()
+    refused(await resume_change(rider, class_id, base, list_id), "write_unresolved")
+    assert (jobs_of(songenv, rider.user_id), songenv.counts()) == (jobs, counts)
