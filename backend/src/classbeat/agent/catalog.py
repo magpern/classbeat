@@ -27,6 +27,10 @@ from classbeat.egress import MODEL_HOSTS, ModelProviderName
 Effort = Literal["low", "medium", "high", "xhigh", "max"]
 EFFORTS: Final[tuple[Effort, ...]] = ("low", "medium", "high", "xhigh", "max")
 DataPolicy = Literal["allowed", "owner_pending"]
+# ADR 0012 §6: the providers whose entries may be ``allowed`` (the owner accepted sending them user
+# data, ADR 0010). Another provider's entry is ``owner_pending`` by construction; adding one here
+# is the owner's decision (ADR 0012 owner questions 1 and 2), with its dated line in ADR 0010.
+USER_DATA_PROVIDERS: Final = frozenset({"anthropic"})
 # The same rule as ``CLASSBEAT_AGENT_MODEL`` and ``model_eval_results.model`` (ADR 0012 §5).
 MODEL_ID: Final = re.compile(r"[A-Za-z0-9._:-]{1,100}")
 
@@ -52,6 +56,8 @@ class CatalogModel:
             raise ValueError("a model's host is its provider's one host")
         if self.data_policy not in ("allowed", "owner_pending"):
             raise ValueError("unknown data policy")
+        if self.data_policy == "allowed" and self.provider not in USER_DATA_PROVIDERS:
+            raise ValueError("only a provider the owner accepted may receive user data")
 
 
 def _anthropic(model: str) -> CatalogModel:

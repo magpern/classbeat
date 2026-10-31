@@ -1,0 +1,12 @@
+{
+ "name": "short_15",
+ "about": "A short easy 15 minute class with no climbs or sprints.",
+ "brief": {
+  "length_min": 15,
+  "intensity": "easy"
+ },
+ "catalogue": {
+  "size": 20
+ },
+ "quality": true
+}

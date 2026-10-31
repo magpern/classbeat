@@ -1,0 +1,21 @@
+{
+ "name": "era_2000_2012",
+ "about": "A 30 minute class whose songs must come from 2000 to 2012.",
+ "brief": {
+  "length_min": 30,
+  "intensity": "moderate",
+  "climbs": 1,
+  "sprints": 2,
+  "text": "Songs from 2000 to 2012 only."
+ },
+ "catalogue": {
+  "size": 60
+ },
+ "expect": {
+  "years": [
+   2000,
+   2012
+  ]
+ },
+ "quality": true
+}

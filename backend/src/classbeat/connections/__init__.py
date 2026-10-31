@@ -47,6 +47,7 @@ from classbeat.connections.spotify_flows import (
     take_flow,
 )
 from classbeat.connections.spotify_tokens import RefreshedTokens, expires_at_of, refresh_spotify
+from classbeat.connections.status import ConnectionStatus, connection_statuses
 from classbeat.connections.tables import PROVIDERS
 
 __all__ = [
@@ -54,6 +55,7 @@ __all__ = [
     "PROVIDERS",
     "ConnectionFailure",
     "ConnectionInfo",
+    "ConnectionStatus",
     "Credentials",
     "OpenConnection",
     "RefreshedTokens",
@@ -63,6 +65,7 @@ __all__ = [
     "classify",
     "connect",
     "connection_refs",
+    "connection_statuses",
     "create_flow",
     "delete_all_in",
     "delete_own_flow",
