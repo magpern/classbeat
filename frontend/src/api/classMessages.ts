@@ -1,5 +1,6 @@
 import { ApiError } from './client'
 import { errorMessage } from './messages'
+import { planRefusalText } from './planMessages'
 import type { ChangeSummary } from './classes'
 import { clock } from '../lib/workout'
 
@@ -20,8 +21,6 @@ const REASONS: Record<string, string> = {
   not_found: 'This class, or that version, no longer exists. The page has been reloaded.',
   not_connected: 'MOWL is not connected. Connect it on your account page, then ask again.',
   invalid_input: 'That request could not be used. Check it and try again.',
-  quota: 'You have used up what your plan allows for now.',
-  busy: 'You already have designs running. Wait for one to finish, then try again.',
   call_may_be_running:
     'classbeat may still be writing this class to MOWL, and deleting it now would remove the only record of that write. Wait a few minutes, then try to delete it again.',
   music_unlinked:
@@ -34,6 +33,8 @@ export function isStale(error: unknown): boolean {
 }
 
 export function classReasonText(error: unknown): string {
+  const refusal = planRefusalText(error)
+  if (refusal !== null) return refusal
   if (error instanceof ApiError && error.reason !== null && Object.hasOwn(REASONS, error.reason)) {
     return REASONS[error.reason]!
   }

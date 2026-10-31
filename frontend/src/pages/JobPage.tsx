@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
+import { planRefusalText } from '../api/planMessages'
 import { failureText, retryLabel, stageLabel } from '../api/jobMessages'
 import {
   cancelJob,
@@ -266,6 +267,8 @@ function againError(error: unknown): string {
 }
 
 function againMessage(error: unknown): string {
+  const refusal = planRefusalText(error)
+  if (refusal !== null) return refusal
   if (error instanceof ApiError && error.reason === 'class_busy') {
     return 'This class already has a design running, perhaps from another tab. Wait for it to finish, then try again.'
   }

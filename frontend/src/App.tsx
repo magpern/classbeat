@@ -1,6 +1,7 @@
 import { logout } from './api/auth'
 import { GuardProvider } from './auth/GuardProvider'
 import { SessionProvider, useSession } from './auth/SessionContext'
+import { Banner } from './components/Banner'
 import { ApiStatus } from './components/ApiStatus'
 import { useAction } from './components/forms'
 import { Logo } from './components/Logo'
@@ -102,6 +103,7 @@ export function App() {
     <RouterProvider>
       <SessionProvider>
         <GuardProvider>
+          <Banner />
           <header className="app-header">
             <div className="app-header__inner">
               <Link to="/" className="brand">
