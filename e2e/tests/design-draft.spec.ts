@@ -62,7 +62,7 @@ test('a design is cancelled while it is running', async ({ page }) => {
 
   // Leaving and coming back shows the same run (the page resumes from the server).
   await page.reload()
-  await expect(page.getByRole('heading', { name: 'Designing your class…' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Designing E2E cancel…' })).toBeVisible()
   await expect(page.getByTestId('progress').getByText('Reading your playlist')).toBeVisible()
 
   await page.getByRole('button', { name: 'Stop designing' }).click()
