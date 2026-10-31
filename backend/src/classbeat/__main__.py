@@ -11,6 +11,7 @@ from fastapi import FastAPI
 
 from classbeat.cli import add_subcommands, run_command
 from classbeat.config import Settings
+from classbeat.egress import install_web_allowlist
 from classbeat.log import configure_logging
 from classbeat.web import create_app
 
@@ -65,6 +66,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     configure_logging(settings.log_level)
     if args.command is not None:
         return run_command(args, settings)
+    # Every urllib request of the web process (the provider library's) goes through the web's
+    # outbound allowlist (SR-03, threat model T19).
+    install_web_allowlist()
     app = create_app(settings)
     Server(server_config(app, args.host, args.port), app).run()
     return 0
