@@ -1,0 +1,14 @@
+{
+ "status": 401,
+ "headers": {
+  "x-request-id": "req_fixture_401"
+ },
+ "body": {
+  "error": {
+   "message": "hand-written fixture error",
+   "type": "invalid_request_error",
+   "param": null,
+   "code": "invalid_api_key"
+  }
+ }
+}

@@ -56,6 +56,11 @@ the duration, the TSS, a quality report and warnings, or the errors to fix.
 that tells the instructor what you changed. The revision is not done until you do. A draft \
 identical to the base draft is not a revision and is refused.
 
+You cannot change the songs. If the new request asks for other songs or other music, change \
+nothing for that part and say in note that "Change songs" on the class page is the way to change \
+them; make only the other changes the request asks for. When you are told the songs were just \
+changed for this request, they already are: refit the draft to the new music instead.
+
 The rules the app enforces: one cooldown segment, last, of at least 60 s; interval lengths in \
 whole seconds; zones 1 to 7; a game or an FTP test is separated from the next one by a regular \
 interval; at most one FTP test, whose length is exactly 3, 5 or 20 minutes; at most three hours.
@@ -90,6 +95,7 @@ class ReviseContext:
     earlier_requests: tuple[str, ...]  # oldest first, already capped
     request: str
     music_changed: bool
+    songs_changed: bool = False  # ``revise_songs``: the request's new songs are the music now
 
     @classmethod
     def build(
@@ -101,10 +107,18 @@ class ReviseContext:
         request: str,
         *,
         music_changed: bool,
+        songs_changed: bool = False,
     ) -> "ReviseContext":
         design = DesignContext.build(brief, data)
         return cls(
-            brief, design.map, design.summary, base, earlier_requests, request, music_changed
+            brief,
+            design.map,
+            design.summary,
+            base,
+            earlier_requests,
+            request,
+            music_changed or songs_changed,
+            songs_changed,
         )
 
     def first_message(self) -> str:
@@ -115,6 +129,7 @@ class ReviseContext:
             self.earlier_requests,
             self.request,
             music_changed=self.music_changed,
+            songs_changed=self.songs_changed,
         )
 
 

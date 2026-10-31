@@ -2,18 +2,20 @@
 (the router guard), the gate's refusals and their audit rows, 503 ``admin_unavailable`` without
 the maint credentials, and web refusing to start on a wrong maint role."""
 
+import time
 from collections.abc import AsyncIterator
 from typing import Any
 
 import pytest
 from fastapi import APIRouter, Request
-from sqlalchemy import func, select, text
+from sqlalchemy import Float, func, literal, select, text
 from sqlalchemy.engine import Connection, make_url
 
 from authtools import Env, running_env, session_cookie
 from classbeat.admin import routes as admin_routes
 from classbeat.admin.db import MaintRoleError, admin_session
 from classbeat.admin.routes import AdminActor, admin_area_routes, admin_router, gate_problems
+from classbeat.auth import ratelimit
 
 PROBE = "/api/admin/probe"
 
@@ -141,8 +143,24 @@ async def test_a_non_admin_gets_403_and_no_audit_row(
     assert rows(superuser) == []
 
 
+@pytest.fixture
+def one_minute(env: Env, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Both per-minute counts held in one fixed window for the whole test (#284): the admin rate
+    limit's window (``ratelimit._window_start``, the database's ``clock_timestamp()`` otherwise)
+    and the refusal-row limiter's (``RefusalLimiter.clock``, ``time.monotonic`` otherwise). Both
+    are fixed calendar windows by design (ADR 0003 section 9, ADR 0011 section 6), so requests
+    that happen to cross a minute boundary would start a new count and the test would flake."""
+    instant = float(int(time.time() // 60) * 60)
+
+    def frozen_window(window: int) -> Any:
+        return func.to_timestamp(literal(instant // window * window, Float))
+
+    monkeypatch.setattr(ratelimit, "_window_start", frozen_window)
+    env.app.state.admin_db.limiter.clock = lambda: instant
+
+
 async def test_25_refused_calls_in_a_minute_leave_20_rows(
-    env: Env, make_actor: Any, superuser: Connection
+    env: Env, make_actor: Any, superuser: Connection, one_minute: None
 ) -> None:
     user_id = await env.user("a@example.com", role="admin")
     actor = await make_actor(user_id)  # no MFA
@@ -170,7 +188,7 @@ async def test_a_write_needs_a_recent_stepup(
 
 
 async def test_the_admin_rate_limit_refuses_with_an_audit_row(
-    env: Env, make_actor: Any, superuser: Connection
+    env: Env, make_actor: Any, superuser: Connection, one_minute: None
 ) -> None:
     user_id = await env.user("a@example.com", role="admin")
     actor = await make_actor(user_id, mfa=True)
