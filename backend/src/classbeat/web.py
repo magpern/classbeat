@@ -17,6 +17,7 @@ from classbeat import __version__, auth, playlists, quota, saving, songs
 from classbeat.account.routes import router as account_router
 from classbeat.admin import routes as admin_routes
 from classbeat.admin.db import AdminDb
+from classbeat.bodylimit import BodyLimit
 from classbeat.classes.routes import music_router as class_music_router
 from classbeat.classes.routes import router as classes_router
 from classbeat.config import Settings, check_web_has_no_model_key
@@ -179,6 +180,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             _add_single_page_app(app, settings.static_dir)
         else:
             logger.warning("static_dir does not exist; not serving static files")
+    # Outside the auth middleware, inside SecurityHeaders: a body over the cap is refused before any
+    # session, CSRF or database work, and the 413 still carries the security headers (#351).
+    app.add_middleware(BodyLimit)
     # Added last, so it is the outermost middleware: the CSP and Referrer-Policy go on every
     # response, the auth middleware's own answers included (ADR 0013 section 9).
     app.add_middleware(SecurityHeaders)

@@ -167,6 +167,24 @@ docker compose -f compose.prod.yaml exec web python -m classbeat admin grant you
 - [ ] Certificate expiry is monitored (Caddy renews at 30 days left; an external uptime check
       that also reads the certificate date is worth having).
 
+## 8a. Request body size (every proxy in front of the app)
+
+The app refuses a request body over 64 KiB with 413 on every route (`classbeat.bodylimit`, #351,
+threat model T102), but a proxy should stop an oversized body first so it never reaches the app's
+network buffers. Caddy does (`request_body { max_size 1MB }` in the `Caddyfile`). **Any other proxy
+needs the same cap, and the home beta behind SWAG does:** SWAG is nginx and ships
+`client_max_body_size 0` (unlimited). In its `nginx.conf` or the site's proxy config set
+
+```nginx
+client_max_body_size 1m;
+```
+
+then reload it, and check from outside: `curl -s -o /dev/null -w '%{http_code}
+' -X POST
+--data-binary @<a 2 MB file> https://$DOMAIN/api/auth/login` is `413`, and a small body is not.
+Without this the app still answers 413 and does not buffer more than the cap, but the proxy
+buffers the whole body first (nginx to disk or memory) before it does.
+
 ## 9. Update
 
 ```bash
@@ -268,7 +286,7 @@ What was checked this way (2026-10-31), and what was not:
 - `caddy validate` and `caddy fmt` pass; `docker compose config` passes.
 - Through Caddy with internal TLS: the app's CSP, `Referrer-Policy`, HSTS, `nosniff`,
   `Permissions-Policy`, COOP/CORP on `/` and `/api/ready`, the CSP exactly once; `http://` answers
-  308 to https; a 2 MB body is 413 at Caddy and a 500 KB body passes; a client-sent
+  308 to https; a 2 MB body is 413 at Caddy and a 500 KB body passes the proxy (the app then answers 413 for it: its own cap is 64 KiB, section 8a); a client-sent
   `X-Forwarded-For` is replaced by Caddy's own.
 - SSE: a stand-in upstream writing one event per second (with `Accept-Encoding: gzip`) reached the
   client one event per second, not compressed. The real `/api/jobs/<id>/events` needs a signed-in

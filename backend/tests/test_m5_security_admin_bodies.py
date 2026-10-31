@@ -212,13 +212,27 @@ def test_only_the_two_body_refusals_get_a_body_reason() -> None:
     assert 'status_code=400, detail="There was an error parsing the body"' in source
 
 
-async def test_the_limit_is_the_admin_areas_alone(env: Env, make_actor: Any) -> None:
-    """Outside ``/api/admin`` a large body is not refused by this limit.
+async def test_the_limit_is_the_admin_areas_alone() -> None:
+    """``AdminBodyLimit`` itself raises only under ``/api/admin``: outside it, a large body is not
+    its business (the app-wide ``BodyLimit`` of #351 refuses it before the app runs, see
+    ``test_m6_security_body_limit``).
 
     Threats: T90.
     """
-    rider_id = await env.user("rider@example.com")
-    rider = await make_actor(rider_id, mfa=True)
-    big = b'{"code": "' + b"x" * (MAX_BODY_BYTES + 10) + b'"}'
-    response = await send_raw(rider, "/api/account/redeem", big)
-    assert response.status_code != 413, response.text
+    from classbeat.admin.routes import AdminBodyLimit
+
+    async def app(scope: Any, receive: Any, send: Any) -> None:
+        message = await receive()  # would raise the 413 for an admin path
+        assert len(message["body"]) == MAX_BODY_BYTES + 10
+
+    async def receive() -> dict[str, Any]:
+        return {"type": "http.request", "body": b"x" * (MAX_BODY_BYTES + 10), "more_body": False}
+
+    async def send(message: Any) -> None:
+        raise AssertionError(message)
+
+    scope = {"type": "http", "path": "/api/account/redeem", "headers": []}
+    await AdminBodyLimit(app)(scope, receive, send)
+    with pytest.raises(HTTPException) as refused:
+        await AdminBodyLimit(app)({**scope, "path": "/api/admin/codes"}, receive, send)
+    assert refused.value.status_code == 413
