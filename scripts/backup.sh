@@ -85,17 +85,21 @@ fi
 stamp="$(date -u +%Y%m%dT%H%M%SZ)"
 name="classbeat-$stamp.dump"
 partial="$out/$name.partial"
-trap 'rm -f "$partial"' EXIT
+trap 'rm -f "$partial" "$partial.sig"' EXIT
 
 final="$out/$name"
 if [ "$no_encrypt" = 0 ]; then
-  # Streamed into gpg: no plaintext dump is ever written to disk, and pipefail makes a failing
-  # pg_dump fail the script. The encrypted archive is not read back here (that needs the private
-  # key); the restore drill and a monthly restore of a real backup are its test.
+  # Streamed into gpg: no plaintext dump is ever written to disk. pipefail is what makes a failing
+  # pg_dump fail the pipeline (gpg would encrypt the truncated or empty stream into a non-empty
+  # file); the drill runs this with a pg_dump that fails. The encrypted archive is not read back
+  # here (that needs the private key); the restore drill and a monthly restore of a real backup
+  # are its test.
   final="$final.gpg"
-  docker compose exec -T db pg_dump -U postgres -d classbeat --format=custom \
+  if ! docker compose exec -T db pg_dump -U postgres -d classbeat --format=custom \
     | gpg --batch --yes --trust-model always --no-default-recipient --encrypt --sign \
-      --local-user "$signer" --recipient "$recipient" --output "$partial"
+      --local-user "$signer" --recipient "$recipient" --output "$partial"; then
+    die "pg_dump or gpg failed; no backup was written"
+  fi
   [ -s "$partial" ] || die "pg_dump or gpg produced an empty file"
   mv "$partial" "$final"
 else
