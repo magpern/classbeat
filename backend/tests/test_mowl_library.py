@@ -14,7 +14,7 @@ from mowl import spotify, spotify_web
 from mowl.errors import MowlError
 
 from classbeat.connections import Credentials
-from spotifycore import FakeSpotify, album_images, track_id
+from spotifycore import NARROW_ALBUM, FakeSpotify, album_images, track_id
 from spotifyfake import CALLBACK, CLIENT_A, USER_A, worker_opener
 
 PLAYLIST = "p" * 21 + "9"
@@ -104,3 +104,10 @@ def test_track_entries_carry_the_smallest_album_image_of_at_least_64_px(
         h["image"] == album_images(fake.catalogue[h["id"]]["album_id"])[-1]["url"] for h in hits
     )
     assert {seen.host for seen in fake.seen} == {"api.spotify.com"}  # the image is never fetched
+
+    # An album with only images under 64 px gives no image (the library's "else None", #251).
+    fake.catalogue[track_id(0)]["album_id"] = NARROW_ALBUM
+    assert [i["width"] for i in album_images(NARROW_ALBUM)] == [63, 32]
+    assert [e["image"] for e in spotify_web.playlist_items(creds, playlist.id)] == [None, None]
+    narrow = spotify_web.search_tracks(creds, fake.catalogue[track_id(0)]["name"])
+    assert [h["image"] for h in narrow if h["id"] == track_id(0)] == [None]

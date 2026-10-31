@@ -243,8 +243,10 @@ always sets `False`: the library never reaches the token endpoint) and `spotify_
 `find_playlist_tracks` (CLI only).
 0.7.0 adds `image` to the `playlist_items` and `search_tracks` track entries (ADR 0013 §9): the
 URL of the album's smallest image at least 64 px wide, or `None`, never requested by the library
-and not host-checked there. classbeat ignores it until UI7: nothing stores, returns or shows it,
-and it never goes into model input.
+and not host-checked there. classbeat keeps it only as a song's `cover` in `song_list` content
+`v: 2` (UI7, #251), and only when `classbeat.covers.cover_url` accepts it (a whole-string match of
+`https://i\.scdn\.co/image/[0-9a-f]{40}`, checked before storing and again before returning;
+anything else is `null`); it never goes into model input or comes from model output.
 
 Database tests need a throwaway Postgres whose application database has the roles of
 `docker/postgres/init/10-roles.sql` (ADR 0002 section 4). Give it a name and port of its own
@@ -338,6 +340,17 @@ one: `claude-opus-5-5`, `claude-sonnet-5-5`, `claude-haiku-5-5`), `--effort` (de
 print with their detail. A model comparison is one such run per model, and **each run needs the
 owner's go-ahead**; `python -m classbeat.evals compare RESULT.json ... --out DIR` then writes
 `compare.md` and `compare.html` offline (no model, no network, no settings).
+The regression suite's live run (ADR 0012 §4.4, `classbeat.evals.suite_live`): `docker compose exec worker
+python -m classbeat.evals suite --live --provider P --model M --effort E --repeat 3 --max-usd N --out FILE
+[--record --authorization TEXT]`. It refuses (exit 2, rule only) without `--live`, under `CI`, for a model or
+effort outside `classbeat.agent.catalog` (so `fake`), without that provider's key file and with a refused SDK
+variable; prints the plan and cost ceiling and stops without `--max-usd`; installs the worker allowlist with only
+that provider's model host before building it (`provider_for_choice`) and refuses a built adapter that is not the
+choice's provider. It runs both stage groups (design cases, and song cases on the synthetic catalogue), writes
+format 2 and prints the verdict per group (`gate.evaluate` against the digest-verified manifest). `--record`
+writes one `model_eval_results` row per group through `classbeat.models.store.record_result`; the verdict
+`enable` relies on. Each run needs the owner's go-ahead; agents and CI never run it (the offline test is
+`backend/tests/test_evals_suite_live.py`).
 Song picking and the Spotify connection (ADR 0008, ADR 0009): `CLASSBEAT_SONG_PICKING` (default off; off,
 every Spotify route answers 404 `feature_off`; the owner switches it on, roadmap Amendment 1; with it on,
 `CLASSBEAT_PUBLIC_BASE_URL` may not be `localhost`, use `127.0.0.1`, because Spotify does not accept
@@ -380,8 +393,8 @@ save and update reconcilers' read-only read of the saved revision, SV1), `classb
 (`tests/test_session_guard.py`); job kinds live outside `classbeat.jobs`.
 Revising by chat (ADR 0007 section 4): `CLASSBEAT_REVISIONS_PER_CLASS` (25 chat revisions per class, the first
 design not counted), `CLASSBEAT_CHAT_MAX_REQUESTS` (50 user requests per class) and
-`CLASSBEAT_CHAT_CONTEXT_REQUESTS` (10 earlier requests sent to the model); the smoke set has 18 cases
-(15 designs, 3 revisions). Beside them are three song-picking smoke cases (ADR 0008 section 3,
+`CLASSBEAT_CHAT_CONTEXT_REQUESTS` (10 earlier requests sent to the model); the smoke set has 19 cases
+(15 designs, 4 revisions). Beside them are three song-picking smoke cases (ADR 0008 section 3,
 `classbeat.evals.pick`; files in `classbeat/evals/smoke_pick/`): `pick_30`, `replace_two` and
 `injected_title`, each run through the real `pick_pool` and `choose_songs` stages against a recorded
 `FakeProvider` script, a synthetic Spotify catalogue and a synthetic MOWL analysis (no Spotify, MOWL or
@@ -443,7 +456,15 @@ npm run build        # typecheck, then Vite writes frontend/dist
   `localStorage` (try/catch, the page works without it); `public/theme-init.js` applies it before first paint.
 - Fonts are bundled (`@fontsource-variable/inter`, `@fontsource/archivo` 700 and 800, SIL OFL) and served from
   our origin; nothing is requested from a third-party host at runtime (`src/no-third-party-hosts.test.ts`
-  guards the sources). Pin exact versions of every package added; licences must be MIT, ISC, Apache-2.0 or OFL.
+  guards the sources), with **one allowed host**: album covers from `https://i.scdn.co`, named and shown only
+  in `components/songs/CoverArt.tsx` (`<img referrerpolicy="no-referrer" loading="lazy">`, initials tile
+  otherwise; the guard exempts that host in that file only, and only `CoverArt` renders an `<img>`).
+- The web process sends the app's Content-Security-Policy as a response header on every response
+  (`classbeat.headers`, never a `<meta>`): `'self'` for everything, `img-src 'self' https://i.scdn.co`, no
+  inline script or style, no `data:`, `object-src`/`base-uri`/`frame-ancestors 'none'`; plus
+  `Referrer-Policy: no-referrer`. New UI must work under it: no inline `<script>` or `<style>`, no `data:`
+  images (the TOTP QR code is drawn as inline SVG for this reason), no other host.
+- Pin exact versions of every package added; licences must be MIT, ISC, Apache-2.0 or OFL.
   Accepted exception (Architect, #258): `lightningcss` (MPL-2.0), a build-time dependency of Tailwind's Vite
   plugin; unmodified and not shipped in the bundle.
 - CI runs the same five commands in the `frontend` job.

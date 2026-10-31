@@ -285,6 +285,7 @@ the three category checks of ADR 0007 §1):
 | `scope_mismatch`, `invalid_response` | §1, §5 | no | "Spotify did not give the access classbeat needs. Connect again and allow it." |
 | `account_changed` | §5 | no | "This is a different Spotify account than before. Confirm to switch (classbeat forgets the working playlist)." |
 | `access_denied` | the user pressed Cancel on Spotify's page | no | "Spotify was not connected." |
+| `use_change_songs` | not from Spotify: a `revise_draft` request that asks only for other songs (ADR 0008 §6, issue #278); a job category only, never a connection's `last_error` | no | "This request is only about the songs. Use Change songs to pick other ones." (with a Change songs button on the class page) |
 
 Only `invalid_grant` and `app_misconfigured` (from the token endpoint, for any of the app-setup codes above)
 flip the connection to `needs_reconnect`, by the rules of §6; every other category leaves the status alone,

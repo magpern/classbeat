@@ -93,6 +93,11 @@ const FAILURES: Record<string, FailureText> = {
     title: 'This workout is gone from MOWL',
     detail: 'This workout is no longer in your MOWL account.',
   },
+  // ADR 0008 section 6: the request only asked for other songs; nothing was designed.
+  use_change_songs: {
+    title: 'This request is only about the songs',
+    detail: 'Nothing was changed. Use Change songs on the class page to pick other ones.',
+  },
   music_unlinked: {
     title: 'The music of this version is not in your MOWL account',
     detail:
@@ -116,7 +121,7 @@ export function failureText(category: string | null, kind = ''): FailureText {
 
 const STAGES: Record<string, string> = {
   music: 'Reading your playlist',
-  design: 'Designing the class',
+  design: 'Building your class',
   revise: 'Changing the class',
   prepare: 'Checking the class and your MOWL account',
   read: 'Reading the workout in MOWL',
@@ -124,7 +129,46 @@ const STAGES: Record<string, string> = {
   verify: 'Checking what MOWL kept',
 }
 
+/** Phase 1 of picking songs in the plain words of ADR 0013 section 6. */
+export const PICK_STEPS: readonly { stage: string; label: string }[] = [
+  { stage: 'pool_search', label: 'Finding songs that fit' },
+  { stage: 'pool_write', label: 'Saving your working playlist' },
+  { stage: 'pool_analyse', label: 'MOWL is listening to the music' },
+  { stage: 'choose', label: 'Choosing the best songs for each part' },
+]
+
+/** After the songs are approved: PHASE_TWO of backend songs/phase2.py, in its order. */
+const APPROVED_STEPS: readonly { stage: string; label: string }[] = [
+  { stage: 'prepare', label: 'Checking your accounts' },
+  { stage: 'create', label: 'Creating your playlist in Spotify' },
+  { stage: 'fill', label: 'Adding the approved songs to your playlist' },
+  { stage: 'attach', label: 'Adding your playlist to your MOWL music' },
+  { stage: 'music', label: 'Reading your playlist' },
+  { stage: 'design', label: 'Building your class' },
+]
+
+/** `revise_songs` runs both parts in one job and ends with `revise`, not `design` (backend songs/revise.py STAGES). */
+const REVISE_SONGS_STEPS: readonly { stage: string; label: string }[] = [
+  ...PICK_STEPS,
+  ...APPROVED_STEPS.filter((s) => s.stage !== 'design'),
+  { stage: 'revise', label: 'Changing the class' },
+]
+
+const DRAFT_STEPS: readonly { stage: string; label: string }[] = [
+  { stage: 'music', label: 'Reading your playlist' },
+  { stage: 'design', label: 'Building your class' },
+]
+
+/** The checklist of the Designing page for a job, in the order its stages run. */
+export function designSteps(kind: string, approved: boolean): readonly { stage: string; label: string }[] {
+  if (kind === 'revise_songs') return REVISE_SONGS_STEPS
+  if (kind === 'design_with_songs') return approved ? APPROVED_STEPS : PICK_STEPS
+  return DRAFT_STEPS
+}
+
 export function stageLabel(stage: string | null): string {
+  const plain = PICK_STEPS.find((s) => s.stage === stage)
+  if (plain !== undefined) return plain.label
   const song = pickStageLabel(stage)
   if (song !== null) return song
   return stage !== null && Object.hasOwn(STAGES, stage) ? STAGES[stage]! : 'Getting started'
@@ -144,6 +188,13 @@ export function retryLabel(category: string | null): string {
 
 // Failure sentences for a change requested in the chat (`revise_draft`). The class keeps the
 // version it had; the request stays in the conversation.
+/** A request that only asks for other songs (ADR 0008 section 6): the way is Change songs. */
+export const USE_CHANGE_SONGS =
+  'This request is only about the songs, so nothing changed. Use Change songs to pick other ones.'
+/** The same for a class whose music is a playlist of the user's own: it has no Change songs. */
+export const USE_NEW_CLASS_FOR_SONGS =
+  'This request is only about the songs, so nothing changed. This class uses a playlist of your own; to use other music, design a new class.'
+
 const REVISE_FAILURES: Record<string, string> = {
   upstream_unavailable: 'MOWL could not be reached. Nothing changed. Try again in a few minutes.',
   rate_limited: 'MOWL asked classbeat to slow down. Nothing changed. Wait a few minutes and try again.',
@@ -163,6 +214,7 @@ const REVISE_FAILURES: Record<string, string> = {
   outbound_blocked: 'Something went wrong on our side. Nothing changed. Try again later.',
   internal: 'Something went wrong on our side. Nothing changed. Try again later.',
   music_unlinked: 'The music of this version is not in your connected MOWL account. Change it and save the new version.',
+  use_change_songs: USE_CHANGE_SONGS,
   program_changed: 'This workout was changed in MOWL after classbeat saved it.',
   program_missing: 'This workout is no longer in your MOWL account.',
 }

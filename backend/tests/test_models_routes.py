@@ -17,7 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 
 from classbeat.agent import catalog
 from classbeat.agent.catalog import CatalogModel
-from classbeat.agent.providers import AnthropicProvider, ProviderUnavailable
+from classbeat.agent.providers import AnthropicProvider, OpenAIProvider, ProviderUnavailable
 from classbeat.config import Settings
 from classbeat.db import system_session
 from classbeat.evals.gate import CategoryVerdict, GroupVerdict, Status
@@ -607,6 +607,18 @@ def test_provider_for_choice_builds_a_catalog_anthropic_model_with_its_key(
     assert isinstance(provider, AnthropicProvider)
 
 
+def test_provider_for_choice_builds_the_openai_adapter_for_an_openai_entry(
+    app_database_url: str, kek_dir: Path
+) -> None:
+    with pytest.raises(ProviderUnavailable, match="key file"):
+        provider_for_choice(
+            worker(app_database_url, kek_dir), ModelChoice("openai", "gpt-6.1-sol", "high")
+        )
+    s = worker(app_database_url, kek_dir, "openai")
+    provider = provider_for_choice(s, ModelChoice("openai", "gpt-6.1-sol", "high"))
+    assert type(provider) is OpenAIProvider
+
+
 @pytest.mark.parametrize(
     ("choice", "rule"),
     [
@@ -614,7 +626,6 @@ def test_provider_for_choice_builds_a_catalog_anthropic_model_with_its_key(
         (ModelChoice("anthropic", "fake", "medium"), "catalog"),
         (ModelChoice("anthropic", "claude-opus-9", "medium"), "catalog"),
         (ModelChoice("anthropic", OPUS, "ultra"), "effort"),
-        (ModelChoice("openai", "gpt-allowed", "medium"), "no adapter"),
         (ModelChoice("deepseek", "deepseek-ok", "medium"), "no adapter"),
     ],
 )
