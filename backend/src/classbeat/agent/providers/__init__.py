@@ -8,10 +8,10 @@ provider; the web app never imports this package.
 
 ``CLASSBEAT_MODEL_PROVIDER`` stays ``anthropic | fake`` (ADR 0012 §5): OpenAI and DeepSeek are
 listed in ``classbeat.agent.catalog`` and reached only through a route (M3c G1, G2), never
-through this setting. Their key files (``openai_api_key``, ``deepseek_api_key``) are read here
-by no code yet. ``OpenAIProvider`` (M3c P2, ``openai_responses``) is exported for the routes and
-the eval runner to build (M3c G1, EV5); nothing builds it yet, and its catalog entries are
-``owner_pending``. DeepSeek's adapter comes with P3.
+through this setting. Their key files (``openai_api_key``, ``deepseek_api_key``) are read
+by ``classbeat.models.providers.provider_for_choice`` only. ``OpenAIProvider`` (M3c P2,
+``openai_responses``) is built there, for the live suite run (M3c EV5) and, through a route, for
+jobs; its catalog entries are ``owner_pending``. DeepSeek's adapter comes with P3.
 """
 
 from classbeat.agent.provider import ModelProvider

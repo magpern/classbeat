@@ -338,6 +338,17 @@ one: `claude-opus-5-5`, `claude-sonnet-5-5`, `claude-haiku-5-5`), `--effort` (de
 print with their detail. A model comparison is one such run per model, and **each run needs the
 owner's go-ahead**; `python -m classbeat.evals compare RESULT.json ... --out DIR` then writes
 `compare.md` and `compare.html` offline (no model, no network, no settings).
+The regression suite's live run (ADR 0012 §4.4, `classbeat.evals.suite_live`): `docker compose exec worker
+python -m classbeat.evals suite --live --provider P --model M --effort E --repeat 3 --max-usd N --out FILE
+[--record --authorization TEXT]`. It refuses (exit 2, rule only) without `--live`, under `CI`, for a model or
+effort outside `classbeat.agent.catalog` (so `fake`), without that provider's key file and with a refused SDK
+variable; prints the plan and cost ceiling and stops without `--max-usd`; installs the worker allowlist with only
+that provider's model host before building it (`provider_for_choice`) and refuses a built adapter that is not the
+choice's provider. It runs both stage groups (design cases, and song cases on the synthetic catalogue), writes
+format 2 and prints the verdict per group (`gate.evaluate` against the digest-verified manifest). `--record`
+writes one `model_eval_results` row per group through `classbeat.models.store.record_result`; the verdict
+`enable` relies on. Each run needs the owner's go-ahead; agents and CI never run it (the offline test is
+`backend/tests/test_evals_suite_live.py`).
 Song picking and the Spotify connection (ADR 0008, ADR 0009): `CLASSBEAT_SONG_PICKING` (default off; off,
 every Spotify route answers 404 `feature_off`; the owner switches it on, roadmap Amendment 1; with it on,
 `CLASSBEAT_PUBLIC_BASE_URL` may not be `localhost`, use `127.0.0.1`, because Spotify does not accept
