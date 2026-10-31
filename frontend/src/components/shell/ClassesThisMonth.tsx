@@ -5,7 +5,7 @@ import { Progress } from '../ui/progress'
 
 function share(plan: Plan): number {
   const limit = plan.limits.classesPerMonth
-  return limit > 0 ? Math.min(100, (plan.classesHeld / limit) * 100) : 0
+  return limit > 0 ? Math.min(100, Math.round((plan.classesHeld / limit) * 100)) : 0
 }
 
 /**
