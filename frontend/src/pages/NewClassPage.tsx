@@ -297,7 +297,7 @@ function ClassForm({
   const picking = music === 'pick' && songs.kind === 'ready'
   const summary = [
     { label: 'Length', value: Number.isInteger(lengthNumber) ? `${String(lengthNumber)} min` : 'Not set' },
-    { label: 'Effort', value: effort ? `${effort.label}, zones ${String(effort.low)} to ${String(effort.high)}` : '' },
+    { label: 'Effort', value: effort?.label ?? '' },
     { label: 'Climbs', value: climbs },
     { label: 'Sprints', value: sprints },
     { label: 'Races', value: races },

@@ -84,6 +84,7 @@ async def test_a_draft_is_designed_on_a_new_playlist_and_stored(
     assert made.prompt_version == run.prompt_version
     assert (made.map_version, made.crossfade_sec) == (music.MAP_VERSION, spotify.CROSSFADE_SEC)
     assert made.agent_run_ids == [run.id]
+    assert made.tss_approximate is False  # no zone 7 in the fitted draft (ADR 0012 section 7)
     assert made.cost_micros == run.cost_micros
     assert run.outcome == "submitted"
 

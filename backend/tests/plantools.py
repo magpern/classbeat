@@ -16,6 +16,17 @@ from jobtools import engine_for
 
 
 @pytest.fixture
+def users_plan() -> str | None:
+    """The plan the jobs-API test users are granted (``browsers``, ``songenv.rider``; QT1, #214).
+
+    ``pro`` (100 classes, 25 revisions, 3 jobs at once under ``CLASSBEAT_JOBS_PER_USER``'s 2)
+    gives the limits these tests had before M5, through the real path: an admin grant that
+    ``classbeat.plans.resolve`` reads and the metered ledger counts. A module that tests the free
+    plan opts out by overriding this fixture with ``None``."""
+    return "pro"
+
+
+@pytest.fixture
 def admin(env: Any, database_url: str) -> Iterator[Connection]:
     """The superuser (test setup only), with no ``trial`` setting before or after the test."""
     with (
