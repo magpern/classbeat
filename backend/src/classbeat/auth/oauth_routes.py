@@ -44,6 +44,7 @@ from classbeat.auth.ratelimit import OAUTH_IP, Bucket
 from classbeat.auth.sessions import SessionInfo
 from classbeat.auth.signup_routes import valid_invite
 from classbeat.db import system_session
+from classbeat.flags import effective as flags
 from classbeat.mail import send_logged
 
 logger = logging.getLogger(__name__)
@@ -102,10 +103,12 @@ async def start(
         user_id = ctx.user_id
     invite_id: UUID | None = None
     settings = request.app.state.settings
-    if body.purpose == "sign_in" and settings.signup_mode == "invite" and body.invite_code:
+    if body.purpose == "sign_in" and body.invite_code:
         async with system_session(factory(request)) as db:
-            invite_id = await valid_invite(db, body.invite_code)
-        if invite_id is None:
+            invite_mode = await flags.signup_mode(db, settings.signup_mode) == "invite"
+            if invite_mode:
+                invite_id = await valid_invite(db, body.invite_code)
+        if invite_mode and invite_id is None:
             raise HTTPException(status_code=400, detail={"reason": "invalid_invite"})
     async with system_session(factory(request)) as db:
         flow = await create_flow(

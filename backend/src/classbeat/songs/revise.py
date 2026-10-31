@@ -54,7 +54,8 @@ from classbeat.agent.revise import ReviseContext, ReviseResult, revise_stage
 from classbeat.context import UserContext
 from classbeat.crypto.keks import KeyRing
 from classbeat.design import chat, diff, limits, revision
-from classbeat.design.kind import current_runtime, new_provider
+from classbeat.design.kind import current_runtime, group_model
+from classbeat.flags import effective as flags
 from classbeat.jobs import KINDS, Complete, FencedSession, JobFailure, JobKind, JobRun, Outcome
 from classbeat.jobs.kinds import Admitted, Refused
 from classbeat.operations import orphans
@@ -100,7 +101,7 @@ async def _base_list(db: AsyncSession, owner_id: UUID, class_id: UUID, base: UUI
 async def admit(db: AsyncSession, ctx: UserContext, parsed: BaseModel, /) -> Admitted | Refused:
     if not isinstance(parsed, ReviseSongsInput) or parsed.class_id is None:
         return Refused("invalid_input")
-    if not config.current().enabled:
+    if not await flags.song_picking_admits(db, ctx, config.current().enabled):
         return Refused("song_picking_off")
     given, class_id, owner = parsed, parsed.class_id, ctx.user_id
     state = await chat.create_state(db, owner, class_id, given.base_revision_id)
@@ -323,18 +324,19 @@ async def run(job_run: JobRun) -> Outcome:
         raise JobFailure("internal")  # a resume never waits
     songs = config.current()
     if job_run.approved or given.mode == "resume":
-        provider = new_provider(runtime)  # before any Spotify or MOWL call; this run's own
+        # Phase 2 revises the draft (the ``design`` group), before any Spotify or MOWL call.
+        model = await group_model(runtime, job_run, given.route_key, "design")
         return await run_revise_phase_two(
             job_run,
             given,
             keyring=runtime.keyring,
-            provider=provider,
-            agent=runtime.agent,
+            provider=model.provider,
+            agent=model.agent,
             config=songs,
             context_requests=runtime.context_requests,
         )
     brief, seed = await _phase_one_plan(job_run, given)
-    provider = new_provider(runtime)
+    model = await group_model(runtime, job_run, given.route_key, "songs")  # phase 1: songs
     return await run_phase_one(
         job_run,
         given,
@@ -342,8 +344,8 @@ async def run(job_run: JobRun) -> Outcome:
         seed=seed,
         origin=KIND,
         keyring=runtime.keyring,
-        provider=provider,
-        agent=runtime.agent,
+        provider=model.provider,
+        agent=model.agent,
         config=songs,
     )
 

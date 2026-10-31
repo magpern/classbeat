@@ -17,7 +17,12 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 
 from classbeat.agent import catalog
 from classbeat.agent.catalog import CatalogModel
-from classbeat.agent.providers import AnthropicProvider, OpenAIProvider, ProviderUnavailable
+from classbeat.agent.providers import (
+    AnthropicProvider,
+    DeepSeekProvider,
+    OpenAIProvider,
+    ProviderUnavailable,
+)
 from classbeat.config import Settings
 from classbeat.db import system_session
 from classbeat.evals.gate import CategoryVerdict, GroupVerdict, Status
@@ -34,11 +39,12 @@ from classbeat.models import (
     set_route,
 )
 from classbeat.models import routes as routes_module
-from classbeat.models.providers import provider_for_choice
+from classbeat.models.providers import eval_provider_for_choice, provider_for_choice
 from classbeat.models.store import ResultInvalid, record_result
 from classbeat.models.versions import (
     GROUP_STAGES,
     all_prompt_versions,
+    running_manifest_digest,
     running_prompt_versions,
     running_suite_version,
 )
@@ -189,6 +195,8 @@ def test_the_suite_version_is_the_manifests_without_loading_the_eval_package() -
     from classbeat.evals.suite import load_suite
 
     assert running_suite_version() == load_suite().manifest.suite_version
+    # The stored digest stands for the running suite: load_suite refuses one that is not.
+    assert running_manifest_digest() == load_suite().manifest.digest
 
 
 def test_the_web_side_of_the_gate_loads_no_provider_no_sdk_and_no_eval_code() -> None:
@@ -311,6 +319,9 @@ async def test_set_route_needs_a_current_passing_newest_result(
     missing = {"design": running_prompt_versions("design")["design"]}
     add_result(admin, prompt_versions=missing, age_minutes=4)
     assert await refused(factory, web, "anthropic", OPUS, "medium") == "prompt_versions"
+    # A newer pass recorded on another suite of the same version (#215: the manifest digest).
+    add_result(admin, manifest_digest="c" * 64, age_minutes=3)
+    assert await refused(factory, web, "anthropic", OPUS, "medium") == "manifest_digest"
     # The songs group's prompts do not matter to a design result.
     extra = {**running_prompt_versions("design"), "pick_pool": "e" * 64}
     good = add_result(admin, prompt_versions=extra, age_minutes=1)
@@ -472,7 +483,7 @@ async def test_a_deepseek_route_is_unusable_once_the_setting_is_off(
 # --- staleness --------------------------------------------------------------------------------
 
 
-async def test_a_stale_route_is_used_and_flagged_with_each_reason(
+async def test_a_stale_route_is_flagged_with_each_reason_and_a_newer_failure_refused(
     admin: Connection,
     factory: Factory,
     app_database_url: str,
@@ -486,23 +497,24 @@ async def test_a_stale_route_is_used_and_flagged_with_each_reason(
     # A newer failing result for the same provider, model, effort and group.
     add_result(admin, passed=False, age_minutes=5)
     add_result(admin, passed=False, effort="high", age_minutes=4)  # another effort: not this
-    choice = await resolve(factory, s)
-    assert (choice.eval_result_id, choice.stale) == (result, ("newer_failure",))
-    assert (await _routes(factory))[0].stale == ("newer_failure",)
+    # No standing pass: the worker refuses the route (G2), the listing shows why.
+    assert await unusable(factory, s) == "newer_failure"
+    [view] = await _routes(factory)
+    assert (view.result.id, view.stale) == (result, ("newer_failure",))
     # A deploy changed a prompt or a tool schema.
     changed = {**running_prompt_versions("design"), "design": "d" * 64}
     every = ("prompt_versions", "suite_version", "newer_failure")
     with monkeypatch.context() as m:
         m.setattr(routes_module, "running_prompt_versions", lambda group: changed)
-        assert (await resolve(factory, s)).stale == ("prompt_versions", "newer_failure")
+        assert (await _routes(factory))[0].stale == ("prompt_versions", "newer_failure")
         # The suite moved on.
         m.setattr(routes_module, "running_suite_version", lambda: 99)
-        assert (await resolve(factory, s)).stale == every
         assert (await _routes(factory))[0].stale == every
+        assert await unusable(factory, s) == "newer_failure"  # with other reasons too
         # A new route for a stale result is refused (not the newest pass of the current code).
         assert await refused(factory, s, "anthropic", OPUS, "medium") == "suite_version"
     assert await refused(factory, s, "anthropic", OPUS, "medium") == "result_failed"
-    # Each reason alone: only the prompt versions, only the suite version.
+    # Each other reason alone: the route is used and flagged (ADR 0012 section 5).
     clear_gate(admin)
     add_result(admin)
     await enable(factory, s, "anthropic", OPUS, "medium")
@@ -512,6 +524,41 @@ async def test_a_stale_route_is_used_and_flagged_with_each_reason(
     with monkeypatch.context() as m:
         m.setattr(routes_module, "running_suite_version", lambda: 99)
         assert (await resolve(factory, s)).stale == ("suite_version",)
+    # The suite's cases changed under the same version (#215): only the manifest digest.
+    with monkeypatch.context() as m:
+        m.setattr(routes_module, "running_manifest_digest", lambda: "c" * 64)
+        assert (await resolve(factory, s)).stale == ("manifest_digest",)
+        assert (await _routes(factory))[0].stale == ("manifest_digest",)
+        assert await refused(factory, s, "anthropic", OPUS, "medium") == "manifest_digest"
+
+
+async def test_the_newest_result_is_deterministic_within_one_transaction(
+    admin: Connection, factory: Factory, app_database_url: str, kek_dir: Path
+) -> None:
+    """Two results recorded in one transaction share ``recorded_at`` (``now()``): the later
+    insert is the newer one (``seq``, migration 0012), whatever their random ids (#215)."""
+    s = worker(app_database_url, kek_dir, "anthropic")
+    for _ in range(6):  # uuid4 ids: a random order would show within a few rounds
+        clear_gate(admin)
+        async with system_session(factory) as db:
+            for status in ("passed", "failed"):
+                await record_result(db, **_values(verdict=verdict(status)))
+        assert await refused(factory, s, "anthropic", OPUS, "medium") == "result_failed"
+        async with system_session(factory) as db:
+            [newer, older] = await list_results(db)
+        assert (newer.passed, older.passed, newer.recorded_at) == (False, True, older.recorded_at)
+    # The other order: the pass is the newer one, and the failure before it does not stale it.
+    clear_gate(admin)
+    async with system_session(factory) as db:
+        for status in ("failed", "passed"):
+            await record_result(db, **_values(verdict=verdict(status)))
+    await enable(factory, s, "anthropic", OPUS, "medium")
+    assert (await resolve(factory, s)).stale == ()
+    # A failure recorded after the route's pass in one transaction is newer: refused.
+    async with system_session(factory) as db:
+        await record_result(db, **_values(verdict=verdict("failed")))
+    assert await unusable(factory, s) == "newer_failure"
+    assert (await _routes(factory))[0].stale == ("newer_failure",)
 
 
 # --- record_result ----------------------------------------------------------------------------
@@ -525,11 +572,11 @@ def verdict(status: Status) -> dict[str, Any]:
     ).as_json()  # fmt: skip
 
 
-async def record(factory: Factory, **changes: Any) -> Any:
-    values: dict[str, Any] = {
+def _values(**changes: Any) -> dict[str, Any]:
+    return {
         "run_id": uuid.uuid4(),
         "suite_version": running_suite_version(),
-        "manifest_digest": ZEROS,
+        "manifest_digest": running_manifest_digest(),
         "provider": "anthropic",
         "model": OPUS,
         "effort": "medium",
@@ -542,8 +589,11 @@ async def record(factory: Factory, **changes: Any) -> Any:
         "authorization_note": "owner go-ahead in chat, 2026-10-31",
         **changes,
     }
+
+
+async def record(factory: Factory, **changes: Any) -> Any:
     async with system_session(factory) as db:
-        return await record_result(db, **values)
+        return await record_result(db, **_values(**changes))
 
 
 async def test_record_result_stores_the_verdict_and_its_passed(
@@ -607,6 +657,35 @@ def test_provider_for_choice_builds_a_catalog_anthropic_model_with_its_key(
     assert isinstance(provider, AnthropicProvider)
 
 
+def test_provider_for_choice_builds_openai_with_its_key_and_needs_it(
+    app_database_url: str, kek_dir: Path, catalog_plus: AcceptedEntries
+) -> None:
+    choice = ModelChoice("openai", catalog_plus.openai.model, "medium")
+    built = provider_for_choice(worker(app_database_url, kek_dir, "openai"), choice)
+    assert isinstance(built, OpenAIProvider)  # built only; nothing is sent
+    (kek_dir / "openai_api_key").unlink()
+    with pytest.raises(ProviderUnavailable, match="key file"):
+        provider_for_choice(worker(app_database_url, kek_dir, "anthropic"), choice)
+
+
+def test_provider_for_choice_builds_deepseek_only_while_on_or_for_an_eval(
+    app_database_url: str, kek_dir: Path, catalog_plus: AcceptedEntries
+) -> None:
+    choice = ModelChoice("deepseek", catalog_plus.deepseek.model, "medium")
+    off = worker(app_database_url, kek_dir, "deepseek")
+    with pytest.raises(ProviderUnavailable, match="DeepSeek is off"):
+        provider_for_choice(off, choice)  # the jobs' path (RouteModels never passes the flag)
+    built = provider_for_choice(off, choice, eval_allow_disabled_deepseek=True)
+    assert isinstance(built, DeepSeekProvider)  # the eval-only path; built only, nothing sent
+    on = settings(app_database_url, deepseek_enabled=True)
+    assert isinstance(provider_for_choice(on, choice), DeepSeekProvider)
+    (kek_dir / "deepseek_api_key").unlink()
+    assert isinstance(eval_provider_for_choice(off, choice), DeepSeekProvider)  # the CLI's factory
+    keyless = settings(app_database_url)  # the key file is read when the settings are made
+    with pytest.raises(ProviderUnavailable, match="key file"):
+        provider_for_choice(keyless, choice, eval_allow_disabled_deepseek=True)
+
+
 def test_provider_for_choice_builds_the_openai_adapter_for_an_openai_entry(
     app_database_url: str, kek_dir: Path
 ) -> None:
@@ -626,7 +705,7 @@ def test_provider_for_choice_builds_the_openai_adapter_for_an_openai_entry(
         (ModelChoice("anthropic", "fake", "medium"), "catalog"),
         (ModelChoice("anthropic", "claude-opus-9", "medium"), "catalog"),
         (ModelChoice("anthropic", OPUS, "ultra"), "effort"),
-        (ModelChoice("deepseek", "deepseek-ok", "medium"), "no adapter"),
+        (ModelChoice("deepseek", "deepseek-ok", "medium"), "DeepSeek is off"),
     ],
 )
 def test_provider_for_choice_never_builds_fake_or_a_non_catalog_model(
@@ -689,7 +768,7 @@ async def test_the_cli_lists_enables_with_yes_only_and_disables(
     add_result(admin, passed=False)
     code, out, err = await models_cli(s, "list")
     outputs += [out, err]
-    assert "usable stale: newer_failure" in out
+    assert "unusable: newer_failure stale: newer_failure" in out
     (kek_dir / "anthropic_api_key").write_text("", "utf-8")  # an empty file is no key
     code, out, err = await models_cli(settings(app_database_url), "list")
     outputs += [out, err]

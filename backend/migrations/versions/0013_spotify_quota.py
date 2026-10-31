@@ -1,7 +1,7 @@
 """The job's Spotify request count, rate limits in a row and last hint (ADR 0009 section 8; #300)
 
 Revision ID: 0013_spotify_quota
-Revises: 0011_use_change_songs
+Revises: 0012_model_jobs
 Create Date: 2026-10-31
 
 Four columns on ``jobs``, all written by the worker in the job's fenced transactions:
@@ -22,7 +22,7 @@ from collections.abc import Sequence
 from alembic import op
 
 revision: str = "0013_spotify_quota"
-down_revision: str | Sequence[str] | None = "0011_use_change_songs"
+down_revision: str | Sequence[str] | None = "0012_model_jobs"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

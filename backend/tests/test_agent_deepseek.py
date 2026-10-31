@@ -430,6 +430,27 @@ def test_the_factory_refuses_while_deepseek_is_off(kek_dir: Path) -> None:
     assert MODEL_HOSTS["deepseek"] not in worker_hosts(worker_model_providers(settings))
 
 
+async def test_only_the_eval_path_builds_it_while_deepseek_is_off(kek_dir: Path) -> None:
+    """Architect, 2026-10-31: the owner's live eval of a disabled DeepSeek model does not need
+    the setting (``allow_disabled=True``, keyword-only, eval only); the default still refuses,
+    and the key file is still needed."""
+    settings = Settings()
+    assert settings.deepseek_enabled is False
+    with pytest.raises(ProviderUnavailable, match="deepseek_api_key"):
+        deepseek_provider(settings, allow_disabled=True)
+    _key(kek_dir)
+    settings = Settings()
+    replay = Replay("deepseek", [Answer.from_file("deepseek", "stop", path=PATH)])
+    model = deepseek_provider(settings, allow_disabled=True, transport=replay.transport())
+    assert isinstance(model, DeepSeekProvider)
+    assert (await model.start(SPEC).turn([])).stop == "end_turn"
+    assert replay.problems == []
+    with pytest.raises(ProviderUnavailable, match="DeepSeek is off"):
+        deepseek_provider(settings)
+    with pytest.raises(TypeError):
+        deepseek_provider(settings, True)  # type: ignore[misc]  # keyword-only
+
+
 def test_the_factory_needs_the_key_file_too(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("CLASSBEAT_DEEPSEEK_ENABLED", "true")
     settings = Settings()

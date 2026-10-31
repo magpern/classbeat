@@ -84,7 +84,7 @@ RETENTION: Mapping[str, Retention] = MappingProxyType(
         "agent_runs": _entry(
             "",
             "stage provider model model_answered effort prompt_version outcome job_kind "
-            "price_version",
+            "price_version route_key",
             "account",
         ),
         "connections": _entry(
