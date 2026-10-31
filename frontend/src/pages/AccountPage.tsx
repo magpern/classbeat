@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { logout, logoutAll } from '../api/auth'
 import { oauthOutcomeMessage } from '../api/messages'
 import { useSession } from '../auth/SessionContext'
@@ -82,6 +82,19 @@ function Account() {
       navigate('/signin')
     })
   }
+
+  // A fragment-only navigation (a link to `/account#plan`, the browser's back button) changes
+  // the tab without remounting the page.
+  useEffect(() => {
+    const follow = () => {
+      const hash = window.location.hash.replace(/^#/, '')
+      if (isTab(hash)) setTab(hash)
+    }
+    window.addEventListener('hashchange', follow)
+    return () => {
+      window.removeEventListener('hashchange', follow)
+    }
+  }, [])
 
   const choose = (value: string) => {
     if (!isTab(value)) return
