@@ -267,9 +267,10 @@ describe('the new-class form', () => {
   })
 
   it('hides the classes line when the plan cannot be read', async () => {
-    fakeApi(READY)
+    fakeApi({ ...READY, 'GET /api/account/plan': () => reason(503, 'upstream_unavailable') })
     renderAt('/classes/new')
     await screen.findByLabelText('Class name')
+    await new Promise((resolve) => setTimeout(resolve, 50))
     expect(screen.queryByText(/classes left this month/)).toBeNull()
   })
 
