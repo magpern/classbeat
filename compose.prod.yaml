@@ -18,8 +18,9 @@
 # Secrets are files under ./secrets (mounted as Docker secrets, never environment variables).
 #
 # Networks: `backend` is internal (no route out): db, migrate and db-functions live only there.
-# `edge` joins caddy and web (the only path from the internet to the app). `egress` is the
-# worker's way out to the model providers. Only caddy publishes ports.
+# `edge` joins caddy and web: the only inbound path from the internet to the app, and (not
+# internal, by design) web's way out to SMTP and the Spotify and Google/GitHub/Microsoft token
+# endpoints. `egress` is the worker's way out to the model providers, MOWL and Spotify. Only caddy publishes ports.
 
 x-logging: &logging
   driver: json-file
@@ -58,7 +59,6 @@ x-app: &app
     - database_password
     - app_secret_key
     - connection_kek
-    - smtp_password
   depends_on:
     db-functions:
       condition: service_completed_successfully
@@ -69,7 +69,7 @@ services:
     restart: unless-stopped
     logging: *logging
     <<: *hardening
-    # The binary carries a file capability to bind 80 and 443; ALL was dropped above.
+    # Caddy runs as root in the container; with ALL dropped it needs this one back to bind 80/443.
     cap_add:
       - NET_BIND_SERVICE
     environment:
@@ -203,7 +203,6 @@ services:
       - database_password
       - app_secret_key
       - connection_kek
-      - smtp_password
       - anthropic_api_key
       - openai_api_key
       - deepseek_api_key

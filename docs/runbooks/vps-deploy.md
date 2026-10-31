@@ -14,7 +14,8 @@ internet -> :80/:443 caddy -(edge)-> web:8000 -(backend, internal)-> db
                                      worker -(backend)-> db ; worker -(egress)-> model providers, MOWL, Spotify
 ```
 
-Only `caddy` publishes ports. `db` has no port at all, and there is no mailpit (mail goes to a
+Only `caddy` publishes ports. `edge` is an ordinary (not internal) network, so `web` also has
+outbound internet by design (SMTP, OAuth and Spotify token calls); `worker` goes out over `egress`. `db` has no port at all, and there is no mailpit (mail goes to a
 real SMTP service). `backend` is an internal Docker network: `db`, `migrate` and `db-functions`
 have no route out.
 
@@ -31,9 +32,10 @@ have no route out.
 ## 2. Firewall
 
 Allow inbound only: `22/tcp` (SSH, ideally from your address), `80/tcp` (certificate challenge
-and the redirect to https) and `443/tcp`, `443/udp` (HTTP/3). Deny everything else, so a mistake
-in a compose file cannot expose `db`. Docker publishes ports around `ufw`: the compose file
-publishes only Caddy's, and `docker ps` must show no other `0.0.0.0` mapping (checked in 8).
+and the redirect to https) and `443/tcp`, `443/udp` (HTTP/3). Set this in the **provider's
+firewall** (outside the server): ports Docker publishes bypass the host's `ufw`, so a host
+firewall alone does not stop a later compose mistake from exposing `db`. The compose file
+publishes only Caddy's ports, and `docker ps` must show no other `0.0.0.0` mapping (section 8).
 
 ## 3. Get the files
 
@@ -154,10 +156,10 @@ docker compose -f compose.prod.yaml exec web python -m classbeat admin grant you
 - [ ] A design run shows live progress in the browser (SSE passes Caddy unbuffered).
 - [ ] The app sees the real client address, not Caddy's (Caddy at `172.29.80.10` is the only
       trusted proxy, `CLASSBEAT_TRUSTED_PROXIES`): the per-IP limits of two different networks
-      do not share a bucket. Over IPv6 Docker's userland proxy may show the
-      network gateway instead; that address is then treated as the client, which is safe but
-      shares one rate-limit bucket (publish IPv6 with `ip6tables` enabled in the Docker daemon if
-      this matters).
+      do not share a bucket. Over IPv6 Docker's userland proxy shows the network gateway as the
+      client, so all IPv6 visitors share one rate-limit bucket (not a spoofing risk). Fixing it
+      needs `ip6tables` in the Docker daemon **and** `enable_ipv6` with an IPv6 subnet on the
+      `edge` network; the compose file does not do this.
 - [ ] `docker compose -f compose.prod.yaml logs caddy` access lines show no query string and no
       cookie or authorization header.
 - [ ] Run an external header/TLS check of the domain (for example SSL Labs, securityheaders.com).
@@ -176,20 +178,47 @@ docker compose -f compose.prod.yaml up -d --wait
 ```
 
 `up` re-runs `migrate` (idempotent) and `db-functions` before it replaces `web` and `worker`;
-the worker has 30 s to hand its leases back (ADR 0005). **Take a database dump first** (section 11)
-when the release contains a migration. Read the release notes for owner-facing steps.
+the worker has 30 s to hand its leases back (ADR 0005). **Take a database dump first** (section 11),
+always: it is the rollback. Read the release notes for owner-facing steps.
 
 ## 10. Rollback
 
-Migrations only go forward, so decide before the update:
+Take the dump of section 11 before every update. Migrations are not run backwards: the old
+image's `migrate` service does `alembic upgrade head`, and a database stamped with a revision the
+old image does not know makes it fail ("Can't locate revision"), so `db-functions`, `web` and
+`worker` never start. Setting `CLASSBEAT_VERSION` back is therefore **only** safe when the
+release you are leaving added no migration (compare the revision files between the two tags:
+`git diff --stat vOLD vNEW -- backend/migrations/versions`). Some migrations also drop or reshape
+data, so treat none as reversible.
 
-- **No migration in the release** (or a backward-compatible one): set `CLASSBEAT_VERSION` back to
-  the previous tag, `git checkout` that tag, `docker compose -f compose.prod.yaml up -d --wait`.
-- **A migration ran and the old image cannot work with it**: stop `web` and `worker`, restore the
-  pre-update dump into a fresh volume (section 11), then start the old version. Anything written
-  since the dump is lost; say so to the testers.
+- **No migration in the release:** set `CLASSBEAT_VERSION` back to the previous tag,
+  `git checkout vOLD`, `docker compose -f compose.prod.yaml up -d --wait`.
+- **A migration ran** (any kind): restore the pre-update dump, then start the old version.
+  ```bash
+  docker compose -f compose.prod.yaml down                       # keeps volumes
+  docker volume rm "$(docker compose -f compose.prod.yaml config --format json | jq -r .name)_db-data"
+  git checkout vOLD && sed -i 's/^CLASSBEAT_VERSION=.*/CLASSBEAT_VERSION=OLD/' .env
+  docker compose -f compose.prod.yaml up -d --wait db            # empty volume: init creates the roles
+  docker compose -f compose.prod.yaml run --rm migrate           # the OLD schema and the remaining roles
+  docker compose -f compose.prod.yaml run --rm db-functions
+  docker compose -f compose.prod.yaml exec -T db pg_restore -U postgres -d classbeat     --clean --if-exists < "$BACKUP_DIR/classbeat-YYYY-MM-DD.dump"
+  docker compose -f compose.prod.yaml up -d --wait
+  ```
+  Anything written since the dump is lost; tell the testers. (Deleting `db-data` here is the one
+  deliberate exception to the rule below, and only after the dump file is safe off the volume.)
+  An agent rehearsed exactly this sequence locally on a throwaway stack (a marker row survived
+  the dump, `docker volume rm`, the steps above, and `web` came up healthy; `pg_restore` printed
+  no error). Restoring straight into the empty database without `migrate` and `db-functions` first
+  fails on the roles those create. It is not the full M6 restore drill: rehearse it on your own
+  data once.
 
-Never delete `db-data` or `caddy-data` to "reset" a production stack.
+Never delete `db-data` or `caddy-data` otherwise to "reset" a production stack.
+
+## 10a. Key-compromise procedure (`maint`)
+
+The dev `compose.yaml` has a `maint` service (ADR 0004 section 2, `keys wipe`) that
+`compose.prod.yaml` does not. Adding it, with the owner role's secret and the SMTP settings, is a
+follow-up for the M6 issues; until then that procedure has no prepared command on the VPS.
 
 ## 11. Backups (schedule hook)
 
@@ -230,6 +259,9 @@ The worker is not started in the smoke: `fake` is refused in prod and a real key
 On Docker Desktop for Windows the TLS handshake over IPv4 to the published port can hang
 (`curl -6`, or `docker compose exec caddy wget --no-check-certificate https://localhost/...`,
 work); that is the desktop port relay, not the configuration.
+
+`scripts/check-prod-compose.sh` (also a CI step) runs the config, invariant and `caddy validate`
+checks with dummy values.
 
 What was checked this way (2026-10-31), and what was not:
 

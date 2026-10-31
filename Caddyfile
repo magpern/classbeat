@@ -38,6 +38,7 @@
 		Cross-Origin-Opener-Policy "same-origin"
 		Cross-Origin-Resource-Policy "same-origin"
 		-Server
+		-Via
 	}
 
 	# SSE (GET /api/jobs/<id>/events): never compressed, flushed as it is written.
@@ -61,6 +62,8 @@
 			wrap json
 			request>headers delete
 			request>uri regexp \?.* ""
+			# Redirects can carry a query string: log no response headers at all.
+			resp_headers delete
 		}
 	}
 
