@@ -101,7 +101,7 @@ failure):
 3. `scripts/backup.sh`; the decoded dump (`pg_restore -f -`: the archive compresses its data, so the
    raw bytes cannot be searched) must not contain the seeded token or password as text or as hex (a
    bytea column such as `connections.secret` is printed as hex), and that check is first shown to
-   find a token planted in a text column and in a bytea column (both hex cases are searched); `--keep` is exercised (bad values refused with
+   find a token planted in a text column and in a bytea column (both hex cases are searched); a token stored in a bytea as UTF-16 or base64 is not detected by it; the protection there is the decrypt and wrong-key probes; `--keep` is exercised (bad values refused with
    nothing deleted, a valid one prunes old files only); the source stack and volume are destroyed.
 4. `scripts/restore.sh` into the fresh `-dst` project; the fingerprint must be identical.
 5. Web and worker start (the KEK check passes); migrations are at head; the right key decrypts both

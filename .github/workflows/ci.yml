@@ -619,6 +619,35 @@ jobs:
       - name: Run the tests
         run: npx playwright test
 
+      # Everything the E2E run did went through web and worker (sign-ins, connects, picks, saves,
+      # the admin area): none of their logs may hold the value of a secret file (M6, #339; the
+      # in-process version over all fake flows is backend/tests/test_m6_security_logs.py).
+      - name: Check no secret value is in the web and worker logs
+        working-directory: .
+        run: |
+          set -euo pipefail
+          docker compose logs --no-color web worker > "$RUNNER_TEMP/stack.log"
+          [ -s "$RUNNER_TEMP/stack.log" ] || { echo "::error::no web or worker logs"; exit 1; }
+          checked=0
+          for f in secrets/*; do
+            [ -s "$f" ] || continue
+            checked=$((checked + 1))
+            value="$(cat "$f")"
+            b64="$(printf '%s' "$value" | base64 -w0)"
+            hex="$(printf '%s' "$value" | od -An -tx1 | tr -d ' \n')"
+            forms=("$value" "$b64" "${b64//=/}" "$(printf '%s' "${b64//=/}" | tr '+/' '-_')" "$hex" "${hex^^}")
+            for form in "${forms[@]}"; do
+              if grep -qF -- "$form" "$RUNNER_TEMP/stack.log"; then
+                # Only the file name is printed, and the next step does not print the logs
+                # either: a failure log must not hold the value.
+                echo "LOGS_LEAK=1" >> "$GITHUB_ENV"
+                echo "::error::a value (or its base64 or hex form) from $f appears in the web or worker logs"
+                exit 1
+              fi
+            done
+          done
+          [ "$checked" -gt 0 ] || { echo "::error::no secret files were checked"; exit 1; }
+
       - name: Upload the report
         if: failure()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -627,8 +656,9 @@ jobs:
           path: e2e/playwright-report/
           retention-days: 7
 
+      # Not after a secret was found in the logs: this step would print it again.
       - name: Logs on failure
-        if: failure()
+        if: failure() && env.LOGS_LEAK != '1'
         working-directory: .
         run: docker compose ps -a && docker compose logs --no-color --tail 100
 
