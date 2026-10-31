@@ -13,8 +13,8 @@ Reviewer reviews each in its PR (AGENTS.md, "Decisions and ADRs").
 | [0005](0005-jobs-and-leases.md) | Jobs, leases and external operations | Proposed |
 | [0006](0006-agent-runs.md) | Agent runs: provider interface, stages, limits and provenance | Proposed |
 | [0007](0007-classes-revisions-and-saving.md) | Classes, revisions and saving to MOWL | Accepted |
-| [0008](0008-song-picking.md) | Song picking: pool and final playlists, stages, jobs, approval (M4) | Proposed |
-| [0009](0009-spotify-connection.md) | Spotify connection (BYOK), tokens and the Spotify API (M4) | Proposed |
+| [0008](0008-song-picking.md) | Song picking: pool and final playlists, stages, jobs, approval (M4) | Accepted |
+| [0009](0009-spotify-connection.md) | Spotify connection (BYOK), tokens and the Spotify API (M4) | Accepted |
 | [0010](0010-live-activation-permissions.md) | Provider permissions for live activation | Accepted |
 | [0011](0011-tiers-quotas-and-admin.md) | Tiers, quotas and the admin area (M5) | Accepted |
 | [0012](0012-eval-suite-and-model-providers.md) | Eval suite, OpenAI and DeepSeek adapters, and the model enable gate (M3c) | Accepted |

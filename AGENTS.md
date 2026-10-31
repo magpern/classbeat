@@ -588,7 +588,8 @@ The specs: `design-draft.spec.ts` (draft, cancel while running, uncertain attach
 every error category's page text),
 `class-save.spec.ts` (change, save, update, uncertain writes, another MOWL account),
 `class-usage.spec.ts` and `fake-spotify.spec.ts` (web connects through the fake with PKCE, the worker
-reaches it too, it publishes no port).
+reaches it too and reads a 120-track playlist back in order over three pages, A3 at the playlist-read
+level since a pick's final list is one page, it publishes no port).
 
 The fakes' state is shared, so Playwright runs one worker. The Playwright context blocks every
 origin but the stack's. They use public test values only and are never part of the default stack.

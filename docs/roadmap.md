@@ -73,7 +73,8 @@ Where it differs, this amendment wins over Amendment 2's reviewer-model rule.
 ## Amendment 5 (2026-10-30, Architect, ADRs 0008 and 0009; effective on their acceptance)
 
 Like Amendment 3, this takes effect when ADRs 0008 and 0009 are accepted; until then they are
-Proposed and none of the M4 issues is startable.
+Proposed and none of the M4 issues is startable. (Both accepted 2026-10-31, #198: this amendment is
+in effect.)
 
 - **§6 retention, the periodic purge:** M4 stores no shared music analysis either (the pool's analysis
   lives in memory for the run; the chosen songs' BPM and lengths are in the owned `song_list`

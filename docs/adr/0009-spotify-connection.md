@@ -1,6 +1,12 @@
 # ADR 0009: Spotify connection (BYOK), tokens and the Spotify API
 
-Status: Proposed
+Status: Accepted (#198, 2026-10-31; amended, see the dated amendments)
+
+> **Amendment, 2026-10-31 (issue #198 item 6): accepted.** M4 built this connection on fakes (#173 to
+> #177, #185, and #186's first part, #302), with the dated amendments in §6 and §8; it is accepted as
+> amended. §5.4 (`generation`) and §6 (the Spotify status-flip rules) now supersede the `wrapped_dek`
+> guard of ADR 0004 §4, ADR 0005 §3 and ADR 0007 §9 and, for Spotify, the generic 401/403 flip of ADR
+> 0005 §4's category table; each of those sections carries a dated note pointing here.
 
 ## Context
 
@@ -478,5 +484,5 @@ stages and the approval.
   `hold` and the flips; its tests cover MOWL unchanged).
 - Threat model T66, T67, T71 to T73, T77, T78.
 - ADR 0004 §4, ADR 0005 §3 and ADR 0007 §9 still describe the `wrapped_dek` guard, and ADR
-  0005 §4's category table the generic 401/403 flip; on acceptance §5.4 and §6 supersede them, recorded
-  under "ADR amendments owed" in `docs/status.md`.
+  0005 §4's category table the generic 401/403 flip; on acceptance §5.4 and §6 supersede them (accepted
+  2026-10-31, #198: the superseded-by notes are written in those sections).
