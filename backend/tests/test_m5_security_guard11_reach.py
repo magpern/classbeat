@@ -17,8 +17,12 @@ It follows what the code names, not whole modules: a module import would drag in
 kinds and so the NOTIFY of ``jobs.events``), which no admin route runs.
 
 What it cannot see is a call made through a value (a callback passed in, ``getattr`` with a
-computed name, ``importlib``); the admin package uses none of them for database work, and
-``VALUE_ROOTS`` names the one object the gate calls through ``request.app.state``.
+computed name, ``importlib``); the admin package uses none of them for database work except two
+objects on ``request.app.state``: the gate's rate limiter (``VALUE_ROOTS`` follows it) and
+``end_account_jobs`` (the operator's delete ends the target's jobs in the *target's* user sessions,
+not on the maint session this guard protects; it takes the owner advisory lock and notifies, so
+the reach scan deliberately does not follow it. ``tests/test_account_job_ender.py`` pins it, ADR
+0011 section 5 and ADR 0014 section 3).
 
 Threats covered: T91.
 """

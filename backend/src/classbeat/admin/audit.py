@@ -116,9 +116,11 @@ UserQuery = Annotated[str, StringConstraints(max_length=254), bounded_text(1024)
 
 
 class UserListParams(Params):
-    """The Users list's filter (AD1 #218): an email prefix (never a full credential) and paging."""
+    """The Users list's filter (AD1 #218) and paging. The search text itself is **not** stored: it
+    is a prefix of another person's email, which an audit row must not keep after that person
+    deletes their account (ADR 0014 section 5). Only that a search was made, and how long."""
 
-    q: UserQuery | None = None
+    q_length: Annotated[int, Field(ge=1, le=254)] | None = None
     offset: Annotated[int, Field(ge=0, le=10_000)] = 0
     limit: Annotated[int, Field(ge=1, le=100)] = 50
 
@@ -164,14 +166,16 @@ FilterTargetId = Annotated[str, StringConstraints(min_length=1, max_length=100),
 
 class AuditListParams(Params):
     """The audit log's filter (AD4 #222, ``classbeat.admin.audit_routes``): ids, codes, the
-    period and the page; ``actor_email`` is an admin's email, as ``actor_email`` itself."""
+    period and the page. A filter on a person (``actor_id``, ``actor_email``, ``target_user_id``,
+    ``target_id``) is stored only as ``<name>_set``: the value could be anyone's id or address,
+    and an audit row outlives that person's account (ADR 0014 section 5)."""
 
-    actor_id: UUID | None = None
-    actor_email: FilterEmail | None = None
+    actor_id_set: Literal[True] | None = None
+    actor_email_set: Literal[True] | None = None
     action: Annotated[str, StringConstraints(pattern=r"^[a-z][a-z0-9_.]{0,59}$")] | None = None
-    target_user_id: UUID | None = None
+    target_user_id_set: Literal[True] | None = None
     target_kind: Annotated[str, StringConstraints(pattern=r"^[a-z][a-z0-9_]{0,39}$")] | None = None
-    target_id: FilterTargetId | None = None
+    target_id_set: Literal[True] | None = None
     outcome: Literal["ok", "refused", "error"] | None = None
     since: AwareDatetime | None = None
     until: AwareDatetime | None = None

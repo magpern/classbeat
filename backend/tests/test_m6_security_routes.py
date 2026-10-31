@@ -80,7 +80,7 @@ CLASSIFIED: dict[tuple[str, str], str] = {
     ("POST", "/api/auth/reauth/totp"): "session",
     ("POST", "/api/auth/password/change"): "session",
     ("POST", "/api/auth/email/change"): "session",
-    ("GET", "/api/account/export"): "session",
+    ("POST", "/api/account/export"): "session",
     ("POST", "/api/account/delete"): "session",
     ("GET", "/api/auth/mfa"): "session",
     ("POST", "/api/auth/mfa/totp/start"): "session",

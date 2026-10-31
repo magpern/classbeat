@@ -55,9 +55,12 @@ UNLINKED_IDS: frozenset[tuple[str, str]] = frozenset(
     }
 )
 
-# Personal data that outlives the account, by design.
+# Personal data that outlives the account, by design (ADR 0014 section 5).
 RETAINED: Mapping[tuple[str, str], str] = MappingProxyType(
     {
+        ("admin_audit", "target_id"): "the bare id of the user an operator acted on, as text "
+        "('user.delete', 'user.disable'): the log cannot be changed (T92), and once the account "
+        "is gone nothing in the database maps the id to a person; it is kept as long as the log",
         ("admin_audit", "actor_email"): "the append-only log of what an operator did (ADR 0011 "
         "section 5, T92): an admin's address stays beside their actions after their account is "
         "deleted, for accountability; a user who never acted as an admin has no such row",
