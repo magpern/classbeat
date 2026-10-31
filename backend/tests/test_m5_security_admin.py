@@ -55,9 +55,20 @@ BODIES: dict[tuple[str, str], dict[str, Any]] = {
     # AD4 (#314): a flag write (the banner, path value ``key``) and a plan's limits (``plan_id``).
     ("PUT", "/api/admin/settings/{key}"): {"value": {"text": "Fuzz banner", "level": "info"}},
     ("PATCH", "/api/admin/plans/{plan_id}"): {"classes_per_month": 10},
+    # AD5 (#223): a model route (path values ``route_key`` and ``stage_group``).
+    ("PUT", "/api/admin/models/routes/{route_key}/{stage_group}"): {
+        "provider": "anthropic",
+        "model": "claude-opus-5-5",
+        "effort": "medium",
+    },
 }
 # The path values that need no row of their own: a flag key and a plan id.
-FIXED_VALUES = {"key": "banner", "plan_id": "pro"}
+FIXED_VALUES = {
+    "key": "banner",
+    "plan_id": "pro",
+    "route_key": "pro",
+    "stage_group": "design",
+}
 
 
 @pytest.fixture
@@ -323,6 +334,10 @@ async def test_every_string_input_of_every_admin_route_is_refused_and_audited_on
         "DELETE /api/admin/settings/{key} path:key",
         "PATCH /api/admin/plans/{plan_id} path:plan_id",
         "PATCH /api/admin/plans/{plan_id} body:classes_per_month",
+        "PUT /api/admin/models/routes/{route_key}/{stage_group} path:route_key",
+        "PUT /api/admin/models/routes/{route_key}/{stage_group} path:stage_group",
+        "PUT /api/admin/models/routes/{route_key}/{stage_group} body:model",
+        "DELETE /api/admin/models/routes/{route_key}/{stage_group} path:route_key",
     ):
         assert any(t.startswith(ad3) for t in tried), ad3  # fmt: skip
     state = superuser.execute(
