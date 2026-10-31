@@ -1,0 +1,291 @@
+{
+ "model": "fake-model",
+ "turns": [
+  {
+   "calls": [
+    {
+     "name": "search_tracks",
+     "input": {
+      "query": "the invented band"
+     },
+     "expect": {
+      "ok": true
+     }
+    },
+    {
+     "name": "search_tracks",
+     "input": {
+      "query": "placeholder collective"
+     },
+     "expect": {
+      "ok": true
+     }
+    }
+   ]
+  },
+  {
+   "calls": [
+    {
+     "name": "check_pool",
+     "input": {
+      "entries": [
+       {
+        "ref": 0,
+        "role": "warmup"
+       },
+       {
+        "ref": 1,
+        "role": "warmup"
+       },
+       {
+        "ref": 2,
+        "role": "build"
+       },
+       {
+        "ref": 3,
+        "role": "build"
+       },
+       {
+        "ref": 4,
+        "role": "climb"
+       },
+       {
+        "ref": 5,
+        "role": "climb"
+       },
+       {
+        "ref": 6,
+        "role": "sprint"
+       },
+       {
+        "ref": 7,
+        "role": "sprint"
+       },
+       {
+        "ref": 8,
+        "role": "sprint"
+       },
+       {
+        "ref": 9,
+        "role": "sprint"
+       },
+       {
+        "ref": 10,
+        "role": "recovery"
+       },
+       {
+        "ref": 11,
+        "role": "recovery"
+       },
+       {
+        "ref": 12,
+        "role": "cooldown"
+       },
+       {
+        "ref": 13,
+        "role": "cooldown"
+       }
+      ]
+     },
+     "expect": {
+      "ok": true,
+      "valid": true
+     }
+    }
+   ]
+  },
+  {
+   "calls": [
+    {
+     "name": "submit_pool",
+     "input": {
+      "entries": [
+       {
+        "ref": 0,
+        "role": "warmup"
+       },
+       {
+        "ref": 1,
+        "role": "warmup"
+       },
+       {
+        "ref": 2,
+        "role": "build"
+       },
+       {
+        "ref": 3,
+        "role": "build"
+       },
+       {
+        "ref": 4,
+        "role": "climb"
+       },
+       {
+        "ref": 5,
+        "role": "climb"
+       },
+       {
+        "ref": 6,
+        "role": "sprint"
+       },
+       {
+        "ref": 7,
+        "role": "sprint"
+       },
+       {
+        "ref": 8,
+        "role": "sprint"
+       },
+       {
+        "ref": 9,
+        "role": "sprint"
+       },
+       {
+        "ref": 10,
+        "role": "recovery"
+       },
+       {
+        "ref": 11,
+        "role": "recovery"
+       },
+       {
+        "ref": 12,
+        "role": "cooldown"
+       },
+       {
+        "ref": 13,
+        "role": "cooldown"
+       }
+      ]
+     },
+     "expect": {
+      "accepted": true
+     }
+    }
+   ]
+  },
+  {
+   "calls": [
+    {
+     "name": "get_pool",
+     "input": {},
+     "expect": {
+      "ok": true
+     },
+     "contains": [
+      "\"tracks\""
+     ]
+    }
+   ]
+  },
+  {
+   "calls": [
+    {
+     "name": "check_song_list",
+     "input": {
+      "songs": [
+       {
+        "source": "pool",
+        "index": 0,
+        "role": "warmup"
+       },
+       {
+        "source": "pool",
+        "index": 2,
+        "role": "build"
+       },
+       {
+        "source": "pool",
+        "index": 4,
+        "role": "climb"
+       },
+       {
+        "source": "pool",
+        "index": 10,
+        "role": "recovery"
+       },
+       {
+        "source": "pool",
+        "index": 6,
+        "role": "sprint"
+       },
+       {
+        "source": "pool",
+        "index": 7,
+        "role": "sprint"
+       },
+       {
+        "source": "pool",
+        "index": 11,
+        "role": "recovery"
+       },
+       {
+        "source": "pool",
+        "index": 12,
+        "role": "cooldown"
+       }
+      ]
+     },
+     "expect": {
+      "valid": true
+     }
+    }
+   ]
+  },
+  {
+   "calls": [
+    {
+     "name": "submit_song_list",
+     "input": {
+      "songs": [
+       {
+        "source": "pool",
+        "index": 0,
+        "role": "warmup"
+       },
+       {
+        "source": "pool",
+        "index": 2,
+        "role": "build"
+       },
+       {
+        "source": "pool",
+        "index": 4,
+        "role": "climb"
+       },
+       {
+        "source": "pool",
+        "index": 10,
+        "role": "recovery"
+       },
+       {
+        "source": "pool",
+        "index": 6,
+        "role": "sprint"
+       },
+       {
+        "source": "pool",
+        "index": 7,
+        "role": "sprint"
+       },
+       {
+        "source": "pool",
+        "index": 11,
+        "role": "recovery"
+       },
+       {
+        "source": "pool",
+        "index": 12,
+        "role": "cooldown"
+       }
+      ],
+      "note": "A steady build to the climb."
+     },
+     "expect": {
+      "accepted": true
+     }
+    }
+   ]
+  }
+ ]
+}

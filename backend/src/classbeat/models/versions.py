@@ -6,6 +6,11 @@
   definitions only (``classbeat.agent.stage``), never of a job's data, so the stages are built
   here with placeholder contexts whose fields no definition reads
   (``tests/test_models_routes.py`` compares the result with stages built from real contexts).
+- ``revise_songs`` runs the same ``revise`` stage with ``songs_changed`` set, which leaves out the
+  ``songs_requested`` tool, so its ``prompt_version`` differs from the one recorded here. It is
+  not gated separately on purpose: a route is keyed by stage name, the system prompt and the
+  design tools are the ones the ``design`` group already gates, and the one tool it drops can only
+  make the stage safer. ``tests/test_revise_songs.py`` covers the variant's behaviour.
 - ``running_suite_version()``: the manifest's ``suite_version``, read from the package's
   ``evals/suite/manifest.json`` **without importing** ``classbeat.evals`` (the web process, from
   which M5's admin calls ``set_route``, must not load the eval package;

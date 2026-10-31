@@ -282,13 +282,16 @@ describe('account page', () => {
   })
 })
 
-const ADMIN_SESSION = { ...SIGNED_IN, user: { ...SIGNED_IN.user, role: 'admin' } }
+// What the server reports for an admin account whose TOTP check is missing or lapsed: role `user`
+// plus the `admin_pending_mfa` flag (#330); after the check the role is `admin` and the flag off.
+const ADMIN_SESSION = { ...SIGNED_IN, session: { ...SIGNED_IN.session, admin_pending_mfa: true } }
+const CHECKED_ADMIN_SESSION = { ...SIGNED_IN, user: { ...SIGNED_IN.user, role: 'admin' } }
 
 describe('admin page', () => {
   it('asks an enrolled admin for a code and then shows the area', async () => {
     let verified = false
     const api = fakeApi({
-      'GET /api/auth/session': ADMIN_SESSION,
+      'GET /api/auth/session': () => (verified ? CHECKED_ADMIN_SESSION : ADMIN_SESSION),
       'GET /api/admin/users?offset=0&limit=50': { users: [], next_offset: null },
       'GET /api/admin/whoami': () =>
         verified ? { id: 'u1', email: 'ann@example.test', role: 'admin' } : reason(403, 'mfa_required'),
@@ -303,6 +306,16 @@ describe('admin page', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Verify' }))
     expect(await screen.findByText(/Signed in as admin: ann@example.test/)).toBeInTheDocument()
     expect(api.to('POST', '/api/auth/mfa/verify')[0]?.body).toEqual({ code: '654321' })
+  })
+
+  it('shows a non-admin nothing of the admin routes, even with a lapsed-looking session', async () => {
+    const api = fakeApi({
+      'GET /api/auth/session': { ...SIGNED_IN, session: { ...SIGNED_IN.session, mfa: false } },
+    })
+    renderAt('/admin')
+    expect(await screen.findByText(/not an admin account/)).toBeInTheDocument()
+    expect(screen.queryByLabelText('Authenticator or recovery code')).toBeNull()
+    expect(api.calls.filter((c) => c.path.startsWith('/api/admin') || c.path === '/api/auth/mfa')).toEqual([])
   })
 
   it('offers enrolment to an admin without a second factor', async () => {

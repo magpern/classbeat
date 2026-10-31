@@ -379,3 +379,68 @@ async def test_the_session_endpoint_reports_mfa_only_inside_the_12_hour_window(
     await env.run("UPDATE sessions SET mfa_at = now() - interval '13 hours'")
     body = (await env.client.get("/api/auth/session", headers=headers)).json()
     assert body["session"]["mfa"] is False
+
+
+async def _pending(env: Env, token: str) -> object:
+    body = (await env.client.get("/api/auth/session", headers=session_cookie(token))).json()
+    assert body["authenticated"] is True
+    return body["session"]["admin_pending_mfa"]
+
+
+async def test_the_session_flags_an_admin_whose_totp_check_is_missing_or_lapsed(env: Env) -> None:
+    """ADR 0011 section 6 (#330): the page can show the code prompt only if the session says the
+    account is an admin whose check is missing or older than 12 hours (role stays ``user``)."""
+    admin_id = await env.user("boss@example.com", role="admin")
+    never = await env.login(admin_id)  # no TOTP check yet
+    body = (await env.client.get("/api/auth/session", headers=session_cookie(never.token))).json()
+    assert body["user"]["role"] == "user"
+    assert body["session"]["admin_pending_mfa"] is True
+    whoami = await env.client.get("/api/admin/whoami", headers=session_cookie(never.token))
+    assert (whoami.status_code, whoami.json()["detail"]) == (403, {"reason": "mfa_required"})
+
+    passed = await env.login(admin_id, mfa=True)
+    body = (await env.client.get("/api/auth/session", headers=session_cookie(passed.token))).json()
+    assert body["user"]["role"] == "admin"
+    assert body["session"]["admin_pending_mfa"] is False
+
+    await env.run("UPDATE sessions SET mfa_at = now() - interval '11 hours'")
+    assert await _pending(env, passed.token) is False
+    await env.run("UPDATE sessions SET mfa_at = now() - interval '13 hours'")
+    assert await _pending(env, passed.token) is True  # lapsed
+    whoami = await env.client.get("/api/admin/whoami", headers=session_cookie(passed.token))
+    assert (whoami.status_code, whoami.json()["detail"]) == (403, {"reason": "mfa_required"})
+
+
+async def test_the_pending_flag_is_never_set_for_a_non_admin_or_another_users_session(
+    env: Env,
+) -> None:
+    """A real non-admin sees ``false`` whatever its session state, and an admin's pending check
+    does not show in anyone else's session; the admin routes keep their own 403 ``forbidden``."""
+    admin_id = await env.user("boss@example.com", role="admin")
+    user_id = await env.user("rider@example.com")
+    admin = await env.login(admin_id)
+    plain = await env.login(user_id)
+    plain_mfa = await env.login(user_id, mfa=True)  # a user who passed TOTP is still no admin
+    assert await _pending(env, admin.token) is True
+    assert await _pending(env, plain.token) is False
+    assert await _pending(env, plain_mfa.token) is False
+    await env.run(
+        "UPDATE sessions SET mfa_at = now() - interval '13 hours' WHERE user_id = :u",
+        u=user_id,
+    )
+    assert await _pending(env, plain_mfa.token) is False
+    whoami = await env.client.get("/api/admin/whoami", headers=session_cookie(plain.token))
+    assert (whoami.status_code, whoami.json()["detail"]) == (403, {"reason": "forbidden"})
+    # Anonymous: no session object at all, so no flag.
+    anonymous = (await env.client.get("/api/auth/session")).json()
+    assert anonymous["authenticated"] is False
+    assert anonymous["session"] is None
+
+
+async def test_a_demoted_admin_stops_being_pending(env: Env) -> None:
+    """The flag follows the stored role at request time: after ``admin revoke`` it is false."""
+    admin_id = await env.user("boss@example.com", role="admin")
+    issued = await env.login(admin_id)
+    assert await _pending(env, issued.token) is True
+    await env.run("UPDATE users SET role = 'user' WHERE id = :u", u=admin_id)
+    assert await _pending(env, issued.token) is False
