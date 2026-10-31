@@ -82,8 +82,12 @@ function useNewPick(job: Job, list: SongList) {
           if (!(error instanceof ApiError && error.status === 409)) throw error
         }
         const ids = await currentConnectionIds()
-        // The class's own brief; this tab's remembered form only when the class has none.
-        const context = await classContext(job.classId)
+        // The class's own brief; this tab's remembered form only when the class has none. The
+        // waiting job is already stopped here, so a failed read must say so and not look like
+        // nothing happened.
+        const context = await classContext(job.classId).catch(() => {
+          throw new StoppedError()
+        })
         const kept = recallPick(job.id)
         const input: PickInput = {
           class_id: job.classId,
@@ -107,7 +111,14 @@ function useNewPick(job: Job, list: SongList) {
   return { start, action }
 }
 
+/** The waiting songs were stopped, but the class could not be read for the new pick. */
+class StoppedError extends Error {}
+
+export const STOPPED_TEXT =
+  'These songs were stopped, but classbeat could not read the class, so nothing new was started. Press Ask for changes again to try once more.'
+
 function describeStart(error: unknown): string {
+  if (error instanceof StoppedError) return STOPPED_TEXT
   if (isNotConnected(error)) return startError(new ApiError(409, 'not_connected', null, undefined))
   if (error instanceof ApiError && error.reason === 'invalid_input') {
     return 'These songs can no longer be changed, so nothing was started. Pick songs again.'
