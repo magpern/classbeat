@@ -49,7 +49,7 @@ from jobtools import grant_plan
 from optools import ACCOUNT_BASE, ATTACH_URL, TOKEN_A, FakeMowlAttach
 from pickfake import LIST_8, POOL_14, call, entries, turn
 from pickfake import songs as song_refs
-from spotifycore import FakeSpotify, Seen
+from spotifycore import NARROW_ALBUM, FakeSpotify, Seen
 from spotifyfake import CLIENT_A, USER_A, SpotifyHTTPS
 from spotifytools import Spot
 
@@ -62,12 +62,17 @@ _AVAILABILITY = re.compile(r"^/v1/Playlists/(\d+)/sessiondesigner/availability$"
 _SECTIONS = re.compile(r"^/v1/Spotify/Tracks/([0-9A-Za-z]+)/AudioAnalysis$")
 
 
+NARROW_SONG = 2  # its album has no image of 64 px or more
+
+
 def song_id(i: int) -> str:
     return f"SongPick{i:014d}"  # 22 letters and digits
 
 
 def catalogue(size: int = 20) -> dict[str, dict[str, Any]]:
-    """Invented tracks: ``Ride Song <i> alpha|beta`` by ``Made-up Band <i % 3>``, 240 s."""
+    """Invented tracks: ``Ride Song <i> alpha|beta`` by ``Made-up Band <i % 3>``, 240 s. Song 2
+    (chosen by ``pick_script``) is on ``NARROW_ALBUM``, whose images are all under 64 px, so it
+    has no cover; every other song has its album's 64 px cover."""
     out: dict[str, dict[str, Any]] = {}
     for i in range(size):
         tid = song_id(i)
@@ -77,7 +82,7 @@ def catalogue(size: int = 20) -> dict[str, dict[str, Any]]:
             "artist": f"Made-up Band {i % 3}",
             "artist_id": f"FakeArtist{i % 3:012d}",
             "album": f"Invented Album {i // 10}",
-            "album_id": f"FakeAlbum{i // 10:013d}",
+            "album_id": NARROW_ALBUM if i == NARROW_SONG else f"FakeAlbum{i // 10:013d}",
             "release_date": f"{2000 + i}-01-01",
             "duration_ms": TRACK_MS,
         }

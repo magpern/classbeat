@@ -18,11 +18,13 @@ from sqlalchemy.ext.asyncio import create_async_engine
 
 from classbeat.classes import song_views
 from classbeat.classes.song_views import plain
+from classbeat.covers import cover_url
 from classbeat.db import create_session_factory, user_session
 from classbeat.jobs.sentences import SONG_SENTENCES, failure_sentence
 from ctx import make_context
 from jobtools import new_class, new_job
-from songtools import Rider, SongEnv, song_id
+from songtools import NARROW_SONG, Rider, SongEnv, song_id
+from spotifycore import NARROW_ALBUM, album_images
 from spotifyfake import USER_A
 from test_classes_api import content_digest, insert, make_current, revision
 
@@ -82,10 +84,24 @@ async def test_a_waiting_list_is_reported_on_the_class_and_shown_without_ids(
     assert [s["position"] for s in body["songs"]] == list(range(1, len(stored["songs"]) + 1))
     for shown_song, kept in zip(body["songs"], stored["songs"], strict=True):
         assert set(shown_song) == {
-            "position", "title", "artist", "role", "bpm", "length_sec", "new"
+            "position", "title", "artist", "role", "bpm", "length_sec", "new", "cover"
         }  # fmt: skip
         assert (shown_song["title"], shown_song["new"]) == (kept["title"], kept["new"])
+        assert shown_song["cover"] == kept["cover"]
         assert kept["spotify_id"] not in got.text
+    # ADR 0013 section 9: v: 2, each song's cover the album's narrowest image of at least 64 px
+    # from the search, and none for the song whose album has only narrower ones
+    assert stored["v"] == 2
+    fake = songenv.fake
+    for kept in stored["songs"]:
+        album = fake.catalogue[kept["spotify_id"]]["album_id"]
+        if kept["spotify_id"] == song_id(NARROW_SONG):
+            assert album == NARROW_ALBUM
+            assert kept["cover"] is None
+        else:
+            assert kept["cover"] == album_images(album)[-1]["url"]
+            assert cover_url(kept["cover"]) == kept["cover"]
+    assert song_id(NARROW_SONG) in [s["spotify_id"] for s in stored["songs"]]
     assert body["omitted_no_bpm"] == stored["omitted_no_bpm"]
     clean(songenv, got)
 

@@ -34,6 +34,8 @@ COVERED = {
     "revise_unchanged",
     "revise_overloaded",
     "revise_note_too_long",
+    # a revise that only asks for other songs (#278), used by tests/test_revise_draft.py
+    "revise_songs_requested",
     # used by the e2e specs (e2e/tests/class-save.spec.ts): a revise that changes the description
     "revise_description",
 }
