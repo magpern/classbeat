@@ -9,7 +9,9 @@ import pytest
 
 from agentfake import CONFIG, MemoryHost, analysed, brief, from_dict, good_draft
 from classbeat.agent import DesignContext, WorkoutDraft, design_stage, run_stage
+from classbeat.agent.dispatcher import dispatch
 from classbeat.agent.model_input import revise_message
+from classbeat.agent.provider import ToolCall
 from classbeat.agent.revise import ReviseContext, ReviseResult, revise_stage
 from classbeat.agent.schemas import ReviseInput
 from classbeat.design import diff
@@ -128,3 +130,16 @@ async def test_the_stage_ends_with_the_draft_and_the_note(monkeypatch: pytest.Mo
     assert done.output.note == "Easier."
     assert done.output.result.draft.segments[0].intervals[0].zone == 1
     assert done.info.stage == "revise"
+
+
+def test_the_revise_submit_result_carries_the_approximate_flag(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    stage = revise_stage(context(monkeypatch))
+    for zone, flagged in ((None, False), (7, True)):
+        draft = good_draft()
+        if zone is not None:
+            draft["segments"][1]["intervals"][0]["zone"] = zone
+        done = dispatch(stage, ToolCall("c1", "submit_draft", {"draft": draft, "note": "n"}))
+        assert json.loads(done.result.content)["tss_approximate"] is flagged
+        assert done.output.result.tss_approximate is flagged

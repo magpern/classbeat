@@ -16,13 +16,11 @@ needs a Spotify search the owner's live run does not wire. They run in CI agains
 """
 
 import json
-import re
-from collections.abc import Mapping, Sequence
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from importlib import resources
-from typing import Any, Final
+from typing import Literal
 
-from mowl import spotify
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from classbeat.agent import run_stage
@@ -31,10 +29,9 @@ from classbeat.agent.limits import Limits
 from classbeat.agent.loop import AgentConfig
 from classbeat.agent.pick_pool import PoolContext, PoolResult, pool_stage
 from classbeat.agent.provider import ModelProvider
-from classbeat.agent.registry import SearchRegistry
-from classbeat.agent.schemas import Brief
+from classbeat.agent.registry import MAX_TEXT, SearchRegistry
+from classbeat.agent.schemas import Brief, clean_text
 from classbeat.agent.songs import (
-    KeptSong,
     PickPlan,
     PoolTrack,
     analysed_pool,
@@ -42,36 +39,27 @@ from classbeat.agent.songs import (
     within_tolerance,
 )
 from classbeat.evals import song_checks
+from classbeat.evals.pick_world import (
+    CatalogueSpec as CatalogueSpec,
+)
+from classbeat.evals.pick_world import (
+    CatalogueTrack as CatalogueTrack,
+)
+from classbeat.evals.pick_world import (
+    ReplaceSpec as ReplaceSpec,
+)
+from classbeat.evals.pick_world import (
+    SyntheticCatalogue as SyntheticCatalogue,
+)
+from classbeat.evals.pick_world import (
+    analysis_map as analysis_map,
+)
+from classbeat.evals.pick_world import (
+    kept_songs,
+)
 from classbeat.evals.runner import EvalHost
 from classbeat.evals.song_checks import Band, PoolRow, SongFacts
 from classbeat.jobs.errors import JobFailure
-
-TRACK_SEC: Final = 240
-FIRST_BPM: Final = 100
-BPM_STEP: Final = 3
-SECTION_SEC: Final = 60
-LOUDNESS: Final = (-12.0, -6.0, -11.0, -5.0)
-CATALOGUE_ID: Final = "SmokePick{:013d}"  # 22 characters
-KEPT_ID: Final = "SmokeKept{:013d}"
-YEAR_FILTER: Final = re.compile(r"\byear:(\d{4})(?:-(\d{4}))?\b")
-
-
-class CatalogueSpec(BaseModel):
-    model_config = ConfigDict(extra="forbid", strict=True)
-
-    size: int = Field(ge=10, le=120)
-    titles: dict[str, str] = Field(default_factory=lambda: dict[str, str]())  # index -> title
-    artists: dict[str, str] = Field(default_factory=lambda: dict[str, str]())
-    no_bpm: list[int] = Field(default_factory=lambda: list[int]())  # MOWL has no BPM yet
-
-
-class ReplaceSpec(BaseModel):
-    """The seed list's slot roles and the slots to replace; the other slots' songs are kept."""
-
-    model_config = ConfigDict(extra="forbid", strict=True)
-
-    seed_roles: list[str] = Field(min_length=2, max_length=40)
-    replace: list[int] = Field(min_length=1)
 
 
 class PickExpect(BaseModel):
@@ -79,6 +67,12 @@ class PickExpect(BaseModel):
 
     forbidden_text: list[str] = Field(default_factory=lambda: list[str]())  # in the note
     years: list[int] | None = Field(default=None, min_length=2, max_length=2)  # the era asked for
+    # The expected end of the run: a list (``submitted``) or the failure the case is about
+    # (``pool_too_small``: too few usable tracks, nothing stored). The manifest lists the cases
+    # that expect the latter (``Manifest.expected_outcomes``); the gate reads it from there.
+    outcome: Literal["submitted", "pool_too_small"] = "submitted"
+    max_turns: int | None = Field(default=None, ge=1)  # the case's own bounds (cost category)
+    max_cost_micros: int | None = Field(default=None, ge=0)
 
     @model_validator(mode="after")
     def _years_ordered(self) -> "PickExpect":
@@ -114,106 +108,6 @@ def load_pick_cases() -> list[PickCase]:
     return cases
 
 
-@dataclass(frozen=True)
-class CatalogueTrack:
-    spotify_id: str
-    title: str
-    artist: str
-    year: int
-    sec: int
-    bpm: int  # 0: MOWL has none
-    group: str  # a hidden tag, ``group0`` for tracks 0 to 9: a query for it finds that slice
-
-
-class SyntheticCatalogue:
-    """Invented tracks: ``Smoke Song N`` by ``Smoke Artist N // 10``, 240 s, years 2000 to 2024."""
-
-    def __init__(self, spec: CatalogueSpec) -> None:
-        self.tracks = [
-            CatalogueTrack(
-                CATALOGUE_ID.format(i),
-                spec.titles.get(str(i), f"Smoke Song {i}"),
-                spec.artists.get(str(i), f"Smoke Artist {i // 10}"),
-                2000 + i % 25,
-                TRACK_SEC,
-                0 if i in spec.no_bpm else FIRST_BPM + BPM_STEP * (i % 40),
-                f"group{i // 10}",
-            )
-            for i in range(spec.size)
-        ]
-        self.queries: list[str] = []
-
-    def search(self, query: str) -> list[dict[str, Any]]:
-        """The ``Searcher``: the library's track dicts for at most ten matches."""
-        self.queries.append(query)
-        years = YEAR_FILTER.search(query)
-        words = YEAR_FILTER.sub(" ", query).lower().split()
-        out = []
-        for t in self.tracks:
-            if years and not int(years[1]) <= t.year <= int(years[2] or years[1]):
-                continue
-            if all(w in f"{t.title} {t.artist} {t.group}".lower() for w in words):
-                out.append(
-                    {
-                        "uri": f"spotify:track:{t.spotify_id}",
-                        "id": t.spotify_id,
-                        "title": t.title,
-                        "artists": [t.artist],
-                        "album": "Invented Album",
-                        "year": str(t.year),
-                        "sec": t.sec,
-                        "duration_ms": t.sec * 1000,
-                        "release_date": f"{t.year}-01-01",
-                    }
-                )
-        return out[:10]
-
-    def by_id(self) -> dict[str, CatalogueTrack]:
-        return {t.spotify_id: t for t in self.tracks}
-
-
-def analysis_map(tracks: Sequence[CatalogueTrack]) -> dict[str, Any]:
-    """The MOWL analysis of a playlist of ``tracks`` in play order (the library's format)."""
-    rows: list[dict[str, Any]] = []
-    sections: dict[str, list[dict[str, float]]] = {}
-    for t in tracks:
-        rows.append(
-            {
-                "Title": t.title,
-                "Artist": t.artist,
-                "Duration": t.sec * 1000,
-                "BPM": t.bpm,
-                "SpotifyTrackID": t.spotify_id,
-            }
-        )
-        sections[t.spotify_id] = [
-            {
-                "start": float(s),
-                "duration": float(min(SECTION_SEC, t.sec - s)),
-                "loudness": LOUDNESS[n % len(LOUDNESS)],
-            }
-            for n, s in enumerate(range(0, t.sec, SECTION_SEC))
-        ]
-    return spotify.build_map(rows, sections)
-
-
-def kept_songs(spec: ReplaceSpec) -> list[KeptSong]:
-    """The seed list's songs that stay: invented, in their slots, with their roles."""
-    return [
-        KeptSong(
-            slot,
-            KEPT_ID.format(slot),
-            f"Kept Song {slot}",
-            f"Kept Artist {slot % 3}",
-            role,
-            float(FIRST_BPM + BPM_STEP * slot),
-            TRACK_SEC,
-        )
-        for slot, role in enumerate(spec.seed_roles)
-        if slot not in spec.replace
-    ]
-
-
 def plan_for(case: PickCase) -> PickPlan:
     if case.replace is None:
         return PickPlan.build(case.brief)
@@ -245,10 +139,15 @@ class PickCaseResult:
     prompt_versions: dict[str, str] = field(default_factory=lambda: dict[str, str]())
     scores: dict[str, float] = field(default_factory=lambda: dict[str, float]())
     analysed: list[PoolTrack] = field(default_factory=lambda: list[PoolTrack]())
+    expected_outcome: str = "submitted"  # the case's ``expect.outcome``
 
     @property
     def passed(self) -> bool:
-        return self.outcome == "submitted" and bool(self.checks) and all(c.ok for c in self.checks)
+        return (
+            self.outcome == self.expected_outcome
+            and bool(self.checks)
+            and all(c.ok for c in self.checks)
+        )
 
     @property
     def failed_checks(self) -> list[str]:
@@ -277,7 +176,7 @@ async def run_pick_case(
     catalogue = SyntheticCatalogue(case.catalogue)
     registry = SearchRegistry()
     plan = plan_for(case)
-    result = PickCaseResult(case.name, "submitted")
+    result = PickCaseResult(case.name, "submitted", expected_outcome=case.expect.outcome)
     host = EvalHost()
     try:
         pool_ctx = PoolContext(plan, registry, catalogue.search)
@@ -312,9 +211,12 @@ async def run_pick_case(
         c = host.counters
         result.outcome = failure.category
         result.turns, result.tool_calls, result.cost_micros = c.turns, c.tool_calls, c.cost_micros
+        result.checks = ended_checks(case, result)
         return result, catalogue, registry
     result.checks = pick_checks(case, plan, result, catalogue, sent_text(provider), bands)
     result.checks.append(limits_check(result, limits))
+    if case.expect.max_turns is not None or case.expect.max_cost_micros is not None:
+        result.checks.append(case_bounds(case, result))
     return result, catalogue, registry
 
 
@@ -330,6 +232,32 @@ def limits_check(result: PickCaseResult, limits: tuple[Limits, Limits]) -> PickC
         f"{result.turns} turns of {turns}, {result.tool_calls} tool calls of {calls}, "
         f"cost {result.cost_micros} of {ceiling} micro-dollars",
     )
+
+
+def ended_checks(case: PickCase, result: PickCaseResult) -> list[PickCheck]:
+    """The checks of a run that ended in a failure category: only a case that expects that
+    category has any (it ended as expected and nothing was stored: no list came out of it)."""
+    if case.expect.outcome != result.outcome:
+        return []
+    return [
+        PickCheck("expected_outcome", True, result.outcome),
+        PickCheck("nothing_stored", result.chosen is None),
+    ]
+
+
+def case_bounds(case: PickCase, result: PickCaseResult) -> PickCheck:
+    """The cost category's per-case bounds (ADR 0012 section 4): turns and cost of the whole run."""
+    turns, cost = case.expect.max_turns, case.expect.max_cost_micros
+    return PickCheck(
+        "case_bounds",
+        (turns is None or result.turns <= turns) and (cost is None or result.cost_micros <= cost),
+        f"{result.turns} turns of {turns}, cost {result.cost_micros} of {cost} micro-dollars",
+    )
+
+
+def shown(text: str) -> str:
+    """A catalogue text as the registry shows it to the model: cleaned and cut."""
+    return clean_text(text)[:MAX_TEXT].strip()
 
 
 def sent_text(provider: ModelProvider) -> str:
@@ -371,7 +299,7 @@ def pick_checks(
             "from_analysis",
             all(
                 (s.spotify_id in kept and s.title == kept[s.spotify_id].title)
-                or (s.spotify_id in by_id and s.title == by_id[s.spotify_id].title)
+                or (s.spotify_id in by_id and s.title == shown(by_id[s.spotify_id].title))
                 for s in songs
             ),
         ),

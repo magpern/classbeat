@@ -1,0 +1,34 @@
+{
+ "name": "mm_pool_too_small",
+ "about": "Most of the pool has no BPM: fewer usable tracks than songs, the run ends pool_too_small and nothing is stored.",
+ "brief": {
+  "length_min": 30,
+  "intensity": "moderate",
+  "climbs": 1,
+  "sprints": 2
+ },
+ "catalogue": {
+  "size": 20,
+  "no_bpm": [
+   4,
+   5,
+   6,
+   7,
+   8,
+   9,
+   10,
+   11,
+   12,
+   13,
+   14,
+   15,
+   16,
+   17,
+   18,
+   19
+  ]
+ },
+ "expect": {
+  "outcome": "pool_too_small"
+ }
+}

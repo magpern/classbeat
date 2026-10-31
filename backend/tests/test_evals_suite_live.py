@@ -82,6 +82,10 @@ def small_suite() -> Suite:
     data["categories"] = {category: {} for category in data["categories"]}
     for category, (group, name) in SMALL.items():
         data["categories"][category] = {group: [name]}
+    kept = {name for _, name in SMALL.values()}
+    data["expected_outcomes"] = {
+        n: o for n, o in data.get("expected_outcomes", {}).items() if n in kept
+    }
     design = {n: full.design_cases[n] for _, (g, n) in SMALL.items() if g == "design"}
     songs = {n: full.song_cases[n] for _, (g, n) in SMALL.items() if g == "songs"}
     dumped = {n: c.model_dump(mode="json") for n, c in {**design, **songs}.items()}
