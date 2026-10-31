@@ -13,7 +13,7 @@ from sqlalchemy import text
 from sqlalchemy.engine import Connection, make_url
 from sqlalchemy.exc import DBAPIError
 
-from adminviews import audit, reason, stepped_admin
+from adminviews import reason, stepped_admin
 from authtools import Env, running_env
 from classbeat.admin.routes import admin_area_routes, gate_problems
 from modeltools import OPUS, add_result, clear_gate, extend_catalog
@@ -107,7 +107,7 @@ async def test_setting_a_route_audits_first_and_the_route_stands_on_the_passing_
     assert (row.action, row.outcome, row.target_kind, row.target_id) == (
         "model.route_set", "ok", "model_route", "pro/design",
     )  # fmt: skip
-    assert row.params["route_key"] == "pro" and row.params["model"] == OPUS
+    assert (row.params["route_key"], row.params["model"]) == ("pro", OPUS)
     shown = (await actor.get(MODELS)).json()
     assert [
         (r["route_key"], r["stage_group"], r["refused_by_worker"]) for r in shown["routes"]
@@ -219,7 +219,7 @@ async def test_maint_reads_results_but_cannot_write_them(
                 "DELETE FROM model_eval_results",
                 "INSERT INTO model_eval_results (id) VALUES (gen_random_uuid())",
             ):
-                with pytest.raises(DBAPIError, match="permission denied|read-only"):
+                with pytest.raises(DBAPIError, match=r"permission denied|read-only"):
                     maint.execute(text(statement))
     finally:
         engine.dispose()
