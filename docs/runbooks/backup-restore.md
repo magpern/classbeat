@@ -54,7 +54,9 @@ gpg --list-keys --with-colons classbeat-backup-signer | awk -F: '/^fpr:/ { print
 ```
 
 Fingerprints are **full 40-digit primary-key fingerprints**, passed as flags or as
-`BACKUP_GPG_RECIPIENT`, `BACKUP_GPG_SIGNER` and `RESTORE_EXPECT_SIGNER`. Names, short ids and
+`BACKUP_GPG_RECIPIENT`, `BACKUP_GPG_SIGNER` and `RESTORE_EXPECT_SIGNER`. `restore.sh` accepts a
+signature only as made by the pinned **primary** key (or a subkey of it); pinning a signing
+subkey's own fingerprint is refused. Names, short ids and
 `--trust-model` games cannot pick another key: the backup is encrypted to exactly that key and
 restore accepts exactly that signer. Export the signer's public key to the restore host
 (`gpg --export S | gpg --import`) and check the fingerprint by eye against the one you wrote down.
@@ -163,7 +165,9 @@ correctly signed but could do more than classbeat's schema does as the superuser
   `COPY public.<table> (...) FROM stdin;`.
 - **Limits:** it is a denylist plus strict forms, so it cannot prove an archive harmless; COPY data
   is not inspected (it is data, and RLS and constraints apply as the schema defines); a function body
-  can say anything that is not on the list. A migration that adds an object type (a view, an enum) must
+  can say anything that is not on the list. It reads the SQL line by line (not statement by statement),
+  so a keyword split across lines, or a statement built at run time with `EXECUTE` inside a function
+  body, is not seen; the signature is the control. A migration that adds an object type (a view, an enum) must
   add it to the validator in the same PR, or the drill and every restore of a newer backup fail.
 
 ## The drill
@@ -219,6 +223,11 @@ files at the end, also on failure):
 CI runs it in the `e2e` job (on any change to the stack, the scripts or `docker/`), as a step before
 Playwright. It adds about five minutes to a job that already runs for many; the second image build
 is a layer-cache hit.
+
+**Rollback is possible:** an older backup that is genuine and correctly signed is always accepted, so
+whoever can plant an old signed archive in the backup directory can make a restore roll the data back.
+The signature proves who made an archive, not that it is the newest: check the timestamp in the file
+name (and that it is the one you mean) before restoring.
 
 **What the drill does not prove:** that your real backup restores (it uses a seeded database; run
 `scripts/restore.sh` on a copy of a real one at least monthly, into a throwaway project, and
