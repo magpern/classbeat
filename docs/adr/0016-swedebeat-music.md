@@ -101,7 +101,7 @@ branch is a job step, so ADR 0005 checkpoints, fencing, budget and the connectio
    in the MOWL app would. Reconciled by listing the user's MOWL playlists for the mix (a repeated attach
    for an existing link is a no-op). The link is stored like `mowl_playlist_links` and deleted when the
    MOWL connection changes account.
-2. **Analyse**: if the user's cache has a map for this mix id and MOWL playlist id, use it; otherwise
+2. **Analyse** (limits, A3): the decoded length is capped at the mix's listed length plus 5 minutes and never over 120 minutes; decode and analysis run in a child process limited to 1.5 GiB of memory and 180 s, so a crash, an OOM or a hostile file ends the job cleanly as `analysis_failed` and the worker lives on; the fake-mix test asserts peak RSS under that limit. If the user's cache has a map for this mix id and MOWL playlist id, use it; otherwise
    fetch the audio (§4), run the library's analysis in a worker thread with checkpoints, delete the audio
    at once, keep the map. The first analysis takes about a minute.
 3. **Design** with the map exactly as for a MOWL playlist: stages, snapping and quality report are the
@@ -130,8 +130,8 @@ attach and analysis are inside it.
 |---|---|---|---|
 | `www.swedebeat.se` | web | S1 sign-in | already there; unchanged |
 | `api.mowl.com` | web, worker | list, attach, playlist reads | already there; unchanged |
-| the **MOWL temporary-link media host** | worker only | (a): fetching the mix's MP3 | added by A1/A3 as an exact-host constant, see below |
-| `cloud.swedebeat.se` | worker only | (b): the catalogue search with the Swedebeat token | **added by B1, not before** |
+| the **MOWL temporary-link media host** | worker only (own client) | (a): fetching the mix's MP3 | added by A1/A3 as an exact-host constant, see below |
+| `cloud.swedebeat.se` | worker only (own client) | (b): the catalogue search with the Swedebeat token | **added by B1, not before** |
 
 Nothing else. The web list gains no host: (a)'s list route is MOWL-only; the audio fetch and the
 catalogue search are worker work (long, budgeted, checkpointed), so the Swedebeat token and the media link
@@ -140,20 +140,43 @@ never exist in the web process beyond S1's sign-in.
 **The media host is unknown today.** The library follows whatever `TemporaryLink` MOWL returns; no repo or
 doc names its host. classbeat does not guess and does not wildcard. The rule:
 
-- The worker takes `MOWL_MEDIA_HOSTS`, a code constant (like `MODEL_HOSTS`): exact hostnames, https, port
-  443, **no wildcard and never a whole cloud provider domain** (not `*.amazonaws.com`).
-- A1 builds everything against a fake whose media host is a name on that list in the e2e stack only. The
-  production constant is **empty until the owner confirms the real host(s)** in the live check. With an
-  empty list a mix analysis ends `media_host_not_allowed`: no request is made, the refused host is named
-  only in the operator log (not in any response), and the page says analysis is not available on this
-  server yet. A map already in a user's cache still works.
-- The owner step (§10) is one authorized live analysis with the owner's own accounts; the refusal line
-  names the host; the owner adds it to the constant in a reviewed PR.
+- The media host gets its own **scoped `Allowlist`** (like `SPOTIFY_ALLOWLIST`), built from
+  `MOWL_MEDIA_HOSTS`, a code constant of exact hostnames (https, port 443; no wildcard, never a whole cloud
+  provider domain such as `*.amazonaws.com`). It is **not** added to `WORKER_HOSTS`, and neither is
+  `cloud.swedebeat.se` (B1): each has a scoped list and a **dedicated HTTP client** in `classbeat.egress`
+  (the only module allowed to build one) that follows **no redirect at all** (the process-wide opener
+  follows same-host redirects), sends only the headers the call site sets, and reaches only its own host.
+  So the library's MOWL client, with its `X-Auth-Token`, can never reach the media host, and the media fetch
+  and the catalogue search each reach one host, by construction. The library's `download_swedebeat_audio`
+  is therefore not called through the global opener: classbeat reads the link from
+  `v1/swedebeat/playlist/{id}/TemporaryLinks` through the MOWL call, fetches the file itself with that
+  client, and hands it to the library's `music.analyze_file`.
+- **How the list is filled, and how that is tested (no test-only setting).** The real host is unknown, so
+  there is no real name for a fake to take over (as `compose.e2e.yaml` does for the other fakes), and the
+  list is code: nothing in the environment can widen it (`egress.py`). The production constant is
+  **empty until the owner confirms the host(s)** in the live check. Consequences:
+  - *Backend tests* (A1, A3) build the dedicated client with an in-process `Allowlist` of the fake's
+    loopback name, passed to the code under test as an argument (the pattern of
+    `install_choice_allowlist`), so the fetch, its limits and the analysis are proven against a fake media
+    endpoint. Production code never reads a list from the environment or a file; a guard test pins that
+    `MOWL_MEDIA_HOSTS` is a literal frozenset and that the client factory has no other source.
+  - *e2e* (A6) runs the unchanged production constant (empty) and proves **fail-closed**: a mix that is not
+    in the cache ends `media_host_not_allowed` and the fake records zero media requests (the fake MOWL
+    returns a link to an unlisted name), while a mix whose map is cached designs normally (the cache is
+    seeded by a backend fixture through the same code path). The positive fetch is not in e2e; it is in
+    the backend tests above and in the owner's live check.
+  - With an empty list a mix analysis ends `media_host_not_allowed`: no request is made, the refused
+    **hostname only** (never path, query or signature) is in the operator log, no response names it, and
+    the page says analysis is not available on this server yet. A map already in a user's cache still works.
+  - After the owner's PR adds the confirmed host, a test pins the constant to exactly those names.
+- The owner step (§10) is one authorized live analysis with the owner's own accounts; the log line names
+  the host; the owner adds it to the constant in a reviewed PR.
 - The link is a **bearer capability**: it is fetched once, in the worker, with none of our headers (no
   `X-Auth-Token`); it is never logged (query string and signature included), never stored (job input,
-  events, errors, `request_context`) and never returned. Redirects are refused. The response must be
-  `200`, an audio content type, at most **250 MB** and within a **300 s** budget (Content-Length and the
-  streamed count are both checked), written to a private temp directory (0700) that is removed in a
+  ADR 0005 checkpoints, job results and outputs, events, errors, `request_context`) and never returned. Redirects are refused. The response must be
+  `200` and at most **250 MB** within a **300 s** budget (Content-Length and the streamed count are both
+  checked); the content type is not trusted either way (CDN links often send `application/octet-stream`):
+  the file is accepted only if the decoder opens it as audio. It is written to a private temp directory (0700) that is removed in a
   `finally` and again at worker start.
 - **Swedebeat's embedded AWS credentials are never used.** The Swedebeat Android app carries AWS
   credentials; AGENTS.md forbids using credentials embedded in third-party apps. classbeat does not read
@@ -163,8 +186,10 @@ doc names its host. classbeat does not guess and does not wildcard. The rule:
   responses (B1) are parsed through a field allowlist (`reference`, `title`, `artist.title`, `duration`);
   every other field, any URL and any credential-looking value is dropped inside the parser, and no URL
   from a response is ever fetched.
-- The `cloud.swedebeat.se` entry (B1) follows ADR 0015 §7: its own redirect tests, https/443, no redirect
-  at all, the token sent only there and never to the media host.
+- The `cloud.swedebeat.se` client (B1) follows ADR 0015 §7: its own scoped list and redirect tests, https/443,
+  no redirect at all, the token sent only there and never to the media host. T19 and the egress comments
+  (`egress.py`, `compose.e2e.yaml`'s note that the worker never calls Swedebeat, the worker's CA bundle) are
+  updated by A1 and B1 when they land.
 
 ### 5. (b) Matching a Spotify selection
 
@@ -222,10 +247,12 @@ State lives in one owned row, not in a long-waiting job (ADR 0005 jobs wait only
 `swedebeat_handoffs(owner_id, class_id, match_revision_id, state, mixes_before jsonb, mix_id, checked_at,
 expires_at)`, one live row per class, RLS by owner. Starting the step snapshots the user's MOWL mix ids
 (`mixes_before`, ids only). Each press creates a short job `swedebeat_verify_mix` (one per class at a
-time, 10 per user per hour, no credit):
+time, 10 per user per hour, no credit; and at most 10 new analyses per user per day across §3 and §7, because one press can attach a mix and fetch up to 250 MB; a cache hit costs none):
 
-1. List the user's mixes through MOWL. Candidates are mixes **not in `mixes_before`**; the user can also
-   pick any mix from their own listing ("Which one did you make?").
+1. List the user's mixes through MOWL, fresh, in the verify job. Candidates are mixes **not in
+   `mixes_before`**; the user can also pick **any** mix from their own listing ("Which one did you make?").
+   A `mix_id` sent by the client (picker or override) is accepted only if it is in that fresh listing; A4's
+   `admit` repeats the check (defence in depth).
 2. For the chosen mix run §3's attach and analysis (same hosts, same limits).
 3. **Verdict**, by length and count since the track list is unreadable: `ok` (analysed length within
    `swedebeat_sec` minus up to 10 s per change, plus a small tolerance), `too_short` (names the song
@@ -236,8 +263,16 @@ time, 10 per user per hour, no credit):
    with §3's source, never on the Spotify playlist: **the class is timed on the Swedebeat mix, whose
    masters differ in length from Spotify's.**
 
-The row expires after 14 days (the step then offers to start again) and is deleted with the class, the
-account, **Disconnect MOWL** and an account change. Both buttons are idempotent; two tabs end with one job
+**Tamper rules.** `match_revision_id` is set by the server to the approved `swedebeat_match` revision of the
+same class and is never taken from a request; `state`, `mix_id` (once verified), `checked_at` and
+`expires_at` change only on the server; a request carries a class id and at most a candidate mix id.
+**Expiry** is enforced lazily: every endpoint and the verify job refuse a row whose `expires_at` has passed
+(410 `handoff_expired`, nothing attached or fetched) and never revive it; the step offers a new row; the
+maintenance pass deletes rows expired for 7 days. A `verified` row expires too (its work is done once the
+class is designed); a class already designed on the mix keeps its revision and map. `swedebeat_handoffs`
+is in the retention registry and the GDPR export (counts only) and is deleted with the class, the account,
+**Disconnect MOWL** and an account change. Mixes attached into the user's MOWL account stay there as MOWL
+playlists (as existing links do); classbeat deletes only its own link rows. Both buttons are idempotent; two tabs end with one job
 (`class_busy`); a click after `verified` is a 200 no-op.
 
 ### 8. Isolation, ownership and the tests every issue carries
@@ -268,19 +303,19 @@ expected).
 
 | # | Title | Scope | Done when | Review | Depends on |
 |---|---|---|---|---|---|
-| A1 | `feat(swedebeat): fakes and egress for mixes` | MOWL fake: `v1/swedebeat/Playlists`, `Playlist` (PUT), `playlist/{id}/TemporaryLinks`, indexing; a fake media host serving short audio with failure injection (4xx, redirect, oversize, slow); `MOWL_MEDIA_HOSTS` constant (empty in production, the fake host in the e2e stack) and worker allowlist wiring; the AWS guard test | fakes reproduce the library's calls; every refusal of §8 passes; production lists unchanged apart from the empty constant | Opus | none (#366 merged) |
+| A1 | `feat(swedebeat): fakes and egress for mixes` | MOWL fake: `v1/swedebeat/Playlists`, `Playlist` (PUT), `playlist/{id}/TemporaryLinks`, indexing; an in-process fake media endpoint with failure injection (4xx, redirect, oversize, slow, octet-stream, undecodable); the empty literal `MOWL_MEDIA_HOSTS`, its scoped `Allowlist` and the dedicated no-redirect client (§4); guard tests (literal constant, no other source, no AWS); egress comments updated | fakes reproduce the library's calls; every refusal of §8 passes against an injected list; `WORKER_HOSTS` and the production lists unchanged | Opus | none (#366 merged) |
 | A2 | `feat(swedebeat): mix listing, attach and the analysis table` | migration for `swedebeat_mix_maps` (RLS, retention registry, export counts, deletion paths); `GET /api/music/swedebeat-mixes` (flag, MOWL connection, rate limit); external operation `mowl_attach_swedebeat_mix` with reconcile and link deletion on MOWL account change | list and attach work on the fake; cross-user tests; reconcile after a crash between attach and link; flag-off 404 | Opus | A1 |
-| A3 | `feat(swedebeat): fetch and analyse a mix` | the music-step branch: temp-link fetch (limits, temp directory, link never logged), the library analysis in a thread with checkpoints and budget, the per-user cache with limit and TTL, `media_host_not_allowed` and the error categories; check the worker image carries `librosa` and fits its memory | analysis of the fake mix gives the map and deletes the audio (also on cancel and crash); a cache hit makes no request; every media refusal ends cleanly and secretly | Opus | A1, A2 |
+| A3 | `feat(swedebeat): fetch and analyse a mix` | the music-step branch: temp-link fetch (limits, temp directory, link never logged), the library analysis in a thread with checkpoints and budget, the per-user cache with limit and TTL, `media_host_not_allowed` and the error categories; the child-process analysis with its caps (§3 step 2); the worker image carries `librosa` | analysis of the fake mix (injected list) gives the map with peak RSS under 1.5 GiB and deletes the audio (also on cancel and crash); an oversized-duration file ends `analysis_failed`; a cache hit makes no request; every media refusal ends cleanly and secretly | Opus | A1, A2 |
 | A4 | `feat(swedebeat): design on a Swedebeat mix` | `design_draft` source `mowl_swedebeat_mix`: input validation, `admit` (own-listing check, flag, MOWL), revision `music` provenance and fingerprint, warnings, `model_input` planted-value test, Save to MOWL unchanged | a class designed and saved on a fake mix end to end; model input holds no mix text; a user with no Swedebeat designs as before | Opus | A3 |
 | A5 | `feat(web): "Use my Swedebeat mix" in the New class builder` | `MusicChoice` third option, picker with analysed badge and empty state, hint without MOWL, plain errors, a11y, flag-off snapshot | component and page tests, axe clean, 44 px targets; flag off changes nothing | Sonnet | A2 (API shape), A4 |
-| A6 | `test(swedebeat): done-when suite and e2e for mixes` | the ownership, secrecy and flag-off suites of §8; Playwright with the fakes for (a); runbook section for the owner's media-host check; T108 and T109 reconciled with the code | green and mutation-checked per repo practice; (a) end to end on fakes | Sonnet (Opus reviewer) | A4, A5 |
-| B1 | `feat(swedebeat): catalogue matching job` | `cloud.swedebeat.se` on the worker list only (own redirect tests); the field-allowlist parser; token handling, pacing, 429/5xx; kind `swedebeat_match` and revision kind `swedebeat_match` (migration); retention registry and plant-and-delete test; fake catalogue | a `song_list` matched on the fake gives found/unsure/missing and `swedebeat_sec`; two-user token test; only title and artist leave | Opus | #362 (done), M4 (done); independent of A2 to A6 |
-| B2 | `feat(swedebeat): the Swedebeat app step and verification` | `swedebeat_handoffs` (migration), job `swedebeat_verify_mix`, the "I made the mix" / "Check again" endpoints, snapshot, candidates, length verdict, expiry, override, hand-off into A4's design | on the fake: a new mix appears, is analysed and the verdict is right for ok / too_short / too_long / not_found; idempotent buttons; deletion paths | Opus | A3, A4, B1 |
-| B3 | `feat(swedebeat): replace unmatched songs` | the `revise_songs` extension (status-only fact, three-round limit, re-match) and approval of the selection | missing songs replaced and re-matched on the fakes; model input holds statuses only (planted-value test) | Sonnet (Opus reviewer) | B1 |
+| A6 | `test(swedebeat): done-when suite and e2e for mixes` | the ownership, secrecy and flag-off suites of §8; Playwright for (a) on the fakes with the production (empty) media list; runbook section for the owner's media-host check; T108 and T109 reconciled with the code ("as enforced", T19 updated) | green and mutation-checked per repo practice; e2e shows list, picker, design on a cached map, and `media_host_not_allowed` with zero media requests for an uncached mix; the positive fetch is covered by A3's backend tests | Sonnet (Opus reviewer) | A4, A5 |
+| B1 | `feat(swedebeat): catalogue matching job` | `cloud.swedebeat.se` on the worker list only (own redirect tests); the field-allowlist parser; token handling, pacing, 429/5xx; kind `swedebeat_match` and revision kind `swedebeat_match` (migration); retention registry and plant-and-delete test; fake catalogue | a `song_list` matched on the fake gives found/unsure/missing and `swedebeat_sec`; two-user token test; only title and artist leave | Opus | #362 and M4 (done); starts after A1 merges (both edit `egress.py`), otherwise independent of A2 to A6 |
+| B2 | `feat(swedebeat): the Swedebeat app step and verification` | `swedebeat_handoffs` (migration), job `swedebeat_verify_mix`, the "I made the mix" / "Check again" endpoints, snapshot, candidates, length verdict, lazy expiry and tamper rules (§7), override, hand-off into A4's design; starts only from the approved match revision B3 records | on the fake: a new mix appears, is analysed and the verdict is right for ok / too_short / too_long / not_found; idempotent buttons; deletion paths | Opus | A3, A4, B3 |
+| B3 | `feat(swedebeat): replace unmatched songs and approve the selection` | the `revise_songs` extension (status-only fact, three-round limit, re-match) and the **approval of the selection** (§6): the endpoint that records the approved `swedebeat_match` revision of the class, which B2 and B4 read | missing songs replaced and re-matched on the fakes; model input holds statuses only (planted-value test) | Opus | B1 |
 | B4 | `feat(web): match view and "Next, in the Swedebeat app"` | the match page, the step with its two buttons, the mix picker, verdict messages, reconnect prompt, a11y | page tests for each state and verdict; no Swedebeat call from the browser; axe clean | Sonnet | B1, B2, B3, A5 |
 | B5 | `test(swedebeat): done-when suite, e2e and runbook for matching` | isolation (two users, tokens, hand-offs), the retention test, a full Playwright run of (b) on the fakes with a mismatch and an override, the runbook and the owner's live checklist (§10), T110 and T111 reconciled | green and mutation-checked; the owner's live checklist written | Sonnet (Opus reviewer) | B2, B3, B4 |
 
-Order: A1, A2, A3, A4, then A5 (with B1 in parallel from A1), A6, B2, B3, B4, B5. **(a) is technically
+Order: A1; then A2, A3, A4 in sequence with B1 and B3 in parallel (B1 only after A1); A5; A6; then B2 (needs A3, A4, B3); B4; B5. **(a) is technically
 done when A6 is green; #363 when B5 is.** `docs/status.md` is updated by the coordinator after each merge,
 not by these issues.
 
@@ -317,14 +352,24 @@ not by these issues.
 
 - Three expected migrations, the job kinds `swedebeat_match` and `swedebeat_verify_mix`, one external
   operation, one music source, one builder choice.
-- The worker gains `cloud.swedebeat.se` with B1 and the media host(s) after the owner's live check; the
-  web gains none. Until the media host is confirmed, new mix analysis is unavailable in production (cached
+- The worker gains two scoped clients (not `WORKER_HOSTS` entries): `cloud.swedebeat.se` with B1 and the
+  media host(s) after the owner's live check; the web gains none. Until the media host is confirmed, new mix analysis is unavailable in production (cached
   maps work), by design.
 - The worker downloads up to 250 MB per analysis and runs `librosa` (a dependency of the pinned
-  `mowl-workouts` wheel); A3 verifies the image and the container memory.
+  `mowl-workouts` wheel) in a memory-limited child process (§3).
+- ADR 0010 is amended (below).
 - The Swedebeat token gets its first real use (B1); T104 to T107 stay true; T108 to T111 are new.
 - Swedebeat's real response shapes, the media host and the 0.85 threshold on real catalogue data are
   unverified until the owner's live checks; a mismatch costs a wrong verdict or a `missing`, not data.
+
+## Amendment to ADR 0010 (the owner accepts it by accepting this ADR)
+
+ADR 0010's table row "Other Swedebeat features: Not built" becomes: **(a) mixes and (b) matching: built
+against fakes (ADR 0016); live use only with the owner's authorization.** Its accepted-risk list gains: *classbeat
+sends the title and artist of Spotify songs a user picked, with that user's own Swedebeat token, to
+Swedebeat to find them in its catalogue.* This is disclosure to a provider the user already uses, not
+ingestion into a model; the beta stays free and non-commercial and the tracklist is kept only as long as
+the class (ADR 0008 §8). ADR 0010's text is edited in the PR that accepts this ADR.
 
 ## Threat model additions (rows T108 to T111, also added to the threat model as proposed)
 
@@ -334,4 +379,5 @@ not by these issues.
   link leaking, or embedded AWS credentials being used. (A1, A3)
 - **T110** Spotify-derived titles sent to Swedebeat or kept longer than their class; the Swedebeat token
   sent to a wrong host. (B1, B3, B5)
-- **T111** The manual hand-off verifying the wrong mix or attaching another user's. (B2, B5)
+- **T111** The manual hand-off verifying the wrong mix, being tampered with (a forged match revision, mix id
+  or state; an expired row revived) or attaching another user's. (B2, B5)
