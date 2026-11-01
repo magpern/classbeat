@@ -308,3 +308,24 @@ async def test_a_scripted_run_shows_the_section_and_the_hits(data: MusicData) ->
     [(results, _)] = sent.turns[1:2]
     assert json.loads(results[0].content)["rules"]
     assert outcome.info.prompt_version == PINNED["design"]
+
+
+def test_the_revise_submit_draft_returns_the_hits_and_accepts_the_draft(data: MusicData) -> None:
+    rules = rule_set_for(brief(sprints=0))
+    assert rules is not None
+    base = WorkoutDraft.model_validate(good_draft())
+    ctx = ReviseContext.build(
+        brief(sprints=0), data, base, (), "Harder", music_changed=False, rules=rules
+    )
+    stage = revise_stage(ctx)
+    done = dispatch(stage, ToolCall("c1", "submit_draft", {"draft": hard_draft(), "note": ""}))
+    assert not done.result.is_error
+    body = json.loads(done.result.content)
+    assert body["accepted"] is True
+    assert 1 <= len(body["rules"]) <= 5
+    assert body["rules"] == call(stage, "preview_draft", {"draft": hard_draft()})["rules"]
+    no_profile = ReviseContext.build(brief(length_min=20), data, base, (), "x", music_changed=False)
+    plain = dispatch(
+        revise_stage(no_profile), ToolCall("c2", "submit_draft", {"draft": hard_draft()})
+    )
+    assert "rules" not in json.loads(plain.result.content)

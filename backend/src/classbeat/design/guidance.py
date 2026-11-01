@@ -85,6 +85,10 @@ class RuleSet:
     dismissed: frozenset[str] = frozenset()
 
     def section(self) -> str:
+        """The whole section is at most 8 lines: the header, the first 6 rules in the profile's
+        order that are not dismissed, and the standing sentence. A profile may have more rules
+        (13 or 14 today): ``hits`` covers all of them, so the model can get a hit for a pattern
+        the section did not state. The profile's rule order is its priority order."""
         rules = [r for r in self.profile.rules if r.rule not in self.dismissed][:_RULE_LINES]
         if not rules:
             return ""

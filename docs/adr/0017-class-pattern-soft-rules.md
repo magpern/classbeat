@@ -161,9 +161,13 @@ tool name, description or schema, so `prompt_version` does not change), but `com
 Two channels, neither in the system prompt:
 
 1. **A short section in the first message** (`model_input.first_message` and `revise_message`),
-   built by `model_input` from the selected profile: a header line, then at most **8 lines** of the
-   form `<plain-language expectation> (usually; the brief wins)`, produced from the profile's
-   rules and the `RATIONALES` table (about 150 to 250 tokens), followed by the standing sentence:
+   built from the selected profile: a header line, then rule lines of the form
+   `<plain-language expectation> (<bound>; usually; the brief wins)`, produced from the profile's
+   rules and the `RATIONALES` table (about 150 to 250 tokens), followed by the standing sentence.
+   The whole section, header and standing sentence included, is **at most 8 lines**, so it states
+   the first 6 rules of the profile in file order (the file order is the priority order); the
+   `rules` hits of the tool results cover every rule. When every rule of a class is dismissed no
+   section is built and the revision's provenance carries no `rules`. The standing sentence is:
    "These are patterns from professional classes, not requirements. Follow the instructor's brief
    first; deviate on purpose when the brief or the music asks for it, and keep the draft valid."
    Reasons for the user message: the system prompt's SHA (`prompt_version`) stays stable across
