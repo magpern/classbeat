@@ -14,7 +14,7 @@ from uuid import UUID
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from classbeat.operations.kinds import (
-    ATTACH_KIND,
+    ATTACH_KINDS,
     BOUND_KEY,
     CALL_MAY_RUN_MARGIN_SECONDS,
     CLASS_WRITE_KINDS,
@@ -131,7 +131,7 @@ class OperationRequest:
         """A row carries ``class_id`` exactly when its kind is a class write (ADR 0008 section
         1): the MOWL saves and the final-playlist writes. No table check ties a Spotify row's
         class to its purpose, so it is enforced here, from the key."""
-        if self.kind == ATTACH_KIND and self.class_id is not None:
+        if self.kind in ATTACH_KINDS and self.class_id is not None:
             raise ValueError("an attach belongs to no class")
         if self.kind in CLASS_WRITE_KINDS and self.class_id is None:
             raise ValueError("a class write names its class")

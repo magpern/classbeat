@@ -24,11 +24,21 @@ ATTACHED: dict[tuple[str, str], int] = {}  # (token, mix id) -> MOWL playlist id
 COUNTS = {"lists": 0, "attaches": 0, "links": 0}
 
 
-def listing(form: dict[str, str]) -> dict[str, object]:
+def listing(token: str, form: dict[str, str]) -> dict[str, object]:
+    """The mixes, each with the `PlaylistID` of the caller's attach of it once there is one (what the
+    attach reconciler reads)."""
     like = form.get("NameLike", "").lower()
     with LOCK:
         COUNTS["lists"] += 1
-    return {"Playlists": [dict(m, URL=f"mix:{m['ID']}") for m in MIXES if like in str(m["Name"]).lower()]}
+        shown: list[dict[str, object]] = []
+        for m in MIXES:
+            if like not in str(m["Name"]).lower():
+                continue
+            entry = dict(m, URL=f"mix:{m['ID']}")
+            if (token, str(m["ID"])) in ATTACHED:
+                entry["PlaylistID"] = ATTACHED[(token, str(m["ID"]))]
+            shown.append(entry)
+    return {"Playlists": shown}
 
 
 def attach(token: str, form: dict[str, str]) -> dict[str, object] | None:

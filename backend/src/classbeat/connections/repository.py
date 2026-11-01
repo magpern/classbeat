@@ -50,6 +50,7 @@ from classbeat.connections.credentials import (
 )
 from classbeat.connections.errors import ConnectionFailure, run_library_call
 from classbeat.connections.spotify_data import forget_spotify_account, revoke_pool
+from classbeat.connections.swedebeat_maps import FORGET_MIX_MAPS
 from classbeat.connections.tables import PROVIDERS, connections
 from classbeat.context import UserContext
 from classbeat.crypto.envelope import (
@@ -500,13 +501,15 @@ async def connect(
 _FORGET_MOWL = (
     text(
         "DELETE FROM external_operations WHERE owner_id = :owner_id AND kind IN "
-        "('mowl_attach_spotify_playlist', 'mowl_save_workout', 'mowl_update_workout')"
+        "('mowl_attach_spotify_playlist', 'mowl_attach_swedebeat_mix', "
+        "'mowl_save_workout', 'mowl_update_workout')"
     ),
     text(
         "UPDATE saved_workouts SET detached_at = now(), updated_at = now() "
         "WHERE owner_id = :owner_id AND detached_at IS NULL"
     ),
-    text("DELETE FROM mowl_playlist_links WHERE owner_id = :owner_id"),
+    text("DELETE FROM mowl_playlist_links WHERE owner_id = :owner_id"),  # Spotify and Swedebeat
+    FORGET_MIX_MAPS,  # ADR 0016 section 3: the analysis belongs to the MOWL account it was made in
 )
 
 

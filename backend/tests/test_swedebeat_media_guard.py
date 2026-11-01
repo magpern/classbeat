@@ -49,6 +49,69 @@ def assignments(tree: ast.Module, name: str) -> list[ast.expr]:
     return found
 
 
+def _target_names(target: ast.AST) -> list[str]:
+    if isinstance(target, ast.Name):
+        return [target.id]
+    if isinstance(target, ast.Tuple | ast.List):
+        return [n for element in target.elts for n in _target_names(element)]
+    if isinstance(target, ast.Starred):
+        return _target_names(target.value)
+    return []
+
+
+def rebinds(tree: ast.AST, name: str) -> list[str]:
+    """Every way the code can bind or change module-level ``name`` other than reading it: plain,
+    annotated and augmented (``|=``) assignment, a walrus, a loop, ``with`` or comprehension
+    target, an import, a def or class of that name, ``del``, a ``global`` statement, and any use
+    of ``globals()``, ``vars()``, ``locals()``, ``exec`` or ``eval`` (which can write it by name).
+    The media list is written once, as a literal; this finds the rest."""
+    found: list[str] = []
+    for node in ast.walk(tree):
+        targets: list[ast.AST] = []
+        if isinstance(node, ast.Assign):
+            targets = list(node.targets)
+        elif isinstance(node, ast.AnnAssign):
+            targets = [node.target]
+        if any(name in _target_names(t) for t in targets):
+            found.append("assign")
+        elif isinstance(node, ast.AugAssign) and name in _target_names(node.target):
+            found.append("augmented assignment")
+        elif isinstance(node, ast.NamedExpr) and name in _target_names(node.target):
+            found.append("walrus")
+        elif isinstance(node, ast.For | ast.AsyncFor | ast.comprehension) and name in _target_names(
+            node.target
+        ):
+            found.append("loop target")
+        elif (
+            isinstance(node, ast.withitem)
+            and node.optional_vars is not None
+            and name in _target_names(node.optional_vars)
+        ):
+            found.append("with target")
+        elif isinstance(node, ast.Import | ast.ImportFrom) and any(
+            (alias.asname or alias.name).split(".")[0] == name for alias in node.names
+        ):
+            found.append("import")
+        elif (
+            isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef)
+            and node.name == name
+        ):
+            found.append("definition")
+        elif isinstance(node, ast.Delete) and any(name in _target_names(t) for t in node.targets):
+            found.append("del")
+        elif isinstance(node, ast.Global) and name in node.names:
+            found.append("global statement")
+        elif (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Name)
+            and node.func.id in {"globals", "vars", "locals", "exec", "eval"}
+        ):
+            found.append(f"{node.func.id}()")
+        elif isinstance(node, ast.Attribute) and node.attr == "__dict__":
+            found.append("__dict__")
+    return found
+
+
 def is_literal_host_set(node: ast.expr) -> bool:
     """``frozenset()`` or ``frozenset({"a", "b"})`` (string constants only)."""
     if not (
@@ -69,6 +132,37 @@ def is_literal_host_set(node: ast.expr) -> bool:
 def test_the_media_hosts_are_a_literal_assigned_once() -> None:
     (value,) = assignments(egress_tree(), "MOWL_MEDIA_HOSTS")
     assert is_literal_host_set(value)
+    # ...and changed nowhere else: not by ``|=``, a walrus, ``globals()`` or any other write.
+    assert rebinds(egress_tree(), "MOWL_MEDIA_HOSTS") == ["assign"]
+    assert rebinds(egress_tree(), "MOWL_MEDIA_ALLOWLIST") == ["assign"]
+
+
+@pytest.mark.parametrize(
+    ("source", "expected"),
+    [
+        ("H = frozenset()", ["assign"]),
+        ("H: frozenset[str] = frozenset()", ["assign"]),
+        ("H = frozenset()\nH |= {'a.example'}", ["assign", "augmented assignment"]),
+        ("H = frozenset()\nH = H | other", ["assign", "assign"]),
+        ("H = frozenset()\nprint((H := other))", ["assign", "walrus"]),
+        ("H = frozenset()\nglobals()['H'] = other", ["assign", "globals()"]),
+        ("H = frozenset()\nglobals().update(H=other)", ["assign", "globals()"]),
+        ("H = frozenset()\nvars()['H'] = other", ["assign", "vars()"]),
+        ("H = frozenset()\nmodule.__dict__['H'] = x", ["assign", "__dict__"]),
+        (
+            "H = frozenset()\ndef f():\n    global H\n    H = other",
+            ["assign", "global statement", "assign"],
+        ),
+        ("H = frozenset()\nfor H in other: pass", ["assign", "loop target"]),
+        ("H = frozenset()\nfrom elsewhere import H", ["assign", "import"]),
+        ("H = frozenset()\nexec('H = x')", ["assign", "exec()"]),
+        ("H = frozenset()\nOTHER |= {1}", ["assign"]),
+    ],
+)
+def test_the_rebind_check_catches_every_way_to_change_the_constant(
+    source: str, expected: list[str]
+) -> None:
+    assert sorted(rebinds(ast.parse(source), "H")) == sorted(expected)
 
 
 def test_the_literal_check_rejects_every_other_source() -> None:
@@ -145,10 +239,13 @@ def test_the_media_hosts_are_exact_https_names_never_a_wildcard_or_a_cloud_domai
 
 # --- no AWS ----------------------------------------------------------------------------------
 
-AWS_SDK = re.compile(r"(?i)\b(boto3?|botocore|aiobotocore|s3transfer|aws-sdk|@aws-sdk)\b")
+AWS_SDK = re.compile(
+    r"(?i)\b(boto3?|botocore|aiobotocore|aioboto3|s3transfer|s3fs|smart_open|requests-aws4auth|"
+    r"aws-sdk|@aws-sdk)\b"
+)
 AWS_SIGNING = re.compile(
-    r"(?i)(AWS4-HMAC-SHA256|x-amz-(?:signature|credential|security-token)|aws_access_key_id|"
-    r"aws_secret_access_key|aws_session_token)"
+    r"(?i)(AWS4-HMAC-SHA256|aws4_request|AWSAccessKeyId|x-amz-(?:signature|credential|security-token)|"
+    r"aws_access_key_id|aws_secret_access_key|aws_session_token)"
 )
 ACCESS_KEY = re.compile(r"\b(?:AKIA|ASIA)[0-9A-Z]{16}\b")
 SKIP_SUFFIXES = {".png", ".ico", ".woff2", ".whl", ".zip", ".gz", ".jpg", ".svg"}
@@ -203,9 +300,14 @@ def test_no_file_imports_or_names_an_aws_sdk_signs_with_aws_or_holds_an_access_k
 def test_the_aws_patterns_catch_what_they_are_for() -> None:
     assert AWS_SDK.search("import boto3")
     assert AWS_SDK.search('"botocore==1.0"')
+    for named in ("aioboto3", "s3fs", "smart_open", "requests-aws4auth", "import s3fs"):
+        assert AWS_SDK.search(named)
     assert not AWS_SDK.search("font-family: Roboto, sans-serif")
+    assert not AWS_SDK.search("smart_opener, s3fsx")
     assert AWS_SIGNING.search("Authorization: AWS4-HMAC-SHA256 Credential=")
     assert AWS_SIGNING.search("?X-Amz-Signature=abc")
     assert AWS_SIGNING.search("aws_secret_access_key = x")
+    assert AWS_SIGNING.search("20260101/eu-north-1/s3/aws4_request")
+    assert AWS_SIGNING.search("?AWSAccessKeyId=abc&Expires=1")
     assert ACCESS_KEY.search("AKIA" + "ABCDEFGHIJKLMNOP")
     assert not ACCESS_KEY.search("AKIA-short")

@@ -2,6 +2,7 @@
 against ``mowlfake``), and the fake media endpoint's failure injection reaches the dedicated media
 client (``egress.mowl_media_async_client``) with an injected list. In-process, never the network."""
 
+import http.client
 import io
 import time
 import urllib.error
@@ -114,6 +115,85 @@ def test_tracks_and_links_are_for_an_attached_mix_of_the_caller(mowl_api: FakeMo
         with pytest.raises(api.MowlError) as tracks:
             api.playlist_tracks(creds(token), playlist)
         assert closed(tracks).status == 404
+
+
+# --- A2: what the attach tests need from the fake --------------------------------------------
+
+
+def test_the_same_mix_id_can_belong_to_two_accounts(mowl_api: FakeMowl) -> None:
+    mine = mowl_api.add_mix("Mine", mix_id="shared-1")
+    theirs = mowl_api.add_mix("Theirs", token=OTHER_TOKEN, mix_id="shared-1")
+    assert mine == theirs == "shared-1"
+    assert [m["Name"] for m in api.swedebeat_mixes(creds())] == ["Mine"]
+    assert [m["Name"] for m in api.swedebeat_mixes(creds(OTHER_TOKEN))] == ["Theirs"]
+    a = api.attach_swedebeat(creds(), "shared-1")["PlaylistID"]
+    b = api.attach_swedebeat(creds(OTHER_TOKEN), "shared-1")["PlaylistID"]
+    assert a != b  # each account has its own MOWL playlist for it
+    assert api.playlist_tracks(creds(), a)
+    with pytest.raises(api.MowlError) as refused:
+        api.playlist_tracks(creds(), b)  # the other account's playlist
+    assert closed(refused).status == 404
+
+
+def test_the_listing_shows_the_playlist_of_an_attached_mix_to_its_caller_only(
+    mowl_api: FakeMowl,
+) -> None:
+    mix = mowl_api.add_mix("Mix", mix_id="shared-1")
+    mowl_api.add_mix("Theirs", token=OTHER_TOKEN, mix_id="shared-1")
+    assert "PlaylistID" not in api.swedebeat_mixes(creds())[0]
+    pid = api.attach_swedebeat(creds(), mix)["PlaylistID"]
+    assert api.swedebeat_mixes(creds())[0]["PlaylistID"] == pid
+    assert "PlaylistID" not in api.swedebeat_mixes(creds(OTHER_TOKEN))[0]
+    mowl_api.list_shows_playlist = False
+    assert "PlaylistID" not in api.swedebeat_mixes(creds())[0]
+
+
+@pytest.mark.parametrize("endpoint", ["list", "attach", "tracks", "links"])
+@pytest.mark.parametrize("code", [401, 429, 503])
+def test_a_failure_switch_hits_one_endpoint_only(
+    mowl_api: FakeMowl, endpoint: str, code: int
+) -> None:
+    mix = mowl_api.add_mix("Mix")
+    pid = api.attach_swedebeat(creds(), mix)["PlaylistID"]
+    mowl_api.retry_after = "9"
+    mowl_api.status[f"swedebeat_{endpoint}"] = code
+    calls = {
+        "list": lambda: api.swedebeat_mixes(creds()),
+        "attach": lambda: api.attach_swedebeat(creds(), mix),
+        "tracks": lambda: api.playlist_tracks(creds(), pid),
+        "links": lambda: api.call(creds(), "GET", f"v1/swedebeat/playlist/{pid}/TemporaryLinks"),
+    }
+    for name, call in calls.items():
+        if name == endpoint:
+            with pytest.raises(api.MowlError) as refused:
+                call()
+            assert closed(refused).status == code
+            if code == 429:
+                assert isinstance(refused.value.__cause__, urllib.error.HTTPError)
+                assert refused.value.__cause__.headers["Retry-After"] == "9"
+        else:
+            call()  # the other endpoints still answer
+    mowl_api.status.clear()
+    mowl_api.status["swedebeat"] = 503  # the old switch still covers all four
+    for call in calls.values():
+        with pytest.raises(api.MowlError) as refused:
+            call()
+        assert closed(refused).status == 503
+
+
+def test_the_attach_can_happen_and_its_answer_be_lost_or_garbled(mowl_api: FakeMowl) -> None:
+    mix = mowl_api.add_mix("Mix")
+    mowl_api.attach_answer = "garbled"
+    assert "PlaylistID" not in api.attach_swedebeat(creds(), mix)
+    mowl_api.attach_answer = "drop"
+    with pytest.raises((api.MowlError, http.client.HTTPException, OSError)):
+        api.attach_swedebeat(creds(), mix)  # the connection is cut before the answer
+    assert mowl_api.attaches == [mix, mix]  # it happened both times
+    mowl_api.attach_answer = "ok"
+    assert (
+        api.swedebeat_mixes(creds())[0]["PlaylistID"]
+        == api.attach_swedebeat(creds(), mix)["PlaylistID"]
+    )
 
 
 # --- the media client against the fake media endpoint ---------------------------------------

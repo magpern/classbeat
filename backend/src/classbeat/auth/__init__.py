@@ -104,6 +104,7 @@ if TYPE_CHECKING:
         password_buckets,
         redeem_buckets,
         spotify_start_buckets,
+        swedebeat_mixes_buckets,
     )
     from classbeat.auth.reset_routes import make_reset_link_sender
     from classbeat.auth.sessions import (
@@ -186,6 +187,7 @@ _EXPORTS: dict[str, str] = {
     "account_export": "export",
     "export_buckets": "ratelimit",
     "mowl_playlists_buckets": "ratelimit",
+    "swedebeat_mixes_buckets": "ratelimit",
     "owner_active": "owners",
     "WipeEvent": "operator",
     "mark_wipe_mailed": "operator",
@@ -346,6 +348,7 @@ __all__ = [
     "set_session_cookie",
     "spotify_start_buckets",
     "start_session",
+    "swedebeat_mixes_buckets",
     "token_hash",
     "totp_rows_by_key",
     "vacuum_wiped_tables",
