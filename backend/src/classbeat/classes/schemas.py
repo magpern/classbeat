@@ -307,3 +307,9 @@ class SongListOut(BaseModel):
     songs: list[SongOut]
     omitted_no_bpm: int
     note: str
+
+
+class DismissedRulesOut(BaseModel):
+    """The rule ids dismissed for a class (ADR 0017 section 4), in the order they were dismissed."""
+
+    dismissed_rules: list[str]
