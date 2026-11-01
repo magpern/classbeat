@@ -213,8 +213,9 @@ when it's answered.
 
 For Cursor sessions, read [docs/cursor.md](docs/cursor.md) and use the explicit
 `cursor-*` roles in `.cursor/agents/`. Roadmap Amendment 11 authorizes Composer
-for routine implementation/exploration and Grok for coordination/routine review.
-Opus remains required for security-critical work and review escalation. The shared
+for implementation, including security-critical issues, and Grok 4.7 High for
+coordination and every review. Claude Code and Codex keep Opus for security-critical
+work. The shared
 worktree, CI, independent current-head review, merge and safety gates still apply.
 Verify the actual model used; a client substitution blocks that role. Claude Code
 and Codex keep their own profiles.

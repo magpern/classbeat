@@ -22,5 +22,5 @@ A push invalidates the verdict except the shared mechanical merge-check exceptio
 Report verdict, reviewed SHA and findings.
 Use model label Grok 4.7. If scope is security-critical, classification is uncertain, a
 security-critical PR needs even a tests/docs-only delta, or this is after a second FAIL,
-hand off to a fresh cursor-security-reviewer. This Cursor profile deliberately keeps Opus
-for all security-critical reviews, including deltas. Do not issue a Grok PASS for those PRs.
+hand off to a fresh cursor-security-reviewer. That role is also Grok 4.7 High. Do not PASS
+those PRs from this routine review.
