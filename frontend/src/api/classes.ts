@@ -1,4 +1,4 @@
-import { del, get, post } from './client'
+import { del, get, post, request } from './client'
 import {
   count,
   flag,
@@ -399,4 +399,14 @@ export async function deleteClass(classId: string, confirmUncertain: boolean): P
   const query = confirmUncertain ? '?confirm_uncertain=true' : ''
   const body = object(await del(`${base(classId)}${query}`), 'deleted')
   return { mowlWorkoutsKept: count(body, 'mowl_workouts_kept') }
+}
+
+/** Dismiss a pattern note for this class (ADR 0017 section 4); idempotent. */
+export async function dismissRule(classId: string, ruleId: string): Promise<void> {
+  await request('PUT', `${base(classId)}/dismissed-rules/${encodeURIComponent(ruleId)}`)
+}
+
+/** Undo a dismissal ("Show again"); idempotent. */
+export async function showRuleAgain(classId: string, ruleId: string): Promise<void> {
+  await del(`${base(classId)}/dismissed-rules/${encodeURIComponent(ruleId)}`)
 }
