@@ -128,6 +128,8 @@ changes() {
 #       name                event             files                                 backend frontend stack all
 changes "docs only"         pull_request      "README.md docs/x.md AGENTS.md"       "false false false false"
 changes "backend only"      pull_request      "backend/app/x.py"                    "true false true false"
+changes "design rules"      pull_request      "backend/src/classbeat/design/rules/rationales.py" "true true true false"
+changes "design profiles"   pull_request      "backend/src/classbeat/design/profiles/index.json" "true true true false"
 changes "frontend only"     pull_request      "frontend/src/a.ts"                   "false true true false"
 changes "e2e only"          pull_request      "e2e/tests/a.ts"                      "false false true false"
 changes "Dockerfile"        pull_request      "Dockerfile"                          "false false true false"
