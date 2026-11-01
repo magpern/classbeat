@@ -1,0 +1,218 @@
+{
+  "schema": 1,
+  "id": "cycling.interval.30",
+  "version": 1,
+  "sport": "cycling",
+  "class_type": "interval",
+  "label_minutes": 30,
+  "evidence": "strong",
+  "n": 29,
+  "source": "professional studio library",
+  "snapshot": "2026-11-01",
+  "rules": [
+    {
+      "rule": "warmup_short",
+      "metric": "first_zone4plus_s",
+      "low": 385,
+      "high": null,
+      "basis": "p5",
+      "severity": "warn",
+      "rationale_id": "warmup_ramp",
+      "brief_overrides": [
+        "intensity:hard",
+        "ftp_test",
+        "style",
+        "text"
+      ]
+    },
+    {
+      "rule": "hard_start_late",
+      "metric": "first_zone4plus_s",
+      "low": null,
+      "high": 657,
+      "basis": "p95",
+      "severity": "warn",
+      "rationale_id": "hard_start_late",
+      "brief_overrides": [
+        "intensity:easy",
+        "style",
+        "text"
+      ]
+    },
+    {
+      "rule": "cooldown_short",
+      "metric": "cooldown_s",
+      "low": 85,
+      "high": null,
+      "basis": "p5",
+      "severity": "warn",
+      "rationale_id": "cooldown_easy",
+      "brief_overrides": [
+        "style",
+        "text"
+      ]
+    },
+    {
+      "rule": "cooldown_long",
+      "metric": "cooldown_s",
+      "low": null,
+      "high": 184,
+      "basis": "p95",
+      "severity": "warn",
+      "rationale_id": "cooldown_not_long",
+      "brief_overrides": [
+        "style",
+        "text"
+      ]
+    },
+    {
+      "rule": "hard_share_low",
+      "metric": "zone4plus_time_share",
+      "low": 0.27,
+      "high": null,
+      "basis": "p5",
+      "severity": "warn",
+      "rationale_id": "hard_share_enough",
+      "brief_overrides": [
+        "intensity:easy",
+        "style",
+        "text"
+      ]
+    },
+    {
+      "rule": "hard_share_high",
+      "metric": "zone4plus_time_share",
+      "low": null,
+      "high": 0.487,
+      "basis": "p95",
+      "severity": "warn",
+      "rationale_id": "hard_share_not_all",
+      "brief_overrides": [
+        "intensity:hard",
+        "races",
+        "sprints",
+        "style",
+        "text"
+      ]
+    },
+    {
+      "rule": "top_zone_share_low",
+      "metric": "zone5plus_time_share",
+      "low": 0.045,
+      "high": null,
+      "basis": "p5",
+      "severity": "warn",
+      "rationale_id": "top_zone_present",
+      "brief_overrides": [
+        "intensity:easy",
+        "style",
+        "text"
+      ]
+    },
+    {
+      "rule": "top_zone_share_high",
+      "metric": "zone5plus_time_share",
+      "low": null,
+      "high": 0.219,
+      "basis": "p95",
+      "severity": "warn",
+      "rationale_id": "top_zone_bounded",
+      "brief_overrides": [
+        "sprints",
+        "races",
+        "intensity:hard",
+        "style",
+        "text"
+      ]
+    },
+    {
+      "rule": "mean_zone_low",
+      "metric": "mean_zone",
+      "low": 2.65,
+      "high": null,
+      "basis": "p5",
+      "severity": "warn",
+      "rationale_id": "mean_zone_enough",
+      "brief_overrides": [
+        "intensity:easy",
+        "style",
+        "text"
+      ]
+    },
+    {
+      "rule": "mean_zone_high",
+      "metric": "mean_zone",
+      "low": null,
+      "high": 3.08,
+      "basis": "p95",
+      "severity": "warn",
+      "rationale_id": "mean_zone_bounded",
+      "brief_overrides": [
+        "intensity:hard",
+        "races",
+        "sprints",
+        "style",
+        "text"
+      ]
+    },
+    {
+      "rule": "tss_rate_low",
+      "metric": "tss_per_minute",
+      "low": 1.14,
+      "high": null,
+      "basis": "p5",
+      "severity": "warn",
+      "rationale_id": "load_enough",
+      "brief_overrides": [
+        "intensity:easy",
+        "style",
+        "text"
+      ]
+    },
+    {
+      "rule": "tss_rate_high",
+      "metric": "tss_per_minute",
+      "low": null,
+      "high": 1.34,
+      "basis": "p95",
+      "severity": "warn",
+      "rationale_id": "load_bounded",
+      "brief_overrides": [
+        "intensity:hard",
+        "races",
+        "sprints",
+        "style",
+        "text"
+      ]
+    },
+    {
+      "rule": "hard_too_early",
+      "metric": "zone4plus_share_in_first_25pct",
+      "low": null,
+      "high": 0.02,
+      "basis": "p95",
+      "severity": "warn",
+      "rationale_id": "hard_not_early",
+      "brief_overrides": [
+        "intensity:hard",
+        "races",
+        "sprints",
+        "style",
+        "text"
+      ]
+    },
+    {
+      "rule": "standing_long",
+      "metric": "standing_time_share",
+      "low": null,
+      "high": 0.253,
+      "basis": "p95",
+      "severity": "warn",
+      "rationale_id": "standing_bounded",
+      "brief_overrides": [
+        "style",
+        "text"
+      ]
+    }
+  ]
+}
