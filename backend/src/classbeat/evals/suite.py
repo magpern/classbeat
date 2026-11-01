@@ -15,6 +15,8 @@ digest covers:
 - every case it names, as validated (defaults included);
 - the source of the modules that define cases, checks, the synthetic music and catalogue and the
   verdict (``DIGEST_SOURCES``), newlines normalised;
+- the rules the design stage is given (``RULE_SOURCES``: the section's wording, the profile
+  selection, the engine and the profiles' index), so a new ``rules_version`` is a new suite;
 - the upper-case constants of the check modules and the outside thresholds the checks use
   (``check_constants``), so a constant patched at run time changes it too.
 
@@ -51,6 +53,7 @@ CATEGORY_GROUPS: Final[dict[str, frozenset[str]]] = {
     "revisions": frozenset({"design"}),
     "song_choice": frozenset({"songs"}),
     "missing_music": frozenset({"design", "songs"}),
+    "class_patterns": frozenset({"design"}),
     "adversarial": frozenset({"design", "songs"}),
     "cost": frozenset({"design", "songs"}),
 }
@@ -64,6 +67,15 @@ DIGEST_SOURCES: Final = (
     "song_checks.py",
     "suite.py",
     "gate.py",
+)
+# What the design stage is given besides the prompt (ADR 0017 section 5): the rules section's
+# wording, the profile selection, the engine and the profiles' index (rules_version, each
+# profile's version and digest). Paths under ``classbeat``; a change to any is a new suite.
+RULE_SOURCES: Final = (
+    "design/guidance.py",
+    "design/selection.py",
+    "design/rules/engine.py",
+    "design/profiles/index.json",
 )
 CONSTANT_MODULES: Final[tuple[ModuleType, ...]] = (checks, music, pick, pick_world, song_checks)
 CONSTANT_NAME: Final = re.compile(r"^[A-Z][A-Z0-9_]*$")

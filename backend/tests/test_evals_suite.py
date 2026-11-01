@@ -22,6 +22,7 @@ from classbeat.agent.loop import RunInfo, StageOutcome
 from classbeat.agent.provider import Usage
 from classbeat.agent.schemas import WorkoutDraft
 from classbeat.config import Settings
+from classbeat.design.rules import default_registry
 from classbeat.evals import checks, gate, suite
 from classbeat.evals.cases import load_cases
 from classbeat.evals.checks import run_checks, tss_bounds_for
@@ -54,6 +55,7 @@ RELEASED: dict[int, str] = {
     5: "adb3e8ff185a904c68acae037eb6c465f6262819ece65e1c361a6aba4e27470c",
     6: "027a8a2f3fa5634b392e148a1faf27834c33eb4d53d2385fe334dfca2d47c51d",
     7: "4002ae10e99243477ae86f595b4deed0322906882edacced277cc58ddb168b25",
+    8: "6e7ad22823f044fc92e64d0960fecb00bda5a5493dba0740e85d9392909b00fb",
 }
 
 SUITE = load_suite()
@@ -165,9 +167,9 @@ def test_the_suite_holds_every_smoke_and_song_case_once_in_its_group() -> None:
     index = MANIFEST.case_index()
     assert set(SUITE.design_cases) == {c.name for c in load_cases()} | DESIGN_OWN
     assert set(SUITE.song_cases) == {c.name for c in load_pick_cases()} | SONG_OWN
-    assert (len(DESIGN_OWN), len(SONG_OWN)) == (29 + 12, 8 + 7)  # #206, #208 and #209
-    assert (len(SUITE.design_cases), len(SUITE.song_cases)) == (19 + 41, 3 + 15)
-    assert len(index) == 19 + 41 + 3 + 15
+    assert (len(DESIGN_OWN), len(SONG_OWN)) == (29 + 12 + 10, 8 + 7)  # #206, #208, #209 and #399
+    assert (len(SUITE.design_cases), len(SUITE.song_cases)) == (19 + 51, 3 + 15)
+    assert len(index) == 19 + 51 + 3 + 15
     assert all(index[n][1] == "design" for n in SUITE.design_cases)
     assert all(index[n][1] == "songs" for n in SUITE.song_cases)
     assert set(MANIFEST.categories) == set(suite.CATEGORY_GROUPS)
@@ -255,7 +257,8 @@ def test_the_suite_refuses_a_case_it_cannot_find_or_of_the_wrong_kind(
 START = datetime(2026, 10, 30, 12, 0, tzinfo=UTC)
 HEADER_KEYS = {
     "results_format", "suite_version", "manifest_digest", "provider", "model", "effort",
-    "prompt_versions", "classbeat_version", "mowl_version", "prices_version", "repeat",
+    "prompt_versions", "classbeat_version", "mowl_version", "prices_version", "rules_version",
+    "repeat",
     "started_at", "ended_at", "provider_kind", "results",
 }  # fmt: skip
 
@@ -280,6 +283,7 @@ def test_the_header_is_exactly_the_adrs() -> None:
     doc = suite_results(header(), [])
     assert set(doc) == HEADER_KEYS
     assert doc["results_format"] == 2
+    assert doc["rules_version"] == default_registry().rules_version
     assert doc["started_at"] == "2026-10-30T12:00:00+00:00"
     assert doc["ended_at"] == "2026-10-30T12:40:00+00:00"
     assert doc["prices_version"]

@@ -1,0 +1,25 @@
+{
+ "name": "cp_plain_30",
+ "about": "A 30 minute plain class with nothing unusual asked: follows the pattern.",
+ "brief": {
+  "length_min": 30,
+  "intensity": "moderate",
+  "class_type": "plain"
+ },
+ "music": {
+  "tracks": 10
+ },
+ "expect": {
+  "patterns": {
+   "mode": "follows"
+  },
+  "hard_share": [
+   0.0,
+   0.25
+  ],
+  "tss": [
+   15,
+   40
+  ]
+ }
+}
