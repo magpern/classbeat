@@ -40,6 +40,16 @@ else, in either process; it does not follow redirects and refuses one to another
 (``total_seconds``; a trickling answer raises ``RequestDeadline``). No URL from a Spotify answer
 (``next``, ``href``) is ever fetched; were one handed to it, the list refuses any other host.
 
+**The media client** (ADR 0016 §4, threat model T109): ``mowl_media_async_client()`` fetches a
+Swedebeat mix from the temporary link MOWL returns (A3, worker only). Its list is
+``MOWL_MEDIA_ALLOWLIST``, built from the literal ``MOWL_MEDIA_HOSTS``, which is **empty until the
+owner confirms the host**; so is nothing else's: the library's MOWL opener, with its
+``authorization`` header, cannot reach the media host (it is on no urllib list), and this client
+sends none of our headers. It follows no redirect at all, ends every request within
+``MOWL_MEDIA_TOTAL_SECONDS`` and takes a list as an argument only from tests (the guard refuses it
+in ``classbeat``). Swedebeat's embedded AWS credentials are never used (a static guard).
+``cloud.swedebeat.se`` (B1) will get its own scoped list and client the same way.
+
 All paths verify TLS with a context from ``tls_client_context()``, which never writes a TLS key
 log (``SSLKEYLOGFILE`` is ignored, threat model T49).
 
@@ -92,8 +102,17 @@ HTTPS_PORT = 443
 MOWL_HOST = "api.mowl.com"  # the library's base URL
 # Swedebeat (ADR 0015): the web process signs a user in at ``www.swedebeat.se`` (the library's
 # ``downloader/login.php``). ``cloud.swedebeat.se`` (the catalogue, where the token is also sent)
-# is on no list: nothing in classbeat calls it yet, and it joins a list when a feature does.
+# is on no list: nothing in classbeat calls it yet, and it joins a list when a feature does (B1 of
+# ADR 0016, with its own scoped list and client; never on ``WORKER_HOSTS``).
 SWEDEBEAT_WWW_HOST = "www.swedebeat.se"
+# The host(s) of the MOWL temporary links that serve a Swedebeat mix's audio (ADR 0016 §4). Exact
+# lower case DNS names, https on 443, no wildcard and never a whole cloud provider domain. **Empty
+# until the owner confirms the host in the live check** (a reviewed PR then fills it): with an empty
+# list the media fetch is refused for every host. A literal, so nothing in the environment, a file
+# or a setting can widen it (a guard test pins that and that no other source feeds the list). It is
+# on no urllib list: ``WORKER_HOSTS`` and ``WEB_URLLIB_HOSTS`` never hold it, so the library's MOWL
+# opener (and its ``authorization`` header) cannot reach it.
+MOWL_MEDIA_HOSTS: Final[frozenset[str]] = frozenset()
 # The model providers classbeat may use (ADR 0012 §1); ``fake`` is not one (no host).
 ModelProviderName = Literal["anthropic", "openai", "deepseek"]
 # Each provider's one API host (ADR 0012 §2). Code, not a setting.
@@ -233,6 +252,8 @@ def worker_allowlist(model_providers: Iterable[str] = ()) -> Allowlist:
 
 # The Spotify client's list, in the web process and the worker alike (ADR 0009 §10).
 SPOTIFY_ALLOWLIST = Allowlist(SPOTIFY_HOSTS)
+# The media client's list (ADR 0016 §4): ``MOWL_MEDIA_HOSTS``, empty today.
+MOWL_MEDIA_ALLOWLIST = Allowlist(MOWL_MEDIA_HOSTS)
 
 # Set by ``install_worker_allowlist``: this process is the worker. The web-only call sites the
 # guard exempts (OAuth sign-in, account mail) call ``refuse_in_worker`` first, so they cannot
@@ -839,3 +860,46 @@ def spotify_async_client(
         timeout=total_seconds,
         follow_redirects=False,
     )
+
+
+# The media fetch's total time, body included (ADR 0016 §4: 300 s).
+MOWL_MEDIA_TOTAL_SECONDS: Final = 300.0
+
+
+def mowl_media_network_transport() -> httpx.AsyncHTTPTransport:
+    """The network transport of the media client: the system trust store (as the urllib path),
+    no TLS key log, no proxy from the environment."""
+    return httpx.AsyncHTTPTransport(trust_env=False, verify=tls_client_context())
+
+
+def mowl_media_async_client(
+    allowlist: Allowlist = MOWL_MEDIA_ALLOWLIST,
+    *,
+    total_seconds: float = MOWL_MEDIA_TOTAL_SECONDS,
+    inner: httpx.AsyncBaseTransport | None = None,
+) -> httpx.AsyncClient:
+    """The dedicated client that fetches a Swedebeat mix from a MOWL temporary link (ADR 0016 §4,
+    A3 uses it in the worker; threat model T109).
+
+    It reaches only ``allowlist`` (``MOWL_MEDIA_ALLOWLIST`` unless a test hands in its own: the
+    production code under ``classbeat`` never passes one, the guard refuses it; the list is code
+    and today empty, so every request is refused ``OutboundBlocked``), https on 443, no userinfo.
+    It follows **no redirect at all** (``follow_redirects=False``): a hop to another host is
+    refused (``OutboundBlocked`` with ``after_request``) and a same-host 3xx comes back as a
+    response for the caller to refuse. ``trust_env=False`` (no proxy, ``NETRC`` or cookie jar from
+    the environment), and **no default header**: httpx's ``User-Agent``, ``Accept`` and
+    ``Accept-Encoding`` are cleared, so a request carries only what the call site sets (never the
+    MOWL ``authorization``) and the answer is not compressed (``Content-Length`` and the streamed
+    count mean the bytes on disk). Every request, its body included, ends within ``total_seconds``
+    (``RequestDeadline``). ``inner`` replaces the network transport in tests (the fake media
+    endpoint, no network); the checks still run.
+    """
+    network = inner if inner is not None else mowl_media_network_transport()
+    client = httpx.AsyncClient(
+        transport=AllowlistTransport(allowlist, network, total_seconds=total_seconds),
+        trust_env=False,
+        timeout=total_seconds,
+        follow_redirects=False,
+    )
+    client.headers.clear()
+    return client
