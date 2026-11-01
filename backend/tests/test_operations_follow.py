@@ -88,6 +88,13 @@ async def test_after_a_reaped_holder_each_later_job_lists_the_row_it_failed_on(
     assert (op.state, op.job_id) == ("pending", first)
 
     actor = await make_actor(owner)
+    # #117 item 7: a stale ``pending`` row on a terminal job is not listed; user actions refuse.
+    assert await listed(actor, first) == []
+    account = await actor.get(OPS)
+    assert account.status_code == 200
+    assert account.json()["operations"] == []
+    refused = await actor.post(f"{OPS}/{op.id}/check-again")
+    assert (refused.status_code, refused.json()) == (409, {"detail": {"reason": "not_uncertain"}})
     previous = first
     for _ in range(2):
         later = xenv.job(owner, connection)
