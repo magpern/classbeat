@@ -16,7 +16,15 @@ options and the user's free text, nothing else.
 import unicodedata
 from typing import Annotated, Any, Literal, Self
 
-from pydantic import AfterValidator, BaseModel, ConfigDict, Field, model_validator
+from pydantic import (
+    AfterValidator,
+    BaseModel,
+    ConfigDict,
+    Field,
+    SerializerFunctionWrapHandler,
+    model_serializer,
+    model_validator,
+)
 
 STRICT = ConfigDict(extra="forbid", strict=True)
 
@@ -168,6 +176,19 @@ class Brief(BaseModel):
     ftp_test: Literal[3, 5, 20] | None = None
     style: Style = ""
     text: BriefText = ""
+    # ADR 0017 section 2: the user's own class type; absent = derived (``design.selection``). A
+    # closed set, kept equal to ``design.rules.enums.CLASS_TYPES`` by a test (this module cannot
+    # import it: ``classbeat.design`` imports the agent).
+    class_type: Literal["plain", "interval", "hiit", "journey", "ftp_test"] | None = None
+
+    @model_serializer(mode="wrap")
+    def _omit_absent_class_type(self, handler: SerializerFunctionWrapHandler) -> dict[str, Any]:
+        """An absent ``class_type`` is not written, so a stored or sized brief of today is
+        byte-identical (the ``classes.brief`` size guard is unchanged)."""
+        out: dict[str, Any] = handler(self)
+        if out.get("class_type") is None:
+            out.pop("class_type", None)
+        return out
 
 
 # --- song picking (ADR 0008 section 3) ----------------------------------------------------------
