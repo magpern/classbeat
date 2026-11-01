@@ -43,14 +43,39 @@ describe('sign-in page', () => {
     expect(api.to('POST', '/api/auth/login')[0]?.headers.get('X-CSRF-Token')).toBe('a')
   })
 
-  it('shows buttons for the enabled providers and starts sign-in with the invite', async () => {
-    goToProvider.mockClear()
-    const api = fakeApi({
-      'GET /api/auth/oauth/providers': { providers: ['github', 'google'] },
-      'POST /api/auth/oauth/google/start': { authorization_url: 'https://idp.example/authorize?x=1' },
-    })
+  it('offers exactly the providers the server lists, above an OR divider', async () => {
+    fakeApi({ 'GET /api/auth/oauth/providers': { providers: ['google'] } })
+    renderAt('/signin')
+    expect(await screen.findByRole('button', { name: 'Continue with Google' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Continue with GitHub' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Continue with Microsoft' })).toBeNull()
+    expect(screen.getByText('OR')).toBeInTheDocument()
+    expect(screen.queryByLabelText(/Invite code/)).toBeNull() // sign-in has no invite field
+  })
+
+  it('shows no provider button and no divider when the server lists none', async () => {
+    fakeApi({ 'GET /api/auth/oauth/providers': { providers: [] } })
+    renderAt('/signin')
+    expect(await screen.findByRole('button', { name: 'Sign in' })).toBeInTheDocument()
+    expect(screen.queryByText('OR')).toBeNull()
+    expect(screen.queryByRole('button', { name: /Continue with/ })).toBeNull()
+  })
+
+  it('shows GitHub and Microsoft again when the server lists them', async () => {
+    fakeApi({ 'GET /api/auth/oauth/providers': { providers: ['github', 'google', 'microsoft'] } })
     renderAt('/signin')
     expect(await screen.findByRole('button', { name: 'Continue with GitHub' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Continue with Microsoft' })).toBeInTheDocument()
+  })
+
+  it('starts a provider sign-up with the invite code', async () => {
+    goToProvider.mockClear()
+    const api = fakeApi({
+      'GET /api/auth/oauth/providers': { providers: ['google'] },
+      'POST /api/auth/oauth/google/start': { authorization_url: 'https://idp.example/authorize?x=1' },
+    })
+    renderAt('/signup')
+    await screen.findByRole('button', { name: 'Continue with Google' })
     type(/Invite code/, ' inv-1 ')
     fireEvent.click(screen.getByRole('button', { name: 'Continue with Google' }))
     await waitFor(() => {
@@ -60,6 +85,42 @@ describe('sign-in page', () => {
       purpose: 'sign_in',
       invite_code: 'inv-1',
       return_to: null,
+    })
+  })
+
+  it('signs in with a provider without an invite code', async () => {
+    goToProvider.mockClear()
+    const api = fakeApi({
+      'GET /api/auth/oauth/providers': { providers: ['google'] },
+      'POST /api/auth/oauth/google/start': { authorization_url: 'https://idp.example/a' },
+    })
+    renderAt('/signin')
+    fireEvent.click(await screen.findByRole('button', { name: 'Continue with Google' }))
+    await waitFor(() => {
+      expect(goToProvider).toHaveBeenCalled()
+    })
+    expect(api.to('POST', '/api/auth/oauth/google/start')[0]?.body).toEqual({
+      purpose: 'sign_in',
+      invite_code: null,
+      return_to: null,
+    })
+  })
+
+  it('sign-up keeps the invite code, the legal line and one primary button', async () => {
+    const api = fakeApi({
+      'GET /api/auth/oauth/providers': { providers: [] },
+      'POST /api/auth/signup': {},
+    })
+    renderAt('/signup')
+    type(/Invite code/, ' inv-2 ')
+    type('Email', 'new@example.test')
+    type('Password', 'a long enough passphrase')
+    expect(screen.getByText(/invite-only beta/)).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Create account' }))
+    expect(await screen.findByText(/we sent a link/)).toBeInTheDocument()
+    expect(api.to('POST', '/api/auth/signup')[0]?.body).toMatchObject({
+      email: 'new@example.test',
+      invite_code: 'inv-2',
     })
   })
 

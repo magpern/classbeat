@@ -55,11 +55,24 @@ async def test_a_provider_without_its_secret_or_client_id_is_off(
         oauth_github_client_secret="secret-only",  # no client id
         oauth_microsoft_client_id="ms",
         oauth_microsoft_client_secret="s",
+        oauth_visible_providers="google,microsoft",
     ) as env:
         providers = (await Browser(env).get("/api/auth/oauth/providers")).json()["providers"]
         assert providers == ["microsoft"]
         assert (await start(Browser(env), "google")).status_code == 404
         assert (await Browser(env).get("/oauth/google/callback?code=x&state=y")).status_code == 404
+
+
+async def test_screens_offer_only_the_visible_providers_but_every_enabled_one_works(
+    oenv: Env,
+) -> None:
+    # The default shows Google only; GitHub and Microsoft are on but hidden from the screens.
+    providers = (await Browser(oenv).get("/api/auth/oauth/providers")).json()["providers"]
+    assert providers == ["google"]
+    assert (await start(Browser(oenv), "github")).status_code == 200  # still built and enabled
+    oenv.settings.oauth_visible_providers = "github, Microsoft ,nope"
+    providers = (await Browser(oenv).get("/api/auth/oauth/providers")).json()["providers"]
+    assert providers == ["github", "microsoft"]  # unknown names are ignored
 
 
 async def test_new_google_user_with_a_verified_email_signs_up_and_in(
