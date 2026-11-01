@@ -18,14 +18,21 @@ from classbeat.agent.schemas import Brief
 from classbeat.classes import seams, song_views
 from classbeat.context import UserContext, require_context
 from classbeat.db import user_session
-from classbeat.design.rules.ids import MAX_DISMISSED, is_rule_id
+from classbeat.design.rules.enums import RULE_IDS
 
 Factory = async_sessionmaker[AsyncSession]
 
 LIST_LIMIT: Final = 500
 REVISION_LIMIT: Final = 200
 MESSAGE_LIMIT: Final = 500
+MAX_DISMISSED: Final = 32  # also the CHECK of ``classes.dismissed_rules`` (migration 0017)
 OPEN_JOB: Final = "('queued', 'running', 'waiting_for_approval')"
+
+
+def is_rule_id(value: object) -> bool:
+    """A soft-rule id of the closed enum shared with the profile loader (ADR 0017)."""
+    return isinstance(value, str) and value in RULE_IDS
+
 
 _CLASSES = text(f"""
 SELECT c.id, c.title, c.created_at, c.updated_at, c.current_revision_id,
@@ -344,9 +351,10 @@ async def set_dismissed(
 ) -> Dismissed:
     """ADR 0017 section 4: dismiss (``dismissed``) or show again one rule of one class.
 
-    ``rule_id`` must be in ``RULE_IDS`` (``invalid_input`` otherwise, checked after the class, so
-    another user's class is ``not_found`` whatever the id). The class row is locked, so two calls
-    cannot lose each other's change. Both are idempotent; the order is the order of dismissal.
+    ``rule_id`` must be in ``RULE_IDS`` of ``design.rules.enums`` (``invalid_input`` otherwise,
+    checked after the class, so another user's class is ``not_found`` whatever the id). The class
+    row is locked, so two calls cannot lose each other's change.
+    Both are idempotent; the order is the order of dismissal.
     ``not_found`` (the class, or another user's); ``limit_exceeded`` when a new id would be the
     33rd."""
     require_context(ctx)

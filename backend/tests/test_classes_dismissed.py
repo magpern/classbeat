@@ -14,18 +14,20 @@ from sqlalchemy.exc import IntegrityError
 
 from authtools import session_cookie
 from classbeat.classes import service
-from classbeat.design.rules.ids import MAX_DISMISSED, RULE_IDS
+from classbeat.classes.service import MAX_DISMISSED
+from classbeat.design.rules.enums import RULE_IDS
 from jobapi import Browser
 from jobtools import new_class, new_user
 
 pytestmark = pytest.mark.usefixtures("jobs_admin")
 
 NOT_FOUND = {"detail": {"reason": "not_found"}}
-FIRST, SECOND = sorted(RULE_IDS)[:2]
+FIRST, SECOND = RULE_IDS[0], RULE_IDS[1]  # real ids; the enum may grow
 
 
 def test_the_enum_fits_the_cap_and_holds_only_plain_ids() -> None:
     assert 0 < len(RULE_IDS) <= MAX_DISMISSED
+    assert len(set(RULE_IDS)) == len(RULE_IDS)
     assert all(r.isascii() and r.replace("_", "").isalnum() and len(r) <= 40 for r in RULE_IDS)
 
 

@@ -40,12 +40,20 @@ test('the stack offers the providers the fake switches on', async ({ request }) 
   expect(body.providers).toEqual(['google', 'microsoft'])
 })
 
+test('the sign-in screen shows Google and the flagged-on Microsoft, never GitHub', async ({ page }) => {
+  await page.goto('/signin')
+  await expect(page.getByRole('button', { name: 'Continue with Google' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Continue with Microsoft' })).toBeVisible()
+  await expect(page.getByRole('button', { name: /GitHub/ })).toHaveCount(0)
+  await expect(page.getByText('OR', { exact: true })).toBeVisible()
+})
+
 test('sign up and sign in with Google through the fake provider', async ({ page }) => {
   const email = uniqueEmail('google')
   await playProvider(page, 'accounts.google.com', { sub: `g-${email}`, email, emailVerified: true })
 
   // First sign-in: an invite is needed, and the verified email creates the account.
-  await page.goto('/signin')
+  await page.goto('/signup')
   await page.getByLabel(/Invite code/).fill(createInvite())
   await page.getByRole('button', { name: 'Continue with Google' }).click()
   await expect(page.getByRole('button', { name: email })).toBeVisible()
@@ -68,7 +76,7 @@ test('sign up and sign in with Google through the fake provider', async ({ page 
 test('a first Google sign-in without an invite creates nothing and says why', async ({ page }) => {
   const email = uniqueEmail('noinvite')
   await playProvider(page, 'accounts.google.com', { sub: `g-${email}`, email, emailVerified: true })
-  await page.goto('/signin')
+  await page.goto('/signup')
   await page.getByRole('button', { name: 'Continue with Google' }).click()
   await expect(page.getByRole('alert')).toContainText('need an invite')
   await expect(page.getByRole('navigation', { name: 'Account' })).toContainText('Sign in')
@@ -79,7 +87,7 @@ test('Microsoft: an unverified email is handed off to the address page and confi
   const oid = `ms-${Date.now()}`
   await playProvider(page, 'login.microsoftonline.com', { sub: oid, email: null, emailVerified: false })
 
-  await page.goto('/signin')
+  await page.goto('/signup')
   await page.getByLabel(/Invite code/).fill(createInvite())
   await page.getByRole('button', { name: 'Continue with Microsoft' }).click()
 

@@ -35,7 +35,7 @@ from authtools import ORIGIN, Env, running_env
 from classbeat.admin.routes import _calls, admin_gate  # pyright: ignore[reportPrivateUsage]
 from classbeat.auth import deps as auth_deps
 from classbeat.config import Settings
-from classbeat.design.rules.ids import RULE_IDS
+from classbeat.design.rules.enums import RULE_IDS
 from classbeat.web import create_app
 from jobapi import UNKNOWN
 from jobcore import _INSERT_REVISION  # pyright: ignore[reportPrivateUsage]
@@ -502,7 +502,7 @@ OWNED_PATH_PARAMS = (
 )
 
 
-RULE_ID = min(RULE_IDS)  # a real soft-rule id (ADR 0017), for the dismissal routes
+RULE_ID = RULE_IDS[0]  # a real soft-rule id (ADR 0017), for the dismissal routes
 
 
 @dataclass
