@@ -13,16 +13,16 @@ Roadmap Amendment 11 authorizes the model substitutions for Cursor sessions.
 | Routine Developer | Composer 2.5, standard | cursor-developer |
 | Explorer | Composer 2.5, standard | cursor-explorer |
 | Routine Reviewer | Grok 4.7, high effort, standard | cursor-reviewer |
-| Security-critical Developer | Composer 2.5, standard speed | cursor-security-developer |
+| Security-critical Developer | Grok 4.7, high effort, standard speed | cursor-security-developer |
 | Security-critical Reviewer; review after a second FAIL | Grok 4.7, high effort, standard speed | cursor-security-reviewer |
 
 This is a cost-oriented starting point, not a claim that the models are equivalent.
 Use the first routine PRs to assess acceptance-criterion coverage, blocking review findings,
-fix cycles and total usage. Composer implements security-critical Cursor issues. Grok 4.7 High
-reviews them, including a review after a second failure. The Grok Architect can classify and
-schedule that work but does not make its production security decisions: those belong to the
-Cursor security developer, with a different fresh Grok 4.7 High reviewer. Claude Code and Codex
-keep Opus for the same work.
+fix cycles and total usage. Grok 4.7 High implements security-critical Cursor issues and, in a
+different fresh context, reviews them, including a review after a second failure. The Grok
+Architect can classify and schedule that work but does not make its production security
+decisions: those belong to the Cursor security developer. Routine implementation stays
+Composer. Claude Code and Codex keep Opus for the same work.
 
 ## Configure Cursor
 
@@ -31,9 +31,10 @@ keep Opus for the same work.
 2. Confirm .cursor/rules/classbeat.mdc is active and all five cursor-* agents are visible.
    Invoke those names explicitly. Cursor can also discover .claude/agents/ and .codex/agents/;
    unique cursor-* names avoid changing those profiles or depending on name precedence.
-3. The frontmatter pins Composer with composer-2.5[fast=false] and Grok with
-   grok-4.7[reasoning_effort=high,fast=false]. The security developer uses the Composer pin.
-   The security reviewer uses the Grok pin. Claude Code and Codex keep Opus.
+3. Routine development stays `composer-2.5[fast=false]`. Architect, routine review, security
+   development and security review are `grok-4.7-high`. The bracket form
+   `grok-4.7[reasoning_effort=high,fast=false]` is not a model id this client can select.
+   Claude Code and Codex keep Opus.
 4. Verify the actual model on every task card and in the usage dashboard. Plan limits,
    admin restrictions and legacy Max Mode settings can cause Cursor to substitute another
    model even when it is explicitly configured. If it substitutes, do not proceed under
