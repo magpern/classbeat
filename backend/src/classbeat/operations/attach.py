@@ -97,7 +97,7 @@ def playlist_id_of(external_id: str) -> int:
     return value
 
 
-def _answered_playlist_id(answer: object) -> int:
+def answered_playlist_id(answer: object) -> int:
     """MOWL's ``PlaylistID`` from the attach answer; anything else is an uncertain answer (MOWL
     may have attached it)."""
     value: Any = answer.get("PlaylistID") if isinstance(answer, dict) else None  # pyright: ignore[reportUnknownMemberType]
@@ -176,7 +176,7 @@ async def attach_spotify_playlist(
             lambda creds: mowl_api.attach_spotify(creds, source_id),
             single_request=True,  # one PUT: a refusal proves it had no effect
         )
-        return CallResult(str(_answered_playlist_id(answer)))
+        return CallResult(str(answered_playlist_id(answer)))
 
     request = attach_request(source_id, _still(run, opened))
     done = await perform(run, request, call, keyring=keyring)

@@ -18,7 +18,9 @@
 # URL is the mowl-workouts library's own; the Spotify hosts are classbeat's and the library's).
 # Web and worker trust one bundle of the fakes' throwaway CAs: oidc-fake writes its CA, mowl-fake
 # adds its own, spotify-fake adds its own and swedebeat-fake adds its own; web mounts the last
-# bundle, the worker (which never calls Swedebeat) the Spotify one. No fake
+# bundle, the worker (which never calls Swedebeat) the Spotify one. The MOWL media host (ADR 0016 §4)
+# is on no fake: the MOWL fake returns a link on an unlisted name and nothing answers it, since the
+# production list of media hosts is empty and the worker must refuse it. No fake
 # publishes a port: each is reachable only inside the compose network.
 
 services:
@@ -139,6 +141,8 @@ services:
       CLASSBEAT_SWEDEBEAT_ENABLED: "true"
       CLASSBEAT_OAUTH_GOOGLE_CLIENT_ID: e2e-fake-google-client
       CLASSBEAT_OAUTH_MICROSOFT_CLIENT_ID: e2e-fake-microsoft-client
+      # Microsoft is shown on the sign-in screen here; the default shows Google only (issue 389).
+      CLASSBEAT_OAUTH_VISIBLE_PROVIDERS: google,microsoft
       # Song picking is on in the e2e stack (ADR 0008 section 10): the Spotify routes answer and the
       # new-class form offers the choice. It stays off in every default stack.
       CLASSBEAT_SONG_PICKING: "true"

@@ -1,4 +1,4 @@
-import { del, get, post } from './client'
+import { del, get, post, request } from './client'
 import {
   count,
   flag,
@@ -242,10 +242,50 @@ export async function listRevisions(
   return list(body, 'revisions').map((r) => decodeRevisionSummary(object(r, 'revision')))
 }
 
+/** One pattern note (ADR 0017 section 4): ids and numbers; the wording is keyed by `rule`. */
+export interface RuleHit {
+  rule: string
+  severity: 'info' | 'warn'
+  metric: string
+  value: number
+  bounds: [number | null, number | null]
+  explainedByBrief: boolean
+}
+
+function bound(value: unknown): number | null {
+  return typeof value === 'number' && Number.isFinite(value) ? value : null
+}
+
+/** Absent or malformed `rule_hits` is an empty list: a note is never worth an error. */
+function decodeRuleHits(body: JsonObject): RuleHit[] {
+  const raw = body.rule_hits
+  if (!Array.isArray(raw)) return []
+  const hits: RuleHit[] = []
+  for (const entry of raw) {
+    if (!isObject(entry)) continue
+    const value = number(entry, 'value')
+    const bounds = Array.isArray(entry.bounds) ? entry.bounds : []
+    if (typeof entry.rule !== 'string' || value === null) continue
+    hits.push({
+      rule: entry.rule,
+      severity: entry.severity === 'warn' ? 'warn' : 'info',
+      metric: typeof entry.metric === 'string' ? entry.metric : '',
+      value,
+      bounds: [bound(bounds[0]), bound(bounds[1])],
+      explainedByBrief: optionalFlag(entry, 'explained_by_brief') ?? false,
+    })
+  }
+  return hits
+}
+
 export interface Revision extends RevisionSummary, DraftContent {
   unknownBpm: { index: number; title: string }[]
   /** ADR 0012 section 7: the backend's flag, set when the version has a zone 7 interval. */
   tssApproximate: boolean
+  /** ADR 0017 section 4: pattern notes under today's rules (at most 5, dismissed ones left out). */
+  ruleHits: RuleHit[]
+  /** The recorded rules differ from today's: the block says "Notes use the current rules". */
+  notesUseCurrentRules: boolean
   /** The content exactly as the server sent it: what the version hash is taken over. */
   raw: unknown
 }
@@ -264,6 +304,8 @@ export async function getRevision(
     ...decodeDraftContent(body.content),
     unknownBpm: decodeUnknownBpm(body),
     tssApproximate: optionalFlag(body, 'tss_approximate') ?? false,
+    ruleHits: decodeRuleHits(body),
+    notesUseCurrentRules: optionalFlag(body, 'notes_use_current_rules') ?? false,
     raw: body.content,
   }
 }
@@ -357,4 +399,14 @@ export async function deleteClass(classId: string, confirmUncertain: boolean): P
   const query = confirmUncertain ? '?confirm_uncertain=true' : ''
   const body = object(await del(`${base(classId)}${query}`), 'deleted')
   return { mowlWorkoutsKept: count(body, 'mowl_workouts_kept') }
+}
+
+/** Dismiss a pattern note for this class (ADR 0017 section 4); idempotent. */
+export async function dismissRule(classId: string, ruleId: string): Promise<void> {
+  await request('PUT', `${base(classId)}/dismissed-rules/${encodeURIComponent(ruleId)}`)
+}
+
+/** Undo a dismissal ("Show again"); idempotent. */
+export async function showRuleAgain(classId: string, ruleId: string): Promise<void> {
+  await del(`${base(classId)}/dismissed-rules/${encodeURIComponent(ruleId)}`)
 }

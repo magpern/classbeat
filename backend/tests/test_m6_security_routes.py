@@ -35,6 +35,7 @@ from authtools import ORIGIN, Env, running_env
 from classbeat.admin.routes import _calls, admin_gate  # pyright: ignore[reportPrivateUsage]
 from classbeat.auth import deps as auth_deps
 from classbeat.config import Settings
+from classbeat.design.rules.enums import RULE_IDS
 from classbeat.web import create_app
 from jobapi import UNKNOWN
 from jobcore import _INSERT_REVISION  # pyright: ignore[reportPrivateUsage]
@@ -115,6 +116,7 @@ CLASSIFIED: dict[tuple[str, str], str] = {
     ("POST", "/api/external-operations/{operation_id}/check-again"): "owned",
     ("POST", "/api/external-operations/{operation_id}/do-it-anyway"): "owned",
     ("GET", "/api/music/mowl-playlists"): "session",
+    ("GET", "/api/music/swedebeat-mixes"): "session",
     ("GET", "/api/music/class-playlists"): "session",
     ("GET", "/api/classes"): "session",
     ("GET", "/api/classes/{class_id}"): "owned",
@@ -123,6 +125,8 @@ CLASSIFIED: dict[tuple[str, str], str] = {
     ("GET", "/api/classes/{class_id}/messages"): "owned",
     ("POST", "/api/classes/{class_id}/current"): "owned",
     ("DELETE", "/api/classes/{class_id}"): "owned",
+    ("PUT", "/api/classes/{class_id}/dismissed-rules/{rule_id}"): "owned",
+    ("DELETE", "/api/classes/{class_id}/dismissed-rules/{rule_id}"): "owned",
     ("GET", "/api/admin/whoami"): "admin",
     ("GET", "/api/admin/users"): "admin",
     ("GET", "/api/admin/users/{user_id}"): "admin",
@@ -495,7 +499,11 @@ OWNED_PATH_PARAMS = (
     "operation_id",
     "class_id",
     "revision_id",
+    "rule_id",
 )
+
+
+RULE_ID = RULE_IDS[0]  # a real soft-rule id (ADR 0017), for the dismissal routes
 
 
 @dataclass
@@ -514,8 +522,9 @@ class Rows:
     def digest(self) -> str:
         return draft_hash(DRAFT).hex()
 
-    def params(self) -> dict[str, uuid.UUID]:
+    def params(self) -> dict[str, uuid.UUID | str]:
         return {
+            "rule_id": RULE_ID,
             "class_id": self.class_id,
             "job_id": self.job_id,
             "revision_id": self.revision_id,
@@ -600,6 +609,8 @@ OWNED_ROUTES = [
     OwnedRoute("GET", "/api/classes/{class_id}/messages"),
     OwnedRoute("POST", "/api/classes/{class_id}/current", _pick, frozenset({200, 409})),
     OwnedRoute("DELETE", "/api/classes/{class_id}", control=frozenset({200, 409})),
+    OwnedRoute("PUT", "/api/classes/{class_id}/dismissed-rules/{rule_id}"),
+    OwnedRoute("DELETE", "/api/classes/{class_id}/dismissed-rules/{rule_id}"),
     OwnedRoute("DELETE", "/api/auth/sessions/{session_id}", control=frozenset({204})),
     OwnedRoute("DELETE", "/api/auth/identities/{identity_id}", control=frozenset({204, 409})),
 ]

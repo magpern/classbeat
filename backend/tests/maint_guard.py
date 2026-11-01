@@ -58,6 +58,7 @@ SECRET_COLUMNS: dict[str, frozenset[str]] = {
         "saved_workouts": "name program_id playlist_id content_hash state_hash",
         "class_playlists": "playlist_id spotify_user_id name content_hash",
         "mowl_playlist_links": "source_id playlist_id",
+        "swedebeat_mix_maps": "mix_id name playlist_id map",
         "redeem_codes": "code_hash",
         "admin_audit": "ip_hash",
     }.items()

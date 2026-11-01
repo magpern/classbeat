@@ -31,6 +31,7 @@ from classbeat.agent.design import (
     check,
     design_stage,
 )
+from classbeat.agent.guidance import Guidance, rules_result
 from classbeat.agent.model_input import MusicData
 from classbeat.agent.schemas import (
     Brief,
@@ -123,6 +124,7 @@ class ReviseContext:
     request: str
     music_changed: bool
     songs_changed: bool = False  # ``revise_songs``: the request's new songs are the music now
+    rules: Guidance | None = None  # ADR 0017: None = no profile applies (dismissed already out)
 
     @classmethod
     def build(
@@ -135,6 +137,7 @@ class ReviseContext:
         *,
         music_changed: bool,
         songs_changed: bool = False,
+        rules: Guidance | None = None,
     ) -> "ReviseContext":
         design = DesignContext.build(brief, data)
         return cls(
@@ -146,6 +149,7 @@ class ReviseContext:
             request,
             music_changed or songs_changed,
             songs_changed,
+            rules,
         )
 
     def first_message(self) -> str:
@@ -157,11 +161,12 @@ class ReviseContext:
             self.request,
             music_changed=self.music_changed,
             songs_changed=self.songs_changed,
+            rules=self.rules.section() if self.rules else None,
         )
 
 
 def revise_stage(ctx: ReviseContext) -> Stage:
-    music = DesignContext(ctx.brief, ctx.map, ctx.summary)
+    music = DesignContext(ctx.brief, ctx.map, ctx.summary, ctx.rules)
     tools = {t.name: t for t in design_stage(music).tools}
 
     def submit_draft(args: ReviseInput) -> ToolAnswer:
@@ -174,6 +179,7 @@ def revise_stage(ctx: ReviseContext) -> Stage:
                 "tss_approximate": result.tss_approximate,
                 "quality": result.quality,
                 "warnings": result.warnings,
+                **rules_result(ctx.rules, result.spec),
             },
             output=ReviseResult(result, args.note),
         )

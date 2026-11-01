@@ -168,6 +168,9 @@ services:
       CLASSBEAT_TRUSTED_PROXIES: 172.29.80.10
       # ADR 0015: off unless the owner switches the Swedebeat connection on.
       CLASSBEAT_SWEDEBEAT_ENABLED: ${SWEDEBEAT_ENABLED:-false}
+      # Opt-in (docs/runbooks/proton-bridge-smtp.md): a mounted PEM that the SMTP certificate must
+      # match instead of the system store. Web only; unset keeps full system-store verification.
+      CLASSBEAT_SMTP_CA_FILE: ${SMTP_CA_FILE:-}
     # swedebeat_app: Swedebeat's app key if the image does not hold it (ADR 0015 section 4).
     secrets:
       - database_password

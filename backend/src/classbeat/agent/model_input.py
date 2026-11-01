@@ -286,9 +286,19 @@ FIRST_MESSAGE: Final = (
 )
 
 
-def first_message(brief: Brief, summary: Mapping[str, Any]) -> str:
+def _with_rules(rules: str | None) -> str:
+    """The rules section (ADR 0017 section 3) and a blank line, or nothing: with no profile the
+    message is byte-identical to what it was before the rules."""
+    return f"{rules}\n\n" if rules else ""
+
+
+def first_message(brief: Brief, summary: Mapping[str, Any], rules: str | None = None) -> str:
     payload = {"brief": brief_for_model(brief), "music": summary}
-    return FIRST_MESSAGE + json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
+    return (
+        FIRST_MESSAGE
+        + _with_rules(rules)
+        + json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
+    )
 
 
 REVISE_MESSAGE: Final = (
@@ -318,6 +328,7 @@ def revise_message(
     *,
     music_changed: bool,
     songs_changed: bool = False,
+    rules: str | None = None,
 ) -> str:
     """The first message of the ``revise`` stage (ADR 0007 section 3): the brief, the music
     summary, the base draft (``class_revisions.content``) and the user's requests, the earlier
@@ -333,7 +344,9 @@ def revise_message(
     head = REVISE_MESSAGE + (
         SONGS_CHANGED if songs_changed else MUSIC_CHANGED if music_changed else ""
     )
-    return head + json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
+    return (
+        head + _with_rules(rules) + json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
+    )
 
 
 # --- song picking (ADR 0008 section 3) ---------------------------------------------------------

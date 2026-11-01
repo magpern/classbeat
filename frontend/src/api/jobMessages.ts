@@ -98,6 +98,19 @@ const FAILURES: Record<string, FailureText> = {
     title: 'This request is only about the songs',
     detail: 'Nothing was changed. Use Change songs on the class page to pick other ones.',
   },
+  // ADR 0016 sections 3 and 4: a Swedebeat mix; never a host, link or file text.
+  media_host_not_allowed: {
+    title: 'New Swedebeat mixes cannot be analysed here yet',
+    detail: 'Mixes you analysed before still work. Try one of those, or another kind of music.',
+  },
+  media_refused: {
+    title: 'The audio of this mix could not be fetched',
+    detail: 'Nothing was designed. Try again later.',
+  },
+  analysis_failed: {
+    title: 'The audio of this mix could not be analysed',
+    detail: 'Try another mix.',
+  },
   music_unlinked: {
     title: 'The music of this version is not in your MOWL account',
     detail:

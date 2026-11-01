@@ -93,6 +93,7 @@ class Run(BaseModel):
     changes_on_music: Annotated[str, StringConstraints(max_length=30)] = ""
     checks: list[CheckRow] = Field(default_factory=lambda: list[CheckRow](), max_length=50)
     timeline: list[Segment] = Field(default_factory=lambda: list[Segment](), max_length=200)
+    rules_version: int | None = None  # of the file the run came from (set by ``load_runs``)
 
     @property
     def series(self) -> str:
@@ -107,6 +108,9 @@ class ResultsFile(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
     format: int
+    # The version of the rule profiles the runs were made with (ADR 0017 section 5); a file from
+    # before the rules has none.
+    rules_version: int | None = Field(default=None, ge=0, le=10_000)
     results: list[Run] = Field(max_length=10_000)
 
 
@@ -116,6 +120,7 @@ class CompareRefused(Exception):
 
 def load_runs(paths: Sequence[Path]) -> list[Run]:
     runs: list[Run] = []
+    versions: dict[str, int | None] = {}
     for path in paths:
         try:
             if path.stat().st_size > MAX_FILE_BYTES:
@@ -133,7 +138,13 @@ def load_runs(paths: Sequence[Path]) -> list[Run]:
             raise CompareRefused(f"{path}: not a results file ({what})") from None
         if parsed.format != RESULTS_FORMAT:
             raise CompareRefused(f"{path}: results format {parsed.format} is not supported")
-        runs += parsed.results
+        versions[str(path)] = parsed.rules_version
+        runs += [
+            r.model_copy(update={"rules_version": parsed.rules_version}) for r in parsed.results
+        ]
+    if len(set(versions.values())) > 1:
+        shown = ", ".join(f"{p}: {'none' if v is None else v}" for p, v in versions.items())
+        raise CompareRefused(f"results made with different rules_version ({shown})")
     if not runs:
         raise CompareRefused("no results in the given files")
     return runs
@@ -220,9 +231,16 @@ def _cell(text: str) -> str:
     return out
 
 
+def _rules_text(cmp: Comparison) -> str:
+    version = cmp.runs[0].rules_version
+    return "not recorded (before the class-pattern rules)" if version is None else str(version)
+
+
 def markdown(cmp: Comparison) -> str:
     lines = [
         "# Model comparison of the smoke set",
+        "",
+        f"Rules version: {_rules_text(cmp)} (all runs were made with it).",
         "",
         f"{len(cmp.runs)} runs, {len(cmp.cases)} cases, {len(cmp.series)} models "
         "(a model at an effort). Medians are over the repeats of a case.",

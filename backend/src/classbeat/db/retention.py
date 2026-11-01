@@ -47,7 +47,7 @@ def _entry(columns: str, reviewed: str, *deleted_with: DeletionPath) -> Retentio
 
 RETENTION: Mapping[str, Retention] = MappingProxyType(
     {
-        "classes": _entry("title brief music_source", "", "class", "account"),
+        "classes": _entry("title brief music_source", "dismissed_rules", "class", "account"),
         # ``content`` of a ``song_list`` (ADR 0008 sections 5 and 8) holds the chosen songs'
         # Spotify ids, titles, artists and, from ``v: 2``, their album cover URLs (``cover``, ADR
         # 0013 section 9): all go with the class and the account, like the drafts beside them.
@@ -80,6 +80,13 @@ RETENTION: Mapping[str, Retention] = MappingProxyType(
         ),
         "mowl_playlist_links": _entry(
             "source_id playlist_id", "source", "account", "mowl_connection"
+        ),
+        # ADR 0016 section 3: the user's own analysis of a mix Swedebeat licensed to them (the mix
+        # name, MOWL's playlist id, the map). No audio, nothing Spotify-derived. At most 20 per user
+        # and 30 days (A3); gone with the account and with the MOWL connection (Disconnect, an
+        # account change, ``connections.repository._forget_mowl_account``).
+        "swedebeat_mix_maps": _entry(
+            "mix_id name playlist_id map", "", "account", "mowl_connection"
         ),
         "agent_runs": _entry(
             "",

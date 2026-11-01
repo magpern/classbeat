@@ -33,6 +33,10 @@ from classbeat.crypto.keks import KeyRing
 Factory = async_sessionmaker[AsyncSession]
 
 ATTACH_KIND: Final = "mowl_attach_spotify_playlist"
+# ADR 0016 section 3 (A2): wrap a Swedebeat mix in the user's MOWL account. Like the Spotify
+# attach it belongs to no class.
+ATTACH_SWEDEBEAT_KIND: Final = "mowl_attach_swedebeat_mix"
+ATTACH_KINDS: Final = frozenset({ATTACH_KIND, ATTACH_SWEDEBEAT_KIND})
 # The multi-request MOWL writes of a class (ADR 0007 sections 6 and 7): their rows carry the class.
 CLASS_WRITE_KINDS: Final = frozenset({"mowl_save_workout", "mowl_update_workout"})
 # The Spotify writes (ADR 0008 section 2, issue OP1, ``classbeat.playlists``). A pool row has no
@@ -44,8 +48,8 @@ SPOTIFY_WRITE_KINDS: Final = frozenset({SPOTIFY_CREATE_KIND, SPOTIFY_REPLACE_KIN
 # carries ``bound_seconds``, and a stale call of one may still be sending requests until
 # ``actionable_at``. ``spotify_create_playlist`` is one request and is not in it.
 MULTI_REQUEST_KINDS: Final = frozenset({*CLASS_WRITE_KINDS, SPOTIFY_REPLACE_KIND})
-# The external_operations.kind check of migrations 0004 to 0006.
-KIND_NAMES: Final = frozenset({ATTACH_KIND, *CLASS_WRITE_KINDS, *SPOTIFY_WRITE_KINDS})
+# The external_operations.kind check of migrations 0004 to 0006 and 0018.
+KIND_NAMES: Final = frozenset({*ATTACH_KINDS, *CLASS_WRITE_KINDS, *SPOTIFY_WRITE_KINDS})
 # A Spotify write's key names its purpose (ADR 0008 section 2): ``<job_id>:pool-create``,
 # ``<job_id>:final-create``, ``<job_id>:pool:<h16>`` and ``<job_id>:final-fill``. The job part is
 # a UUID; ``h16`` is the first 16 hex characters of the track-list hash.

@@ -5,6 +5,7 @@ most once and never retried automatically when it may have taken effect.
   ``classbeat.operations.requests``: what the job asks it to write (``OperationRequest``);
 - ``classbeat.operations.kinds``: the per-kind seam (``Reconciler``, ``on_succeeded``);
 - ``classbeat.operations.attach``: ``mowl_attach_spotify_playlist`` and its playlist link;
+- ``classbeat.operations.swedebeat``: ``mowl_attach_swedebeat_mix`` and its link (ADR 0016);
 - ``classbeat.operations.user`` and ``routes``: **Check again** and **Do it anyway**;
 - ``classbeat.operations.orphans``: orphaned ``pending`` class writes and the unresolved-write
   rule (ADR 0007 section 8).
@@ -33,9 +34,12 @@ from classbeat.operations.protocol import (
     perform_for,
 )
 from classbeat.operations.requests import OperationRequest
+from classbeat.operations.swedebeat import ATTACH as ATTACH_SWEDEBEAT
+from classbeat.operations.swedebeat import attach_swedebeat_mix
 
 __all__ = [
     "ATTACH",
+    "ATTACH_SWEDEBEAT",
     "INCONCLUSIVE",
     "OPERATION_KINDS",
     "CallResult",
@@ -49,6 +53,7 @@ __all__ = [
     "Reconciliation",
     "UncertainAnswer",
     "attach_spotify_playlist",
+    "attach_swedebeat_mix",
     "linked_playlist",
     "perform",
     "perform_for",

@@ -8,6 +8,16 @@ external approvals; agents do everything else.
 **[docs/roadmap.md](docs/roadmap.md) is the frozen plan (Revision 6, with its dated amendments at the top). If this file and the
 roadmap differ, the roadmap wins.** Section numbers (§1, §4, M2 …) refer to it.
 
+## Codex entry point
+
+Codex must read this file **in full**, then [docs/codex.md](docs/codex.md), the roadmap
+and status before work. The Codex model mapping and PR attribution are authorized by
+roadmap Amendment 10; the Claude role definitions below remain valid for Claude Code.
+Codex role definitions are in `.codex/agents/*.toml`. Use the same issue, worktree,
+CI, independent current-head review and merge gates. Never treat an in-session
+`/review` as the independent Reviewer. If a fresh reviewer cannot be launched,
+leave the PR open and report that review is pending.
+
 ## Roles
 
 | Role | Model class | Owns | Must not |
@@ -199,6 +209,16 @@ safely, product decisions, and live-account tests needing authorization. Record 
 in `docs/status.md` under "Waiting for the owner", carry on with independent work, and resume
 when it's answered.
 
+## Cursor alternative
+
+For Cursor sessions, read [docs/cursor.md](docs/cursor.md) and use the explicit
+`cursor-*` roles in `.cursor/agents/`. Roadmap Amendment 11 authorizes Composer
+for routine implementation/exploration and Grok for coordination/routine review.
+Opus remains required for security-critical work and review escalation. The shared
+worktree, CI, independent current-head review, merge and safety gates still apply.
+Verify the actual model used; a client substitution blocks that role. Claude Code
+and Codex keep their own profiles.
+
 ## Durable state and resuming
 
 The repository and GitHub are the source of truth, never chat history:
@@ -294,7 +314,10 @@ web and worker refuse to start without it) is the current key-encryption key of 
 its id `CLASSBEAT_CONNECTION_KEK_ID` (default `kek-1`; compose takes `CONNECTION_KEK_ID` from `.env`),
 and retired ones are `connection_kek_<id>`; `smtp_password` (optional) is the SMTP login password
 (`CLASSBEAT_SMTP_HOST`, `_PORT`, `_SENDER`, `_USERNAME` and `_TLS` = `starttls`, `tls` or `none`;
-`none` only for loopback or the compose `mailpit`; compose points them at mailpit); the matching
+`none` only for loopback or the compose `mailpit`; compose points them at mailpit;
+`CLASSBEAT_SMTP_CA_FILE` (optional, not with `none`) is a readable PEM certificate file the server's
+certificate must match instead of the system store, for Proton Mail Bridge; verification and the hostname
+check stay on, see `docs/runbooks/proton-bridge-smtp.md`); the matching
 `CLASSBEAT_DATABASE_PASSWORD` and `CLASSBEAT_DATABASE_OWNER_PASSWORD` variables are ignored.
 The admin area (ADR 0011 section 5): `CLASSBEAT_MAINT_DATABASE_URL` (compose sets it on web) and the
 `database_maint_password` secret file (web and `db-functions` only, which creates the role
@@ -323,7 +346,7 @@ must stay clean. With `anthropic` the worker refuses to start (and the provider 
 live use. Once an Anthropic stream has begun, any end without a readable answer (read timeout, the turn bound, an error event, a cut connection, no stop reason) is recorded at the turn's ceiling, not 0; only an error status or a failure before the stream is unbilled. The worker's outbound requests go only to `https://api.mowl.com`, `https://api.spotify.com` and
 `https://accounts.spotify.com` plus the host of each model provider whose key file holds a key (`api.anthropic.com`,
 `api.openai.com`; `api.deepseek.com` only with `CLASSBEAT_DEEPSEEK_ENABLED` too; `worker_model_providers`, `worker_hosts`
-in `classbeat.egress`, ADR 0009 section 10, ADR 0012 section 2); each model client alone is limited to its own provider's host. The one exception to the DeepSeek rule: the owner's live eval of a disabled DeepSeek model installs that host for that command only (`install_choice_allowlist`); jobs never get it. The Spotify token endpoint and `GET /me`
+in `classbeat.egress`, ADR 0009 section 10, ADR 0012 section 2); each model client alone is limited to its own provider's host. The temporary-link media host of a Swedebeat mix (ADR 0016 §4) is on no urllib list: it has its own scoped list, the literal `MOWL_MEDIA_HOSTS` (empty until the owner confirms the host), and its own no-redirect client, `egress.mowl_media_async_client()`; its fakes are `tests/mediafake.py` and the Swedebeat calls of `tests/mowlfake.py`. The one exception to the DeepSeek rule: the owner's live eval of a disabled DeepSeek model installs that host for that command only (`install_choice_allowlist`); jobs never get it. The Spotify token endpoint and `GET /me`
 (`classbeat.spotify.http`) use `egress.spotify_async_client()`, in the web process (connect) and the
 worker (refresh) alike, whose list is the two Spotify hosts and nothing else. The list is code, not a
 setting. `classbeat.egress` is the only module allowed to build an HTTP client or `urllib` opener;
@@ -377,7 +400,7 @@ relies on and needs `--yes`. Secret files (worker only): `anthropic_api_key`, `o
 can be set until the owner's answers (a reviewed catalog change); DeepSeek also needs the setting. The owner's steps for live evals
 and enabling are `docs/runbooks/m3c-model-enable.md`; the end-to-end offline proof is `backend/tests/test_m3c_done_when.py` and
 `test_m3c_done_when_jobs.py` (replayed provider transcripts via `tests/m3ctools.py`).
-Swedebeat (ADR 0015, S1): `POST`/`DELETE /api/connections/swedebeat` (recent authentication, step-up; `GET /api/connections` shows the row, the email as `account` and a `swedebeat` block `{enabled, available}`). It is off unless `CLASSBEAT_SWEDEBEAT_ENABLED` is true (compose `SWEDEBEAT_ENABLED`, default false, web only) and the admin flag `swedebeat_enabled` (`off`/`on`, can only tighten it) allows it; off, connect answers 404 `feature_off`. Swedebeat's AES app key is **never in git, a PR or CI image or a log**: the release workflow (tags only) writes it from the owner's repository secret `SWEDEBEAT_APP` into `/app/swedebeat_app.json` of the image through a BuildKit secret (`REQUIRE_SWEDEBEAT_APP=1` fails the build when it is missing or not 32/16 characters), and the optional Docker secret file `swedebeat_app` (web only; empty is none; `scripts/worktree.sh init` creates it empty) overrides it at runtime; with neither, connect answers 503 `app_key_unavailable`. The worker refuses to start if it can read the secret file. Each user has one device id (an HMAC of the user id under `app_secret_key`); `force` is sent only after the user confirms signing another device out. Tests use the fake in `backend/tests/swedebeatcore.py` (it decodes the library's AES fields with a throwaway TEST key made per run); the e2e stack runs it as `www.swedebeat.se` with the public test key `e2e/fake-swedebeat/app.json`. `backend/tests/test_swedebeat_key_guard.py` pins where the key may and may not be. The web's urllib list has `www.swedebeat.se` (not `cloud.swedebeat.se`). Owner steps: `docs/runbooks/swedebeat-connect.md`.
+Swedebeat (ADR 0015, S1): `POST`/`DELETE /api/connections/swedebeat` (recent authentication, step-up; `GET /api/connections` shows the row, the email as `account` and a `swedebeat` block `{enabled, available}`). It is off unless `CLASSBEAT_SWEDEBEAT_ENABLED` is true (compose `SWEDEBEAT_ENABLED`, default false, web only) and the admin flag `swedebeat_enabled` (`off`/`on`, can only tighten it) allows it; off, connect answers 404 `feature_off`. Swedebeat's AES app key is **never in git, a PR or CI image or a log**: the release workflow (tags only) writes it from the owner's repository secret `SWEDEBEAT_APP` into `/app/swedebeat_app.json` of the image through a BuildKit secret (`REQUIRE_SWEDEBEAT_APP=1` fails the build when it is missing or not 32/16 characters), and the optional Docker secret file `swedebeat_app` (web only; empty is none; `scripts/worktree.sh init` creates it empty) overrides it at runtime; with neither, connect answers 503 `app_key_unavailable`. The worker refuses to start if it can read the secret file. Each user has one device id (an HMAC of the user id under `app_secret_key`); `force` is sent only after the user confirms signing another device out. Tests use the fake in `backend/tests/swedebeatcore.py` (it decodes the library's AES fields with a throwaway TEST key made per run); the e2e stack runs it as `www.swedebeat.se` with the public test key `e2e/fake-swedebeat/app.json`. `backend/tests/test_swedebeat_key_guard.py` pins where the key may and may not be. The web's urllib list has `www.swedebeat.se` (not `cloud.swedebeat.se`). Owner steps: `docs/runbooks/swedebeat-connect.md`. Swedebeat mixes (ADR 0016, A2; same flag, 404 `feature_off` when off, MOWL connection only, no Swedebeat token): `GET /api/music/swedebeat-mixes` (`classbeat.design.mixes`; 30 per user and 60 per IP per 10 minutes; ids, names, lengths and an `analysed` badge) and the external operation `mowl_attach_swedebeat_mix` (`classbeat.operations.swedebeat`: the id must be in the caller's own fresh listing, the link is a `mowl_playlist_links` row with `source = 'swedebeat'`, the reconciler reads the listing's `PlaylistID`, unverified live). `swedebeat_mix_maps` (migration 0018) holds the user's analyses; Disconnect MOWL and an account change delete them with the links. A3 (`classbeat.design.swedebeat_music.load_swedebeat_mix`, wired into `design_draft` by A4): a cache hit (under 30 days, this MOWL connection and playlist, the library's current map version) makes no request; otherwise the listing, attach, indexing, `TemporaryLinks`, the fetch (`mixfetch`: raw bytes, identity encoding only, 250 MB, 300 s, a private directory swept at worker start) and the analysis in a child process (`mixanalysis`/`mixchild`: 1.5 GiB RSS, 180 s, decoded length at most the listed length plus 5 minutes and 120 minutes); job categories `media_host_not_allowed` (the production `MOWL_MEDIA_HOSTS` is still empty), `media_refused` and `analysis_failed` (migration 0019); at most 20 maps per user.
 Song picking and the Spotify connection (ADR 0008, ADR 0009): `CLASSBEAT_SONG_PICKING` (default off; off,
 every Spotify route answers 404 `feature_off`; the owner switches it on, roadmap Amendment 1; with it on,
 `CLASSBEAT_PUBLIC_BASE_URL` may not be `localhost`, use `127.0.0.1`, because Spotify does not accept

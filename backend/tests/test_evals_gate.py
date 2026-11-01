@@ -17,6 +17,7 @@ STANDARD = ["s_a", "s_b", "s_c", "s_d"]
 ADV_DESIGN = ["adv_d"]
 ADV_SONGS = ["adv_s"]
 SONG_CHOICE = ["pick_a"]
+CLASS_PATTERNS = ["cp_a"]
 
 MANIFEST = Manifest.model_validate(
     {
@@ -43,6 +44,7 @@ MANIFEST = Manifest.model_validate(
             "revisions": {},
             "song_choice": {"songs": SONG_CHOICE},
             "missing_music": {},
+            "class_patterns": {"design": CLASS_PATTERNS},
             "adversarial": {"design": ADV_DESIGN, "songs": ADV_SONGS},
             "cost": {},
         },
@@ -127,12 +129,24 @@ def test_a_complete_passing_list_passes_both_groups() -> None:
     assert (v.suite_version, v.manifest_digest) == (4, DIGEST)
     d, s = v.groups["design"], v.groups["songs"]
     assert (d.status, d.runs, d.passes, d.not_run, d.median_cost_micros) == (
-        "passed", 15, 15, 0, 100_000,
+        "passed", 18, 18, 0, 100_000,
     )  # fmt: skip
     assert (s.status, s.runs, s.passes) == ("passed", 6, 6)
-    assert set(d.categories) == {"standard", "adversarial"}
+    assert set(d.categories) == {"standard", "class_patterns", "adversarial"}
     assert set(s.categories) == {"song_choice", "adversarial"}
     assert s.categories["adversarial"].runs == 3  # the songs group's adversarial cases only
+
+
+def test_the_class_patterns_category_is_part_of_the_verdict() -> None:
+    results = rows()
+    assert design(results).categories["class_patterns"].runs == 3
+    for r in range(3):
+        replace(results, "cp_a", r, failed=("structure",))
+    g = design(results)  # no run of the category passes
+    assert g.status == "failed"
+    assert g.categories["class_patterns"].rules_failed == ("pass_share", "each_case_once")
+    assert g.categories["standard"].rules_failed == ()
+    assert not g.as_json()["passed"]
 
 
 def test_the_verdict_is_per_stage_group() -> None:
@@ -148,7 +162,9 @@ def test_the_verdict_is_per_stage_group() -> None:
 
 
 def test_a_group_without_runs_in_the_file_gets_no_verdict() -> None:
-    v = verdict([r for r in rows() if CATEGORY[r["case"]] == "standard" or r["case"] == "adv_d"])
+    v = verdict(
+        [r for r in rows() if CATEGORY[r["case"]] == "standard" or r["case"] in ("adv_d", "cp_a")]
+    )
     assert set(v.groups) == {"design"}
     assert v.groups["design"].passed
 
@@ -320,7 +336,7 @@ def test_one_run_over_its_job_ceiling_fails_the_group() -> None:
 
 
 def test_the_median_counts_only_runs_that_ran() -> None:
-    results = rows(dict.fromkeys(STANDARD, 10))  # design: 43 runs
+    results = rows({**dict.fromkeys(STANDARD, 10), "cp_a": 0})  # design: 43 runs
     mine = [row for row in results if row["case"] in (*STANDARD, *ADV_DESIGN)]
     for n, row in enumerate(mine):
         if n < 4:  # 4 outages that cost nothing
@@ -343,7 +359,7 @@ def test_an_outage_is_neither_a_pass_nor_a_fail(outcome: str) -> None:
     replace(results, "adv_d", 0, outcome=outcome)  # an adversarial run: every run must pass
     g = design(results)
     assert g.status == "passed"
-    assert (g.runs, g.passes, g.not_run) == (15, 14, 1)
+    assert (g.runs, g.passes, g.not_run) == (18, 17, 1)
     assert g.categories["adversarial"].not_run == 1
 
 
