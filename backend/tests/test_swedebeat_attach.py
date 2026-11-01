@@ -212,7 +212,8 @@ async def test_a_job_naming_another_connection_attaches_nothing(
         ("list", 503, "upstream_unavailable"),
         ("attach", 401, "needs_reconnect"),
         ("attach", 429, "rate_limited"),
-        ("attach", 503, "upstream_unavailable"),
+        # A 5xx may follow a processed write: uncertain, never re-sent.
+        ("attach", 503, "uncertain_write"),
     ],
 )
 async def test_each_endpoint_failure_ends_the_job_with_its_category_and_no_link(
@@ -224,9 +225,8 @@ async def test_each_endpoint_failure_ends_the_job_with_its_category_and_no_link(
     mowl_api.retry_after = "7"
     failed = await harness.run(owner, connection, mix)
     assert failed.state == "failed"
-    assert failed.error_category in {category, "uncertain_write"}
+    assert failed.error_category == category  # a single refused PUT is a proven no-effect
     if endpoint == "list":
-        assert failed.error_category == category
         assert mowl_api.attaches == []
     assert harness.links(owner) == []
 

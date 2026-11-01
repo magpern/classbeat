@@ -104,7 +104,7 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    op.execute("DROP TABLE IF EXISTS public.swedebeat_mix_maps CASCADE")
+    op.execute("DROP TABLE public.swedebeat_mix_maps")  # nothing refers to it
     # The owner role is subject to the forced policies: lift them for the repairs, as 0006 does.
     for table in ("mowl_playlist_links", "external_operations"):
         op.execute(_force_rls(table, False))

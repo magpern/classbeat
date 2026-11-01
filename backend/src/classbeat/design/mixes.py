@@ -24,7 +24,7 @@ from pydantic import BaseModel
 
 from classbeat import auth
 from classbeat.connections import ConnectionFailure, open_connection, run_library_call
-from classbeat.connections.swedebeat_account import swedebeat_access
+from classbeat.connections.swedebeat_account import swedebeat_enabled
 from classbeat.connections.swedebeat_maps import analysed_mix_ids
 from classbeat.context import UserContext
 from classbeat.egress import OutboundBlocked
@@ -63,8 +63,7 @@ async def swedebeat_mixes(
     request: Request, ctx: Annotated[UserContext, Depends(auth.require_user)]
 ) -> MixesOut | JSONResponse:
     factory = request.app.state.session_factory
-    access = await swedebeat_access(request.app.state.settings, factory)
-    if not access.enabled:
+    if not await swedebeat_enabled(request.app.state.settings, factory):
         raise HTTPException(status_code=404, detail={"reason": "feature_off"})
     attempt = await request.app.state.limiter.begin(
         auth.swedebeat_mixes_buckets(str(ctx.user_id), auth.request_ip(request))

@@ -109,6 +109,18 @@ def rebinds(tree: ast.AST, name: str) -> list[str]:
             found.append(f"{node.func.id}()")
         elif isinstance(node, ast.Attribute) and node.attr == "__dict__":
             found.append("__dict__")
+        elif (
+            isinstance(node, ast.Attribute)
+            and node.attr == name
+            and isinstance(node.ctx, ast.Store | ast.Del)
+        ):
+            found.append("attribute write")
+        elif (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Name)
+            and node.func.id in {"setattr", "delattr"}
+        ):
+            found.append(f"{node.func.id}()")
     return found
 
 
@@ -157,6 +169,9 @@ def test_the_media_hosts_are_a_literal_assigned_once() -> None:
         ("H = frozenset()\nfrom elsewhere import H", ["assign", "import"]),
         ("H = frozenset()\nexec('H = x')", ["assign", "exec()"]),
         ("H = frozenset()\nOTHER |= {1}", ["assign"]),
+        ("H = frozenset()\negress.H = other", ["assign", "attribute write"]),
+        ("H = frozenset()\nsetattr(egress, 'H', other)", ["assign", "setattr()"]),
+        ("H = frozenset()\ndelattr(egress, 'H')", ["assign", "delattr()"]),
     ],
 )
 def test_the_rebind_check_catches_every_way_to_change_the_constant(
