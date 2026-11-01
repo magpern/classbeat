@@ -154,6 +154,12 @@ async def swedebeat_email(
     return value if isinstance(value, str) and value else None
 
 
+async def swedebeat_enabled(settings: Settings, factory: async_sessionmaker[AsyncSession]) -> bool:
+    """Only the effective flag: no read of the app key (for routes that never need it)."""
+    async with system_session(factory) as db:
+        return await effective.swedebeat_enabled(db, settings.swedebeat_enabled)
+
+
 async def swedebeat_access(
     settings: Settings, factory: async_sessionmaker[AsyncSession]
 ) -> SwedebeatAccess:

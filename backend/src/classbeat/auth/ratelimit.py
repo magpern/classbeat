@@ -71,6 +71,10 @@ EXPORT_IP = Limit("export", "ip", 20, 3600)
 # request counts (a refusal comes before the connection is opened and before any MOWL call).
 MOWL_PLAYLISTS_USER = Limit("mowl-playlists", "account", 30, 600)
 MOWL_PLAYLISTS_IP = Limit("mowl-playlists", "ip", 60, 600)
+# ADR 0016 section 3 (A2): ``GET /api/music/swedebeat-mixes`` is the same kind of read, with its
+# own buckets so the two pickers don't share a count.
+SWEDEBEAT_MIXES_USER = Limit("swedebeat-mixes", "account", 30, 600)
+SWEDEBEAT_MIXES_IP = Limit("swedebeat-mixes", "ip", 60, 600)
 
 OnSuccess = Literal["decrement", "delete"]
 
@@ -264,3 +268,8 @@ def export_buckets(user_id: str, ip: str) -> list[Bucket]:
 def mowl_playlists_buckets(user_id: str, ip: str) -> list[Bucket]:
     """A listing of the user's Spotify playlists at MOWL (SR-05): per user and per IP."""
     return [Bucket(MOWL_PLAYLISTS_USER, user_id), Bucket(MOWL_PLAYLISTS_IP, bucket_ip(ip))]
+
+
+def swedebeat_mixes_buckets(user_id: str, ip: str) -> list[Bucket]:
+    """A listing of the user's Swedebeat mixes at MOWL (ADR 0016 section 3): per user and per IP."""
+    return [Bucket(SWEDEBEAT_MIXES_USER, user_id), Bucket(SWEDEBEAT_MIXES_IP, bucket_ip(ip))]

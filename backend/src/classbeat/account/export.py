@@ -32,6 +32,9 @@ NOT_INCLUDED = [
 ]
 
 
+_COUNT_MIX_MAPS = text("SELECT count(*) FROM swedebeat_mix_maps WHERE owner_id = :owner_id")
+
+
 def _read(section: Section) -> Any:
     # Table, key and columns come from the fixed registry (validated when it is built); only the
     # owner is a parameter.
@@ -82,5 +85,8 @@ async def build_export(
         }
         for section in SECTIONS:
             document[section.key] = await _rows(db, ctx.user_id, section)
+        document["swedebeat_mix_analyses"] = (
+            await db.execute(_COUNT_MIX_MAPS, {"owner_id": ctx.user_id})
+        ).scalar_one()
         document["not_included"] = NOT_INCLUDED
         return document
