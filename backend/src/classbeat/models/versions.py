@@ -46,7 +46,7 @@ GROUP_STAGES: Final[dict[str, tuple[str, ...]]] = {
 def _no_context() -> Any:
     # The fields ``revise_stage`` reads or copies at build time; the handlers
     # that would read them are never called here.
-    return SimpleNamespace(brief=None, map={}, summary={}, songs_changed=False)
+    return SimpleNamespace(brief=None, map={}, summary={}, songs_changed=False, rules=None)
 
 
 def _stages() -> tuple[Stage, ...]:

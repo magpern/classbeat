@@ -10,6 +10,7 @@ from classbeat.design.rules.profile import (
     ProfileError,
     ProfileRule,
     Registry,
+    default_registry,
     load_registry,
     select_profile,
 )
@@ -25,6 +26,7 @@ __all__ = [
     "ProfileRule",
     "Registry",
     "RuleHit",
+    "default_registry",
     "evaluate",
     "load_registry",
     "select_profile",

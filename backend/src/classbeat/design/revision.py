@@ -24,6 +24,7 @@ in the same transaction after it (ADR 0007 section 2): the class's first design 
 import hashlib
 import json
 import uuid
+from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any, Final, Literal
 from uuid import UUID
@@ -176,6 +177,7 @@ def build(
     base_hash: bytes | None = None,
     request_message_id: UUID | None = None,
     song_list_id: UUID | None = None,
+    rules: Mapping[str, Any] | None = None,
 ) -> DraftRevision:
     """The revision to store; ``invalid_output`` if the draft no longer validates, or (a revise)
     if it is the base draft again: a revision that changes nothing is not stored."""
@@ -204,6 +206,7 @@ def build(
         base_revision_id=base_revision_id,
         request_message_id=request_message_id,
         tss_approximate=result.tss_approximate,
+        rules=rules,
     )
     return DraftRevision(
         content=content,
