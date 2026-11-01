@@ -1,0 +1,18 @@
+{
+ "name": "cp_easy_spin_45",
+ "about": "An easy brief: the class is judged to stay in zones 1 to 3 (this case defines easy so).",
+ "brief": {
+  "length_min": 45,
+  "intensity": "easy",
+  "class_type": "plain"
+ },
+ "music": {
+  "tracks": 14
+ },
+ "expect": {
+  "patterns": {
+   "mode": "deviates",
+   "max_zone": 3
+  }
+ }
+}
