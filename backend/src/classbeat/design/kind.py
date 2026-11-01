@@ -1,10 +1,14 @@
 """The ``design_draft`` job kind (ADR 0005 section 2, ADR 0006 section 3).
 
-Input: ``{class_id | title, brief, music: {source: "mowl_spotify_playlist", spotify_playlist_id},
-mowl_connection_id}`` (``DesignDraftInput``). Stages:
+Input: ``{class_id | title, brief, music, mowl_connection_id}`` (``DesignDraftInput``), the music
+being ``{source: "mowl_spotify_playlist", spotify_playlist_id}`` or, on the user's Swedebeat mix
+(ADR 0016 section 3), ``{source: "mowl_swedebeat_mix", mix_id}``. Stages:
 
 1. ``music`` (``classbeat.design.music``): the link or the attach, then the read-only analysis,
-   with a checkpoint before every library read and the BPM wait inside the lease and budget;
+   with a checkpoint before every library read and the BPM wait inside the lease and budget; on
+   a mix, first ``mixadmit.still_on`` (``feature_off`` when ``swedebeat_enabled`` is off now,
+   before anything is called), then ``swedebeat_music.swedebeat_step`` (the cached analysis, or
+   the daily slot, the listing, the attach and the analysis of the audio);
 2. ``design``: ``classbeat.agent.run_stage`` with the ``design`` stage (``get_music``,
    ``preview_draft``, ``submit_draft``, built in A1) over the brief and the music summary, on a
    **new provider for every run** (a provider is never shared between jobs, #114 item 4). The
@@ -17,8 +21,10 @@ mowl_connection_id}`` (``DesignDraftInput``). Stages:
    for the class's first design, its ``brief``, ``music_source`` and ``current_revision_id``
    (ADR 0007 section 2); the job ends ``completed``.
 
-It consumes the class's credit (``consumes_credit``, ADR 0007 section 3). Its ``admit`` only sets
-the ``route_key`` of the user's effective plan (``classbeat.quota.route``, AD5 #223).
+It consumes the class's credit (``consumes_credit``, ADR 0007 section 3). Its ``admit`` sets the
+``route_key`` of the user's effective plan (``classbeat.quota.route``, AD5 #223); on a mix it first
+runs ``mixadmit.admit_mix`` (the flag, the MOWL connection, the user's own fresh listing, the daily
+analysis limit). A Spotify playlist's job is admitted exactly as before.
 The brief is refused at creation when it would not fit ``classes.brief`` (4096 bytes as jsonb),
 so a long brief fails before the model runs, not in the final store.
 
@@ -35,17 +41,21 @@ from dataclasses import dataclass
 from typing import Annotated, ClassVar, Final, Literal, Self
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, StringConstraints, model_validator
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints, TypeAdapter, model_validator
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from classbeat.agent import AgentConfig, Brief, DesignContext, JobStageHost, design_stage, run_stage
 from classbeat.agent.design import DesignResult
 from classbeat.config import Settings
+from classbeat.context import UserContext
 from classbeat.crypto.keks import KeyRing
-from classbeat.design import revision
+from classbeat.design import mixadmit, revision
 from classbeat.design.guidance import rule_set_for
-from classbeat.design.music import load_music
+from classbeat.design.music import MusicStep, load_music
+from classbeat.design.swedebeat_music import swedebeat_step
 from classbeat.jobs import KINDS, Complete, FencedSession, JobFailure, JobKind, JobRun
 from classbeat.jobs.inputs import ModelJobInput, jsonb_size
+from classbeat.jobs.kinds import Admitted, Refused
 from classbeat.models.jobs import GroupModel, ModelSource
 from classbeat.models.store import StageGroup
 from classbeat.quota.route import with_route_key
@@ -54,22 +64,43 @@ KIND: Final = "design_draft"
 STAGES: Final = ("music", "design")
 
 SpotifyPlaylistId = Annotated[str, StringConstraints(pattern=r"^[0-9A-Za-z]{22}$")]
+# The opaque ``ID`` of MOWL's Swedebeat listing (the ``mowl_playlist_links`` check).
+MixId = Annotated[str, StringConstraints(pattern=r"^[0-9A-Za-z_-]{1,64}$")]
 
 
-class MusicChoice(BaseModel):
+class SpotifyMusicChoice(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     source: Literal["mowl_spotify_playlist"]
     spotify_playlist_id: SpotifyPlaylistId
 
 
-class ClassMusicSource(MusicChoice):
-    """``classes.music_source`` as stored: the music choice, and for a class designed on picked
-    songs (ADR 0008 section 4) ``origin = "song_pick"`` and its ``class_playlists`` row. Never a
-    job input: ``design_draft`` takes ``MusicChoice``, which forbids both fields."""
+class SwedebeatMusicChoice(BaseModel):
+    """The user's Swedebeat mix (ADR 0016 section 3): ``admit`` checks it is in their own
+    listing (``classbeat.design.mixadmit``)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    source: Literal["mowl_swedebeat_mix"]
+    mix_id: MixId
+
+
+MusicChoice = Annotated[SpotifyMusicChoice | SwedebeatMusicChoice, Field(discriminator="source")]
+
+
+class ClassSpotifyMusic(SpotifyMusicChoice):
+    """``classes.music_source`` of a class on a Spotify playlist, and for a class designed on
+    picked songs (ADR 0008 section 4) ``origin = "song_pick"`` and its ``class_playlists`` row.
+    Never a job input: ``design_draft`` takes ``MusicChoice``, which forbids both fields."""
 
     origin: Literal["song_pick"] | None = None
     class_playlist_id: UUID | None = None
+
+
+ClassMusicSource = Annotated[
+    ClassSpotifyMusic | SwedebeatMusicChoice, Field(discriminator="source")
+]
+CLASS_MUSIC_SOURCE: Final = TypeAdapter[ClassSpotifyMusic | SwedebeatMusicChoice](ClassMusicSource)
 
 
 class DesignDraftInput(ModelJobInput):
@@ -96,6 +127,7 @@ class Runtime:
     models: ModelSource
     agent: AgentConfig
     context_requests: int = 10  # earlier requests ``revise_draft`` sends (CHAT_CONTEXT_REQUESTS)
+    swedebeat_enabled: bool = False  # CLASSBEAT_SWEDEBEAT_ENABLED: a job on a mix checks it again
 
 
 _runtime: Runtime | None = None
@@ -122,6 +154,7 @@ def runtime_from_settings(settings: Settings, keyring: KeyRing) -> Runtime:
         models=RouteModels(settings),
         agent=AgentConfig.from_settings(settings),
         context_requests=settings.chat_context_requests,
+        swedebeat_enabled=settings.swedebeat_enabled,
     )
 
 
@@ -133,6 +166,33 @@ async def group_model(
     return await runtime.models(run, route_key, group, runtime.agent)
 
 
+async def music_step(
+    run: JobRun,
+    runtime: Runtime,
+    music: SpotifyMusicChoice | SwedebeatMusicChoice,
+    connection_id: UUID,
+) -> MusicStep:
+    """The music step of the class's source: the user's Spotify playlist in MOWL, or their
+    Swedebeat mix (``swedebeat_step``; the caller checked the flag with ``mixadmit.still_on``)."""
+    if isinstance(music, SwedebeatMusicChoice):
+        return await swedebeat_step(run, runtime.keyring, music.mix_id, connection_id=connection_id)
+    return await load_music(
+        run, runtime.keyring, music.spotify_playlist_id, connection_id=connection_id
+    )
+
+
+async def admit(db: AsyncSession, ctx: UserContext, parsed: BaseModel) -> Admitted | Refused:
+    """A Spotify playlist is admitted as before; a Swedebeat mix only through
+    ``mixadmit.admit_mix`` (the flag, the MOWL connection, the user's own listing, the limit)."""
+    if not isinstance(parsed, DesignDraftInput):
+        return Refused("invalid_input")
+    if isinstance(parsed.music, SwedebeatMusicChoice):
+        refused = await mixadmit.admit_mix(db, ctx, parsed.music.mix_id, parsed.mowl_connection_id)
+        if refused is not None:
+            return refused
+    return Admitted()
+
+
 async def run(job_run: JobRun) -> Complete:
     runtime = _runtime
     if runtime is None:
@@ -140,14 +200,11 @@ async def run(job_run: JobRun) -> Complete:
     given = job_run.input
     if not isinstance(given, DesignDraftInput) or job_run.approved:
         raise JobFailure("internal")
+    if isinstance(given.music, SwedebeatMusicChoice):
+        await mixadmit.still_on(job_run, runtime.swedebeat_enabled)  # before anything is called
     model = await group_model(runtime, job_run, given.route_key, "design")  # before any MOWL call
     await job_run.stage("music")
-    step = await load_music(
-        job_run,
-        runtime.keyring,
-        given.music.spotify_playlist_id,
-        connection_id=given.mowl_connection_id,
-    )
+    step = await music_step(job_run, runtime, given.music, given.mowl_connection_id)
     handed_over = False  # the outcome's ``release`` closes the step from then on
     try:
         rules = rule_set_for(given.brief)  # nothing is dismissed on a new class
@@ -195,7 +252,7 @@ DESIGN_DRAFT: Final = KINDS.register(
         DesignDraftInput,
         STAGES,
         run,
-        admit=with_route_key(),  # only the plan's route key (AD5 #223)
+        admit=with_route_key(admit),  # a mix's checks, then the plan's route key (AD5 #223)
         server_fields=frozenset({"route_key"}),
     )
 )

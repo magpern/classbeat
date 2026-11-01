@@ -13,7 +13,8 @@ against the authenticated user and failing closed:
 - its stored ``content_hash`` equals the approved one (``hash_mismatch``) and the SHA-256 of its
   canonical content recomputed now (``invalid_input``: the row is not what was hashed);
 - the content is a ``WorkoutDraft`` whose spec passes ``workout.validate`` (``invalid_input``);
-- the revision's ``music.link_id`` names a ``mowl_playlist_links`` row of the user
+- the revision's ``music.link_id`` names a ``mowl_playlist_links`` row of the user of the
+  revision's source (``spotify`` for a playlist, ``swedebeat`` for a mix, ADR 0016 section 3)
   (``music_unlinked``: the MOWL account changed since the revision was designed, section 9).
 
 For an Update (``classbeat.saving.update``) also ``saved_target``: the saved row is the user's
@@ -38,10 +39,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from classbeat.agent.schemas import WorkoutDraft
 from classbeat.context import UserContext
-from classbeat.design.revision import RevisionMusic, canonical
+from classbeat.design.revision import MIX_SOURCE, MUSIC_SOURCE, REVISION_MUSIC, canonical
 from classbeat.operations.attach import SOURCE
+from classbeat.operations.swedebeat import SOURCE as MIX_LINK_SOURCE
 
 HEX_SHA256: Final = r"^[0-9a-f]{64}$"
+# The revision's music source -> the source of the link row it names.
+LINK_SOURCES: Final = {MUSIC_SOURCE: SOURCE, MIX_SOURCE: MIX_LINK_SOURCE}
 MAX_PLAYLIST_ID: Final = 2**63 - 1
 MAX_PROGRAM_ID: Final = 2**63 - 1
 
@@ -66,6 +70,7 @@ class Revision:
     content_hash: bytes
     spec: dict[str, Any]
     link_id: UUID
+    link_source: str = SOURCE  # ``mowl_playlist_links.source`` of the link (``LINK_SOURCES``)
 
     @property
     def content_hash_hex(self) -> str:
@@ -114,7 +119,7 @@ async def revision(
     if spec is None:
         return Refusal("invalid_input")
     try:
-        music = RevisionMusic.model_validate_json(json.dumps(row.music))
+        music = REVISION_MUSIC.validate_json(json.dumps(row.music))
     except ValidationError:
         return Refusal("music_unlinked")
     return Revision(
@@ -124,14 +129,18 @@ async def revision(
         content_hash=stored,
         spec=spec,
         link_id=music.link_id,
+        link_source=LINK_SOURCES[music.source],
     )
 
 
-async def linked_playlist(db: AsyncSession, ctx: UserContext, link_id: UUID) -> int | None:
-    """The MOWL playlist id of the user's link row the revision names, or None when it is gone
-    (a disconnect or reconnect deleted it). Read under ``hold`` on the worker path."""
+async def linked_playlist(
+    db: AsyncSession, ctx: UserContext, link_id: UUID, source: str = SOURCE
+) -> int | None:
+    """The MOWL playlist id of the user's link row the revision names (of ``source``: the
+    revision's, ``Revision.link_source``), or None when it is gone (a disconnect or reconnect
+    deleted it). Read under ``hold`` on the worker path."""
     row = (
-        await db.execute(_LINK, {"owner_id": ctx.user_id, "link_id": link_id, "source": SOURCE})
+        await db.execute(_LINK, {"owner_id": ctx.user_id, "link_id": link_id, "source": source})
     ).first()
     if row is None:
         return None

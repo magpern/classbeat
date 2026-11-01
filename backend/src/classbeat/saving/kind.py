@@ -132,7 +132,7 @@ async def admit(db: AsyncSession, ctx: UserContext, parsed: BaseModel) -> Admitt
     info = await connections.find_in(db, ctx, parsed.mowl_connection_id)
     if info is None or info.provider != "mowl" or info.status != "connected":
         return Refused("not_connected")
-    if await approval.linked_playlist(db, ctx, found.link_id) is None:
+    if await approval.linked_playlist(db, ctx, found.link_id, found.link_source) is None:
         return Refused("music_unlinked")
     if await orphans.write_unresolved(db, ctx, parsed.the_class):
         return Refused("write_unresolved")
@@ -171,7 +171,9 @@ async def _approved(run: JobRun, given: SaveWorkoutInput, opened: OpenConnection
         )
         if isinstance(found, approval.Refusal):
             raise JobFailure(PREPARE_CATEGORY.get(found.reason, "invalid_input"))
-        playlist_id = await approval.linked_playlist(fs.db, run.ctx, found.link_id)
+        playlist_id = await approval.linked_playlist(
+            fs.db, run.ctx, found.link_id, found.link_source
+        )
         if playlist_id is None:
             raise JobFailure("music_unlinked")
     return Plan(found, playlist_id, opened, [])
@@ -202,7 +204,7 @@ async def prepare(run: JobRun, keyring: KeyRing, given: SaveWorkoutInput) -> Pla
 
 _LINK_STILL = text(
     "SELECT playlist_id FROM mowl_playlist_links "
-    "WHERE owner_id = :owner_id AND id = :link_id AND source = 'spotify'"
+    "WHERE owner_id = :owner_id AND id = :link_id AND source = :source"
 )
 
 
@@ -246,7 +248,12 @@ async def save(run: JobRun, keyring: KeyRing, plan: Plan) -> int:
             return False
         row = (
             await db.execute(
-                _LINK_STILL, {"owner_id": run.lease.owner_id, "link_id": revision.link_id}
+                _LINK_STILL,
+                {
+                    "owner_id": run.lease.owner_id,
+                    "link_id": revision.link_id,
+                    "source": revision.link_source,
+                },
             )
         ).first()
         return row is not None and row.playlist_id == playlist_id

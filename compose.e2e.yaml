@@ -185,6 +185,7 @@ services:
       CLASSBEAT_MODEL_PROVIDER: fake
       CLASSBEAT_FAKE_MODEL_SCRIPT: /fake-run/script.json
       CLASSBEAT_SONG_PICKING: "true"
+      CLASSBEAT_SWEDEBEAT_ENABLED: "true"
       SSL_CERT_FILE: /fake-ca/bundle.pem
     volumes:
       - spotify-ca:/fake-ca:ro

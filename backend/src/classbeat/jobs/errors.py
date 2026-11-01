@@ -65,6 +65,10 @@ CATEGORIES: Final = (
     "media_host_not_allowed",
     "media_refused",
     "analysis_failed",
+    # ADR 0016 sections 2 and 7 (migration 0020): a design on a Swedebeat mix whose run finds
+    # ``swedebeat_enabled`` off, and the daily limit of new analyses; neither is retried.
+    "feature_off",
+    "analysis_limit",
 )
 # Retried by the worker (a new attempt with backoff). ``lease_lost`` is retried by the reaper and
 # ``operation_busy`` is requeued without an attempt (``classbeat.jobs.transitions``).

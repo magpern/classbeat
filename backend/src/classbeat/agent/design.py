@@ -115,7 +115,7 @@ class DesignContext:
 
     @classmethod
     def build(cls, brief: Brief, data: MusicData, rules: Guidance | None = None) -> "DesignContext":
-        m = model_input.music_map(data.analysis["map"])
+        m = model_input.music_map(data.analysis["map"], data.source)
         return cls(brief, m, model_input.music_summary(data, m), rules)
 
     def first_message(self) -> str:

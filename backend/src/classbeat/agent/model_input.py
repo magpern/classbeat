@@ -25,15 +25,24 @@ crossfade MOWL's how-to asks for). A per-user setting is deferred (ADR 0006 sect
 music options, which a classbeat user cannot do, and its "skipped" lines are MOWL's availability
 texts; classbeat words its own warnings instead (``music_warnings``), so neither reaches the
 model or the UI.
+
+**A Swedebeat mix** (``MusicData.source == "swedebeat"``, ADR 0016 section 3). Its map is the
+library's audio analysis: ``songs`` and ``events``, no ``tracks`` and no ``crossfade`` (the
+crossfades are in the audio, so ``crossfade`` is 0). The model sees per song only its index, BPM,
+start and length, and the drops and breakdowns: **no mix name, id, title or artist** (the map has
+none, and the name is never put in). A map without ``tracks`` is read by song number in
+``track_count``, ``track_detail`` and ``track_at``; its warnings follow the library's Swedebeat
+ones (``service._swedebeat_warnings``: songs whose beat 1 is an estimate), never the Spotify
+timing warning.
 """
 
 import copy
 import json
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from typing import Any, Final
+from typing import Any, Final, Literal
 
-from mowl import library, music, quality, spotify
+from mowl import library, music, quality, service, spotify
 from mowl.workout import mmss
 
 from classbeat.agent.schemas import Brief, clean_text
@@ -51,6 +60,13 @@ LONGER_THAN_MUSIC: Final = "The workout ({workout}) is longer than the music ({m
 UNKNOWN_BPM: Final = (
     "MOWL has no BPM yet for the tracks with index {tracks}; their bars are a guess at 120 BPM."
 )
+BEAT_ONE_ESTIMATE: Final = (
+    "Beat 1 is an estimate in the songs with index {songs}; a change there may land a beat early "
+    "or late."
+)
+LOW_MARGIN: Final = service.LOW_MARGIN  # the library's beat-1 margin below which it warns
+
+MusicSource = Literal["spotify", "swedebeat"]
 
 # quality.report issue texts -> codes (the texts are the library's, made of numbers only).
 ISSUE_CODES: Final = (
@@ -67,17 +83,29 @@ ISSUE_CODES: Final = (
 class MusicData:
     """The analysed playlist as the backend loaded it for this job (D1): the shared analysis of
     ``library.spotify_analysis`` and the user's link. Only ``music_summary`` reads it for the
-    model, and it drops the ids and texts named above."""
+    model, and it drops the ids and texts named above. ``source = "swedebeat"``: the user's
+    analysis of a Swedebeat mix, whose ``analysis`` holds only ``map`` and ``duration``."""
 
     analysis: Mapping[str, Any]  # source, source_id, name, duration, map
     playlist_id: int
     unavailable: Sequence[str] = ()
+    source: MusicSource = "spotify"
 
 
-def music_map(analysis_map: Mapping[str, Any]) -> dict[str, Any]:
-    """The map to fit and summarise: a copy, in the 9 s crossfade of the beta."""
+def is_mix(m: Mapping[str, Any]) -> bool:
+    """Whether ``m`` is a Swedebeat mix's map (songs found in the audio, no ``tracks``)."""
+    return "tracks" not in m
+
+
+def music_map(analysis_map: Mapping[str, Any], source: MusicSource = "spotify") -> dict[str, Any]:
+    """The map to fit and summarise: a copy, in the 9 s crossfade of the beta (a Swedebeat mix:
+    crossfade 0, its crossfades are in the audio)."""
     m = copy.deepcopy(dict(analysis_map))
-    if "crossfade" not in m:
+    if source == "swedebeat":
+        if not is_mix(m):
+            raise ValueError("a Swedebeat map has no tracks")
+        m["crossfade"] = 0.0
+    elif "crossfade" not in m:
         m = spotify.with_crossfade(m, spotify.CROSSFADE_SEC)
     return m
 
@@ -113,7 +141,9 @@ def _bpm(value: Any) -> float | None:
 
 def music_summary(data: MusicData, m: Mapping[str, Any]) -> dict[str, Any]:
     """``library.summary`` of the entry, projected to the allowed fields; ``m`` is
-    ``music_map(data.analysis["map"])``."""
+    ``music_map(data.analysis["map"], data.source)``."""
+    if data.source == "swedebeat":
+        return mix_summary(m)
     entry = {
         "source": "spotify",
         "name": data.analysis.get("name"),
@@ -151,6 +181,37 @@ def music_summary(data: MusicData, m: Mapping[str, Any]) -> dict[str, Any]:
     return _truncated(summary)
 
 
+def _events(m: Mapping[str, Any], songs: set[int] | None = None) -> list[dict[str, Any]]:
+    return [
+        {"at": mmss(e["t"]), "t": round(float(e["t"]), 1), "kind": str(e["kind"])}
+        for e in m["events"]
+        if e.get("kind") in EVENT_KINDS and (songs is None or e.get("song") in songs)
+    ]
+
+
+def mix_summary(m: Mapping[str, Any]) -> dict[str, Any]:
+    """A Swedebeat mix for the model: numbers only. Per song its index, BPM, start and length
+    (as ``tracks``, the name the prompts use), and the drops and breakdowns. No name, id, title
+    or artist exists in the map, and none is added."""
+    tracks = [
+        {
+            "index": int(s["song"]) - 1,
+            "bpm": _bpm(s.get("bpm")),
+            "from": mmss(s["start"]),
+            "sec": round(float(s["end"]) - float(s["start"]), 1),
+        }
+        for s in m["songs"]
+    ]
+    summary: dict[str, Any] = {
+        "duration": mmss(m["duration"]),
+        "duration_sec": round(float(m["duration"]), 1),
+        "crossfade_sec": 0.0,
+        "tracks": tracks,
+        "drops_and_breakdowns": _events(m),
+    }
+    return _truncated(summary)
+
+
 def _size(value: Any) -> int:
     return len(json.dumps(value, ensure_ascii=False, separators=(",", ":")).encode())
 
@@ -176,8 +237,17 @@ def _seconds(clock: str) -> float:
 
 def track_detail(m: Mapping[str, Any], index: int) -> dict[str, Any]:
     """One track's sections (bar grids from Spotify's section starts) and its drops and
-    breakdowns; ``index`` already checked by the caller."""
+    breakdowns; ``index`` already checked by the caller. A Swedebeat mix: the song itself."""
     number = index + 1
+    if is_mix(m):
+        song = next(s for s in m["songs"] if s["song"] == number)
+        return {
+            "index": index,
+            "sections": [
+                {"from": mmss(song["start"]), "to": mmss(song["end"]), "bpm": _bpm(song["bpm"])}
+            ],
+            "drops_and_breakdowns": _events(m, {number}),
+        }
     sections = [s for s in m["songs"] if s["track"] == number]
     songs = {s["song"] for s in sections}
     return {
@@ -195,12 +265,13 @@ def track_detail(m: Mapping[str, Any], index: int) -> dict[str, Any]:
 
 
 def track_count(m: Mapping[str, Any]) -> int:
-    return len(m["tracks"])
+    return len(m["songs"]) if is_mix(m) else len(m["tracks"])
 
 
 def track_at(m: Mapping[str, Any], t: float) -> int:
-    """The index of the track playing at ``t`` (the incoming one inside a crossfade)."""
-    return int(music.song_at(dict(m), t)["track"]) - 1
+    """The index of the track playing at ``t`` (the incoming one inside a crossfade); of a
+    Swedebeat mix, the song's."""
+    return int(music.song_at(dict(m), t)["song" if is_mix(m) else "track"]) - 1
 
 
 def timeline_for_model(
@@ -268,15 +339,31 @@ def quality_for_model(
 
 
 def music_warnings(m: Mapping[str, Any], workout_sec: int) -> list[str]:
-    """classbeat's own wording of what ``service.prepare`` warns about for a Spotify source."""
+    """classbeat's own wording of what ``service.prepare`` warns about for a Spotify source, or
+    for a Swedebeat mix (no timing warning: the mix plays as one file)."""
     out = []
     if workout_sec > m["duration"] + 1:
         out.append(LONGER_THAN_MUSIC.format(workout=mmss(workout_sec), music=mmss(m["duration"])))
+    if is_mix(m):
+        unsure = unsure_beat_one(m)
+        if unsure:
+            out.append(BEAT_ONE_ESTIMATE.format(songs=", ".join(str(n) for n in unsure)))
+        return out
     out.append(TIMING_WARNING)
     unknown = [int(t["track"]) - 1 for t in m["tracks"] if not t.get("bpm")]
     if unknown:
         out.append(UNKNOWN_BPM.format(tracks=", ".join(str(n) for n in unknown)))
     return out
+
+
+def unsure_beat_one(m: Mapping[str, Any]) -> list[int]:
+    """The songs of a Swedebeat mix (0-based) whose beat 1 is an estimate, as the library warns:
+    a beat-1 margin below ``LOW_MARGIN`` and no correction."""
+    return [
+        int(s["song"]) - 1
+        for s in m["songs"]
+        if float(s.get("beat1_margin", 0.0)) < LOW_MARGIN and not s.get("beat1_shift")
+    ]
 
 
 FIRST_MESSAGE: Final = (

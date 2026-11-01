@@ -1,8 +1,9 @@
 """The music step for a Swedebeat mix (ADR 0016 section 3 steps 1 and 2; A3): the user's MOWL
 playlist for the mix, then its analysis, from the user's own cache or from the audio.
 
-``load_swedebeat_mix`` is what ``design_draft`` calls for the music source ``mowl_swedebeat_mix``
-(wired by A4, behind ``swedebeat_enabled``), after ``design.music``'s pattern:
+``swedebeat_step`` (over ``load_swedebeat_mix``) is what ``design_draft`` and ``revise_draft`` call
+for the music source ``mowl_swedebeat_mix`` (A4). It never reads ``swedebeat_enabled`` itself: the
+kinds' ``admit`` and their run check the flag before calling it. After ``design.music``'s pattern:
 
 1. **The connection.** ``connection_id`` is the job's ``mowl_connection_id``; it must be the
    context's MOWL connection (``not_connected`` before any call). It is opened (a database read
@@ -13,7 +14,9 @@ playlist for the mix, then its analysis, from the user's own cache or from the a
    connection** (``mowl_connection_id``: the table has no foreign key to it, so this is compared
    here), names the link's MOWL playlist and has the library's current map version. **A hit makes
    no request at all.**
-3. **A miss.** The user's fresh listing must hold the mix (``invalid_input`` otherwise) and gives
+3. **A miss.** One of the user's daily analysis slots (``mixlimit.reserve``, ``analysis_limit``
+   past 10 in 24 hours; A4), then the user's fresh listing must hold the mix (``invalid_input``
+   otherwise) and gives
    its listed length; the attach (``operations.swedebeat``, which stores the link) and the wait for
    MOWL to index it; the temporary link from MOWL (``GET v1/swedebeat/playlist/{id}/
    TemporaryLinks``, one read through the library's call); the fetch (``mixfetch``: one
@@ -45,18 +48,22 @@ from mowl import api as mowl_api
 from mowl import music
 from sqlalchemy import text
 
+from classbeat.agent.model_input import MusicData, unsure_beat_one
 from classbeat.connections import OpenConnection, call_opened, hold, open_connection
 from classbeat.crypto.keks import KeyRing
+from classbeat.design import mixlimit
 from classbeat.design.mixanalysis import (
     ANALYSIS_SECONDS,
     analyse_audio,
     decode_limit_seconds,
 )
 from classbeat.design.mixfetch import fetch_mix_audio, private_directory
+from classbeat.design.music import MixFacts, MusicStep
 from classbeat.egress import mowl_media_async_client
 from classbeat.jobs import FencedSession, JobFailure, JobRun
 from classbeat.jobs.fence import CALL_LEASE_MARGIN_SECONDS
 from classbeat.operations.swedebeat import (
+    SOURCE,
     attach_swedebeat_mix,
     check_mix_id,
     parse_mixes,
@@ -225,6 +232,32 @@ async def load_swedebeat_mix(
     """The user's analysis of their Swedebeat mix ``mix_id`` (module docstring). ``client_factory``
     builds the one media client of a fetch; production passes none (the guard refuses a client
     built anywhere but ``classbeat.egress``)."""
+    analysis, _opened = await open_swedebeat_mix(
+        run,
+        keyring,
+        mix_id,
+        connection_id=connection_id,
+        client_factory=client_factory,
+        clock=clock,
+        index_poll_seconds=index_poll_seconds,
+    )
+    return analysis
+
+
+async def open_swedebeat_mix(
+    run: JobRun,
+    keyring: KeyRing,
+    mix_id: str,
+    *,
+    connection_id: UUID,
+    client_factory: Callable[[], httpx.AsyncClient] = mowl_media_async_client,
+    clock: Callable[[], float] = time.monotonic,
+    index_poll_seconds: float | None = None,
+) -> tuple[MixAnalysis, OpenConnection]:
+    """``load_swedebeat_mix`` and the MOWL connection it was read with, for the connection guard
+    of the transaction that stores what was designed on it (``swedebeat_step``). A cache miss
+    first takes one of the user's daily analysis slots (``mixlimit.reserve``: ``analysis_limit``,
+    before anything is listed, attached or fetched)."""
     mix_id = check_mix_id(mix_id)
     if run.ctx.connection("mowl") != connection_id:
         raise JobFailure("not_connected")
@@ -237,7 +270,9 @@ async def load_swedebeat_mix(
             "swedebeat mix from cache",
             extra={"job_id": str(run.lease.job_id), "songs": len(hit.music_map["songs"])},
         )
-        return hit
+        return hit, opened
+    async with run.fenced() as fs:
+        await mixlimit.reserve(fs)
     await run.checkpoint()
     listing = await call_opened(
         run.factory, run.ctx, opened, lambda creds: mowl_api.swedebeat_mixes(creds)
@@ -291,4 +326,64 @@ async def load_swedebeat_mix(
             "peak_rss_mb": None if result.peak_rss is None else result.peak_rss // (1 << 20),
         },
     )
-    return analysis
+    return analysis, opened
+
+
+_HELD_LINK = text(
+    "SELECT id, playlist_id FROM mowl_playlist_links "
+    "WHERE owner_id = :owner_id AND source = 'swedebeat' AND source_id = :mix_id"
+)
+
+
+async def swedebeat_step(
+    run: JobRun,
+    keyring: KeyRing,
+    mix_id: str,
+    *,
+    connection_id: UUID,
+    client_factory: Callable[[], httpx.AsyncClient] = mowl_media_async_client,
+    index_poll_seconds: float | None = None,
+) -> MusicStep:
+    """The music step of a design on the user's Swedebeat mix (ADR 0016 section 3, A4): the
+    analysis, then its link read under ``hold`` with the connection it was read with, as
+    ``design.music`` does for a playlist. ``MusicStep.still_current`` repeats that check in the
+    transaction that stores the revision (``link_source = 'swedebeat'``). The model is given the
+    map only (``model_input.mix_summary``); the name and the ids stay in ``MusicStep.mix``."""
+    analysis, opened = await open_swedebeat_mix(
+        run,
+        keyring,
+        mix_id,
+        connection_id=connection_id,
+        client_factory=client_factory,
+        index_poll_seconds=index_poll_seconds,
+    )
+    async with run.fenced() as fs:
+        if not await hold(fs.db, run.ctx, opened):
+            raise JobFailure("not_connected")
+        row = (
+            await fs.db.execute(
+                _HELD_LINK, {"owner_id": run.lease.owner_id, "mix_id": analysis.mix_id}
+            )
+        ).first()
+    if row is None or row.playlist_id != analysis.playlist_id:  # a reconnect deleted or moved it
+        raise JobFailure("not_connected")
+    m = analysis.music_map
+    data = MusicData(
+        {"map": m, "duration": analysis.duration}, analysis.playlist_id, source="swedebeat"
+    )
+    return MusicStep(
+        data=data,
+        source_id=analysis.mix_id,
+        link_id=row.id,
+        fingerprint=analysis.fingerprint,
+        unknown_bpm=(),
+        _opened=opened,
+        link_source=SOURCE,
+        mix=MixFacts(
+            mix_id=analysis.mix_id,
+            name=analysis.name,
+            duration=analysis.duration,
+            listed_duration=analysis.listed_duration,
+            unsure_beat_one=tuple(unsure_beat_one(m)),
+        ),
+    )

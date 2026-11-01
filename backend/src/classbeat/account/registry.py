@@ -71,5 +71,7 @@ NOT_EXPORTED: Mapping[str, str] = MappingProxyType(
         "user wrote",
         "spotify_oauth_flows": "an unfinished connect: a one-time PKCE verifier and state hash, "
         "deleted when used or expired, nothing the user wrote",
+        "swedebeat_analyses": "the times new mix analyses started, for the daily limit (ADR 0016 "
+        "section 7): no content, gone after two days, nothing the user wrote",
     }
 )
