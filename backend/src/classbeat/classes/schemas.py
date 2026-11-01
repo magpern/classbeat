@@ -233,6 +233,18 @@ class ProvenanceOut(BaseModel):
     cost_micros: int | None = None
 
 
+class RuleHitOut(BaseModel):
+    """One pattern note (ADR 0017 section 4): ids and numbers only; the wording is the
+    frontend's, keyed by ``rule``."""
+
+    rule: str
+    severity: Literal["info", "warn"]
+    metric: str
+    value: float
+    bounds: list[float | None]
+    explained_by_brief: bool
+
+
 class RevisionOut(RevisionSummaryOut):
     kind: str
     content: dict[str, Any]
@@ -240,6 +252,10 @@ class RevisionOut(RevisionSummaryOut):
     provenance: ProvenanceOut
     # ADR 0012 section 7: the draft has a zone 7 interval, so its TSS is approximate.
     tss_approximate: bool = False
+    # ADR 0017 section 4: computed on read from the stored brief and the current profile; empty
+    # and false when no profile applies.
+    rule_hits: list[RuleHitOut] = []
+    notes_use_current_rules: bool = False
 
 
 class MessageOut(BaseModel):
