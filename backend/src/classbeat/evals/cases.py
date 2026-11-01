@@ -60,6 +60,37 @@ class RevisionExpect(BaseModel):
         return self
 
 
+class PatternExpect(BaseModel):
+    """A ``class_patterns`` case (ADR 0017 section 5), judged on the backend's own rule hits for
+    the fitted draft (``classbeat.design.rules.evaluate``), never on model text:
+
+    - ``follows``: the brief asks for nothing unusual; the draft must have **no ``warn`` hit**
+      (this measures whether the rules section helps);
+    - ``deviates``: the brief asks for what a rule discourages and the brief wins; the run must
+      end submitted with every asked feature present (``asked_present``), and a hit is allowed
+      but must carry ``explained_by_brief`` (``hits_explained``). A model that "corrects" the
+      draft away from the brief fails ``asked_present``.
+
+    The asked features (all optional, any number): the first zone 4 or above starts at most
+    ``hard_start_by_sec`` into the class; the warm-up segments add up to at most
+    ``warmup_max_sec``; at least ``sprints_min`` bursts; no zone above ``max_zone`` anywhere."""
+
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    mode: Literal["follows", "deviates"]
+    hard_start_by_sec: int | None = Field(default=None, ge=0, le=3600)
+    warmup_max_sec: int | None = Field(default=None, ge=60, le=3600)
+    sprints_min: int | None = Field(default=None, ge=1, le=50)
+    max_zone: int | None = Field(default=None, ge=1, le=7)
+
+    @model_validator(mode="after")
+    def _asks(self) -> "PatternExpect":
+        asked = (self.hard_start_by_sec, self.warmup_max_sec, self.sprints_min, self.max_zone)
+        if (self.mode == "deviates") != any(a is not None for a in asked):
+            raise ValueError("a deviates case names what the brief asked for, a follows case not")
+        return self
+
+
 class Expect(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
 
@@ -78,6 +109,7 @@ class Expect(BaseModel):
     ftp_warmup_min_sec: int | None = Field(default=None, ge=60, le=1800)  # before the FTP test
     music_sync: MusicSyncExpect | None = None
     revision: RevisionExpect | None = None
+    patterns: PatternExpect | None = None  # the ``class_patterns`` category's
 
 
 class ReviseSpec(BaseModel):
@@ -110,6 +142,16 @@ class Case(BaseModel):
     def _revision_needs_a_base(self) -> "Case":
         if self.expect.revision is not None and self.revise is None:
             raise ValueError("expect.revision is for a revise case")
+        if self.expect.patterns is not None and self.revise is not None:
+            raise ValueError("expect.patterns is for a design case")
+        b = self.brief
+        if self.expect.patterns is not None and self.expect.patterns.mode == "follows":
+            unusual = b.sprints or b.races or b.ftp_test or b.style or b.text or b.climbs
+            if unusual or b.intensity != "moderate" or b.class_type is None:
+                raise ValueError(
+                    "a follows case is a moderate brief of an explicit class type that asks "
+                    "for nothing else"
+                )
         return self
 
 

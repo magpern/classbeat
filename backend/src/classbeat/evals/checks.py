@@ -33,6 +33,10 @@ The suite's checks (ADR 0012 section 4), run only for a case whose ``expect`` as
   the music has a drop; no sprints at all fails when the brief asked for sprints or races;
 - ``phrase_changes``: no zone change more than 1 s off a phrase boundary, drop, breakdown or
   track change when one is within 8 s (phrases from ``mowl.music.phrases``, events from the map);
+- ``pattern_followed`` (``follows``) / ``asked_present`` and ``hits_explained`` (``deviates``):
+  the class-pattern rules (ADR 0017 section 5), from the backend's rule hits for the fitted
+  draft and the brief: no ``warn`` hit when nothing unusual was asked; the asked feature present
+  and every hit explained by the brief when the brief asked for what a rule discourages;
 - ``revision``, ``kept_length``, ``kept_cooldown``, ``kept_efforts``: the asked change
   (``RevisionExpect``) is made, and what it did not touch is kept, measured against the base
   (``kept_efforts``: climbs, races and FTP tests for ``easier`` too, whose sprints may soften;
@@ -52,7 +56,9 @@ from classbeat.agent.design import DesignResult
 from classbeat.agent.limits import Limits
 from classbeat.agent.loop import StageOutcome
 from classbeat.design.revision import canonical, fitted_draft
-from classbeat.evals.cases import Case, Range, RevisionExpect
+from classbeat.design.rules import evaluate
+from classbeat.design.selection import select_profile_for_brief
+from classbeat.evals.cases import Case, PatternExpect, Range, RevisionExpect
 
 DURATION_TOLERANCE: Final = 0.05
 MUSIC_FILL: Final = 0.9
@@ -61,6 +67,7 @@ RACE_SEC: Final = (15, 35)
 CLIMB_MIN_SEC: Final = 90
 CLIMB_MAX_RPM: Final = 75
 HARD_ZONE: Final = 5
+PATTERN_HARD_ZONE: Final = 4  # the rules' "hard" starts at zone 4 (ADR 0017 section 1)
 ZONE7: Final = 7
 # Share of the time in zone 5 or above, per intensity ("about a tenth" in a typical class).
 HARD_SHARE: Final[dict[str, Range]] = {
@@ -446,10 +453,55 @@ def revision_checks(
     return out
 
 
+def _first_hard_sec(spec: dict[str, Any]) -> int:
+    for t, _, i in _timed(spec):
+        if i["zone"] >= PATTERN_HARD_ZONE:
+            return t
+    return workout.total_seconds(spec)
+
+
+def pattern_checks(case: Case, want: PatternExpect, spec: dict[str, Any]) -> list[Check]:
+    """The ``class_patterns`` checks (see ``PatternExpect``); no profile for the case's brief is
+    a failed case, not a pass: the case must be about a shipped profile."""
+    profile = select_profile_for_brief(case.brief)
+    if profile is None:
+        return [Check("pattern_profile", False, "no rule profile applies to the case's brief")]
+    hits = evaluate(spec, case.brief, profile)
+    if want.mode == "follows":
+        warned = [h.rule for h in hits if h.severity == "warn"]
+        return [Check("pattern_followed", not warned, f"{len(warned)} warn hits: {warned}")]
+    found: list[str] = []
+    missing: list[str] = []
+
+    def ask(name: str, ok: bool) -> None:
+        (found if ok else missing).append(name)
+
+    if want.hard_start_by_sec is not None:
+        ask("hard_start", _first_hard_sec(spec) <= want.hard_start_by_sec)
+    if want.warmup_max_sec is not None:
+        warm = sum(workout.seconds(s) for s in spec["segments"] if s["kind"] == "warmup")
+        ask("short_warmup", warm <= want.warmup_max_sec)
+    if want.sprints_min is not None:
+        ask("sprints", len(_bursts(spec)) >= want.sprints_min)
+    if want.max_zone is not None:
+        ask("max_zone", all(i["zone"] <= want.max_zone for _, i in _intervals(spec)))
+    unexplained = [h.rule for h in hits if not h.explained_by_brief]
+    return [
+        Check("asked_present", not missing, f"present {found}, missing {missing}"),
+        Check(
+            "hits_explained",
+            not unexplained,
+            f"{len(hits)} hits, {len(unexplained)} not explained by the brief: {unexplained}",
+        ),
+    ]
+
+
 def suite_checks(case: Case, result: DesignResult, music_map: dict[str, Any] | None) -> list[Check]:
     """The checks a suite case's ``expect`` asks for; none for a smoke case."""
     spec, expect = result.spec, case.expect
     out: list[Check] = []
+    if expect.patterns is not None:
+        out += pattern_checks(case, expect.patterns, spec)
     if expect.games:
         found = sorted(str(i["game"]) for _, i in _intervals(spec) if i.get("game"))
         out.append(

@@ -1,0 +1,23 @@
+{
+ "name": "cp_ten_sprints_30",
+ "about": "Ten sprints in a plain 30 minute class, asked: the brief wins over the ceiling rules.",
+ "brief": {
+  "length_min": 30,
+  "intensity": "moderate",
+  "class_type": "plain",
+  "sprints": 10
+ },
+ "music": {
+  "tracks": 10
+ },
+ "expect": {
+  "patterns": {
+   "mode": "deviates",
+   "sprints_min": 10
+  },
+  "tss": [
+   15,
+   45
+  ]
+ }
+}

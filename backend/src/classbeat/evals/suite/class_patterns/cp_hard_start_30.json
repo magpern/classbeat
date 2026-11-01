@@ -1,0 +1,23 @@
+{
+ "name": "cp_hard_start_30",
+ "about": "Hard from the first minute, asked: the brief wins over the warm-up rules.",
+ "brief": {
+  "length_min": 30,
+  "intensity": "hard",
+  "class_type": "plain",
+  "text": "Hard from the first minute, no easing in."
+ },
+ "music": {
+  "tracks": 10
+ },
+ "expect": {
+  "patterns": {
+   "mode": "deviates",
+   "hard_start_by_sec": 60
+  },
+  "hard_share": [
+   0.1,
+   0.45
+  ]
+ }
+}
