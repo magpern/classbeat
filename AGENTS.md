@@ -731,3 +731,20 @@ no fix exists or the code path is unreachable, add a dated ignore: `.trivyignore
 with a `# reason` comment above and Trivy's `exp:YYYY-MM-DD` expiry, e.g. `CVE-2025-0001 exp:2026-12-31`)
 or `--ignore-vuln ID` for pip-audit with the same comment. An expired ignore is removed in the next
 PR that touches it. Never ignore without a reason.
+
+## Cursor Cloud specific instructions
+
+Cloud Agent machines provide Node 24.22.1 (`/usr/local/lib/nodejs`), uv 0.13.6 and Docker 28.5.2
+with the `fuse-overlayfs` storage driver and `iptables-legacy`. There is no systemd. On boot the
+environment start script launches `dockerd`, runs `scripts/worktree.sh init` (local `.env` and
+`secrets/`; model key files stay empty; `MODEL_PROVIDER` stays `fake`) and
+`docker compose up -d --build --wait`. The app listens on http://127.0.0.1:8000 (`/api/ready` and
+the SPA), Postgres is on host port 55432 and Mailpit on 8025.
+
+Backend database tests need their own Postgres. `uv run pytest` skips them until
+`CLASSBEAT_TEST_DATABASE_URL` points at a throwaway server (the recipe under "Developer commands").
+That suite sets new passwords on `classbeat_owner` and `classbeat_app`, so the URL has to name a
+server other than the compose database the web process is using.
+
+Sign-up is invite-only. `docker compose exec web python -m classbeat invite create` prints a code
+once. The confirmation mail is in Mailpit.
