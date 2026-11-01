@@ -68,13 +68,23 @@ DIGEST_SOURCES: Final = (
     "suite.py",
     "gate.py",
 )
-# What the design stage is given besides the prompt (ADR 0017 section 5): the rules section's
-# wording, the profile selection, the engine and the profiles' index (rules_version, each
-# profile's version and digest). Paths under ``classbeat``; a change to any is a new suite.
+# What the design stage is told besides its prompt (ADR 0017 sections 3 and 5): every module
+# that decides which rules exist, which hits fire, what the section and each hit say, how a
+# brief picks its profile, and where the section and the hits enter the model's input and tool
+# results. Paths under ``classbeat``; a change to any of them is a new suite. A new module under
+# ``design/rules/`` must be listed here or in the documented exclusions of
+# ``tests/test_evals_class_patterns.py``. The profile files are covered by the digests in
+# ``design/profiles/index.json`` (``profile.load_registry`` refuses a file that differs).
 RULE_SOURCES: Final = (
+    "agent/guidance.py",
+    "agent/model_input.py",
     "design/guidance.py",
     "design/selection.py",
+    "design/rules/__init__.py",
     "design/rules/engine.py",
+    "design/rules/enums.py",
+    "design/rules/profile.py",
+    "design/rules/rationales.py",
     "design/profiles/index.json",
 )
 CONSTANT_MODULES: Final[tuple[ModuleType, ...]] = (checks, music, pick, pick_world, song_checks)

@@ -269,9 +269,29 @@ def test_the_digest_sources_include_every_rule_source() -> None:
     keys = set(suite.digest_sources())
     assert {f"classbeat/{n}" for n in suite.RULE_SOURCES} <= keys
     assert set(suite.RULE_SOURCES) == {
-        "design/guidance.py", "design/selection.py", "design/rules/engine.py",
-        "design/profiles/index.json",
+        "agent/guidance.py", "agent/model_input.py", "design/guidance.py", "design/selection.py",
+        "design/rules/__init__.py", "design/rules/engine.py", "design/rules/enums.py",
+        "design/rules/profile.py", "design/rules/rationales.py", "design/profiles/index.json",
     }  # fmt: skip
+
+
+# A module under design/rules/ that is deliberately not in the digest, with the reason. Empty
+# today: the whole package decides what the rules say or which hits fire.
+RULES_EXCLUDED: dict[str, str] = {}
+
+
+def test_every_module_under_design_rules_is_covered_or_excluded_on_purpose() -> None:
+    package = Path(suite.__file__).parent.parent
+    modules = {p.relative_to(package).as_posix() for p in (package / "design/rules").glob("*.py")}
+    covered = set(suite.RULE_SOURCES) | set(RULES_EXCLUDED)
+    assert modules <= covered, (
+        f"not in RULE_SOURCES nor excluded with a reason: {modules - covered}"
+    )
+    assert not set(RULES_EXCLUDED) & set(suite.RULE_SOURCES)
+    assert all(RULES_EXCLUDED.values()), "an exclusion needs its reason"
+    assert covered - set(RULES_EXCLUDED) <= {
+        p.relative_to(package).as_posix() for p in package.rglob("*") if p.is_file()
+    }  # no stale entry
 
 
 @pytest.mark.parametrize("name", suite.RULE_SOURCES)
