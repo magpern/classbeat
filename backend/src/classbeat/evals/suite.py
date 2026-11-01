@@ -223,10 +223,15 @@ def check_constants() -> dict[str, Any]:
 
 def digest_sources() -> dict[str, str]:
     folder = resources.files("classbeat.evals")
-    return {
+    package = resources.files("classbeat")
+    out = {
         name: (folder / name).read_bytes().replace(b"\r\n", b"\n").decode("utf-8")
         for name in DIGEST_SOURCES
     }
+    for name in RULE_SOURCES:
+        raw = package.joinpath(*name.split("/")).read_bytes().replace(b"\r\n", b"\n")
+        out[f"classbeat/{name}"] = raw.decode("utf-8")
+    return out
 
 
 def suite_digest(

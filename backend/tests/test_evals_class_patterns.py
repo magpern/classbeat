@@ -5,6 +5,8 @@ ignores the pattern, or one that "corrects" the draft away from the brief)."""
 
 import copy
 import json
+import shutil
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -16,10 +18,11 @@ from classbeat.agent.schemas import Brief, WorkoutDraft
 from classbeat.design.guidance import rule_set_for
 from classbeat.design.rules import default_registry, evaluate
 from classbeat.design.selection import select_profile_for_brief
+from classbeat.evals import suite
 from classbeat.evals.cases import Case, PatternExpect
 from classbeat.evals.music import build_music
 from classbeat.evals.runner import CaseResult, run_case
-from classbeat.evals.suite import CATEGORY_GROUPS, load_suite
+from classbeat.evals.suite import CATEGORY_GROUPS, load_suite, suite_digest
 from patternscripts import FOLLOWS, corrected_draft, pattern_draft
 from smokedrafts import iv, seg
 from suitescripts import provider_for_case
@@ -238,3 +241,58 @@ def test_the_run_gets_the_rules_a_production_job_builds() -> None:
         assert rules is not None, case.name
         assert rules.section()
     assert rule_set_for(Brief(length_min=15)) is None  # no profile within 3 minutes: no rules
+
+
+# --- the digest covers the rules (the review of #409) -------------------------------------------
+
+
+def _copy_sources(root: Path) -> None:
+    for name in suite.DIGEST_SOURCES:
+        (root / "classbeat" / "evals").mkdir(parents=True, exist_ok=True)
+        shutil.copy(Path(suite.__file__).parent / name, root / "classbeat" / "evals" / name)
+    package = Path(suite.__file__).parent.parent
+    for name in suite.RULE_SOURCES:
+        target = root / "classbeat" / name
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy(package / name, target)
+
+
+def _digest_in(root: Path, monkeypatch: pytest.MonkeyPatch) -> str:
+    def files(name: str) -> Path:
+        return root / name.replace(".", "/")
+
+    monkeypatch.setattr(suite.resources, "files", files)
+    return suite_digest({}, {}, suite.digest_sources(), {})
+
+
+def test_the_digest_sources_include_every_rule_source() -> None:
+    keys = set(suite.digest_sources())
+    assert {f"classbeat/{n}" for n in suite.RULE_SOURCES} <= keys
+    assert set(suite.RULE_SOURCES) == {
+        "design/guidance.py", "design/selection.py", "design/rules/engine.py",
+        "design/profiles/index.json",
+    }  # fmt: skip
+
+
+@pytest.mark.parametrize("name", suite.RULE_SOURCES)
+def test_one_changed_byte_of_a_rule_source_changes_the_digest(
+    name: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _copy_sources(tmp_path)
+    before = _digest_in(tmp_path, monkeypatch)
+    target = tmp_path / "classbeat" / name
+    target.write_bytes(target.read_bytes() + b" ")
+    assert _digest_in(tmp_path, monkeypatch) != before
+
+
+def test_dropping_a_rule_source_from_the_list_changes_the_digest(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _copy_sources(tmp_path)
+    full = _digest_in(tmp_path, monkeypatch)
+    for name in suite.RULE_SOURCES:
+        monkeypatch.setattr(
+            suite, "RULE_SOURCES", tuple(n for n in suite.RULE_SOURCES if n != name)
+        )
+        assert _digest_in(tmp_path, monkeypatch) != full
+        monkeypatch.undo()
