@@ -16,9 +16,10 @@ from typing import Any
 import pytest
 
 from agentfake import CONFIG, MemoryHost, analysed, brief, from_dict, good_draft
-from classbeat.agent import DesignContext, design_stage, model_input, run_stage
+from classbeat.agent import DesignContext, design_stage, mix_input, model_input, run_stage
 from classbeat.agent.design import check
-from classbeat.agent.model_input import MusicData, music_map
+from classbeat.agent.mix_input import MixData
+from classbeat.agent.model_input import MusicData
 from classbeat.agent.providers.fake import FakeProvider
 from classbeat.agent.schemas import WorkoutDraft
 
@@ -60,10 +61,8 @@ def mix_map(planted: bool = False) -> dict[str, Any]:
     return m
 
 
-def mix_data(m: dict[str, Any]) -> MusicData:
-    return MusicData(
-        {"map": m, "duration": m["duration"]}, int(PLANTED["playlist_id"]), source="swedebeat"
-    )
+def mix_data(m: dict[str, Any]) -> MixData:
+    return MixData({"map": m, "duration": m["duration"]}, int(PLANTED["playlist_id"]))
 
 
 def everything_sent(fake: FakeProvider) -> str:
@@ -114,8 +113,9 @@ async def test_no_planted_mix_value_reaches_the_provider() -> None:
 
 
 def test_the_mix_summary_is_numbers_only() -> None:
-    m = music_map(mix_map(planted=True), "swedebeat")
-    summary = model_input.music_summary(mix_data(mix_map(planted=True)), m)
+    data = mix_data(mix_map(planted=True))
+    m = mix_input.music_map(data)
+    summary = mix_input.music_summary(data, m)
     assert set(summary) == {"duration", "duration_sec", "crossfade_sec", "tracks",
                             "drops_and_breakdowns"}  # fmt: skip
     assert summary["crossfade_sec"] == 0.0
@@ -125,9 +125,9 @@ def test_the_mix_summary_is_numbers_only() -> None:
         {"index": 2, "bpm": 132.0, "from": "10:00", "sec": 300.0},
     ]
     assert set(summary["drops_and_breakdowns"][0]) == {"at", "t", "kind"}
-    assert model_input.track_count(m) == 3
-    assert model_input.track_at(m, 310.0) == 1
-    detail = model_input.track_detail(m, 1)
+    assert mix_input.track_count(m) == 3
+    assert mix_input.track_at(m, 310.0) == 1
+    detail = mix_input.track_detail(m, 1)
     assert detail == {
         "index": 1,
         "sections": [{"from": "5:00", "to": "10:00", "bpm": 128.0}],
@@ -139,24 +139,25 @@ def test_the_mix_summary_is_numbers_only() -> None:
 
 
 def test_a_mix_gets_the_swedebeat_warnings_not_the_spotify_timing_warning() -> None:
-    m = music_map(mix_map(), "swedebeat")
-    warnings = model_input.music_warnings(m, 1000)
+    m = mix_input.music_map(mix_data(mix_map()))
+    warnings = mix_input.music_warnings(m, 1000)
     assert warnings == [
         model_input.LONGER_THAN_MUSIC.format(workout="16:40", music="15:00"),
-        model_input.BEAT_ONE_ESTIMATE.format(songs="1"),
+        mix_input.BEAT_ONE_ESTIMATE.format(songs="1"),
     ]
     assert model_input.TIMING_WARNING not in warnings
     corrected = copy.deepcopy(mix_map())
     corrected["songs"][1]["beat1_shift"] = 1  # a corrected beat 1 is no estimate
-    assert model_input.music_warnings(music_map(corrected, "swedebeat"), 600) == []
+    assert mix_input.music_warnings(mix_input.music_map(mix_data(corrected)), 600) == []
     result = check(WorkoutDraft.model_validate(good_draft()), m)
     assert result.crossfade_sec == 0.0
     assert model_input.TIMING_WARNING not in result.warnings
+    assert [i["track"] for s in result.timeline for i in s["intervals"]][:2] == [0, 0]
 
 
 def test_a_spotify_map_cannot_be_read_as_a_mix() -> None:
     with pytest.raises(ValueError, match="no tracks"):
-        music_map({"tracks": [], "songs": [], "events": [], "duration": 1.0}, "swedebeat")
+        mix_input.music_map(mix_data({"tracks": [], "songs": [], "events": [], "duration": 1.0}))
 
 
 # The Spotify source, byte for byte as before A4: what the model is sent of the synthetic playlist
@@ -171,8 +172,8 @@ def spotify_view(data: MusicData) -> str:
     result = check(WorkoutDraft.model_validate(good_draft()), m)
     parts = [
         ctx.first_message(),
-        json.dumps([model_input.track_detail(m, i) for i in range(model_input.track_count(m))]),
-        json.dumps([model_input.track_at(m, t) for t in (0.0, 235.0, 480.0, 1500.0)]),
+        json.dumps([mix_input.track_detail(m, i) for i in range(mix_input.track_count(m))]),
+        json.dumps([mix_input.track_at(m, t) for t in (0.0, 235.0, 480.0, 1500.0)]),
         json.dumps(result.warnings),
         json.dumps(result.timeline),
         json.dumps(result.quality),
@@ -183,6 +184,6 @@ def spotify_view(data: MusicData) -> str:
 
 def test_the_spotify_source_is_byte_identical(monkeypatch: pytest.MonkeyPatch) -> None:
     data = analysed(monkeypatch)
-    assert data.source == "spotify"
+    assert not isinstance(data, MixData)
     view = spotify_view(data)
     assert hashlib.sha256(view.encode()).hexdigest() == SPOTIFY_DIGEST

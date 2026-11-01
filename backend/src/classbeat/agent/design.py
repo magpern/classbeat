@@ -11,7 +11,8 @@ ending with ``submit_draft``.
   report is a warning only: it never refuses a draft.
 
 All of it is pure: no network, no credentials, no database. The map is the one the backend loaded
-for this job, in the beta's 9 s crossfade (``model_input.music_map``). TSS, duration and the fitted
+for this job, in the beta's 9 s crossfade (``model_input.music_map``; a Swedebeat mix through
+``mix_input``, crossfade 0). TSS, duration and the fitted
 timing always come from here, never from a number the model states.
 """
 
@@ -22,7 +23,7 @@ from typing import Any, Final
 from mowl import music, sync, workout
 from mowl.workout import mmss
 
-from classbeat.agent import model_input
+from classbeat.agent import mix_input, model_input
 from classbeat.agent.guidance import Guidance, rules_result
 from classbeat.agent.model_input import MusicData
 from classbeat.agent.schemas import Brief, DraftInput, MusicInput, WorkoutDraft
@@ -115,8 +116,8 @@ class DesignContext:
 
     @classmethod
     def build(cls, brief: Brief, data: MusicData, rules: Guidance | None = None) -> "DesignContext":
-        m = model_input.music_map(data.analysis["map"], data.source)
-        return cls(brief, m, model_input.music_summary(data, m), rules)
+        m = mix_input.music_map(data)
+        return cls(brief, m, mix_input.music_summary(data, m), rules)
 
     def first_message(self) -> str:
         return model_input.first_message(
@@ -164,9 +165,9 @@ def check(draft: WorkoutDraft, m: dict[str, Any]) -> DesignResult:
     return DesignResult(
         draft=draft,
         spec=fitted,
-        timeline=model_input.timeline_for_model(fitted, report, m),
+        timeline=mix_input.timeline_for_model(fitted, report, m),
         quality=model_input.quality_for_model(wanted, fitted, m, report),
-        warnings=model_input.music_warnings(m, total),
+        warnings=mix_input.music_warnings(m, total),
         duration_sec=total,
         tss=round(workout.tss(fitted), 1),
         tss_approximate=has_zone7(fitted),
@@ -179,10 +180,10 @@ def design_stage(ctx: DesignContext) -> Stage:
     def get_music(args: MusicInput) -> ToolAnswer:
         if args.track is None:
             return ToolAnswer({"music": ctx.summary})
-        count = model_input.track_count(ctx.map)
+        count = mix_input.track_count(ctx.map)
         if not 0 <= args.track < count:
             raise ToolError("out_of_range", [f"track must be an index from 0 to {count - 1}"])
-        return ToolAnswer({"track": model_input.track_detail(ctx.map, args.track)})
+        return ToolAnswer({"track": mix_input.track_detail(ctx.map, args.track)})
 
     def preview_draft(args: DraftInput) -> ToolAnswer:
         result = check(args.draft, ctx.map)

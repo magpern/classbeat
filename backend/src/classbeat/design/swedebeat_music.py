@@ -48,7 +48,7 @@ from mowl import api as mowl_api
 from mowl import music
 from sqlalchemy import text
 
-from classbeat.agent.model_input import MusicData, unsure_beat_one
+from classbeat.agent.mix_input import MixData, unsure_beat_one
 from classbeat.connections import OpenConnection, call_opened, hold, open_connection
 from classbeat.crypto.keks import KeyRing
 from classbeat.design import mixlimit
@@ -348,7 +348,7 @@ async def swedebeat_step(
     analysis, then its link read under ``hold`` with the connection it was read with, as
     ``design.music`` does for a playlist. ``MusicStep.still_current`` repeats that check in the
     transaction that stores the revision (``link_source = 'swedebeat'``). The model is given the
-    map only (``model_input.mix_summary``); the name and the ids stay in ``MusicStep.mix``."""
+    map only (``mix_input.mix_summary``); the name and the ids stay in ``MusicStep.mix``."""
     analysis, opened = await open_swedebeat_mix(
         run,
         keyring,
@@ -368,9 +368,7 @@ async def swedebeat_step(
     if row is None or row.playlist_id != analysis.playlist_id:  # a reconnect deleted or moved it
         raise JobFailure("not_connected")
     m = analysis.music_map
-    data = MusicData(
-        {"map": m, "duration": analysis.duration}, analysis.playlist_id, source="swedebeat"
-    )
+    data = MixData({"map": m, "duration": analysis.duration}, analysis.playlist_id)
     return MusicStep(
         data=data,
         source_id=analysis.mix_id,
