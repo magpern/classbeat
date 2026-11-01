@@ -179,6 +179,13 @@ same account from another one. Undecided `uncertain` attach rows go too, so the 
 that playlist may add a second wrapper to the user's MOWL music; U1's reconnect and disconnect
 dialogs say so.
 
+**Hidden stale `pending` attach rows** (#117 item 7): when a design job's holder is reaped with
+its attempts spent while the attach row is still `pending`, the row is not listed (only
+`uncertain` rows are) and Check again / Do it anyway answer 409 `not_uncertain`. The designing
+page treats an empty list as honest: it explains that nothing is offered here and points at MOWL
+disconnect/reconnect to forget classbeat's record. A later design on the same playlist marks the
+row `uncertain` through the normal protocol, or the user clears it by reconnecting MOWL.
+
 **Holder of an operation row** (ADR 0005 §7 step 1, amended in #125). The pair `(job_id,
 lease_version)` names a holder only while the row is `pending`. A job that marks a stale `pending`
 row `uncertain`, or meets an `uncertain` row, sets its `job_id` to itself in the same fenced
