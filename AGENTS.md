@@ -8,6 +8,16 @@ external approvals; agents do everything else.
 **[docs/roadmap.md](docs/roadmap.md) is the frozen plan (Revision 6, with its dated amendments at the top). If this file and the
 roadmap differ, the roadmap wins.** Section numbers (§1, §4, M2 …) refer to it.
 
+## Codex entry point
+
+Codex must read this file **in full**, then [docs/codex.md](docs/codex.md), the roadmap
+and status before work. The Codex model mapping and PR attribution are authorized by
+roadmap Amendment 10; the Claude role definitions below remain valid for Claude Code.
+Codex role definitions are in `.codex/agents/*.toml`. Use the same issue, worktree,
+CI, independent current-head review and merge gates. Never treat an in-session
+`/review` as the independent Reviewer. If a fresh reviewer cannot be launched,
+leave the PR open and report that review is pending.
+
 ## Roles
 
 | Role | Model class | Owns | Must not |

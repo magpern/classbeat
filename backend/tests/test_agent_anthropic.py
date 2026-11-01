@@ -82,7 +82,18 @@ async def test_the_request_has_the_shape_of_section_2() -> None:
     assert body["thinking"] == {"type": "adaptive"}
     assert body["output_config"] == {"effort": "medium"}
     assert body["tool_choice"] == {"type": "auto"}
-    assert body["messages"] == [{"role": "user", "content": SPEC.first_message}]
+    assert body["messages"] == [
+        {
+            "role": "user",
+            "content": [
+                {
+                    "type": "text",
+                    "text": SPEC.first_message,
+                    "cache_control": {"type": "ephemeral"},
+                }
+            ],
+        }
+    ]
     for absent in ("temperature", "top_p", "top_k", "fallbacks", "metadata", "stop_sequences"):
         assert absent not in body
     assert set(body) == {
@@ -207,7 +218,17 @@ async def test_the_history_is_append_only_and_thinking_goes_back_unchanged() -> 
     )
     await conv.turn(results)
     await conv.turn((), reminder="Finish by calling submit_draft with the final draft.")
-    sent = [b["messages"] for b in fake.bodies]
+    raw = [b["messages"] for b in fake.bodies]
+    for messages in raw:  # one breakpoint, on the last block of the newest message only
+        marked = [
+            (i, j)
+            for i, m in enumerate(messages)
+            if isinstance(m["content"], list)
+            for j, block in enumerate(m["content"])
+            if "cache_control" in block
+        ]
+        assert marked == [(len(messages) - 1, len(messages[-1]["content"]) - 1)]
+    sent = [_without_breakpoints(m) for m in raw]
     for earlier, later in itertools.pairwise(sent):
         assert later[: len(earlier)] == earlier  # only ever appended to
     assistant = sent[1][1]
@@ -243,6 +264,17 @@ async def test_the_history_is_append_only_and_thinking_goes_back_unchanged() -> 
         ],
     }
     assert len(sent[2]) == 5
+
+
+def _without_breakpoints(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    out: list[dict[str, Any]] = []
+    for m in messages:
+        content = m["content"]
+        if isinstance(content, str):  # a string is the one-text-block shorthand
+            content = [{"type": "text", "text": content}]
+        content = [{k: v for k, v in b.items() if k != "cache_control"} for b in content]
+        out.append({**m, "content": content})
+    return out
 
 
 async def test_a_failed_turn_is_not_kept_in_the_history() -> None:
