@@ -206,14 +206,15 @@ sessions; all other roadmap and AGENTS.md requirements remain in force.
 - Architect / Orchestrator: Grok 4.7, high effort, standard speed.
 - Routine Developer and Explorer: Composer 2.5, standard speed.
 - Routine Reviewer: fresh Grok 4.7, high effort, standard speed.
-- Security-critical Developer and Reviewer: Claude Opus 5.5, medium effort (owner, 2026-11-01: high effort is not selectable here, so medium is the requirement, not a substitution). Opus also owns
-  production security decisions/ADRs and reviews after a second FAIL, even on routine PRs.
+- Security-critical Developer: Composer 2.5, standard speed (owner, 2026-11-01: Cursor security implementation is not Opus).
+- Security-critical Reviewer, including a review after a second FAIL: fresh Grok 4.7, high effort, standard speed (owner, 2026-11-01). Claude Code and Codex keep Opus for both roles.
   The Grok Architect schedules that work without taking over its security decisions.
 - The security categories, scope boundaries, issue/PR/worktree isolation, independent
   current-head PASS, CI and merge gates are unchanged. For this profile, even tests/docs-only
-  deltas on security-critical PRs stay with Opus (stricter than Amendment 4).
+  deltas on security-critical PRs are reviewed by a fresh Grok 4.7 High (stricter than Amendment 4
+  about who may review them, and no longer Opus).
 - Cursor verdicts use the actual model name, e.g. `Agent review (Grok 4.7): PASS <head SHA>`
-  or `Agent review (Opus 5.5): FAIL <head SHA>`. Configured model substitutions are a
+  or `Agent review (Grok 4.7): FAIL <head SHA>`. Configured model substitutions are a
   capability blocker, never permission to silently downgrade a role.
 - Cursor PRs end with `🤖 Generated with [Cursor](https://cursor.com/)` and have no
   Co-Authored-By trailer. Other development tools retain their profiles/attribution.
