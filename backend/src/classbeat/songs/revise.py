@@ -54,6 +54,7 @@ from classbeat.agent.revise import ReviseContext, ReviseResult, revise_stage
 from classbeat.context import UserContext
 from classbeat.crypto.keks import KeyRing
 from classbeat.design import chat, diff, limits, revision
+from classbeat.design.guidance import rule_set_for
 from classbeat.design.kind import current_runtime, group_model
 from classbeat.flags import effective as flags
 from classbeat.jobs import KINDS, Complete, FencedSession, JobFailure, JobKind, JobRun, Outcome
@@ -246,6 +247,7 @@ async def run_revise_phase_two(
             base_draft = WorkoutDraft.model_validate(base.content)
         except ValidationError:
             raise JobFailure("internal") from None
+        rules = rule_set_for(brief, base.dismissed_rules)
         ctx = ReviseContext.build(
             brief,
             step.data,
@@ -254,6 +256,7 @@ async def run_revise_phase_two(
             request,
             music_changed=True,
             songs_changed=True,
+            rules=rules,
         )
         stage = stage_config(
             agent, config, turns=agent.limits.max_turns, calls=agent.limits.max_tool_calls
@@ -274,6 +277,7 @@ async def run_revise_phase_two(
             base_hash=base_hash,
             request_message_id=message_id,
             song_list_id=p.revision_id,
+            rules=rules.provenance() if rules else None,
         )
         change = diff.summarize(base.content, draft.content)
         mowl_playlist_id = step.data.playlist_id

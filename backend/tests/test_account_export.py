@@ -176,3 +176,17 @@ async def test_a_cross_site_request_cannot_use_the_session_to_burn_the_allowance
         assert (await client.post(URL, headers=evil)).status_code == 403
     client.cookies.clear()
     assert [(await export(mine)).status_code for _ in range(5)] == [200] * 5
+
+
+async def test_the_export_holds_the_dismissed_rules_of_my_class(songenv: SongEnv) -> None:
+    """ADR 0017 section 4: ``classes.dismissed_rules`` is exported with the class (the registry
+    omits nothing from ``classes``) and goes with the class and the account (cascades)."""
+    mine = await person(songenv)
+    songenv.sql(
+        "UPDATE classes SET dismissed_rules = CAST(:v AS jsonb) WHERE id = :c",
+        v='["warmup_short"]',
+        c=mine.found.class_id,
+    )
+    document = (await export(mine)).json()
+    assert [c["dismissed_rules"] for c in document["classes"]] == [["warmup_short"]]
+    assert next(s for s in SECTIONS if s.table == "classes").omit == frozenset()

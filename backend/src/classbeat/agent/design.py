@@ -23,6 +23,7 @@ from mowl import music, sync, workout
 from mowl.workout import mmss
 
 from classbeat.agent import model_input
+from classbeat.agent.guidance import Guidance, rules_result
 from classbeat.agent.model_input import MusicData
 from classbeat.agent.schemas import Brief, DraftInput, MusicInput, WorkoutDraft
 from classbeat.agent.stage import Stage, Tool, ToolAnswer, ToolError
@@ -110,14 +111,17 @@ class DesignContext:
     brief: Brief
     map: dict[str, Any]  # model_input.music_map(...)
     summary: dict[str, Any]
+    rules: Guidance | None = None  # ADR 0017: None = no profile applies
 
     @classmethod
-    def build(cls, brief: Brief, data: MusicData) -> "DesignContext":
+    def build(cls, brief: Brief, data: MusicData, rules: Guidance | None = None) -> "DesignContext":
         m = model_input.music_map(data.analysis["map"])
-        return cls(brief, m, model_input.music_summary(data, m))
+        return cls(brief, m, model_input.music_summary(data, m), rules)
 
     def first_message(self) -> str:
-        return model_input.first_message(self.brief, self.summary)
+        return model_input.first_message(
+            self.brief, self.summary, self.rules.section() if self.rules else None
+        )
 
 
 def _placeholder_rpm(spec: dict[str, Any]) -> dict[str, Any]:
@@ -191,6 +195,7 @@ def design_stage(ctx: DesignContext) -> Stage:
                 "timeline": result.timeline,
                 "quality": result.quality,
                 "warnings": result.warnings,
+                **rules_result(ctx.rules, result.spec),
             }
         )
 
@@ -204,6 +209,7 @@ def design_stage(ctx: DesignContext) -> Stage:
                 "tss_approximate": result.tss_approximate,
                 "quality": result.quality,
                 "warnings": result.warnings,
+                **rules_result(ctx.rules, result.spec),
             },
             output=result,
         )

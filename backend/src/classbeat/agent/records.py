@@ -162,6 +162,16 @@ class ProvenanceUsage(BaseModel):
     cache_write_tokens: int = Field(ge=0)
 
 
+class ProvenanceRules(BaseModel):
+    """ADR 0017 section 2: the rule profile the model saw when it made the revision."""
+
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    profile: str = Field(pattern=r"^[a-z]+\.[a-z_]+\.[0-9]{1,3}$")
+    version: int = Field(ge=1, le=10_000)
+    digest: str = Field(pattern=r"^[0-9a-f]{64}$")
+
+
 class Provenance(BaseModel):
     """``class_revisions.provenance`` (ADR 0006 section 6)."""
 
@@ -196,6 +206,8 @@ class Provenance(BaseModel):
     # ADR 0012 section 7, on a draft: the fitted draft has a zone 7 interval, so its TSS is a
     # guess. Computed by the backend; absent on revisions stored before it and on song lists.
     tss_approximate: bool | None = None
+    # ADR 0017: absent when no profile applied (and on revisions stored before it).
+    rules: ProvenanceRules | None = None
 
     @model_validator(mode="after")
     def _lineage(self) -> Self:
@@ -213,7 +225,7 @@ class Provenance(BaseModel):
         """A revision that was not made from picked songs is stored exactly as before: the two
         song fields are left out when unset (additive, ADR 0008 section 3)."""
         out: dict[str, Any] = handler(self)
-        for key in ("schema_version", "stage_versions", "tss_approximate"):
+        for key in ("schema_version", "stage_versions", "tss_approximate", "rules"):
             if out.get(key) is None:
                 out.pop(key, None)
         return out
@@ -247,6 +259,7 @@ def provenance(
     request_message_id: UUID | None = None,
     schema_version: int | None = None,
     tss_approximate: bool | None = None,
+    rules: Mapping[str, Any] | None = None,
 ) -> Provenance:
     """From the job's stage runs (the last one made the content) and the map it was fitted to;
     ``origin`` and the two ids say what the revision was made from (ADR 0007 section 2).
@@ -282,6 +295,7 @@ def provenance(
         request_message_id=request_message_id,
         schema_version=schema_version,
         tss_approximate=tss_approximate,
+        rules=None if rules is None else ProvenanceRules.model_validate(dict(rules)),
         stage_versions=(
             {r.info.stage: r.info.prompt_version for r in runs} if schema_version else None
         ),

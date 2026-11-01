@@ -1,7 +1,7 @@
 """Swedebeat mixes: the attach operation, its link and the analysis table (ADR 0016 sections 3, 8; A2)
 
 Revision ID: 0018_swedebeat_mix_maps
-Revises: 0016_swedebeat_flag
+Revises: 0017_dismissed_rules
 Create Date: 2026-11-01
 
 - ``external_operations.kind`` allows ``mowl_attach_swedebeat_mix``; like the Spotify attach it
@@ -12,9 +12,6 @@ Create Date: 2026-11-01
   per ``(owner_id, mix_id)``, owner RLS, no audio and nothing Spotify-derived. The 20-per-user cap,
   the 30 days and the deletion paths are the application's (A3 writes the rows); the table's
   checks bound each row.
-
-Numbering: 0017 is taken by the open ``dismissed_rules`` migration (#404); this revision hangs on
-0016 so it can be tested alone and is re-pointed at ``0017_dismissed_rules`` when that merges.
 """
 
 from collections.abc import Sequence
@@ -24,7 +21,7 @@ from alembic import op
 from classbeat.db.rls import enable_owner_rls
 
 revision: str = "0018_swedebeat_mix_maps"
-down_revision: str | Sequence[str] | None = "0016_swedebeat_flag"
+down_revision: str | Sequence[str] | None = "0017_dismissed_rules"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

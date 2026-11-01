@@ -42,7 +42,8 @@ _INSERT = text(
     "RETURNING seq"
 )
 _BASE_FOR_RUN = text(
-    "SELECT j.class_id, c.brief, c.music_source, r.kind, r.content, r.content_hash, "
+    "SELECT j.class_id, c.brief, c.music_source, c.dismissed_rules, r.kind, r.content, "
+    "r.content_hash, "
     "r.music ->> 'fingerprint' AS fingerprint "
     "FROM jobs j JOIN classes c ON c.owner_id = j.owner_id AND c.id = j.class_id "
     "JOIN class_revisions r ON r.owner_id = c.owner_id AND r.class_id = c.id AND r.id = :base "
@@ -146,6 +147,7 @@ class BaseForRun:
     content_hash: bytes
     fingerprint: str | None
     earlier_requests: tuple[str, ...]
+    dismissed_rules: tuple[str, ...] = ()  # ADR 0017 section 4; ids the user dismissed
 
 
 async def load_base(
@@ -170,6 +172,7 @@ async def load_base(
         bytes(row.content_hash),
         row.fingerprint,
         tuple(r.body for r in chain),
+        tuple(r for r in (row.dismissed_rules or []) if isinstance(r, str)),
     )
 
 

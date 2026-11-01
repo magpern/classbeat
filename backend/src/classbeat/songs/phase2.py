@@ -71,6 +71,7 @@ from classbeat.agent.provider import ModelProvider
 from classbeat.connections import OpenConnection, hold, open_connection
 from classbeat.crypto.keks import KeyRing
 from classbeat.design import revision
+from classbeat.design.guidance import rule_set_for
 from classbeat.design.music import MusicStep, load_music
 from classbeat.jobs import Complete, FencedSession, JobFailure, JobRun
 from classbeat.operations import attach_spotify_playlist, orphans
@@ -359,7 +360,8 @@ async def run_phase_two(
 ) -> Complete:
     p, final, step = await final_music(run, keyring, given, config)
     try:
-        ctx = DesignContext.build(given.brief, step.data)
+        rules = rule_set_for(given.brief)
+        ctx = DesignContext.build(given.brief, step.data, rules)
         design_config = stage_config(
             agent, config, turns=agent.limits.max_turns, calls=agent.limits.max_tool_calls
         )
@@ -369,7 +371,13 @@ async def run_phase_two(
         if not isinstance(outcome.output, DesignResult):
             raise JobFailure("internal")
         draft = revision.build(
-            outcome.output, outcome, ctx.map, step, origin=ORIGIN, song_list_id=p.revision_id
+            outcome.output,
+            outcome,
+            ctx.map,
+            step,
+            origin=ORIGIN,
+            song_list_id=p.revision_id,
+            rules=rules.provenance() if rules else None,
         )
     except BaseException:
         step.close()
