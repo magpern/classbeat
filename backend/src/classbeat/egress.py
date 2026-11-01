@@ -46,8 +46,10 @@ Swedebeat mix from the temporary link MOWL returns (A3, worker only). Its list i
 owner confirms the host**; so is nothing else's: the library's MOWL opener, with its
 ``authorization`` header, cannot reach the media host (it is on no urllib list), and this client
 sends none of our headers. It follows no redirect at all, ends every request within
-``MOWL_MEDIA_TOTAL_SECONDS`` and takes a list as an argument only from tests (the guard refuses it
-in ``classbeat``). Swedebeat's embedded AWS credentials are never used (a static guard).
+``MOWL_MEDIA_TOTAL_SECONDS`` and takes **no argument** (a list and a transport come only from
+tests, through ``mowl_media_test_client``, which the guard refuses in ``classbeat``). The body is
+read raw and any ``Content-Encoding`` but identity is refused (``classbeat.design.mixfetch``).
+Swedebeat's embedded AWS credentials are never used (a static guard).
 ``cloud.swedebeat.se`` (B1) will get its own scoped list and client the same way.
 
 All paths verify TLS with a context from ``tls_client_context()``, which never writes a TLS key
@@ -872,34 +874,51 @@ def mowl_media_network_transport() -> httpx.AsyncHTTPTransport:
     return httpx.AsyncHTTPTransport(trust_env=False, verify=tls_client_context())
 
 
-def mowl_media_async_client(
-    allowlist: Allowlist = MOWL_MEDIA_ALLOWLIST,
-    *,
-    total_seconds: float = MOWL_MEDIA_TOTAL_SECONDS,
-    inner: httpx.AsyncBaseTransport | None = None,
+def _media_client(
+    allowlist: Allowlist, total_seconds: float, inner: httpx.AsyncBaseTransport
 ) -> httpx.AsyncClient:
-    """The dedicated client that fetches a Swedebeat mix from a MOWL temporary link (ADR 0016 §4,
-    A3 uses it in the worker; threat model T109).
-
-    It reaches only ``allowlist`` (``MOWL_MEDIA_ALLOWLIST`` unless a test hands in its own: the
-    production code under ``classbeat`` never passes one, the guard refuses it; the list is code
-    and today empty, so every request is refused ``OutboundBlocked``), https on 443, no userinfo.
-    It follows **no redirect at all** (``follow_redirects=False``): a hop to another host is
-    refused (``OutboundBlocked`` with ``after_request``) and a same-host 3xx comes back as a
-    response for the caller to refuse. ``trust_env=False`` (no proxy, ``NETRC`` or cookie jar from
-    the environment), and **no default header**: httpx's ``User-Agent``, ``Accept`` and
-    ``Accept-Encoding`` are cleared, so a request carries only what the call site sets (never the
-    MOWL ``authorization``) and the answer is not compressed (``Content-Length`` and the streamed
-    count mean the bytes on disk). Every request, its body included, ends within ``total_seconds``
-    (``RequestDeadline``). ``inner`` replaces the network transport in tests (the fake media
-    endpoint, no network); the checks still run.
-    """
-    network = inner if inner is not None else mowl_media_network_transport()
     client = httpx.AsyncClient(
-        transport=AllowlistTransport(allowlist, network, total_seconds=total_seconds),
+        transport=AllowlistTransport(allowlist, inner, total_seconds=total_seconds),
         trust_env=False,
         timeout=total_seconds,
         follow_redirects=False,
     )
     client.headers.clear()
     return client
+
+
+def mowl_media_async_client() -> httpx.AsyncClient:
+    """The dedicated client that fetches a Swedebeat mix from a MOWL temporary link (ADR 0016 §4,
+    A3 uses it in the worker; threat model T109). **It takes no argument**: its list is always
+    ``MOWL_MEDIA_ALLOWLIST`` (code, today empty, so every request is refused ``OutboundBlocked``),
+    its deadline ``MOWL_MEDIA_TOTAL_SECONDS`` and its transport the network's. A fetch builds **one
+    client per fetch** (``async with``): the client keeps a cookie jar and a connection pool, and
+    neither may outlive the one link it was made for.
+
+    https on 443, no userinfo. It follows **no redirect at all** (``follow_redirects=False``,
+    and the guard refuses ``follow_redirects=True`` on any call): a hop to another host is
+    refused (``OutboundBlocked`` with ``after_request``) and a same-host 3xx comes back as a
+    response for the caller to refuse. ``trust_env=False`` (no proxy, ``NETRC`` or cookie jar from
+    the environment), and **no default header**: httpx's ``User-Agent``, ``Accept`` and
+    ``Accept-Encoding`` are cleared, so a request carries only what the call site sets (never the
+    MOWL ``authorization``). That does **not** make the answer uncompressed: a server may send a
+    ``Content-Encoding`` anyway, and httpx would decode it on read (a compression bomb). The call
+    site therefore reads the raw bytes (``aiter_raw``) and refuses any encoding but identity
+    (``classbeat.design.mixfetch``). Every request, its body included, ends within
+    ``MOWL_MEDIA_TOTAL_SECONDS`` (``RequestDeadline``)."""
+    return _media_client(
+        MOWL_MEDIA_ALLOWLIST, MOWL_MEDIA_TOTAL_SECONDS, mowl_media_network_transport()
+    )
+
+
+def mowl_media_test_client(
+    allowlist: Allowlist,
+    inner: httpx.AsyncBaseTransport,
+    *,
+    total_seconds: float = MOWL_MEDIA_TOTAL_SECONDS,
+) -> httpx.AsyncClient:
+    """**Tests only** (the guard refuses it in ``classbeat``): the media client of
+    ``mowl_media_async_client`` with a list of the test's own and a fake transport, so the fetch,
+    its limits and the analysis are proven against the fake media endpoint (ADR 0016 §4). The
+    redirect, header and deadline behaviour is the production client's (the same builder)."""
+    return _media_client(allowlist, total_seconds, inner)

@@ -128,12 +128,17 @@ _CALLS = frozenset(
         "classbeat.egress.model_network_transport",
         "classbeat.egress.spotify_network_transport",
         "classbeat.egress.mowl_media_network_transport",
+        # ADR 0016 §4: the media client with a list and a transport of the caller's own is for
+        # tests; production code gets the one with no arguments.
+        "classbeat.egress.mowl_media_test_client",
+        "classbeat.egress._media_client",
     }
 )
 # Allowed only without an allowlist argument (the list is the function's own).
-_NO_ALLOWLIST_ARGUMENT = frozenset(
-    {"classbeat.egress.allowlisted_async_client", "classbeat.egress.mowl_media_async_client"}
-)
+_NO_ALLOWLIST_ARGUMENT = frozenset({"classbeat.egress.allowlisted_async_client"})
+# Allowed only with no argument at all: the list, the deadline and the transport are the
+# function's own (ADR 0016 §4).
+_NO_ARGUMENTS = frozenset({"classbeat.egress.mowl_media_async_client"})
 
 # Any call by these attribute names, whatever the object (an event loop, a socket): raw
 # connections around both allowlisted paths.
@@ -297,6 +302,13 @@ def scan_source(source: str, module: str) -> list[tuple[int, str]]:
         if not isinstance(node, ast.Call):
             continue
         func = node.func
+        # A request that follows redirects follows them to any host, whatever the client's own
+        # default and list say about the first hop (ADR 0016 §4: the media client follows none).
+        for keyword in node.keywords:
+            if keyword.arg == "follow_redirects" and not (
+                isinstance(keyword.value, ast.Constant) and keyword.value.value is False
+            ):
+                found.append((node.lineno, "follow_redirects other than False: no redirects"))
         if isinstance(func, ast.Attribute) and func.attr in _CALL_ATTRIBUTES:
             found.append((node.lineno, f"calls .{func.attr}: raw connections live in {EGRESS}"))
             continue
@@ -304,6 +316,10 @@ def scan_source(source: str, module: str) -> list[tuple[int, str]]:
         if name is None:
             continue
         name = _canonical(name)
+        if name in _NO_ARGUMENTS:
+            if node.args or node.keywords:
+                found.append((node.lineno, f"hands {name} an argument: it takes none ({EGRESS})"))
+            continue
         if name in _NO_ALLOWLIST_ARGUMENT:
             if node.args or any(k.arg in (None, "allowlist") for k in node.keywords):
                 found.append((node.lineno, f"hands {name} an allowlist: lists live in {EGRESS}"))

@@ -1,6 +1,6 @@
 """A1 of ADR 0016: the MOWL fake's Swedebeat calls reproduce what the library makes (``mowl.api``
 against ``mowlfake``), and the fake media endpoint's failure injection reaches the dedicated media
-client (``egress.mowl_media_async_client``) with an injected list. In-process, never the network."""
+client (``egress.mowl_media_test_client``) with an injected list. In-process, never the network."""
 
 import http.client
 import io
@@ -21,8 +21,9 @@ from classbeat.egress import (
     OutboundBlocked,
     RequestDeadline,
     mowl_media_async_client,
+    mowl_media_test_client,
 )
-from mediafake import OTHER_HOST, FakeMedia
+from mediafake import OTHER_HOST, FakeMedia, wav_bytes
 from mowlfake import TOKEN, FakeMowl
 
 pytestmark = pytest.mark.usefixtures("mowl_api")
@@ -42,7 +43,7 @@ def closed(refused: "pytest.ExceptionInfo[api.MowlError]") -> api.MowlError:
 
 
 def client(media: FakeMedia, **kwargs: Any) -> httpx.AsyncClient:
-    return mowl_media_async_client(Allowlist(frozenset({FakeMedia.HOST})), inner=media, **kwargs)
+    return mowl_media_test_client(Allowlist(frozenset({FakeMedia.HOST})), media, **kwargs)
 
 
 # --- the library's calls against the fake MOWL ----------------------------------------------
@@ -213,6 +214,27 @@ async def test_a_good_link_gives_the_generated_audio() -> None:
         assert audio.getnframes() == 8000
 
 
+async def test_a_compressed_answer_is_raw_on_the_wire_and_decoded_by_a_plain_read() -> None:
+    # The fake sends Content-Encoding gzip although the client never asked for it; ``.content``
+    # (``aiter_bytes``) would decode it, ``aiter_raw`` does not (the fetch reads the raw bytes).
+    media = FakeMedia()
+    async with client(media) as http:
+        async with http.stream("GET", media.link("gzip", seconds=1.0)) as answer:
+            assert answer.headers["content-encoding"] == "gzip"
+            raw = b"".join([c async for c in answer.aiter_raw()])
+        assert raw[:2] == b"\x1f\x8b"
+        answer = await http.get(media.link("gzip", seconds=1.0))
+    with wave.open(io.BytesIO(answer.content)) as audio:
+        assert audio.getnframes() == 8000
+
+
+def test_a_long_tone_is_quick_to_make() -> None:
+    started = time.monotonic()
+    data = wav_bytes(seconds=3600.0, rate=1000)
+    assert len(data) > 7_000_000
+    assert time.monotonic() - started < 2
+
+
 async def test_octet_stream_is_still_audio() -> None:
     media = FakeMedia()
     answer = await fetch(media, media.link("octet"))
@@ -299,7 +321,7 @@ async def test_a_link_off_the_injected_list_is_refused_before_it_is_sent(link: s
 async def test_the_production_list_is_empty_and_refuses_every_host() -> None:
     media = FakeMedia()
     assert MOWL_MEDIA_ALLOWLIST.hosts == frozenset()
-    async with mowl_media_async_client(inner=media) as http:
+    async with mowl_media_async_client() as http:  # the real transport is never reached
         with pytest.raises(OutboundBlocked):
             await http.get(media.link("ok"))
     assert media.requests == []

@@ -167,6 +167,19 @@ REFUSED = [
     "from classbeat.egress import mowl_media_async_client\nmowl_media_async_client(allowlist=a)",
     "from classbeat.egress import mowl_media_async_client\nmowl_media_async_client(**options)",
     "from classbeat.egress import mowl_media_network_transport\nmowl_media_network_transport()",
+    # The factory takes no argument at all (A3 needs neither a deadline nor a transport).
+    "from classbeat.egress import mowl_media_async_client\n"
+    "mowl_media_async_client(total_seconds=1)",
+    "from classbeat.egress import mowl_media_async_client\nmowl_media_async_client(inner=t)",
+    "from classbeat.egress import mowl_media_test_client\nmowl_media_test_client(a, t)",
+    "from classbeat import egress\negress.mowl_media_test_client(a, t)",
+    "from classbeat import egress\negress._media_client(a, 1.0, t)",
+    # No request follows redirects, whatever the client's own default is.
+    "async def f(client, url):\n    await client.get(url, follow_redirects=True)",
+    "async def f(client, url):\n"
+    "    async with client.stream('GET', url, follow_redirects=True): pass",
+    "async def f(client, url):\n    await client.request('GET', url, follow_redirects=flag)",
+    "async def f(client, request):\n    await client.send(request, follow_redirects=True)",
 ]
 
 
@@ -178,6 +191,8 @@ def test_the_guard_refuses(source: str) -> None:
 ALLOWED = [
     "from classbeat.egress import allowlisted_async_client\nallowlisted_async_client()",
     "from classbeat.egress import mowl_media_async_client\nmowl_media_async_client()",
+    "async def f(client, url):\n    await client.get(url, follow_redirects=False)",
+    "async def f(client, url):\n    await client.get(url)",
     "import httpx\nx: httpx.AsyncBaseTransport\nhttpx.Timeout(1.0)\nhttpx.MockTransport(f)",
     "import anthropic\nanthropic.AsyncAnthropic(api_key=k, http_client=c)",
     "from anthropic import AsyncAnthropic\nAsyncAnthropic(http_client=client, max_retries=2)",

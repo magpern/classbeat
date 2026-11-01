@@ -1,7 +1,7 @@
 """An in-process fake of the MOWL temporary-link media host (ADR 0016 §4, §8). Never the network.
 
-``FakeMedia`` is an ``httpx.AsyncBaseTransport``: it is handed to ``egress.mowl_media_async_client``
-as ``inner`` (the pattern of ``SpotifyHTTPS``), so the client's allowlist, redirect and deadline
+``FakeMedia`` is an ``httpx.AsyncBaseTransport``: it is the transport of
+``egress.mowl_media_test_client``, so the client's allowlist, redirect and deadline
 checks run in front of it and no socket is opened. Nothing about the real host is known (it is not
 guessed), so the fake answers as the invented name ``media.fake.test``; a test builds the client
 with
@@ -19,6 +19,12 @@ so a test can search logs and responses for them. Each link has a **behaviour** 
   ``other`` (another host, unlisted);
 - ``oversize``: ``200`` declaring ``Content-Length`` ``size`` and streaming that many zero bytes
   lazily (never held in memory); ``oversize_stream``: the same with no ``Content-Length``;
+- ``beats``: ``200`` with a generated four-on-the-floor kick track (``bpm``, default 124; 11025 Hz,
+  ``seconds`` long): the library's analysis finds one song in it; ``audio/wav`` (or the option
+  ``content_type``, for example ``application/octet-stream``);
+- ``gzip``: the same audio, gzip-compressed, with ``Content-Encoding: gzip`` (``deflate`` and
+  ``br`` are ``encoding`` options; ``bomb`` makes the body a small gzip of ``bomb`` zero bytes);
+  the media client must read raw bytes and refuse it;
 - ``slow``: ``200`` whose body trickles ``chunk`` bytes every ``delay`` seconds, ``chunks`` times.
 
 ``requests`` records ``(method, host, path)`` (never the query, so never a signature) and
@@ -26,16 +32,16 @@ so a test can search logs and responses for them. Each link has a **behaviour** 
 """
 
 import asyncio
+import gzip
 import io
-import math
 import secrets
-import struct
 import wave
 from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
 from typing import Any
 
 import httpx
+import numpy as np
 
 OTHER_HOST = "other.fake.test"  # a name no list holds
 BEHAVIOURS = (
@@ -48,22 +54,42 @@ BEHAVIOURS = (
     "oversize",
     "oversize_stream",
     "slow",
+    "beats",
+    "gzip",
 )
 
 
-def wav_bytes(seconds: float = 2.0, rate: int = 8000) -> bytes:
-    """A short mono 16-bit WAV of a 440 Hz sine, generated, never a recording."""
-    frames = b"".join(
-        struct.pack("<h", int(8000 * math.sin(2 * math.pi * 440 * i / rate)))
-        for i in range(int(seconds * rate))
-    )
+def _wav(samples: "np.ndarray[Any, Any]", rate: int) -> bytes:
     buffer = io.BytesIO()
     with wave.open(buffer, "wb") as out:
         out.setnchannels(1)
         out.setsampwidth(2)
         out.setframerate(rate)
-        out.writeframes(frames)
+        out.writeframes(samples.astype("<i2").tobytes())
     return buffer.getvalue()
+
+
+def wav_bytes(seconds: float = 2.0, rate: int = 8000) -> bytes:
+    """A mono 16-bit WAV of a 440 Hz sine, generated (vectorised: a long file is quick), never a
+    recording."""
+    n = np.arange(int(seconds * rate))
+    return _wav(8000 * np.sin(2 * np.pi * 440 * n / rate), rate)
+
+
+def kick_wav_bytes(seconds: float = 60.0, bpm: float = 124.0, rate: int = 11025) -> bytes:
+    """A four-on-the-floor kick track (a decaying low sine on every beat): one steady song for
+    the library's analysis. Generated, never a recording."""
+    total = int(seconds * rate)
+    y = np.zeros(total)
+    t = np.arange(int(0.12 * rate)) / rate
+    thump = np.sin(2 * np.pi * (55 + 60 * np.exp(-t * 40)) * t) * np.exp(-t * 30)
+    step = 60.0 * rate / bpm
+    for k in range(int(total / step) + 1):
+        i = int(k * step)
+        m = min(len(thump), total - i)
+        if m > 0:
+            y[i : i + m] += thump[:m]
+    return _wav(20000 * y, rate)
 
 
 @dataclass
@@ -161,10 +187,30 @@ class FakeMedia(httpx.AsyncBaseTransport):
             )
             headers = {"content-type": "audio/mpeg"}
             return httpx.Response(200, headers=headers, stream=_Chunks(chunks), request=request)
-        # ok, octet, and the moved-to path of a redirect
-        data = wav_bytes(float(o.get("seconds", 2.0)))
+        if kind == "gzip":
+            return self._compressed(o, request)
+        # ok, octet, beats, and the moved-to path of a redirect
+        seconds = float(o.get("seconds", 2.0))
+        if kind == "beats":
+            data = kick_wav_bytes(seconds, float(o.get("bpm", 124.0)))
+        else:
+            data = wav_bytes(seconds, int(o.get("rate", 8000)))
         kind_type = "application/octet-stream" if kind == "octet" else "audio/wav"
+        kind_type = str(o.get("content_type", kind_type))
         return self._whole(data, kind_type, request)
+
+    @staticmethod
+    def _compressed(o: dict[str, Any], request: httpx.Request) -> httpx.Response:
+        if "bomb" in o:
+            body = gzip.compress(b"\0" * int(o["bomb"]), 9)
+        else:
+            body = gzip.compress(wav_bytes(float(o.get("seconds", 2.0))))
+        headers = {
+            "content-type": "audio/wav",
+            "content-encoding": str(o.get("encoding", "gzip")),
+            "content-length": str(len(body)),
+        }
+        return httpx.Response(200, headers=headers, stream=_Chunks(_body(body)), request=request)
 
     @staticmethod
     def _whole(data: bytes, content_type: str, request: httpx.Request) -> httpx.Response:

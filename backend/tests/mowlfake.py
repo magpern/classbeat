@@ -13,6 +13,9 @@ lists,
 attaches or fetches them. The same mix id can belong to two tokens (``add_mix(mix_id=...)``): each
 token has its own playlist for it.
 
+A3 additions: ``links_answer`` (``"empty"``: ``TemporaryLinks`` lists no link; ``"garbled"``: an
+entry without one).
+
 A2 additions: failures per endpoint (``status["swedebeat_list"|"swedebeat_attach"|
 "swedebeat_tracks"|"swedebeat_links"]``, or ``"swedebeat"`` for all four; 401, 429 with
 ``retry_after``, 5xx); ``attach_answer`` (``"ok"``, ``"drop"``: the attach happens and the
@@ -75,6 +78,7 @@ class FakeMowl:
     attaches: list[str] = field(default_factory=lambda: list[str]())  # mix ids, in order
     link_requests: int = 0
     attach_answer: str = "ok"
+    links_answer: str = "ok"  # "empty": TemporaryLinks answers with no link; "garbled": no list
     list_shows_playlist: bool = True
     list_ok_calls: int | None = None  # the listing answers 503 once this many calls were made
     list_calls: int = 0
@@ -180,6 +184,10 @@ class FakeMowl:
             if mix is None:
                 return 404, {"Error": "not found"}
             self.link_requests += 1
+            if self.links_answer == "empty":
+                return 200, {"Data": {"TemporaryLinks": []}, "Error": None}
+            if self.links_answer == "garbled":
+                return 200, {"Data": {"TemporaryLinks": [{"Expires": "soon"}]}, "Error": None}
             options = {"seconds": mix.audio_seconds, **mix.link_options}
             return 200, {
                 "Data": {
