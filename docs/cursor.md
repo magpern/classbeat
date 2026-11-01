@@ -13,8 +13,8 @@ Roadmap Amendment 11 authorizes the model substitutions for Cursor sessions.
 | Routine Developer | Composer 2.5, standard | cursor-developer |
 | Explorer | Composer 2.5, standard | cursor-explorer |
 | Routine Reviewer | Grok 4.7, high effort, standard | cursor-reviewer |
-| Security-critical Developer | Claude Opus 5.5, high effort | cursor-security-developer |
-| Security-critical Reviewer; review after a second FAIL | Claude Opus 5.5, high effort | cursor-security-reviewer |
+| Security-critical Developer | Claude Opus 5.5, medium effort | cursor-security-developer |
+| Security-critical Reviewer; review after a second FAIL | Claude Opus 5.5, medium effort | cursor-security-reviewer |
 
 This is a cost-oriented starting point, not a claim that the models are equivalent.
 Use the first routine PRs to assess acceptance-criterion coverage, blocking review findings,
@@ -30,7 +30,7 @@ assign those decisions/ADRs to Opus, with a different fresh Opus Reviewer.
    Invoke those names explicitly. Cursor can also discover .claude/agents/ and .codex/agents/;
    unique cursor-* names avoid changing those profiles or depending on name precedence.
 3. The frontmatter pins Composer with composer-2.5[fast=false] and Grok with
-   grok-4.7[reasoning_effort=high,fast=false]. Opus stays claude-opus-5-5[effort=high].
+   grok-4.7[reasoning_effort=high,fast=false]. Opus stays claude-opus-5-5[effort=medium].
    Parameter names belong to each model: Grok 4.7 uses reasoning_effort, and Opus 5.5
    uses effort. Standard speed is chosen deliberately because Fast consumes more usage.
 4. Verify the actual model on every task card and in the usage dashboard. Plan limits,
