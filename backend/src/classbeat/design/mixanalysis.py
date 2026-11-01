@@ -13,8 +13,16 @@ the worker lives on.
 - **Checkpoints.** The parent checkpoints the job every ``CHECKPOINT_SECONDS`` while it waits (the
   fence: lease and cancel); a cancel, a lost lease or a shutdown kills the child at once.
 - **What the child gets**: the path of one file and a number, a minimal environment (no setting, no
-  secret, no proxy) and nothing on stdin; its working directory is the private temp directory.
-  Its stderr is discarded: a path or a file's own words never reach a log.
+  secret, no proxy) and nothing on stdin; its working directory is the private temp directory, which
+  also holds its own numba cache (compiled code is never shared between children, so one hostile
+  file cannot plant code another user's analysis runs; compiling costs about a second). Its stderr
+  is discarded: a path or a file's own words never reach a log.
+- **The boundary** (T109): the child confines itself before it opens the file (``mixchild``,
+  ``classbeat.design.sandbox``: no socket, no other process, and with Landlock no file outside the
+  interpreter's and its private directory). On Linux the parent refuses an answer that does not say
+  the system call filter held, makes itself non-dumpable before the first child (so a child cannot
+  read the worker's memory through ``/proc``), and starts the child in a process group of its own
+  that it kills whole.
 - **The answer** is checked here (``valid_map``): a map is stored and used only when it has the
   library's current map version and the shape every later step reads.
 """
@@ -22,8 +30,11 @@ the worker lives on.
 import asyncio
 import contextlib
 import json
+import logging
 import math
 import os
+import shutil
+import signal
 import subprocess
 import sys
 import threading
@@ -33,9 +44,11 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Final
 
-from classbeat.design.mixfetch import work_root
 from classbeat.design.rss import process_rss
+from classbeat.design.sandbox import LINUX, SandboxError, make_undumpable
 from classbeat.jobs import JobFailure, JobRun
+
+logger = logging.getLogger(__name__)
 
 MAX_RSS_BYTES: Final = int(1.5 * 1024**3)
 ANALYSIS_SECONDS: Final = 180.0
@@ -47,6 +60,8 @@ MAX_MIX_SECONDS: Final = 7200.0  # and never passes 120 minutes
 MAX_MAP_BYTES: Final = 1 << 20  # the table's check on ``swedebeat_mix_maps.map``
 MAX_SONGS: Final = 200
 MAX_EVENTS: Final = 2000
+CHILD: Final = Path(__file__).with_name("mixchild.py")
+NUMBA_CACHE: Final = "numba-cache"
 
 
 def decode_limit_seconds(listed_seconds: float) -> float:
@@ -58,33 +73,19 @@ def decode_limit_seconds(listed_seconds: float) -> float:
 
 
 def child_argv(audio: Path, max_seconds: float, max_rss: int) -> list[str]:
-    """The child's command line. A function, so a test can run another program in its place."""
-    return [
-        sys.executable,
-        "-I",
-        "-m",
-        "classbeat.design.mixchild",
-        str(audio),
-        repr(max_seconds),
-        str(max_rss),
-    ]
-
-
-def numba_cache_dir() -> Path:
-    """Where the child's compiled numba functions are kept between analyses (the image's user has
-    no writable home): ``<work root>/numba-cache``, which the start-up sweep leaves alone. It holds
-    compiled code and no audio."""
-    cache = work_root() / "numba-cache"
-    cache.mkdir(mode=0o700, exist_ok=True)
-    return cache
+    """The child's command line: ``mixchild.py`` by path in isolated mode (never ``-m``, which
+    would import the ``classbeat.design`` package). A function, so a test can run another program
+    in its place."""
+    return [sys.executable, "-I", str(CHILD), str(audio), repr(max_seconds), str(max_rss)]
 
 
 def child_environment(work: Path) -> dict[str, str]:
     """The child's whole environment: the program search path (and the system root on Windows),
-    one thread per library, a temporary and a numba cache directory. Nothing else of ours."""
+    one thread per library, and its temporary and numba cache directories, both inside ``work``
+    (the job's private directory, removed after the analysis). Nothing else of ours."""
     env = {
         "PATH": os.environ.get("PATH", ""),
-        "NUMBA_CACHE_DIR": str(numba_cache_dir()),
+        "NUMBA_CACHE_DIR": str(work / NUMBA_CACHE),
         "NUMBA_NUM_THREADS": "1",
         "OMP_NUM_THREADS": "1",
         "OPENBLAS_NUM_THREADS": "1",
@@ -156,7 +157,10 @@ def _read_output(process: "subprocess.Popen[bytes]", limit: int) -> tuple[bytes,
 
 def _kill(process: "subprocess.Popen[bytes]") -> None:
     with contextlib.suppress(OSError):
-        process.kill()
+        if sys.platform != "win32":
+            os.killpg(process.pid, signal.SIGKILL)  # the child and whatever it started
+        else:
+            process.kill()
     with contextlib.suppress(subprocess.TimeoutExpired):  # a kill that did not take
         process.wait(timeout=10)
 
@@ -178,6 +182,10 @@ async def analyse_audio(
     command = list((argv or child_argv)(audio, max_seconds, max_rss))
     work = audio.parent
     try:
+        make_undumpable()
+        cache = work / NUMBA_CACHE
+        shutil.rmtree(cache, ignore_errors=True)  # never an earlier child's compiled code
+        cache.mkdir(mode=0o700)
         process = subprocess.Popen(  # noqa: S603, ASYNC220 - ours; the call returns at once
             command,
             stdin=subprocess.DEVNULL,
@@ -186,8 +194,9 @@ async def analyse_audio(
             env=child_environment(work),
             cwd=work,
             close_fds=True,
+            start_new_session=sys.platform != "win32",
         )
-    except OSError:
+    except (OSError, SandboxError):
         raise JobFailure("analysis_failed") from None
     output: list[tuple[bytes, bool]] = []
 
@@ -215,7 +224,7 @@ async def analyse_audio(
                 next_checkpoint = now + CHECKPOINT_SECONDS
                 await run.checkpoint()  # a cancel, a lost lease or a shutdown: RunStopped
     finally:
-        if process.poll() is None:
+        if process.poll() is None or sys.platform != "win32":  # what it started may live on
             _kill(process)
         reader.join(timeout=10)
         if process.stdout is not None:
@@ -230,8 +239,17 @@ async def analyse_audio(
     if not isinstance(answer, dict):
         raise JobFailure("analysis_failed")
     music_map, reported = answer.get("map"), answer.get("peak_rss")  # pyright: ignore[reportUnknownMemberType, reportUnknownVariableType]
+    confined = answer.get("sandbox")  # pyright: ignore[reportUnknownMemberType, reportUnknownVariableType]
+    if not isinstance(confined, dict):
+        raise JobFailure("analysis_failed")
+    syscalls, files = confined.get("syscalls"), confined.get("files")  # pyright: ignore[reportUnknownMemberType, reportUnknownVariableType]
+    if LINUX and syscalls is not True:
+        raise JobFailure("analysis_failed")
     if not valid_map(music_map, map_version):
         raise JobFailure("analysis_failed")
+    logger.info(
+        "swedebeat analysis confined", extra={"syscalls": syscalls is True, "files": files is True}
+    )
     own = reported if isinstance(reported, int) and not isinstance(reported, bool) else None
     seen = max(peak, own or 0)
     return Analysis(music_map, seen or None)  # pyright: ignore[reportArgumentType]

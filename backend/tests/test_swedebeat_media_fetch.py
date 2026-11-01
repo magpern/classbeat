@@ -295,12 +295,15 @@ def test_the_directory_is_private_and_removed_on_success_and_on_error(tmp_path: 
 
 
 def test_the_sweep_at_worker_start_removes_what_a_crash_left(tmp_path: Path) -> None:
+    root = tmp_path / "root"
+    root.mkdir(mode=0o700)
     for name in ("mix-aaaa", "mix-bbbb"):
-        (tmp_path / name).mkdir()
-        (tmp_path / name / "mix.audio").write_bytes(b"x")
-    (tmp_path / "numba-cache").mkdir()  # not audio: kept
-    assert mixfetch.sweep_work_root(tmp_path) == 2
-    assert sorted(p.name for p in tmp_path.iterdir()) == ["numba-cache"]
+        (root / name).mkdir()
+        (root / name / "mix.audio").write_bytes(b"x")
+    (root / "numba-cache").mkdir()  # the cache an earlier version shared: removed too
+    (root / "other").mkdir()  # not ours to judge: kept
+    assert mixfetch.sweep_work_root(root) == 3
+    assert sorted(p.name for p in root.iterdir()) == ["other"]
     assert mixfetch.sweep_work_root(tmp_path / "missing") == 0
 
 
