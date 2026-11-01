@@ -31,9 +31,9 @@ Composer. Claude Code and Codex keep Opus for the same work.
 2. Confirm .cursor/rules/classbeat.mdc is active and all five cursor-* agents are visible.
    Invoke those names explicitly. Cursor can also discover .claude/agents/ and .codex/agents/;
    unique cursor-* names avoid changing those profiles or depending on name precedence.
-3. The frontmatter pins Composer with composer-2.5[fast=false] and Grok with
-   grok-4.7[reasoning_effort=high,fast=false]. The security developer and the security reviewer
-   both use the Grok pin, in separate fresh contexts. Routine development uses the Composer pin.
+3. Routine development stays `composer-2.5[fast=false]`. Architect, routine review, security
+   development and security review are `grok-4.7-high`. The bracket form
+   `grok-4.7[reasoning_effort=high,fast=false]` is not a model id this client can select.
    Claude Code and Codex keep Opus.
 4. Verify the actual model on every task card and in the usage dashboard. Plan limits,
    admin restrictions and legacy Max Mode settings can cause Cursor to substitute another
