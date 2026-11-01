@@ -294,7 +294,10 @@ web and worker refuse to start without it) is the current key-encryption key of 
 its id `CLASSBEAT_CONNECTION_KEK_ID` (default `kek-1`; compose takes `CONNECTION_KEK_ID` from `.env`),
 and retired ones are `connection_kek_<id>`; `smtp_password` (optional) is the SMTP login password
 (`CLASSBEAT_SMTP_HOST`, `_PORT`, `_SENDER`, `_USERNAME` and `_TLS` = `starttls`, `tls` or `none`;
-`none` only for loopback or the compose `mailpit`; compose points them at mailpit); the matching
+`none` only for loopback or the compose `mailpit`; compose points them at mailpit;
+`CLASSBEAT_SMTP_CA_FILE` (optional, not with `none`) is a readable PEM certificate file the server's
+certificate must match instead of the system store, for Proton Mail Bridge; verification and the hostname
+check stay on, see `docs/runbooks/proton-bridge-smtp.md`); the matching
 `CLASSBEAT_DATABASE_PASSWORD` and `CLASSBEAT_DATABASE_OWNER_PASSWORD` variables are ignored.
 The admin area (ADR 0011 section 5): `CLASSBEAT_MAINT_DATABASE_URL` (compose sets it on web) and the
 `database_maint_password` secret file (web and `db-functions` only, which creates the role
@@ -323,7 +326,7 @@ must stay clean. With `anthropic` the worker refuses to start (and the provider 
 live use. Once an Anthropic stream has begun, any end without a readable answer (read timeout, the turn bound, an error event, a cut connection, no stop reason) is recorded at the turn's ceiling, not 0; only an error status or a failure before the stream is unbilled. The worker's outbound requests go only to `https://api.mowl.com`, `https://api.spotify.com` and
 `https://accounts.spotify.com` plus the host of each model provider whose key file holds a key (`api.anthropic.com`,
 `api.openai.com`; `api.deepseek.com` only with `CLASSBEAT_DEEPSEEK_ENABLED` too; `worker_model_providers`, `worker_hosts`
-in `classbeat.egress`, ADR 0009 section 10, ADR 0012 section 2); each model client alone is limited to its own provider's host. The one exception to the DeepSeek rule: the owner's live eval of a disabled DeepSeek model installs that host for that command only (`install_choice_allowlist`); jobs never get it. The Spotify token endpoint and `GET /me`
+in `classbeat.egress`, ADR 0009 section 10, ADR 0012 section 2); each model client alone is limited to its own provider's host. The temporary-link media host of a Swedebeat mix (ADR 0016 §4) is on no urllib list: it has its own scoped list, the literal `MOWL_MEDIA_HOSTS` (empty until the owner confirms the host), and its own no-redirect client, `egress.mowl_media_async_client()`; its fakes are `tests/mediafake.py` and the Swedebeat calls of `tests/mowlfake.py`. The one exception to the DeepSeek rule: the owner's live eval of a disabled DeepSeek model installs that host for that command only (`install_choice_allowlist`); jobs never get it. The Spotify token endpoint and `GET /me`
 (`classbeat.spotify.http`) use `egress.spotify_async_client()`, in the web process (connect) and the
 worker (refresh) alike, whose list is the two Spotify hosts and nothing else. The list is code, not a
 setting. `classbeat.egress` is the only module allowed to build an HTTP client or `urllib` opener;

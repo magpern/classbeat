@@ -73,3 +73,9 @@ def enabled_providers(settings: Settings) -> dict[str, Provider]:
             github_secret,
         )
     return found
+
+
+def visible_providers(settings: Settings, enabled: dict[str, Provider]) -> list[str]:
+    """Enabled providers the sign-in and sign-up screens offer (``oauth_visible_providers``)."""
+    wanted = {part.strip().lower() for part in settings.oauth_visible_providers.split(",")}
+    return sorted(name for name in enabled if name in wanted)

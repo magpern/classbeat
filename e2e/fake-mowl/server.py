@@ -31,6 +31,11 @@ answer), `noid` (applied, answered without its id), `copy` (an update's `PUT v1/
 answered as MOWL making a copy: a new, empty program with the header, the original untouched).
 `save-edit?program=<id>` changes a program's name as the user would in the MOWL app.
 
+It also speaks the Swedebeat calls (ADR 0016, A1; `swedebeat_mixes.py` beside it): the caller's
+mixes, the attach, the indexing and `TemporaryLinks`, whose link names an unlisted media host that no
+service answers (the production `MOWL_MEDIA_HOSTS` is empty, so classbeat must refuse it);
+`/__e2e/swedebeat-arm` zeroes and `swedebeat-state` shows the counts (never a token or link).
+
 `/__e2e/...` is the test control, reached from the compose network only (the tests call it with
 `docker compose exec web`): `arm`, `release` and `state` take `?playlist=<spotify id>`;
 `save-arm?fail=<n>:<mode>,...` (zero the write counter and set the injections; no `fail` clears
@@ -60,6 +65,8 @@ from cryptography import x509
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.x509.oid import NameOID
+
+import swedebeat_mixes
 
 HOST = "api.mowl.com"
 # The constant app ids of mowl/api.py (APP_GUID, TICKET_GUID): part of the sign-in paths.
@@ -191,6 +198,10 @@ SECTIONS = [  # a drop and a breakdown in every song
 ]
 SECTION_PATH = re.compile(r"^/v1/Spotify/Tracks/([0-9A-Za-z]{22})/AudioAnalysis$")
 PLAYLIST_PATH = re.compile(r"^/v1/Playlists/(\d+)/(tracks|sessiondesigner/availability)$")
+# A Swedebeat mix's playlist: its indexing (tracks) and its temporary links (swedebeat_mixes.py).
+SWEDEBEAT_READ = re.compile(
+    r"^/v1/(?:Playlists/(9\d{3})/tracks|swedebeat/playlist/(9\d{3})/TemporaryLinks)$"
+)
 PROGRAM_PATH = re.compile(r"^/v1/programs/(\d+)$")
 PROGRAM_SEGMENTS_PATH = re.compile(r"^/v1/programs/(\d+)/segments$")
 INTERVALS_PATH = re.compile(r"^/v1/segments/(\d+)/intervals$")
@@ -320,6 +331,13 @@ class Handler(BaseHTTPRequestHandler):
             ]
             self.ok(listed)
             return
+        if path == "/v1/swedebeat/Playlists":
+            if self.token() is None:
+                self.reply(401, {"Error": "unauthorized"})
+                return
+            form = {k: v[0] for k, v in parse_qs(self.body().decode()).items()}
+            self.ok(swedebeat_mixes.listing(form))
+            return
         if path != f"/v1/Authentication/Authenticate/{APP_GUID}":
             self.reply(404, {"Error": "not found"})
             return
@@ -337,6 +355,18 @@ class Handler(BaseHTTPRequestHandler):
     def do_PUT(self) -> None:  # noqa: N802
         if is_program_write("PUT", urlsplit(self.path).path):
             self.program_write("PUT", urlsplit(self.path).path)
+            return
+        if urlsplit(self.path).path == "/v1/swedebeat/Playlist":
+            token = self.token()
+            if token is None:
+                self.reply(401, {"Error": "unauthorized"})
+                return
+            form = {k: v[0] for k, v in parse_qs(self.body().decode()).items()}
+            made = swedebeat_mixes.attach(token, form)
+            if made is None:
+                self.reply(200, {"Data": None, "Error": "Unknown Swedebeat playlist"})
+            else:
+                self.ok(made)
             return
         if urlsplit(self.path).path != "/v1/Spotify/Playlist":
             self.reply(404, {"Error": "not found"})
@@ -446,6 +476,16 @@ class Handler(BaseHTTPRequestHandler):
         if token is None:
             self.reply(401, {"Error": "unauthorized"})
             return
+        mix_read = SWEDEBEAT_READ.match(path)
+        if mix_read is not None:
+            playlist_id = int(mix_read[1] or mix_read[2])
+            read = swedebeat_mixes.tracks if mix_read[1] else swedebeat_mixes.links
+            found = read(token, playlist_id)
+            if found is None:
+                self.reply(404, {"Error": "not found"})
+            else:
+                self.ok(found)
+            return
         program = PROGRAM_PATH.match(path)
         if program is not None:
             with LOCK:
@@ -496,6 +536,11 @@ class Handler(BaseHTTPRequestHandler):
         `state` of one playlist; `save-arm` and `save-state` for the programs."""
         if action in ("save-arm", "save-state"):
             self.save_control(action, (query.get("fail") or [""])[0], (query.get("reset") or [""])[0])
+            return
+        if action in ("swedebeat-arm", "swedebeat-state"):
+            if action == "swedebeat-arm":
+                swedebeat_mixes.reset()
+            self.reply(200, swedebeat_mixes.state())
             return
         if action == "save-programs":
             self.save_programs()

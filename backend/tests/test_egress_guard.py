@@ -160,6 +160,13 @@ REFUSED = [
     "from classbeat.egress import Allowlist\nclass Wider(Allowlist): pass",
     "from classbeat.egress import AllowlistTransport\nclass T(AllowlistTransport): pass",
     "import httpx\nhttpx.AsyncClient(transport=t, trust_env=False)",
+    # ADR 0016 §4: the media client's list is code; a caller never hands one in, nor builds the
+    # transport under it.
+    "from classbeat.egress import mowl_media_async_client, WORKER_ALLOWLIST\n"
+    "mowl_media_async_client(WORKER_ALLOWLIST)",
+    "from classbeat.egress import mowl_media_async_client\nmowl_media_async_client(allowlist=a)",
+    "from classbeat.egress import mowl_media_async_client\nmowl_media_async_client(**options)",
+    "from classbeat.egress import mowl_media_network_transport\nmowl_media_network_transport()",
 ]
 
 
@@ -170,6 +177,7 @@ def test_the_guard_refuses(source: str) -> None:
 
 ALLOWED = [
     "from classbeat.egress import allowlisted_async_client\nallowlisted_async_client()",
+    "from classbeat.egress import mowl_media_async_client\nmowl_media_async_client()",
     "import httpx\nx: httpx.AsyncBaseTransport\nhttpx.Timeout(1.0)\nhttpx.MockTransport(f)",
     "import anthropic\nanthropic.AsyncAnthropic(api_key=k, http_client=c)",
     "from anthropic import AsyncAnthropic\nAsyncAnthropic(http_client=client, max_retries=2)",

@@ -127,10 +127,13 @@ _CALLS = frozenset(
         "classbeat.egress.DeadlineHTTPSConnection",
         "classbeat.egress.model_network_transport",
         "classbeat.egress.spotify_network_transport",
+        "classbeat.egress.mowl_media_network_transport",
     }
 )
 # Allowed only without an allowlist argument (the list is the function's own).
-_NO_ALLOWLIST_ARGUMENT = frozenset({"classbeat.egress.allowlisted_async_client"})
+_NO_ALLOWLIST_ARGUMENT = frozenset(
+    {"classbeat.egress.allowlisted_async_client", "classbeat.egress.mowl_media_async_client"}
+)
 
 # Any call by these attribute names, whatever the object (an event loop, a socket): raw
 # connections around both allowlisted paths.
