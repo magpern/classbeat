@@ -22,7 +22,7 @@ from pydantic import ValidationError
 from classbeat import auth
 from classbeat.agent.design import ZONE7
 from classbeat.agent.schemas import WorkoutDraft
-from classbeat.classes import service, song_views
+from classbeat.classes import pattern_notes, service, song_views
 from classbeat.classes.schemas import (
     ClassDetailOut,
     ClassesOut,
@@ -41,6 +41,7 @@ from classbeat.classes.schemas import (
     RevisionOut,
     RevisionsOut,
     RevisionSummaryOut,
+    RuleHitOut,
     SongListOut,
     SongOut,
     SongsOut,
@@ -205,15 +206,21 @@ async def get_revision(
             if isinstance(stored, bool)
             else any(i.zone == ZONE7 for s in draft.segments for i in s.intervals)
         )
+        content = draft.model_dump(mode="json", exclude_none=True)
+        brief, dismissed = await service.get_pattern_inputs(factory, ctx, wanted_class)
+        notes = pattern_notes.pattern_notes(content, brief, dismissed, row.provenance)
+        hits = [RuleHitOut.model_validate(h) for h in notes.hits]
     except (ValidationError, KeyError, TypeError, ValueError):
         return JSONResponse({"detail": {"reason": "internal"}}, status_code=500)
     return RevisionOut(
         **summary.model_dump(),
         kind=row.kind,
-        content=draft.model_dump(mode="json", exclude_none=True),
+        content=content,
         unknown_bpm=unknown,
         provenance=provenance,
         tss_approximate=approximate,
+        rule_hits=hits,
+        notes_use_current_rules=notes.uses_current_rules,
     )
 
 

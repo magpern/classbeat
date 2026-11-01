@@ -248,6 +248,22 @@ async def get_class_detail(
         return ClassDetail(row, songs, playlists, await stored_brief(db, ctx.user_id, class_id))
 
 
+_DISMISSED = text(
+    "SELECT dismissed_rules FROM classes WHERE id = :class_id AND owner_id = :owner_id"
+)
+
+
+async def get_pattern_inputs(
+    factory: Factory, ctx: UserContext, class_id: UUID
+) -> tuple[Brief | None, list[str]]:
+    """The stored brief and the dismissed rule ids of the user's own class (ADR 0017 section 4)."""
+    require_context(ctx)
+    async with user_session(factory, ctx) as db:
+        raw = (await db.execute(_DISMISSED, _ids(ctx, class_id))).scalar_one_or_none()
+        dismissed = [r for r in raw or [] if isinstance(r, str)]
+        return await stored_brief(db, ctx.user_id, class_id), dismissed
+
+
 async def list_revisions(factory: Factory, ctx: UserContext, class_id: UUID) -> list[Any] | None:
     require_context(ctx)
     async with user_session(factory, ctx) as db:
