@@ -1,5 +1,31 @@
 # classbeat roadmap: a class designer for Intelligent Cycling (MOWL) as a web app
 
+## Amendment 10 (2026-11-01, owner request: Codex development support)
+
+The owner requested Codex rules alongside Claude Code. For Codex development sessions,
+this amendment overrides Claude-specific model names and PR attribution in the development
+process and AGENTS.md; all other requirements remain in force.
+
+| Claude role/tier | Codex model | Reasoning effort |
+|---|---|---|
+| Opus Architect / Orchestrator | GPT-6 Astra (`gpt-6-astra`) | high |
+| Sonnet Developer or Reviewer | GPT-6.1 Sol (`gpt-6.1-sol`) | high |
+| Opus security-critical Developer or Reviewer | GPT-6 Astra (`gpt-6-astra`) | high |
+| Haiku Explorer | GPT-6 Luna (`gpt-6-luna`) | medium |
+
+Risk classification, independent review, delta eligibility, escalation after repeated FAILs,
+CI, current-head SHA and merge rules are unchanged. Codex verdicts use the actual model name,
+for example `Agent review (GPT-6 Astra): PASS <head SHA>`, in a PR comment.
+Codex-authored PRs end with `🤖 Generated with [Codex](https://developers.openai.com/codex/)`;
+Claude-authored PRs keep their existing footer. No Co-Authored-By trailer in either case.
+Unavailable models are a capability blocker for that role: report it and continue independent
+work; never silently downgrade a security-critical role.
+
+This concerns the agents building classbeat only. It does not authorize enabling OpenAI in
+the running application, changing model routes, sending provider data to OpenAI, live-account
+tests or deployment. The existing product data-policy and live-activation gates still apply.
+Setup and role instructions: [codex.md](codex.md), `.codex/config.toml`, `.codex/agents/`.
+
 ## Amendment 1 (2026-10-28, owner decisions)
 
 Revision 6 below stays as written; where it differs, this amendment wins. Recorded in
