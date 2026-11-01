@@ -291,6 +291,7 @@ function ClassBody({
               revision={shown.revision}
               musicChanged={answeredBy?.change?.musicChanged === true}
               songs={songs}
+              classId={classId}
             />
           ) : null}
         </div>

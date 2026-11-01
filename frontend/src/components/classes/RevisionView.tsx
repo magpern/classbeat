@@ -5,6 +5,7 @@ import { TSS_APPROXIMATE_NOTE } from '../../lib/classCards'
 import { cadenceText, flatten, zoneName } from '../../lib/profile'
 import { clock, segmentSeconds, totalSeconds, tss } from '../../lib/workout'
 import { Card } from '../ui/card'
+import { PatternNotes } from './PatternNotes'
 import { ProfileChart } from './ProfileChart'
 import { TssValue } from './TssValue'
 import { ZoneTime } from './ZoneTime'
@@ -36,10 +37,13 @@ export function RevisionView({
   revision,
   musicChanged,
   songs = null,
+  classId = null,
 }: {
   revision: Revision
   musicChanged: boolean
   songs?: Song[] | null
+  /** The class, for dismissing pattern notes; without it the notes block is not shown. */
+  classId?: string | null
 }) {
   const seconds = totalSeconds(revision.segments)
   const bars = flatten(revision.segments)
@@ -77,6 +81,13 @@ export function RevisionView({
           </Tile>
         ) : null}
       </dl>
+      {classId !== null ? (
+        <PatternNotes
+          classId={classId}
+          hits={revision.ruleHits}
+          notesUseCurrentRules={revision.notesUseCurrentRules}
+        />
+      ) : null}
       {musicChanged ? (
         <div className="notice" data-kind="info" role="status" data-testid="music-changed">
           <p>
