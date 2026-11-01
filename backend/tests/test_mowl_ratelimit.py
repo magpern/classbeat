@@ -2,15 +2,35 @@
 MOWL email per 15 minutes, reserved before the sign-in (a refused attempt never reaches MOWL);
 a success releases its slots."""
 
+import time
 from typing import Any
 
 import pytest
+from sqlalchemy import Float, func, literal
 
 from authtools import Env
+from classbeat.auth import ratelimit
 from mowlfake import EMAIL, PASSWORD, FakeMowl
 
 CONNECT = "/api/connections/mowl"
-pytestmark = pytest.mark.usefixtures("mowl_api")
+CONNECT_WINDOW = 15 * 60
+pytestmark = pytest.mark.usefixtures("mowl_api", "fixed_connect_window")
+
+
+@pytest.fixture
+def fixed_connect_window(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Hold connect buckets in one fixed window for the whole test (#344).
+
+    The limiter keys windows off Postgres ``clock_timestamp()`` (``ratelimit._window_start``).
+    When the sixth attempt lands in the next 15-minute window the per-user count resets, the
+    route reaches MOWL with a decoy email, and the fake answers 400 (invalid credentials) instead
+    of 429 ``rate_limited``."""
+    instant = float(int(time.time() // CONNECT_WINDOW) * CONNECT_WINDOW)
+
+    def frozen_window(window: int) -> Any:
+        return func.to_timestamp(literal(instant // window * window, Float))
+
+    monkeypatch.setattr(ratelimit, "_window_start", frozen_window)
 
 
 WRONG = "wrong-password"

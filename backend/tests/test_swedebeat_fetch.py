@@ -57,9 +57,7 @@ def work(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     """The audio directory of these tests, so leftovers are visible."""
     root = tmp_path / "audio-root"
     root.mkdir()
-    cache = mixanalysis.numba_cache_dir()  # the real one, shared: compiling takes a while
     monkeypatch.setattr(mixfetch, "work_root", lambda: root)
-    monkeypatch.setattr(mixanalysis, "numba_cache_dir", lambda: cache)
     return root
 
 
