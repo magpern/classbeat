@@ -5,7 +5,8 @@ alwaysApply: true
 
 Read AGENTS.md in full, docs/cursor.md, docs/roadmap.md and docs/status.md before work.
 Roadmap Amendment 11 authorizes the Cursor alternative: Grok 4.7 High coordinates and reviews,
-including security-critical reviews; Composer implements routine and security-critical issues.
+including security-critical reviews; Grok 4.7 High also implements security-critical issues.
+Composer implements routine issues.
 The primary Architect selects Grok 4.7, high effort, standard speed in Cursor's model picker.
 Use the explicit cursor-* roles in .cursor/agents/, never implicit inherited models for
 these roles. Verify which model actually ran; a substituted model blocks that role.
