@@ -30,8 +30,9 @@ assign those decisions/ADRs to Opus, with a different fresh Opus Reviewer.
    Invoke those names explicitly. Cursor can also discover .claude/agents/ and .codex/agents/;
    unique cursor-* names avoid changing those profiles or depending on name precedence.
 3. The frontmatter pins Composer with composer-2.5[fast=false] and Grok with
-   grok-4.7[fast=false,effort=high]. Cursor documents bracket parameters for custom agents;
-   standard speed is chosen deliberately because Fast consumes more usage.
+   grok-4.7[reasoning_effort=high,fast=false]. Opus stays claude-opus-5-5[effort=high].
+   Parameter names belong to each model: Grok 4.7 uses reasoning_effort, and Opus 5.5
+   uses effort. Standard speed is chosen deliberately because Fast consumes more usage.
 4. Verify the actual model on every task card and in the usage dashboard. Plan limits,
    admin restrictions and legacy Max Mode settings can cause Cursor to substitute another
    model even when it is explicitly configured. If it substitutes, do not proceed under
