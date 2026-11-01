@@ -16,6 +16,7 @@ from typing import Any
 import pytest
 
 from agentfake import CONFIG
+from classbeat.design.rules import default_registry
 from classbeat.evals.cases import load_cases
 from classbeat.evals.checks import Check
 from classbeat.evals.compare import main_compare
@@ -298,3 +299,41 @@ def test_an_unknown_segment_kind_cannot_choose_a_css_class(tmp_path: Path) -> No
     page = (tmp_path / "out" / "compare.html").read_text("utf-8")
     classes = re.findall(r'class="(k-[^"]*)"', page)
     assert classes == ["k-warmup", "k-main", "k-cooldown", "k-main", "k-main"]
+
+
+# --- the rules version (ADR 0017 section 5, issue #399) -----------------------------------------
+
+
+def versioned(path: Path, version: int | None) -> Path:
+    data = json.loads(raw_file(path, [raw_row()]).read_text("utf-8"))
+    if version is not None:
+        data["rules_version"] = version
+    path.write_text(json.dumps(data), "utf-8")
+    return path
+
+
+async def test_a_results_file_records_the_rules_version_and_the_report_names_it(
+    tmp_path: Path,
+) -> None:
+    easy = await real("easy_30")
+    path = write(tmp_path / "now.json", [easy])
+    assert json.loads(path.read_text("utf-8"))["rules_version"] == default_registry().rules_version
+    assert compare(tmp_path, path)[0] == 0
+    md = (tmp_path / "out" / "compare.md").read_text("utf-8")
+    assert f"Rules version: {default_registry().rules_version} " in md
+
+
+def test_runs_on_different_rules_versions_are_not_compared(tmp_path: Path) -> None:
+    a, b = versioned(tmp_path / "a.json", 1), versioned(tmp_path / "b.json", 2)
+    code, out, err = compare(tmp_path, a, b)
+    assert (code, out) == (2, "")
+    assert "different rules_version" in err
+    assert not (tmp_path / "out").exists()
+
+
+def test_a_file_from_before_the_rules_is_not_compared_with_one_after(tmp_path: Path) -> None:
+    old, new = versioned(tmp_path / "old.json", None), versioned(tmp_path / "new.json", 1)
+    code, _, err = compare(tmp_path, old, new)
+    assert code == 2
+    assert "old.json: none" in err
+    assert compare(tmp_path, old)[0] == 0  # alone, an old file is still read

@@ -1,6 +1,6 @@
 {
- "suite_version": 7,
- "digest": "4002ae10e99243477ae86f595b4deed0322906882edacced277cc58ddb168b25",
+ "suite_version": 8,
+ "digest": "8430bb29da3865e02d5b9167c8b3c772b2fde1bced2398a414169a46ceadfc23",
  "rules": {
   "repeat": 3,
   "pass_share": 0.9,
@@ -66,6 +66,13 @@
     "mm_music_short_60", "mm_no_bpm_at_all", "mm_no_sections_short", "mm_revise_unknown_bpm"
    ],
    "songs": ["mm_pool_too_small", "mm_unknown_bpm_pick"]
+  },
+  "class_patterns": {
+   "design": [
+    "cp_plain_30", "cp_plain_45", "cp_plain_60", "cp_interval_30", "cp_interval_45",
+    "cp_interval_60", "cp_hard_start_30", "cp_short_warmup_45", "cp_ten_sprints_30",
+    "cp_easy_spin_45"
+   ]
   },
   "adversarial": {
    "design": [

@@ -32,6 +32,8 @@ from classbeat.agent.prices import PRICES_VERSION
 from classbeat.agent.provider import ModelProvider, Usage
 from classbeat.agent.records import mowl_version as _mowl_version
 from classbeat.agent.revise import ReviseContext, ReviseResult, SongsRequested, revise_stage
+from classbeat.design.guidance import rule_set_for
+from classbeat.design.rules import default_registry
 from classbeat.evals.cases import Case
 from classbeat.evals.checks import Check, has_zone7, run_checks, tss_bounds_for
 from classbeat.evals.music import build_music
@@ -134,7 +136,10 @@ async def run_case(
 ) -> CaseResult:
     """``zone7_tss_margin``: the suite's (its manifest); the smoke set runs with 0."""
     music = build_music(case.music)
-    ctx = DesignContext.build(case.brief, music)
+    # As in production (ADR 0017 section 3): the rules of the brief's profile, if one applies,
+    # are in the model's input and in its tool results. Nothing is dismissed on a design run.
+    rules = rule_set_for(case.brief)
+    ctx = DesignContext.build(case.brief, music, rules)
     stage, first = design_stage(ctx), ctx.first_message()
     if case.revise is not None:
         revise = ReviseContext.build(
@@ -144,6 +149,7 @@ async def run_case(
             tuple(case.revise.earlier_requests),
             case.revise.request,
             music_changed=False,
+            rules=rules,
         )
         stage, first = revise_stage(revise), revise.first_message()
     host = EvalHost()
@@ -306,8 +312,15 @@ def result_row(r: CaseResult) -> dict[str, Any]:
 
 
 def results_json(results: list[CaseResult]) -> str:
+    """Format 1. ``rules_version`` is the one of the profiles the runs were made with, so
+    ``compare`` can refuse to put runs on different rules side by side (ADR 0017 section 5)."""
     return json.dumps(
-        {"format": RESULTS_FORMAT, "results": [result_row(r) for r in results]}, indent=1
+        {
+            "format": RESULTS_FORMAT,
+            "rules_version": default_registry().rules_version,
+            "results": [result_row(r) for r in results],
+        },
+        indent=1,
     )
 
 
@@ -330,6 +343,7 @@ class SuiteHeader:
     classbeat_version: str = _classbeat_version
     mowl_version: str = field(default_factory=_mowl_version)
     prices_version: str = PRICES_VERSION
+    rules_version: int = field(default_factory=lambda: default_registry().rules_version)
 
 
 def _utc(at: datetime) -> str:
@@ -384,6 +398,7 @@ def suite_results(header: SuiteHeader, rows: Sequence[Mapping[str, Any]]) -> dic
         "classbeat_version": header.classbeat_version,
         "mowl_version": header.mowl_version,
         "prices_version": header.prices_version,
+        "rules_version": header.rules_version,
         "repeat": header.repeat,
         "started_at": _utc(header.started_at),
         "ended_at": _utc(header.ended_at),
