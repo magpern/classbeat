@@ -199,6 +199,16 @@ safely, product decisions, and live-account tests needing authorization. Record 
 in `docs/status.md` under "Waiting for the owner", carry on with independent work, and resume
 when it's answered.
 
+## Cursor alternative
+
+For Cursor sessions, read [docs/cursor.md](docs/cursor.md) and use the explicit
+`cursor-*` roles in `.cursor/agents/`. Roadmap Amendment 11 authorizes Composer
+for routine implementation/exploration and Grok for coordination/routine review.
+Opus remains required for security-critical work and review escalation. The shared
+worktree, CI, independent current-head review, merge and safety gates still apply.
+Verify the actual model used; a client substitution blocks that role. Claude Code
+and Codex keep their own profiles.
+
 ## Durable state and resuming
 
 The repository and GitHub are the source of truth, never chat history:
