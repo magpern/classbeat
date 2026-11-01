@@ -13,14 +13,16 @@ Roadmap Amendment 11 authorizes the model substitutions for Cursor sessions.
 | Routine Developer | Composer 2.5, standard | cursor-developer |
 | Explorer | Composer 2.5, standard | cursor-explorer |
 | Routine Reviewer | Grok 4.7, high effort, standard | cursor-reviewer |
-| Security-critical Developer | Claude Opus 5.5, high effort | cursor-security-developer |
-| Security-critical Reviewer; review after a second FAIL | Claude Opus 5.5, high effort | cursor-security-reviewer |
+| Security-critical Developer | Composer 2.5, standard speed | cursor-security-developer |
+| Security-critical Reviewer; review after a second FAIL | Grok 4.7, high effort, standard speed | cursor-security-reviewer |
 
 This is a cost-oriented starting point, not a claim that the models are equivalent.
 Use the first routine PRs to assess acceptance-criterion coverage, blocking review findings,
-fix cycles and total usage. Keep Opus for security-critical work. The Grok Architect can
-classify and schedule security work but cannot make its production security decisions:
-assign those decisions/ADRs to Opus, with a different fresh Opus Reviewer.
+fix cycles and total usage. Composer implements security-critical Cursor issues. Grok 4.7 High
+reviews them, including a review after a second failure. The Grok Architect can classify and
+schedule that work but does not make its production security decisions: those belong to the
+Cursor security developer, with a different fresh Grok 4.7 High reviewer. Claude Code and Codex
+keep Opus for the same work.
 
 ## Configure Cursor
 
@@ -30,17 +32,14 @@ assign those decisions/ADRs to Opus, with a different fresh Opus Reviewer.
    Invoke those names explicitly. Cursor can also discover .claude/agents/ and .codex/agents/;
    unique cursor-* names avoid changing those profiles or depending on name precedence.
 3. The frontmatter pins Composer with composer-2.5[fast=false] and Grok with
-   grok-4.7[reasoning_effort=high,fast=false]. Opus stays claude-opus-5-5[effort=high].
-   Parameter names belong to each model: Grok 4.7 uses reasoning_effort, and Opus 5.5
-   uses effort. Standard speed is chosen deliberately because Fast consumes more usage.
+   grok-4.7[reasoning_effort=high,fast=false]. The security developer uses the Composer pin.
+   The security reviewer uses the Grok pin. Claude Code and Codex keep Opus.
 4. Verify the actual model on every task card and in the usage dashboard. Plan limits,
    admin restrictions and legacy Max Mode settings can cause Cursor to substitute another
    model even when it is explicitly configured. If it substitutes, do not proceed under
-   the expected model's identity; report the blocked role. Never silently downgrade Opus.
-5. A plan with access to third-party Opus is required for the complete profile.
-   An included allowance is finite; Opus uses third-party usage. Check current pricing
-   and available model options in Cursor. Do not enable paid services or change plans
-   without the owner's specific authorization.
+   the expected model's identity; report the blocked role.
+5. Cursor security work does not use Opus. Claude Code and Codex still do. Do not enable paid
+   services or change plans without the owner's specific authorization.
 
 The model selections are versioned defaults. If an ID or parameter is unavailable, report
 it and make a reviewed configuration update rather than silently switching to Auto.
@@ -72,15 +71,15 @@ Supply the PR, current head SHA, issue and repository evidence, not the author's
 Cursor documents clean subagent contexts; if an interface cannot provide that isolation,
 open a separate fresh Cursor session. A self-review or generic in-session review is not PASS.
 
-Grok reviews routine PRs. Opus reviews all security-critical PRs, their tests/docs-only deltas
-(a stricter choice than Amendment 4 permits), uncertain classifications and reviews after a
-second FAIL. The security categories in AGENTS.md remain the classification source.
+Grok 4.7 High reviews every Cursor PR, including security-critical PRs, their tests/docs-only
+deltas, uncertain classifications and reviews after a second FAIL. The security categories in
+AGENTS.md remain the classification source.
 About eight risk-based mutations per review plus the ones earlier findings require,
 targeted checks and current-SHA green CI are required as described in the shared gate.
 
 Verdicts remain PR comments, for example:
 Agent review (Grok 4.7): PASS <full head SHA>
-Agent review (Opus 5.5): FAIL <full head SHA>
+Agent review (Grok 4.7): FAIL <full head SHA>
 Use the actual model name. No approving review, no Human review: comment, and no override
 of FAIL. Leave review pending when the required independent role cannot run.
 
@@ -100,7 +99,6 @@ No Co-Authored-By trailer. Other tools retain their own attribution.
 - [Cursor project rules](https://cursor.com/docs/rules)
 - [Composer 2.5](https://cursor.com/docs/models/cursor-composer-2-5)
 - [Grok 4.7](https://cursor.com/docs/models/grok-4-7)
-- [Opus 5.5](https://cursor.com/docs/models/claude-opus-5-5)
 
 Frontmatter and local references can be checked without Cursor. Agent discovery, model
 availability, speed/effort selection and real billing require a smoke check in the owner's
