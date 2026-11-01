@@ -197,6 +197,33 @@ The owner's decisions apply now. The design that carries them out is
     - covers load only from `i.scdn.co`, through `CoverArt`, behind the CSP header;
     - UI10's viewport, axe and bundle checks are green in CI.
 
+## Amendment 11 (2026-11-01, owner request: economical Cursor alternative)
+
+For Cursor development sessions only, the owner requested the following optional profile.
+This overrides Claude-specific development role/model names and PR attribution for those
+sessions; all other roadmap and AGENTS.md requirements remain in force.
+
+- Architect / Orchestrator: Grok 4.7, high effort, standard speed.
+- Routine Developer and Explorer: Composer 2.5, standard speed.
+- Routine Reviewer: fresh Grok 4.7, high effort, standard speed.
+- Security-critical Developer and Reviewer: Claude Opus 5.5, high effort. Opus also owns
+  production security decisions/ADRs and reviews after a second FAIL, even on routine PRs.
+  The Grok Architect schedules that work without taking over its security decisions.
+- The security categories, scope boundaries, issue/PR/worktree isolation, independent
+  current-head PASS, CI and merge gates are unchanged. For this profile, even tests/docs-only
+  deltas on security-critical PRs stay with Opus (stricter than Amendment 4).
+- Cursor verdicts use the actual model name, e.g. `Agent review (Grok 4.7): PASS <head SHA>`
+  or `Agent review (Opus 5.5): FAIL <head SHA>`. Configured model substitutions are a
+  capability blocker, never permission to silently downgrade a role.
+- Cursor PRs end with `🤖 Generated with [Cursor](https://cursor.com/)` and have no
+  Co-Authored-By trailer. Other development tools retain their profiles/attribution.
+
+This is a trial cost-oriented mapping, not a model-quality equivalence. It changes no
+application providers, routes, data-sharing policy or external-action authorization.
+See [cursor.md](cursor.md), `.cursor/rules/classbeat.mdc` and `.cursor/agents/`.
+Amendment 10 is reserved for the independent Codex-support proposal (#417); this amendment
+does not depend on it.
+
 ## Amendment 9 (2026-10-31, owner decisions: Swedebeat; ADR 0015)
 
 The owner's decisions apply now; [ADR 0015](adr/0015-swedebeat-connection.md) carries them out
