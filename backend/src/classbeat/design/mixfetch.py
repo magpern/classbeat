@@ -16,9 +16,11 @@ chained to it).
   are read (``aiter_raw``) and any ``Content-Encoding`` but identity is refused: httpx would decode
   gzip, deflate, br or zstd on read, and a small answer can decode to gigabytes (a compression
   bomb). The content type is not trusted either way; the decoder decides what is audio, later.
-- **A private directory** (mode 0700 under ``work_root``) holds the file; ``private_directory``
-  removes it in a ``finally`` (success, error, cancel), and ``sweep_work_root`` empties the root at
-  worker start (a crash leaves a directory behind; this removes it).
+- **A private directory** (mode 0700 under ``work_root``, itself 0700 and checked to be this user's
+  real directory, never a link someone planted in the temp directory) holds the file;
+  ``private_directory`` removes it in a ``finally`` (success, error, cancel), and
+  ``sweep_work_root`` empties the root at worker start (a crash leaves a directory behind; this
+  removes it).
 - **Categories**: ``media_host_not_allowed`` (the allowlist refused the link or a hop of it),
   ``media_refused`` (a status other than the retried ones, a redirect, a compressed, empty or too
   large answer, a link that is not a URL), ``upstream_unavailable`` (a 429 or 5xx, a timeout, a cut
@@ -28,8 +30,11 @@ chained to it).
 import asyncio
 import contextlib
 import logging
+import os
 import re
 import shutil
+import stat
+import sys
 import tempfile
 import time
 from collections.abc import Callable, Iterator
@@ -48,13 +53,34 @@ MAX_LINK_CHARACTERS: Final = 4096
 CHECKPOINT_SECONDS: Final = 5.0
 ROOT_NAME: Final = "classbeat-mix-audio"
 PREFIX: Final = "mix-"
+LEGACY_CACHE: Final = "numba-cache"
 _HOST_SHAPE = re.compile(r"[a-z0-9]([a-z0-9.-]{0,251}[a-z0-9])?")
 
 
+class UnsafeWorkRoot(OSError):
+    """The temp root exists but is not this user's private directory."""
+
+
+def check_private(root: Path) -> None:
+    """``UnsafeWorkRoot`` unless ``root`` is a real directory (not a symlink or junction) and, on
+    POSIX, owned by this process's user with mode 0700: another user, or a link planted in the
+    shared temp directory, must not choose where the audio goes."""
+    info = os.lstat(root)
+    if stat.S_ISLNK(info.st_mode) or not stat.S_ISDIR(info.st_mode) or root.is_junction():
+        raise UnsafeWorkRoot("the audio temp root is not a directory")
+    if sys.platform != "win32" and (
+        info.st_uid != os.getuid() or stat.S_IMODE(info.st_mode) != 0o700
+    ):
+        raise UnsafeWorkRoot("the audio temp root is not private")
+
+
 def work_root() -> Path:
-    """The parent of every private directory: ``<temp>/classbeat-mix-audio`` (mode 0700)."""
+    """The parent of every private directory: ``<temp>/classbeat-mix-audio``, created mode 0700 or,
+    when it exists, checked to be ours (``check_private``; ``UnsafeWorkRoot`` otherwise)."""
     root = Path(tempfile.gettempdir()) / ROOT_NAME
-    root.mkdir(mode=0o700, exist_ok=True)
+    with contextlib.suppress(FileExistsError):
+        root.mkdir(mode=0o700)
+    check_private(root)
     return root
 
 
@@ -69,14 +95,22 @@ def private_directory(root: Path | None = None) -> Iterator[Path]:
 
 
 def sweep_work_root(root: Path | None = None) -> int:
-    """At worker start: remove every directory a crashed run left behind; the number removed."""
+    """At worker start: remove every directory a crashed run left behind, and the numba cache an
+    earlier version shared between children; the number removed. A root that is not ours is left
+    alone (logged): ``work_root`` then refuses it to every analysis."""
     base = root or Path(tempfile.gettempdir()) / ROOT_NAME
+    try:
+        check_private(base)
+    except FileNotFoundError:
+        return 0
+    except UnsafeWorkRoot:
+        logger.warning("swedebeat audio temp root refused")
+        return 0
     removed = 0
-    if base.is_dir():
-        for entry in base.iterdir():
-            if entry.name.startswith(PREFIX):
-                shutil.rmtree(entry, ignore_errors=True)
-                removed += 1
+    for entry in base.iterdir():
+        if entry.name.startswith(PREFIX) or entry.name == LEGACY_CACHE:
+            shutil.rmtree(entry, ignore_errors=True)
+            removed += 1
     return removed
 
 
