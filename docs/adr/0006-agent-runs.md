@@ -105,8 +105,10 @@ order and answered together in one message.
   reminder rule instead.
 - **Tools:** every tool has `strict: true` and an `input_schema` with `additionalProperties:
   false` and `required`; the loop still validates every input itself (§4).
-- **Caching:** `cache_control: {"type": "ephemeral"}` on the system prompt block and on the last
-  tool definition. The system prompt and tool list are byte-stable per stage and prompt version
+- **Caching:** `cache_control: {"type": "ephemeral"}` on the system prompt block, on the last
+  tool definition and on the last block of the newest message (set on the request copy only, so
+  the stored history carries none and the total stays at three of the API's four). That makes the
+  brief, the music and earlier turns cache reads from the second turn on. The system prompt and tool list are byte-stable per stage and prompt version
   (no dates, ids or user data in them); the brief and music go in the first user message. A test
   checks that two runs of a stage send identical `system` and `tools`.
 - **Fallback:** the server-side fallback (`fallbacks: "default"` with its beta header) stays

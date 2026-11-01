@@ -15,7 +15,9 @@
   fallbacks, no beta, no server tool. Every tool is ``strict: true``; its schema goes through the
   SDK's ``transform_schema`` (what strict mode can't express moves into the description, the loop
   still validates every input itself) and every object gets ``required``.
-- **Caching:** ``cache_control: {"type": "ephemeral"}`` on the system block and on the last tool.
+- **Caching:** ``cache_control: {"type": "ephemeral"}`` on the system block, on the last tool and
+  on the last block of the newest message (on the request copy only), so the brief, the music and
+  every earlier turn are cache reads from the second turn on.
   ``system`` and ``tools`` are built from the ``StageSpec`` alone, so they are byte-identical for
   every run of a stage and prompt version; the brief and music are in the first user message.
 - **History:** the conversation keeps the native message list and only ever appends to it: each
@@ -328,7 +330,7 @@ class AnthropicConversation:
             tool_choice={"type": "auto"},
             thinking={"type": "adaptive"},
             output_config={"effort": spec.effort},  # pyright: ignore[reportArgumentType]
-            messages=messages,  # pyright: ignore[reportArgumentType]
+            messages=_with_breakpoint(messages),  # pyright: ignore[reportArgumentType]
         ) as stream:
             self._streaming = True  # a 2xx: the provider has started billing this turn
             final = await stream.get_final_message()
@@ -391,6 +393,23 @@ class AnthropicConversation:
             model=str(final.model),
             request_id=_printable(request_id),
         )
+
+
+def _with_breakpoint(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """The request's messages with one cache breakpoint on the last block of the last message.
+
+    Only the copy sent carries it, never the stored history, so the breakpoints cannot pile up
+    past the API's four: system, last tool and this one make three. The first message (brief and
+    music summary) and every earlier turn are then read from the cache on the next turn.
+    """
+    *head, last = messages
+    content = last["content"]
+    if isinstance(content, str):
+        blocks: list[dict[str, Any]] = [{"type": "text", "text": content}]
+    else:
+        blocks = [dict(b) for b in content]
+    blocks[-1] = {**blocks[-1], "cache_control": dict(CACHE)}
+    return [*head, {**last, "content": blocks}]
 
 
 def turn_blocks(final: Any) -> list[dict[str, Any]]:
