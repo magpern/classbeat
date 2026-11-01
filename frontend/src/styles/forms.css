@@ -1,6 +1,10 @@
 /* Forms, cards, notices and dialogs for the account pages. Tokens only (tokens.css). */
 
 @layer base {
+  html {
+    scrollbar-gutter: stable;
+  }
+
   a {
     color: var(--cb-brand);
   }
