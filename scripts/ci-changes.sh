@@ -18,8 +18,8 @@ out="${GITHUB_OUTPUT:-/dev/stdout}"
 # Path filters (extended regexes, matched against each whole path).
 re_all='^(\.github/|\.gitattributes$|scripts/(ci-changes|ci-gate|ci-shards|test-ci-gate)\.sh$)'
 re_backend='^(backend/|docker/postgres/)'
-re_frontend='^frontend/'
-re_stack='^((backend|frontend|e2e|docker)/|scripts/worktree\.sh$|Dockerfile$|compose[^/]*\.ya?ml$|\.dockerignore$|\.env\.example$|\.trivyignore$)'
+re_frontend='^(frontend/|backend/src/classbeat/design/rules/|backend/src/classbeat/design/profiles/)'
+re_stack='^((backend|frontend|e2e|docker)/|scripts/(worktree|backup|restore|validate-backup|backup-restore-drill)\.sh$|scripts/drill/|Dockerfile$|compose[^/]*\.ya?ml$|\.dockerignore$|\.env\.example$|\.trivyignore$)'
 
 backend=false
 frontend=false

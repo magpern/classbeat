@@ -62,6 +62,19 @@ ADMIN_USER = Limit("admin", "account", 60, 60)
 # a success too, so the route can't be used to try codes faster than this.
 REDEEM_USER = Limit("redeem", "account", 10, 3600)
 REDEEM_IP = Limit("redeem", "ip", 30, 3600)
+# ADR 0014 section 2: the data export reads every owned table, so it is limited per user and
+# hour (every request counts) and per IP.
+EXPORT_USER = Limit("export", "account", 5, 3600)
+EXPORT_IP = Limit("export", "ip", 20, 3600)
+# SR-05 (#354): ``GET /api/music/mowl-playlists`` makes a MOWL call with the user's token on every
+# request, and a GET can be triggered cross-site, so it is limited per user and per IP. Every
+# request counts (a refusal comes before the connection is opened and before any MOWL call).
+MOWL_PLAYLISTS_USER = Limit("mowl-playlists", "account", 30, 600)
+MOWL_PLAYLISTS_IP = Limit("mowl-playlists", "ip", 60, 600)
+# ADR 0016 section 3 (A2): ``GET /api/music/swedebeat-mixes`` is the same kind of read, with its
+# own buckets so the two pickers don't share a count.
+SWEDEBEAT_MIXES_USER = Limit("swedebeat-mixes", "account", 30, 600)
+SWEDEBEAT_MIXES_IP = Limit("swedebeat-mixes", "ip", 60, 600)
 
 OnSuccess = Literal["decrement", "delete"]
 
@@ -245,3 +258,18 @@ def admin_buckets(user_id: str) -> list[Bucket]:
 def redeem_buckets(user_id: str, ip: str) -> list[Bucket]:
     """A redeem-code attempt (ADR 0011 section 2): per user and per IP."""
     return [Bucket(REDEEM_USER, user_id), Bucket(REDEEM_IP, bucket_ip(ip))]
+
+
+def export_buckets(user_id: str, ip: str) -> list[Bucket]:
+    """A data export (ADR 0014 section 2): per user and per IP."""
+    return [Bucket(EXPORT_USER, user_id), Bucket(EXPORT_IP, bucket_ip(ip))]
+
+
+def mowl_playlists_buckets(user_id: str, ip: str) -> list[Bucket]:
+    """A listing of the user's Spotify playlists at MOWL (SR-05): per user and per IP."""
+    return [Bucket(MOWL_PLAYLISTS_USER, user_id), Bucket(MOWL_PLAYLISTS_IP, bucket_ip(ip))]
+
+
+def swedebeat_mixes_buckets(user_id: str, ip: str) -> list[Bucket]:
+    """A listing of the user's Swedebeat mixes at MOWL (ADR 0016 section 3): per user and per IP."""
+    return [Bucket(SWEDEBEAT_MIXES_USER, user_id), Bucket(SWEDEBEAT_MIXES_IP, bucket_ip(ip))]

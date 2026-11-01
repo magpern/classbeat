@@ -14,6 +14,7 @@ import pytest
 from agentfake import Planted
 from classbeat import design
 from classbeat.agent import Provenance
+from classbeat.design import limits as design_limits
 from classbeat.design import revise as revise_mod
 from designtools import FakeMowlMusic
 from optools import PLAYLIST, TOKEN_A
@@ -393,6 +394,8 @@ async def test_a_request_that_only_asks_for_other_songs_points_to_change_songs(
     renv: ReviseEnv,
 ) -> None:
     class_id, base = await renv.design()
+    # With room for exactly one revision, a songs-only request must leave that room untouched.
+    design_limits.configure(renv.denv.app.settings.model_copy(update={"revisions_per_class": 1}))
     job_id, _ = await renv.revise(class_id, base, "revise_songs_requested", "Use other songs.")
     row = renv.denv.ops.row(job_id)
     assert (row.state, row.error_category, row.credit_state) == (
@@ -409,6 +412,10 @@ async def test_a_request_that_only_asks_for_other_songs_points_to_change_songs(
     [run] = renv.denv.agent_runs(job_id)
     assert (run.outcome, run.stage) == ("submitted", "revise")
     assert run.input_tokens > 0
-    # The revision limit was not used: the same class can still be revised.
+    # The revision limit was not used: the one allowed revision is still there, and then it is gone.
     again, _ = await renv.revise(class_id, base, "revise_good", "Make the start easier.")
     assert renv.denv.ops.row(again).state == "completed"
+    current = renv.current(class_id)
+    assert current is not None
+    refused = await renv.ask(class_id, current)
+    assert refused.json() == {"detail": {"reason": "revision_limit", "limit": 1, "count": 1}}

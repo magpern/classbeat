@@ -42,6 +42,7 @@ from classbeat.agent.design import DesignResult
 from classbeat.config import Settings
 from classbeat.crypto.keks import KeyRing
 from classbeat.design import revision
+from classbeat.design.guidance import rule_set_for
 from classbeat.design.music import load_music
 from classbeat.jobs import KINDS, Complete, FencedSession, JobFailure, JobKind, JobRun
 from classbeat.jobs.inputs import ModelJobInput, jsonb_size
@@ -149,14 +150,21 @@ async def run(job_run: JobRun) -> Complete:
     )
     handed_over = False  # the outcome's ``release`` closes the step from then on
     try:
-        ctx = DesignContext.build(given.brief, step.data)
+        rules = rule_set_for(given.brief)  # nothing is dismissed on a new class
+        ctx = DesignContext.build(given.brief, step.data, rules)
         stage = design_stage(ctx)
         outcome = await run_stage(
             JobStageHost(job_run), model.provider, stage, ctx.first_message(), model.agent
         )
         if not isinstance(outcome.output, DesignResult):
             raise JobFailure("internal")
-        draft = revision.build(outcome.output, outcome, ctx.map, step)
+        draft = revision.build(
+            outcome.output,
+            outcome,
+            ctx.map,
+            step,
+            rules=rules.provenance() if rules else None,
+        )
 
         async def store(fs: FencedSession) -> UUID:
             """In the final fenced transaction: the connection guard, then the revision. A

@@ -9,6 +9,7 @@ import {
   endedAs,
   expectClasses,
   expectHeld,
+  lapseAdminCheck,
   newUser,
   statusesOf,
 } from './m5-helpers'
@@ -19,16 +20,15 @@ import type { Page } from '@playwright/test'
 // code raises a second user's limit. Fakes only (the fake MOWL, the FakeProvider).
 test.setTimeout(420_000)
 
-/** Turn on two-factor for the signed-in admin on the admin page and return the key. */
+/** The first admin visit: the page offers two-factor set-up (the session still says `user`). */
 async function enrollTotp(page: Page): Promise<string> {
-  // The session shows an admin as a user until two-factor is on, so enrolment is on the account page.
-  await page.goto('/account#security')
+  await page.goto('/admin')
+  await expect(page.getByRole('heading', { name: 'Set up two-factor' })).toBeVisible()
   await page.getByRole('button', { name: 'Set up an authenticator app' }).click()
   const secret = (await page.locator('code').first().textContent())!.trim()
   await page.getByLabel('Code from the app').fill(await nextTotp(secret))
   await page.getByRole('button', { name: 'Turn on two-factor' }).click()
   await page.getByRole('button', { name: 'I have saved them' }).click()
-  await page.goto('/admin')
   await expect(page.getByRole('heading', { name: 'Admin', exact: true })).toBeVisible()
   return secret
 }
@@ -126,4 +126,29 @@ test('an admin grants a plan, refunds a credit, and a code raises another limit'
   await expectClasses(other.page, 0, INSTRUCTOR.classes)
 
   for (const u of [admin, user, other]) await u.context.close()
+})
+
+// #330: an admin whose TOTP check lapsed (12 hours) is shown the code prompt, not "not an admin
+// account"; after the code the admin area opens. A non-admin sees no prompt and no admin page.
+test('a lapsed admin is asked for a code and the admin area opens after it', async ({ browser, baseURL }) => {
+  const admin = await newUser(browser, baseURL, 'm5-lapse', false, true)
+  const page = admin.page
+  const secret = await enrollTotp(page)
+
+  lapseAdminCheck(admin.email)
+  await page.goto('/admin/users')
+  await expect(page.getByRole('heading', { name: 'Two-factor check' })).toBeVisible()
+  await expect(page.getByText('not an admin account')).toHaveCount(0)
+  await expect(page.getByRole('navigation', { name: 'Admin' })).toHaveCount(0)
+  await page.getByLabel('Authenticator or recovery code').fill(await nextTotp(secret))
+  await page.getByRole('button', { name: 'Verify' }).click()
+  await expect(page.getByRole('heading', { name: 'Admin', exact: true })).toBeVisible()
+  await expect(page.getByRole('navigation', { name: 'Admin' })).toBeVisible()
+
+  const plain = await newUser(browser, baseURL, 'm5-plain', false)
+  await plain.page.goto('/admin/users')
+  await expect(plain.page.getByText('Your account is not an admin account.')).toBeVisible()
+  await expect(plain.page.getByLabel('Authenticator or recovery code')).toHaveCount(0)
+
+  for (const u of [admin, plain]) await u.context.close()
 })

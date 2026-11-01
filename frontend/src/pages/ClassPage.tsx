@@ -177,7 +177,13 @@ function ClassBody({
                 <Ellipsis aria-hidden="true" size={18} />
               </Button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
+            <DropdownMenuContent
+              align="end"
+              // Delete class moves focus to its confirmation card; the menu must not take it back.
+              onCloseAutoFocus={(event) => {
+                if (deleting) event.preventDefault()
+              }}
+            >
               <DropdownMenuItem
                 onSelect={() => {
                   goTo('versions')
@@ -285,6 +291,7 @@ function ClassBody({
               revision={shown.revision}
               musicChanged={answeredBy?.change?.musicChanged === true}
               songs={songs}
+              classId={classId}
             />
           ) : null}
         </div>

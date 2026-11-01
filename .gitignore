@@ -3,6 +3,8 @@
 .env.*
 !.env.example
 secrets/
+swedebeat_app*
+!e2e/fake-swedebeat/app.json
 .claude/settings.local.json
 .claude/worktrees/
 
@@ -30,3 +32,6 @@ blob-report/
 .idea/
 .DS_Store
 Thumbs.db
+
+# Database backups (scripts/backup.sh)
+backups/

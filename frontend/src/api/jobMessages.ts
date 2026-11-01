@@ -98,6 +98,19 @@ const FAILURES: Record<string, FailureText> = {
     title: 'This request is only about the songs',
     detail: 'Nothing was changed. Use Change songs on the class page to pick other ones.',
   },
+  // ADR 0016 sections 3 and 4: a Swedebeat mix; never a host, link or file text.
+  media_host_not_allowed: {
+    title: 'New Swedebeat mixes cannot be analysed here yet',
+    detail: 'Mixes you analysed before still work. Try one of those, or another kind of music.',
+  },
+  media_refused: {
+    title: 'The audio of this mix could not be fetched',
+    detail: 'Nothing was designed. Try again later.',
+  },
+  analysis_failed: {
+    title: 'The audio of this mix could not be analysed',
+    detail: 'Try another mix.',
+  },
   music_unlinked: {
     title: 'The music of this version is not in your MOWL account',
     detail:
@@ -194,6 +207,10 @@ export const USE_CHANGE_SONGS =
 /** The same for a class whose music is a playlist of the user's own: it has no Change songs. */
 export const USE_NEW_CLASS_FOR_SONGS =
   'This request is only about the songs, so nothing changed. This class uses a playlist of your own; to use other music, design a new class.'
+
+/** The same while the class's own song pick is not done (waiting, expired, stopped). */
+export const USE_FINISH_SONGS =
+  'This request is only about the songs, so nothing changed. Finish or retry the song pick on this page first; then use Change songs.'
 
 const REVISE_FAILURES: Record<string, string> = {
   upstream_unavailable: 'MOWL could not be reached. Nothing changed. Try again in a few minutes.',

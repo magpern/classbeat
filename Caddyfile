@@ -1,0 +1,75 @@
+# classbeat production edge (issue #341). Read by the caddy service in compose.prod.yaml.
+#   CLASSBEAT_DOMAIN  the public host name, no scheme (set in .env; never committed)
+#   ACME_EMAIL        contact address for the certificate authority
+# A public name gets a Let's Encrypt certificate automatically (ports 80 and 443 must reach this
+# container; DNS is the owner's step). `localhost` gets Caddy's internal CA, which the local
+# smoke stack uses (docs/runbooks/vps-deploy.md, "Local smoke").
+#
+# Security headers: the app sets Content-Security-Policy and Referrer-Policy itself on every
+# response (backend/src/classbeat/headers.py), so Caddy neither repeats nor overrides them for
+# proxied responses; it adds what only the TLS edge can: HSTS and the rest below. The error page
+# Caddy makes itself (app down) carries its own locked-down policy in handle_errors.
+{
+	email {$ACME_EMAIL}
+	# The admin API stays on the container's loopback (the healthcheck reads it); never published.
+	admin 127.0.0.1:2019
+	servers {
+		timeouts {
+			# Slowloris guard. No write timeout: the SSE stream is a long response.
+			read_header 10s
+			idle 2m
+		}
+		# trusted_proxies is left empty on purpose: Caddy is the first hop, so it drops any
+		# client-sent X-Forwarded-* and sets its own.
+	}
+}
+
+{$CLASSBEAT_DOMAIN} {
+	# Larger bodies are answered 413 before they reach the app (the app takes no uploads; its
+	# largest body, on /api/admin, is capped at 64 KiB).
+	request_body {
+		max_size 1MB
+	}
+
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		X-Content-Type-Options "nosniff"
+		Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=(), usb=()"
+		Cross-Origin-Opener-Policy "same-origin"
+		Cross-Origin-Resource-Policy "same-origin"
+		-Server
+		-Via
+	}
+
+	# SSE (GET /api/jobs/<id>/events): never compressed, flushed as it is written.
+	@sse path_regexp ^/api/jobs/[^/]+/events$
+	handle @sse {
+		reverse_proxy web:8000 {
+			flush_interval -1
+		}
+	}
+
+	handle {
+		encode zstd gzip
+		reverse_proxy web:8000
+	}
+
+	# Access log: method, host, path and status; no query string (OAuth codes, reset tokens),
+	# no cookies or authorization headers (ADR 0003 section 10).
+	log {
+		output stdout
+		format filter {
+			wrap json
+			request>headers delete
+			request>uri regexp \?.* ""
+			# Redirects can carry a query string: log no response headers at all.
+			resp_headers delete
+		}
+	}
+
+	handle_errors {
+		header Content-Security-Policy "default-src 'none'; frame-ancestors 'none'; base-uri 'none'"
+		header Cache-Control "no-store"
+		respond "{err.status_code} {err.status_text}" {err.status_code}
+	}
+}

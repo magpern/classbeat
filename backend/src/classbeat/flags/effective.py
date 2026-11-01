@@ -50,6 +50,13 @@ async def song_picking_admits(db: AsyncSession, ctx: UserContext, environment_on
     return "song_picking" in await effective_features(db, ctx)
 
 
+async def swedebeat_enabled(db: AsyncSession, environment_on: bool) -> bool:
+    """Off while ``CLASSBEAT_SWEDEBEAT_ENABLED`` is off (no read needed); else the stored flag."""
+    if not environment_on:
+        return False
+    return core.swedebeat_setting(environment_on, await _stored(db, "swedebeat_enabled"))
+
+
 async def trial(db: AsyncSession) -> TrialSetting | None:
     return core.trial_setting(await _stored(db, "trial"))
 

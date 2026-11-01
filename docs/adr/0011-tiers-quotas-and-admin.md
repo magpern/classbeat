@@ -296,6 +296,14 @@ write=False, target=…, params=…)`**, the only code that may build a session 
   A read-only transaction still allows `NOTIFY`/`pg_notify` and advisory locks, so admin code never
   calls them (guard 11 checks it).
 
+  One call is made through a value the guard cannot follow, on purpose (ADR 0014 section 3, #349):
+  the delete of an account ends the target's jobs through `request.app.state.end_account_jobs`,
+  installed by `web`. That code takes the owner advisory lock and notifies, in the *target's own*
+  `user_session`s on the app engine, never on the maint transaction this rule protects.
+  `tests/test_account_job_ender.py` pins what the value is, that only `web` sets it, that only
+  `classbeat.admin.users` calls it, and that nothing under `classbeat.admin` imports the jobs or
+  account code.
+
   A refused or failing action (either kind) writes an `outcome = 'refused' | 'error'` row in its
   own short transaction (the same `READ WRITE`, insert, commit). Reads are audited once per request,
   with the filter in `params`.
@@ -337,6 +345,17 @@ included (409 `target_is_admin`): demoting an admin stays the CLI's (ADR 0003 §
 lock themselves or another admin out from the browser. A delete records the target's id in
 `target_id` (text), because the foreign key nulls `target_user_id` in the same transaction.
 
+**Reaching the code prompt (#330).** The session's `role` is `user` until the TOTP check passes
+(and again after 12 hours), so the page cannot tell such an admin from a user. `GET
+/api/auth/session` therefore carries `session.admin_pending_mfa`: true only when the caller's own
+stored role is `admin` and the check is missing or older than 12 hours, false for every other
+account (a real non-admin sees `false`, never anything about admin routes). It reads the session
+row already loaded for the request, writes and audits nothing, and decides nothing: `/api/admin/*`
+keeps its own `403 forbidden` / `403 mfa_required`. The page fetches the lazy admin chunk for
+`role == admin` or `admin_pending_mfa`, and `AdminLayout` shows the code prompt (or the first-time
+enrolment) from the `mfa_required` answer of `whoami`; after the check the session is fetched
+again and the area opens.
+
 | Area | Reads | Writes (step-up) |
 |---|---|---|
 | Users | list (email, created, role, disabled, effective plan and its source and end, classes held this period of the limit, cost this period) with search by email prefix and paging; detail adds entitlements (with notes), the credit ledger of the last three periods, and **connection status only**: MOWL (status, connected, last used), Spotify (status, so whether a Client ID is set, and the last error category, ADR 0009 §8), Swedebeat (status). Never a token, ciphertext, Client ID value, playlist id, brief or class content | grant and revoke entitlements; disable and enable (disable revokes all the user's sessions, ADR 0003 §3; a disabled user's jobs end as T53); delete (the ADR 0003 account deletion for the target, with the target's email typed to confirm); refund a committed credit. Never role changes: granting and revoking admin stay CLI-only (ADR 0003 §7) |
@@ -371,14 +390,17 @@ it:
 
 **Amendment 2026-10-31 (#319, #227):** the banner's text is plain text: every character of Unicode categories `Cc`, `Cf`, `Zl` and `Zp` is refused when it is written (422 `invalid_value`) and makes a stored banner read as none, so an emoji sequence joined by U+200D (ZWJ, a `Cf` character, for example a family or a flag-and-symbol emoji) is refused by design, while single emoji, accented letters and combining marks are kept.
 
-Feature codes in M5: `song_picking`. `swedebeat` and `billing` are shown, read-only and off; the
-admin can't turn them on (§8). Plan limits are edited on `plans`, not in `app_settings`.
+Feature codes in M5: `song_picking`. `billing` is shown, read-only and off; the admin can't turn it on
+(§8). `swedebeat_enabled` became a real flag on 2026-10-31 (ADR 0015 §6): it is not a feature code, it is
+switched for everyone. Plan limits are edited on `plans`, not in `app_settings`.
 
 ### 8. What stays off
 
 - **Billing:** `CLASSBEAT_BILLING_ENABLED` (default `false`) is shown; there is no Paddle code, no
   price shown to users, no `subscription` writer and no webhook. M7.
-- **Swedebeat:** no feature exists to switch (roadmap §10); the flag is shown off.
+- **Swedebeat:** *superseded 2026-10-31 (S1, #362, [ADR 0015](0015-swedebeat-connection.md) §6, roadmap
+  Amendment 9):* `swedebeat_enabled` is a real flag in §7's table: stored `off` or `on` (absent is `on`), only
+  under `CLASSBEAT_SWEDEBEAT_ENABLED` (default `false`, the kill switch); it is no longer read-only.
 - **Priority queue for Pro:** it changes the queue's `SECURITY DEFINER` claim and its digests;
   with a beta of a few testers it buys nothing; deferred to M7 (§11, Q8).
 - **Feature gates by tier** (races, games, FTP tests, history, multi-week series): M5 stores

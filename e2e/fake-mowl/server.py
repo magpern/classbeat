@@ -31,6 +31,11 @@ answer), `noid` (applied, answered without its id), `copy` (an update's `PUT v1/
 answered as MOWL making a copy: a new, empty program with the header, the original untouched).
 `save-edit?program=<id>` changes a program's name as the user would in the MOWL app.
 
+It also speaks the Swedebeat calls (ADR 0016, A1; `swedebeat_mixes.py` beside it): the caller's
+mixes, the attach, the indexing and `TemporaryLinks`, whose link names an unlisted media host that no
+service answers (the production `MOWL_MEDIA_HOSTS` is empty, so classbeat must refuse it);
+`/__e2e/swedebeat-arm` zeroes and `swedebeat-state` shows the counts (never a token or link).
+
 `/__e2e/...` is the test control, reached from the compose network only (the tests call it with
 `docker compose exec web`): `arm`, `release` and `state` take `?playlist=<spotify id>`;
 `save-arm?fail=<n>:<mode>,...` (zero the write counter and set the injections; no `fail` clears
@@ -49,6 +54,8 @@ import socket
 import ssl
 import tempfile
 import threading
+import urllib.error
+import urllib.request
 import uuid
 from collections import Counter
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -58,6 +65,8 @@ from cryptography import x509
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.x509.oid import NameOID
+
+import swedebeat_mixes
 
 HOST = "api.mowl.com"
 # The constant app ids of mowl/api.py (APP_GUID, TICKET_GUID): part of the sign-in paths.
@@ -99,6 +108,7 @@ class Playlist:
         self.gate = threading.Event()  # set: held reads go on (and later ones are not held)
         self.owners: set[str] = set()  # tokens that attached it
         self.uncertain_done: set[str] = set()  # tokens whose first attach was answered with a 500
+        self.live = False  # wraps a playlist of the fake Spotify: it lists what that holds now
 
 
 # Public test data. Hill Climb and Sprints are the new-class form's (new-class.spec.ts); the
@@ -113,6 +123,51 @@ PLAYLISTS = [
 BY_SPOTIFY = {p.spotify_id: p for p in PLAYLISTS}
 BY_MOWL = {p.mowl_id: p for p in PLAYLISTS}
 TRACK_COUNT = 8
+
+# Playlists classbeat's song picking makes in the fake Spotify (the pool and the final playlist) and
+# attaches here. MOWL is assumed to follow edits of an attached playlist (ADR 0008 section 2), so a
+# live playlist lists, on every read, what the fake Spotify's playlist holds now: the fake Spotify
+# (backend/tests/spotifycore.py, the code the backend tests run) computes that list, and this fake asks
+# its test control. The call is test-only and internal to the compose network: the fake Spotify's
+# certificate is not checked here, because the shared CA bundle is written after this service starts.
+SPOTIFY_CONTROL = "https://api.spotify.com/__e2e/mowl-tracks?playlist="
+FIRST_LIVE_MOWL_ID = 7100
+_UNCHECKED = ssl.create_default_context()
+_UNCHECKED.check_hostname = False
+_UNCHECKED.verify_mode = ssl.CERT_NONE
+_DIRECT = urllib.request.build_opener(
+    urllib.request.ProxyHandler({}), urllib.request.HTTPSHandler(context=_UNCHECKED)
+)
+
+
+def spotify_playlist(spotify_id: str) -> dict[str, object] | None:
+    """The fake Spotify's view of a playlist for MOWL (name and tracks), or None if it has none."""
+    try:
+        with _DIRECT.open(SPOTIFY_CONTROL + spotify_id, timeout=10) as answer:
+            found: dict[str, object] = json.load(answer)
+            return found
+    except urllib.error.HTTPError:
+        return None
+
+
+def live_playlist(spotify_id: str) -> Playlist | None:
+    """The fake MOWL playlist wrapping this fake Spotify playlist; made on its first attach."""
+    with LOCK:
+        known = BY_SPOTIFY.get(spotify_id)
+    if known is not None:
+        return known
+    if len(spotify_id) != 22 or not spotify_id.isalnum():
+        return None
+    found = spotify_playlist(spotify_id)
+    if found is None:
+        return None
+    with LOCK:
+        if spotify_id not in BY_SPOTIFY:
+            mowl_id = FIRST_LIVE_MOWL_ID + len(BY_MOWL)
+            made = Playlist(spotify_id, str(found["name"]), mowl_id)
+            made.live = True
+            BY_SPOTIFY[spotify_id], BY_MOWL[mowl_id] = made, made
+        return BY_SPOTIFY[spotify_id]
 
 
 def track_id(i: int) -> str:
@@ -143,6 +198,10 @@ SECTIONS = [  # a drop and a breakdown in every song
 ]
 SECTION_PATH = re.compile(r"^/v1/Spotify/Tracks/([0-9A-Za-z]{22})/AudioAnalysis$")
 PLAYLIST_PATH = re.compile(r"^/v1/Playlists/(\d+)/(tracks|sessiondesigner/availability)$")
+# A Swedebeat mix's playlist: its indexing (tracks) and its temporary links (swedebeat_mixes.py).
+SWEDEBEAT_READ = re.compile(
+    r"^/v1/(?:Playlists/(9\d{3})/tracks|swedebeat/playlist/(9\d{3})/TemporaryLinks)$"
+)
 PROGRAM_PATH = re.compile(r"^/v1/programs/(\d+)$")
 PROGRAM_SEGMENTS_PATH = re.compile(r"^/v1/programs/(\d+)/segments$")
 INTERVALS_PATH = re.compile(r"^/v1/segments/(\d+)/intervals$")
@@ -272,6 +331,14 @@ class Handler(BaseHTTPRequestHandler):
             ]
             self.ok(listed)
             return
+        if path == "/v1/swedebeat/Playlists":
+            token = self.token()
+            if token is None:
+                self.reply(401, {"Error": "unauthorized"})
+                return
+            form = {k: v[0] for k, v in parse_qs(self.body().decode()).items()}
+            self.ok(swedebeat_mixes.listing(token, form))
+            return
         if path != f"/v1/Authentication/Authenticate/{APP_GUID}":
             self.reply(404, {"Error": "not found"})
             return
@@ -290,6 +357,18 @@ class Handler(BaseHTTPRequestHandler):
         if is_program_write("PUT", urlsplit(self.path).path):
             self.program_write("PUT", urlsplit(self.path).path)
             return
+        if urlsplit(self.path).path == "/v1/swedebeat/Playlist":
+            token = self.token()
+            if token is None:
+                self.reply(401, {"Error": "unauthorized"})
+                return
+            form = {k: v[0] for k, v in parse_qs(self.body().decode()).items()}
+            made = swedebeat_mixes.attach(token, form)
+            if made is None:
+                self.reply(200, {"Data": None, "Error": "Unknown Swedebeat playlist"})
+            else:
+                self.ok(made)
+            return
         if urlsplit(self.path).path != "/v1/Spotify/Playlist":
             self.reply(404, {"Error": "not found"})
             return
@@ -302,7 +381,7 @@ class Handler(BaseHTTPRequestHandler):
         except (ValueError, KeyError, TypeError):
             self.reply(400, {"Error": "bad request"})
             return
-        playlist = BY_SPOTIFY.get(wanted) if isinstance(wanted, str) else None
+        playlist = live_playlist(wanted) if isinstance(wanted, str) else None
         if playlist is None:
             self.reply(200, {"Data": None, "Error": "Unknown playlist"})
             return
@@ -398,6 +477,16 @@ class Handler(BaseHTTPRequestHandler):
         if token is None:
             self.reply(401, {"Error": "unauthorized"})
             return
+        mix_read = SWEDEBEAT_READ.match(path)
+        if mix_read is not None:
+            playlist_id = int(mix_read[1] or mix_read[2])
+            read = swedebeat_mixes.tracks if mix_read[1] else swedebeat_mixes.links
+            found = read(token, playlist_id)
+            if found is None:
+                self.reply(404, {"Error": "not found"})
+            else:
+                self.ok(found)
+            return
         program = PROGRAM_PATH.match(path)
         if program is not None:
             with LOCK:
@@ -432,6 +521,15 @@ class Handler(BaseHTTPRequestHandler):
             playlist.gate.wait(HOLD_SECONDS)
             with LOCK:
                 playlist.held -= 1
+        if playlist.live:
+            held = spotify_playlist(playlist.spotify_id)
+            self.ok(
+                [
+                    {**e, "PlaylistID": playlist.mowl_id, "Url": "x"}
+                    for e in (held["tracks"] if held is not None else [])  # type: ignore[union-attr]
+                ]
+            )
+            return
         self.ok(tracks())
 
     def control(self, action: str, query: dict[str, list[str]]) -> None:
@@ -439,6 +537,11 @@ class Handler(BaseHTTPRequestHandler):
         `state` of one playlist; `save-arm` and `save-state` for the programs."""
         if action in ("save-arm", "save-state"):
             self.save_control(action, (query.get("fail") or [""])[0], (query.get("reset") or [""])[0])
+            return
+        if action in ("swedebeat-arm", "swedebeat-state"):
+            if action == "swedebeat-arm":
+                swedebeat_mixes.reset()
+            self.reply(200, swedebeat_mixes.state())
             return
         if action == "save-programs":
             self.save_programs()

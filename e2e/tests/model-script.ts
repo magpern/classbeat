@@ -6,7 +6,13 @@ import { readFileSync } from 'node:fs'
 // (it starts on good_first_draft); a test points the link at the script the next run needs. Only
 // call it while no run is going. Every run reads the file anew, so no restart is needed.
 
-export type ModelScript = 'good_first_draft' | 'revise_good' | 'revise_second' | 'revise_description'
+export type ModelScript =
+  | 'good_first_draft'
+  | 'revise_good'
+  | 'revise_second'
+  | 'revise_description'
+  | 'e2e_pick' // song picking, phase 1: search, pool, choose (the fake Spotify's catalogue)
+  | 'e2e_change' // Change songs, phase 1: replace slot 2
 
 export function useModelScript(name: ModelScript): void {
   execFileSync(

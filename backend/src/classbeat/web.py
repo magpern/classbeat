@@ -14,18 +14,23 @@ from sqlalchemy import text
 
 # saving registers save_workout (SV1); playlists the Spotify writes for Check again (OP1)
 from classbeat import __version__, auth, playlists, quota, saving, songs
+from classbeat.account import erase
+from classbeat.account.routes import router as account_router
 from classbeat.admin import routes as admin_routes
 from classbeat.admin.db import AdminDb
+from classbeat.bodylimit import BodyLimit
 from classbeat.classes.routes import music_router as class_music_router
 from classbeat.classes.routes import router as classes_router
 from classbeat.config import Settings, check_web_has_no_model_key
 from classbeat.connections.routes import router as connections_router
+from classbeat.connections.swedebeat_routes import router as swedebeat_router
 from classbeat.crypto.keks import load_keyring
 from classbeat.db import create_engine, create_session_factory, verify_database_role
 from classbeat.design import configure_limits
+from classbeat.design.mixes import router as mixes_router
 from classbeat.design.routes import router as music_router  # registers design_draft (J3)
 from classbeat.flags.routes import router as settings_router
-from classbeat.headers import SecurityHeaders
+from classbeat.headers import SecurityHeaders, unhandled_error
 from classbeat.jobs.events_routes import StreamLimiter
 from classbeat.jobs.events_routes import router as job_events_router
 from classbeat.jobs.hub import EventHub
@@ -114,6 +119,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             app.state.session_factory = create_session_factory(engine)
             # Refuses to start without a valid connection_kek, or with a key swapped under an
             # unchanged id (ADR 0004 section 2).
+            # The operator's delete of an account ends the target's jobs through this value
+            # (ADR 0014 section 3); the admin package does not import the jobs code (guard 11).
+            app.state.end_account_jobs = erase.make_job_ender(
+                app.state.session_factory,
+                quota.MeteredLedger(quota.Bounds.from_settings(settings)),
+            )
             app.state.keyring = await load_keyring(
                 app.state.session_factory, settings.connection_kek_id
             )
@@ -162,13 +173,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     admin_routes.install(app)  # every /api/admin route of the admin area (ADR 0011 section 6)
     app.include_router(spotify_router)
     app.include_router(connections_router)
+    app.include_router(swedebeat_router)
     app.include_router(job_events_router)
     app.include_router(jobs_router)
     app.include_router(usage_router)
     app.include_router(plans_router)
+    app.include_router(account_router)
     app.include_router(settings_router)
     app.include_router(operations_router)
     app.include_router(music_router)
+    app.include_router(mixes_router)
     app.include_router(class_music_router)
     app.include_router(classes_router)
 
@@ -177,7 +191,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             _add_single_page_app(app, settings.static_dir)
         else:
             logger.warning("static_dir does not exist; not serving static files")
+    # Outside the auth middleware, inside SecurityHeaders: a body over the cap is refused before any
+    # session, CSRF or database work, and the 413 still carries the security headers (#351).
+    app.add_middleware(BodyLimit)
     # Added last, so it is the outermost middleware: the CSP and Referrer-Policy go on every
     # response, the auth middleware's own answers included (ADR 0013 section 9).
     app.add_middleware(SecurityHeaders)
+    # Starlette answers an unhandled exception outside that middleware: its 500 adds the headers.
+    app.add_exception_handler(Exception, unhandled_error)
     return app

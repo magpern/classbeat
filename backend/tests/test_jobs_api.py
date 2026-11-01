@@ -318,13 +318,43 @@ async def test_a_body_over_the_cap_is_refused_before_it_is_read(
     alice: Browser = await browsers()
     huge = alice.body(note="x" * BODY_MAX_BYTES)
     response = await alice.post("/api/jobs", huge, {"Idempotency-Key": new_key()})
-    assert (response.status_code, response.json()) == (413, {"detail": {"reason": "too_large"}})
+    # The app-wide BodyLimit (#351) answers first, with its fixed body; the jobs API's own cap
+    # (``test_the_jobs_own_cap_is_a_second_line``) is behind it.
+    assert (response.status_code, response.json()) == (
+        413,
+        {"detail": {"reason": "body_too_large"}},
+    )
     approve = await alice.post(
         f"/api/jobs/{UNKNOWN}/approve", {"revision_id": UNKNOWN, "content_hash": "0" * 64,
                                          "pad": "x" * BODY_MAX_BYTES},
     )  # fmt: skip
     assert approve.status_code == 413
     assert jenv.sql("SELECT count(*) FROM jobs").scalar() == 0
+
+
+async def test_the_jobs_own_cap_is_a_second_line() -> None:
+    """The app-wide BodyLimit (#351) is equal to ``BODY_MAX_BYTES`` and answers first over HTTP;
+    ``_body`` still refuses by itself if it is ever reached with more (a changed or removed outer
+    limit): by ``Content-Length`` and while streaming."""
+    from classbeat.jobs.routes import BODY_MAX_BYTES, _body, _TooLarge  # pyright: ignore[reportPrivateUsage]
+
+    def request(chunks: list[bytes], length: str | None) -> Any:
+        from starlette.requests import Request
+
+        queue = list(chunks)
+
+        async def receive() -> dict[str, Any]:
+            body = queue.pop(0) if queue else b""
+            return {"type": "http.request", "body": body, "more_body": bool(queue)}
+
+        headers = [] if length is None else [(b"content-length", length.encode())]
+        return Request({"type": "http", "method": "POST", "headers": headers}, receive)
+
+    with pytest.raises(_TooLarge):
+        await _body(request([b"x"], str(BODY_MAX_BYTES + 1)))
+    with pytest.raises(_TooLarge):
+        await _body(request([b"x" * BODY_MAX_BYTES, b"x"], None))
+    assert len(await _body(request([b"x" * BODY_MAX_BYTES], None))) == BODY_MAX_BYTES
 
 
 @pytest.mark.parametrize("oversized", [False, True])
@@ -352,7 +382,10 @@ async def test_a_chunked_body_without_a_length_is_capped_while_it_is_read(
     assert "content-length" not in response.request.headers
     assert response.request.headers["transfer-encoding"] == "chunked"
     if oversized:
-        assert (response.status_code, response.json()) == (413, {"detail": {"reason": "too_large"}})
+        assert (response.status_code, response.json()) == (
+            413,
+            {"detail": {"reason": "body_too_large"}},
+        )
         assert jenv.sql("SELECT count(*) FROM jobs").scalar() == 0
     else:
         assert response.status_code == 201, response.text

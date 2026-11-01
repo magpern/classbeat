@@ -1,7 +1,7 @@
-import type { HTMLAttributes } from 'react'
+import type { ComponentProps, HTMLAttributes } from 'react'
 import { cn } from '../../lib/cn'
 
-export function Card({ className, ...props }: HTMLAttributes<HTMLDivElement>) {
+export function Card({ className, ...props }: ComponentProps<'div'>) {
   return <div className={cn('rounded-lg border border-line bg-surface p-5 text-text', className)} {...props} />
 }
 

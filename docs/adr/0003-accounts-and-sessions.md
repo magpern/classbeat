@@ -68,10 +68,11 @@ Every table has an `id uuid` primary key (server default) unless a key is named.
 | `mfa_totp` | `user_id` (unique), `secret_ciphertext`, `nonce`, `key_id`, `confirmed_at`, `last_step` | AES-256-GCM (§8) |
 | `mfa_recovery_codes` | `user_id`, `code_hash`, `used_at` | HMAC-SHA256 (§8) |
 | `rate_limits` | key `(bucket_hash, window_start)`, `count` | HMAC of the bucket key |
-| `auth_events` | `user_id` (*set null*), `kind`, `ip`, `at`, `detail` (no secrets) | none |
+| `auth_events` | `user_id` (*cascade* since migration 0015, ADR 0014; was *set null*), `kind`, `ip`, `at`, `detail` (no secrets) | none |
 
-Deleting a user (§6) thus removes all their auth rows except `auth_events`, which keep a null
-`user_id` until the 30-day purge. Cascades into owned tables work under `FORCE` RLS, because
+Deleting a user (§6) thus removes all their auth rows, `auth_events` included (they used to keep a
+null `user_id` until the 30-day purge; migration 0015 and ADR 0014 section 1 changed that, because
+the address in them is personal data). Cascades into owned tables work under `FORCE` RLS, because
 Postgres runs referential actions without row security.
 
 - **Email normalization:** `email_normalized` is the address after trimming, with ASCII letters
@@ -440,6 +441,8 @@ Fixed windows are counted in `rate_limits` with one upsert per check. There is n
 - **IPv6:** IPv4-mapped addresses are unmapped first; IPv6 is bucketed by its /64 prefix.
 - **Bounded hashing:** argon2 runs in a bounded thread pool (`CLASSBEAT_PASSWORD_HASH_WORKERS`,
   default 4). A request that waits more than 5 s for a worker gets 503.
+- **Provider-calling routes** are limited too: MOWL connect (above), Spotify connect start, and
+  `GET /api/music/mowl-playlists` (30 per user and 60 per IP per 10 minutes, every request counts; #354).
 - **When a limit trips:** the request gets 429 with `Retry-After`. There is no permanent lockout.
 - **Client IP:** the peer address. When the peer is in `CLASSBEAT_TRUSTED_PROXIES` (Caddy on the
   VPS; empty by default), it is the right-most `X-Forwarded-For` entry that is not a trusted

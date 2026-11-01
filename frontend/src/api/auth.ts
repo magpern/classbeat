@@ -26,6 +26,8 @@ export interface SessionDetails {
   recentAuth: boolean
   mfa: boolean
   stepup: boolean
+  /** An admin account whose TOTP check is missing or lapsed: `role` is `user` until it passes. */
+  adminPendingMfa: boolean
 }
 
 export interface SessionState {
@@ -48,6 +50,7 @@ export async function getSession(signal?: AbortSignal): Promise<SessionState> {
       recentAuth: flag(session, 'recent_auth'),
       mfa: flag(session, 'mfa'),
       stepup: flag(session, 'stepup'),
+      adminPendingMfa: flag(session, 'admin_pending_mfa'),
     },
   }
 }
@@ -309,10 +312,20 @@ export async function signOutDevice(id: string): Promise<void> {
 }
 
 /**
- * Deletes the account (`DELETE /api/auth/account`, ADR 0003 section 6): recent authentication,
- * and a step-up once TOTP is set up; the caller runs it through the guard.
+ * Deletes the account (`POST /api/account/delete`, ADR 0014 section 3): the typed address goes
+ * to the server, which checks it against the account's; recent authentication, and a step-up
+ * once TOTP is set up. The caller runs it through the guard.
  */
-export async function deleteAccount(): Promise<void> {
-  await del('/api/auth/account')
+export async function deleteAccount(confirmEmail: string): Promise<void> {
+  await post('/api/account/delete', { confirm_email: confirmEmail })
   clearSubmittedInputs()
+}
+
+/**
+ * The user's own data as one JSON document (`POST /api/account/export`, ADR 0014 section 2: a POST so a cross-site request cannot trigger it):
+ * recent authentication, and a step-up once TOTP is set up; the caller runs it through the
+ * guard. 5 a hour (429).
+ */
+export async function exportMyData(): Promise<unknown> {
+  return post('/api/account/export')
 }

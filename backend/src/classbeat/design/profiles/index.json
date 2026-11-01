@@ -1,0 +1,36 @@
+{
+  "schema": 1,
+  "rules_version": 1,
+  "profiles": {
+    "cycling.plain.30": {
+      "file": "cycling/plain_30.json",
+      "version": 1,
+      "digest": "73e5536765a7d97a16e14a52ed57b85cbcd6f4b14e78bec4eb9bca4e302b28ef"
+    },
+    "cycling.plain.45": {
+      "file": "cycling/plain_45.json",
+      "version": 1,
+      "digest": "93c8c334449ee20240493257261b8e2ad09b93f538fd14ed925980739a903305"
+    },
+    "cycling.plain.60": {
+      "file": "cycling/plain_60.json",
+      "version": 1,
+      "digest": "547ad245b9eb0404fb775f97f59ca25e23ceb7e6b709e97a34adb27b3885b324"
+    },
+    "cycling.interval.30": {
+      "file": "cycling/interval_30.json",
+      "version": 1,
+      "digest": "cb55a9bdd29e006c4c82a1247b8272527b7a3308e6f0829bf7276ccfab97b120"
+    },
+    "cycling.interval.45": {
+      "file": "cycling/interval_45.json",
+      "version": 1,
+      "digest": "25b969cef68f89aec2f70fb549394248634b4913716951a6ce8f29add8ab2c89"
+    },
+    "cycling.interval.60": {
+      "file": "cycling/interval_60.json",
+      "version": 1,
+      "digest": "5980dec8bba0b553a53fd48109cd6327a0470d31697e7ca25fae93fcf2bcdbdf"
+    }
+  }
+}

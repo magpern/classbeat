@@ -1,0 +1,256 @@
+# Production stack for the VPS (issue #341): Caddy in front of web, worker, db and the one-shot
+# migrate and db-functions. Standalone (not an override of compose.yaml): nothing of the dev
+# stack's published ports, mailpit, build or fake model provider can leak into it.
+#
+#   docker compose -f compose.prod.yaml config          # validate (needs the variables below)
+#   docker compose -f compose.prod.yaml up -d --wait
+#
+# Runbook: docs/runbooks/vps-deploy.md. Configuration only: deploying is the owner's step.
+#
+# Variables (a .env next to this file; values are the owner's, none are committed):
+#   CLASSBEAT_VERSION  image tag from ghcr.io/magpern/classbeat (X.Y.Z, never `latest`)   required
+#   CLASSBEAT_DOMAIN   the public host name, no scheme (the Caddyfile site address)       required
+#   ACME_EMAIL         contact address for the certificate authority                      required
+#   SMTP_HOST, SMTP_SENDER                                                                required
+#   SMTP_PORT, SMTP_TLS, SMTP_USERNAME, ADMIN_EMAILS, SIGNUP_MODE, CONNECTION_KEK_ID,
+#   MODEL_PROVIDER, DEEPSEEK_ENABLED, SWEDEBEAT_ENABLED                                   optional
+#   CADDY_HTTP_PORT, CADDY_HTTPS_PORT  host ports (80 and 443; only the local smoke changes them)
+# Secrets are files under ./secrets (mounted as Docker secrets, never environment variables).
+#
+# Networks: `backend` is internal (no route out): db, migrate and db-functions live only there.
+# `edge` joins caddy and web: the only inbound path from the internet to the app, and (not
+# internal, by design) web's way out to SMTP and the Spotify and Google/GitHub/Microsoft token
+# endpoints. `egress` is the worker's way out to the model providers, MOWL and Spotify. Only caddy publishes ports.
+
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "5"
+
+x-hardening: &hardening
+  security_opt:
+    - no-new-privileges:true
+  cap_drop:
+    - ALL
+
+x-app: &app
+  image: ghcr.io/magpern/classbeat:${CLASSBEAT_VERSION:?set CLASSBEAT_VERSION to a release tag}
+  restart: unless-stopped
+  logging: *logging
+  <<: *hardening
+  environment: &app-env
+    CLASSBEAT_ENVIRONMENT: prod
+    CLASSBEAT_LOG_LEVEL: INFO
+    CLASSBEAT_DATABASE_URL: postgresql+psycopg://classbeat_app@db:5432/classbeat
+    # The one public origin (ADR 0003 section 4); prod refuses anything but https.
+    CLASSBEAT_PUBLIC_BASE_URL: https://${CLASSBEAT_DOMAIN:?set CLASSBEAT_DOMAIN}
+    CLASSBEAT_SIGNUP_MODE: ${SIGNUP_MODE:-invite}
+    CLASSBEAT_ADMIN_EMAILS: ${ADMIN_EMAILS:-}
+    # Real mail (ADR 0003 section 5): starttls or tls; the password is the smtp_password secret.
+    CLASSBEAT_SMTP_HOST: ${SMTP_HOST:?set SMTP_HOST}
+    CLASSBEAT_SMTP_PORT: ${SMTP_PORT:-587}
+    CLASSBEAT_SMTP_TLS: ${SMTP_TLS:-starttls}
+    CLASSBEAT_SMTP_SENDER: ${SMTP_SENDER:?set SMTP_SENDER}
+    CLASSBEAT_SMTP_USERNAME: ${SMTP_USERNAME:-}
+    CLASSBEAT_CONNECTION_KEK_ID: ${CONNECTION_KEK_ID:-kek-1}
+    CLASSBEAT_DEEPSEEK_ENABLED: ${DEEPSEEK_ENABLED:-false}
+  secrets:
+    - database_password
+    - app_secret_key
+    - connection_kek
+  depends_on:
+    db-functions:
+      condition: service_completed_successfully
+
+services:
+  caddy:
+    image: caddy:2.10.2
+    restart: unless-stopped
+    logging: *logging
+    <<: *hardening
+    # Caddy runs as root in the container; with ALL dropped it needs this one back to bind 80/443.
+    cap_add:
+      - NET_BIND_SERVICE
+    environment:
+      CLASSBEAT_DOMAIN: ${CLASSBEAT_DOMAIN:?set CLASSBEAT_DOMAIN}
+      ACME_EMAIL: ${ACME_EMAIL:?set ACME_EMAIL}
+    ports:
+      - "${CADDY_HTTP_PORT:-80}:80"
+      - "${CADDY_HTTPS_PORT:-443}:443"
+      - "${CADDY_HTTPS_PORT:-443}:443/udp"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    networks:
+      edge:
+        ipv4_address: 172.29.80.10
+    depends_on:
+      web:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:2019/config/"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+
+  db:
+    image: postgres:17.11
+    restart: unless-stopped
+    logging: *logging
+    environment:
+      POSTGRES_DB: classbeat
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
+    secrets:
+      - postgres_password
+      - database_owner_password
+      - database_password
+    volumes:
+      - db-data:/var/lib/postgresql/data
+      - ./docker/postgres/init:/docker-entrypoint-initdb.d:ro
+    networks:
+      - backend
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U postgres -d classbeat"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  migrate:
+    <<: *app
+    restart: "no"
+    command: ["alembic", "upgrade", "head"]
+    environment:
+      <<: *app-env
+      CLASSBEAT_MIGRATIONS_DATABASE_URL: postgresql+psycopg://classbeat_owner@db:5432/classbeat
+    secrets:
+      - source: database_owner_password
+        target: database_owner_password
+    networks:
+      - backend
+    depends_on:
+      db:
+        condition: service_healthy
+
+  # The job queue's role and functions (ADR 0005 section 3), run as the superuser after the
+  # migrations; same arrangement as compose.yaml (the password goes through a tmpfs PGPASSFILE).
+  db-functions:
+    image: postgres:17.11
+    restart: "no"
+    logging: *logging
+    user: postgres
+    entrypoint: ["sh", "/queue/db-functions.sh"]
+    secrets:
+      - postgres_password
+      - database_maint_password
+    tmpfs:
+      - /run/pgpass:mode=0700,uid=999,gid=999
+    volumes:
+      - ./docker/postgres/queue:/queue:ro
+      - ./docker/postgres/maint:/maint:ro
+    networks:
+      - backend
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
+  web:
+    <<: *app
+    read_only: true
+    tmpfs:
+      - /tmp
+    environment:
+      <<: *app-env
+      CLASSBEAT_MAINT_DATABASE_URL: postgresql+psycopg://classbeat_maint@db:5432/classbeat
+      # Caddy's fixed address on `edge` (see the networks below): the only peer whose
+      # X-Forwarded-For is believed (ADR 0003 section 9). Caddy overwrites the header itself.
+      CLASSBEAT_TRUSTED_PROXIES: 172.29.80.10
+      # ADR 0015: off unless the owner switches the Swedebeat connection on.
+      CLASSBEAT_SWEDEBEAT_ENABLED: ${SWEDEBEAT_ENABLED:-false}
+      # Opt-in (docs/runbooks/proton-bridge-smtp.md): a mounted PEM that the SMTP certificate must
+      # match instead of the system store. Web only; unset keeps full system-store verification.
+      CLASSBEAT_SMTP_CA_FILE: ${SMTP_CA_FILE:-}
+    # swedebeat_app: Swedebeat's app key if the image does not hold it (ADR 0015 section 4).
+    secrets:
+      - database_password
+      - app_secret_key
+      - connection_kek
+      - database_maint_password
+      - smtp_password
+      - swedebeat_app
+    # No `ports`: reachable only from caddy over `edge`.
+    expose:
+      - "8000"
+    networks:
+      - edge
+      - backend
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/ready', timeout=3)"
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 20s
+
+  worker:
+    <<: *app
+    command: ["python", "-m", "classbeat.worker"]
+    # ADR 0005 section 3: up to 25 s for runs to reach a checkpoint, then the leases go back.
+    stop_grace_period: 30s
+    environment:
+      <<: *app-env
+      # `fake` is refused when the environment is prod; the key is secrets/anthropic_api_key.
+      CLASSBEAT_MODEL_PROVIDER: ${MODEL_PROVIDER:-anthropic}
+    # The model API keys are the worker's only (ADR 0006 section 9, ADR 0012 section 2).
+    secrets:
+      - database_password
+      - app_secret_key
+      - connection_kek
+      - anthropic_api_key
+      - openai_api_key
+      - deepseek_api_key
+    networks:
+      - backend
+      - egress
+
+networks:
+  edge:
+    ipam:
+      config:
+        - subnet: 172.29.80.0/24
+  backend:
+    internal: true
+  egress: {}
+
+secrets:
+  postgres_password:
+    file: ./secrets/postgres_password
+  database_owner_password:
+    file: ./secrets/database_owner_password
+  database_password:
+    file: ./secrets/database_password
+  app_secret_key:
+    file: ./secrets/app_secret_key
+  connection_kek:
+    file: ./secrets/connection_kek
+  database_maint_password:
+    file: ./secrets/database_maint_password
+  smtp_password:
+    file: ./secrets/smtp_password
+  anthropic_api_key:
+    file: ./secrets/anthropic_api_key
+  openai_api_key:
+    file: ./secrets/openai_api_key
+  deepseek_api_key:
+    file: ./secrets/deepseek_api_key
+  swedebeat_app:
+    file: ./secrets/swedebeat_app
+
+volumes:
+  db-data:
+  caddy-data:
+  caddy-config:

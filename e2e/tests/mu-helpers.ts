@@ -78,13 +78,33 @@ export async function overflowPixels(page: Page): Promise<number> {
   })
 }
 
+/**
+ * Wait until nothing is moving: every finite CSS transition and animation has finished, checked after
+ * every two frames. Under `prefers-reduced-motion` the app's rule gives
+ * every element a 0.01 ms transition (tailwind.css), so a theme switch or a route or tab change
+ * leaves a CSSTransition on `html`, `body` and most elements until the next frame ticks; a
+ * computed colour read before that is the previous theme's (a dark label on a dark surface, #346).
+ * Infinite animations (the designing page's pulse) are not waited for: they never finish.
+ */
+export async function settle(page: Page): Promise<void> {
+  await page.evaluate(async () => {
+    const frame = () => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())))
+    const moving = () => document.getAnimations().filter((a) => a.effect?.getComputedTiming().iterations !== Infinity)
+    // Polled frame by frame, not awaited through `Animation.finished`: an animation whose element
+    // goes away (a tab panel hidden) never settles that promise and would hang the audit.
+    for (let round = 0; round < 60; round++) {
+      await frame()
+      if (moving().length === 0) return
+    }
+    throw new Error(`still animating: ${moving().map((a) => a.constructor.name).join(', ')}`)
+  })
+}
+
 export async function setTheme(page: Page, theme: (typeof THEMES)[number]): Promise<void> {
-  await page.evaluate(async (value) => {
+  await page.evaluate((value) => {
     document.documentElement.setAttribute('data-theme', value)
-    // Two frames, so the colours are the new theme's before axe reads them (the app's own
-    // transitions are off under reduced motion, which `audit` asks for).
-    await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())))
   }, theme)
+  await settle(page)
 }
 
 /**
@@ -95,11 +115,12 @@ export async function setTheme(page: Page, theme: (typeof THEMES)[number]): Prom
  */
 export async function audit(page: Page, name: string, primary: Locator): Promise<Findings> {
   const problems: string[] = []
-  // Reduced motion turns the colour transitions off (tailwind.css), so axe never reads a colour
-  // halfway between the two themes.
+  // Reduced motion shortens the colour transitions to 0.01 ms (tailwind.css); `settle` then waits
+  // for those to finish, so axe never reads a colour from before the theme or the tab changed.
   await page.emulateMedia({ reducedMotion: 'reduce' })
   for (const viewport of VIEWPORTS) {
     await page.setViewportSize({ width: viewport.width, height: viewport.height })
+    await settle(page) // the route or tab change before this call, and the resize
     for (const theme of THEMES) {
       await setTheme(page, theme)
       const where = `${viewport.name}, ${theme}`
@@ -109,6 +130,7 @@ export async function audit(page: Page, name: string, primary: Locator): Promise
         )
 
       const first = primary.first()
+      await settle(page)
       if (!(await first.isVisible())) {
         problems.push(`${where}: the primary action is not visible`)
       } else {
@@ -119,12 +141,13 @@ export async function audit(page: Page, name: string, primary: Locator): Promise
         }
       }
 
+      await settle(page) // the scroll above, and anything the checks started
       const result = await new AxeBuilder({ page })
         .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa'])
         .analyze()
       for (const violation of result.violations) {
         if (violation.impact !== 'serious' && violation.impact !== 'critical') continue
-        const targets = violation.nodes.map((node) => `${node.target.join(' ')} ${node.html.slice(0, 160)}`).slice(0, 4)
+        const targets = violation.nodes.map((node) => `${node.target.join(' ')} ${node.html.slice(0, 160)} (${node.any[0]?.message ?? ''})`).slice(0, 4)
         problems.push(`${where}: axe ${violation.impact} ${violation.id}: ${targets.join(' | ')}`)
       }
     }

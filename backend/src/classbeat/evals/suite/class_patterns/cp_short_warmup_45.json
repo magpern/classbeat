@@ -1,0 +1,27 @@
+{
+ "name": "cp_short_warmup_45",
+ "about": "A warm-up of two minutes at most, asked: the brief wins over the warm-up rules.",
+ "brief": {
+  "length_min": 45,
+  "intensity": "moderate",
+  "class_type": "plain",
+  "text": "No warm-up segment beyond two minutes, I want to get going."
+ },
+ "music": {
+  "tracks": 14
+ },
+ "expect": {
+  "patterns": {
+   "mode": "deviates",
+   "warmup_max_sec": 120
+  },
+  "hard_share": [
+   0.0,
+   0.25
+  ],
+  "tss": [
+   30,
+   65
+  ]
+ }
+}

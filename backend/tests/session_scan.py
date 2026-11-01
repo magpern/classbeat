@@ -29,6 +29,9 @@ by the packages that own data and their own transactions:
   current-revision pick and the class delete in a web request, never the worker);
 - ``classbeat.keys_cli`` (the operator's ``keys wipe``, which predates this guard: it runs as the
   owner role from the CLI, never in the worker, and deletes connections and TOTP per owner);
+- `classbeat.account` (ADR 0014, #337: the user's own data export and account deletion in a web
+  request; the export reads every owned table as the user, the deletion cancels open jobs first;
+  only its routes reach it, never the worker);
 - `classbeat.plans.account`, `classbeat.plans.redeem` and `classbeat.plans.trial` (ADR 0011
   sections 2 and 9, PL1: the user's own plan read, code redemption and trial start in a web
   request; only `classbeat.plans.routes` reaches them, never the worker).
@@ -49,6 +52,7 @@ ALLOWED_PREFIXES = (
     "classbeat.db",
     "classbeat.classes",
     "classbeat.usage",  # the monthly and per-job reads of agent_runs (US1)
+    "classbeat.account",  # the user's own export and deletion in a web request (#337)
 )
 ALLOWED_MODULES = (
     "classbeat.jobs.fence",

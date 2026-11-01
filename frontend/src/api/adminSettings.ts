@@ -8,7 +8,7 @@ import { count, flag, isObject, list, object, optionalText, strings, text, type 
 
 const BASE = '/api/admin'
 
-export type FlagKey = 'signup_mode' | 'song_picking' | 'trial' | 'banner'
+export type FlagKey = 'signup_mode' | 'song_picking' | 'swedebeat_enabled' | 'trial' | 'banner'
 
 export interface Person {
   id: string
@@ -64,7 +64,6 @@ export interface ReadOnly {
   agentJobCostMicros: number
   songJobCostMicros: number
   billingEnabled: boolean
-  swedebeatEnabled: boolean
 }
 
 export interface SettingsView {
@@ -128,7 +127,6 @@ export async function getSettings(signal?: AbortSignal): Promise<SettingsView> {
       agentJobCostMicros: count(readOnly, 'agent_job_cost_micros'),
       songJobCostMicros: count(readOnly, 'song_job_cost_micros'),
       billingEnabled: flag(readOnly, 'billing_enabled'),
-      swedebeatEnabled: flag(readOnly, 'swedebeat_enabled'),
     },
   }
 }

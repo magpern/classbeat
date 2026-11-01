@@ -26,6 +26,7 @@ from classbeat.agent.schemas import WorkoutDraft
 from classbeat.agent.stage import ToolError
 from classbeat.evals.cases import Case
 from classbeat.evals.music import build_music
+from patternscripts import pattern_draft
 from smokedrafts import iv, make_draft, seg
 
 ZONES: dict[str, tuple[int, int, int]] = {  # intensity -> (hi, lo, a zone 5 effort's seconds)
@@ -65,6 +66,8 @@ def fitting_lead(case: Case, **draft: Any) -> int:
 
 
 def design_draft(case: Case) -> dict[str, Any]:
+    if case.expect.patterns is not None:  # the class_patterns category (issue #399)
+        return pattern_draft(case)
     b = case.brief
     if case.expect.music_sync is not None:
         return synced_draft(case)

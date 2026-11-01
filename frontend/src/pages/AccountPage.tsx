@@ -3,9 +3,11 @@ import { logout, logoutAll } from '../api/auth'
 import { oauthOutcomeMessage } from '../api/messages'
 import { useSession } from '../auth/SessionContext'
 import { Connections } from '../components/account/Connections'
+import { Swedebeat } from '../components/account/Swedebeat'
 import { ChangeEmail, ChangePassword } from '../components/account/Credentials'
 import { DeleteAccount } from '../components/account/DeleteAccount'
 import { Devices } from '../components/account/Devices'
+import { ExportData } from '../components/account/ExportData'
 import { Plan } from '../components/account/Plan'
 import { SignInMethods } from '../components/account/SignInMethods'
 import { SpotifySummary } from '../components/account/Spotify'
@@ -139,9 +141,7 @@ function Account() {
         <TabsContent value="connections" className="flex flex-col gap-4">
           <Connections />
           <SpotifySummary />
-          <Section title="Swedebeat">
-            <p className="text-muted">Coming later.</p>
-          </Section>
+          <Swedebeat />
         </TabsContent>
         <TabsContent value="plan" className="flex flex-col gap-4">
           <Plan />
@@ -163,10 +163,7 @@ function Account() {
         </TabsContent>
         <TabsContent value="data" className="flex flex-col gap-4">
           <Section title="Download my data">
-            <p className="text-muted">Coming later: a copy of your classes and settings.</p>
-            <Button variant="secondary" disabled>
-              Download my data
-            </Button>
+            <ExportData />
           </Section>
           <Section title="Delete my account">
             <DeleteAccount email={email} />

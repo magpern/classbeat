@@ -22,15 +22,17 @@ import { SignUpPage } from './pages/SignUpPage'
 import { SpotifyPage } from './pages/SpotifyPage'
 import { Link, RouterProvider, useRouter } from './router/Router'
 
-// The admin area is its own chunk, fetched only for a session whose role is admin (ADR 0011
-// section 6); the server's answer decides what it shows.
+// The admin area is its own chunk, fetched only for a session whose role is admin or whose
+// account is an admin one with its TOTP check missing or lapsed (`adminPendingMfa`, ADR 0011
+// section 6); the server's answer decides what it shows, and the chunk's gate shows the code
+// prompt. Any other account never fetches it.
 const AdminPage = lazy(() => import('./pages/AdminPage'))
 
 function Admin() {
   const { session } = useSession()
   return (
     <RequireAuth>
-      {session?.user?.role === 'admin' ? (
+      {session?.user?.role === 'admin' || session?.session?.adminPendingMfa === true ? (
         <Suspense
           fallback={
             <Card title="Admin">

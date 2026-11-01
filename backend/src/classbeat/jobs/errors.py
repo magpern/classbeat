@@ -60,6 +60,11 @@ CATEGORIES: Final = (
     "pool_too_small",
     # ADR 0008 section 6 (migration 0011): a revise request that only asks for other songs.
     "use_change_songs",
+    # ADR 0016 sections 3 and 4 (migration 0019): the Swedebeat mix fetch and analysis; none is
+    # retried (a retry would fetch the same refused link or the same hostile file again).
+    "media_host_not_allowed",
+    "media_refused",
+    "analysis_failed",
 )
 # Retried by the worker (a new attempt with backoff). ``lease_lost`` is retried by the reaper and
 # ``operation_busy`` is requeued without an attempt (``classbeat.jobs.transitions``).

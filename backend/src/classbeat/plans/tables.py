@@ -31,7 +31,7 @@ FEATURES = frozenset({"song_picking"})
 SOURCES = ("grant", "code", "trial", "subscription")
 LEDGER_STATES = ("reserved", "committed", "released", "refunded")
 LEDGER_REASONS = ("failed", "cancelled", "expired", "admin_refund")
-SETTING_KEYS = ("signup_mode", "song_picking", "trial", "banner")
+SETTING_KEYS = ("signup_mode", "song_picking", "swedebeat_enabled", "trial", "banner")
 AUDIT_OUTCOMES = ("ok", "refused", "error")
 FREE = "free"
 

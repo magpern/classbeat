@@ -218,7 +218,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   const menu = (showName: boolean, side: 'top' | 'bottom') => (
     <AvatarMenu
       email={email}
-      isAdmin={session.user?.role === 'admin'}
+      isAdmin={session.user?.role === 'admin' || session.session?.adminPendingMfa === true}
       busy={action.busy}
       onSignOut={signOut}
       showName={showName}

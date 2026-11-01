@@ -23,9 +23,11 @@ tests call it with `docker compose exec web`). POST: `reset`; `sign-in?user=<id>
 `deny`; `user?id=&name=`; `app?client_id=&allow=a,b&premium=1&rotate=1&scope=`;
 `inject?kind=&at=&method=&path=&times=&status=&retry_after=&keep=&delay=&message=` (the kinds of
 spotifycore.KINDS); `shape?items=item|track&foreign=404|visible`; `playlist?owner=&name=&tracks=<n>`
-(its id back). GET: `state` (every request's number, method, host, path, client id, the app and
-user of its token, whether it carried a client secret, its outcome; the playlists; the injections
-left; never a token, code or verifier).
+(its id back); `durations?ms=` (every catalogue track lasts so long; the seeded fake sets four
+minutes, which the recorded designs are written for). GET: `mowl-tracks?playlist=<id>` (what the fake
+MOWL lists for a wrapped playlist: its name and tracks; 404 if unknown) and `state` (every request's
+number, method, host, path, client id, the app and user of its token, whether it carried a client
+secret, its outcome; the playlists; the injections left; never a token, code or verifier).
 """
 
 import contextlib
@@ -69,6 +71,7 @@ def seeded() -> spotifycore.FakeSpotify:
     fake.add_user(USER_B, "E2E Rider Two")
     fake.add_app(CLIENT_A, redirect_uris=[REDIRECT_URI], allowed=[USER_A])
     fake.add_app(CLIENT_B, redirect_uris=[REDIRECT_URI], allowed=[USER_B])
+    fake.set_durations(240_000)
     fake.sign_in(USER_A)
     return fake
 
@@ -90,6 +93,14 @@ def control(method: str, action: str, query: dict[str, str]) -> tuple[int, objec
     current = fake()
     if method == "GET" and action == "state":
         return 200, current.summary()
+    if method == "GET" and action == "mowl-tracks":
+        # What the fake MOWL lists for a wrapped playlist (e2e/fake-mowl asks this on every read:
+        # MOWL follows edits of the playlist). 404 for a playlist this fake does not hold.
+        ids = current.playlist_track_ids(query.get("playlist", ""))
+        if ids is None:
+            return 404, {"error": "unknown playlist"}
+        playlist = current.playlists[query["playlist"]]
+        return 200, {"name": playlist.name, "tracks": current.mowl_entries(ids)}
     if method != "POST":
         return 405, {"error": "POST"}
     if action == "reset":
@@ -125,6 +136,8 @@ def control(method: str, action: str, query: dict[str, str]) -> tuple[int, objec
     elif action == "shape":
         current.item_shape = query.get("items", current.item_shape)
         current.foreign = query.get("foreign", current.foreign)
+    elif action == "durations":
+        current.set_durations(int(query["ms"]))
     elif action == "playlist":
         count = int(query.get("tracks", "0"))
         uris = [f"spotify:track:{spotifycore.track_id(i)}" for i in range(count)]

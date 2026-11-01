@@ -229,7 +229,7 @@ Each item gives the content and its **primary action**, if any (at most one, §1
   Primary action: **Design a class**.
 - **Account.** A profile header (avatar, name, email, Change email), then the tabs:
   - **Connections:** cards for MOWL, Spotify (with the working-playlist consent as a switch) and
-    Swedebeat (coming later).
+    Swedebeat (coming soon while the flag is off; the connect card of ADR 0015 §8 once on).
   - **Plan and usage:** a meter, the renew date and "Have a code?". Tokens and cost move behind
     "Show usage details".
   - **Sign-in and security:** rows for password, linked providers, two-step sign-in and signed-in
@@ -283,6 +283,16 @@ TSS, FTP, RPM and zone numbers stay, because MOWL users know them.
   we own): Button, Card, Chip and ToggleGroup, Dialog, DropdownMenu, Tabs, Switch, Tooltip, Toast
   (`sonner`), Progress, Select.
 - **Libraries:** `lucide-react`; `@fontsource-variable/inter` and `@fontsource/archivo`.
+- **Dialog under `style-src 'self'` (amended by #331).** Radix's modal mode locks the page scroll
+  with an injected `<style>`, which the policy refuses (a console error per open, no lock). The
+  CSP is not loosened (no nonce, no `'unsafe-inline'`). `Dialog` runs Radix non-modal and adds the
+  modal behaviour in code we own (`components/ui/dialog.tsx`, `lib/modalLock.ts`): its own overlay
+  (a click closes), `overflow-hidden` on the root element, `inert` on every other child of
+  `<body>` (no focus, no clicks, out of the accessibility tree), a Tab loop, `aria-modal`, and a
+  dialog taller than the window scrolls inside itself. Any new modal component uses `Dialog`; a
+  library that injects a `<style>` or sets a `style` attribute is not used. The e2e console check
+  has no allow-list. `DropdownMenu` is non-modal for the same reason; Radix `Select` (not used by a
+  page yet) has the same scroll lock and needs the same treatment before a page uses it.
 - **Not added:** chart, state or form libraries; the router stays (it is small and tested). Drag
   and drop (`@dnd-kit`) only if reordering songs is ever asked for.
 - **Bundling and checks.** Everything is bundled by Vite and served from our origin. `npm audit`

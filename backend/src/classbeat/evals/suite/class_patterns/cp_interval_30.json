@@ -1,0 +1,17 @@
+{
+ "name": "cp_interval_30",
+ "about": "A 30 minute interval class with nothing unusual asked: follows the pattern.",
+ "brief": {
+  "length_min": 30,
+  "intensity": "moderate",
+  "class_type": "interval"
+ },
+ "music": {
+  "tracks": 10
+ },
+ "expect": {
+  "patterns": {
+   "mode": "follows"
+  }
+ }
+}

@@ -4,10 +4,19 @@ The only place in ``classbeat`` that builds an HTTP client or an ``urllib`` open
 ``tests/egress_scan.py`` fails on any other). Two paths leave the worker:
 
 - **urllib**, used by the provider library (``mowl-workouts`` calls ``urllib.request.urlopen``).
+  The web process installs the same opener with ``WEB_URLLIB_HOSTS``, MOWL, the Spotify API and
+  Swedebeat's sign-in host (``install_web_allowlist``, SR-03): its library calls are MOWL's
+  connect, the playlist listing and the save/update/attach checks, the Spotify reads of Check
+  again and the Swedebeat sign-in (ADR 0015).
   ``install_worker_allowlist()`` installs, before anything else in the worker, a process-wide
   opener with an empty ``ProxyHandler`` (no ``HTTPS_PROXY`` or ``NO_PROXY`` setting reroutes a
   call) and a guard that refuses every request, redirect hops included, that is not ``https`` to
   an allowlisted host on port 443. It has no ``http``, ``ftp``, ``file`` or ``data`` handler.
+  **A redirect is followed only to the same host** (``_SameHostRedirectHandler``): urllib copies
+  every header, the library's ``authorization`` included, onto the next hop, so a hop to any
+  other host, allowlisted or not, is refused before it is sent (``OutboundBlocked`` with
+  ``after_request``). A same-host hop keeps the header (it is the host the token was meant for),
+  but must still be ``https`` on port 443 and passes the guard again.
 - **httpx**, for the model client (A2): ``allowlisted_async_client()`` returns an
   ``httpx.AsyncClient`` with ``trust_env=False`` whose transport applies the same check to every
   request, so every redirect hop too. The client does not follow redirects
@@ -30,6 +39,18 @@ else, in either process; it does not follow redirects and refuses one to another
 ``trust_env=False``; and its request has a **total** deadline covering the answer's body
 (``total_seconds``; a trickling answer raises ``RequestDeadline``). No URL from a Spotify answer
 (``next``, ``href``) is ever fetched; were one handed to it, the list refuses any other host.
+
+**The media client** (ADR 0016 §4, threat model T109): ``mowl_media_async_client()`` fetches a
+Swedebeat mix from the temporary link MOWL returns (A3, worker only). Its list is
+``MOWL_MEDIA_ALLOWLIST``, built from the literal ``MOWL_MEDIA_HOSTS``, which is **empty until the
+owner confirms the host**; so is nothing else's: the library's MOWL opener, with its
+``authorization`` header, cannot reach the media host (it is on no urllib list), and this client
+sends none of our headers. It follows no redirect at all, ends every request within
+``MOWL_MEDIA_TOTAL_SECONDS`` and takes **no argument** (a list and a transport come only from
+tests, through ``mowl_media_test_client``, which the guard refuses in ``classbeat``). The body is
+read raw and any ``Content-Encoding`` but identity is refused (``classbeat.design.mixfetch``).
+Swedebeat's embedded AWS credentials are never used (a static guard).
+``cloud.swedebeat.se`` (B1) will get its own scoped list and client the same way.
 
 All paths verify TLS with a context from ``tls_client_context()``, which never writes a TLS key
 log (``SSLKEYLOGFILE`` is ignored, threat model T49).
@@ -81,6 +102,19 @@ logger = logging.getLogger(__name__)
 HTTPS = "https"
 HTTPS_PORT = 443
 MOWL_HOST = "api.mowl.com"  # the library's base URL
+# Swedebeat (ADR 0015): the web process signs a user in at ``www.swedebeat.se`` (the library's
+# ``downloader/login.php``). ``cloud.swedebeat.se`` (the catalogue, where the token is also sent)
+# is on no list: nothing in classbeat calls it yet, and it joins a list when a feature does (B1 of
+# ADR 0016, with its own scoped list and client; never on ``WORKER_HOSTS``).
+SWEDEBEAT_WWW_HOST = "www.swedebeat.se"
+# The host(s) of the MOWL temporary links that serve a Swedebeat mix's audio (ADR 0016 §4). Exact
+# lower case DNS names, https on 443, no wildcard and never a whole cloud provider domain. **Empty
+# until the owner confirms the host in the live check** (a reviewed PR then fills it): with an empty
+# list the media fetch is refused for every host. A literal, so nothing in the environment, a file
+# or a setting can widen it (a guard test pins that and that no other source feeds the list). It is
+# on no urllib list: ``WORKER_HOSTS`` and ``WEB_URLLIB_HOSTS`` never hold it, so the library's MOWL
+# opener (and its ``authorization`` header) cannot reach it.
+MOWL_MEDIA_HOSTS: Final[frozenset[str]] = frozenset()
 # The model providers classbeat may use (ADR 0012 §1); ``fake`` is not one (no host).
 ModelProviderName = Literal["anthropic", "openai", "deepseek"]
 # Each provider's one API host (ADR 0012 §2). Code, not a setting.
@@ -95,6 +129,15 @@ SPOTIFY_HOSTS = frozenset({SPOTIFY_API_HOST, SPOTIFY_ACCOUNTS_HOST})
 # token endpoint (M4, ADR 0009 §10), which the library reaches over urllib. A model host joins
 # them only for a provider the worker can use (``worker_hosts``, ADR 0012 §2).
 WORKER_HOSTS = frozenset({MOWL_HOST}) | SPOTIFY_HOSTS
+# The web's urllib hosts (SR-03, #353): the provider library's calls in the web process are
+# MOWL's (connect, ``GET /api/music/mowl-playlists``, the save/update/attach checks) and the
+# Spotify API's (the user's Check again of a playlist create or replace reads through
+# ``spotify_web``). Not ``accounts.spotify.com``: classbeat never lets the library refresh a
+# token (``spotify_refresh_enabled=False``), the httpx Spotify client does. Swedebeat's sign-in
+# host joins them for the Swedebeat connect (ADR 0015); the sign-in sends the user's encoded
+# email and password there and receives the token, and sends no token. Not ``cloud.swedebeat.se``,
+# not a model host. Each token stays on its own host: a redirect is followed to the same host only.
+WEB_URLLIB_HOSTS = frozenset({MOWL_HOST, SPOTIFY_API_HOST, SWEDEBEAT_WWW_HOST})
 MODEL_TIMEOUT_SECONDS = 120.0  # ADR 0006 §2
 # The Spotify client's total deadline per request unless the caller gives one (ADR 0009 §6:
 # ``CLASSBEAT_SPOTIFY_REFRESH_TIMEOUT_SECONDS`` defaults to 10).
@@ -184,6 +227,7 @@ class Allowlist:
 
 
 WORKER_ALLOWLIST = Allowlist(WORKER_HOSTS)
+WEB_URLLIB_ALLOWLIST = Allowlist(WEB_URLLIB_HOSTS)
 # Each model client's list: its provider's one host, although the worker's urllib list is wider.
 MODEL_ALLOWLISTS: Final[Mapping[ModelProviderName, Allowlist]] = MappingProxyType(
     {provider: Allowlist(frozenset({host})) for provider, host in MODEL_HOSTS.items()}
@@ -210,6 +254,8 @@ def worker_allowlist(model_providers: Iterable[str] = ()) -> Allowlist:
 
 # The Spotify client's list, in the web process and the worker alike (ADR 0009 §10).
 SPOTIFY_ALLOWLIST = Allowlist(SPOTIFY_HOSTS)
+# The media client's list (ADR 0016 §4): ``MOWL_MEDIA_HOSTS``, empty today.
+MOWL_MEDIA_ALLOWLIST = Allowlist(MOWL_MEDIA_HOSTS)
 
 # Set by ``install_worker_allowlist``: this process is the worker. The web-only call sites the
 # guard exempts (OAuth sign-in, account mail) call ``refuse_in_worker`` first, so they cannot
@@ -624,6 +670,24 @@ def install_worker_allowlist(model_providers: Iterable[str] = ()) -> urllib.requ
     return opener
 
 
+def install_web_allowlist() -> urllib.request.OpenerDirector:
+    """Install the web process's urllib opener (SR-03, threat model T19): the worker's opener
+    (``https`` to port 443 only, no environment proxy, every redirect hop checked, a redirect
+    only to the same host) with the list ``WEB_URLLIB_ALLOWLIST`` (``api.mowl.com``,
+    ``api.spotify.com`` and ``www.swedebeat.se``; a token never follows a redirect from one to
+    another).
+
+    Unlike ``install_worker_allowlist`` it does not set the worker flag: the web-only call sites
+    (OAuth sign-in, account mail) keep working. Called once by ``python -m classbeat`` before the
+    app is built; tests that run the app in-process do not install it. The operator commands
+    (``invite``, ``admin``, ``jobs``, ``keys``, ``models``) make no outbound request, so they do
+    not install it. An outbound proxy from the environment is no longer possible for the
+    library's calls (and, since ``trust_env=False``, for OAuth sign-in either)."""
+    opener = build_allowlist_opener(WEB_URLLIB_ALLOWLIST)
+    urllib.request.install_opener(opener)
+    return opener
+
+
 # --- httpx ---------------------------------------------------------------------------------
 
 
@@ -798,3 +862,63 @@ def spotify_async_client(
         timeout=total_seconds,
         follow_redirects=False,
     )
+
+
+# The media fetch's total time, body included (ADR 0016 §4: 300 s).
+MOWL_MEDIA_TOTAL_SECONDS: Final = 300.0
+
+
+def mowl_media_network_transport() -> httpx.AsyncHTTPTransport:
+    """The network transport of the media client: the system trust store (as the urllib path),
+    no TLS key log, no proxy from the environment."""
+    return httpx.AsyncHTTPTransport(trust_env=False, verify=tls_client_context())
+
+
+def _media_client(
+    allowlist: Allowlist, total_seconds: float, inner: httpx.AsyncBaseTransport
+) -> httpx.AsyncClient:
+    client = httpx.AsyncClient(
+        transport=AllowlistTransport(allowlist, inner, total_seconds=total_seconds),
+        trust_env=False,
+        timeout=total_seconds,
+        follow_redirects=False,
+    )
+    client.headers.clear()
+    return client
+
+
+def mowl_media_async_client() -> httpx.AsyncClient:
+    """The dedicated client that fetches a Swedebeat mix from a MOWL temporary link (ADR 0016 §4,
+    A3 uses it in the worker; threat model T109). **It takes no argument**: its list is always
+    ``MOWL_MEDIA_ALLOWLIST`` (code, today empty, so every request is refused ``OutboundBlocked``),
+    its deadline ``MOWL_MEDIA_TOTAL_SECONDS`` and its transport the network's. A fetch builds **one
+    client per fetch** (``async with``): the client keeps a cookie jar and a connection pool, and
+    neither may outlive the one link it was made for.
+
+    https on 443, no userinfo. It follows **no redirect at all** (``follow_redirects=False``,
+    and the guard refuses ``follow_redirects=True`` on any call): a hop to another host is
+    refused (``OutboundBlocked`` with ``after_request``) and a same-host 3xx comes back as a
+    response for the caller to refuse. ``trust_env=False`` (no proxy, ``NETRC`` or cookie jar from
+    the environment), and **no default header**: httpx's ``User-Agent``, ``Accept`` and
+    ``Accept-Encoding`` are cleared, so a request carries only what the call site sets (never the
+    MOWL ``authorization``). That does **not** make the answer uncompressed: a server may send a
+    ``Content-Encoding`` anyway, and httpx would decode it on read (a compression bomb). The call
+    site therefore reads the raw bytes (``aiter_raw``) and refuses any encoding but identity
+    (``classbeat.design.mixfetch``). Every request, its body included, ends within
+    ``MOWL_MEDIA_TOTAL_SECONDS`` (``RequestDeadline``)."""
+    return _media_client(
+        MOWL_MEDIA_ALLOWLIST, MOWL_MEDIA_TOTAL_SECONDS, mowl_media_network_transport()
+    )
+
+
+def mowl_media_test_client(
+    allowlist: Allowlist,
+    inner: httpx.AsyncBaseTransport,
+    *,
+    total_seconds: float = MOWL_MEDIA_TOTAL_SECONDS,
+) -> httpx.AsyncClient:
+    """**Tests only** (the guard refuses it in ``classbeat``): the media client of
+    ``mowl_media_async_client`` with a list of the test's own and a fake transport, so the fetch,
+    its limits and the analysis are proven against the fake media endpoint (ADR 0016 §4). The
+    redirect, header and deadline behaviour is the production client's (the same builder)."""
+    return _media_client(allowlist, total_seconds, inner)

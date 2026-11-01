@@ -15,6 +15,8 @@ digest covers:
 - every case it names, as validated (defaults included);
 - the source of the modules that define cases, checks, the synthetic music and catalogue and the
   verdict (``DIGEST_SOURCES``), newlines normalised;
+- the rules the design stage is given (``RULE_SOURCES``: the section's wording, the profile
+  selection, the engine and the profiles' index), so a new ``rules_version`` is a new suite;
 - the upper-case constants of the check modules and the outside thresholds the checks use
   (``check_constants``), so a constant patched at run time changes it too.
 
@@ -51,6 +53,7 @@ CATEGORY_GROUPS: Final[dict[str, frozenset[str]]] = {
     "revisions": frozenset({"design"}),
     "song_choice": frozenset({"songs"}),
     "missing_music": frozenset({"design", "songs"}),
+    "class_patterns": frozenset({"design"}),
     "adversarial": frozenset({"design", "songs"}),
     "cost": frozenset({"design", "songs"}),
 }
@@ -64,6 +67,25 @@ DIGEST_SOURCES: Final = (
     "song_checks.py",
     "suite.py",
     "gate.py",
+)
+# What the design stage is told besides its prompt (ADR 0017 sections 3 and 5): every module
+# that decides which rules exist, which hits fire, what the section and each hit say, how a
+# brief picks its profile, and where the section and the hits enter the model's input and tool
+# results. Paths under ``classbeat``; a change to any of them is a new suite. A new module under
+# ``design/rules/`` must be listed here or in the documented exclusions of
+# ``tests/test_evals_class_patterns.py``. The profile files are covered by the digests in
+# ``design/profiles/index.json`` (``profile.load_registry`` refuses a file that differs).
+RULE_SOURCES: Final = (
+    "agent/guidance.py",
+    "agent/model_input.py",
+    "design/guidance.py",
+    "design/selection.py",
+    "design/rules/__init__.py",
+    "design/rules/engine.py",
+    "design/rules/enums.py",
+    "design/rules/profile.py",
+    "design/rules/rationales.py",
+    "design/profiles/index.json",
 )
 CONSTANT_MODULES: Final[tuple[ModuleType, ...]] = (checks, music, pick, pick_world, song_checks)
 CONSTANT_NAME: Final = re.compile(r"^[A-Z][A-Z0-9_]*$")
@@ -211,10 +233,15 @@ def check_constants() -> dict[str, Any]:
 
 def digest_sources() -> dict[str, str]:
     folder = resources.files("classbeat.evals")
-    return {
+    package = resources.files("classbeat")
+    out = {
         name: (folder / name).read_bytes().replace(b"\r\n", b"\n").decode("utf-8")
         for name in DIGEST_SOURCES
     }
+    for name in RULE_SOURCES:
+        raw = package.joinpath(*name.split("/")).read_bytes().replace(b"\r\n", b"\n")
+        out[f"classbeat/{name}"] = raw.decode("utf-8")
+    return out
 
 
 def suite_digest(
