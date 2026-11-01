@@ -106,6 +106,7 @@ ACME_EMAIL=you@example.test
 SMTP_HOST=smtp.example.test
 SMTP_SENDER=noreply@classbeat.example.test
 # optional: SMTP_PORT=587  SMTP_TLS=starttls  SMTP_USERNAME=...  ADMIN_EMAILS=you@example.test
+# optional: SMTP_CA_FILE=/run/smtp-ca/bridge.pem   (pinned self-signed SMTP certificate, see proton-bridge-smtp.md)
 # optional: SIGNUP_MODE=invite  CONNECTION_KEK_ID=kek-1  MODEL_PROVIDER=anthropic
 ```
 
