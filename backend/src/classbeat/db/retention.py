@@ -47,7 +47,7 @@ def _entry(columns: str, reviewed: str, *deleted_with: DeletionPath) -> Retentio
 
 RETENTION: Mapping[str, Retention] = MappingProxyType(
     {
-        "classes": _entry("title brief music_source", "", "class", "account"),
+        "classes": _entry("title brief music_source", "dismissed_rules", "class", "account"),
         # ``content`` of a ``song_list`` (ADR 0008 sections 5 and 8) holds the chosen songs'
         # Spotify ids, titles, artists and, from ``v: 2``, their album cover URLs (``cover``, ADR
         # 0013 section 9): all go with the class and the account, like the drafts beside them.

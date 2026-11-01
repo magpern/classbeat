@@ -3,8 +3,8 @@ and the class delete (ADR 0007 sections 2, 11 and 12; issue C2).
 
 Signed in; the ``POST`` and ``DELETE`` are CSRF-checked by the middleware. Another user's id, an
 unknown id and a malformed one are the same 404 ``not_found``. Errors carry a reason code only.
-409 reasons: ``class_busy``, ``hash_mismatch`` (the pick) and ``call_may_be_running``,
-``uncertain_write`` (the delete).
+409 reasons: ``limit_exceeded`` (the 33rd dismissed rule, ADR 0017), ``class_busy``,
+``hash_mismatch`` (the pick) and ``call_may_be_running``, ``uncertain_write`` (the delete).
 """
 
 import base64
@@ -28,6 +28,7 @@ from classbeat.classes.schemas import (
     ClassesOut,
     ClassOut,
     DeletedOut,
+    DismissedRulesOut,
     MessageOut,
     MessagesOut,
     MosaicSongOut,
@@ -338,3 +339,51 @@ async def delete_class(
         spotify_playlists_left=left,
         spotify_note=SPOTIFY_NOTE if left else None,
     )
+
+
+async def _dismissal(
+    class_id: str, rule_id: str, request: Request, ctx: UserContext, *, dismissed: bool
+) -> DismissedRulesOut | JSONResponse:
+    wanted = _uuid(class_id)
+    if wanted is None:
+        return _not_found()
+    done = await service.set_dismissed(
+        request.app.state.session_factory, ctx, wanted, rule_id, dismissed=dismissed
+    )
+    if done.reason == "not_found":
+        return _not_found()
+    if done.reason == "invalid_input":
+        return _refuse("invalid_input", 422)
+    if done.reason is not None:
+        return _refuse(done.reason)
+    return DismissedRulesOut(dismissed_rules=list(done.rules))
+
+
+@router.put(
+    "/{class_id}/dismissed-rules/{rule_id}",
+    response_model=DismissedRulesOut,
+    responses={404: {}, 409: {}, 422: {}},
+)
+async def dismiss_rule(
+    class_id: str,
+    rule_id: str,
+    request: Request,
+    ctx: Annotated[UserContext, Depends(auth.require_user)],
+) -> DismissedRulesOut | JSONResponse:
+    """Dismiss a soft rule for this class (ADR 0017 section 4). Idempotent."""
+    return await _dismissal(class_id, rule_id, request, ctx, dismissed=True)
+
+
+@router.delete(
+    "/{class_id}/dismissed-rules/{rule_id}",
+    response_model=DismissedRulesOut,
+    responses={404: {}, 422: {}},
+)
+async def show_rule_again(
+    class_id: str,
+    rule_id: str,
+    request: Request,
+    ctx: Annotated[UserContext, Depends(auth.require_user)],
+) -> DismissedRulesOut | JSONResponse:
+    """Undo a dismissal. Idempotent: a rule that is not dismissed stays so."""
+    return await _dismissal(class_id, rule_id, request, ctx, dismissed=False)
