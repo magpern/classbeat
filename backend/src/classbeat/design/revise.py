@@ -50,6 +50,7 @@ from classbeat.agent.revise import ReviseContext, ReviseResult, SongsRequested, 
 from classbeat.agent.schemas import clean_text
 from classbeat.context import UserContext
 from classbeat.design import chat, diff, limits, revision
+from classbeat.design.guidance import rule_set_for
 from classbeat.design.kind import ClassMusicSource, current_runtime, group_model
 from classbeat.design.music import load_music
 from classbeat.jobs import KINDS, Complete, FencedSession, JobFailure, JobKind, JobRun
@@ -179,6 +180,8 @@ async def run(job_run: JobRun) -> Complete:
     )
     handed_over = False  # the outcome's ``release`` closes the step from then on
     try:
+        # The stored brief only: the request text never reaches the engine (ADR 0017 section 1).
+        rules = rule_set_for(brief, base.dismissed_rules)
         ctx = ReviseContext.build(
             brief,
             step.data,
@@ -186,6 +189,7 @@ async def run(job_run: JobRun) -> Complete:
             base.earlier_requests,
             given.request,
             music_changed=step.fingerprint != base.fingerprint,
+            rules=rules,
         )
         outcome = await run_stage(
             JobStageHost(job_run),
@@ -210,6 +214,7 @@ async def run(job_run: JobRun) -> Complete:
             base_revision_id=base_id,
             base_hash=base_hash,
             request_message_id=request_message_id,
+            rules=rules.provenance() if rules else None,
         )
         change = diff.summarize(base.content, draft.content)
 

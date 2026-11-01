@@ -196,7 +196,8 @@ def load_registry(root: Path | None = None) -> Registry:
 
 
 @lru_cache(maxsize=1)
-def _default_registry() -> Registry:
+def default_registry() -> Registry:
+    """The packaged registry, loaded and verified once."""
     return load_registry()
 
 
@@ -214,7 +215,7 @@ def select_profile(
     """
     if sport != "cycling" or not math.isfinite(length_min) or length_min <= 0:
         return None
-    reg = registry or _default_registry()
+    reg = registry or default_registry()
     labels = reg.labels(sport, class_type)
     if not labels:
         return None
