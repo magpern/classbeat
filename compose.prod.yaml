@@ -205,6 +205,8 @@ services:
       <<: *app-env
       # `fake` is refused when the environment is prod; the key is secrets/anthropic_api_key.
       CLASSBEAT_MODEL_PROVIDER: ${MODEL_PROVIDER:-anthropic}
+      # ADR 0016: a design job on a Swedebeat mix checks the switch again; the same value as web's.
+      CLASSBEAT_SWEDEBEAT_ENABLED: ${SWEDEBEAT_ENABLED:-false}
     # The model API keys are the worker's only (ADR 0006 section 9, ADR 0012 section 2).
     secrets:
       - database_password

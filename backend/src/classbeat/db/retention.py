@@ -88,6 +88,9 @@ RETENTION: Mapping[str, Retention] = MappingProxyType(
         "swedebeat_mix_maps": _entry(
             "mix_id name playlist_id map", "", "account", "mowl_connection"
         ),
+        # ADR 0016 section 7 (A4): when each new mix analysis started, for the daily limit. No
+        # content; a user's rows past 48 hours go with their next one, all with the account.
+        "swedebeat_analyses": _entry("", "", "account"),
         "agent_runs": _entry(
             "",
             "stage provider model model_answered effort prompt_version outcome job_kind "

@@ -188,7 +188,13 @@ def test_the_allowlists_are_exactly_the_reviewed_ones() -> None:
 
 
 def test_the_runtime_takes_a_model_source_and_no_provider_factory() -> None:
-    assert [f.name for f in fields(Runtime)] == ["keyring", "models", "agent", "context_requests"]
+    assert [f.name for f in fields(Runtime)] == [
+        "keyring",
+        "models",
+        "agent",
+        "context_requests",
+        "swedebeat_enabled",  # a bool (ADR 0016, A4): no provider or factory
+    ]
     kind = (SRC / "classbeat" / "design" / "kind.py").read_text("utf-8")
     assert "from classbeat.models.providers import RouteModels" in kind
     assert "models=RouteModels(settings)" in kind

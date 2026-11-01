@@ -136,6 +136,9 @@ services:
       # ADR 0006 section 9: `fake` (the default in .env.example) for the dev stack and CI;
       # `anthropic` needs a real key in secrets/anthropic_api_key, which init leaves empty.
       CLASSBEAT_MODEL_PROVIDER: ${MODEL_PROVIDER:-fake}
+      # ADR 0016: a design job on a Swedebeat mix checks the switch again when it runs; off here,
+      # every such job ends feature_off. The same value as web's.
+      CLASSBEAT_SWEDEBEAT_ENABLED: ${SWEDEBEAT_ENABLED:-false}
     # The model API keys are the worker's only: web, migrate and maint never mount them
     # (ADR 0006 section 9, ADR 0012 section 2).
     secrets:

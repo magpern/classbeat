@@ -32,7 +32,7 @@ def applied_revisions(database_url: str) -> list[str]:
 
 def test_the_revisions_form_one_line() -> None:
     script = ScriptDirectory.from_config(alembic_config())
-    assert script.get_heads() == ["0019_swedebeat_media_categories"]
+    assert script.get_heads() == ["0020_swedebeat_analyses"]
     assert script.get_base() == "0001_baseline"
 
 
@@ -53,7 +53,7 @@ def test_upgrade_head_then_downgrade_base(
     config = alembic_config()
     try:
         command.upgrade(config, "head")
-        assert applied_revisions(database_url) == ["0019_swedebeat_media_categories"]
+        assert applied_revisions(database_url) == ["0020_swedebeat_analyses"]
         command.downgrade(config, "base")
         assert applied_revisions(database_url) == []
     finally:
@@ -150,8 +150,9 @@ JOBS = [
     # M3c (0009_models).
     "model_eval_results",
     "model_routes",
-    # ADR 0016 (0018_swedebeat_mix_maps).
+    # ADR 0016 (0018_swedebeat_mix_maps, 0020_swedebeat_analyses).
     "swedebeat_mix_maps",
+    "swedebeat_analyses",
 ]
 
 

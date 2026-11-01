@@ -10,6 +10,10 @@
   the user's ``mowl_playlist_links`` row, the fingerprint of the analysed track list
   (``classbeat.design.music.fingerprint``) and the tracks MOWL had no BPM for yet, by index and
   title, so the user is told (their bars were a guess at 120 BPM). No MOWL or Spotify id, no map.
+  On a Swedebeat mix (ADR 0016 section 3, A4): ``{source: "mowl_swedebeat_mix", mix_id, name,
+  duration, listed_duration, unsure_beat_one, fingerprint, link_id}`` (``SwedebeatRevisionMusic``):
+  the fingerprint is the map's (``swedebeat_music.fingerprint``), and the link gives Save the MOWL
+  playlist under the same checks as a Spotify link. Still no MOWL playlist id and no map.
   The revision is the user's own and is deleted with its class or account (ADR 0010).
 - **provenance**: ``classbeat.agent.records.provenance``: provider, model, effort, the prompt and
   tool-schema version, classbeat's and mowl-workouts' versions, ``map_version`` and the map's
@@ -26,11 +30,11 @@ import json
 import uuid
 from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Any, Final, Literal
+from typing import Annotated, Any, Final, Literal
 from uuid import UUID
 
 from mowl import workout
-from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, ValidationError
 from sqlalchemy import text
 
 from classbeat.agent import DesignResult, Provenance, WorkoutDraft, provenance
@@ -39,6 +43,7 @@ from classbeat.design.music import MusicStep
 from classbeat.jobs import FencedSession, JobFailure
 
 MUSIC_SOURCE: Final = "mowl_spotify_playlist"
+MIX_SOURCE: Final = "mowl_swedebeat_mix"
 MAX_CONTENT_BYTES: Final = 65536  # the class_revisions.content check of migration 0004
 MAX_BRIEF_BYTES: Final = 4096  # the classes.brief check of migration 0005
 
@@ -92,8 +97,8 @@ class UnknownBpmTrack(BaseModel):
     title: str = Field(max_length=200)
 
 
-class RevisionMusic(BaseModel):
-    """``class_revisions.music`` of a draft."""
+class SpotifyRevisionMusic(BaseModel):
+    """``class_revisions.music`` of a draft on a Spotify playlist."""
 
     model_config = ConfigDict(extra="forbid", strict=True)
 
@@ -104,6 +109,31 @@ class RevisionMusic(BaseModel):
     # ADR 0008 section 4: a draft designed on picked songs names the approved ``song_list``
     # revision it was made from; absent on every other draft (stored exactly as before).
     song_list_id: UUID | None = None
+
+
+class SwedebeatRevisionMusic(BaseModel):
+    """``class_revisions.music`` of a draft on the user's Swedebeat mix (ADR 0016 section 3):
+    the mix's opaque id and name, the analysed length and the map's fingerprint; ``link_id`` is
+    the user's ``mowl_playlist_links`` row (``source = 'swedebeat'``) Save reads its MOWL playlist
+    from, under the same checks as a Spotify link. ``listed_duration`` and ``unsure_beat_one``
+    are the library's warnings (the listing's length, the songs whose beat 1 is an estimate)."""
+
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    source: Literal["mowl_swedebeat_mix"]
+    mix_id: str = Field(pattern=r"^[0-9A-Za-z_-]{1,64}$")
+    name: str = Field(max_length=200)
+    duration: float = Field(gt=0, le=7200)
+    listed_duration: float = Field(ge=0, le=86400)
+    unsure_beat_one: list[int] = Field(max_length=500)
+    fingerprint: str = Field(pattern=r"^[0-9a-f]{64}$")
+    link_id: UUID
+
+
+RevisionMusic = SpotifyRevisionMusic | SwedebeatRevisionMusic
+REVISION_MUSIC: Final = TypeAdapter[RevisionMusic](
+    Annotated[RevisionMusic, Field(discriminator="source")]
+)
 
 
 def canonical(value: Any) -> bytes:
@@ -189,13 +219,28 @@ def build(
     content = draft.model_dump(mode="json", exclude_none=True)
     if len(canonical(content)) > MAX_CONTENT_BYTES:
         raise JobFailure("invalid_output")
-    music = RevisionMusic(
-        source=MUSIC_SOURCE,
-        link_id=step.link_id,
-        fingerprint=step.fingerprint,
-        unknown_bpm=[UnknownBpmTrack(index=u.index, title=u.title) for u in step.unknown_bpm],
-        song_list_id=song_list_id,
-    )
+    music: RevisionMusic
+    if step.mix is not None:
+        if song_list_id is not None:
+            raise JobFailure("internal")  # a mix is never picked songs
+        music = SwedebeatRevisionMusic(
+            source=MIX_SOURCE,
+            mix_id=step.mix.mix_id,
+            name=step.mix.name,
+            duration=step.mix.duration,
+            listed_duration=step.mix.listed_duration,
+            unsure_beat_one=list(step.mix.unsure_beat_one),
+            fingerprint=step.fingerprint,
+            link_id=step.link_id,
+        )
+    else:
+        music = SpotifyRevisionMusic(
+            source=MUSIC_SOURCE,
+            link_id=step.link_id,
+            fingerprint=step.fingerprint,
+            unknown_bpm=[UnknownBpmTrack(index=u.index, title=u.title) for u in step.unknown_bpm],
+            song_list_id=song_list_id,
+        )
     content_hash = hashlib.sha256(canonical(content)).digest()
     if base_hash is not None and content_hash == base_hash:
         raise JobFailure("invalid_output")

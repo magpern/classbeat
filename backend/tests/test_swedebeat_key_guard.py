@@ -160,8 +160,9 @@ def test_the_runtime_secret_is_web_only_in_every_compose_file() -> None:
 
 def test_swedebeat_is_off_by_default_in_every_compose_file() -> None:
     for compose in ("compose.yaml", "compose.prod.yaml"):
-        env = yaml.safe_load(text(compose))["services"]["web"]["environment"]
-        assert env["CLASSBEAT_SWEDEBEAT_ENABLED"] == "${SWEDEBEAT_ENABLED:-false}"
+        for service in ("web", "worker"):  # the worker checks a mix job's switch again (A4)
+            env = yaml.safe_load(text(compose))["services"][service]["environment"]
+            assert env["CLASSBEAT_SWEDEBEAT_ENABLED"] == "${SWEDEBEAT_ENABLED:-false}"
     assert "SWEDEBEAT_ENABLED=false" in text(".env.example")
 
 
