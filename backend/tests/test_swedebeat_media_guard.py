@@ -202,21 +202,38 @@ def test_the_media_allowlist_is_built_from_the_constant_alone() -> None:
     assert egress.MOWL_MEDIA_ALLOWLIST.hosts == egress.MOWL_MEDIA_HOSTS
 
 
-def test_the_client_factory_defaults_to_that_list_and_reads_nothing_else() -> None:
+def test_the_client_factory_takes_no_argument_and_uses_that_list_alone() -> None:
     tree = egress_tree()
     (factory,) = [
         n
         for n in ast.walk(tree)
         if isinstance(n, ast.FunctionDef) and n.name == "mowl_media_async_client"
     ]
-    assert ast.unparse(factory.args.defaults[0]) == "MOWL_MEDIA_ALLOWLIST"
+    arguments = factory.args
+    takes = [arguments.args, arguments.posonlyargs, arguments.kwonlyargs]
+    takes += [
+        [arguments.vararg] if arguments.vararg else [],
+        [arguments.kwarg] if arguments.kwarg else [],
+    ]
+    assert [x for x in takes if x] == []
     body = " ".join(ast.unparse(statement) for statement in factory.body[1:])  # not the docstring
+    assert "MOWL_MEDIA_ALLOWLIST" in body
     for forbidden in ("environ", "getenv", "open(", "settings", "read_text", "load"):
         assert forbidden not in body
     # Nothing in egress reads the environment or a file at all: a list cannot be widened there.
     text = EGRESS_FILE.read_text(encoding="utf-8")
     assert "os.environ" not in text
     assert "getenv" not in text
+
+
+def test_the_test_client_is_the_only_other_way_to_a_media_client_and_no_source_uses_it() -> None:
+    names = ("mowl_media_test_client", "_media_client")
+    offenders = [
+        str(path.relative_to(SRC))
+        for path in SRC.rglob("*.py")
+        if path != EGRESS_FILE and any(n in path.read_text(encoding="utf-8") for n in names)
+    ]
+    assert offenders == []
 
 
 def test_no_other_source_names_the_media_list() -> None:

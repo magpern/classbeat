@@ -20,6 +20,7 @@ from classbeat.db import (
     event_loop_factory,
     verify_database_role,
 )
+from classbeat.design.mixfetch import sweep_work_root
 from classbeat.egress import install_worker_allowlist
 from classbeat.log import configure_logging
 from classbeat.playlists.runtime import playlists_runtime
@@ -76,6 +77,8 @@ def main() -> int:
         return 2
     # ADR 0012 §2: a model host only for a provider with its key (DeepSeek: and its setting on).
     install_worker_allowlist(worker_model_providers(settings))
+    # A crashed run may have left the audio of a Swedebeat mix in the temp directory (ADR 0016 §4).
+    sweep_work_root()
     asyncio.run(_run(settings), loop_factory=event_loop_factory())
     return 0
 
