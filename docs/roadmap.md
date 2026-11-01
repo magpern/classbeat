@@ -206,7 +206,7 @@ sessions; all other roadmap and AGENTS.md requirements remain in force.
 - Architect / Orchestrator: Grok 4.7, high effort, standard speed.
 - Routine Developer and Explorer: Composer 2.5, standard speed.
 - Routine Reviewer: fresh Grok 4.7, high effort, standard speed.
-- Security-critical Developer: Composer 2.5, standard speed (owner, 2026-11-01: Cursor security implementation is not Opus).
+- Security-critical Developer: Grok 4.7, high effort, standard speed (owner, 2026-11-01: Cursor security implementation is Grok 4.7 High, not Composer and not Opus).
 - Security-critical Reviewer, including a review after a second FAIL: fresh Grok 4.7, high effort, standard speed (owner, 2026-11-01). Claude Code and Codex keep Opus for both roles.
   The Grok Architect schedules that work without taking over its security decisions.
 - The security categories, scope boundaries, issue/PR/worktree isolation, independent
