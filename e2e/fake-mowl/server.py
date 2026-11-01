@@ -332,11 +332,12 @@ class Handler(BaseHTTPRequestHandler):
             self.ok(listed)
             return
         if path == "/v1/swedebeat/Playlists":
-            if self.token() is None:
+            token = self.token()
+            if token is None:
                 self.reply(401, {"Error": "unauthorized"})
                 return
             form = {k: v[0] for k, v in parse_qs(self.body().decode()).items()}
-            self.ok(swedebeat_mixes.listing(form))
+            self.ok(swedebeat_mixes.listing(token, form))
             return
         if path != f"/v1/Authentication/Authenticate/{APP_GUID}":
             self.reply(404, {"Error": "not found"})

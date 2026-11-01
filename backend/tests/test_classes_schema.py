@@ -52,7 +52,7 @@ def app(app_database_url: str) -> Iterator[Engine]:
 def insert(conn: Connection, table: str, **values: Any) -> uuid.UUID:
     """A row written as the superuser (setup only); jsonb columns take Python values."""
     values = {"id": uuid.uuid4(), **values}
-    jsonb = {"content", "music", "provenance", "change", "request_context", "result"}
+    jsonb = {"content", "music", "provenance", "change", "request_context", "result", "map"}
     params = ", ".join(f"CAST(:{k} AS jsonb)" if k in jsonb else f":{k}" for k in values)
     row = {k: json.dumps(v) if k in jsonb else v for k, v in values.items()}
     return conn.execute(
@@ -562,6 +562,10 @@ def test_deleting_the_class_then_the_user_leaves_nothing_in_the_registered_table
     )  # fmt: skip
     insert(admin, "mowl_playlist_links", owner_id=owner, source="spotify",
            source_id="37i9dQZF1DXcBWIGoYBM5M", playlist_id=7)  # fmt: skip
+    # ADR 0016 (migration 0018): the user's analysis of a Swedebeat mix.
+    insert(admin, "swedebeat_mix_maps", owner_id=owner, mix_id="mix-1",
+           mowl_connection_id=uuid.uuid4(), playlist_id=9001, name="A mix", duration=600,
+           listed_duration=600, map={})  # fmt: skip
     # M4 (migration 0006). The pool operation rows and the Spotify deletion paths are planted and
     # deleted in test_spotify_forget.py.
     insert(admin, "class_playlists", owner_id=owner, class_id=class_id, revision_id=rev,

@@ -66,6 +66,9 @@ NOT_EXPORTED: Mapping[str, str] = MappingProxyType(
     {
         "connections": "exported as a status per provider, never the row: it holds the "
         "encrypted tokens, their wrapped keys and the Spotify Client ID",
+        "swedebeat_mix_maps": "exported as a count only (``swedebeat_mix_analyses`` in the file, "
+        "ADR 0016 section 3): the analysis of a licensed mix is a derived map, not something the "
+        "user wrote",
         "spotify_oauth_flows": "an unfinished connect: a one-time PKCE verifier and state hash, "
         "deleted when used or expired, nothing the user wrote",
     }
