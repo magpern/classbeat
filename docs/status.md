@@ -17,14 +17,15 @@ See also: ideas that are not planned, in [ideas.md](ideas.md).
 | M3b | Class page, revisions, save to MOWL, usage and cost | done technically (2026-10-30, on fakes): [ADR 0007](adr/0007-classes-revisions-and-saving.md), issues #141 to #151 |
 | M4 | Song picking (beta), Spotify BYOK | done technically (2026-10-31, on fakes; design accepted 2026-10-31: [ADR 0008](adr/0008-song-picking.md), [ADR 0009](adr/0009-spotify-connection.md), #198); issues in milestone "M4 Song picking and Spotify" (#173 to #186). Live activation is the owner's, one authorised step at a time: [docs/runbooks/m4-live-activation.md](runbooks/m4-live-activation.md); none has been run |
 | M3c | Eval suite, OpenAI and DeepSeek adapters | done technically (on replayed providers, #219): [ADR 0012](adr/0012-eval-suite-and-model-providers.md); the owner's live steps are in [docs/runbooks/m3c-model-enable.md](runbooks/m3c-model-enable.md) |
-| M5 | Tiers, quotas, codes, admin | done technically, on fakes, once this E2E PR (#228) is merged (the security suite #227 is in) ([ADR 0011](adr/0011-tiers-quotas-and-admin.md)); issues in milestone "M5 Tiers and admin". Live activation is the owner's |
-| MU | Night Studio UI (ADR 0013) | design accepted 2026-10-30 ([ADR 0013](adr/0013-ui-design-night-studio.md), roadmap Amendment 8); issues #242, #243, #246 to #251, #253 to #255; runs beside M4 and M5, done before M6 |
-| M6 | Security review, backups, GDPR, VPS | in progress, **not done**: the automated security matrices (#339: log secrecy, ciphertext-only dump, 403 and 404 route matrices) are in review; still to do: the end-to-end security review, backups and restore. **VPS configuration ready, not deployed** (#341): `compose.prod.yaml`, `Caddyfile`, [vps-deploy.md](runbooks/vps-deploy.md), checked locally only (see the runbook's "Local smoke"); the deploy, DNS, TLS, server, mail account and secrets are the owner's steps. GDPR export and delete is built (#337 merged as #348), its review follow-ups are in review (#349, [ADR 0014](adr/0014-account-export-and-deletion.md)). The independent security review and the backup restore drill are not done. **Backups (#338 merged; security review finding SR-06 fixed in #355, in review):** backup and restore scripts, a restore drill (run locally and in the `e2e` job) and [runbook](runbooks/backup-restore.md). Backups are now encrypted and signed by default (`--no-encrypt` is an explicit accepted-risk option, still awaiting the owner's sign-off for production use) and restore authenticates the archive against a pinned signer fingerprint (or a public key kept outside the backup directory) and validates its contents before running anything as the database superuser. The review's drill gaps are closed in #364 (in review): the drill now notices a restore of the unverified original, a lost `pipefail`, a leftover `.sig.partial`, a key below the backup directory and a subkey pin, and `restore.sh` accepts only the pinned primary. Not done: the schedule and an off-host copy on the VPS, generating and placing the real recipient and signing keys, the independent review's other findings |
+| M5 | Tiers, quotas, codes, admin | done technically (2026-10-31, on fakes; #228 merged) ([ADR 0011](adr/0011-tiers-quotas-and-admin.md)). Live activation is the owner's |
+| MU | Night Studio UI (ADR 0013) | done technically (2026-11-01, on fakes): [ADR 0013](adr/0013-ui-design-night-studio.md), UI10 (#255). The song-strip comparison with analysed music is still open and is not part of that done-when |
+| M6 | Security review, backups, GDPR, VPS | done technically (2026-11-01, on fakes; #340 closed). Matrices #339, GDPR #348 and #349, backups and the restore drill #338, #355 and #364, body cap #351, egress #353, playlist rate limit #354. Caddy and `compose.prod.yaml` are ready and not deployed (#341). SR-02 (#352) is an owner step. The VPS schedule, off-host copy and real backup keys are not done |
 | M7 | Commercial (deferred) | deferred |
-| S1 | Swedebeat connection (owner decision 2026-10-31) | **built on fakes only, in review** (#362, [ADR 0015](adr/0015-swedebeat-connection.md), roadmap Amendment 9): connect, status, disconnect, a stable device id per user, the `swedebeat_enabled` admin flag, the account card, a fake Swedebeat in the e2e stack. **Live use is an owner step**: nothing has been sent to Swedebeat, the app key is not in this repository and the owner has not yet created the `SWEDEBEAT_APP` secret, so no image holds it ([runbook](runbooks/swedebeat-connect.md)). Using the connection (catalogue matching) is not started |
+| S1 | Swedebeat connection (owner decision 2026-10-31) | connection done on fakes (#362, [ADR 0015](adr/0015-swedebeat-connection.md)). Mixes are in through A3 (#377, #378, #379); A4 (#380) is not started. **Live use is an owner step**: nothing has been sent to Swedebeat, the app key is not in this repository, and `MOWL_MEDIA_HOSTS` stays empty until the owner confirms the media host ([runbook](runbooks/swedebeat-connect.md)) |
 
 ## Now
 
+- **Technical completion (2026-11-01).** M3c, M4, M5, MU and M6 are done technically, on fakes and in CI. M6's checklist was checked when #340 closed: the restore drill passed into a fresh stack, GDPR export and delete and guard 12 are on main, the log, ciphertext-dump and 403/404 route tests are on main, and `scripts/check-prod-compose.sh` accepts `compose.prod.yaml` and the Caddyfile. Nothing has been deployed. The owner's remaining steps are listed under "Waiting for the owner".
 - **M0 done** (milestone closed 2026-10-28). Its "done when" was checked on 2026-10-28:
   - The skeleton runs: the compose stack (db, migrate, web, worker, mailpit) comes up healthy,
     `/api/ready` answers and the Playwright smoke test passes, locally and in CI.
@@ -139,10 +140,10 @@ See also: ideas that are not planned, in [ideas.md](ideas.md).
   the listing lag (`CLASSBEAT_SPOTIFY_LISTING_LAG_SECONDS`, `CLASSBEAT_MOWL_LISTING_LAG_SECONDS`), the
   `/me` 403 for a user off the allow-list, the `invalid_grant` body, and the cost per song-picked class
   against the ADR 0008 section 3 ceiling.
-- **M3c design** (eval suite, providers, the enable gate): ADR 0012 is Proposed, roadmap Amendment 6,
+- **M3c design** (eval suite, providers, the enable gate): ADR 0012 is Accepted, roadmap Amendment 6,
   threat model T79 to T84. Owner questions with defaults are in ADR 0012 (OpenAI data, DeepSeek kept
   disabled, stale routes, thresholds, a full-suite run for Opus, provider keys); agents build to the
-  defaults. Nothing live is run; G2 and Z7 wait for M4's #182 to #184.
+  defaults. Nothing live has been run. G2 and Z7 followed M4's #182 to #184, which are merged.
 - **M5 design accepted, development started:** [ADR 0011](adr/0011-tiers-quotas-and-admin.md) (tiers, quota reservation and
   refund, concurrency limits and cost caps, codes, grants, trial, the `classbeat_maint` admin path with
   its audit log, flags), roadmap Amendment 7, threat model T85 to T96. Split into 15 issues in milestone
@@ -166,7 +167,7 @@ See also: ideas that are not planned, in [ideas.md](ideas.md).
   or settings only), live activation (admin account with TOTP via `admin grant`, the testers' plan, the `song_picking`
   grant, the first live run of each model route) and enabling OpenAI or DeepSeek models ([m3c-model-enable.md](runbooks/m3c-model-enable.md)); none of these
   is done by agents.
-- **MU Night Studio UI** (owner decisions 2026-10-30, roadmap Amendment 8). ADR 0013 was merged
+- **MU done technically** (2026-11-01, UI10 #255). ADR 0013 was merged
   in #237 and accepted in #256 (closes #241), which also added the "amended by ADR 0013 §9" notes to:
   - ADR 0001 Frontend;
   - ADR 0008 §5 and §8;
@@ -212,15 +213,15 @@ See also: ideas that are not planned, in [ideas.md](ideas.md).
       provider re-authentication (#291); the delete-class confirmation scroll and focus (#301); Z1 to Z7 label
       tests (#301); CSP and Referrer-Policy on an unhandled 500 (#293); a test for the QR attribute allow-list
       (#293). Left open from it: the song strip's start times against the analysed music (needs a backend field).
-- **M6, rate limit on the MOWL playlist listing (#354, SR-05 of the security review, in review, not merged):**
+- **M6, rate limit on the MOWL playlist listing (#354, SR-05, merged):**
   `GET /api/music/mowl-playlists` now uses the fixed-window limiter of the other provider-calling routes: 30 per
   user and 60 per IP per 10 minutes, every request counts, a refusal (429 `rate_limited` with `Retry-After`) comes
   before the connection is opened and before any MOWL call; a parallel test shows the limit cannot be overshot.
   Other provider-calling GET routes checked: `GET /oauth/{provider}/callback` was already limited per IP
   (`OAUTH_IP`); `GET /spotify/callback` only exchanges a single-use `state` that a limited `POST /api/spotify/start`
-  created, so it is bounded by that limit; the remaining GET routes read the database only. M6 is **not done**.
-- **M6, GDPR export and delete (#337 merged as #348; review follow-ups #349 in review):** [ADR 0014](adr/0014-account-export-and-deletion.md),
-  threat model T98 to T100 and T102. M6 is **not done**; only this item of its "done when" is built. Checklist:
+  created, so it is bounded by that limit; the remaining GET routes read the database only.
+- **M6, GDPR export and delete (#348, follow-ups #349, both merged):** [ADR 0014](adr/0014-account-export-and-deletion.md),
+  threat model T98 to T100 and T102. Checklist:
   - [x] `POST /api/account/export` (one JSON file of the user's own rows, connections as status only, no
     hash or ciphertext; recent authentication and the step-up; 5 per hour) and `POST /api/account/delete`
     (typed address checked on the server, open jobs cancelled, credits settled, then the cascade);
@@ -238,9 +239,9 @@ See also: ideas that are not planned, in [ideas.md](ideas.md).
     table, the operator answers a request); `admin_audit.actor_email` of an admin outlives their account;
     the bare `target_id` of an acted-on account outlives it (ADR 0014 §5). Playlists in the user's Spotify and workouts
     in their MOWL stay there.
-  - [ ] Still open in M6: the independent security review, the backup restore drill (#343), Caddy and the VPS
-    (#342, owner-authorised deploy). Nothing here ran against a live account.
-- **M6 started, not done.** #339 (`test(security)`) adds the automated checks the M6 "done when" names, all on fakes
+  - [x] The security review checklist, the backup restore drill and the Caddy configuration are done
+    (#340, #338, #341). The VPS deploy itself is an owner step. Nothing here ran against a live account.
+- **M6 matrices, merged (#339).** `test(security)` adds the automated checks the M6 "done when" names, all on fakes
   and in CI: `backend/tests/test_m6_security_logs.py` (no secret in any log record or error response over the full
   fake flows: sign-in, reset by mail, OAuth sign-up, MOWL and Spotify connect, a pick, its approval, the design run,
   Save and an admin session; no never-returned credential in any response), `test_m6_security_dump.py` (a full
@@ -248,66 +249,38 @@ See also: ideas that are not planned, in [ideas.md](ideas.md).
   `test_m6_security_routes.py` (the app's route table against a classification: every `/api/admin` route is 403 for a
   non-admin and for an admin without a current TOTP check, every owned-id route is 404 for another user's ids with the
   body an unknown id gets, and a new route fails until it is classified; the classification is also checked against each route's own dependencies, so a `public` route that needs a session fails). The real `pg_dump` is not run in CI (client version); the data is read with `COPY`. The `e2e` job also greps the web and worker
-  logs of the whole Playwright run for the value of every secret file. Not covered by this PR, so M6 stays open: the
-  rest of the security review (headers, rate limits and egress against the live shape, dependency findings), backups
-  and restore, GDPR export and delete, the VPS and its network rules.
-- **M6, request body cap (#351, SR-01 of the security review; in review, not merged).** M6 is **not done**. A global
+  logs of the whole Playwright run for the value of every secret file. The gaps this PR left (the rest of the
+  review, backups and restore, GDPR, the VPS configuration) landed in the later M6 issues. #340 is closed.
+- **M6, request body cap (#351, SR-01, merged).** A global
   ASGI `BodyLimit` (`classbeat.bodylimit`, 64 KiB, outside the auth middleware, inside the security headers) answers a
   fixed 413 `body_too_large` for every route but `/api/admin` (which keeps its own equal limiter and contract); threat
   model T103; `test_m6_security_body_limit.py`. On a local stack a 200 MB anonymous login body took the web container
   from about 95 MiB to at least 264 MiB (sampled) and answered 422 after 13.5 s before; after, it stays at about 97 MiB
   (three parallel 200 MB posts peaked at about 111 MiB) and the sender is refused with 413 and cut off early. Each refusal writes a rate-limited log line (method, path without query, status, client address; #360), one per client address per 10 s (an IPv6 client by its /64), and a failing log call (a raising handler or filter) never turns the 413 into a 500 (#365; the failure is counted and reported once per 10 s on stderr with the exception class only). **The home beta behind SWAG needs `client_max_body_size 1m` at the
-  proxy** (runbook section 8a): that is the owner's configuration and is not done. Still open: SR-02 (#352) and the
-  rest of the review's findings, backups and restore, the VPS.
-- **M6, web outbound allowlist and redirects (#353, SR-03 of the security review, in review, not merged):** the web
+  proxy** (runbook section 8a): that is the owner's configuration. SR-02 (#352, Proton Bridge and the dev-profile beta) stays an owner step.
+- **M6, web outbound allowlist and redirects (#353, SR-03, merged):** the web
   process now installs an allowlisted urllib opener at start (`python -m classbeat`; `api.mowl.com` and `api.spotify.com`,
   `https` on 443, no environment proxy, a redirect only to the same host), so the MOWL token cannot follow a redirect to another host; the
   OAuth sign-in clients no longer read the environment or follow redirects. Tests use fake upstreams that record what
-  each host receives. Threat model T19 now says what is enforced. **Not done:** no host allowlist for the OAuth
-  sign-in clients or the mail relay, and no network-level egress rule (SR-04). M6 is **not done**.
+  each host receives. Threat model T19 now says what is enforced. There is still no host allowlist for the OAuth
+  sign-in clients or the mail relay, and no network-level egress rule (the threat model's accepted risk; not part of the #340 checklist).
 - Releases: v0.1.0 (cut partway through M0); v0.2.0 is not cut yet (deferred to save Actions quota). Image
   `ghcr.io/magpern/classbeat`, private.
 
 ## Waiting for the owner
 
-- **Swedebeat (S1, #362):** create the GitHub secret `SWEDEBEAT_APP` (`gh secret set SWEDEBEAT_APP --repo magpern/classbeat < swedebeat_app.json`), cut a release, set `SWEDEBEAT_ENABLED=true`, and authorize one live check of the connection with your own Swedebeat account (the real "another device" wording and the token's lifetime are unknown; [runbook](runbooks/swedebeat-connect.md)). Until the secret exists, release builds fail at the key check and no image holds the key; the connect route answers `app_key_unavailable`.
-- **M5 product questions** ([ADR 0011](adr/0011-tiers-quotas-and-admin.md) §11, Q1 to Q10): limits and
-  cost caps per tier, which plan the testers get, trial on or off, quota period, refund on cancel,
-  overlapping codes, Free feature gates, the Pro priority queue, audit-log retention, prices. Agents
-  build on the defaults listed there; an answer changes seeds or settings, not the design.
-- Each further live smoke run needs the owner's go-ahead for that run (2026-10-29: "do not run
-  live test every time").
-- **M3c live steps** (runbook [m3c-model-enable.md](runbooks/m3c-model-enable.md)): create and place the OpenAI (and later
-  DeepSeek) key; give a go-ahead and a `--max-usd` for each first live run per provider (an adapter check, no `--record`);
-  review the fixture update from it; then a recorded run per model and group and `models enable`. Until a pass is recorded,
-  the bootstrap Anthropic model serves users. OpenAI and DeepSeek routes stay impossible until you flip `data_policy`
-  (questions 1 and 2).
-- **M3c owner questions** ([ADR 0012](adr/0012-eval-suite-and-model-providers.md), "Owner questions"):
-  do you extend your Spotify §III 14 risk acceptance (Claude only, ADR 0010) to OpenAI (default no:
-  OpenAI stays `owner_pending`, evaluated on synthetic data only); keep DeepSeek
-  disabled (default yes); stale routes keep working, flagged (default yes); the suite thresholds; a
-  full-suite run before Opus 5.5 is used by a tier (default yes); you place the OpenAI and DeepSeek keys
-  yourself (default yes). Each live suite run needs your go-ahead for that run.
-- **MOWL connect (#66) has merged, so the owner can now authorize: a check of the MOWL token's lifetime**
-  against the owner's own account (M2 "done when"; [ADR 0004](adr/0004-connections-and-encryption.md) §6).
-  What is known (#66): the token is a 36-character GUID, not a JWT, so it carries no expiry
-  claim; MOWL sends no lifetime with it, and `mowl-workouts` (v0.4.0, `docs/mowl-api.md`) knows
-  none either. **The lifetime is unknown.** classbeat keeps `expires_at` `NULL` and flips the
-  connection to `needs_reconnect` on the first 401 or 403 (a reconnect prompt on the account
-  page). The proposed check, read-only: the owner connects their own MOWL account on a local
-  stack; once a day an agent runs one read-only call (`list_workouts`) with the stored token
-  and records the date of the first 401 or 403 (or that none came within 30 days); no write to
-  the account, nothing else signed in. Agents run it only with the owner's go-ahead for that run,
-  logged under "Live activation log".
+Agents do not deploy, change DNS, create provider apps, or contact MOWL, Spotify, Swedebeat or a model provider. Each live run needs a go-ahead for that run (2026-10-29: "do not run live test every time").
 
-- **M4 live activation** (runbook [m4-live-activation.md](runbooks/m4-live-activation.md), ADR 0008 §11): create the
-  Spotify Development Mode app and add the allow-list users, then give a go-ahead for each of steps 2 to 7 (connect, one
-  pick, one Approve, one Change songs, the cost reading, Disconnect). Until then `CLASSBEAT_SONG_PICKING` stays off.
-
-- **VPS deploy (M6, #341):** the owner provides a server, a domain with DNS, an SMTP account and the
-  secret files, then authorizes the first deploy and follows [vps-deploy.md](runbooks/vps-deploy.md). Nothing
-  has been deployed or contacted; the real SSE route, the worker start and the mail path have not run
-  under `compose.prod.yaml` (runbook, "Local smoke").
+- **Live activation.** M4: create the Spotify Development Mode app and the allow-list, then authorize steps 2 to 7 of [m4-live-activation.md](runbooks/m4-live-activation.md) (connect, one pick, one Approve, one Change songs, the cost reading, Disconnect). Until then `CLASSBEAT_SONG_PICKING` stays off. M2: the MOWL token lifetime is still unknown (a 36-character GUID, no expiry claim). The read-only check in [ADR 0004](adr/0004-connections-and-encryption.md) §6 waits for a go-ahead: one `list_workouts` a day on the owner's own connection, no write, logged under "Live activation log". Swedebeat connect: create the `SWEDEBEAT_APP` secret, cut a release, set `SWEDEBEAT_ENABLED=true`, and authorize one live check ([swedebeat-connect.md](runbooks/swedebeat-connect.md)). Until the secret exists, release builds fail the key check and connect answers `app_key_unavailable`.
+- **VPS deploy.** The configuration is ready and not deployed (#341): `compose.prod.yaml`, `Caddyfile`, [vps-deploy.md](runbooks/vps-deploy.md). The owner provides the server, DNS, TLS, SMTP and the secret files, then authorizes the first deploy. Also still open on the server: the backup schedule, an off-host copy, and the real backup recipient and signing keys. `scripts/check-prod-compose.sh` passes; nothing has been contacted.
+- **Model enablement.** [m3c-model-enable.md](runbooks/m3c-model-enable.md): place the OpenAI key (DeepSeek later), give a `--max-usd` for each first live run, then a recorded run and `models enable`. Until a pass is recorded, the bootstrap Anthropic model serves users. OpenAI and DeepSeek stay `owner_pending` until you answer ADR 0012's questions (extend the Spotify risk acceptance to OpenAI; keep DeepSeek disabled; stale routes; thresholds; a full-suite run before Opus 5.5 is used by a tier).
+- **Proton Bridge setup (#352).** Account mail for the beta goes through Proton Mail Bridge ([proton-bridge-smtp.md](runbooks/proton-bridge-smtp.md)). The public beta still runs the dev profile with Mailpit. That is owner deployment work. Agents do not touch Proton accounts.
+- **Swedebeat live media host check.** `MOWL_MEDIA_HOSTS` is empty, so an uncached mix ends `media_host_not_allowed` and no media request is sent (ADR 0016). The owner confirms the host from one authorized live analysis, then a reviewed change may add that exact host. Agents do not edit the constant and do not create `SWEDEBEAT_APP`.
+- **Running live checks.** Running profiles (#401) wait for the owner's aggregate data. MOWL running classes (#373) are research until that data and a go-ahead exist. No live running check has been authorized.
+- **App name and domain.** The repository name is classbeat. The public app name and the DNS name for the VPS are not chosen. Deploy waits on that domain.
+- **Google OAuth app creation.** Google sign-in stays off until the owner creates the OAuth client and sets `CLASSBEAT_OAUTH_GOOGLE_CLIENT_ID` plus the `oauth_google_client_secret` file. The app asks for `auth_time` itself (ADR 0003 §5). GitHub and Microsoft are the same kind of owner step when those apps are wanted.
+- **Legal line placeholder.** Sign-in and sign-up show a beta sentence (`frontend/src/components/auth/AuthScreen.tsx`): "By continuing you agree to take part in the invite-only beta. classbeat is not made by or affiliated with MOWL, Spotify or Swedebeat." The real legal line is the owner's.
+- **M5 product questions** ([ADR 0011](adr/0011-tiers-quotas-and-admin.md) §11, Q1 to Q10): limits and cost caps per tier, which plan the testers get, trial on or off, quota period, refund on cancel, overlapping codes, Free feature gates, the Pro priority queue, audit-log retention, prices. Agents build on the defaults; an answer changes seeds or settings, not the design.
 
 ## Live activation log
 
