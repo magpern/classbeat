@@ -27,7 +27,7 @@ from agentfake import CONFIG, FactoryModels, from_dict
 from authtools import Env, running_env
 from classbeat import design, saving
 from classbeat.agent.providers.fake import FakeProvider
-from classbeat.design import mixadmit, mixanalysis, mixfetch, mixlimit
+from classbeat.design import mixadmit, mixfetch, mixlimit
 from classbeat.design import swedebeat_music as sbm
 from classbeat.design.revise import KIND as REVISE_KIND
 from classbeat.egress import (
@@ -109,11 +109,11 @@ async def env(clean_auth: None, app_database_url: str) -> AsyncIterator[Env]:
 
 @pytest.fixture(autouse=True)
 def work(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    """The audio directory of these tests. Each analysis keeps its numba cache inside that job's
+    private directory (``mixanalysis.NUMBA_CACHE``), so there is no shared cache to pin."""
     root = tmp_path / "audio-root"
     root.mkdir()
-    cache = mixanalysis.numba_cache_dir()
     monkeypatch.setattr(mixfetch, "work_root", lambda: root)
-    monkeypatch.setattr(mixanalysis, "numba_cache_dir", lambda: cache)
     return root
 
 
