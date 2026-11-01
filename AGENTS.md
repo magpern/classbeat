@@ -738,8 +738,10 @@ Cloud Agent machines provide Node 24.22.1 (`/usr/local/lib/nodejs`), uv 0.13.6 a
 with the `fuse-overlayfs` storage driver and `iptables-legacy`. There is no systemd. On boot the
 environment start script launches `dockerd`, runs `scripts/worktree.sh init` (local `.env` and
 `secrets/`; model key files stay empty; `MODEL_PROVIDER` stays `fake`) and
-`docker compose up -d --build --wait`. The app listens on http://127.0.0.1:8000 (`/api/ready` and
-the SPA), Postgres is on host port 55432 and Mailpit on 8025.
+`docker compose up -d --build --wait`. A warm-forked boot can skip that script. If
+http://127.0.0.1:8000/api/ready does not answer, run `scripts/worktree.sh init` and
+`docker compose up -d --build --wait` again. The app listens on http://127.0.0.1:8000
+(`/api/ready` and the SPA), Postgres is on host port 55432 and Mailpit on 8025.
 
 Backend database tests need their own Postgres. `uv run pytest` skips them until
 `CLASSBEAT_TEST_DATABASE_URL` points at a throwaway server (the recipe under "Developer commands").
