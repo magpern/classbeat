@@ -294,7 +294,10 @@ web and worker refuse to start without it) is the current key-encryption key of 
 its id `CLASSBEAT_CONNECTION_KEK_ID` (default `kek-1`; compose takes `CONNECTION_KEK_ID` from `.env`),
 and retired ones are `connection_kek_<id>`; `smtp_password` (optional) is the SMTP login password
 (`CLASSBEAT_SMTP_HOST`, `_PORT`, `_SENDER`, `_USERNAME` and `_TLS` = `starttls`, `tls` or `none`;
-`none` only for loopback or the compose `mailpit`; compose points them at mailpit); the matching
+`none` only for loopback or the compose `mailpit`; compose points them at mailpit;
+`CLASSBEAT_SMTP_CA_FILE` (optional, not with `none`) is a readable PEM certificate file the server's
+certificate must match instead of the system store, for Proton Mail Bridge; verification and the hostname
+check stay on, see `docs/runbooks/proton-bridge-smtp.md`); the matching
 `CLASSBEAT_DATABASE_PASSWORD` and `CLASSBEAT_DATABASE_OWNER_PASSWORD` variables are ignored.
 The admin area (ADR 0011 section 5): `CLASSBEAT_MAINT_DATABASE_URL` (compose sets it on web) and the
 `database_maint_password` secret file (web and `db-functions` only, which creates the role

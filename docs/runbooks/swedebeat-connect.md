@@ -39,7 +39,9 @@ not in the image" keep it so).
 - The admin area (Settings > Swedebeat) can switch it off for everyone, never on past this variable.
 - **Home server, without a rebuild:** put the key file at `secrets/swedebeat_app` (same JSON) and mount
   it as the Docker secret `swedebeat_app` on `web` only (`compose.yaml` and `compose.prod.yaml` do; an
-  empty file means no key). A file there wins over the one in the image. The worker must not get it
+  empty file means no key). The file must exist even when empty, or compose fails at `up`: an
+  existing stack (the home beta, an older worktree) runs `touch secrets/swedebeat_app` once
+  (`scripts/worktree.sh init` does it for a checkout). A file there wins over the one in the image. The worker must not get it
   (it refuses to start if it can read it).
 - Without any key the account card says "Swedebeat sign-in is not available on this server." and
   connect answers 503 `app_key_unavailable`.

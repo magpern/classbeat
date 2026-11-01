@@ -141,6 +141,8 @@ services:
       CLASSBEAT_SWEDEBEAT_ENABLED: "true"
       CLASSBEAT_OAUTH_GOOGLE_CLIENT_ID: e2e-fake-google-client
       CLASSBEAT_OAUTH_MICROSOFT_CLIENT_ID: e2e-fake-microsoft-client
+      # Microsoft is shown on the sign-in screen here; the default shows Google only (issue 389).
+      CLASSBEAT_OAUTH_VISIBLE_PROVIDERS: google,microsoft
       # Song picking is on in the e2e stack (ADR 0008 section 10): the Spotify routes answer and the
       # new-class form offers the choice. It stays off in every default stack.
       CLASSBEAT_SONG_PICKING: "true"

@@ -84,6 +84,10 @@ Then by hand (type or paste, no `echo` of a real value into the shell history):
 - `secrets/anthropic_api_key`: the Anthropic key. The worker refuses to start in prod without it.
 - `secrets/openai_api_key`, `secrets/deepseek_api_key`: leave **empty** until the owner decides
   (ADR 0012, [m3c-model-enable.md](m3c-model-enable.md)); the files must exist.
+- `secrets/swedebeat_app`: leave **empty** (`touch secrets/swedebeat_app`); the file must exist
+  because `compose.yaml` and `compose.prod.yaml` mount it into `web`, and compose fails at `up`
+  without it. A release image holds Swedebeat's key itself; the file is only a runtime override
+  ([swedebeat-connect.md](swedebeat-connect.md)).
 - OAuth sign-in providers, if wanted, are not part of this file: they need their client id
   variable and `oauth_<provider>_client_secret` secret file added to `compose.prod.yaml` by a
   reviewed change.
@@ -102,6 +106,7 @@ ACME_EMAIL=you@example.test
 SMTP_HOST=smtp.example.test
 SMTP_SENDER=noreply@classbeat.example.test
 # optional: SMTP_PORT=587  SMTP_TLS=starttls  SMTP_USERNAME=...  ADMIN_EMAILS=you@example.test
+# optional: SMTP_CA_FILE=/run/smtp-ca/bridge.pem   (pinned self-signed SMTP certificate, see proton-bridge-smtp.md)
 # optional: SIGNUP_MODE=invite  CONNECTION_KEK_ID=kek-1  MODEL_PROVIDER=anthropic
 ```
 
@@ -196,6 +201,7 @@ buffers the whole body first (nginx to disk or memory) before it does.
 ```bash
 cd /opt/classbeat
 git fetch --tags && git checkout vNEW             # the release you want
+touch secrets/swedebeat_app                       # must exist (empty is fine); `touch` never empties it
 sed -i 's/^CLASSBEAT_VERSION=.*/CLASSBEAT_VERSION=NEW/' .env   # NEW = the tag without the v
 docker compose -f compose.prod.yaml pull
 docker compose -f compose.prod.yaml up -d --wait
@@ -203,7 +209,11 @@ docker compose -f compose.prod.yaml up -d --wait
 
 `up` re-runs `migrate` (idempotent) and `db-functions` before it replaces `web` and `worker`;
 the worker has 30 s to hand its leases back (ADR 0005). **Take a database dump first** (section 11),
-always: it is the rollback. Read the release notes for owner-facing steps.
+always: it is the rollback. Read the release notes for owner-facing steps. A stack older than
+the Swedebeat connection (#366) has no `secrets/swedebeat_app`; without it `up` fails with a
+missing-file error for that secret, which the `touch` line above fixes (same for the home beta
+behind SWAG and for an older checkout or worktree: run `touch secrets/swedebeat_app` or
+`scripts/worktree.sh init` before `docker compose up`).
 
 ## 10. Rollback
 
