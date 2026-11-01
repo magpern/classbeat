@@ -197,6 +197,10 @@ class Settings(BaseSettings):
     oauth_google_client_secret: SecretStr | None = None
     oauth_github_client_secret: SecretStr | None = None
     oauth_microsoft_client_secret: SecretStr | None = None
+    # Which enabled providers the sign-in and sign-up screens offer: a comma-separated list. The
+    # default is Google only; GitHub and Microsoft stay fully built and are shown by adding them
+    # here. Linking, re-authentication and the callbacks work for every enabled provider.
+    oauth_visible_providers: str = "google"
 
     # The model provider of the worker (ADR 0006 §9): ``anthropic`` (the default) needs the
     # ``anthropic_api_key`` secret file; ``fake`` (the dev stack and CI) is refused in ``prod``.
