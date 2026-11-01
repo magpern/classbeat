@@ -309,7 +309,8 @@ async def test_the_store_keeps_the_newest_twenty_and_drops_what_is_past_thirty_d
     assert len(ids) == MAPS_PER_USER
     assert mix in ids
     assert "old-21" not in ids  # past 30 days
-    assert "old-00" not in ids and "old-01" not in ids  # the oldest, over the twenty
+    assert "old-00" not in ids  # the oldest two, over the twenty
+    assert "old-01" not in ids
     assert len(harness.maps(other)) == rows  # another user's rows are never touched
 
 
