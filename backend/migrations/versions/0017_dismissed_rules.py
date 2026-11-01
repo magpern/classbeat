@@ -25,9 +25,11 @@ depends_on: str | Sequence[str] | None = None
 def upgrade() -> None:
     op.execute(
         "ALTER TABLE public.classes ADD COLUMN dismissed_rules jsonb NOT NULL DEFAULT '[]' "
-        "CONSTRAINT classes_dismissed_rules CHECK ("
-        "jsonb_typeof(dismissed_rules) = 'array' AND jsonb_array_length(dismissed_rules) <= 32 "
-        "AND NOT jsonb_path_exists(dismissed_rules, 'strict $[*] ? (@.type() != \"string\")'))"
+        "CONSTRAINT classes_dismissed_rules CHECK (CASE "
+        "WHEN jsonb_typeof(dismissed_rules) = 'array' THEN "
+        "jsonb_array_length(dismissed_rules) <= 32 AND NOT jsonb_path_exists("
+        "dismissed_rules, 'strict $[*] ? (@.type() != \"string\")') "
+        "ELSE false END)"
     )
 
 
