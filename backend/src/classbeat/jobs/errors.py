@@ -67,6 +67,7 @@ CATEGORIES: Final = (
     "analysis_failed",
     # ADR 0016 sections 2 and 7 (migration 0020): a design on a Swedebeat mix whose run finds
     # ``swedebeat_enabled`` off, and the daily limit of new analyses; neither is retried.
+    # ``feature_off`` is also how a queued ``swedebeat_match`` ends while the flag is off (B1).
     "feature_off",
     "analysis_limit",
 )

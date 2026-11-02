@@ -40,6 +40,8 @@ WORKER_PACKAGES = (
     "classbeat.evals",
     # ADR 0009 §6: the Spotify package runs in the worker too (refresh, the song-picking calls).
     "classbeat.spotify",
+    # ADR 0016 §5 (B1): the catalogue match runs in the worker.
+    "classbeat.swedebeat_match",
 )
 # What the worker process imports at start. Add each new worker entry point here (A1, D1:
 # ``classbeat.agent`` ...); the reachability test imports them all in a fresh interpreter and
@@ -60,6 +62,7 @@ WORKER_ENTRYPOINTS = (
     "classbeat.saving",
     "classbeat.evals.__main__",
     "classbeat.spotify",  # spotify_call and the refresh run in the worker (ADR 0009 section 6)
+    "classbeat.swedebeat_match",  # the catalogue match (ADR 0016 section 5)
 )
 
 _CALLS = frozenset(
@@ -132,13 +135,18 @@ _CALLS = frozenset(
         # tests; production code gets the one with no arguments.
         "classbeat.egress.mowl_media_test_client",
         "classbeat.egress._media_client",
+        # ADR 0016 §4 (B1): the catalogue client with a transport of the caller's own is for tests.
+        "classbeat.egress.swedebeat_cloud_network_transport",
+        "classbeat.egress.swedebeat_cloud_test_client",
     }
 )
 # Allowed only without an allowlist argument (the list is the function's own).
 _NO_ALLOWLIST_ARGUMENT = frozenset({"classbeat.egress.allowlisted_async_client"})
 # Allowed only with no argument at all: the list, the deadline and the transport are the
 # function's own (ADR 0016 §4).
-_NO_ARGUMENTS = frozenset({"classbeat.egress.mowl_media_async_client"})
+_NO_ARGUMENTS = frozenset(
+    {"classbeat.egress.mowl_media_async_client", "classbeat.egress.swedebeat_cloud_async_client"}
+)
 
 # Any call by these attribute names, whatever the object (an event loop, a socket): raw
 # connections around both allowlisted paths.

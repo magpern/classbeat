@@ -5,7 +5,7 @@ import logging
 import signal
 import sys
 
-from classbeat import design, playlists, saving, songs
+from classbeat import design, playlists, saving, songs, swedebeat_match
 from classbeat.config import (
     ModelProviderRefused,
     Settings,
@@ -53,6 +53,9 @@ async def _run(settings: Settings) -> None:
     playlists.configure(playlists_runtime(settings))
     # design_with_songs (SJ1): the job ceiling and the pool's sync wait; it shares design's runtime.
     songs.configure(songs.SongConfig.from_settings(settings))
+    # swedebeat_match (B1): the Swedebeat switch (off unless the worker's environment has it too:
+    # a match then ends feature_off) and the key ring for the Swedebeat token.
+    swedebeat_match.configure(swedebeat_match.MatchConfig.from_settings(settings, keyring))
     stop = asyncio.Event()
     # Before "worker started" is logged, so a signal after that line is always handled.
     _install_signal_handlers(asyncio.get_running_loop(), stop)

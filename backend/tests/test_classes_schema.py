@@ -552,6 +552,20 @@ def test_deleting_the_class_then_the_user_leaves_nothing_in_the_registered_table
     class_id = new_class(admin, owner)
     job_id = new_job(admin, owner, class_id)
     rev = revision(admin, owner, class_id, job_id=job_id)
+    # ADR 0016 section 5 (B1): a match revision is Spotify-derived and goes with the class.
+    insert(
+        admin,
+        "class_revisions",
+        owner_id=owner,
+        class_id=class_id,
+        number=2,
+        kind="swedebeat_match",
+        parent_id=rev,
+        content={"v": 1, "planted": "spotify-title-plant"},
+        content_hash=digest("swedebeat-match"),
+        music={"source": "swedebeat_catalogue"},
+        provenance={"origin": "swedebeat_match"},
+    )
     message(admin, owner, class_id, job_id=job_id)
     saved(admin, owner, class_id, revision_id=rev)
     operation(admin, owner, class_id=class_id)

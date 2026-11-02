@@ -51,6 +51,7 @@ RETENTION: Mapping[str, Retention] = MappingProxyType(
         # ``content`` of a ``song_list`` (ADR 0008 sections 5 and 8) holds the chosen songs'
         # Spotify ids, titles, artists and, from ``v: 2``, their album cover URLs (``cover``, ADR
         # 0013 section 9): all go with the class and the account, like the drafts beside them.
+        # Each kind the table allows is in ``REVISION_KINDS`` below.
         "class_revisions": _entry(
             "content music provenance", "kind content_hash", "class", "account"
         ),
@@ -127,5 +128,21 @@ RETENTION: Mapping[str, Retention] = MappingProxyType(
         "code_redemptions": _entry("", "", "account"),
         "credit_ledger": _entry("", "plan_id state reason", "account"),
         "quota_periods": _entry("", "", "account"),
+    }
+)
+
+# Every ``class_revisions.kind`` (the table's check), with what its ``content`` and ``music`` hold.
+# All go with the class and the account (the table's entry above); none outlives its class. A new
+# kind is added here in the PR that allows it (``tests/test_swedebeat_match_retention.py`` compares
+# this with the check).
+REVISION_KINDS: Mapping[str, str] = MappingProxyType(
+    {
+        "draft": "the user's brief's design; MOWL playlist ids and track ids of its music",
+        "song_list": "Spotify-derived: the chosen songs' ids, titles, artists and cover URLs",
+        # ADR 0016 section 5 (B1): the match of one ``song_list`` against Swedebeat's catalogue.
+        # Spotify-derived (each song's title and artist) and Swedebeat's (the matched title,
+        # artist and length); no catalogue id, no URL, no token. Never cached across classes or
+        # users: the job dedupes in memory only.
+        "swedebeat_match": "Spotify-derived titles and artists; Swedebeat titles, artists, lengths",
     }
 )
