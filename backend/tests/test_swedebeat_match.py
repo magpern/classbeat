@@ -385,6 +385,8 @@ async def test_two_users_match_on_the_fake_and_their_tokens_never_mix(
 
 
 _WAIT = "Swedebeat asks to slow down; trying again in about 2 minutes."
+_STOPPED = "Swedebeat asks to slow down. This match has stopped."
+_HOUR = "Swedebeat asks to slow down; trying again in about 60 minutes."
 _PLANTED_BODY = b'{"error":"catalogue-body-planted-9f3a"}'
 
 
@@ -476,10 +478,53 @@ async def test_a_rate_limit_pauses_the_job_and_a_5xx_is_upstream_unavailable(
     assert down.json()["error_message"] is None
 
 
+async def test_a_long_catalogue_retry_after_is_named_as_the_one_hour_pause(
+    env: Env, admin: Connection, make_actor: Any, catalogue: CatalogueFake, configured: None
+) -> None:
+    """A Retry-After of two hours is stored, and the pause and the sentence both stop at an hour."""
+    rider = await _rider(
+        env,
+        make_actor,
+        account="long@example.com",
+        swedebeat_email=EMAIL,
+        password=PASSWORD,
+        start=61,
+        bpm=104.0,
+        class_title="Long Brief",
+    )
+    catalogue.status = 429
+    catalogue.retry_after = "7200"
+    catalogue.body = _PLANTED_BODY
+    assert (await _post_job(rider.actor, _body(rider))).status_code == 201
+    job_id = await _run(env)
+    row = _job(admin, job_id)
+    assert row.state == "queued"
+    assert row.spotify_retry_after == 7200
+    remaining = float(
+        admin.execute(
+            text("SELECT extract(epoch FROM (available_at - now())) FROM jobs WHERE id = :id"),
+            {"id": job_id},
+        ).scalar_one()
+    )
+    assert 3500 <= remaining <= 3600
+    shown = await rider.actor.get(f"/api/jobs/{job_id}")
+    assert shown.status_code == 200, shown.text
+    message = shown.json()["error_message"]
+    assert message == _HOUR
+    assert "120" not in message
+    assert "7200" not in message
+    assert rider.token not in shown.text
+    assert "catalogue-body-planted-9f3a" not in shown.text
+    assert "Spotify" not in message
+
+
 async def test_three_catalogue_rate_limits_name_the_wait_and_are_not_a_spotify_quota(
     env: Env, admin: Connection, make_actor: Any, catalogue: CatalogueFake, configured: None
 ) -> None:
-    """Three Swedebeat 429s end ``rate_limited``, not Spotify's ``quota_exhausted``."""
+    """Three Swedebeat 429s end ``rate_limited``, not Spotify's ``quota_exhausted``.
+
+    The job does not retry after that, so the sentence does not say it is trying again.
+    """
     rider = await _rider(
         env,
         make_actor,
@@ -517,7 +562,8 @@ async def test_three_catalogue_rate_limits_name_the_wait_and_are_not_a_spotify_q
     shown = await rider.actor.get(f"/api/jobs/{job_id}")
     assert shown.status_code == 200, shown.text
     message = shown.json()["error_message"]
-    assert message == _WAIT
+    assert message == _STOPPED
+    assert "trying" not in message
     assert rider.token not in shown.text
     assert "catalogue-body-planted-9f3a" not in shown.text
     assert "Spotify" not in message

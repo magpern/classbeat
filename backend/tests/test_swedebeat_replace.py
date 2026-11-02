@@ -5,6 +5,7 @@ revision (and the fake catalogue answers with a reference id) and must not reach
 The replace and the re-match run on the fakes: no network, no live account.
 """
 
+import inspect
 import json
 from contextlib import contextmanager
 from typing import Any
@@ -18,6 +19,7 @@ from classbeat import connections, swedebeat_match
 from classbeat.agent.providers.fake import FakeProvider
 from classbeat.agent.schemas import Brief
 from classbeat.egress import swedebeat_cloud_test_client
+from classbeat.flags import effective as flag_effective
 from classbeat.songs.revise import pick_brief
 from classbeat.songs.song_list import Song, SongListContent
 from classbeat.swedebeat_match import kind as match_kind
@@ -438,3 +440,60 @@ async def test_a_catalogue_replace_calls_nothing_when_the_flag_is_off(
             parent=waiting.approval_revision_id,
         ).scalar_one()
         assert matched == 0
+
+
+async def test_either_catalogue_flag_check_refuses_on_its_own(
+    songenv: SongEnv, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Both flag reads have to run. The first allows and the second refuses.
+
+    ``gate`` and ``decide`` each refuse when the flag is off, so a request that only sees one
+    refusal stays green if the other check is deleted. Here the two reads disagree: removing
+    either read lets the replace through.
+    """
+    catalogue = CatalogueFake()
+    monkeypatch.setattr(
+        match_kind, "catalogue_client", lambda: swedebeat_cloud_test_client(catalogue)
+    )
+    rider = await songenv.rider()
+    await connections.save(
+        songenv.factory,
+        songenv.ring,
+        make_context(rider.user_id),
+        "swedebeat",
+        {"token": "swedebeat-test-token", "device_id": "0123456789abcdef"},
+        public={"email": "rider@example.com"},
+    )
+    with _enabled(songenv):
+        class_id, base, first_list = await picked(songenv, rider)
+        stored = songenv.revision(first_list)
+        parsed = SongListContent.model_validate(stored.content)
+        match_id = _insert_match(
+            songenv,
+            rider.user_id,
+            class_id,
+            first_list,
+            bytes(stored.content_hash),
+            [_song(n, song, missing=n == 3) for n, song in enumerate(parsed.songs, start=1)],
+        )
+        seen: list[str] = []
+
+        async def consult(db: Any, environment_on: bool) -> bool:
+            assert environment_on is True
+            assert db is not None
+            caller = inspect.stack()[1].function
+            seen.append(caller)
+            # ``gate`` may pass. Only ``decide``'s own read refuses, so deleting either read
+            # no longer produces this pair.
+            return caller == "gate"
+
+        monkeypatch.setattr(flag_effective, "swedebeat_enabled", consult)
+        before = _jobs(songenv, class_id)
+        answer = await change(
+            rider, class_id, base, replace=None, request=None, match_revision_id=str(match_id)
+        )
+        assert seen == ["gate", "decide"]
+        assert answer.status_code == 409, answer.text
+        assert answer.json()["detail"]["reason"] == "feature_off"
+        assert catalogue.calls == []
+        assert _jobs(songenv, class_id) == before

@@ -2,6 +2,7 @@
 
 import importlib.util
 import random
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -21,6 +22,7 @@ from classbeat.jobs import (
     failure_of,
 )
 from classbeat.jobs.errors import BACKOFF_CAP_SECONDS, RATE_LIMIT_CAP_SECONDS
+from classbeat.jobs.sentences import job_sentence
 
 
 def migration_categories() -> set[str]:
@@ -157,3 +159,39 @@ def test_the_worker_ships_exactly_the_reviewed_kinds() -> None:
         "swedebeat_verify_mix",
         "update_workout",
     ]
+
+
+_NOW = datetime(2026, 11, 2, tzinfo=UTC)
+_STOPPED = "Swedebeat asks to slow down. This match has stopped."
+_HOUR = "Swedebeat asks to slow down; trying again in about 60 minutes."
+
+
+def _catalogue_sentence(
+    state: str, category: str | None, retry_after: int | None, wait: int
+) -> str | None:
+    return job_sentence(
+        state,
+        category,
+        "rate_limited",
+        retry_after,
+        _NOW + timedelta(seconds=wait),
+        _NOW,
+        "swedebeat_match",
+    )
+
+
+def test_a_failed_catalogue_match_does_not_promise_another_try() -> None:
+    message = _catalogue_sentence("failed", "rate_limited", 90, 0)
+    assert message == _STOPPED
+    assert "trying" not in _STOPPED
+    assert _catalogue_sentence("failed", "rate_limited", 86_400, 0) == _STOPPED
+    assert "Spotify" not in _STOPPED
+
+
+def test_a_queued_catalogue_wait_names_at_most_the_pause_cap() -> None:
+    short = _catalogue_sentence("queued", None, 90, 90)
+    assert short == "Swedebeat asks to slow down; trying again in about 2 minutes."
+    assert _catalogue_sentence("queued", None, 7_200, int(RATE_LIMIT_CAP_SECONDS)) == _HOUR
+    assert _catalogue_sentence("queued", None, 86_400, int(RATE_LIMIT_CAP_SECONDS)) == _HOUR
+    # No stored hint: the remaining pause is still named within the cap.
+    assert _catalogue_sentence("queued", None, None, 7_200) == _HOUR

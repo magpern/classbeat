@@ -7,13 +7,15 @@ catalogue match have a sentence here; the other categories keep the page's own w
 Spotify's sentence only when the job's last failure came from Spotify (``jobs.spotify_failure``),
 also while the job waits for its retry. ``rate_limited`` and ``quota_exhausted`` name the time
 from Spotify's last ``Retry-After`` (``jobs.spotify_retry_after``). A ``swedebeat_match`` whose
-stored failure is Swedebeat's own 429 uses that same hint for its own sentence. It does not
-count as a Spotify rate limit."""
+stored failure is Swedebeat's own 429 names that wait while the job is still queued, and never
+a longer wait than the pause cap. Once that match has failed, the sentence does not promise
+another try. It does not count as a Spotify rate limit."""
 
 import math
 from datetime import datetime
 from typing import Final
 
+from classbeat.jobs.errors import RATE_LIMIT_CAP_SECONDS
 from classbeat.spotify.errors import SENTENCES as SPOTIFY_SENTENCES
 from classbeat.spotify.errors import sentence as spotify_sentence
 
@@ -61,17 +63,23 @@ _SPOTIFY_ONLY: Final = frozenset(SPOTIFY_SENTENCES) - {
 # The job kind whose 429 sentence is Swedebeat's, not Spotify's (``swedebeat_match.revision.KIND``).
 _SWEDEBEAT_MATCH: Final = "swedebeat_match"
 _SWEDEBEAT_WAIT: Final = "Swedebeat asks to slow down; trying again in about {minutes}."
+# The attempts are used up. This must not say the job will try again.
+_SWEDEBEAT_STOPPED: Final = "Swedebeat asks to slow down. This match has stopped."
 
 
 def _minutes(retry_after: int | None) -> str:
-    """Whole minutes of a ``Retry-After``, at least one, the same rounding as Spotify's sentence."""
-    seconds = retry_after if retry_after is not None and retry_after > 0 else 60
+    """Whole minutes of a wait, at least one, the same rounding as Spotify's sentence.
+
+    A hint longer than ``RATE_LIMIT_CAP_SECONDS`` is named as that cap, which is also the
+    longest pause."""
+    raw = retry_after if retry_after is not None and retry_after > 0 else 60
+    seconds = min(raw, int(RATE_LIMIT_CAP_SECONDS))
     minutes = max(1, -(-seconds // 60))
     return f"{minutes} minute" if minutes == 1 else f"{minutes} minutes"
 
 
 def _swedebeat_wait(retry_after: int | None) -> str:
-    """The catalogue 429 sentence. The words are ours: no token, body or provider error string."""
+    """The queued catalogue 429 sentence. The words are ours: no token, body or provider error."""
     return _SWEDEBEAT_WAIT.format(minutes=_minutes(retry_after))
 
 
@@ -95,10 +103,12 @@ def job_sentence(
 ) -> str | None:
     """The sentence the page shows for a job: its failure's, or, while a retry after a Spotify
     rate limit or outage is pending, that one's (``category`` is NULL then). A Swedebeat match
-    waiting on its own 429 names that wait instead."""
+    waiting on its own 429 names that wait. A failed match says it has stopped."""
     if kind == _SWEDEBEAT_MATCH and _swedebeat_rate_limit(state, category, spotify_failure):
+        if state == "failed":
+            return _SWEDEBEAT_STOPPED
         hint = retry_after
-        if state == "queued" and hint is None:
+        if hint is None:
             hint = max(1, math.ceil((available_at - now).total_seconds()))
         return _swedebeat_wait(hint)
     if state == "failed" and category is not None and category == spotify_failure:
