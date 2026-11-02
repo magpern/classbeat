@@ -21,7 +21,7 @@ See also: ideas that are not planned, in [ideas.md](ideas.md).
 | MU | Night Studio UI (ADR 0013) | done technically (2026-11-01, on fakes): [ADR 0013](adr/0013-ui-design-night-studio.md), UI10 (#255). The song-strip comparison with analysed music is still open and is not part of that done-when |
 | M6 | Security review, backups, GDPR, VPS | done technically (2026-11-01, on fakes; #340 closed). Matrices #339, GDPR #348 and #349, backups and the restore drill #338, #355 and #364, body cap #351, egress #353, playlist rate limit #354. Caddy and `compose.prod.yaml` are ready and not deployed (#341). SR-02 (#352) is an owner step. The VPS schedule, off-host copy and real backup keys are not done |
 | M7 | Commercial (deferred) | deferred |
-| S1 | Swedebeat connection (owner decision 2026-10-31) | connection done on fakes (#362, [ADR 0015](adr/0015-swedebeat-connection.md)). Mixes are in through A3 (#377, #378, #379). A4 (#380, #430) is merged: a class can be designed and saved on the user's own Swedebeat mix, on fakes. Catalogue matching (#383, #441) is merged: a song list is matched on the fake, and only the title and artist leave. Replacing unmatched songs and approving the selection (#385, #444) is merged. The Swedebeat app step (#384, #447) is merged: the hand-off starts from the approved match of the class's current song list. Next are the mix and match screens (#381, #386) and their done-when suites (#382, #387). The #442 and #445 follow-ups are merged (#449, #450). A failed catalogue match no longer says it will try again (#452, #453). The job page may still show the generic retry wording; that note is on #452. **Live use is an owner step**: nothing has been sent to Swedebeat, the app key is not in this repository, and `MOWL_MEDIA_HOSTS` stays empty until the owner confirms the media host ([runbook](runbooks/swedebeat-connect.md)) |
+| S1 | Swedebeat connection (owner decision 2026-10-31) | connection done on fakes (#362, [ADR 0015](adr/0015-swedebeat-connection.md)). Mixes are in through A3 (#377, #378, #379). A4 (#380, #430) is merged: a class can be designed and saved on the user's own Swedebeat mix, on fakes. Catalogue matching (#383, #441) is merged: a song list is matched on the fake, and only the title and artist leave. Replacing unmatched songs and approving the selection (#385, #444) is merged. The Swedebeat app step (#384, #447) is merged: the hand-off starts from the approved match of the class's current song list. The mix screen (#381, #455) is merged: New class can choose a Swedebeat mix, and a failed mix list stays visible when Spotify lists no playlists. Next is the match screen (#386) and the done-when suites (#382, #387). The #442 and #445 follow-ups are merged (#449, #450). A failed catalogue match no longer says it will try again (#452, #453). The job page may still show the generic retry wording; that note is on #452. **Live use is an owner step**: nothing has been sent to Swedebeat, the app key is not in this repository, and `MOWL_MEDIA_HOSTS` stays empty until the owner confirms the media host ([runbook](runbooks/swedebeat-connect.md)) |
 
 ## Now
 
@@ -311,6 +311,14 @@ with the owner's authorization and what it created.
   tokens). 15 cases, 14 passed, $2.59 in total; `long_60` failed its TSS check (#131). Nothing
   was created anywhere. It ran before #121 and #120 merged; the worker's environment was
   checked first and had no `SSLKEYLOGFILE`, `ANTHROPIC_*` or `CI` variable.
+- 2026-11-02: owner-authorized read-only MOWL discovery for M8 / ADR 0018 (D1), in a cloud agent
+  session (the owner gave a temporary password in chat; used only for sign-in, never written to
+  the repo, a log or a file; the token was never printed). Calls: `login`, `POST v1/programs`
+  (lists), `GET v1/programs/{id}` (24 official SATS running programs), `GET v1/ProgramCategories`,
+  `GET v1/ActivityTypes`, `GET v1/users/me` (not recorded). No save, update, delete or attach.
+  Findings: [docs/providers/mowl-running-discovery.md](providers/mowl-running-discovery.md). They answer
+  most of ADR 0018's unknowns 1 to 5 and 7; 6 and the segment/save fields still need a running program
+  the owner creates. Nothing was created or changed. The owner should change that temporary password.
 
 ## Exceptions
 

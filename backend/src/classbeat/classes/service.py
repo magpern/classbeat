@@ -15,7 +15,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from classbeat.agent.schemas import Brief
-from classbeat.classes import seams, song_views
+from classbeat.classes import match_view, seams, song_views
 from classbeat.classes.selection import belongs_to_draft
 from classbeat.context import UserContext, require_context
 from classbeat.db import user_session
@@ -220,6 +220,7 @@ class ClassDetail:
     songs: song_views.SongsState
     playlists: song_views.Playlists
     brief: Brief | None
+    match: match_view.MatchPointer | None = None  # only read while the Swedebeat flag is on
 
 
 async def stored_brief(db: AsyncSession, owner_id: UUID, class_id: UUID) -> Brief | None:
@@ -239,10 +240,11 @@ async def stored_brief(db: AsyncSession, owner_id: UUID, class_id: UUID) -> Brie
 
 
 async def get_class_detail(
-    factory: Factory, ctx: UserContext, class_id: UUID
+    factory: Factory, ctx: UserContext, class_id: UUID, *, with_match: bool = False
 ) -> ClassDetail | None:
     """The class row with its song state, playlists and stored brief (one transaction), or
-    ``None``."""
+    ``None``. ``with_match`` (the effective ``swedebeat_enabled`` flag) adds the pointer to the
+    newest ``swedebeat_match``; without it no match row is read."""
     require_context(ctx)
     async with user_session(factory, ctx) as db:
         await seams.resolve_orphans(db, ctx)
@@ -251,7 +253,9 @@ async def get_class_detail(
             return None
         songs = await song_views.songs_state(db, ctx.user_id, class_id)
         playlists = await song_views.playlists_of(db, ctx.user_id, class_id)
-        return ClassDetail(row, songs, playlists, await stored_brief(db, ctx.user_id, class_id))
+        brief = await stored_brief(db, ctx.user_id, class_id)
+        match = await match_view.newest_match(db, ctx.user_id, class_id) if with_match else None
+        return ClassDetail(row, songs, playlists, brief, match)
 
 
 _DISMISSED = text(

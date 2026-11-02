@@ -284,4 +284,86 @@ describe('the new-class form', () => {
     renderAt('/classes/new')
     expect(await screen.findByRole('heading', { name: 'Sign in first' })).toBeInTheDocument()
   })
+
+  it('does not call the mix list or show a third music choice when Swedebeat is off', async () => {
+    const api = fakeApi({
+      ...READY,
+      'GET /api/connections': {
+        connections: [MOWL],
+        swedebeat: { enabled: false, available: false },
+      },
+    })
+    renderAt('/classes/new')
+    await screen.findByLabelText('Class name')
+    expect(screen.queryByRole('button', { name: 'Use my Swedebeat mix' })).toBeNull()
+    expect(api.to('GET', '/api/music/swedebeat-mixes')).toHaveLength(0)
+  })
+
+  it('designs on a chosen Swedebeat mix with plain list errors', async () => {
+    const mixId = 'mix-sunday-climb'
+    const api = fakeApi({
+      ...SESSION_ROUTES,
+      'GET /api/connections': {
+        connections: [MOWL],
+        swedebeat: { enabled: true, available: true },
+      },
+      'GET /api/music/mowl-playlists': READY['GET /api/music/mowl-playlists'],
+      'GET /api/music/swedebeat-mixes': {
+        mixes: [{ mix_id: mixId, name: 'Sunday climb', duration_seconds: 1830, analysed: true }],
+      },
+      ...CREATED,
+    })
+    renderAt('/classes/new')
+    await fill('Mix class')
+    fireEvent.click(await screen.findByRole('button', { name: 'Use my Swedebeat mix' }))
+    fireEvent.click(screen.getByRole('radio', { name: /Sunday climb/ }))
+    fireEvent.click(screen.getByRole('button', { name: 'Design my class' }))
+    await waitFor(() => {
+      expect(window.location.pathname).toBe(`/jobs/${JOB_ID}`)
+    })
+    const [call] = api.to('POST', '/api/jobs')
+    expect(call?.body).toMatchObject({
+      kind: 'design_draft',
+      input: {
+        title: 'Mix class',
+        music: { source: 'mowl_swedebeat_mix', mix_id: mixId },
+        mowl_connection_id: CONNECTION_ID,
+      },
+    })
+  })
+
+  it('words a failed mix listing without a reason code', async () => {
+    fakeApi({
+      ...SESSION_ROUTES,
+      'GET /api/connections': {
+        connections: [MOWL],
+        swedebeat: { enabled: true, available: true },
+      },
+      'GET /api/music/mowl-playlists': READY['GET /api/music/mowl-playlists'],
+      'GET /api/music/swedebeat-mixes': () => reason(503, 'upstream_unavailable'),
+    })
+    renderAt('/classes/new')
+    await screen.findByLabelText('Class name')
+    expect(screen.getByText('MOWL could not be reached. Try again in a few minutes.')).toBeInTheDocument()
+    expect(document.body).not.toHaveTextContent('upstream_unavailable')
+    expect(screen.getByRole('button', { name: 'Use my Swedebeat mix' })).toBeDisabled()
+  })
+
+  it('shows a failed mix list when MOWL lists no Spotify playlists', async () => {
+    fakeApi({
+      ...SESSION_ROUTES,
+      'GET /api/connections': {
+        connections: [MOWL],
+        swedebeat: { enabled: true, available: true },
+      },
+      'GET /api/music/mowl-playlists': { playlists: [] },
+      'GET /api/music/swedebeat-mixes': () => reason(503, 'upstream_unavailable'),
+    })
+    renderAt('/classes/new')
+    await screen.findByLabelText('Class name')
+    expect(screen.getByText('MOWL could not be reached. Try again in a few minutes.')).toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: 'No playlists found' })).toBeNull()
+    expect(document.body).not.toHaveTextContent('MOWL lists no Spotify playlists')
+    expect(screen.getByRole('button', { name: 'Use my Swedebeat mix' })).toBeDisabled()
+  })
 })
