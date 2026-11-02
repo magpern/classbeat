@@ -13,7 +13,7 @@ from pydantic import BaseModel
 from sqlalchemy import text
 
 # saving registers save_workout (SV1); playlists the Spotify writes for Check again (OP1)
-from classbeat import __version__, auth, playlists, quota, saving, songs
+from classbeat import __version__, auth, playlists, quota, saving, songs, swedebeat_match
 from classbeat.account import erase
 from classbeat.account.routes import router as account_router
 from classbeat.admin import routes as admin_routes
@@ -174,6 +174,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # design_with_songs' admit reads the feature switch (ADR 0008 section 10); importing
     # classbeat.songs registered the kind.
     songs.configure(songs.SongConfig.from_settings(settings))
+    # swedebeat_match's admit reads the Swedebeat switch (ADR 0016 section 2); importing
+    # classbeat.swedebeat_match registered the kind. The web never opens the token for it.
+    swedebeat_match.configure(swedebeat_match.MatchConfig.from_settings(settings))
     app.include_router(api)
     # The Spotify callback (outside /api, ADR 0009 section 2) before the sign-in providers'
     # ``/oauth/{provider}/callback``, which would otherwise answer it with a 404.
