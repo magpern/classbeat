@@ -46,13 +46,13 @@ export function seedCachedMix(ownerId: string, connectionId: string, mixId: stri
   const version = mapVersion()
   const map = JSON.stringify({
     version,
-    duration: 90.0,
+    duration: 120.0,
     // The shape of music.analyze_signal's map: every song and event carries its 1-based `song`.
     songs: [
       {
         song: 1,
         start: 0.0,
-        end: 90.0,
+        end: 120.0,
         bpm: 124.0,
         first_downbeat: 0.4,
         first_phrase: 0.4,
@@ -67,7 +67,7 @@ export function seedCachedMix(ownerId: string, connectionId: string, mixId: stri
     `INSERT INTO mowl_playlist_links (owner_id, source, source_id, playlist_id) VALUES ('${ownerId}', 'swedebeat', '${mixId}', ${String(PLANTED_PLAYLIST_ID)}) ON CONFLICT (owner_id, source, source_id) DO UPDATE SET playlist_id = EXCLUDED.playlist_id`,
   )
   sql(
-    `INSERT INTO swedebeat_mix_maps (owner_id, mix_id, mowl_connection_id, playlist_id, name, duration, listed_duration, map) VALUES ('${ownerId}', '${mixId}', '${connectionId}', ${String(PLANTED_PLAYLIST_ID)}, '${CACHED_MIX_NAME}', 90, 90, '${map}'::jsonb) ON CONFLICT (owner_id, mix_id) DO UPDATE SET mowl_connection_id = EXCLUDED.mowl_connection_id, playlist_id = EXCLUDED.playlist_id, map = EXCLUDED.map, created_at = now()`,
+    `INSERT INTO swedebeat_mix_maps (owner_id, mix_id, mowl_connection_id, playlist_id, name, duration, listed_duration, map) VALUES ('${ownerId}', '${mixId}', '${connectionId}', ${String(PLANTED_PLAYLIST_ID)}, '${CACHED_MIX_NAME}', 120, 120, '${map}'::jsonb) ON CONFLICT (owner_id, mix_id) DO UPDATE SET mowl_connection_id = EXCLUDED.mowl_connection_id, playlist_id = EXCLUDED.playlist_id, map = EXCLUDED.map, created_at = now()`,
   )
 }
 

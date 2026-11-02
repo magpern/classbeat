@@ -33,7 +33,7 @@
           "kind": "cooldown",
           "intervals": [
             {
-              "sec": 30,
+              "sec": 60,
               "zone": 1,
               "rpm": [70, 85],
               "standing": false
