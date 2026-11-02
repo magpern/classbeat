@@ -10,6 +10,7 @@ import { SavePanel } from '../components/classes/SavePanel'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '../components/ui/dropdown-menu'
 import { Ellipsis } from 'lucide-react'
 import { RevisionView } from '../components/classes/RevisionView'
+import { SwedebeatSection } from '../components/swedebeat/SwedebeatSection'
 import { SideColumn } from '../components/classes/SideColumn'
 import { Card, Notice, useAction } from '../components/forms'
 import { RequireAuth } from '../components/RequireAuth'
@@ -238,6 +239,7 @@ function ClassBody({
         </p>
       ) : null}
       {notice ? <Notice kind="error">{notice}</Notice> : null}
+      <SwedebeatSection summary={summary} onReload={reload} />
       {pick.error ? <Notice kind="error">{pick.error}</Notice> : null}
 
       {summary.currentRevisionId === null ? (
