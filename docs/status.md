@@ -21,6 +21,7 @@ See also: ideas that are not planned, in [ideas.md](ideas.md).
 | MU | Night Studio UI (ADR 0013) | done technically (2026-11-01, on fakes): [ADR 0013](adr/0013-ui-design-night-studio.md), UI10 (#255). The song-strip comparison with analysed music is still open and is not part of that done-when |
 | M6 | Security review, backups, GDPR, VPS | done technically (2026-11-01, on fakes; #340 closed). Matrices #339, GDPR #348 and #349, backups and the restore drill #338, #355 and #364, body cap #351, egress #353, playlist rate limit #354. Caddy and `compose.prod.yaml` are ready and not deployed (#341). SR-02 (#352) is an owner step. The VPS schedule, off-host copy and real backup keys are not done |
 | M7 | Commercial (deferred) | deferred |
+| M8 | Running classes (ADR 0018, approved by the owner 2026-11-02; roadmap Amendment 12) | **resumed by the owner (2026-11-02, after #468).** Discovery found running as `ActivityTypeID: 1` and its interval fields (ADR 0018 Amendment 1). Issues D1 to F1 are #461 to #466. L1 is split into L1a (read side) and L1b (save and list); D1 stays open for the save-side fields, which need a running program the owner saves in the app. The capture kit magpern/mowl-workouts#15 is no longer needed for that and is not being fixed. P9 (#401) waits for aggregate data |
 | S1 | Swedebeat connection (owner decision 2026-10-31) | connection done on fakes (#362, [ADR 0015](adr/0015-swedebeat-connection.md)). Mixes are in through A3 (#377, #378, #379). A4 (#380, #430) is merged: a class can be designed and saved on the user's own Swedebeat mix, on fakes. Catalogue matching (#383, #441) is merged: a song list is matched on the fake, and only the title and artist leave. Replacing unmatched songs and approving the selection (#385, #444) is merged. The Swedebeat app step (#384, #447) is merged: the hand-off starts from the approved match of the class's current song list. The mix screen (#381, #455) is merged: New class can choose a Swedebeat mix, and a failed mix list stays visible when Spotify lists no playlists. Next is the match screen (#386) and the done-when suites (#382, #387). The #442 and #445 follow-ups are merged (#449, #450). A failed catalogue match no longer says it will try again (#452, #453). The job page may still show the generic retry wording; that note is on #452. **Live use is an owner step**: nothing has been sent to Swedebeat, the app key is not in this repository, and `MOWL_MEDIA_HOSTS` stays empty until the owner confirms the media host ([runbook](runbooks/swedebeat-connect.md)) |
 
 ## Now
@@ -277,7 +278,7 @@ Agents do not deploy, change DNS, create provider apps, or contact MOWL, Spotify
 - **Model enablement.** [m3c-model-enable.md](runbooks/m3c-model-enable.md): place the OpenAI key (DeepSeek later), give a `--max-usd` for each first live run, then a recorded run and `models enable`. Until a pass is recorded, the bootstrap Anthropic model serves users. OpenAI and DeepSeek stay `owner_pending` until you answer ADR 0012's questions (extend the Spotify risk acceptance to OpenAI; keep DeepSeek disabled; stale routes; thresholds; a full-suite run before Opus 5.5 is used by a tier).
 - **Proton Bridge setup (#352).** Account mail for the beta goes through Proton Mail Bridge ([proton-bridge-smtp.md](runbooks/proton-bridge-smtp.md)). The public beta still runs the dev profile with Mailpit. That is owner deployment work. Agents do not touch Proton accounts.
 - **Swedebeat live media host check.** `MOWL_MEDIA_HOSTS` is empty, so an uncached mix ends `media_host_not_allowed` and no media request is sent (ADR 0016). The owner confirms the host from one authorized live analysis, then a reviewed change may add that exact host. Agents do not edit the constant and do not create `SWEDEBEAT_APP`.
-- **Running live checks.** ADR 0018 is Proposed and merged (#433). #373 stays open until that ADR is Accepted. Running profiles (#401) wait for the owner's aggregate data. Implementation of running classes waits for that acceptance, the data, and a go-ahead. No live running check has been authorized.
+- **Running live checks (M8).** ADR 0018 is Accepted (owner, 2026-11-02). The read-only capture ran on 2026-11-02 (PR #468). The owner still has to save one running program in the app so a second read-only probe can show what a save sends; L1b waits for that. Running profiles (#401) wait for the owner's aggregate data. No live running check has been authorized.
 - **App name and domain.** The repository name is classbeat. The public app name and the DNS name for the VPS are not chosen. Deploy waits on that domain.
 - **Google OAuth app creation.** Google sign-in stays off until the owner creates the OAuth client and sets `CLASSBEAT_OAUTH_GOOGLE_CLIENT_ID` plus the `oauth_google_client_secret` file. The app asks for `auth_time` itself (ADR 0003 §5). GitHub and Microsoft are the same kind of owner step when those apps are wanted.
 - **Legal line placeholder.** Sign-in and sign-up show a beta sentence (`frontend/src/components/auth/AuthScreen.tsx`): "By continuing you agree to take part in the invite-only beta. classbeat is not made by or affiliated with MOWL, Spotify or Swedebeat." The real legal line is the owner's.
@@ -311,6 +312,14 @@ with the owner's authorization and what it created.
   tokens). 15 cases, 14 passed, $2.59 in total; `long_60` failed its TSS check (#131). Nothing
   was created anywhere. It ran before #121 and #120 merged; the worker's environment was
   checked first and had no `SSLKEYLOGFILE`, `ANTHROPIC_*` or `CI` variable.
+- 2026-11-02: owner-authorized read-only MOWL discovery for M8 / ADR 0018 (D1), in a cloud agent
+  session (the owner gave a temporary password in chat; used only for sign-in, never written to
+  the repo, a log or a file; the token was never printed). Calls: `login`, `POST v1/programs`
+  (lists), `GET v1/programs/{id}` (24 official SATS running programs), `GET v1/ProgramCategories`,
+  `GET v1/ActivityTypes`, `GET v1/users/me` (not recorded). No save, update, delete or attach.
+  Findings: [docs/providers/mowl-running-discovery.md](providers/mowl-running-discovery.md). They answer
+  most of ADR 0018's unknowns 1 to 5 and 7; 6 and the segment/save fields still need a running program
+  the owner creates. Nothing was created or changed. The owner should change that temporary password.
 
 ## Exceptions
 

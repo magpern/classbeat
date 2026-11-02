@@ -16,7 +16,8 @@
 #      with its flag and a signing key. Throwaway gpg and openssl keys, in a keyring of its own.
 #      Hardening (#364): the verified private copy is what is restored (the original is swapped after
 #      the copy), a failing pg_dump or signature leaves no file, a key below the backup directory and
-#      a subkey pin are refused, and every refusal is asserted for its specific reason.
+#      a subkey pin are refused (by restore.sh and, #368, by backup.sh), and every refusal is
+#      asserted for its specific reason.
 #   4. scripts/restore.sh (--expect-signer) into the fresh destination project;
 #   5. before the app starts: the fingerprint equals the source's;
 #   6. start web and worker (the startup key check passes): the migrations are at head, the right
@@ -330,6 +331,16 @@ accepted "archive signed by a subkey, pinned by its primary fingerprint" \
   scripts/restore.sh --verify-only --expect-signer "$P" "$work/attack/by-subkey.dump.gpg"
 refused "archive signed by a subkey, pinned by the subkey's own fingerprint" "other than" \
   scripts/restore.sh --verify-only --expect-signer "$SUB" "$work/attack/by-subkey.dump.gpg"
+# backup.sh refuses a subkey's fingerprint before it writes anything (#368), for the signer and the
+# recipient alike (R's encryption subkey), so the mistake shows at backup time, not at restore.
+RSUB="$(gpg --batch --with-colons --list-keys "$R" | awk -F: '/^sub:/ { w = ($12 ~ /e/); next } w && /^fpr:/ { print $10; exit }')"
+[[ "$RSUB" =~ ^[0-9A-F]{40}$ ]] && [ "$RSUB" != "$R" ] || fail "the recipient key has no encryption subkey"
+mkdir -p "$work/subpin"
+refused "backup signed with a subkey's own fingerprint" "--gpg-sign must be a primary key fingerprint" \
+  scripts/backup.sh -o "$work/subpin" --gpg-recipient "$R" --gpg-sign "$SUB"
+refused "backup encrypted to a subkey's own fingerprint" "--gpg-recipient must be a primary key fingerprint" \
+  scripts/backup.sh -o "$work/subpin" --gpg-recipient "$RSUB" --gpg-sign "$S"
+[ -z "$(find "$work/subpin" -type f)" ] || fail "a backup refused for a subkey pin left a file"
 
 # A refused archive starts nothing: restoring the swapped one into the destination project does nothing.
 use "$dst"
