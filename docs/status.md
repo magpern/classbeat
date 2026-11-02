@@ -83,10 +83,11 @@ See also: ideas that are not planned, in [ideas.md](ideas.md).
   (#128, roadmap Amendment 2). The live smoke run (2026-10-29, owner-authorized): 14 of 15
   passed, $2.59 in total; `long_60` failed its TSS check (#131).
 - **M3a follow-ups.** Merged in hardening batches: #132 (#120, #121), #138 (#108, #109, #115,
-  #116), #136 (model comparison, #134); live smoke findings #131 closed. Still open: #107 and #98
-  (flaky auth tests), #114 (A1), #117 (X1, items 2 and 7), #122 (D1, item 4), #127 (U1), #135,
-  #140 (from #138), #153 (from #136); #137 (UI and tests) and #139 (connections and egress) are in
-  review.
+  #116), #136 (model comparison, #134); live smoke findings #131 closed. Also merged: #98 and #107
+  (auth tests), #114 (A1), #122 (D1), #127 (U1), #135 (egress), #137 (UI and tests), #139
+  (connections and egress), #140 (from #138), and #117 (X1, #434: a MOWL refusal on attach is
+  `failed`, not uncertain, and a reaped `pending` row stays off the user's list until a later job
+  adopts it). Still open: #153 (compare-tool follow-ups from #136).
 - **M3b done technically** (2026-10-30, on fakes). Its "done when" (roadmap): an E2E run with
   fakes of design, revise, save and update; the uncertain-write path; token usage and cost
   recorded per job (the real cost per class is measured at live activation). What merged:
