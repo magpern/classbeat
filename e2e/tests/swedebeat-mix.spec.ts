@@ -50,7 +50,7 @@ test('lists mixes in the picker and designs on a cached map', async ({ page }) =
   useModelScript('e2e_swedebeat_mix')
   const email = await signedInWithMowl(page, 'sb-mix-cached')
   await page.goto('/classes/new')
-  await expect(page.getByRole('button', { name: 'Use my Swedebeat mix' })).toBeVisible()
+  await page.getByRole('button', { name: 'Use my Swedebeat mix' }).click()
   await expect(page.getByRole('radio', { name: new RegExp(CACHED_MIX_NAME) })).toBeVisible()
   await expect(page.getByRole('radio', { name: new RegExp(UNCACHED_MIX_NAME) })).toBeVisible()
 

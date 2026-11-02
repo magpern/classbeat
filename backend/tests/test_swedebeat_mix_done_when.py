@@ -129,8 +129,10 @@ async def test_rls_hides_maps_and_links_from_the_other_user(
     async with user_session(harness.ops.factory, make_context(other)) as db:
         rows = (await db.execute(text("SELECT mix_id FROM swedebeat_mix_maps"))).all()
         assert rows == []
-        changed = await db.execute(text("UPDATE swedebeat_mix_maps SET name = 'x'"))
-        assert changed.rowcount == 0
+        changed = await db.execute(
+            text("UPDATE swedebeat_mix_maps SET name = 'x' RETURNING mix_id")
+        )
+        assert changed.all() == []
 
 
 # --- secrecy (T109, T101) -----------------------------------------------------------------------
