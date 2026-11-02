@@ -110,6 +110,10 @@ export interface ClassSummary {
   /** Only the class page's answer has these; the list's rows read as none. */
   songs: ClassSongs
   playlist: ClassPlaylist | null
+  /** ADR 0016: false while the `swedebeat_enabled` flag is off (the key is absent from the answer). */
+  swedebeatOn: boolean
+  /** The class's newest Swedebeat match and whether it is the approved selection. */
+  swedebeatMatch: { revisionId: string; approved: boolean } | null
 }
 
 const INTENSITIES: readonly unknown[] = ['easy', 'moderate', 'hard']
@@ -159,6 +163,12 @@ function decodeProfile(value: unknown): [number, number][] {
   return out
 }
 
+function decodeMatchPointer(value: unknown): { revisionId: string; approved: boolean } | null {
+  if (value === null || value === undefined) return null
+  const item = object(value, 'swedebeat_match')
+  return { revisionId: text(item, 'revision_id'), approved: flag(item, 'approved') }
+}
+
 function decodeClass(value: unknown): ClassSummary {
   const item = object(value, 'class')
   const saved = object(item.saved, 'saved')
@@ -190,6 +200,8 @@ function decodeClass(value: unknown): ClassSummary {
     brief: decodeBrief(item.brief),
     songs: decodeSongs(item.songs),
     playlist: decodePlaylist(item.playlist),
+    swedebeatOn: 'swedebeat_match' in item,
+    swedebeatMatch: decodeMatchPointer(item.swedebeat_match),
   }
 }
 
