@@ -510,6 +510,9 @@ _FORGET_MOWL = (
     ),
     text("DELETE FROM mowl_playlist_links WHERE owner_id = :owner_id"),  # Spotify and Swedebeat
     FORGET_MIX_MAPS,  # ADR 0016 section 3: the analysis belongs to the MOWL account it was made in
+    # ADR 0016 section 7: the hand-off belongs to that account too. Inlined so connections does not
+    # import the hand-off package (that package imports connections).
+    text("DELETE FROM swedebeat_handoffs WHERE owner_id = :owner_id"),
 )
 
 

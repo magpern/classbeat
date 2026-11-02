@@ -92,6 +92,16 @@ RETENTION: Mapping[str, Retention] = MappingProxyType(
         # ADR 0016 section 7 (A4): when each new mix analysis started, for the daily limit. No
         # content; a user's rows past 48 hours go with their next one, all with the account.
         "swedebeat_analyses": _entry("", "", "account"),
+        # ADR 0016 section 7 (B2): the manual step. Mix ids only (the snapshot and the verified
+        # mix). Gone with the class, the account, and the MOWL connection (Disconnect and an
+        # account change). Rows expired for 7 days go in the hourly purge.
+        "swedebeat_handoffs": _entry(
+            "mixes_before mix_id detail",
+            "state verdict",
+            "class",
+            "account",
+            "mowl_connection",
+        ),
         "agent_runs": _entry(
             "",
             "stage provider model model_answered effort prompt_version outcome job_kind "

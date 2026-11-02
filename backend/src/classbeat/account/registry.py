@@ -73,5 +73,7 @@ NOT_EXPORTED: Mapping[str, str] = MappingProxyType(
         "deleted when used or expired, nothing the user wrote",
         "swedebeat_analyses": "the times new mix analyses started, for the daily limit (ADR 0016 "
         "section 7): no content, gone after two days, nothing the user wrote",
+        "swedebeat_handoffs": "exported as a count only (``swedebeat_handoffs`` in the file, "
+        "ADR 0016 section 7): the snapshot of mix ids and the verdict are the step's bookkeeping",
     }
 )

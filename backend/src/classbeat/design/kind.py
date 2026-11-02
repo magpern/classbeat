@@ -109,6 +109,8 @@ class DesignDraftInput(ModelJobInput):
     brief: Brief
     music: MusicChoice
     mowl_connection_id: UUID
+    # Set by the Swedebeat hand-off (ADR 0016 section 7). A browser sending it is refused.
+    handoff_id: UUID | None = None
 
     @model_validator(mode="after")
     def _brief_fits_the_class(self) -> Self:
@@ -228,12 +230,19 @@ async def run(job_run: JobRun) -> Complete:
             ``not_connected`` here rolls it back and ends the job with that category."""
             await step.still_current(fs)
             revision_id = await draft.store(fs)
-            await revision.adopt_first(
+            adopted = await revision.adopt_first(
                 fs,
                 revision_id,
                 given.brief.model_dump(mode="json"),
                 given.music.model_dump(mode="json"),
             )
+            if not adopted and isinstance(given.music, SwedebeatMusicChoice):
+                # A verified hand-off designs on the mix, replacing the Spotify source.
+                from classbeat.swedebeat_handoff.adopt import adopt_verified_mix
+
+                await adopt_verified_mix(
+                    fs, revision_id, given.music.mix_id, handoff_id=given.handoff_id
+                )
             return revision_id
 
         # The runner releases the step once the attempt is over, whether ``store`` ran or not
@@ -253,6 +262,6 @@ DESIGN_DRAFT: Final = KINDS.register(
         STAGES,
         run,
         admit=with_route_key(admit),  # a mix's checks, then the plan's route key (AD5 #223)
-        server_fields=frozenset({"route_key"}),
+        server_fields=frozenset({"route_key", "handoff_id"}),
     )
 )

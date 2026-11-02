@@ -125,6 +125,12 @@ CLASSIFIED: dict[tuple[str, str], str] = {
     ("GET", "/api/classes/{class_id}/messages"): "owned",
     ("POST", "/api/classes/{class_id}/current"): "owned",
     ("POST", "/api/classes/{class_id}/swedebeat-match"): "owned",
+    ("GET", "/api/classes/{class_id}/swedebeat-handoff"): "owned",
+    ("POST", "/api/classes/{class_id}/swedebeat-handoff"): "owned",
+    ("POST", "/api/classes/{class_id}/swedebeat-handoff/check"): "owned",
+    ("POST", "/api/classes/{class_id}/swedebeat-handoff/override"): "owned",
+    ("POST", "/api/classes/{class_id}/swedebeat-handoff/design"): "owned",
+    ("POST", "/api/classes/{class_id}/swedebeat-handoff/not-now"): "owned",
     ("DELETE", "/api/classes/{class_id}"): "owned",
     ("PUT", "/api/classes/{class_id}/dismissed-rules/{rule_id}"): "owned",
     ("DELETE", "/api/classes/{class_id}/dismissed-rules/{rule_id}"): "owned",
@@ -616,6 +622,25 @@ OWNED_ROUTES = [
         "/api/classes/{class_id}/swedebeat-match",
         lambda rows: {"revision_id": str(rows.revision_id)},
         frozenset({404}),
+    ),
+    # Flag off in this app: every hand-off route is 404 before the class is read.
+    OwnedRoute("GET", "/api/classes/{class_id}/swedebeat-handoff", control=frozenset({404})),
+    OwnedRoute("POST", "/api/classes/{class_id}/swedebeat-handoff", control=frozenset({404})),
+    OwnedRoute(
+        "POST",
+        "/api/classes/{class_id}/swedebeat-handoff/check",
+        lambda rows: {"mix_id": "mix-1"},
+        frozenset({404}),
+    ),
+    OwnedRoute(
+        "POST",
+        "/api/classes/{class_id}/swedebeat-handoff/override",
+        lambda rows: {"mix_id": "mix-1"},
+        frozenset({404}),
+    ),
+    OwnedRoute("POST", "/api/classes/{class_id}/swedebeat-handoff/design", control=frozenset({404})),
+    OwnedRoute(
+        "POST", "/api/classes/{class_id}/swedebeat-handoff/not-now", control=frozenset({404})
     ),
     OwnedRoute("DELETE", "/api/classes/{class_id}", control=frozenset({200, 409})),
     OwnedRoute("PUT", "/api/classes/{class_id}/dismissed-rules/{rule_id}"),

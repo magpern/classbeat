@@ -72,7 +72,13 @@ INPUT_MAX_BYTES = 16384  # jobs.input's check (migration 0004), measured as json
 # (``classbeat.bodylimit``, #351) is equal and answers first; this is the second line.
 BODY_MAX_BYTES = 65536
 
-_STATUS = {"not_found": 404, "class_not_found": 404, "busy": 429, "too_large": 422}
+_STATUS = {
+    "not_found": 404,
+    "class_not_found": 404,
+    "busy": 429,
+    "too_large": 422,
+    "handoff_expired": 410,
+}
 
 
 def job_kinds() -> KindRegistry:

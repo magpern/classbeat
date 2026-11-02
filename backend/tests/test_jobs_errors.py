@@ -25,8 +25,8 @@ from classbeat.jobs.errors import BACKOFF_CAP_SECONDS, RATE_LIMIT_CAP_SECONDS
 
 def migration_categories() -> set[str]:
     versions = Path(__file__).resolve().parent.parent / "migrations" / "versions"
-    path = versions / "0020_swedebeat_analyses.py"
-    spec = importlib.util.spec_from_file_location("migration_0020", path)
+    path = versions / "0023_swedebeat_handoffs.py"
+    spec = importlib.util.spec_from_file_location("migration_0023", path)
     assert spec is not None
     assert spec.loader is not None
     module = importlib.util.module_from_spec(spec)
@@ -137,11 +137,13 @@ def test_the_worker_ships_exactly_the_reviewed_kinds() -> None:
     import classbeat.design  # design_draft (D1) and revise_draft (R1)
     import classbeat.saving
     import classbeat.songs  # design_with_songs (SJ1) and revise_songs (SJ3)
+    import classbeat.swedebeat_handoff  # swedebeat_verify_mix (B2)
     import classbeat.swedebeat_match  # swedebeat_match (B1)
 
     assert classbeat.design.KIND
     assert classbeat.songs.KIND
     assert classbeat.swedebeat_match.KIND
+    assert classbeat.swedebeat_handoff.KIND
     assert classbeat.saving.__name__
     from classbeat.jobs import KINDS
 
@@ -152,5 +154,6 @@ def test_the_worker_ships_exactly_the_reviewed_kinds() -> None:
         "revise_songs",
         "save_workout",
         "swedebeat_match",
+        "swedebeat_verify_mix",
         "update_workout",
     ]

@@ -67,9 +67,12 @@ CATEGORIES: Final = (
     "analysis_failed",
     # ADR 0016 sections 2 and 7 (migration 0020): a design on a Swedebeat mix whose run finds
     # ``swedebeat_enabled`` off, and the daily limit of new analyses; neither is retried.
-    # ``feature_off`` is also how a queued ``swedebeat_match`` ends while the flag is off (B1).
+    # ``feature_off`` is also how a queued ``swedebeat_match`` or ``swedebeat_verify_mix`` ends
+    # while the flag is off (B1, B2). ``handoff_expired`` is a verify job whose row expired
+    # before anything was attached or fetched (ADR 0016 section 7); it is not retried.
     "feature_off",
     "analysis_limit",
+    "handoff_expired",
 )
 # Retried by the worker (a new attempt with backoff). ``lease_lost`` is retried by the reaper and
 # ``operation_busy`` is requeued without an attempt (``classbeat.jobs.transitions``).

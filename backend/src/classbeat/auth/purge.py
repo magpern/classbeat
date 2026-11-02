@@ -20,6 +20,7 @@ from classbeat.auth.tables import (
 from classbeat.config import Settings
 from classbeat.context import UserContext
 from classbeat.db import system_session, user_session
+from classbeat.swedebeat_handoff.purge import purge_owner
 
 RETENTION_DAYS = 30
 DEVICE_RETENTION_DAYS = 90
@@ -89,6 +90,7 @@ async def purge_expired(
         counts["sessions_ip_cleared"] = int(cleared.rowcount or 0)  # pyright: ignore[reportAttributeAccessIssue]
         contexts = await purge_contexts(db)
     counts["spotify_oauth_flows"] = await _purge_spotify_flows(factory, contexts)
+    counts["swedebeat_handoffs"] = await _purge_handoffs(factory, contexts)
     return counts
 
 
@@ -100,4 +102,15 @@ async def _purge_spotify_flows(
         async with user_session(factory, ctx) as db:
             result = await db.execute(_SPOTIFY_FLOWS, {"owner_id": ctx.user_id})
             removed += int(result.rowcount or 0)  # pyright: ignore[reportAttributeAccessIssue]
+    return removed
+
+
+async def _purge_handoffs(
+    factory: async_sessionmaker[AsyncSession], contexts: list[UserContext]
+) -> int:
+    """Hand-off rows expired for 7 days (ADR 0016 section 7), in each user's own session."""
+    removed = 0
+    for ctx in contexts:
+        async with user_session(factory, ctx) as db:
+            removed += await purge_owner(db, ctx.user_id)
     return removed

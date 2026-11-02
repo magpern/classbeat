@@ -42,6 +42,9 @@ SONG_SENTENCES: Final[dict[str, str]] = {
         "You have analysed 10 new Swedebeat mixes in the last 24 hours. Mixes analysed before "
         "still work; try a new one tomorrow."
     ),
+    "handoff_expired": (
+        "That check expired. Start again from the Swedebeat step; nothing was fetched."
+    ),
 }
 # Spotify categories that are not also categories of MOWL or of our own (``rate_limited`` and
 # ``upstream_unavailable`` keep the generic wording).

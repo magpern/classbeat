@@ -33,6 +33,7 @@ NOT_INCLUDED = [
 
 
 _COUNT_MIX_MAPS = text("SELECT count(*) FROM swedebeat_mix_maps WHERE owner_id = :owner_id")
+_COUNT_HANDOFFS = text("SELECT count(*) FROM swedebeat_handoffs WHERE owner_id = :owner_id")
 
 
 def _read(section: Section) -> Any:
@@ -87,6 +88,9 @@ async def build_export(
             document[section.key] = await _rows(db, ctx.user_id, section)
         document["swedebeat_mix_analyses"] = (
             await db.execute(_COUNT_MIX_MAPS, {"owner_id": ctx.user_id})
+        ).scalar_one()
+        document["swedebeat_handoffs"] = (
+            await db.execute(_COUNT_HANDOFFS, {"owner_id": ctx.user_id})
         ).scalar_one()
         document["not_included"] = NOT_INCLUDED
         return document
