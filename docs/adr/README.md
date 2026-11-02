@@ -23,3 +23,4 @@ Reviewer reviews each in its PR (AGENTS.md, "Decisions and ADRs").
 | [0015](0015-swedebeat-connection.md) | The Swedebeat connection: connect, status, disconnect, the app key (S1) | Accepted |
 | [0016](0016-swedebeat-music.md) | Swedebeat music: "My Swedebeat mix" and Spotify-to-Swedebeat matching (S2) | Proposed |
 | [0017](0017-class-pattern-soft-rules.md) | Class patterns as soft rules: profiles, warnings, evals (#388) | Proposed |
+| [0018](0018-mowl-running-classes.md) | MOWL running classes next to cycling (M8, #373) | Proposed |
