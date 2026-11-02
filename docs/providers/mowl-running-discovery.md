@@ -1,46 +1,61 @@
-# MOWL running discovery (ADR 0018, D1): 2026-11-02 read-only probe
+# MOWL running discovery (ADR 0018, D1): 2026-11-02 read-only probes
 
-Status: **inconclusive, D1 still open.** Owner-authorized, read-only, one cloud agent session.
-No credential, token, program name or program id from the account is recorded here.
+Status: **mostly answered from official SATS content; save-side fields still unverified.**
+Owner-authorized, read-only, a cloud agent session. No credential, token or personal data is
+recorded here. Read samples are official SATS programs (public camps).
 
-## What was run
+## How running is found (answers unknown 1)
 
-`mowl.api.login` for the owner's own MOWL account, then only `POST v1/programs` (the My Workouts
-listing call, `mowl.api.list_workouts`'s request). No `GET v1/programs/{id}`, no write, no attach.
+- Sport is **not** a filter of `POST v1/programs`: `BikeTypeID` 0 to 7 returns the same result, and
+  every program (cycling or running) has `BikeTypeID: 1`.
+- Running is **`ActivityTypeID: 1`**. `GET v1/ActivityTypes` returns
+  `[{0: "Cycling"}, {1: "Running"}]`.
+- Campaigns ("camps") are **program categories**, found with `GET v1/ProgramCategories`
+  (48 visible to the account; ids in the thousands, so scanning small ids misses them). Each has
+  `ActivityTypeID`, `IsOfficial`, `NumberOfWorkouts` (0 even where programs exist, do not trust it),
+  `CreatorName`. Running camps: SATS "RUN TO RACE 45" (8248), "RUN TO RACE 60" (8249), and many
+  user-made ones (ids 8277 to 8969: "RUN 30", "Run 60", "Indoor running (30)", "Couch2FiveK", ...).
+- List a camp with `POST v1/programs` and `ProgramCategoryID` = the camp id (12 programs each for
+  8248 and 8249). The list entry has the program's own `ActivityTypeID: 1`, `TSS`, `TotalDuration`,
+  `PlaylistID`, but **no segments**: read each with `GET v1/programs/{id}`.
+- Search keys tried (`SearchText`, `Search`, `Keyword`) are not filters.
 
-## Findings
+## What a running program looks like (24 programs, 540 intervals)
 
-1. **`BikeTypeID` sent as 0 to 7 returns the same 14 programs** in My Workouts
-   (`ProgramCategoryID` 17). The request field either is not the filter or is ignored for this
-   account. Every returned program has `BikeTypeID: 1`, `ActivityTypeID: 0`, `ProgramTypeID: 1`,
-   and empty `BikeTypeName` and `ProgramTypeName`.
-2. **Categories 0 to 39** (`ProgramCategoryID`, with `BikeTypeID: 1`): 28 are non-empty (camps,
-   climbs, on-demand, FTP tests, My Workouts, ...). Every program in them is `BikeTypeID: 1`,
-   `ActivityTypeID: 0`, `ProgramTypeID: 1`. No category with running content is visible to this
-   account.
-3. The listing entry carries these keys (names only): `ActivityTypeID`, `AllowCopy`, `BikeTypeID`,
-   `BikeTypeName`, `CacheIdentifier`, `CategoryName`, `CreatorAlias`, `CreatorID`, `CreatorName`,
-   `DateCreated`, `DateUpdated`, `Description`, `DesignerTypeName`, `Hidden`, `IsPublic`,
-   `IsUserFavoriteProgram`, `Name`, `Playlist`, `PlaylistID`, `PlaylistLink`, `PlaylistType`,
-   `ProgramCategoryID`, `ProgramID`, `ProgramTypeID`, `ProgramTypeName`, `SegmentCount`,
-   `Segments`, `ShareImageURI`, `ShareUri`, `ShortDescription`, `SpotifyUrl`, `TSS`,
-   `TargetGroupID`, `TargetGroupName`, `TotalDuration`.
+- Program: `ActivityTypeID: 1`, `BikeTypeID: 1`, `ProgramTypeID: 1`. Its **segments carry
+  `ActivityTypeID: 0`** (cycling) in all 104 cases: do not use a segment's value to tell the sport.
+- Interval keys are the cycling set (`Duration`, `ScaleCoggan`, `FTPFrom/To`, `MAPFrom/To`,
+  `FTHRFrom/To`, `PulseZoneFrom/To`, `Gradient`, `PaceFrom/To`, `RPMFrom/To`, `PositionTypeID`,
+  `CycleID`, `IntervalGame`, `FtpTest`, `Intensity`, `Scale1to5`, `ScaleBorg`, ...).
+- Values in running programs: `RPMFrom/To` 0, `PositionTypeID` 1 (seated), `CycleID` 1, `Intensity` 1,
+  `Scale1to5` 0, `ScaleBorg` 0, `IntervalGame` null, `FtpTest` null, **`PaceFrom/To` null**.
+  **`Gradient`** is `0.0` (282) or `1.0` (258): the treadmill incline (probably percent), set per
+  interval; the same 1.0 sits on the work and the rest intervals of a program.
+- **`ScaleCoggan` 1 to 5 applies** (zone set 1), with the same FTP bands as cycling: 1 = 0 to 55,
+  2 = 56 to 75, 3 = 76 to 90, 4 = 91 to 105, 5 = 106 to 120 (`FTPFrom/To`, as percent of rFTP).
+  Zones 6 and 7 were not seen (the 60 and 45 programs stay below).
+- Warm-up/cool-down flags: `IsWarmup`, `IsCooldown`, `IsActiveRecovery` on segment and interval.
+- **TSS** is published in the same field (`TSS`, e.g. 103.76 for 3380 s). It matches the app card.
+- All 24 programs have a `PlaylistID` (Spotify attach is possible on running); `PlaylistType` null.
 
-## What it means for ADR 0018's unknowns
+## Against ADR 0018's unknowns
 
-| # | Unknown | After this probe |
+| # | Unknown | Now |
 |---|---|---|
-| 1 | Running `BikeTypeID`, and the filter | Not found. Cycling is `1`. The list request's `BikeTypeID` did not filter; a different field, endpoint or app-side sport switch probably selects running |
-| 2 to 6 | `ActivityTypeID`, interval fields, scale, rTSS, Spotify attach | Open. This account has no running program to read |
-| 7 | Example running payloads | Open |
+| 1 | Running id, filter | Answered: `ActivityTypeID: 1` on programs (and categories); `BikeTypeID` stays 1 |
+| 2 | `ActivityTypeID` on programs/segments | Programs 1; segments of official programs 0. What a save must send is **unverified** |
+| 3 | Running interval JSON, gradient, pace | Answered for reads: `Gradient` 0.0/1.0, `Pace*` null, RPM 0, seated, no games or FTP test |
+| 4 | Scale | `ScaleCoggan` 1 to 5 with FTP bands as cycling; no parallel scale seen |
+| 5 | rTSS | Published in `TSS`; formula not derived here |
+| 6 | Spotify on running | `PlaylistID` present on all 24; attach by classbeat untested |
+| 7 | Example payloads | `GET v1/programs/{id}` for the 24 programs (raw JSON kept out of the repo) |
 
-## Next step (owner)
+## Still open
 
-Either the ADR's default (capture the MOWL desktop app's traffic while switching to RUN and opening
-an official running workout) or one exported running program file. A running program saved to
-the account in the app would let a second read-only probe (`GET v1/programs/{id}`) answer 2 to 7.
-Agents write nothing to the account to produce one.
+Whether `v1/programs` create/update needs the program or each segment to carry `ActivityTypeID: 1`,
+how a user-made running program stores `Gradient` and whether `list_workouts` for a user's running
+programs needs a different request: only a running program the owner saves in the app (then a second
+read-only probe) can answer that. Agents write nothing to the account.
 
-Reproduce: sign in with `mowl.api.login`, then `mowl.api.call(creds, "POST", "v1/programs",
-form={"ProgramCategoryID": 17, "PageNumber": 0, "itemsPerPage": 50, "BikeTypeID": n,
-"ProgramOrdering": "creationDateDesc"})`.
+Reproduce (read-only): `mowl.api.call(creds, "GET", "v1/ProgramCategories")`, then
+`POST v1/programs` with `ProgramCategoryID` = 8249, then `mowl.api.get_workout(creds, id)`.
