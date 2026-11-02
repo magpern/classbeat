@@ -47,9 +47,10 @@ KIND = "test_kind"
 @dataclass
 class FakeMowlAttach(urllib.request.BaseHandler):
     """``mode``: ``ok``; ``timeout_after_accept`` (attaches, then the read times out);
-    ``refused`` (connection refused: never left); ``status:<n>`` (an HTTP status, nothing
-    attached); ``garbled`` (attaches, answers without a ``PlaylistID``); ``redirect:<url>``
-    (attaches, then answers 302 to ``url``)."""
+    ``refused`` (connection refused: never left); ``mowl_refusal`` (HTTP 200 with a non-empty
+    ``Error`` field: the library's own refusal, no HTTP cause, #117 item 2); ``status:<n>`` (an
+    HTTP status, nothing attached); ``garbled`` (attaches, answers without a ``PlaylistID``);
+    ``redirect:<url>`` (attaches, then answers 302 to ``url``)."""
 
     mode: str = "ok"
     attaches: list[tuple[str, str]] = field(default_factory=lambda: list[tuple[str, str]]())
@@ -76,6 +77,8 @@ class FakeMowlAttach(urllib.request.BaseHandler):
             return self._answer(req, 404, {"Error": "not found"})
         if self.mode == "refused":
             raise URLError(ConnectionRefusedError(111, "refused"))
+        if self.mode == "mowl_refusal":
+            return self._answer(req, 200, {"Error": "MOWL refused the attach", "Data": None})
         if self.mode.startswith("status:"):
             return self._answer(req, int(self.mode.split(":")[1]), {"Error": "no"})
         token = str(req.get_header("Authorization") or "")

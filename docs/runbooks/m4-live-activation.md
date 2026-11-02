@@ -63,6 +63,7 @@ corrected. If a fact differs from the assumption, open an issue; do not change a
 | First `/me` 403 for a user off the allow-list: status and body | 403, category `not_allowlisted` | 3 | | |
 | Token endpoint `invalid_grant` body for a revoked token | 400 `invalid_grant`, category `invalid_grant` | 3 | | |
 | Delay before a new playlist appears in `/me/playlists` | unknown; sets `CLASSBEAT_SPOTIFY_LISTING_LAG_SECONDS` (unset until measured, at most 86 400) | 3 | | |
+| MOWL attach answered HTTP 200 with a non-empty `Error` field and no playlist id had no effect (classbeat ends the operation `failed`, not `uncertain`; ADR 0005 section 7, #117 item 2) | yes: the library raises `MowlError` with no HTTP cause and a single-request attach is `not_applied` | 3 | | |
 | Development Mode allow-list size and the app owner's Premium rule | 5 people; Premium for the owner | 1, 2 | | |
 | Cost per song-picked class | below the $3 ceiling | 6 | | |
 

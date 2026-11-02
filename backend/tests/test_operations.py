@@ -233,6 +233,28 @@ async def test_an_account_switch_never_reuses_the_old_link_or_external_id(
     assert xenv.row(first_job).state == "completed"
 
 
+async def test_a_mowl_refusal_on_the_attach_is_failed_not_uncertain(
+    xenv: OpsEnv, fake_attach: FakeMowlAttach
+) -> None:
+    """#117 item 2: HTTP 200 with an ``Error`` field becomes ``MowlError`` with no HTTP cause;
+    a single-request attach treats that as ``not_applied`` (``failed``, not ``uncertain``)."""
+    owner, connection, job_id = await owner_with_job(xenv)
+    fake_attach.mode = "mowl_refusal"
+    await xenv.run_next()
+    row = xenv.row(job_id)
+    assert row.state == "failed"
+    assert row.error_category != "uncertain_write"
+    [op] = xenv.operations(owner)
+    assert (op.state, op.resolved_by) == ("failed", "worker")
+    assert op.state != "uncertain"
+    assert fake_attach.attaches == []
+    fake_attach.mode = "ok"
+    second = xenv.job(owner, connection)
+    await xenv.run_next()
+    assert xenv.row(second).state == "completed"
+    assert len(fake_attach.attaches) == 1
+
+
 async def test_a_refused_connection_is_failed_and_the_retry_takes_the_row_over(
     xenv: OpsEnv, fake_attach: FakeMowlAttach
 ) -> None:
