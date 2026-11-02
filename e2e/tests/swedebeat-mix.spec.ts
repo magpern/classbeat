@@ -33,7 +33,7 @@ async function signedInWithMowl(page: import('@playwright/test').Page, tag: stri
 }
 
 async function startMixDesign(page: import('@playwright/test').Page, title: string, mixName: string): Promise<string> {
-  await page.getByRole('link', { name: 'New class' }).click()
+  await page.goto('/classes/new')
   const form = page.getByRole('form', { name: 'New class' })
   await form.getByLabel('Class name').fill(title)
   await form.getByRole('button', { name: 'Use my Swedebeat mix' }).click()
