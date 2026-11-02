@@ -66,7 +66,8 @@ def web_opener(monkeypatch: pytest.MonkeyPatch) -> Callable[[FakeUpstreams], Non
 
 def test_the_web_urllib_list_is_exactly_mowl_the_spotify_api_and_swedebeat_sign_in() -> None:
     """What the library reaches in the web process: MOWL, Spotify's API for Check again and
-    Swedebeat's sign-in host (ADR 0015). Not ``cloud.swedebeat.se``: no route calls it."""
+    Swedebeat's sign-in host (ADR 0015). Not ``cloud.swedebeat.se``: the web opener never calls
+    it. The worker's catalogue client is the only caller (ADR 0016 B1)."""
     expected = {"api.mowl.com", "api.spotify.com", "www.swedebeat.se"}
     assert frozenset(expected) == egress.WEB_URLLIB_HOSTS
     assert egress.WEB_URLLIB_ALLOWLIST.hosts == egress.WEB_URLLIB_HOSTS

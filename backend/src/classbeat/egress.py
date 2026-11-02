@@ -50,7 +50,16 @@ sends none of our headers. It follows no redirect at all, ends every request wit
 tests, through ``mowl_media_test_client``, which the guard refuses in ``classbeat``). The body is
 read raw and any ``Content-Encoding`` but identity is refused (``classbeat.design.mixfetch``).
 Swedebeat's embedded AWS credentials are never used (a static guard).
-``cloud.swedebeat.se`` (B1) will get its own scoped list and client the same way.
+
+**The Swedebeat catalogue client** (ADR 0016 §4 and §5, B1; threat model T110):
+``swedebeat_cloud_async_client()`` searches Swedebeat's catalogue for the ``swedebeat_match`` job
+(``classbeat.swedebeat_match``), in the worker only (outside it, it refuses). Its list is
+``SWEDEBEAT_CLOUD_ALLOWLIST``, ``cloud.swedebeat.se`` and nothing else, which is on **no urllib
+list**: the library's opener never reaches it, and this client, which carries the user's Swedebeat
+token, reaches no other host. It is built like the media client: no redirect at all, no default
+header (only what the call site sets), ``trust_env=False``, a total deadline per request
+(``SWEDEBEAT_CLOUD_TOTAL_SECONDS``) and **no argument** (a transport comes only from tests, through
+``swedebeat_cloud_test_client``, which the guard refuses in ``classbeat``).
 
 All paths verify TLS with a context from ``tls_client_context()``, which never writes a TLS key
 log (``SSLKEYLOGFILE`` is ignored, threat model T49).
@@ -104,9 +113,10 @@ HTTPS_PORT = 443
 MOWL_HOST = "api.mowl.com"  # the library's base URL
 # Swedebeat (ADR 0015): the web process signs a user in at ``www.swedebeat.se`` (the library's
 # ``downloader/login.php``). ``cloud.swedebeat.se`` (the catalogue, where the token is also sent)
-# is on no list: nothing in classbeat calls it yet, and it joins a list when a feature does (B1 of
-# ADR 0016, with its own scoped list and client; never on ``WORKER_HOSTS``).
+# is on no urllib list: only the worker's catalogue client reaches it (ADR 0016 §4, B1), through
+# its own scoped list ``SWEDEBEAT_CLOUD_ALLOWLIST``; never ``WORKER_HOSTS`` or ``WEB_URLLIB_HOSTS``.
 SWEDEBEAT_WWW_HOST = "www.swedebeat.se"
+SWEDEBEAT_CLOUD_HOST = "cloud.swedebeat.se"
 # The host(s) of the MOWL temporary links that serve a Swedebeat mix's audio (ADR 0016 §4). Exact
 # lower case DNS names, https on 443, no wildcard and never a whole cloud provider domain. **Empty
 # until the owner confirms the host in the live check** (a reviewed PR then fills it): with an empty
@@ -256,6 +266,8 @@ def worker_allowlist(model_providers: Iterable[str] = ()) -> Allowlist:
 SPOTIFY_ALLOWLIST = Allowlist(SPOTIFY_HOSTS)
 # The media client's list (ADR 0016 §4): ``MOWL_MEDIA_HOSTS``, empty today.
 MOWL_MEDIA_ALLOWLIST = Allowlist(MOWL_MEDIA_HOSTS)
+# The catalogue client's list (ADR 0016 §4, B1): Swedebeat's catalogue host alone.
+SWEDEBEAT_CLOUD_ALLOWLIST = Allowlist(frozenset({SWEDEBEAT_CLOUD_HOST}))
 
 # Set by ``install_worker_allowlist``: this process is the worker. The web-only call sites the
 # guard exempts (OAuth sign-in, account mail) call ``refuse_in_worker`` first, so they cannot
@@ -922,3 +934,43 @@ def mowl_media_test_client(
     its limits and the analysis are proven against the fake media endpoint (ADR 0016 §4). The
     redirect, header and deadline behaviour is the production client's (the same builder)."""
     return _media_client(allowlist, total_seconds, inner)
+
+
+# One catalogue search's total time, body included (ADR 0016 §5: a 5xx or a timeout is retried).
+SWEDEBEAT_CLOUD_TOTAL_SECONDS: Final = 20.0
+
+
+def swedebeat_cloud_network_transport() -> httpx.AsyncHTTPTransport:
+    """The network transport of the catalogue client: the system trust store (as the urllib
+    path), no TLS key log, no proxy from the environment."""
+    return httpx.AsyncHTTPTransport(trust_env=False, verify=tls_client_context())
+
+
+def swedebeat_cloud_async_client() -> httpx.AsyncClient:
+    """The dedicated client of the Swedebeat catalogue search (ADR 0016 §4 and §5, B1; threat
+    model T110), **in the worker only**: outside it (``install_worker_allowlist`` not run) it
+    refuses with ``OutboundBlocked`` before anything is built, so the user's Swedebeat token never
+    leaves the web process for the catalogue. **It takes no argument**: its list is always
+    ``SWEDEBEAT_CLOUD_ALLOWLIST`` (``cloud.swedebeat.se`` alone), its deadline
+    ``SWEDEBEAT_CLOUD_TOTAL_SECONDS`` and its transport the network's. One client per job.
+
+    https on 443, no userinfo. It follows **no redirect at all** (a hop to another host is refused
+    with ``after_request``, a same-host 3xx comes back for the caller to refuse), so the token
+    never follows one. ``trust_env=False`` and **no default header**: a request carries only what
+    the call site sets (the token in ``X-Auth-Token``, ``Accept`` and the app's user agent)."""
+    if not _worker_process:
+        raise blocked(SWEDEBEAT_CLOUD_HOST)
+    return _media_client(
+        SWEDEBEAT_CLOUD_ALLOWLIST,
+        SWEDEBEAT_CLOUD_TOTAL_SECONDS,
+        swedebeat_cloud_network_transport(),
+    )
+
+
+def swedebeat_cloud_test_client(
+    inner: httpx.AsyncBaseTransport, *, total_seconds: float = SWEDEBEAT_CLOUD_TOTAL_SECONDS
+) -> httpx.AsyncClient:
+    """**Tests only** (the guard refuses it in ``classbeat``): the catalogue client with the
+    production list and a fake transport (the fake catalogue, no network). The redirect, header
+    and deadline behaviour is the production client's (the same builder)."""
+    return _media_client(SWEDEBEAT_CLOUD_ALLOWLIST, total_seconds, inner)

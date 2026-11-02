@@ -134,9 +134,15 @@ def test_invalid_kinds_are_refused(
 
 
 def test_the_worker_ships_exactly_the_reviewed_kinds() -> None:
-    import classbeat.design  # registers design_draft (D1) and revise_draft (R1)
+    import classbeat.design  # design_draft (D1) and revise_draft (R1)
     import classbeat.saving
-    import classbeat.songs  # noqa: F401 - registers design_with_songs (SJ1), revise_songs (SJ3)
+    import classbeat.songs  # design_with_songs (SJ1) and revise_songs (SJ3)
+    import classbeat.swedebeat_match  # swedebeat_match (B1)
+
+    assert classbeat.design.KIND
+    assert classbeat.songs.KIND
+    assert classbeat.swedebeat_match.KIND
+    assert classbeat.saving.__name__
     from classbeat.jobs import KINDS
 
     assert KINDS.names() == [
@@ -145,5 +151,6 @@ def test_the_worker_ships_exactly_the_reviewed_kinds() -> None:
         "revise_draft",
         "revise_songs",
         "save_workout",
+        "swedebeat_match",
         "update_workout",
     ]

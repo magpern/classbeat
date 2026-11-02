@@ -99,7 +99,7 @@ class ToolCalled(Payload):
 
 class RevisionCreated(Payload):
     revision_id: UUID
-    kind: Literal["draft", "song_list"]
+    kind: Literal["draft", "song_list", "swedebeat_match"]
     number: Annotated[int, Field(ge=1)]
 
 
