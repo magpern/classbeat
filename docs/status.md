@@ -311,6 +311,14 @@ with the owner's authorization and what it created.
   tokens). 15 cases, 14 passed, $2.59 in total; `long_60` failed its TSS check (#131). Nothing
   was created anywhere. It ran before #121 and #120 merged; the worker's environment was
   checked first and had no `SSLKEYLOGFILE`, `ANTHROPIC_*` or `CI` variable.
+- 2026-11-02: owner-authorized read-only MOWL discovery for M8 / ADR 0018 (D1), in a cloud agent
+  session (the owner gave a temporary password in chat; used only for sign-in, never written to
+  the repo, a log or a file; the token was never printed). Calls: `login`, `POST v1/programs`
+  (lists), `GET v1/programs/{id}` (24 official SATS running programs), `GET v1/ProgramCategories`,
+  `GET v1/ActivityTypes`, `GET v1/users/me` (not recorded). No save, update, delete or attach.
+  Findings: [docs/providers/mowl-running-discovery.md](providers/mowl-running-discovery.md). They answer
+  most of ADR 0018's unknowns 1 to 5 and 7; 6 and the segment/save fields still need a running program
+  the owner creates. Nothing was created or changed. The owner should change that temporary password.
 
 ## Exceptions
 
