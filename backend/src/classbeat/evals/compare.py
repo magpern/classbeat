@@ -129,13 +129,10 @@ def load_runs(paths: Sequence[Path]) -> list[Run]:
             parsed = ResultsFile.model_validate(data)
         except CompareRefused:
             raise
-        except (
-            OSError,
-            ValueError,
-            RecursionError,
-        ) as exc:  # JSON, unicode, validation: ValueErrors
-            what = "invalid fields" if isinstance(exc, ValidationError) else type(exc).__name__
-            raise CompareRefused(f"{path}: not a results file ({what})") from None
+        except ValidationError:
+            raise CompareRefused(f"{path}: not a results file (invalid fields)") from None
+        except (OSError, ValueError, RecursionError) as exc:  # JSON, unicode
+            raise CompareRefused(f"{path}: not a results file ({type(exc).__name__})") from None
         if parsed.format != RESULTS_FORMAT:
             raise CompareRefused(f"{path}: results format {parsed.format} is not supported")
         versions[str(path)] = parsed.rules_version
