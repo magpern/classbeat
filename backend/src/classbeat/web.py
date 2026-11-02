@@ -26,7 +26,7 @@ from classbeat.connections.routes import router as connections_router
 from classbeat.connections.swedebeat_routes import router as swedebeat_router
 from classbeat.crypto.keks import load_keyring
 from classbeat.db import create_engine, create_session_factory, verify_database_role
-from classbeat.design import configure_limits
+from classbeat.design import configure_limits, mixadmit
 from classbeat.design.mixes import router as mixes_router
 from classbeat.design.routes import router as music_router  # registers design_draft (J3)
 from classbeat.flags.routes import router as settings_router
@@ -128,6 +128,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             app.state.keyring = await load_keyring(
                 app.state.session_factory, settings.connection_kek_id
             )
+            # design_draft's admit on a Swedebeat mix: the switch and the user's own listing
+            # (ADR 0016 section 3).
+            mixadmit.configure(
+                mixadmit.MixAdmission(
+                    enabled=settings.swedebeat_enabled,
+                    listing=mixadmit.web_listing(app.state.session_factory, app.state.keyring),
+                )
+            )
             auth.attach_state(app, settings, app.state.session_factory)
             # The admin area's audited role (ADR 0011 section 5): refuses to start on a wrong
             # role; without its credentials the admin routes answer 503 admin_unavailable.
@@ -139,6 +147,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             app.state.event_hub.start()  # LISTEN job_events (ADR 0005 section 6)
             yield
         finally:
+            mixadmit.configure(None)
             hub = getattr(app.state, "event_hub", None)
             if hub is not None:
                 await hub.stop()

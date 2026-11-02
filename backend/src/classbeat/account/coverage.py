@@ -22,7 +22,7 @@ _OWNED = (
     "agent_runs class_messages class_playlists class_revisions classes code_redemptions "
     "connections credit_ledger entitlements external_operations job_events jobs "
     "mowl_playlist_links quota_periods saved_workouts spotify_oauth_flows spotify_pool "
-    "swedebeat_mix_maps"
+    "swedebeat_analyses swedebeat_mix_maps"
 )
 _ACCOUNT = (
     "auth_events auth_tokens identities known_devices mfa_recovery_codes mfa_totp "

@@ -187,7 +187,7 @@ async def test_the_step_is_closed_whether_the_store_ran_or_not(
     a cancel found by the final transaction means ``store`` never runs."""
     class_id, base = await renv.design()
     steps: list[Any] = []
-    real_load, real_run_stage = revise_mod.load_music, revise_mod.run_stage
+    real_load, real_run_stage = revise_mod.music_step, revise_mod.run_stage
 
     async def keep_step(*args: Any, **kwargs: Any) -> Any:
         steps.append(await real_load(*args, **kwargs))
@@ -199,7 +199,7 @@ async def test_the_step_is_closed_whether_the_store_ran_or_not(
             renv.sql("UPDATE jobs SET cancel_requested_at = now() WHERE kind = 'revise_draft'")
         return outcome
 
-    monkeypatch.setattr(revise_mod, "load_music", keep_step)
+    monkeypatch.setattr(revise_mod, "music_step", keep_step)
     monkeypatch.setattr(revise_mod, "run_stage", run_then_cancel)
     job_id, _ = await renv.revise(class_id, base, "revise_good")
     assert renv.denv.ops.row(job_id).state == ("cancelled" if cancelled else "completed")

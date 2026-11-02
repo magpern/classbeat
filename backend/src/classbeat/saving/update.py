@@ -128,7 +128,7 @@ async def admit(db: AsyncSession, ctx: UserContext, parsed: BaseModel) -> Admitt
         return Refused("not_connected")
     if await approval.saved_target(db, ctx, parsed.the_class, parsed.saved_workout_id) is None:
         return Refused("invalid_input")
-    if await approval.linked_playlist(db, ctx, found.link_id) is None:
+    if await approval.linked_playlist(db, ctx, found.link_id, found.link_source) is None:
         return Refused("music_unlinked")
     if await orphans.write_unresolved(db, ctx, parsed.the_class):
         return Refused("write_unresolved")
@@ -172,7 +172,9 @@ async def _approved(
         )
         if target is None:
             raise JobFailure("invalid_input")  # detached (a reconnect), gone, or not this class's
-        playlist_id = await approval.linked_playlist(fs.db, run.ctx, found.link_id)
+        playlist_id = await approval.linked_playlist(
+            fs.db, run.ctx, found.link_id, found.link_source
+        )
         if playlist_id is None:
             raise JobFailure("music_unlinked")
     return found, playlist_id, target
@@ -279,7 +281,9 @@ async def save(run: JobRun, keyring: KeyRing, plan: Plan, read: Read) -> int:
     async def guard(db: AsyncSession) -> bool:
         if not await hold(db, run.ctx, opened):
             return False
-        playlist_now = await approval.linked_playlist(db, run.ctx, revision.link_id)
+        playlist_now = await approval.linked_playlist(
+            db, run.ctx, revision.link_id, revision.link_source
+        )
         target_now = await approval.saved_target(
             db, run.ctx, revision.class_id, target.saved_workout_id
         )

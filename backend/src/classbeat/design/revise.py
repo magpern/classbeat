@@ -7,7 +7,9 @@ credit (a class is one credit however often it is revised) and writes nothing ou
 **Create time** (``admit``, in the create transaction under the owner lock, the class row locked):
 ``invalid_input`` unless the base is a ``draft`` of the class; ``stale_base`` unless it is the
 class's current revision; ``revision_limit`` (``classbeat.design.limits``), then the month's
-model cost cap (``classbeat.quota.check_cost``: 409 ``quota`` ``cost``), then ``chat_full``.
+model cost cap (``classbeat.quota.check_cost``: 409 ``quota`` ``cost``), then ``chat_full``, then
+for a class designed on a Swedebeat mix ``feature_off`` and ``analysis_limit``
+(``mixadmit.admit_class_mix``, ADR 0016 sections 2 and 7).
 It stores the base's hash and inserts the user's ``class_messages`` row with the job.
 
 **Pipeline** (stages ``music``, ``revise``), every attempt from the top with a new provider, so a
@@ -15,8 +17,9 @@ retry restarts the stage from its beginning and the final store is the only writ
 
 1. the class's brief, its ``music_source`` and the base (``classbeat.design.chat``, one fenced
    read; the base's hash is checked against the one ``admit`` stored and against its content);
-2. the music step of ``design_draft`` (``music.load_music``); a fingerprint that differs from the
-   base revision's is told to the model as a fact;
+2. the music step of ``design_draft`` (``kind.music_step``: the playlist, or the mix after
+   ``mixadmit.still_on``); a fingerprint that differs from the base revision's is told to the
+   model as a fact;
 3. the ``revise`` stage (``classbeat.agent.revise``) over the brief, the music summary, the base
    draft and the user's requests along the ``parent_id`` chain. No earlier note or model text;
    A request that only asks for other songs ends the stage with ``songs_requested`` and the job
@@ -49,10 +52,15 @@ from classbeat.agent.records import JobStageHost
 from classbeat.agent.revise import ReviseContext, ReviseResult, SongsRequested, revise_stage
 from classbeat.agent.schemas import clean_text
 from classbeat.context import UserContext
-from classbeat.design import chat, diff, limits, revision
+from classbeat.design import chat, diff, limits, mixadmit, revision
 from classbeat.design.guidance import rule_set_for
-from classbeat.design.kind import ClassMusicSource, current_runtime, group_model
-from classbeat.design.music import load_music
+from classbeat.design.kind import (
+    CLASS_MUSIC_SOURCE,
+    SwedebeatMusicChoice,
+    current_runtime,
+    group_model,
+    music_step,
+)
 from classbeat.jobs import KINDS, Complete, FencedSession, JobFailure, JobKind, JobRun
 from classbeat.jobs.inputs import ModelJobInput
 from classbeat.jobs.kinds import Admitted, Refused
@@ -107,6 +115,9 @@ async def admit(db: AsyncSession, ctx: UserContext, parsed: BaseModel) -> Admitt
     await quota.check_cost(db, ctx)  # QuotaRefused ``cost``: 409 ``quota`` (ADR 0011 section 4)
     if state.requests >= chat_limits.max_requests:
         return Refused("chat_full", {"limit": chat_limits.max_requests, "count": state.requests})
+    mix = await mixadmit.admit_class_mix(db, ctx, class_id, given.mowl_connection_id)
+    if mix is not None:
+        return mix
     message_id = uuid.uuid4()
 
     async def after_insert(db: AsyncSession, job_id: UUID) -> None:
@@ -166,18 +177,15 @@ async def run(job_run: JobRun) -> Complete:
         raise JobFailure("internal")  # a revision is immutable: the stored hash must hold
     try:
         brief = Brief.model_validate(base.brief)
-        music = ClassMusicSource.model_validate(base.music_source)
+        music = CLASS_MUSIC_SOURCE.validate_python(base.music_source)
         base_draft = WorkoutDraft.model_validate(base.content)
     except ValidationError:
         raise JobFailure("internal") from None
+    if isinstance(music, SwedebeatMusicChoice):
+        await mixadmit.still_on(job_run, runtime.swedebeat_enabled)  # before anything is called
     model = await group_model(runtime, job_run, given.route_key, "design")  # before any MOWL call
     await job_run.stage("music")
-    step = await load_music(
-        job_run,
-        runtime.keyring,
-        music.spotify_playlist_id,
-        connection_id=given.mowl_connection_id,
-    )
+    step = await music_step(job_run, runtime, music, given.mowl_connection_id)
     handed_over = False  # the outcome's ``release`` closes the step from then on
     try:
         # The stored brief only: the request text never reaches the engine (ADR 0017 section 1).

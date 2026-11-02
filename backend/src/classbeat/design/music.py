@@ -124,9 +124,23 @@ class UnknownBpm:
     title: str
 
 
+@dataclass(frozen=True, slots=True)
+class MixFacts:
+    """What the revision records of a Swedebeat mix (ADR 0016 section 3), for the user only:
+    the mix's id and name, the analysed and the listed length, and the songs (0-based) whose beat
+    1 is an estimate. Never model input."""
+
+    mix_id: str
+    name: str
+    duration: float
+    listed_duration: float
+    unsure_beat_one: tuple[int, ...]
+
+
 @dataclass(eq=False)
 class MusicStep:
-    """The analysed playlist for this run and how it was reached."""
+    """The analysed playlist for this run and how it was reached. ``link_source`` is the
+    ``mowl_playlist_links.source`` of the link (``swedebeat`` for a mix, with its ``mix``)."""
 
     data: MusicData
     source_id: str
@@ -134,6 +148,8 @@ class MusicStep:
     fingerprint: str
     unknown_bpm: tuple[UnknownBpm, ...]
     _opened: OpenConnection | None
+    link_source: str = SOURCE
+    mix: MixFacts | None = None
 
     async def still_current(self, fs: FencedSession) -> None:
         """In the transaction that stores the revision: the connection is still the one the
@@ -151,7 +167,7 @@ class MusicStep:
                 {
                     "id": self.link_id,
                     "owner_id": fs.lease.owner_id,
-                    "source": SOURCE,
+                    "source": self.link_source,
                     "source_id": self.source_id,
                 },
             )

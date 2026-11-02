@@ -101,7 +101,8 @@ const FAILURES: Record<string, FailureText> = {
   // ADR 0016 sections 3 and 4: a Swedebeat mix; never a host, link or file text.
   media_host_not_allowed: {
     title: 'New Swedebeat mixes cannot be analysed here yet',
-    detail: 'Mixes you analysed before still work. Try one of those, or another kind of music.',
+    detail:
+      'The mix was added to your MOWL account, but it could not be analysed. Mixes you analysed before still work. Try one of those, or another kind of music.',
   },
   media_refused: {
     title: 'The audio of this mix could not be fetched',
@@ -110,6 +111,16 @@ const FAILURES: Record<string, FailureText> = {
   analysis_failed: {
     title: 'The audio of this mix could not be analysed',
     detail: 'Try another mix.',
+  },
+  // ADR 0016 sections 2 and 7: the flag went off before the run; the daily analysis limit.
+  feature_off: {
+    title: 'Swedebeat is switched off right now',
+    detail: 'Nothing was designed. Try again later, or use another kind of music.',
+  },
+  analysis_limit: {
+    title: 'Too many new Swedebeat mixes today',
+    detail:
+      'You have analysed 10 new mixes in the last 24 hours. Mixes analysed before still work; try a new one tomorrow.',
   },
   music_unlinked: {
     title: 'The music of this version is not in your MOWL account',
