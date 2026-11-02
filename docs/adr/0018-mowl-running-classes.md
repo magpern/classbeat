@@ -43,18 +43,19 @@ numeric ids, or validation rules.
 
 ### What `mowl-workouts` v0.7.0 implements (cycling only)
 
-The library has **no** `sport`, `discipline`, `BikeType`, or running branch in source or METADATA.
-Everything below is inferred from `mowl/api.py` and `mowl/workout.py` in the vendored wheel.
+`list_workouts` sends **`BikeTypeID: 1`**. The library has no `sport` parameter and no running
+id, and no running branch in source or METADATA. Everything below is inferred from `mowl/api.py`
+and `mowl/workout.py` in the vendored wheel.
 
 | Area | Cycling behaviour today | Running implication |
 |---|---|---|
 | **My Workouts list** | `POST v1/programs` with `ProgramCategoryID=17`, **`BikeTypeID: 1`**, paging | Listing almost certainly needs another `BikeTypeID` (value **unknown**) to see running programs |
-| **Program header** | `PUT v1/programs`: `ActivityTypeID: 0`, `TSS` from `workout.tss(spec)`, `PlaylistID` | Running may use a different **`ActivityTypeID`**; TSS may follow **rFTP** semantics (%rFTP in help) |
+| **Program header** | `PUT v1/programs`: `ActivityTypeID: 0`, `TSS` from `workout.tss(spec)`, `PlaylistID` | Running may use a different **`ActivityTypeID`**. Published running load name **rTSS** (one hour at 100% rFTP is 100). The API field may reuse the name **TSS** and stays unknown |
 | **Segments** | Same endpoints; segment `ActivityTypeID: 0` | Unknown whether running reuses segment shape |
-| **Intervals** | `interval_body`: Coggan **`ScaleCoggan` 1–7**, **`RPMFrom`/`RPMTo`**, **`PositionTypeID`** (seated/standing), **`CycleID`**, games, FTP tests, **`Gradient: 0`** (hardcoded) | RUN Player needs **gradient**; standing/cadence/games may be absent or different; **`Gradient` must become data**, not a constant |
+| **Intervals** | `interval_body`: Coggan **`ScaleCoggan` 1–7**, **`RPMFrom`/`RPMTo`**, **`PositionTypeID`** (seated/standing), **`CycleID`**, games, FTP tests, **`Gradient: 0`** (hardcoded on the cycling payload) | RUN Player shows treadmill gradient. **`Gradient`** stays the cycling-payload hypothesis until D1 fixtures name the field, and is not required spec data before that. Standing, cadence and games may be absent or different |
 | **Spec / validate** | Zones 1–7, rpm `[0–200]`, standing, games, FTP tests, cooldown rules | Running spec likely **drops or replaces** bike-only fields; validate must be sport-specific |
 | **Zones** | `GET v1/intensityzonesets/1` documented as zone set 1 (HR, FTP, MAP, FTHR ranges) | Running may use another zone set id (**unknown**) |
-| **TSS** | Client-side NP model with **`ZONE_IF`** tuned on **12 real cycling classes** | Running load metric may differ; server exposes `GET v1/calculations/program/{id}/TSS` (not yet captured for run) |
+| **TSS** | Client-side NP model with **`ZONE_IF`** tuned on **12 real cycling classes** | Published running load name **rTSS** (one hour at 100% rFTP is 100). The API field may reuse the name **TSS** and stays unknown; `GET v1/calculations/program/{id}/TSS` is not yet captured for run |
 
 **Save flow** is unchanged in shape (ADR 0007): program → segments → intervals → segment list.
 classbeat and the e2e fake MOWL implement that path with **`ActivityTypeID: 0`** and no
@@ -72,7 +73,7 @@ classbeat and the e2e fake MOWL implement that path with **`ActivityTypeID: 0`**
 | **UI** | `ProfileChart`: zones 1–7, cadence text in **rpm**, flame/bolt markers; landing copy says indoor cycling |
 | **Save / update** | `mowl.workout.save` / reconcilers; listing via `list_workouts` → **cycling list only** |
 | **Evals** | Smoke and suite cases are cycling designs; song-pick smoke uses cycling cadence/BPM habits |
-| **Tests / fakes** | `tests/mowlfake.py`, `e2e/fake-mowl/server.py`, `tests/savetools.py`: cycling program bodies |
+| **Tests / fakes** | `tests/mowlfake.py` is sign-in, `list_workouts` and Swedebeat. Program bodies are `e2e/fake-mowl/server.py` and `tests/savetools.py` (`FakeMowlPrograms`) |
 
 A running class saved with today's stack would be stored in classbeat as a cycling-shaped draft and
 written to MOWL with **`Gradient: 0`**, **`BikeTypeID: 1`** on list, and bike interval fields—i.e.
@@ -90,7 +91,8 @@ discovery pass (owner go-ahead per AGENTS.md; log under "Live activation log" in
    **gradient** and pace/speed targets are encoded (field names and ranges).
 4. Whether **`ScaleCoggan` 1–7** and zone set **1** apply to running on the server, or running uses
    a parallel scale.
-5. How **TSS** (or an equivalent) is computed and returned for running programs.
+5. How published **rTSS** (one hour at 100% rFTP is 100) is computed and returned for running
+   programs. The API field may reuse the name **TSS** and stays unknown.
 6. Whether **Spotify playlists** attach to running programs the same way (`PlaylistID`, analysis,
    BPM sync).
 7. Example **read** payloads: `GET v1/programs/{id}` for one running template and one user-created
@@ -128,10 +130,10 @@ behaviour inside by `sport` rather than new job kinds.
 
 | Concern | Cycling (keep) | Running (add) |
 |---|---|---|
-| Draft schema | Current `WorkoutDraft` | Running draft: at minimum **zone**, **sec**, **gradient**; optional fields per discovery |
+| Draft schema | Current `WorkoutDraft` | Running draft: at minimum **zone** and **sec**, plus a gradient target once D1 names its field. **`Gradient`** stays the cycling-payload hypothesis until then |
 | Validation | `mowl.workout.validate` | `mowl.workout.validate_running` (library) |
 | Model tools | Same tool names; dispatcher validates against sport-specific schemas |
-| TSS / load display | `workout.tss` | Library function aligned with MOWL server for running (may reuse field name `TSS`) |
+| TSS / load display | `workout.tss` | Library function aligned with published **rTSS** (one hour at 100% rFTP is 100). The API field may reuse the name `TSS` and stays unknown |
 | Music fit | `sync.fit_to_music` | Same if playlists attach; prompt uses **spm** not rpm (typical band ~150–190 spm vs cycling ~60–100 rpm) |
 | Save | `workout.save(...)` | `workout.save(..., sport="running")` or parallel entry point calling running interval mapping |
 | Reconciler listing | `list_workouts(..., bike_type=...)` | Must list with running **`BikeTypeID`** so saves are found |
@@ -147,12 +149,13 @@ Ship in **`magpern/mowl-workouts`** first, then vend a new wheel in classbeat (s
 0.6.0 / 0.7.0):
 
 - **`api.list_workouts`**: parameterise **`BikeTypeID`** (default `1` for CLI/MCP/plugin compatibility).
-- **`workout` module**: sport-aware **`validate`**, **`tss`**, **`interval_body`**, **`save`**, **`summarize`**; running sets **`Gradient`** from spec; cycling path behaviour unchanged for existing callers.
+- **`workout` module**: sport-aware **`validate`**, **`tss`**, **`interval_body`**, **`save`**, **`summarize`**. **`Gradient`** stays the cycling-payload hypothesis until D1 fixtures name the field; it is not required spec data before that. Cycling path behaviour stays unchanged for existing callers.
 - **Document** captured ids and field dictionaries in the library README (no secrets).
 - **Tests** in the library repo with recorded JSON fixtures (no network in CI).
 
-classbeat continues to import only **`api`**, **`service`**, **`library`**, **`spotify_web`**, **`swedebeat`**
-modules—never CLI/MCP entry points (AGENTS.md).
+The import ban (AGENTS.md) is the CLI and MCP entry points. The tree also imports `mowl.workout`,
+`sync`, `music`, `quality`, `spotify` and related modules. Section 2 calls `workout.save` and
+`validate_running`.
 
 ### 4. classbeat application changes (by layer)
 
@@ -180,7 +183,7 @@ modules—never CLI/MCP entry points (AGENTS.md).
 **Fakes and e2e**
 
 - Extend **`FakeMowl`** / **`FakeMowlPrograms`** with **`BikeTypeID`**, running program templates,
-  and gradient on intervals; one e2e spec: running design → save → list in running mode (no live
+  and the gradient field D1 names; one e2e spec: running design → save → list in running mode (no live
   MOWL).
 
 **Security / review class**
@@ -196,16 +199,21 @@ modules—never CLI/MCP entry points (AGENTS.md).
   `cursor-security-reviewer`); **Composer** and routine **Grok 4.7** review cover **U1**, **E1**,
   and **F1** unless they widen the categories above. Amendment 11 does not assign Sonnet.
 - **Claude Code and Codex** keep **Opus** Developer and Reviewer for the same AGENTS.md categories.
-- **D1** and **L1** stay routine unless discovery exposes new external hosts, auth, or unexpected
-  trust-boundary changes.
+- **L1** (`feat(mowl): running save and list`, the sport-aware interval body, save, and list) is
+  an **external write**. It stays **security-critical** even when the operation names stay
+  **`mowl_save_workout`** and **`mowl_update_workout`**. **Cursor:** **Grok 4.7 High** implements
+  L1 and a fresh **Grok 4.7 High** reviews it (`cursor-security-developer` /
+  `cursor-security-reviewer`). **Composer** does not. **Claude Code and Codex** keep **Opus**.
+- **D1** (fixtures only) stays routine.
 
 ### 5. Feature flag
 
 **Owner question:** Gate running behind an admin or environment flag until the owner enables it for
 testers?
-**Reversible default:** yes—add effective **`running_enabled`** (environment + optional admin flag,
-same stricter-wins pattern as `song_picking` / `swedebeat_enabled`): off → new-class UI shows
-cycling only; API rejects `sport=running` with **`feature_off`**.
+**Reversible default:** yes—add effective **`running_enabled`** by copying **`swedebeat_enabled`**
+(ADR 0015 §6): stored `off` or `on`, stricter wins, with the environment as the kill switch.
+Off means **`feature_off`**: the new-class UI shows cycling only, and the API rejects
+`sport=running`. `song_picking` (`off` / `granted` / `on`) is a separate flag.
 
 ### 6. Roadmap and milestones
 
@@ -252,8 +260,8 @@ the model) apply to running designs the same as cycling once enabled.
 
 | Id | Title (Conventional Commits subject) | Scope | Done when | Depends on |
 |---|---|---|---|---|
-| D1 | `docs(mowl): capture running API fixtures` | Library repo: redacted JSON, id table, discovery runbook | Reviewer can implement L1 from fixtures alone | Owner go-ahead |
-| L1 | `feat(mowl): running save and list` | Library: sport param, validate/save/list, tests | CLI default still cycling; running path green in library CI | D1 |
+| D1 | `docs(mowl): capture running API fixtures` | Library repo: redacted JSON, id table, discovery runbook. Routine (fixtures only) | Reviewer can implement L1 from fixtures alone | Owner go-ahead |
+| L1 | `feat(mowl): running save and list` | Library: sport param, validate/save/list, tests. **Security-critical** external write (sport-aware interval body, save and list), even when the operation names stay `mowl_save_workout` and `mowl_update_workout`. Cursor: Grok 4.7 High implements and a fresh Grok 4.7 High reviews (`cursor-security-developer` / `cursor-security-reviewer`); Composer does not. Claude Code and Codex keep Opus | CLI default still cycling; running path green in library CI | D1 |
 | R1 | `feat(design): sport on brief and running draft` | Backend: brief, schemas, prompt, jobs, save/list sport | Unit + integration tests with fakes; cycling unchanged | L1, this ADR Accepted |
 | U1 | `feat(web): running new-class and profile chart` | Frontend sport switch, chart gradient/spm | Vitest + axe; bundle budget | R1 |
 | E1 | `test(evals): running smoke cases` | Manifest + fake scripts | CI replay green | R1 |
