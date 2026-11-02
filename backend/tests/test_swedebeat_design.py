@@ -6,8 +6,9 @@ analysis child on generated audio, ``FakeProvider`` for the model, and for Save 
 
 Covered: a class designed and saved on a fake mix; what the model is sent holds no mix text or id;
 the revision's music provenance and fingerprint; ``admit``'s own-listing check, flag and MOWL
-connection; a queued job whose flag went off ends ``feature_off`` calling nothing; the daily limit
-of new analyses (admit and worker; a cache hit costs none); a revise on the cached map.
+connection; a queued design or revise job whose flag went off ends ``feature_off`` calling nothing;
+the daily limit of new analyses (admit and worker; a cache hit costs none); a revise on the cached
+map.
 """
 
 import asyncio
@@ -582,6 +583,49 @@ async def test_a_class_on_a_mix_is_revised_on_its_cached_map(
     assert new.music == base.music  # the same mix, map and link
     assert len(menv.media.requests) == 1  # the cache: no second fetch
     assert MIX_NAME not in menv.sent()
+
+
+@pytest.mark.parametrize("off", ["database", "worker"])
+async def test_a_queued_revise_whose_flag_went_off_ends_feature_off_and_calls_nothing(
+    browsers: Any, menv: MixEnv, mowl_api: FakeMowl, off: str
+) -> None:
+    """#430: the revise kind repeats the flag check in the worker (``mixadmit.still_on``), as the
+    design kind does; the cached map would otherwise let the job complete with the flag off."""
+    browser = await rider(browsers, menv)
+    add_mix(mowl_api)
+    created = await create(browser, design_body(browser))
+    await menv.run_next()
+    job_id = UUID(created.json()["id"])
+    [base] = revisions(menv, job_id)
+    menv.scripts = [revise_script()]
+    menv.providers = []
+    ask = {
+        "kind": REVISE_KIND,
+        "input": {
+            "class_id": str(menv.ops.row(job_id).class_id),
+            "base_revision_id": str(base.id),
+            "request": "Make the push harder",
+            "mowl_connection_id": str(browser.connection_id),
+        },
+    }
+    queued = await create(browser, ask)  # admitted while the flag is on
+    assert queued.status_code == 201, queued.text
+    mowl_seen, media_seen = len(mowl_api.requests), len(menv.media.requests)
+    if off == "database":
+        flag(menv, "off")
+    else:
+        menv.environment_on = False
+    try:
+        await menv.run_next()
+    finally:
+        flag(menv, None)
+    revise_id = UUID(queued.json()["id"])
+    row = menv.ops.row(revise_id)
+    assert (row.state, row.error_category) == ("failed", "feature_off")
+    assert revisions(menv, revise_id) == []
+    assert len(mowl_api.requests) == mowl_seen  # nothing called after the job was queued
+    assert len(menv.media.requests) == media_seen
+    assert menv.providers == []
 
 
 async def test_save_refuses_a_mix_revision_whose_link_is_gone_or_of_another_source(

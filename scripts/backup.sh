@@ -6,10 +6,10 @@
 #
 # Encrypted and signed is the only mode without --no-encrypt: the script refuses to write a backup
 # that is neither. pg_dump (custom format) is piped into `gpg --encrypt --sign` and no plaintext
-# dump touches the disk. FPR are full 40-digit key fingerprints (also BACKUP_GPG_RECIPIENT and
-# BACKUP_GPG_SIGNER): the archive is encrypted to exactly that public key and signed by exactly
-# that secret key, which must be in the invoking user's keyring and usable without a prompt
-# (cron). restore.sh accepts the archive only when that same signer verifies (SR-06, #355).
+# dump touches the disk. FPR are full 40-digit PRIMARY key fingerprints, a subkey's is refused
+# (also BACKUP_GPG_RECIPIENT and BACKUP_GPG_SIGNER): the archive is encrypted to exactly that public
+# key and signed by exactly that secret key, which must be in the invoking user's keyring and usable
+# without a prompt (cron). restore.sh accepts the archive only when that signer verifies (SR-06, #355).
 #
 # --no-encrypt writes a plaintext dump (mode 600) and prints a warning. It still needs --sign-key
 # (also BACKUP_SIGN_KEY): a PEM private key (EC or RSA) kept OUTSIDE the backup directory; the
@@ -69,6 +69,17 @@ else
   command -v gpg > /dev/null || die "gpg is not installed"
   gpg --batch --list-keys "$recipient" > /dev/null 2>&1 || die "no public key $recipient in the keyring"
   gpg --batch --list-secret-keys "$signer" > /dev/null 2>&1 || die "no secret key $signer in the keyring"
+  # A subkey's fingerprint also finds its key, so the lookups above accept it; restore.sh pins only
+  # the PRIMARY key (#368). The primary's fingerprint is the first fpr record after the pub (or sec)
+  # record of the key the lookup found.
+  primary_of() { # primary_of --list-keys|--list-secret-keys <fpr>
+    gpg --batch --with-colons "$1" "$2" 2> /dev/null \
+      | awk -F: '/^(pub|sec):/ { k = 1; next } k && /^fpr:/ { print toupper($10); exit }'
+  }
+  [ "$(primary_of --list-keys "$recipient")" = "$recipient" ] \
+    || die "--gpg-recipient must be a primary key fingerprint, not a subkey's"
+  [ "$(primary_of --list-secret-keys "$signer")" = "$signer" ] \
+    || die "--gpg-sign must be a primary key fingerprint, not a subkey's (restore.sh pins the primary)"
 fi
 
 docker compose ps --status running --services 2> /dev/null | grep -qx db \

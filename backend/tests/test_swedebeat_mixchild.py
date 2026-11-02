@@ -268,6 +268,7 @@ def denied(call):
     return False
 out["socket"] = denied(lambda: socket.socket(socket.AF_INET, socket.SOCK_STREAM))
 out["unix"] = denied(lambda: socket.socket(socket.AF_UNIX, socket.SOCK_STREAM))
+out["socketpair"] = denied(lambda: socket.socketpair(socket.AF_UNIX, socket.SOCK_STREAM))
 out["setsid"] = denied(os.setsid)
 out["secret"] = denied(lambda: open(secret).read())
 out["secrets_dir"] = denied(lambda: os.listdir(os.path.dirname(secret)))
@@ -300,6 +301,7 @@ def test_the_confined_process_has_no_socket_no_new_session_and_no_file_outside(
     assert out["syscalls"] is True
     assert out["socket"]
     assert out["unix"]
+    assert out["socketpair"]  # #429: no AF_UNIX pair either
     assert out["setsid"]
     assert out["work"]
     assert out["numpy"]
