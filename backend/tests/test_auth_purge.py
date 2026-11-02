@@ -73,6 +73,7 @@ async def test_purge_deletes_what_is_expired_or_used_and_keeps_the_rest(env: Env
         "auth_events": 1,
         "sessions_ip_cleared": 1,
         "spotify_oauth_flows": 0,  # planted in test_spotify_forget.py
+        "swedebeat_handoffs": 0,
     }
     assert await env.scalar("SELECT count(*) FROM sessions") == 1
     assert await env.scalar("SELECT ip FROM sessions") is None  # cleared after 30 days

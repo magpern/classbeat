@@ -4,7 +4,7 @@ durable usage. Contract, isolation, immutability, cascades and the guards."""
 import json
 import uuid
 from collections.abc import Iterator
-from datetime import date
+from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
 import pytest
@@ -52,7 +52,17 @@ def app(app_database_url: str) -> Iterator[Engine]:
 def insert(conn: Connection, table: str, **values: Any) -> uuid.UUID:
     """A row written as the superuser (setup only); jsonb columns take Python values."""
     values = {"id": uuid.uuid4(), **values}
-    jsonb = {"content", "music", "provenance", "change", "request_context", "result", "map"}
+    jsonb = {
+        "content",
+        "music",
+        "provenance",
+        "change",
+        "request_context",
+        "result",
+        "map",
+        "mixes_before",
+        "detail",
+    }
     params = ", ".join(f"CAST(:{k} AS jsonb)" if k in jsonb else f":{k}" for k in values)
     row = {k: json.dumps(v) if k in jsonb else v for k, v in values.items()}
     return conn.execute(
@@ -582,6 +592,20 @@ def test_deleting_the_class_then_the_user_leaves_nothing_in_the_registered_table
            listed_duration=600, map={})  # fmt: skip
     # Migration 0020: when a new mix analysis started (the daily limit).
     insert(admin, "swedebeat_analyses", owner_id=owner)
+    match = admin.execute(
+        text("SELECT id FROM class_revisions WHERE owner_id = :o AND kind = 'swedebeat_match'"),
+        {"o": owner},
+    ).scalar_one()
+    insert(
+        admin,
+        "swedebeat_handoffs",
+        owner_id=owner,
+        class_id=class_id,
+        match_revision_id=match,
+        state="open",
+        mixes_before=[],
+        expires_at=datetime.now(UTC) + timedelta(hours=1),
+    )
     # M4 (migration 0006). The pool operation rows and the Spotify deletion paths are planted and
     # deleted in test_spotify_forget.py.
     insert(admin, "class_playlists", owner_id=owner, class_id=class_id, revision_id=rev,

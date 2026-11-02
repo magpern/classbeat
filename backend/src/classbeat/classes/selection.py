@@ -20,6 +20,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from classbeat.context import UserContext, require_context
 from classbeat.db import user_session
 from classbeat.songs.song_list import load as load_song_list
+from classbeat.swedebeat_match.revision import MatchRevision
 from classbeat.swedebeat_match.revision import load as load_match
 
 Factory = async_sessionmaker[AsyncSession]
@@ -39,6 +40,10 @@ class SelectionOut(BaseModel):
 _LOCK = text(
     "SELECT current_revision_id FROM classes WHERE owner_id = :owner_id AND id = :class_id "
     "FOR UPDATE"
+)
+_LOCK_APPROVED = text(
+    "SELECT current_revision_id, approved_swedebeat_match_id FROM classes "
+    "WHERE owner_id = :owner_id AND id = :class_id FOR UPDATE"
 )
 _LIST_OF = text(
     "SELECT music ->> 'song_list_id' AS song_list_id FROM class_revisions "
@@ -61,6 +66,31 @@ class Approved:
 class SelectionResult:
     approved: Approved | None
     reason: str | None  # not_found, stale_match
+
+
+@dataclass(frozen=True, slots=True)
+class StoredApproval:
+    """The class's stored match, already proven to be the current draft's song list."""
+
+    revision_id: UUID
+    current_revision_id: UUID
+    match: MatchRevision
+
+
+def binds(found: MatchRevision, list_id: UUID | None, listed_hash: str | None) -> bool:
+    """The match is of this song list: same parent, and both hashes are that list's content.
+
+    Same owner is not enough. ``POST /api/classes/{id}/current`` can make an older draft current
+    without clearing ``approved_swedebeat_match_id`` (the #444 review); a reader treats the stored
+    id as approved only when this holds for the class's current draft.
+    """
+    return (
+        listed_hash is not None
+        and list_id is not None
+        and list_id == found.song_list_id
+        and listed_hash == found.content.song_list_hash
+        and found.music.song_list_hash == found.content.song_list_hash
+    )
 
 
 def _uuid(value: object) -> UUID | None:
@@ -96,13 +126,8 @@ async def record(
             return SelectionResult(None, "not_found")
         list_id = await _current_list(db, owner, class_id, current.current_revision_id)
         listed = None if list_id is None else await load_song_list(db, owner, class_id, list_id)
-        bound = (
-            listed is not None
-            and list_id == found.song_list_id
-            and listed.content_hash.hex() == found.content.song_list_hash
-            and found.music.song_list_hash == found.content.song_list_hash
-        )
-        if not bound:
+        listed_hash = None if listed is None else listed.content_hash.hex()
+        if not binds(found, list_id, listed_hash):
             return SelectionResult(None, "stale_match")
         updated = (
             await db.execute(
@@ -118,3 +143,29 @@ async def record(
         if updated is None:
             return SelectionResult(None, "stale_match")
         return SelectionResult(Approved(match_id, found.content_hash.hex()), None)
+
+
+async def stored_approval(
+    db: AsyncSession, owner_id: UUID, class_id: UUID
+) -> tuple[StoredApproval | None, str | None]:
+    """The stored match if it belongs to the current draft's song list.
+
+    Locks the class row. ``not_found`` when the class is not the owner's; ``stale_match`` when
+    the column is empty or the match is not that song list (same owner is not enough).
+    """
+    row = (await db.execute(_LOCK_APPROVED, {"owner_id": owner_id, "class_id": class_id})).first()
+    if row is None:
+        return None, "not_found"
+    match_id = row.approved_swedebeat_match_id
+    current_id = row.current_revision_id
+    if match_id is None or current_id is None:
+        return None, "stale_match"
+    found = await load_match(db, owner_id, class_id, match_id)
+    if found is None:
+        return None, "stale_match"
+    list_id = await _current_list(db, owner_id, class_id, current_id)
+    listed = None if list_id is None else await load_song_list(db, owner_id, class_id, list_id)
+    listed_hash = None if listed is None else listed.content_hash.hex()
+    if not binds(found, list_id, listed_hash):
+        return None, "stale_match"
+    return StoredApproval(match_id, current_id, found), None

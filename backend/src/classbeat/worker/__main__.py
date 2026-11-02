@@ -5,7 +5,7 @@ import logging
 import signal
 import sys
 
-from classbeat import design, playlists, saving, songs, swedebeat_match
+from classbeat import design, playlists, saving, songs, swedebeat_handoff, swedebeat_match
 from classbeat.config import (
     ModelProviderRefused,
     Settings,
@@ -56,6 +56,8 @@ async def _run(settings: Settings) -> None:
     # swedebeat_match (B1): the Swedebeat switch (off unless the worker's environment has it too:
     # a match then ends feature_off) and the key ring for the Swedebeat token.
     swedebeat_match.configure(swedebeat_match.MatchConfig.from_settings(settings, keyring))
+    # swedebeat_verify_mix (B2): the switch again, and the key ring that opens MOWL.
+    swedebeat_handoff.configure(swedebeat_handoff.HandoffConfig.from_settings(settings, keyring))
     stop = asyncio.Event()
     # Before "worker started" is logged, so a signal after that line is always handled.
     _install_signal_handlers(asyncio.get_running_loop(), stop)

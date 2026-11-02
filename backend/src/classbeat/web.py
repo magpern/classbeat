@@ -13,12 +13,23 @@ from pydantic import BaseModel
 from sqlalchemy import text
 
 # saving registers save_workout (SV1); playlists the Spotify writes for Check again (OP1)
-from classbeat import __version__, auth, playlists, quota, saving, songs, swedebeat_match
+from classbeat import (
+    __version__,
+    auth,
+    playlists,
+    quota,
+    saving,
+    songs,
+    swedebeat_handoff,
+    swedebeat_match,
+)
 from classbeat.account import erase
 from classbeat.account.routes import router as account_router
 from classbeat.admin import routes as admin_routes
 from classbeat.admin.db import AdminDb
 from classbeat.bodylimit import BodyLimit
+from classbeat.classes.handoff_routes import install_job_enqueue
+from classbeat.classes.handoff_routes import router as handoff_router
 from classbeat.classes.routes import music_router as class_music_router
 from classbeat.classes.routes import router as classes_router
 from classbeat.config import Settings, check_web_has_no_model_key
@@ -34,6 +45,7 @@ from classbeat.headers import SecurityHeaders, unhandled_error
 from classbeat.jobs.events_routes import StreamLimiter
 from classbeat.jobs.events_routes import router as job_events_router
 from classbeat.jobs.hub import EventHub
+from classbeat.jobs.routes import enqueue as enqueue_job
 from classbeat.jobs.routes import router as jobs_router
 from classbeat.operations.routes import router as operations_router
 from classbeat.plans.routes import router as plans_router
@@ -42,6 +54,10 @@ from classbeat.quota import PlanRevisionPolicy
 from classbeat.spotify.routes import api as spotify_router
 from classbeat.spotify.routes import callback as spotify_callback_router
 from classbeat.usage.routes import router as usage_router
+
+# The hand-off routes create jobs through the jobs API. The session guard allows
+# classbeat.jobs.service only from classbeat.jobs.routes, and that module only from here.
+install_job_enqueue(enqueue_job)
 
 logger = logging.getLogger(__name__)
 
@@ -177,6 +193,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # swedebeat_match's admit reads the Swedebeat switch (ADR 0016 section 2); importing
     # classbeat.swedebeat_match registered the kind. The web never opens the token for it.
     swedebeat_match.configure(swedebeat_match.MatchConfig.from_settings(settings))
+    # swedebeat_verify_mix (B2): the same switch. The web never opens MOWL for the job itself.
+    swedebeat_handoff.configure(swedebeat_handoff.HandoffConfig.from_settings(settings))
     app.include_router(api)
     # The Spotify callback (outside /api, ADR 0009 section 2) before the sign-in providers'
     # ``/oauth/{provider}/callback``, which would otherwise answer it with a 404.
@@ -197,6 +215,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(mixes_router)
     app.include_router(class_music_router)
     app.include_router(classes_router)
+    app.include_router(handoff_router)
 
     if settings.static_dir is not None:
         if settings.static_dir.is_dir():

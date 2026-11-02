@@ -32,7 +32,7 @@ def applied_revisions(database_url: str) -> list[str]:
 
 def test_the_revisions_form_one_line() -> None:
     script = ScriptDirectory.from_config(alembic_config())
-    assert script.get_heads() == ["0022_swedebeat_approval"]
+    assert script.get_heads() == ["0023_swedebeat_handoffs"]
     assert script.get_base() == "0001_baseline"
 
 
@@ -53,7 +53,7 @@ def test_upgrade_head_then_downgrade_base(
     config = alembic_config()
     try:
         command.upgrade(config, "head")
-        assert applied_revisions(database_url) == ["0022_swedebeat_approval"]
+        assert applied_revisions(database_url) == ["0023_swedebeat_handoffs"]
         command.downgrade(config, "base")
         assert applied_revisions(database_url) == []
     finally:
@@ -153,6 +153,7 @@ JOBS = [
     # ADR 0016 (0018_swedebeat_mix_maps, 0020_swedebeat_analyses).
     "swedebeat_mix_maps",
     "swedebeat_analyses",
+    "swedebeat_handoffs",
 ]
 
 

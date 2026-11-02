@@ -39,8 +39,6 @@ and 3); ``/api/jobs`` is also in ``SECRET_INPUT_PATHS``, so FastAPI's own 422 dr
 """
 
 import hashlib
-import json
-import re
 from collections.abc import Mapping
 from dataclasses import asdict
 from datetime import UTC, datetime
@@ -52,11 +50,19 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from classbeat import auth, quota
+from classbeat import auth
 from classbeat.agent.schemas import WorkoutDraft
 from classbeat.context import UserContext
 from classbeat.jobs import service
 from classbeat.jobs.credits import CreditLedger
+from classbeat.jobs.http import (
+    IDEMPOTENCY_KEY,
+    Enqueued,
+    Factory,
+    canonical_json,
+    credit_ledger,
+    job_limit,
+)
 from classbeat.jobs.inputs import JobInput, jsonb_size
 from classbeat.jobs.kinds import KIND_NAME, KINDS, JobKind, KindRegistry, Refused
 from classbeat.jobs.progress import read_revision
@@ -66,28 +72,23 @@ from classbeat.usage import job_usage
 
 router = APIRouter(prefix="/api/jobs", tags=["jobs"])
 
-IDEMPOTENCY_KEY = re.compile(r"^[A-Za-z0-9_-]{16,64}$")
 INPUT_MAX_BYTES = 16384  # jobs.input's check (migration 0004), measured as jsonb prints it
 # A request body of the jobs API is read only up to this (#115 item 8). The app-wide cap
 # (``classbeat.bodylimit``, #351) is equal and answers first; this is the second line.
 BODY_MAX_BYTES = 65536
 
-_STATUS = {"not_found": 404, "class_not_found": 404, "busy": 429, "too_large": 422}
+_STATUS = {
+    "not_found": 404,
+    "class_not_found": 404,
+    "busy": 429,
+    "too_large": 422,
+    "handoff_expired": 410,
+}
 
 
 def job_kinds() -> KindRegistry:
     """The kinds the API accepts: the worker's registry (tests override this dependency)."""
     return KINDS
-
-
-def credit_ledger(request: Request) -> CreditLedger:
-    """The credit seam (ADR 0005 section 5): M5's metered ledger (ADR 0011 section 3)."""
-    return quota.MeteredLedger(quota.Bounds.from_settings(request.app.state.settings))
-
-
-def job_limit(request: Request) -> JobLimitPolicy:
-    """The concurrent-job limit: the plan's, under ``CLASSBEAT_JOBS_PER_USER`` (section 4)."""
-    return quota.PlanJobLimitPolicy(request.app.state.settings.jobs_per_user)
 
 
 class CreateIn(BaseModel):
@@ -203,13 +204,9 @@ async def _body(request: Request) -> bytes:
     return b"".join(chunks)
 
 
-def canonical_json(value: Any) -> bytes:
-    """The canonical JSON of ADR 0004 section 2 (sorted keys, no spaces, UTF-8): the stored
-    input and the request hash. Not imported from ``classbeat.crypto`` (guarded there)."""
-    return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode()
-
-
-def _bound_admit(kind: JobKind, parsed: BaseModel) -> CreateAdmit | None:
+def _bound_admit(
+    kind: JobKind, parsed: BaseModel, *, max_bytes: int = INPUT_MAX_BYTES
+) -> CreateAdmit | None:
     """The kind's ``admit`` for this input, run by ``user.create`` under the owner lock. What it
     accepts is validated by the kind's model again and stored in place of the browser's input."""
     admit = kind.admit
@@ -221,7 +218,7 @@ def _bound_admit(kind: JobKind, parsed: BaseModel) -> CreateAdmit | None:
         if isinstance(result, Refused):
             return result
         stored = kind.admitted_input(parsed, result.fields).model_dump(mode="json")
-        if jsonb_size(stored) > INPUT_MAX_BYTES:
+        if jsonb_size(stored) > max_bytes:
             return Refused("too_large")
         return Admission(canonical_json(stored).decode("utf-8"), result.after_insert)
 
@@ -286,6 +283,41 @@ async def create_job(
     if not result.created:
         return JSONResponse(out.model_dump(mode="json"), status_code=200)
     return out
+
+
+async def enqueue(
+    factory: Factory,
+    ctx: UserContext,
+    parsed: JobInput,
+    kind: JobKind,
+    *,
+    idempotency_key: str,
+    ledger: CreditLedger,
+    limit: JobLimitPolicy,
+    consumes_credit: bool,
+) -> Enqueued:
+    """Create one job for the authenticated user through ``service.create``.
+
+    The Swedebeat hand-off routes call this. It is the same owner lock, credit ledger and
+    ``admit`` as ``POST /api/jobs``. ``admit`` refuses a stored input over 65536 bytes, the
+    ceiling the hand-off used; this module's own create uses ``INPUT_MAX_BYTES``.
+    """
+    stored = parsed.model_dump(mode="json")
+    new = NewJob(
+        kind=kind.name,
+        input=canonical_json(stored).decode("utf-8"),
+        class_id=parsed.class_id,
+        title=None,
+        connection_ids=parsed.connection_ids(),
+        idempotency_key=idempotency_key,
+        request_hash=hashlib.sha256(canonical_json({"input": stored, "kind": kind.name})).digest(),
+        consumes_credit=consumes_credit,
+        admit=_bound_admit(kind, parsed, max_bytes=65536),
+    )
+    result = await service.create(factory, ctx, new, limit=limit, ledger=ledger)
+    if result.job is None:
+        return Enqueued(None, False, result.reason, result.counts)
+    return Enqueued(result.job.id, result.created)
 
 
 def _job_id(raw: str) -> UUID | None:
