@@ -384,6 +384,10 @@ async def test_two_users_match_on_the_fake_and_their_tokens_never_mix(
         assert (held.status, held.last_error) == ("connected", None)
 
 
+_WAIT = "Swedebeat asks to slow down; trying again in about 2 minutes."
+_PLANTED_BODY = b'{"error":"catalogue-body-planted-9f3a"}'
+
+
 async def test_a_rate_limit_pauses_the_job_and_a_5xx_is_upstream_unavailable(
     env: Env, admin: Connection, make_actor: Any, catalogue: CatalogueFake, configured: None
 ) -> None:
@@ -399,11 +403,17 @@ async def test_a_rate_limit_pauses_the_job_and_a_5xx_is_upstream_unavailable(
     )
     catalogue.status = 429
     catalogue.retry_after = "90"
+    catalogue.body = _PLANTED_BODY
     created = await _post_job(rider.actor, _body(rider))
     assert created.status_code == 201, created.text
     job_id = await _run(env)
     row = _job(admin, job_id)
     assert row.state == "queued"
+    assert (row.spotify_failure, row.spotify_retry_after, row.spotify_rate_limits) == (
+        "rate_limited",
+        90,
+        0,
+    )
     remaining = float(
         admin.execute(
             text("SELECT extract(epoch FROM (available_at - now())) FROM jobs WHERE id = :id"),
@@ -421,8 +431,20 @@ async def test_a_rate_limit_pauses_the_job_and_a_5xx_is_upstream_unavailable(
     assert "rate_limited" in kinds
     assert len(catalogue.calls) == 1
     assert catalogue.calls[0].token == rider.token
+    shown = await rider.actor.get(f"/api/jobs/{job_id}")
+    assert shown.status_code == 200, shown.text
+    view = shown.json()
+    assert (view["state"], view["error_category"], view["error_message"]) == (
+        "queued",
+        None,
+        _WAIT,
+    )
+    assert rider.token not in shown.text
+    assert "catalogue-body-planted-9f3a" not in shown.text
+    assert "Spotify" not in view["error_message"]
 
     catalogue.calls.clear()
+    catalogue.body = None
     catalogue.status = 503
     catalogue.retry_after = None
     other = await _rider(
@@ -447,6 +469,58 @@ async def test_a_rate_limit_pauses_the_job_and_a_5xx_is_upstream_unavailable(
     ]
     assert "upstream_unavailable" in again
     assert len(catalogue.calls) == 1
+    down_row = _job(admin, failed)
+    assert down_row.spotify_failure is None
+    down = await other.actor.get(f"/api/jobs/{failed}")
+    assert down.status_code == 200, down.text
+    assert down.json()["error_message"] is None
+
+
+async def test_three_catalogue_rate_limits_name_the_wait_and_are_not_a_spotify_quota(
+    env: Env, admin: Connection, make_actor: Any, catalogue: CatalogueFake, configured: None
+) -> None:
+    """Three Swedebeat 429s end ``rate_limited``, not Spotify's ``quota_exhausted``."""
+    rider = await _rider(
+        env,
+        make_actor,
+        account="again@example.com",
+        swedebeat_email=EMAIL,
+        password=PASSWORD,
+        start=51,
+        bpm=103.0,
+        class_title="Again Brief",
+    )
+    catalogue.status = 429
+    catalogue.retry_after = "90"
+    catalogue.body = _PLANTED_BODY
+    assert (await _post_job(rider.actor, _body(rider))).status_code == 201
+    job_id: UUID | None = None
+    states: list[str] = []
+    for _ in range(3):
+        if job_id is not None:
+            admin.execute(
+                text("UPDATE jobs SET available_at = now() WHERE id = :id"), {"id": job_id}
+            )
+        job_id = await _run(env)
+        row = _job(admin, job_id)
+        states.append(row.state)
+        assert row.spotify_rate_limits == 0
+        assert row.error_category != "quota_exhausted"
+    assert job_id is not None
+    assert states == ["queued", "queued", "failed"]
+    finished = _job(admin, job_id)
+    assert (finished.error_category, finished.spotify_failure, finished.spotify_retry_after) == (
+        "rate_limited",
+        "rate_limited",
+        90,
+    )
+    shown = await rider.actor.get(f"/api/jobs/{job_id}")
+    assert shown.status_code == 200, shown.text
+    message = shown.json()["error_message"]
+    assert message == _WAIT
+    assert rider.token not in shown.text
+    assert "catalogue-body-planted-9f3a" not in shown.text
+    assert "Spotify" not in message
 
 
 async def test_a_401_reconnects_and_sends_no_further_song(

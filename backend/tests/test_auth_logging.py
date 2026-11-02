@@ -17,10 +17,11 @@ CSRF = "CSRFTOKEN-cccccccccccccccccccccccccc"
 OAUTH = "OAUTHFLOW-dddddddddddddddddddddddddd"
 PENDING = "PENDINGTOKEN-eeeeeeeeeeeeeeeeeeeeeeee"
 BEARER = "BEARERTOKEN-fffffffffffffffffffffffff"
+AUTH_TOKEN = "SWEDEBEATTOKEN-jjjjjjjjjjjjjjjjjjjjj"
 CODE = "OAUTHCODE-ggggggggggggggggggggggggg"
 STATE = "OAUTHSTATE-hhhhhhhhhhhhhhhhhhhhhhhhh"
 PASSWORD = "PLANTED-PASSWORD-iiiiiiiiiiiiiiii"
-SECRETS = [SESSION, DEVICE, CSRF, OAUTH, PENDING, BEARER, CODE, STATE, PASSWORD]
+SECRETS = [SESSION, DEVICE, CSRF, OAUTH, PENDING, BEARER, AUTH_TOKEN, CODE, STATE, PASSWORD]
 
 COOKIE_HEADER = (
     f"__Host-classbeat_session={SESSION}; __Host-classbeat_device={DEVICE}; "
@@ -42,6 +43,9 @@ def leaked(text: str) -> list[str]:
         f"Authorization: Bearer {BEARER}",
         f"authorization='Basic {BEARER}'",
         f"X-CSRF-Token: {CSRF}",
+        f"X-Auth-Token: {AUTH_TOKEN}",
+        f"x-auth-token={AUTH_TOKEN}",
+        f"headers={{'X-Auth-Token': '{AUTH_TOKEN}', 'accept': 'application/json'}}",
         f"headers={{'x-csrf-token': '{CSRF}', 'cookie': '__Host-classbeat_session={SESSION}'}}",
         f"__Host-classbeat_session={SESSION}",
         f"sent Bearer {BEARER} upstream",
@@ -67,6 +71,7 @@ def test_the_formatter_redacts_messages_extras_and_tracebacks() -> None:
     configure_logging("DEBUG", stream)
     log = logging.getLogger("classbeat.test")
     log.info("headers were %s", {"cookie": COOKIE_HEADER, "authorization": f"Bearer {BEARER}"})
+    log.info("catalogue", extra={"sent": {"X-Auth-Token": AUTH_TOKEN}})
     log.info("extra", extra={"request": f"GET /oauth/x/callback?code={CODE}", "n": 1})
     try:
         raise ValueError(f"Cookie: {COOKIE_HEADER}")

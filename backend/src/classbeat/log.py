@@ -13,9 +13,10 @@ _STANDARD_ATTRIBUTES = frozenset(vars(logging.makeLogRecord({}))) | {"message", 
 
 
 # ADR 0003 section 10: never logged. The session, device, CSRF, OAuth and pending cookies; the
-# Authorization and X-CSRF-Token headers (and whole Cookie headers); query strings on /oauth/*.
-# Our own access log never records any of them; this catches the rest (an exception message
-# or a library that dumps a request).
+# Authorization, X-CSRF-Token, X-Api-Key and X-Auth-Token headers (and whole Cookie headers);
+# query strings on /oauth/*. Our own access log never records any of them; this catches the
+# rest (an exception message or a library that dumps a request). The catalogue job is the
+# first worker send of X-Auth-Token (ADR 0016 section 5).
 _REDACTED = "[redacted]"
 _PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
     (re.compile(r"(__Host-classbeat_\w+)\s*=\s*[^;\s\"',]+"), rf"\1={_REDACTED}"),
@@ -23,7 +24,7 @@ _PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
     (re.compile(r"(__Host-classbeat_\w+[\"']?\s*:\s*[\"']?)[^\"',;}\s]+"), rf"\1{_REDACTED}"),
     (
         re.compile(
-            r"(?i)\b(authorization|x-csrf-token|x-api-key|cookie|set-cookie)\b"
+            r"(?i)\b(authorization|x-csrf-token|x-api-key|x-auth-token|cookie|set-cookie)\b"
             r"([\"']?\s*[:=]\s*[\"']?)[^\r\n\"']*"
         ),
         rf"\1\2{_REDACTED}",
@@ -83,6 +84,7 @@ SECRET_KEYS = frozenset(
         "spotify_refresh_token",
         "api_key",
         "x-api-key",
+        "x-auth-token",
         "anthropic_api_key",
         "openai_api_key",
         "deepseek_api_key",

@@ -147,8 +147,19 @@ def test_the_device_id_is_a_keyed_hash_of_the_user() -> None:
 def test_the_log_redaction_masks_the_swedebeat_names() -> None:
     from classbeat.log import SECRET_KEYS
 
-    for name in ("swedebeat_token", "swedebeat_device_id", "swedebeat_app", "deviceid", "password"):
+    for name in (
+        "swedebeat_token",
+        "swedebeat_device_id",
+        "swedebeat_app",
+        "deviceid",
+        "password",
+        "x-auth-token",
+    ):
         assert name in SECRET_KEYS
+    planted = "planted-swedebeat-catalogue-token"
+    masked = redact(f"X-Auth-Token: {planted}")
+    assert planted not in masked
+    assert "[redacted]" in masked
     assert redact("plain text") == "plain text"
 
 

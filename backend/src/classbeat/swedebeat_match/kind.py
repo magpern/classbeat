@@ -21,8 +21,9 @@ no credit, no external write.
   cleaned title and artist share one request (in-job memory only: nothing is cached across jobs,
   classes or users, ADR 0016 section 5). The token follows ADR 0015: a 401 or 403 flips the
   connection to ``needs_reconnect`` (the job ends so); a 429 ends the attempt ``rate_limited``
-  with Swedebeat's ``Retry-After`` (the retry waits at least that); a 5xx or a timeout is
-  ``upstream_unavailable`` (retried); success records ``last_used_at``.
+  with Swedebeat's ``Retry-After`` (the retry waits at least that, and the job sentence names
+  that wait); a 5xx or a timeout is ``upstream_unavailable`` (retried); success records
+  ``last_used_at``.
 - **store**: the ``swedebeat_match`` revision under the list
   (``classbeat.swedebeat_match.revision``).
 
@@ -165,7 +166,7 @@ async def _search(
     else:
         await record_result(run.factory, run.ctx, opened, failure.category)
     logger.info("swedebeat search failed", extra={"category": failure.category})
-    raise JobFailure(failure.category, failure.retry_after)
+    raise JobFailure(failure.category, failure.retry_after, provider=PROVIDER)
 
 
 async def match(
