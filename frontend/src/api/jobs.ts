@@ -77,11 +77,15 @@ export interface Brief {
 }
 
 /** What `POST /api/jobs` takes for `design_draft`: a new class by title, or an existing one. */
+export type DesignMusic =
+  | { source: 'mowl_spotify_playlist'; spotify_playlist_id: string }
+  | { source: 'mowl_swedebeat_mix'; mix_id: string }
+
 export interface DesignInput {
   title?: string
   class_id?: string
   brief: Brief
-  music: { source: 'mowl_spotify_playlist'; spotify_playlist_id: string }
+  music: DesignMusic
   mowl_connection_id: string
 }
 
