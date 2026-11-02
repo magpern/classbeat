@@ -59,6 +59,9 @@ test('a Client ID Spotify does not know leaves nothing connected', async ({ page
   await connectSpotify(page, CLIENT_UNKNOWN)
   await expect.poll(() => seen.length).toBe(1)
   expect(seen[0]).toEqual({ clientId: CLIENT_UNKNOWN, status: 400 }) // Spotify's own error page
+  // Wait until the authorize navigation finishes; `seen` is set when the request starts, and
+  // `goto` too soon races that redirect and Playwright reports an interrupted navigation.
+  await page.waitForURL(/accounts\.spotify\.com\/authorize/)
   // No callback reached classbeat: it still says not connected, and no token was asked for.
   await page.goto('/account/spotify')
   await expect(page.getByTestId('spotify-status')).toHaveText('Not connected')

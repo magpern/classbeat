@@ -1,8 +1,15 @@
 import * as DialogPrimitive from '@radix-ui/react-dialog'
 import { X } from 'lucide-react'
-import { useEffect, useState, type ComponentProps } from 'react'
+import { createContext, forwardRef, useContext, useEffect, useRef, useState, type ComponentProps, type Ref } from 'react'
 import { cn } from '../../lib/cn'
 import { keepTabInside, lockPageBehind } from '../../lib/modalLock'
+
+const DialogTriggerRefContext = createContext<React.RefObject<HTMLElement | null> | null>(null)
+
+function assignRef<T>(ref: Ref<T> | undefined, value: T | null): void {
+  if (typeof ref === 'function') ref(value)
+  else if (ref) ref.current = value
+}
 
 /**
  * A modal dialog that works under `style-src 'self'` (ADR 0013 section 9). Radix's modal mode
@@ -12,19 +19,41 @@ import { keepTabInside, lockPageBehind } from '../../lib/modalLock'
  * closes), a Tab loop, and a taller-than-the-window dialog scrolls inside itself.
  */
 export function Dialog(props: ComponentProps<typeof DialogPrimitive.Root>) {
-  return <DialogPrimitive.Root {...props} modal={false} />
+  const triggerRef = useRef<HTMLElement | null>(null)
+  return (
+    <DialogTriggerRefContext.Provider value={triggerRef}>
+      <DialogPrimitive.Root {...props} modal={false} />
+    </DialogTriggerRefContext.Provider>
+  )
 }
-export const DialogTrigger = DialogPrimitive.Trigger
+
+export const DialogTrigger = forwardRef<
+  HTMLButtonElement,
+  ComponentProps<typeof DialogPrimitive.Trigger>
+>(function DialogTrigger(props, forwardedRef) {
+  const triggerRef = useContext(DialogTriggerRefContext)
+  return (
+    <DialogPrimitive.Trigger
+      {...props}
+      ref={(node) => {
+        if (triggerRef) triggerRef.current = node
+        assignRef(forwardedRef, node)
+      }}
+    />
+  )
+})
 export const DialogClose = DialogPrimitive.Close
 
 export function DialogContent({
   className,
   children,
   onKeyDown,
+  onCloseAutoFocus,
   onFocusOutside,
   onPointerDownOutside,
   ...props
 }: ComponentProps<typeof DialogPrimitive.Content>) {
+  const triggerRef = useContext(DialogTriggerRefContext)
   // The portal renders after the first commit, so the element arrives through state.
   const [node, setNode] = useState<HTMLDivElement | null>(null)
   useEffect(() => (node ? lockPageBehind(node) : undefined), [node])
@@ -41,6 +70,16 @@ export function DialogContent({
         onKeyDown={(event) => {
           onKeyDown?.(event)
           if (node && !event.defaultPrevented) keepTabInside(event, node)
+        }}
+        // Non-modal Radix skips trigger focus after an outside dismiss; restore it ourselves.
+        onCloseAutoFocus={(event) => {
+          onCloseAutoFocus?.(event)
+          if (event.defaultPrevented) return
+          const trigger = triggerRef?.current
+          if (trigger) {
+            trigger.focus()
+            event.preventDefault()
+          }
         }}
         // Focus is kept inside by the Tab loop; a pointer-down on another dialog (a prompt on
         // top of this one) is not a click away.

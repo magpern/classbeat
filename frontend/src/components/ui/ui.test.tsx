@@ -159,6 +159,9 @@ describe('Dialog', () => {
       <>
         <button>Behind</button>
         <Dialog defaultOpen onOpenChange={onOpenChange}>
+          <DialogTrigger asChild>
+            <Button>Open it</Button>
+          </DialogTrigger>
           <DialogContent>
             <DialogTitle>Title</DialogTitle>
             <DialogDescription>Text</DialogDescription>
@@ -167,6 +170,7 @@ describe('Dialog', () => {
         </Dialog>
       </>,
     )
+    const trigger = screen.getByRole('button', { name: 'Open it' })
     const dialog = await screen.findByRole('dialog')
     expect(dialog).toHaveAttribute('aria-modal', 'true')
     const inside = screen.getByRole('button', { name: 'Inside' })
@@ -180,6 +184,8 @@ describe('Dialog', () => {
     const overlay = document.querySelector('[aria-hidden="true"].fixed')!
     await userEvent.click(overlay)
     expect(onOpenChange).toHaveBeenCalledWith(false)
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+    expect(document.activeElement).toBe(trigger)
   })
 
   it('has a labelled Close button', async () => {
