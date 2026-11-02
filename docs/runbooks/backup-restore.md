@@ -56,7 +56,7 @@ gpg --list-keys --with-colons classbeat-backup-signer | awk -F: '/^fpr:/ { print
 Fingerprints are **full 40-digit primary-key fingerprints**, passed as flags or as
 `BACKUP_GPG_RECIPIENT`, `BACKUP_GPG_SIGNER` and `RESTORE_EXPECT_SIGNER`. `restore.sh` accepts a
 signature only as made by the pinned **primary** key (or a subkey of it); pinning a signing
-subkey's own fingerprint is refused. Names, short ids and
+subkey's own fingerprint is refused (and `backup.sh` refuses one for either key). Names, short ids and
 `--trust-model` games cannot pick another key: the backup is encrypted to exactly that key and
 restore accepts exactly that signer. Export the signer's public key to the restore host
 (`gpg --export S | gpg --import`) and check the fingerprint by eye against the one you wrote down.
@@ -73,7 +73,9 @@ password on a command line). The superuser is required: every owned table has fo
 security, and a dump as `classbeat_owner` would silently skip rows. The dump is piped straight into
 `gpg --encrypt --sign`: no plaintext dump touches the disk, and the output is
 `classbeat-<UTC timestamp>.dump.gpg`, mode 600. The script **refuses to write anything that is not
-encrypted and signed**: no flags, a recipient without a signer, or a short fingerprint is an error.
+encrypted and signed**: no flags, a recipient without a signer, or a short fingerprint is an error,
+and so is a subkey's fingerprint for either key (checked against the keyring, so the mistake shows
+at backup time and not when `restore.sh` refuses the archive).
 The encrypted archive is not read back by the script (that needs the private key R); the drill and a
 monthly restore of a real backup are its test. `--keep N` (a positive whole number, checked before
 anything is written or deleted) deletes older files named exactly
@@ -193,8 +195,9 @@ files at the end, also on failure):
    is the decrypt and wrong-key probes. `--keep` is exercised (bad values refused with nothing
    deleted, a valid one prunes old backup files only).
 4. **Authenticity** (all with `--verify-only`, nothing starts), each refused for the expected reason:
-   - backup with no flags, with a recipient only, with a short fingerprint, `--no-encrypt` without a
-     key or with the key inside the backup directory;
+   - backup with no flags, with a recipient only, with a short fingerprint, with a subkey's
+     fingerprint as signer or recipient, `--no-encrypt` without a key or with the key inside the
+     backup directory;
    - the unencrypted path works with the explicit flag and a signing key, and a plain archive is
      refused without `--verify-key` or with the key beside it;
    - an encrypted archive is refused with no, a different, or a short expected signer;

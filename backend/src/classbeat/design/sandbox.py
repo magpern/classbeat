@@ -8,7 +8,8 @@ this file by path, so it never imports the package).
 
 - **System calls** (``deny_syscalls``, required: the child fails when it cannot install it). A
   seccomp filter, under ``no_new_privs``, that answers ``EPERM`` to ``socket`` (so no network of
-  any family, DNS included), ``io_uring_*`` (sockets without ``socket``), ``ptrace``,
+  any family, DNS included) and ``socketpair`` (a connected ``AF_UNIX`` pair, the one socket
+  ``socket`` leaves; the child needs none), ``io_uring_*`` (sockets without ``socket``), ``ptrace``,
   ``process_vm_readv``/``writev`` and ``pidfd_getfd`` (another process's memory or descriptors:
   the worker's), ``setsid`` and ``setpgid`` (leaving the process group the parent kills), ``bpf``,
   ``perf_event_open`` and ``userfaultfd``; any other architecture's call (32-bit or x32) kills the
@@ -60,6 +61,7 @@ _X32_BIT: Final = 0x40000000
 
 DENIED: Final = (
     "socket",
+    "socketpair",
     "io_uring_setup",
     "io_uring_enter",
     "io_uring_register",
@@ -79,6 +81,7 @@ _ARCHES: Final[dict[str, tuple[int, dict[str, int]]]] = {
         0xC000003E,
         {
             "socket": 41,
+            "socketpair": 53,
             "ptrace": 101,
             "setpgid": 109,
             "setsid": 112,
@@ -100,6 +103,7 @@ _ARCHES: Final[dict[str, tuple[int, dict[str, int]]]] = {
             "setpgid": 154,
             "setsid": 157,
             "socket": 198,
+            "socketpair": 199,
             "perf_event_open": 241,
             "process_vm_readv": 270,
             "process_vm_writev": 271,
