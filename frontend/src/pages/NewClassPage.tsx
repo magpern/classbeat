@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { ApiError } from '../api/client'
-import { getConnections, type Connection } from '../api/connections'
+import { getConnectionsView, type Connection } from '../api/connections'
+import { getSwedebeatMixes, swedebeatMixListError, type SwedebeatMix } from '../api/swedebeatMixes'
 import {
   createDesignJob,
   getMowlPlaylists,
@@ -13,7 +14,13 @@ import { startError } from '../api/songMessages'
 import { createPickJob, type PickInput } from '../api/songs'
 import { getPlan } from '../api/plan'
 import { getSpotifyStatus } from '../api/spotify'
-import { MusicChoice, type Music, type SongsAvailability } from '../components/songs/MusicChoice'
+import {
+  MusicChoice,
+  type Music,
+  type SongsAvailability,
+  type SwedebeatMixAvailability,
+} from '../components/songs/MusicChoice'
+import { MixTiles } from '../components/newclass/MixTiles'
 import { EffortCards } from '../components/newclass/EffortCards'
 import { SelectInput, TextArea, TextInput } from '../components/newclass/inputs'
 import { PlaylistTiles } from '../components/newclass/PlaylistTiles'
@@ -36,7 +43,14 @@ type Source =
   | { status: 'loading' }
   | { status: 'no_mowl'; reconnect: boolean }
   | { status: 'playlists_failed'; message: string }
-  | { status: 'ready'; connection: Connection; playlists: Playlist[]; songs: SongsAvailability }
+  | {
+      status: 'ready'
+      connection: Connection
+      playlists: Playlist[]
+      songs: SongsAvailability
+      swedebeat: SwedebeatMixAvailability
+      mixes: SwedebeatMix[]
+    }
 
 const PLAYLIST_ERRORS: Record<string, string> = {
   upstream_unavailable: 'MOWL could not be reached. Try again in a few minutes.',
@@ -105,7 +119,7 @@ function NewClass() {
     const abort = new AbortController()
     void (async () => {
       try {
-        const connections = await getConnections()
+        const { connections, swedebeat: swedebeatAccess } = await getConnectionsView()
         const mowl = connections.find((c) => c.provider === 'mowl')
         if (mowl === undefined || mowl.status !== 'connected') {
           setSource({ status: 'no_mowl', reconnect: mowl !== undefined })
@@ -113,7 +127,22 @@ function NewClass() {
         }
         const playlists = await getMowlPlaylists(abort.signal)
         const songs = await songsAvailability(connections, abort.signal)
-        setSource({ status: 'ready', connection: mowl, playlists, songs })
+        let swedebeat: SwedebeatMixAvailability = { kind: 'off' }
+        let mixes: SwedebeatMix[] = []
+        if (swedebeatAccess.enabled) {
+          try {
+            const listed = await getSwedebeatMixes(abort.signal)
+            if (listed !== null) {
+              swedebeat = { kind: 'ready' }
+              mixes = listed
+            }
+          } catch (error) {
+            if (!abort.signal.aborted) {
+              swedebeat = { kind: 'failed', message: swedebeatMixListError(error) }
+            }
+          }
+        }
+        setSource({ status: 'ready', connection: mowl, playlists, songs, swedebeat, mixes })
       } catch (error) {
         if (abort.signal.aborted) return
         if (error instanceof ApiError && error.status === 409) {
@@ -158,7 +187,13 @@ function NewClass() {
         </>
       ) : null}
       {source.status === 'ready' ? (
-        <ClassForm connection={source.connection} playlists={source.playlists} songs={source.songs} />
+        <ClassForm
+          connection={source.connection}
+          playlists={source.playlists}
+          songs={source.songs}
+          swedebeat={source.swedebeat}
+          mixes={source.mixes}
+        />
       ) : null}
     </div>
   )
@@ -178,16 +213,21 @@ function ClassForm({
   connection,
   playlists,
   songs,
+  swedebeat,
+  mixes,
 }: {
   connection: Connection
   playlists: Playlist[]
   songs: SongsAvailability
+  swedebeat: SwedebeatMixAvailability
+  mixes: SwedebeatMix[]
 }) {
   const { navigate } = useRouter()
   const preset = readPreset(useQuery())
   const action = useAction()
   const [title, setTitle] = useState('')
   const [playlist, setPlaylist] = useState('')
+  const [mixId, setMixId] = useState('')
   const [music, setMusic] = useState<Music>('playlist')
   const [length, setLength] = useState(preset.length)
   const [intensity, setIntensity] = useState<Brief['intensity']>(preset.intensity)
@@ -231,6 +271,7 @@ function ClassForm({
     let invalid: string | null = null
     if (name === '' || name.length > 100) invalid = 'Give the class a name of up to 100 characters.'
     else if (music === 'playlist' && playlist === '') invalid = 'Choose a playlist.'
+    else if (music === 'swedebeat_mix' && mixId === '') invalid = 'Choose a Swedebeat mix.'
     else if (!inRange(brief.length_min, 10, 180)) invalid = 'The length is 10 to 180 minutes.'
     else if (!inRange(brief.climbs, 0, 10)) invalid = 'Climbs are 0 to 10.'
     else if (!inRange(brief.sprints, 0, 20)) invalid = 'Sprints are 0 to 20.'
@@ -273,10 +314,14 @@ function ClassForm({
       }, startError)
       return
     }
+    const musicInput: DesignInput['music'] =
+      music === 'swedebeat_mix'
+        ? { source: 'mowl_swedebeat_mix', mix_id: mixId }
+        : { source: 'mowl_spotify_playlist', spotify_playlist_id: playlist }
     const input: DesignInput = {
       title: name,
       brief: fullBrief,
-      music: { source: 'mowl_spotify_playlist', spotify_playlist_id: playlist },
+      music: musicInput,
       mowl_connection_id: connection.id,
     }
     const fingerprint = JSON.stringify(input)
@@ -294,7 +339,9 @@ function ClassForm({
   const lengthNumber = whole(length)
   const effort = EFFORTS.find((e) => e.value === intensity)
   const chosenPlaylist = playlists.find((p) => p.spotifyPlaylistId === playlist)
+  const chosenMix = mixes.find((m) => m.mixId === mixId)
   const picking = music === 'pick' && songs.kind === 'ready'
+  const onSwedebeatMix = music === 'swedebeat_mix' && swedebeat.kind === 'ready'
   const summary = [
     { label: 'Length', value: Number.isInteger(lengthNumber) ? `${String(lengthNumber)} min` : 'Not set' },
     { label: 'Effort', value: effort?.label ?? '' },
@@ -305,9 +352,13 @@ function ClassForm({
       label: 'Music',
       value: picking
         ? 'Songs picked for you'
-        : chosenPlaylist
-          ? chosenPlaylist.name || 'Untitled playlist'
-          : 'No playlist chosen yet',
+        : onSwedebeatMix
+          ? chosenMix
+            ? chosenMix.name || 'Untitled mix'
+            : 'No mix chosen yet'
+          : chosenPlaylist
+            ? chosenPlaylist.name || 'Untitled playlist'
+            : 'No playlist chosen yet',
     },
   ]
   const profile = sketchProfile({
@@ -318,7 +369,7 @@ function ClassForm({
     races: whole(races),
   })
 
-  if (playlists.length === 0 && songs.kind !== 'ready') {
+  if (playlists.length === 0 && songs.kind !== 'ready' && swedebeat.kind !== 'ready') {
     return (
       <Card>
         <CardTitle>No playlists found</CardTitle>
@@ -390,8 +441,9 @@ function ClassForm({
         </Card>
         <Card className={section}>
           <CardTitle className="mb-0">Music</CardTitle>
-          <MusicChoice songs={songs} value={music} onChange={setMusic} />
+          <MusicChoice songs={songs} swedebeat={swedebeat} value={music} onChange={setMusic} />
           {music === 'playlist' ? <PlaylistTiles playlists={playlists} value={playlist} onChange={setPlaylist} /> : null}
+          {onSwedebeatMix ? <MixTiles mixes={mixes} value={mixId} onChange={setMixId} /> : null}
           <StylePicker value={style} onChange={setStyle} />
         </Card>
         <Card className={section}>
