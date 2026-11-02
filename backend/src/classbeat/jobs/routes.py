@@ -123,7 +123,7 @@ class JobOut(BaseModel):
     expires_at: datetime | None
     approved_at: datetime | None
     error_category: str | None
-    error_message: str | None = None  # the plain sentence of a song-picking or Spotify category
+    error_message: str | None = None  # a song-picking, Spotify or Swedebeat-wait sentence
     created_at: datetime
     updated_at: datetime
     finished_at: datetime | None
@@ -139,6 +139,7 @@ class JobOut(BaseModel):
             view.spotify_retry_after,
             view.available_at,
             datetime.now(UTC),
+            view.kind,
         )
         return out
 

@@ -79,7 +79,12 @@ def test_a_model_api_key_is_redacted_everywhere() -> None:
     logger.warning("headers", extra={"headers": f"x-api-key: {key}"})
     logger.warning("fields", extra={"api_key": key, "nested": {"anthropic_api_key": key}})
     logger.warning("header map", extra={"sent": {"X-Api-Key": key}})
+    token = "planted-swedebeat-catalogue-token"
+    logger.warning("catalogue %s", f"X-Auth-Token: {token}")
+    logger.warning("catalogue map", extra={"sent": {"X-Auth-Token": token}})
     output = stream.getvalue()
     assert key not in output
     assert "planted-test-value" not in output
-    assert len(output.splitlines()) == 4
+    assert token not in output
+    assert "planted-swedebeat-catalogue-token" not in output
+    assert len(output.splitlines()) == 6

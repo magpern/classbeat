@@ -128,8 +128,10 @@ HINTED: Final = frozenset({"rate_limited", "quota_exhausted"})
 
 class JobFailure(Exception):
     """A run failed with ``category``. ``args == (category,)``; ``retry_after`` (seconds) only
-    for ``rate_limited`` and ``quota_exhausted``; ``provider`` is ``"spotify"`` for a failure
-    of a Spotify request (``ConnectionFailure.provider``), else None."""
+    for ``rate_limited`` and ``quota_exhausted``. ``provider`` is ``"spotify"`` for a failure
+    of a Spotify request (``ConnectionFailure.provider``) and ``"swedebeat"`` for a catalogue
+    search, else None. A Swedebeat ``rate_limited`` is recorded so the job sentence names the
+    wait; it does not count as a Spotify 429."""
 
     def __init__(
         self, category: str, retry_after: float | None = None, *, provider: str | None = None

@@ -150,9 +150,14 @@ async def _failed(
     category = failure.category
     delay = backoff_seconds(run.attempt, failure.retry_after)
     spotify = failure.provider == "spotify"
+    # A catalogue 429 is stored beside the Spotify hint so the job sentence can name the wait.
+    # ``rate_limited`` stays false: it does not count toward Spotify's ``quota_exhausted``.
+    swedebeat_wait = failure.provider == "swedebeat" and category == "rate_limited"
     rate_limited = spotify and category == "rate_limited"
     noted = category if spotify and category in transitions.SPOTIFY_NOTED else None
-    hint = _hint(failure.retry_after) if spotify else None
+    if swedebeat_wait:
+        noted = category
+    hint = _hint(failure.retry_after) if spotify or swedebeat_wait else None
 
     async def write(fs: Any) -> str:
         if fs.cancel_requested:
