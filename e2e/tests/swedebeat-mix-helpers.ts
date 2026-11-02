@@ -47,8 +47,21 @@ export function seedCachedMix(ownerId: string, connectionId: string, mixId: stri
   const map = JSON.stringify({
     version,
     duration: 90.0,
-    songs: [{ start: 0.0, end: 90.0, bpm: 124.0, first_downbeat: 0.4 }],
-    events: [{ t: 10.0, kind: 'drop' }],
+    // The shape of music.analyze_signal's map: every song and event carries its 1-based `song`.
+    songs: [
+      {
+        song: 1,
+        start: 0.0,
+        end: 90.0,
+        bpm: 124.0,
+        first_downbeat: 0.4,
+        first_phrase: 0.4,
+        phrase_bars: 8,
+        grid_score: 0.9,
+        beat1_margin: 2.0,
+      },
+    ],
+    events: [{ t: 10.0, precise: 10.0, kind: 'drop', strength: 0.8, song: 1 }],
   }).replaceAll("'", "''")
   sql(
     `INSERT INTO mowl_playlist_links (owner_id, source, source_id, playlist_id) VALUES ('${ownerId}', 'swedebeat', '${mixId}', ${String(PLANTED_PLAYLIST_ID)}) ON CONFLICT (owner_id, source, source_id) DO UPDATE SET playlist_id = EXCLUDED.playlist_id`,
