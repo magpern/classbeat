@@ -5,10 +5,8 @@ is the stored approval when it belongs to the current draft's song list (``store
 a request never supplies it. A row whose ``expires_at`` has passed is refused and never revived.
 """
 
-import hashlib
 from collections.abc import Mapping
 from dataclasses import dataclass, field
-from typing import Any
 from uuid import UUID
 
 from mowl import api as mowl_api
@@ -26,11 +24,10 @@ from classbeat.db import user_session
 from classbeat.design.kind import DESIGN_DRAFT, DesignDraftInput, SwedebeatMusicChoice
 from classbeat.egress import OutboundBlocked
 from classbeat.jobs.credits import CreditLedger
-from classbeat.jobs.inputs import jsonb_size
-from classbeat.jobs.kinds import Admitted, Refused
-from classbeat.jobs.routes import canonical_json
-from classbeat.jobs.service import create as create_job
-from classbeat.jobs.user import Admission, JobLimitPolicy, NewJob
+from classbeat.jobs.http import JobEnqueue
+from classbeat.jobs.inputs import JobInput
+from classbeat.jobs.kinds import JobKind
+from classbeat.jobs.user import JobLimitPolicy
 from classbeat.operations.swedebeat import parse_mixes
 from classbeat.swedebeat_handoff.kind import VERIFY_MIX, VerifyInput
 from classbeat.swedebeat_handoff.rows import (
@@ -153,56 +150,32 @@ async def list_mix_ids(
     return [entry.mix_id for entry in parse_mixes(answer)], None
 
 
-def _bind(kind: Any, parsed: Any) -> Any:
-    async def run(db: AsyncSession, ctx: UserContext) -> Any:
-        admit = kind.admit
-        if admit is None:
-            return Admitted()
-        result = await admit(db, ctx, parsed)
-        if isinstance(result, Refused):
-            return result
-        stored = kind.admitted_input(parsed, result.fields).model_dump(mode="json")
-        if jsonb_size(stored) > 65536:
-            return Refused("too_large")
-        return Admission(canonical_json(stored).decode("utf-8"), result.after_insert)
-
-    return run
-
-
 async def _enqueue(
     factory: Factory,
     ctx: UserContext,
-    parsed: Any,
-    kind: Any,
+    parsed: JobInput,
+    kind: JobKind,
     *,
     idempotency_key: str,
     ledger: CreditLedger,
     limit: JobLimitPolicy,
     consumes_credit: bool,
+    enqueue: JobEnqueue,
 ) -> Step:
-    stored = parsed.model_dump(mode="json")
-    created = await create_job(
+    """``enqueue`` is ``classbeat.jobs.routes.enqueue`` (the jobs API's create)."""
+    created = await enqueue(
         factory,
         ctx,
-        NewJob(
-            kind=kind.name,
-            input=canonical_json(stored).decode("utf-8"),
-            class_id=parsed.class_id,
-            title=None,
-            connection_ids=parsed.connection_ids(),
-            idempotency_key=idempotency_key,
-            request_hash=hashlib.sha256(
-                canonical_json({"input": stored, "kind": kind.name})
-            ).digest(),
-            consumes_credit=consumes_credit,
-            admit=_bind(kind, parsed),
-        ),
-        limit=limit,
+        parsed,
+        kind,
+        idempotency_key=idempotency_key,
         ledger=ledger,
+        limit=limit,
+        consumes_credit=consumes_credit,
     )
-    if created.job is None:
+    if created.job_id is None:
         return Step(reason=created.reason or "invalid_input", counts=created.counts)
-    return Step(job_id=created.job.id, created=created.created)
+    return Step(job_id=created.job_id, created=created.created)
 
 
 async def press(
@@ -214,6 +187,7 @@ async def press(
     idempotency_key: str,
     ledger: CreditLedger,
     limit: JobLimitPolicy,
+    enqueue: JobEnqueue,
 ) -> Step:
     """ "I made the mix" / "Check again". A verified row is a 200 with no job."""
     require_context(ctx)
@@ -241,6 +215,7 @@ async def press(
         ledger=ledger,
         limit=limit,
         consumes_credit=False,
+        enqueue=enqueue,
     )
 
 
@@ -311,6 +286,7 @@ async def start_design(
     idempotency_key: str,
     ledger: CreditLedger,
     limit: JobLimitPolicy,
+    enqueue: JobEnqueue,
 ) -> Step:
     """Queue ``design_draft`` on the verified mix (A4). The job carries the hand-off id."""
     ready = await prepare_design(factory, ctx, class_id)
@@ -344,6 +320,7 @@ async def start_design(
         ledger=ledger,
         limit=limit,
         consumes_credit=True,
+        enqueue=enqueue,
     )
     return queued
 

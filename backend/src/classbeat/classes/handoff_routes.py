@@ -18,7 +18,7 @@ from classbeat.classes import handoff
 from classbeat.connections.swedebeat_account import swedebeat_enabled
 from classbeat.context import UserContext
 from classbeat.jobs.credits import CreditLedger
-from classbeat.jobs.routes import IDEMPOTENCY_KEY, credit_ledger, job_limit
+from classbeat.jobs.http import IDEMPOTENCY_KEY, JobEnqueue, credit_ledger, job_limit
 from classbeat.jobs.user import JobLimitPolicy
 from classbeat.swedebeat_handoff.rows import Handoff
 
@@ -160,6 +160,26 @@ async def _enabled(request: Request) -> bool:
     return await swedebeat_enabled(request.app.state.settings, request.app.state.session_factory)
 
 
+_job_enqueue: JobEnqueue | None = None
+
+
+def install_job_enqueue(fn: JobEnqueue) -> None:
+    """The web app installs ``classbeat.jobs.routes.enqueue``.
+
+    This module does not import ``classbeat.jobs.routes`` or ``classbeat.jobs.service``.
+    The session guard allows the service only from the jobs routes, and those only from the
+    web app.
+    """
+    global _job_enqueue
+    _job_enqueue = fn
+
+
+def job_enqueue() -> JobEnqueue:
+    if _job_enqueue is None:
+        raise RuntimeError("job creation is not installed")
+    return _job_enqueue
+
+
 def _key(header: str | None) -> JSONResponse | str:
     if header is None:
         return _refuse("idempotency_key_missing", {})
@@ -259,6 +279,7 @@ async def check_handoff(
         idempotency_key=key,
         ledger=ledger,
         limit=limit,
+        enqueue=job_enqueue(),
     )
     refused = _step(done)
     if refused is not None:
@@ -328,6 +349,7 @@ async def design_handoff(
         idempotency_key=key,
         ledger=ledger,
         limit=limit,
+        enqueue=job_enqueue(),
     )
     refused = _step(done)
     if refused is not None:

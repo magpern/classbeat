@@ -28,6 +28,7 @@ from classbeat.account.routes import router as account_router
 from classbeat.admin import routes as admin_routes
 from classbeat.admin.db import AdminDb
 from classbeat.bodylimit import BodyLimit
+from classbeat.classes.handoff_routes import install_job_enqueue
 from classbeat.classes.handoff_routes import router as handoff_router
 from classbeat.classes.routes import music_router as class_music_router
 from classbeat.classes.routes import router as classes_router
@@ -44,6 +45,7 @@ from classbeat.headers import SecurityHeaders, unhandled_error
 from classbeat.jobs.events_routes import StreamLimiter
 from classbeat.jobs.events_routes import router as job_events_router
 from classbeat.jobs.hub import EventHub
+from classbeat.jobs.routes import enqueue as enqueue_job
 from classbeat.jobs.routes import router as jobs_router
 from classbeat.operations.routes import router as operations_router
 from classbeat.plans.routes import router as plans_router
@@ -52,6 +54,10 @@ from classbeat.quota import PlanRevisionPolicy
 from classbeat.spotify.routes import api as spotify_router
 from classbeat.spotify.routes import callback as spotify_callback_router
 from classbeat.usage.routes import router as usage_router
+
+# The hand-off routes create jobs through the jobs API. The session guard allows
+# classbeat.jobs.service only from classbeat.jobs.routes, and that module only from here.
+install_job_enqueue(enqueue_job)
 
 logger = logging.getLogger(__name__)
 

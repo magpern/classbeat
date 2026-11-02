@@ -638,7 +638,9 @@ OWNED_ROUTES = [
         lambda rows: {"mix_id": "mix-1"},
         frozenset({404}),
     ),
-    OwnedRoute("POST", "/api/classes/{class_id}/swedebeat-handoff/design", control=frozenset({404})),
+    OwnedRoute(
+        "POST", "/api/classes/{class_id}/swedebeat-handoff/design", control=frozenset({404})
+    ),
     OwnedRoute(
         "POST", "/api/classes/{class_id}/swedebeat-handoff/not-now", control=frozenset({404})
     ),
