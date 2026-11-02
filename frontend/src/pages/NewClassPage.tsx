@@ -369,7 +369,12 @@ function ClassForm({
     races: whole(races),
   })
 
-  if (playlists.length === 0 && songs.kind !== 'ready' && swedebeat.kind !== 'ready') {
+  if (
+    playlists.length === 0 &&
+    songs.kind !== 'ready' &&
+    swedebeat.kind !== 'ready' &&
+    swedebeat.kind !== 'failed'
+  ) {
     return (
       <Card>
         <CardTitle>No playlists found</CardTitle>

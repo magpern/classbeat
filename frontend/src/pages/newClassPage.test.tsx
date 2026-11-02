@@ -348,4 +348,22 @@ describe('the new-class form', () => {
     expect(document.body).not.toHaveTextContent('upstream_unavailable')
     expect(screen.getByRole('button', { name: 'Use my Swedebeat mix' })).toBeDisabled()
   })
+
+  it('shows a failed mix list when MOWL lists no Spotify playlists', async () => {
+    fakeApi({
+      ...SESSION_ROUTES,
+      'GET /api/connections': {
+        connections: [MOWL],
+        swedebeat: { enabled: true, available: true },
+      },
+      'GET /api/music/mowl-playlists': { playlists: [] },
+      'GET /api/music/swedebeat-mixes': () => reason(503, 'upstream_unavailable'),
+    })
+    renderAt('/classes/new')
+    await screen.findByLabelText('Class name')
+    expect(screen.getByText('MOWL could not be reached. Try again in a few minutes.')).toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: 'No playlists found' })).toBeNull()
+    expect(document.body).not.toHaveTextContent('MOWL lists no Spotify playlists')
+    expect(screen.getByRole('button', { name: 'Use my Swedebeat mix' })).toBeDisabled()
+  })
 })
