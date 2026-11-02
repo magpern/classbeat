@@ -82,9 +82,13 @@ class ReviseSongsInput(ModelJobInput):
       or ``"all"`` (no song kept); ``request``: what the user wants (1 to 2000 visible
       characters). Both are required in mode ``pick`` and refused in mode ``resume``: a resume
       runs phase 2 for the list already approved, with the request that list was made for.
+    - ``match_revision_id`` (ADR 0016 section 6): a catalogue replace. A pick names that match
+      and neither ``replace`` nor ``request``; the server fills the slots and the status-only
+      fact. A resume never names it.
     - Server fields, set only by ``admit``: ``base_revision_hash`` (the base's hash at creation)
       and ``request_message_id`` (the user's message row: inserted with a pick, the approved
-      job's own for a resume).
+      job's own for a resume). A catalogue replace also sets ``catalogue_replace``,
+      ``catalogue_fact`` and ``swedebeat_connection_id``; a resume of that job copies them.
     """
 
     CONNECTIONS: ClassVar[tuple[str, ...]] = ("mowl", "spotify")
@@ -94,18 +98,40 @@ class ReviseSongsInput(ModelJobInput):
     replace: Slots | Literal["all"] | None = None
     request: Request | None = None
     resume: Resume | None = None
+    match_revision_id: UUID | None = None
     mowl_connection_id: UUID
     spotify_connection_id: UUID
     base_revision_hash: Sha256Hex | None = None
     request_message_id: UUID | None = None
+    catalogue_replace: Slots | None = None
+    catalogue_fact: Annotated[str, Field(min_length=1, max_length=2000)] | None = None
+    swedebeat_connection_id: UUID | None = None
 
     @model_validator(mode="after")
     def _consistent(self) -> Self:
         if self.class_id is None:
             raise ValueError("a song change belongs to an existing class")
+        catalogue = (
+            self.catalogue_replace,
+            self.catalogue_fact,
+            self.swedebeat_connection_id,
+        )
+        if any(part is not None for part in catalogue) and any(part is None for part in catalogue):
+            raise ValueError("a catalogue replace is stored complete or not at all")
+        if self.catalogue_replace is not None and (
+            not self.catalogue_replace
+            or len(set(self.catalogue_replace)) != len(self.catalogue_replace)
+        ):
+            raise ValueError("catalogue replace names each slot once")
         if self.mode == "resume":
             if self.resume is None or self.replace is not None or self.request is not None:
                 raise ValueError("a resume names its list and nothing to change")
+            if self.match_revision_id is not None:
+                raise ValueError("a resume does not name a match")
+            return self
+        if self.match_revision_id is not None:
+            if self.resume is not None or self.replace is not None or self.request is not None:
+                raise ValueError("a catalogue replace names the match, not the slots or the words")
             return self
         if self.resume is not None or self.replace is None or self.request is None:
             raise ValueError("a pick names the songs to replace and the request")

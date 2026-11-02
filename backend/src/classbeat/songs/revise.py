@@ -25,6 +25,11 @@
   whose free text leads with the request (cut to the brief's 2000 characters); the new
   ``song_list`` (``provenance.origin = "revise_songs"``, parent: the base's list) marks the new
   songs ``new``. The approval is ``design_with_songs``' (``approve_check``).
+  A catalogue replace (ADR 0016 section 6, ``match_revision_id``) uses the server's slots and a
+  status-only fact in place of ``replace`` and ``request``. The fact is the only Swedebeat
+  material the model sees. After approval the job matches the new list
+  (``classbeat.swedebeat_match.replace``) before phase 2 writes anything, and phase 2 clears
+  ``classes.approved_swedebeat_match_id`` when the new draft becomes current.
 - **Phase 2** (approved, or ``mode = "resume"``): ``classbeat.songs.phase2.final_music`` (prepare,
   which also requires the base to be still current before any Spotify write, a **new** final
   playlist with the full list, fill, attach, music); then the ``revise`` stage
@@ -67,6 +72,7 @@ from classbeat.songs.config import SongConfig
 from classbeat.songs.inputs import ReviseSongsInput
 from classbeat.songs.phase2 import PHASE_TWO, final_checks, final_music, mark_mowl, music_source
 from classbeat.songs.pick import SeedSpec, run_phase_one, stage_config
+from classbeat.swedebeat_match import replace as catalogue_replace
 
 KIND: Final = "revise_songs"
 PHASE_ONE: Final = ("pool_search", "pool_write", "pool_analyse", "choose")
@@ -82,9 +88,11 @@ _CLASS_BRIEF = text(
     "WHERE j.id = :job_id AND j.owner_id = :owner_id"
 )
 # The current pointer and the class's music move together, from the base only.
+# A new current draft is a new song list, so a selection approved for the previous list is void.
 _CAS = text(
     "UPDATE classes c SET current_revision_id = :revision_id, "
-    "music_source = CAST(:music_source AS jsonb), updated_at = now() FROM jobs j "
+    "music_source = CAST(:music_source AS jsonb), approved_swedebeat_match_id = NULL, "
+    "updated_at = now() FROM jobs j "
     "WHERE j.id = :job_id AND j.owner_id = :owner_id AND c.owner_id = j.owner_id "
     "AND c.id = j.class_id AND c.current_revision_id = :base RETURNING c.id"
 )
@@ -103,6 +111,13 @@ async def _base_list(db: AsyncSession, owner_id: UUID, class_id: UUID, base: UUI
 async def admit(db: AsyncSession, ctx: UserContext, parsed: BaseModel, /) -> Admitted | Refused:
     if not isinstance(parsed, ReviseSongsInput) or parsed.class_id is None:
         return Refused("invalid_input")
+    # A catalogue replace checks the Swedebeat flag before the class or the match is read.
+    connection_id: UUID | None = None
+    if parsed.match_revision_id is not None:
+        gated = await catalogue_replace.gate(db, ctx)
+        if isinstance(gated, Refused):
+            return gated
+        connection_id = gated
     if not await flags.song_picking_admits(db, ctx, config.current().enabled):
         return Refused("song_picking_off")
     given, class_id, owner = parsed, parsed.class_id, ctx.user_id
@@ -135,8 +150,23 @@ async def admit(db: AsyncSession, ctx: UserContext, parsed: BaseModel, /) -> Adm
         and any(slot >= len(seed.content.songs) for slot in given.replace)
     ):
         return Refused("invalid_input")
+    catalogue: catalogue_replace.CatalogueReplace | None = None
+    if given.match_revision_id is not None:
+        if connection_id is None:
+            return Refused("internal")
+        decided = await catalogue_replace.decide(
+            db,
+            ctx,
+            class_id=class_id,
+            list_id=list_id,
+            match_id=given.match_revision_id,
+            connection_id=connection_id,
+        )
+        if isinstance(decided, Refused):
+            return decided
+        catalogue = decided
     message_id = uuid.uuid4()
-    request = given.request or ""
+    request = catalogue.fact if catalogue is not None else (given.request or "")
 
     async def after_insert(db: AsyncSession, job_id: UUID) -> None:
         try:
@@ -153,7 +183,12 @@ async def admit(db: AsyncSession, ctx: UserContext, parsed: BaseModel, /) -> Adm
         except chat.MessageRefused:
             raise RuntimeError("the job is not a job of this class") from None
 
-    return Admitted({**fields, "request_message_id": message_id}, after_insert)
+    stored = {**fields, "request_message_id": message_id}
+    if catalogue is not None:
+        stored["catalogue_replace"] = catalogue.slots
+        stored["catalogue_fact"] = catalogue.fact
+        stored["swedebeat_connection_id"] = catalogue.connection_id
+    return Admitted(stored, after_insert)
 
 
 async def _admit_resume(
@@ -185,7 +220,14 @@ async def _admit_resume(
         return Refused("account_changed")
     if await orphans.playlist_unresolved(db, ctx, class_id):
         return Refused("write_unresolved")
-    return Admitted({**fields, "request_message_id": approved.request_message_id})
+    copied: dict[str, object] = {"request_message_id": approved.request_message_id}
+    if approved.swedebeat_connection_id is not None:
+        if approved.catalogue_replace is None or approved.catalogue_fact is None:
+            return Refused("receipt_invalid")
+        copied["catalogue_replace"] = approved.catalogue_replace
+        copied["catalogue_fact"] = approved.catalogue_fact
+        copied["swedebeat_connection_id"] = approved.swedebeat_connection_id
+    return Admitted({**fields, **copied})
 
 
 def pick_brief(brief: Brief, request: str) -> Brief:
@@ -203,14 +245,20 @@ async def _phase_one_plan(run: JobRun, given: ReviseSongsInput) -> tuple[Brief, 
             list_id = await _base_list(
                 fs.db, fs.lease.owner_id, given.class_id, given.base_revision_id
             )
-    if found is None or found.brief is None or list_id is None or given.request is None:
+    request = given.catalogue_fact if given.match_revision_id is not None else given.request
+    if found is None or found.brief is None or list_id is None or request is None:
         raise JobFailure("invalid_input")
     try:
         brief = Brief.model_validate(found.brief)
     except ValidationError:
         raise JobFailure("internal") from None
-    replace = None if given.replace == "all" or given.replace is None else tuple(given.replace)
-    return pick_brief(brief, given.request), SeedSpec(list_id, replace)
+    if given.match_revision_id is not None:
+        if given.catalogue_replace is None:
+            raise JobFailure("internal")
+        slots: tuple[int, ...] | None = tuple(given.catalogue_replace)
+    else:
+        slots = None if given.replace == "all" or given.replace is None else tuple(given.replace)
+    return pick_brief(brief, request), SeedSpec(list_id, slots)
 
 
 async def run_revise_phase_two(
@@ -329,6 +377,14 @@ async def run(job_run: JobRun) -> Outcome:
         raise JobFailure("internal")  # a resume never waits
     songs = config.current()
     if job_run.approved or given.mode == "resume":
+        if given.swedebeat_connection_id is not None:
+            # The new list, before phase 2 writes a playlist (ADR 0016 section 6).
+            named = (
+                given.resume.song_list_revision_id
+                if given.mode == "resume" and given.resume is not None
+                else None
+            )
+            await catalogue_replace.rematch(job_run, given.swedebeat_connection_id, named)
         # Phase 2 revises the draft (the ``design`` group), before any Spotify or MOWL call.
         model = await group_model(runtime, job_run, given.route_key, "design")
         return await run_revise_phase_two(
@@ -364,6 +420,15 @@ REVISE_SONGS: Final = KINDS.register(
         consumes_credit=False,
         admit=with_route_key(admit),
         approve_check=song_admit.approve_check,
-        server_fields=frozenset({"base_revision_hash", "request_message_id", "route_key"}),
+        server_fields=frozenset(
+            {
+                "base_revision_hash",
+                "request_message_id",
+                "route_key",
+                "catalogue_replace",
+                "catalogue_fact",
+                "swedebeat_connection_id",
+            }
+        ),
     )
 )

@@ -8,6 +8,8 @@
   (``classbeat.egress.swedebeat_cloud_async_client``) and its status categories;
 - ``classbeat.swedebeat_match.revision``: the ``swedebeat_match`` revision, its hash, ``build``,
   ``store`` and the re-checking ``load``;
+- ``classbeat.swedebeat_match.replace``: the catalogue replace inside ``revise_songs`` (the
+  status-only fact, the three-round limit and the re-match, ADR 0016 section 6);
 - ``classbeat.swedebeat_match.config``: the settings both processes ``configure`` at start.
 
 A job kind's own package (job kinds live outside ``classbeat.jobs``): it writes only through the

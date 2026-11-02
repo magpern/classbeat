@@ -124,6 +124,7 @@ CLASSIFIED: dict[tuple[str, str], str] = {
     ("GET", "/api/classes/{class_id}/revisions/{revision_id}"): "owned",
     ("GET", "/api/classes/{class_id}/messages"): "owned",
     ("POST", "/api/classes/{class_id}/current"): "owned",
+    ("POST", "/api/classes/{class_id}/swedebeat-match"): "owned",
     ("DELETE", "/api/classes/{class_id}"): "owned",
     ("PUT", "/api/classes/{class_id}/dismissed-rules/{rule_id}"): "owned",
     ("DELETE", "/api/classes/{class_id}/dismissed-rules/{rule_id}"): "owned",
@@ -608,6 +609,14 @@ OWNED_ROUTES = [
     OwnedRoute("GET", "/api/classes/{class_id}/revisions/{revision_id}"),
     OwnedRoute("GET", "/api/classes/{class_id}/messages"),
     OwnedRoute("POST", "/api/classes/{class_id}/current", _pick, frozenset({200, 409})),
+    # Flag off (the test app): 404 feature_off before the class is read. Flag on, a draft is not
+    # a match, so the owner still gets 404 not_found.
+    OwnedRoute(
+        "POST",
+        "/api/classes/{class_id}/swedebeat-match",
+        lambda rows: {"revision_id": str(rows.revision_id)},
+        frozenset({404}),
+    ),
     OwnedRoute("DELETE", "/api/classes/{class_id}", control=frozenset({200, 409})),
     OwnedRoute("PUT", "/api/classes/{class_id}/dismissed-rules/{rule_id}"),
     OwnedRoute("DELETE", "/api/classes/{class_id}/dismissed-rules/{rule_id}"),
