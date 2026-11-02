@@ -53,8 +53,15 @@ def insert(conn: Connection, table: str, **values: Any) -> uuid.UUID:
     """A row written as the superuser (setup only); jsonb columns take Python values."""
     values = {"id": uuid.uuid4(), **values}
     jsonb = {
-        "content", "music", "provenance", "change", "request_context", "result", "map",
-        "mixes_before", "detail",
+        "content",
+        "music",
+        "provenance",
+        "change",
+        "request_context",
+        "result",
+        "map",
+        "mixes_before",
+        "detail",
     }
     params = ", ".join(f"CAST(:{k} AS jsonb)" if k in jsonb else f":{k}" for k in values)
     row = {k: json.dumps(v) if k in jsonb else v for k, v in values.items()}
@@ -590,8 +597,13 @@ def test_deleting_the_class_then_the_user_leaves_nothing_in_the_registered_table
         {"o": owner},
     ).scalar_one()
     insert(
-        admin, "swedebeat_handoffs", owner_id=owner, class_id=class_id,
-        match_revision_id=match, state="open", mixes_before=[],
+        admin,
+        "swedebeat_handoffs",
+        owner_id=owner,
+        class_id=class_id,
+        match_revision_id=match,
+        state="open",
+        mixes_before=[],
         expires_at=datetime.now(UTC) + timedelta(hours=1),
     )
     # M4 (migration 0006). The pool operation rows and the Spotify deletion paths are planted and
