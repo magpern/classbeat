@@ -1,5 +1,21 @@
 # classbeat roadmap: a class designer for Intelligent Cycling (MOWL) as a web app
 
+## Amendment 12 (2026-11-02, owner decision: M8 Running classes approved; ADR 0018)
+
+The owner approved milestone **M8** in chat on 2026-11-02 and [ADR 0018](adr/0018-mowl-running-classes.md)
+is Accepted. M8 is added to the milestone table.
+
+| # | Milestone | Done when |
+|---|---|---|
+| M8 | Running classes next to cycling (ADR 0018): discovery fixtures (D1), `mowl-workouts` running support (L1), sport on the brief and a running draft (R1), web sport switch and chart (U1), running eval smoke cases (E1), running e2e (F1); P9 running profiles (#401) stay blocked on the owner's aggregate data | Technical completion as for the other milestones: on fakes and fixtures, cycling defaults unchanged, behind the `running_enabled` flag (default off) |
+
+- **No live access is authorized by this approval.** D1's capture against a real MOWL account is
+  an owner step (AGENTS.md safety envelope); L1 and everything after it depend on D1's fixtures.
+  The Architect records the question under "Waiting for the owner" and carries on with
+  independent work.
+- Review classes follow ADR 0018 §4: L1 is security-critical (external write: Opus, or Grok 4.7
+  High under Amendment 11); D1, R1, U1, E1 and F1 follow the usual risk rules.
+
 ## Amendment 10 (2026-11-01, owner request: Codex development support)
 
 The owner requested Codex rules alongside Claude Code. For Codex development sessions,
