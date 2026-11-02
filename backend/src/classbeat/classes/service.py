@@ -16,6 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from classbeat.agent.schemas import Brief
 from classbeat.classes import seams, song_views
+from classbeat.classes.selection import belongs_to_draft
 from classbeat.context import UserContext, require_context
 from classbeat.db import user_session
 from classbeat.design.rules.enums import RULE_IDS
@@ -129,8 +130,8 @@ _LOCK_DISMISSED = text(
     "SELECT dismissed_rules FROM classes WHERE id = :class_id AND owner_id = :owner_id FOR UPDATE"
 )
 _LOCK_CLASS = text(
-    "SELECT current_revision_id FROM classes WHERE id = :class_id AND owner_id = :owner_id "
-    "FOR UPDATE"
+    "SELECT current_revision_id, approved_swedebeat_match_id FROM classes "
+    "WHERE id = :class_id AND owner_id = :owner_id FOR UPDATE"
 )
 _OPEN_JOB = text(
     "SELECT 1 FROM jobs WHERE owner_id = :owner_id AND class_id = :class_id "  # noqa: S608 - constants only
@@ -142,6 +143,11 @@ _PICKABLE = text(
 )
 _SET_CURRENT = text(
     "UPDATE classes SET current_revision_id = :revision_id, updated_at = now() "
+    "WHERE id = :class_id AND owner_id = :owner_id"
+)
+# The class row is already locked, so this and ``_SET_CURRENT`` commit together.
+_CLEAR_MATCH = text(
+    "UPDATE classes SET approved_swedebeat_match_id = NULL "
     "WHERE id = :class_id AND owner_id = :owner_id"
 )
 _WRITES = text(
@@ -308,6 +314,9 @@ async def pick(
 
     ``not_found`` (the class, or a revision that is not a draft of this class), ``hash_mismatch``,
     ``class_busy`` (an open job). Picking the current revision again writes nothing.
+
+    A stored Swedebeat match stays only when it is the chosen draft's song list. Any other draft
+    clears ``approved_swedebeat_match_id`` in this same transaction. Same owner is not enough.
     """
     require_context(ctx)
     async with user_session(factory, ctx) as db:
@@ -323,7 +332,13 @@ async def pick(
             return Outcome()
         if (await db.execute(_OPEN_JOB, _ids(ctx, class_id))).first() is not None:
             return Outcome("class_busy")
+        match_id = locked.approved_swedebeat_match_id
+        keep = isinstance(match_id, UUID) and await belongs_to_draft(
+            db, ctx.user_id, class_id, revision_id, match_id
+        )
         await db.execute(_SET_CURRENT, _ids(ctx, class_id, revision_id=revision_id))
+        if not keep:
+            await db.execute(_CLEAR_MATCH, _ids(ctx, class_id))
     return Outcome()
 
 

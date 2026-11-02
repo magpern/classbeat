@@ -80,9 +80,8 @@ class StoredApproval:
 def binds(found: MatchRevision, list_id: UUID | None, listed_hash: str | None) -> bool:
     """The match is of this song list: same parent, and both hashes are that list's content.
 
-    Same owner is not enough. ``POST /api/classes/{id}/current`` can make an older draft current
-    without clearing ``approved_swedebeat_match_id`` (the #444 review); a reader treats the stored
-    id as approved only when this holds for the class's current draft.
+    Same owner is not enough. ``service.pick`` clears the stored id when the draft it installs
+    is not this list, and a reader still requires this for the class's current draft.
     """
     return (
         listed_hash is not None
@@ -100,6 +99,19 @@ def _uuid(value: object) -> UUID | None:
         return UUID(value)
     except ValueError:
         return None
+
+
+async def belongs_to_draft(
+    db: AsyncSession, owner_id: UUID, class_id: UUID, draft_id: UUID, match_id: UUID
+) -> bool:
+    """Whether ``match_id`` is ``draft_id``'s song list. Same owner is not enough."""
+    found = await load_match(db, owner_id, class_id, match_id)
+    if found is None:
+        return False
+    list_id = await _current_list(db, owner_id, class_id, draft_id)
+    listed = None if list_id is None else await load_song_list(db, owner_id, class_id, list_id)
+    listed_hash = None if listed is None else listed.content_hash.hex()
+    return binds(found, list_id, listed_hash)
 
 
 async def _current_list(

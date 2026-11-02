@@ -340,3 +340,101 @@ async def test_missing_songs_are_replaced_rematched_and_the_selection_approved(
         assert gated.status_code == 404
         assert gated.json()["detail"]["reason"] == "feature_off"
         assert _approved(songenv, class_id) == fresh.id
+
+
+def _jobs(songenv: SongEnv, class_id: UUID) -> int:
+    return int(
+        songenv.sql("SELECT count(*) FROM jobs WHERE class_id = :c", c=class_id).scalar_one()
+    )
+
+
+def _stored_flag(songenv: SongEnv, value: str | None) -> None:
+    songenv.sql("DELETE FROM app_settings WHERE key = 'swedebeat_enabled'")
+    if value is None:
+        return
+    songenv.sql(
+        "INSERT INTO app_settings (key, value) VALUES ('swedebeat_enabled', CAST(:v AS jsonb))",
+        v=json.dumps(value),
+    )
+
+
+async def test_a_catalogue_replace_calls_nothing_when_the_flag_is_off(
+    songenv: SongEnv, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Flag off: a replace is refused and a queued re-match calls no catalogue."""
+    catalogue = CatalogueFake()
+    monkeypatch.setattr(
+        match_kind, "catalogue_client", lambda: swedebeat_cloud_test_client(catalogue)
+    )
+    rider = await songenv.rider()
+    await connections.save(
+        songenv.factory,
+        songenv.ring,
+        make_context(rider.user_id),
+        "swedebeat",
+        {"token": "swedebeat-test-token", "device_id": "0123456789abcdef"},
+        public={"email": "rider@example.com"},
+    )
+    with _enabled(songenv):
+        class_id, base, first_list = await picked(songenv, rider)
+        stored = songenv.revision(first_list)
+        parsed = SongListContent.model_validate(stored.content)
+        match_id = _insert_match(
+            songenv,
+            rider.user_id,
+            class_id,
+            first_list,
+            bytes(stored.content_hash),
+            [_song(n, song, missing=n == 3) for n, song in enumerate(parsed.songs, start=1)],
+        )
+        held = match_config()
+        before = _jobs(songenv, class_id)
+
+        async def refused_replace() -> None:
+            answer = await change(
+                rider,
+                class_id,
+                base,
+                replace=None,
+                request=None,
+                match_revision_id=str(match_id),
+            )
+            assert answer.status_code == 409, answer.text
+            assert answer.json()["detail"]["reason"] == "feature_off"
+            assert catalogue.calls == []
+            assert _jobs(songenv, class_id) == before
+
+        off = MatchConfig(enabled=False, keyring=held.keyring, pace_seconds=0)
+        swedebeat_match.configure(off)
+        await refused_replace()  # the environment switch, before the match revision is read
+        swedebeat_match.configure(MatchConfig(enabled=True, keyring=held.keyring, pace_seconds=0))
+        _stored_flag(songenv, "off")
+        try:
+            await refused_replace()  # the stored flag, with the environment still on
+        finally:
+            _stored_flag(songenv, None)
+
+        songenv.script = replace_script()
+        started = await change(
+            rider, class_id, base, replace=None, request=None, match_revision_id=str(match_id)
+        )
+        assert started.status_code == 201, started.text
+        job_id = UUID(started.json()["id"])
+        waiting = await songenv.run(job_id)
+        assert waiting.state == "waiting_for_approval", (waiting.state, waiting.error_category)
+        assert catalogue.calls == []
+        swedebeat_match.configure(off)
+        digest = bytes(waiting.approval_hash).hex()
+        approved = await rider.approve(job_id, waiting.approval_revision_id, digest)
+        assert approved.status_code == 200, approved.text
+        songenv.script = revise_script()
+        done = await songenv.run(job_id)
+        assert (done.state, done.error_category) == ("failed", "feature_off")
+        assert catalogue.calls == []
+        matched = songenv.sql(
+            "SELECT count(*) FROM class_revisions WHERE class_id = :c "
+            "AND kind = 'swedebeat_match' AND parent_id = :parent",
+            c=class_id,
+            parent=waiting.approval_revision_id,
+        ).scalar_one()
+        assert matched == 0
