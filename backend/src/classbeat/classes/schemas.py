@@ -117,6 +117,16 @@ class PlaylistNameOut(BaseModel):
     detached: bool = False
 
 
+class SwedebeatMatchPointerOut(BaseModel):
+    """The class's newest ``swedebeat_match`` revision (ADR 0016 section 6): its id, and whether it
+    is the approved selection. No title, artist or count: the page reads the revision for those."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    revision_id: UUID
+    approved: bool
+
+
 class ClassDetailOut(ClassOut):
     songs: SongsOut
     playlist: PlaylistOut | None = None  # the current draft's own playlist
@@ -124,6 +134,9 @@ class ClassDetailOut(ClassOut):
     # The brief the class was designed (or its songs picked) for, to seed a follow-up job such as
     # Ask for changes or a resume (ADR 0008 section 6); the owner's own, never another user's.
     brief: Brief | None = None
+    # The newest Swedebeat match, null when the class has none. Left out of the body entirely
+    # while the ``swedebeat_enabled`` flag is off (no match row is read then).
+    swedebeat_match: SwedebeatMatchPointerOut | None = None
 
 
 class MosaicSongOut(BaseModel):
@@ -323,6 +336,54 @@ class SongListOut(BaseModel):
     songs: list[SongOut]
     omitted_no_bpm: int
     note: str
+
+
+class MatchWantedOut(BaseModel):
+    """The song of the matched list, as plain text."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    title: str
+    artist: str
+
+
+class MatchHitOut(BaseModel):
+    """Swedebeat's catalogue hit, as plain text; ``duration`` in whole seconds or null."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    title: str
+    artist: str
+    duration: int | None
+
+
+class MatchSongOut(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    position: int
+    status: Literal["found", "unsure", "missing"]
+    wanted: MatchWantedOut
+    swedebeat: MatchHitOut | None
+
+
+class SwedebeatMatchOut(BaseModel):
+    """A ``swedebeat_match`` revision as the match page needs it (ADR 0016 section 6, #458): the
+    songs in play order, the totals and what the approval sends back (``id``, ``content_hash``).
+    Nothing else of the stored row: no catalogue id, URL, token, Spotify id, provenance or matcher
+    threshold. Every field is set one by one by the route, never copied from the stored JSON."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    id: UUID
+    number: int
+    kind: Literal["swedebeat_match"] = "swedebeat_match"
+    parent_id: UUID
+    content_hash: str
+    songs: list[MatchSongOut]
+    found: int
+    unsure: int
+    missing: int
+    swedebeat_sec: int
 
 
 class DismissedRulesOut(BaseModel):

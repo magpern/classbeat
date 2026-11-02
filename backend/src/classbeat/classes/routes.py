@@ -6,6 +6,10 @@ unknown id and a malformed one are the same 404 ``not_found``. Errors carry a re
 409 reasons: ``limit_exceeded`` (the 33rd dismissed rule, ADR 0017), ``class_busy``,
 ``hash_mismatch`` (the pick), ``stale_match`` (the Swedebeat selection) and
 ``call_may_be_running``, ``uncertain_write`` (the delete).
+
+A ``swedebeat_match`` revision (ADR 0016 section 6) is read only while the effective
+``swedebeat_enabled`` flag is on; off, its id answers 404 ``feature_off`` without its content being
+read, and the class detail carries no match pointer.
 """
 
 import base64
@@ -23,13 +27,16 @@ from pydantic import ValidationError
 from classbeat import auth
 from classbeat.agent.design import ZONE7
 from classbeat.agent.schemas import WorkoutDraft
-from classbeat.classes import pattern_notes, selection, service, song_views
+from classbeat.classes import match_view, pattern_notes, selection, service, song_views
 from classbeat.classes.schemas import (
     ClassDetailOut,
     ClassesOut,
     ClassOut,
     DeletedOut,
     DismissedRulesOut,
+    MatchHitOut,
+    MatchSongOut,
+    MatchWantedOut,
     MessageOut,
     MessagesOut,
     MosaicSongOut,
@@ -46,6 +53,8 @@ from classbeat.classes.schemas import (
     SongListOut,
     SongOut,
     SongsOut,
+    SwedebeatMatchOut,
+    SwedebeatMatchPointerOut,
     UnknownBpmOut,
 )
 from classbeat.connections.swedebeat_account import swedebeat_enabled
@@ -68,6 +77,11 @@ def _refuse(reason: str, status: int = 409) -> JSONResponse:
 
 def _not_found() -> JSONResponse:
     return _refuse("not_found", 404)
+
+
+def _internal() -> JSONResponse:
+    """A stored row that no longer checks: the reason only, nothing of the row."""
+    return JSONResponse({"detail": {"reason": "internal"}}, status_code=500)
 
 
 def _uuid(raw: str) -> UUID | None:
@@ -146,21 +160,29 @@ async def get_class(
     class_id: str, request: Request, ctx: Annotated[UserContext, Depends(auth.require_user)]
 ) -> ClassDetailOut | JSONResponse:
     wanted = _uuid(class_id)
-    found = (
-        None
-        if wanted is None
-        else await service.get_class_detail(request.app.state.session_factory, ctx, wanted)
-    )
+    if wanted is None:
+        return _not_found()
+    factory = request.app.state.session_factory
+    enabled = await swedebeat_enabled(request.app.state.settings, factory)
+    found = await service.get_class_detail(factory, ctx, wanted, with_match=enabled)
     if found is None:
         return _not_found()
     playlists = found.playlists
-    return ClassDetailOut(
+    match = found.match
+    detail = ClassDetailOut(
         **ClassOut.of(found.row).model_dump(),
         songs=SongsOut(**asdict(found.songs)),
         playlist=None if playlists.current is None else PlaylistOut(**asdict(playlists.current)),
         spotify_playlists=[PlaylistOut(**asdict(p)) for p in playlists.all],
         brief=found.brief,
+        swedebeat_match=None
+        if match is None
+        else SwedebeatMatchPointerOut(revision_id=match.revision_id, approved=match.approved),
     )
+    if enabled:
+        return detail
+    # Flag off: the pointer is absent, not null (no match row was read).
+    return JSONResponse(detail.model_dump(mode="json", exclude={"swedebeat_match"}))
 
 
 @router.get("/{class_id}/revisions", response_model=RevisionsOut, responses={404: {}})
@@ -180,22 +202,23 @@ async def list_revisions(
 
 @router.get(
     "/{class_id}/revisions/{revision_id}",
-    response_model=RevisionOut | SongListOut,
-    responses={404: {}},
+    response_model=RevisionOut | SongListOut | SwedebeatMatchOut,
+    responses={404: {}, 500: {}},
 )
 async def get_revision(
     class_id: str,
     revision_id: str,
     request: Request,
     ctx: Annotated[UserContext, Depends(auth.require_user)],
-) -> RevisionOut | SongListOut | JSONResponse:
+) -> RevisionOut | SongListOut | SwedebeatMatchOut | JSONResponse:
+    """A ``draft``, a ``song_list`` or (flag on) a ``swedebeat_match`` of the user's own class."""
     wanted_class, wanted = _uuid(class_id), _uuid(revision_id)
     if wanted_class is None or wanted is None:
         return _not_found()
     factory = request.app.state.session_factory
     row = await service.get_revision(factory, ctx, wanted_class, wanted)
     if row is None:
-        return await _song_list(factory, ctx, wanted_class, wanted)
+        return await _song_list(request, factory, ctx, wanted_class, wanted)
     try:
         draft = WorkoutDraft.model_validate(row.content)  # only keys the schema names are shown
         raw: Any = row.music.get("unknown_bpm", [])
@@ -213,7 +236,7 @@ async def get_revision(
         notes = pattern_notes.pattern_notes(content, brief, dismissed, row.provenance)
         hits = [RuleHitOut.model_validate(h) for h in notes.hits]
     except (ValidationError, KeyError, TypeError, ValueError):
-        return JSONResponse({"detail": {"reason": "internal"}}, status_code=500)
+        return _internal()
     return RevisionOut(
         **summary.model_dump(),
         kind=row.kind,
@@ -227,14 +250,14 @@ async def get_revision(
 
 
 async def _song_list(
-    factory: Any, ctx: UserContext, class_id: UUID, revision_id: UUID
-) -> SongListOut | JSONResponse:
+    request: Request, factory: Any, ctx: UserContext, class_id: UUID, revision_id: UUID
+) -> SongListOut | SwedebeatMatchOut | JSONResponse:
     """A ``song_list`` revision: songs without ids, totals, ``new`` marks, a plain-text note."""
     view = await song_views.get_song_list(factory, ctx, class_id, revision_id)
     if view is None:
-        return _not_found()
+        return await _swedebeat_match(request, factory, ctx, class_id, revision_id)
     if view == "unreadable":  # the stored hash or content no longer checks: never shown
-        return JSONResponse({"detail": {"reason": "internal"}}, status_code=500)
+        return _internal()
     c = view.content
     return SongListOut(
         id=view.id,
@@ -267,6 +290,55 @@ async def _song_list(
         ],
         omitted_no_bpm=c.omitted_no_bpm,
         note=song_views.plain(c.note),
+    )
+
+
+async def _swedebeat_match(
+    request: Request, factory: Any, ctx: UserContext, class_id: UUID, revision_id: UUID
+) -> SwedebeatMatchOut | JSONResponse:
+    """A ``swedebeat_match`` revision (ADR 0016 section 6, #458), field by field.
+
+    Flag off: an own match id is 404 ``feature_off`` and only its key is looked up (its content,
+    hash and music are not read); any other id stays 404 ``not_found``. Flag on: another user's
+    or an unknown id is 404 ``not_found``; a row that no longer checks is 500 ``internal``.
+    """
+    if not await swedebeat_enabled(request.app.state.settings, factory):
+        if await match_view.is_match(factory, ctx, class_id, revision_id):
+            return _refuse("feature_off", 404)
+        return _not_found()
+    view = await match_view.get_match(factory, ctx, class_id, revision_id)
+    if view is None:
+        return _not_found()
+    if view == "unreadable":
+        return _internal()
+    c = view.content
+    return SwedebeatMatchOut(
+        id=view.id,
+        number=view.number,
+        parent_id=view.parent_id,
+        content_hash=view.content_hash,
+        songs=[
+            MatchSongOut(
+                position=s.position,
+                status=s.status,
+                wanted=MatchWantedOut(
+                    title=song_views.plain(s.wanted.title),
+                    artist=song_views.plain(s.wanted.artist),
+                ),
+                swedebeat=None
+                if s.swedebeat is None
+                else MatchHitOut(
+                    title=song_views.plain(s.swedebeat.title),
+                    artist=song_views.plain(s.swedebeat.artist),
+                    duration=s.swedebeat.duration,
+                ),
+            )
+            for s in c.songs
+        ],
+        found=c.found,
+        unsure=c.unsure,
+        missing=c.missing,
+        swedebeat_sec=c.swedebeat_sec,
     )
 
 
