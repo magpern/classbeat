@@ -1,0 +1,56 @@
+{
+  "drafts": {
+    "good": {
+      "name": "E2E Swedebeat mix ride",
+      "description": "A short ride timed to the cached Swedebeat mix.",
+      "segments": [
+        {
+          "name": "Warm-up",
+          "kind": "warmup",
+          "intervals": [
+            {
+              "sec": 30,
+              "zone": 2,
+              "rpm": "beat",
+              "standing": false
+            }
+          ]
+        },
+        {
+          "name": "Push",
+          "kind": "main",
+          "intervals": [
+            {
+              "sec": 30,
+              "zone": 4,
+              "rpm": [80, 95],
+              "standing": false
+            }
+          ]
+        },
+        {
+          "name": "Cool down",
+          "kind": "cooldown",
+          "intervals": [
+            {
+              "sec": 30,
+              "zone": 1,
+              "rpm": [70, 85],
+              "standing": false
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "turns": [
+    {
+      "calls": [
+        { "name": "get_music", "input": {} },
+        { "name": "get_music", "input": { "track": 0 } },
+        { "name": "preview_draft", "input": { "draft": { "$draft": "good" } } }
+      ]
+    },
+    { "calls": [{ "name": "submit_draft", "input": { "draft": { "$draft": "good" } } }] }
+  ]
+}
