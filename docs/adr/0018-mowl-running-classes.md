@@ -269,3 +269,21 @@ the model) apply to running designs the same as cycling once enabled.
 
 Issue numbers are assigned when the Architect creates them; **#373** closes when this ADR is
 **Accepted** and merged, not when R1–F1 ship.
+
+## Amendment 1 (2026-11-02, Architect): discovery findings (D1)
+
+The owner-authorized read-only discovery ran on 2026-11-02; the findings are in
+`docs/providers/mowl-running-discovery.md` (PR #468). They replace these statements above:
+
+- Running is **not** a `BikeTypeID` filter. Every program has `BikeTypeID: 1`; running programs have
+  **`ActivityTypeID: 1`** (`GET v1/ActivityTypes`), and camps are `v1/ProgramCategories` entries with
+  their own `ActivityTypeID`. Listing a user's own running programs is **unverified**.
+- Running intervals use the cycling key set: `ScaleCoggan` 1 to 5 with the cycling FTP bands, `Gradient`
+  0.0 or 1.0 per interval, `Pace*` null, RPM 0, seated, no games, no FTP test. `TSS` carries the load.
+- **Still unverified, so still not to be guessed:** what a save sends (`ActivityTypeID` on the program and on
+  each segment; official programs have segments with `0`), how a user-made program stores `Gradient`, and
+  the listing request. Only a running program the owner saves in the app, followed by a second read-only
+  probe, closes these (D1 stays open for it).
+- **L1 splits.** L1a: library read side for running (validate, summarize, TSS, interval body from the
+  observed fields), no write. L1b: save and list, after D1 closes. R1's design half (brief, schema,
+  prompt, `running_enabled`) may start after L1a; its save half waits for L1b.
