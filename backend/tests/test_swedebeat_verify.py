@@ -17,14 +17,16 @@ import pytest
 from agentfake import CONFIG, FactoryModels, from_dict
 from authtools import running_env
 from classbeat import design, swedebeat_handoff
+from classbeat.classes import handoff as handoff_api
 from classbeat.connections.repository import disconnect
 from classbeat.design import mixfetch
 from classbeat.design.swedebeat_music import load_swedebeat_mix, swedebeat_step
 from classbeat.egress import Allowlist, mowl_media_test_client
-from classbeat.jobs import KindRegistry, queue
+from classbeat.jobs import JobFailure, KindRegistry, queue
 from classbeat.jobs.runner import Execution, RunConfig, execute
 from classbeat.songs.song_list import Song, SongListContent, SongListMusic, content_hash
 from classbeat.songs.song_list import fingerprint as song_fingerprint
+from classbeat.swedebeat_handoff import kind as verify_kind
 from classbeat.swedebeat_handoff.config import HandoffConfig
 from classbeat.swedebeat_handoff.kind import KIND, VERIFY_MIX
 from classbeat.swedebeat_handoff.verdict import judge
@@ -333,6 +335,9 @@ async def test_a_new_mix_is_analysed_ok_and_designs_the_class(
         f"/api/classes/{class_id}/swedebeat-handoff/design", {}, {"Idempotency-Key": new_key()}
     )
     assert designed.status_code == 201, designed.text
+    design_id = UUID(designed.json()["job_id"])
+    held = henv.sql("SELECT credit_state FROM jobs WHERE id = :id", id=design_id).scalar_one()
+    assert held == "reserved"
     registry = KindRegistry()
     registry.register(design.DESIGN_DRAFT)
     lease = henv.ops.app.settings.job_lease_seconds
@@ -341,7 +346,9 @@ async def test_a_new_mix_is_analysed_ok_and_designs_the_class(
     await execute(
         Execution(row), henv.ops.factory, registry, RunConfig(lease_seconds=lease), asyncio.Event()
     )
-    assert henv.ops.row(row.job_id).state == "completed", henv.ops.row(row.job_id).error_category
+    finished = henv.ops.row(row.job_id)
+    assert finished.state == "completed", finished.error_category
+    assert finished.credit_state == "reserved"  # settle is the worker's; the row was reserved
     source = henv.sql("SELECT music_source FROM classes WHERE id = :id", id=class_id).scalar_one()
     assert source["source"] == "mowl_swedebeat_mix"
     assert source["mix_id"] == new
@@ -404,8 +411,11 @@ async def test_a_stored_match_of_another_song_list_is_not_approved(
     browser = await rider(browsers, henv)
     mowl_api.add_mix("Old", token=TOKEN_A, mix_id="before", listed_seconds=30)
     class_id = plant(henv, browser.user_id, [30])
-    # A second draft whose song list is a different revision. Picking it does not clear the
-    # approval (POST /current); the hand-off must still refuse.
+    # A second draft whose song list is a different revision. Picking it clears the stored
+    # match. Putting that same match back (same owner) still does not approve the new list.
+    match_id = henv.sql(
+        "SELECT approved_swedebeat_match_id FROM classes WHERE id = :c", c=class_id
+    ).scalar_one()
     other_list = uuid.uuid4()
     other_draft = uuid.uuid4()
     songs = [_song(30)]
@@ -453,10 +463,26 @@ async def test_a_stored_match_of_another_song_list_is_not_approved(
         {"revision_id": str(other_draft), "content_hash": (b"\x22" * 32).hex()},
     )
     assert picked.status_code == 200, picked.text
+    assert (
+        henv.sql(
+            "SELECT approved_swedebeat_match_id FROM classes WHERE id = :c", c=class_id
+        ).scalar_one()
+        is None
+    )
     calls = mowl_api.list_calls
     refused = await _start(browser, class_id)
     assert refused.status_code == 409
     assert refused.json()["detail"]["reason"] == "stale_match"
+    assert mowl_api.list_calls == calls
+    # Same owner, and the foreign key still accepts this match of this class.
+    henv.sql(
+        "UPDATE classes SET approved_swedebeat_match_id = :match WHERE id = :c",
+        match=match_id,
+        c=class_id,
+    )
+    again = await _start(browser, class_id)
+    assert again.status_code == 409
+    assert again.json()["detail"]["reason"] == "stale_match"
     assert mowl_api.list_calls == calls
     assert (
         henv.sql(
@@ -551,3 +577,212 @@ async def test_flag_off_and_a_foreign_class_and_a_forged_body(
     assert forged.status_code == 422
     foreign = await other.get(f"/api/classes/{class_id}/swedebeat-handoff")
     assert foreign.status_code == 404
+
+
+async def test_picking_a_draft_of_the_same_song_list_keeps_the_match(
+    browsers: Any, henv: HandEnv, mowl_api: FakeMowl
+) -> None:
+    browser = await rider(browsers, henv)
+    mowl_api.add_mix("Kept", token=TOKEN_A, mix_id="kept-list", listed_seconds=30)
+    class_id = plant(henv, browser.user_id, [30])
+    match_id = henv.sql(
+        "SELECT approved_swedebeat_match_id FROM classes WHERE id = :c", c=class_id
+    ).scalar_one()
+    draft_id = uuid.uuid4()
+    digest = b"\x44" * 32
+    henv.sql(
+        "INSERT INTO class_revisions (id, owner_id, class_id, number, kind, content, "
+        "content_hash, music, provenance) "
+        "SELECT :id, owner_id, class_id, 6, 'draft', '{}', :hash, music, provenance "
+        "FROM class_revisions WHERE class_id = :c AND kind = 'draft'",
+        id=draft_id,
+        c=class_id,
+        hash=digest,
+    )
+    picked = await browser.post(
+        f"/api/classes/{class_id}/current",
+        {"revision_id": str(draft_id), "content_hash": digest.hex()},
+    )
+    assert picked.status_code == 200, picked.text
+    assert (
+        henv.sql(
+            "SELECT approved_swedebeat_match_id FROM classes WHERE id = :c", c=class_id
+        ).scalar_one()
+        == match_id
+    )
+    started = await _start(browser, class_id)
+    assert started.status_code == 200, started.text
+
+
+async def test_a_client_mix_id_absent_from_the_listing_is_refused(
+    browsers: Any, henv: HandEnv, mowl_api: FakeMowl
+) -> None:
+    browser = await rider(browsers, henv)
+    mowl_api.add_mix("Listed", token=TOKEN_A, mix_id="listed-mix", listed_seconds=30)
+    class_id = plant(henv, browser.user_id, [30])
+    assert (await _start(browser, class_id)).status_code == 200
+    lists = mowl_api.list_calls
+    attaches = list(mowl_api.attaches)
+    media = list(mowl_api.media.requests)
+    checked = await _check(browser, class_id, "not-in-the-listing")
+    assert checked.status_code == 201, checked.text
+    job_id = await henv.run_verify()
+    row = henv.ops.row(job_id)
+    assert (row.state, row.error_category) == ("failed", "invalid_input")
+    assert mowl_api.list_calls == lists + 1  # the job's own listing, and no second one
+    assert mowl_api.attaches == attaches
+    assert mowl_api.media.requests == media
+    assert (
+        henv.sql(
+            "SELECT count(*) FROM swedebeat_analyses WHERE owner_id = :o", o=browser.user_id
+        ).scalar_one()
+        == 0
+    )
+    left = henv.sql(
+        "SELECT state, mix_id FROM swedebeat_handoffs WHERE class_id = :c "
+        "AND superseded_at IS NULL",
+        c=class_id,
+    ).one()
+    assert left.state == "open"
+    assert left.mix_id is None
+
+
+@pytest.mark.parametrize("off", ["database", "worker"])
+async def test_a_queued_verify_ends_feature_off_before_the_connection_opens(
+    browsers: Any, henv: HandEnv, mowl_api: FakeMowl, monkeypatch: pytest.MonkeyPatch, off: str
+) -> None:
+    browser = await rider(browsers, henv)
+    mowl_api.add_mix("Waiting", token=TOKEN_A, mix_id="waiting-mix", listed_seconds=30)
+    class_id = plant(henv, browser.user_id, [30])
+    assert (await _start(browser, class_id)).status_code == 200
+    mowl_api.add_mix(
+        "New",
+        token=TOKEN_A,
+        mix_id="new-while-queued",
+        listed_seconds=30,
+        audio_seconds=30,
+        link="beats",
+    )
+    checked = await _check(browser, class_id)
+    assert checked.status_code == 201, checked.text
+    lists = mowl_api.list_calls
+    attaches = list(mowl_api.attaches)
+    media = list(mowl_api.media.requests)
+    opened = 0
+
+    async def _open(*_args: object, **_kwargs: object) -> None:
+        nonlocal opened
+        opened += 1
+        raise JobFailure("internal")
+
+    monkeypatch.setattr(verify_kind, "open_connection", _open)
+    if off == "database":
+        henv.sql("DELETE FROM app_settings WHERE key = 'swedebeat_enabled'")
+        henv.sql(
+            "INSERT INTO app_settings (key, value) VALUES ('swedebeat_enabled', CAST(:v AS jsonb))",
+            v=json.dumps("off"),
+        )
+    else:
+        swedebeat_handoff.configure(HandoffConfig(enabled=False, keyring=henv.ops.keyring))
+    try:
+        job_id = await henv.run_verify()
+    finally:
+        henv.sql("DELETE FROM app_settings WHERE key = 'swedebeat_enabled'")
+        swedebeat_handoff.configure(HandoffConfig(enabled=True, keyring=henv.ops.keyring))
+    row = henv.ops.row(job_id)
+    assert (row.state, row.error_category) == ("failed", "feature_off")
+    assert opened == 0
+    assert mowl_api.list_calls == lists
+    assert mowl_api.attaches == attaches
+    assert mowl_api.media.requests == media
+
+
+async def test_override_repeats_the_stored_approval_before_verify(
+    browsers: Any, henv: HandEnv, mowl_api: FakeMowl, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    browser = await rider(browsers, henv)
+    mowl_api.add_mix("Already", token=TOKEN_A, mix_id="already-mix", listed_seconds=30)
+    class_id = plant(henv, browser.user_id, [40, 40, 40])
+    assert (await _start(browser, class_id)).status_code == 200
+    mowl_api.add_mix(
+        "Short",
+        token=TOKEN_A,
+        mix_id="race-mix",
+        listed_seconds=30,
+        audio_seconds=30,
+        link="beats",
+    )
+    assert (await _check(browser, class_id)).status_code == 201
+    await henv.run_verify()
+    view = (await browser.get(f"/api/classes/{class_id}/swedebeat-handoff")).json()
+    assert view["verdict"] == "too_short"
+    other_list, other_draft = uuid.uuid4(), uuid.uuid4()
+    songs = [_song(30)]
+    content = SongListContent(
+        v=2,
+        mode="pick",
+        target_sec=30,
+        total_sec=30,
+        crossfade_sec=0.5,
+        songs=songs,
+        omitted_no_bpm=0,
+        note="other",
+    )
+    dumped = content.model_dump(mode="json")
+    henv.sql(
+        "INSERT INTO class_revisions (id, owner_id, class_id, number, kind, content, "
+        "content_hash, music, provenance) VALUES (:id, :o, :c, 4, 'song_list', "
+        "CAST(:content AS jsonb), :hash, '{}', '{}')",
+        id=other_list,
+        o=browser.user_id,
+        c=class_id,
+        content=json.dumps(dumped),
+        hash=content_hash(dumped),
+    )
+    henv.sql(
+        "INSERT INTO class_revisions (id, owner_id, class_id, number, kind, content, "
+        "content_hash, music, provenance) VALUES (:id, :o, :c, 5, 'draft', '{}', :hash, "
+        "CAST(:music AS jsonb), '{}')",
+        id=other_draft,
+        o=browser.user_id,
+        c=class_id,
+        hash=b"\x55" * 32,
+        music=json.dumps(
+            {
+                "source": "mowl_spotify_playlist",
+                "link_id": str(uuid.uuid4()),
+                "fingerprint": "ee" * 32,
+                "unknown_bpm": [],
+                "song_list_id": str(other_list),
+            }
+        ),
+    )
+
+    async def _switch(*_args: object, **_kwargs: object) -> tuple[list[str], None]:
+        # The listing is between the two transactions. The column stays set.
+        henv.sql(
+            "UPDATE classes SET current_revision_id = :draft WHERE id = :id",
+            draft=other_draft,
+            id=class_id,
+        )
+        return ["race-mix"], None
+
+    monkeypatch.setattr(handoff_api, "list_mix_ids", _switch)
+    overridden = await browser.post(
+        f"/api/classes/{class_id}/swedebeat-handoff/override", {"mix_id": "race-mix"}
+    )
+    assert overridden.status_code == 409, overridden.text
+    assert overridden.json()["detail"]["reason"] == "stale_match"
+    assert (
+        henv.sql(
+            "SELECT approved_swedebeat_match_id FROM classes WHERE id = :c", c=class_id
+        ).scalar_one()
+        is not None
+    )
+    assert (
+        henv.sql(
+            "SELECT state FROM swedebeat_handoffs WHERE class_id = :c AND superseded_at IS NULL",
+            c=class_id,
+        ).scalar_one()
+        == "checked"
+    )

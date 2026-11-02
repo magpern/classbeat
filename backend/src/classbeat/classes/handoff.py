@@ -223,7 +223,8 @@ async def override(
     factory: Factory, keyring: KeyRing, ctx: UserContext, class_id: UUID, mix_id: str
 ) -> Step:
     """ "This is the right mix": the analysed mix, still in the user's listing. No new fetch
-    of audio. An expired row is refused before the listing."""
+    of audio. An expired row is refused before the listing. The stored approval is checked
+    again in the transaction that marks the row verified. Same owner is not enough."""
     require_context(ctx)
     async with user_session(factory, ctx) as db:
         row, refused = await _bound_row(db, ctx.user_id, class_id)
@@ -244,12 +245,25 @@ async def override(
     if mix_id not in ids:
         return Step(reason="invalid_input")
     async with user_session(factory, ctx) as db:
-        if not await mark_verified(db, ctx.user_id, handoff_id, mix_id):
-            current = await live(db, ctx.user_id, class_id)
+        bound, reason = await stored_approval(db, ctx.user_id, class_id)
+        current = await live(db, ctx.user_id, class_id)
+        if (
+            bound is None
+            or current is None
+            or current.id != handoff_id
+            or current.match_revision_id != bound.revision_id
+        ):
             if current is not None and current.expired:
                 return Step(reason="handoff_expired")
             if current is not None and current.state == "verified" and current.mix_id == mix_id:
                 return Step(handoff=current)
+            return Step(reason=reason or "stale_match")
+        if not await mark_verified(db, ctx.user_id, handoff_id, mix_id):
+            fresh = await live(db, ctx.user_id, class_id)
+            if fresh is not None and fresh.expired:
+                return Step(reason="handoff_expired")
+            if fresh is not None and fresh.state == "verified" and fresh.mix_id == mix_id:
+                return Step(handoff=fresh)
             return Step(reason="not_checked")
         current = await live(db, ctx.user_id, class_id)
     return Step(handoff=current)
