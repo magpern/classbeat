@@ -4,7 +4,8 @@ and the class delete (ADR 0007 sections 2, 11 and 12; issue C2).
 Signed in; the ``POST`` and ``DELETE`` are CSRF-checked by the middleware. Another user's id, an
 unknown id and a malformed one are the same 404 ``not_found``. Errors carry a reason code only.
 409 reasons: ``limit_exceeded`` (the 33rd dismissed rule, ADR 0017), ``class_busy``,
-``hash_mismatch`` (the pick) and ``call_may_be_running``, ``uncertain_write`` (the delete).
+``hash_mismatch`` (the pick), ``stale_match`` (the Swedebeat selection) and
+``call_may_be_running``, ``uncertain_write`` (the delete).
 """
 
 import base64
@@ -22,7 +23,7 @@ from pydantic import ValidationError
 from classbeat import auth
 from classbeat.agent.design import ZONE7
 from classbeat.agent.schemas import WorkoutDraft
-from classbeat.classes import pattern_notes, service, song_views
+from classbeat.classes import pattern_notes, selection, service, song_views
 from classbeat.classes.schemas import (
     ClassDetailOut,
     ClassesOut,
@@ -47,6 +48,7 @@ from classbeat.classes.schemas import (
     SongsOut,
     UnknownBpmOut,
 )
+from classbeat.connections.swedebeat_account import swedebeat_enabled
 from classbeat.context import UserContext
 from classbeat.covers import cover_url
 
@@ -294,6 +296,38 @@ async def list_messages(
             )
             for r in rows
         ]
+    )
+
+
+@router.post(
+    "/{class_id}/swedebeat-match",
+    response_model=selection.SelectionOut,
+    responses={404: {}, 409: {}, 422: {}},
+)
+async def approve_swedebeat_match(
+    class_id: str,
+    request: Request,
+    ctx: Annotated[UserContext, Depends(auth.require_user)],
+) -> selection.SelectionOut | JSONResponse:
+    """Record the approved ``swedebeat_match`` of this class (ADR 0016 section 6).
+
+    The flag is answered before the body is read and before the class is. The response is the
+    revision id and its content hash: no title, artist or catalogue id.
+    """
+    if not await swedebeat_enabled(request.app.state.settings, request.app.state.session_factory):
+        return _refuse("feature_off", 404)
+    wanted = _uuid(class_id)
+    if wanted is None:
+        return _not_found()
+    try:
+        body = selection.SelectionIn.model_validate_json(await request.body())
+    except ValidationError:
+        return _refuse("invalid_input", 422)
+    done = await selection.record(request.app.state.session_factory, ctx, wanted, body.revision_id)
+    if done.approved is None:
+        return _not_found() if done.reason == "not_found" else _refuse(done.reason or "stale_match")
+    return selection.SelectionOut(
+        revision_id=done.approved.revision_id, content_hash=done.approved.content_hash
     )
 
 
