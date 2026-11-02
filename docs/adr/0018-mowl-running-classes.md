@@ -185,10 +185,19 @@ modules—never CLI/MCP entry points (AGENTS.md).
 
 **Security / review class**
 
-- Treat as **routine** unless discovery exposes new external hosts or auth (unlikely). Save and
-  listing remain **`mowl_save_workout` / `mowl_update_workout`** with the same operation protocol
-  (ADR 0005, ADR 0007). Opus if interval or brief validation widens the trust boundary in an
-  unexpected way; otherwise Sonnet Developer per Amendment 11.
+- **R1** and any backend slice that adds a **designer system prompt**, **brief validation**, or
+  **sport-specific save/list** stays **security-critical** (AGENTS.md): a new prompt and brief
+  validation are the **model boundary** (ADR 0017 P3/P4); changing what save and list send to MOWL
+  is an **external write** even when the operation kinds stay **`mowl_save_workout`** /
+  **`mowl_update_workout`** with the same protocol (ADR 0005, ADR 0007). Reusing that protocol is
+  correct; it does **not** downgrade the review class.
+- **Cursor** (Amendment 11, [cursor.md](../cursor.md)): **Grok 4.7 High** implements and a fresh
+  **Grok 4.7 High** reviews those issues (`cursor-security-developer` /
+  `cursor-security-reviewer`); **Composer** and routine **Grok 4.7** review cover **U1**, **E1**,
+  and **F1** unless they widen the categories above. Amendment 11 does not assign Sonnet.
+- **Claude Code and Codex** keep **Opus** Developer and Reviewer for the same AGENTS.md categories.
+- **D1** and **L1** stay routine unless discovery exposes new external hosts, auth, or unexpected
+  trust-boundary changes.
 
 ### 5. Feature flag
 
