@@ -888,7 +888,7 @@ are listed at the end.
    map's hash for a mix): it is applied only while the music step's fingerprint is the same. An
    edited playlist, Change songs, or a mix analysed again therefore never moves a different song;
    such rows stay inert, the page counts them as "for earlier music", and they go with the class.
-4. **Applying** (issue BC2, `classbeat.design.beat_one`). A job that produces a draft reads the
+4. **Applying** (issue BC2; the pure functions in `classbeat.agent.beat_one`, BC1). A job that produces a draft reads the
    class's corrections for the music step's fingerprint in a fenced transaction (`class_id` from
    the fenced job row, the owner from the lease, never the input) and carries them in `MusicData`.
    `mix_input.music_map` applies them to its copy after the crossfade conversion, as the library's
@@ -966,7 +966,7 @@ are listed at the end.
 | Issue | Scope | Developer / review | Depends on |
 |---|---|---|---|
 | BC0 (#538) | this amendment (and the ADR 0016 §1 note) | docs / Sonnet | none |
-| BC1 (#539) | migration 0027 (table, RLS, `music_changed`), guards 10 and 12, `classbeat.design.beat_one` (pure apply, songs) | Opus / Opus | BC0 (#538) |
+| BC1 (#539) | migration 0027 (table, RLS, `music_changed`), guards 10 and 12, `classbeat.agent.beat_one` (pure apply, songs) | Opus / Opus | BC0 (#538) |
 | BC2 (#540) | apply in every draft kind, revision `music.beat_one` and `songs` | Opus / Opus | BC1 (#539) |
 | BC3 (#541) | kind `refit_draft` | Opus / Opus | BC2 (#540) |
 | BC4 (#542) | the API and `beat_one` on the class detail | Opus / Opus | BC1, BC2 |
