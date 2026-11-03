@@ -166,6 +166,7 @@ async def test_the_timeline_says_what_asked_for_each_revision_and_where_it_stand
     assert leaks(got.text) == []
     body = got.json()
     assert body["sport"] == "cycling"
+    assert body["can_change"] is False  # the planted class has no brief or music source
     r1, r2, r3 = body["revisions"]
     assert [r["number"] for r in (r1, r2, r3)] == [1, 2, 3]
     assert (r1["origin"], r1["request"], r1["saved"], r1["is_current"]) == (
@@ -287,6 +288,11 @@ async def test_a_running_class_is_read_with_the_running_schema(two: tuple[Plant,
     b = revision(mine.admin, mine.owner, run, 2, running("b", 2, 4, 3), parent_id=a)
     body = (await mine.browser.get(f"/api/classes/{run}/history")).json()
     assert body["sport"] == "running"
+    assert body["can_change"] is False  # a brief but no music source
+    source = {"source": "mowl_spotify_playlist", "spotify_playlist_id": "x" * 22}
+    sql(mine.admin, "UPDATE classes SET music_source = CAST(:m AS jsonb) WHERE id = :c",
+        m=json.dumps(source), c=run)  # fmt: skip
+    assert (await mine.browser.get(f"/api/classes/{run}/history")).json()["can_change"] is True
     assert [r["summary"]["total_sec"] for r in body["revisions"]] == [600, 900]
     change = (await mine.browser.get(f"/api/classes/{run}/history/compare?from={a}&to={b}")).json()
     assert change["intervals"] == {"added": 1, "removed": 0, "changed": 1}

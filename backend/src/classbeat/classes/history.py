@@ -45,7 +45,10 @@ _UUID = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{1
 # The ``uuid`` text check in SQL, so a malformed id in a stored provenance never fails the read.
 _UUID_SQL: Final = "'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'"
 
-_CLASS = text("SELECT 1 FROM classes WHERE owner_id = :owner_id AND id = :class_id")
+_CLASS = text(
+    "SELECT (brief IS NOT NULL AND music_source IS NOT NULL) AS can_change FROM classes "
+    "WHERE owner_id = :owner_id AND id = :class_id"
+)
 
 _ROWS = text(f"""
 SELECT r.id, r.number, r.created_at, r.parent_id, p.number AS parent_number, r.content,
@@ -115,6 +118,9 @@ class TimelineEntryOut(BaseModel):
 
 class HistoryOut(BaseModel):
     sport: Literal["cycling", "running"]
+    # The class has a stored brief and its own music source, which Change it needs: a duplicate of
+    # a class on picked songs has none (ADR 0007 amendment of 2026-11-03, part D item 5).
+    can_change: bool
     revisions: list[TimelineEntryOut]
 
 
@@ -244,11 +250,14 @@ async def history(factory: Factory, ctx: UserContext, class_id: UUID) -> History
     """The timeline of the user's own class, oldest first; ``None`` when it is not theirs."""
     require_context(ctx)
     async with user_session(factory, ctx) as db:
-        if (await db.execute(_CLASS, _params(ctx, class_id))).first() is None:
+        found = (await db.execute(_CLASS, _params(ctx, class_id))).first()
+        if found is None:
             return None
         sport = _sport(await stored_brief(db, ctx.user_id, class_id))
         rows = (await db.execute(_ROWS, _params(ctx, class_id))).all()
-    return HistoryOut(sport=sport, revisions=[entry(r, sport) for r in rows])
+    return HistoryOut(
+        sport=sport, can_change=bool(found.can_change), revisions=[entry(r, sport) for r in rows]
+    )
 
 
 def _warnings(music: dict[str, Any]) -> WarningsOut:
