@@ -51,8 +51,9 @@ describe('DuplicateClass', () => {
     await waitFor(() => {
       expect(mocks.navigate).toHaveBeenCalledWith('/classes/c9')
     })
-    const [classId, revisionId, hash, title] = mocks.duplicateClass.mock.calls[0] as string[]
+    const [classId, revisionId, hash, title, key] = mocks.duplicateClass.mock.calls[0] as string[]
     expect([classId, revisionId, title]).toEqual(['c1', 'r2', 'Thursday climb'])
+    expect(key).toMatch(/^[A-Za-z0-9_-]{16,64}$/)
     expect(hash).toMatch(/^[0-9a-f]{64}$/)
     expect(mocks.getRevision).toHaveBeenCalledWith('c1', 'r2')
   })

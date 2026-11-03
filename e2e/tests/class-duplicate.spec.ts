@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto'
 import { expect, signInThroughUi, signUpThroughUi, test, uniqueEmail } from './helpers'
 import { PLAYLISTS, fakeMowl } from './design-helpers'
 import { useModelScript } from './model-script'
@@ -81,7 +82,11 @@ test('duplicate a class, save the copy, isolation and the monthly limit', async 
   expect(read.status()).toBe(404)
   const session = await (await otherPage.request.get('/api/auth/session')).json()
   const posted = await otherPage.request.post(`/api/classes/${copy}/duplicate`, {
-    headers: { 'X-CSRF-Token': session.csrf_token as string, Origin: new URL(baseURL!).origin },
+    headers: {
+      'X-CSRF-Token': session.csrf_token as string,
+      Origin: new URL(baseURL!).origin,
+      'Idempotency-Key': randomUUID(),
+    },
     data: { revision_id: '00000000-0000-4000-8000-000000000000', content_hash: '0'.repeat(64), title: 'Mine now' },
   })
   expect(posted.status()).toBe(404)

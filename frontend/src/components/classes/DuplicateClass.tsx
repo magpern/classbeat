@@ -2,6 +2,7 @@ import { useId, useState, type FormEvent } from 'react'
 import { getRevision } from '../../api/classes'
 import { TITLE_MAX, copyTitle, duplicateClass, duplicateReasonText } from '../../api/classDuplicate'
 import { contentHash } from '../../lib/canonical'
+import { newIdempotencyKey } from '../../lib/submittedInput'
 import { useRouter } from '../../router/Router'
 import { Button } from '../ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogTitle, DialogTrigger } from '../ui/dialog'
@@ -31,6 +32,8 @@ export function DuplicateClass({
   const [name, setName] = useState(copyTitle(title))
   const [error, setError] = useState<string | null>(null)
   const [sending, setSending] = useState(false)
+  // One key per opening of the dialog, so a double submit or a retry is the same request.
+  const [key, setKey] = useState(newIdempotencyKey)
   const nameId = useId()
   if (revisionId === null) return null
 
@@ -43,7 +46,7 @@ export function DuplicateClass({
         // The hash of the content the server holds for this version: the copy goes through only
         // if the version is the one named (as Use this version does).
         const full = await getRevision(classId, revisionId)
-        const made = await duplicateClass(classId, revisionId, await contentHash(full.raw), name.trim())
+        const made = await duplicateClass(classId, revisionId, await contentHash(full.raw), name.trim(), key)
         setOpen(false)
         navigate(`/classes/${made.classId}`)
       } catch (failure) {
@@ -62,6 +65,7 @@ export function DuplicateClass({
         if (next) {
           setName(copyTitle(title))
           setError(null)
+          setKey(newIdempotencyKey())
         }
       }}
     >
