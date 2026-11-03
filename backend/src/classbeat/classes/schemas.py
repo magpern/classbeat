@@ -1,11 +1,12 @@
 """Response models of the class API. Nothing here names a MOWL or Spotify id, a link id, a
 fingerprint, an agent run id, a hash or lease data (ADR 0007 section 12)."""
 
+from dataclasses import asdict
 from datetime import datetime
-from typing import Any, Literal
+from typing import Any, Literal, Self
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from classbeat.agent.schemas import Brief
 
@@ -131,6 +132,57 @@ class SwedebeatMatchPointerOut(BaseModel):
     approved: bool
 
 
+class BeatOneSongOut(BaseModel):
+    """A song the current revision plays, with the class's beat-one correction for it (ADR 0007
+    amendment "beat-one corrections"): ``beats`` set by the user, ``applied`` in the revision."""
+
+    song: int
+    start: float
+    end: float
+    bpm: float
+    estimate: bool
+    title: str | None = None
+    beats: int
+    applied: int
+
+
+class BeatOneOut(BaseModel):
+    """``available`` only when the current revision has beat data (``music.songs``);
+    ``pending`` when the corrections differ from what it applied; ``stale`` counts rows set on
+    other music."""
+
+    available: bool
+    revision_id: UUID | None = None
+    songs: list[BeatOneSongOut] = []
+    pending: bool = False
+    stale: int = 0
+
+    @classmethod
+    def of(cls, view: Any) -> "BeatOneOut":
+        return cls(
+            available=view.available,
+            revision_id=view.revision_id,
+            songs=[BeatOneSongOut(**asdict(s)) for s in view.songs],
+            pending=view.pending,
+            stale=view.stale,
+        )
+
+
+class BeatOneIn(BaseModel):
+    """``PUT /api/classes/{id}/beat-one/{song}``: the total shift and the revision it is for."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    beats: int = Field(ge=-3, le=3, strict=True)  # a JSON integer: never 1.0 or "1"
+    revision_id: UUID
+
+    @model_validator(mode="after")
+    def _not_zero(self) -> Self:
+        if self.beats == 0:
+            raise ValueError("clear a correction with DELETE")
+        return self
+
+
 class ClassDetailOut(ClassOut):
     songs: SongsOut
     playlist: PlaylistOut | None = None  # the current draft's own playlist
@@ -141,6 +193,8 @@ class ClassDetailOut(ClassOut):
     # The newest Swedebeat match, null when the class has none. Left out of the body entirely
     # while the ``swedebeat_enabled`` flag is off (no match row is read then).
     swedebeat_match: SwedebeatMatchPointerOut | None = None
+    # ADR 0007 amendment "beat-one corrections": the per-song correction control's data.
+    beat_one: BeatOneOut = BeatOneOut(available=False)
 
 
 class MosaicSongOut(BaseModel):
