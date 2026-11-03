@@ -593,6 +593,15 @@ scripts/worktree.sh rm 7                 # compose down -v, remove the worktree 
 
 `secrets/` and `.env` are git-ignored. Passwords are mounted as Docker secret files, never
 passed as environment variables.
+Compose bind-mounts a file secret with its host owner and mode (outside Swarm it ignores `uid`,
+`gid` and `mode`), so `scripts/worktree.sh init` makes the dev files 644 inside a 700 folder. In
+production (`compose.prod.yaml`, #511) every file is the deploy user's, group 10010, mode 640, and
+every service that mounts a secret has `group_add: ["10010"]` and runs as a non-root user (`db` and
+`db-functions` as `postgres` from the start: the image's gosu drops supplementary groups);
+`scripts/check-prod-compose.sh` checks both, and the real files' mode and group on the server
+(runbook section 5). An unreadable optional secret file (`smtp_password`, `oauth_*_client_secret`,
+`swedebeat_app`) counts as not set with a warning naming the field; any other unreadable one is
+fatal; a file of blanks is empty, except the three database passwords (read byte for byte).
 
 ### End-to-end tests
 

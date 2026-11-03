@@ -72,30 +72,61 @@ Never use `latest` (there is none); `CLASSBEAT_VERSION` pins a release.
 
 ## 5. Secrets and settings
 
-Secrets are files in `/opt/classbeat/secrets/` (directory mode 700, files 600, owned by the
-deploy user), mounted as Docker secrets. They are never in `.env`, never committed
-(`secrets/` and `.env` are git-ignored).
+Secrets are files in `/opt/classbeat/secrets/`, mounted as Docker secrets. They are never in
+`.env`, never committed (`secrets/` and `.env` are git-ignored).
+
+**Who can read them (#511).** Outside Swarm, Docker Compose bind-mounts a file secret with the host
+file's owner and mode and ignores `uid`, `gid` and `mode`, so a file only the deploy user can read
+(mode 600) is `Permission denied` inside the containers: `web`, `worker` and `migrate` run as uid
+10001, `db` and `db-functions` as `postgres` (uid 999). Every service that mounts a secret therefore
+gets the supplementary group **10010** (`group_add` in `compose.prod.yaml`), and every file in
+`secrets/` is owned by the deploy user, **group 10010, mode 640**: the deploy user writes it, the
+containers read it through the group, nobody else on the host reads it. Each container only sees
+the files compose mounts into it. The folder is mode 2700 and group 10010: only the deploy user
+enters it, and the setgid bit gives every new file in it group 10010 by itself. Never make a secret
+file world-readable (644), and put no account on the host into group 10010.
+
+One-time, with sudo (the group name is only a label; the number is what counts, and it must not
+already belong to something else):
 
 ```bash
-cd /opt/classbeat && mkdir -p secrets && chmod 700 secrets
-umask 077
+getent group 10010 || sudo groupadd --system --gid 10010 classbeat-secrets   # must have no members
+cd /opt/classbeat && mkdir -p secrets && sudo chgrp 10010 secrets && sudo chmod 2700 secrets   # sudo: an owner outside the group cannot set g+s
+```
+
+Then as the deploy user (no sudo: the files get group 10010 from the folder, mode 640 from the umask):
+
+```bash
+cd /opt/classbeat
+umask 027
 for n in postgres_password database_owner_password database_password database_maint_password; do
   head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n' > "secrets/$n"
 done
 head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n' > secrets/app_secret_key      # >= 32 bytes
 head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n' > secrets/connection_kek      # exactly 64 hex characters
-for n in oauth_google_client_secret oauth_github_client_secret oauth_microsoft_client_secret; do
-  [ -e "secrets/$n" ] || install -m 600 /dev/null "secrets/$n"   # empty placeholder: that provider is off
+for n in smtp_password anthropic_api_key openai_api_key deepseek_api_key swedebeat_app \
+  oauth_google_client_secret oauth_github_client_secret oauth_microsoft_client_secret; do
+  [ -e "secrets/$n" ] || install -m 640 /dev/null "secrets/$n"   # empty placeholder; fill in below
 done
+ls -ln secrets/          # every file: <your uid> 10010, -rw-r-----
 ```
 
-Then by hand (type or paste, no `echo` of a real value into the shell history):
+Files made before this change (or anywhere else and moved in) keep their old group and mode; fix
+them once with `sudo chgrp 10010 secrets/* && chmod 640 secrets/*`. `scripts/check-prod-compose.sh`
+checks every file named in `compose.prod.yaml` on the server: a regular file (not a link), group
+10010, the group may read and not write, nothing for others, and the folder closed to others
+(it prints names, modes and group numbers only, never a file's content).
+
+Type or paste each value, with no `echo` of a real value into the shell history, for example
+`( umask 027; read -rs S && printf '%s' "$S" > secrets/anthropic_api_key; unset S )`.
+
+Fill in these files by hand (writing into an existing file keeps its group and mode):
 
 - `secrets/smtp_password`: the SMTP login password (an empty file if the SMTP account needs none).
 - `secrets/anthropic_api_key`: the Anthropic key. The worker refuses to start in prod without it.
 - `secrets/openai_api_key`, `secrets/deepseek_api_key`: leave **empty** until the owner decides
   (ADR 0012, [m3c-model-enable.md](m3c-model-enable.md)); the files must exist.
-- `secrets/swedebeat_app`: leave **empty** (`touch secrets/swedebeat_app`); the file must exist
+- `secrets/swedebeat_app`: leave **empty** (the loop above made it); the file must exist
   because `compose.yaml` and `compose.prod.yaml` mount it into `web`, and compose fails at `up`
   without it. A release image holds Swedebeat's key itself; the file is only a runtime override
   ([swedebeat-connect.md](swedebeat-connect.md)).
@@ -103,6 +134,11 @@ Then by hand (type or paste, no `echo` of a real value into the shell history):
   `secrets/oauth_microsoft_client_secret`: the OAuth client secrets, mounted into `web` only. The
   loop above creates them **empty** (that provider is off) and never empties one that exists; the
   files must exist, or `up` fails with a missing-file error. To switch Google on, section 5a.
+
+A file that holds only blanks counts as empty. If an optional file (`smtp_password`, the three
+`oauth_*_client_secret`, `swedebeat_app`) cannot be read, `web` starts without it and logs
+`secret file <name> is not readable; treated as not set` (that feature is off); any other unreadable
+secret stops the service that needs it. Either way, fix the group and mode as above.
 
 **Back up `secrets/connection_kek` and `secrets/postgres_password` and the other secret files
 off the server now** (a password manager or an encrypted offline copy). Losing `connection_kek`
@@ -165,8 +201,8 @@ either empty it is off. Nothing about it is ever typed into a chat, an issue or 
    it reaching the shell history or the screen:
    ```bash
    cd /opt/classbeat
-   ( umask 077; read -rs S && printf '%s' "$S" > secrets/oauth_google_client_secret; unset S )
-   chmod 600 secrets/oauth_google_client_secret      # same owner and mode as the other files in secrets/
+   ( umask 027; read -rs S && printf '%s' "$S" > secrets/oauth_google_client_secret; unset S )
+   ls -ln secrets/oauth_google_client_secret          # <your uid> 10010, -rw-r----- like the others
    ```
 4. Recreate web (only web reads these; the worker never gets them):
    ```bash
@@ -319,7 +355,16 @@ Either mode works; **which one is the owner's decision.**
 ```bash
 cd /opt/classbeat
 docker compose config -q            # every required variable is set (COMPOSE_FILE from .env)
-scripts/check-prod-compose.sh       # needs jq; checks the real PROXY_IP in .env is one private address
+scripts/check-prod-compose.sh       # needs jq; the real PROXY_IP in .env, and secrets/ group 10010 mode 640
+docker compose pull
+# Every service reads each secret it mounts: one line "<service>: <file> OK" or "... FAIL" per
+# file, never a value (`test -r` asks the kernel and opens nothing). Any FAIL: fix the group and
+# mode (section 5) before `up`.
+for s in db migrate db-functions web worker; do
+  docker compose run --rm --no-deps -T --entrypoint sh "$s" -c \
+    'for f in /run/secrets/*; do if test -r "$f"; then echo "${f##*/} OK"; else echo "${f##*/} FAIL"; fi; done' \
+    | sed "s/^/$s: /"
+done
 docker compose up -d --wait
 docker compose ps
 ```
@@ -346,6 +391,9 @@ docker compose exec web python -m classbeat admin grant you@example.test
 - [ ] `docker network inspect classbeat-proxy` (6a): swag at `PROXY_IP` and classbeat's web only.
 - [ ] No mailpit container exists.
 - [ ] Sign up with the invite, receive the verification mail (check spam, SPF, DKIM).
+- [ ] The readability loop in section 9 printed `OK` for every file and no `FAIL`;
+      `ls -ln secrets/` shows group `10010` and `-rw-r-----` (or stricter) on every file, and
+      `scripts/check-prod-compose.sh` passes on the server.
 - [ ] `docker compose exec web ls /run/secrets` lists no model key; `exec worker` lists
       `anthropic_api_key` and no `oauth_*_client_secret`. `exec web touch /app/x` fails (read-only).
 - [ ] A design run shows live progress in the browser (SSE passes swag, and Cloudflare, unbuffered).
@@ -387,8 +435,9 @@ one line per address every 10 seconds, with the number it skipped), so a flood t
 ```bash
 cd /opt/classbeat
 git fetch --tags && git checkout vNEW             # the release you want
-touch secrets/swedebeat_app                       # must exist (empty is fine); `touch` never empties it
-touch secrets/oauth_google_client_secret secrets/oauth_github_client_secret secrets/oauth_microsoft_client_secret
+( umask 027; touch secrets/swedebeat_app \
+  secrets/oauth_google_client_secret secrets/oauth_github_client_secret secrets/oauth_microsoft_client_secret )
+scripts/check-prod-compose.sh                     # secrets/ files: group 10010, mode 640 or stricter
 sed -i 's/^CLASSBEAT_VERSION=.*/CLASSBEAT_VERSION=NEW/' .env   # NEW = the tag without the v
 docker compose pull
 docker compose up -d --wait
@@ -400,8 +449,11 @@ steps, and compare the release's swag sample with the installed one
 (`git diff vOLD vNEW -- docs/runbooks/swag-classbeat.subdomain.conf`). A stack older than the
 Swedebeat connection (#366) has no `secrets/swedebeat_app`, and one older than #507 has no
 `secrets/oauth_*_client_secret`; without them `up` fails with a missing-file error for that secret,
-which the `touch` lines above fix (an empty OAuth file keeps that provider off). A file `touch`
-creates gets your umask's mode: `chmod 600` it like the others in `secrets/`.
+which the `touch` line above fixes (an empty OAuth file keeps that provider off; `touch` never empties
+a file). A file it creates gets group 10010 from the folder and mode 640 from `umask 027`. A stack
+set up before #511 has files of mode 600 and the deploy user's group, which the containers cannot
+read: run the one-time commands of section 5 (`groupadd`, `chgrp` and `chmod 2700` on the folder,
+then `sudo chgrp 10010 secrets/* && chmod 640 secrets/*`) before `up`.
 
 ### Rollback
 
@@ -463,7 +515,14 @@ headers and no `proxy_intercept_errors`). For OAuth sign-in (#507) it checks tha
 secrets are `secrets/` files mounted on web only, that no service has a variable named like a secret,
 that the client ids and visible providers come only from their variables (empty and `google` without
 them), that a canary in the dummy secret files never shows in the rendered files, and that `.env` holds
-no `*CLIENT_SECRET*` variable. That the Docker port relay presents the `web-out`
+no `*CLIENT_SECRET*` variable. For the secret files (#511) it checks that every service that mounts a
+secret has `group_add: ["10010"]` and runs as a non-root user (`postgres` for the postgres image,
+whose gosu would drop the group), that each secret is the file `secrets/<its own name>` mounted at that
+name, that no service bind-mounts `secrets/`, a folder above it or a file in it, and that no command,
+entrypoint or healthcheck names `/run/secrets`; on the server, the mode and group of each real file.
+That a uid 10001 container with group 10010 reads a `root:10010` mode 640 or 440 file and one without
+the group cannot, and that gosu drops the group, was checked with `compose.prod.yaml` on Docker 29.9.2 /
+Compose 5.6.1 (#511). That the Docker port relay presents the `web-out`
 gateway (section 6b) was checked on a throwaway container on Docker 29.
 
 Not checked: a running prod stack behind a real swag (the image, Cloudflare, the certificate, the

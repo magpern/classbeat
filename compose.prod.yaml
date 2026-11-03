@@ -21,7 +21,8 @@
 #   MODEL_PROVIDER, DEEPSEEK_ENABLED, SWEDEBEAT_ENABLED, RUNNING_ENABLED, SMTP_CA_FILE    optional
 #   OAUTH_GOOGLE_CLIENT_ID, OAUTH_GITHUB_CLIENT_ID, OAUTH_MICROSOFT_CLIENT_ID (not secret),
 #   OAUTH_VISIBLE_PROVIDERS (default google)                                              optional
-# Secrets are files under ./secrets (mounted as Docker secrets, never environment variables).
+# Secrets are files under ./secrets (mounted as Docker secrets, never environment variables), group
+# 10010 and mode 0640: see x-secrets-gid below.
 #
 # Networks: `backend` is internal (no route out): db, migrate and db-functions live only there.
 # `proxy` is the owner's external network (created once, `docker network create --internal
@@ -45,11 +46,24 @@ x-hardening: &hardening
   cap_drop:
     - ALL
 
+# Secret files (#511). Outside Swarm, Compose bind-mounts a file secret with its host owner and mode
+# and ignores `uid`, `gid` and `mode`, so the reading uid needs a permission on the host file. Every
+# file in secrets/ is `<deploy user>:10010`, mode 0640 (never world-readable; runbook section 5), and
+# every service that mounts a secret runs as a non-root user with the supplementary group 10010
+# (classbeat-secrets on the host, which has no members there). The postgres services run as
+# `postgres` (uid 999) from the start: the image's root entrypoint would re-exec as postgres through
+# gosu, which drops supplementary groups, and its init scripts read the role password files.
+# scripts/check-prod-compose.sh checks both, and the mode and group of the real files on the server.
+x-secrets-gid: &secrets-gid
+  - "10010"
+
 x-app: &app
   image: ghcr.io/magpern/classbeat:${CLASSBEAT_VERSION:?set CLASSBEAT_VERSION to a release tag}
   restart: unless-stopped
   logging: *logging
   <<: *hardening
+  # The image's user (uid 10001) reads its secret files through the group classbeat-secrets.
+  group_add: *secrets-gid
   environment: &app-env
     CLASSBEAT_ENVIRONMENT: prod
     CLASSBEAT_LOG_LEVEL: INFO
@@ -79,6 +93,9 @@ services:
     image: postgres:17.11
     restart: unless-stopped
     logging: *logging
+    # As postgres from the start (not root, then gosu), so group 10010 reaches the init scripts.
+    user: postgres
+    group_add: *secrets-gid
     environment:
       POSTGRES_DB: classbeat
       POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
@@ -120,6 +137,7 @@ services:
     restart: "no"
     logging: *logging
     user: postgres
+    group_add: *secrets-gid
     entrypoint: ["sh", "/queue/db-functions.sh"]
     secrets:
       - postgres_password

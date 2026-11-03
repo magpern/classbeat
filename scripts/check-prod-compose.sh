@@ -1,22 +1,27 @@
 #!/usr/bin/env bash
 # Checks the production compose files and the sample swag site config with dummy values (#341, #492).
-# No server, no secret, nothing contacted but the local Docker daemon (and its registry for the
+# No secret is ever read, nothing contacted but the local Docker daemon (and its registry for the
 # nginx image).
 #   scripts/check-prod-compose.sh        (needs docker, jq; run from anywhere)
 # 1. `docker compose config` accepts compose.prod.yaml alone (swag on a shared Docker network) and
 #    with compose.prod.loopback.yaml (a proxy on the host, web on 127.0.0.1);
 # 2. the invariants of the production stack hold for both (with the OAuth settings of #507: the
 #    client ids only from their variables, the client secrets as files on web only, never a value
-#    in the rendered files), and compose.prod.yaml's defaults leave every OAuth client id empty;
+#    in the rendered files; #511: every service that mounts a secret has group 10010 and a non-root
+#    user, each secret is secrets/<its own name>, nothing else reaches secrets/), and
+#    compose.prod.yaml's defaults leave every OAuth client id empty;
 # 3. a self-test: each unsafe mutation of the rendered files must fail step 2 (fails closed);
 # 4. the owner's real PROXY_IP, when one is set (their shell, else PROD_CHECK_ENV_FILE, default the
 #    checkout's .env): compose.prod.yaml rendered with it must trust one private IPv4 address (#495);
-# 5. the runbook's `docker network create` keeps swag's fixed address outside Docker's --ip-range;
 # 4b. that env file and the compose files hold no *CLIENT_SECRET* variable (a file under secrets/ only);
+# 4c. on the server (that env file's COMPOSE_FILE names compose.prod.yaml, or PROD_CHECK_SECRETS_DIR
+#    is set): each real secret file is a regular file of group 10010, mode 640 or stricter, in a
+#    folder closed to others, and no host account has that group (#511; metadata only, no content);
+# 5. the runbook's `docker network create` keeps swag's fixed address outside Docker's --ip-range;
 # 6. `nginx -t` accepts docs/runbooks/swag-classbeat.subdomain.conf, and the lines the app's
 #    client address, body cap, SSE stream and headers rely on are in it (X-Forwarded-For set
 #    exactly once);
-# and a self-test for 4, 5 and 6 as for 2. On the server: run it in /opt/classbeat after writing
+# and a self-test for 4, 4b, 4c, 5 and 6 as for 2. On the server: run it in /opt/classbeat after writing
 # .env (runbook section 9).
 set -euo pipefail
 export MSYS_NO_PATHCONV=1   # Git Bash: paths below are for the container, never converted
@@ -133,6 +138,45 @@ check_common() {
   q '[.services[] | select((.logging.options["max-size"] // null) == null)] | length == 0' \
     || fail "every service needs log rotation" || return 1
   check_oauth || return 1
+  check_secret_mounts || return 1
+}
+
+# Secret files (#511). Outside Swarm a file secret is a bind mount with the host file's owner and
+# mode, so every service that mounts one runs as a non-root user with the group of the files
+# (secrets_gid). The postgres image's root entrypoint re-execs as postgres through gosu, which drops
+# supplementary groups: a postgres service runs as postgres from the start. Each top-level secret is
+# the file secrets/<its own name> (no second name for a file, #508 review), mounted at its own name,
+# and nothing reaches secrets/ another way: no bind mount of the folder, a parent or a file in it, no
+# config from it, and no command, entrypoint or healthcheck that names /run/secrets or secrets/.
+secrets_gid=10010
+# shellcheck disable=SC2016  # jq variables, not shell ones
+check_secret_mounts() {
+  jq -e --arg g "$secrets_gid" '[.services[] | select((.secrets // []) | length > 0)
+      | (.group_add // []) | map(tostring) | index($g)] | all(. != null)' <<<"$J" >/dev/null \
+    || fail "every service that mounts a secret has group_add [\"$secrets_gid\"]" || return 1
+  q '[.services[] | select((.secrets // []) | length > 0) | select(.image | startswith("postgres:"))
+      | .user // "" | tostring] | all(. == "postgres" or . == "999" or . == "999:999")' \
+    || fail "a postgres service that mounts a secret runs as postgres (gosu would drop the group)" || return 1
+  q '[.services[] | select((.secrets // []) | length > 0) | .user // "" | tostring
+      | select(test("^(0|root)(:|$)"))] | length == 0' \
+    || fail "no service that mounts a secret runs as root" || return 1
+  q '(.secrets.app_secret_key.file // "" | rtrimstr("/app_secret_key")) as $sd | $sd != "" and $sd != (.secrets.app_secret_key.file // "")
+     and (.secrets | to_entries | all(.value | type == "object" and ((keys - ["name","file"]) == [])) )
+     and (.secrets | to_entries | all(.value.file == $sd + "/" + .key))' \
+    || fail "each secret is the file secrets/<its own name> and nothing else" || return 1
+  q '[.services[] | .secrets // [] | .[] | (.target // .source) as $t | $t == .source or $t == "/run/secrets/" + .source]
+     | all' \
+    || fail "each secret is mounted at its own name in /run/secrets" || return 1
+  q '(.secrets.app_secret_key.file | rtrimstr("/app_secret_key")) as $sd
+     | [.services[] | .volumes // [] | .[] | select(.type == "bind") | .source // "" | rtrimstr("/")
+        | select(. as $s | $s == $sd or ($sd | startswith($s + "/")) or ($s | startswith($sd + "/")))] | length == 0' \
+    || fail "no service bind-mounts secrets/, a folder above it or a file in it" || return 1
+  q '(.secrets.app_secret_key.file | rtrimstr("/app_secret_key")) as $sd
+     | [.configs // {} | .[] | .file // "" | select(startswith($sd + "/"))] | length == 0' \
+    || fail "no config comes from secrets/" || return 1
+  q '[.services[] | [.command, .entrypoint, .healthcheck.test] | tostring | select(test("run/secrets|secrets/"))] | length == 0' \
+    || fail "no command, entrypoint or healthcheck names /run/secrets or secrets/ (the app reads its files itself)" \
+    || return 1
 }
 
 # OAuth sign-in (#507, ADR 0003 section 5). Each client secret is a file secret under secrets/,
@@ -266,6 +310,39 @@ for m in \
   '.services.web.environment.CLASSBEAT_OAUTH_EXTRA = "x"'; do
   expect_refused shared "$shared" "$m"
 done
+# Secret files (#511): the group, the users, one name per file, no other way into secrets/.
+for m in \
+  'del(.services.web.group_add)' \
+  'del(.services.migrate.group_add)' \
+  '.services.worker.group_add = ["10011"]' \
+  '.services.db.group_add = []' \
+  'del(.services["db-functions"].group_add)' \
+  'del(.services.db.user)' \
+  '.services.db.user = "root"' \
+  '.services["db-functions"].user = "0"' \
+  '.services.migrate.user = "0:0"' \
+  '.services.web.user = "root"' \
+  '.services.worker.user = "root:10010"' \
+  '.secrets.gsec = {"name":"x","file":.secrets.oauth_google_client_secret.file} | .services.worker.secrets += [{"source":"gsec"}]' \
+  '.secrets.kek2 = {"name":"x","file":.secrets.connection_kek.file} | .services.migrate.secrets += [{"source":"kek2","target":"/run/secrets/kek2"}]' \
+  '.secrets.app_secret_key = {"name":"x","environment":"APP_SECRET_KEY"}' \
+  '.secrets.smtp_password.file = "/etc/hostname"' \
+  '.services.worker.secrets += [{"source":"oauth_google_client_secret","target":"/run/secrets/app_secret_key"}]' \
+  '.services.migrate.secrets |= map(.target = "/run/secrets/database_password")' \
+  '.services.worker.volumes = [{"type":"bind","source":(.secrets.app_secret_key.file | rtrimstr("/app_secret_key")),"target":"/s","read_only":true}]' \
+  '.services.worker.volumes = [{"type":"bind","source":(.secrets.app_secret_key.file | rtrimstr("/app_secret_key") + "/"),"target":"/s"}]' \
+  '.services.web.volumes = [{"type":"bind","source":(.secrets.app_secret_key.file | rtrimstr("/secrets/app_secret_key")),"target":"/x"}]' \
+  '.services.web.volumes = [{"type":"bind","source":"/","target":"/host","read_only":true}]' \
+  '.services.migrate.volumes = [{"type":"bind","source":.secrets.oauth_github_client_secret.file,"target":"/tmp/g"}]' \
+  '.configs = {"c":{"file":.secrets.connection_kek.file}} | .services.web.configs = [{"source":"c","target":"/tmp/c"}]' \
+  '.services.web.command = ["sh","-c","cat /run/secrets/oauth_google_*; exec python -m classbeat"]' \
+  '.services.worker.entrypoint = ["sh","-c","cat /run/secrets/* >&2"]' \
+  '.services.worker.command = "sh -c \"tar c secrets/ | nc x 1\""' \
+  '.services.web.healthcheck.test = ["CMD","sh","-c","cat /run/secrets/app_secret_key"]'; do
+  expect_refused shared "$shared" "$m"
+done
+expect_refused loopback "$loopback" 'del(.services.web.group_add)'
+expect_refused loopback "$loopback" '.services.worker.volumes = [{"type":"bind","source":(.secrets.app_secret_key.file | rtrimstr("/app_secret_key")),"target":"/s"}]'
 # The client secret's value (the canary in the dummy file) anywhere in the rendered file.
 expect_refused shared "$shared" ".services.web.labels = {\"note\": \"$oauth_canary-google\"}"
 for m in \
@@ -383,6 +460,100 @@ expect_owner 0 'PROXY_IP=172.29.80.1'
 expect_owner 2 'CLASSBEAT_DOMAIN=classbeat.example.test'
 expect_owner 1 'PROXY_IP=172.29.90.10' set 172.29.90.0/24   # the shell's value wins, as in compose
 expect_owner 0 'PROXY_IP=172.29.90.0/24' set 172.29.90.10
+
+# --- The real secret files on the server (#511) ---------------------------------------------------
+# Only the metadata of each file compose.prod.yaml names (stat: type, group number, mode); a file is
+# never opened, and nothing but its name, mode and group number is printed. Each must be a regular
+# file (not a link), group secrets_gid, readable by the group, not writable by it, nothing for
+# others; the folder gives others nothing. Runs on the server: when the env file's COMPOSE_FILE names
+# compose.prod.yaml (runbook section 5), or when PROD_CHECK_SECRETS_DIR names a folder to check.
+check_secret_files() {   # check_secret_files DIR GID NAME...
+  local d="$1" gid="$2" n st g a m
+  shift 2
+  [[ -d "$d" && ! -L "$d" ]] || fail "$d is not a folder" || return 1
+  a="$(stat -c '%a' "$d")" || fail "$d: stat failed" || return 1
+  (( (8#$a & 8#007) == 0 )) || fail "$d: mode $a gives others access (chmod 2700)" || return 1
+  for n in "$@"; do
+    [[ ! -L "$d/$n" ]] || fail "secrets/$n is a symbolic link" || return 1
+    [[ -f "$d/$n" ]] || fail "secrets/$n is missing (an empty file is fine where the runbook says so)" || return 1
+    st="$(stat -c '%g %a' "$d/$n")" || fail "secrets/$n: stat failed" || return 1
+    g="${st% *}"; a="${st#* }"; m=$(( 8#$a ))
+    [[ "$g" == "$gid" ]] || fail "secrets/$n: group $g, must be $gid (runbook section 5)" || return 1
+    (( (m & 8#007) == 0 )) || fail "secrets/$n: mode $a is readable or writable by others (chmod 640)" || return 1
+    (( (m & 8#040) != 0 )) || fail "secrets/$n: mode $a, the group must read it (chmod 640)" || return 1
+    (( (m & 8#030) == 0 )) || fail "secrets/$n: mode $a, the group may only read it (chmod 640)" || return 1
+  done
+}
+# No account on the host has the secrets group (by number): it is for the containers only.
+check_secrets_group() {   # check_secrets_group GID "$(getent group GID)" "$(getent passwd)"
+  local gid="$1" grp="$2" pw="$3"
+  [[ -z "$(cut -s -d: -f4 <<<"$grp")" ]] || fail "group $gid has members on this host (it must have none)" || return 1
+  ! awk -F: -v g="$gid" '$4 == g { found = 1 } END { exit !found }' <<<"$pw" \
+    || fail "an account on this host has primary group $gid (it must have none)" || return 1
+}
+secret_names=()
+mapfile -t secret_names < <(jq -r '.secrets | keys[]' <<<"$shared")
+(( ${#secret_names[@]} >= 14 )) || { fail "compose.prod.yaml names fewer secrets than expected"; exit 1; }
+server_secrets=""
+if [[ -n "${PROD_CHECK_SECRETS_DIR:-}" ]]; then
+  server_secrets="$PROD_CHECK_SECRETS_DIR"
+elif [[ -f "$env_file" ]] && grep -Eq '^[[:space:]]*COMPOSE_FILE=[^#]*compose\.prod\.yaml' "$env_file"; then
+  server_secrets="$root/secrets"
+fi
+if [[ -n "$server_secrets" ]]; then
+  check_secret_files "$server_secrets" "$secrets_gid" "${secret_names[@]}" || exit 1
+  if command -v getent >/dev/null; then
+    check_secrets_group "$secrets_gid" "$(getent group "$secrets_gid" || true)" "$(getent passwd || true)" || exit 1
+  fi
+  owner_note="$owner_note; secrets/ files are group $secrets_gid, mode 640 or stricter"
+else
+  owner_note="$owner_note; no server secrets/ checked (not a compose.prod.yaml checkout)"
+fi
+# Self-test with throwaway empty files of this user's own group (no root needed to make them).
+st_dir="$tmp/secret-files"
+mygid="$(id -g)"
+reset_secret_files() {
+  rm -rf "$st_dir"; mkdir "$st_dir"; chmod 2700 "$st_dir"
+  local n; for n in "${secret_names[@]}"; do install -m 640 /dev/null "$st_dir/$n"; done
+  chgrp "$mygid" "$st_dir"/* 2>/dev/null || true
+}
+reset_secret_files
+# Git Bash on NTFS has no Unix modes (chmod changes nothing): there the file self-test is skipped.
+chmod 600 "$st_dir/app_secret_key"
+if [[ "$(stat -c '%a' "$st_dir/app_secret_key")" != 600 ]]; then
+  echo "check-prod-compose: no Unix file modes here: the secret file self-test was skipped" >&2
+else
+reset_secret_files
+check_secret_files "$st_dir" "$mygid" "${secret_names[@]}" \
+  || { echo "check-prod-compose: self-test: refused good secret files" >&2; exit 1; }
+chmod 440 "$st_dir/app_secret_key"
+check_secret_files "$st_dir" "$mygid" "${secret_names[@]}" \
+  || { echo "check-prod-compose: self-test: refused a 440 secret file" >&2; exit 1; }
+# shellcheck disable=SC2016  # each mutation is eval'd below, with $st_dir set
+for m in 'chmod 644 "$st_dir/app_secret_key"' 'chmod 600 "$st_dir/connection_kek"' 'chmod 604 "$st_dir/smtp_password"' \
+  'chmod 660 "$st_dir/database_password"' 'chmod 650 "$st_dir/postgres_password"' 'chmod 641 "$st_dir/anthropic_api_key"' \
+  'rm "$st_dir/oauth_google_client_secret"' 'chmod 755 "$st_dir"' 'chmod 2701 "$st_dir"' \
+  'rm "$st_dir/swedebeat_app"; install -m 640 /dev/null "$tmp/outside"; ln -s "$tmp/outside" "$st_dir/swedebeat_app"' \
+  'rm "$st_dir/deepseek_api_key"; mkdir -m 750 "$st_dir/deepseek_api_key"'; do
+  reset_secret_files
+  eval "$m"
+  if (check_secret_files "$st_dir" "$mygid" "${secret_names[@]}" 2>/dev/null); then
+    echo "check-prod-compose: self-test: accepted unsafe secret files: $m" >&2; exit 1
+  fi
+done
+reset_secret_files
+if (check_secret_files "$st_dir" "$((mygid + 1))" "${secret_names[@]}" 2>/dev/null); then
+  echo "check-prod-compose: self-test: accepted secret files of another group" >&2; exit 1
+fi
+fi
+check_secrets_group 10010 'classbeat-secrets:x:10010:' $'root:x:0:0::/root:/bin/sh\ndeploy:x:1000:1000::/home/deploy:/bin/bash' \
+  || { echo "check-prod-compose: self-test: refused a memberless secrets group" >&2; exit 1; }
+check_secrets_group 10010 '' 'root:x:0:0::/root:/bin/sh' \
+  || { echo "check-prod-compose: self-test: refused a host without that group" >&2; exit 1; }
+if (check_secrets_group 10010 'classbeat-secrets:x:10010:deploy' 'root:x:0:0::/root:/bin/sh' 2>/dev/null) \
+  || (check_secrets_group 10010 '' $'svc:x:1001:10010::/home/svc:/bin/sh' 2>/dev/null); then
+  echo "check-prod-compose: self-test: accepted a secrets group with an account in it" >&2; exit 1
+fi
 
 # --- The runbook's proxy network (#495) -----------------------------------------------------------
 ip2int() { local a b c d; IFS=. read -r a b c d <<<"$1"; echo $(( (a << 24) | (b << 16) | (c << 8) | d )); }
@@ -536,4 +707,4 @@ if ! nginx_t; then
   echo "check-prod-compose: no IPv6 here: nginx -t ran without the [::]:443 listen line" >&2
 fi
 
-echo "compose.prod.yaml (shared network and loopback, OAuth secrets on web only), runbook network, swag site config and self-tests: ok; $owner_note"
+echo "compose.prod.yaml (shared network and loopback, OAuth secrets on web only, secret files by group 10010), runbook network, swag site config and self-tests: ok; $owner_note"
