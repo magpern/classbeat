@@ -45,6 +45,7 @@ from jobtools import new_job
 from mediafake import FakeMedia
 from mowlfake import FakeMowl
 from optools import TOKEN_A, TOKEN_B, OpsEnv
+from preftools import use_swedebeat
 from savetools import FakeMowlPrograms
 
 pytestmark = pytest.mark.usefixtures("jenv", "mowl_api")
@@ -189,6 +190,7 @@ def menv(xenv: OpsEnv, mowl_api: FakeMowl, monkeypatch: pytest.MonkeyPatch) -> I
 
 async def rider(browsers: Any, menv: MixEnv, token: str = TOKEN_A) -> Browser:
     browser: Browser = await browsers()
+    await use_swedebeat(menv.ops.factory, browser.user_id)  # #525: the user's own switch
     menv.ops.app.app.dependency_overrides.clear()  # the real registry, as in production
     await menv.ops.connect(browser.user_id, token)  # a reconnect in place: the same id
     return browser
@@ -408,6 +410,20 @@ async def test_admit_refuses_feature_off_before_anything_is_read(
     assert refused.status_code == 409, refused.text
     assert refused.json()["detail"]["reason"] == "feature_off"
     assert mowl_api.list_calls == 0  # no listing, no MOWL request at all
+    assert jobs_of(menv, browser.user_id) == 0
+
+
+async def test_admit_refuses_feature_off_while_the_users_preference_is_off(
+    browsers: Any, menv: MixEnv, mowl_api: FakeMowl
+) -> None:
+    """#525: the flag is on, the user's "I use Swedebeat" is off: no listing, no job."""
+    browser = await rider(browsers, menv)
+    add_mix(mowl_api)
+    await use_swedebeat(menv.ops.factory, browser.user_id, on=False)
+    refused = await create(browser, design_body(browser))
+    assert refused.status_code == 409, refused.text
+    assert refused.json()["detail"]["reason"] == "feature_off"
+    assert mowl_api.list_calls == 0
     assert jobs_of(menv, browser.user_id) == 0
 
 

@@ -37,6 +37,7 @@ from jobapi import Browser, new_key
 from mediafake import FakeMedia
 from mowlfake import FakeMowl
 from optools import TOKEN_A, OpsEnv
+from preftools import use_swedebeat
 
 pytestmark = pytest.mark.usefixtures("jenv", "mowl_api")
 
@@ -121,6 +122,7 @@ def henv(xenv: OpsEnv, mowl_api: FakeMowl, monkeypatch: pytest.MonkeyPatch) -> I
 
 async def rider(browsers: Any, henv: HandEnv) -> Browser:
     browser: Browser = await browsers()
+    await use_swedebeat(henv.ops.factory, browser.user_id)  # #525: the user's own switch
     henv.ops.app.app.dependency_overrides.clear()
     browser.connection_id = await henv.ops.connect(browser.user_id, TOKEN_A)
     return browser

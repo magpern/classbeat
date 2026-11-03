@@ -44,9 +44,7 @@ async def set_uses_swedebeat(
 ) -> bool:
     """Store the preference for ``ctx``'s user (insert or update); returns what is stored."""
     async with user_session(factory, ctx) as db:
-        stored = (
-            await db.execute(_WRITE, {"owner_id": ctx.user_id, "value": value})
-        ).scalar_one()
+        stored = (await db.execute(_WRITE, {"owner_id": ctx.user_id, "value": value})).scalar_one()
     return stored is True
 
 

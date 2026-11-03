@@ -49,6 +49,7 @@ from classbeat.swedebeat_match.kind import SWEDEBEAT_MATCH
 from ctx import make_context
 from jobtools import engine_for
 from mfatools import Actor
+from preftools import use_swedebeat
 from swedebeatfake import EMAIL, EMAIL_B, PASSWORD, PASSWORD_B
 
 pytestmark = pytest.mark.usefixtures("swedebeat_api")
@@ -211,6 +212,7 @@ async def _rider(
     class_title: str,
 ) -> Rider:
     user_id = await env.user(account)
+    await use_swedebeat(env.factory, user_id)  # #525: the user's own switch
     actor = await make_actor(user_id)
     connection_id = await _connect(actor, swedebeat_email, password)
     songs = _songs(start, bpm)

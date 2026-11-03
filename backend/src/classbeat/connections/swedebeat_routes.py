@@ -10,9 +10,10 @@ Its status is the ``swedebeat`` row of ``GET /api/connections`` and its ``swedeb
   Also 404 ``feature_off`` while the user's own "I use Swedebeat" preference is off (#525).
 - ``DELETE``: disconnect (recent authentication). Deletes the row; local only. Never gated by the
   flag or the preference: a user can always remove what is stored about them.
-- ``PUT /preference``: store the user's "I use Swedebeat" preference (``{"uses_swedebeat": bool}``,
-  signed in, CSRF by the middleware). Allowed whatever the flag says: storing ``true`` while the flag
-  is off turns nothing on (``preferences.swedebeat_on`` needs both), and ``false`` always works.
+- ``PUT /preference``: store the user's "I use Swedebeat" preference
+  (``{"uses_swedebeat": bool}``, signed in, CSRF by the middleware). Allowed whatever the flag says:
+  storing ``true`` while the flag is off turns nothing on (``preferences.swedebeat_on`` needs
+  both), and ``false`` always works.
 
 Failures answer with the category alone: ``invalid_credentials`` (400), ``device_in_use`` (409),
 ``upstream_unavailable`` (503), ``app_key_unavailable`` (503), ``rate_limited`` (429, with
