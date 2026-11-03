@@ -72,7 +72,9 @@ test('lists mixes in the picker and designs on a cached map', async ({ page }) =
   expect(job.error_category).toBeNull()
 
   const after = swedebeatMixState()
-  expect(after.lists).toBe(before.lists)
+  // Two listings, both from the web: the picker on the reloaded form and admit's own-listing check.
+  // A cache hit makes the worker list, attach and fetch nothing (ADR 0016 section 3).
+  expect(after.lists - before.lists).toBe(2)
   expect(after.links).toBe(before.links)
   expect(after.attaches).toBe(before.attaches)
   expect(workerLogTail()).not.toContain('swedebeat media fetched')
