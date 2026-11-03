@@ -893,7 +893,8 @@ set, positive. The music shapes need no migration. **The flag does** (item 2).
    revision, enforced like the sport (ADR 0018 §1) by a new `design.music_kind` module:
    - `admit_music` (in `design_draft`'s `admit`, when `class_id` is given): `none` on a class whose
      source or current revision is not `none`, or any other source on a class whose source is
-     `none`, is `invalid_input`, before anything else is read or reserved;
+     `none`, is `invalid_input`, after the generic checks of `jobs.user.create` (idempotency,
+     `class_not_found`, `class_busy`, `not_connected`) and before any credit is reserved;
    - `check_stored` (in the final fenced store, after `adopt_first`): the class's `music_source`
      must have the kind of the revision just stored, or the transaction rolls back and the job ends
      `invalid_input`, so two queued jobs of different kinds cannot both land;
@@ -919,9 +920,15 @@ set, positive. The music shapes need no migration. **The flag does** (item 2).
    a revise of a soundless class is refused 409 `feature_off` at creation; with the flag on but the
    job's own plan's route not covering soundless, 409 `soundless_not_evaluated`. Both refusals run in
    `admit`, before the job row and before any credit is reserved (`jobs.user.create` calls `admit`
-   first). A queued job ends `feature_off` or `model_config` in the worker before any call (the
-   backstop for a race between the admin check and a route change: at worst one job fails
-   `model_config`, nothing is sent). Save and Update of a soundless class are `feature_off` when the
+   first), in this order (SL1): the switch (environment and stored value, `feature_off`), then the
+   job's own plan's route (`soundless_not_evaluated`), then every plan's route (`feature_off`, the
+   effective flag). The own plan comes before every plan, or `soundless_not_evaluated` could never
+   be answered. In the web, `fake` covers only when the web's own `CLASSBEAT_MODEL_PROVIDER` is
+   `fake` and `CLASSBEAT_ENVIRONMENT` is not `prod` (item 6), and `compose.yaml` passes no
+   `CLASSBEAT_MODEL_PROVIDER` to web, so a plain dev stack cannot switch soundless on. A queued job
+   ends `feature_off` or `model_config` in the worker before any call (the backstop for a race
+   between the admin check and a route change: at worst one job fails `model_config`, nothing is
+   sent). Save and Update of a soundless class are `feature_off` when the
    environment switch or the stored value is off, at creation and in `prepare` (the reconcilers do
    not read it); they make no model call, so they do not check coverage.
    **Relation to #509:** this design does not depend on #509 and does not fix running. It adds the
@@ -951,7 +958,9 @@ set, positive. The music shapes need no migration. **The flag does** (item 2).
    reused, not copied) plus one fixed sentence that the class has no music, and **no `music` key at
    all**; the revise message has no playlist sentence and no `MUSIC_CHANGED`/`SONGS_CHANGED`. A
    model-input test pins that no playlist, track, BPM, drop or section text, and no `music` key,
-   reaches the model.
+   reaches the model. The soundless stages get **no rules section** (and no rule hits) until SL5:
+   `design/guidance.py` (a rule source) tells the model to deviate "when the brief or the music asks
+   for it", and rewording it would change the digest (SL1).
 6. **Prompt versions, the suite and coverage** (ADR 0012 §5 and its amendment of 2026-11-03). The
    stages are named `design` and `revise`; `models.versions` keys them `soundless_design` (SL1) and
    `soundless_revise` (SL2). The `design` group then has six prompt versions and a results header
