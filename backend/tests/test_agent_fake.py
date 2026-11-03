@@ -48,6 +48,9 @@ COVERED = {
     # a running design and revise (ADR 0018, M8 R1a), used by tests/test_running_jobs.py
     "running_first_draft",
     "running_revise",
+    # a soundless design (ADR 0007 amendment of 2026-11-03, #527), used by
+    # tests/test_soundless_jobs.py: a "beat" refused by the schema, then the draft
+    "soundless_first_draft",
 }
 
 SPEC = StageSpec("design", "s", (), "m", "fake-model", "medium", 32_000, "submit_draft")

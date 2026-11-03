@@ -37,7 +37,7 @@ from classbeat.connections.routes import router as connections_router
 from classbeat.connections.swedebeat_routes import router as swedebeat_router
 from classbeat.crypto.keks import load_keyring
 from classbeat.db import create_engine, create_session_factory, verify_database_role
-from classbeat.design import configure_limits, mixadmit, sport
+from classbeat.design import configure_limits, mixadmit, music_kind, sport
 from classbeat.design.mixes import router as mixes_router
 from classbeat.design.routes import router as music_router  # registers design_draft (J3)
 from classbeat.flags.routes import router as settings_router
@@ -192,6 +192,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     songs.configure(songs.SongConfig.from_settings(settings))
     # The design kinds' admit reads the running switch (ADR 0018 section 5).
     sport.configure(sport.SportGate(running_enabled=settings.running_enabled))
+    # ... and the soundless switch, with the web's own ``fake`` counting as covering only outside
+    # prod (ADR 0007 amendment of 2026-11-03, #527).
+    music_kind.configure(music_kind.SoundlessGate.from_settings(settings))
     # swedebeat_match's admit reads the Swedebeat switch (ADR 0016 section 2); importing
     # classbeat.swedebeat_match registered the kind. The web never opens the token for it.
     swedebeat_match.configure(swedebeat_match.MatchConfig.from_settings(settings))

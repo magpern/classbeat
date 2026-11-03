@@ -20,7 +20,7 @@ from classbeat.db import (
     event_loop_factory,
     verify_database_role,
 )
-from classbeat.design import sport
+from classbeat.design import music_kind, sport
 from classbeat.design.mixfetch import sweep_work_root
 from classbeat.egress import install_worker_allowlist
 from classbeat.log import configure_logging
@@ -48,6 +48,8 @@ async def _run(settings: Settings) -> None:
     design.configure(design.runtime_from_settings(settings, keyring))
     # A queued running design or revise checks the running switch again (ADR 0018 section 5).
     sport.configure(sport.SportGate(running_enabled=settings.running_enabled))
+    # A queued soundless design checks the soundless switch again (#527); coverage is the model's.
+    music_kind.configure(music_kind.SoundlessGate.from_settings(settings))
     # The environment's plan bounds (#496): a job stored without gates is run under the current
     # plan's, whose class length cap is bounded by ``CLASSBEAT_CLASS_MINUTES_MAX`` as at admit.
     quota.configure(settings)

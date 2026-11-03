@@ -53,9 +53,10 @@ from classbeat.agent.revise import ReviseContext, ReviseResult, SongsRequested
 from classbeat.agent.running import revise_stage_for
 from classbeat.agent.schemas import clean_text, stored_draft
 from classbeat.context import UserContext
-from classbeat.design import chat, diff, limits, mixadmit, revision, sport
+from classbeat.design import chat, diff, limits, mixadmit, music_kind, revision, sport
 from classbeat.design.kind import (
     CLASS_MUSIC_SOURCE,
+    NoMusicChoice,
     SwedebeatMusicChoice,
     current_runtime,
     group_model,
@@ -112,6 +113,9 @@ async def admit(db: AsyncSession, ctx: UserContext, parsed: BaseModel) -> Admitt
     running = await sport.admit_class(db, ctx.user_id, class_id)  # ADR 0018: the running flag
     if running is not None:
         return running
+    soundless = await music_kind.admit_class(db, ctx.user_id, class_id)  # #527: SL2 revises it
+    if soundless is not None:
+        return soundless
     chat_limits = limits.current()
     allowed = await chat_limits.policy.limit_for(db, ctx, class_id)
     if state.chat_revisions >= allowed:
@@ -185,6 +189,8 @@ async def run(job_run: JobRun) -> Complete:
         base_draft = stored_draft(base.content, brief.sport)  # the class's own sport's schema
     except ValidationError:
         raise JobFailure("internal") from None
+    if isinstance(music, NoMusicChoice):
+        raise JobFailure("feature_off")  # #527: a soundless class has no revise stage before SL2
     if brief.sport == sport.RUNNING:
         if isinstance(music, SwedebeatMusicChoice):
             raise JobFailure("internal")  # running v1 has no mix (ADR 0018)

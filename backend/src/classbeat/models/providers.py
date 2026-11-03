@@ -88,7 +88,12 @@ class RouteModels:
     ) -> GroupModel:
         if self.settings.model_provider == "fake":  # dev and CI; refused in prod by provider_for
             try:
-                return GroupModel(provider_for(self.settings), agent, running_covered=True)
+                return GroupModel(
+                    provider_for(self.settings),
+                    agent,
+                    running_covered=True,
+                    soundless_covered=True,
+                )
             except Exception:  # ProviderUnavailable, a missing script: an operator problem
                 raise JobFailure("model_config") from None
         async with run.fenced() as fs:
@@ -106,4 +111,9 @@ class RouteModels:
             route_key=choice.route_key,
             eval_result_id=choice.eval_result_id,
         )
-        return GroupModel(provider, routed, running_covered=choice.running_covered)
+        return GroupModel(
+            provider,
+            routed,
+            running_covered=choice.running_covered,
+            soundless_covered=choice.soundless_covered,
+        )
