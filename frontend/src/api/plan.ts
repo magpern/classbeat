@@ -1,5 +1,5 @@
 import { get, post } from './client'
-import { count, isObject, object, optionalText, strings, text } from './decode'
+import { count, flag, isObject, object, optionalText, strings, text } from './decode'
 
 // The account plan API (ADR 0011 section 9, backend/src/classbeat/plans/routes.py) and the public
 // settings. Server text is data: it is decoded into typed fields and rendered as text only.
@@ -8,6 +8,15 @@ export interface Limits {
   classesPerMonth: number
   revisionsPerClass: number
   concurrentJobs: number
+  /** The longest class the plan allows, in minutes (#496). */
+  maxClassMinutes: number
+}
+
+/** Which parts of a class the plan includes (#496). Never a price. */
+export interface Gates {
+  games: boolean
+  races: boolean
+  ftpTests: boolean
 }
 
 export interface TrialOffer {
@@ -22,6 +31,7 @@ export interface Plan {
   source: string | null
   endsAt: string | null
   limits: Limits
+  gates: Gates
   classesHeld: number
   periodEnd: string
   /** This period's model cost as a share of the cap, 0 to 1; never a dollar figure. */
@@ -33,6 +43,7 @@ export interface Plan {
 export function decodePlan(value: unknown): Plan {
   const item = object(value, 'plan')
   const limits = object(item.limits, 'limits')
+  const gates = object(item.gates, 'gates')
   const trial = item.trial === null || item.trial === undefined ? null : object(item.trial, 'trial')
   const share = item.cost_share
   return {
@@ -44,6 +55,12 @@ export function decodePlan(value: unknown): Plan {
       classesPerMonth: count(limits, 'classes_per_month'),
       revisionsPerClass: count(limits, 'revisions_per_class'),
       concurrentJobs: count(limits, 'concurrent_jobs'),
+      maxClassMinutes: count(limits, 'max_class_minutes'),
+    },
+    gates: {
+      games: flag(gates, 'games'),
+      races: flag(gates, 'races'),
+      ftpTests: flag(gates, 'ftp_tests'),
     },
     classesHeld: count(item, 'classes_held'),
     periodEnd: text(item, 'period_end'),

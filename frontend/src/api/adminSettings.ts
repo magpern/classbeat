@@ -47,6 +47,16 @@ export interface Plan {
   revisionsPerClass: number
   concurrentJobs: number
   monthlyCostMicros: number
+  maxClassMinutes: number
+  gamesAllowed: boolean
+  racesAllowed: boolean
+  ftpTestsAllowed: boolean
+  /** Prices are whole cents and exist in the admin area only (billing is off). */
+  monthlyPriceCents: number | null
+  introPriceCents: number | null
+  /** A date, `YYYY-MM-DD`. */
+  introPriceUntil: string | null
+  currency: string | null
   features: string[]
   updatedAt: string
   updatedBy: Person | null
@@ -57,6 +67,7 @@ export interface Bounds {
   revisionsPerClass: number
   concurrentJobs: number
   monthlyCostMicros: number
+  maxClassMinutes: number
   trialDays: number
 }
 
@@ -71,6 +82,10 @@ export interface SettingsView {
   plans: Plan[]
   bounds: Bounds
   readOnly: ReadOnly
+}
+
+function optionalCount(item: JsonObject, key: string): number | null {
+  return item[key] === null || item[key] === undefined ? null : count(item, key)
 }
 
 function decodePerson(value: unknown): Person | null {
@@ -103,6 +118,14 @@ export function decodePlan(value: unknown): Plan {
     revisionsPerClass: count(item, 'revisions_per_class'),
     concurrentJobs: count(item, 'concurrent_jobs'),
     monthlyCostMicros: count(item, 'monthly_cost_micros'),
+    maxClassMinutes: count(item, 'max_class_minutes'),
+    gamesAllowed: flag(item, 'games_allowed'),
+    racesAllowed: flag(item, 'races_allowed'),
+    ftpTestsAllowed: flag(item, 'ftp_tests_allowed'),
+    monthlyPriceCents: optionalCount(item, 'monthly_price_cents'),
+    introPriceCents: optionalCount(item, 'intro_price_cents'),
+    introPriceUntil: optionalText(item, 'intro_price_until'),
+    currency: optionalText(item, 'currency'),
     features: strings(item, 'features'),
     updatedAt: text(item, 'updated_at'),
     updatedBy: decodePerson(item.updated_by),
@@ -121,6 +144,7 @@ export async function getSettings(signal?: AbortSignal): Promise<SettingsView> {
       revisionsPerClass: count(bounds, 'revisions_per_class'),
       concurrentJobs: count(bounds, 'concurrent_jobs'),
       monthlyCostMicros: count(bounds, 'monthly_cost_micros'),
+      maxClassMinutes: count(bounds, 'max_class_minutes'),
       trialDays: count(bounds, 'trial_days'),
     },
     readOnly: {
@@ -150,6 +174,15 @@ export interface PlanLimits {
   revisionsPerClass?: number
   concurrentJobs?: number
   monthlyCostMicros?: number
+  maxClassMinutes?: number
+  gamesAllowed?: boolean
+  racesAllowed?: boolean
+  ftpTestsAllowed?: boolean
+  /** A price: a number sets it, null clears it, undefined leaves it out of the request. */
+  monthlyPriceCents?: number | null
+  introPriceCents?: number | null
+  introPriceUntil?: string | null
+  currency?: string | null
 }
 
 /** Sends only the limits that changed (`PATCH /plans/{id}`). */
@@ -159,6 +192,14 @@ export async function updatePlan(id: string, limits: PlanLimits): Promise<Plan> 
   if (limits.revisionsPerClass !== undefined) body.revisions_per_class = limits.revisionsPerClass
   if (limits.concurrentJobs !== undefined) body.concurrent_jobs = limits.concurrentJobs
   if (limits.monthlyCostMicros !== undefined) body.monthly_cost_micros = limits.monthlyCostMicros
+  if (limits.maxClassMinutes !== undefined) body.max_class_minutes = limits.maxClassMinutes
+  if (limits.gamesAllowed !== undefined) body.games_allowed = limits.gamesAllowed
+  if (limits.racesAllowed !== undefined) body.races_allowed = limits.racesAllowed
+  if (limits.ftpTestsAllowed !== undefined) body.ftp_tests_allowed = limits.ftpTestsAllowed
+  if (limits.monthlyPriceCents !== undefined) body.monthly_price_cents = limits.monthlyPriceCents
+  if (limits.introPriceCents !== undefined) body.intro_price_cents = limits.introPriceCents
+  if (limits.introPriceUntil !== undefined) body.intro_price_until = limits.introPriceUntil
+  if (limits.currency !== undefined) body.currency = limits.currency
   return decodePlan(await request('PATCH', `${BASE}/plans/${encodeURIComponent(id)}`, { body }))
 }
 

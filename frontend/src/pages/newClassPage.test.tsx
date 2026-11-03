@@ -1,5 +1,5 @@
-import { fireEvent, screen, waitFor } from '@testing-library/react'
-import { describe, expect, it } from 'vitest'
+import { fireEvent, screen, waitFor, within } from '@testing-library/react'
+import { describe, expect, it, vi } from 'vitest'
 import { fakeApi, json, reason } from '../test/fakeApi'
 import { JOB_ID, PLAYLIST_ID, SESSION_ROUTES, jobBody, openStream } from '../test/jobFixtures'
 import { renderAt } from '../test/render'
@@ -258,12 +258,164 @@ describe('the new-class form', () => {
       ...READY,
       'GET /api/account/plan': {
         plan: 'free', name: 'Free', source: null, ends_at: null,
-        limits: { classes_per_month: 3, revisions_per_class: 5, concurrent_jobs: 1 },
+        limits: { classes_per_month: 3, revisions_per_class: 5, concurrent_jobs: 1, max_class_minutes: 60 },
+        gates: { games: true, races: true, ftp_tests: true },
         classes_held: 1, period_end: '2026-11-01T00:00:00Z', cost_share: 0, features: [], trial: null,
       },
     })
     renderAt('/classes/new')
     expect(await screen.findByText('Uses 1 of your 2 classes left this month')).toBeInTheDocument()
+  })
+
+  describe('the plan limits (#496)', () => {
+    const plan = (maxMinutes: number, gates: { games: boolean; races: boolean; ftp_tests: boolean }) => ({
+      plan: 'free', name: 'Free', source: null, ends_at: null,
+      limits: { classes_per_month: 3, revisions_per_class: 5, concurrent_jobs: 1, max_class_minutes: maxMinutes },
+      gates,
+      classes_held: 0, period_end: '2026-11-01T00:00:00Z', cost_share: 0, features: [], trial: null,
+    })
+
+    it('disables lengths over the cap and says what the plan allows', async () => {
+      fakeApi({ ...READY, 'GET /api/account/plan': plan(45, { games: true, races: true, ftp_tests: true }) })
+      renderAt('/classes/new')
+      expect(await screen.findByText('Your plan allows classes of up to 45 minutes.')).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: '45 min' })).toBeEnabled()
+      expect(screen.getByRole('button', { name: '60 min' })).toBeDisabled()
+      expect(screen.getByRole('button', { name: '90 min' })).toBeDisabled()
+      expect(screen.getByLabelText('Length in minutes')).toHaveAttribute('max', '45')
+    })
+
+    it('does not send a typed length over the cap', async () => {
+      const api = fakeApi({
+        ...READY,
+        ...CREATED,
+        'GET /api/account/plan': plan(45, { games: true, races: true, ftp_tests: true }),
+      })
+      renderAt('/classes/new')
+      await screen.findByText('Your plan allows classes of up to 45 minutes.')
+      await fill()
+      fireEvent.change(screen.getByLabelText('Length in minutes'), { target: { value: '60' } })
+      fireEvent.click(screen.getByRole('button', { name: 'Design my class' }))
+      expect(await screen.findAllByText('Your plan allows classes of up to 45 minutes.')).toHaveLength(2)
+      expect(api.to('POST', '/api/jobs')).toHaveLength(0)
+    })
+
+    it('hides races and the FTP test when the plan leaves them out, and sends none', async () => {
+      const api = fakeApi({
+        ...READY,
+        ...CREATED,
+        'GET /api/account/plan': plan(60, { games: false, races: false, ftp_tests: false }),
+      })
+      renderAt('/classes/new?races=3')
+      expect(await screen.findByText('Your plan does not include races and FTP tests.')).toBeInTheDocument()
+      expect(screen.queryByLabelText('Races')).toBeNull()
+      expect(screen.queryByLabelText('FTP test')).toBeNull()
+      expect(screen.getByText(/Games are not part of your plan\./)).toBeInTheDocument()
+      await fill()
+      fireEvent.click(screen.getByRole('button', { name: 'Design my class' }))
+      await waitFor(() => {
+        expect(api.to('POST', '/api/jobs')).toHaveLength(1)
+      })
+      const brief = (api.to('POST', '/api/jobs')[0]?.body as { input: { brief: Record<string, unknown> } }).input.brief
+      expect(brief.races).toBe(0)
+      expect(brief.ftp_test).toBeNull()
+    })
+
+    it('shows everything and no sentence about games when the plan includes them', async () => {
+      fakeApi({ ...READY, 'GET /api/account/plan': plan(180, { games: true, races: true, ftp_tests: true }) })
+      renderAt('/classes/new')
+      await screen.findByText('Your plan allows classes of up to 180 minutes.')
+      expect(screen.getByLabelText('Races')).toBeInTheDocument()
+      expect(screen.getByLabelText('FTP test')).toBeInTheDocument()
+      expect(screen.queryByText(/Games are not part/)).toBeNull()
+      expect(screen.queryByText(/does not include/)).toBeNull()
+    })
+
+    const NONE = { games: false, races: false, ftp_tests: false }
+    const RUNNING = { ...READY, 'GET /api/connections': { connections: [MOWL], running_enabled: true } }
+
+    it('caps a running class by the plan and sends the running body with no bike fields', async () => {
+      const api = fakeApi({ ...RUNNING, ...CREATED, 'GET /api/account/plan': plan(45, NONE) })
+      renderAt('/classes/new')
+      await screen.findByText('Your plan allows classes of up to 45 minutes.')
+      fireEvent.click(screen.getByRole('button', { name: 'Running' }))
+      // The races / FTP sentence and the controls belong to cycling only.
+      expect(screen.queryByText(/does not include/)).toBeNull()
+      expect(screen.queryByLabelText('Races')).toBeNull()
+      expect(screen.queryByLabelText('FTP test')).toBeNull()
+      const summary = within(screen.getByRole('region', { name: 'Your class so far' }))
+      expect(summary.getByText('Sport')).toBeInTheDocument()
+      expect(summary.getByText('Running')).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: '60 min' })).toBeDisabled()
+      await fill()
+      fireEvent.change(screen.getByLabelText('Length in minutes'), { target: { value: '60' } })
+      fireEvent.click(screen.getByRole('button', { name: 'Design my class' }))
+      expect(await screen.findAllByText('Your plan allows classes of up to 45 minutes.')).toHaveLength(2)
+      expect(api.to('POST', '/api/jobs')).toHaveLength(0)
+      fireEvent.change(screen.getByLabelText('Length in minutes'), { target: { value: '40' } })
+      fireEvent.click(screen.getByRole('button', { name: 'Design my class' }))
+      await waitFor(() => {
+        expect(api.to('POST', '/api/jobs')).toHaveLength(1)
+      })
+      const brief = (api.to('POST', '/api/jobs')[0]?.body as { input: { brief: Record<string, unknown> } }).input.brief
+      expect(Object.keys(brief).sort()).toEqual(['intensity', 'length_min', 'sport', 'style', 'text'])
+      expect(brief.sport).toBe('running')
+      expect(brief.length_min).toBe(40)
+    })
+
+    it('keeps the cycling brief on the same plan: no races, no FTP test, the sentence shown', async () => {
+      const api = fakeApi({ ...RUNNING, ...CREATED, 'GET /api/account/plan': plan(45, NONE) })
+      renderAt('/classes/new')
+      await screen.findByText('Your plan allows classes of up to 45 minutes.')
+      expect(screen.getByRole('button', { name: 'Cycling' })).toHaveAttribute('aria-pressed', 'true')
+      expect(screen.getByText('Your plan does not include races and FTP tests.')).toBeInTheDocument()
+      expect(screen.getByLabelText('Climbs')).toBeInTheDocument()
+      await fill()
+      fireEvent.change(screen.getByLabelText('Length in minutes'), { target: { value: '45' } })
+      fireEvent.click(screen.getByRole('button', { name: 'Design my class' }))
+      await waitFor(() => {
+        expect(api.to('POST', '/api/jobs')).toHaveLength(1)
+      })
+      const brief = (api.to('POST', '/api/jobs')[0]?.body as { input: { brief: Record<string, unknown> } }).input.brief
+      expect(brief).toMatchObject({ length_min: 45, races: 0, ftp_test: null })
+      expect(brief.sport).toBeUndefined()
+    })
+
+    it('sends no FTP test when it was picked before the plan answered and the gate turns out off', async () => {
+      const api = fakeApi({ ...READY, ...CREATED, 'GET /api/account/plan': plan(60, NONE) })
+      let release: () => void = () => undefined
+      const held = new Promise<void>((resolve) => {
+        release = resolve
+      })
+      const real = globalThis.fetch
+      vi.stubGlobal('fetch', (input: RequestInfo | URL, init?: RequestInit) => {
+        const path = typeof input === 'string' ? input : input instanceof URL ? input.pathname : input.url
+        return path === '/api/account/plan' ? held.then(() => real(input, init)) : real(input, init)
+      })
+      renderAt('/classes/new')
+      await fill()
+      fireEvent.change(screen.getByLabelText('FTP test'), { target: { value: '20' } })
+      release()
+      await screen.findByText('Your plan does not include races and FTP tests.')
+      expect(screen.queryByLabelText('FTP test')).toBeNull()
+      fireEvent.click(screen.getByRole('button', { name: 'Design my class' }))
+      await waitFor(() => {
+        expect(api.to('POST', '/api/jobs')).toHaveLength(1)
+      })
+      const brief = (api.to('POST', '/api/jobs')[0]?.body as { input: { brief: Record<string, unknown> } }).input.brief
+      expect(brief.ftp_test).toBeNull()
+    })
+
+    it('never renders or asks for a price', async () => {
+      const api = fakeApi({
+        ...READY,
+        'GET /api/account/plan': { ...plan(30, { games: false, races: true, ftp_tests: true }), monthly_price_cents: 990, currency: 'USD' },
+      })
+      const { container } = renderAt('/classes/new')
+      await screen.findByText('Your plan allows classes of up to 30 minutes.')
+      expect(container.textContent).not.toMatch(/price|\$|USD|990|9\.90/i)
+      expect(api.calls.every((c) => !c.path.startsWith('/api/admin'))).toBe(true)
+    })
   })
 
   it('hides the classes line when the plan cannot be read', async () => {
