@@ -1090,7 +1090,8 @@ fenced transaction. Nothing here changes the queue, the write protocol or any ta
    `saved_workouts` row has this `revision_id`; `detached`: only a detached one; `none`),
    `from_songs` (the draft's `music.song_list_id` is set: designed on approved songs) and, for a
    duplicate, `duplicated_from` `{class_id, number, class_title}` (title `null` when that class is
-   gone or not the user's). Revisions stay immutable; nothing is written by a read.
+   gone or not the user's); the body also says `can_change` (the class has a stored brief and a
+   music source, which Change it needs). Revisions stay immutable; nothing is written by a read.
 2. **Compare.** `GET /api/classes/{id}/history/compare?from=<revision id>&to=<revision id>` (signed in, read
    only): both ids must be `draft` revisions of the user's own class (looked up with `owner_id` and
    `class_id`; anything else is the same 404 `not_found`). The body is `diff.summarize(from, to,
@@ -1143,8 +1144,8 @@ revision 1 is a copy of the chosen revision. One `user_session` transaction:
    `{source: "mowl_swedebeat_mix", mix_id}`. A class on picked songs (`origin: "song_pick"`, which
    names the source class's `class_playlists` row) gets `music_source` NULL: its working and final
    playlists stay the source class's, and the duplicate can be viewed, made current and saved (the
-   revision's `music.link_id` is the user's own link, checked live by Save, §5) but Change it says
-   it needs a class with its own music. Ownership is re-checked at use by the existing paths: a
+   revision's `music.link_id` is the user's own link, checked live by Save, §5) but the timeline's
+   `can_change` is false and the page says Change it needs a class with its own music. Ownership is re-checked at use by the existing paths: a
    revise attaches through the user's own MOWL connection (§3), a mix must be in the user's own
    fresh listing (`mixadmit`), Save needs a live link of the user (`music_unlinked`).
 6. **Not copied:** `saved_workouts` (no MOWL program link, no Save/Update state), the song lists and
