@@ -16,7 +16,10 @@ It speaks what ``mowl.swedebeat`` calls:
   whose session another device holds refuses with "Device already in use" unless ``force``; the
   outage mode answers 503.
 - ``GET /track/extendedsearch``: needs ``X-Auth-Token`` of a token the fake issued (else 401) and
-  records which account's token each call carried.
+  records which account's token each call carried. It answers no hit unless the e2e control
+  ``catalogue`` names the song's title: ``found`` titles answer a hit of the same title, ``unsure``
+  titles answer a different title (below the library's 0.85 threshold), all with ``SECONDS`` as the
+  length. Nothing is stored of a query but the title match, and no call records a title.
 
 It never records a password or a token: ``logins`` hold the email, the device id and ``force``;
 ``calls`` hold the path and the email the token belongs to.
@@ -24,6 +27,7 @@ It never records a password or a token: ``logins`` hold the email, the device id
 
 import base64
 import json
+import re
 import secrets
 import time
 from dataclasses import dataclass, field
@@ -39,6 +43,9 @@ CONTROL = "/__e2e/"
 MAX_CLOCK_SKEW = 300  # seconds between the encoded epoch and the fake's clock
 DEVICE_IN_USE = "Device already in use"
 WRONG_LOGIN = "Wrong email or password"
+SECONDS = 240  # the length every catalogue hit answers
+UNSURE_HIT = "A Different Tune Entirely"
+_TITLE_TERM = re.compile(r"field=songtitle '([^']*)'")
 
 
 @dataclass
@@ -57,6 +64,9 @@ class FakeSwedebeat:
     logins: list[dict[str, Any]] = field(default_factory=lambda: list[dict[str, Any]]())
     calls: list[dict[str, Any]] = field(default_factory=lambda: list[dict[str, Any]]())
     outage: bool = False
+    # The e2e control ``catalogue``: wanted title (case-folded) -> "found" or "unsure". Any other
+    # title has no hit (missing).
+    catalogue: dict[str, str] = field(default_factory=lambda: dict[str, str]())
     # Test hook: what the next login with a held session says (to try the other wording).
     in_use_message: str = DEVICE_IN_USE
 
@@ -68,6 +78,7 @@ class FakeSwedebeat:
         self.calls.clear()
         self.tokens.clear()
         self.outage = False
+        self.catalogue.clear()
         for account in self.accounts.values():
             account.holder = None
 
@@ -131,13 +142,24 @@ class FakeSwedebeat:
         self.calls.append({"path": path.split("?")[0], "email": email})
         if email is None:
             return 401, {"message": "unauthorized"}
-        return 200, {"data": {"hit": []}}
+        return 200, {"data": {"hit": self._hits(path)}}
+
+    def _hits(self, path: str) -> list[dict[str, Any]]:
+        """The hit for the song a search URL asks for, per the ``catalogue`` control."""
+        query = dict(parse_qsl(path.partition("?")[2]))
+        found = _TITLE_TERM.search(query.get("q", ""))
+        wanted = found.group(1) if found else ""
+        status = self.catalogue.get(wanted.casefold())
+        if status is None:
+            return []
+        title = wanted if status == "found" else UNSURE_HIT
+        return [{"title": title, "artist": {"title": "The Invented Band"}, "duration": SECONDS}]
 
     def state(self) -> dict[str, Any]:
         return {"logins": list(self.logins), "calls": list(self.calls), "outage": self.outage}
 
     def control(self, path: str, query: dict[str, str]) -> tuple[int, dict[str, Any]]:
-        """The e2e stack's test control (``/__e2e/...``): reset, state, hold, outage."""
+        """The e2e stack's test control (``/__e2e/...``): reset, state, hold, outage, catalogue."""
         name = path.removeprefix(CONTROL)
         if name == "reset":
             self.reset()
@@ -147,6 +169,11 @@ class FakeSwedebeat:
             self.hold(query["email"], query.get("device", "phone-device-0001"))
         elif name == "outage":
             self.outage = query.get("on") == "1"
+        elif name == "catalogue":
+            self.catalogue.clear()
+            for status in ("found", "unsure"):
+                for title in filter(None, query.get(status, "").split("|")):
+                    self.catalogue[title.casefold()] = status
         else:
             return 404, {"message": "unknown control"}
         return 200, {"ok": True}

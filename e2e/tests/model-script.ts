@@ -14,6 +14,7 @@ export type ModelScript =
   | 'e2e_pick' // song picking, phase 1: search, pool, choose (the fake Spotify's catalogue)
   | 'e2e_change' // Change songs, phase 1: replace slot 2
   | 'e2e_swedebeat_mix' // design on a cached Swedebeat mix map (ADR 0016 A6)
+  | 'e2e_swedebeat_replace' // the catalogue replace of two songs (ADR 0016 B5)
 
 export function useModelScript(name: ModelScript): void {
   execFileSync(

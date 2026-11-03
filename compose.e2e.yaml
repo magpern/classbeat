@@ -17,11 +17,10 @@
 # test-only setting and its provider endpoints stay hard-coded (ADR 0003 section 5; the MOWL base
 # URL is the mowl-workouts library's own; the Spotify hosts are classbeat's and the library's).
 # Web and worker trust one bundle of the fakes' throwaway CAs: oidc-fake writes its CA, mowl-fake
-# adds its own, spotify-fake adds its own and swedebeat-fake adds its own; web mounts the last
-# bundle, the worker the Spotify one. The worker's catalogue client (ADR 0016 §5, B1) calls
-# cloud.swedebeat.se on its own list and follows no redirect; the e2e catalogue proof is B5, so
-# this worker still does not mount the Swedebeat CA. The MOWL media host (ADR 0016 §4)
-# is on no fake: the MOWL fake returns a link on an unlisted name and nothing answers it, since the
+# adds its own, spotify-fake adds its own and swedebeat-fake adds its own; web and the worker
+# mount the last bundle (the worker's catalogue client, ADR 0016 §5, calls cloud.swedebeat.se on its
+# own list and follows no redirect, so it must trust the Swedebeat fake's CA). The MOWL media host
+# (ADR 0016 §4) is on no fake: the MOWL fake returns a link on an unlisted name and nothing answers it, since the
 # production list of media hosts is empty and the worker must refuse it. No fake
 # publishes a port: each is reachable only inside the compose network.
 
@@ -190,7 +189,8 @@ services:
       CLASSBEAT_SWEDEBEAT_ENABLED: "true"
       SSL_CERT_FILE: /fake-ca/bundle.pem
     volumes:
-      - spotify-ca:/fake-ca:ro
+      # The last bundle: the other fakes' CAs plus the Swedebeat fake's (the match calls it).
+      - swedebeat-ca:/fake-ca:ro
       - ./backend/tests/agent_scripts:/fake-scripts:ro
     tmpfs:
       - /fake-run:mode=1777
@@ -198,6 +198,8 @@ services:
       mowl-fake:
         condition: service_healthy
       spotify-fake:
+        condition: service_healthy
+      swedebeat-fake:
         condition: service_healthy
 
 secrets:

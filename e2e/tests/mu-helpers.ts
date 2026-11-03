@@ -110,10 +110,10 @@ export async function setTheme(page: Page, theme: (typeof THEMES)[number]): Prom
 /**
  * The checks every page gets (ADR 0013 section 10), at 390 and 1440 px in the dark and the light
  * theme: no sideways scroll, the primary action visible and inside the window, and no serious or
- * critical axe violation. Returns the findings (empty when the page is fine); the page stays at
+ * critical axe violation (of the part named by `scope`, when given). Returns the findings (empty when the page is fine); the page stays at
  * the last viewport, so the caller sets one before the next page.
  */
-export async function audit(page: Page, name: string, primary: Locator): Promise<Findings> {
+export async function audit(page: Page, name: string, primary: Locator, scope?: string): Promise<Findings> {
   const problems: string[] = []
   // Reduced motion shortens the colour transitions to 0.01 ms (tailwind.css); `settle` then waits
   // for those to finish, so axe never reads a colour from before the theme or the tab changed.
@@ -142,9 +142,10 @@ export async function audit(page: Page, name: string, primary: Locator): Promise
       }
 
       await settle(page) // the scroll above, and anything the checks started
-      const result = await new AxeBuilder({ page })
-        .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa'])
-        .analyze()
+      // `scope` (a CSS selector) limits axe to one part of the page, for a spec that audits a component
+      // on a page whose other parts are another issue's; the other checks still look at the whole page.
+      const builder = new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa'])
+      const result = await (scope === undefined ? builder : builder.include(scope)).analyze()
       for (const violation of result.violations) {
         if (violation.impact !== 'serious' && violation.impact !== 'critical') continue
         const targets = violation.nodes.map((node) => `${node.target.join(' ')} ${node.html.slice(0, 160)} (${node.any[0]?.message ?? ''})`).slice(0, 4)
