@@ -274,13 +274,13 @@ See also: ideas that are not planned, in [ideas.md](ideas.md).
 Agents do not deploy, change DNS, create provider apps, or contact MOWL, Spotify, Swedebeat or a model provider. Each live run needs a go-ahead for that run (2026-10-29: "do not run live test every time").
 
 - **Live activation.** M4: create the Spotify Development Mode app and the allow-list, then authorize steps 2 to 7 of [m4-live-activation.md](runbooks/m4-live-activation.md) (connect, one pick, one Approve, one Change songs, the cost reading, Disconnect). Until then `CLASSBEAT_SONG_PICKING` stays off. M2: the MOWL token lifetime is still unknown (a 36-character GUID, no expiry claim). The read-only check in [ADR 0004](adr/0004-connections-and-encryption.md) §6 waits for a go-ahead: one `list_workouts` a day on the owner's own connection, no write, logged under "Live activation log". Swedebeat connect: create the `SWEDEBEAT_APP` secret, cut a release, set `SWEDEBEAT_ENABLED=true`, and authorize one live check ([swedebeat-connect.md](runbooks/swedebeat-connect.md)). Until the secret exists, release builds fail the key check and connect answers `app_key_unavailable`.
-- **VPS deploy.** The configuration is ready and not deployed (#341): `compose.prod.yaml`, `Caddyfile`, [vps-deploy.md](runbooks/vps-deploy.md). The owner provides the server, DNS, TLS, SMTP and the secret files, then authorizes the first deploy. Also still open on the server: the backup schedule, an off-host copy, and the real backup recipient and signing keys. `scripts/check-prod-compose.sh` passes; nothing has been contacted.
+- **Server deploy.** The server is the owner's own machine at home, behind a swag/nginx reverse proxy; DNS is in Cloudflare and points there (today `classbeat.pernemark.se`). Agents cannot reach it: the deploy is done from a local session on that machine, with the owner's go-ahead. The prod files in the repo assume Caddy for TLS (#341: `compose.prod.yaml`, `Caddyfile`, [vps-deploy.md](runbooks/vps-deploy.md)); behind swag they need adapting (trusted proxy, forwarded headers, no Caddy). Still open for the deploy: the backup schedule, an off-host copy, and the real backup recipient and signing keys.
 - **Model enablement.** [m3c-model-enable.md](runbooks/m3c-model-enable.md): place the OpenAI key (DeepSeek later), give a `--max-usd` for each first live run, then a recorded run and `models enable`. Until a pass is recorded, the bootstrap Anthropic model serves users. OpenAI and DeepSeek stay `owner_pending` until you answer ADR 0012's questions (extend the Spotify risk acceptance to OpenAI; keep DeepSeek disabled; stale routes; thresholds; a full-suite run before Opus 5.5 is used by a tier).
 - **Proton Bridge setup (#352).** Account mail for the beta goes through Proton Mail Bridge ([proton-bridge-smtp.md](runbooks/proton-bridge-smtp.md)). The public beta still runs the dev profile with Mailpit. That is owner deployment work. Agents do not touch Proton accounts.
 - **Swedebeat live media host check.** `MOWL_MEDIA_HOSTS` is empty, so an uncached mix ends `media_host_not_allowed` and no media request is sent (ADR 0016). The owner confirms the host from one authorized live analysis, then a reviewed change may add that exact host. Agents do not edit the constant and do not create `SWEDEBEAT_APP`.
 - **Running live checks (M8).** ADR 0018 is Accepted (owner, 2026-11-02). The read-only capture ran on 2026-11-02 (PR #468) and a one-program live save test on 2026-11-03 (see the live activation log); agents run no further live check without a go-ahead. Running profiles (#401) wait for the owner's aggregate data. No live running check has been authorized beyond the 2026-11-02 read-only discovery and the one-program save test of 2026-11-03.
-- **App name and domain.** The repository name is classbeat. The public app name and the DNS name for the VPS are not chosen. Deploy waits on that domain.
-- **Google OAuth app creation.** Google sign-in stays off until the owner creates the OAuth client and sets `CLASSBEAT_OAUTH_GOOGLE_CLIENT_ID` plus the `oauth_google_client_secret` file. The app asks for `auth_time` itself (ADR 0003 §5). GitHub and Microsoft are the same kind of owner step when those apps are wanted.
+- **App name and domain.** The repository name is classbeat. The beta can run on `classbeat.pernemark.se`. A separate public product domain is not chosen; Proton Bridge account mail waits for it.
+- **Google OAuth app creation.** Google sign-in stays off until the owner creates the OAuth client and sets `CLASSBEAT_OAUTH_GOOGLE_CLIENT_ID` plus the `oauth_google_client_secret` file. It is not blocked on a new domain: the consent screen can stay in testing mode with the beta testers as test users, and the redirect URI can be on `classbeat.pernemark.se`. A public consent screen needs the final domain. The app asks for `auth_time` itself (ADR 0003 §5). GitHub and Microsoft are the same kind of owner step when those apps are wanted.
 - **Legal line placeholder.** Sign-in and sign-up show a beta sentence (`frontend/src/components/auth/AuthScreen.tsx`): "By continuing you agree to take part in the invite-only beta. classbeat is not made by or affiliated with MOWL, Spotify or Swedebeat." The real legal line is the owner's.
 - **M5 product questions** ([ADR 0011](adr/0011-tiers-quotas-and-admin.md) §11, Q1 to Q10): limits and cost caps per tier, which plan the testers get, trial on or off, quota period, refund on cancel, overlapping codes, Free feature gates, the Pro priority queue, audit-log retention, prices. Agents build on the defaults; an answer changes seeds or settings, not the design.
 
@@ -315,24 +315,23 @@ with the owner's authorization and what it created.
 - 2026-11-02: owner-authorized read-only MOWL discovery for M8 / ADR 0018 (D1), in a cloud agent
   session (the owner gave a temporary password in chat; used only for sign-in, never written to
   the repo, a log or a file; the token was never printed). Calls: `login`, `POST v1/programs`
-  (lists), `GET v1/programs/{id}` (24 official SATS running programs), `GET v1/ProgramCategories`,
+  (lists), `GET v1/programs/{id}` (24 official running programs of a professional studio library), `GET v1/ProgramCategories`,
   `GET v1/ActivityTypes`, `GET v1/users/me` (not recorded). No save, update, delete or attach.
   Findings: [docs/providers/mowl-running-discovery.md](providers/mowl-running-discovery.md). They answer
   most of ADR 0018's unknowns 1 to 5 and 7; 6 and the segment/save fields still need a running program
-  the owner creates. Nothing was created or changed. The owner should change that temporary password.
+  the owner creates. Nothing was created or changed.
 
 - 2026-11-03: authorized live write, MOWL running save test (D1 save side, ADR 0018). Owner go-ahead in chat
   ("the containers environment has been changed to allow api.mowl.com, so you should be able to do the MOWL
   running save test"), with the owner's temporary password from chat used only to sign in (stdin of a one-off
   script; never written to the repo, a log or a file; the token was never printed). Created in the owner's
   MOWL account: **one private program** named "classbeat running save test (safe to delete)" (program 336224,
-  3 segments, 4 intervals, 6 minutes); `mowl-workouts` has no program delete, so the owner deletes it in the
-  app. Requests: `login`, `POST v1/programs` (list, before and after), `PUT v1/programs`, three times
+  3 segments, 4 intervals, 6 minutes); `mowl-workouts` has no program delete; the owner deleted it in the app (confirmed 2026-11-03). Requests: `login`, `POST v1/programs` (list, before and after), `PUT v1/programs`, three times
   `PUT v1/segments`, `DELETE v1/segments/{id}/intervals`, `PUT v1/segments/{id}/intervals/multiple`,
   `PUT v1/programs/{id}/segments`, `GET v1/programs/{id}`. Findings in
   [docs/providers/mowl-running-discovery.md](providers/mowl-running-discovery.md) and ADR 0018 Amendment 2.
   Not tested: update of a running program, a new playlist/mix on a running program, segment `ActivityTypeID` 1.
-  The owner should change that temporary password.
+ 
 
 ## Exceptions
 
