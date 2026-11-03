@@ -1,5 +1,25 @@
 # classbeat roadmap: a class designer for Intelligent Cycling (MOWL) as a web app
 
+## Amendment 13 (2026-11-03, owner decision: fewer Opus calls)
+
+Where it differs, this amendment wins over Amendments 1, 2 and 4 and AGENTS.md. It loosens model
+class only; every other gate (fresh context, `PASS` per head SHA, merge check, no self-approval)
+is unchanged.
+
+- **Opus Developer and Opus Reviewer stay** for encryption and keys, auth and sessions, tenant
+  isolation and RLS, guards and roles in application code, jobs with leases and fencing and the
+  queue SQL, approvals and external writes, Spotify OAuth, egress and model keys, and billing.
+  The first review of any new security design is Opus.
+- **Tooling is not security-critical by default:** compose files, deployment scripts, CI and
+  guard scripts, runbooks and similar get a Sonnet Developer and a Sonnet Reviewer. If such a PR
+  changes how secrets are mounted, exposed or read (secret file modes or groups, secret handling
+  in config), it gets exactly one final Opus review of the final head after the Sonnet rounds,
+  not an Opus Developer.
+- **Delta rounds after a first `FAIL`** are reviewed by Sonnet unless the fix changes behaviour
+  of security-critical application code (then a fresh Opus). After a second `FAIL` on any PR the
+  Architect re-assesses the design before another review (prefer allowlists over blocklists for
+  guard checks), as the three-cycle rule says.
+
 ## Amendment 12 (2026-11-02, owner decision: M8 Running classes approved; ADR 0018)
 
 The owner approved milestone **M8** in chat on 2026-11-02 and [ADR 0018](adr/0018-mowl-running-classes.md)
