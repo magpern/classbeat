@@ -108,7 +108,8 @@ Postgres image, and the owner should run it by hand against a real backup (see b
 
 ```bash
 export COMPOSE_PROJECT_NAME=classbeat-restore     # a NEW name: its own volume and ports
-# put the secrets this stack needs in secrets/, KEK files included (see above)
+# put the secrets this stack needs in secrets/, KEK files included (see above);
+# secrets/ 700, every file 644, or the containers cannot read them (vps-deploy.md section 5)
 scripts/restore.sh --expect-signer "$S_FPR" /srv/classbeat-backups/classbeat-20261031T030000Z.dump.gpg
 # check the data, then:
 docker compose up -d --wait web worker

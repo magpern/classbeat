@@ -2,6 +2,7 @@
 
 import ipaddress
 import json
+import logging
 import os
 import re
 import ssl
@@ -34,6 +35,22 @@ SECRET_FILE_FIELDS = (
     "openai_api_key",
     "deepseek_api_key",
     "swedebeat_app",
+)
+# Secret files the app works without (a feature stays off, or another source is used): the admin
+# area's maint password, the SMTP login, the OAuth client secrets and the Swedebeat app key
+# override. One that exists but cannot be read (Docker bind-mounts a secret file with its host owner
+# and mode, so a host file the container user cannot read is unreadable here) is treated as absent,
+# with a warning naming the file. Every other secret file (the database passwords, app_secret_key,
+# the model keys) still refuses the start when it cannot be read.
+OPTIONAL_SECRET_FILES = frozenset(
+    {
+        "database_maint_password",
+        "smtp_password",
+        "oauth_google_client_secret",
+        "oauth_github_client_secret",
+        "oauth_microsoft_client_secret",
+        "swedebeat_app",
+    }
 )
 # Each model provider's key file (ADR 0006 §9, ADR 0012 §2): worker only, never the web app.
 MODEL_KEY_FIELDS = {
@@ -72,17 +89,47 @@ def secrets_dir() -> Path:
     return Path(os.environ.get("CLASSBEAT_SECRETS_DIR") or DEFAULT_SECRETS_DIR)
 
 
+logger = logging.getLogger(__name__)
+
+
+class SecretFileUnreadable(RuntimeError):
+    """A required secret file exists but this process cannot read it (the name only, never
+    the content)."""
+
+
 def read_secret_files(directory: Path, names: tuple[str, ...]) -> dict[str, str]:
-    """Read ``<directory>/<name>`` for each name; missing files and directories are skipped."""
+    """Read ``<directory>/<name>`` for each name; missing files and directories are skipped.
+
+    A file that cannot be read (``OSError``, typically ``PermissionError``) is skipped with a
+    warning when its name is in ``OPTIONAL_SECRET_FILES``; any other name raises
+    ``SecretFileUnreadable``. Neither the warning nor the error carries the file's content.
+    """
     if not directory.is_dir():
         return {}
     values: dict[str, str] = {}
     for name in names:
         path = directory / name
-        if path.is_file():
-            text = path.read_bytes().decode("utf-8")
-            # Only the trailing newline an editor or `echo` adds; spaces may be part of a secret.
-            values[name] = text.removesuffix("\n").removesuffix("\r")
+        try:
+            if not path.is_file():
+                continue
+            data = path.read_bytes()
+        except OSError as error:
+            reason = type(error).__name__
+            if name in OPTIONAL_SECRET_FILES:
+                logger.warning(
+                    "the %s secret file is not readable (%s); treated as absent",
+                    name,
+                    reason,
+                    extra={"secret_file": name},
+                )
+                continue
+            raise SecretFileUnreadable(
+                f"the {name} secret file is not readable ({reason}): the container user must be "
+                "able to read it (docs/runbooks/vps-deploy.md section 5)"
+            ) from None
+        text = data.decode("utf-8")
+        # Only the trailing newline an editor or `echo` adds; spaces may be part of a secret.
+        values[name] = text.removesuffix("\n").removesuffix("\r")
     return values
 
 

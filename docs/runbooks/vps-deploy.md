@@ -72,21 +72,42 @@ Never use `latest` (there is none); `CLASSBEAT_VERSION` pins a release.
 
 ## 5. Secrets and settings
 
-Secrets are files in `/opt/classbeat/secrets/` (directory mode 700, files 600, owned by the
-deploy user), mounted as Docker secrets. They are never in `.env`, never committed
-(`secrets/` and `.env` are git-ignored).
+Secrets are files in `/opt/classbeat/secrets/`, mounted as Docker secrets. They are never in
+`.env`, never committed (`secrets/` and `.env` are git-ignored).
+
+**Modes: the directory `secrets/` is 700 and owned by the deploy user; every file in it is 644.**
+Outside Swarm, Docker Compose bind-mounts each secret file by itself, read-only, at
+`/run/secrets/<name>`, with the file's host owner and mode (it ignores `uid`, `gid` and `mode`
+there and warns that they are "not supported outside Swarm mode"). The containers read the files
+as other users than the deploy user: web, worker and migrate as `classbeat` (uid 10001), the
+Postgres init scripts in `db` and `db-functions` as `postgres` (uid 999), and `database_password`
+is read by both. A file with mode 600 is therefore unreadable inside the containers: web and the
+worker refuse to start (an optional secret, such as an OAuth client secret, is logged as not
+readable and that feature stays off), and the database roles cannot be created. The **directory**
+keeps the files private instead: with mode 700 no other host user can enter it, so a world-readable
+file inside is reachable only by the deploy user, root, and the containers it is mounted into. The
+Docker daemon runs as root and mounts each file by its path, so the directory's mode does not stop
+it. (Checked on Docker 29.9.2 with Compose 5.6.1: uid 10001 and uid 999 read a 644 file through
+the mount and not a 600 one; `/run/secrets` inside the container is the image's own directory, not
+`secrets/`; a second host user gets `Permission denied` on `secrets/`.) `scripts/worktree.sh init`
+makes a development checkout the same way.
+
+Not used: `chown` of each file to the uid that reads it with mode 400. It needs root for every
+change, a file read by two services with different uids (`database_password`) has no single owner,
+and an editor that replaces a file silently resets its owner. Whoever is in the `docker` group can
+read every secret either way (that group is root-equivalent): add only the deploy user to it.
 
 ```bash
-cd /opt/classbeat && mkdir -p secrets && chmod 700 secrets
-umask 077
+cd /opt/classbeat && mkdir -p secrets && chmod 700 secrets   # 700 before any value is written
 for n in postgres_password database_owner_password database_password database_maint_password; do
   head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n' > "secrets/$n"
 done
 head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n' > secrets/app_secret_key      # >= 32 bytes
 head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n' > secrets/connection_kek      # exactly 64 hex characters
 for n in oauth_google_client_secret oauth_github_client_secret oauth_microsoft_client_secret; do
-  [ -e "secrets/$n" ] || install -m 600 /dev/null "secrets/$n"   # empty placeholder: that provider is off
+  [ -e "secrets/$n" ] || : > "secrets/$n"   # empty placeholder: that provider is off
 done
+chmod 644 secrets/*                          # readable by the container users; secrets/ stays 700
 ```
 
 Then by hand (type or paste, no `echo` of a real value into the shell history):
@@ -103,6 +124,16 @@ Then by hand (type or paste, no `echo` of a real value into the shell history):
   `secrets/oauth_microsoft_client_secret`: the OAuth client secrets, mounted into `web` only. The
   loop above creates them **empty** (that provider is off) and never empties one that exists; the
   files must exist, or `up` fails with a missing-file error. To switch Google on, section 5a.
+
+When every file is in place, set the modes once more (whatever your umask or editor did) and look,
+which shows names, modes and owners only:
+
+```bash
+chmod 700 secrets && chmod 644 secrets/*
+stat -c '%a %U %n' secrets secrets/*     # 700 for secrets, 644 for every file, all the deploy user
+```
+
+Section 9 checks, before the first `up`, that each container can read the files it mounts.
 
 **Back up `secrets/connection_kek` and `secrets/postgres_password` and the other secret files
 off the server now** (a password manager or an encrypted offline copy). Losing `connection_kek`
@@ -165,14 +196,18 @@ either empty it is off. Nothing about it is ever typed into a chat, an issue or 
    it reaching the shell history or the screen:
    ```bash
    cd /opt/classbeat
-   ( umask 077; read -rs S && printf '%s' "$S" > secrets/oauth_google_client_secret; unset S )
-   chmod 600 secrets/oauth_google_client_secret      # same owner and mode as the other files in secrets/
+   ( read -rs S && printf '%s' "$S" > secrets/oauth_google_client_secret; unset S )
+   chmod 644 secrets/oauth_google_client_secret      # like every file in secrets/: web's user (uid 10001) reads it; secrets/ stays 700 (section 5)
    ```
-4. Recreate web (only web reads these; the worker never gets them):
+4. Recreate web (only web reads these; the worker never gets them) and check that it can read the
+   file (names only, never a value):
    ```bash
    scripts/check-prod-compose.sh
    docker compose up -d --wait web
+   docker compose exec -T web sh -c 'test -r /run/secrets/oauth_google_client_secret && echo ok || echo UNREADABLE'
    ```
+   `UNREADABLE` means the file's mode is not 644: web then logs that `oauth_google_client_secret` is
+   not readable and keeps Google off. `chmod 644` it and recreate web.
 5. Test while the consent screen is in **Testing** mode: only the test users listed there (Google
    Cloud Console, OAuth consent screen, Test users) can sign in. Open the site in a private window:
    *Continue with Google* is shown on the sign-in and sign-up screens; a test user signs in (a new
@@ -320,6 +355,29 @@ Either mode works; **which one is the owner's decision.**
 cd /opt/classbeat
 docker compose config -q            # every required variable is set (COMPOSE_FILE from .env)
 scripts/check-prod-compose.sh       # needs jq; checks the real PROXY_IP in .env is one private address
+```
+
+Then check that each service can read every secret file it mounts, as the user it runs as. Each
+line is a one-off container of that service with `sh` instead of its program (nothing starts, no
+database is touched); it prints the service, `ok` or `UNREADABLE` and the file's path, **never a
+value** (`test -r` only). The lists come from `compose.prod.yaml` itself; `db` is checked as
+`postgres` (uid 999), which its init scripts run as (the image starts as root):
+
+```bash
+for svc in db migrate db-functions web worker; do
+  files=$(docker compose config --format json | jq -r --arg s "$svc" \
+    '.services[$s].secrets[] | (.target // .source) | if startswith("/") then . else "/run/secrets/" + . end')
+  user=; [ "$svc" = db ] && user=999:999
+  docker compose run --rm --no-deps -T ${user:+--user "$user"} --entrypoint sh "$svc" \
+    -c 'for f; do if test -r "$f"; then echo "$0 ok $f"; else echo "$0 UNREADABLE $f"; fi; done' "$svc" $files
+done
+```
+
+Every line must say `ok`. An `UNREADABLE` file is not 644 (or `secrets/` holds a file another user
+owns with a stricter mode): `chmod 644 secrets/*` and run it again. Run the same check after any
+change in `secrets/` and after an update (section 11). Then start the stack:
+
+```bash
 docker compose up -d --wait
 docker compose ps
 ```
@@ -348,6 +406,8 @@ docker compose exec web python -m classbeat admin grant you@example.test
 - [ ] Sign up with the invite, receive the verification mail (check spam, SPF, DKIM).
 - [ ] `docker compose exec web ls /run/secrets` lists no model key; `exec worker` lists
       `anthropic_api_key` and no `oauth_*_client_secret`. `exec web touch /app/x` fails (read-only).
+- [ ] The secret check of section 9 printed `ok` for every file, and `docker compose logs web worker`
+      has no line saying a secret file `is not readable`.
 - [ ] A design run shows live progress in the browser (SSE passes swag, and Cloudflare, unbuffered).
 - [ ] **The app sees your real address, and a forged header changes nothing.** From outside the
       LAN (a phone hotspot), send a body over the app's 64 KiB cap but under swag's 1m with forged
@@ -389,6 +449,7 @@ cd /opt/classbeat
 git fetch --tags && git checkout vNEW             # the release you want
 touch secrets/swedebeat_app                       # must exist (empty is fine); `touch` never empties it
 touch secrets/oauth_google_client_secret secrets/oauth_github_client_secret secrets/oauth_microsoft_client_secret
+chmod 700 secrets && chmod 644 secrets/*                # section 5: the containers read them; the directory keeps them private
 sed -i 's/^CLASSBEAT_VERSION=.*/CLASSBEAT_VERSION=NEW/' .env   # NEW = the tag without the v
 docker compose pull
 docker compose up -d --wait
@@ -401,7 +462,10 @@ steps, and compare the release's swag sample with the installed one
 Swedebeat connection (#366) has no `secrets/swedebeat_app`, and one older than #507 has no
 `secrets/oauth_*_client_secret`; without them `up` fails with a missing-file error for that secret,
 which the `touch` lines above fix (an empty OAuth file keeps that provider off). A file `touch`
-creates gets your umask's mode: `chmod 600` it like the others in `secrets/`.
+creates gets your umask's mode, so the `chmod` line sets every file to 644 and the directory to 700
+(section 5). A stack set up with an older version of this runbook has files with mode 600: the same
+line fixes them. To see that every container can read its files, run the secret check of section 9
+after `docker compose pull` and before `up`.
 
 ### Rollback
 
