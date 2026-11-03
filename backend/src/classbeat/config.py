@@ -473,6 +473,18 @@ class Settings(BaseSettings):
             raise ValueError("public_base_url must be https:// when environment is prod")
         return self
 
+    @model_validator(mode="after")
+    def _prod_trusts_only_private_proxies(self) -> "Settings":
+        # Section 9: a trusted proxy chooses the client address that rate limits bucket by. In
+        # prod the one trusted peer is the reverse proxy on a private Docker network (swag,
+        # docs/runbooks/vps-deploy.md); a public range (Cloudflare's included: swag restores the
+        # client from CF-Connecting-IP, never this app) would let the open internet pick its own.
+        if self.environment == "prod" and not all(
+            net.is_private for net in self.trusted_proxy_networks
+        ):
+            raise ValueError("trusted_proxies must be private addresses when environment is prod")
+        return self
+
     @field_validator("trusted_proxies")
     @classmethod
     def _check_trusted_proxies(cls, value: str) -> str:
