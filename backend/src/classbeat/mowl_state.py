@@ -5,16 +5,28 @@ to 8): one normal form for both sides.
 ``normalized_program(program)`` the same fields read back from ``api.get_workout``: the name, the
 description, ``public``, the playlist id, and per segment its kind, name and total length, per
 interval ``sec``, ``zone``, position (standing), cycle (ACC), the rpm range, the game and the FTP
-test. Ids, TSS and timestamps are not in it. ``matches`` compares an intended spec with a read
-program through it, and ``state_hash`` is the SHA-256 of its canonical JSON
-(``saved_workouts.state_hash``). The save's reconciler and verify step use it; SV2's update
-compares the same hash before it writes.
+test. Ids, TSS and timestamps are not in it.
+
+A **running** spec or program (ADR 0018, M8 R1b: a spec with ``"sport": "running"``, a program
+whose own ``ActivityTypeID`` is 1) has its own form: the same header and segments, plus
+``"sport": "running"`` at the top, and per interval only ``sec``, ``zone`` and ``gradient`` (the
+library's ``running_interval_body`` writes the rest as constants, RPM 0 and seated, and a running
+spec cannot say them; MOWL reads ``Gradient`` back as ``0.0`` or ``1.0``, compared as whole
+numbers). A cycling spec, and a program whose ``ActivityTypeID`` is 0 or missing (every program
+read before running), keeps the form above **unchanged**, without a ``sport`` key, so no stored
+``state_hash`` changes. The two forms never compare equal, so a ride never matches a run. A
+program whose ``ActivityTypeID`` is anything else is not normalizable (``ValueError``).
+
+``matches`` compares an intended spec with a read program through it, and ``state_hash`` is the
+SHA-256 of its canonical JSON (``saved_workouts.state_hash``). The save's reconciler and verify
+step use it; SV2's update compares the same hash before it writes.
 
 A program field that is missing or of an unexpected type makes ``normalized_program`` raise
 ``ValueError``: such a program never matches, so a reconciler counts it as a new program that
 does not match (inconclusive), never as proof of anything. **Not yet checked against real MOWL**
 (ADR 0007, "Live activation"): that ``get_workout`` returns these fields as the library writes
-them. MOWL's names for a position and a cycle are read only when the numeric id is absent.
+them (for a running program, the 2026-11-03 live save test read them back as written: ADR 0018
+Amendment 2). MOWL's names for a position and a cycle are read only when the numeric id is absent.
 """
 
 import hashlib
@@ -79,11 +91,50 @@ def _interval_from_spec(i: Mapping[str, Any]) -> dict[str, Any]:
     }
 
 
+def _gradient(value: object) -> int:
+    """A running interval's incline as a whole number: 0 or 1 (an int, or MOWL's float read
+    ``0.0``/``1.0``); anything else is not a gradient the library writes."""
+    if type(value) not in (int, float):
+        raise ValueError("not a gradient")
+    if value not in workout.RUNNING_GRADIENTS:
+        raise ValueError("not a gradient")
+    return int(cast(float, value))
+
+
+def _running_interval_from_spec(i: Mapping[str, Any]) -> dict[str, Any]:
+    return {
+        "sec": _int(i["sec"]),
+        "zone": _int(i["zone"]),
+        "gradient": _gradient(i.get("gradient", 0)),
+    }
+
+
+def _running_interval_from_program(i: Mapping[str, Any]) -> dict[str, Any]:
+    return {
+        "sec": _int(i["Duration"]),
+        "zone": _int(i["ScaleCoggan"]),
+        "gradient": _gradient(i["Gradient"]),
+    }
+
+
+def _spec_running(spec: Mapping[str, Any]) -> bool:
+    """A spec's sport as the library reads it (``workout.sport_of``): running only when it says
+    so; ``ValueError`` for a value that is neither."""
+    value = spec.get("sport", "cycling")
+    if value == "running":
+        return True
+    if value == "cycling":
+        return False
+    raise ValueError("not a sport")
+
+
 def normalized_spec(spec: Mapping[str, Any], playlist_id: int | None) -> dict[str, Any]:
     """What ``workout.save(spec, creds, playlist_id)`` writes, in the normal form."""
+    running = _spec_running(spec)
+    of_interval = _running_interval_from_spec if running else _interval_from_spec
     segments: list[dict[str, Any]] = []
     for s in _list(spec["segments"]):
-        intervals = [_interval_from_spec(_mapping(i)) for i in _list(s["intervals"])]
+        intervals = [of_interval(_mapping(i)) for i in _list(s["intervals"])]
         segments.append(
             {
                 "kind": _text(s["kind"]),
@@ -92,13 +143,16 @@ def normalized_spec(spec: Mapping[str, Any], playlist_id: int | None) -> dict[st
                 "intervals": intervals,
             }
         )
-    return {
+    normal: dict[str, Any] = {
         "name": _text(spec["name"]),
         "description": _text(spec.get("description", ""), optional=True),
         "public": False,  # the library always writes IsPublic false
         "playlist_id": playlist_id,
         "segments": segments,
     }
+    if running:
+        normal["sport"] = "running"  # only a run has the key: a ride's form is as it always was
+    return normal
 
 
 def _flag(
@@ -139,11 +193,25 @@ def _kind(s: Mapping[str, Any]) -> str:
     return "cooldown" if flags[2] else "main"
 
 
+def _program_running(p: Mapping[str, Any]) -> bool:
+    """Which form a read program has: running for its own ``ActivityTypeID`` 1 exactly; cycling
+    for 0 or none (every program read before running, so their hashes stay as they were);
+    ``ValueError`` for any other value or type (never guessed)."""
+    if "ActivityTypeID" not in p or p["ActivityTypeID"] is None:
+        return False
+    sport = program_sport(p)
+    if sport is None:
+        raise ValueError("an activity type MOWL did not list")
+    return sport == "running"
+
+
 def normalized_program(program: object) -> dict[str, Any]:
     """A program as ``api.get_workout`` returns it, in the normal form; ``ValueError`` when it
     does not have the fields (the caller treats it as not matching)."""
     try:
         p = _mapping(program)
+        running = _program_running(p)
+        of_interval = _running_interval_from_program if running else _interval_from_program
         segments: list[dict[str, Any]] = []
         for raw in _list(p.get("Segments") or []):
             s = _mapping(raw)
@@ -152,22 +220,23 @@ def normalized_program(program: object) -> dict[str, Any]:
                     "kind": _kind(s),
                     "name": _text(s["Name"]),
                     "sec": _int(s["TotalDuration"]),
-                    "intervals": [
-                        _interval_from_program(_mapping(i)) for i in _list(s["Intervals"])
-                    ],
+                    "intervals": [of_interval(_mapping(i)) for i in _list(s["Intervals"])],
                 }
             )
         public = p["IsPublic"]
         if not isinstance(public, bool):
             raise ValueError("IsPublic is not a boolean")
         playlist = p.get("PlaylistID")
-        return {
+        normal: dict[str, Any] = {
             "name": _text(p["Name"]),
             "description": _text(p.get("Description"), optional=True),
             "public": public,
             "playlist_id": None if playlist is None else _int(playlist),
             "segments": segments,
         }
+        if running:
+            normal["sport"] = "running"
+        return normal
     except (KeyError, IndexError, TypeError) as exc:
         raise ValueError("not a readable program") from exc
 
@@ -205,8 +274,9 @@ def program_id_of(item: object) -> int | None:
 # A program's sport (issue #485, ADR 0018): MOWL's ``GET v1/ActivityTypes`` lists 0 Cycling and
 # 1 Running, and a program carries its own ``ActivityTypeID`` (docs/providers/
 # mowl-running-discovery.md). Its segments carry 0 even in running programs, so only the
-# program's value counts. Not part of ``normalized_program`` on purpose: the stored
-# ``state_hash`` of every saved row would change with it.
+# program's value counts. A cycling program's value is not part of ``normalized_program`` on
+# purpose (the stored ``state_hash`` of every saved row would change with it); a running program's
+# form says ``"sport": "running"`` instead (``_program_running``).
 PROGRAM_SPORTS: Final[Mapping[int, str]] = {0: "cycling", 1: "running"}
 SPORTS: Final = frozenset(PROGRAM_SPORTS.values())
 
@@ -221,14 +291,3 @@ def program_sport(program: object) -> str | None:
     if type(value) is not int:
         return None
     return PROGRAM_SPORTS.get(value)
-
-
-def spec_sport(spec: Mapping[str, Any]) -> str | None:
-    """The sport of a stored class's spec, as the library reads it (``workout.sport_of``):
-    cycling unless it says ``"sport": "running"``; None for any other value.
-
-    Every class is cycling today (the design rules know only ``cycling``, ``design.rules.enums``,
-    and no stored spec has ``"sport"``). This is the seam for R1 (#463): the sport comes from the
-    stored revision's spec, never from the browser, a model or the program read from MOWL."""
-    value = spec.get("sport", "cycling")
-    return value if isinstance(value, str) and value in SPORTS else None

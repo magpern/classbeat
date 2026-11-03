@@ -20,7 +20,7 @@ from classbeat.saving import update_operation
 from jobapi import Browser, new_key
 from jobtools import new_job
 from optools import TOKEN_A
-from savetools import DRAFT, FakeMowlPrograms, Saved, SaveEnv, draft_hash
+from savetools import DRAFT, RUNNING_DRAFT, FakeMowlPrograms, Saved, SaveEnv, draft_hash
 
 # Revision 2: the same name and description as DRAFT, another first interval. An update to it
 # that stops part-way leaves the program's header as it was, so the target still equals its
@@ -30,6 +30,10 @@ DRAFT_2["segments"][1]["intervals"][0]["zone"] = 5
 # Revision 3: renamed. An update to it that stops after the header is a partial state.
 DRAFT_RENAMED: dict[str, Any] = copy.deepcopy(DRAFT_2)
 DRAFT_RENAMED["name"] = "Tuesday climb, harder"
+# A running class's revision 2 (ADR 0018, M8 R1b): another zone and the incline moved.
+RUNNING_DRAFT_2: dict[str, Any] = copy.deepcopy(RUNNING_DRAFT)
+RUNNING_DRAFT_2["segments"][1]["intervals"][0].update(zone=5, gradient=0)
+RUNNING_DRAFT_2["segments"][1]["intervals"][1]["gradient"] = 1
 
 
 @dataclass
@@ -73,6 +77,10 @@ class UpdateEnv:
     async def live(self, token: str = TOKEN_A) -> Live:
         """A new user's class saved by a real Save job: one live, verified saved row."""
         return await self._saved(await self.s.saved_class(token))
+
+    async def running_live(self, token: str = TOKEN_A) -> Live:
+        """A new user's running class saved by a real Save job (the flag must be on)."""
+        return await self._saved(await self.s.running_class(token))
 
     async def sibling(self, live: Live) -> Live:
         """Another class of the same user, saved the same way."""

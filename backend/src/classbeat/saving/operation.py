@@ -87,12 +87,15 @@ def configure_listing_lag(seconds: float | None) -> None:
     _lag = seconds
 
 
-def bound_seconds(segments: int) -> float:
+def bound_seconds(segments: int, reads: int = 0) -> float:
     """The call's total bound: one request deadline per request the library makes (a program,
-    three per segment, the segment list), one to spare, at most ``MAX_BOUND_SECONDS``."""
+    three per segment, the segment list, and ``reads`` reads before them: a running update's
+    read of its target), one to spare, at most ``MAX_BOUND_SECONDS``."""
     if segments < 1:
         raise ValueError("a workout has segments")
-    return min(REQUEST_SECONDS * (3 + 3 * segments), float(MAX_BOUND_SECONDS))
+    if reads < 0:
+        raise ValueError("reads are counted, not refunded")
+    return min(REQUEST_SECONDS * (3 + 3 * segments + reads), float(MAX_BOUND_SECONDS))
 
 
 def idempotency_key(job_id: UUID) -> str:
