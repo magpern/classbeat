@@ -255,15 +255,16 @@ docker compose --profile maint run --rm maint python -m classbeat keys wipe --co
 uv run alembic upgrade head    # migrations as the owner role, CLASSBEAT_MIGRATIONS_DATABASE_URL
 ```
 
-The domain library `mowl` (`mowl-workouts`) is pinned as `backend/vendor/mowl_workouts-0.8.0-py3-none-any.whl`,
-built from the v0.8.0 tag (commit `0de257fc`; vendored wheel SHA-256 `5f7582fc…`, release asset
-`410b9475…`) **without** the bundled Swedebeat app key by `scripts/build-mowl-wheel.sh`
-(needs `gh` access to the private repo; it checks the tag's commit, the missing key file and that
+The domain library `mowl` (`mowl-workouts`) is pinned as `backend/vendor/mowl_workouts-0.9.0-py3-none-any.whl`,
+built from the v0.9.0 tag (commit `d0aae26f`; vendored wheel SHA-256 `90bf7dea…`, release asset
+`e1806148…`, 66860 bytes) **without** the bundled Swedebeat app key by `scripts/build-mowl-wheel.sh`
+(needs `gh` access to the private repo; it checks the tag's commit, the missing key file, the release
+asset's pinned size and SHA-256, that the release wheel holds the key file by name (never read), and that
 every other file and the `Requires-Dist` lines match the release wheel). After a rebuild run `uv lock`. classbeat leaves out
 the library's `mcp` dependency (`exclude-dependencies`): it never runs the MCP server, and `mcp`'s
 `httpx2` would replace httpx inside Authlib. Backend tests fake MOWL in-process (`tests/mowlfake.py`).
 Because `mcp` is left out, the image's `mowl` and `mowl-mcp` console scripts fail on import: use only the library's modules `api`, `service`, `library`, `spotify_web`
-and `swedebeat` (never the CLI or MCP entry points). The tag commit, the release asset's digest and
+and `swedebeat` (never the CLI or MCP entry points). The tag commit, the release asset's size and digest and
 the vendored wheel's SHA-256 are recorded in full in the header of `scripts/build-mowl-wheel.sh`.
 0.6.0 adds what Spotify song picking needs (ADR 0009 §12): ID-based `spotify_web` calls
 (`create_playlist`, `add_items`, `replace_playlist_items`, `get_playlist`, `playlist_items` on
@@ -284,6 +285,14 @@ MCP `list_workouts` uses to mark non-cycling entries with `sport`) and a create-
 `ActivityTypeID: 1`, segments always `ActivityTypeID: 0`, running interval bodies with a float `Gradient`).
 Updating a running program and giving one music are refused before any request, and a cycling save refuses a
 spec whose intervals carry `gradient`. Cycling is otherwise unchanged; classbeat does not use the running calls yet.
+0.9.0 adds running update and an existing playlist (ADR 0018, #482, #485): `workout.save` with `program_id`
+updates an existing running program (it reads the target first and writes nothing unless it is that program with
+its own `ActivityTypeID: 1`), and a running save may carry a positive `playlist_id` of a playlist already in MOWL
+(-1 is none). `service.save` (`update_workout`, `mowl update`) reads every target first and refuses a sport mismatch
+in either direction (`TARGET_SPORT`) and a program id that is not a positive int (`PROGRAM_ID`). Still refused before
+any request: a new mix or playlist for running (`RUNNING_MUSIC`) and segment `ActivityTypeID: 1`; `RUNNING_UPDATE`
+is gone. `workout.save`'s cycling requests are unchanged (a cycling update without `target` sends no read), and
+classbeat does not use the running calls yet.
 
 Database tests need a throwaway Postgres whose application database has the roles of
 `docker/postgres/init/10-roles.sql` (ADR 0002 section 4). Give it a name and port of its own
