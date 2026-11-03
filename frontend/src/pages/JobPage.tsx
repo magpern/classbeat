@@ -316,6 +316,11 @@ function againMessage(error: unknown): string {
 
 function Failed({ job }: { job: Job }) {
   if (job.errorCategory === 'uncertain_write') return <FailedUncertain job={job} />
+  // A failed Swedebeat match: the server's sentence says what stopped it. The generic MOWL text for
+  // the category ("wait a few minutes and try again") would promise a retry that does not happen.
+  if (job.kind === 'swedebeat_match' && job.errorMessage !== null) {
+    return <Ended job={job} title="The Swedebeat match stopped" detail={job.errorMessage} />
+  }
   const text = failureText(job.errorCategory)
   return <Ended job={job} title={text.title} detail={text.detail} account={text.account === true} />
 }
