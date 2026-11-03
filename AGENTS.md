@@ -501,8 +501,13 @@ Google needs no registration change (the app asks for `auth_time` itself).
 `CLASSBEAT_OAUTH_VISIBLE_PROVIDERS` (default `google`; a comma-separated list of `google`, `github`,
 `microsoft`) is which of the enabled providers the sign-in and sign-up screens offer; the others stay
 enabled and work, only their buttons are hidden. A name that is none of the three (a typo) is logged
-once as a warning (the name only) and offers nothing. It is a web setting that no compose file passes
-on yet (`compose.e2e.yaml` sets it for the e2e stack), like the providers' client ids.
+once as a warning (the name only) and offers nothing. `compose.prod.yaml` passes them to **web only**
+(#507): `CLASSBEAT_OAUTH_<PROVIDER>_CLIENT_ID` from `OAUTH_<PROVIDER>_CLIENT_ID` (default empty, off) and
+`CLASSBEAT_OAUTH_VISIBLE_PROVIDERS` from `OAUTH_VISIBLE_PROVIDERS` (default `google`), and mounts the three
+`secrets/oauth_<provider>_client_secret` files on web only (they must exist; empty is off; the redirect URI
+is `<CLASSBEAT_PUBLIC_BASE_URL>/oauth/<provider>/callback`; `scripts/check-prod-compose.sh` checks the
+placement and that no client secret is a variable; owner steps: `docs/runbooks/vps-deploy.md` section 5a).
+The dev `compose.yaml` passes none of them; `compose.e2e.yaml` sets them for the e2e stack.
 Web and worker refuse to start as a superuser, a `BYPASSRLS` role or a table owner (no
 override). In CI (`CI=true`) a missing
 `CLASSBEAT_TEST_DATABASE_URL` or missing roles fail the database tests instead of skipping them.
