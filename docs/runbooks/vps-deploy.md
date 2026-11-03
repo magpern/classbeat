@@ -338,8 +338,10 @@ published port keeps the sender's address, so web sees swag itself). In `.env`:
 ```
 COMPOSE_FILE=compose.prod.yaml:compose.prod.lan.yaml
 WEB_LAN_ADDRESS=192.168.1.20        # this server, on the LAN; one private IPv4, never 0.0.0.0
-PROXY_IP=192.168.1.10               # the machine swag runs on
 ```
+
+and change `PROXY_IP` in the same file to the LAN address of the machine swag runs on
+(for example `192.168.1.10`; it replaces the Docker-network address of section 6a).
 
 In the swag sample set `set $upstream_classbeat 192.168.1.20;` and port `8080` in both `proxy_pass`
 lines. **The firewall is the boundary here, not the compose file:** nothing but swag may reach the
@@ -625,5 +627,13 @@ the group cannot, and that gosu drops the group, was checked with `compose.prod.
 Compose 5.6.1 (#511). That the Docker port relay presents the `web-out`
 gateway (section 6b) was checked on a throwaway container on Docker 29.
 
-Not checked: a running prod stack behind a real swag (the image, Cloudflare, the certificate, the
+The image-only install (ADR 0020) adds checks of its own, run by `scripts/test-install-check.sh` in CI:
+the release assets build with a verifying `SHA256SUMS`, the runbook's download loops list exactly the
+assets, the `classbeat-db` image holds the repository's SQL, and the released `check-prod-compose.sh`
+passes and fails (a local compose edit, a bad `.env`, each wrong secret mode or group, the LAN
+overlay's address, `--probe` against a stub `docker`) from a folder with no `docs/`.
+
+Not checked: the release run itself (the first real tag builds both images and attaches the assets;
+agents cannot push tags), pulling the private images with a real token, and a running prod stack
+behind a real swag (the image, Cloudflare, the certificate, the
 real mail path and the worker's start-up), which is the post-deploy checklist above.
