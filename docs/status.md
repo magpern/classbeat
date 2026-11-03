@@ -350,8 +350,8 @@ with the owner's authorization and what it created.
   go-ahead in chat ("Grab what you need", "you can look in [the studio's] public camps (read only)", then a camp
   link). Read-only calls with the same sign-in: `GET v1/ProgramCategories` (list and single records, about 120
   camp ids scanned), `POST v1/programs` (camp listings, counts of the cycling library) and `GET v1/programs/{id}`
-  for 64 official running programs. Raw JSON stayed in the session scratchpad outside any repository and was
-  deleted with the session's scratch files; only aggregates were published (#486, ADR 0017 §7). Nothing was
+  for 64 official running programs. Raw JSON stayed in the session scratchpad outside any repository (it goes
+  when the session's container is reclaimed); only aggregates were published (#486, ADR 0017 §7). Nothing was
   created or changed in the account.
 
 ## Exceptions
