@@ -4,7 +4,7 @@
 # on GitHub carries mowl/_swedebeat_app.json (written by that repo's release workflow from a
 # secret); the source never does, so a wheel built from the tagged source has no key file.
 #
-#   scripts/build-mowl-wheel.sh            # v0.7.0 into backend/vendor/
+#   scripts/build-mowl-wheel.sh            # v0.8.0 into backend/vendor/
 #
 # Needs `gh` signed in with read access to magpern/mowl-workouts (private) and `uv`. It never
 # prints a token. Then refresh the lock: `cd backend && uv lock`.
@@ -17,16 +17,16 @@
 #
 # What was pinned (a rebuild must print the same release digest; the vendored wheel's hash is
 # what uv.lock verifies at install time):
-#   tag v0.7.0 commit        88d08f05cddb9e8fb569a5626ef1a79212c3aa2d
-#   release asset sha256     0ff5f60eaf354d86c2fae430f8e1dee4c3bc3deaedbae0e8cdc9659dfc2dd546
-#   vendored wheel sha256    866650a0393468b13925c162416398bbd75f13e28c1612831850e86af0a02004
+#   tag v0.8.0 commit        0de257fcf4e582159afbd77db24887c6a69e803e
+#   release asset sha256     410b94757424556db64c4f2592573e5435a5a60b13b7a8fb88cef8860fa91a3d
+#   vendored wheel sha256    5f7582fc290e011c4e6b8d39bfdce731416051c39fb565f7e03fa7380a9623c1
 # The two wheels differ (the release one has the key file), so their digests differ too.
 set -euo pipefail
 
 REPO=magpern/mowl-workouts
-TAG=v0.7.0
-COMMIT=88d08f05cddb9e8fb569a5626ef1a79212c3aa2d
-WHEEL=mowl_workouts-0.7.0-py3-none-any.whl
+TAG=v0.8.0
+COMMIT=0de257fcf4e582159afbd77db24887c6a69e803e
+WHEEL=mowl_workouts-0.8.0-py3-none-any.whl
 KEY_FILE=mowl/_swedebeat_app.json
 
 PYTHON="$(command -v python3 || command -v python || true)"
@@ -62,7 +62,12 @@ PY
 
 # Same code as the release: compare every RECORD hash except the key file and the dist-info,
 # then the dependency declarations in METADATA.
-gh release download "$TAG" -R "$REPO" -p "$WHEEL" -D "$work/release"
+# REST only (`gh release download` needs GraphQL, which some agent sessions cannot reach): the
+# asset's id from the release of the tag, then its bytes.
+asset="$(gh api "repos/$REPO/releases/tags/$TAG" --jq ".assets[] | select(.name == \"$WHEEL\") | .id")"
+[ -n "$asset" ] || die "release $TAG has no asset $WHEEL"
+gh api -H "Accept: application/octet-stream" "repos/$REPO/releases/assets/$asset" \
+  > "$work/release/$WHEEL"
 echo "release asset:"
 sha256sum "$work/release/$WHEEL"
 "$PYTHON" - "$built" "$work/release/$WHEEL" "$KEY_FILE" <<'PY' || die "the built wheel differs from the release"
