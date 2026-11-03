@@ -65,7 +65,7 @@ from classbeat.design.sport_rules import rules_for
 from classbeat.jobs import KINDS, Complete, FencedSession, JobFailure, JobKind, JobRun
 from classbeat.jobs.inputs import ModelJobInput
 from classbeat.jobs.kinds import Admitted, Refused
-from classbeat.quota.route import with_route_key
+from classbeat.quota.route import with_plan
 
 KIND: Final = "revise_draft"
 STAGES: Final = ("music", "revise")
@@ -206,6 +206,7 @@ async def run(job_run: JobRun) -> Complete:
             given.request,
             music_changed=step.fingerprint != base.fingerprint,
             rules=rules,
+            gates=given.plan_gates,  # the plan's gates at creation (#496)
         )
         outcome = await run_stage(
             JobStageHost(job_run),
@@ -278,7 +279,9 @@ REVISE_DRAFT: Final = KINDS.register(
         STAGES,
         run,
         consumes_credit=False,
-        admit=with_route_key(admit),
-        server_fields=frozenset({"base_revision_hash", "request_message_id", "route_key"}),
+        admit=with_plan(admit),
+        server_fields=frozenset(
+            {"base_revision_hash", "request_message_id", "route_key", "plan_gates"}
+        ),
     )
 )

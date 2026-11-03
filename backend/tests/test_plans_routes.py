@@ -90,7 +90,13 @@ async def test_a_new_account_is_on_free_with_its_limits(admin: Connection, brows
         "name": "Free",
         "source": None,
         "ends_at": None,
-        "limits": {"classes_per_month": 3, "revisions_per_class": 3, "concurrent_jobs": 1},
+        "limits": {
+            "classes_per_month": 3,
+            "revisions_per_class": 3,
+            "concurrent_jobs": 1,
+            "max_class_minutes": 30,
+        },
+        "gates": {"games": False, "races": True, "ftp_tests": True},
         "classes_held": 0,
         "cost_share": 0.0,
         "features": [],
@@ -113,7 +119,9 @@ async def test_a_grant_shows_with_its_end_and_falls_back_to_free_after_it(
         "classes_per_month": 100,
         "revisions_per_class": 25,
         "concurrent_jobs": 2,
+        "max_class_minutes": 90,
     }
+    assert body["gates"] == {"games": True, "races": True, "ftp_tests": True}
     assert body["features"] == ["song_picking"]
     assert (await bob.get(PLAN)).json()["plan"] == "free"  # owner-scoped
     admin.execute(

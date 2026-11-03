@@ -109,7 +109,7 @@ describe('presets', () => {
       length: '30', climbs: '0', sprints: '6', races: '0', intensity: 'hard',
     })
     expect(readPreset(q('length=9999&climbs=-1&sprints=x&races=6&intensity=extreme'))).toEqual({
-      length: '45', climbs: '0', sprints: '0', races: '0', intensity: 'moderate',
+      length: '30', climbs: '0', sprints: '0', races: '0', intensity: 'moderate',
     })
   })
 

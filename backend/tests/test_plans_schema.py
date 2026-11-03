@@ -228,6 +228,61 @@ def test_the_plans_are_seeded_with_the_owner_defaults(admin: Connection) -> None
     ]
 
 
+def test_the_plans_are_seeded_with_the_owners_length_and_game_defaults(admin: Connection) -> None:
+    """Migration 0026 (#496): Free 30 minutes without games, Instructor 60, Pro 90; races and FTP
+    tests everywhere; no price."""
+    rows = admin.execute(
+        text(
+            "SELECT id, max_class_minutes, games_allowed, races_allowed, ftp_tests_allowed, "
+            "monthly_price_cents, intro_price_cents, intro_price_until, currency "
+            "FROM plans ORDER BY rank"
+        )
+    ).all()
+    assert [tuple(r) for r in rows] == [
+        ("free", 30, False, True, True, None, None, None, None),
+        ("instructor", 60, True, True, True, None, None, None, None),
+        ("pro", 90, True, True, True, None, None, None, None),
+    ]
+
+
+@pytest.mark.parametrize(
+    ("assignment", "constraint"),
+    [
+        ("max_class_minutes = 9", "plans_max_class_minutes"),
+        ("max_class_minutes = 181", "plans_max_class_minutes"),
+        ("monthly_price_cents = -1, currency = 'EUR'", "plans_monthly_price_cents"),
+        ("monthly_price_cents = 10000001, currency = 'EUR'", "plans_monthly_price_cents"),
+        ("monthly_price_cents = 900", "plans_price_currency"),
+        ("monthly_price_cents = 900, currency = 'eur'", "plans_currency"),
+        ("intro_price_cents = 500, currency = 'EUR'", "plans_intro_price_period"),
+        ("intro_price_until = DATE '2027-01-01'", "plans_intro_price_period"),
+        (
+            "intro_price_cents = 500, intro_price_until = DATE '2101-01-01', currency = 'EUR'",
+            "plans_intro_price_until",
+        ),
+    ],
+)
+def test_the_plan_gate_and_price_checks(
+    admin: Connection, assignment: str, constraint: str
+) -> None:
+    with pytest.raises(IntegrityError, match=constraint):  # autocommit: nothing to roll back
+        admin.execute(text(f"UPDATE plans SET {assignment} WHERE id = 'pro'"))  # noqa: S608
+    try:  # a complete price passes every check
+        admin.execute(
+            text(
+                "UPDATE plans SET monthly_price_cents = 900, intro_price_cents = 500, "
+                "intro_price_until = DATE '2027-01-01', currency = 'EUR' WHERE id = 'pro'"
+            )
+        )
+    finally:
+        admin.execute(
+            text(
+                "UPDATE plans SET monthly_price_cents = NULL, intro_price_cents = NULL, "
+                "intro_price_until = NULL, currency = NULL WHERE id = 'pro'"
+            )
+        )
+
+
 # Entitlements.
 
 

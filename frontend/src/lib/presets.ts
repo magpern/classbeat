@@ -33,7 +33,7 @@ function inRange(value: string | null, min: number, max: number): string | null 
 export function readPreset(query: URLSearchParams): FormPreset {
   const intensity = query.get('intensity')
   return {
-    length: inRange(query.get('length'), 10, 180) ?? '45',
+    length: inRange(query.get('length'), 10, 180) ?? '30', // within every plan's cap (#496)
     climbs: inRange(query.get('climbs'), 0, 10) ?? '0',
     sprints: inRange(query.get('sprints'), 0, 20) ?? '0',
     races: inRange(query.get('races'), 0, 5) ?? '0',

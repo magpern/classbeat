@@ -2,7 +2,8 @@
 
 **Bounds** (stricter wins): ``CLASSBEAT_CLASSES_PER_MONTH_MAX`` and
 ``CLASSBEAT_MONTHLY_COST_MICROS_MAX`` bound a plan's money limits, ``CLASSBEAT_JOBS_PER_USER``
-its concurrent jobs and ``CLASSBEAT_REVISIONS_PER_CLASS`` its revisions per class. The
+its concurrent jobs, ``CLASSBEAT_REVISIONS_PER_CLASS`` its revisions per class and
+``CLASSBEAT_CLASS_MINUTES_MAX`` its longest class (#496). The feature gates have no bound. The
 effective value of each limit is the smaller of the plan row and the bound; ``effective`` is the
 one place that takes it, for the ledger, the policies, ``GET /api/account/plan`` and the admin
 user page alike.
@@ -32,6 +33,7 @@ DEFAULT_CLASSES_MAX: Final = 200
 DEFAULT_COST_MAX: Final = 300_000_000
 DEFAULT_JOBS: Final = 2
 DEFAULT_REVISIONS: Final = 25
+DEFAULT_CLASS_MINUTES: Final = 180
 
 _PERIOD = text("SELECT CAST(date_trunc('month', now() AT TIME ZONE 'UTC') AS date) AS period")
 _COST = text(
@@ -47,6 +49,7 @@ class Bounds:
     monthly_cost_micros_max: int = DEFAULT_COST_MAX
     jobs_per_user: int = DEFAULT_JOBS
     revisions_per_class: int = DEFAULT_REVISIONS
+    class_minutes_max: int = DEFAULT_CLASS_MINUTES
 
     @classmethod
     def from_settings(cls, settings: Settings) -> "Bounds":
@@ -55,6 +58,7 @@ class Bounds:
             monthly_cost_micros_max=settings.monthly_cost_micros_max,
             jobs_per_user=settings.jobs_per_user,
             revisions_per_class=settings.revisions_per_class,
+            class_minutes_max=settings.class_minutes_max,
         )
 
 
@@ -66,6 +70,7 @@ class Effective:
     monthly_cost_micros: int
     concurrent_jobs: int
     revisions_per_class: int
+    max_class_minutes: int
 
 
 def effective_classes(stored: int, bounds: Bounds) -> int:
@@ -79,6 +84,7 @@ def effective(plan: Plan, bounds: Bounds) -> Effective:
         monthly_cost_micros=min(plan.monthly_cost_micros, bounds.monthly_cost_micros_max),
         concurrent_jobs=min(plan.concurrent_jobs, bounds.jobs_per_user),
         revisions_per_class=min(plan.revisions_per_class, bounds.revisions_per_class),
+        max_class_minutes=min(plan.max_class_minutes, bounds.class_minutes_max),
     )
 
 

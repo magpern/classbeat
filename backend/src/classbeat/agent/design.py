@@ -28,6 +28,7 @@ from classbeat.agent.guidance import Guidance, rules_result
 from classbeat.agent.model_input import MusicData
 from classbeat.agent.schemas import Brief, DraftInput, MusicInput, RunningDraft, WorkoutDraft
 from classbeat.agent.stage import Stage, Tool, ToolAnswer, ToolError
+from classbeat.plan_gates import PlanGates, draft_problems
 
 STAGE: Final = "design"
 FINAL_TOOL: Final = "submit_draft"
@@ -115,11 +116,18 @@ class DesignContext:
     map: dict[str, Any]  # model_input.music_map(...)
     summary: dict[str, Any]
     rules: Guidance | None = None  # ADR 0017: None = no profile applies
+    gates: PlanGates | None = None  # the job's plan gates (#496): None = none (evals, old jobs)
 
     @classmethod
-    def build(cls, brief: Brief, data: MusicData, rules: Guidance | None = None) -> "DesignContext":
+    def build(
+        cls,
+        brief: Brief,
+        data: MusicData,
+        rules: Guidance | None = None,
+        gates: PlanGates | None = None,
+    ) -> "DesignContext":
         m = mix_input.music_map(data)
-        return cls(brief, m, mix_input.music_summary(data, m), rules)
+        return cls(brief, m, mix_input.music_summary(data, m), rules, gates)
 
     def first_message(self) -> str:
         rules = self.rules.section() if self.rules else None
@@ -179,6 +187,16 @@ def check(draft: WorkoutDraft, m: dict[str, Any]) -> DesignResult:
     )
 
 
+def within_plan(gates: PlanGates | None, result: DesignResult) -> DesignResult:
+    """``result`` when the job's plan allows it (``classbeat.plan_gates``, #496); otherwise
+    ``ToolError('not_allowed')`` with what to change, so the model fixes the draft and a draft the
+    plan does not include (a game, an FTP test, too long) is never accepted."""
+    problems = draft_problems(gates, result.spec, result.duration_sec)
+    if problems:
+        raise ToolError("not_allowed", problems)
+    return result
+
+
 def is_running(ctx: object) -> bool:
     """Whether a stage context is a running class's (``classbeat.agent.running``)."""
     return getattr(getattr(ctx, "brief", None), "sport", None) == "running"
@@ -197,7 +215,7 @@ def design_stage(ctx: DesignContext) -> Stage:
         return ToolAnswer({"track": mix_input.track_detail(ctx.map, args.track)})
 
     def preview_draft(args: DraftInput) -> ToolAnswer:
-        result = check(args.draft, ctx.map)
+        result = within_plan(ctx.gates, check(args.draft, ctx.map))
         return ToolAnswer(
             {
                 "duration": mmss(result.duration_sec),
@@ -212,7 +230,7 @@ def design_stage(ctx: DesignContext) -> Stage:
         )
 
     def submit_draft(args: DraftInput) -> ToolAnswer:
-        result = check(args.draft, ctx.map)
+        result = within_plan(ctx.gates, check(args.draft, ctx.map))
         return ToolAnswer(
             {
                 "accepted": True,
