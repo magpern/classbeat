@@ -43,6 +43,8 @@ COVERED = {
     "e2e_change",
     # used by the e2e specs (e2e/tests/swedebeat-mix.spec.ts): a design on a Swedebeat mix
     "e2e_swedebeat_mix",
+    # used by the e2e specs (e2e/tests/swedebeat-match.spec.ts): the catalogue replace of two songs
+    "e2e_swedebeat_replace",
 }
 
 SPEC = StageSpec("design", "s", (), "m", "fake-model", "medium", 32_000, "submit_draft")

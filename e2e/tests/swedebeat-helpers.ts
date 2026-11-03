@@ -48,3 +48,17 @@ export const holdSession = (email: string, device = PHONE): void => {
 export const setOutage = (on: boolean): void => {
   control(`outage?on=${on ? '1' : '0'}`)
 }
+
+/**
+ * What the fake's catalogue answers (ADR 0016 section 5, B5): a `found` title answers a hit of the
+ * same title, an `unsure` title a different one, any other title no hit. Cleared by `resetSwedebeat`.
+ */
+export const setCatalogue = (found: string[], unsure: string[] = []): void => {
+  control(`catalogue?found=${encodeURIComponent(found.join('|'))}&unsure=${encodeURIComponent(unsure.join('|'))}`)
+}
+
+/** The catalogue searches the fake has seen: the account each one's token belongs to, never a title. */
+export const catalogueCalls = (): (string | null)[] =>
+  fakeState()
+    .calls.filter((c) => c.path === '/track/extendedsearch')
+    .map((c) => c.email)
