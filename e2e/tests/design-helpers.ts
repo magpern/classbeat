@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process'
-import { expect, type Page } from '@playwright/test'
+import { expect, type Locator, type Page } from '@playwright/test'
 
 // Shared by design-draft.spec.ts: connect the fake MOWL account, fill the new-class form, and read
 // or steer the fake MOWL (e2e/fake-mowl/server.py). Public test values only.
@@ -59,11 +59,20 @@ export async function connectMowl(page: Page): Promise<void> {
 
 /** Fill the new-class form for the brief the recorded model script was written for (30 minutes,
  *  moderate, one climb, two sprints) and start the design. Returns the job's id. */
+/** Pick a playlist tile by clicking its visible label. The input itself is a 1px sr-only box, and a
+ *  forced click on it skips the stability wait: the plan hint that arrives after the form moves the
+ *  tiles, so the click landed elsewhere and the radio stayed unchecked. */
+export async function choosePlaylist(form: Locator, playlistName: string): Promise<void> {
+  const radio = form.getByRole('radio', { name: playlistName })
+  await form.locator('label').filter({ has: radio }).click()
+  await expect(radio).toBeChecked()
+}
+
 export async function startDesign(page: Page, title: string, playlistName: string): Promise<string> {
   await page.getByRole('link', { name: 'New class' }).click()
   const form = page.getByRole('form', { name: 'New class' })
   await form.getByLabel('Class name').fill(title)
-  await form.getByRole('radio', { name: playlistName }).check({ force: true })
+  await choosePlaylist(form, playlistName)
   await form.getByLabel('Length in minutes').fill('30')
   await form.getByLabel('Climbs', { exact: true }).fill('1')
   await form.getByLabel('Sprints', { exact: true }).fill('2')

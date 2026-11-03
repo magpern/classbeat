@@ -1,6 +1,6 @@
 import { expect, type Locator, type Page } from '@playwright/test'
 import { signInThroughUi, signUpThroughUi, uniqueEmail } from './helpers'
-import { connectMowl, fakeControl, getJob, jobId, startDesign } from './design-helpers'
+import { connectMowl, choosePlaylist, fakeControl, getJob, jobId, startDesign } from './design-helpers'
 import { useModelScript, type ModelScript } from './model-script'
 
 // Shared by class-save.spec.ts and class-usage.spec.ts (M3b T2, ADR 0007 section 13): sign up,
@@ -95,7 +95,7 @@ export async function startRunningDesign(page: Page, title: string, playlistName
   const form = page.getByRole('form', { name: 'New class' })
   await form.getByRole('button', { name: 'Running', exact: true }).click()
   await form.getByLabel('Class name').fill(title)
-  await form.getByRole('radio', { name: playlistName }).check({ force: true })
+  await choosePlaylist(form, playlistName)
   await form.getByLabel('Length in minutes').fill('30')
   await form.getByRole('button', { name: 'Design my class' }).click()
   await expect(page).toHaveURL(/\/jobs\/[0-9a-f-]{36}$/)
