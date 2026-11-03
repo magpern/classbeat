@@ -37,6 +37,9 @@ PINNED = {
     "revise": "d334e6777b995feb4eaa6908e0a207f6bd6019fc73d6ca7071cbcecc5db6a978",
     "pick_pool": "58d36e6a25155e86a70e88b79c845ccd1501f7f2db4c7d28af9f6f78badb5449",
     "choose_songs": "4fb091519ef4af656c3fc32e424bc1b083db5531a7436e8976dc2e0e60a386db",
+    # The running stages (ADR 0018), listed since E1 (#465) under their own keys.
+    "running_design": "40fcbacc476575681d2549581f374ce74b2b46ad8fae589febcc0fe2a9a73b45",
+    "running_revise": "2e06a0378e08a974fddcce833399553a197f4ba927de678cb04ce6aabfceac6f",
 }
 PLANTED = "Zq9 planted brief text"
 PLANTED_STYLE = "Zq9 planted style"
