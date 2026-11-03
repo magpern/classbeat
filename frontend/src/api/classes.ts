@@ -116,6 +116,71 @@ export interface ClassSummary {
   swedebeatOn: boolean
   /** The class's newest Swedebeat match and whether it is the approved selection. */
   swedebeatMatch: { revisionId: string; approved: boolean } | null
+  /** Beat-one corrections (ADR 0007 amendment): unavailable on the list and without beat data. */
+  beatOne: BeatOne
+}
+
+/** One song the current version plays, with the class's beat-one correction for it. */
+export interface BeatOneSong {
+  song: number
+  start: number
+  end: number
+  bpm: number
+  estimate: boolean
+  /** A Spotify track's title; null for a song found in a Swedebeat mix. */
+  title: string | null
+  /** The correction the user set, -3 to 3 (0: none). */
+  beats: number
+  /** What the current version was fitted with. */
+  applied: number
+}
+
+export interface BeatOne {
+  available: boolean
+  revisionId: string | null
+  songs: BeatOneSong[]
+  /** The corrections differ from what the current version was fitted with. */
+  pending: boolean
+  /** Corrections set on earlier music, not used. */
+  stale: number
+}
+
+export const NO_BEAT_ONE: BeatOne = { available: false, revisionId: null, songs: [], pending: false, stale: 0 }
+
+function whole(source: JsonObject, key: string, low: number, high: number): number {
+  const value = source[key]
+  if (typeof value !== 'number' || !Number.isInteger(value) || value < low || value > high) {
+    throw new Error(`bad ${key}`)
+  }
+  return value
+}
+
+export function decodeBeatOne(value: unknown): BeatOne {
+  if (!isObject(value)) return NO_BEAT_ONE
+  try {
+    const songs = list(value, 'songs').map((entry) => {
+      const item = object(entry, 'song')
+      return {
+        song: whole(item, 'song', 1, 500),
+        start: count(item, 'start'),
+        end: count(item, 'end'),
+        bpm: count(item, 'bpm'),
+        estimate: flag(item, 'estimate'),
+        title: optionalText(item, 'title'),
+        beats: whole(item, 'beats', -3, 3),
+        applied: whole(item, 'applied', -3, 3),
+      }
+    })
+    return {
+      available: flag(value, 'available'),
+      revisionId: optionalText(value, 'revision_id'),
+      songs,
+      pending: flag(value, 'pending'),
+      stale: count(value, 'stale'),
+    }
+  } catch {
+    return NO_BEAT_ONE // anything malformed hides the control
+  }
 }
 
 const INTENSITIES: readonly unknown[] = ['easy', 'moderate', 'hard']
@@ -205,6 +270,7 @@ function decodeClass(value: unknown): ClassSummary {
     playlist: decodePlaylist(item.playlist),
     swedebeatOn: 'swedebeat_match' in item,
     swedebeatMatch: decodeMatchPointer(item.swedebeat_match),
+    beatOne: decodeBeatOne(item.beat_one),
   }
 }
 
@@ -424,4 +490,27 @@ export async function dismissRule(classId: string, ruleId: string): Promise<void
 /** Undo a dismissal ("Show again"); idempotent. */
 export async function showRuleAgain(classId: string, ruleId: string): Promise<void> {
   await del(`${base(classId)}/dismissed-rules/${encodeURIComponent(ruleId)}`)
+}
+
+/** Set one song's beat-one correction (-3 to 3, not 0) for the music of `revisionId`. */
+export async function setBeatOne(
+  classId: string,
+  song: number,
+  beats: number,
+  revisionId: string,
+): Promise<BeatOne> {
+  const body = await request('PUT', `${base(classId)}/beat-one/${String(song)}`, {
+    body: { beats, revision_id: revisionId },
+  })
+  return decodeBeatOne(body)
+}
+
+/** Clear one song's correction; idempotent. */
+export async function clearBeatOne(
+  classId: string,
+  song: number,
+  revisionId: string,
+): Promise<BeatOne> {
+  const query = `?revision_id=${encodeURIComponent(revisionId)}`
+  return decodeBeatOne(await del(`${base(classId)}/beat-one/${String(song)}${query}`))
 }

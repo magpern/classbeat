@@ -25,6 +25,13 @@ const REASONS: Record<string, string> = {
     'classbeat may still be writing this class to MOWL, and deleting it now would remove the only record of that write. Wait a few minutes, then try to delete it again.',
   music_unlinked:
     'The music of this version is not in your connected MOWL account. Change it and save the new version.',
+  // ADR 0007 amendment "beat-one corrections".
+  no_beat_data:
+    'This version has no beat data to correct. Ask for a change by chat first, then try again.',
+  correction_limit:
+    'This class has as many timing fixes as it can hold. Reset some, then try again.',
+  refit_limit:
+    'This class has had its timing fixed as often as it can. Design a new class to start again.',
 }
 
 /** A 409 or 404 means what the page shows is out of date: it shows the reason and reloads. */
