@@ -26,6 +26,11 @@ const REASONS: Record<string, string> = {
   busy: 'The server is busy. Try again in a few seconds.',
 }
 
+const REAUTH_STALE =
+  'The provider did not confirm that you signed in again in the last 5 minutes, so nothing was changed.'
+const SET_A_PASSWORD =
+  'To set a password, sign out and choose "Forgot your password?" on the sign-in page; then confirm with it.'
+
 // Outcome codes the OAuth callback puts in `?oauth=` of /signin and /account.
 const OAUTH_OUTCOMES: Record<string, string> = {
   invalid: 'The sign-in could not be completed. Try again.',
@@ -38,10 +43,20 @@ const OAUTH_OUTCOMES: Record<string, string> = {
   invite_invalid: 'That invite is no longer valid. Ask for a new one.',
   identity_taken: 'That provider account is already linked to a different classbeat account.',
   identity_mismatch: 'That is not the provider account linked to your classbeat account.',
-  reauth_stale: 'The provider did not confirm a fresh sign-in. Try again, or use your password.',
+  reauth_stale: REAUTH_STALE,
 }
 
-export function oauthOutcomeMessage(code: string): string {
+/**
+ * The text for an OAuth outcome. A failed re-authentication (`reauth_stale`, ADR 0003 section 5
+ * and #522) says what failed and offers the password when the account has one (`hasPassword`;
+ * null while unknown, which offers the way to set one too).
+ */
+export function oauthOutcomeMessage(code: string, hasPassword: boolean | null = null): string {
+  if (code === 'reauth_stale') {
+    if (hasPassword === true) return `${REAUTH_STALE} Use your password instead.`
+    if (hasPassword === false) return `${REAUTH_STALE} ${SET_A_PASSWORD}`
+    return `${REAUTH_STALE} Use your password instead, if you have one. ${SET_A_PASSWORD}`
+  }
   const known = Object.hasOwn(OAUTH_OUTCOMES, code) ? OAUTH_OUTCOMES[code] : undefined
   return known ?? 'The sign-in could not be completed. Try again.'
 }

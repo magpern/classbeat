@@ -1,5 +1,6 @@
 import { type Page } from '@playwright/test'
-import { createInvite, expect, linkFromMail, test, uniqueEmail } from './helpers'
+import { createInvite, expect, linkFromMail, PASSWORD, signUpThroughUi, test, uniqueEmail } from './helpers'
+import { sql } from './song-helpers'
 
 // OAuth sign-in against the fake provider of compose.e2e.yaml (the `e2e` profile). The fake
 // answers the providers' real back-channel hostnames inside the stack; here Playwright plays
@@ -10,6 +11,9 @@ interface Persona {
   sub: string
   email: string | null
   emailVerified: boolean
+  /** The sign-in's age in seconds for the ID token's auth_time, or null to leave the claim out
+   *  (#522); read at each visit, so a test can change it between flows. Absent: now. */
+  authTime?: number | null
 }
 
 function code(grant: object): string {
@@ -21,7 +25,13 @@ async function playProvider(page: Page, host: 'accounts.google.com' | 'login.mic
     const authorize = new URL(route.request().url())
     const grant =
       host === 'accounts.google.com'
-        ? { sub: who.sub, email: who.email, email_verified: who.emailVerified, nonce: authorize.searchParams.get('nonce') }
+        ? {
+            sub: who.sub,
+            email: who.email,
+            email_verified: who.emailVerified,
+            nonce: authorize.searchParams.get('nonce'),
+            ...(who.authTime === undefined ? {} : { auth_time: who.authTime }),
+          }
         : {
             tid: '11111111-2222-3333-4444-555555555555',
             oid: who.sub,
@@ -108,4 +118,54 @@ test('Microsoft: an unverified email is handed off to the address page and confi
   await page.goto('/signin')
   await page.getByRole('button', { name: 'Continue with Microsoft' }).click()
   await expect(page.getByRole('button', { name: email })).toBeVisible()
+})
+
+/** Make the user's last sign-in older than the 10-minute window, as the database superuser. */
+function ageReauth(email: string): void {
+  if (!/^[\w.+-]+@example\.test$/.test(email)) throw new Error('not a test address')
+  sql(`UPDATE sessions SET reauth_at = now() - interval '11 minutes' WHERE user_id = (SELECT id FROM users WHERE email = '${email}')`)
+}
+
+test('Google re-authentication: no auth_time fails closed with a sentence, a fresh one passes (#522)', async ({ page }) => {
+  const email = uniqueEmail('reauth')
+  const who: Persona = { sub: `g-${email}`, email, emailVerified: true }
+  await playProvider(page, 'accounts.google.com', who)
+  await signUpThroughUi(page, email)
+  await page.goto('/signin')
+  await page.getByLabel('Email', { exact: true }).fill(email)
+  await page.getByLabel('Password', { exact: true }).fill(PASSWORD)
+  await page.getByRole('button', { name: 'Sign in', exact: true }).click()
+  await expect(page.getByRole('heading', { name: 'Your account' })).toBeVisible()
+  await page.goto('/account#security')
+  await page.getByRole('button', { name: 'Link Google' }).click()
+  await expect(page.getByText('The sign-in method is linked to your account.')).toBeVisible()
+
+  const changePassword = async () => {
+    await page.goto('/account#security')
+    await page.getByLabel('New password').fill('another long passphrase')
+    await page.getByLabel('Repeat the new password').fill('another long passphrase')
+    await page.getByRole('button', { name: 'Save password' }).click()
+    const dialog = page.getByRole('dialog')
+    await expect(dialog).toContainText('Google can confirm it only if you signed in there in the last 5 minutes.')
+    await dialog.getByRole('button', { name: 'Confirm with Google' }).click()
+  }
+
+  // Google leaves auth_time out (a fresh iat and this flow's nonce, state and PKCE notwithstanding).
+  ageReauth(email)
+  who.authTime = null
+  await changePassword()
+  await expect(page).toHaveURL(/\/account\?oauth=reauth_stale/)
+  const alert = page.getByRole('alert').filter({ hasText: 'did not confirm' })
+  await expect(alert).toContainText('signed in again in the last 5 minutes, so nothing was changed')
+  await expect(alert).toContainText('Use your password instead.')
+
+  // A sign-in at Google an hour ago is not fresh either.
+  who.authTime = 3600
+  await changePassword()
+  await expect(page).toHaveURL(/\/account\?oauth=reauth_stale/)
+
+  // A sign-in at Google just now passes.
+  who.authTime = 5
+  await changePassword()
+  await expect(page.getByText('Thanks, you are confirmed. Repeat the change you were making.')).toBeVisible()
 })
