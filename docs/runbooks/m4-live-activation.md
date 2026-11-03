@@ -64,6 +64,7 @@ corrected. If a fact differs from the assumption, open an issue; do not change a
 | Token endpoint `invalid_grant` body for a revoked token | 400 `invalid_grant`, category `invalid_grant` | 3 | | |
 | Delay before a new playlist appears in `/me/playlists` | unknown; sets `CLASSBEAT_SPOTIFY_LISTING_LAG_SECONDS` (unset until measured, at most 86 400) | 3 | | |
 | MOWL attach answered HTTP 200 with a non-empty `Error` field and no playlist id had no effect (classbeat ends the operation `failed`, not `uncertain`; ADR 0005 section 7, #117 item 2) | yes: the library raises `MowlError` with no HTTP cause and a single-request attach is `not_applied` | 3 | | |
+| Playlist image URLs in `/me/playlists` (the New class picker's covers, ADR 0013 §9 amendment of 2026-11-03): their hosts and path shapes, and that an uploaded cover is listed with `width: null`. Check on New class that the owner's mosaic, uploaded and single-album playlists show covers; a URL of another shape shows initials and is an issue, not a setting | `i.scdn.co/image/<40 hex>`, `mosaic.scdn.co/{300,640}/<4 x 40 hex>`, `image-cdn-{ak,fa}.spotifycdn.com/image/<40 hex>`; uploaded covers without a width | 2 | | |
 | Development Mode allow-list size and the app owner's Premium rule | 5 people; Premium for the owner | 1, 2 | | |
 | Cost per song-picked class | below the $3 ceiling | 6 | | |
 
