@@ -69,12 +69,26 @@ export function decodeJob(value: unknown): Job {
 
 /** The brief of the new-class form (backend `Brief`, ADR 0006 section 7). */
 export interface Brief {
+  /** Absent means cycling (ADR 0018 section 1). */
+  sport?: 'cycling'
   length_min: number
   intensity: 'easy' | 'moderate' | 'hard'
   climbs: number
   sprints: number
   races: number
   ftp_test: 3 | 5 | 20 | null
+  style: string
+  text: string
+}
+
+/**
+ * The brief of a running class (ADR 0018 section 1): no climbs, sprints, races or FTP test, which
+ * the backend refuses for running. Always names its sport.
+ */
+export interface RunningBrief {
+  sport: 'running'
+  length_min: number
+  intensity: 'easy' | 'moderate' | 'hard'
   style: string
   text: string
 }
@@ -87,7 +101,7 @@ export type DesignMusic =
 export interface DesignInput {
   title?: string
   class_id?: string
-  brief: Brief
+  brief: Brief | RunningBrief
   music: DesignMusic
   mowl_connection_id: string
 }
@@ -111,9 +125,17 @@ export async function cancelJob(id: string): Promise<Job> {
 export interface DraftInterval {
   sec: number
   zone: number
-  rpm: [number, number] | 'beat'
+  /** Cycling only; null for a running interval (it has no cadence). */
+  rpm: [number, number] | 'beat' | null
   standing: boolean
+  /** Running only (0 flat, 1 incline); null for a cycling interval. */
+  gradient?: number | null
   cue: string
+}
+
+/** A running draft's intervals carry `gradient` and no cadence (ADR 0018 section 2). */
+export function isRunningDraft(segments: DraftSegment[]): boolean {
+  return segments.some((s) => s.intervals.some((i) => typeof i.gradient === 'number'))
 }
 
 export interface DraftSegment {
@@ -133,6 +155,16 @@ export interface DraftSummary {
 function decodeInterval(value: unknown): DraftInterval {
   const item = object(value, 'interval')
   const rpm = item.rpm
+  if (rpm === undefined && item.gradient !== undefined) {
+    return {
+      sec: count(item, 'sec'),
+      zone: count(item, 'zone'),
+      rpm: null,
+      standing: false,
+      gradient: count(item, 'gradient'),
+      cue: optionalText(item, 'cue') ?? '',
+    }
+  }
   let decoded: DraftInterval['rpm']
   if (rpm === 'beat') decoded = 'beat'
   else if (Array.isArray(rpm) && rpm.length === 2 && rpm.every((n) => typeof n === 'number')) {

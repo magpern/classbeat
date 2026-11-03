@@ -94,6 +94,8 @@ function decodeSongs(value: unknown): ClassSongs {
 export interface ClassSummary {
   id: string
   title: string
+  /** ADR 0018 section 1: the class's sport; an answer without it is cycling. */
+  sport: 'cycling' | 'running'
   createdAt: string
   updatedAt: string
   currentRevisionId: string | null
@@ -181,6 +183,7 @@ function decodeClass(value: unknown): ClassSummary {
   return {
     id: text(item, 'id'),
     title: text(item, 'title'),
+    sport: item.sport === 'running' ? 'running' : 'cycling',
     createdAt: text(item, 'created_at'),
     updatedAt: text(item, 'updated_at'),
     currentRevisionId: optionalText(item, 'current_revision_id'),

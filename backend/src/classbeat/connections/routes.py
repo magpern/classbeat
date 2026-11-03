@@ -29,6 +29,7 @@ from classbeat.connections.swedebeat_account import swedebeat_access, swedebeat_
 from classbeat.context import UserContext
 from classbeat.db import system_session
 from classbeat.emailnorm import normalize_email
+from classbeat.flags import effective
 
 router = APIRouter(prefix="/api/connections", tags=["connections"])
 
@@ -89,6 +90,10 @@ class SwedebeatAccessOut(BaseModel):
 class ConnectionsOut(BaseModel):
     connections: list[ConnectionOut]
     swedebeat: SwedebeatAccessOut
+    # ADR 0018 section 5 (M8 U1): the effective ``running_enabled`` (environment switch, then the
+    # admin flag), so the new-class form offers Running only when a running design would be
+    # admitted. Signed-in users only; nothing here says anything about the user's own account.
+    running_enabled: bool = False
 
 
 def failure_response(failure: ConnectionFailure) -> JSONResponse:
@@ -119,11 +124,14 @@ async def get_connections(
     access = await swedebeat_access(request.app.state.settings, factory)
     held = any(row.provider == "swedebeat" for row in rows)
     email = await swedebeat_email(factory, ctx) if held else None
+    async with system_session(factory) as db:
+        running = await effective.running_enabled(db, request.app.state.settings.running_enabled)
     return ConnectionsOut(
         connections=[
             ConnectionOut.of(row, email if row.provider == "swedebeat" else None) for row in rows
         ],
         swedebeat=SwedebeatAccessOut(enabled=access.enabled, available=access.available),
+        running_enabled=running,
     )
 
 

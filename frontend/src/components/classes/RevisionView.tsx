@@ -1,8 +1,9 @@
 import type { Revision } from '../../api/classes'
+import { isRunningDraft } from '../../api/jobs'
 import { originLabel } from '../../api/classMessages'
 import type { Song } from '../../api/songs'
 import { TSS_APPROXIMATE_NOTE } from '../../lib/classCards'
-import { cadenceText, flatten, zoneName } from '../../lib/profile'
+import { cadenceText, flatten, inclineText, zoneName } from '../../lib/profile'
 import { clock, segmentSeconds, totalSeconds, tss } from '../../lib/workout'
 import { Card } from '../ui/card'
 import { PatternNotes } from './PatternNotes'
@@ -47,6 +48,7 @@ export function RevisionView({
 }) {
   const seconds = totalSeconds(revision.segments)
   const bars = flatten(revision.segments)
+  const running = isRunningDraft(revision.segments)
   const hardest = bars.length === 0 ? null : Math.max(...bars.map((b) => b.zone))
   return (
     <article className="flex flex-col gap-5" aria-labelledby="revision-title">
@@ -63,7 +65,7 @@ export function RevisionView({
         <Tile label="Length">
           <span data-testid="duration">{clock(seconds)}</span>
         </Tile>
-        <Tile label="TSS">
+        {running ? null : <Tile label="TSS">
           <span data-testid="tss">
             <TssValue value={tss(revision.segments)} approximate={revision.tssApproximate} />
           </span>
@@ -72,7 +74,7 @@ export function RevisionView({
               ({TSS_APPROXIMATE_NOTE})
             </small>
           ) : null}
-        </Tile>
+        </Tile>}
         <Tile label="Segments">{revision.segments.length}</Tile>
         {songs !== null && songs.length > 0 ? <Tile label="Songs">{songs.length}</Tile> : null}
         {hardest !== null ? (
@@ -107,7 +109,7 @@ export function RevisionView({
         </div>
       ) : null}
       <ProfileChart segments={revision.segments} title={revision.name} songs={songs} />
-      <ZoneTime bars={bars} />
+      <ZoneTime bars={bars} running={running} />
       <section aria-labelledby="song-by-song-title" className="flex flex-col gap-4">
         <h3 id="song-by-song-title" className="m-0 font-display text-lg font-bold">
           Song by song
@@ -127,8 +129,14 @@ export function RevisionView({
                   <tr className="text-[0.8125rem] text-muted">
                     <th scope="col" className="py-1 pr-3 font-medium">Length</th>
                     <th scope="col" className="py-1 pr-3 font-medium">Zone</th>
-                    <th scope="col" className="py-1 pr-3 font-medium">Cadence</th>
-                    <th scope="col" className="py-1 pr-3 font-medium">Position</th>
+                    {running ? (
+                      <th scope="col" className="py-1 pr-3 font-medium">Incline</th>
+                    ) : (
+                      <>
+                        <th scope="col" className="py-1 pr-3 font-medium">Cadence</th>
+                        <th scope="col" className="py-1 pr-3 font-medium">Position</th>
+                      </>
+                    )}
                     <th scope="col" className="py-1 font-medium">Cue</th>
                   </tr>
                 </thead>
@@ -146,8 +154,14 @@ export function RevisionView({
                           {interval.zone}
                         </span>
                       </td>
-                      <td className="py-1 pr-3">{cadenceText(interval.rpm)}</td>
-                      <td className="py-1 pr-3">{interval.standing ? 'Standing' : 'Seated'}</td>
+                      {running ? (
+                        <td className="py-1 pr-3">{inclineText(interval.gradient)}</td>
+                      ) : (
+                        <>
+                          <td className="py-1 pr-3">{cadenceText(interval.rpm)}</td>
+                          <td className="py-1 pr-3">{interval.standing ? 'Standing' : 'Seated'}</td>
+                        </>
+                      )}
                       <td className="py-1">{interval.cue}</td>
                     </tr>
                   ))}
