@@ -14,7 +14,6 @@ unchanged, so the design stage calls these and a Spotify design sees exactly wha
 """
 
 import copy
-import dataclasses
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any, Final
@@ -53,7 +52,7 @@ class SpotifyData(MusicData):
 def with_corrections(data: MusicData, corrections: tuple[Correction, ...]) -> MusicData:
     """``data`` carrying ``corrections`` (``MixData`` or ``SpotifyData``)."""
     if isinstance(data, MixData):
-        return dataclasses.replace(data, beat_one=corrections)
+        return MixData(data.analysis, data.playlist_id, data.unavailable, corrections)
     return SpotifyData(data.analysis, data.playlist_id, data.unavailable, corrections)
 
 
