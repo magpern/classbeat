@@ -23,4 +23,13 @@ RATIONALES: Final[dict[str, str]] = {
     "load_bounded": "Most classes of this kind put a bit less training load into each minute.",
     "hard_not_early": "Most classes of this kind hold the hard efforts back in the first quarter.",
     "standing_bounded": "Most classes of this kind keep standing to a limited share of the ride.",
+    # Running wording (ADR 0017 section 7): the same expectations, said of a run.
+    "warmup_ramp_run": "Most classes of this kind run a few minutes before the first hard effort.",
+    "hard_share_enough_run": (
+        "Most classes of this kind spend a good part of the run in hard zones."
+    ),
+    "hard_share_not_all_run": (
+        "Most classes of this kind leave room for easier running between efforts."
+    ),
+    "top_zone_present_run": "Most classes of this kind include some running in the top zones.",
 }

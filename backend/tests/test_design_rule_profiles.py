@@ -33,26 +33,55 @@ def _copy(tmp_path: Path) -> Path:
     return dst
 
 
+CYCLING = [f"cycling.{t}.{n}" for t in ("interval", "plain") for n in (30, 45, 60)]
+RUNNING = ["running.interval.30", "running.interval.45"]
+
+
 def test_shipped_profiles_load() -> None:
     reg = load_registry()
-    assert sorted(reg.profiles) == [
-        f"cycling.{t}.{n}" for t in ("interval", "plain") for n in (30, 45, 60)
-    ]
+    assert sorted(reg.profiles) == sorted(CYCLING + RUNNING)
     assert reg.rules_version == 1
     for p in reg.profiles.values():
+        assert p.n >= 1
+        assert p.source == E.SOURCE
+        assert p.snapshot in ("2026-11-01", "2026-11-03")
+        assert 0 < len(p.rules) <= P.MAX_RULES
+    for pid in CYCLING:
+        p = reg.profiles[pid]
         assert p.evidence == "strong"
         assert p.n >= E.MIN_N_PERCENTILE
-        assert p.source == E.SOURCE
-        assert 0 < len(p.rules) <= P.MAX_RULES
     # plain classes stay in zones 1 to 4; interval classes have top-zone rules
     assert "zone_ceiling_exceeded" in {r.rule for r in reg.profiles["cycling.plain.45"].rules}
     assert "top_zone_share_high" in {r.rule for r in reg.profiles["cycling.interval.45"].rules}
 
 
-def test_only_strong_classes_ship() -> None:
+def test_running_profiles_are_moderate_info_only_ranges() -> None:
+    """P9: fewer than 25 running classes per cell, so only observed ranges as notes (ADR 0017
+    sections 1, 2 and 7). No TSS rule (the running load model is not calibrated, ADR 0018) and no
+    standing rule (running classes are not ridden standing)."""
     reg = load_registry()
-    assert not [p for p in reg.profiles.values() if p.class_type not in ("plain", "interval")]
-    assert not [p for p in reg.profiles.values() if p.label_minutes not in (30, 45, 60)]
+    for pid in RUNNING:
+        p = reg.profiles[pid]
+        assert (p.sport, p.class_type, p.evidence) == ("running", "interval", "moderate")
+        assert 15 <= p.n < E.MIN_N_PERCENTILE
+        assert p.snapshot == "2026-11-03"
+        assert {(r.basis, r.severity) for r in p.rules} == {("range_10", "info")}
+        metrics = {r.metric for r in p.rules}
+        assert not metrics & {"tss_per_minute", "standing_time_share"}
+        assert {E.RATIONALE_SPORTS.get(r.rationale_id, "running") for r in p.rules} == {"running"}
+
+
+def test_only_reviewed_cells_ship() -> None:
+    reg = load_registry()
+    cells = {(p.sport, p.class_type, p.label_minutes) for p in reg.profiles.values()}
+    assert {c for c in cells if c[0] == "cycling"} == {
+        ("cycling", t, n) for t in ("plain", "interval") for n in (30, 45, 60)
+    }
+    # running: plain, 55-minute and test cells are weak (n under 15) and ship nothing
+    assert {c for c in cells if c[0] == "running"} == {
+        ("running", "interval", 30),
+        ("running", "interval", 45),
+    }
 
 
 def test_digests_are_stable_and_match_the_index() -> None:
@@ -212,12 +241,18 @@ def test_profile_files_hold_only_ids_and_numbers() -> None:
         E.SOURCE,
     }
     keys = set(P.Profile.model_fields) | set(P.ProfileRule.model_fields) | {"schema"}
-    for f in PROFILES.glob("cycling/*.json"):
+    files = sorted(PROFILES.glob("*/*.json"))
+    assert {f.parent.name for f in files} == set(E.SPORTS)
+    sports = "|".join(E.SPORTS)
+    for f in files:
         d = json.loads(f.read_text())
         for s in _strings(d):
             if s in allowed or s in keys:
                 continue
-            assert re.fullmatch(r"cycling\.[a-z_]+\.\d+|\d{4}-\d{2}-\d{2}", s), (f.name, s)
+            assert re.fullmatch(rf"(?:{sports})\.[a-z_]+\.\d+|\d{{4}}-\d{{2}}-\d{{2}}", s), (
+                f.name,
+                s,
+            )
         for r in d["rules"]:
             for v in (r["low"], r["high"]):
                 assert v is None or isinstance(v, int | float)
@@ -270,9 +305,65 @@ def test_select_profile_within_three_minutes(
     assert (got.id if got else None) == expected
 
 
-def test_select_profile_other_sport_is_none() -> None:
+@pytest.mark.parametrize(
+    ("class_type", "length", "expected"),
+    [
+        ("interval", 30, "running.interval.30"),
+        ("interval", 27, "running.interval.30"),
+        ("interval", 33, "running.interval.30"),
+        ("interval", 45, "running.interval.45"),
+        ("interval", 42, "running.interval.45"),
+        ("interval", 48, "running.interval.45"),
+        ("interval", 26.9, None),
+        ("interval", 37, None),
+        ("interval", 48.1, None),
+        ("interval", 60, None),  # no running 60 file: cycling's is never borrowed
+        ("interval", 55, None),
+        ("plain", 30, None),  # weak: no file
+        ("plain", 45, None),
+        ("hiit", 30, None),
+        ("ftp_test", 45, None),
+        ("interval", 0, None),
+        ("interval", float("nan"), None),
+    ],
+)
+def test_select_profile_for_running(class_type: str, length: float, expected: str | None) -> None:
+    got = select_profile(class_type, length, sport="running")
+    assert (got.id if got else None) == expected
+
+
+def test_sports_never_share_a_profile() -> None:
+    default, cycling = select_profile("interval", 45), select_profile("interval", 45, "cycling")
+    assert default is not None
+    assert cycling is not None
+    assert default.id == cycling.id == "cycling.interval.45"
     assert select_profile("plain", 45, sport="running") is None
-    assert select_profile("plain", 45, sport="cycling") is not None
+    assert select_profile("plain", 45, sport="swimming") is None
+    assert select_profile("interval", 45, sport="Running") is None
+
+
+def test_a_rationale_worded_for_one_sport_is_refused_in_another() -> None:
+    d = _profile_dict()
+    d["rules"][0]["rationale_id"] = "warmup_ramp_run"
+    with pytest.raises(ProfileError, match="not worded for cycling"):
+        _parse(d)
+    run = json.loads((PROFILES / "running" / "interval_45.json").read_text())
+    assert _parse(run).sport == "running"
+    run["rules"][0]["rationale_id"] = "warmup_ramp"
+    with pytest.raises(ProfileError, match="not worded for running"):
+        _parse(run)
+
+
+def test_one_sport_wording_matches_its_words() -> None:
+    """A sentence that says ride, riding or standing is cycling-only; one that says run or
+    running is running-only; the rest say neither."""
+    for rid, sentence in RATIONALES.items():
+        words = set(re.findall(r"[a-z]+", sentence.lower()))
+        ride = bool(words & {"ride", "riding", "standing"})
+        run = bool(words & {"run", "running"})
+        assert not (ride and run), rid
+        expected = "cycling" if ride else "running" if run else None
+        assert E.RATIONALE_SPORTS.get(rid) == expected, rid
 
 
 def test_rules_package_imports_neither_agent_nor_database() -> None:
