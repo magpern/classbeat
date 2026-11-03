@@ -851,3 +851,124 @@ job).
   `ActivityTypeID` is 0 or missing keep the old form, so no stored `state_hash` changes; any other
   `ActivityTypeID` is not normalizable. Running update is supported by the library (0.9.0, owner
   live test of #482) but has not been run end to end by classbeat against live MOWL.
+
+## Amendment: beat-one corrections (2026-11-03, issue #535)
+
+Roadmap §6 asks for "beat-one corrections per user on top of an analysis" and a per-song control on
+the class page; §11 above said they are rows of a class-owned table registered in guard 10, never
+shared. The owner asked for them on 2026-11-03 (#535). This amendment is the design; the issues
+are listed at the end.
+
+1. **The library.** The vendored `mowl-workouts` 0.9.0 has `library.correct_beat1(creds, store, mix,
+   song_no, beats)`, but only for a Swedebeat mix: it calls `api.find_swedebeat` (a MOWL request) and
+   adds `beats` to the `beat1_shifts` of the user's link in a `MapStore`, which every later workout
+   of theirs on the mix reads. classbeat **never calls it**: it would make a request from the web
+   process, and a correction stored with the link would reach every class of the user on that
+   music. classbeat uses the pure function under it, `library.shift_beat1(m, song_no, beats)`
+   (moves a song's `first_downbeat`, `first_phrase` and its events by whole beats, in place), on its
+   **own copy** of the map, once per correction with the stored total. No wheel change is needed.
+   `beats` keeps the library's meaning: -3 to 3, never 0; positive when the changes in that song
+   come early, so beat 1 moves later.
+2. **The table** (migration 0027, issue BC1): `beat_one_corrections`, owned and class-owned
+   (§1's rules): `id`, `owner_id`, `class_id` (owner-inclusive foreign key to `classes`, `ON DELETE
+   CASCADE`), `fingerprint text` (`^[0-9a-f]{64}$`), `song int` (1 to 500), `beats smallint`
+   (`CHECK (beats BETWEEN -3 AND 3 AND beats <> 0)`; clearing deletes the row), `created_at`,
+   `updated_at`; `UNIQUE (owner_id, class_id, fingerprint, song)`; RLS `owner_isolation`; at most 200
+   rows per class (409 `correction_limit`). No title, no Spotify or MOWL id, no map. Guard 10:
+   deleted with the class and the account. Guard 12: exported (`class_id`, `song`, `beats`, the
+   times; the fingerprint is left out as a hash of the user's own music). Nothing in it is shared,
+   and `swedebeat_mix_maps` and every analysis are never written by a correction.
+3. **Which song.** On a Swedebeat mix a song is the map's 1-based `song` (a song found in the audio).
+   On a Spotify playlist (the user's own or a class playlist of picked songs) it is the 1-based track
+   in play order; the library's Spotify map holds one entry per section, so a correction of track
+   `n` is applied to every entry with `track == n`. Spotify beat 1 is the section start the library
+   derives (`beat1_source: "spotify section"`), so a whole-beat shift is meaningful there too. A
+   correction is bound to the **fingerprint** of the music it was set on (the current revision's
+   `music.fingerprint`, computed before any correction: track ids and lengths for Spotify, the
+   map's hash for a mix): it is applied only while the music step's fingerprint is the same. An
+   edited playlist, Change songs, or a mix analysed again therefore never moves a different song;
+   such rows stay inert, the page counts them as "for earlier music", and they go with the class.
+4. **Applying** (issue BC2, `classbeat.design.beat_one`). A job that produces a draft reads the
+   class's corrections for the music step's fingerprint in a fenced transaction (`class_id` from
+   the fenced job row, the owner from the lease, never the input) and carries them in `MusicData`.
+   `mix_input.music_map` applies them to its copy after the crossfade conversion, as the library's
+   `_entry` does, so the fit (`sync.fit_to_music`), the timeline, the quality report, the
+   warnings (a corrected mix song is no longer "an estimate": the library's `beat1_shift` rule)
+   and the model's music summary all see the corrected map. This holds for `design_draft` on an
+   existing class, `revise_draft`, `design_with_songs`, `revise_songs` and `refit_draft`. The model
+   sees numbers only (times, BPM, song indices); a correction never reaches it as text, and the
+   model has no tool that sets one.
+5. **What a revision records.** `class_revisions.music` (both the Spotify and the Swedebeat form)
+   gains two optional fields, absent on every earlier revision, which therefore validate and hash
+   exactly as before:
+   - `beat_one`: the corrections applied, `[{song, beats}]` sorted by song (absent when none);
+   - `songs`: the songs the class plays (starting before the fitted workout ends), at most 500,
+     each `{song, start, end, bpm, estimate}` in seconds of the class as heard, plus `title` for
+     a Spotify track (cleaned, at most 200 characters; Spotify-derived like `unknown_bpm` and gone
+     with the class). `estimate` is a mix song's beat-1 margin below the library's 1.3 with no
+     correction, or a Spotify track MOWL had no BPM for.
+   A revision with `songs` is one with beat data; the control is shown only for it (a revision
+   from before this amendment, and a class with no music, show none).
+6. **Kind `refit_draft`** (issue BC3; no model, no credit, no cost, no `agent_runs`). Input
+   `{class_id, base_revision_id, mowl_connection_id}`; `admit` (create transaction, class row
+   locked): the base is a `draft` of the class (`invalid_input`) and its current revision
+   (`stale_base`); the running flag (`sport.admit_class`) and a mix's flag and analysis limit
+   (`mixadmit.admit_class_mix`) as for a revise; the one-open-job-per-class index (`class_busy`)
+   and the plan's concurrent jobs as for every kind; at most 50 refits per class (409
+   `refit_limit`); it stores the base's hash. Stages `music`, `fit`: the class's music step
+   (`kind.music_step`, unchanged checks); a fingerprint other than the base's ends the job
+   `music_changed` (a new category, migration 0027) and nothing is stored; the corrections for that
+   fingerprint are applied; the base's stored content is fitted again
+   (`agent.design.check`, for a running class `agent.running.check_running`), which keeps the total
+   and moves each cut to the corrected grid inside the fit's tolerance (a shift of at most 3 beats
+   is at most 3 s at 60 BPM). The final fenced transaction runs the connection guard, stores the
+   revision (`parent_id` = base; provenance `{origin: "beat_one", base_revision_id,
+   classbeat_version, mowl_version, map_version, crossfade_sec, sport?}`, no model fields) and
+   sets `current_revision_id` by the revise compare-and-set. It is stored even when the content is
+   unchanged, because its `music.beat_one` records the applied set; Saved stays "up to date" then,
+   since that compares content hashes (amendment of 2026-10-30). Refits are not chat revisions and
+   do not count toward `CLASSBEAT_REVISIONS_PER_CLASS`.
+7. **API** (issue BC4, `classbeat.classes`, CSRF, signed in, no recent authentication: the user's
+   own work). `PUT /api/classes/{id}/beat-one/{song}` `{beats, revision_id}` sets one song's total;
+   `DELETE /api/classes/{id}/beat-one/{song}?revision_id=` clears it (idempotent). One transaction,
+   the class row locked: a foreign or unknown class is 404; `revision_id` must be the class's
+   current revision (409 `stale_base`), whose `music` has `songs` (409 `no_beat_data`) containing
+   `song` (422 `invalid_input`); `beats` an integer -3 to 3, not 0 (422). The fingerprint is read
+   from that revision, never sent by the browser. An open job does not block it: the job applies
+   what it read, and its revision's `beat_one` says which. `GET /api/classes/{id}` gains
+   `beat_one: {available, songs, corrections, applied, pending, stale}`: `pending` is true when the
+   corrections for the current revision's fingerprint differ from its `music.beat_one`, `stale` the
+   count of rows for other fingerprints.
+8. **Save and Update** are unchanged: they write the approved revision's content, which a refit or
+   a revise has fitted with the corrections. A changed correction therefore reaches MOWL only
+   through a new revision, and Saved shows "out of date" when its content differs. While
+   corrections are pending the page says the current version does not include them yet and offers
+   **Apply timing fixes** (a `refit_draft` job) next to Save.
+9. **UI** (issue BC5). On the class page, when `beat_one.available`: a "Beat 1" panel listing the
+   songs the class plays (number or title, start, BPM, an "estimate" note), each with **Earlier**
+   and **Later** (44 px targets, labelled with the song) and **Reset**, the value in words ("beat 1
+   two beats later") in a live region, the plain-language effect ("If the changes in this song
+   land early, move beat 1 later"), and the pending notice with Apply. Night Studio tokens and
+   `src/components/ui` only; no flag.
+10. **Tests and threat model** (issue BC6 and each issue's own): unit tests of `beat_one.apply`
+    (mix and Spotify maps, the event re-snap, a song the map lacks), RLS and cascade database
+    tests, guard 10 and 12 entries, job tests on the in-process fakes (a correction shifts the
+    fitted intervals; survives a chat revision; another class and another user unchanged; a
+    changed fingerprint is inert and `music_changed`), API tests, Vitest with the page, and a
+    Playwright spec on the e2e fakes (a fake mix and a fake Spotify playlist: set, apply, revise,
+    Save and Update written to the fake MOWL, export and delete) with an axe audit of the panel.
+    New threat-model row **T123** (added by BC6): one user's correction reaching another user or
+    class, a correction moving a different song after the music changed, or a correction written
+    into a shared analysis. Controls: owned rows under RLS keyed by class and fingerprint, the
+    fingerprint read server-side from the current revision, corrections applied to a per-job copy
+    only, no library call that writes a link.
+
+| Issue | Scope | Developer / review | Depends on |
+|---|---|---|---|
+| BC0 (#538) | this amendment (and the ADR 0016 §1 note) | docs / Sonnet | none |
+| BC1 (#539) | migration 0027 (table, RLS, `music_changed`), guards 10 and 12, `classbeat.design.beat_one` (pure apply, songs) | Opus / Opus | BC0 (#538) |
+| BC2 (#540) | apply in every draft kind, revision `music.beat_one` and `songs` | Opus / Opus | BC1 (#539) |
+| BC3 (#541) | kind `refit_draft` | Opus / Opus | BC2 (#540) |
+| BC4 (#542) | the API and `beat_one` on the class detail | Opus / Opus | BC1, BC2 |
+| BC5 (#543) | the class page panel, Vitest | Sonnet / Sonnet | BC3, BC4 |
+| BC6 (#544) | Playwright on the fakes, axe, T123 | Sonnet / Sonnet | BC5 (#543) |
