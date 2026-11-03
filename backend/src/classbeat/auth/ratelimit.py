@@ -12,7 +12,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Literal
 
-from sqlalchemy import Float, and_, delete, func, literal, update
+from sqlalchemy import Float, and_, delete, exists, func, literal, select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
@@ -75,6 +75,18 @@ MOWL_PLAYLISTS_IP = Limit("mowl-playlists", "ip", 60, 600)
 # own buckets so the two pickers don't share a count.
 SWEDEBEAT_MIXES_USER = Limit("swedebeat-mixes", "account", 30, 600)
 SWEDEBEAT_MIXES_IP = Limit("swedebeat-mixes", "ip", 60, 600)
+
+# ADR 0013 section 9, amendment of 2026-11-03 (#537): ``GET /api/music/playlist-covers`` reads the
+# user's Spotify playlists (up to 10 requests and a refresh on the user's own Spotify app) and can
+# be triggered cross-site, so it has buckets of its own; every request counts.
+PLAYLIST_COVERS_USER = Limit("playlist-covers", "account", 10, 600)
+PLAYLIST_COVERS_IP = Limit("playlist-covers", "ip", 30, 600)
+# The cover read's cooldown after a Spotify 429: one row per user whose ``window_start`` is the
+# instant the cooldown ends (a dedicated bucket hash, not a fixed window), checked as still in the
+# future. The purge (windows over two hours old) removes it two hours after it ended.
+COVER_COOLDOWN_ACTION = "cover-cooldown"
+COVER_COOLDOWN_MIN_SECONDS = 60
+COVER_COOLDOWN_MAX_SECONDS = 3600
 
 OnSuccess = Literal["decrement", "delete"]
 
@@ -206,6 +218,39 @@ class RateLimiter:
                 attempt.retry_after = max(attempt.retry_after, retry_after)
         return attempt
 
+    def cooldown_hash(self, value: str) -> bytes:
+        return hmac_digest(self._keys.rate_limit, COVER_COOLDOWN_ACTION, value)
+
+    async def start_cooldown(self, value: str, retry_after: int | None) -> int:
+        """Start (or extend) the cover read's cooldown for ``value`` (a user id) by Spotify's
+        ``Retry-After``: at least 60 s, at most an hour, 60 s without one. Returns the seconds."""
+        seconds = retry_after if isinstance(retry_after, int) and retry_after > 0 else 0
+        seconds = min(max(seconds, COVER_COOLDOWN_MIN_SECONDS), COVER_COOLDOWN_MAX_SECONDS)
+        ends = func.clock_timestamp() + func.make_interval(
+            0, 0, 0, 0, 0, 0, literal(float(seconds), Float)
+        )
+        statement = (
+            insert(rate_limits)
+            .values(bucket_hash=self.cooldown_hash(value), window_start=ends, count=0)
+            .on_conflict_do_nothing()
+        )
+        async with system_session(self._factory) as session:
+            await session.execute(statement)
+        return seconds
+
+    async def cooling_down(self, value: str) -> bool:
+        """True while a cooldown of ``value`` has not ended (its end is still in the future)."""
+        statement = select(
+            exists().where(
+                and_(
+                    rate_limits.c.bucket_hash == self.cooldown_hash(value),
+                    rate_limits.c.window_start > func.clock_timestamp(),
+                )
+            )
+        )
+        async with system_session(self._factory) as session:
+            return bool((await session.execute(statement)).scalar_one())
+
 
 class RateLimited(Exception):
     """A limit tripped: the response is 429 with ``Retry-After``."""
@@ -273,3 +318,8 @@ def mowl_playlists_buckets(user_id: str, ip: str) -> list[Bucket]:
 def swedebeat_mixes_buckets(user_id: str, ip: str) -> list[Bucket]:
     """A listing of the user's Swedebeat mixes at MOWL (ADR 0016 section 3): per user and per IP."""
     return [Bucket(SWEDEBEAT_MIXES_USER, user_id), Bucket(SWEDEBEAT_MIXES_IP, bucket_ip(ip))]
+
+
+def playlist_covers_buckets(user_id: str, ip: str) -> list[Bucket]:
+    """The picker's cover read (ADR 0013 section 9 amendment, #537): per user and per IP."""
+    return [Bucket(PLAYLIST_COVERS_USER, user_id), Bucket(PLAYLIST_COVERS_IP, bucket_ip(ip))]

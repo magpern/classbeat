@@ -1,7 +1,26 @@
-import { useId } from 'react'
-import type { Playlist } from '../../api/jobs'
+import { useEffect, useId, useState } from 'react'
+import { getPlaylistCovers, type Playlist } from '../../api/jobs'
+import { CoverArt } from '../songs/CoverArt'
 
-/** The playlist's initials for its tile. There are no playlist covers (ADR 0013 section 9). */
+/**
+ * The covers of the user's Spotify playlists for the picker, asked once when `enabled` (ADR 0013
+ * section 9, amendment of 2026-11-03, #537). Until they arrive, and on any failure, the map is
+ * empty and the tiles show initials: the picker never waits for covers and never shows an error.
+ */
+export function usePlaylistCovers(enabled: boolean): ReadonlyMap<string, string> {
+  const [covers, setCovers] = useState<ReadonlyMap<string, string>>(() => new Map())
+  useEffect(() => {
+    if (!enabled) return
+    const abort = new AbortController()
+    getPlaylistCovers(abort.signal).then(setCovers, () => undefined)
+    return () => {
+      abort.abort()
+    }
+  }, [enabled])
+  return covers
+}
+
+/** The playlist's initials for its tile, when it has no cover (ADR 0013 section 9). */
 export function initials(name: string): string {
   const words = name.split(/\s+/).filter((w) => /[\p{L}\p{N}]/u.test(w))
   const letters = words.slice(0, 2).map((w) => Array.from(w.replace(/^[^\p{L}\p{N}]+/u, ''))[0] ?? '')
@@ -17,10 +36,13 @@ export function PlaylistTiles({
   playlists,
   value,
   onChange,
+  covers,
 }: {
   playlists: Playlist[]
   value: string
   onChange: (id: string) => void
+  /** Covers by Spotify playlist id (`usePlaylistCovers`); a playlist without one shows initials. */
+  covers?: ReadonlyMap<string, string>
 }) {
   const group = useId()
   return (
@@ -51,12 +73,18 @@ export function PlaylistTiles({
                 }}
                 className="sr-only"
               />
-              <span
-                aria-hidden="true"
-                className="flex aspect-square w-full items-center justify-center rounded-sm bg-surface font-display text-2xl font-extrabold text-muted"
-              >
-                {initials(name)}
-              </span>
+              {covers?.has(p.spotifyPlaylistId) ? (
+                <span aria-hidden="true" className="block aspect-square w-full" data-testid="playlist-cover">
+                  <CoverArt src={covers.get(p.spotifyPlaylistId) ?? null} label={name} size="lg" kind="playlist" />
+                </span>
+              ) : (
+                <span
+                  aria-hidden="true"
+                  className="flex aspect-square w-full items-center justify-center rounded-sm bg-surface font-display text-2xl font-extrabold text-muted"
+                >
+                  {initials(name)}
+                </span>
+              )}
               <span className="break-words text-[0.9375rem] font-medium text-text">{name}</span>
             </label>
           )

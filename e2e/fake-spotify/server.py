@@ -22,8 +22,9 @@ USER_A signed in at the authorize page.
 tests call it with `docker compose exec web`). POST: `reset`; `sign-in?user=<id>` (empty: nobody);
 `deny`; `user?id=&name=`; `app?client_id=&allow=a,b&premium=1&rotate=1&scope=`;
 `inject?kind=&at=&method=&path=&times=&status=&retry_after=&keep=&delay=&message=` (the kinds of
-spotifycore.KINDS); `shape?items=item|track&foreign=404|visible`; `playlist?owner=&name=&tracks=<n>`
-(its id back); `durations?ms=` (every catalogue track lasts so long; the seeded fake sets four
+spotifycore.KINDS); `shape?items=item|track&foreign=404|visible`;
+`playlist?owner=&name=&tracks=<n>&id=&images=` (its id back; `id` fixes a 22-character id, to match
+a playlist the fake MOWL lists, and `images` is a kind of spotifycore.PLAYLIST_IMAGE_KINDS); `durations?ms=` (every catalogue track lasts so long; the seeded fake sets four
 minutes, which the recorded designs are written for). GET: `mowl-tracks?playlist=<id>` (what the fake
 MOWL lists for a wrapped playlist: its name and tracks; 404 if unknown) and `state` (every request's
 number, method, host, path, client id, the app and user of its token, whether it carried a client
@@ -141,7 +142,11 @@ def control(method: str, action: str, query: dict[str, str]) -> tuple[int, objec
     elif action == "playlist":
         count = int(query.get("tracks", "0"))
         uris = [f"spotify:track:{spotifycore.track_id(i)}" for i in range(count)]
-        playlist = current.add_playlist(query["owner"], query.get("name", "E2E"), uris)
+        fixed = query.get("id") or None
+        images = spotifycore.playlist_images(query.get("images", "none"), fixed or query["owner"])
+        playlist = current.add_playlist(
+            query["owner"], query.get("name", "E2E"), uris, images=images, playlist_id=fixed
+        )
         return 200, {"id": playlist.id}
     else:
         return 404, {"error": "unknown control"}

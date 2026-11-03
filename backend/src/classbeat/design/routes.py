@@ -25,21 +25,62 @@ CSRF (a GET, no state).
 a refused request answers 429 ``rate_limited`` with ``Retry-After`` before the connection is
 opened and before any MOWL call. The cross-site GET that could trigger single calls (a
 ``SameSite=Lax`` cookie travels on a top-level navigation) is bounded by it.
+
+``GET /api/music/playlist-covers`` (ADR 0013 section 9, amendment of 2026-11-03; threat model
+T72, T73, T97; #537): the image of each of the user's own Spotify playlists, for the New class
+picker's tiles. A separate read so the picker renders at once from ``mowl-playlists`` (unchanged)
+and its tiles get covers when this answers. It answers only ``{covers: [{spotify_playlist_id,
+cover}]}``, at most 500, each cover a whole-string match of ``classbeat.covers.playlist_cover_url``
+(nothing else from Spotify: no name, owner or count; never stored, ``Cache-Control: no-store``,
+never model input).
+
+- **Its own rate limit** (``auth.playlist_covers_buckets``: 10 per user and 30 per IP per 10
+  minutes, every request counts): 429 ``rate_limited`` before anything else.
+- **Every other outcome is 200.** ``{covers: []}``, with no Spotify call, unless song picking
+  admits the user, no song-picking job of theirs is queued or running
+  (``jobs.service.cover_read_admitted``) and no cover-read cooldown is pending. Every failure of
+  the read (no or a non-connected Spotify connection, a refused or failed refresh, a 401, the
+  deadline, an allowlist refusal, more than 500 playlists) is ``{covers: []}`` too, logged by
+  category only.
+- **The read**: one ``spotify_web.my_playlists(max_pages=10)`` through ``spotify_call`` in its
+  read-only mode (existing host and token client; no ``record_result``, a 401 never flips; a
+  refresh is shielded, never cancelled). ``egress.call_deadline`` bounds only the listing requests
+  (8 s), never the refresh, which keeps its own lock wait and timeout.
+- **A Spotify 429** starts the user's cooldown for its ``Retry-After`` (60 s to 1 hour, kept in
+  the Postgres rate-limit table so every web process honours it); it touches no job.
+- **This GET writes**, a departure from the #119 rule above that a GET writes no state: a token
+  rotation (the token's own upkeep under the row lock, ADR 0009 section 6), the token endpoint's
+  own flip (Spotify's ``invalid_grant`` or app-setup answer about the stored refresh token),
+  ``open_connection``'s flip of an undecryptable row, and the cooldown row. All of them are bounded
+  by the rate limit; none is the cover. No CSRF: a cross-site GET gets no readable answer.
 """
 
+import logging
 import re
 from typing import Annotated, Any, Final
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, Request, Response
 from fastapi.responses import JSONResponse
 from mowl import api as mowl_api
+from mowl import spotify_web
 from pydantic import BaseModel
 
-from classbeat import auth
+from classbeat import auth, egress
 from classbeat.agent.schemas import clean_text
-from classbeat.connections import ConnectionFailure, open_connection, run_library_call
+from classbeat.connections import (
+    ConnectionFailure,
+    Credentials,
+    open_connection,
+    run_library_call,
+)
 from classbeat.context import UserContext
+from classbeat.covers import playlist_cover_url
 from classbeat.egress import OutboundBlocked
+from classbeat.jobs import service as jobs_service
+from classbeat.spotify.access import spotify_call
+from classbeat.spotify.routes import spotify_http
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/music", tags=["music"])
 
@@ -114,7 +155,7 @@ async def mowl_playlists(
         return JSONResponse({"detail": {"reason": "outbound_blocked"}}, status_code=502)
     if failure is not None:
         headers: dict[str, str] = {}
-        if failure.category == "rate_limited":
+        if failure.category in SPOTIFY_429:
             headers["Retry-After"] = str(failure.retry_after or DEFAULT_RETRY_AFTER)
         return JSONResponse(
             {"detail": {"reason": failure.category}},
@@ -122,3 +163,83 @@ async def mowl_playlists(
             headers=headers,
         )
     return PlaylistsOut(playlists=_listed(answer))
+
+
+# --- the picker's playlist covers (ADR 0013 section 9 amendment, #537) ----------------------
+
+COVER_PAGES: Final = 10  # at most 10 listing requests, 500 playlists (the library fails above)
+COVER_SECONDS: Final = 8.0  # the listing requests only, never the refresh
+# A Spotify 429 (``quota_exhausted`` when its Retry-After is over an hour, ADR 0009 section 8).
+SPOTIFY_429: Final = frozenset({"rate_limited", "quota_exhausted"})
+
+
+class CoverOut(BaseModel):
+    spotify_playlist_id: str
+    cover: str
+
+
+class CoversOut(BaseModel):
+    covers: list[CoverOut]
+
+
+def _list_playlists(creds: Credentials) -> Any:
+    with egress.call_deadline(COVER_SECONDS):
+        return spotify_web.my_playlists(creds, max_pages=COVER_PAGES)
+
+
+def _covers(answer: object) -> list[CoverOut]:
+    out: list[CoverOut] = []
+    entries: list[Any] = answer if isinstance(answer, list) else []  # pyright: ignore[reportUnknownVariableType]
+    for entry in entries:
+        if not isinstance(entry, dict):
+            continue
+        playlist_id: object = entry.get("id")  # pyright: ignore[reportUnknownMemberType, reportUnknownVariableType]
+        cover = playlist_cover_url(entry.get("image"))  # pyright: ignore[reportUnknownMemberType]
+        if not isinstance(playlist_id, str) or not SPOTIFY_ID.fullmatch(playlist_id):
+            continue
+        if cover is not None:
+            out.append(CoverOut(spotify_playlist_id=playlist_id, cover=cover))
+        if len(out) >= MAX_PLAYLISTS:
+            break
+    return out
+
+
+async def _read_covers(request: Request, ctx: UserContext) -> list[CoverOut]:
+    state = request.app.state
+    user = str(ctx.user_id)
+    if not state.settings.song_picking or await state.limiter.cooling_down(user):
+        return []
+    if not await jobs_service.cover_read_admitted(state.session_factory, ctx, song_picking_on=True):
+        return []
+    try:
+        answer = await spotify_call(
+            state.session_factory,
+            state.keyring,
+            ctx,
+            _list_playlists,
+            http=spotify_http(request),
+            margin_seconds=state.settings.spotify_refresh_margin_seconds,
+            read_only=True,
+        )
+    except ConnectionFailure as failure:
+        if failure.category in SPOTIFY_429:
+            await state.limiter.start_cooldown(user, failure.retry_after)
+        logger.info("playlist covers unavailable: %s", failure.category)
+        return []
+    except OutboundBlocked:
+        logger.info("playlist covers unavailable: outbound_blocked")
+        return []
+    return _covers(answer)
+
+
+@router.get("/playlist-covers", response_model=CoversOut, responses={429: {}})
+async def playlist_covers(
+    request: Request, response: Response, ctx: Annotated[UserContext, Depends(auth.require_user)]
+) -> CoversOut:
+    attempt = await request.app.state.limiter.begin(
+        auth.playlist_covers_buckets(str(ctx.user_id), auth.request_ip(request))
+    )
+    if not attempt.allowed:
+        raise auth.RateLimited(attempt.retry_after)
+    response.headers["Cache-Control"] = "no-store"
+    return CoversOut(covers=await _read_covers(request, ctx))

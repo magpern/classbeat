@@ -11,7 +11,7 @@ import pytest
 from classbeat.agent.choose_songs import ChosenList, ChosenSong
 from classbeat.agent.registry import SearchRegistry
 from classbeat.agent.songs import KeptSong, PoolTrack, kept_view, pool_view
-from classbeat.covers import cover_url
+from classbeat.covers import cover_url, playlist_cover_url
 from classbeat.songs import song_list
 from classbeat.songs.song_list import SongListContent
 
@@ -64,6 +64,59 @@ def test_a_str_subclass_is_dropped() -> None:
         pass
 
     assert cover_url(Sneaky(GOOD)) is None
+
+
+# --- playlist covers (ADR 0013 section 9, amendment of 2026-11-03, #537) -------------------------
+
+MOSAIC = f"https://mosaic.scdn.co/300/{HEX * 4}"
+PLAYLIST_KEPT = [
+    pytest.param(GOOD, id="album-pin"),
+    pytest.param(MOSAIC, id="mosaic-300"),
+    pytest.param(f"https://mosaic.scdn.co/640/{HEX * 4}", id="mosaic-640"),
+    pytest.param(f"https://image-cdn-ak.spotifycdn.com/image/{HEX}", id="uploaded-ak"),
+    pytest.param(f"https://image-cdn-fa.spotifycdn.com/image/{HEX}", id="uploaded-fa"),
+]
+PLAYLIST_DROPPED = [
+    *DROPPED[1:],  # every album-pin refusal but the mosaic host, which is pinned here
+    pytest.param(f"https://mosaic.scdn.co/60/{HEX * 4}", id="mosaic-60"),
+    pytest.param(f"https://mosaic.scdn.co/320/{HEX * 4}", id="mosaic-other-size"),
+    pytest.param(f"https://mosaic.scdn.co/300/{HEX * 3}", id="mosaic-three"),
+    pytest.param(f"https://mosaic.scdn.co/300/{HEX * 5}", id="mosaic-five"),
+    pytest.param(f"https://mosaic.scdn.co/300/{HEX * 4}?x=1", id="mosaic-query"),
+    pytest.param(f"https://mosaic.scdn.co/300/{HEX * 4}\n", id="mosaic-newline"),
+    pytest.param(f"https://mosaic.scdn.co/300/{HEX.upper() * 4}", id="mosaic-uppercase"),
+    pytest.param(f"https://mosaic.scdn.co/image/{HEX}", id="mosaic-image-path"),
+    pytest.param(f"https://image-cdn-xx.spotifycdn.com/image/{HEX}", id="other-image-cdn"),
+    pytest.param(f"https://image-cdn-ak.spotifycdn.com.evil.example/image/{HEX}", id="cdn-suffix"),
+    pytest.param(f"https://evilimage-cdn-ak.spotifycdn.com/image/{HEX}", id="cdn-prefix"),
+    pytest.param(f"https://image-cdn-ak.spotifycdn.com/image/{HEX}?w=64", id="cdn-query"),
+    pytest.param(f"https://image-cdn-ak.spotifycdn.com/images/{HEX}", id="cdn-other-path"),
+    pytest.param(f"https://image-cdn-ak.spotifycdn.com/image/../{HEX}", id="cdn-dot-segment"),
+    pytest.param(f"https://blend-playlist-covers.spotifycdn.com/v2/{HEX}.png", id="blend"),
+    pytest.param(f"https://daily-mix.scdn.co/covers/{HEX}", id="daily-mix"),
+    pytest.param(f"https://pickasso.spotifycdn.com/image/{HEX}", id="pickasso"),
+    pytest.param(f"https://seed-mix-image.spotifycdn.com/v6/img/{HEX}", id="seed-mix"),
+    pytest.param(f"https://i.scdn.co/image/{HEX}/https://evil.example/", id="redirect-shaped"),
+    pytest.param(f"https://i.scdn.co/image/{HEX}%2F..%2Fx", id="encoded-path"),
+    pytest.param(f"https://image-cdn-ak.spotifycdn.com:443/image/{HEX}", id="cdn-port"),
+]
+
+
+@pytest.mark.parametrize("value", PLAYLIST_KEPT)
+def test_a_playlist_cover_on_a_pinned_shape_is_kept(value: str) -> None:
+    assert playlist_cover_url(value) == value
+
+
+@pytest.mark.parametrize("value", PLAYLIST_DROPPED)
+def test_anything_else_is_no_playlist_cover(value: Any) -> None:
+    assert playlist_cover_url(value) is None
+
+
+@pytest.mark.parametrize("value", PLAYLIST_KEPT[1:])
+def test_a_song_cover_keeps_the_album_pin_alone(value: str) -> None:
+    """The playlist shapes are never accepted as a song's cover in a ``song_list``."""
+    assert cover_url(value) is None
+    assert [s.cover for s in built(value, GOOD, None).content.songs] == [None, GOOD, None]
 
 
 # --- the search registry: the cover is the backend's, never in what the model is shown --------
