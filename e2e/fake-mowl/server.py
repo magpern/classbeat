@@ -30,6 +30,8 @@ applied; the connection is closed without an answer), `drop` (applied, then clos
 answer), `noid` (applied, answered without its id), `copy` (an update's `PUT v1/programs/<id>`
 answered as MOWL making a copy: a new, empty program with the header, the original untouched).
 `save-edit?program=<id>` changes a program's name as the user would in the MOWL app.
+`save-sport?program=<id>&sport=0|1` sets a program's own `ActivityTypeID` (0 cycling, 1 running) as
+if the user had put another kind of program in its place (Update then answers `program_other_sport`).
 
 It also speaks the Swedebeat calls (ADR 0016, A1; `swedebeat_mixes.py` beside it): the caller's
 mixes, the attach, the indexing and `TemporaryLinks`, whose link names an unlisted media host that no
@@ -570,6 +572,9 @@ class Handler(BaseHTTPRequestHandler):
         if action == "save-edit":
             self.save_edit((query.get("program") or [""])[0])
             return
+        if action == "save-sport":
+            self.save_sport((query.get("program") or [""])[0], (query.get("sport") or [""])[0])
+            return
         playlist = BY_SPOTIFY.get((query.get("playlist") or [""])[0])
         if playlist is None:
             self.reply(404, {"Error": "unknown playlist"})
@@ -595,6 +600,14 @@ class Handler(BaseHTTPRequestHandler):
             if found is not None:
                 found["body"]["Name"] = "Renamed in the MOWL app"  # type: ignore[index]
         self.reply(200 if found is not None else 404, {"edited": found is not None})
+
+    def save_sport(self, program: str, sport: str) -> None:
+        """The program's own sport becomes `sport` (0 cycling, 1 running), as written by the app."""
+        with LOCK:
+            found = PROGRAMS.get(int(program)) if program.isdigit() and sport in ("0", "1") else None
+            if found is not None:
+                found["body"]["ActivityTypeID"] = int(sport)  # type: ignore[index]
+        self.reply(200 if found is not None else 404, {"changed": found is not None})
 
     def save_programs(self) -> None:
         """What each program holds, for the tests: accounts numbered by their oldest program (no

@@ -674,6 +674,16 @@ and `nextTotp` in `helpers.ts`; the session shows an admin as a user until two-f
 reaches it too and reads a 120-track playlist back in order over three pages, A3 at the playlist-read
 level since a pick's final list is one page, it publishes no port).
 
+Running is on in the e2e stack only (`CLASSBEAT_RUNNING_ENABLED: "true"` on web and worker in `compose.e2e.yaml`; the
+defaults keep it off). `running-class.spec.ts` (M8 F1, ADR 0018, #466) runs the form with Running chosen (the bike-only
+knobs and song choices are gone, Cycling brings them back), a design with the `running_first_draft` script (the Running
+chip, the Incline column instead of Cadence and Position, five zones, no Change songs), Save (the fake MOWL stores
+`ActivityTypeID` 1, segments 0, zones 1 to 5, a `Gradient` of 0 or 1 per interval, private, on the playlist), a
+`running_revise` change and Update of the same program, the `program_other_sport` refusal (the fake's
+`save-sport?program=<id>&sport=0|1` flips the stored program's sport; no Update anyway), and the admin flag
+`running_enabled` stored `off` (an `app_settings` row through `sql`) hiding the control. `mu-pages.spec.ts` also audits
+the New class form with Running chosen and a ready running class (26 pages).
+
 The MU done-when specs (ADR 0013 sections 9 and 10, `mu-helpers.ts`): `mu-pages.spec.ts` walks one signed-in
 browser through 24 pages (landing, sign in/up, reset, Home, My classes, New class, Designing held mid-run, ready,
 Class, the five Account tabs, Music, Spotify, the six admin sections) and audits each at 390 x 844 and 1440 x 900

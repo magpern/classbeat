@@ -2,6 +2,7 @@ import { test, expect, type BrowserContext, type Page } from '@playwright/test'
 import { PASSWORD, signInThroughUi, signUpThroughUi, uniqueEmail } from './helpers'
 import { PLAYLISTS, connectMowl, fakeMowl, getJob, jobId } from './design-helpers'
 import { useModelScript } from './model-script'
+import { designRunningAndOpen } from './class-helpers'
 import {
   audit,
   grantAdmin,
@@ -79,6 +80,12 @@ test('the signed-in pages: home, classes, new class, designing, ready, class', a
   const form = page.getByRole('form', { name: 'New class' })
   await check('new class', form.getByRole('button', { name: 'Design my class' }))
 
+  // ADR 0018: the same form with Running chosen (the control exists because the e2e stack turns it on).
+  await form.getByRole('button', { name: 'Running', exact: true }).click()
+  await expect(form.getByRole('heading', { name: 'The run' })).toBeVisible()
+  await check('new class (running)', form.getByRole('button', { name: 'Design my class' }))
+  await form.getByRole('button', { name: 'Cycling', exact: true }).click()
+
   await form.getByLabel('Class name').fill('MU done-when')
   await form.getByRole('radio', { name: PLAYLISTS.slow.name }).check({ force: true })
   await form.getByRole('button', { name: 'Design my class' }).click()
@@ -103,6 +110,12 @@ test('the signed-in pages: home, classes, new class, designing, ready, class', a
   await expect(page).toHaveURL(/\/classes\/[0-9a-f-]{36}$/)
   await expect(page.getByRole('heading', { name: 'MU done-when', level: 1 })).toBeVisible()
   await check('class', page.getByTestId('save-panel').getByRole('button').first())
+
+  // A ready running class: the Running chip, the incline column and the five zones.
+  await page.setViewportSize({ width: 1440, height: 900 })
+  await designRunningAndOpen(page, 'MU running', PLAYLISTS.draft.name)
+  await expect(page.getByTestId('sport')).toHaveText('Running')
+  await check('class (running)', page.getByTestId('save-panel').getByRole('button').first())
 })
 
 test('the account tabs, music and Spotify pages', async () => {
@@ -162,6 +175,6 @@ test('the admin pages, signed in as an admin with a TOTP code', async () => {
 })
 
 test('every page was audited', () => {
-  // 4 before sign-in, 7 signed-in, 5 account tabs, music, Spotify, 6 admin sections.
-  expect(findings.map((f) => f.page)).toHaveLength(24)
+  // 4 before sign-in, 9 signed-in (two of them running), 5 account tabs, music, Spotify, 6 admin sections.
+  expect(findings.map((f) => f.page)).toHaveLength(26)
 })
