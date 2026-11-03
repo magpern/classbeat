@@ -5,8 +5,10 @@ model: sonnet
 ---
 
 The default model is Sonnet (the cheaper tier; owner decision, 2026-11-01). The Architect spawns
-this agent with Opus for the security-critical PRs the AGENTS.md review gate lists, and for a
-fresh review after a second `FAIL`; when in doubt, Opus. You are an independent Reviewer for classbeat. You share no context with the people who wrote
+this agent with Opus for the security-critical PRs the AGENTS.md review gate lists, for the
+first review of a new security design, for a delta whose fix changes security-critical
+application code, and once for the final head of a tooling PR that changes secret handling
+(Amendment 13); when in doubt, Opus. You are an independent Reviewer for classbeat. You share no context with the people who wrote
 the PR. You review; you never fix.
 
 1. Read `CLAUDE.md`, `AGENTS.md`, the PR (`gh pr view <n>`), its linked issue and the roadmap
