@@ -25,7 +25,8 @@ authorize, because they use a real Swedebeat account, a real MOWL account and a 
 
 - `main` is green and holds B1 to B5 (`#383`, `#384`, `#385`, `#386`, `#387`).
 - Swedebeat connect works for you ([swedebeat-connect.md](swedebeat-connect.md): the release image
-  carries the app key, `SWEDEBEAT_ENABLED=true`, the admin flag `swedebeat_enabled` allows it).
+  has Swedebeat's app credential built in, the environment switch for Swedebeat is on and the
+  admin setting for Swedebeat allows it).
 - Song picking works for you ([m4-live-activation.md](m4-live-activation.md)): MOWL and Spotify are
   connected, and you have a class designed on picked songs with its songs approved.
 - For step 5 the media host is already in `MOWL_MEDIA_HOSTS`
@@ -42,8 +43,8 @@ authorize, because they use a real Swedebeat account, a real MOWL account and a 
 | 4 | Press **Approve this selection**. | No | That approval is a pointer and nothing is written to Swedebeat | **Next, in the Swedebeat app** appears with the playlist name, the song count and the expected length |
 | 5 | In the Swedebeat app, match that playlist and build the mix by hand, let it sync, then press **I made the mix** (**Check again** if it is not there yet). | Yes: a MOWL attach of the mix, the app's own write | That MOWL lists the new Swedebeat mix without classbeat's Swedebeat token, that `PlaylistID` appears in the listing, and the length verdict | A new mix is found, analysed, and the verdict is **ok** for a mix built from the full selection. Record the analysed length against the expected length (the page shows the expected one) so the "10 seconds per change" estimate can be corrected |
 | 6 | Press **Check again** after deliberately leaving one song out of a second mix, or pick a mix that is shorter. | Yes: one more attach, only if the mix is new | The **too short** verdict and the positions it names | The verdict is too short and names the position(s) near the song you left out. **This is the right mix** still works |
-| 7 | Press **Design the class on this mix**. | Yes: nothing new in MOWL until you save | That the class is timed on the Swedebeat mix, not on the Spotify playlist | The class is designed; its music source reads as the Swedebeat mix |
-| 8 | Press **Disconnect MOWL**, then look at the class. | No | Retention | The hand-off is gone (the page offers the step again from the start), the match and the class stay, no Swedebeat call was made |
+| 7 | Press **Design the class on this mix**. | No (nothing is written to MOWL until you save the class) | That the class is timed on the Swedebeat mix, not on the Spotify playlist | The class is designed; its music source reads as the Swedebeat mix |
+| 8 | Press **Disconnect MOWL**, then look at the class. | No | Retention | The hand-off, the analysed mix maps and the mix links are deleted (the page offers the step again from the start); the match and the class stay; no Swedebeat call was made |
 
 ## What to record under "Live activation log"
 

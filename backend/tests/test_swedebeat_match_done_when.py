@@ -8,7 +8,6 @@ replace and the approval reads) is ``test_swedebeat_match_job_isolation.py``; Pl
 path (b) end to end in ``e2e/tests/swedebeat-match.spec.ts``.
 """
 
-import uuid
 from typing import Any
 from uuid import UUID
 
@@ -340,11 +339,14 @@ async def test_deleting_the_account_takes_every_match_and_hand_off_of_that_user_
     b_class = plant(henv, bob.user_id, [30])
     assert (await _start(alice, a_class)).status_code == 200
     assert (await _start(bob, b_class)).status_code == 200
-    henv.sql("DELETE FROM users WHERE id = :u", u=alice.user_id)
+    email = one(henv, "SELECT email FROM users WHERE id = :u", u=alice.user_id)
+    erased = await alice.post("/api/account/delete", {"confirm_email": email})
+    assert erased.status_code == 204, (
+        erased.text
+    )  # the real route: typed confirmation, then cascade
     assert (
         one(henv, "SELECT count(*) FROM class_revisions WHERE owner_id = :u", u=alice.user_id) == 0
     )
     assert handoffs(henv, alice.user_id) == 0
     assert handoffs(henv, bob.user_id) == 1
     assert match_of(henv, b_class)
-    assert uuid.UUID(str(b_class))

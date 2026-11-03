@@ -152,6 +152,7 @@ async def test_the_replace_and_the_approval_read_only_the_owners_match(
 ) -> None:
     alice, bob = await two(env, make_actor)
     match_id = _insert_match(admin, alice)
+    _insert_match(admin, bob)  # Bob's class has a draft too, so the refusal is about the match
     for who in (alice, bob):
         assert who.class_id
         assert who.revision_id
@@ -177,7 +178,7 @@ async def test_the_replace_and_the_approval_read_only_the_owners_match(
     own_class = await selection.record(
         env.factory, make_context(bob.user_id), bob.class_id, match_id
     )
-    assert own_class.approved is None  # not_found, or stale_match for a class with no draft yet
+    assert (own_class.approved, own_class.reason) == (None, "not_found")
     approved = admin.execute(
         text("SELECT count(*) FROM classes WHERE approved_swedebeat_match_id IS NOT NULL")
     ).scalar_one()
