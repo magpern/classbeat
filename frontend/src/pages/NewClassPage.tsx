@@ -7,6 +7,7 @@ import {
   getMowlPlaylists,
   type Brief,
   type DesignInput,
+  type RunningBrief,
   type Playlist,
 } from '../api/jobs'
 import { errorMessage } from '../api/messages'
@@ -50,6 +51,7 @@ type Source =
       songs: SongsAvailability
       swedebeat: SwedebeatMixAvailability
       mixes: SwedebeatMix[]
+      runningEnabled: boolean
     }
 
 const PLAYLIST_ERRORS: Record<string, string> = {
@@ -70,6 +72,7 @@ const CREATE_ERRORS: Record<string, string> = {
   not_connected: 'MOWL is not connected. Connect it on your account page first.',
   class_busy: 'This class already has a design running.',
   idempotency_mismatch: 'That did not work. Check the form and try again.',
+  feature_off: 'Running classes are not available right now. Switch to Cycling, or try again later.',
   invalid_input: `The class was not accepted. Check the fields; the style and description together may be over ${String(MAX_BRIEF_BYTES)} bytes.`,
 }
 
@@ -119,7 +122,7 @@ function NewClass() {
     const abort = new AbortController()
     void (async () => {
       try {
-        const { connections, swedebeat: swedebeatAccess } = await getConnectionsView()
+        const { connections, swedebeat: swedebeatAccess, runningEnabled } = await getConnectionsView()
         const mowl = connections.find((c) => c.provider === 'mowl')
         if (mowl === undefined || mowl.status !== 'connected') {
           setSource({ status: 'no_mowl', reconnect: mowl !== undefined })
@@ -142,7 +145,7 @@ function NewClass() {
             }
           }
         }
-        setSource({ status: 'ready', connection: mowl, playlists, songs, swedebeat, mixes })
+        setSource({ status: 'ready', connection: mowl, playlists, songs, swedebeat, mixes, runningEnabled })
       } catch (error) {
         if (abort.signal.aborted) return
         if (error instanceof ApiError && error.status === 409) {
@@ -193,6 +196,7 @@ function NewClass() {
           songs={source.songs}
           swedebeat={source.swedebeat}
           mixes={source.mixes}
+          runningEnabled={source.runningEnabled}
         />
       ) : null}
     </div>
@@ -215,12 +219,15 @@ function ClassForm({
   songs,
   swedebeat,
   mixes,
+  runningEnabled,
 }: {
   connection: Connection
   playlists: Playlist[]
   songs: SongsAvailability
   swedebeat: SwedebeatMixAvailability
   mixes: SwedebeatMix[]
+  /** The effective `running_enabled` flag: without it the form has no Running at all. */
+  runningEnabled: boolean
 }) {
   const { navigate } = useRouter()
   const preset = readPreset(useQuery())
@@ -229,6 +236,9 @@ function ClassForm({
   const [playlist, setPlaylist] = useState('')
   const [mixId, setMixId] = useState('')
   const [music, setMusic] = useState<Music>('playlist')
+  const [sport, setSport] = useState<'cycling' | 'running'>('cycling')
+  // Running is never on the form while the flag is off, whatever the state says.
+  const running = runningEnabled && sport === 'running'
   const [length, setLength] = useState(preset.length)
   const [intensity, setIntensity] = useState<Brief['intensity']>(preset.intensity)
   const [climbs, setClimbs] = useState(preset.climbs)
@@ -263,38 +273,41 @@ function ClassForm({
     event.preventDefault()
     const brief = {
       length_min: whole(length),
-      climbs: whole(climbs),
-      sprints: whole(sprints),
-      races: whole(races),
+      climbs: running ? 0 : whole(climbs),
+      sprints: running ? 0 : whole(sprints),
+      races: running ? 0 : whole(races),
     }
     const name = title.trim()
     let invalid: string | null = null
     if (name === '' || name.length > 100) invalid = 'Give the class a name of up to 100 characters.'
-    else if (music === 'playlist' && playlist === '') invalid = 'Choose a playlist.'
-    else if (music === 'swedebeat_mix' && mixId === '') invalid = 'Choose a Swedebeat mix.'
+    else if ((running || music === 'playlist') && playlist === '') invalid = 'Choose a playlist.'
+    else if (!running && music === 'swedebeat_mix' && mixId === '') invalid = 'Choose a Swedebeat mix.'
     else if (!inRange(brief.length_min, 10, 180)) invalid = 'The length is 10 to 180 minutes.'
     else if (!inRange(brief.climbs, 0, 10)) invalid = 'Climbs are 0 to 10.'
     else if (!inRange(brief.sprints, 0, 20)) invalid = 'Sprints are 0 to 20.'
     else if (!inRange(brief.races, 0, 5)) invalid = 'Races are 0 to 5.'
     else if (style.length > 60) invalid = 'The style is up to 60 characters.'
     else if (notes.length > 2000) invalid = 'The description is up to 2000 characters.'
-    const fullBrief: Brief | null =
+    // A running brief names its sport and has none of the bike-only knobs (the backend refuses them).
+    const fullBrief: Brief | RunningBrief | null =
       invalid !== null
         ? null
-        : {
-            ...brief,
-            intensity,
-            ftp_test: ftp === '' ? null : (Number(ftp) as 3 | 5 | 20),
-            style,
-            text: notes,
-          }
+        : running
+          ? { sport: 'running', length_min: brief.length_min, intensity, style, text: notes }
+          : {
+              ...brief,
+              intensity,
+              ftp_test: ftp === '' ? null : (Number(ftp) as 3 | 5 | 20),
+              style,
+              text: notes,
+            }
     // The limit is in bytes (the brief is stored as jsonb), not characters.
     if (invalid === null && fullBrief !== null && briefBytes(fullBrief) > MAX_BRIEF_BYTES) {
       invalid = BRIEF_TOO_LONG
     }
     setProblem(invalid)
     if (invalid !== null || fullBrief === null) return
-    if (music === 'pick' && songs.kind === 'ready') {
+    if (!running && 'climbs' in fullBrief && music === 'pick' && songs.kind === 'ready') {
       const pickInput: PickInput = {
         title: name,
         brief: fullBrief,
@@ -315,7 +328,7 @@ function ClassForm({
       return
     }
     const musicInput: DesignInput['music'] =
-      music === 'swedebeat_mix'
+      !running && music === 'swedebeat_mix'
         ? { source: 'mowl_swedebeat_mix', mix_id: mixId }
         : { source: 'mowl_spotify_playlist', spotify_playlist_id: playlist }
     const input: DesignInput = {
@@ -340,14 +353,18 @@ function ClassForm({
   const effort = EFFORTS.find((e) => e.value === intensity)
   const chosenPlaylist = playlists.find((p) => p.spotifyPlaylistId === playlist)
   const chosenMix = mixes.find((m) => m.mixId === mixId)
-  const picking = music === 'pick' && songs.kind === 'ready'
-  const onSwedebeatMix = music === 'swedebeat_mix' && swedebeat.kind === 'ready'
+  const picking = !running && music === 'pick' && songs.kind === 'ready'
+  const onSwedebeatMix = !running && music === 'swedebeat_mix' && swedebeat.kind === 'ready'
   const summary = [
     { label: 'Length', value: Number.isInteger(lengthNumber) ? `${String(lengthNumber)} min` : 'Not set' },
     { label: 'Effort', value: effort?.label ?? '' },
-    { label: 'Climbs', value: climbs },
-    { label: 'Sprints', value: sprints },
-    { label: 'Races', value: races },
+    ...(running
+      ? [{ label: 'Sport', value: 'Running' }]
+      : [
+          { label: 'Climbs', value: climbs },
+          { label: 'Sprints', value: sprints },
+          { label: 'Races', value: races },
+        ]),
     {
       label: 'Music',
       value: picking
@@ -364,16 +381,17 @@ function ClassForm({
   const profile = sketchProfile({
     length: lengthNumber,
     effort: intensity,
-    climbs: whole(climbs),
-    sprints: whole(sprints),
-    races: whole(races),
+    climbs: running ? 0 : whole(climbs),
+    sprints: running ? 0 : whole(sprints),
+    races: running ? 0 : whole(races),
   })
 
   if (
     playlists.length === 0 &&
-    songs.kind !== 'ready' &&
+    (running ||
+      (songs.kind !== 'ready' &&
     swedebeat.kind !== 'ready' &&
-    swedebeat.kind !== 'failed'
+    swedebeat.kind !== 'failed'))
   ) {
     return (
       <Card>
@@ -398,6 +416,38 @@ function ClassForm({
         {action.error ? <Notice kind="error">{action.error}</Notice> : null}
         <Card className={section}>
           <CardTitle className="mb-0">The basics</CardTitle>
+          {runningEnabled ? (
+            <div className="flex flex-col gap-2">
+              <span id="sport-label" className="text-[0.9375rem] font-medium text-text">
+                Sport
+              </span>
+              <div role="group" aria-labelledby="sport-label" className="flex flex-wrap gap-2">
+                <ChipButton
+                  pressed={!running}
+                  onClick={() => {
+                    setSport('cycling')
+                  }}
+                >
+                  Cycling
+                </ChipButton>
+                <ChipButton
+                  pressed={running}
+                  onClick={() => {
+                    setSport('running')
+                    setMusic('playlist')
+                  }}
+                >
+                  Running
+                </ChipButton>
+              </div>
+              {running ? (
+                <p className="m-0 text-[0.9375rem] text-muted">
+                  A running class is designed to a playlist already in your MOWL account. Each
+                  interval has an effort zone from 1 to 5 and a flat or incline setting.
+                </p>
+              ) : null}
+            </div>
+          ) : null}
           <TextInput
             label="Class name"
             value={title}
@@ -446,31 +496,37 @@ function ClassForm({
         </Card>
         <Card className={section}>
           <CardTitle className="mb-0">Music</CardTitle>
-          <MusicChoice songs={songs} swedebeat={swedebeat} value={music} onChange={setMusic} />
-          {music === 'playlist' ? <PlaylistTiles playlists={playlists} value={playlist} onChange={setPlaylist} /> : null}
+          {running ? null : (
+            <MusicChoice songs={songs} swedebeat={swedebeat} value={music} onChange={setMusic} />
+          )}
+          {running || music === 'playlist' ? <PlaylistTiles playlists={playlists} value={playlist} onChange={setPlaylist} /> : null}
           {onSwedebeatMix ? <MixTiles mixes={mixes} value={mixId} onChange={setMixId} /> : null}
           <StylePicker value={style} onChange={setStyle} />
         </Card>
         <Card className={section}>
-          <CardTitle className="mb-0">The ride</CardTitle>
+          <CardTitle className="mb-0">{running ? 'The run' : 'The ride'}</CardTitle>
           <EffortCards value={intensity} onChange={setIntensity} />
-          <div className="grid gap-4 sm:grid-cols-3">
-            <Stepper label="Climbs" noun="climbs" value={climbs} min={0} max={10} onChange={setClimbs} />
-            <Stepper label="Sprints" noun="sprints" value={sprints} min={0} max={20} onChange={setSprints} />
-            <Stepper label="Races" noun="races" value={races} min={0} max={5} onChange={setRaces} />
-          </div>
-          <SelectInput
-            label="FTP test"
-            value={ftp}
-            onChange={(e) => {
-              setFtp(e.target.value)
-            }}
-          >
-            <option value="">None</option>
-            <option value="3">3 minutes</option>
-            <option value="5">5 minutes</option>
-            <option value="20">20 minutes</option>
-          </SelectInput>
+          {running ? null : (
+            <>
+              <div className="grid gap-4 sm:grid-cols-3">
+                <Stepper label="Climbs" noun="climbs" value={climbs} min={0} max={10} onChange={setClimbs} />
+                <Stepper label="Sprints" noun="sprints" value={sprints} min={0} max={20} onChange={setSprints} />
+                <Stepper label="Races" noun="races" value={races} min={0} max={5} onChange={setRaces} />
+              </div>
+              <SelectInput
+                label="FTP test"
+                value={ftp}
+                onChange={(e) => {
+                  setFtp(e.target.value)
+                }}
+              >
+                <option value="">None</option>
+                <option value="3">3 minutes</option>
+                <option value="5">5 minutes</option>
+                <option value="20">20 minutes</option>
+              </SelectInput>
+            </>
+          )}
         </Card>
         <Card className={section}>
           <TextArea

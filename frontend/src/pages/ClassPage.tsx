@@ -161,6 +161,7 @@ function ClassBody({
       <header className="flex flex-wrap items-center gap-3">
         <h1 className="m-0 font-display text-3xl font-extrabold">{summary.title}</h1>
         <Chip tone={classStatus(summary).tone}>{classStatus(summary).label}</Chip>
+        {summary.sport === 'running' ? <Chip data-testid="sport">Running</Chip> : null}
         <div className="ml-auto flex items-center gap-2">
           {canChangeSongs ? (
             <Button
@@ -239,7 +240,7 @@ function ClassBody({
         </p>
       ) : null}
       {notice ? <Notice kind="error">{notice}</Notice> : null}
-      <SwedebeatSection summary={summary} onReload={reload} />
+      {summary.sport === 'running' ? null : <SwedebeatSection summary={summary} onReload={reload} />}
       {pick.error ? <Notice kind="error">{pick.error}</Notice> : null}
 
       {summary.currentRevisionId === null ? (

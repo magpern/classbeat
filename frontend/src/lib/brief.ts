@@ -1,4 +1,4 @@
-import type { Brief } from '../api/jobs'
+import type { Brief, RunningBrief } from '../api/jobs'
 
 // The brief is stored on the class as jsonb and may not exceed 4096 bytes there (backend
 // `classbeat.design.revision.MAX_BRIEF_BYTES`, checked when the job is created). The limit is in
@@ -24,7 +24,7 @@ function jsonb(value: unknown): string {
     .join(', ')}}`
 }
 
-export function briefBytes(brief: Brief): number {
+export function briefBytes(brief: Brief | RunningBrief): number {
   const cleaned = { ...brief, style: cleanText(brief.style), text: cleanText(brief.text) }
   return new TextEncoder().encode(jsonb(cleaned)).length
 }

@@ -1,9 +1,9 @@
 import { Flame, Zap } from 'lucide-react'
 import { useId, useState, type KeyboardEvent } from 'react'
 import type { Song } from '../../api/songs'
-import { cadenceText, flatten, heightShare, zoneName, type Bar } from '../../lib/profile'
+import { cadenceText, flatten, heightShare, inclineText, zoneCount, zoneName, type Bar } from '../../lib/profile'
 import { clock, totalSeconds } from '../../lib/workout'
-import type { DraftSegment } from '../../api/jobs'
+import { isRunningDraft, type DraftSegment } from '../../api/jobs'
 import { SongStrip } from './SongStrip'
 
 // The class profile on the stage (ADR 0013 section 7): x is time, bar height and colour are the
@@ -32,12 +32,16 @@ export function ProfileChart({
 }) {
   const id = useId()
   const bars = flatten(segments)
+  // A running class (intervals with an incline and no cadence): five zones, an incline instead of
+  // cadence and position, and no flame or bolt (those mark the bike-only zones 6 and 7).
+  const running = isRunningDraft(segments)
+  const zones = Array.from({ length: zoneCount(running) }, (_, i) => i + 1)
   const total = totalSeconds(segments)
   const [selected, setSelected] = useState<number | null>(null)
   if (total <= 0) return null
   const scale = PLOT_W / total
   const hardest = Math.max(...bars.map((b) => b.zone))
-  const summary = `Effort over time for ${title}: ${String(segments.length)} segments, ${clock(total)} in total. The hardest zone is ${String(hardest)}.`
+  const summary = `Effort over time for ${title}: ${String(segments.length)} segments, ${clock(total)} in total. The hardest zone is ${String(hardest)}.${running ? ' The incline of each interval is shown when you select it.' : ''}`
   const move = (event: KeyboardEvent) => {
     const last = bars.length - 1
     let next: number | null
@@ -65,7 +69,7 @@ export function ProfileChart({
       >
         <svg viewBox={`0 0 ${String(W)} ${String(H)}`} role="img" aria-label={summary} className="block h-auto w-full">
           <defs>
-            {[1, 2, 3, 4, 5, 6, 7].map((z) => (
+            {zones.map((z) => (
               <linearGradient key={z} id={`${id}-z${String(z)}`} x1="0" y1="0" x2="0" y2="1">
                 <stop offset="0" style={{ stopColor: `var(--cb-zone-${String(z)})` }} />
                 <stop
@@ -75,7 +79,7 @@ export function ProfileChart({
               </linearGradient>
             ))}
           </defs>
-          {[1, 2, 3, 4, 5, 6, 7].map((z) => {
+          {zones.map((z) => {
             const y = AXIS_Y - PLOT_H * heightShare(z)
             return (
               <g key={z}>
@@ -172,9 +176,15 @@ export function ProfileChart({
             {', '}
             {clock(chosen.start)} to {clock(chosen.start + chosen.sec)}
             {', '}
-            {cadenceText(chosen.rpm)}
-            {', '}
-            {chosen.standing ? 'standing' : 'seated'}
+            {running ? (
+              inclineText(chosen.gradient).toLowerCase()
+            ) : (
+              <>
+                {cadenceText(chosen.rpm)}
+                {', '}
+                {chosen.standing ? 'standing' : 'seated'}
+              </>
+            )}
             {chosen.cue ? <>{': '}{chosen.cue}</> : null}
           </>
         )}

@@ -55,11 +55,14 @@ export async function disconnectMowl(): Promise<void> {
 export async function getConnectionsView(): Promise<{
   connections: Connection[]
   swedebeat: SwedebeatAccess
+  /** The effective `running_enabled` flag (ADR 0018 section 5); an answer without it means off. */
+  runningEnabled: boolean
 }> {
   const body = object(await get('/api/connections'), 'connections')
   const access = body.swedebeat === undefined ? null : object(body.swedebeat, 'swedebeat')
   return {
     connections: list(body, 'connections').map(decodeConnection),
+    runningEnabled: body.running_enabled === true,
     swedebeat:
       access === null
         ? { enabled: false, available: false }
