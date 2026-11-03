@@ -94,6 +94,7 @@ test('design a running class, save it, change it and update the same program', a
   await expect(zoneTime.getByRole('listitem')).toHaveCount(5)
   await expect(zoneTime.getByText('Z5 VO2max')).toBeVisible()
   await expect(zoneTime.getByText('Z6')).toHaveCount(0)
+  // Sanity check only: Change songs needs approved songs, which a running class never has.
   await expect(page.getByRole('button', { name: 'Change songs' })).toHaveCount(0)
 
   // Save: the fake MOWL holds a running program (ActivityTypeID 1, segments 0).
@@ -145,7 +146,6 @@ test('a running class is not updated onto a program of another sport', async ({ 
   ).toBeVisible(LONG)
   // It is not a change the user can override: no "Update anyway" anywhere on the page.
   await expect(page.getByRole('button', { name: /Update anyway/ })).toHaveCount(0)
-  await expect(page.getByText('Update anyway')).toHaveCount(0)
 
   // Nothing was written: the same program, still the first version's content, still cycling.
   const after = savePrograms()

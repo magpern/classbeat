@@ -35,6 +35,9 @@ test.beforeAll(async ({ browser, baseURL }) => {
 })
 
 test.afterAll(async () => {
+  // The running design points the worker's script at running_first_draft; the specs after this one
+  // design with the default script.
+  useModelScript('good_first_draft')
   await context.close()
 })
 
@@ -113,9 +116,13 @@ test('the signed-in pages: home, classes, new class, designing, ready, class', a
 
   // A ready running class: the Running chip, the incline column and the five zones.
   await page.setViewportSize({ width: 1440, height: 900 })
-  await designRunningAndOpen(page, 'MU running', PLAYLISTS.draft.name)
-  await expect(page.getByTestId('sport')).toHaveText('Running')
-  await check('class (running)', page.getByTestId('save-panel').getByRole('button').first())
+  try {
+    await designRunningAndOpen(page, 'MU running', PLAYLISTS.draft.name)
+    await expect(page.getByTestId('sport')).toHaveText('Running')
+    await check('class (running)', page.getByTestId('save-panel').getByRole('button').first())
+  } finally {
+    useModelScript('good_first_draft')
+  }
 })
 
 test('the account tabs, music and Spotify pages', async () => {
