@@ -713,5 +713,6 @@ order verified against the current API shape). Live activation (§11) is separat
 ADR 0007's amendment of 2026-11-03 adds a "No music" source (`classes.music_source = {"source":
 "none"}`). Such a class never has a `song_list`, a pool or a final playlist: `design_with_songs` (every
 mode) and `revise_songs` on it are refused `invalid_input` at creation, by an explicit check of
-`music_source` (issue #530), and the class page offers no Change songs for it. Nothing else in this ADR
-changes.
+`music_source` (issue #530), and the final stores of `songs.phase2` and `songs.revise` refuse to write
+`music_source` over a `none` source, so a soundless class never becomes a picked-songs class. The class
+page offers no Change songs for it. Nothing else in this ADR changes.

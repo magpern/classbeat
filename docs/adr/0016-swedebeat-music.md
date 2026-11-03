@@ -385,7 +385,8 @@ the class (ADR 0008 §8). ADR 0010's text is edited in the PR that accepts this 
 ## Amendment of 2026-11-03: soundless classes (issue #526)
 
 ADR 0007's amendment of 2026-11-03 adds a "No music" source (`{"source": "none"}`). A soundless class has
-no mix and no `song_list`: a `swedebeat_match` of it and a Swedebeat hand-off for it are refused
-`invalid_input` at creation by an explicit check of `classes.music_source` (issue #530), and the class
-page shows no Swedebeat section for it. A soundless class is never turned into a mix class. Nothing else
-in this ADR changes.
+no mix and no `song_list`: a `swedebeat_match` of it, a Swedebeat hand-off for it and a
+`swedebeat_verify_mix` of it (`swedebeat_handoff/kind.py`) are refused `invalid_input` at creation by an
+explicit check of `classes.music_source`, not only by a missing list or stored match (issue #530), and
+`swedebeat_handoff.adopt` refuses to write a mix over a `none` source. The class page shows no Swedebeat
+section for it. Nothing else in this ADR changes.
