@@ -6,6 +6,8 @@ nothing:
 
 1. ``feature_off`` unless the effective ``swedebeat_enabled`` flag is on (the environment's
    switch, ``MixAdmission.enabled``, then the stored flag; stricter wins). Nothing else is read.
+   Also ``feature_off`` while the user's own "I use Swedebeat" preference is off (#525); the
+   preference is read only once the flag is on.
 2. ``not_connected`` unless the job's ``mowl_connection_id`` is the user's MOWL connection and
    ``connected``.
 3. ``invalid_input`` unless ``mix_id`` is in the user's **own fresh listing** (``POST
@@ -38,6 +40,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from classbeat import connections, egress
 from classbeat.connections import ConnectionFailure, Credentials, call_opened, open_connection
+from classbeat.connections.preferences import uses_swedebeat_in
 from classbeat.context import UserContext
 from classbeat.crypto.keks import KeyRing
 from classbeat.design import mixlimit
@@ -145,6 +148,8 @@ async def admit_mix(
     """The module docstring's checks for a new design; None admits."""
     config = current()
     if not await flag_on(db, config.enabled) or config.listing is None:
+        return Refused("feature_off")
+    if not await uses_swedebeat_in(db, ctx.user_id):
         return Refused("feature_off")
     if not await _connected(db, ctx, connection_id):
         return Refused("not_connected")
