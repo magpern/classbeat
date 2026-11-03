@@ -59,7 +59,7 @@ from classbeat.jobs.inputs import ModelJobInput, jsonb_size
 from classbeat.jobs.kinds import Admitted, Refused
 from classbeat.models.jobs import GroupModel, ModelSource
 from classbeat.models.store import StageGroup
-from classbeat.quota.route import with_plan
+from classbeat.quota.route import with_plan, with_plan_run
 
 KIND: Final = "design_draft"
 STAGES: Final = ("music", "design")
@@ -278,7 +278,7 @@ DESIGN_DRAFT: Final = KINDS.register(
         KIND,
         DesignDraftInput,
         STAGES,
-        run,
+        with_plan_run(run),  # the current plan's gates for an input without any (#496)
         admit=with_plan(admit),  # the plan's gates, a mix's checks, the route key (AD5, #496)
         server_fields=frozenset({"route_key", "plan_gates", "handoff_id"}),
     )

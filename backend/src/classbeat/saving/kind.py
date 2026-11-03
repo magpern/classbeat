@@ -9,8 +9,10 @@ no ledger call, no model call, no ``agent_runs``.
 ``classbeat.saving.approval``, ``running_enabled`` for a running class (``feature_off``, ADR 0018
 section 5: off, a running class is not saved, whenever it was designed), then the connection
 (the context's MOWL connection and ``connected``: ``not_connected``), the music link
-(``music_unlinked``) and the unresolved-write rule (``write_unresolved``). A refusal is a 409
-with its reason and creates nothing.
+(``music_unlinked``) and the unresolved-write rule (``write_unresolved``), last the user's
+**current** plan (#496, ``classbeat.quota.gates.check_stored_draft``: a revision with a game, an
+FTP test or a length the plan does not include now is 409 ``quota`` ``feature`` or ``length``; the
+same for Update). A refusal is a 409 with its reason and creates nothing.
 
 Stages, and **every attempt starts at ``prepare``** (a retry after a reconciliation that proved
 no effect, after a lost lease or a shutdown, never resumes at ``save``):
@@ -62,6 +64,7 @@ from classbeat.jobs import KINDS, Complete, JobFailure, JobKind, JobRun
 from classbeat.jobs.inputs import JobInput
 from classbeat.jobs.kinds import Admitted, Refused
 from classbeat.operations import CallResult, OperationRequest, UncertainAnswer, orphans, perform
+from classbeat.quota.gates import check_stored_draft
 from classbeat.saving import approval, operation
 
 logger = logging.getLogger(__name__)
@@ -143,6 +146,8 @@ async def admit(db: AsyncSession, ctx: UserContext, parsed: BaseModel) -> Admitt
         return Refused("music_unlinked")
     if await orphans.write_unresolved(db, ctx, parsed.the_class):
         return Refused("write_unresolved")
+    # #496: no model runs, so the revision must fit the user's current plan (409 ``quota``).
+    await check_stored_draft(db, ctx, found.spec)
     return Admitted()
 
 

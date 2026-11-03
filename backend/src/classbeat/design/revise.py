@@ -65,7 +65,7 @@ from classbeat.design.sport_rules import rules_for
 from classbeat.jobs import KINDS, Complete, FencedSession, JobFailure, JobKind, JobRun
 from classbeat.jobs.inputs import ModelJobInput
 from classbeat.jobs.kinds import Admitted, Refused
-from classbeat.quota.route import with_plan
+from classbeat.quota.route import with_plan, with_plan_run
 
 KIND: Final = "revise_draft"
 STAGES: Final = ("music", "revise")
@@ -279,7 +279,7 @@ REVISE_DRAFT: Final = KINDS.register(
         KIND,
         ReviseDraftInput,
         STAGES,
-        run,
+        with_plan_run(run),  # the current plan's gates for an input without any (#496)
         consumes_credit=False,
         admit=with_plan(admit),
         server_fields=frozenset(

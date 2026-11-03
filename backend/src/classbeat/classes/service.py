@@ -20,6 +20,7 @@ from classbeat.classes.selection import belongs_to_draft
 from classbeat.context import UserContext, require_context
 from classbeat.db import user_session
 from classbeat.design.rules.enums import RULE_IDS
+from classbeat.quota.gates import check_stored_draft
 
 Factory = async_sessionmaker[AsyncSession]
 
@@ -145,8 +146,8 @@ _OPEN_JOB = text(
     f"AND state IN {OPEN_JOB} LIMIT 1"
 )
 _PICKABLE = text(
-    "SELECT content_hash FROM class_revisions WHERE id = :revision_id AND owner_id = :owner_id "
-    "AND class_id = :class_id AND kind = 'draft'"
+    "SELECT content_hash, content FROM class_revisions WHERE id = :revision_id "
+    "AND owner_id = :owner_id AND class_id = :class_id AND kind = 'draft'"
 )
 _SET_CURRENT = text(
     "UPDATE classes SET current_revision_id = :revision_id, updated_at = now() "
@@ -326,6 +327,11 @@ async def pick(
     ``not_found`` (the class, or a revision that is not a draft of this class), ``hash_mismatch``,
     ``class_busy`` (an open job). Picking the current revision again writes nothing.
 
+    No model runs here, so the draft is checked against the user's **current** plan (#496): an
+    older revision with a game, an FTP test or a length the plan does not include now (one made
+    before a downgrade or an admin's change) raises ``QuotaRefused`` (409 ``quota`` ``feature`` or
+    ``length``) and nothing changes.
+
     A stored Swedebeat match stays only when it is the chosen draft's song list. Any other draft
     clears ``approved_swedebeat_match_id`` in this same transaction. Same owner is not enough.
     """
@@ -343,6 +349,10 @@ async def pick(
             return Outcome()
         if (await db.execute(_OPEN_JOB, _ids(ctx, class_id))).first() is not None:
             return Outcome("class_busy")
+        if isinstance(found.content, dict):  # a draft's JSON object; QuotaRefused rolls back
+            await check_stored_draft(db, ctx, found.content)  # pyright: ignore[reportUnknownArgumentType]
+        else:
+            return Outcome("not_found")  # never a draft: fail closed
         match_id = locked.approved_swedebeat_match_id
         keep = isinstance(match_id, UUID) and await belongs_to_draft(
             db, ctx.user_id, class_id, revision_id, match_id

@@ -24,7 +24,7 @@ from classbeat.design import Runtime
 from classbeat.design import kind as design_kind
 from classbeat.design import music as design_music
 from designtools import BRIEF, PLAYLIST_NAME, DesignEnv, FakeMowlMusic
-from jobtools import new_class, new_job
+from jobtools import grant_plan, new_class, new_job
 from optools import OTHER_PLAYLIST, PLAYLIST, TOKEN_A, TOKEN_B
 
 pytestmark = pytest.mark.usefixtures("jenv")
@@ -306,6 +306,9 @@ async def test_the_first_draft_sets_the_class_brief_music_and_current_revision(
     body = {k: v for k, v in denv.input(conn, OTHER_PLAYLIST).items() if k != "title"}
     body["class_id"] = str(stored.id)
     body["brief"] = {**BRIEF, "length_min": 45}
+    # Stored without ``plan_gates``, the job runs under the owner's current plan (#496): 45
+    # minutes needs more than free's 30.
+    grant_plan(denv.admin, owner, "pro")
     second = new_job(
         denv.admin, owner, class_id=stored.id, kind=design.KIND, input=json.dumps(body)
     )

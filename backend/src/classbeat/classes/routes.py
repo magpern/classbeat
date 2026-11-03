@@ -5,7 +5,10 @@ Signed in; the ``POST`` and ``DELETE`` are CSRF-checked by the middleware. Anoth
 unknown id and a malformed one are the same 404 ``not_found``. Errors carry a reason code only.
 409 reasons: ``limit_exceeded`` (the 33rd dismissed rule, ADR 0017), ``class_busy``,
 ``hash_mismatch`` (the pick), ``stale_match`` (the Swedebeat selection) and
-``call_may_be_running``, ``uncertain_write`` (the delete).
+``call_may_be_running``, ``uncertain_write`` (the delete), and ``quota`` (the pick, #496: the
+chosen draft has a game, an FTP test or a length the user's current plan does not include; the
+jobs API's body, ``{reason: "quota", quota: "feature" | "length", feature | limit and used, plan}``,
+no money).
 
 A ``swedebeat_match`` revision (ADR 0016 section 6) is read only while the effective
 ``swedebeat_enabled`` flag is on; off, its id answers 404 ``feature_off`` without its content being
@@ -60,6 +63,7 @@ from classbeat.classes.schemas import (
 from classbeat.connections.swedebeat_account import swedebeat_enabled
 from classbeat.context import UserContext
 from classbeat.covers import cover_url
+from classbeat.jobs.credits import QuotaRefused
 
 router = APIRouter(prefix="/api/classes", tags=["classes"])
 music_router = APIRouter(prefix="/api/music", tags=["music"])
@@ -418,9 +422,12 @@ async def pick_current(
     if not HASH.fullmatch(body.content_hash):
         return _refuse("invalid_input", 422)
     factory = request.app.state.session_factory
-    done = await service.pick(
-        factory, ctx, wanted, body.revision_id, bytes.fromhex(body.content_hash)
-    )
+    try:
+        done = await service.pick(
+            factory, ctx, wanted, body.revision_id, bytes.fromhex(body.content_hash)
+        )
+    except QuotaRefused as refused:  # the current plan (#496); nothing changed
+        return JSONResponse({"detail": {**refused.detail(), "reason": "quota"}}, status_code=409)
     if done.reason == "not_found":
         return _not_found()
     if done.reason is not None:

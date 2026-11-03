@@ -46,7 +46,13 @@ the row checks and the connection checks of ``CONNECTIONS``; it only reads):
 - ``not_connected`` unless the Spotify row is ``connected`` with a Spotify user id;
 - ``account_changed`` when that Spotify account is not the one the list was made for
   (``music.spotify_user_id``): a reconnect as another Spotify user keeps the row id, so the generic
-  connection check alone would let it pass.
+  connection check alone would let it pass;
+- for a job whose stored input carries no ``plan_gates`` (created before #496), the brief it
+  designs for is checked against the user's **current** plan (``classbeat.quota.gates``): 409
+  ``quota`` ``length`` or ``feature``, raised as ``QuotaRefused`` and answered by the jobs API, so
+  a gate-less job never reaches its design phase on more than the plan the user has now. A job
+  with gates keeps the ones it was admitted with (``with_plan_run`` reads the plan again when the
+  approved phase runs, for a gate-less one).
 
 Reasons are codes only; nothing of the rows is logged or returned.
 """
@@ -65,6 +71,7 @@ from classbeat.design import sport
 from classbeat.flags import effective as flags
 from classbeat.jobs.kinds import SONG_KIND_NAMES, Admitted, Approving, Refused
 from classbeat.operations import orphans
+from classbeat.quota.gates import brief_of, check_brief, current_gates
 from classbeat.songs import config, song_list
 from classbeat.songs.inputs import DesignWithSongsInput, ReviseSongsInput, Seed
 
@@ -235,4 +242,7 @@ async def approve_check(db: AsyncSession, ctx: UserContext, approving: Approving
         return "not_connected"
     if account != stored.account:
         return "account_changed"
+    if given.plan_gates is None:  # fail closed (#496): the current plan, QuotaRefused is 409
+        plan, gates = await current_gates(db, ctx)
+        check_brief(gates, await brief_of(db, ctx, given), plan.id)
     return None

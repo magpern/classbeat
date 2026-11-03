@@ -36,7 +36,7 @@ from typing import Final
 
 from classbeat.design.kind import current_runtime, group_model
 from classbeat.jobs import KINDS, Complete, JobFailure, JobKind, JobRun, Outcome
-from classbeat.quota.route import with_plan
+from classbeat.quota.route import with_plan, with_plan_run
 from classbeat.songs import config
 from classbeat.songs.admit import admit, approve_check
 from classbeat.songs.inputs import DesignWithSongsInput
@@ -98,7 +98,7 @@ DESIGN_WITH_SONGS: Final = KINDS.register(
         KIND,
         DesignWithSongsInput,
         STAGES,
-        run,
+        with_plan_run(run),  # the current plan's gates for an input without any (#496)
         consumes_credit=True,
         admit=with_plan(admit),
         approve_check=approve_check,
