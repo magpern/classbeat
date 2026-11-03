@@ -11,6 +11,10 @@
   not gated separately on purpose: a route is keyed by stage name, the system prompt and the
   design tools are the ones the ``design`` group already gates, and the one tool it drops can only
   make the stage safer. ``tests/test_revise_songs.py`` covers the variant's behaviour.
+- The running ``design`` and ``revise`` stages (``classbeat.agent.running``, ADR 0018, M8 R1a)
+  have their own prompt versions and are not listed here: no suite case designs a running class
+  yet, so no recorded result could gate them. A running job uses the ``design`` group's route
+  like a cycling one; E1 adds running cases and decides how the gate covers them.
 - ``running_suite_version()``: the manifest's ``suite_version``, read from the package's
   ``evals/suite/manifest.json`` **without importing** ``classbeat.evals`` (the web process, from
   which M5's admin calls ``set_route``, must not load the eval package;

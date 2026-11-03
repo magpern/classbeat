@@ -146,7 +146,11 @@ then its profile files under the rules above.
 - No incline metric yet: a draft has no gradient field until the running draft exists (ADR 0018 R1),
   and fewer than a third of the classes use any incline above the base setting. Add it with R1 or
   later as a code PR (new `Metric`, `RULE_SPECS`, engine, schema) once the draft carries a gradient.
-- A brief has no sport until R1, so `select_profile_for_brief` stays cycling and no running profile
-  reaches a design job, the prompt or a note yet. R1 passes the sport and adds running
-  `class_patterns` cases; the suite test that every shipped profile has a following case covers
+- R1a (#463) gives the brief its sport. A running class gets only running profiles through
+  `classbeat.design.sport_rules` (`select_profile_for`, `rules_for`; cycling still goes through
+  `select_profile_for_brief` and `rule_set_for` unchanged), and a profile with any rule above `info`
+  applies nothing. `sport_rules.py` is not yet in the suite's `RULE_SOURCES`: the suite designs
+  cycling classes only, so its digest and every recorded result stay valid. E1 adds running
+  `class_patterns` cases, lists `design/sport_rules.py` in `RULE_SOURCES` and bumps
+  `suite_version` once; the suite test that every shipped profile has a following case covers
   cycling profiles until then.

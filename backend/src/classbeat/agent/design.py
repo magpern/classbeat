@@ -23,10 +23,10 @@ from typing import Any, Final
 from mowl import music, sync, workout
 from mowl.workout import mmss
 
-from classbeat.agent import mix_input, model_input
+from classbeat.agent import mix_input, model_input, running_input
 from classbeat.agent.guidance import Guidance, rules_result
 from classbeat.agent.model_input import MusicData
-from classbeat.agent.schemas import Brief, DraftInput, MusicInput, WorkoutDraft
+from classbeat.agent.schemas import Brief, DraftInput, MusicInput, RunningDraft, WorkoutDraft
 from classbeat.agent.stage import Stage, Tool, ToolAnswer, ToolError
 
 STAGE: Final = "design"
@@ -93,16 +93,18 @@ SUBMIT_DESCRIPTION: Final = (
 
 @dataclass(frozen=True)
 class DesignResult:
-    """The submitted draft and what the backend computed from it (D1 stores it)."""
+    """The submitted draft and what the backend computed from it (D1 stores it). A running
+    class's draft is a ``RunningDraft`` (``classbeat.agent.running``)."""
 
-    draft: WorkoutDraft
+    draft: WorkoutDraft | RunningDraft
     spec: dict[str, Any]  # the fitted mowl-workouts spec
     timeline: list[dict[str, Any]]
     quality: dict[str, Any]
     warnings: list[str]
     duration_sec: int
     tss: float
-    tss_approximate: bool  # a zone 7 interval in the fitted draft (ADR 0012 section 7)
+    # A zone 7 interval in the fitted draft (ADR 0012 section 7); always for running (ADR 0018).
+    tss_approximate: bool
     map_version: int
     crossfade_sec: float
 
@@ -120,9 +122,10 @@ class DesignContext:
         return cls(brief, m, mix_input.music_summary(data, m), rules)
 
     def first_message(self) -> str:
-        return model_input.first_message(
-            self.brief, self.summary, self.rules.section() if self.rules else None
-        )
+        rules = self.rules.section() if self.rules else None
+        if self.brief.sport == "running":  # ADR 0018: the running brief, never the cycling one
+            return running_input.first_message(self.brief, self.summary, rules)
+        return model_input.first_message(self.brief, self.summary, rules)
 
 
 def _placeholder_rpm(spec: dict[str, Any]) -> dict[str, Any]:
@@ -176,7 +179,15 @@ def check(draft: WorkoutDraft, m: dict[str, Any]) -> DesignResult:
     )
 
 
+def is_running(ctx: object) -> bool:
+    """Whether a stage context is a running class's (``classbeat.agent.running``)."""
+    return getattr(getattr(ctx, "brief", None), "sport", None) == "running"
+
+
 def design_stage(ctx: DesignContext) -> Stage:
+    if is_running(ctx):  # ADR 0018: a running class never gets the cycling prompt or schema
+        raise ValueError("a running class runs classbeat.agent.running's stage")
+
     def get_music(args: MusicInput) -> ToolAnswer:
         if args.track is None:
             return ToolAnswer({"music": ctx.summary})

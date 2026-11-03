@@ -1,0 +1,129 @@
+{
+ "model": "fake-model",
+ "drafts": {
+  "revised": {
+   "name": "Invented Tuesday run",
+   "description": "A 30 minute treadmill run with two hill blocks.",
+   "segments": [
+    {
+     "name": "Warm-up",
+     "kind": "warmup",
+     "intervals": [
+      {
+       "sec": 300,
+       "zone": 1,
+       "gradient": 0
+      },
+      {
+       "sec": 300,
+       "zone": 1,
+       "gradient": 0,
+       "cue": "Easy jog, about 160 spm"
+      }
+     ]
+    },
+    {
+     "name": "Hills",
+     "kind": "main",
+     "intervals": [
+      {
+       "sec": 240,
+       "zone": 3,
+       "gradient": 0
+      },
+      {
+       "sec": 60,
+       "zone": 4,
+       "gradient": 0,
+       "cue": "Incline up"
+      },
+      {
+       "sec": 240,
+       "zone": 3,
+       "gradient": 0
+      },
+      {
+       "sec": 60,
+       "zone": 5,
+       "gradient": 0
+      }
+     ]
+    },
+    {
+     "name": "Steady",
+     "kind": "main",
+     "intervals": [
+      {
+       "sec": 240,
+       "zone": 3,
+       "gradient": 1
+      },
+      {
+       "sec": 60,
+       "zone": 4,
+       "gradient": 0
+      }
+     ]
+    },
+    {
+     "name": "Cooldown",
+     "kind": "cooldown",
+     "intervals": [
+      {
+       "sec": 300,
+       "zone": 1,
+       "gradient": 0
+      }
+     ]
+    }
+   ]
+  }
+ },
+ "turns": [
+  {
+   "calls": [
+    {
+     "name": "get_music",
+     "input": {},
+     "expect": {
+      "ok": true
+     },
+     "contains": [
+      "\"tracks\""
+     ]
+    }
+   ]
+  },
+  {
+   "calls": [
+    {
+     "name": "preview_draft",
+     "input": {
+      "draft": {
+       "$draft": "revised"
+      }
+     },
+     "expect": {
+      "ok": true
+     }
+    }
+   ]
+  },
+  {
+   "calls": [
+    {
+     "name": "submit_draft",
+     "input": {
+      "draft": {
+       "$draft": "revised"
+      },
+      "note": "Made the warm-up easier and the first hill flat."
+     },
+     "expect": {
+      "accepted": true
+     }
+    }
+   ]
+  }
+ ]
+}

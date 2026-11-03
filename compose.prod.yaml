@@ -18,7 +18,7 @@
 #   PROXY_NETWORK      the external Docker network web shares with swag (classbeat-proxy) optional
 #   SMTP_HOST, SMTP_SENDER                                                                required
 #   SMTP_PORT, SMTP_TLS, SMTP_USERNAME, ADMIN_EMAILS, SIGNUP_MODE, CONNECTION_KEK_ID,
-#   MODEL_PROVIDER, DEEPSEEK_ENABLED, SWEDEBEAT_ENABLED, SMTP_CA_FILE                     optional
+#   MODEL_PROVIDER, DEEPSEEK_ENABLED, SWEDEBEAT_ENABLED, RUNNING_ENABLED, SMTP_CA_FILE    optional
 # Secrets are files under ./secrets (mounted as Docker secrets, never environment variables).
 #
 # Networks: `backend` is internal (no route out): db, migrate and db-functions live only there.
@@ -146,6 +146,8 @@ services:
       CLASSBEAT_TRUSTED_PROXIES: ${PROXY_IP:?set PROXY_IP to swag's fixed address on the proxy network}
       # ADR 0015: off unless the owner switches the Swedebeat connection on.
       CLASSBEAT_SWEDEBEAT_ENABLED: ${SWEDEBEAT_ENABLED:-false}
+      # ADR 0018: off unless the owner switches running classes on.
+      CLASSBEAT_RUNNING_ENABLED: ${RUNNING_ENABLED:-false}
       # Opt-in (docs/runbooks/proton-bridge-smtp.md): a mounted PEM that the SMTP certificate must
       # match instead of the system store. Web only; unset keeps full system-store verification.
       CLASSBEAT_SMTP_CA_FILE: ${SMTP_CA_FILE:-}
@@ -189,6 +191,8 @@ services:
       CLASSBEAT_MODEL_PROVIDER: ${MODEL_PROVIDER:-anthropic}
       # ADR 0016: a design job on a Swedebeat mix checks the switch again; the same value as web's.
       CLASSBEAT_SWEDEBEAT_ENABLED: ${SWEDEBEAT_ENABLED:-false}
+      # ADR 0018: a queued running design or revise checks the switch again; the same as web's.
+      CLASSBEAT_RUNNING_ENABLED: ${RUNNING_ENABLED:-false}
     # The model API keys are the worker's only (ADR 0006 section 9, ADR 0012 section 2).
     secrets:
       - database_password

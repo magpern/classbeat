@@ -20,6 +20,7 @@ from classbeat.db import (
     event_loop_factory,
     verify_database_role,
 )
+from classbeat.design import sport
 from classbeat.design.mixfetch import sweep_work_root
 from classbeat.egress import install_worker_allowlist
 from classbeat.log import configure_logging
@@ -45,6 +46,8 @@ async def _run(settings: Settings) -> None:
         await engine.dispose()
     # The job kinds' runtime (design_draft, D1): the key ring and a new model provider per run.
     design.configure(design.runtime_from_settings(settings, keyring))
+    # A queued running design or revise checks the running switch again (ADR 0018 section 5).
+    sport.configure(sport.SportGate(running_enabled=settings.running_enabled))
     # save_workout (SV1): the key ring, and the listing lag its reconciler may rely on.
     saving.configure(saving.Runtime(keyring))
     saving.configure_listing_lag(settings.mowl_listing_lag_seconds)

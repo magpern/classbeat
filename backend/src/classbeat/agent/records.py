@@ -208,6 +208,8 @@ class Provenance(BaseModel):
     tss_approximate: bool | None = None
     # ADR 0017: absent when no profile applied (and on revisions stored before it).
     rules: ProvenanceRules | None = None
+    # ADR 0018: a running class's draft says so; absent is cycling (every revision before it).
+    sport: Literal["running"] | None = None
 
     @model_validator(mode="after")
     def _lineage(self) -> Self:
@@ -225,7 +227,7 @@ class Provenance(BaseModel):
         """A revision that was not made from picked songs is stored exactly as before: the two
         song fields are left out when unset (additive, ADR 0008 section 3)."""
         out: dict[str, Any] = handler(self)
-        for key in ("schema_version", "stage_versions", "tss_approximate", "rules"):
+        for key in ("schema_version", "stage_versions", "tss_approximate", "rules", "sport"):
             if out.get(key) is None:
                 out.pop(key, None)
         return out
@@ -260,6 +262,7 @@ def provenance(
     schema_version: int | None = None,
     tss_approximate: bool | None = None,
     rules: Mapping[str, Any] | None = None,
+    sport: Literal["running"] | None = None,
 ) -> Provenance:
     """From the job's stage runs (the last one made the content) and the map it was fitted to;
     ``origin`` and the two ids say what the revision was made from (ADR 0007 section 2).
@@ -296,6 +299,7 @@ def provenance(
         schema_version=schema_version,
         tss_approximate=tss_approximate,
         rules=None if rules is None else ProvenanceRules.model_validate(dict(rules)),
+        sport=sport,
         stage_versions=(
             {r.info.stage: r.info.prompt_version for r in runs} if schema_version else None
         ),

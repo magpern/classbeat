@@ -4,10 +4,11 @@ stored drafts, never by a model: data, not text (the page words it).
 Segments are matched by name and kind in order (the n-th "Climb" with the n-th "Climb"), so an
 inserted segment does not turn every later one into a change. Intervals of matched segments are
 compared by position and fields (``sec``, ``zone``, ``rpm``, ``standing``, ``game``,
-``ftp_test``); the intervals of an added or removed segment count as added or removed. Duration
-and TSS before and after come from ``mowl.workout`` on the fitted drafts. ``text_changed`` says
-that a name, description or cue differs, so a revision that only rewords is not shown as no
-change. The summary is a few hundred bytes (``class_messages.change`` allows 1024).
+``ftp_test``, and a running class's ``gradient``); the intervals of an added or removed segment
+count as added or removed. Duration and TSS before and after come from ``mowl.workout`` on the
+fitted drafts. ``text_changed`` says that a name, description or cue differs, so a revision that
+only rewords is not shown as no change. The summary is a few hundred bytes
+(``class_messages.change`` allows 1024).
 """
 
 from collections import Counter
@@ -15,14 +16,15 @@ from typing import Any, Final
 
 from mowl import workout
 
-from classbeat.agent.schemas import WorkoutDraft
+from classbeat.agent.schemas import stored_draft
 
-FIELDS: Final = ("sec", "zone", "rpm", "standing", "game", "ftp_test")
+# ``gradient`` is a running interval's only (ADR 0018); a cycling draft never has it.
+FIELDS: Final = ("sec", "zone", "rpm", "standing", "game", "ftp_test", "gradient")
 MAX_BYTES: Final = 1024
 
 
-def _spec(content: dict[str, Any]) -> dict[str, Any]:
-    return WorkoutDraft.model_validate(content).to_spec()
+def _spec(content: dict[str, Any], sport: str) -> dict[str, Any]:
+    return stored_draft(content, sport).to_spec()
 
 
 def _matched(
@@ -56,9 +58,10 @@ def _texts(content: dict[str, Any]) -> Counter[str]:
     return Counter(out)
 
 
-def summarize(base: dict[str, Any], new: dict[str, Any]) -> dict[str, Any]:
-    """The change from ``base`` to ``new`` (both ``class_revisions.content``)."""
-    before, after = _spec(base), _spec(new)
+def summarize(base: dict[str, Any], new: dict[str, Any], sport: str = "cycling") -> dict[str, Any]:
+    """The change from ``base`` to ``new`` (both ``class_revisions.content`` of a class of
+    ``sport``)."""
+    before, after = _spec(base, sport), _spec(new, sport)
     pairs, removed, added = _matched(before["segments"], after["segments"])
     changed = grown = shrunk = 0
     for old_seg, new_seg in pairs:

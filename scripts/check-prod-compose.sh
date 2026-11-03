@@ -69,6 +69,10 @@ check_common() {
     || fail "Swedebeat must be off by default" || return 1
   q '.services.worker.environment.CLASSBEAT_SWEDEBEAT_ENABLED == "false"' \
     || fail "Swedebeat must be off by default on the worker too" || return 1
+  q '.services.web.environment.CLASSBEAT_RUNNING_ENABLED == "false"' \
+    || fail "running classes must be off by default" || return 1
+  q '.services.worker.environment.CLASSBEAT_RUNNING_ENABLED == "false"' \
+    || fail "running classes must be off by default on the worker too" || return 1
   q '[.services.worker.secrets[].source] | index("database_maint_password") == null' \
     || fail "worker must not mount the maint password" || return 1
   q '[.services | to_entries[] | select(.value.secrets // [] | map(.source) | index("postgres_password")) | .key] | sort == ["db","db-functions"]' \
@@ -148,6 +152,8 @@ for m in \
   '.services.web.secrets += [{"source":"anthropic_api_key","target":"anthropic_api_key"}]' \
   '.services.web.environment.CLASSBEAT_PUBLIC_BASE_URL = "http://classbeat.example.test"' \
   '.services.web.environment.CLASSBEAT_ENVIRONMENT = "dev"' \
+  '.services.web.environment.CLASSBEAT_RUNNING_ENABLED = "true"' \
+  '.services.worker.environment.CLASSBEAT_SWEDEBEAT_ENABLED = "true"' \
   '.services.mailpit = {"image":"axllent/mailpit","logging":.services.web.logging}' \
   '.volumes["caddy-data"] = {}' \
   '.services.extra = {"image":"busybox","networks":{"proxy":null},"logging":.services.web.logging}' \

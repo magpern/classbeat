@@ -22,7 +22,7 @@ from typing import Any, Final
 
 from mowl.workout import mmss
 
-from classbeat.agent import model_input
+from classbeat.agent import model_input, running_input
 from classbeat.agent.design import (
     GET_MUSIC_DESCRIPTION,
     PREVIEW_DESCRIPTION,
@@ -30,16 +30,17 @@ from classbeat.agent.design import (
     DesignResult,
     check,
     design_stage,
+    is_running,
 )
 from classbeat.agent.guidance import Guidance, rules_result
 from classbeat.agent.model_input import MusicData
 from classbeat.agent.schemas import (
+    AnyDraft,
     Brief,
     DraftInput,
     MusicInput,
     ReviseInput,
     SongsRequestedInput,
-    WorkoutDraft,
 )
 from classbeat.agent.stage import Stage, Tool, ToolAnswer
 
@@ -119,7 +120,7 @@ class ReviseContext:
     brief: Brief
     map: dict[str, Any]  # model_input.music_map(...)
     summary: dict[str, Any]
-    base: WorkoutDraft
+    base: AnyDraft  # a ``RunningDraft`` for a running class
     earlier_requests: tuple[str, ...]  # oldest first, already capped
     request: str
     music_changed: bool
@@ -131,7 +132,7 @@ class ReviseContext:
         cls,
         brief: Brief,
         data: MusicData,
-        base: WorkoutDraft,
+        base: AnyDraft,
         earlier_requests: tuple[str, ...],
         request: str,
         *,
@@ -153,6 +154,18 @@ class ReviseContext:
         )
 
     def first_message(self) -> str:
+        if self.brief.sport == "running":  # ADR 0018: the running brief, never the cycling one
+            if self.songs_changed:
+                raise ValueError("a running class has no song picking")
+            return running_input.revise_message(
+                self.brief,
+                self.summary,
+                self.base.model_dump(mode="json", exclude_none=True),
+                self.earlier_requests,
+                self.request,
+                music_changed=self.music_changed,
+                rules=self.rules.section() if self.rules else None,
+            )
         return model_input.revise_message(
             self.brief,
             self.summary,
@@ -166,6 +179,8 @@ class ReviseContext:
 
 
 def revise_stage(ctx: ReviseContext) -> Stage:
+    if is_running(ctx):  # ADR 0018: a running class never gets the cycling prompt or schema
+        raise ValueError("a running class runs classbeat.agent.running's stage")
     music = DesignContext(ctx.brief, ctx.map, ctx.summary, ctx.rules)
     tools = {t.name: t for t in design_stage(music).tools}
 

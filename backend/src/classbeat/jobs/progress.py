@@ -23,10 +23,13 @@ _EVENTS = text(
     "SELECT seq, kind, payload FROM job_events "
     "WHERE job_id = :job_id AND owner_id = :owner_id AND seq > :after ORDER BY seq LIMIT :limit"
 )
+# ``sport``: the class's stored brief's (ADR 0018; absent = cycling), to read the content with.
 _REVISION = text(
-    "SELECT id, number, kind, content, music, created_at FROM class_revisions "
-    "WHERE job_id = :job_id AND owner_id = :owner_id AND kind = 'draft' "
-    "ORDER BY number DESC LIMIT 1"
+    "SELECT r.id, r.number, r.kind, r.content, r.music, r.created_at, "
+    "(SELECT c.brief ->> 'sport' FROM classes c WHERE c.owner_id = r.owner_id "
+    "AND c.id = r.class_id) AS sport FROM class_revisions r "
+    "WHERE r.job_id = :job_id AND r.owner_id = :owner_id AND r.kind = 'draft' "
+    "ORDER BY r.number DESC LIMIT 1"
 )
 
 
@@ -68,6 +71,7 @@ class StoredRevision:
     content: dict[str, Any]
     music: dict[str, Any]
     created_at: datetime
+    sport: str | None = None  # the class's (ADR 0018); None is cycling
 
 
 @dataclass(frozen=True, slots=True)
@@ -90,5 +94,7 @@ async def read_revision(
     if row is None:
         return JobRevision(None)
     return JobRevision(
-        StoredRevision(row.id, row.number, row.kind, row.content, row.music, row.created_at)
+        StoredRevision(
+            row.id, row.number, row.kind, row.content, row.music, row.created_at, row.sport
+        )
     )
