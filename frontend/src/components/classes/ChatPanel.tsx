@@ -10,6 +10,7 @@ import {
   USE_CHANGE_SONGS,
   USE_FINISH_SONGS,
   USE_NEW_CLASS_FOR_SONGS,
+  USE_OTHER_MUSIC_RUNNING,
 } from '../../api/jobMessages'
 import { cancelJob, createReviseJob, getJob, isTerminal, type Job } from '../../api/jobs'
 import { useJobProgress } from '../../hooks/useJobProgress'
@@ -21,7 +22,7 @@ import { Button } from '../ui/button'
 import { UncertainAttach } from './UncertainAttach'
 
 /** Where the class's songs stand, for the answer to a request that only asks for other songs. */
-type SongsWay = 'change' | 'own' | 'pending'
+type SongsWay = 'change' | 'own' | 'pending' | 'running'
 
 export const MAX_REQUEST_CHARS = 2000
 
@@ -128,7 +129,15 @@ function Unanswered({
   if (job.state === 'failed' && job.errorCategory === 'use_change_songs') {
     return (
       <div className="chat__outcome" role="status" data-testid="use-change-songs">
-        <p>{songs === 'change' ? USE_CHANGE_SONGS : songs === 'own' ? USE_NEW_CLASS_FOR_SONGS : USE_FINISH_SONGS}</p>
+        <p>
+          {songs === 'change'
+            ? USE_CHANGE_SONGS
+            : songs === 'running'
+              ? USE_OTHER_MUSIC_RUNNING
+              : songs === 'own'
+                ? USE_NEW_CLASS_FOR_SONGS
+                : USE_FINISH_SONGS}
+        </p>
         {canChangeSongs ? (
           <Button
             variant="secondary"
@@ -342,7 +351,9 @@ export function ChatPanel({
         openJobId={running?.id ?? null}
         onView={onView}
         songs={
-          summary.songs.state === 'approved' && summary.songs.revisionId !== null
+          summary.sport === 'running'
+            ? 'running'
+            : summary.songs.state === 'approved' && summary.songs.revisionId !== null
             ? 'change'
             : summary.songs.state === 'none'
               ? 'own'
