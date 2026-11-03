@@ -6,8 +6,10 @@ user (``user_session``, owner row security) and also filters on ``owner_id``.
 
 The preference narrows, never widens: ``swedebeat_on`` is the effective ``swedebeat_enabled`` flag
 (the environment's kill switch, then the admin flag, ADR 0011 section 7) **and** the preference.
-The flag is read first, so with it off the user's row is not even read. Disconnect and the account's
-export and deletion never consult it: a user can always remove what is stored about them.
+``swedebeat_on`` reads the flag first and skips the user's row when it is off; the admissions read
+the flag first too. ``GET /api/connections`` reads the stored value whatever the flag says, so the
+account page shows the switch as stored. Disconnect and the account's export and deletion never
+consult it: a user can always remove what is stored about them.
 """
 
 from uuid import UUID
@@ -46,13 +48,6 @@ async def set_uses_swedebeat(
     async with user_session(factory, ctx) as db:
         stored = (await db.execute(_WRITE, {"owner_id": ctx.user_id, "value": value})).scalar_one()
     return stored is True
-
-
-async def swedebeat_on_in(db: AsyncSession, owner_id: UUID, environment_on: bool) -> bool:
-    """Flag first, then the preference, in an open session of the user."""
-    if not await effective.swedebeat_enabled(db, environment_on):
-        return False
-    return await uses_swedebeat_in(db, owner_id)
 
 
 async def swedebeat_on(

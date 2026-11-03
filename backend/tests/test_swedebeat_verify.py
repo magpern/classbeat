@@ -333,6 +333,21 @@ async def test_a_new_mix_is_analysed_ok_and_designs_the_class(
             swedebeat_enabled=True,
         )
     )
+    # #525: with "I use Swedebeat" off the design admission refuses; no job, no credit.
+    await use_swedebeat(henv.ops.factory, browser.user_id, on=False)
+    refused = await browser.post(
+        f"/api/classes/{class_id}/swedebeat-handoff/design", {}, {"Idempotency-Key": new_key()}
+    )
+    assert (refused.status_code, refused.json()) == (404, {"detail": {"reason": "feature_off"}})
+    assert (
+        henv.sql(
+            "SELECT count(*) FROM jobs WHERE owner_id = :o AND kind = :k",
+            o=browser.user_id,
+            k=design.KIND,
+        ).scalar_one()
+        == 0
+    )
+    await use_swedebeat(henv.ops.factory, browser.user_id)
     designed = await browser.post(
         f"/api/classes/{class_id}/swedebeat-handoff/design", {}, {"Idempotency-Key": new_key()}
     )

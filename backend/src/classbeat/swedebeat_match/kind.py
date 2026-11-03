@@ -7,10 +7,11 @@ no credit, no external write.
   user's current one). Ids only, never a title.
 - **admit** (the jobs API's create transaction): ``feature_off`` unless the effective
   ``swedebeat_enabled`` flag is on (``CLASSBEAT_SWEDEBEAT_ENABLED`` and the admin flag, stricter
-  wins), then ``not_connected`` unless the Swedebeat row is ``connected`` (a row that needs a
-  reconnect makes no call), then ``invalid_input`` unless the list is the user's ``song_list`` of
-  that class and still hashes to its stored hash. One open job per class and the per-user limit
-  are the jobs API's own.
+  wins), then ``feature_off`` unless the user's own "I use Swedebeat" preference is on (#525; a
+  connection made before the preference existed does not count as one), then ``not_connected``
+  unless the Swedebeat row is ``connected`` (a row that needs a reconnect makes no call), then
+  ``invalid_input`` unless the list is the user's ``song_list`` of that class and still hashes to
+  its stored hash. One open job per class and the per-user limit are the jobs API's own.
 - **prepare**: the flag again, from the worker's own settings and the database (off: the job ends
   ``feature_off`` and nothing is called), the list again (``song_list.load``), then the Swedebeat
   connection is opened through ``UserContext`` (``classbeat.connections``), in the worker only, for
@@ -49,6 +50,7 @@ from classbeat.connections import (
     open_connection,
     record_result,
 )
+from classbeat.connections.preferences import uses_swedebeat_in
 from classbeat.context import UserContext
 from classbeat.flags import effective as flags
 from classbeat.jobs import KINDS, Complete, JobFailure, JobKind, JobRun
@@ -102,6 +104,8 @@ async def admit(db: AsyncSession, ctx: UserContext, parsed: BaseModel, /) -> Adm
     if not isinstance(parsed, SwedebeatMatchInput):
         return Refused("invalid_input")
     if not await flags.swedebeat_enabled(db, config.current().enabled):
+        return Refused("feature_off")
+    if not await uses_swedebeat_in(db, ctx.user_id):  # #525: nothing goes to Swedebeat
         return Refused("feature_off")
     if not await _connected(db, ctx, parsed.swedebeat_connection_id):
         return Refused("not_connected")

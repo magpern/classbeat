@@ -461,6 +461,18 @@ describe('Next, in the Swedebeat app', () => {
     expect(api.to('POST', `${HANDOFF}/design`)[0]?.body).toEqual({})
   })
 
+  it('offers no design on the verified mix while "I use Swedebeat" is off (#525)', async () => {
+    const api = step({
+      [`GET ${HANDOFF}`]: () => handoffBody({ state: 'verified', verdict: 'ok', mix_id: 'mix-1', checked_at: '2026-11-02T10:00:00Z' }),
+      'GET /api/connections': { ...connections(), swedebeat: { enabled: true, available: true, uses_swedebeat: false } },
+    })
+    renderAt(PAGE)
+    expect(await screen.findByTestId('design-needs-preference')).toHaveTextContent('I use Swedebeat')
+    expect(screen.getByText('Mix verified')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Design the class on this mix' })).toBeNull()
+    expect(api.to('POST', `${HANDOFF}/design`)).toHaveLength(0)
+  })
+
   it('"Not now" writes nothing and can be taken back', async () => {
     const api = step({ [`POST ${HANDOFF}/not-now`]: () => ({ dismissed: true, handoff: null }) })
     renderAt(PAGE)

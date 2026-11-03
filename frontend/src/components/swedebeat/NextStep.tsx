@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useId, useRef, useState } from 'react'
 import { ApiError } from '../../api/client'
 import type { ClassSummary } from '../../api/classes'
+import { getConnectionsView } from '../../api/connections'
 import { failureText } from '../../api/jobMessages'
 import { getJob, isTerminal } from '../../api/jobs'
 import {
@@ -18,7 +19,7 @@ import {
 import { getSwedebeatMixes, type SwedebeatMix } from '../../api/swedebeatMixes'
 import { minutes } from '../../lib/songs'
 import { actionKey, dropActionKey } from '../../lib/submittedInput'
-import { useRouter } from '../../router/Router'
+import { Link, useRouter } from '../../router/Router'
 import { Notice, useAction } from '../forms'
 import { Button } from '../ui/button'
 import { Card, CardTitle } from '../ui/card'
@@ -81,6 +82,8 @@ export function NextStep({
   const [picked, setPicked] = useState<string | null>(null)
   const [waiting, setWaiting] = useState(false)
   const [jobProblem, setJobProblem] = useState<string | null>(null)
+  // The user's "I use Swedebeat" (#525): designing on the mix needs it; null while loading.
+  const [usesSwedebeat, setUsesSwedebeat] = useState<boolean | null>(null)
   const action = useAction()
   const locked = useRef(false)
   const alive = useRef(true)
@@ -91,6 +94,21 @@ export function NextStep({
     alive.current = true
     return () => {
       alive.current = false
+    }
+  }, [])
+
+  useEffect(() => {
+    let live = true
+    getConnectionsView().then(
+      (view) => {
+        if (live) setUsesSwedebeat(view.swedebeat.usesSwedebeat)
+      },
+      () => {
+        if (live) setUsesSwedebeat(false)
+      },
+    )
+    return () => {
+      live = false
     }
   }, [])
 
@@ -289,9 +307,17 @@ export function NextStep({
       {verified ? (
         <div className="flex flex-wrap items-center gap-3">
           <Chip tone="ok">Mix verified</Chip>
-          <Button disabled={busy || summary.openJob !== null} onClick={design}>
-            Design the class on this mix
-          </Button>
+          {usesSwedebeat === true ? (
+            <Button disabled={busy || summary.openJob !== null} onClick={design}>
+              Design the class on this mix
+            </Button>
+          ) : null}
+          {usesSwedebeat === false ? (
+            <p className="m-0 text-muted" data-testid="design-needs-preference">
+              To design on this mix, turn on “I use Swedebeat” on{' '}
+              <Link to="/account#connections">your account page</Link>.
+            </p>
+          ) : null}
         </div>
       ) : (
         <div className="flex flex-wrap gap-3">

@@ -18,10 +18,11 @@ nothing:
 4. ``analysis_limit`` (with ``limit`` and ``used``) when the mix has no usable cached analysis and
    the user started ``mixlimit.ANALYSES_PER_DAY`` new analyses in the last 24 hours.
 
-The worker repeats what can change after creation: ``still_on`` (a queued job whose flag went off
-ends ``feature_off``, calling nothing), and the listing and ``mixlimit.reserve`` inside
-``swedebeat_music`` before anything is attached or fetched. ``revise_draft`` on a class designed
-on a mix checks the flag and the limit (``admit_class_mix``); its mix id is the class's own.
+The worker repeats what can change after creation: ``still_on`` (a queued job whose flag went off,
+or for a new design whose user turned the preference off, ends ``feature_off``, calling nothing),
+and the listing and ``mixlimit.reserve`` inside ``swedebeat_music`` before anything is attached or
+fetched. ``revise_draft`` on a class designed on a mix checks the flag and the limit
+(``admit_class_mix``); its mix id is the class's own.
 
 The web app sets ``MixAdmission`` at start (``classbeat.web``: the switch and the listing, which
 opens the user's MOWL connection through ``classbeat.connections``). Without it the switch is off
@@ -183,10 +184,14 @@ async def admit_class_mix(
     return await _limit(db, ctx.user_id, row.mix_id, connection_id)
 
 
-async def still_on(run: JobRun, environment_on: bool) -> None:
+async def still_on(run: JobRun, environment_on: bool, *, new_design: bool = False) -> None:
     """In the worker, before the music step of a job on a mix: ``feature_off`` when the flag is
-    off now (the job was queued while it was on), before anything is called."""
+    off now (the job was queued while it was on), before anything is called. For a new design
+    (``new_design``, not a revise of a class already on a mix) also when the user turned their
+    "I use Swedebeat" preference off meanwhile (#525)."""
     async with run.fenced() as fs:
         on = await flag_on(fs.db, environment_on)
+        if on and new_design:
+            on = await uses_swedebeat_in(fs.db, run.lease.owner_id)
     if not on:
         raise JobFailure("feature_off")

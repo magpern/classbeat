@@ -643,3 +643,61 @@ async def test_the_flag_off_admits_nothing_and_a_queued_job_calls_nothing(
         assert catalogue.calls == []
     finally:
         _flag(admin, None)
+
+
+def _rows(admin: Connection, table: str, owner: UUID) -> int:
+    return admin.execute(
+        text(f"SELECT count(*) FROM {table} WHERE owner_id = :o"),  # noqa: S608 - fixed names
+        {"o": owner},
+    ).scalar_one()
+
+
+async def test_the_preference_off_admits_no_match_and_sends_nothing(
+    env: Env, admin: Connection, make_actor: Any, catalogue: CatalogueFake, configured: None
+) -> None:
+    """#525: a stored, connected Swedebeat row is not enough; the user's own switch is."""
+    rider = await _rider(
+        env,
+        make_actor,
+        account="pref-off@example.com",
+        swedebeat_email=EMAIL,
+        password=PASSWORD,
+        start=61,
+        bpm=104.0,
+        class_title="Preference Brief",
+    )
+    await use_swedebeat(env.factory, rider.user_id, on=False)
+    refused = await _post_job(rider.actor, _body(rider))
+    assert refused.status_code == 409, refused.text
+    assert refused.json()["detail"]["reason"] == "feature_off"
+    assert catalogue.calls == []
+    assert _rows(admin, "jobs", rider.user_id) == 0
+    assert _rows(admin, "credit_ledger", rider.user_id) == 0
+    # The same user with the switch on again is admitted: the refusal was the preference's.
+    await use_swedebeat(env.factory, rider.user_id)
+    admitted = await _post_job(rider.actor, _body(rider))
+    assert admitted.status_code == 201, admitted.text
+
+
+async def test_a_user_connected_before_the_preference_existed_is_refused(
+    env: Env, admin: Connection, make_actor: Any, catalogue: CatalogueFake, configured: None
+) -> None:
+    """A connection made before migration 0027 has no ``user_preferences`` row: that is off."""
+    rider = await _rider(
+        env,
+        make_actor,
+        account="pre-0027@example.com",
+        swedebeat_email=EMAIL,
+        password=PASSWORD,
+        start=71,
+        bpm=105.0,
+        class_title="Older Brief",
+    )
+    admin.execute(text("DELETE FROM user_preferences WHERE owner_id = :o"), {"o": rider.user_id})
+    assert _rows(admin, "connections", rider.user_id) == 1
+    refused = await _post_job(rider.actor, _body(rider))
+    assert refused.status_code == 409, refused.text
+    assert refused.json()["detail"]["reason"] == "feature_off"
+    assert catalogue.calls == []
+    assert _rows(admin, "jobs", rider.user_id) == 0
+    assert _rows(admin, "credit_ledger", rider.user_id) == 0
