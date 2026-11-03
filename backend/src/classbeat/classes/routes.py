@@ -26,7 +26,7 @@ from pydantic import ValidationError
 
 from classbeat import auth
 from classbeat.agent.design import ZONE7
-from classbeat.agent.schemas import WorkoutDraft
+from classbeat.agent.schemas import stored_draft
 from classbeat.classes import match_view, pattern_notes, selection, service, song_views
 from classbeat.classes.schemas import (
     ClassDetailOut,
@@ -220,8 +220,10 @@ async def get_revision(
     row = await service.get_revision(factory, ctx, wanted_class, wanted)
     if row is None:
         return await _song_list(request, factory, ctx, wanted_class, wanted)
+    brief, dismissed = await service.get_pattern_inputs(factory, ctx, wanted_class)
     try:
-        draft = WorkoutDraft.model_validate(row.content)  # only keys the schema names are shown
+        # Only keys the class's sport's schema names are shown (ADR 0018: absent = cycling).
+        draft = stored_draft(row.content, brief.sport if brief is not None else None)
         raw: Any = row.music.get("unknown_bpm", [])
         unknown = [UnknownBpmOut(index=int(u["index"]), title=str(u["title"])) for u in raw]
         provenance = ProvenanceOut.model_validate(row.provenance)
@@ -233,7 +235,6 @@ async def get_revision(
             else any(i.zone == ZONE7 for s in draft.segments for i in s.intervals)
         )
         content = draft.model_dump(mode="json", exclude_none=True)
-        brief, dismissed = await service.get_pattern_inputs(factory, ctx, wanted_class)
         notes = pattern_notes.pattern_notes(content, brief, dismissed, row.provenance)
         hits = [RuleHitOut.model_validate(h) for h in notes.hits]
     except (ValidationError, KeyError, TypeError, ValueError):

@@ -12,7 +12,7 @@ from typing import Any
 
 from classbeat.agent.schemas import Brief
 from classbeat.design.rules import MAX_HITS, default_registry, evaluate
-from classbeat.design.selection import select_profile_for_brief
+from classbeat.design.sport_rules import select_profile_for
 
 
 @dataclass(frozen=True, slots=True)
@@ -38,7 +38,7 @@ def pattern_notes(
     ``uses_current_rules`` is set when the revision's recorded digest differs from the loaded
     profile's; a revision with no recorded digest sets nothing.
     """
-    profile = None if brief is None else select_profile_for_brief(brief)
+    profile = None if brief is None else select_profile_for(brief)  # the brief's sport only
     if brief is None or profile is None:
         return PatternNotes([], False)
     found = evaluate(spec, brief, profile, frozenset(dismissed))[:MAX_HITS]

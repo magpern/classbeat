@@ -44,14 +44,15 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints, TypeAdapter, model_validator
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from classbeat.agent import AgentConfig, Brief, DesignContext, JobStageHost, design_stage, run_stage
+from classbeat.agent import AgentConfig, Brief, DesignContext, JobStageHost, run_stage
 from classbeat.agent.design import DesignResult
+from classbeat.agent.running import design_stage_for
 from classbeat.config import Settings
 from classbeat.context import UserContext
 from classbeat.crypto.keks import KeyRing
-from classbeat.design import mixadmit, revision
-from classbeat.design.guidance import rule_set_for
+from classbeat.design import mixadmit, revision, sport
 from classbeat.design.music import MusicStep, load_music
+from classbeat.design.sport_rules import rules_for
 from classbeat.design.swedebeat_music import swedebeat_step
 from classbeat.jobs import KINDS, Complete, FencedSession, JobFailure, JobKind, JobRun
 from classbeat.jobs.inputs import ModelJobInput, jsonb_size
@@ -114,8 +115,16 @@ class DesignDraftInput(ModelJobInput):
 
     @model_validator(mode="after")
     def _brief_fits_the_class(self) -> Self:
-        if jsonb_size(self.brief.model_dump(mode="json")) > revision.MAX_BRIEF_BYTES:
+        if jsonb_size(self.brief.stored()) > revision.MAX_BRIEF_BYTES:
             raise ValueError("the brief is too long")
+        return self
+
+    @model_validator(mode="after")
+    def _running_on_a_mowl_playlist(self) -> Self:
+        """ADR 0018 section 2: a running class designs on an existing MOWL playlist only (no
+        Swedebeat mix in v1)."""
+        if self.brief.sport == "running" and not isinstance(self.music, SpotifyMusicChoice):
+            raise ValueError("a running class designs on a MOWL playlist only")
         return self
 
 
@@ -188,6 +197,10 @@ async def admit(db: AsyncSession, ctx: UserContext, parsed: BaseModel) -> Admitt
     ``mixadmit.admit_mix`` (the flag, the MOWL connection, the user's own listing, the limit)."""
     if not isinstance(parsed, DesignDraftInput):
         return Refused("invalid_input")
+    # ADR 0018: the running flag and the class's fixed sport, before anything else is read.
+    refused = await sport.admit_brief(db, ctx.user_id, parsed.brief, parsed.class_id)
+    if refused is not None:
+        return refused
     if isinstance(parsed.music, SwedebeatMusicChoice):
         refused = await mixadmit.admit_mix(db, ctx, parsed.music.mix_id, parsed.mowl_connection_id)
         if refused is not None:
@@ -202,6 +215,8 @@ async def run(job_run: JobRun) -> Complete:
     given = job_run.input
     if not isinstance(given, DesignDraftInput) or job_run.approved:
         raise JobFailure("internal")
+    if given.brief.sport == sport.RUNNING:
+        await sport.still_on(job_run)  # ADR 0018 section 5: before anything is called
     if isinstance(given.music, SwedebeatMusicChoice):
         await mixadmit.still_on(job_run, runtime.swedebeat_enabled)  # before anything is called
     model = await group_model(runtime, job_run, given.route_key, "design")  # before any MOWL call
@@ -209,9 +224,9 @@ async def run(job_run: JobRun) -> Complete:
     step = await music_step(job_run, runtime, given.music, given.mowl_connection_id)
     handed_over = False  # the outcome's ``release`` closes the step from then on
     try:
-        rules = rule_set_for(given.brief)  # nothing is dismissed on a new class
+        rules = rules_for(given.brief)  # nothing is dismissed on a new class
         ctx = DesignContext.build(given.brief, step.data, rules)
-        stage = design_stage(ctx)
+        stage = design_stage_for(ctx)  # the brief's sport's prompt and schema (ADR 0018)
         outcome = await run_stage(
             JobStageHost(job_run), model.provider, stage, ctx.first_message(), model.agent
         )
@@ -233,9 +248,10 @@ async def run(job_run: JobRun) -> Complete:
             adopted = await revision.adopt_first(
                 fs,
                 revision_id,
-                given.brief.model_dump(mode="json"),
+                given.brief.stored(),  # the sport written explicitly (ADR 0018 section 1)
                 given.music.model_dump(mode="json"),
             )
+            await sport.check_stored(fs, given.brief.sport)  # the class's sport never changes
             if not adopted and isinstance(given.music, SwedebeatMusicChoice):
                 # A verified hand-off designs on the mix, replacing the Spotify source.
                 from classbeat.swedebeat_handoff.adopt import adopt_verified_mix

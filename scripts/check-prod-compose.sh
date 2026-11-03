@@ -43,6 +43,10 @@ q '.services.web.environment.CLASSBEAT_SWEDEBEAT_ENABLED == "false"' \
   || fail "Swedebeat must be off by default"
 q '.services.worker.environment.CLASSBEAT_SWEDEBEAT_ENABLED == "false"' \
   || fail "Swedebeat must be off by default on the worker too"
+q '.services.web.environment.CLASSBEAT_RUNNING_ENABLED == "false"' \
+  || fail "running classes must be off by default"
+q '.services.worker.environment.CLASSBEAT_RUNNING_ENABLED == "false"' \
+  || fail "running classes must be off by default on the worker too"
 q '[.services.worker.secrets[].source] | index("database_maint_password") == null' \
   || fail "worker must not mount the maint password"
 q '[.services | to_entries[] | select(.value.secrets // [] | map(.source) | index("postgres_password")) | .key] | sort == ["db","db-functions"]' \

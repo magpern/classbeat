@@ -131,6 +131,75 @@ class WorkoutDraft(BaseModel):
         }
 
 
+class RunningInterval(BaseModel):
+    """A running interval (ADR 0018, mowl-workouts 0.9.0 ``validate_running``): its length, a zone
+    of 1 to 5 and the treadmill incline. No cadence, position, game or FTP test exists here, and
+    a strict schema refuses any of them."""
+
+    model_config = STRICT
+
+    sec: int = Field(ge=1, le=3600, description="Length in whole seconds.")
+    zone: int = Field(ge=1, le=5, description="Effort zone 1 (recovery) to 5 (VO2max).")
+    gradient: int = Field(
+        default=0,
+        ge=0,
+        le=1,
+        description="Treadmill incline: 0 flat, 1 the raised incline of MOWL's running classes.",
+    )
+    cue: Cue = ""
+
+    def to_spec(self) -> dict[str, Any]:
+        return {"sec": self.sec, "zone": self.zone, "gradient": self.gradient}
+
+
+class RunningSegment(BaseModel):
+    model_config = STRICT
+
+    name: SegmentName
+    kind: Literal["warmup", "main", "recovery", "cooldown"]
+    intervals: list[RunningInterval] = Field(min_length=1, max_length=60)
+
+
+class RunningDraft(BaseModel):
+    """A running class as the model hands it back (ADR 0018 section 2). ``to_spec`` adds the
+    library's ``"sport": "running"``; the model never states the sport."""
+
+    model_config = STRICT
+
+    name: WorkoutName
+    description: Description = ""
+    segments: list[RunningSegment] = Field(min_length=1, max_length=20)
+
+    def to_spec(self) -> dict[str, Any]:
+        return {
+            "sport": "running",
+            "name": self.name,
+            "description": self.description,
+            "segments": [
+                {
+                    "name": s.name,
+                    "kind": s.kind,
+                    "intervals": [i.to_spec() for i in s.intervals],
+                }
+                for s in self.segments
+            ],
+        }
+
+
+AnyDraft = WorkoutDraft | RunningDraft
+
+
+def draft_model(sport: str | None) -> type[WorkoutDraft] | type[RunningDraft]:
+    """The draft schema of a class's sport: ``running``, else cycling (absent is cycling)."""
+    return RunningDraft if sport == "running" else WorkoutDraft
+
+
+def stored_draft(content: Any, sport: str | None) -> AnyDraft:
+    """A stored ``class_revisions.content`` read with its class's sport's schema, never the other
+    one (``ValidationError`` when it does not fit)."""
+    return draft_model(sport).model_validate(content)
+
+
 class DraftInput(BaseModel):
     """``preview_draft`` and ``submit_draft``."""
 
@@ -142,6 +211,21 @@ class DraftInput(BaseModel):
 class ReviseInput(DraftInput):
     """``submit_draft`` of the ``revise`` stage: the draft and, optionally, one sentence on what
     changed. The note is shown to the user as plain text and never sent back to a model."""
+
+    note: Note = Field(default="", description="One sentence on what you changed (optional).")
+
+
+class RunningDraftInput(BaseModel):
+    """``preview_draft`` and ``submit_draft`` of a running class: the running schema only."""
+
+    model_config = STRICT
+
+    draft: RunningDraft
+
+
+class RunningReviseInput(RunningDraftInput):
+    """``submit_draft`` of a running ``revise``: the draft and the optional note, as
+    ``ReviseInput``."""
 
     note: Note = Field(default="", description="One sentence on what you changed (optional).")
 
@@ -163,11 +247,25 @@ class MusicInput(BaseModel):
     )
 
 
+Sport = Literal["cycling", "running"]
+SPORTS: tuple[str, ...] = ("cycling", "running")
+# ADR 0018 section 4: the bike-only knobs of the brief. A running brief may not name them (not even
+# at their defaults), and its stored and sized form leaves them out.
+CYCLING_ONLY_BRIEF: tuple[str, ...] = ("climbs", "sprints", "races", "ftp_test")
+
+
 class Brief(BaseModel):
-    """The new-class form's brief (ADR 0006 section 7)."""
+    """The new-class form's brief (ADR 0006 section 7).
+
+    ``sport`` (ADR 0018 section 1): ``cycling`` or ``running``. A brief without it is cycling (every
+    brief stored before it), and a cycling brief's ``model_dump`` leaves it out, so what the evals,
+    the size guard and every existing reader see of a cycling brief is byte-identical. The class's
+    stored brief writes it explicitly (``stored``). A running brief refuses the bike-only knobs
+    (``CYCLING_ONLY_BRIEF``) and the ``ftp_test`` class type."""
 
     model_config = STRICT
 
+    sport: Sport = "cycling"
     length_min: int = Field(ge=10, le=180)
     intensity: Literal["easy", "moderate", "hard"] = "moderate"
     climbs: int = Field(default=0, ge=0, le=10)
@@ -181,14 +279,38 @@ class Brief(BaseModel):
     # import it: ``classbeat.design`` imports the agent).
     class_type: Literal["plain", "interval", "hiit", "journey", "ftp_test"] | None = None
 
+    @model_validator(mode="after")
+    def _running_has_no_bike_knobs(self) -> Self:
+        if self.sport != "running":
+            return self
+        named = sorted(set(CYCLING_ONLY_BRIEF) & self.model_fields_set)
+        if named:
+            raise ValueError(f"a running brief has no {', '.join(named)}")
+        if self.class_type == "ftp_test":
+            raise ValueError("a running brief has no ftp_test class type")
+        return self
+
     @model_serializer(mode="wrap")
     def _omit_absent_class_type(self, handler: SerializerFunctionWrapHandler) -> dict[str, Any]:
         """An absent ``class_type`` is not written, so a stored or sized brief of today is
-        byte-identical (the ``classes.brief`` size guard is unchanged)."""
+        byte-identical (the ``classes.brief`` size guard is unchanged). Nor is ``sport`` of a
+        cycling brief (ADR 0018: absent is cycling); a running brief is written with its sport
+        and without the bike-only knobs, so it validates again as written."""
         out: dict[str, Any] = handler(self)
         if out.get("class_type") is None:
             out.pop("class_type", None)
+        if out.get("sport") == "running":
+            for key in CYCLING_ONLY_BRIEF:
+                out.pop(key, None)
+        else:
+            out.pop("sport", None)
         return out
+
+    def stored(self) -> dict[str, Any]:
+        """The class's stored brief (``classes.brief``, ADR 0018 section 1): ``model_dump`` with
+        the sport written explicitly, so a new class says what it is. The size guard measures
+        this form."""
+        return {**self.model_dump(mode="json"), "sport": self.sport}
 
 
 # --- song picking (ADR 0008 section 3) ----------------------------------------------------------

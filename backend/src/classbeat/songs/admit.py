@@ -61,6 +61,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from classbeat import connections
 from classbeat.context import UserContext
+from classbeat.design import sport
 from classbeat.flags import effective as flags
 from classbeat.jobs.kinds import SONG_KIND_NAMES, Admitted, Approving, Refused
 from classbeat.operations import orphans
@@ -207,6 +208,10 @@ async def admit(db: AsyncSession, ctx: UserContext, parsed: BaseModel, /) -> Adm
         return Refused("song_picking_off")
     if parsed.mode == "resume":
         return await _admit_resume(db, ctx, parsed)
+    # ADR 0018: the input is cycling only; a class whose sport is fixed as running is refused.
+    fixed = await sport.admit_brief(db, ctx.user_id, parsed.brief, parsed.class_id)
+    if fixed is not None:
+        return fixed
     refused = await pick_checks(db, ctx, parsed.spotify_connection_id)
     if refused is not None:
         return refused

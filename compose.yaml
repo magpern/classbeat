@@ -104,6 +104,8 @@ services:
       CLASSBEAT_MAINT_DATABASE_URL: postgresql+psycopg://classbeat_maint@db:5432/classbeat
       # ADR 0015: the Swedebeat connection is off unless the owner switches it on here.
       CLASSBEAT_SWEDEBEAT_ENABLED: ${SWEDEBEAT_ENABLED:-false}
+      # ADR 0018: running classes are off unless the owner switches them on here.
+      CLASSBEAT_RUNNING_ENABLED: ${RUNNING_ENABLED:-false}
     # swedebeat_app (ADR 0015 section 4) is web's only: Swedebeat's app key as a runtime
     # override of the key a release image holds. Empty from init (empty is no key).
     secrets:
@@ -139,6 +141,8 @@ services:
       # ADR 0016: a design job on a Swedebeat mix checks the switch again when it runs; off here,
       # every such job ends feature_off. The same value as web's.
       CLASSBEAT_SWEDEBEAT_ENABLED: ${SWEDEBEAT_ENABLED:-false}
+      # ADR 0018: a queued running design or revise checks the switch again; the same as web's.
+      CLASSBEAT_RUNNING_ENABLED: ${RUNNING_ENABLED:-false}
     # The model API keys are the worker's only: web, migrate and maint never mount them
     # (ADR 0006 section 9, ADR 0012 section 2).
     secrets:

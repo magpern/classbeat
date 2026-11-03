@@ -70,7 +70,7 @@ from classbeat.agent import (
 from classbeat.agent.provider import ModelProvider
 from classbeat.connections import OpenConnection, hold, open_connection
 from classbeat.crypto.keks import KeyRing
-from classbeat.design import revision
+from classbeat.design import revision, sport
 from classbeat.design.guidance import rule_set_for
 from classbeat.design.music import MusicStep, load_music
 from classbeat.jobs import Complete, FencedSession, JobFailure, JobRun
@@ -358,6 +358,8 @@ async def run_phase_two(
     agent: AgentConfig,
     config: SongConfig,
 ) -> Complete:
+    if given.brief.sport != "cycling":
+        raise JobFailure("invalid_input")  # ADR 0018: the input refuses it; never a running pick
     p, final, step = await final_music(run, keyring, given, config)
     try:
         rules = rule_set_for(given.brief)
@@ -388,9 +390,8 @@ async def run_phase_two(
         """The final transaction (module docstring, step 7)."""
         await final_checks(fs, p, final, step)
         revision_id = await draft.store(fs)
-        await revision.adopt_first(
-            fs, revision_id, given.brief.model_dump(mode="json"), music_source(final)
-        )
+        await revision.adopt_first(fs, revision_id, given.brief.stored(), music_source(final))
+        await sport.check_stored(fs, given.brief.sport)  # the class's sport never changes
         await mark_mowl(fs, p, final, mowl_playlist_id)
         return revision_id
 

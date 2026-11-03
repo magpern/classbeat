@@ -298,6 +298,10 @@ class Settings(BaseSettings):
     # ``app_key_unavailable``.
     swedebeat_enabled: bool = False
     swedebeat_app: SecretStr | None = None
+    # ADR 0018 section 5: running classes. The environment's kill switch (off by default; the
+    # admin flag ``running_enabled`` can only tighten it), read by the web (admit) and the worker
+    # (a queued running job checks it again).
+    running_enabled: bool = False
     swedebeat_app_file: Path = Path("/app/swedebeat_app.json")
 
     @classmethod

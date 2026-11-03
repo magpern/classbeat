@@ -12,6 +12,8 @@ against the authenticated user and failing closed:
   another class, is ``invalid_input``, never a different answer), and it is a ``draft``;
 - its stored ``content_hash`` equals the approved one (``hash_mismatch``) and the SHA-256 of its
   canonical content recomputed now (``invalid_input``: the row is not what was hashed);
+- the class is a cycling class (ADR 0018, M8 R1a: a running class is refused ``invalid_input``
+  until R1b, #490, adds its save; the sport is the class's stored brief's, absent = cycling);
 - the content is a ``WorkoutDraft`` whose spec passes ``workout.validate`` (``invalid_input``);
 - the revision's ``music.link_id`` names a ``mowl_playlist_links`` row of the user of the
   revision's source (``spotify`` for a playlist, ``swedebeat`` for a mix, ADR 0016 section 3)
@@ -50,8 +52,9 @@ MAX_PLAYLIST_ID: Final = 2**63 - 1
 MAX_PROGRAM_ID: Final = 2**63 - 1
 
 _REVISION = text(
-    "SELECT r.id, r.class_id, r.number, r.kind, r.content, r.content_hash, r.music "
-    "FROM class_revisions r JOIN classes c ON c.owner_id = r.owner_id AND c.id = r.class_id "
+    "SELECT r.id, r.class_id, r.number, r.kind, r.content, r.content_hash, r.music, "
+    "c.brief ->> 'sport' AS sport FROM class_revisions r "
+    "JOIN classes c ON c.owner_id = r.owner_id AND c.id = r.class_id "
     "WHERE r.owner_id = :owner_id AND r.class_id = :class_id AND r.id = :revision_id"
 )
 _LINK = text(
@@ -110,6 +113,8 @@ async def revision(
     ).first()
     if row is None or row.kind != "draft":
         return Refusal("invalid_input")
+    if row.sport is not None and row.sport != "cycling":
+        return Refusal("invalid_input")  # ADR 0018: no running save before R1b (#490)
     stored = bytes(row.content_hash)
     if stored != content_hash:
         return Refusal("hash_mismatch")
