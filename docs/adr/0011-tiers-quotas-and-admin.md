@@ -543,8 +543,12 @@ Proposed with ADR 0007's amendment of the same date, to be confirmed by the Arch
   (new, same module) does what `reserve` does for the classes limit, in the duplicate's transaction:
   the period's `quota_periods` row locked, held counted, `QuotaRefused` `classes` at the effective
   `classes_per_month` (409 `quota`, the usual body and sentence), otherwise one `credit_ledger` row
-  inserted `reserved` with `job_id` NULL and turned `committed` (no reason, `settled_at = now()`)
-  at once in the same transaction. Both steps are what the existing policies and `credit_ledger_guard`
+  inserted `reserved` with `job_id` NULL (`INSERT ... RETURNING id`) and turned `committed` by that
+  `id` (no reason, `settled_at = now()`) at once in the same transaction; `_COMMIT`, which matches on
+  `job_id`, is not reused. The caller holds the owner advisory lock (`jobs.user.lock_owner`) before
+  `take_class` locks the period row, the order job creation uses (owner lock, then the period), so
+  duplicates and job creates serialise the same way and cannot deadlock. A retried duplicate with
+  the same `Idempotency-Key` takes no second credit (ADR 0007 amendment, D item 7). Both steps are what the existing policies and `credit_ledger_guard`
   already allow the app role; no migration. The row counts as held (committed), is never released
   (there is no job to fail), can be refunded by an admin like any committed credit (§3), and stays
   when either class is deleted. The cost cap is not checked: a duplicate spends no model money, and
@@ -552,3 +556,7 @@ Proposed with ADR 0007's amendment of the same date, to be confirmed by the Arch
 - **Gates of the current plan.** The copied brief (`check_brief`) and draft (`check_content`) are
   checked against the user's **current** effective plan, as Make current is (#496): 409 `quota`
   `length` or `feature`; nothing is created.
+- **Known difference in the figures.** A duplicate's committed row has no job, like a committed
+  credit whose job was deleted with its class, in the admin ledger list and the export; the
+  account page's held count includes duplicates and Usage's `classes_designed` does not. Recorded,
+  not fixed (a marker would need a column).
