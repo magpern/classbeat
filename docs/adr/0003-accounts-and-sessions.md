@@ -299,6 +299,10 @@ is no Starlette session middleware.
     re-authentication keeps failing can set a password through a reset and re-authenticate with it.
 - **Enabling a provider:** a provider is on only when both its client id setting and its
   `oauth_<provider>_client_secret` secret file exist. Client secrets are never logged.
+- **Which enabled providers the screens offer:** `CLASSBEAT_OAUTH_VISIBLE_PROVIDERS` (default
+  `google`), a comma-separated list. It only hides buttons (`GET /api/auth/oauth/providers`): every
+  enabled provider still starts and completes a flow. A name that is not `google`, `github` or
+  `microsoft` is logged once as a warning, by name only (#391).
 - **Outbound hosts:** only the provider endpoints (T19).
 
 **Callback outcomes** (identity key `(provider, subject)`, never email, T1). The flow purpose

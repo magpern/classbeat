@@ -10,10 +10,12 @@ export type SongsAvailability =
   | { kind: 'needs_consent' }
   | { kind: 'ready'; spotifyConnectionId: string }
 
-/** Whether "Use my Swedebeat mix" is offered (ADR 0016 section 3). */
+/**
+ * Whether "Use my Swedebeat mix" is offered (ADR 0016 section 3). The new-class page renders the form
+ * only with a connected MOWL account, so there is no "needs MOWL" state here.
+ */
 export type SwedebeatMixAvailability =
   | { kind: 'off' }
-  | { kind: 'needs_mowl' }
   | { kind: 'ready' }
   | { kind: 'failed'; message: string }
 
@@ -21,7 +23,7 @@ export type SwedebeatMixAvailability =
  * The music choice of the new-class form: a playlist from MOWL, song picking, or a Swedebeat mix.
  * Without Spotify and the working-playlist consent the second choice is not selectable and links
  * to the wizard; with song picking switched off nothing is shown. The Swedebeat mix choice needs
- * the effective `swedebeat_enabled` flag and a MOWL connection.
+ * the effective `swedebeat_enabled` flag (the page itself needs the MOWL connection).
  */
 export function MusicChoice({
   songs,
@@ -83,12 +85,6 @@ export function MusicChoice({
         <p className="m-0 text-[0.9375rem] text-muted">
           Allow the working playlist in your Spotify settings first.{' '}
           <Link to="/account/spotify">Open the Spotify settings</Link>
-        </p>
-      ) : null}
-      {swedebeat.kind === 'needs_mowl' ? (
-        <p className="m-0 text-[0.9375rem] text-muted">
-          A Swedebeat mix is read through MOWL.{' '}
-          <Link to="/account">Connect MOWL on your account page</Link> first.
         </p>
       ) : null}
       {swedebeat.kind === 'failed' ? (

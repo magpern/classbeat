@@ -75,6 +75,18 @@ async def test_screens_offer_only_the_visible_providers_but_every_enabled_one_wo
     assert providers == ["github", "microsoft"]  # unknown names are ignored
 
 
+async def test_an_unknown_visible_provider_name_is_warned_about_by_name_once(
+    oenv: Env, caplog: pytest.LogCaptureFixture
+) -> None:
+    oenv.settings.oauth_visible_providers = "google, gogle ,,"
+    caplog.set_level(logging.WARNING, logger="classbeat.auth.oauth_providers")
+    for _ in range(2):
+        providers = (await Browser(oenv).get("/api/auth/oauth/providers")).json()["providers"]
+        assert providers == ["google"]
+    warnings = [r.getMessage() for r in caplog.records if "unknown provider" in r.getMessage()]
+    assert warnings == ["CLASSBEAT_OAUTH_VISIBLE_PROVIDERS names an unknown provider: 'gogle'"]
+
+
 async def test_new_google_user_with_a_verified_email_signs_up_and_in(
     oenv: Env, fake: FakeProviders, smtp: SmtpFake
 ) -> None:

@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react'
+import { createContext, useCallback, useContext, useMemo, useRef, useState, type FormEvent, type ReactNode, type RefObject } from 'react'
 import { stepUp } from '../../api/auth'
 import { adminError } from '../../api/admin'
 import { ApiError } from '../../api/client'
@@ -52,10 +52,15 @@ export function StepUpProvider({
 }) {
   const [open, setOpen] = useState(false)
   const waiters = useRef<Waiter[]>([])
+  // What had focus when the prompt opened (the button that started the write): focus goes back to it.
+  const opener = useRef<HTMLElement | null>(null)
 
   const ask = useCallback(
     () =>
       new Promise<void>((resolve, reject) => {
+        if (waiters.current.length === 0) {
+          opener.current = document.activeElement instanceof HTMLElement ? document.activeElement : null
+        }
         waiters.current.push({ resolve, reject })
         setOpen(true)
       }),
@@ -105,14 +110,20 @@ export function StepUpProvider({
           if (!next) finish('cancelled')
         }}
       >
-        {open ? <StepUpDialog onDone={finish} /> : null}
+        {open ? <StepUpDialog onDone={finish} openerRef={opener} /> : null}
       </Dialog>
     </StepUpContext.Provider>
   )
 }
 
 /** The prompt itself; unmounted (and its input with it) as soon as it closes. */
-function StepUpDialog({ onDone }: { onDone: (outcome: 'ok' | 'cancelled' | 'mfa') => void }) {
+function StepUpDialog({
+  onDone,
+  openerRef,
+}: {
+  onDone: (outcome: 'ok' | 'cancelled' | 'mfa') => void
+  openerRef: RefObject<HTMLElement | null>
+}) {
   const { refresh } = useSession()
   const [code, setCode] = useState('')
   const [busy, setBusy] = useState(false)
@@ -144,7 +155,16 @@ function StepUpDialog({ onDone }: { onDone: (outcome: 'ok' | 'cancelled' | 'mfa'
   }
 
   return (
-    <DialogContent aria-describedby="stepup-description">
+    <DialogContent
+      aria-describedby="stepup-description"
+      onCloseAutoFocus={(event) => {
+        const target = openerRef.current
+        if (target?.isConnected === true) {
+          target.focus()
+          event.preventDefault()
+        }
+      }}
+    >
       <DialogTitle>Enter a two-factor code</DialogTitle>
       <DialogDescription id="stepup-description">
         Admin changes need a fresh code from your authenticator app, or one of your recovery codes.

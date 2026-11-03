@@ -21,19 +21,6 @@ describe('MusicChoice', () => {
     expect(container).toBeEmptyDOMElement()
   })
 
-  it('offers a Swedebeat mix chip when the flag is on and links to MOWL without it', () => {
-    withRouter(
-      <MusicChoice
-        songs={{ kind: 'off' }}
-        swedebeat={{ kind: 'needs_mowl' }}
-        value="playlist"
-        onChange={() => undefined}
-      />,
-    )
-    expect(screen.getByRole('button', { name: 'Use my Swedebeat mix' })).toBeDisabled()
-    expect(screen.getByRole('link', { name: 'Connect MOWL on your account page' })).toHaveAttribute('href', '/account')
-  })
-
   it('shows a plain sentence when the mix list failed', () => {
     withRouter(
       <MusicChoice
@@ -45,6 +32,7 @@ describe('MusicChoice', () => {
     )
     expect(screen.getByText('MOWL could not be reached. Try again in a few minutes.')).toBeInTheDocument()
     expect(document.body).not.toHaveTextContent('upstream_unavailable')
+    expect(screen.getByRole('button', { name: 'Use my Swedebeat mix' })).toBeDisabled()
   })
 
   it('reports pressed state and gives every chip a 44 px target', () => {

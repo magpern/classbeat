@@ -105,6 +105,19 @@ describe('step-up', () => {
     expect(window.location.href).not.toContain(STEPUP_CODE)
   })
 
+  it('puts focus back on the button that started the write when the prompt is cancelled', async () => {
+    adminApi({ [`POST /api/admin/users/${USER_ID}/disable`]: reason(403, 'stepup_required') })
+    renderAt(`/admin/users/${USER_ID}`)
+    const opener = await screen.findByRole('button', { name: 'Disable account' })
+    await userEvent.click(opener)
+    const dialog = await screen.findByRole('dialog', { name: 'Enter a two-factor code' })
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }))
+    await waitFor(() => {
+      expect(screen.queryByRole('dialog')).toBeNull()
+    })
+    expect(opener).toHaveFocus()
+  })
+
   it('repeats only once: a second stepup_required is shown, not prompted again', async () => {
     const api = adminApi({
       [`POST /api/admin/users/${USER_ID}/disable`]: reason(403, 'stepup_required'),
@@ -244,6 +257,19 @@ describe('users', () => {
     expect(calls.map((c) => c.body)).toEqual([{ email: typed }])
     expect(api.calls.some((c) => c.path.toLowerCase().includes('rider@'))).toBe(false)
     expect(storageText().toLowerCase()).not.toContain('rider@')
+  })
+
+  it('puts focus back on Delete account when the delete dialog is closed', async () => {
+    adminApi()
+    renderAt(`/admin/users/${USER_ID}`)
+    const opener = await screen.findByRole('button', { name: 'Delete account' })
+    await userEvent.click(opener)
+    await screen.findByRole('dialog', { name: 'Delete this account?' })
+    await userEvent.keyboard('{Escape}')
+    await waitFor(() => {
+      expect(screen.queryByRole('dialog')).toBeNull()
+    })
+    expect(opener).toHaveFocus()
   })
 
   it('offers no disable or delete for an admin', async () => {

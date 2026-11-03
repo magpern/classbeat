@@ -34,10 +34,6 @@ export async function getSwedebeatMixes(signal?: AbortSignal): Promise<Swedebeat
   }
 }
 
-export function isSwedebeatMixFeatureOff(error: unknown): boolean {
-  return isFeatureOff(error)
-}
-
 /** Plain sentences for list failures; never a provider message or reason code. */
 export function swedebeatMixListError(error: unknown): string {
   if (error instanceof ApiError && error.reason !== null && error.status !== 409) {

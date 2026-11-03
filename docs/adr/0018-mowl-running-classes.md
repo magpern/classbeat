@@ -1,6 +1,6 @@
 # ADR 0018: MOWL running classes next to cycling (M8)
 
-Status: Accepted (owner, 2026-11-02, in chat: "M8 is approved"; issue #373; the owner's input of 2026-10-31 is its premise). Acceptance covers the design and the issue split below. It authorizes no live MOWL call: discovery (D1) still needs the owner's go-ahead for that specific capture.
+Status: Accepted (owner, 2026-11-02, in chat: "M8 is approved"; issue #373; the owner's input of 2026-10-31 is its premise). Acceptance covers the design and the issue split below. It authorizes no live MOWL call. The owner authorized one read-only discovery capture (D1) afterwards; it ran on 2026-11-02 (see Amendment 1 at the end). Any further live check needs its own authorization.
 
 Related: [ADR 0006](0006-agent-runs.md) (agent loop, `WorkoutDraft`, prompts, evals),
 [ADR 0007](0007-classes-revisions-and-saving.md) (classes, save and update to MOWL),

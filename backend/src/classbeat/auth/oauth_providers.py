@@ -5,6 +5,7 @@ secret file exist. The endpoints are the real ones; tests put an in-process fake
 an httpx ``MockTransport`` (``OAuthRuntime.transport``), so nothing here ever needs the network.
 """
 
+import logging
 from dataclasses import dataclass, field
 
 from pydantic import SecretStr
@@ -12,6 +13,8 @@ from pydantic import SecretStr
 from classbeat.config import Settings
 
 GOOGLE, GITHUB, MICROSOFT = "google", "github", "microsoft"
+logger = logging.getLogger(__name__)
+_WARNED_UNKNOWN: set[str] = set()
 MICROSOFT_ISSUER = "https://login.microsoftonline.com/{tid}/v2.0"
 
 
@@ -76,6 +79,14 @@ def enabled_providers(settings: Settings) -> dict[str, Provider]:
 
 
 def visible_providers(settings: Settings, enabled: dict[str, Provider]) -> list[str]:
-    """Enabled providers the sign-in and sign-up screens offer (``oauth_visible_providers``)."""
+    """Enabled providers the sign-in and sign-up screens offer (``oauth_visible_providers``).
+
+    A name that is not one of the three providers (a typo) is warned about once per distinct name,
+    by name only, because it would otherwise hide a provider without a trace.
+    """
     wanted = {part.strip().lower() for part in settings.oauth_visible_providers.split(",")}
+    wanted.discard("")
+    for name in sorted(wanted - {GOOGLE, GITHUB, MICROSOFT} - _WARNED_UNKNOWN):
+        _WARNED_UNKNOWN.add(name)
+        logger.warning("CLASSBEAT_OAUTH_VISIBLE_PROVIDERS names an unknown provider: %r", name)
     return sorted(name for name in enabled if name in wanted)
