@@ -54,6 +54,7 @@ CATEGORY_GROUPS: Final[dict[str, frozenset[str]]] = {
     "song_choice": frozenset({"songs"}),
     "missing_music": frozenset({"design", "songs"}),
     "class_patterns": frozenset({"design"}),
+    "running": frozenset({"design"}),  # ADR 0012 amendment of 2026-11-03 (ADR 0018, issue #465)
     "adversarial": frozenset({"design", "songs"}),
     "cost": frozenset({"design", "songs"}),
 }
@@ -86,6 +87,11 @@ RULE_SOURCES: Final = (
     "design/rules/profile.py",
     "design/rules/rationales.py",
     "design/profiles/index.json",
+    # Running (ADR 0018, issue #465): how a running brief picks its profile and gets its rules, and
+    # what the model sees of a running class (brief, timeline, quality sentences). Kept out until
+    # the suite held running cases, so the earlier digests stayed valid.
+    "design/sport_rules.py",
+    "agent/running_input.py",
 )
 CONSTANT_MODULES: Final[tuple[ModuleType, ...]] = (checks, music, pick, pick_world, song_checks)
 CONSTANT_NAME: Final = re.compile(r"^[A-Z][A-Z0-9_]*$")

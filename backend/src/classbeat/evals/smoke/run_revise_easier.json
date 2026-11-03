@@ -1,0 +1,122 @@
+{
+ "name": "run_revise_easier",
+ "about": "A 30 minute interval run drafted too hard, brought down to zone 3 and below.",
+ "brief": {
+  "sport": "running",
+  "length_min": 30,
+  "intensity": "moderate",
+  "class_type": "interval"
+ },
+ "music": {
+  "tracks": 9
+ },
+ "revise": {
+  "request": "Too hard for my group today: keep every effort at zone 3 or below.",
+  "earlier_requests": [],
+  "base": {
+   "name": "Invented base run",
+   "description": "The run as it stands.",
+   "segments": [
+    {
+     "name": "Warm-up",
+     "kind": "warmup",
+     "intervals": [
+      {
+       "sec": 240,
+       "zone": 1,
+       "gradient": 0,
+       "cue": ""
+      },
+      {
+       "sec": 240,
+       "zone": 2,
+       "gradient": 0,
+       "cue": ""
+      }
+     ]
+    },
+    {
+     "name": "Block 1",
+     "kind": "main",
+     "intervals": [
+      {
+       "sec": 150,
+       "zone": 3,
+       "gradient": 0,
+       "cue": ""
+      },
+      {
+       "sec": 120,
+       "zone": 4,
+       "gradient": 0,
+       "cue": ""
+      },
+      {
+       "sec": 90,
+       "zone": 2,
+       "gradient": 0,
+       "cue": ""
+      }
+     ]
+    },
+    {
+     "name": "Block 2",
+     "kind": "main",
+     "intervals": [
+      {
+       "sec": 150,
+       "zone": 3,
+       "gradient": 0,
+       "cue": ""
+      },
+      {
+       "sec": 120,
+       "zone": 4,
+       "gradient": 0,
+       "cue": ""
+      },
+      {
+       "sec": 90,
+       "zone": 2,
+       "gradient": 0,
+       "cue": ""
+      }
+     ]
+    },
+    {
+     "name": "Tempo",
+     "kind": "main",
+     "intervals": [
+      {
+       "sec": 360,
+       "zone": 3,
+       "gradient": 0,
+       "cue": ""
+      }
+     ]
+    },
+    {
+     "name": "Cooldown",
+     "kind": "cooldown",
+     "intervals": [
+      {
+       "sec": 240,
+       "zone": 1,
+       "gradient": 0,
+       "cue": ""
+      }
+     ]
+    }
+   ]
+  }
+ },
+ "expect": {
+  "revision": {
+   "kind": "easier"
+  },
+  "hard_share": [
+   0.0,
+   0.1
+  ]
+ }
+}

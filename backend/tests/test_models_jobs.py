@@ -14,7 +14,7 @@ Fakes only: no key is real, nothing leaves the process (netguard).
 import json
 import logging
 import uuid
-from collections.abc import Iterator
+from collections.abc import AsyncIterator, Iterator
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any
@@ -139,7 +139,9 @@ async def test_a_job_with_a_route_runs_on_the_routes_replay_provider_and_records
 
     row = denv.ops.row(job_id)
     assert (row.state, row.error_category) == ("completed", None)
-    assert builds.chosen == [ModelChoice("openai", SOL, "medium", "default", result_id)]
+    assert builds.chosen == [
+        ModelChoice("openai", SOL, "medium", "default", result_id, running_covered=True)
+    ]
     [api] = builds.replays
     assert api.problems == []
     assert len(api.requests) >= 2
@@ -343,3 +345,43 @@ async def test_fake_bypasses_routes(
     assert (run.provider, run.model, run.route_key, run.eval_result_id) == (
         "fake", CONFIG.model, None, None,
     )  # fmt: skip
+
+
+class _NoFence:
+    """A ``JobRun`` stand-in whose fence yields a session nobody reads (``resolve_route`` is
+    replaced below)."""
+
+    def fenced(self) -> Any:
+        from contextlib import asynccontextmanager
+        from types import SimpleNamespace
+
+        @asynccontextmanager
+        async def fence() -> AsyncIterator[Any]:
+            yield SimpleNamespace(db=None)
+
+        return fence()
+
+
+@pytest.mark.parametrize("covered", [True, False])
+async def test_the_group_model_carries_the_routes_running_coverage(
+    app_database_url: str, monkeypatch: pytest.MonkeyPatch, covered: bool
+) -> None:
+    """ADR 0012 amendment of 2026-11-03 (issue #465): ``RouteModels`` hands the kinds the
+    choice's ``running_covered``; the ``fake`` bypass (dev and CI only) says yes."""
+    from classbeat.models import providers as providers_module
+
+    choice = ModelChoice("anthropic", OPUS, "medium", "default", uuid.uuid4(), (), covered)
+
+    async def resolved(*args: Any, **kwargs: Any) -> ModelChoice:
+        return choice
+
+    monkeypatch.setattr(providers_module, "resolve_route", resolved)
+    s = settings(app_database_url)
+    routed = RouteModels(s, build=lambda _s, _c: provider("good_first_draft"))
+    got = await routed(_NoFence(), "default", "design", CONFIG)  # type: ignore[arg-type]
+    assert got.running_covered is covered
+    fake = settings(
+        app_database_url, model_provider="fake", fake_model_script=SCRIPTS / "good_first_draft.json"
+    )
+    bypass = await RouteModels(fake)(_NoFence(), "default", "design", CONFIG)  # type: ignore[arg-type]
+    assert bypass.running_covered is True

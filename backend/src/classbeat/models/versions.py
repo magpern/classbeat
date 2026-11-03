@@ -1,20 +1,25 @@
 """What a recorded result must match to count for the running code (ADR 0012 section 5).
 
 - ``running_prompt_versions(group)``: the ``prompt_version`` of each stage of the stage group as
-  this code builds it (``design``: ``design`` and ``revise``; ``songs``: ``pick_pool`` and
-  ``choose_songs``). A stage's prompt version is the SHA-256 of its system prompt and tool
-  definitions only (``classbeat.agent.stage``), never of a job's data, so the stages are built
-  here with placeholder contexts whose fields no definition reads
+  this code builds it (``design``: ``design``, ``revise``, ``running_design`` and
+  ``running_revise``; ``songs``: ``pick_pool`` and ``choose_songs``). A stage's prompt version is
+  the SHA-256 of its system prompt and tool definitions only (``classbeat.agent.stage``), never of
+  a job's data, so the stages are built here with placeholder contexts whose fields no definition
+  reads
   (``tests/test_models_routes.py`` compares the result with stages built from real contexts).
 - ``revise_songs`` runs the same ``revise`` stage with ``songs_changed`` set, which leaves out the
   ``songs_requested`` tool, so its ``prompt_version`` differs from the one recorded here. It is
   not gated separately on purpose: a route is keyed by stage name, the system prompt and the
   design tools are the ones the ``design`` group already gates, and the one tool it drops can only
   make the stage safer. ``tests/test_revise_songs.py`` covers the variant's behaviour.
-- The running ``design`` and ``revise`` stages (``classbeat.agent.running``, ADR 0018, M8 R1a)
-  have their own prompt versions and are not listed here: no suite case designs a running class
-  yet, so no recorded result could gate them. A running job uses the ``design`` group's route
-  like a cycling one; E1 adds running cases and decides how the gate covers them.
+- The running ``design`` and ``revise`` stages (``classbeat.agent.running``, ADR 0018) are named
+  ``design`` and ``revise`` like cycling's, with their own prompt versions, so they are keyed
+  ``running_design`` and ``running_revise`` here (``RUNNING_STAGES``). They belong to the
+  ``design`` group: the suite's ``running`` category (and the running ``class_patterns`` and
+  ``adversarial`` cases) are design-group cases (E1, issue #465), so a recorded design-group
+  result covers them, and a result without their versions is stale for ``prompt_versions``.
+  A running job may only use a route whose result is not stale at all (ADR 0012 amendment of
+  2026-11-03, ``routes.resolve_route``'s ``running_covered``).
 - ``running_suite_version()``: the manifest's ``suite_version``, read from the package's
   ``evals/suite/manifest.json`` **without importing** ``classbeat.evals`` (the web process, from
   which M5's admin calls ``set_route``, must not load the eval package;
@@ -38,11 +43,14 @@ from classbeat.agent.choose_songs import ChooseContext, choose_stage
 from classbeat.agent.design import DesignContext, design_stage
 from classbeat.agent.pick_pool import PoolContext, pool_stage
 from classbeat.agent.revise import ReviseContext, revise_stage
+from classbeat.agent.running import running_design_stage, running_revise_stage
 from classbeat.agent.stage import Stage
 
 MANIFEST: Final = Path(__file__).resolve().parent.parent / "evals" / "suite" / "manifest.json"
+# The running stages' keys (their stage names are ``design`` and ``revise``, as cycling's).
+RUNNING_STAGES: Final = {"design": "running_design", "revise": "running_revise"}
 GROUP_STAGES: Final[dict[str, tuple[str, ...]]] = {
-    "design": ("design", "revise"),
+    "design": ("design", "revise", "running_design", "running_revise"),
     "songs": ("pick_pool", "choose_songs"),
 }
 
@@ -63,10 +71,22 @@ def _stages() -> tuple[Stage, ...]:
     )
 
 
+def _running_stages() -> tuple[Stage, ...]:
+    blank = _no_context()
+    blank.brief = SimpleNamespace(sport="running")  # the running builders check the sport only
+    return (
+        running_design_stage(cast(DesignContext, blank)),
+        running_revise_stage(cast(ReviseContext, blank)),
+    )
+
+
 @cache
 def all_prompt_versions() -> dict[str, str]:
-    """Every model stage's running ``prompt_version``, by stage name."""
-    return {stage.name: stage.prompt_version for stage in _stages()}
+    """Every model stage's running ``prompt_version``, by stage name (the running stages by their
+    ``RUNNING_STAGES`` key)."""
+    out = {stage.name: stage.prompt_version for stage in _stages()}
+    out.update({RUNNING_STAGES[s.name]: s.prompt_version for s in _running_stages()})
+    return out
 
 
 def running_prompt_versions(group: str) -> dict[str, str]:

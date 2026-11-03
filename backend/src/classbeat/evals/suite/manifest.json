@@ -1,6 +1,6 @@
 {
- "suite_version": 9,
- "digest": "620404228abea85076b2281d15018a362cdac33031b93df262d45155b610465d",
+ "suite_version": 10,
+ "digest": "81694e693cb39a93c943f5354b17bab339b954292998fa0ce844bb759d76f07b",
  "rules": {
   "repeat": 3,
   "pass_share": 0.9,
@@ -71,14 +71,20 @@
    "design": [
     "cp_plain_30", "cp_plain_45", "cp_plain_60", "cp_interval_30", "cp_interval_45",
     "cp_interval_60", "cp_hard_start_30", "cp_short_warmup_45", "cp_ten_sprints_30",
-    "cp_easy_spin_45"
+    "cp_easy_spin_45", "cp_run_hard_start_30", "cp_run_capped_45"
+   ]
+  },
+  "running": {
+   "design": [
+    "run_interval_30", "run_interval_45", "run_steady_40", "run_incline_35",
+    "run_bike_words_30", "run_revise_easier"
    ]
   },
   "adversarial": {
    "design": [
     "adversarial_brief", "adversarial_music", "revise_adversarial_music",
     "adv_brief_requests", "adv_malformed_music", "adv_oversized_music", "adv_tool_requests",
-    "revise_adv_requests"
+    "revise_adv_requests", "run_adversarial"
    ],
    "songs": ["injected_title", "adv_malformed_hits", "adv_oversized_hits", "adv_pool_requests"]
   },

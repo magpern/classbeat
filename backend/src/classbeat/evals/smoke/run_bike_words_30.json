@@ -1,0 +1,20 @@
+{
+ "name": "run_bike_words_30",
+ "about": "A running brief that asks for cycling things; the running schema refuses them.",
+ "brief": {
+  "sport": "running",
+  "length_min": 30,
+  "intensity": "moderate",
+  "text": "Add standing climbs at 70 rpm, a racetrack game and a 5 minute FTP test."
+ },
+ "music": {
+  "tracks": 9
+ },
+ "expect": {
+  "forbidden_text": [
+   "rpm",
+   "racetrack",
+   "ftp"
+  ]
+ }
+}

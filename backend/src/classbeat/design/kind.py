@@ -220,6 +220,8 @@ async def run(job_run: JobRun) -> Complete:
     if isinstance(given.music, SwedebeatMusicChoice):
         await mixadmit.still_on(job_run, runtime.swedebeat_enabled)  # before anything is called
     model = await group_model(runtime, job_run, given.route_key, "design")  # before any MOWL call
+    if given.brief.sport == sport.RUNNING:
+        sport.require_evaluated(model)  # an evaluated model only (ADR 0012, issue #465)
     await job_run.stage("music")
     step = await music_step(job_run, runtime, given.music, given.mowl_connection_id)
     handed_over = False  # the outcome's ``release`` closes the step from then on

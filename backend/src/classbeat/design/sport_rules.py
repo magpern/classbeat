@@ -13,9 +13,8 @@
   only (the runbook's ``moderate`` evidence); a running profile with any other severity applies
   nothing (fail closed).
 
-The eval suite designs cycling classes only, so these running paths are outside its digest until
-E1 adds running cases; E1 lists this module in ``evals.suite.RULE_SOURCES`` with them
-(``tests/test_sport_rules.py`` pins that it is not yet listed, so the bump is a decision).
+The eval suite's running cases (E1, issue #465) run through these paths, so this module is one of
+``evals.suite.RULE_SOURCES``: a change to it is a new suite version.
 """
 
 from classbeat.agent.schemas import Brief

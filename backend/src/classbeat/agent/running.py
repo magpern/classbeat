@@ -25,7 +25,7 @@ from typing import Any, Final
 from mowl import music, sync, workout
 from mowl.workout import mmss
 
-from classbeat.agent import mix_input, model_input
+from classbeat.agent import mix_input
 from classbeat.agent.design import (
     FINAL_TOOL,
     GET_MUSIC_DESCRIPTION,
@@ -48,7 +48,7 @@ from classbeat.agent.revise import (
 )
 from classbeat.agent.revise import STAGE as REVISE_STAGE
 from classbeat.agent.revise import SUBMIT_DESCRIPTION as REVISE_SUBMIT_DESCRIPTION
-from classbeat.agent.running_input import running_timeline_for_model
+from classbeat.agent.running_input import running_quality, running_timeline_for_model
 from classbeat.agent.schemas import (
     MusicInput,
     RunningDraft,
@@ -163,7 +163,7 @@ def check_running(draft: RunningDraft, m: dict[str, Any]) -> DesignResult:
         draft=draft,
         spec=fitted,
         timeline=running_timeline_for_model(fitted, report, m),
-        quality=model_input.quality_for_model(wanted, fitted, m, report),
+        quality=running_quality(wanted, fitted, m, report),
         warnings=mix_input.music_warnings(m, total),
         duration_sec=total,
         tss=round(workout.tss(fitted), 1),
