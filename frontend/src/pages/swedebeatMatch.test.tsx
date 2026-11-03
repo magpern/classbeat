@@ -26,6 +26,7 @@ function connections(swedebeatStatus: 'connected' | 'needs_reconnect' | null = '
         ? []
         : [{ id: SWEDE_ID, provider: 'swedebeat', status: swedebeatStatus, account: 'a@example.test', ...base }]),
     ],
+    swedebeat: { enabled: true, available: true, uses_swedebeat: true },
   }
 }
 
@@ -137,6 +138,19 @@ describe('the Swedebeat part of the class page', () => {
     })
     expect(call?.headers.get('Idempotency-Key')).toMatch(/^[A-Za-z0-9_-]{16,64}$/)
     everyCallIsOurs(api)
+  })
+
+  it('offers no match start while "I use Swedebeat" is off (#525)', async () => {
+    const view = { ...connections(null), swedebeat: { enabled: true, available: true, uses_swedebeat: false } }
+    const api = fakeApi(routes({ swedebeat_match: null }, { 'GET /api/connections': view }, null))
+    renderAt(PAGE)
+    await screen.findByRole('heading', { level: 1 })
+    await waitFor(() => {
+      expect(api.to('GET', '/api/connections').length).toBeGreaterThan(0)
+    })
+    await new Promise((resolve) => setTimeout(resolve, 50))
+    expect(screen.queryByRole('button', { name: 'Match with Swedebeat' })).toBeNull()
+    expect(screen.queryByRole('link', { name: /Connect Swedebeat on your account page/ })).toBeNull()
   })
 
   it('asks to connect Swedebeat first when there is no connection', async () => {
