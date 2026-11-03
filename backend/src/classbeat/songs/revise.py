@@ -292,6 +292,8 @@ async def run_revise_phase_two(
             raise JobFailure("internal")  # a revision is immutable: the stored hash must hold
         try:
             brief = Brief.model_validate(base.brief)
+            if brief.sport != "cycling":
+                raise JobFailure("invalid_input")  # ADR 0018: running has no song picking
             base_draft = WorkoutDraft.model_validate(base.content)
         except ValidationError:
             raise JobFailure("internal") from None

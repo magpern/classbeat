@@ -47,13 +47,13 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from classbeat import quota
-from classbeat.agent import Brief, WorkoutDraft, run_stage
+from classbeat.agent import Brief, run_stage
 from classbeat.agent.records import JobStageHost
-from classbeat.agent.revise import ReviseContext, ReviseResult, SongsRequested, revise_stage
-from classbeat.agent.schemas import clean_text
+from classbeat.agent.revise import ReviseContext, ReviseResult, SongsRequested
+from classbeat.agent.running import revise_stage_for
+from classbeat.agent.schemas import clean_text, stored_draft
 from classbeat.context import UserContext
-from classbeat.design import chat, diff, limits, mixadmit, revision
-from classbeat.design.guidance import rule_set_for
+from classbeat.design import chat, diff, limits, mixadmit, revision, sport
 from classbeat.design.kind import (
     CLASS_MUSIC_SOURCE,
     SwedebeatMusicChoice,
@@ -61,6 +61,7 @@ from classbeat.design.kind import (
     group_model,
     music_step,
 )
+from classbeat.design.sport_rules import rules_for
 from classbeat.jobs import KINDS, Complete, FencedSession, JobFailure, JobKind, JobRun
 from classbeat.jobs.inputs import ModelJobInput
 from classbeat.jobs.kinds import Admitted, Refused
@@ -108,6 +109,9 @@ async def admit(db: AsyncSession, ctx: UserContext, parsed: BaseModel) -> Admitt
         return Refused("invalid_input")  # a foreign or unknown id answers like any other
     if state.current != given.base_revision_id:
         return Refused("stale_base")
+    running = await sport.admit_class(db, ctx.user_id, class_id)  # ADR 0018: the running flag
+    if running is not None:
+        return running
     chat_limits = limits.current()
     allowed = await chat_limits.policy.limit_for(db, ctx, class_id)
     if state.chat_revisions >= allowed:
@@ -178,9 +182,13 @@ async def run(job_run: JobRun) -> Complete:
     try:
         brief = Brief.model_validate(base.brief)
         music = CLASS_MUSIC_SOURCE.validate_python(base.music_source)
-        base_draft = WorkoutDraft.model_validate(base.content)
+        base_draft = stored_draft(base.content, brief.sport)  # the class's own sport's schema
     except ValidationError:
         raise JobFailure("internal") from None
+    if brief.sport == sport.RUNNING:
+        if isinstance(music, SwedebeatMusicChoice):
+            raise JobFailure("internal")  # running v1 has no mix (ADR 0018)
+        await sport.still_on(job_run)  # ADR 0018 section 5: before anything is called
     if isinstance(music, SwedebeatMusicChoice):
         await mixadmit.still_on(job_run, runtime.swedebeat_enabled)  # before anything is called
     model = await group_model(runtime, job_run, given.route_key, "design")  # before any MOWL call
@@ -189,7 +197,7 @@ async def run(job_run: JobRun) -> Complete:
     handed_over = False  # the outcome's ``release`` closes the step from then on
     try:
         # The stored brief only: the request text never reaches the engine (ADR 0017 section 1).
-        rules = rule_set_for(brief, base.dismissed_rules)
+        rules = rules_for(brief, base.dismissed_rules)
         ctx = ReviseContext.build(
             brief,
             step.data,
@@ -202,7 +210,7 @@ async def run(job_run: JobRun) -> Complete:
         outcome = await run_stage(
             JobStageHost(job_run),
             model.provider,
-            revise_stage(ctx),
+            revise_stage_for(ctx),  # the brief's sport's prompt and schema (ADR 0018)
             ctx.first_message(),
             model.agent,
         )
@@ -224,7 +232,7 @@ async def run(job_run: JobRun) -> Complete:
             request_message_id=request_message_id,
             rules=rules.provenance() if rules else None,
         )
-        change = diff.summarize(base.content, draft.content)
+        change = diff.summarize(base.content, draft.content, brief.sport)
 
         async def store(fs: FencedSession) -> UUID:
             """The connection guard, the revision, the compare-and-set, the assistant message."""

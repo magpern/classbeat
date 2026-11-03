@@ -292,7 +292,8 @@ async def test_the_first_draft_sets_the_class_brief_music_and_current_revision(
     stored = class_of(denv, first)
     given = design_kind.DesignDraftInput.model_validate(denv.input(conn))
     assert stored.current_revision_id == revision.id
-    assert stored.brief == given.brief.model_dump(mode="json")
+    # ADR 0018 section 1: a new class's stored brief names its sport explicitly.
+    assert stored.brief == {**given.brief.model_dump(mode="json"), "sport": "cycling"}
     assert stored.music_source == {
         "source": "mowl_spotify_playlist",
         "spotify_playlist_id": PLAYLIST,

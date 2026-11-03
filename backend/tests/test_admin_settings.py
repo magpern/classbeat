@@ -180,6 +180,7 @@ async def test_the_read_shows_each_flag_with_its_effective_value_and_source(
         "signup_mode",
         "song_picking",
         "swedebeat_enabled",
+        "running_enabled",  # ADR 0018 section 5
         "trial",
         "banner",
     ]
@@ -265,6 +266,35 @@ async def test_swedebeat_stays_off_while_the_environment_switch_is_off_whatever_
     assert (view["effective"], view["environment"], view["source"]) == (
         "off", "off", "environment",
     )  # fmt: skip
+
+
+async def test_running_is_a_real_flag_on_under_the_environment_and_off_when_stored_off(
+    env: Env, make_actor: Any, superuser: Connection
+) -> None:
+    """ADR 0018 section 5: ``running_enabled`` follows ``swedebeat_enabled``'s rule."""
+    actor = await stepped_admin(env, make_actor)
+    off_env = flag(await actor.get(SETTINGS), "running_enabled")  # the default: off
+    assert (off_env["effective"], off_env["source"], off_env["environment"]) == (
+        "off", "environment", "off",
+    )  # fmt: skip
+    assert (await put(actor, "running_enabled", "on")).status_code == 200
+    still = flag(await actor.get(SETTINGS), "running_enabled")
+    assert (still["effective"], still["source"]) == ("off", "environment")  # never past it
+    env.app.state.settings = env.settings.model_copy(update={"running_enabled": True})
+    assert flag(await actor.get(SETTINGS), "running_enabled")["effective"] == "on"
+    assert (await put(actor, "running_enabled", "off")).status_code == 200
+    assert stored(superuser, "running_enabled") == "off"
+    off = flag(await actor.get(SETTINGS), "running_enabled")
+    assert (off["effective"], off["source"], off["stored_valid"]) == ("off", "database", True)
+    rows = [r for r in rows_of(superuser, actor.user_id) if r.action == "setting.set"]
+    assert given(rows[-1].params) == {"key": "running_enabled", "value": "off"}
+    for bad in ("yes", True):
+        refused = await put(actor, "running_enabled", bad)
+        assert refused.status_code == 422, refused.text
+        assert refused.json()["detail"]["reason"] == "invalid_value"
+    store(superuser, "running_enabled", "maybe")  # an invalid stored value reads as off
+    bad_view = flag(await actor.get(SETTINGS), "running_enabled")
+    assert (bad_view["stored_valid"], bad_view["effective"]) == (False, "off")
 
 
 # --- flag writes ------------------------------------------------------------------------------

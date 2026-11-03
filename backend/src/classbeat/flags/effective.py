@@ -57,6 +57,14 @@ async def swedebeat_enabled(db: AsyncSession, environment_on: bool) -> bool:
     return core.swedebeat_setting(environment_on, await _stored(db, "swedebeat_enabled"))
 
 
+async def running_enabled(db: AsyncSession, environment_on: bool) -> bool:
+    """Off while ``CLASSBEAT_RUNNING_ENABLED`` is off (no read needed); else the stored flag
+    (ADR 0018 section 5)."""
+    if not environment_on:
+        return False
+    return core.running_setting(environment_on, await _stored(db, "running_enabled"))
+
+
 async def trial(db: AsyncSession) -> TrialSetting | None:
     return core.trial_setting(await _stored(db, "trial"))
 

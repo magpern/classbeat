@@ -20,9 +20,10 @@
 - ``GET /api/jobs/{id}``: the job's state.
 - ``GET /api/jobs/{id}/revision``: the draft the job stored, for the draft summary: 409
   ``no_revision`` while it has none. Answers only ``{revision_id, number, kind, content,
-  unknown_bpm, created_at}``: ``content`` is re-read through ``WorkoutDraft`` (so a field that
-  schema does not name is never shown), ``unknown_bpm`` is ``[{index, title}]`` (the user's own
-  track titles, shown back to them). No provenance, link id, fingerprint or hash.
+  unknown_bpm, created_at}``: ``content`` is re-read through ``WorkoutDraft`` (``RunningDraft``
+  for a running class, ADR 0018; so a field that schema does not name is never shown),
+  ``unknown_bpm`` is ``[{index, title}]`` (the user's own track titles, shown back to them). No
+  provenance, link id, fingerprint or hash.
 - ``POST /api/jobs/{id}/cancel``: 200 with the state (idempotent); 409 ``not_cancellable`` for a
   job that ended otherwise.
 - ``POST /api/jobs/{id}/approve`` with ``{revision_id, content_hash}`` (64 hex characters): 200
@@ -51,7 +52,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from classbeat import auth
-from classbeat.agent.schemas import WorkoutDraft
+from classbeat.agent.schemas import stored_draft
 from classbeat.context import UserContext
 from classbeat.jobs import service
 from classbeat.jobs.credits import CreditLedger
@@ -360,7 +361,7 @@ async def get_revision(
     if stored is None:
         return _refuse("no_revision")
     try:
-        draft = WorkoutDraft.model_validate(stored.content)
+        draft = stored_draft(stored.content, stored.sport)  # the class's sport's schema
         raw: Any = stored.music.get("unknown_bpm", [])
         unknown = [UnknownBpmOut(index=int(u["index"]), title=str(u["title"])) for u in raw]
     except (ValidationError, KeyError, TypeError, ValueError):

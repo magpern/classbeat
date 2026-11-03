@@ -3,8 +3,10 @@
 - **content**: the submitted ``WorkoutDraft`` as fitted to the music: its interval lengths and
   ``"beat"`` cadences are the ones ``sync.fit_to_music`` computed (``classbeat.agent.design``),
   never a number the model stated. ``workout.validate()`` runs on it again just before it is
-  stored. ``content_hash`` is SHA-256 of its canonical JSON (ADR 0004 section 2's rule: sorted
-  keys, no spaces, UTF-8).
+  stored. A running class's content is a ``RunningDraft`` (ADR 0018: ``sec``, ``zone``,
+  ``gradient``, ``cue``; no ``"sport"`` key, the class's brief says it), checked with
+  ``workout.validate_running``; its provenance records ``sport: "running"``. ``content_hash``
+  is SHA-256 of its canonical JSON (ADR 0004 section 2's rule: sorted keys, no spaces, UTF-8).
 - **music**: ``{source: "mowl_spotify_playlist", link_id, fingerprint, unknown_bpm}`` (plus
   ``song_list_id``, the approved ``song_list`` revision, on a draft of ``design_with_songs``):
   the user's ``mowl_playlist_links`` row, the fingerprint of the analysed track list
@@ -39,6 +41,7 @@ from sqlalchemy import text
 
 from classbeat.agent import DesignResult, Provenance, WorkoutDraft, provenance
 from classbeat.agent.loop import StageOutcome
+from classbeat.agent.schemas import AnyDraft, RunningDraft
 from classbeat.design.music import MusicStep
 from classbeat.jobs import FencedSession, JobFailure
 
@@ -142,8 +145,10 @@ def canonical(value: Any) -> bytes:
     )
 
 
-def fitted_draft(result: DesignResult) -> WorkoutDraft:
-    """The submitted draft with the fitted lengths and cadences (cues and names kept)."""
+def fitted_draft(result: DesignResult) -> AnyDraft:
+    """The submitted draft with the fitted lengths and cadences (cues and names kept); a running
+    draft with the fitted lengths (it has no cadence), read back with the running schema."""
+    running = isinstance(result.draft, RunningDraft)
     data = result.draft.model_dump(mode="python")
     segments = result.spec["segments"]
     if len(segments) != len(data["segments"]):
@@ -153,9 +158,10 @@ def fitted_draft(result: DesignResult) -> WorkoutDraft:
             raise JobFailure("internal")
         for interval, f in zip(seg["intervals"], fitted["intervals"], strict=True):
             interval["sec"] = int(f["sec"])
-            interval["rpm"] = [int(f["rpm"][0]), int(f["rpm"][1])]
+            if not running:
+                interval["rpm"] = [int(f["rpm"][0]), int(f["rpm"][1])]
     try:
-        return WorkoutDraft.model_validate(data)
+        return RunningDraft.model_validate(data) if running else WorkoutDraft.model_validate(data)
     except ValidationError:
         raise JobFailure("invalid_output") from None
 
@@ -212,14 +218,20 @@ def build(
     """The revision to store; ``invalid_output`` if the draft no longer validates, or (a revise)
     if it is the base draft again: a revision that changes nothing is not stored."""
     draft = fitted_draft(result)
-    try:
-        workout.validate(draft.to_spec())  # again, server-side, before it is stored
+    running = isinstance(draft, RunningDraft)
+    try:  # again, server-side, before it is stored
+        if running:
+            workout.validate_running(draft.to_spec())
+        else:
+            workout.validate(draft.to_spec())
     except ValueError:
         raise JobFailure("invalid_output") from None
     content = draft.model_dump(mode="json", exclude_none=True)
     if len(canonical(content)) > MAX_CONTENT_BYTES:
         raise JobFailure("invalid_output")
     music: RevisionMusic
+    if running and (step.mix is not None or song_list_id is not None):
+        raise JobFailure("internal")  # running v1: an existing MOWL playlist only (ADR 0018)
     if step.mix is not None:
         if song_list_id is not None:
             raise JobFailure("internal")  # a mix is never picked songs
@@ -252,6 +264,7 @@ def build(
         request_message_id=request_message_id,
         tss_approximate=result.tss_approximate,
         rules=rules,
+        sport="running" if running else None,
     )
     return DraftRevision(
         content=content,

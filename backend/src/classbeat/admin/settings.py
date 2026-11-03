@@ -237,6 +237,10 @@ def _flag(
         environment = "on" if settings.swedebeat_enabled else "off"
         effective = "on" if core.swedebeat_setting(settings.swedebeat_enabled, stored) else "off"
         source = "database" if settings.swedebeat_enabled and stored is not None else "environment"
+    elif key == "running_enabled":
+        environment = "on" if settings.running_enabled else "off"
+        effective = "on" if core.running_setting(settings.running_enabled, stored) else "off"
+        source = "database" if settings.running_enabled and stored is not None else "environment"
     elif key == "trial":
         environment = {"plan": None, "days": 0}
         trial = core.trial_setting(stored)
@@ -298,7 +302,7 @@ async def _flag_view(session: AsyncSession, settings: Settings, key: str) -> Fla
 
 def _set_params(key: str, value: Any) -> dict[str, Any]:
     """The audit params of a validated write: what it means, never free text."""
-    if key in ("signup_mode", "song_picking", "swedebeat_enabled"):
+    if key in ("signup_mode", "song_picking", "swedebeat_enabled", "running_enabled"):
         return {"key": key, "value": value}
     if key == "trial":
         return {"key": key, "plan": value["plan"], "days": value["days"]}

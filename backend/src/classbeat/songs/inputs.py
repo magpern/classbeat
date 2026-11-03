@@ -62,8 +62,10 @@ class DesignWithSongsInput(ModelJobInput):
 
     @model_validator(mode="after")
     def _consistent(self) -> Self:
-        if jsonb_size(self.brief.model_dump(mode="json")) > revision.MAX_BRIEF_BYTES:
+        if jsonb_size(self.brief.stored()) > revision.MAX_BRIEF_BYTES:
             raise ValueError("the brief is too long")
+        if self.brief.sport != "cycling":  # ADR 0018: running v1 has no song picking
+            raise ValueError("song picking is for cycling classes only")
         if (self.mode == "resume") != (self.resume is not None):
             raise ValueError("resume names its list exactly in mode resume")
         if self.resume is not None and self.class_id is None:
