@@ -1,0 +1,16 @@
+{
+ "name": "run_incline_35",
+ "about": "A 35 minute hill run: the efforts on the treadmill incline.",
+ "brief": {
+  "sport": "running",
+  "length_min": 35,
+  "intensity": "moderate",
+  "text": "Hill session: put the work efforts on the incline."
+ },
+ "music": {
+  "tracks": 10
+ },
+ "expect": {
+  "incline_min_sec": 360
+ }
+}

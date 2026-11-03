@@ -1,0 +1,20 @@
+{
+ "name": "cp_run_hard_start_30",
+ "about": "A running interval class hard from the first minute, asked: the brief wins over the warm-up rules.",
+ "brief": {
+  "sport": "running",
+  "length_min": 30,
+  "intensity": "hard",
+  "class_type": "interval",
+  "text": "Hard from the first minute, no easing in."
+ },
+ "music": {
+  "tracks": 10
+ },
+ "expect": {
+  "patterns": {
+   "mode": "deviates",
+   "hard_start_by_sec": 60
+  }
+ }
+}

@@ -1,4 +1,5 @@
-import type { DraftInterval, DraftSummary } from '../../api/jobs'
+import { isRunningDraft, type DraftInterval, type DraftSummary } from '../../api/jobs'
+import { inclineText } from '../../lib/profile'
 
 // A read-only view of what GET /api/jobs/{id}/revision returned. Every string is rendered as
 // text by React; nothing is computed here beyond adding up the lengths that are shown.
@@ -10,6 +11,7 @@ function clock(seconds: number): string {
 }
 
 function cadence(rpm: DraftInterval['rpm']): string {
+  if (rpm === null) return ''
   return rpm === 'beat' ? 'on the beat' : `${String(rpm[0])} to ${String(rpm[1])} rpm`
 }
 
@@ -29,6 +31,7 @@ export function DraftSummaryView({ draft }: { draft: DraftSummary }) {
     (sum, segment) => sum + segment.intervals.reduce((inner, i) => inner + i.sec, 0),
     0,
   )
+  const running = isRunningDraft(draft.segments)
   return (
     <article className="draft" aria-labelledby="draft-title">
       <h2 id="draft-title" className="draft__title">
@@ -60,8 +63,14 @@ export function DraftSummaryView({ draft }: { draft: DraftSummary }) {
               <tr>
                 <th scope="col">Length</th>
                 <th scope="col">Zone</th>
-                <th scope="col">Cadence</th>
-                <th scope="col">Position</th>
+                {running ? (
+                  <th scope="col">Incline</th>
+                ) : (
+                  <>
+                    <th scope="col">Cadence</th>
+                    <th scope="col">Position</th>
+                  </>
+                )}
                 <th scope="col">Cue</th>
               </tr>
             </thead>
@@ -70,8 +79,14 @@ export function DraftSummaryView({ draft }: { draft: DraftSummary }) {
                 <tr key={row}>
                   <td>{clock(interval.sec)}</td>
                   <td>{interval.zone}</td>
-                  <td>{cadence(interval.rpm)}</td>
-                  <td>{interval.standing ? 'Standing' : 'Seated'}</td>
+                  {running ? (
+                    <td>{inclineText(interval.gradient)}</td>
+                  ) : (
+                    <>
+                      <td>{cadence(interval.rpm)}</td>
+                      <td>{interval.standing ? 'Standing' : 'Seated'}</td>
+                    </>
+                  )}
                   <td>{interval.cue}</td>
                 </tr>
               ))}

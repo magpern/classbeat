@@ -27,6 +27,9 @@ from classbeat.models.store import StageGroup
 class GroupModel:
     provider: ModelProvider
     agent: AgentConfig
+    # The choice may serve a running job (``routes.ModelChoice.running_covered``; the worker's
+    # ``fake`` bypass, dev and CI only, says yes). Running kinds refuse ``False`` (ADR 0018).
+    running_covered: bool = False
 
 
 class ModelSource(Protocol):

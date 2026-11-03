@@ -57,6 +57,7 @@ RELEASED: dict[int, str] = {
     7: "4002ae10e99243477ae86f595b4deed0322906882edacced277cc58ddb168b25",
     8: "8430bb29da3865e02d5b9167c8b3c772b2fde1bced2398a414169a46ceadfc23",
     9: "620404228abea85076b2281d15018a362cdac33031b93df262d45155b610465d",
+    10: "81694e693cb39a93c943f5354b17bab339b954292998fa0ce844bb759d76f07b",
 }
 
 SUITE = load_suite()
@@ -168,9 +169,10 @@ def test_the_suite_holds_every_smoke_and_song_case_once_in_its_group() -> None:
     index = MANIFEST.case_index()
     assert set(SUITE.design_cases) == {c.name for c in load_cases()} | DESIGN_OWN
     assert set(SUITE.song_cases) == {c.name for c in load_pick_cases()} | SONG_OWN
-    assert (len(DESIGN_OWN), len(SONG_OWN)) == (29 + 12 + 10, 8 + 7)  # #206, #208, #209 and #399
-    assert (len(SUITE.design_cases), len(SUITE.song_cases)) == (19 + 51, 3 + 15)
-    assert len(index) == 19 + 51 + 3 + 15
+    # #206, #208, #209, #399 and #465 (two running class_patterns cases)
+    assert (len(DESIGN_OWN), len(SONG_OWN)) == (29 + 12 + 10 + 2, 8 + 7)
+    assert (len(SUITE.design_cases), len(SUITE.song_cases)) == (26 + 53, 3 + 15)
+    assert len(index) == 26 + 53 + 3 + 15
     assert all(index[n][1] == "design" for n in SUITE.design_cases)
     assert all(index[n][1] == "songs" for n in SUITE.song_cases)
     assert set(MANIFEST.categories) == set(suite.CATEGORY_GROUPS)
@@ -178,6 +180,15 @@ def test_the_suite_holds_every_smoke_and_song_case_once_in_its_group() -> None:
         "adversarial_brief", "adversarial_music", "revise_adversarial_music", "injected_title",
         "adv_brief_requests", "adv_malformed_hits", "adv_malformed_music", "adv_oversized_hits",
         "adv_oversized_music", "adv_pool_requests", "adv_tool_requests", "revise_adv_requests",
+        "run_adversarial",
+    }  # fmt: skip
+    assert {n for n, (cat, _) in index.items() if cat == "running"} == {
+        "run_interval_30", "run_interval_45", "run_steady_40", "run_incline_35",
+        "run_bike_words_30", "run_revise_easier",
+    }  # fmt: skip
+    running = {n for n, c in SUITE.design_cases.items() if c.brief.sport == "running"}
+    assert running == {n for n, (cat, _) in index.items() if cat == "running"} | {
+        "run_adversarial", "cp_run_hard_start_30", "cp_run_capped_45",
     }  # fmt: skip
     assert {n for n, (cat, _) in index.items() if cat == "revisions"} >= {
         "revise_easier", "revise_more_sprints", "revise_other_songs",

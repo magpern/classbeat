@@ -19,6 +19,7 @@ from typing import Any
 
 from mowl import music
 
+import runningscripts
 from classbeat.agent import DesignContext
 from classbeat.agent.design import check
 from classbeat.agent.providers.fake import FakeProvider, FakeScript
@@ -279,11 +280,15 @@ def revise_script(case: Case, draft: dict[str, Any]) -> FakeScript:
 
 
 def good_draft(case: Case) -> dict[str, Any]:
+    if case.brief.sport == "running":  # the running cases (issue #465)
+        return runningscripts.good_draft(case)
     return revised_draft(case) if case.revise is not None else design_draft(case)
 
 
 def script_for(case: Case, draft: dict[str, Any] | None = None) -> FakeScript:
     """The case's recorded script; with ``draft``, the same turns submitting that draft."""
+    if case.brief.sport == "running":
+        return runningscripts.script_for(case, draft)
     chosen = good_draft(case) if draft is None else draft
     if case.revise is not None:
         return revise_script(case, chosen)

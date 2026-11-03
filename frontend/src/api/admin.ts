@@ -390,7 +390,9 @@ const ADMIN_REASONS: Record<string, string> = {
   above_environment_bound: 'That is more than the server allows.',
   plan_above_instructor: 'A trial cannot be of a plan above Instructor.',
   unknown_key: 'There is no such setting.',
-  out_of_range: 'That number is outside the allowed range.',
+  out_of_range: 'That number or date is outside the allowed range.',
+  price_incomplete:
+    'An introduction price needs its end date (and the date needs the price), and any price needs a currency.',
   nothing_to_change: 'Nothing was changed.',
 }
 

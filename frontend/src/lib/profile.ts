@@ -54,6 +54,17 @@ export function zoneSeconds(bars: Bar[]): number[] {
   return out
 }
 
-export function cadenceText(rpm: [number, number] | 'beat'): string {
+export function cadenceText(rpm: [number, number] | 'beat' | null): string {
+  if (rpm === null) return ''
   return rpm === 'beat' ? 'on the beat' : `${String(rpm[0])} to ${String(rpm[1])} rpm`
+}
+
+/** A running interval's treadmill incline (ADR 0018 section 2): 0 is flat, 1 the raised incline. */
+export function inclineText(gradient: number | null | undefined): string {
+  return gradient === 1 ? 'Incline' : 'Flat'
+}
+
+/** How many zones a sport has: MOWL's running classes use 1 to 5, cycling 1 to 7. */
+export function zoneCount(running: boolean): number {
+  return running ? 5 : 7
 }

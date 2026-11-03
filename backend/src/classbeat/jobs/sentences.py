@@ -42,7 +42,7 @@ SONG_SENTENCES: Final[dict[str, str]] = {
     ),
     "media_refused": "The audio of this mix could not be fetched. Nothing was designed.",
     "analysis_failed": "The audio of this mix could not be analysed. Try another mix.",
-    "feature_off": "Swedebeat is switched off on this server right now. Nothing was designed.",
+    "feature_off": "This feature is switched off on this server right now. Nothing was designed.",
     "analysis_limit": (
         "You have analysed 10 new Swedebeat mixes in the last 24 hours. Mixes analysed before "
         "still work; try a new one tomorrow."

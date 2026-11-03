@@ -322,7 +322,10 @@ function Failed({ job }: { job: Job }) {
   if (job.kind === 'swedebeat_match' && job.errorMessage !== null) {
     return <Ended job={job} title="The Swedebeat match stopped" detail={job.errorMessage} retry={false} />
   }
-  const text = failureText(job.errorCategory)
+  const kept = recallInput(job.id)
+  const feature =
+    kept?.brief.sport === 'running' ? 'running' : kept?.music.source === 'mowl_swedebeat_mix' ? 'swedebeat' : null
+  const text = failureText(job.errorCategory, '', feature)
   return <Ended job={job} title={text.title} detail={text.detail} account={text.account === true} />
 }
 

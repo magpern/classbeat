@@ -1,8 +1,8 @@
-import { ZONE_NAMES, type Bar, zoneSeconds } from '../../lib/profile'
+import { ZONE_NAMES, type Bar, zoneCount, zoneSeconds } from '../../lib/profile'
 import { clock } from '../../lib/workout'
 
 /** "Time in each zone": one row per zone with its name, a bar scaled to the largest zone and the time. */
-export function ZoneTime({ bars }: { bars: Bar[] }) {
+export function ZoneTime({ bars, running = false }: { bars: Bar[]; running?: boolean }) {
   const seconds = zoneSeconds(bars)
   const most = Math.max(...seconds, 1)
   return (
@@ -11,7 +11,7 @@ export function ZoneTime({ bars }: { bars: Bar[] }) {
         Time in each zone
       </h3>
       <ul className="m-0 flex list-none flex-col gap-1 p-0">
-        {ZONE_NAMES.map((name, i) => (
+        {ZONE_NAMES.slice(0, zoneCount(running)).map((name, i) => (
           <li key={name} className="grid grid-cols-[9rem_1fr_3.5rem] items-center gap-3 text-[0.9375rem]">
             <span>
               Z{String(i + 1)} {name}

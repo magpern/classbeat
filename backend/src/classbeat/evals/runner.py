@@ -26,14 +26,15 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
 from classbeat import __version__ as _classbeat_version
-from classbeat.agent import DesignContext, DesignResult, design_stage, run_stage
+from classbeat.agent import DesignContext, DesignResult, run_stage
 from classbeat.agent.loop import AgentConfig, Counters, RunInfo
 from classbeat.agent.prices import PRICES_VERSION
 from classbeat.agent.provider import ModelProvider, Usage
 from classbeat.agent.records import mowl_version as _mowl_version
-from classbeat.agent.revise import ReviseContext, ReviseResult, SongsRequested, revise_stage
-from classbeat.design.guidance import rule_set_for
+from classbeat.agent.revise import ReviseContext, ReviseResult, SongsRequested
+from classbeat.agent.running import design_stage_for, revise_stage_for
 from classbeat.design.rules import default_registry
+from classbeat.design.sport_rules import rules_for
 from classbeat.evals.cases import Case
 from classbeat.evals.checks import Check, has_zone7, run_checks, tss_bounds_for
 from classbeat.evals.music import build_music
@@ -106,23 +107,32 @@ class CaseResult:
 
 def class_shape(timeline: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """The timeline cut down to what is drawn: segment name and kind; per interval the seconds, the
-    zone, whether standing and the index of the track under it. No cues, no song titles."""
+    zone, whether standing and the index of the track under it (a running interval: its gradient
+    instead of standing). No cues, no song titles."""
     return [
         {
             "name": str(seg["name"])[:80],
             "kind": str(seg["kind"]),
-            "intervals": [
-                {
-                    "sec": int(i["sec"]),
-                    "zone": int(i["zone"]),
-                    "standing": bool(i["standing"]),
-                    "track": int(i["track"]),
-                }
-                for i in seg["intervals"]
-            ],
+            "intervals": [_shape(i) for i in seg["intervals"]],
         }
         for seg in timeline
     ]
+
+
+def _shape(i: dict[str, Any]) -> dict[str, Any]:
+    if "standing" not in i:  # a running interval (``running_input.running_timeline_for_model``)
+        return {
+            "sec": int(i["sec"]),
+            "zone": int(i["zone"]),
+            "gradient": int(i["gradient"]),
+            "track": int(i["track"]),
+        }
+    return {
+        "sec": int(i["sec"]),
+        "zone": int(i["zone"]),
+        "standing": bool(i["standing"]),
+        "track": int(i["track"]),
+    }
 
 
 async def run_case(
@@ -138,9 +148,10 @@ async def run_case(
     music = build_music(case.music)
     # As in production (ADR 0017 section 3): the rules of the brief's profile, if one applies,
     # are in the model's input and in its tool results. Nothing is dismissed on a design run.
-    rules = rule_set_for(case.brief)
+    # A running case gets the running profile, prompt and schema (ADR 0018), as a running job does.
+    rules = rules_for(case.brief)
     ctx = DesignContext.build(case.brief, music, rules)
-    stage, first = design_stage(ctx), ctx.first_message()
+    stage, first = design_stage_for(ctx), ctx.first_message()
     if case.revise is not None:
         revise = ReviseContext.build(
             case.brief,
@@ -151,7 +162,7 @@ async def run_case(
             music_changed=False,
             rules=rules,
         )
-        stage, first = revise_stage(revise), revise.first_message()
+        stage, first = revise_stage_for(revise), revise.first_message()
     host = EvalHost()
     started = clock()
 
@@ -257,9 +268,9 @@ async def run_case(
         corrections=done.corrections,
         wall_sec=wall,
         usage=done.usage,
-        tss_bounds=tss_bounds_for(
-            case, result.duration_sec, zone7=zone7, zone7_margin=zone7_tss_margin
-        ),
+        tss_bounds=None  # no running TSS bound: the running load model is not calibrated
+        if case.brief.sport == "running"
+        else tss_bounds_for(case, result.duration_sec, zone7=zone7, zone7_margin=zone7_tss_margin),
         changes_on_music=str(result.quality.get("changes_on_music", "")),
         timeline=class_shape(result.timeline),
         tss_approximate=zone7,
