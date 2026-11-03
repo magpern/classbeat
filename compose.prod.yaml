@@ -1,26 +1,33 @@
-# Production stack for the VPS (issue #341): Caddy in front of web, worker, db and the one-shot
-# migrate and db-functions. Standalone (not an override of compose.yaml): nothing of the dev
-# stack's published ports, mailpit, build or fake model provider can leak into it.
+# Production stack for the owner's server (issue #341, behind swag since #492): web, worker, db and
+# the one-shot migrate and db-functions. TLS, the public ports and the edge headers are the owner's
+# swag (linuxserver/swag, nginx) container, which is not part of this file. Standalone (not an
+# override of compose.yaml): nothing of the dev stack's published ports, mailpit, build or fake
+# model provider can leak into it.
 #
-#   docker compose -f compose.prod.yaml config          # validate (needs the variables below)
-#   docker compose -f compose.prod.yaml up -d --wait
+#   docker compose config -q          # with COMPOSE_FILE=compose.prod.yaml in .env (runbook)
+#   docker compose up -d --wait
 #
-# Runbook: docs/runbooks/vps-deploy.md. Configuration only: deploying is the owner's step.
+# Runbook: docs/runbooks/vps-deploy.md; swag site config: docs/runbooks/swag-classbeat.subdomain.conf.
+# Configuration only: deploying is the owner's step.
 #
 # Variables (a .env next to this file; values are the owner's, none are committed):
 #   CLASSBEAT_VERSION  image tag from ghcr.io/magpern/classbeat (X.Y.Z, never `latest`)   required
-#   CLASSBEAT_DOMAIN   the public host name, no scheme (the Caddyfile site address)       required
-#   ACME_EMAIL         contact address for the certificate authority                      required
+#   CLASSBEAT_DOMAIN   the public host name, no scheme (classbeat.pernemark.se)           required
+#   PROXY_IP           swag's fixed IPv4 address on the proxy network: the only peer whose
+#                      X-Forwarded-For web believes (ADR 0003 section 9)                   required
+#   PROXY_NETWORK      the external Docker network web shares with swag (classbeat-proxy) optional
 #   SMTP_HOST, SMTP_SENDER                                                                required
 #   SMTP_PORT, SMTP_TLS, SMTP_USERNAME, ADMIN_EMAILS, SIGNUP_MODE, CONNECTION_KEK_ID,
-#   MODEL_PROVIDER, DEEPSEEK_ENABLED, SWEDEBEAT_ENABLED, RUNNING_ENABLED                  optional
-#   CADDY_HTTP_PORT, CADDY_HTTPS_PORT  host ports (80 and 443; only the local smoke changes them)
+#   MODEL_PROVIDER, DEEPSEEK_ENABLED, SWEDEBEAT_ENABLED, RUNNING_ENABLED, SMTP_CA_FILE    optional
 # Secrets are files under ./secrets (mounted as Docker secrets, never environment variables).
 #
 # Networks: `backend` is internal (no route out): db, migrate and db-functions live only there.
-# `edge` joins caddy and web: the only inbound path from the internet to the app, and (not
-# internal, by design) web's way out to SMTP and the Spotify and Google/GitHub/Microsoft token
-# endpoints. `egress` is the worker's way out to the model providers, MOWL and Spotify. Only caddy publishes ports.
+# `proxy` is the owner's external network (created once, `docker network create --internal
+# --subnet ...`, runbook section 6) that only swag and web join: the only inbound path to the app;
+# swag has a fixed address on it (PROXY_IP). `web-out` is web's way out (SMTP, the Spotify and
+# Google/GitHub/Microsoft token endpoints) and joins nothing else. `egress` is the worker's way out
+# to the model providers, MOWL and Spotify. No service publishes a port; the variant where the
+# proxy reaches web on 127.0.0.1 instead is the overlay compose.prod.loopback.yaml.
 
 x-logging: &logging
   driver: json-file
@@ -64,37 +71,6 @@ x-app: &app
       condition: service_completed_successfully
 
 services:
-  caddy:
-    image: caddy:2.10.2
-    restart: unless-stopped
-    logging: *logging
-    <<: *hardening
-    # Caddy runs as root in the container; with ALL dropped it needs this one back to bind 80/443.
-    cap_add:
-      - NET_BIND_SERVICE
-    environment:
-      CLASSBEAT_DOMAIN: ${CLASSBEAT_DOMAIN:?set CLASSBEAT_DOMAIN}
-      ACME_EMAIL: ${ACME_EMAIL:?set ACME_EMAIL}
-    ports:
-      - "${CADDY_HTTP_PORT:-80}:80"
-      - "${CADDY_HTTPS_PORT:-443}:443"
-      - "${CADDY_HTTPS_PORT:-443}:443/udp"
-    volumes:
-      - ./Caddyfile:/etc/caddy/Caddyfile:ro
-      - caddy-data:/data
-      - caddy-config:/config
-    networks:
-      edge:
-        ipv4_address: 172.29.80.10
-    depends_on:
-      web:
-        condition: service_healthy
-    healthcheck:
-      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:2019/config/"]
-      interval: 10s
-      timeout: 5s
-      retries: 6
-
   db:
     image: postgres:17.11
     restart: unless-stopped
@@ -163,9 +139,11 @@ services:
     environment:
       <<: *app-env
       CLASSBEAT_MAINT_DATABASE_URL: postgresql+psycopg://classbeat_maint@db:5432/classbeat
-      # Caddy's fixed address on `edge` (see the networks below): the only peer whose
-      # X-Forwarded-For is believed (ADR 0003 section 9). Caddy overwrites the header itself.
-      CLASSBEAT_TRUSTED_PROXIES: 172.29.80.10
+      # swag's fixed address on `proxy`: the only peer whose X-Forwarded-For is believed (ADR 0003
+      # section 9). One private address, never a range: any other container on that network, the
+      # host, and Cloudflare (swag restores the visitor from CF-Connecting-IP itself) are not
+      # trusted. Prod refuses a public address here.
+      CLASSBEAT_TRUSTED_PROXIES: ${PROXY_IP:?set PROXY_IP to swag's fixed address on the proxy network}
       # ADR 0015: off unless the owner switches the Swedebeat connection on.
       CLASSBEAT_SWEDEBEAT_ENABLED: ${SWEDEBEAT_ENABLED:-false}
       # ADR 0018: off unless the owner switches running classes on.
@@ -181,12 +159,16 @@ services:
       - database_maint_password
       - smtp_password
       - swedebeat_app
-    # No `ports`: reachable only from caddy over `edge`.
+    # No `ports`: reachable only from swag over `proxy` (as classbeat-web, so the name cannot
+    # collide with another stack's `web` there).
     expose:
       - "8000"
     networks:
-      - edge
-      - backend
+      proxy:
+        aliases:
+          - classbeat-web
+      web-out: {}
+      backend: {}
     healthcheck:
       test:
         - CMD
@@ -224,10 +206,15 @@ services:
       - egress
 
 networks:
-  edge:
+  proxy:
+    external: true
+    name: ${PROXY_NETWORK:-classbeat-proxy}
+  # Fixed so that its gateway, 172.29.80.1, is known: the peer web sees with the loopback overlay.
+  web-out:
     ipam:
       config:
         - subnet: 172.29.80.0/24
+          gateway: 172.29.80.1
   backend:
     internal: true
   egress: {}
@@ -258,5 +245,3 @@ secrets:
 
 volumes:
   db-data:
-  caddy-data:
-  caddy-config:

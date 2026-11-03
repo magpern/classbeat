@@ -238,6 +238,33 @@ def test_trusted_proxies_and_numeric_settings_are_validated() -> None:
             Settings(**{name: value})  # pyright: ignore[reportArgumentType]
 
 
+@pytest.mark.parametrize(
+    "proxies",
+    [
+        "0.0.0.0/0",
+        "::/0",
+        "173.245.48.0/20",  # a Cloudflare range: swag restores the client, never the app
+        "172.29.90.10, 8.8.8.8",
+        "172.0.0.0/8",  # wider than 172.16.0.0/12, so partly public
+    ],
+)
+def test_prod_refuses_a_public_trusted_proxy(proxies: str) -> None:
+    with pytest.raises(ValidationError, match="trusted_proxies must be private"):
+        Settings(
+            environment="prod", public_base_url="https://classbeat.example", trusted_proxies=proxies
+        )
+    # Outside prod the rule does not apply (the e2e and dev stacks choose their own).
+    assert Settings(trusted_proxies=proxies).trusted_proxy_networks
+
+
+@pytest.mark.parametrize("proxies", ["", "172.29.90.10", "172.29.80.1", "10.0.0.0/8", "fd00::1"])
+def test_prod_accepts_private_trusted_proxies(proxies: str) -> None:
+    settings = Settings(
+        environment="prod", public_base_url="https://classbeat.example", trusted_proxies=proxies
+    )
+    assert settings.trusted_proxies == proxies
+
+
 def test_default_ports_are_dropped_from_the_public_origin() -> None:
     assert Settings(public_base_url="https://classbeat.example:443").public_base_url == (
         "https://classbeat.example"

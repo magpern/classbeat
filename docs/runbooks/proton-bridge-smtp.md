@@ -56,9 +56,10 @@ certificate only, not a CA: a CA would trust everything it signs for that host. 
        external: true
        name: proton-bridge-net   # the private network the Bridge service is on
    ```
-   Every prod command then uses both files, for example
-   `docker compose -f compose.prod.yaml -f compose.bridge.yaml up -d --wait` (a `compose.override.yaml`
-   is **not** picked up when `-f` is given, so do not use that name). `migrate` and `worker` get neither
+   Every prod command then uses both files: set `COMPOSE_FILE=compose.prod.yaml:compose.bridge.yaml`
+   in `.env` (after `compose.prod.loopback.yaml` if you use it; [vps-deploy.md](vps-deploy.md) section 5),
+   or pass `-f compose.prod.yaml -f compose.bridge.yaml` (a `compose.override.yaml` is **not** picked
+   up when `-f` or `COMPOSE_FILE` is given, so do not use that name). `migrate` and `worker` get neither
    the variable nor the mount.
 4. Set `SMTP_CA_FILE=/run/smtp-ca/bridge.pem` in `.env`. `web` then refuses to start unless the file is
    a readable PEM certificate (and refuses it with `SMTP_TLS=none`). Unset, nothing changes.
