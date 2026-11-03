@@ -10,6 +10,7 @@
 #    in the rendered files; #511: every service that mounts a secret has group 10010 and a non-root
 #    user, each secret is secrets/<its own name>, and the known ways around a secret mount are
 #    refused), and compose.prod.yaml's defaults leave every OAuth client id empty;
+# (the SQL the database services run is in the release's classbeat-db image: no bind mounts, ADR 0020)
 # 3. a self-test: each unsafe mutation of the rendered files must fail step 2 (fails closed);
 # 4. the owner's real PROXY_IP, when one is set (their shell, else PROD_CHECK_ENV_FILE, default the
 #    checkout's .env): compose.prod.yaml rendered with it must trust one private IPv4 address (#495);
@@ -109,6 +110,8 @@ check_common() {
     || fail "db, migrate and db-functions live on backend only" || return 1
   q '(.services.worker.networks | keys) == ["backend","egress"]' \
     || fail "worker joins backend and egress only" || return 1
+  q '[.services.db.image, .services["db-functions"].image] | all(. == "ghcr.io/magpern/classbeat-db:0.0.0")' \
+    || fail "db and db-functions run the release's classbeat-db image (ADR 0020)" || return 1
   q '.services.web.read_only == true' || fail "web must be read-only" || return 1
   q '[.services.web, .services.worker] | all((.cap_drop // []) == ["ALL"] and ((.security_opt // []) | index("no-new-privileges:true")))' \
     || fail "web and worker drop every capability and set no-new-privileges" || return 1
@@ -165,7 +168,7 @@ check_secret_mounts() {
   jq -e --arg g "$secrets_gid" '[.services[] | select((.secrets // []) | length > 0)
       | (.group_add // []) | map(tostring) | index($g)] | all(. != null)' <<<"$J" >/dev/null \
     || fail "every service that mounts a secret has group_add [\"$secrets_gid\"]" || return 1
-  q '[.services[] | select((.secrets // []) | length > 0) | select(.image // "" | test("(^|/)postgres([:@]|$)"))
+  q '[.services[] | select((.secrets // []) | length > 0) | select(.image // "" | test("(^|/)(postgres|classbeat-db)([:@]|$)"))
       | .user // "" | tostring] | all(. == "postgres" or . == "999" or . == "999:999")' \
     || fail "a postgres service that mounts a secret runs as postgres (gosu would drop the group)" || return 1
   q '[.services[] | select((.secrets // []) | length > 0) | .user // "" | tostring
@@ -198,16 +201,11 @@ check_secret_mounts() {
     || fail "no service bind-mounts secrets/, a folder above it or a file in it" || return 1
   # An allow-list, not a text match against secrets/ (#512 review B2): /proc, /proc/1/root, the
   # Docker socket, /sys, /dev or a link to secrets/ would all reach another container's secrets
-  # through the shared group. Production binds only the three SQL folders, read-only, and mounts
-  # nothing but those binds, named volumes and tmpfs. (The owner's uncommitted compose.bridge.yaml,
-  # proton-bridge-smtp.md, is not rendered here.)
-  q '(.secrets.app_secret_key.file | rtrimstr("/app_secret_key")) as $sd | ($sd | rtrimstr("/secrets")) as $pd
-     | $pd != $sd and ([.services[] | .volumes // [] | .[]
-        | select(.type != "volume" and .type != "tmpfs")
-        | select((.type == "bind" and .read_only == true
-            and ((.source // "" | rtrimstr("/")) as $s | [$pd + "/docker/postgres/init", $pd + "/docker/postgres/queue",
-                 $pd + "/docker/postgres/maint"] | index($s) != null)) | not)] | length == 0)' \
-    || fail "the only bind mounts are docker/postgres/init, queue and maint, read-only (no /proc, socket or other host path)" \
+  # through the shared group. Production mounts nothing but the named volume and tmpfs: the SQL the
+  # database services run is in the classbeat-db image (ADR 0020), so no host path is bound at all.
+  # (The owner's uncommitted compose.bridge.yaml, proton-bridge-smtp.md, is not rendered here.)
+  q '[.services[] | .volumes // [] | .[] | select(.type != "volume" and .type != "tmpfs")] | length == 0' \
+    || fail "no bind mounts: only the named volume and tmpfs (the SQL is in the classbeat-db image; no /proc, socket or other host path)" \
     || return 1
   q '[.services[] | select(.privileged == true or ((.devices // []) | length > 0) or ((.cap_add // []) | length > 0)
       or ((.device_cgroup_rules // []) | length > 0) or has("use_api_socket"))] | length == 0' \
@@ -405,8 +403,11 @@ for m in \
   '.services.worker.volumes = [{"type":"bind","source":"/dev/sda1","target":"/d"}]' \
   '.services.worker.volumes = [{"type":"bind","source":(.secrets.app_secret_key.file | rtrimstr("/secrets/app_secret_key") + "/link-to-secrets"),"target":"/s","read_only":true}]' \
   '.services.db.volumes += [{"type":"bind","source":(.secrets.app_secret_key.file | rtrimstr("/secrets/app_secret_key") + "/docker"),"target":"/d","read_only":true}]' \
-  '.services.db.volumes |= map(if .type == "bind" then .read_only = false else . end)' \
-  '.services["db-functions"].volumes |= map(if .type == "bind" then del(.read_only) else . end)' \
+  '.services["db-functions"].volumes = [{"type":"bind","source":(.secrets.app_secret_key.file | rtrimstr("/secrets/app_secret_key") + "/docker/postgres/queue"),"target":"/queue","read_only":true}]' \
+  '.services.db.volumes += [{"type":"bind","source":(.secrets.app_secret_key.file | rtrimstr("/secrets/app_secret_key") + "/docker/postgres/init"),"target":"/docker-entrypoint-initdb.d","read_only":true}]' \
+  '.services.db.image = "postgres:17.11" | .services["db-functions"].image = "postgres:17.11"' \
+  '.services["db-functions"].image = "ghcr.io/magpern/classbeat-db:9.9.9"' \
+  '.services["db-functions"].user = "1000"' \
   '.services.worker.volumes = [{"type":"npipe","source":"//./pipe/docker_engine","target":"/p"}]' \
   '.services.worker.volumes = [{"type":"cluster","source":"x","target":"/c"}]' \
   '.services.worker.privileged = true' \
