@@ -1080,7 +1080,9 @@ fenced transaction. Nothing here changes the queue, the write protocol or any ta
 
 ### H. Revision history (no migration, no new table)
 
-1. **Timeline.** `GET /api/classes/{id}/revisions` keeps its shape and adds, per `draft` revision,
+1. **Timeline.** A new read-only route `GET /api/classes/{id}/history` (its own module,
+   `classbeat.classes.history`, so the existing revisions route keeps its shape) lists every `draft`
+   revision with the revisions route's fields plus its `content_hash` (hex, for Make current) and,
    computed in the web process from rows the user already owns: `tss` (`workout.tss` of the stored
    content under the class's sport schema, the same function the change summary uses; `null` when it
    cannot be computed, never a model number), `request` (the user's own `class_messages.body` of
@@ -1089,7 +1091,7 @@ fenced transaction. Nothing here changes the queue, the write protocol or any ta
    `from_songs` (the draft's `music.song_list_id` is set: designed on approved songs) and, for a
    duplicate, `duplicated_from` `{class_id, number, class_title}` (title `null` when that class is
    gone or not the user's). Revisions stay immutable; nothing is written by a read.
-2. **Compare.** `GET /api/classes/{id}/compare?from=<revision id>&to=<revision id>` (signed in, read
+2. **Compare.** `GET /api/classes/{id}/history/compare?from=<revision id>&to=<revision id>` (signed in, read
    only): both ids must be `draft` revisions of the user's own class (looked up with `owner_id` and
    `class_id`; anything else is the same 404 `not_found`). The body is `diff.summarize(from, to,
    sport)` unchanged (segments added and removed, intervals changed, added and removed, duration and
