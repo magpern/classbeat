@@ -517,15 +517,26 @@ headers and no `proxy_intercept_errors`). For OAuth sign-in (#507) it checks tha
 secrets are `secrets/` files mounted on web only, that no service has a variable named like a secret,
 that the client ids and visible providers come only from their variables (empty and `google` without
 them), that a canary in the dummy secret files never shows in the rendered files, and that `.env` holds
-no `*CLIENT_SECRET*` variable. For the secret files (#511) it checks that every service that mounts a
-secret has `group_add: ["10010"]` and runs as a non-root user (`postgres` for the postgres image,
-whose gosu would drop the group), that each secret is the file `secrets/<its own name>` mounted at that
-name, that the only bind mounts are `docker/postgres/init`, `queue` and `maint`, read-only (so no
-`secrets/`, `/proc`, Docker socket or other host path), that no service uses `volumes_from`, shares the
-pid or ipc namespace of the host or another container, is privileged or gets devices, added
-capabilities or the Docker API socket, that the one named volume has no driver options, and that no command, entrypoint or healthcheck names `/run/secrets` (a text match that
-catches mistakes, not someone hiding the path on purpose: the compose file is reviewed); on the server,
-the mode and group of each real file.
+no `*CLIENT_SECRET*` variable. For the secret files (#511) the compose checks are a **best-effort lint
+against honest mistakes** in the owner's own committed, reviewed compose files. They are **not a security
+boundary** against someone who can edit those files (such a person could run anything). The boundary
+for the secrets is on the server: each file's mode and group (`<deploy user>:10010`, 640, in a 2700
+folder; section 5) and which services mount which secret. The script renders every variant with all
+profiles and checks that:
+- every service that mounts a secret has `group_add: ["10010"]` and runs as a non-root user (`postgres`
+  for the postgres image, whose gosu would drop the group; uid or gid 0 or `root` however written is
+  refused);
+- each secret is the file `secrets/<its own name>`, mounted at that name;
+- the only bind mounts are `docker/postgres/init`, `queue` and `maint`, read-only (so no `secrets/`,
+  `/proc`, Docker socket or other host path);
+- no service uses `volumes_from`, `configs` or `post_start`/`pre_stop` hooks, shares the pid or ipc
+  namespace of the host or another container, is privileged, or gets devices, added capabilities or
+  the Docker API socket;
+- the one named volume has no driver options;
+- no command, entrypoint or healthcheck names `/run/secrets` (a text match).
+
+These rules list the known channels one by one; a default-deny key allow-list is follow-up #517. On the
+server, the script also checks the mode and group of each real file.
 That a uid 10001 container with group 10010 reads a `root:10010` mode 640 or 440 file and one without
 the group cannot, and that gosu drops the group, was checked with `compose.prod.yaml` on Docker 29.9.2 /
 Compose 5.6.1 (#511). That the Docker port relay presents the `web-out`

@@ -605,8 +605,9 @@ Compose bind-mounts a file secret with its host owner and mode (outside Swarm it
 production (`compose.prod.yaml`, #511) every file is the deploy user's, group 10010, mode 640, and
 every service that mounts a secret has `group_add: ["10010"]` and runs as a non-root user (`db` and
 `db-functions` as `postgres` from the start: the image's gosu drops supplementary groups);
-`scripts/check-prod-compose.sh` checks both, and the real files' mode and group on the server
-(runbook section 5). An unreadable optional secret file (`smtp_password`, `oauth_*_client_secret`,
+`scripts/check-prod-compose.sh` checks both (a best-effort lint against honest mistakes in the
+committed compose files, not a security boundary; a default-deny key allow-list is #517), and the
+real files' mode and group on the server (runbook section 5), which is the actual boundary. An unreadable optional secret file (`smtp_password`, `oauth_*_client_secret`,
 `swedebeat_app`) counts as not set with a warning naming the field; any other unreadable one is
 fatal; a file of blanks is empty, except the three database passwords (read byte for byte).
 

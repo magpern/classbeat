@@ -8,8 +8,8 @@
 # 2. the invariants of the production stack hold for both (with the OAuth settings of #507: the
 #    client ids only from their variables, the client secrets as files on web only, never a value
 #    in the rendered files; #511: every service that mounts a secret has group 10010 and a non-root
-#    user, each secret is secrets/<its own name>, nothing else reaches secrets/), and
-#    compose.prod.yaml's defaults leave every OAuth client id empty;
+#    user, each secret is secrets/<its own name>, and the known ways around a secret mount are
+#    refused), and compose.prod.yaml's defaults leave every OAuth client id empty;
 # 3. a self-test: each unsafe mutation of the rendered files must fail step 2 (fails closed);
 # 4. the owner's real PROXY_IP, when one is set (their shell, else PROD_CHECK_ENV_FILE, default the
 #    checkout's .env): compose.prod.yaml rendered with it must trust one private IPv4 address (#495);
@@ -23,6 +23,12 @@
 #    exactly once);
 # and a self-test for 4, 4b, 4c, 5 and 6 as for 2. On the server: run it in /opt/classbeat after writing
 # .env (runbook section 9).
+#
+# What it is: a best-effort lint of the owner's own committed, reviewed compose files against honest
+# mistakes. It is NOT a security boundary against someone who can edit those files (they could run
+# anything). The boundary for the secrets is on the server: the files' mode and group (4c, runbook
+# section 5) and which services mount which secret. Its compose rules list the known channels one by
+# one; a default-deny key allow-list is follow-up #517.
 set -euo pipefail
 export MSYS_NO_PATHCONV=1   # Git Bash: paths below are for the container, never converted
 
@@ -62,15 +68,18 @@ export SMTP_CA_FILE=/run/smtp-ca/bridge.pem
 export COMPOSE_PROJECT_NAME=classbeat-prod-check
 unset COMPOSE_FILE PROXY_NETWORK WEB_HOST_PORT
 dir="$native/${tmp##*/}"
+# Every render enables all profiles: a service behind `profiles:` would otherwise be left out of the
+# rendered file and so of every check below (#512 review B5).
+render() { docker compose "$@" --profile '*' config --format json; }
 # compose.prod.yaml's defaults: no OAuth variable set, so every provider is off.
 unset OAUTH_GOOGLE_CLIENT_ID OAUTH_GITHUB_CLIENT_ID OAUTH_MICROSOFT_CLIENT_ID OAUTH_VISIBLE_PROVIDERS
-defaults="$(docker compose -f "$dir/compose.prod.yaml" config --format json)"
+defaults="$(render -f "$dir/compose.prod.yaml")"
 # Dummy client ids (public values, not secret): web's settings must equal them, so they come from
 # the variables and from nothing written into the compose files.
 export OAUTH_GOOGLE_CLIENT_ID=check-google-client-id OAUTH_GITHUB_CLIENT_ID=check-github-client-id
 export OAUTH_MICROSOFT_CLIENT_ID=check-microsoft-client-id OAUTH_VISIBLE_PROVIDERS=google,github
-shared="$(docker compose -f "$dir/compose.prod.yaml" config --format json)"
-loopback="$(docker compose -f "$dir/compose.prod.yaml" -f "$dir/compose.prod.loopback.yaml" config --format json)"
+shared="$(render -f "$dir/compose.prod.yaml")"
+loopback="$(render -f "$dir/compose.prod.yaml" -f "$dir/compose.prod.loopback.yaml")"
 
 J=""
 fail() { echo "check-prod-compose: $*" >&2; return 1; }
@@ -147,7 +156,7 @@ check_common() {
 # supplementary groups: a postgres service runs as postgres from the start. Each top-level secret is
 # the file secrets/<its own name> (no second name for a file, #508 review), mounted at its own name,
 # and nothing reaches secrets/ another way: no bind mount of the folder, a parent or a file in it, no
-# config from it, no volumes_from, no shared pid or ipc namespace, no named volume with driver
+# configs at all, no post_start/pre_stop hooks, no volumes_from, no shared pid or ipc namespace, no named volume with driver
 # options, and no command, entrypoint or healthcheck that names /run/secrets or secrets/ (a plain
 # text match against honest mistakes; a reviewed compose file is the guard against intent).
 secrets_gid=10010
@@ -160,8 +169,8 @@ check_secret_mounts() {
       | .user // "" | tostring] | all(. == "postgres" or . == "999" or . == "999:999")' \
     || fail "a postgres service that mounts a secret runs as postgres (gosu would drop the group)" || return 1
   q '[.services[] | select((.secrets // []) | length > 0) | .user // "" | tostring
-      | select(test("^(0|root)(:|$)"))] | length == 0' \
-    || fail "no service that mounts a secret runs as root" || return 1
+      | split(":")[] | select(test("^0+$") or . == "root")] | length == 0' \
+    || fail "no service that mounts a secret runs as root (uid or gid 0 or root, however written)" || return 1
   # Only the app image has a non-root USER of its own; any other image must name one.
   q '[.services[] | select((.secrets // []) | length > 0) | select(.image // "" | startswith("ghcr.io/magpern/classbeat:") | not)
       | .user // "" | tostring | select(. == "")] | length == 0' \
@@ -203,9 +212,12 @@ check_secret_mounts() {
   q '[.services[] | select(.privileged == true or ((.devices // []) | length > 0) or ((.cap_add // []) | length > 0)
       or ((.device_cgroup_rules // []) | length > 0) or has("use_api_socket"))] | length == 0' \
     || fail "no service is privileged, gets devices or added capabilities, or the Docker API socket" || return 1
-  q '(.secrets.app_secret_key.file | rtrimstr("/app_secret_key")) as $sd
-     | [.configs // {} | .[] | .file // "" | select(startswith($sd + "/"))] | length == 0' \
-    || fail "no config comes from secrets/" || return 1
+  # A file config is a bind mount of any host path outside Swarm (#512 review B3), and a lifecycle
+  # hook runs with its own user and privileges (B4). Production uses neither.
+  q '(has("configs") | not) and ([.services[] | select(has("configs"))] | length == 0)' \
+    || fail "no configs (a file config is a bind of a host path)" || return 1
+  q '[.services[] | select(has("post_start") or has("pre_stop"))] | length == 0' \
+    || fail "no post_start or pre_stop hooks (they run with their own user and privileges)" || return 1
   q '[.services[] | [.command, .entrypoint, .healthcheck.test] | tostring | select(test("run/secrets|secrets/"))] | length == 0' \
     || fail "no command, entrypoint or healthcheck names /run/secrets or secrets/ (the app reads its files itself)" \
     || return 1
@@ -419,6 +431,42 @@ for m in \
   expect_refused loopback "$loopback" "$m"
 done
 expect_refused loopback "$loopback" '.services.worker.volumes = [{"type":"bind","source":(.secrets.app_secret_key.file | rtrimstr("/app_secret_key")),"target":"/s"}]'
+# #512 review 3 (B3 to B5) and the numeric root rule, on both variants. The full set of channels is
+# follow-up #517 (default-deny key allow-list).
+for v in shared loopback; do
+  if [[ "$v" == shared ]]; then base="$shared"; else base="$loopback"; fi
+  for m in \
+    '.configs = {"c":{"name":"x","file":"/proc"}} | .services.worker.configs = [{"source":"c","target":"/hostproc"}]' \
+    '.configs = {"c":{"name":"x","file":"/"}} | .services.worker.configs = [{"source":"c","target":"/host"}]' \
+    '.configs = {"c":{"name":"x","file":"/var/run/docker.sock"}} | .services.web.configs = [{"source":"c","target":"/s"}]' \
+    '.configs = {"c":{"name":"x","file":(.secrets.app_secret_key.file | rtrimstr("/app_secret_key"))}} | .services.worker.configs = [{"source":"c","target":"/s"}]' \
+    '.configs = {"c":{"name":"x","file":"/proc"}}' \
+    '.services.worker.configs = [{"source":"c","target":"/s"}]' \
+    '.services.web.post_start = [{"command":["sh","-c","id"],"user":"root","privileged":true}]' \
+    '.services.worker.pre_stop = [{"command":["sh","-c","id"]}]' \
+    '.services.worker.user = "00"' \
+    '.services.web.user = "0000:0"' \
+    '.services.migrate.user = "10001:0"' \
+    '.services.worker.user = "10001:root"'; do
+    expect_refused "$v" "$base" "$m"
+  done
+done
+# B5: a service behind `profiles:` must be in the render, so the checks above see it. As YAML merged
+# after the production files (and the loopback overlay), with every profile like the renders above.
+mkdir "$tmp/yaml"
+ln -s ../secrets "$tmp/yaml/secrets"
+cp "$tmp/compose.prod.yaml" "$tmp/compose.prod.loopback.yaml" "$tmp/yaml/"
+printf '%s\n' 'services:' '  spy:' '    image: busybox' '    profiles: [ops]' '    pid: host' '    privileged: true' \
+  '    group_add: ["10010"]' '    volumes:' '      - /:/host' > "$tmp/yaml/profiled.yaml"
+ydir="$native/${tmp##*/}/yaml"
+spy_s="$(render -f "$ydir/compose.prod.yaml" -f "$ydir/profiled.yaml")"
+spy_l="$(render -f "$ydir/compose.prod.yaml" -f "$ydir/compose.prod.loopback.yaml" -f "$ydir/profiled.yaml")"
+if ! jq -e '.services | has("spy")' <<<"$spy_s" >/dev/null || ! jq -e '.services | has("spy")' <<<"$spy_l" >/dev/null; then
+  echo "check-prod-compose: self-test: the render left out a profiled service" >&2; exit 1
+fi
+if (J="$spy_s"; check_shared 2>/dev/null) || (J="$spy_l"; check_loopback 2>/dev/null); then
+  echo "check-prod-compose: self-test: accepted a profiled service with pid host, privileged and a bind of /" >&2; exit 1
+fi
 # The client secret's value (the canary in the dummy file) anywhere in the rendered file.
 expect_refused shared "$shared" ".services.web.labels = {\"note\": \"$oauth_canary-google\"}"
 for m in \
