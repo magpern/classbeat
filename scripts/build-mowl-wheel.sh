@@ -4,29 +4,34 @@
 # on GitHub carries mowl/_swedebeat_app.json (written by that repo's release workflow from a
 # secret); the source never does, so a wheel built from the tagged source has no key file.
 #
-#   scripts/build-mowl-wheel.sh            # v0.8.0 into backend/vendor/
+#   scripts/build-mowl-wheel.sh            # v0.9.0 into backend/vendor/
 #
 # Needs `gh` signed in with read access to magpern/mowl-workouts (private) and `uv`. It never
 # prints a token. Then refresh the lock: `cd backend && uv lock`.
 #
 # Checks before writing: the tag still points at the pinned commit; the built wheel has no
-# _swedebeat_app.json; every other file outside the dist-info has the same SHA-256 as in the
+# _swedebeat_app.json; the downloaded release asset has the pinned size and SHA-256 and holds
+# mowl/_swedebeat_app.json by name (never read: it only proves the reference is the real
+# release); every other file outside the dist-info has the same SHA-256 as in the
 # release wheel's RECORD (so it is the released code, minus the key); and METADATA (in the
 # dist-info, so not in that comparison) declares the same Requires-Dist lines, because those
 # decide what `uv lock` installs.
 #
-# What was pinned (a rebuild must print the same release digest; the vendored wheel's hash is
-# what uv.lock verifies at install time):
-#   tag v0.8.0 commit        0de257fcf4e582159afbd77db24887c6a69e803e
-#   release asset sha256     410b94757424556db64c4f2592573e5435a5a60b13b7a8fb88cef8860fa91a3d
-#   vendored wheel sha256    5f7582fc290e011c4e6b8d39bfdce731416051c39fb565f7e03fa7380a9623c1
+# What was pinned (the release asset's size and digest are checked, so a re-uploaded asset
+# stops the build; the vendored wheel's hash is what uv.lock verifies at install time):
+#   tag v0.9.0 commit        d0aae26f02e451c4ad9288fedd77f035d98f3ec0
+#   release asset size       66860 bytes
+#   release asset sha256     e1806148bb41bd50c632365ffdc8ec75d5f780fc9c868e7cd290420627b35e24
+#   vendored wheel sha256    90bf7dea6be22b26f4de81ffc385855489a27cb2c5b9fea2531bb4fbb882b26e
 # The two wheels differ (the release one has the key file), so their digests differ too.
 set -euo pipefail
 
 REPO=magpern/mowl-workouts
-TAG=v0.8.0
-COMMIT=0de257fcf4e582159afbd77db24887c6a69e803e
-WHEEL=mowl_workouts-0.8.0-py3-none-any.whl
+TAG=v0.9.0
+COMMIT=d0aae26f02e451c4ad9288fedd77f035d98f3ec0
+WHEEL=mowl_workouts-0.9.0-py3-none-any.whl
+RELEASE_SIZE=66860
+RELEASE_SHA256=e1806148bb41bd50c632365ffdc8ec75d5f780fc9c868e7cd290420627b35e24
 KEY_FILE=mowl/_swedebeat_app.json
 
 PYTHON="$(command -v python3 || command -v python || true)"
@@ -68,8 +73,20 @@ asset="$(gh api "repos/$REPO/releases/tags/$TAG" --jq ".assets[] | select(.name 
 [ -n "$asset" ] || die "release $TAG has no asset $WHEEL"
 gh api -H "Accept: application/octet-stream" "repos/$REPO/releases/assets/$asset" \
   > "$work/release/$WHEEL"
-echo "release asset:"
-sha256sum "$work/release/$WHEEL"
+release_size="$(wc -c < "$work/release/$WHEEL" | tr -d '[:space:]')"
+[ "$release_size" = "$RELEASE_SIZE" ] \
+  || die "release asset is $release_size bytes, expected $RELEASE_SIZE"
+release_sha="$(sha256sum "$work/release/$WHEEL" | cut -d' ' -f1)"
+[ "$release_sha" = "$RELEASE_SHA256" ] \
+  || die "release asset sha256 is $release_sha, expected $RELEASE_SHA256"
+echo "release asset: $release_size bytes, sha256 $release_sha (as pinned)"
+
+# The release wheel must carry the key file, by name only (its bytes are never read): without
+# it the reference is not the real release and the comparison below would prove nothing.
+"$PYTHON" - "$work/release/$WHEEL" "$KEY_FILE" <<'PY' || die "the release asset has no $KEY_FILE"
+import sys, zipfile
+sys.exit(0 if sys.argv[2] in zipfile.ZipFile(sys.argv[1]).namelist() else 1)
+PY
 "$PYTHON" - "$built" "$work/release/$WHEEL" "$KEY_FILE" <<'PY' || die "the built wheel differs from the release"
 import sys, zipfile
 
