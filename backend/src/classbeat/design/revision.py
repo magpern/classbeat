@@ -16,6 +16,10 @@
   duration, listed_duration, unsure_beat_one, fingerprint, link_id}`` (``SwedebeatRevisionMusic``):
   the fingerprint is the map's (``swedebeat_music.fingerprint``), and the link gives Save the MOWL
   playlist under the same checks as a Spotify link. Still no MOWL playlist id and no map.
+  A soundless class (ADR 0007 amendment of 2026-11-03, item 7; #527): exactly
+  ``{source: "none"}`` (``NoRevisionMusic``): no link, no fingerprint, no ``unknown_bpm``. Its
+  provenance has ``map_version`` and ``crossfade_sec`` ``None``. ``REVISION_MUSIC`` (what Save
+  reads for its link) does not take it: Save of a soundless class is SL3 (#529).
   The revision is the user's own and is deleted with its class or account (ADR 0010).
 - **provenance**: ``classbeat.agent.records.provenance``: provider, model, effort, the prompt and
   tool-schema version, classbeat's and mowl-workouts' versions, ``map_version`` and the map's
@@ -43,10 +47,12 @@ from classbeat.agent import DesignResult, Provenance, WorkoutDraft, provenance
 from classbeat.agent.loop import StageOutcome
 from classbeat.agent.schemas import AnyDraft, RunningDraft
 from classbeat.design.music import MusicStep
+from classbeat.design.music_kind import NoMusicStep
 from classbeat.jobs import FencedSession, JobFailure
 
 MUSIC_SOURCE: Final = "mowl_spotify_playlist"
 MIX_SOURCE: Final = "mowl_swedebeat_mix"
+NO_MUSIC_SOURCE: Final = "none"
 MAX_CONTENT_BYTES: Final = 65536  # the class_revisions.content check of migration 0004
 MAX_BRIEF_BYTES: Final = 4096  # the classes.brief check of migration 0005
 
@@ -133,6 +139,15 @@ class SwedebeatRevisionMusic(BaseModel):
     link_id: UUID
 
 
+class NoRevisionMusic(BaseModel):
+    """``class_revisions.music`` of a soundless class's draft (#527): the source and nothing
+    else, so no MOWL object, link or fingerprint is named."""
+
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    source: Literal["none"]
+
+
 RevisionMusic = SpotifyRevisionMusic | SwedebeatRevisionMusic
 REVISION_MUSIC: Final = TypeAdapter[RevisionMusic](
     Annotated[RevisionMusic, Field(discriminator="source")]
@@ -203,8 +218,8 @@ class DraftRevision:
 def build(
     result: DesignResult,
     outcome: StageOutcome,
-    music_map: dict[str, Any],
-    step: MusicStep,
+    music_map: dict[str, Any] | None,
+    step: MusicStep | NoMusicStep,
     *,
     origin: Literal[
         "design_draft", "revise_draft", "design_with_songs", "revise_songs"
@@ -229,10 +244,16 @@ def build(
     content = draft.model_dump(mode="json", exclude_none=True)
     if len(canonical(content)) > MAX_CONTENT_BYTES:
         raise JobFailure("invalid_output")
-    music: RevisionMusic
-    if running and (step.mix is not None or song_list_id is not None):
+    music: RevisionMusic | NoRevisionMusic
+    if isinstance(step, NoMusicStep):
+        if running or song_list_id is not None or music_map is not None:
+            raise JobFailure("internal")  # soundless: a cycling draft on no music only
+        music = NoRevisionMusic(source=NO_MUSIC_SOURCE)
+    elif music_map is None:
+        raise JobFailure("internal")  # a music step always has its map
+    elif running and (step.mix is not None or song_list_id is not None):
         raise JobFailure("internal")  # running v1: an existing MOWL playlist only (ADR 0018)
-    if step.mix is not None:
+    elif step.mix is not None:
         if song_list_id is not None:
             raise JobFailure("internal")  # a mix is never picked songs
         music = SwedebeatRevisionMusic(
