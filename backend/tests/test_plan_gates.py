@@ -3,7 +3,9 @@ admit (``classbeat.quota.gates``), the 409 ``quota`` body of ``length`` and ``fe
 and the worker's check of every draft in the design and revise stages, cycling and running
 (``classbeat.plan_gates``, ``classbeat.agent.design.within_plan``)."""
 
+import ast
 import json
+import re
 from pathlib import Path
 from typing import Any
 
@@ -229,7 +231,8 @@ def test_the_running_stages_hold_the_length_cap(data: MusicData) -> None:
 # --- prices stay in the admin area ------------------------------------------------------------
 
 PRICE_COLUMNS = ("monthly_price_cents", "intro_price_cents", "intro_price_until")
-# Where a price column may be named: its table's mirror and the admin area's edit and audit.
+# Where a price column may be named or ``plans`` read whole: its table's mirror and the admin
+# area's edit and audit (ADR 0011, 2026-11-03 amendment, lists the same three).
 PRICE_MODULES = frozenset(
     {
         SRC / "plans" / "tables.py",
@@ -237,15 +240,107 @@ PRICE_MODULES = frozenset(
         SRC / "admin" / "audit.py",
     }
 )
+_NAMES_PLANS = re.compile(r"\b(from|join|update|into|table)\s+(public\.)?plans\b", re.IGNORECASE)
+_WHOLE_ROW = re.compile(
+    r"(\bselect\s+(all\s+|distinct\s+)?\*"  # SELECT *
+    r"|\b\w+\s*\.\s*\*"  # p.* (any alias: the statement names plans)
+    r"|\breturning\s+\*"  # RETURNING *
+    r"|\b(row_to_json|to_jsonb?|jsonb?_populate_record|hstore)\s*\(\s*\w+\s*\)"  # whole row
+    r"|\btable\s+(public\.)?plans\b)",  # TABLE plans
+    re.IGNORECASE,
+)
 
 
-def test_no_module_outside_the_admin_area_names_a_price() -> None:
+def _literals(tree: ast.AST) -> list[str]:
+    """Every string literal, an f-string's constant parts joined with ``?`` for each value (an
+    implicit concatenation is already one literal)."""
+    found: list[str] = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.JoinedStr):
+            found.append(
+                "".join(
+                    v.value if isinstance(v, ast.Constant) and isinstance(v.value, str) else "?"
+                    for v in node.values
+                )
+            )
+        elif isinstance(node, ast.Constant) and isinstance(node.value, str):
+            found.append(node.value)
+    return found
+
+
+def price_offences(source: str) -> list[str]:
+    """How ``source`` could read a price: naming a price column, a whole-row read of ``plans``
+    in SQL text (``SELECT *``, ``p.*``, ``RETURNING *``, ``to_jsonb(p)``, ``TABLE plans``), or the
+    SQLAlchemy ``plans`` table itself (``select(plans)`` returns every column)."""
+    offences = [f"names {c}" for c in PRICE_COLUMNS if c in source]
+    tree = ast.parse(source)
+    for literal in _literals(tree):
+        if _NAMES_PLANS.search(literal) and _WHOLE_ROW.search(literal):
+            offences.append("reads plans whole")
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom) and (node.module or "").endswith("plans.tables"):
+            if any(alias.name in ("plans", "*", "metadata") for alias in node.names):
+                offences.append("imports the plans table")
+        elif isinstance(node, ast.Attribute) and node.attr == "plans":
+            base = node.value
+            name = base.id if isinstance(base, ast.Name) else getattr(base, "attr", None)
+            if name == "tables":
+                offences.append("uses tables.plans")
+        elif (
+            isinstance(node, ast.Subscript)
+            and isinstance(node.slice, ast.Constant)
+            and node.slice.value == "plans"
+        ):
+            offences.append("looks up the plans table by name")
+    return offences
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        'Q = "SELECT monthly_price_cents FROM plans"',
+        'Q = text("SELECT * FROM plans WHERE id = :p")',
+        'Q = text("select distinct * from public.plans")',
+        'Q = "SELECT p.* FROM entitlements e JOIN plans p ON p.id = e.plan_id"',
+        'Q = ("SELECT e.id, "\n     "q.* FROM entitlements e JOIN plans q ON q.id = e.plan_id")',
+        'Q = f"SELECT * FROM plans WHERE {WHERE}"',
+        'Q = "UPDATE plans SET rank = 1 RETURNING *"',
+        'Q = "SELECT to_jsonb(p) FROM plans p"',
+        'Q = "SELECT row_to_json(x) FROM plans x"',
+        'Q = "TABLE plans"',
+        "from classbeat.plans.tables import plans\nq = select(plans)",
+        "from classbeat.plans.tables import FREE, plans as p",
+        "from classbeat.plans.tables import *",
+        "from classbeat.plans import tables\nq = select(tables.plans)",
+        "import classbeat.plans.tables\nq = select(classbeat.plans.tables.plans)",
+        "from classbeat.plans.tables import metadata\nq = metadata.tables['plans']",
+    ],
+)
+def test_the_price_guard_catches_every_way_to_read_a_price(source: str) -> None:
+    assert price_offences(source) != []
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        'Q = "SELECT id, name, rank, route_key FROM plans ORDER BY rank"',
+        'Q = "SELECT count(*) FROM jobs"',
+        'Q = "SELECT * FROM jobs WHERE id = :j"',  # another table
+        "from classbeat.plans.tables import FREE, FEATURES",
+        "plans = []\nplans.append(1)",
+    ],
+)
+def test_the_price_guard_leaves_explicit_reads_alone(source: str) -> None:
+    assert price_offences(source) == []
+
+
+def test_no_module_outside_the_admin_area_can_read_a_price() -> None:
     """Billing is off (ADR 0011 section 8): nothing but the admin area reads or returns a price,
-    so no public route or the user's plan can show one."""
-    offenders = [
-        str(path.relative_to(SRC))
+    so no public route or the user's plan can show one. Every other read of ``plans`` names its
+    columns."""
+    offenders = {
+        str(path.relative_to(SRC)): found
         for path in sorted(SRC.rglob("*.py"))
-        if path not in PRICE_MODULES
-        and any(column in path.read_text(encoding="utf-8") for column in PRICE_COLUMNS)
-    ]
-    assert offenders == []
+        if path not in PRICE_MODULES and (found := price_offences(path.read_text(encoding="utf-8")))
+    }
+    assert offenders == {}

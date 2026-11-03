@@ -39,6 +39,14 @@ function plan(id: string, name: string, rank: number, limits: [number, number, n
     revisions_per_class: revisions,
     concurrent_jobs: jobs,
     monthly_cost_micros: cost,
+    max_class_minutes: 60,
+    games_allowed: true,
+    races_allowed: true,
+    ftp_tests_allowed: true,
+    monthly_price_cents: null,
+    intro_price_cents: null,
+    intro_price_until: null,
+    currency: null,
     features: [],
     updated_at: '2026-10-31T08:00:00Z',
     updated_by: null,
@@ -74,6 +82,7 @@ function view(
       revisions_per_class: 25,
       concurrent_jobs: 2,
       monthly_cost_micros: 300_000_000,
+      max_class_minutes: 180,
       trial_days: overrides.trialDays ?? 30,
     },
     read_only: {
@@ -242,6 +251,87 @@ describe('admin settings', () => {
       expect(api.to('PATCH', '/api/admin/plans/instructor')).toHaveLength(2)
     })
     expect(api.to('PATCH', '/api/admin/plans/instructor')[1]?.body).toEqual({ monthly_cost_micros: 75_500_000 })
+  })
+
+  it('edits class length, the switches and the prices, sending only what changed', async () => {
+    const api = adminApi({
+      [`GET ${SETTINGS}`]: view(),
+      'PATCH /api/admin/plans/free': plan('free', 'Free', 0, [3, 3, 1, 10_000_000]),
+    })
+    renderAt('/admin/settings')
+    const form = await screen.findByRole('form', { name: 'Free limits' })
+    expect(within(form).getByLabelText('Longest class (minutes)')).toHaveValue('60')
+    expect(within(form).getByText('10 to 180.')).toBeInTheDocument()
+    fireEvent.change(within(form).getByLabelText('Longest class (minutes)'), { target: { value: '30' } })
+    fireEvent.click(within(form).getByRole('switch', { name: 'Games' }))
+    fireEvent.change(within(form).getByLabelText('Monthly price'), { target: { value: '9.90' } })
+    fireEvent.change(within(form).getByLabelText('Introduction price'), { target: { value: '4.5' } })
+    fireEvent.change(within(form).getByLabelText('Introduction price ends'), { target: { value: '2027-03-01' } })
+    fireEvent.change(within(form).getByLabelText('Currency'), { target: { value: 'usd' } })
+    fireEvent.click(within(form).getByRole('button', { name: 'Save Free' }))
+    await waitFor(() => {
+      expect(api.to('PATCH', '/api/admin/plans/free')).toHaveLength(1)
+    })
+    expect(api.to('PATCH', '/api/admin/plans/free')[0]?.body).toEqual({
+      max_class_minutes: 30,
+      games_allowed: false,
+      monthly_price_cents: 990,
+      intro_price_cents: 450,
+      intro_price_until: '2027-03-01',
+      currency: 'USD',
+    })
+  })
+
+  it('clears a stored price with null', async () => {
+    const stored = { ...plan('free', 'Free', 0, [3, 3, 1, 10_000_000]), monthly_price_cents: 500, currency: 'SEK' }
+    const base = view()
+    const api = adminApi({
+      [`GET ${SETTINGS}`]: { ...base, plans: [stored, ...base.plans.slice(1)] },
+      'PATCH /api/admin/plans/free': plan('free', 'Free', 0, [3, 3, 1, 10_000_000]),
+    })
+    renderAt('/admin/settings')
+    const form = await screen.findByRole('form', { name: 'Free limits' })
+    expect(within(form).getByLabelText('Monthly price')).toHaveValue('5.00')
+    fireEvent.change(within(form).getByLabelText('Monthly price'), { target: { value: '' } })
+    fireEvent.change(within(form).getByLabelText('Currency'), { target: { value: '' } })
+    fireEvent.click(within(form).getByRole('button', { name: 'Save Free' }))
+    await waitFor(() => {
+      expect(api.to('PATCH', '/api/admin/plans/free')).toHaveLength(1)
+    })
+    expect(api.to('PATCH', '/api/admin/plans/free')[0]?.body).toEqual({ monthly_price_cents: null, currency: null })
+  })
+
+  it.each([
+    ['out_of_range', 'That number or date is outside the allowed range.'],
+    ['above_environment_bound', 'That is more than the server allows.'],
+    ['invalid_value', 'That value is not allowed here.'],
+    ['price_incomplete', /needs its end date .* any price needs a currency/],
+  ])('shows the %s refusal as a sentence', async (code, sentence) => {
+    const api = adminApi({
+      [`GET ${SETTINGS}`]: view(),
+      'PATCH /api/admin/plans/free': () => reason(422, code),
+    })
+    renderAt('/admin/settings')
+    const form = await screen.findByRole('form', { name: 'Free limits' })
+    fireEvent.change(within(form).getByLabelText('Longest class (minutes)'), { target: { value: '200' } })
+    fireEvent.click(within(form).getByRole('button', { name: 'Save Free' }))
+    expect(await within(form).findByText(sentence)).toBeInTheDocument()
+    expect(within(form).queryByText(code)).toBeNull()
+    expect(api.to('PATCH', '/api/admin/plans/free')).toHaveLength(1)
+  })
+
+  it('refuses a malformed price or currency before sending anything', async () => {
+    const api = adminApi({ [`GET ${SETTINGS}`]: view() })
+    renderAt('/admin/settings')
+    const form = await screen.findByRole('form', { name: 'Free limits' })
+    fireEvent.change(within(form).getByLabelText('Monthly price'), { target: { value: '9,9' } })
+    fireEvent.click(within(form).getByRole('button', { name: 'Save Free' }))
+    expect(await within(form).findByText(/Prices are amounts/)).toBeInTheDocument()
+    fireEvent.change(within(form).getByLabelText('Monthly price'), { target: { value: '9' } })
+    fireEvent.change(within(form).getByLabelText('Currency'), { target: { value: 'US1' } })
+    fireEvent.click(within(form).getByRole('button', { name: 'Save Free' }))
+    expect(await within(form).findByText(/three-letter code/)).toBeInTheDocument()
+    expect(api.to('PATCH', '/api/admin/plans/free')).toHaveLength(0)
   })
 
   it('refuses a malformed number before sending anything', async () => {

@@ -736,3 +736,52 @@ Accepted during T4 (#219), from the PR #269 review (2026-10-31):
 - **The gate counts a failed `pool_too_small` run on an unlisted case as a failure** (a test,
   `test_evals_suite_t4.py`; no behaviour change).
 
+
+## Amendment of 2026-11-03: running classes in the suite and the gate (M8 E1, issue #465)
+
+Context: ADR 0018 adds running classes (R1a, #491). Running jobs use the `design` stage group's route, but
+no suite case designed a running class, so no recorded result could say a model designs running classes
+well. ADR 0018 Amendment 3 keeps `running_enabled` off for real users until this amendment. No result has
+been recorded on any suite version outside the test fixtures (the owner has not run a live eval yet), so
+the version bump below invalidates nothing in practice.
+
+- **Suite version 10.** A tenth category, **`running`** (group `design`): a hard 30 and a moderate 45 minute
+  interval run, a steady easy run (a long zone run is what it asks for), an incline run with a minimum time
+  at gradient 1, a brief that asks for cycling things (the running schema refuses the model's cadence and
+  position, and the run must still end with a running draft) and a revision that takes every effort to
+  zone 3 or below. A running injection case joins **`adversarial`** (every run must pass) and two running
+  **`class_patterns`** cases deviate on request against the two running profiles (ADR 0017 sections 5
+  and 7: hard from the first minute on `running.interval.30`, zone 3 or below on `running.interval.45`);
+  the running weak cells select no profile, so a case on one fails `pattern_profile`. The running cases
+  are smoke cases too (`smoke/run_*.json`, so `smoke --live` runs them) except the two pattern cases.
+- **Running checks** (`evals.checks`): `validate` is `workout.validate_running`; `running_shape` (every
+  fitted interval holds only a length, a zone of 1 to 5 and a gradient of 0 or 1, and the spec says
+  `"sport": "running"`) replaces the sprint, climb and FTP test checks; `incline` when a case asks for one;
+  `zones` measures the share in zone 4 or above against its own bounds; there is **no `tss` check** (the
+  running load model is not calibrated, ADR 0018 Amendment 2, so no bound is invented). The runner gives a
+  running case the running profile, prompt and schema as a running job gets them (`sport_rules.rules_for`,
+  `design_stage_for`, `revise_stage_for`). Cycling cases, checks and their order are unchanged.
+- **Digest.** `design/sport_rules.py` and `agent/running_input.py` join `RULE_SOURCES` (kept out by R1a on
+  purpose so the version 9 digest stayed valid). The running prompts are covered by their prompt versions,
+  as cycling's are, not by the digest.
+- **Prompt versions.** The running stages are named `design` and `revise` like cycling's, so
+  `models.versions` keys them `running_design` and `running_revise`, and the `design` group's prompt
+  versions are those four. A results header records all six stages; `set_route` for `design` needs a
+  result recorded with all four; a design result recorded with the cycling two only is stale
+  (`prompt_versions`).
+- **The gate for running.** A running job may use a `design` route only when it is **not stale for any
+  reason** (suite version, manifest digest, every design-group prompt version, no newer failure):
+  `resolve_route` answers `ModelChoice.running_covered`, `RouteModels` hands it to the kinds, and
+  `design_draft` and `revise_draft` end a running job `model_config` before any MOWL or model call when it
+  is false (`design.sport.require_evaluated`). **The bootstrap choice never covers running**: there is no
+  recorded result behind it, and the owner's path is a recorded `suite --live` pass and `models enable` for
+  each plan key. The `fake` provider (dev and CI only; refused in prod) says yes. The admin refuses to store
+  `running_enabled` = `on` (422 `running_not_evaluated`, a `refused` audit row) unless every plan's
+  `route_key` has such a route (`routes.covers_running`). `CLASSBEAT_RUNNING_ENABLED` stays the kill switch;
+  with it on and nothing stored the flag is on, and the worker's check still refuses running jobs on a
+  model that is not evaluated for running. Cycling keeps section 5 unchanged: a stale route keeps working
+  for cycling, flagged.
+- **Alternatives.** A third stage group `running` (a migration of `model_routes`, `model_eval_results`,
+  the admin and the CLI for a group that runs the same tools on the same route keys); letting the bootstrap
+  serve running after an owner override (no recorded evidence behind it, and the override would be one
+  more switch to forget). Both rejected for the smaller rule above, which can be loosened later.

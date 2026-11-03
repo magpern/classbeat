@@ -25,6 +25,7 @@ from agentfake import analysed, brief, good_draft, script
 from classbeat.agent import DesignContext, design_stage
 from classbeat.agent import model_input as cycling_input
 from classbeat.agent.design import SYSTEM_PROMPT as CYCLING_DESIGN_PROMPT
+from classbeat.agent.design import check
 from classbeat.agent.dispatcher import dispatch
 from classbeat.agent.model_input import MusicData
 from classbeat.agent.provider import ToolCall
@@ -263,6 +264,11 @@ def test_the_running_prompts_are_their_own_and_name_nothing_of_cycling(
     versions = {design.prompt_version, revise.prompt_version}
     assert len(versions) == 2
     assert not versions & set(CYCLING_PROMPT_VERSIONS.values())
+    # What a recorded result must carry for the design group (models.versions, issue #465).
+    recorded = all_prompt_versions()
+    assert (recorded["running_design"], recorded["running_revise"]) == (
+        design.prompt_version, revise.prompt_version,
+    )  # fmt: skip
 
 
 def test_a_cycling_job_never_gets_the_running_prompt_and_a_running_job_never_the_cycling_one(
@@ -393,7 +399,12 @@ def test_the_cycling_first_messages_are_exactly_model_inputs(data: MusicData) ->
 
 
 def test_cycling_prompt_versions_and_schemas_are_unchanged() -> None:
-    assert all_prompt_versions() == CYCLING_PROMPT_VERSIONS
+    versions = all_prompt_versions()
+    assert {k: v for k, v in versions.items() if k in CYCLING_PROMPT_VERSIONS} == (
+        CYCLING_PROMPT_VERSIONS
+    )
+    # E1 (issue #465): the running stages are listed beside them under their own keys.
+    assert set(versions) - set(CYCLING_PROMPT_VERSIONS) == {"running_design", "running_revise"}
     assert "gradient" not in json.dumps(DraftInput.model_json_schema())
     assert "gradient" not in json.dumps(ReviseInput.model_json_schema())
 
@@ -437,10 +448,11 @@ def test_a_running_brief_gets_a_running_profile_or_none_never_a_cycling_one() ->
         assert select_profile_for(cycling) == select_profile_for_brief(cycling)
 
 
-def test_the_running_rule_module_is_left_to_e1_for_the_suite() -> None:
-    """Running rules reach no suite case yet, so the cycling suite's digest is unchanged; E1 adds
-    running cases and lists ``design/sport_rules.py`` in ``RULE_SOURCES`` with them."""
-    assert "design/sport_rules.py" not in suite.RULE_SOURCES
+def test_the_running_rule_and_input_modules_are_in_the_suite_digest() -> None:
+    """E1 (issue #465): the suite holds running cases, so how a running brief gets its rules and
+    what the model sees of a running class are part of the suite's digest."""
+    assert "design/sport_rules.py" in suite.RULE_SOURCES
+    assert "agent/running_input.py" in suite.RULE_SOURCES
 
 
 def test_the_diff_compares_running_gradients() -> None:
@@ -474,3 +486,54 @@ def test_running_is_off_by_default_in_every_compose_file() -> None:
     assert "RUNNING_ENABLED=false" in (ROOT / ".env.example").read_text("utf-8")
     e2e = yaml.safe_load((ROOT / "compose.e2e.yaml").read_text("utf-8"))["services"]
     assert all("CLASSBEAT_RUNNING_ENABLED" not in s.get("environment", {}) for s in e2e.values())
+
+
+# --- the quality sentences in running words (issue #465) ----------------------------------------
+
+
+def test_a_long_zone_run_is_reported_in_running_words_never_as_rides(ctx: DesignContext) -> None:
+    long_run = running_draft()
+    warm = long_run["segments"][0]
+    total = sum(i["sec"] for s in long_run["segments"] for i in s["intervals"])
+    cool = 300
+    long_run["segments"] = [
+        warm,
+        {"name": "Steady", "kind": "main", "intervals": [{"sec": total - 600 - cool, "zone": 2}]},
+        {"name": "Cooldown", "kind": "cooldown", "intervals": [{"sec": cool, "zone": 1}]},
+    ]
+    stage = running_design_stage(ctx)
+    answer = call(stage, "preview_draft", {"draft": long_run})
+    [issue] = [i for i in answer["quality"]["issues"] if i["code"] == "zone_run_too_long"]
+    assert issue["text"].startswith("zone 2 for ")
+    assert "a long stretch at one effort" in issue["text"]
+    text = json.dumps(answer).lower()
+    for ride_word in (r"official rides", r"\bride", r"\brpm\b", r"standing", r"cadence"):
+        assert not re.search(ride_word, text), ride_word
+    # The cycling stage keeps the library's sentence unchanged.
+    cycling = check(WorkoutDraft.model_validate(good_draft()), ctx.map).quality
+    assert all("a long stretch" not in i["text"] for i in cycling["issues"])
+
+
+def test_a_ride_only_issue_keeps_its_code_and_drops_the_ride_sentence(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from classbeat.agent import running_input
+
+    def fake(*args: Any) -> dict[str, Any]:
+        return {
+            "longest_zone_run": {"zone": 3, "sec": 600, "from": "05:00"},
+            "issues": [
+                {"code": "standing_too_long", "text": "standing for 120 s; official rides ..."},
+                {"code": "zone_run_too_long", "text": "zone 3 for 600 s; official rides hold"},
+                {"code": "loudness_mismatch", "text": "the hardest efforts sit on the quietest"},
+            ],
+        }
+
+    monkeypatch.setattr(running_input.model_input, "quality_for_model", fake)
+    out = running_input.running_quality({}, {}, {}, [])
+    assert [i["code"] for i in out["issues"]] == [
+        "standing_too_long", "zone_run_too_long", "loudness_mismatch",
+    ]  # fmt: skip
+    assert "official rides" not in json.dumps(out)
+    assert out["issues"][1]["text"].startswith("zone 3 for 600 s from 05:00; a long stretch")
+    assert out["issues"][2]["text"] == "the hardest efforts sit on the quietest"

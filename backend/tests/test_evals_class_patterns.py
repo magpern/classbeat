@@ -1,7 +1,9 @@
 """The ``class_patterns`` suite category (ADR 0017 section 5, issue #399). Fixtures only: invented
 briefs and scripted ``FakeProvider`` runs on synthetic music, no model, no network. Every case
 passes against its recorded script; each predicate also has a failing script (a draft that
-ignores the pattern, or one that "corrects" the draft away from the brief)."""
+ignores the pattern, or one that "corrects" the draft away from the brief). The running cases
+(ADR 0018, issue #465) deviate on request against the two running profiles; running weak cells
+select nothing."""
 
 import copy
 import json
@@ -18,20 +20,25 @@ from classbeat.agent.schemas import Brief, WorkoutDraft
 from classbeat.design.guidance import rule_set_for
 from classbeat.design.rules import default_registry, evaluate
 from classbeat.design.selection import select_profile_for_brief
+from classbeat.design.sport_rules import rules_for, select_profile_for
 from classbeat.evals import suite
 from classbeat.evals.cases import Case, PatternExpect
 from classbeat.evals.music import build_music
 from classbeat.evals.runner import CaseResult, run_case
 from classbeat.evals.suite import CATEGORY_GROUPS, load_suite, suite_digest
 from patternscripts import FOLLOWS, corrected_draft, pattern_draft
+from runningscripts import corrected_draft as running_corrected
+from runningscripts import good_draft as running_good
 from smokedrafts import iv, seg
 from suitescripts import provider_for_case
 
 SUITE = load_suite()
 CATEGORY = "class_patterns"
 CASES = [SUITE.design_cases[n] for n in SUITE.manifest.cases_of(CATEGORY, "design")]
-FOLLOWING = [c for c in CASES if c.expect.patterns and c.expect.patterns.mode == "follows"]
-DEVIATING = [c for c in CASES if c.expect.patterns and c.expect.patterns.mode == "deviates"]
+CYCLING = [c for c in CASES if c.brief.sport == "cycling"]
+RUNNING = [c for c in CASES if c.brief.sport == "running"]
+FOLLOWING = [c for c in CYCLING if c.expect.patterns and c.expect.patterns.mode == "follows"]
+DEVIATING = [c for c in CYCLING if c.expect.patterns and c.expect.patterns.mode == "deviates"]
 MARGIN = SUITE.manifest.zone7_tss_margin
 
 
@@ -54,7 +61,7 @@ def fitted(case: Case, draft: dict[str, Any]) -> dict[str, Any]:
 def test_the_category_is_in_the_manifest_for_the_design_group_only() -> None:
     assert CATEGORY_GROUPS[CATEGORY] == frozenset({"design"})
     assert SUITE.manifest.cases_of(CATEGORY, "songs") == []
-    assert len(CASES) == 10
+    assert (len(CASES), len(CYCLING), len(RUNNING)) == (12, 10, 2)
     assert SUITE.manifest.rules.pass_share == 0.9  # the ordinary category rule, nothing special
     assert CATEGORY not in SUITE.manifest.rules.every_run_categories
 
@@ -64,10 +71,8 @@ def test_a_follows_case_for_every_shipped_profile_and_every_kind_of_ask() -> Non
     shipped = {p.id for p in profiles if p.sport == "cycling"}
     chosen = {p.id for c in FOLLOWING if (p := select_profile_for_brief(c.brief))}
     assert chosen == shipped
-    # A brief has no sport until running classes are designed (ADR 0018 R1), so no brief selects
-    # a running profile yet and the suite has no running case; R1 adds them with the sport.
     assert {p.sport for p in profiles} == {"cycling", "running"}
-    selected = [select_profile_for_brief(c.brief) for c in CASES]
+    selected = [select_profile_for(c.brief) for c in CYCLING]
     assert {p.id for p in selected if p is not None} <= shipped
     assert {c.name for c in FOLLOWING} == set(FOLLOWS)
     asked = {
@@ -121,7 +126,7 @@ async def test_the_case_passes_against_its_recorded_script(case: Case) -> None:
     assert result.cost_micros <= SUITE.manifest.groups["design"].median_cost_micros
     names = set(ok_of(result))
     assert ("pattern_followed" in names) == (case in FOLLOWING)
-    assert ({"asked_present", "hits_explained"} <= names) == (case in DEVIATING)
+    assert ({"asked_present", "hits_explained"} <= names) == (case in DEVIATING + RUNNING)
 
 
 @pytest.mark.parametrize("case", FOLLOWING, ids=lambda c: c.name)
@@ -242,10 +247,14 @@ async def test_a_draft_that_breaks_many_rules_is_accepted() -> None:
 
 
 def test_the_run_gets_the_rules_a_production_job_builds() -> None:
-    for case in CASES:
+    for case in CYCLING:
         rules = rule_set_for(case.brief)
         assert rules is not None, case.name
         assert rules.section()
+    for case in RUNNING:  # a running job's rules (``sport_rules``), never a cycling profile's
+        made = rules_for(case.brief)
+        assert made is not None, case.name
+        assert made.provenance()["profile"].startswith("running.")
     assert rule_set_for(Brief(length_min=15)) is None  # no profile within 3 minutes: no rules
 
 
@@ -278,6 +287,7 @@ def test_the_digest_sources_include_every_rule_source() -> None:
         "agent/guidance.py", "agent/model_input.py", "design/guidance.py", "design/selection.py",
         "design/rules/__init__.py", "design/rules/engine.py", "design/rules/enums.py",
         "design/rules/profile.py", "design/rules/rationales.py", "design/profiles/index.json",
+        "design/sport_rules.py", "agent/running_input.py",
     }  # fmt: skip
 
 
@@ -322,3 +332,75 @@ def test_dropping_a_rule_source_from_the_list_changes_the_digest(
         )
         assert _digest_in(tmp_path, monkeypatch) != full
         monkeypatch.undo()
+
+
+# --- running (ADR 0018, issue #465): the brief wins, and weak cells select nothing ---------------
+
+
+def running_fitted(case: Case, draft: dict[str, Any]) -> dict[str, Any]:
+    from classbeat.agent.running import check_running
+    from classbeat.agent.schemas import RunningDraft
+
+    ctx = DesignContext.build(case.brief, build_music(case.music))
+    return check_running(RunningDraft.model_validate(draft), ctx.map).spec
+
+
+def test_a_running_deviates_case_for_each_shipped_running_profile() -> None:
+    shipped = {p.id for p in default_registry().profiles.values() if p.sport == "running"}
+    assert shipped == {"running.interval.30", "running.interval.45"}
+    chosen = {p.id for c in RUNNING if (p := select_profile_for(c.brief))}
+    assert chosen == shipped
+    for case in RUNNING:
+        assert case.expect.patterns is not None
+        assert case.expect.patterns.mode == "deviates"
+        assert case.brief.class_type == "interval"
+
+
+@pytest.mark.parametrize("case", RUNNING, ids=lambda c: c.name)
+def test_the_running_asked_draft_hits_running_rules_all_explained(case: Case) -> None:
+    profile = select_profile_for(case.brief)
+    assert profile is not None
+    assert profile.sport == "running"
+    hits = evaluate(running_fitted(case, running_good(case)), case.brief, profile)
+    assert hits, "a deviation the rules did not notice would prove nothing"
+    assert all(h.explained_by_brief and h.severity == "info" for h in hits)
+
+
+@pytest.mark.parametrize("case", RUNNING, ids=lambda c: c.name)
+async def test_a_running_model_that_corrects_the_draft_away_fails(case: Case) -> None:
+    result = await run(case, running_corrected(case))
+    assert result.outcome == "submitted"
+    assert ok_of(result)["asked_present"] is False
+    assert not result.passed
+
+
+async def test_a_running_case_never_judges_on_a_cycling_profile() -> None:
+    # Mutation guard: the case's pattern checks take the brief's sport's profile. A running
+    # brief judged on the cycling profile of its type and length would hit warn rules.
+    case = RUNNING[0]
+    cycling = select_profile_for_brief(case.brief)
+    running = select_profile_for(case.brief)
+    assert running is not None
+    assert running.sport == "running"
+    assert cycling is None or cycling.sport == "cycling"
+    result = await run(case)
+    assert result.passed
+
+
+@pytest.mark.parametrize(
+    "change",
+    [{"class_type": "plain"}, {"class_type": "hiit"}, {"length_min": 60}, {"class_type": None}],
+)
+async def test_a_running_case_on_a_weak_cell_selects_nothing(change: dict[str, Any]) -> None:
+    base = RUNNING[0].model_dump(mode="json")
+    base["brief"].update(change)
+    if change.get("class_type", "x") is None:
+        base["brief"].update(intensity="moderate")  # derived: plain (a weak cell)
+        base["brief"].pop("class_type")
+    case = Case.model_validate_json(json.dumps(base))
+    assert select_profile_for(case.brief) is None
+    assert rules_for(case.brief) is None
+    result = await run(case, running_good(RUNNING[0]))
+    flags = ok_of(result)
+    assert flags["pattern_profile"] is False  # a case must be about a shipped profile
+    assert not result.passed

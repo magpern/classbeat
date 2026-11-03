@@ -1,0 +1,14 @@
+{
+ "name": "run_interval_45",
+ "about": "A moderate 45 minute interval run.",
+ "brief": {
+  "sport": "running",
+  "length_min": 45,
+  "intensity": "moderate",
+  "class_type": "interval"
+ },
+ "music": {
+  "tracks": 13
+ },
+ "expect": {}
+}

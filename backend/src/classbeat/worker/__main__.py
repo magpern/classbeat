@@ -5,7 +5,7 @@ import logging
 import signal
 import sys
 
-from classbeat import design, playlists, saving, songs, swedebeat_handoff, swedebeat_match
+from classbeat import design, playlists, quota, saving, songs, swedebeat_handoff, swedebeat_match
 from classbeat.config import (
     ModelProviderRefused,
     Settings,
@@ -48,6 +48,9 @@ async def _run(settings: Settings) -> None:
     design.configure(design.runtime_from_settings(settings, keyring))
     # A queued running design or revise checks the running switch again (ADR 0018 section 5).
     sport.configure(sport.SportGate(running_enabled=settings.running_enabled))
+    # The environment's plan bounds (#496): a job stored without gates is run under the current
+    # plan's, whose class length cap is bounded by ``CLASSBEAT_CLASS_MINUTES_MAX`` as at admit.
+    quota.configure(settings)
     # save_workout (SV1): the key ring, and the listing lag its reconciler may rely on.
     saving.configure(saving.Runtime(keyring))
     saving.configure_listing_lag(settings.mowl_listing_lag_seconds)

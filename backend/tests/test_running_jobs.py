@@ -8,7 +8,9 @@ nothing); a running class designed and revised end to end on the running prompts
 brief stored with the sport, its revision, provenance, views and export; the refusals at creation
 (a bike-only knob, a Swedebeat mix, song picking, a class of the other sport) and in the final
 store (two queued jobs of different sports); Save admitting a running class (R1b) and the class
-API naming every class's sport.
+API naming every class's sport; a running design or revise on a model whose recorded result does
+not cover running ends ``model_config`` before any request (ADR 0012 amendment of 2026-11-03,
+issue #465), while cycling is unaffected.
 """
 
 import json
@@ -179,7 +181,9 @@ async def test_a_running_class_is_designed_on_the_running_prompt_and_stored_with
     [run] = renv.denv.agent_runs(job_id)
     running_version = prompt_version(spec.system, spec.tools)
     assert made.prompt_version == run.prompt_version == running_version
-    assert running_version not in all_prompt_versions().values()  # not cycling's
+    versions = all_prompt_versions()
+    assert running_version == versions["running_design"]  # what a result records (#465)
+    assert running_version not in (versions["design"], versions["revise"])  # not cycling's
 
     shown = await renv.browser.get(f"/api/jobs/{job_id}/revision")
     assert shown.status_code == 200, shown.text
@@ -237,6 +241,53 @@ async def test_a_running_revise_is_refused_or_ends_feature_off_while_the_flag_is
     row = renv.denv.ops.row(UUID(asked.json()["id"]))
     assert (row.state, row.error_category) == ("failed", "feature_off")
     assert (len(fake_mowl.reads), len(renv.providers)) == (reads, built)
+
+
+# --- an evaluated model only (ADR 0012 amendment of 2026-11-03, issue #465) ---------------------
+
+
+async def test_a_running_design_on_a_model_not_evaluated_for_running_ends_model_config(
+    renv: ReviseEnv, fake_mowl: FakeMowlMusic
+) -> None:
+    renv.running_covered = False
+    renv.use("running_first_draft")
+    made = await create(renv, design_body(renv, RUN))
+    assert made.status_code == 201, made.text
+    await renv.run(design.KIND)
+    row = renv.denv.ops.row(UUID(made.json()["id"]))
+    assert (row.state, row.error_category) == ("failed", "model_config")
+    assert all(p.sent == [] for p in renv.providers)  # no model request
+    assert (fake_mowl.reads, fake_mowl.attaches) == ([], [])  # no MOWL call
+    assert renv.denv.revisions(UUID(made.json()["id"])) == []
+
+
+async def test_a_running_revise_on_a_model_not_evaluated_for_running_ends_model_config(
+    renv: ReviseEnv, fake_mowl: FakeMowlMusic
+) -> None:
+    class_id, _, base = await running_class(renv)
+    renv.running_covered = False
+    renv.use("running_revise")
+    asked = await renv.ask(class_id, base)
+    assert asked.status_code == 201, asked.text
+    reads = len(fake_mowl.reads)
+    sent = sum(len(p.sent) for p in renv.providers)
+    await renv.run(design.REVISE_KIND)
+    row = renv.denv.ops.row(UUID(asked.json()["id"]))
+    assert (row.state, row.error_category) == ("failed", "model_config")
+    assert (len(fake_mowl.reads), sum(len(p.sent) for p in renv.providers)) == (reads, sent)
+    assert renv.current(class_id) == base
+
+
+async def test_a_cycling_design_does_not_need_a_running_evaluation(
+    renv: ReviseEnv, fake_mowl: FakeMowlMusic
+) -> None:
+    renv.running_covered = False
+    renv.use("good_first_draft")
+    made = await create(renv, design_body(renv, BRIEF))
+    assert made.status_code == 201, made.text
+    await renv.run(design.KIND)
+    row = renv.denv.ops.row(UUID(made.json()["id"]))
+    assert (row.state, row.error_category) == ("completed", None)
 
 
 # --- refusals ------------------------------------------------------------------------------------

@@ -28,6 +28,15 @@ row with them; nothing here commits.
   no longer has a standing pass, so the worker refuses that route like an unusable one
   (``RouteUnusable("newer_failure")``, ``model_config`` before any request; ADR 0012 amendment of
   2026-10-31, G2). ``list_routes`` still shows it as stale, and the CLI shows it as unusable.
+- **Running** (ADR 0012 amendment of 2026-11-03, ADR 0018, issue #465): a running job may use a
+  ``design`` route only when it is not stale for any reason: its result was recorded on the
+  running suite version and digest (whose design group holds the running cases) with the running
+  code's prompt versions of every design-group stage, running ones included, and no newer result
+  failed. ``resolve_route`` answers that as ``ModelChoice.running_covered``; the bootstrap choice
+  never covers running (no recorded result stands behind it). The running job kinds refuse an
+  uncovered choice ``model_config`` before any request (``design.sport.require_evaluated``), and
+  ``covers_running`` is the admin's check before ``running_enabled`` is stored ``on``. Cycling
+  keeps the rules above unchanged (a stale route keeps working for it, flagged).
 - "Newest" is ``recorded_at``, then the insertion order ``seq`` (``store``), so it is
   deterministic for results recorded in one transaction.
 
@@ -115,6 +124,7 @@ class ModelChoice:
     route_key: str | None = None
     eval_result_id: uuid.UUID | None = None
     stale: tuple[StaleReason, ...] = ()
+    running_covered: bool = False  # a route not stale at all; never the bootstrap (see the module)
 
 
 @dataclass(frozen=True, slots=True)
@@ -357,7 +367,19 @@ async def resolve_route(
         route_key=route_key,
         eval_result_id=found.eval_result_id,
         stale=stale,
+        running_covered=stage_group == "design" and not stale,
     )
+
+
+async def covers_running(db: AsyncSession, route_key: str) -> bool:
+    """Whether a running job with ``route_key`` would find a ``design`` route that covers running
+    (see the module); no route (the bootstrap) does not. Reads no key file: the admin calls it."""
+    if not isinstance(route_key, str) or ROUTE_KEY.fullmatch(route_key) is None:
+        return False
+    found = await store.route(db, route_key, "design")
+    if found is None:
+        return False
+    return not await staleness(db, await store.result_of(db, found.eval_result_id))
 
 
 _warned: set[tuple[str, str, StaleReason]] = set()

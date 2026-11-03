@@ -158,12 +158,16 @@ async def unusable(factory: Factory, s: Settings, group: str = "design") -> str:
 def test_the_running_prompt_versions_are_those_of_stages_built_from_real_contexts() -> None:
     from classbeat.agent.design import DesignContext, design_stage
     from classbeat.agent.revise import ReviseContext, revise_stage
+    from classbeat.agent.running import running_design_stage, running_revise_stage
     from classbeat.evals.cases import load_cases
     from classbeat.evals.music import build_music
 
     cases = load_cases()
-    design_case = next(c for c in cases if c.revise is None)
-    revise_case = next(c for c in cases if c.revise is not None)
+    design_case = next(c for c in cases if c.revise is None and c.brief.sport == "cycling")
+    revise_case = next(c for c in cases if c.revise is not None and c.brief.sport == "cycling")
+    run_case = next(c for c in cases if c.revise is None and c.brief.sport == "running")
+    run_revise = next(c for c in cases if c.revise is not None and c.brief.sport == "running")
+    assert run_revise.revise is not None
     assert revise_case.revise is not None
     music = build_music(design_case.music)
     design = design_stage(DesignContext.build(design_case.brief, music))
@@ -173,9 +177,24 @@ def test_the_running_prompt_versions_are_those_of_stages_built_from_real_context
             revise_case.brief, rmusic, revise_case.revise.base, (), "easier", music_changed=False
         )
     )
+    running_design = running_design_stage(
+        DesignContext.build(run_case.brief, build_music(run_case.music))
+    )
+    running_revise = running_revise_stage(
+        ReviseContext.build(
+            run_revise.brief,
+            build_music(run_revise.music),
+            run_revise.revise.base,
+            (),
+            "easier",
+            music_changed=False,
+        )
+    )
     assert running_prompt_versions("design") == {
         "design": design.prompt_version,
         "revise": revise.prompt_version,
+        "running_design": running_design.prompt_version,
+        "running_revise": running_revise.prompt_version,
     }
 
 
@@ -237,7 +256,9 @@ async def test_a_route_is_set_at_the_newest_pass_without_any_key_file(
     assert view.stale == ()
     assert await unusable(factory, web) == "no_key"
     choice = await resolve(factory, worker(app_database_url, kek_dir, "anthropic"))
-    assert choice == ModelChoice("anthropic", OPUS, "medium", "default", newest, ())
+    assert choice == ModelChoice(
+        "anthropic", OPUS, "medium", "default", newest, (), running_covered=True
+    )
 
 
 async def _routes(factory: Factory) -> Any:
@@ -399,6 +420,7 @@ async def test_no_route_gives_the_bootstrap_choice(
     for group in ("design", "songs"):
         choice = await resolve(factory, s, group, DEFAULT_ROUTE_KEY)
         assert choice == ModelChoice("anthropic", "claude-sonnet-5-5", "high", None, None, ())
+        assert choice.running_covered is False  # no recorded result stands behind it (#465)
     # A route for another key or group is not this one's.
     add_result(admin)
     await enable(factory, s, "anthropic", OPUS, "medium", key="pro")
@@ -514,20 +536,25 @@ async def test_a_stale_route_is_flagged_with_each_reason_and_a_newer_failure_ref
         # A new route for a stale result is refused (not the newest pass of the current code).
         assert await refused(factory, s, "anthropic", OPUS, "medium") == "suite_version"
     assert await refused(factory, s, "anthropic", OPUS, "medium") == "result_failed"
-    # Each other reason alone: the route is used and flagged (ADR 0012 section 5).
+    # Each other reason alone: the route is used and flagged (ADR 0012 section 5), for cycling;
+    # it no longer covers running (the amendment of 2026-11-03, issue #465).
     clear_gate(admin)
     add_result(admin)
     await enable(factory, s, "anthropic", OPUS, "medium")
+    assert (await resolve(factory, s)).running_covered is True
     with monkeypatch.context() as m:
         m.setattr(routes_module, "running_prompt_versions", lambda group: changed)
         assert (await resolve(factory, s)).stale == ("prompt_versions",)
+        assert (await resolve(factory, s)).running_covered is False
     with monkeypatch.context() as m:
         m.setattr(routes_module, "running_suite_version", lambda: 99)
         assert (await resolve(factory, s)).stale == ("suite_version",)
+        assert (await resolve(factory, s)).running_covered is False
     # The suite's cases changed under the same version (#215): only the manifest digest.
     with monkeypatch.context() as m:
         m.setattr(routes_module, "running_manifest_digest", lambda: "c" * 64)
         assert (await resolve(factory, s)).stale == ("manifest_digest",)
+        assert (await resolve(factory, s)).running_covered is False
         assert (await _routes(factory))[0].stale == ("manifest_digest",)
         assert await refused(factory, s, "anthropic", OPUS, "medium") == "manifest_digest"
 
@@ -806,3 +833,32 @@ async def test_a_plan_key_without_a_route_uses_the_bootstrap_choice_and_default_
     for key in ("free", "instructor", "pro"):
         assert await resolve(factory, worker_settings, key=key) == bootstrap
     assert (await resolve(factory, worker_settings)).route_key == DEFAULT_ROUTE_KEY
+
+
+async def test_a_running_job_needs_a_design_route_recorded_with_the_running_stages(
+    admin: Connection, factory: Factory, app_database_url: str, kek_dir: Path
+) -> None:
+    """ADR 0012 amendment of 2026-11-03 (issue #465): ``covers_running`` (the admin's check) and
+    ``ModelChoice.running_covered`` (the worker's) agree, per route key."""
+    s = worker(app_database_url, kek_dir, "anthropic")
+
+    async def covers(key: str = DEFAULT_ROUTE_KEY) -> bool:
+        async with system_session(factory) as db:
+            return await routes_module.covers_running(db, key)
+
+    assert await covers() is False  # no route: the bootstrap choice
+    assert await covers("Not A Key") is False
+    # A result recorded without the running stages' prompt versions (as before E1).
+    cycling = {k: v for k, v in running_prompt_versions("design").items() if "running" not in k}
+    add_result(admin, prompt_versions=cycling, age_minutes=5)
+    assert await refused(factory, s, "anthropic", OPUS, "medium") == "prompt_versions"
+    add_result(admin, age_minutes=1)
+    await enable(factory, s, "anthropic", OPUS, "medium")
+    assert await covers() is True
+    assert (await resolve(factory, s)).running_covered is True
+    assert await covers("pro") is False  # another plan's key has no route
+    add_result(admin, group="songs")
+    await enable(factory, s, "anthropic", OPUS, "medium", group="songs")
+    assert (await resolve(factory, s, "songs")).running_covered is False  # design only
+    add_result(admin, passed=False)  # a newer failure: no standing pass
+    assert await covers() is False

@@ -84,6 +84,9 @@ for n in postgres_password database_owner_password database_password database_ma
 done
 head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n' > secrets/app_secret_key      # >= 32 bytes
 head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n' > secrets/connection_kek      # exactly 64 hex characters
+for n in oauth_google_client_secret oauth_github_client_secret oauth_microsoft_client_secret; do
+  [ -e "secrets/$n" ] || install -m 600 /dev/null "secrets/$n"   # empty placeholder: that provider is off
+done
 ```
 
 Then by hand (type or paste, no `echo` of a real value into the shell history):
@@ -96,9 +99,10 @@ Then by hand (type or paste, no `echo` of a real value into the shell history):
   because `compose.yaml` and `compose.prod.yaml` mount it into `web`, and compose fails at `up`
   without it. A release image holds Swedebeat's key itself; the file is only a runtime override
   ([swedebeat-connect.md](swedebeat-connect.md)).
-- OAuth sign-in providers, if wanted, are not part of this file: they need their client id
-  variable and `oauth_<provider>_client_secret` secret file added to `compose.prod.yaml` by a
-  reviewed change.
+- `secrets/oauth_google_client_secret`, `secrets/oauth_github_client_secret`,
+  `secrets/oauth_microsoft_client_secret`: the OAuth client secrets, mounted into `web` only. The
+  loop above creates them **empty** (that provider is off) and never empties one that exists; the
+  files must exist, or `up` fails with a missing-file error. To switch Google on, section 5a.
 
 **Back up `secrets/connection_kek` and `secrets/postgres_password` and the other secret files
 off the server now** (a password manager or an encrypted offline copy). Losing `connection_kek`
@@ -124,15 +128,66 @@ SMTP_SENDER=noreply@classbeat.pernemark.se
 # optional: SMTP_PORT=587  SMTP_TLS=starttls  SMTP_USERNAME=...  ADMIN_EMAILS=you@example.test
 # optional: SMTP_CA_FILE=/run/smtp-ca/bridge.pem   (pinned self-signed SMTP certificate, see proton-bridge-smtp.md)
 # optional: SIGNUP_MODE=invite  CONNECTION_KEK_ID=kek-1  MODEL_PROVIDER=anthropic
+# optional: OAUTH_GOOGLE_CLIENT_ID=...apps.googleusercontent.com  OAUTH_VISIBLE_PROVIDERS=google   (section 5a)
+# optional: OAUTH_GITHUB_CLIENT_ID=...  OAUTH_MICROSOFT_CLIENT_ID=...   (client ids only; never a client secret here)
 ```
 
 `CLASSBEAT_PUBLIC_BASE_URL` is the one public origin (ADR 0003 section 4): the CSRF origin check,
-mail links, the Spotify callback and the passkey RP ID come from it, never from a request header.
+mail links, the Spotify callback, the OAuth sign-in redirect URI (`<base>/oauth/<provider>/callback`,
+section 5a) and the passkey RP ID come from it, never from a request header.
 Prod refuses anything but `https://`. **With `SMTP_CA_FILE` set, `compose.bridge.yaml` must be in
 `COMPOSE_FILE`**, or `up` and every restart recreate `web` with the variable but no mounted file,
 and `web` refuses to start.
 
 Song picking stays off (its default) until the owner runs [m4-live-activation.md](m4-live-activation.md).
+
+### 5a. Sign in with Google (optional)
+
+A provider is on only when **both** its client id (`.env`) and its secret file hold a value; with
+either empty it is off. Nothing about it is ever typed into a chat, an issue or git.
+
+1. In Google Cloud Console (APIs & Services, Credentials), create an **OAuth client ID** of type
+   *Web application*. Authorized redirect URI: `https://<host>/oauth/google/callback`, where
+   `<host>` is `CLASSBEAT_DOMAIN`. The app builds the redirect URI from `CLASSBEAT_PUBLIC_BASE_URL`
+   (`https://` + `CLASSBEAT_DOMAIN`), and one instance serves **one** base URL: registering both
+   `https://classbeat.eu/oauth/google/callback` and `https://classbeat.pernemark.se/oauth/google/callback`
+   at Google is fine, but `CLASSBEAT_DOMAIN` must be the host visitors actually use (and swag serves),
+   or Google refuses the sign-in with `redirect_uri_mismatch` and the passkeys and mail links point
+   elsewhere. The consent screen needs only the `openid` and `email` scopes; the app asks for
+   `auth_time` itself (no other registration change).
+2. Put the client id in `/opt/classbeat/.env` (it is not secret, it appears in the browser's URL):
+   ```
+   OAUTH_GOOGLE_CLIENT_ID=1234567890-abc.apps.googleusercontent.com
+   OAUTH_VISIBLE_PROVIDERS=google          # the default; which enabled providers get a button
+   ```
+3. Put the client secret in its file, never in `.env` (`scripts/check-prod-compose.sh` refuses a
+   `*CLIENT_SECRET*` variable there). `secrets/` is git-ignored and never committed. Paste it without
+   it reaching the shell history or the screen:
+   ```bash
+   cd /opt/classbeat
+   ( umask 077; read -rs S && printf '%s' "$S" > secrets/oauth_google_client_secret; unset S )
+   chmod 600 secrets/oauth_google_client_secret      # same owner and mode as the other files in secrets/
+   ```
+4. Recreate web (only web reads these; the worker never gets them):
+   ```bash
+   scripts/check-prod-compose.sh
+   docker compose up -d --wait web
+   ```
+5. Test while the consent screen is in **Testing** mode: only the test users listed there (Google
+   Cloud Console, OAuth consent screen, Test users) can sign in. Open the site in a private window:
+   *Continue with Google* is shown on the sign-in and sign-up screens; a test user signs in (a new
+   account still needs an invite while `SIGNUP_MODE=invite`). Publishing the app to every Google
+   account later needs a verified domain and public privacy policy and terms pages on it (Google's
+   verification), which is a separate step.
+
+**Provider off** (no client id, or an empty secret file): no Google button, `GET /api/auth/oauth/providers`
+lists no `google`, and starting a Google sign-in answers 404 `provider_disabled`; email and password
+sign-in work as before. To switch Google off again, empty the file (`: > secrets/oauth_google_client_secret`)
+or remove the client id, then `docker compose up -d --wait web`. GitHub and Microsoft work the same way
+with `OAUTH_GITHUB_CLIENT_ID` / `OAUTH_MICROSOFT_CLIENT_ID` and their secret files (redirect URI
+`https://<host>/oauth/github/callback` or `/oauth/microsoft/callback`; Microsoft also needs the
+`auth_time` optional claim, AGENTS.md), and appear on the screens only when named in
+`OAUTH_VISIBLE_PROVIDERS`.
 
 ## 6. The proxy network and the client address
 
@@ -292,7 +347,7 @@ docker compose exec web python -m classbeat admin grant you@example.test
 - [ ] No mailpit container exists.
 - [ ] Sign up with the invite, receive the verification mail (check spam, SPF, DKIM).
 - [ ] `docker compose exec web ls /run/secrets` lists no model key; `exec worker` lists
-      `anthropic_api_key`. `exec web touch /app/x` fails (read-only).
+      `anthropic_api_key` and no `oauth_*_client_secret`. `exec web touch /app/x` fails (read-only).
 - [ ] A design run shows live progress in the browser (SSE passes swag, and Cloudflare, unbuffered).
 - [ ] **The app sees your real address, and a forged header changes nothing.** From outside the
       LAN (a phone hotspot), send a body over the app's 64 KiB cap but under swag's 1m with forged
@@ -333,6 +388,7 @@ one line per address every 10 seconds, with the number it skipped), so a flood t
 cd /opt/classbeat
 git fetch --tags && git checkout vNEW             # the release you want
 touch secrets/swedebeat_app                       # must exist (empty is fine); `touch` never empties it
+touch secrets/oauth_google_client_secret secrets/oauth_github_client_secret secrets/oauth_microsoft_client_secret
 sed -i 's/^CLASSBEAT_VERSION=.*/CLASSBEAT_VERSION=NEW/' .env   # NEW = the tag without the v
 docker compose pull
 docker compose up -d --wait
@@ -342,8 +398,10 @@ docker compose up -d --wait
 the worker has 30 s to hand its leases back (ADR 0005). Read the release notes for owner-facing
 steps, and compare the release's swag sample with the installed one
 (`git diff vOLD vNEW -- docs/runbooks/swag-classbeat.subdomain.conf`). A stack older than the
-Swedebeat connection (#366) has no `secrets/swedebeat_app`; without it `up` fails with a
-missing-file error for that secret, which the `touch` line above fixes.
+Swedebeat connection (#366) has no `secrets/swedebeat_app`, and one older than #507 has no
+`secrets/oauth_*_client_secret`; without them `up` fails with a missing-file error for that secret,
+which the `touch` lines above fix (an empty OAuth file keeps that provider off). A file `touch`
+creates gets your umask's mode: `chmod 600` it like the others in `secrets/`.
 
 ### Rollback
 
@@ -401,7 +459,11 @@ unsafe mutation of the rendered files is refused, and runs `nginx -t` on the swa
 stand-ins for swag's `ssl.conf` and the Cloudflare list, plus the lines the app relies on (exactly
 one `X-Forwarded-For` line, the `$remote_addr` overwrite, no other include, the real-ip header, the
 body cap, `server_tokens off`, the SSE location, no CSP or `Referrer-Policy`, no per-location
-headers and no `proxy_intercept_errors`). That the Docker port relay presents the `web-out`
+headers and no `proxy_intercept_errors`). For OAuth sign-in (#507) it checks that the three client
+secrets are `secrets/` files mounted on web only, that no service has a variable named like a secret,
+that the client ids and visible providers come only from their variables (empty and `google` without
+them), that a canary in the dummy secret files never shows in the rendered files, and that `.env` holds
+no `*CLIENT_SECRET*` variable. That the Docker port relay presents the `web-out`
 gateway (section 6b) was checked on a throwaway container on Docker 29.
 
 Not checked: a running prod stack behind a real swag (the image, Cloudflare, the certificate, the

@@ -52,7 +52,7 @@ from classbeat.jobs import KindRegistry, queue
 from classbeat.jobs.runner import Execution, RunConfig, execute
 from designtools import FakeMowlMusic
 from jobapi import Browser, new_key
-from jobtools import new_job
+from jobtools import grant_plan, new_job
 from optools import ACCOUNT_BASE, PLAYLIST, TOKEN_A, OpsEnv
 
 _PREFIX = "https://api.mowl.com"
@@ -513,6 +513,9 @@ class SaveEnv:
 
     async def owner(self, token: str = TOKEN_A) -> tuple[UUID, UUID]:
         owner = await self.ops.user()
+        # ``DRAFT`` has a game: Save and Update check the user's current plan (#496), and ``pro``
+        # (games, 90 minutes) is what the save tests had before the gates, through the real path.
+        grant_plan(self.ops.admin, owner, "pro")
         return owner, await self.ops.connect(owner, token)
 
     def plant_link(self, owner: UUID, playlist_id: int = LINKED_PLAYLIST) -> UUID:

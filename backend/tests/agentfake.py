@@ -171,13 +171,14 @@ class FactoryModels:
 
     factory: Callable[[], ModelProvider]
     asked: list[tuple[str, str]] = field(default_factory=lambda: list[tuple[str, str]]())
+    running_covered: bool = True  # as the fake bypass; False: a route that does not cover running
 
     async def __call__(
         self, run: JobRun, route_key: str, group: str, agent: AgentConfig
     ) -> GroupModel:
         self.asked.append((route_key, group))
         try:
-            return GroupModel(self.factory(), agent)
+            return GroupModel(self.factory(), agent, running_covered=self.running_covered)
         except Exception:
             raise JobFailure("model_config") from None
 

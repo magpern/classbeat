@@ -15,8 +15,11 @@ read only.
   (422 ``environment_only``), as is any value that does not validate (422 ``invalid_value``), a
   trial longer than ``CLASSBEAT_TRIAL_DAYS_MAX`` (422 ``above_environment_bound``), a trial plan
   that is unknown (422 ``unknown_plan``) or ranks above ``instructor`` (422
-  ``plan_above_instructor``) and a key that is no flag, billing and Swedebeat included (422
-  ``unknown_key``). A refusal changes nothing and writes one ``refused`` audit row.
+  ``plan_above_instructor``), a key that is no flag, billing and Swedebeat included (422
+  ``unknown_key``), and ``running_enabled`` stored ``on`` while a plan's ``route_key`` has no
+  ``design`` route whose recorded result covers running (422 ``running_not_evaluated``,
+  ``classbeat.models.routes.covers_running``; ADR 0012 amendment of 2026-11-03, issue #465). A
+  refusal changes nothing and writes one ``refused`` audit row.
 - ``DELETE /settings/{key}``: clears the stored value (the JSON ``null``, which every reader takes
   as no row: maint has no ``DELETE`` on ``app_settings``), so the environment's value applies
   (404 ``not_found`` when nothing was stored).
@@ -58,6 +61,7 @@ from classbeat.config import Settings
 from classbeat.db import system_session
 from classbeat.flags import core
 from classbeat.flags.core import FlagRefused
+from classbeat.models.routes import covers_running
 from classbeat.plans.entitle import TRIAL_MAX_PLAN, plan_ranks
 
 router = admin_router()
@@ -102,6 +106,7 @@ _PLAN_COLUMNS = (
 _PLANS = text(f"SELECT {_PLAN_COLUMNS} FROM plans ORDER BY rank")  # noqa: S608
 _PLAN_FOR_UPDATE = text(f"SELECT {_PLAN_COLUMNS} FROM plans WHERE id = :p FOR UPDATE")  # noqa: S608
 _RANKS = text("SELECT id, rank FROM plans WHERE id = ANY(:ids)")
+_ROUTE_KEYS = text("SELECT DISTINCT route_key FROM plans ORDER BY route_key")
 
 
 def _update_plan(columns: list[str]) -> Any:
@@ -415,6 +420,8 @@ async def set_flag(request: Request, actor: AdminActor, key: KeyPath, body: Sett
             raise AdminRefused(refusal, 422)
         if key == "trial":
             await _check_trial_plan(session, canonical["plan"])
+        if key == "running_enabled" and canonical == "on":
+            await _check_running_evaluated(session)
         await session.execute(_UPSERT, {"k": key, "v": json.dumps(canonical), "by": actor.user_id})
         return await _flag_view(session, settings, key)
 
@@ -442,6 +449,15 @@ async def _check_trial_plan(session: AsyncSession, plan: str) -> None:
         raise AdminRefused("unknown_plan", 422)
     if ranks[plan] > ranks[TRIAL_MAX_PLAN]:
         raise AdminRefused("plan_above_instructor", 422)
+
+
+async def _check_running_evaluated(session: AsyncSession) -> None:
+    """Every plan's jobs would run running classes on a model whose recorded suite result covers
+    running (a ``design`` route that is not stale; never the bootstrap choice). The environment's
+    ``CLASSBEAT_RUNNING_ENABLED`` stays the kill switch, and the worker checks each job again."""
+    keys = (await session.execute(_ROUTE_KEYS)).scalars().all()
+    if not keys or not all([await covers_running(session, k) for k in keys]):
+        raise AdminRefused("running_not_evaluated", 422)
 
 
 @router.delete(f"{SETTINGS}/{{key}}", response_model=FlagOut)

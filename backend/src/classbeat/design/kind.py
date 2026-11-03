@@ -59,7 +59,7 @@ from classbeat.jobs.inputs import ModelJobInput, jsonb_size
 from classbeat.jobs.kinds import Admitted, Refused
 from classbeat.models.jobs import GroupModel, ModelSource
 from classbeat.models.store import StageGroup
-from classbeat.quota.route import with_plan
+from classbeat.quota.route import with_plan, with_plan_run
 
 KIND: Final = "design_draft"
 STAGES: Final = ("music", "design")
@@ -220,6 +220,8 @@ async def run(job_run: JobRun) -> Complete:
     if isinstance(given.music, SwedebeatMusicChoice):
         await mixadmit.still_on(job_run, runtime.swedebeat_enabled)  # before anything is called
     model = await group_model(runtime, job_run, given.route_key, "design")  # before any MOWL call
+    if given.brief.sport == sport.RUNNING:
+        sport.require_evaluated(model)  # an evaluated model only (ADR 0012, issue #465)
     await job_run.stage("music")
     step = await music_step(job_run, runtime, given.music, given.mowl_connection_id)
     handed_over = False  # the outcome's ``release`` closes the step from then on
@@ -276,7 +278,7 @@ DESIGN_DRAFT: Final = KINDS.register(
         KIND,
         DesignDraftInput,
         STAGES,
-        run,
+        with_plan_run(run),  # the current plan's gates for an input without any (#496)
         admit=with_plan(admit),  # the plan's gates, a mix's checks, the route key (AD5, #496)
         server_fields=frozenset({"route_key", "plan_gates", "handoff_id"}),
     )

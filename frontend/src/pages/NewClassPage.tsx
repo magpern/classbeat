@@ -13,7 +13,7 @@ import {
 import { errorMessage } from '../api/messages'
 import { startError } from '../api/songMessages'
 import { createPickJob, type PickInput } from '../api/songs'
-import { getPlan } from '../api/plan'
+import { getPlan, type Gates } from '../api/plan'
 import { getSpotifyStatus } from '../api/spotify'
 import {
   MusicChoice,
@@ -205,6 +205,17 @@ function NewClass() {
 
 const LENGTHS = [30, 45, 60, 90] as const
 
+function lengthSentence(max: number): string {
+  return `Your plan allows classes of up to ${String(max)} minutes.`
+}
+
+/** The parts of a class the plan leaves out, as one sentence, or null when it leaves out none. */
+function leftOut(names: string[]): string | null {
+  if (names.length === 0) return null
+  const list = names.length === 1 ? names[0]! : `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]!}`
+  return `Your plan does not include ${list}.`
+}
+
 function whole(value: string): number {
   return value.trim() === '' ? Number.NaN : Number(value)
 }
@@ -253,12 +264,16 @@ function ClassForm({
   const lengthInput = useRef<HTMLInputElement>(null)
   // Classes left this month, from the plan API; hidden while unknown or when the call fails.
   const [classesLeft, setClassesLeft] = useState<number | null>(null)
+  // What the plan allows (#496), shown before the wall; unknown means no cap is shown here and the
+  // server still enforces it.
+  const [allowed, setAllowed] = useState<{ maxMinutes: number; gates: Gates } | null>(null)
   useEffect(() => {
     const abort = new AbortController()
     getPlan(abort.signal).then(
       (plan) => {
         if (!abort.signal.aborted) {
           setClassesLeft(Math.max(0, plan.limits.classesPerMonth - plan.classesHeld))
+          setAllowed({ maxMinutes: plan.limits.maxClassMinutes, gates: plan.gates })
         }
       },
       () => undefined,
@@ -267,6 +282,10 @@ function ClassForm({
       abort.abort()
     }
   }, [])
+  const racesOn = allowed?.gates.races ?? true
+  const ftpOn = allowed?.gates.ftpTests ?? true
+  const gamesOn = allowed?.gates.games ?? true
+  const leftOutText = leftOut([...(racesOn ? [] : ['races']), ...(ftpOn ? [] : ['FTP tests'])])
   const attempt = useRef<{ fingerprint: string; key: string } | null>(null)
 
   const submit = (event: FormEvent) => {
@@ -275,7 +294,7 @@ function ClassForm({
       length_min: whole(length),
       climbs: running ? 0 : whole(climbs),
       sprints: running ? 0 : whole(sprints),
-      races: running ? 0 : whole(races),
+      races: running || !racesOn ? 0 : whole(races),
     }
     const name = title.trim()
     let invalid: string | null = null
@@ -283,6 +302,7 @@ function ClassForm({
     else if ((running || music === 'playlist') && playlist === '') invalid = 'Choose a playlist.'
     else if (!running && music === 'swedebeat_mix' && mixId === '') invalid = 'Choose a Swedebeat mix.'
     else if (!inRange(brief.length_min, 10, 180)) invalid = 'The length is 10 to 180 minutes.'
+    else if (allowed !== null && brief.length_min > allowed.maxMinutes) invalid = lengthSentence(allowed.maxMinutes)
     else if (!inRange(brief.climbs, 0, 10)) invalid = 'Climbs are 0 to 10.'
     else if (!inRange(brief.sprints, 0, 20)) invalid = 'Sprints are 0 to 20.'
     else if (!inRange(brief.races, 0, 5)) invalid = 'Races are 0 to 5.'
@@ -297,7 +317,7 @@ function ClassForm({
           : {
               ...brief,
               intensity,
-              ftp_test: ftp === '' ? null : (Number(ftp) as 3 | 5 | 20),
+              ftp_test: ftp === '' || !ftpOn ? null : (Number(ftp) as 3 | 5 | 20),
               style,
               text: notes,
             }
@@ -363,7 +383,7 @@ function ClassForm({
       : [
           { label: 'Climbs', value: climbs },
           { label: 'Sprints', value: sprints },
-          { label: 'Races', value: races },
+          { label: 'Races', value: racesOn ? races : '0' },
         ]),
     {
       label: 'Music',
@@ -383,7 +403,7 @@ function ClassForm({
     effort: intensity,
     climbs: running ? 0 : whole(climbs),
     sprints: running ? 0 : whole(sprints),
-    races: running ? 0 : whole(races),
+    races: running || !racesOn ? 0 : whole(races),
   })
 
   if (
@@ -464,6 +484,8 @@ function ClassForm({
                 <ChipButton
                   key={m}
                   pressed={length === String(m)}
+                  disabled={allowed !== null && m > allowed.maxMinutes}
+                  className="disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-raised"
                   onClick={() => {
                     setLength(String(m))
                   }}
@@ -486,7 +508,8 @@ function ClassForm({
               type="number"
               inputMode="numeric"
               min={10}
-              max={180}
+              max={allowed === null ? 180 : Math.min(180, allowed.maxMinutes)}
+              hint={allowed === null ? undefined : lengthSentence(allowed.maxMinutes)}
               value={length}
               onChange={(e) => {
                 setLength(e.target.value)
@@ -511,20 +534,25 @@ function ClassForm({
               <div className="grid gap-4 sm:grid-cols-3">
                 <Stepper label="Climbs" noun="climbs" value={climbs} min={0} max={10} onChange={setClimbs} />
                 <Stepper label="Sprints" noun="sprints" value={sprints} min={0} max={20} onChange={setSprints} />
-                <Stepper label="Races" noun="races" value={races} min={0} max={5} onChange={setRaces} />
+                {racesOn ? (
+                  <Stepper label="Races" noun="races" value={races} min={0} max={5} onChange={setRaces} />
+                ) : null}
               </div>
-              <SelectInput
-                label="FTP test"
-                value={ftp}
-                onChange={(e) => {
-                  setFtp(e.target.value)
-                }}
-              >
-                <option value="">None</option>
-                <option value="3">3 minutes</option>
-                <option value="5">5 minutes</option>
-                <option value="20">20 minutes</option>
-              </SelectInput>
+              {ftpOn ? (
+                <SelectInput
+                  label="FTP test"
+                  value={ftp}
+                  onChange={(e) => {
+                    setFtp(e.target.value)
+                  }}
+                >
+                  <option value="">None</option>
+                  <option value="3">3 minutes</option>
+                  <option value="5">5 minutes</option>
+                  <option value="20">20 minutes</option>
+                </SelectInput>
+              ) : null}
+              {leftOutText === null ? null : <p className="m-0 text-[0.875rem] text-muted">{leftOutText}</p>}
             </>
           )}
         </Card>
@@ -533,7 +561,11 @@ function ClassForm({
             label="Anything else?"
             value={notes}
             maxLength={2000}
-            hint="Tell classbeat what the class should feel like."
+            hint={
+              gamesOn
+                ? 'Tell classbeat what the class should feel like.'
+                : 'Tell classbeat what the class should feel like. Games are not part of your plan.'
+            }
             onChange={(e) => {
               setNotes(e.target.value)
             }}
