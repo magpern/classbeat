@@ -246,9 +246,11 @@ def test_no_other_source_names_the_media_list() -> None:
     assert offenders == []
 
 
-def test_the_media_hosts_are_empty_until_the_owner_confirms_them() -> None:
-    # The owner's PR that adds the confirmed host(s) replaces this with a test pinning exactly them.
-    assert frozenset() == egress.MOWL_MEDIA_HOSTS
+def test_the_media_hosts_are_exactly_the_owner_confirmed_host() -> None:
+    # The owner's live check of 2026-11-03 (docs/runbooks/swedebeat-mix-media-host.md) named
+    # this host.
+    # Any other name is a new live check, not a guess.
+    assert frozenset({"users-playlists.s3-accelerate.amazonaws.com"}) == egress.MOWL_MEDIA_HOSTS
 
 
 def test_the_production_lists_are_unchanged_and_hold_no_media_host() -> None:
@@ -261,11 +263,14 @@ def test_the_production_lists_are_unchanged_and_hold_no_media_host() -> None:
 
 
 def test_the_media_hosts_are_exact_https_names_never_a_wildcard_or_a_cloud_domain() -> None:
-    # Vacuous while empty; it binds the owner's PR. ``Allowlist`` already refuses upper case.
+    # ``Allowlist`` already refuses upper case.
     for host in egress.MOWL_MEDIA_HOSTS:
         assert re.fullmatch(r"[a-z0-9]([a-z0-9.-]*[a-z0-9])?", host)
         assert "*" not in host
-        assert not host.endswith((".amazonaws.com", ".cloudfront.net", ".s3.amazonaws.com"))
+        # A cloud provider name is allowed only as one bucket's own endpoint (a bucket label in
+        # front); a bare or regional AWS or CloudFront name never is.
+        if host.endswith((".amazonaws.com", ".cloudfront.net")):
+            assert re.fullmatch(r"[a-z0-9][a-z0-9-]{2,62}\.s3-accelerate\.amazonaws\.com", host)
         assert host.count(".") >= 2
 
 

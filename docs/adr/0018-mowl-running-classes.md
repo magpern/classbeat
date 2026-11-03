@@ -322,3 +322,10 @@ The owner authorized a one-program live save test on 2026-11-03; the results are
   running classes cannot be saved or updated either (§5).
 - **The flag stays off for real users until E1** (#465) puts running evals behind the model-enable gate:
   running jobs use the `design` route and no recorded eval result covers their prompt versions.
+
+## Amendment 4 (2026-11-03, Architect): no soundless running in v1
+
+ADR 0007's amendment of 2026-11-03 adds a "No music" source for **cycling** classes. A running brief with
+it is refused `invalid_input` at input, and a running revision with `none` music is `invalid_input` at Save
+and Update: running v1 still designs on an existing MOWL playlist only (§2). Soundless running would need
+its own design and revise prompts and is a later change.
