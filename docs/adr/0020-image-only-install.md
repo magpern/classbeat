@@ -39,14 +39,15 @@ computed on it; the secret files keep their setup (`<deploy user>:10010`, mode 6
 2. **`compose.prod.yaml` and the other deploy files are assets of the GitHub Release**, attached
    by the release run from the tag's own files: `compose.prod.yaml`, `compose.prod.loopback.yaml`,
    `compose.prod.lan.yaml` (home/LAN, below), `check-prod-compose.sh`,
-   `swag-classbeat.subdomain.conf`, `prod.env.example` and `SHA256SUMS` (their checksums).
+   `swag-classbeat.subdomain.conf`, `prod.env.example`, `backup.sh`, `restore.sh`, `validate-backup.sh` and `SHA256SUMS` (their checksums).
    `scripts/release-assets.sh` is the single list; CI builds the assets from it on every pull
    request that touches it, and a test pins the list. The assets are public (the repository
    is); the images are private. No asset is generated or edited at release time, so the file
    on the server is the file the tag's CI checked. Assets are published after both images,
-   so a release with an asset has its images. Backup and restore scripts stay in the
-   repository for now (they run from a checkout of the operator's choice; a follow-up may ship
-   them) and the runbook says so.
+   so a release with an asset has its images. `backup.sh`, `restore.sh` and
+   `validate-backup.sh` are assets too (they need only `docker compose` and each other); the
+   restore drill script stays a developer tool. A test pins that the runbook's download loops
+   list exactly the assets.
 3. **The checks run from the released script.** `check-prod-compose.sh` detects its place: in a
    checkout it is the CI check it is today; next to a `compose.prod.yaml` with no `docs/`
    (the install folder) it is the pre-deploy check. There it validates the shipped files
@@ -112,4 +113,4 @@ computed on it; the secret files keep their setup (`<deploy user>:10010`, mode 6
 - The first deploy after this change pulls the db image; the existing data volume is
   untouched (same Postgres major and minor, init scripts only run on an empty volume).
 - A second private package (`classbeat-db`). The token's `read:packages` covers both.
-- Backup and restore scripts are not yet released assets.
+- The restore drill script is not an asset.
