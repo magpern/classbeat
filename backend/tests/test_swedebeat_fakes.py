@@ -15,6 +15,7 @@ import pytest
 from mowl import api
 from mowl.credentials import Credentials
 
+from classbeat import egress
 from classbeat.egress import (
     MOWL_MEDIA_ALLOWLIST,
     Allowlist,
@@ -318,12 +319,14 @@ async def test_a_link_off_the_injected_list_is_refused_before_it_is_sent(link: s
     assert media.requests == []
 
 
-async def test_the_production_list_is_empty_and_refuses_every_host() -> None:
+async def test_the_production_list_is_the_confirmed_host_and_refuses_every_other() -> None:
     media = FakeMedia()
-    assert MOWL_MEDIA_ALLOWLIST.hosts == frozenset()
+    assert MOWL_MEDIA_ALLOWLIST.hosts == egress.MOWL_MEDIA_HOSTS == {
+        "users-playlists.s3-accelerate.amazonaws.com"
+    }
     async with mowl_media_async_client() as http:  # the real transport is never reached
         with pytest.raises(OutboundBlocked):
-            await http.get(media.link("ok"))
+            await http.get(media.link("ok"))  # FakeMedia's host is not the confirmed one
     assert media.requests == []
 
 

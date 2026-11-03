@@ -267,9 +267,10 @@ def test_the_media_hosts_are_exact_https_names_never_a_wildcard_or_a_cloud_domai
     for host in egress.MOWL_MEDIA_HOSTS:
         assert re.fullmatch(r"[a-z0-9]([a-z0-9.-]*[a-z0-9])?", host)
         assert "*" not in host
-        # A bucket's own endpoint is exact; a bare cloud provider domain never is.
-        assert host not in {"amazonaws.com", "s3.amazonaws.com", "cloudfront.net"}
-        assert not host.endswith((".cloudfront.net", ".s3.amazonaws.com"))
+        # A cloud provider name is allowed only as one bucket's own endpoint (a bucket label in
+        # front); a bare or regional AWS or CloudFront name never is.
+        if host.endswith((".amazonaws.com", ".cloudfront.net")):
+            assert re.fullmatch(r"[a-z0-9][a-z0-9-]{2,62}\.s3-accelerate\.amazonaws\.com", host)
         assert host.count(".") >= 2
 
 
