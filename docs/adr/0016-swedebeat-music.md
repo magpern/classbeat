@@ -381,3 +381,12 @@ the class (ADR 0008 §8). ADR 0010's text is edited in the PR that accepts this 
   sent to a wrong host. (B1, B3, B5)
 - **T111** The manual hand-off verifying the wrong mix, being tampered with (a forged match revision, mix id
   or state; an expired row revived) or attaching another user's. (B2, B5)
+
+## Amendment of 2026-11-03: soundless classes (issue #526)
+
+ADR 0007's amendment of 2026-11-03 adds a "No music" source (`{"source": "none"}`). A soundless class has
+no mix and no `song_list`: a `swedebeat_match` of it, a Swedebeat hand-off for it and a
+`swedebeat_verify_mix` of it (`swedebeat_handoff/kind.py`) are refused `invalid_input` at creation by an
+explicit check of `classes.music_source`, not only by a missing list or stored match (issue #530), and
+`swedebeat_handoff.adopt` refuses to write a mix over a `none` source. The class page shows no Swedebeat
+section for it. Nothing else in this ADR changes.

@@ -247,6 +247,45 @@ describe('Update', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent(/still undecided.*box below/)
   })
 
+  // Issue #504: the job can end before the reload after the click shows it open, so the summary
+  // never holds an open job; the page follows the job it created.
+  it('shows the program_changed sentence when the update ended before the reload saw it open', async () => {
+    const path = `/api/jobs/${SAVE_JOB}`
+    start(
+      { saved: saved() },
+      {
+        'POST /api/jobs': () => jobBody('queued', { id: SAVE_JOB, kind: 'update_workout' }),
+        [`GET ${path}`]: jobBody('failed', {
+          id: SAVE_JOB,
+          kind: 'update_workout',
+          error_category: 'program_changed',
+        }),
+        [`GET ${path}/events`]: () => sse([1, 'failed']),
+      },
+    )
+    renderAt(PAGE)
+    fireEvent.click(await screen.findByRole('button', { name: 'Update saved workout' }))
+    fireEvent.click(within(screen.getByRole('group', { name: 'Confirm' })).getByRole('button', { name: 'Update workout' }))
+    expect(await screen.findByText(/changed in MOWL after classbeat saved it\. Nothing was written/)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Update anyway (replaces your changes in MOWL)' })).toBeInTheDocument()
+  })
+
+  it('shows the Updated sentence when the update ended before the reload saw it open', async () => {
+    const path = `/api/jobs/${SAVE_JOB}`
+    start(
+      { saved: saved() },
+      {
+        'POST /api/jobs': () => jobBody('queued', { id: SAVE_JOB, kind: 'update_workout' }),
+        [`GET ${path}`]: jobBody('completed', { id: SAVE_JOB, kind: 'update_workout' }),
+        [`GET ${path}/events`]: () => sse([1, 'completed']),
+      },
+    )
+    renderAt(PAGE)
+    fireEvent.click(await screen.findByRole('button', { name: 'Update saved workout' }))
+    fireEvent.click(within(screen.getByRole('group', { name: 'Confirm' })).getByRole('button', { name: 'Update workout' }))
+    expect(await screen.findByText(/Updated\. Your MOWL workout now matches this version/)).toBeInTheDocument()
+  })
+
   it('after program_changed offers Update anyway, and sends overwrite only after its dialog', async () => {
     const path = `/api/jobs/${SAVE_JOB}`
     const api = start(
