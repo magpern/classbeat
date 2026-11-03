@@ -26,7 +26,7 @@ that matter to this decision, all medians or shares over many classes:
   zones 1 and 2; cue cards and games are not used;
 - evidence is **strong** for cycling and interval classes at 30, 45 and 60 minutes (n 29 to 33, but
   much of it is the same class re-released at three lengths, so the effective n is lower),
-  **moderate** for HIIT (15), **weak** for journey, 75 minutes and FTP test. Running: no data.
+  **moderate** for HIIT (15), **weak** for journey, 75 minutes and FTP test. Running (P9, 2026-11-03): see §7.
 
 What exists today (read from `main`):
 
@@ -136,7 +136,7 @@ A profile file contains **numbers and ids only**:
 
 **Selecting a profile.** A pure function `select_profile(brief) -> Profile | None`:
 
-- `sport` is `cycling` today (running is reserved, §7);
+- `sport` is `cycling` or `running` (§7); `select_profile` picks only from the requested sport's own profile files and never falls back to the other sport; the new-class form and the brief carry no sport until R1 (#463) adds it, so `select_profile_for_brief` is cycling-only for now;
 - `class_type` is a new optional brief field `class_type` in `{plain, interval, hiit, journey,
   ftp_test}`; when absent it is derived: `ftp_test` set -> `ftp_test`; `sprints` or `races` > 0
   or intensity `hard` -> `interval`; otherwise `plain`. The new-class form may expose it later;
@@ -281,17 +281,28 @@ The repository is public and the source is somebody's product, so:
 6. **Statistics are not scores.** The ADR and the UI never claim a class is "good" or "bad" or
    that it matches a professional; they say what is usual.
 
-### 7. Running (reserved, no data)
+### 7. Running (P9, shipped 2026-11-03)
 
-Running classes with incline are tracked as GitHub milestone M8 and issue #373 (`docs/roadmap.md`
-does not mention them), but **no running statistics exist**: the
-running categories were not available when the collection ran. This ADR therefore only reserves
-the slot: `sport` is in the schema and in `select_profile`, the directory
-`profiles/running/` is documented and empty, and `select_profile` returns `None` for any
-non-cycling sport. **No threshold is invented, borrowed from cycling or estimated** for running;
-a running profile is a new file with real aggregate data, produced under §6, reviewed in its own
-PR, and needs a schema bump only if it needs a new metric (for example incline). Until then a
-running class gets no rules, no section and no note.
+Running profiles exist since P9 (#401, #486): two files under `profiles/running/` (`interval` classes of 30 and
+45 minutes), from 64 programs of a professional studio library collected on 2026-11-03 and analysed under §6.
+What holds for running, as built:
+
+- **Evidence rule, written down here (it was only in the runbook):** `moderate` needs 15 to 24 classes
+  after identical timelines are counted once, from at least 5 independent sets (camps of one studio), and
+  no two classes of a cell agreeing on 90 % or more of their per-second zone timeline; `weak` below that
+  and `strong` from n >= 25 as for cycling. The two shipped cells have 16 and 18 classes from 5 and 6
+  sets and are `moderate`: every rule is `info`, basis `range_10`, never blocking.
+- **Weak cells ship nothing:** plain 30, plain 45, plain ~55, interval ~55 and the single test classes have
+  too few classes or one set; `select_profile` returns `None` for them, and a running class of such a type
+  gets no rules, no section and no note. **No threshold is invented, borrowed from cycling or estimated.**
+- **Left out on purpose:** the TSS-rate rule (the running load model is not calibrated), standing (running
+  has none) and a short cool-down rule (its bound fell below the 60 s hard minimum).
+- **Wording:** four running sentences; a sentence that names the activity is tied to its sport and the
+  loader refuses a profile that uses another sport's sentence. Schema stays 1 (only enum additions); the six
+  cycling profiles, their digests and `rules_version` 1 are unchanged.
+- **Incline:** no incline metric yet: a draft has no gradient field until R1, and only 9 of the 34 interval
+  classes use incline above the base setting. The incline aggregates are in the P9 PR description.
+- **Not wired:** no brief can select a running profile until R1 adds a sport to the brief.
 
 ### 8. The issues
 
@@ -311,7 +322,7 @@ merge is used.
 | P6 | `feat(web): "Pattern notes" block on the class page` | `RevisionView` block, copy per §4, dismiss and undo, muted `explained_by_brief`, no alert role, nothing disables an action, a11y and 44 px targets | component and page tests, axe clean; a revision with no hits renders as today | Sonnet | P5, P1b |
 | P7 | `test(evals): class_patterns category` | the `class_patterns` manifest category and cases of §5 (fixtures, scripted runs, brief-wins predicates), `rules_version` in the results header and `compare`, suite digest and `suite_version` bump | the gate's verdict covers the new category; replay green; live baseline is an owner-run step, not part of done | Sonnet | P4 |
 | P8 | `docs(runbook): refresh rule profiles from new aggregates` | owner runbook: how aggregates become a profile (the generator script stays private), the PR checklist of §6, when to bump versions, how to add a sport | a reviewer can follow it without the private notes; contains no source name | Sonnet | P1 |
-| P9 | `feat(design): running profiles` | **blocked on data.** A running analysis under §6, then profiles and, if needed, an incline metric | not started until aggregate data exists | Opus (schema bump) | owner's data, P1 |
+| P9 | `feat(design): running profiles` | A running analysis under §6, then profiles (done: #486, two `moderate` cells); an incline metric stays open until R1 gives drafts a gradient | done 2026-11-03 for the two cells; more cells when more classes exist | Opus (schema bump) | owner's data, P1 |
 
 Shortening the prompt's hand-written "typical class" bullets is a separate prompt change after P4
 and P7 have a baseline; it is not in this list.
