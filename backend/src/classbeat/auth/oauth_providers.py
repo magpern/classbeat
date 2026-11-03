@@ -14,7 +14,7 @@ from classbeat.config import Settings
 
 GOOGLE, GITHUB, MICROSOFT = "google", "github", "microsoft"
 logger = logging.getLogger(__name__)
-_WARNED_UNKNOWN: set[str] = set()
+_WARNED_UNKNOWN: set[str] = set()  # warned about already (once per process)
 MICROSOFT_ISSUER = "https://login.microsoftonline.com/{tid}/v2.0"
 
 
@@ -76,6 +76,10 @@ def enabled_providers(settings: Settings) -> dict[str, Provider]:
             github_secret,
         )
     return found
+
+
+def _reset_warned_for_tests() -> None:
+    _WARNED_UNKNOWN.clear()
 
 
 def visible_providers(settings: Settings, enabled: dict[str, Provider]) -> list[str]:

@@ -9,11 +9,18 @@ import pytest
 
 from authtools import Env, running_env
 from classbeat import auth
+from classbeat.auth import oauth_providers
 from classbeat.auth.cookies import OAUTH_COOKIE
 from flows import Browser, reason, user_with_password
 from oauthtools import CLIENT_IDS, location, make_invite, sign_in_with, start
 from oidcfake import FakeProviders
 from smtpfake import SmtpFake
+
+
+@pytest.fixture(autouse=True)
+def _forget_warned_names() -> None:
+    """The unknown-name warning is once per process: each test starts with none warned."""
+    oauth_providers._reset_warned_for_tests()
 
 
 async def identities(env: Env) -> int:

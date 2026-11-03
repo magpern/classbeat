@@ -318,8 +318,9 @@ function Failed({ job }: { job: Job }) {
   if (job.errorCategory === 'uncertain_write') return <FailedUncertain job={job} />
   // A failed Swedebeat match: the server's sentence says what stopped it. The generic MOWL text for
   // the category ("wait a few minutes and try again") would promise a retry that does not happen.
+  // No button either: "Try again" would start a new design, not retry the match.
   if (job.kind === 'swedebeat_match' && job.errorMessage !== null) {
-    return <Ended job={job} title="The Swedebeat match stopped" detail={job.errorMessage} />
+    return <Ended job={job} title="The Swedebeat match stopped" detail={job.errorMessage} retry={false} />
   }
   const text = failureText(job.errorCategory)
   return <Ended job={job} title={text.title} detail={text.detail} account={text.account === true} />
@@ -351,11 +352,13 @@ function Ended({
   title,
   detail,
   account = false,
+  retry = true,
 }: {
   job: Job
   title: string
   detail: string
   account?: boolean
+  retry?: boolean
 }) {
   const { again, action, remembered } = useDesignAgain(job)
   return (
@@ -371,9 +374,11 @@ function Ended({
             <Link to="/account">Go to your account</Link>
           </Button>
         ) : null}
-        <Button variant={account ? 'secondary' : 'primary'} disabled={action.busy} onClick={again}>
-          {remembered ? (job.state === 'failed' ? 'Try again' : 'Design again') : 'Start a new design'}
-        </Button>
+        {retry ? (
+          <Button variant={account ? 'secondary' : 'primary'} disabled={action.busy} onClick={again}>
+            {remembered ? (job.state === 'failed' ? 'Try again' : 'Design again') : 'Start a new design'}
+          </Button>
+        ) : null}
       </p>
     </Panel>
   )

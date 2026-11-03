@@ -393,8 +393,14 @@ async def test_flag_off_answers_feature_off_and_reads_no_match(
         reads.append("newest_match")
         raise AssertionError("a match pointer was read with the flag off")
 
+    async def no_load(*_: Any, **__: Any) -> Any:
+        reads.append("load")
+        raise AssertionError("a match's content was loaded with the flag off")
+
     monkeypatch.setattr(match_view, "get_match", no_get)
     monkeypatch.setattr(match_view, "newest_match", no_newest)
+    # ``is_match`` (the flag-off key lookup) must not read the row's content, hash or music.
+    monkeypatch.setattr(match_view, "load", no_load)
 
     def stored_flag(value: str | None) -> None:
         mine.sql("DELETE FROM app_settings WHERE key = 'swedebeat_enabled'")
@@ -423,6 +429,38 @@ async def test_flag_off_answers_feature_off_and_reads_no_match(
         assert reads == []
     finally:
         stored_flag(None)
+
+
+async def test_flag_off_key_lookup_filters_on_the_class(
+    two: tuple[Plant, Plant], flag: Callable[[bool], None], jobs_admin: Connection
+) -> None:
+    mine, _ = two
+    elsewhere = new_class(jobs_admin, mine.owner)  # another class of the same user
+    flag(False)
+    # The caller's own match id under a class it does not belong to is not_found, not feature_off.
+    got = await mine.browser.get(mine.path(mine.match, elsewhere))
+    assert (got.status_code, got.json()) == (404, NOT_FOUND)
+    got = await mine.browser.get(mine.path(mine.match, uuid.uuid4()))
+    assert (got.status_code, got.json()) == (404, NOT_FOUND)
+    # Self-check: under its own class the same id is feature_off.
+    got = await mine.browser.get(mine.path(mine.match))
+    assert (got.status_code, got.json()) == (404, FEATURE_OFF)
+
+
+async def test_flag_off_class_detail_is_the_flag_on_shape_without_the_pointer(
+    two: tuple[Plant, Plant], flag: Callable[[bool], None]
+) -> None:
+    """The flag-off body is built by hand, not serialized by FastAPI: pin it to the model."""
+    mine, _ = two
+    flag(True)
+    on = await mine.browser.get(f"/api/classes/{mine.class_id}")
+    assert on.status_code == 200, on.text
+    assert on.json()["swedebeat_match"]["revision_id"] == str(mine.match)
+    flag(False)
+    off = await mine.browser.get(f"/api/classes/{mine.class_id}")
+    assert off.status_code == 200, off.text
+    expected = {k: v for k, v in on.json().items() if k != "swedebeat_match"}
+    assert off.json() == expected
 
 
 @pytest.fixture

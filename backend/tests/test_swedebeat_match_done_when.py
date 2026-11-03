@@ -293,6 +293,38 @@ async def test_disconnecting_mowl_drops_hand_offs_maps_and_links_but_not_the_mat
     assert match_of(henv, a_class)
 
 
+async def test_reconnecting_as_another_mowl_account_drops_hand_offs_maps_and_links(
+    browsers: Any, henv: HandEnv, mowl_api: FakeMowl
+) -> None:
+    """The account-change path (a reconnect in place) shares ``_FORGET_MOWL`` with Disconnect."""
+    alice = await rider_of(browsers, henv, TOKEN_A)
+    bob = await rider_of(browsers, henv, TOKEN_B)
+    a_class = plant(henv, alice.user_id, [150])
+    b_class = plant(henv, bob.user_id, [150])
+    for who, token, klass in ((alice, TOKEN_A, a_class), (bob, TOKEN_B, b_class)):
+        mowl_api.add_mix("Old", token=token, mix_id=f"old-{token[:4]}", listed_seconds=150)
+        assert (await _start(who, klass)).status_code == 200
+        mowl_api.add_mix(
+            "New", token=token, mix_id=f"new-{token[:4]}", listed_seconds=150, audio_seconds=150,
+            link="beats",
+        )  # fmt: skip
+        assert (await _check(who, klass)).status_code == 201
+        await henv.run_verify()
+    statements = (
+        "SELECT count(*) FROM swedebeat_handoffs WHERE owner_id = :o",
+        "SELECT count(*) FROM swedebeat_mix_maps WHERE owner_id = :o",
+        "SELECT count(*) FROM mowl_playlist_links WHERE owner_id = :o",
+    )
+    for statement in statements:
+        assert one(henv, statement, o=alice.user_id) == 1  # self-check
+    # The same connection row, another MOWL account's token.
+    await henv.ops.connect(alice.user_id, "cccccccc-0000-1111-2222-333333333333")
+    for statement in statements:
+        assert one(henv, statement, o=alice.user_id) == 0
+        assert one(henv, statement, o=bob.user_id) == 1
+    assert match_of(henv, a_class)
+
+
 async def test_the_hourly_purge_drops_hand_offs_expired_a_week_and_keeps_the_rest(
     browsers: Any, henv: HandEnv, mowl_api: FakeMowl
 ) -> None:
