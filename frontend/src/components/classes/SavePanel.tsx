@@ -143,6 +143,10 @@ export function SavePanel({
 }) {
   const [mode, setMode] = useState<Mode | null>(null)
   const [finished, setFinished] = useState<Finished | null>(null)
+  // The job this page just created. A save or update can end before the reload after it sees it
+  // open (an Update that stops at `program_changed` is one read), and then `summary.openJob` never
+  // holds it: following the created job keeps its outcome from being lost.
+  const [started, setStarted] = useState<{ id: string; kind: WriteKind } | null>(null)
   const [decision, setDecision] = useState<string | null>(null)
   // After Do it anyway on an update the MOWL copy may be partly written: the next Update is an
   // overwrite, and still goes through the dialog.
@@ -166,6 +170,10 @@ export function SavePanel({
   const writing =
     openJob !== null && (openJob.kind === SAVE_KIND || openJob.kind === UPDATE_KIND)
   const busy = openJob !== null
+  const run =
+    writing && openJob
+      ? { id: openJob.id, kind: openJob.kind === SAVE_KIND ? ('save' as const) : ('update' as const) }
+      : started
   const savedId = saved.latestSavedWorkoutId
 
   const start = (kind: WriteKind, overwrite: boolean) => {
@@ -209,6 +217,7 @@ export function SavePanel({
         attempt.current = null
         setMode(null)
         setFinished(null)
+        setStarted({ id: job.id, kind })
         setDecision(null)
         setAgain(null)
         if (kind === 'update' && overwrite) setOverwriteNext(false)
@@ -259,13 +268,14 @@ export function SavePanel({
           />
         ) : null}
         {action.error ? <Notice kind="error">{action.error}</Notice> : null}
-        {writing && openJob ? (
+        {run ? (
           <WriteRun
-            key={openJob.id}
-            jobId={openJob.id}
-            kind={openJob.kind === SAVE_KIND ? 'save' : 'update'}
+            key={run.id}
+            jobId={run.id}
+            kind={run.kind}
             onFinished={(done) => {
               setFinished(done)
+              setStarted(null)
               setVersion((n) => n + 1)
               onReload()
             }}
