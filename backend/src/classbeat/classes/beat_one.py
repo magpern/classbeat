@@ -146,10 +146,12 @@ async def change(
         locked = (await db.execute(_LOCK, _ids(ctx, class_id))).first()
         if locked is None:
             return Changed("not_found")
+        found = (await db.execute(_REVISION, _ids(ctx, class_id, revision_id=revision_id))).first()
+        if found is None:  # not one of this class's own revisions: as an unknown id
+            return Changed("not_found")
         if locked.current_revision_id != revision_id:
             return Changed("stale_base")
-        found = (await db.execute(_REVISION, _ids(ctx, class_id, revision_id=revision_id))).first()
-        music = None if found is None else _music(found.kind, found.music)
+        music = _music(found.kind, found.music)
         if music is None or not music.songs:
             return Changed("no_beat_data")
         if song not in {s.song for s in music.songs}:
