@@ -45,6 +45,21 @@ describe('the plan refusal sentences', () => {
     )
   })
 
+  it('words a length or feature refusal with minutes and the feature, never a class count', () => {
+    const body = (extra: Record<string, unknown>) =>
+      new ApiError(409, 'quota', null, { detail: { reason: 'quota', plan: 'free', ...extra } })
+    expect(quotaText(body({ quota: 'length', limit: 30, used: 45 }))).toBe(
+      'Your plan allows classes of up to 30 minutes. Choose a shorter length.',
+    )
+    expect(quotaText(body({ quota: 'feature', feature: 'races' }))).toBe(
+      'Your plan does not include races. Take them out and try again.',
+    )
+    expect(quotaText(body({ quota: 'feature', feature: 'ftp_tests' }))).toContain('FTP tests')
+    expect(quotaText(body({ quota: 'feature', feature: '<b>x</b>' }))).toBe(
+      'Your plan does not include part of this class. Take it out and try again.',
+    )
+  })
+
   it('words busy with the plan limit', () => {
     const error = new ApiError(429, 'busy', null, { detail: { reason: 'busy', limit: 2 } })
     expect(busyText(error)).toContain('allows 2 designs at a time')

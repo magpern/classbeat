@@ -53,12 +53,31 @@ function classes(n: number): string {
   return `${String(n)} ${n === 1 ? 'class' : 'classes'}`
 }
 
+const FEATURES: Record<string, string> = {
+  games: 'games',
+  races: 'races',
+  ftp_tests: 'FTP tests',
+}
+
 /**
- * The sentence for a 409 `quota`. The kind (`classes` or `cost`) is the body's `quota` field,
- * defaulting to `classes`; `cost` means the month's model budget is used up.
+ * The sentence for a 409 `quota`. The kind is the body's `quota` field, defaulting to `classes`;
+ * `cost` means the month's model budget is used up; `length` (#496) that the class is longer than
+ * the plan allows (`limit` in minutes); `feature` that the plan does not include `feature`.
  */
 export function quotaText(error: ApiError): string {
   const detail = detailOf(error)
+  if (detail.quota === 'length') {
+    const limit = whole(detail.limit)
+    return limit === null
+      ? 'Your plan does not allow a class this long. Choose a shorter length.'
+      : `Your plan allows classes of up to ${String(limit)} minutes. Choose a shorter length.`
+  }
+  if (detail.quota === 'feature') {
+    const name = typeof detail.feature === 'string' ? FEATURES[detail.feature] : undefined
+    return name === undefined
+      ? 'Your plan does not include part of this class. Take it out and try again.'
+      : `Your plan does not include ${name}. Take them out and try again.`
+  }
   const month = periodMonth(detail.period_end) ?? 'this month'
   const day = dayText(detail.period_end)
   const more = day === null ? 'More at the start of next month.' : `More from ${day}.`

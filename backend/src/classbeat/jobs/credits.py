@@ -31,6 +31,9 @@ class QuotaRefused(Exception):
     are held; ``limit`` and ``used`` count classes) or ``cost`` (the month's model cost reached
     the plan's cap; ``limit`` and ``used`` in micro-dollars, never sent to the browser);
     ``period_end`` is the first day of the next UTC month and ``plan`` the effective plan's id.
+    Two more reasons (#496) refuse what a plan does not include, with no period: ``length`` (the
+    brief's ``length_min`` is ``used``, the plan's effective cap in minutes is ``limit``) and
+    ``feature`` (``feature`` names the gate: ``races`` or ``ftp_tests``).
     Raised inside the transaction, so nothing it would have created survives."""
 
     def __init__(
@@ -41,6 +44,7 @@ class QuotaRefused(Exception):
         used: int | None = None,
         period_end: date | None = None,
         plan: str | None = None,
+        feature: str | None = None,
     ) -> None:
         super().__init__(reason)
         self.reason = reason
@@ -48,17 +52,20 @@ class QuotaRefused(Exception):
         self.used = used
         self.period_end = period_end
         self.plan = plan
+        self.feature = feature
 
     def detail(self) -> dict[str, int | str]:
         """The 409 ``quota`` body's fields (FE1's contract): ``quota``, and ``limit``, ``used``
-        (classes only: a cost refusal shows no money), ``period_end`` (ISO date) and ``plan``
-        when known."""
+        (classes and length, in classes and minutes: a cost refusal shows no money), ``feature``
+        (feature only), ``period_end`` (ISO date) and ``plan`` when known."""
         body: dict[str, int | str] = {"quota": self.reason}
-        if self.reason == "classes":
+        if self.reason in ("classes", "length"):
             if self.limit is not None:
                 body["limit"] = self.limit
             if self.used is not None:
                 body["used"] = self.used
+        if self.reason == "feature" and self.feature is not None:
+            body["feature"] = self.feature
         if self.period_end is not None:
             body["period_end"] = self.period_end.isoformat()
         if self.plan is not None:

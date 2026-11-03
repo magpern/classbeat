@@ -24,21 +24,32 @@ read only.
   as no row: maint has no ``DELETE`` on ``app_settings``), so the environment's value applies
   (404 ``not_found`` when nothing was stored).
 - ``PATCH /plans/{plan_id}`` ``{classes_per_month?, revisions_per_class?, concurrent_jobs?,
-  monthly_cost_micros?}``: edits the limits within the table's ranges and under the environment's
-  upper bounds (422 ``out_of_range`` or ``above_environment_bound``). The next reservation reads
-  the new limits; credits already held stay as they are.
+  monthly_cost_micros?, max_class_minutes?, games_allowed?, races_allowed?, ftp_tests_allowed?,
+  monthly_price_cents?, intro_price_cents?, intro_price_until?, currency?}``: edits the limits
+  within the table's ranges and under the environment's upper bounds (422 ``out_of_range`` or
+  ``above_environment_bound``; ``max_class_minutes`` under ``CLASSBEAT_CLASS_MINUTES_MAX``), the
+  feature gates (booleans) and the prices (#496). A limit or gate sent as ``null`` is left as it
+  is; a price sent as ``null`` is cleared. A price is whole cents from 0 to 10 000 000, the
+  introduction price's end a date from 2020 to 2100 (``out_of_range``), the currency three capital
+  letters (``invalid_value``); an introduction price without its end date (or the reverse), or a
+  price without a currency, once merged with the stored row, is 422 ``price_incomplete``. The next
+  request reads the new values; credits already held and jobs already created stay as they are.
+  Prices are read and returned here only: no route outside ``/api/admin`` reads them (billing is
+  off, ADR 0011 section 8).
 
 The audit ``params`` of a write hold the key and what the value means (the mode, a plan and days,
-a banner's level and length), never free text.
+a banner's level and length, a plan's numbers, gates and currency code), never free text: a
+currency that is not three capital letters is left out.
 """
 
 import json
-from datetime import datetime
+import re
+from datetime import date, datetime
 from typing import Annotated, Any
 from uuid import UUID
 
 from fastapi import Path, Request
-from pydantic import BaseModel, ConfigDict, Field, StrictInt
+from pydantic import BaseModel, ConfigDict, Field, StrictBool, StrictInt
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -64,7 +75,15 @@ HARD_BOUNDS = {  # the plans table's checks (migration 0007)
     "revisions_per_class": (0, 200),
     "concurrent_jobs": (1, 16),
     "monthly_cost_micros": (0, 10_000_000_000),
+    "max_class_minutes": (10, 180),  # migration 0026, the brief's own range
 }
+LIMITS = tuple(HARD_BOUNDS)
+GATES = ("games_allowed", "races_allowed", "ftp_tests_allowed")
+PRICE_CENTS = ("monthly_price_cents", "intro_price_cents")
+PRICES = (*PRICE_CENTS, "intro_price_until", "currency")
+PRICE_RANGE = (0, 10_000_000)  # migration 0026
+INTRO_UNTIL_RANGE = (date(2020, 1, 1), date(2100, 12, 31))
+CURRENCY = re.compile(r"[A-Z]{3}")
 
 _ALL_SETTINGS = text("SELECT key, value, updated_at, updated_by FROM app_settings")
 _UPSERT = text(
@@ -80,20 +99,26 @@ _CLEAR = text(
 )
 _PLAN_COLUMNS = (
     "id, name, rank, classes_per_month, revisions_per_class, concurrent_jobs, "
-    "monthly_cost_micros, features, updated_at, updated_by"
+    "monthly_cost_micros, max_class_minutes, games_allowed, races_allowed, ftp_tests_allowed, "
+    "monthly_price_cents, intro_price_cents, intro_price_until, currency, features, updated_at, "
+    "updated_by"
 )
 _PLANS = text(f"SELECT {_PLAN_COLUMNS} FROM plans ORDER BY rank")  # noqa: S608
-_PLAN = text(f"SELECT {_PLAN_COLUMNS} FROM plans WHERE id = :p")  # noqa: S608
+_PLAN_FOR_UPDATE = text(f"SELECT {_PLAN_COLUMNS} FROM plans WHERE id = :p FOR UPDATE")  # noqa: S608
 _RANKS = text("SELECT id, rank FROM plans WHERE id = ANY(:ids)")
 _ROUTE_KEYS = text("SELECT DISTINCT route_key FROM plans ORDER BY route_key")
-_UPDATE_PLAN = text(
-    "UPDATE plans SET classes_per_month = COALESCE(:c, classes_per_month), "  # noqa: S608
-    "revisions_per_class = COALESCE(:r, revisions_per_class), "
-    "concurrent_jobs = COALESCE(:j, concurrent_jobs), "
-    "monthly_cost_micros = COALESCE(:m, monthly_cost_micros), "
-    "updated_at = now(), updated_by = :by WHERE id = :p "
-    f"RETURNING {_PLAN_COLUMNS}"
-)
+
+
+def _update_plan(columns: list[str]) -> Any:
+    """``UPDATE plans`` of exactly ``columns``, every name one of ``LIMITS``, ``GATES`` or
+    ``PRICES`` (constants, never the request's text), each bound to the parameter of its name."""
+    if not columns or not set(columns) <= {*LIMITS, *GATES, *PRICES}:
+        raise ValueError("an editable plan column")
+    assignments = ", ".join(f"{c} = :{c}" for c in columns)
+    return text(
+        f"UPDATE plans SET {assignments}, updated_at = now(), updated_by = :by "  # noqa: S608
+        f"WHERE id = :p RETURNING {_PLAN_COLUMNS}"
+    )
 
 
 class Out(BaseModel):
@@ -128,6 +153,15 @@ class PlanOut(Out):
     revisions_per_class: int
     concurrent_jobs: int
     monthly_cost_micros: int
+    max_class_minutes: int
+    games_allowed: bool
+    races_allowed: bool
+    ftp_tests_allowed: bool
+    # Admin only (billing is off): never in a route outside ``/api/admin``.
+    monthly_price_cents: int | None
+    intro_price_cents: int | None
+    intro_price_until: date | None
+    currency: str | None
     features: list[str]
     updated_at: datetime
     updated_by: PersonOut | None
@@ -138,6 +172,7 @@ class BoundsOut(Out):
     revisions_per_class: int
     concurrent_jobs: int
     monthly_cost_micros: int
+    max_class_minutes: int
     trial_days: int
 
 
@@ -159,10 +194,30 @@ class SettingIn(In):
 
 
 class PlanIn(In):
+    """Wide schema ranges, so a value the table or the environment refuses reaches the route and
+    is refused there with an audit row; anything else (a string for a number, an unknown field)
+    is the schema's 422."""
+
     classes_per_month: StrictInt | None = Field(default=None, ge=-(10**12), le=10**12)
     revisions_per_class: StrictInt | None = Field(default=None, ge=-(10**12), le=10**12)
     concurrent_jobs: StrictInt | None = Field(default=None, ge=-(10**12), le=10**12)
     monthly_cost_micros: StrictInt | None = Field(default=None, ge=-(10**12), le=10**12)
+    max_class_minutes: StrictInt | None = Field(default=None, ge=-(10**12), le=10**12)
+    games_allowed: StrictBool | None = None
+    races_allowed: StrictBool | None = None
+    ftp_tests_allowed: StrictBool | None = None
+    monthly_price_cents: StrictInt | None = Field(default=None, ge=-(10**12), le=10**12)
+    intro_price_cents: StrictInt | None = Field(default=None, ge=-(10**12), le=10**12)
+    intro_price_until: date | None = None
+    currency: str | None = Field(default=None, max_length=8)
+
+    def asked(self) -> dict[str, Any]:
+        """What the edit changes: every limit and gate given a value, and every price named at
+        all (``null`` clears a price)."""
+        sent = self.model_dump()
+        out: dict[str, Any] = {k: sent[k] for k in (*LIMITS, *GATES) if sent[k] is not None}
+        out.update({k: sent[k] for k in PRICES if k in self.model_fields_set})
+        return out
 
 
 KeyPath = Annotated[str, Path(pattern=r"^[a-z][a-z_]{0,39}$")]
@@ -190,6 +245,7 @@ def _bounds(settings: Settings) -> dict[str, int]:
         "monthly_cost_micros": min(
             HARD_BOUNDS["monthly_cost_micros"][1], settings.monthly_cost_micros_max
         ),
+        "max_class_minutes": min(HARD_BOUNDS["max_class_minutes"][1], settings.class_minutes_max),
     }
 
 
@@ -206,6 +262,14 @@ def _plan_out(row: Any, emails: dict[UUID, str]) -> PlanOut:
         revisions_per_class=row.revisions_per_class,
         concurrent_jobs=row.concurrent_jobs,
         monthly_cost_micros=row.monthly_cost_micros,
+        max_class_minutes=row.max_class_minutes,
+        games_allowed=row.games_allowed,
+        races_allowed=row.races_allowed,
+        ftp_tests_allowed=row.ftp_tests_allowed,
+        monthly_price_cents=row.monthly_price_cents,
+        intro_price_cents=row.intro_price_cents,
+        intro_price_until=row.intro_price_until,
+        currency=row.currency,
         features=list(row.features),
         updated_at=row.updated_at,
         updated_by=_person(row.updated_by, emails),
@@ -421,7 +485,7 @@ async def update_plan(
     request: Request, actor: AdminActor, plan_id: PlanPath, body: PlanIn
 ) -> PlanOut:
     settings: Settings = request.app.state.settings
-    asked = {k: v for k, v in body.model_dump().items() if v is not None}
+    asked = body.asked()
     refusal = _plan_refusal(asked, _bounds(settings))
     async with admin_session(
         _db(request),
@@ -429,38 +493,67 @@ async def update_plan(
         "plan.update",
         write=True,
         target=Target(kind="plan", id=plan_id),
-        params=asked,
+        params=_plan_params(asked),
     ) as session:
         if refusal is not None:
             raise AdminRefused(refusal, 422)
+        current = (await session.execute(_PLAN_FOR_UPDATE, {"p": plan_id})).one_or_none()
+        if current is None:
+            raise AdminRefused("not_found", 404)
+        if not _prices_complete({**current._asdict(), **asked}):
+            raise AdminRefused("price_incomplete", 422)
+        columns = list(asked)
         row = (
             await session.execute(
-                _UPDATE_PLAN,
-                {
-                    "p": plan_id,
-                    "c": asked.get("classes_per_month"),
-                    "r": asked.get("revisions_per_class"),
-                    "j": asked.get("concurrent_jobs"),
-                    "m": asked.get("monthly_cost_micros"),
-                    "by": actor.user_id,
-                },
+                _update_plan(columns), {**asked, "p": plan_id, "by": actor.user_id}
             )
-        ).one_or_none()
-        if row is None:
-            raise AdminRefused("not_found", 404)
+        ).one()
         emails = await auth.account_emails(session, [row.updated_by] if row.updated_by else [])
         return _plan_out(row, emails)
 
 
-def _plan_refusal(asked: dict[str, int], bounds: dict[str, int]) -> str | None:
-    """``out_of_range`` for a value the table refuses, ``above_environment_bound`` for one
-    within the table's range but over the environment's bound; ``nothing_to_change`` for none."""
+def _plan_params(asked: dict[str, Any]) -> dict[str, Any]:
+    """The audit params of a plan edit: numbers, gates, an ISO date and a currency code; a
+    currency that is not three capital letters (free text) is left out."""
+    params: dict[str, Any] = {}
+    cleared = [name for name in PRICES if name in asked and asked[name] is None]
+    for name, value in asked.items():
+        if value is None or (name == "currency" and not CURRENCY.fullmatch(value)):
+            continue
+        params[name] = value.isoformat() if isinstance(value, date) else value
+    if cleared:
+        params["cleared"] = cleared
+    return params
+
+
+def _plan_refusal(asked: dict[str, Any], bounds: dict[str, int]) -> str | None:
+    """``out_of_range`` for a value the table refuses, ``above_environment_bound`` for a limit
+    within the table's range but over the environment's bound, ``invalid_value`` for a currency
+    that is not three capital letters; ``nothing_to_change`` for none."""
     if not asked:
         return "nothing_to_change"
     for name, value in asked.items():
-        low, high = HARD_BOUNDS[name]
-        if not low <= value <= high:
-            return "out_of_range"
-        if value > bounds[name]:
-            return "above_environment_bound"
+        if name in LIMITS:
+            low, high = HARD_BOUNDS[name]
+            if not low <= value <= high:
+                return "out_of_range"
+            if value > bounds[name]:
+                return "above_environment_bound"
+        elif name in PRICE_CENTS and value is not None:
+            if not PRICE_RANGE[0] <= value <= PRICE_RANGE[1]:
+                return "out_of_range"
+        elif name == "intro_price_until" and value is not None:
+            if not INTRO_UNTIL_RANGE[0] <= value <= INTRO_UNTIL_RANGE[1]:
+                return "out_of_range"
+        elif name == "currency" and value is not None and not CURRENCY.fullmatch(value):
+            return "invalid_value"
     return None
+
+
+def _prices_complete(merged: dict[str, Any]) -> bool:
+    """The table's two price checks (migration 0026) on the row as it would be: an introduction
+    price comes with its end date, and any price with a currency."""
+    if (merged["intro_price_cents"] is None) != (merged["intro_price_until"] is None):
+        return False
+    priced = merged["monthly_price_cents"] is not None or merged["intro_price_cents"] is not None
+    return not priced or merged["currency"] is not None

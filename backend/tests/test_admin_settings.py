@@ -18,6 +18,7 @@ from sqlalchemy.engine import Connection, make_url
 from adminviews import audit, reason, stepped_admin
 from authtools import Env, running_env
 from classbeat.admin.routes import admin_area_routes, gate_problems
+from dbtools import migration_module
 from flows import Browser
 from modeltools import add_result, clear_gate
 from test_plans_routes import plant_ledger
@@ -28,6 +29,7 @@ PUBLIC = "/api/settings/public"
 CLASSES_MAX = 50
 COST_MAX = 120_000_000
 TRIAL_DAYS_MAX = 14
+CLASS_MINUTES_MAX = 120
 
 
 @pytest.fixture
@@ -44,6 +46,7 @@ async def env(app_database_url: str, maint_database_url: str) -> AsyncIterator[E
         classes_per_month_max=CLASSES_MAX,
         monthly_cost_micros_max=COST_MAX,
         trial_days_max=TRIAL_DAYS_MAX,
+        class_minutes_max=CLASS_MINUTES_MAX,
     ) as running:
         yield running
 
@@ -66,6 +69,15 @@ def reset(conn: Connection) -> None:
             "('pro', 100, 25, 3, 200000000)) AS v (id, c, r, j, m) WHERE plans.id = v.id"
         )
     )
+    # Migration 0026 (#496): the caps and gates as seeded, no price.
+    conn.execute(
+        text(
+            "UPDATE plans SET races_allowed = true, ftp_tests_allowed = true, "
+            "monthly_price_cents = NULL, intro_price_cents = NULL, intro_price_until = NULL, "
+            "currency = NULL"
+        )
+    )
+    conn.execute(text(migration_module("plan_gates").SEED))
 
 
 def store(conn: Connection, key: str, value: Any) -> None:
@@ -210,6 +222,7 @@ async def test_the_read_shows_each_flag_with_its_effective_value_and_source(
         "revisions_per_class": 25,
         "concurrent_jobs": 2,
         "monthly_cost_micros": COST_MAX,
+        "max_class_minutes": CLASS_MINUTES_MAX,
         "trial_days": TRIAL_DAYS_MAX,
     }
     read_only = view.json()["read_only"]
@@ -663,8 +676,9 @@ async def test_the_plans_other_columns_are_out_of_the_maint_roles_reach(
         .all()
     )
     assert privileges == [
-        "classes_per_month", "concurrent_jobs", "monthly_cost_micros",
-        "revisions_per_class", "updated_at", "updated_by",
+        "classes_per_month", "concurrent_jobs", "currency", "ftp_tests_allowed", "games_allowed",
+        "intro_price_cents", "intro_price_until", "max_class_minutes", "monthly_cost_micros",
+        "monthly_price_cents", "races_allowed", "revisions_per_class", "updated_at", "updated_by",
     ]  # fmt: skip
 
 
@@ -732,3 +746,123 @@ async def test_the_settings_read_runs_in_a_read_only_transaction(
     response = await actor.get(SETTINGS)
     assert response.status_code == 500  # the write was refused by the database
     assert stored(superuser, "banner") is None
+
+
+# --- class length, feature gates and prices (#496) ---------------------------------------------
+
+ACCOUNT_PLAN = "/api/account/plan"
+PRICE_WORDS = ("price", "currency", "intro")
+
+
+def gates_row(conn: Connection, plan_id: str) -> Any:
+    return conn.execute(
+        text(
+            "SELECT max_class_minutes, games_allowed, races_allowed, ftp_tests_allowed, "
+            "monthly_price_cents, intro_price_cents, intro_price_until, currency, updated_by "
+            "FROM plans WHERE id = :p"
+        ),
+        {"p": plan_id},
+    ).one()
+
+
+async def test_length_gates_and_prices_are_stored_audited_and_apply_on_the_next_request(
+    env: Env, make_actor: Any, superuser: Connection
+) -> None:
+    actor = await stepped_admin(env, make_actor)
+    before = (await actor.get(ACCOUNT_PLAN)).json()  # the admin is on free too
+    assert before["limits"]["max_class_minutes"] == 30
+    assert before["gates"] == {"games": False, "races": True, "ftp_tests": True}
+    edit = {
+        "max_class_minutes": 45,
+        "games_allowed": True,
+        "ftp_tests_allowed": False,
+        "monthly_price_cents": 900,
+        "intro_price_cents": 500,
+        "intro_price_until": "2027-03-31",
+        "currency": "EUR",
+    }
+    response = await actor.call("PATCH", f"{PLANS}/free", edit)
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert {k: body[k] for k in edit} == edit
+    row = gates_row(superuser, "free")
+    assert (row.max_class_minutes, row.games_allowed, row.races_allowed, row.ftp_tests_allowed) == (
+        45, True, True, False,
+    )  # fmt: skip
+    assert (row.monthly_price_cents, row.currency, row.updated_by) == (900, "EUR", actor.user_id)
+    [audited] = [r for r in rows_of(superuser, actor.user_id) if r.action == "plan.update"]
+    assert audited.outcome == "ok"
+    assert given(audited.params) == edit
+    # The next request reads the new values; the account route never shows a price.
+    after = (await actor.get(ACCOUNT_PLAN)).json()
+    assert after["limits"]["max_class_minutes"] == 45
+    assert after["gates"] == {"games": True, "races": True, "ftp_tests": False}
+    account_text, public_text = (
+        (await actor.get(ACCOUNT_PLAN)).text,
+        (await Browser(env).get(PUBLIC)).text,
+    )
+    for word in PRICE_WORDS:
+        assert word not in account_text, word
+        assert word not in public_text, word
+    view = await actor.get(SETTINGS)
+    free = next(p for p in view.json()["plans"] if p["id"] == "free")
+    assert (free["max_class_minutes"], free["monthly_price_cents"]) == (45, 900)
+    # A price sent as null is cleared, and the audit row names it.
+    clear = {"monthly_price_cents": None, "intro_price_cents": None, "intro_price_until": None}
+    assert (await actor.call("PATCH", f"{PLANS}/free", clear)).status_code == 200
+    row = gates_row(superuser, "free")
+    assert (row.monthly_price_cents, row.intro_price_cents, row.currency) == (None, None, "EUR")
+    last = [r for r in rows_of(superuser, actor.user_id) if r.action == "plan.update"][-1]
+    assert given(last.params) == {"cleared": list(clear)}
+
+
+@pytest.mark.parametrize(
+    ("body", "why"),
+    [
+        ({"max_class_minutes": 9}, "out_of_range"),
+        ({"max_class_minutes": 181}, "out_of_range"),
+        ({"max_class_minutes": CLASS_MINUTES_MAX + 1}, "above_environment_bound"),
+        ({"monthly_price_cents": -1, "currency": "EUR"}, "out_of_range"),
+        ({"monthly_price_cents": 10_000_001, "currency": "EUR"}, "out_of_range"),
+        (
+            {"intro_price_cents": 1, "intro_price_until": "2019-12-31", "currency": "EUR"},
+            "out_of_range",
+        ),
+        ({"monthly_price_cents": 900, "currency": "eur"}, "invalid_value"),
+        ({"monthly_price_cents": 900}, "price_incomplete"),
+        ({"intro_price_cents": 500, "currency": "EUR"}, "price_incomplete"),
+        ({"intro_price_until": "2027-01-01"}, "price_incomplete"),
+    ],
+)
+async def test_a_length_or_price_the_table_or_the_environment_forbids_is_422(
+    env: Env, make_actor: Any, superuser: Connection, body: dict[str, Any], why: str
+) -> None:
+    actor = await stepped_admin(env, make_actor)
+    before = gates_row(superuser, "pro")
+    response = await actor.call("PATCH", f"{PLANS}/pro", body)
+    assert (response.status_code, reason(response)) == (422, why)
+    assert gates_row(superuser, "pro") == before
+    [row] = [r for r in rows_of(superuser, actor.user_id) if r.action == "plan.update"]
+    assert (row.outcome, row.reason, row.target_id) == ("refused", why, "pro")
+
+
+async def test_a_length_at_the_environments_bound_is_accepted_and_a_bad_gate_is_a_schema_error(
+    env: Env, make_actor: Any, superuser: Connection
+) -> None:
+    actor = await stepped_admin(env, make_actor)
+    ok = await actor.call("PATCH", f"{PLANS}/pro", {"max_class_minutes": CLASS_MINUTES_MAX})
+    assert ok.status_code == 200
+    assert gates_row(superuser, "pro").max_class_minutes == CLASS_MINUTES_MAX
+    for bad in ({"games_allowed": "yes"}, {"games_allowed": 1}, {"currency": "EURO-DOLLAR"}):
+        assert (await actor.call("PATCH", f"{PLANS}/pro", bad)).status_code == 422, bad
+    assert gates_row(superuser, "pro").games_allowed is True
+
+
+async def test_a_refused_currency_is_not_logged(
+    env: Env, make_actor: Any, superuser: Connection
+) -> None:
+    actor = await stepped_admin(env, make_actor)
+    response = await actor.call("PATCH", f"{PLANS}/pro", {"currency": "x<b>"})
+    assert (response.status_code, reason(response)) == (422, "invalid_value")
+    dump = superuser.execute(text("SELECT string_agg(params::text, ' ') FROM admin_audit")).scalar()
+    assert "x<b>" not in (dump or "")

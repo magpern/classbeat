@@ -363,7 +363,7 @@ async def run_phase_two(
     p, final, step = await final_music(run, keyring, given, config)
     try:
         rules = rule_set_for(given.brief)
-        ctx = DesignContext.build(given.brief, step.data, rules)
+        ctx = DesignContext.build(given.brief, step.data, rules, given.plan_gates)  # #496
         design_config = stage_config(
             agent, config, turns=agent.limits.max_turns, calls=agent.limits.max_tool_calls
         )

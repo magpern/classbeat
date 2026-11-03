@@ -31,6 +31,7 @@ from classbeat.agent.design import (
     check,
     design_stage,
     is_running,
+    within_plan,
 )
 from classbeat.agent.guidance import Guidance, rules_result
 from classbeat.agent.model_input import MusicData
@@ -43,6 +44,7 @@ from classbeat.agent.schemas import (
     SongsRequestedInput,
 )
 from classbeat.agent.stage import Stage, Tool, ToolAnswer
+from classbeat.plan_gates import PlanGates
 
 STAGE: Final = "revise"
 FINAL_TOOL: Final = "submit_draft"
@@ -126,6 +128,7 @@ class ReviseContext:
     music_changed: bool
     songs_changed: bool = False  # ``revise_songs``: the request's new songs are the music now
     rules: Guidance | None = None  # ADR 0017: None = no profile applies (dismissed already out)
+    gates: PlanGates | None = None  # the job's plan gates (#496): None = none (evals, old jobs)
 
     @classmethod
     def build(
@@ -139,6 +142,7 @@ class ReviseContext:
         music_changed: bool,
         songs_changed: bool = False,
         rules: Guidance | None = None,
+        gates: PlanGates | None = None,
     ) -> "ReviseContext":
         design = DesignContext.build(brief, data)
         return cls(
@@ -151,6 +155,7 @@ class ReviseContext:
             music_changed or songs_changed,
             songs_changed,
             rules,
+            gates,
         )
 
     def first_message(self) -> str:
@@ -181,11 +186,11 @@ class ReviseContext:
 def revise_stage(ctx: ReviseContext) -> Stage:
     if is_running(ctx):  # ADR 0018: a running class never gets the cycling prompt or schema
         raise ValueError("a running class runs classbeat.agent.running's stage")
-    music = DesignContext(ctx.brief, ctx.map, ctx.summary, ctx.rules)
+    music = DesignContext(ctx.brief, ctx.map, ctx.summary, ctx.rules, ctx.gates)
     tools = {t.name: t for t in design_stage(music).tools}
 
     def submit_draft(args: ReviseInput) -> ToolAnswer:
-        result = check(args.draft, ctx.map)
+        result = within_plan(ctx.gates, check(args.draft, ctx.map))
         return ToolAnswer(
             {
                 "accepted": True,

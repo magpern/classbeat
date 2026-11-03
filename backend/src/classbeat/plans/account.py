@@ -14,7 +14,9 @@ lower-ranked one takes over.
 **Limits** are the plan's under the environment's bounds (``classbeat.quota.effective``, the
 same values the ledger and the policies use): ``CLASSBEAT_JOBS_PER_USER``,
 ``CLASSBEAT_REVISIONS_PER_CLASS``, ``CLASSBEAT_CLASSES_PER_MONTH_MAX`` and, for the cost share,
-``CLASSBEAT_MONTHLY_COST_MICROS_MAX`` (ADR 0011 sections 3 and 4).
+``CLASSBEAT_MONTHLY_COST_MICROS_MAX`` (ADR 0011 sections 3 and 4), and the longest class under
+``CLASSBEAT_CLASS_MINUTES_MAX`` (#496). **Gates** are the plan's feature gates (games, races, FTP
+tests), the same values a job is admitted under (``classbeat.quota.gates``). No price is read.
 
 **Held** is ADR 0011 section 3's count: ledger rows of the period that are ``committed``, or
 ``reserved`` with a job.
@@ -60,6 +62,14 @@ class Limits:
     classes_per_month: int
     revisions_per_class: int
     concurrent_jobs: int
+    max_class_minutes: int
+
+
+@dataclass(frozen=True, slots=True)
+class Gates:
+    games: bool
+    races: bool
+    ftp_tests: bool
 
 
 @dataclass(frozen=True, slots=True)
@@ -69,6 +79,7 @@ class AccountPlan:
     source: str | None
     ends_at: datetime | None
     limits: Limits
+    gates: Gates
     classes_held: int
     period_end: datetime
     cost_share: float  # 0.0 to 1.0, rounded down to a hundredth
@@ -105,7 +116,9 @@ async def _account_plan(
             classes_per_month=limits.classes_per_month,
             revisions_per_class=limits.revisions_per_class,
             concurrent_jobs=limits.concurrent_jobs,
+            max_class_minutes=limits.max_class_minutes,
         ),
+        gates=Gates(games=plan.games, races=plan.races, ftp_tests=plan.ftp_tests),
         classes_held=int(held),
         period_end=span.ends,
         cost_share=cost_share(int(cost), limits.monthly_cost_micros),
