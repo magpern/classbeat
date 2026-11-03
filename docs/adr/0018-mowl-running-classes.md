@@ -303,3 +303,22 @@ The owner authorized a one-program live save test on 2026-11-03; the results are
   (song picking and Swedebeat for running stay out of M8's first cut), and segment `ActivityTypeID` 1.
 - L1b (#469) is therefore unblocked for create-only. R1's save half uses it; its update half waits for a
   later, separately authorized probe.
+
+## Amendment 3 (2026-11-03, Architect): update test, R1 split, flag behaviour
+
+- **Update is verified.** The owner authorized a second live test on 2026-11-03 ("if you need it you have my
+  go; don't alter any existing, create a new, then alter it"). On a NEW private running program: a re-save
+  with `PUT v1/programs/{id}` (same id, `ActivityTypeID` 1 kept), new segment copies (`ActivityTypeID` 0) and
+  `PUT v1/programs/{id}/segments` replaced the segments; changed zones and `Gradient` read back; the client
+  TSS was stored; and `PlaylistID` set to an already-analysed playlist id was accepted and kept. Amendment 2's
+  "updating a running program is unverified and refused" no longer holds; library 0.9.0 implements it (L1c,
+  mowl-workouts#22) with a read-first target check and a sport-mismatch guard (L1d, mowl-workouts#23; the
+  classbeat side is `program_other_sport`, #487).
+- **Still unverified and refused:** a NEW mix or playlist attach for a running class (it creates objects in
+  MOWL and running audio sync is untested) and segment `ActivityTypeID` 1. Running v1 designs on an existing
+  MOWL playlist only.
+- **R1 is split:** R1a (#463: `sport` on the brief, the flag, running draft schema and prompt) and R1b (#490:
+  save, update and reconcile). A running class cannot be saved until R1b; with `running_enabled` off, existing
+  running classes cannot be saved or updated either (§5).
+- **The flag stays off for real users until E1** (#465) puts running evals behind the model-enable gate:
+  running jobs use the `design` route and no recorded eval result covers their prompt versions.
