@@ -785,3 +785,24 @@ the version bump below invalidates nothing in practice.
   the admin and the CLI for a group that runs the same tools on the same route keys); letting the bootstrap
   serve running after an owner override (no recorded evidence behind it, and the override would be one
   more switch to forget). Both rejected for the smaller rule above, which can be loosened later.
+
+## Amendment of 2026-11-03: soundless classes (issue #526)
+
+ADR 0007's amendment of 2026-11-03 (items 2, 5 and 6) adds soundless `design` and `revise` stages (no
+music, no `get_music`, no fitting). They are named like cycling's, so `models.versions` keys them
+`soundless_design` and `soundless_revise`: the `design` group's prompt versions become six and a results
+header records eight stages (the E1 amendment's "six" becomes eight). A result recorded without them is
+stale (`prompt_versions`), for running coverage too.
+
+- **Digest.** The soundless model text is in `agent/soundless_input.py`, kept out of `RULE_SOURCES` until
+  the PR that adds the `soundless` category (issue #531), which adds it and bumps `suite_version` to 11. The
+  two PRs before it (#527, #528) change nothing the digest covers.
+- **Coverage.** A `design` route covers soundless when it is not stale for any reason **and** its result's
+  `suite_version` is at least `models.routes.SOUNDLESS_SUITE_VERSION` (`None` until #531 sets it to 11), so
+  a result recorded before the soundless cases existed never counts. The bootstrap choice never covers it,
+  `fake` does. It is checked per attempt in the worker (`model_config` before any call), per job in `admit`
+  (409 `soundless_not_evaluated`, before any credit is reserved) and per request in the effective
+  `soundless_enabled` flag, which is on only with the environment switch, a stored `on` (missing is `off`)
+  and coverage for every plan key. The admin refuses to store `on` without coverage (422
+  `soundless_not_evaluated`). This does not change running's rule; #509 tracks the same gap there and can
+  reuse the helper (`models.routes.covers`). Cycling keeps section 5 unchanged.
