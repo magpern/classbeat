@@ -118,6 +118,8 @@ def truncate_auth(admin_url: str) -> None:
                 connection.execute(text(tiers_migration().PLAN_SEED))
                 # ... with the key migration 0014 gave each plan: its own id.
                 connection.execute(text("UPDATE plans SET route_key = id"))
+                # ... and migration 0026's class length caps and game gates (#496).
+                connection.execute(text(migration_module("plan_gates").SEED))
     finally:
         engine.dispose()
 

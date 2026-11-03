@@ -59,7 +59,7 @@ from classbeat.jobs.inputs import ModelJobInput, jsonb_size
 from classbeat.jobs.kinds import Admitted, Refused
 from classbeat.models.jobs import GroupModel, ModelSource
 from classbeat.models.store import StageGroup
-from classbeat.quota.route import with_route_key
+from classbeat.quota.route import with_plan
 
 KIND: Final = "design_draft"
 STAGES: Final = ("music", "design")
@@ -225,7 +225,7 @@ async def run(job_run: JobRun) -> Complete:
     handed_over = False  # the outcome's ``release`` closes the step from then on
     try:
         rules = rules_for(given.brief)  # nothing is dismissed on a new class
-        ctx = DesignContext.build(given.brief, step.data, rules)
+        ctx = DesignContext.build(given.brief, step.data, rules, given.plan_gates)  # #496
         stage = design_stage_for(ctx)  # the brief's sport's prompt and schema (ADR 0018)
         outcome = await run_stage(
             JobStageHost(job_run), model.provider, stage, ctx.first_message(), model.agent
@@ -277,7 +277,7 @@ DESIGN_DRAFT: Final = KINDS.register(
         DesignDraftInput,
         STAGES,
         run,
-        admit=with_route_key(admit),  # a mix's checks, then the plan's route key (AD5 #223)
-        server_fields=frozenset({"route_key", "handoff_id"}),
+        admit=with_plan(admit),  # the plan's gates, a mix's checks, the route key (AD5, #496)
+        server_fields=frozenset({"route_key", "plan_gates", "handoff_id"}),
     )
 )

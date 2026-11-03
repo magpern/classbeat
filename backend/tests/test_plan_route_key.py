@@ -107,9 +107,9 @@ def test_every_model_kind_sets_the_key_in_its_create_path() -> None:
     ]
     for kind in kinds:
         assert KINDS.get(kind.name) is kind
-        assert "route_key" in kind.server_fields, kind.name
+        assert {"route_key", "plan_gates"} <= kind.server_fields, kind.name
         assert kind.admit is not None
-        assert getattr(kind.admit, "__qualname__", "") == "with_route_key.<locals>.admit", kind.name
+        assert getattr(kind.admit, "__qualname__", "") == "with_plan.<locals>.admit", kind.name
 
 
 async def test_the_wrapper_keeps_a_refusal_and_the_kinds_own_fields(
@@ -117,7 +117,7 @@ async def test_the_wrapper_keeps_a_refusal_and_the_kinds_own_fields(
 ) -> None:
     from classbeat.context import UserContext
     from classbeat.db import user_session
-    from classbeat.quota.route import with_route_key
+    from classbeat.quota.route import with_plan
     from ctx import make_context
 
     browser: Browser = await browsers()
@@ -131,10 +131,13 @@ async def test_the_wrapper_keeps_a_refusal_and_the_kinds_own_fields(
         return Admitted({"request_message_id": "kept", "route_key": "from_the_kind"})
 
     async with user_session(denv.ops.factory, ctx) as db:
-        assert await with_route_key(refuses)(db, ctx, EMPTY) == Refused("nope")
-        fields = admitted(await with_route_key(adds)(db, ctx, EMPTY))
+        assert await with_plan(refuses)(db, ctx, EMPTY) == Refused("nope")
+        fields = admitted(await with_plan(adds)(db, ctx, EMPTY))
+        gates = fields.pop("plan_gates")
         assert fields == {"request_message_id": "kept", "route_key": "pro_route"}
-        assert admitted(await with_route_key()(db, ctx, EMPTY)) == {"route_key": "pro_route"}
+        assert gates == {"max_class_minutes": 90, "games": True, "races": True, "ftp_tests": True}
+        bare = admitted(await with_plan()(db, ctx, EMPTY))
+        assert bare["route_key"] == "pro_route"
 
 
 async def test_a_route_set_for_pro_applies_to_a_pro_users_job_and_not_to_a_free_users(

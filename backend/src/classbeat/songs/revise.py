@@ -65,7 +65,7 @@ from classbeat.flags import effective as flags
 from classbeat.jobs import KINDS, Complete, FencedSession, JobFailure, JobKind, JobRun, Outcome
 from classbeat.jobs.kinds import Admitted, Refused
 from classbeat.operations import orphans
-from classbeat.quota.route import with_route_key
+from classbeat.quota.route import with_plan
 from classbeat.songs import admit as song_admit
 from classbeat.songs import config, song_list
 from classbeat.songs.config import SongConfig
@@ -307,6 +307,7 @@ async def run_revise_phase_two(
             music_changed=True,
             songs_changed=True,
             rules=rules,
+            gates=given.plan_gates,  # the plan's gates at creation (#496)
         )
         stage = stage_config(
             agent, config, turns=agent.limits.max_turns, calls=agent.limits.max_tool_calls
@@ -420,13 +421,14 @@ REVISE_SONGS: Final = KINDS.register(
         STAGES,
         run,
         consumes_credit=False,
-        admit=with_route_key(admit),
+        admit=with_plan(admit),
         approve_check=song_admit.approve_check,
         server_fields=frozenset(
             {
                 "base_revision_hash",
                 "request_message_id",
                 "route_key",
+                "plan_gates",
                 "catalogue_replace",
                 "catalogue_fact",
                 "swedebeat_connection_id",

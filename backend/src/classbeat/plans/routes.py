@@ -1,8 +1,9 @@
 """The account plan API (ADR 0011 sections 2 and 9). Signed in; the POSTs pass the CSRF and
 origin checks of ``classbeat.auth`` (a middleware, so no route can forget them).
 
-- ``GET /api/account/plan``: the plan, its source and end, limits, classes held and the period's
-  end, cost as a share of the cap, features, and the trial on offer (``null`` when none).
+- ``GET /api/account/plan``: the plan, its source and end, limits (with the longest class,
+  #496), the feature gates, classes held and the period's end, cost as a share of the cap,
+  features, and the trial on offer (``null`` when none).
 - ``POST /api/account/redeem {code}``: 10 attempts per user and 30 per IP and hour (ADR 0003
   section 9, reserved before anything else, every attempt counts); 400 ``code_invalid`` for
   every code that can't be redeemed, 409 ``already_redeemed`` for the user's own earlier one.
@@ -33,6 +34,13 @@ class LimitsOut(BaseModel):
     classes_per_month: int
     revisions_per_class: int
     concurrent_jobs: int
+    max_class_minutes: int
+
+
+class GatesOut(BaseModel):
+    games: bool
+    races: bool
+    ftp_tests: bool
 
 
 class TrialOut(BaseModel):
@@ -46,6 +54,7 @@ class PlanOut(BaseModel):
     source: str | None
     ends_at: datetime | None
     limits: LimitsOut
+    gates: GatesOut
     classes_held: int
     period_end: datetime
     cost_share: float
@@ -87,6 +96,10 @@ async def get_plan(
             classes_per_month=found.limits.classes_per_month,
             revisions_per_class=found.limits.revisions_per_class,
             concurrent_jobs=found.limits.concurrent_jobs,
+            max_class_minutes=found.limits.max_class_minutes,
+        ),
+        gates=GatesOut(
+            games=found.gates.games, races=found.gates.races, ftp_tests=found.gates.ftp_tests
         ),
         classes_held=found.classes_held,
         period_end=found.period_end,

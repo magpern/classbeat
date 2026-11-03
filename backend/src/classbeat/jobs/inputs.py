@@ -20,6 +20,10 @@ stored with the input, so every attempt, and the approved phase of a job that wa
 same key; a browser may never send it (``SERVER_FIELDS``: the jobs API answers 422). Until M5
 fills it from the user's plan at creation (#223) it is ``"default"``; an input stored before it
 existed parses with that default.
+
+It also carries ``plan_gates`` (``classbeat.plan_gates``, #496): the plan's class length cap and
+feature gates at creation, a server field set the same way, that the worker's design and revise
+stages enforce on every draft. ``None`` (an input stored before it existed) is no gate.
 """
 
 import json
@@ -30,6 +34,7 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, StringConstraints, model_validator
 
 from classbeat.connections import PROVIDERS
+from classbeat.plan_gates import PlanGates
 
 
 def jsonb_size(value: Any) -> int:
@@ -80,6 +85,7 @@ class JobInput(BaseModel):
 class ModelJobInput(JobInput):
     """The input of a job that runs model stages: ``route_key`` (see the module)."""
 
-    SERVER_FIELDS: ClassVar[frozenset[str]] = frozenset({"route_key"})
+    SERVER_FIELDS: ClassVar[frozenset[str]] = frozenset({"route_key", "plan_gates"})
 
     route_key: RouteKey = DEFAULT_ROUTE_KEY
+    plan_gates: PlanGates | None = None

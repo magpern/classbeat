@@ -108,10 +108,16 @@ GRANT SELECT (id, created_by, used_by, created_at, expires_at, used_at) ON publi
 GRANT INSERT, UPDATE (expires_at) ON public.invites TO classbeat_maint;
 
 -- Tiers (ADR 0011 sections 1 and 2).
+-- The class length cap, the feature gates and the prices of migration 0026 (#496) are read and
+-- edited here too; the prices are shown in the admin area only (billing is off).
 GRANT SELECT (id, name, rank, classes_per_month, revisions_per_class, concurrent_jobs,
-              monthly_cost_micros, route_key, features, created_at, updated_at, updated_by)
+              monthly_cost_micros, route_key, features, created_at, updated_at, updated_by,
+              max_class_minutes, games_allowed, races_allowed, ftp_tests_allowed,
+              monthly_price_cents, intro_price_cents, intro_price_until, currency)
   ON public.plans TO classbeat_maint;
 GRANT UPDATE (classes_per_month, revisions_per_class, concurrent_jobs, monthly_cost_micros,
+              max_class_minutes, games_allowed, races_allowed, ftp_tests_allowed,
+              monthly_price_cents, intro_price_cents, intro_price_until, currency,
               updated_at, updated_by)
   ON public.plans TO classbeat_maint;
 GRANT SELECT (id, label, plan_id, features, grant_days, max_redemptions, redeemed_count,

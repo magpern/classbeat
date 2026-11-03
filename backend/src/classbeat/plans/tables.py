@@ -11,6 +11,7 @@ from typing import Any
 
 from sqlalchemy import (
     BigInteger,
+    Boolean,
     Column,
     Date,
     DateTime,
@@ -85,6 +86,15 @@ plans = Table(
     _ts("created_at", nullable=False, default_now=True),
     _ts("updated_at", nullable=False, default_now=True),
     _uuid("updated_by"),
+    # Migration 0026 (#496): the class length cap, the feature gates and the prices (admin only).
+    Column("max_class_minutes", Integer, nullable=False, server_default=text("180")),
+    Column("games_allowed", Boolean, nullable=False, server_default=text("true")),
+    Column("races_allowed", Boolean, nullable=False, server_default=text("true")),
+    Column("ftp_tests_allowed", Boolean, nullable=False, server_default=text("true")),
+    Column("monthly_price_cents", Integer),
+    Column("intro_price_cents", Integer),
+    Column("intro_price_until", Date),
+    Column("currency", Text),
 )
 
 redeem_codes = Table(
