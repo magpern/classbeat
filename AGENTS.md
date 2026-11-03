@@ -255,9 +255,9 @@ docker compose --profile maint run --rm maint python -m classbeat keys wipe --co
 uv run alembic upgrade head    # migrations as the owner role, CLASSBEAT_MIGRATIONS_DATABASE_URL
 ```
 
-The domain library `mowl` (`mowl-workouts`) is pinned as `backend/vendor/mowl_workouts-0.7.0-py3-none-any.whl`,
-built from the v0.7.0 tag (commit `88d08f05`; vendored wheel SHA-256 `866650a0…`, release asset
-`0ff5f60e…`) **without** the bundled Swedebeat app key by `scripts/build-mowl-wheel.sh`
+The domain library `mowl` (`mowl-workouts`) is pinned as `backend/vendor/mowl_workouts-0.8.0-py3-none-any.whl`,
+built from the v0.8.0 tag (commit `0de257fc`; vendored wheel SHA-256 `5f7582fc…`, release asset
+`410b9475…`) **without** the bundled Swedebeat app key by `scripts/build-mowl-wheel.sh`
 (needs `gh` access to the private repo; it checks the tag's commit, the missing key file and that
 every other file and the `Requires-Dist` lines match the release wheel). After a rebuild run `uv lock`. classbeat leaves out
 the library's `mcp` dependency (`exclude-dependencies`): it never runs the MCP server, and `mcp`'s
@@ -278,6 +278,12 @@ and not host-checked there. classbeat keeps it only as a song's `cover` in `song
 `v: 2` (UI7, #251), and only when `classbeat.covers.cover_url` accepts it (a whole-string match of
 `https://i\.scdn\.co/image/[0-9a-f]{40}`, checked before storing and again before returning;
 anything else is `null`); it never goes into model input or comes from model output.
+0.8.0 adds running (ADR 0018, M8 L1a/L1b, #462): the read side (`"sport": "running"` on a spec,
+running validation, `tss` and `summarize` of a program with `ActivityTypeID: 1`; `workout.listed_sport`, which the
+MCP `list_workouts` uses to mark non-cycling entries with `sport`) and a create-only running save (program
+`ActivityTypeID: 1`, segments always `ActivityTypeID: 0`, running interval bodies with a float `Gradient`).
+Updating a running program and giving one music are refused before any request, and a cycling save refuses a
+spec whose intervals carry `gradient`. Cycling is otherwise unchanged; classbeat does not use the running calls yet.
 
 Database tests need a throwaway Postgres whose application database has the roles of
 `docker/postgres/init/10-roles.sql` (ADR 0002 section 4). Give it a name and port of its own
