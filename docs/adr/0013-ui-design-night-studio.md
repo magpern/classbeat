@@ -348,6 +348,75 @@ browser contacts a third party, and it changes a guard test, so UI7 has an Opus 
 - **ADR 0008 §8.** The first retention row adds "album cover URL".
 - **Threat model T73.** It is narrowed the same way, and UI7 adds an entry for the cover-art host.
 
+> **Amendment, 2026-11-03 (issue #537; owner request: "When downloading the user's Spotify lists,
+> grab the image too"): playlist covers in the New class picker.** This replaces the sentence above
+> that "Playlist images are not used" and the "always use a neutral tile" for the **New class
+> playlist picker** only; Music's "Your playlists" keeps its initials until a later change. The
+> reason given there no longer holds: since SR-03 (#353) the web process reads Spotify through
+> `spotify_web` for Check again, on the web's urllib allowlist and with the web's Spotify token client.
+>
+> - **Source.** `mowl-workouts` 0.10.0: `spotify_web.my_playlists` entries carry `image`, the URL of
+>   the playlist's smallest image at least 64 px wide, by the 0.7.0 rule, with one difference: when
+>   **no** image in the list carries a width (Spotify lists a cover the owner uploaded with
+>   `width: null`), it is the first image with a non-empty string URL. A width that is present but
+>   not an int counts as a width. The library never requests the URL and checks no host.
+> - **Where it is read.** In the web route `GET /api/music/mowl-playlists`, and only when (a) song
+>   picking admits the user (`classbeat.flags.song_picking_admits`, the gate of the Spotify routes)
+>   and (b) the user has a Spotify connection whose status is `connected`. Otherwise no Spotify call
+>   is made and the answer is the same as before, plus `cover: null` on every playlist. The read is
+>   one `spotify_web.my_playlists(creds, max_pages=10)` (at most 500 entries, the listing's own cap)
+>   through `classbeat.spotify.spotify_call`: the existing host `api.spotify.com` on the web's urllib
+>   allowlist and the existing Spotify token client for a refresh. No new host on any server list,
+>   no new client. It runs beside the MOWL read, under a total deadline of 8 s
+>   (`egress.call_deadline`). The listing's rate limit (30 per user and 60 per IP per 10 minutes,
+>   SR-05) is checked before either call and covers both.
+> - **A failure never fails the listing.** More than 500 playlists, the deadline, an allowlist
+>   refusal, any `ConnectionFailure` (including `not_connected` and a 429): every `cover` is `null`
+>   and the MOWL listing answers as it would have. Nothing about the Spotify failure is in the answer
+>   (no category, no status); it is logged by category only.
+> - **A GET writes no state, narrowed for this read.** The access token is refreshed when it expires
+>   within the margin, by ADR 0009 §6 (the rotation is written under the row lock; the token
+>   endpoint's own `invalid_grant` or app-setup answer flips the connection there, because it is the
+>   truth about the stored refresh token). Nothing else is written: no `record_result`
+>   (`last_used_at`, `last_error`), and a 401 is not repeated, forces no refresh and never flips the
+>   connection (its covers are `null`). `spotify_call` gets this as a read-only mode; its other
+>   callers are unchanged.
+> - **Matching.** By the Spotify playlist id the MOWL entry already carries (`spotify_playlist_id`).
+>   A Spotify playlist that is not in the MOWL list is dropped. The answer gains only
+>   `cover: string | null` per MOWL playlist: no Spotify name, owner, description or count.
+> - **Host pin** (`classbeat.covers.playlist_cover_url`, a whole-string `re.fullmatch`, checked
+>   before the answer is built). Exactly these three shapes:
+>   - `https://i\.scdn\.co/image/[0-9a-f]{40}`, the album pin: a playlist with fewer than four
+>     albums shows one album's cover, and older uploaded covers are served here;
+>   - `https://mosaic\.scdn\.co/(?:300|640)/(?:[0-9a-f]{40}){4}`, Spotify's 2x2 mosaic of four
+>     album images (the 60 px size is never chosen, it is under 64 px);
+>   - `https://image-cdn-(?:ak|fa)\.spotifycdn\.com/image/[0-9a-f]{40}`, uploaded covers.
+>
+>   Anything else is `null` and the tile shows initials: a query, fragment, port, userinfo,
+>   uppercase hex, another size or length, another scheme, and every other Spotify image host
+>   (Blend, Daily Mix, seed mixes, `pickasso` and so on, all generated playlists). Spotify does not
+>   document these hosts; the shapes are what its answers contain, the fakes encode exactly them,
+>   and the owner's live activation checks them (`docs/runbooks/m4-live-activation.md`). A shape
+>   not covered fails closed to initials; widening it is a reviewed change of this list, the CSP and
+>   `CoverArt` together. **A song's `cover` keeps the album pin alone** (`cover_url`, unchanged):
+>   the playlist shapes are never accepted in a `song_list`.
+> - **Not stored.** The URL is in no table, cache, job input, audit row, export or log; it lives in
+>   the one response (`Cache-Control: no-store`). It needs no retention or export entry.
+> - **Never to or from a model.** The listing is not model input, a design job's music input names
+>   only `spotify_playlist_id`, and the job input schema has no cover field (an extra field is
+>   refused).
+> - **Browser.** The tile uses `CoverArt`, whose second check takes a `kind`: `album` (the default,
+>   the album pin only, every existing use) or `playlist` (the three shapes). The CSP's `img-src`
+>   becomes `'self' https://i.scdn.co https://mosaic.scdn.co https://image-cdn-ak.spotifycdn.com
+>   https://image-cdn-fa.spotifycdn.com`, built from one host list in `classbeat.covers`, and a test
+>   keeps the CSP, the backend patterns and `CoverArt`'s patterns in step. The frontend guard
+>   test's exemption stays `CoverArt` only, for exactly these hosts.
+> - **Privacy.** As for album covers: no referrer, no classbeat cookie, no classbeat data; the
+>   viewer's IP address and browser reach Spotify's CDN, now on three more host names; the M6
+>   privacy notice names Spotify's CDN for both.
+> - **Contracts this amends in part:** ADR 0009 §10 (a second exception), §11 (the listing row) and
+>   §12 (row M-3 gains `image`, 0.10.0); threat model T73 and T97.
+
 ### 10. Accessibility and devices
 
 - **WCAG 2.2 AA:**

@@ -343,6 +343,13 @@ fails `consent_missing` before any call. Consent is logged as `job_events`-free 
   - It is never taken from model output and never goes to the model.
   - Only the browser loads it, through `CoverArt`, with no referrer, behind the CSP's `img-src`.
   - Every other URL stays unrequested, unstored and unshown.
+  - *Amended by ADR 0013 §9's amendment of 2026-11-03 (#537), a second exception:* the playlist
+    image URL (`image`) on `my_playlists` entries, read by the web's playlist listing for the New
+    class picker. It is never requested by the server and never stored: it is kept only in that
+    one response as `cover`, after `classbeat.covers.playlist_cover_url` (a whole-string match of
+    the album pin, `mosaic.scdn.co`'s 300 or 640 px mosaic of four 40-hex ids, or
+    `image-cdn-ak`/`image-cdn-fa.spotifycdn.com/image/` and 40 hex), otherwise `null`. Never to or
+    from a model; shown only through `CoverArt`.
 
   A fake that
   answers a `next` pointing at an unlisted host must produce no request to it (and the allowlist would
@@ -363,7 +370,7 @@ Every Spotify call classbeat makes uses the current shape; nothing calls `/track
 | create | `POST /me/playlists` `{name, description, public: false, collaborative: false}` |
 | write | `PUT /playlists/{id}/items` (first 100 URIs, an empty list clears) and `POST /playlists/{id}/items` (the rest, 100 each) |
 | read back | `GET /playlists/{id}/items?limit=50&offset=…` |
-| listing (reconcile only) | `GET /me/playlists?limit=50&offset=…`, at most 20 pages |
+| listing (reconcile; the picker's covers, web, at most 10 pages, ADR 0013 §9 amendment of 2026-11-03) | `GET /me/playlists?limit=50&offset=…`, at most 20 pages |
 
 **Pagination** is by `offset` until `offset >= total` or an empty page, never by `next`, with a hard
 cap of 1000 items and 20 listing pages (over the cap is a failure, not a truncation). **Reading
@@ -388,7 +395,7 @@ them), and releases `v0.6.0`. Each item is acceptance-tested in that repo and by
 |---|---|---|
 | M-1 | `spotify_web.playlist_items(creds, playlist_id) -> list`: `GET /playlists/{id}/items`, `limit` 50, offset pagination by `total`, never `next`; each entry `{id, uri, name, artists, album, release_date, duration_ms, type, is_local}` from `item` (else `track`), plus `image` from 0.7.0 (ADR 0013 §9); non-tracks/null/local entries returned as markers; `playlist_tracks` becomes an alias of it; `find_playlist_tracks` stays for the CLI only | §11 |
 | M-2 | `create_playlist(creds, name, uris=(), description="") -> id`: `uris` may be empty (create only), `public: false` and `collaborative: false` fixed, no `public` parameter; `add_items(creds, id, uris)`; `replace_playlist_items(creds, id, uris) -> snapshot_id` (PUT the first 100, an empty list clears, POST the rest, returns the last `snapshot_id`; the id is validated) | create, then fill, as two requests so the id exists between them (ADR 0008 §2) |
-| M-3 | `get_playlist(creds, id) -> {id, name, description, public, collaborative, snapshot_id, owner_id, total}`; `me(creds) -> {id}`; `my_playlists` returns `{id, name, description, owner_id, public, collaborative}` | owner check, reconcile |
+| M-3 | `get_playlist(creds, id) -> {id, name, description, public, collaborative, snapshot_id, owner_id, total}`; `me(creds) -> {id}`; `my_playlists` returns `{id, name, description, owner_id, public, collaborative}`, plus `image` from 0.10.0 (ADR 0013 §9 amendment of 2026-11-03) | owner check, reconcile, picker covers |
 | M-4 | `Credentials` gains `spotify_refresh_enabled: bool = True` (False: never call the token endpoint, never call `on_spotify_token`; an expired token raises `MowlError` with no HTTP cause) and `spotify_max_retry_wait: float = 30.0` (0: never sleep, raise the 429 `MowlError` with its `HTTPError` cause so `Retry-After` is readable); `SCOPES` constant split: `SCOPES_PRIVATE = "playlist-read-private playlist-modify-private"` for hosted use | §6, §8 |
 | M-5 | `search_tracks(creds, query, limit=10, market=None)` returns the structured fields `_track` already builds plus `duration_ms` and `release_date` (and `image` from 0.7.0, ADR 0013 §9); `spotify.track_uri(id)` validating the id; `unknown_bpm` etc. unchanged | pool |
 | M-6 | Nice to have, not blocking: `MowlError` gains `status` and `retry_after` attributes (ADR 0004's note) so classification no longer depends on `__cause__` | |
