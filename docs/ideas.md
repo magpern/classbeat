@@ -59,7 +59,7 @@ terms must re-read [ADR 0010](adr/0010-live-activation-permissions.md) first.
 ### 1e. Employer or club pays
 
 - **Description:** The roadmap's Club tier: a flat fee per instructor paid by a gym or club
-  (for example a SATS-type gym). Fits Swedebeat-only mode.
+  (for example a gym-chain studio). Fits Swedebeat-only mode.
 - **Status:** idea, not planned.
 - **Notes/constraints:** Avoids consumer billing. Probably the most realistic route.
 - **Decision needed:** whether to approach a gym, and what a first offer would be.
