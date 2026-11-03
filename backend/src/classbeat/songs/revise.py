@@ -65,7 +65,7 @@ from classbeat.flags import effective as flags
 from classbeat.jobs import KINDS, Complete, FencedSession, JobFailure, JobKind, JobRun, Outcome
 from classbeat.jobs.kinds import Admitted, Refused
 from classbeat.operations import orphans
-from classbeat.quota.route import with_plan
+from classbeat.quota.route import with_plan, with_plan_run
 from classbeat.songs import admit as song_admit
 from classbeat.songs import config, song_list
 from classbeat.songs.config import SongConfig
@@ -419,7 +419,7 @@ REVISE_SONGS: Final = KINDS.register(
         KIND,
         ReviseSongsInput,
         STAGES,
-        run,
+        with_plan_run(run),  # the current plan's gates for an input without any (#496)
         consumes_credit=False,
         admit=with_plan(admit),
         approve_check=song_admit.approve_check,
