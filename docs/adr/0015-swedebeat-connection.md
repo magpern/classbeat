@@ -10,7 +10,7 @@ Related: [ADR 0004](0004-connections-and-encryption.md) (connections and encrypt
 
 ## Context
 
-Swedebeat is the music service many gyms use; gym instructors (SATS employees among them) teach with
+Swedebeat is the music service many gyms use; gym instructors (employees of gym chains among them) teach with
 its licensed catalogue, not with Spotify audio. The `mowl-workouts` plugin signs a user in to
 Swedebeat once (`mowl.swedebeat.login`, `docs/setup.md` §4: `mowl connect swedebeat`) and keeps a
 token and a device id (`Credentials.swedebeat_token`, `swedebeat_device_id`); the password is never

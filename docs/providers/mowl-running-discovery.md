@@ -1,10 +1,10 @@
 # MOWL running discovery (ADR 0018, D1): 2026-11-02 read-only probes
 
-Status: **mostly answered from official SATS content; save-side fields still unverified.**
+Status: **mostly answered from official studio content; save-side fields still unverified.**
 Owner-authorized, read-only, a cloud agent session. Calls made: `login`, `POST v1/programs` (lists),
 `GET v1/programs/{id}`, `GET v1/ProgramCategories`, `GET v1/ActivityTypes` and `GET v1/users/me` (its answer
 was not recorded and nothing in this document depends on it). No save, update, delete or attach. No credential, token or personal data is
-recorded here. Read samples are official SATS programs (public camps).
+recorded here. Read samples are official programs of a professional studio library (public camps).
 
 ## How running is found (answers unknown 1)
 
@@ -15,8 +15,7 @@ recorded here. Read samples are official SATS programs (public camps).
 - Campaigns ("camps") are **program categories**, found with `GET v1/ProgramCategories`
   (48 visible to the account; ids in the thousands, so scanning small ids misses them). Each has
   `ActivityTypeID`, `IsOfficial`, `NumberOfWorkouts` (0 even where programs exist, do not trust it),
-  `CreatorName`. Running camps: SATS "RUN TO RACE 45" (8248), "RUN TO RACE 60" (8249), and many
-  user-made ones (ids 8277 to 8969: "RUN 30", "Run 60", "Indoor running (30)", "Couch2FiveK", ...).
+  `CreatorName`. Running camps exist as official and user-made categories (ids from the 8000s to the 9000s).
 - List a camp with `POST v1/programs` and `ProgramCategoryID` = the camp id (12 programs each for
   8248 and 8249). The list entry has the program's own `ActivityTypeID: 1`, `TSS`, `TotalDuration`,
   `PlaylistID`, but **no segments**: read each with `GET v1/programs/{id}`.
