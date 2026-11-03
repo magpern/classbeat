@@ -321,9 +321,11 @@ async def test_a_link_off_the_injected_list_is_refused_before_it_is_sent(link: s
 
 async def test_the_production_list_is_the_confirmed_host_and_refuses_every_other() -> None:
     media = FakeMedia()
-    assert MOWL_MEDIA_ALLOWLIST.hosts == egress.MOWL_MEDIA_HOSTS == {
-        "users-playlists.s3-accelerate.amazonaws.com"
-    }
+    assert (
+        MOWL_MEDIA_ALLOWLIST.hosts
+        == egress.MOWL_MEDIA_HOSTS
+        == {"users-playlists.s3-accelerate.amazonaws.com"}
+    )
     async with mowl_media_async_client() as http:  # the real transport is never reached
         with pytest.raises(OutboundBlocked):
             await http.get(media.link("ok"))  # FakeMedia's host is not the confirmed one
