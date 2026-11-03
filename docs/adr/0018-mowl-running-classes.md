@@ -287,3 +287,19 @@ The owner-authorized read-only discovery ran on 2026-11-02; the findings are in
 - **L1 splits.** L1a: library read side for running (validate, summarize, TSS, interval body from the
   observed fields), no write. L1b: save and list, after D1 closes. R1's design half (brief, schema,
   prompt, `running_enabled`) may start after L1a; its save half waits for L1b.
+
+## Amendment 2 (2026-11-03, Architect): live save test
+
+The owner authorized a one-program live save test on 2026-11-03; the results are in
+`docs/providers/mowl-running-discovery.md` ("Live save test"). They close the unknowns Amendment 1 left open:
+
+- A running save is the cycling save with `ActivityTypeID: 1` on the program, segments left at 0, and
+  running interval bodies (float `Gradient` 0.0 or 1.0). No new endpoint.
+- Listing needs no change: a running program appears in the existing My Workouts request, and its sport is
+  its own `ActivityTypeID`.
+- The server keeps the `TSS` the client sends; the library's running TSS stays uncalibrated and is shown as
+  approximate.
+- **Still unverified and refused:** updating a running program, a new playlist/mix on a running program
+  (song picking and Swedebeat for running stay out of M8's first cut), and segment `ActivityTypeID` 1.
+- L1b (#469) is therefore unblocked for create-only. R1's save half uses it; its update half waits for a
+  later, separately authorized probe.

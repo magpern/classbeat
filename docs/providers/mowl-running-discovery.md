@@ -61,3 +61,21 @@ read-only probe) can answer that. Agents write nothing to the account.
 
 Reproduce (read-only): `mowl.api.call(creds, "GET", "v1/ProgramCategories")`, then
 `POST v1/programs` with `ProgramCategoryID` = 8249, then `mowl.api.get_workout(creds, id)`.
+
+## Live save test (2026-11-03, owner-authorized)
+
+One private running program was saved from a one-off script with the requests the cycling save makes
+(program, three segments, their intervals, the segment list) and read back. Findings:
+
+- `PUT v1/programs` with `ActivityTypeID: 1` is accepted. The program reads back `ActivityTypeID: 1`,
+  `BikeTypeID: 1`, `IsPublic: false`.
+- Segments saved with `ActivityTypeID: 0` read back `0`, as in the official programs. A segment value of 1
+  was **not** tried.
+- Intervals sent as running bodies (cycling keys, RPM 0, seated, `Gradient` as the floats 0.0 and 1.0) read
+  back unchanged: `ScaleCoggan` 1 to 3 as sent, `Gradient` 0.0/1.0, `RPMFrom` 0, `PaceFrom` null.
+- `TSS` is stored as the client sends it (4.419 sent and read back): the server does not recompute it, so
+  the library's running TSS model is what the user sees. It is not calibrated against running data.
+- The program is in the unchanged My Workouts list request (`POST v1/programs`, category 17,
+  `BikeTypeID: 1`) with its own `ActivityTypeID: 1`.
+- Not tested: updating a running program (`PUT v1/programs/{id}`), attaching a new playlist or mix to a running
+  program, and any delete (the library has none; the owner deletes the test program in the app).
