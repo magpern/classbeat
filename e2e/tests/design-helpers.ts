@@ -64,7 +64,8 @@ export async function connectMowl(page: Page): Promise<void> {
  *  tiles, so the click landed elsewhere and the radio stayed unchecked. */
 export async function choosePlaylist(form: Locator, playlistName: string): Promise<void> {
   const radio = form.getByRole('radio', { name: playlistName })
-  await form.locator('label').filter({ has: radio }).click()
+  // `has` is matched inside each label, so it takes a locator from the page, not from the form.
+  await form.locator('label').filter({ has: form.page().getByRole('radio', { name: playlistName }) }).click()
   await expect(radio).toBeChecked()
 }
 
