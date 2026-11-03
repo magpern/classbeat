@@ -13,7 +13,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from classbeat.agent.schemas import Brief, BriefText, Game, WorkoutDraft
+from classbeat.agent.schemas import Brief, BriefText, Game, RunningDraft, WorkoutDraft
 from classbeat.evals.music import MusicSpec
 
 Range = tuple[float, float]
@@ -110,19 +110,23 @@ class Expect(BaseModel):
     music_sync: MusicSyncExpect | None = None
     revision: RevisionExpect | None = None
     patterns: PatternExpect | None = None  # the ``class_patterns`` category's
+    # A running case (ADR 0018, issue #465): at least this many seconds at gradient 1 (an incline
+    # the brief asked for); unset, the incline is not judged. Running cases only.
+    incline_min_sec: int | None = Field(default=None, ge=1, le=10800)
 
 
 class ReviseSpec(BaseModel):
     """A revise case (ADR 0007 section 3): the class is ``brief`` and ``music`` as for a design,
     ``base`` is the draft it stands at (as stored: fitted), ``earlier_requests`` the user's
     requests that led to it and ``request`` the new one. The checks run on the revised draft
-    against the case's brief; it must also differ from ``base``."""
+    against the case's brief; it must also differ from ``base``. A running case's ``base`` is a
+    ``RunningDraft`` and a cycling case's a ``WorkoutDraft`` (``Case`` checks the pair)."""
 
     model_config = ConfigDict(extra="forbid", strict=True)
 
     request: BriefText = Field(min_length=1)
     earlier_requests: list[BriefText] = Field(default_factory=lambda: list[str](), max_length=10)
-    base: WorkoutDraft
+    base: WorkoutDraft | RunningDraft
     # "songs_requested" (issue #278): the request only asks for other songs, so the stage ends
     # with songs_requested and no draft; the case passes only if it does.
     outcome: Literal["draft", "songs_requested"] = "draft"
@@ -145,6 +149,13 @@ class Case(BaseModel):
         if self.expect.patterns is not None and self.revise is not None:
             raise ValueError("expect.patterns is for a design case")
         b = self.brief
+        running = b.sport == "running"
+        if self.revise is not None and isinstance(self.revise.base, RunningDraft) != running:
+            raise ValueError("a revise case's base draft is of its brief's sport")
+        if self.expect.incline_min_sec is not None and not running:
+            raise ValueError("expect.incline_min_sec is for a running case")
+        if running and (self.expect.games or self.expect.ftp_warmup_min_sec is not None):
+            raise ValueError("a running case has no games and no FTP test")
         if self.expect.patterns is not None and self.expect.patterns.mode == "follows":
             unusual = b.sprints or b.races or b.ftp_test or b.style or b.text or b.climbs
             if unusual or b.intensity != "moderate" or b.class_type is None:

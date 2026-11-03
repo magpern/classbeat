@@ -1,0 +1,14 @@
+{
+ "name": "run_interval_30",
+ "about": "A hard 30 minute interval run on an existing MOWL playlist.",
+ "brief": {
+  "sport": "running",
+  "length_min": 30,
+  "intensity": "hard",
+  "class_type": "interval"
+ },
+ "music": {
+  "tracks": 9
+ },
+ "expect": {}
+}

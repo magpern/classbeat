@@ -30,6 +30,7 @@ class ReviseEnv:
     scripts: list[str] = field(default_factory=lambda: list[str]())
     providers: list[FakeProvider] = field(default_factory=lambda: list[FakeProvider]())
     context_requests: int = 10
+    running_covered: bool = True  # False: the route's result does not cover running (#465)
 
     def runtime(self) -> Runtime:
         def build() -> FakeProvider:
@@ -40,7 +41,7 @@ class ReviseEnv:
 
         return Runtime(
             keyring=self.denv.ops.keyring,
-            models=FactoryModels(build),
+            models=FactoryModels(build, running_covered=self.running_covered),
             agent=CONFIG,
             context_requests=self.context_requests,
         )

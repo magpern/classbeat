@@ -1,4 +1,5 @@
-"""The agent smoke set (ADR 0006 section 8): 15 design and 3 revise cases (ADR 0007 section 3),
+"""The agent smoke set (ADR 0006 section 8): 21 design and 5 revise cases (ADR 0007 section 3; 7 of
+them running classes, ADR 0018),
 each a brief, a synthetic music fixture and deterministic checks on the draft the design or revise
 stage submits (a revise case also holds the base draft and the requests).
 

@@ -1,0 +1,20 @@
+{
+ "name": "cp_run_capped_45",
+ "about": "A running interval class kept at zone 3 or below, asked: the brief wins over the hard-share rules.",
+ "brief": {
+  "sport": "running",
+  "length_min": 45,
+  "intensity": "easy",
+  "class_type": "interval",
+  "text": "Aerobic day: keep every effort at zone 3 or below."
+ },
+ "music": {
+  "tracks": 13
+ },
+ "expect": {
+  "patterns": {
+   "mode": "deviates",
+   "max_zone": 3
+  }
+ }
+}

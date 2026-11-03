@@ -18,6 +18,11 @@ the checks that are not the brief's own validation:
   (``DesignDraftInput``, ``DesignWithSongsInput``), and the song kinds refuse a running brief
   again in the worker.
 
+- **An evaluated model** (ADR 0012 amendment of 2026-11-03, issue #465). A running job runs only
+  on a model whose recorded suite result covers running (``GroupModel.running_covered``: a
+  ``design`` route that is not stale, never the bootstrap choice); otherwise
+  ``require_evaluated`` ends it ``model_config`` before any MOWL or model call.
+
 Without a configured gate the switch is off, so running is refused everywhere.
 """
 
@@ -32,6 +37,7 @@ from classbeat.agent.schemas import Brief
 from classbeat.flags import effective
 from classbeat.jobs import FencedSession, JobFailure, JobRun
 from classbeat.jobs.kinds import Refused
+from classbeat.models.jobs import GroupModel
 
 RUNNING: Final = "running"
 CYCLING: Final = "cycling"
@@ -114,6 +120,13 @@ async def still_on(run: JobRun) -> None:
         on = await running_on(fs.db)
     if not on:
         raise JobFailure("feature_off")
+
+
+def require_evaluated(model: GroupModel) -> None:
+    """In the worker, for a running job, after its ``design`` group's model is resolved and before
+    anything is called: ``model_config`` unless that model's recorded result covers running."""
+    if not model.running_covered:
+        raise JobFailure("model_config")
 
 
 _JOB_CLASS_BRIEF = text(
