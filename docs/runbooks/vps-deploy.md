@@ -98,16 +98,16 @@ Then as the deploy user (no sudo: the files get group 10010 from the folder, mod
 
 ```bash
 cd /opt/classbeat
-umask 027
-for n in postgres_password database_owner_password database_password database_maint_password; do
-  head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n' > "secrets/$n"
-done
-head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n' > secrets/app_secret_key      # >= 32 bytes
-head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n' > secrets/connection_kek      # exactly 64 hex characters
-for n in smtp_password anthropic_api_key openai_api_key deepseek_api_key swedebeat_app \
-  oauth_google_client_secret oauth_github_client_secret oauth_microsoft_client_secret; do
-  [ -e "secrets/$n" ] || install -m 640 /dev/null "secrets/$n"   # empty placeholder; fill in below
-done
+( umask 027                 # in a subshell: your shell keeps its own umask
+  for n in postgres_password database_owner_password database_password database_maint_password; do
+    head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n' > "secrets/$n"
+  done
+  head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n' > secrets/app_secret_key      # >= 32 bytes
+  head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n' > secrets/connection_kek      # exactly 64 hex characters
+  for n in smtp_password anthropic_api_key openai_api_key deepseek_api_key swedebeat_app \
+    oauth_google_client_secret oauth_github_client_secret oauth_microsoft_client_secret; do
+    [ -e "secrets/$n" ] || install -m 640 /dev/null "secrets/$n"   # empty placeholder; fill in below
+  done )
 ls -ln secrets/          # every file: <your uid> 10010, -rw-r-----
 ```
 
@@ -138,7 +138,9 @@ Fill in these files by hand (writing into an existing file keeps its group and m
 A file that holds only blanks counts as empty. If an optional file (`smtp_password`, the three
 `oauth_*_client_secret`, `swedebeat_app`) cannot be read, `web` starts without it and logs
 `secret file <name> is not readable; treated as not set` (that feature is off); any other unreadable
-secret stops the service that needs it. Either way, fix the group and mode as above.
+secret stops the service that needs it. Either way, fix the group and mode as above. For
+`swedebeat_app` that means the runtime override silently does not apply: web falls back to the key
+built into the release image, and only that warning says so.
 
 **Back up `secrets/connection_kek` and `secrets/postgres_password` and the other secret files
 off the server now** (a password manager or an encrypted offline copy). Losing `connection_kek`
@@ -518,8 +520,11 @@ them), that a canary in the dummy secret files never shows in the rendered files
 no `*CLIENT_SECRET*` variable. For the secret files (#511) it checks that every service that mounts a
 secret has `group_add: ["10010"]` and runs as a non-root user (`postgres` for the postgres image,
 whose gosu would drop the group), that each secret is the file `secrets/<its own name>` mounted at that
-name, that no service bind-mounts `secrets/`, a folder above it or a file in it, and that no command,
-entrypoint or healthcheck names `/run/secrets`; on the server, the mode and group of each real file.
+name, that no service bind-mounts `secrets/`, a folder above it or a file in it, uses `volumes_from` or
+shares the pid or ipc namespace of the host or another container, that the one named volume has no
+driver options, and that no command, entrypoint or healthcheck names `/run/secrets` (a text match that
+catches mistakes, not someone hiding the path on purpose: the compose file is reviewed); on the server,
+the mode and group of each real file.
 That a uid 10001 container with group 10010 reads a `root:10010` mode 640 or 440 file and one without
 the group cannot, and that gosu drops the group, was checked with `compose.prod.yaml` on Docker 29.9.2 /
 Compose 5.6.1 (#511). That the Docker port relay presents the `web-out`

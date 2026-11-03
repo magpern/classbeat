@@ -147,19 +147,35 @@ check_common() {
 # supplementary groups: a postgres service runs as postgres from the start. Each top-level secret is
 # the file secrets/<its own name> (no second name for a file, #508 review), mounted at its own name,
 # and nothing reaches secrets/ another way: no bind mount of the folder, a parent or a file in it, no
-# config from it, and no command, entrypoint or healthcheck that names /run/secrets or secrets/.
+# config from it, no volumes_from, no shared pid or ipc namespace, no named volume with driver
+# options, and no command, entrypoint or healthcheck that names /run/secrets or secrets/ (a plain
+# text match against honest mistakes; a reviewed compose file is the guard against intent).
 secrets_gid=10010
 # shellcheck disable=SC2016  # jq variables, not shell ones
 check_secret_mounts() {
   jq -e --arg g "$secrets_gid" '[.services[] | select((.secrets // []) | length > 0)
       | (.group_add // []) | map(tostring) | index($g)] | all(. != null)' <<<"$J" >/dev/null \
     || fail "every service that mounts a secret has group_add [\"$secrets_gid\"]" || return 1
-  q '[.services[] | select((.secrets // []) | length > 0) | select(.image | startswith("postgres:"))
+  q '[.services[] | select((.secrets // []) | length > 0) | select(.image // "" | test("(^|/)postgres([:@]|$)"))
       | .user // "" | tostring] | all(. == "postgres" or . == "999" or . == "999:999")' \
     || fail "a postgres service that mounts a secret runs as postgres (gosu would drop the group)" || return 1
   q '[.services[] | select((.secrets // []) | length > 0) | .user // "" | tostring
       | select(test("^(0|root)(:|$)"))] | length == 0' \
     || fail "no service that mounts a secret runs as root" || return 1
+  # Only the app image has a non-root USER of its own; any other image must name one.
+  q '[.services[] | select((.secrets // []) | length > 0) | select(.image // "" | startswith("ghcr.io/magpern/classbeat:") | not)
+      | .user // "" | tostring | select(. == "")] | length == 0' \
+    || fail "a service that mounts a secret and is not the app image names its non-root user" || return 1
+  # With one shared group, any secret file that reaches a container is readable there: no service
+  # takes another's mounts (volumes_from) or sees its processes' files (/proc/<pid>/root, through a
+  # shared pid or ipc namespace), and the one named volume is a plain local volume (driver_opts could
+  # bind secrets/ itself; external, a volume made elsewhere).
+  q '[.services[] | select(has("volumes_from"))] | length == 0' \
+    || fail "no service uses volumes_from (it would copy another service's secret mounts)" || return 1
+  q '[.services[] | .pid // "", .ipc // "" | tostring | select(test("^(host|service:|container:)"))] | length == 0' \
+    || fail "no service shares the pid or ipc namespace of the host or another container" || return 1
+  q '[.volumes // {} | .[] | keys - ["name"] | length] | all(. == 0)' \
+    || fail "the named volume is a plain local volume (no driver, driver_opts or external)" || return 1
   q '(.secrets.app_secret_key.file // "" | rtrimstr("/app_secret_key")) as $sd | $sd != "" and $sd != (.secrets.app_secret_key.file // "")
      and (.secrets | to_entries | all(.value | type == "object" and ((keys - ["name","file"]) == [])) )
      and (.secrets | to_entries | all(.value.file == $sd + "/" + .key))' \
@@ -338,10 +354,32 @@ for m in \
   '.services.web.command = ["sh","-c","cat /run/secrets/oauth_google_*; exec python -m classbeat"]' \
   '.services.worker.entrypoint = ["sh","-c","cat /run/secrets/* >&2"]' \
   '.services.worker.command = "sh -c \"tar c secrets/ | nc x 1\""' \
-  '.services.web.healthcheck.test = ["CMD","sh","-c","cat /run/secrets/app_secret_key"]'; do
+  '.services.web.healthcheck.test = ["CMD","sh","-c","cat /run/secrets/app_secret_key"]' \
+  '.services.db.image = "docker.io/library/postgres:17.11" | del(.services.db.user)' \
+  '.services.db.image = "mirror.gcr.io/library/postgres@sha256:00" | .services.db.user = "1000"' \
+  '.services.db.image = "example.test/pg:17" | del(.services.db.user)' \
+  '.services.worker.volumes_from = ["web"]' \
+  '.services.migrate.volumes_from = ["web:ro"]' \
+  '.services.extra = {"image":.services.web.image,"networks":{"backend":null},"logging":.services.web.logging,"volumes_from":["container:classbeat-prod-web-1"]}' \
+  '.services.worker.pid = "service:web"' \
+  '.services.worker.pid = "host"' \
+  '.services.migrate.pid = "container:classbeat-prod-web-1"' \
+  '.services.worker.ipc = "service:web"' \
+  '.services.db.ipc = "host"' \
+  '.volumes["db-data"].driver_opts = {"type":"none","o":"bind","device":(.secrets.app_secret_key.file | rtrimstr("/app_secret_key"))}' \
+  '.volumes["db-data"].driver_opts = {"type":"none","o":"bind","device":"/"}' \
+  '.volumes["db-data"].driver = "local-persist"' \
+  '.volumes["db-data"].external = true'; do
   expect_refused shared "$shared" "$m"
 done
-expect_refused loopback "$loopback" 'del(.services.web.group_add)'
+for m in \
+  'del(.services.web.group_add)' \
+  '.services.worker.volumes_from = ["web"]' \
+  '.services.worker.pid = "service:web"' \
+  '.services.worker.ipc = "container:classbeat-prod-web-1"' \
+  '.volumes["db-data"].driver_opts = {"type":"none","o":"bind","device":(.secrets.app_secret_key.file | rtrimstr("/app_secret_key"))}'; do
+  expect_refused loopback "$loopback" "$m"
+done
 expect_refused loopback "$loopback" '.services.worker.volumes = [{"type":"bind","source":(.secrets.app_secret_key.file | rtrimstr("/app_secret_key")),"target":"/s"}]'
 # The client secret's value (the canary in the dummy file) anywhere in the rendered file.
 expect_refused shared "$shared" ".services.web.labels = {\"note\": \"$oauth_canary-google\"}"
