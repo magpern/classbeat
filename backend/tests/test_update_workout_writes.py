@@ -263,8 +263,15 @@ async def test_after_a_crash_the_next_attempt_never_calls_and_check_again_resolv
     assert fake_programs.write_count == writes
 
 
+@pytest.mark.parametrize(
+    ("change", "category"), [("renamed", "program_changed"), ("running", "program_other_sport")]
+)
 async def test_a_deferred_refusal_holds_when_the_own_row_turned_failed_before_the_write(
-    uenv: UpdateEnv, fake_programs: FakeMowlPrograms, monkeypatch: pytest.MonkeyPatch
+    uenv: UpdateEnv,
+    fake_programs: FakeMowlPrograms,
+    monkeypatch: pytest.MonkeyPatch,
+    change: str,
+    category: str,
 ) -> None:
     """The read refused, but the job's own crashed attempt left a ``pending`` row, so the
     refusal was deferred to the guard. If that row is ``failed`` by the time of the decide
@@ -283,7 +290,10 @@ async def test_a_deferred_refusal_holds_when_the_own_row_turned_failed_before_th
     fake_programs.fail = {start + WRITES: "refuse"}
     fake_programs.release.set()
     await asyncio.sleep(0.1)
-    fake_programs.edit(live.program_id, Name="Edited by the user")  # the read will refuse
+    if change == "renamed":
+        fake_programs.edit(live.program_id, Name="Edited by the user")  # the read will refuse
+    else:  # now a running program (issue #485)
+        fake_programs.set_activity_type(live.program_id, 1)
     uenv.s.lose_lease(job_id)
     assert await queue.reap(uenv.s.ops.factory) == 1
     real = update_kind.perform
@@ -301,7 +311,7 @@ async def test_a_deferred_refusal_holds_when_the_own_row_turned_failed_before_th
     uenv.ready(job_id)
     await uenv.run_next()
     row = uenv.row(job_id)
-    assert (row.state, row.error_category) == ("failed", "program_changed")
+    assert (row.state, row.error_category) == ("failed", category)
     assert fake_programs.write_count == writes  # never called
     [op] = uenv.operations(live.saved.owner)
     assert op.state == "failed"

@@ -200,3 +200,35 @@ def program_id_of(item: object) -> int | None:
     if isinstance(value, bool) or not isinstance(value, int) or not 0 < value <= 2**63 - 1:
         return None
     return value
+
+
+# A program's sport (issue #485, ADR 0018): MOWL's ``GET v1/ActivityTypes`` lists 0 Cycling and
+# 1 Running, and a program carries its own ``ActivityTypeID`` (docs/providers/
+# mowl-running-discovery.md). Its segments carry 0 even in running programs, so only the
+# program's value counts. Not part of ``normalized_program`` on purpose: the stored
+# ``state_hash`` of every saved row would change with it.
+PROGRAM_SPORTS: Final[Mapping[int, str]] = {0: "cycling", 1: "running"}
+SPORTS: Final = frozenset(PROGRAM_SPORTS.values())
+
+
+def program_sport(program: object) -> str | None:
+    """The sport of a program read with ``api.get_workout``, from its own ``ActivityTypeID``;
+    None when it is missing, not an exact whole number (a bool, a float, text) or a value MOWL
+    did not list. Never guessed: an Update refuses a program whose sport it cannot tell."""
+    if not isinstance(program, Mapping):
+        return None
+    value = cast(Mapping[str, Any], program).get("ActivityTypeID")
+    if type(value) is not int:
+        return None
+    return PROGRAM_SPORTS.get(value)
+
+
+def spec_sport(spec: Mapping[str, Any]) -> str | None:
+    """The sport of a stored class's spec, as the library reads it (``workout.sport_of``):
+    cycling unless it says ``"sport": "running"``; None for any other value.
+
+    Every class is cycling today (the design rules know only ``cycling``, ``design.rules.enums``,
+    and no stored spec has ``"sport"``). This is the seam for R1 (#463): the sport comes from the
+    stored revision's spec, never from the browser, a model or the program read from MOWL."""
+    value = spec.get("sport", "cycling")
+    return value if isinstance(value, str) and value in SPORTS else None

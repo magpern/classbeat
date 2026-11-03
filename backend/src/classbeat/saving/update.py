@@ -7,7 +7,8 @@ playlist id or a name (``extra="forbid"``: an input carrying a program id is ref
 program id is read only from the user's own live ``saved_workouts`` row** of the class, inside
 the transaction that checks it (``approval.saved_target``): never from the browser, a model or
 MOWL's listing. ``overwrite`` is the page's "Update anyway" confirmation; it skips only the
-read-first comparison. ``consumes_credit = False``: no ledger call, no model call.
+read-first comparison, never the sport check. ``consumes_credit = False``: no ledger call, no
+model call.
 
 **``admit``** (the jobs API's create transaction, under the owner lock): the revision checks of
 ``classbeat.saving.approval``, the connection (``not_connected``), the saved row
@@ -24,9 +25,12 @@ no effect never resumes at ``save``, so the read-first check runs again):
    from the database. Then the **preflight**: My Workouts' first page, outside any operation;
    its ProgramIDs are the **baseline**. A failing preflight is an ordinary failure, no row.
 2. ``read`` (outside any operation): ``get_workout(program_id)``. Not there, or not served to
-   this account: ``program_missing``. Public, not normalizable, or its normalized state not the
-   saved row's ``state_hash`` (or that is NULL): ``program_changed``, unless ``overwrite``.
-   Nothing is written in either case. Its normalized hash is the write's ``before_hash``. One
+   this account: ``program_missing``. Its own ``ActivityTypeID`` missing, unknown or not the
+   class's sport (``mowl_state.program_sport`` against ``mowl_state.spec_sport`` of the stored
+   revision; every class is cycling until R1, #463): ``program_other_sport``, **also with
+   ``overwrite``**. Public, not normalizable, or its normalized state not the saved row's
+   ``state_hash`` (or that is NULL): ``program_changed``, unless ``overwrite``. Nothing is
+   written in any of these cases. Its normalized hash is the write's ``before_hash``. One
    exception keeps a crashed attempt's write from being reported as the user's edit: when this
    job's own operation row (key ``<job_id>:update``) is ``pending``, ``uncertain`` or
    ``succeeded``, the refusal is deferred to the decide guard, ``perform`` meets the row and
@@ -194,17 +198,19 @@ async def prepare(run: JobRun, keyring: KeyRing, given: UpdateWorkoutInput) -> P
 @dataclass(frozen=True)
 class Read:
     """What the read found: ``before_hash`` (hex; None when the program can't be normalized)
-    and ``refusal`` (``program_changed`` or ``program_missing``) when the read-first rule refused
-    but this job's own earlier attempt left its operation row undecided or ``succeeded``. The
-    write then goes ahead only into ``perform``, which never calls for such a row, and the guard
-    refuses with ``refusal`` if the row became ``failed`` (or went) meanwhile."""
+    and ``refusal`` (``program_changed``, ``program_missing`` or ``program_other_sport``) when
+    the read-first rule refused but this job's own earlier attempt left its operation row
+    undecided or ``succeeded``. The write then goes ahead only into ``perform``, which never
+    calls for such a row, and the guard refuses with ``refusal`` if the row became ``failed``
+    (or went) meanwhile."""
 
     before_hash: str | None
     refusal: str | None = None
 
 
 def _refusal(program: object, plan: Plan, overwrite: bool) -> tuple[str | None, str | None]:
-    """The read-first rule on a read program: ``(before_hash, refusal)``."""
+    """The read-first rule on a read program: ``(before_hash, refusal)``. The sport check comes
+    before ``overwrite``: "Update anyway" replaces the user's changes, never the sport."""
     if mowl_state.program_id_of(program) != plan.target.program_id:
         return None, "program_missing"  # an empty answer, or another program
     try:
@@ -212,6 +218,11 @@ def _refusal(program: object, plan: Plan, overwrite: bool) -> tuple[str | None, 
     except ValueError:
         normal = None
     before = None if normal is None else mowl_state.state_hash(normal).hex()
+    sport = mowl_state.program_sport(program)
+    if sport is None or sport != mowl_state.spec_sport(plan.revision.spec):
+        # Another sport, or one we cannot tell (missing or unknown ``ActivityTypeID``): the
+        # library would rewrite it with this class's sport and bodies (issue #485).
+        return before, "program_other_sport"
     if overwrite:
         return before, None
     if normal is None or normal["public"] is not False:
