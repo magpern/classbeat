@@ -80,7 +80,7 @@ const ENTRIES = [
   entry(2, { request: 'Make the climbs longer', isCurrent: true, saved: 'live' }),
   entry(3, { origin: 'design_draft', fromSongs: true, parentNumber: 2 }),
 ]
-const HISTORY: History = { sport: 'cycling', revisions: ENTRIES }
+const HISTORY: History = { sport: 'cycling', canChange: true, revisions: ENTRIES }
 
 function show(onUse = vi.fn(), onView = vi.fn()) {
   render(

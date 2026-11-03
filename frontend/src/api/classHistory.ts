@@ -38,6 +38,8 @@ export interface TimelineEntry {
 
 export interface History {
   sport: 'cycling' | 'running'
+  /** The class has its own brief and music, which Change it needs (a copy on picked songs has not). */
+  canChange: boolean
   revisions: TimelineEntry[]
 }
 
@@ -98,6 +100,7 @@ export async function getHistory(classId: string, signal?: AbortSignal): Promise
   const body = object(await get(base(classId), signal), 'history')
   return {
     sport: body.sport === 'running' ? 'running' : 'cycling',
+    canChange: flag(body, 'can_change'),
     revisions: list(body, 'revisions').map((r) => decodeEntry(object(r, 'revision'))),
   }
 }
