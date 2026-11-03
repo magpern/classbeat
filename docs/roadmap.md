@@ -7,10 +7,11 @@ is Accepted. M8 is added to the milestone table.
 
 | # | Milestone | Done when |
 |---|---|---|
-| M8 | Running classes next to cycling (ADR 0018): discovery fixtures (D1), `mowl-workouts` running support (L1), sport on the brief and a running draft (R1), web sport switch and chart (U1), running eval smoke cases (E1), running e2e (F1); P9 running profiles (#401) stay blocked on the owner's aggregate data | Technical completion as for the other milestones: on fakes and fixtures, cycling defaults unchanged, behind the `running_enabled` flag (default off) |
+| M8 | Running classes next to cycling (ADR 0018): discovery fixtures (D1), `mowl-workouts` running support (L1, split into L1a read side #462 and L1b save and list #469 by ADR 0018 Amendment 1), sport on the brief and a running draft (R1), web sport switch and chart (U1), running eval smoke cases (E1), running e2e (F1); P9 running profiles (#401) stay blocked on the owner's aggregate data | Technical completion as for the other milestones: on fakes and fixtures, cycling defaults unchanged, behind the `running_enabled` flag (default off) |
 
-- **No live access is authorized by this approval.** D1's capture against a real MOWL account is
-  an owner step (AGENTS.md safety envelope); L1 and everything after it depend on D1's fixtures.
+- **No live access is authorized by this approval.** D1's capture against a real MOWL account was an
+  owner step (AGENTS.md safety envelope); the owner authorized one read-only capture, which ran on
+  2026-11-02 (ADR 0018 Amendment 1). L1 and everything after it depend on D1's findings.
   The Architect records the question under "Waiting for the owner" and carries on with
   independent work.
 - Review classes follow ADR 0018 §4: L1 is security-critical (external write: Opus, or Grok 4.7

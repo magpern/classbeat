@@ -475,6 +475,11 @@ OAuth sign-in (ADR 0003 section 5): `CLASSBEAT_OAUTH_<PROVIDER>_CLIENT_ID` and t
 with only one of them is off. Microsoft setup: add the `auth_time` optional claim (ID token) to
 the app registration, or re-authentication with Microsoft always fails closed (ADR 0003 section 5);
 Google needs no registration change (the app asks for `auth_time` itself).
+`CLASSBEAT_OAUTH_VISIBLE_PROVIDERS` (default `google`; a comma-separated list of `google`, `github`,
+`microsoft`) is which of the enabled providers the sign-in and sign-up screens offer; the others stay
+enabled and work, only their buttons are hidden. A name that is none of the three (a typo) is logged
+once as a warning (the name only) and offers nothing. It is a web setting that no compose file passes
+on yet (`compose.e2e.yaml` sets it for the e2e stack), like the providers' client ids.
 Web and worker refuse to start as a superuser, a `BYPASSRLS` role or a table owner (no
 override). In CI (`CI=true`) a missing
 `CLASSBEAT_TEST_DATABASE_URL` or missing roles fail the database tests instead of skipping them.

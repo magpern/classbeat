@@ -194,9 +194,10 @@ The hits are a **pure function** of the revision's segments, the class's stored 
 **current** profile, so they are **recomputed on read** by `GET` of a revision. **Nothing is stored
 per revision**, and superseded profile versions are not kept in the image. An old revision
 therefore always shows notes under today's rules, however old it is. If the revision's provenance
-`rules.digest` differs from the loaded file's (or the profile no longer exists, in which case there
-are no notes), the block adds one muted line, "Notes use the current rules", and nothing else: no
-error, no blocked action. The provenance digest answers "what did the model see?", never "what do
+`rules.digest` is recorded and differs from the loaded profile's digest, the block adds one muted
+line, "Notes use the current rules", and nothing else: no error, no blocked action. A revision with
+no recorded digest sets no line. When no profile applies today (or the class's stored brief is gone)
+there are no notes and no line either, because there is nothing to compare. The provenance digest answers "what did the model see?", never "what do
 we show?". If no profile applies to the class today, no block is shown.
 
 - **Where.** The class page's revision view (`RevisionView`) gets a quiet "Pattern notes" block

@@ -110,6 +110,12 @@ SMTP_SENDER=noreply@classbeat.example.test
 # optional: SIGNUP_MODE=invite  CONNECTION_KEK_ID=kek-1  MODEL_PROVIDER=anthropic
 ```
 
+**With `SMTP_CA_FILE` set, every compose command in this runbook needs the overlay.** The CA mount
+lives in `compose.bridge.yaml` ([proton-bridge-smtp.md](proton-bridge-smtp.md) section 3), so add
+`-f compose.bridge.yaml` after `-f compose.prod.yaml` in each command below (`config`, `up`, `pull`,
+`restart`, `run`, `exec`, `down`, including the update and rollback ones). Without it, `up` or a
+restart recreates `web` with the variable set but no mounted file, and `web` refuses to start.
+
 Song picking stays off (its default) until the owner runs [m4-live-activation.md](m4-live-activation.md).
 
 ## 6. DNS and TLS (the owner's steps)
@@ -203,8 +209,8 @@ cd /opt/classbeat
 git fetch --tags && git checkout vNEW             # the release you want
 touch secrets/swedebeat_app                       # must exist (empty is fine); `touch` never empties it
 sed -i 's/^CLASSBEAT_VERSION=.*/CLASSBEAT_VERSION=NEW/' .env   # NEW = the tag without the v
-docker compose -f compose.prod.yaml pull
-docker compose -f compose.prod.yaml up -d --wait
+docker compose -f compose.prod.yaml pull          # with SMTP_CA_FILE: add -f compose.bridge.yaml
+docker compose -f compose.prod.yaml up -d --wait  # likewise, or web restarts without the CA mount
 ```
 
 `up` re-runs `migrate` (idempotent) and `db-functions` before it replaces `web` and `worker`;
@@ -226,7 +232,8 @@ release you are leaving added no migration (compare the revision files between t
 data, so treat none as reversible.
 
 - **No migration in the release:** set `CLASSBEAT_VERSION` back to the previous tag,
-  `git checkout vOLD`, `docker compose -f compose.prod.yaml up -d --wait`.
+  `git checkout vOLD`, `docker compose -f compose.prod.yaml up -d --wait` (with `SMTP_CA_FILE`, the
+  overlay too, here and in the restore commands below).
 - **A migration ran** (any kind): restore the pre-update dump, then start the old version.
   ```bash
   docker compose -f compose.prod.yaml down                       # keeps volumes

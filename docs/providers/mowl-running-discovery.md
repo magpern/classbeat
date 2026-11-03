@@ -1,7 +1,9 @@
 # MOWL running discovery (ADR 0018, D1): 2026-11-02 read-only probes
 
 Status: **mostly answered from official SATS content; save-side fields still unverified.**
-Owner-authorized, read-only, a cloud agent session. No credential, token or personal data is
+Owner-authorized, read-only, a cloud agent session. Calls made: `login`, `POST v1/programs` (lists),
+`GET v1/programs/{id}`, `GET v1/ProgramCategories`, `GET v1/ActivityTypes` and `GET v1/users/me` (its answer
+was not recorded and nothing in this document depends on it). No save, update, delete or attach. No credential, token or personal data is
 recorded here. Read samples are official SATS programs (public camps).
 
 ## How running is found (answers unknown 1)
@@ -29,14 +31,14 @@ recorded here. Read samples are official SATS programs (public camps).
   `CycleID`, `IntervalGame`, `FtpTest`, `Intensity`, `Scale1to5`, `ScaleBorg`, ...).
 - Values in running programs: `RPMFrom/To` 0, `PositionTypeID` 1 (seated), `CycleID` 1, `Intensity` 1,
   `Scale1to5` 0, `ScaleBorg` 0, `IntervalGame` null, `FtpTest` null, **`PaceFrom/To` null**.
-  **`Gradient`** is `0.0` (282) or `1.0` (258): the treadmill incline (probably percent), set per
+  **`Gradient`** is `0.0` (282) or `1.0` (258): the treadmill incline (the unit is **unverified**), set per
   interval; the same 1.0 sits on the work and the rest intervals of a program.
 - **`ScaleCoggan` 1 to 5 applies** (zone set 1), with the same FTP bands as cycling: 1 = 0 to 55,
   2 = 56 to 75, 3 = 76 to 90, 4 = 91 to 105, 5 = 106 to 120 (`FTPFrom/To`, as percent of rFTP).
   Zones 6 and 7 were not seen (the 60 and 45 programs stay below).
 - Warm-up/cool-down flags: `IsWarmup`, `IsCooldown`, `IsActiveRecovery` on segment and interval.
 - **TSS** is published in the same field (`TSS`, e.g. 103.76 for 3380 s). It matches the app card.
-- All 24 programs have a `PlaylistID` (Spotify attach is possible on running); `PlaylistType` null.
+- All 24 programs have a `PlaylistID`; `PlaylistType` null. Whether classbeat can attach a Spotify playlist to a running program is **untested**.
 
 ## Against ADR 0018's unknowns
 
@@ -46,9 +48,9 @@ recorded here. Read samples are official SATS programs (public camps).
 | 2 | `ActivityTypeID` on programs/segments | Programs 1; segments of official programs 0. What a save must send is **unverified** |
 | 3 | Running interval JSON, gradient, pace | Answered for reads: `Gradient` 0.0/1.0, `Pace*` null, RPM 0, seated, no games or FTP test |
 | 4 | Scale | `ScaleCoggan` 1 to 5 with FTP bands as cycling; no parallel scale seen |
-| 5 | rTSS | Published in `TSS`; formula not derived here |
-| 6 | Spotify on running | `PlaylistID` present on all 24; attach by classbeat untested |
-| 7 | Example payloads | `GET v1/programs/{id}` for the 24 programs (raw JSON kept out of the repo) |
+| 5 | rTSS | Published in `TSS` and matches the app card; the formula is **not derived** here |
+| 6 | Spotify on running | `PlaylistID` present on all 24; attach by classbeat **untested** |
+| 7 | Example payloads | `GET v1/programs/{id}` for the 24 official programs (raw JSON kept out of the repo); **no user-made running program was read** |
 
 ## Still open
 
