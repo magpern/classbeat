@@ -355,6 +355,9 @@ reaped job reuses its operation by key and never saves twice.
     writes `IsPublic: false`, so a public program is always "changed". `overwrite` is sent only by
     the page's confirmation, never inferred by the server, and **Do it anyway** on an uncertain
     update leaves it to the page to ask (§8).
+  - **Sport (issue #485, amendment below):** before that comparison, and also with `overwrite`, the
+    program's own `ActivityTypeID` (0 cycling, 1 running) must be the class's sport; missing,
+    unknown or another sport ends the job `program_other_sport` and nothing is written.
   - The `normalized` hash before the write is the operation's `before_hash` (context), next to the
     `baseline` and `bound_seconds`.
 - **The write**: `workout.save(spec, creds, playlist_id, program_id=program_id)`, again
@@ -660,7 +663,8 @@ Reasons on 409 at creation: `stale_base`, `revision_limit`, `chat_full`, `hash_m
 the plain sentence the page shows: `program_changed` ("this workout was changed in MOWL after
 classbeat saved it"), `program_missing` ("this workout is no longer in your MOWL account"),
 `music_unlinked` ("the music of this version is not in your connected MOWL account; change it and
-save the new version"). The three are not retryable. Backoff and retry classes are otherwise
+save the new version"). The three are not retryable. Issue #485 adds `program_other_sport` ("this
+workout in MOWL is for a different sport than this class"), not retryable either. Backoff and retry classes are otherwise
 ADR 0005 §4's.
 
 ### 13. Threat model and tests
@@ -818,3 +822,13 @@ job).
 - **Listing-name filter:** the save reconciler's name comparison normalizes to NFKC, collapses
   whitespace, folds case and ignores a trailing `…` or `...` (a listing may cut a long name); it
   stays inclusive, so an unsure comparison leaves the program a candidate.
+- **Update never changes a program's sport (issue #485, 2026-11-03):** MOWL programs carry their own
+  `ActivityTypeID` (0 cycling, 1 running; ADR 0018), and the library's re-save writes the spec's
+  sport and bodies over whatever the id names. The read first therefore also compares
+  `mowl_state.program_sport(program)` (the program's own `ActivityTypeID`, an exact integer that
+  MOWL lists, else none) with `mowl_state.spec_sport` of the stored revision's spec (cycling unless
+  it says `"sport": "running"`; every class is cycling until R1, #463, adds the sport to the brief).
+  A mismatch, or a program whose sport cannot be told, ends the job `program_other_sport` (migration
+  0024, `jobs.error_category` only), nothing written; `overwrite` skips only the "changed" comparison,
+  never this check, and the page offers no "Update anyway" for it. The sport is not part of
+  `normalized_program`, so stored `state_hash` values stay valid.

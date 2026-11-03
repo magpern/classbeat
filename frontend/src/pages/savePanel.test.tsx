@@ -277,6 +277,31 @@ describe('Update', () => {
     })
     expect(jobsPosts(api)[0]!.body).toMatchObject({ input: { overwrite: true, saved_workout_id: SAVED_ID } })
   })
+
+  it('after program_other_sport says so and offers no Update anyway (issue #485)', async () => {
+    const path = `/api/jobs/${SAVE_JOB}`
+    const api = start(
+      {
+        saved: saved(),
+        open_job_id: SAVE_JOB,
+        open_job: { id: SAVE_JOB, kind: 'update_workout', state: 'running' },
+      },
+      {
+        [`GET ${path}`]: jobBody('failed', {
+          id: SAVE_JOB,
+          kind: 'update_workout',
+          error_category: 'program_other_sport',
+        }),
+        [`GET ${path}/events`]: () => sse([1, 'failed']),
+      },
+    )
+    renderAt(PAGE)
+    expect(
+      await screen.findByText(/for a different sport than this class, so classbeat did not replace it\. Nothing was written/),
+    ).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Update anyway/ })).not.toBeInTheDocument()
+    expect(jobsPosts(api)).toHaveLength(0)
+  })
 })
 
 describe('an undecided write', () => {

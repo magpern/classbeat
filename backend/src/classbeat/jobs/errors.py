@@ -73,6 +73,10 @@ CATEGORIES: Final = (
     "feature_off",
     "analysis_limit",
     "handoff_expired",
+    # Issue #485 (migration 0024): an Update whose program in MOWL is of another sport than the
+    # class, or of one classbeat cannot tell; nothing is written, ``overwrite`` included, and it
+    # is not retried.
+    "program_other_sport",
 )
 # Retried by the worker (a new attempt with backoff). ``lease_lost`` is retried by the reaper and
 # ``operation_busy`` is requeued without an attempt (``classbeat.jobs.transitions``).

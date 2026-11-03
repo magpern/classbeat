@@ -66,6 +66,8 @@ const FAILURES: Record<string, string> = {
     'The music of this version is not in your connected MOWL account. Change it and save the new version.',
   program_changed: 'This workout was changed in MOWL after classbeat saved it. Nothing was written.',
   program_missing: 'This workout is no longer in your MOWL account. Nothing was written.',
+  program_other_sport:
+    'This workout in MOWL is for a different sport than this class, so classbeat did not replace it. Nothing was written.',
   internal: 'Something went wrong on our side. Try again later.',
   outbound_blocked: 'Something went wrong on our side. Try again later.',
 }

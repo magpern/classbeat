@@ -27,8 +27,8 @@ from classbeat.jobs.sentences import job_sentence
 
 def migration_categories() -> set[str]:
     versions = Path(__file__).resolve().parent.parent / "migrations" / "versions"
-    path = versions / "0023_swedebeat_handoffs.py"
-    spec = importlib.util.spec_from_file_location("migration_0023", path)
+    path = versions / "0024_program_other_sport.py"
+    spec = importlib.util.spec_from_file_location("migration_0024", path)
     assert spec is not None
     assert spec.loader is not None
     module = importlib.util.module_from_spec(spec)

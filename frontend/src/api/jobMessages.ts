@@ -93,6 +93,11 @@ const FAILURES: Record<string, FailureText> = {
     title: 'This workout is gone from MOWL',
     detail: 'This workout is no longer in your MOWL account.',
   },
+  // Issue #485: an Update never changes a workout's sport, "Update anyway" included.
+  program_other_sport: {
+    title: 'This workout is for another sport',
+    detail: 'This workout in MOWL is for a different sport than this class, so classbeat did not replace it.',
+  },
   // ADR 0008 section 6: the request only asked for other songs; nothing was designed.
   use_change_songs: {
     title: 'This request is only about the songs',
@@ -245,6 +250,7 @@ const REVISE_FAILURES: Record<string, string> = {
   use_change_songs: USE_CHANGE_SONGS,
   program_changed: 'This workout was changed in MOWL after classbeat saved it.',
   program_missing: 'This workout is no longer in your MOWL account.',
+  program_other_sport: 'This workout in MOWL is for a different sport than this class, so classbeat did not replace it.',
 }
 
 /** The sentence for a failed change request; the category code is never shown. */
