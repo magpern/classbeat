@@ -118,9 +118,11 @@ const FAILURES: Record<string, FailureText> = {
     detail: 'Try another mix.',
   },
   // ADR 0016 sections 2 and 7: the flag went off before the run; the daily analysis limit.
+  // The same category ends a Swedebeat design and a running design whose flag went off before the
+  // run; the page names which only when it knows (`featureOffText`), else this neutral sentence.
   feature_off: {
-    title: 'Swedebeat is switched off right now',
-    detail: 'Nothing was designed. Try again later, or use another kind of music.',
+    title: 'This is switched off right now',
+    detail: 'Nothing was designed. Try again later.',
   },
   analysis_limit: {
     title: 'Too many new Swedebeat mixes today',
@@ -139,8 +141,28 @@ const FALLBACK: FailureText = {
   detail: 'Try again later.',
 }
 
-/** The text of a failure category; `uncertain_write` has its own component. */
-export function failureText(category: string | null, kind = ''): FailureText {
+const FEATURE_OFF: Record<'swedebeat' | 'running', FailureText> = {
+  swedebeat: {
+    title: 'Swedebeat is switched off right now',
+    detail: 'Nothing was designed. Try again later, or use another kind of music.',
+  },
+  running: {
+    title: 'Running classes are switched off right now',
+    detail: 'Nothing was designed. Try again later, or design a cycling class.',
+  },
+}
+
+/**
+ * The text of a failure category; `uncertain_write` has its own component. `feature` is what the
+ * design was for, when the page knows it (the remembered form): it words `feature_off` for that
+ * feature, never Swedebeat's sentence for a running class (ADR 0018, R1a review note).
+ */
+export function failureText(
+  category: string | null,
+  kind = '',
+  feature: 'swedebeat' | 'running' | null = null,
+): FailureText {
+  if (category === 'feature_off' && feature !== null) return FEATURE_OFF[feature]
   if (isSongKind(kind)) {
     const song = songFailure(category)
     if (song !== null) return song
@@ -223,6 +245,10 @@ export const USE_CHANGE_SONGS =
 /** The same for a class whose music is a playlist of the user's own: it has no Change songs. */
 export const USE_NEW_CLASS_FOR_SONGS =
   'This request is only about the songs, so nothing changed. This class uses a playlist of your own; to use other music, design a new class.'
+
+/** The same for a running class: it is built on one MOWL playlist and has no song picking at all. */
+export const USE_OTHER_MUSIC_RUNNING =
+  'This request is only about the music, so nothing changed. A running class uses a playlist from your MOWL account and cannot swap songs; to use other music, design a new class.'
 
 /** The same while the class's own song pick is not done (waiting, expired, stopped). */
 export const USE_FINISH_SONGS =
