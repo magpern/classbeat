@@ -477,7 +477,7 @@ def test_the_running_flag_follows_the_swedebeat_rule() -> None:
     assert "running_enabled" in core.KEYS
 
 
-def test_running_is_off_by_default_in_every_compose_file() -> None:
+def test_running_is_off_by_default_and_on_in_e2e_web_and_worker_only() -> None:
     for compose in ("compose.yaml", "compose.prod.yaml"):
         services = yaml.safe_load((ROOT / compose).read_text("utf-8"))["services"]
         for service in ("web", "worker"):
@@ -485,7 +485,10 @@ def test_running_is_off_by_default_in_every_compose_file() -> None:
             assert env["CLASSBEAT_RUNNING_ENABLED"] == "${RUNNING_ENABLED:-false}"
     assert "RUNNING_ENABLED=false" in (ROOT / ".env.example").read_text("utf-8")
     e2e = yaml.safe_load((ROOT / "compose.e2e.yaml").read_text("utf-8"))["services"]
-    assert all("CLASSBEAT_RUNNING_ENABLED" not in s.get("environment", {}) for s in e2e.values())
+    # The e2e stack turns it on (#505), on web and worker only and as the literal "true".
+    on = {n for n, s in e2e.items() if "CLASSBEAT_RUNNING_ENABLED" in s.get("environment", {})}
+    assert on == {"web", "worker"}
+    assert all(e2e[n]["environment"]["CLASSBEAT_RUNNING_ENABLED"] == "true" for n in on)
 
 
 # --- the quality sentences in running words (issue #465) ----------------------------------------
