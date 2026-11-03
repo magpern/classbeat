@@ -250,6 +250,24 @@ their category and leave the connection `connected`. A flip writes `status`, `la
 The token endpoint is called by `classbeat.spotify.http` only (a guard test), from web (connect) and
 worker (refresh) alike, through `classbeat.egress` (§10).
 
+> **Amended by ADR 0013 §9's amendment of 2026-11-03 (#537).**
+>
+> - **The web refreshes too.** Since SR-03 (#353), the web process also refreshes, for Check again
+>   and now for the New class picker's cover read (`GET /api/music/playlist-covers`). It uses the
+>   same `classbeat.spotify.http` and `egress.spotify_async_client()`, under the rules above.
+> - **A read-only mode of `spotify_call`, for the cover read only.** A token inside the margin is
+>   refreshed first, as above, including the token endpoint's own flip. Then:
+>   - step 3 records nothing (no `record_result`: no `last_used_at`, no `last_error`);
+>   - a 401 is not repeated and forces no refresh;
+>   - the read never writes `needs_reconnect`.
+>
+>   This is stricter than the rules above (fewer writes, no flips). The other callers are
+>   unchanged.
+> - **A refresh is never cancelled** by a deadline or by the caller going away: no `asyncio.timeout`
+>   or `wait_for` around `spotify_call` or the refresh, and `asyncio.shield` when the request that
+>   started it is cancelled. Otherwise a rotated refresh token could be lost (the "Rotation is
+>   persisted" rule above).
+
 ### 7. Disconnect, a changed Client ID and a changed account
 
 `classbeat.spotify.forget_account(db, ctx)` is one transaction, called by Disconnect and an account
@@ -328,6 +346,11 @@ fails `consent_missing` before any call. Consent is logged as `job_events`-free 
   redirect hop, as ADR 0006 §9). The web process gets its own allowlist of the same two hosts for
   `classbeat.spotify.http` (the token exchange and `GET /me` at connect); the sign-in providers keep
   theirs. The E2E fakes answer under these names inside the compose network.
+  *Amended (SR-03, #353; recorded by ADR 0013 §9's amendment of 2026-11-03, #537):* the web
+  process's urllib allowlist (`egress.WEB_URLLIB_HOSTS`) also holds `api.spotify.com`, for the
+  library's reads in the web: Check again and the New class picker's cover read
+  (`GET /api/music/playlist-covers`). It does not hold `accounts.spotify.com`: a refresh always goes
+  through `classbeat.spotify.http`.
 - **Only `classbeat.egress` builds clients** (ADR 0006 §9, guard test): `classbeat.spotify.http` uses its
   `httpx` factory with `trust_env=False`; the library keeps using the worker's process-wide `urllib`
   opener. No new HTTP client construction elsewhere; the guard test is extended, not relaxed.
@@ -344,12 +367,12 @@ fails `consent_missing` before any call. Consent is logged as `job_events`-free 
   - Only the browser loads it, through `CoverArt`, with no referrer, behind the CSP's `img-src`.
   - Every other URL stays unrequested, unstored and unshown.
   - *Amended by ADR 0013 §9's amendment of 2026-11-03 (#537), a second exception:* the playlist
-    image URL (`image`) on `my_playlists` entries, read by the web's playlist listing for the New
-    class picker. It is never requested by the server and never stored: it is kept only in that
-    one response as `cover`, after `classbeat.covers.playlist_cover_url` (a whole-string match of
-    the album pin, `mosaic.scdn.co`'s 300 or 640 px mosaic of four 40-hex ids, or
-    `image-cdn-ak`/`image-cdn-fa.spotifycdn.com/image/` and 40 hex), otherwise `null`. Never to or
-    from a model; shown only through `CoverArt`.
+    image URL (`image`) on `my_playlists` entries, read by the web's read-only
+    `GET /api/music/playlist-covers` for the New class picker. It is never requested by the server
+    and never stored: it is kept only in that one response as `cover`, after
+    `classbeat.covers.playlist_cover_url` (a whole-string match of the album pin, `mosaic.scdn.co`'s
+    300 or 640 px mosaic of four 40-hex ids, or `image-cdn-ak`/`image-cdn-fa.spotifycdn.com/image/`
+    and 40 hex), and is otherwise left out. Never to or from a model; shown only through `CoverArt`.
 
   A fake that
   answers a `next` pointing at an unlisted host must produce no request to it (and the allowlist would
@@ -370,7 +393,7 @@ Every Spotify call classbeat makes uses the current shape; nothing calls `/track
 | create | `POST /me/playlists` `{name, description, public: false, collaborative: false}` |
 | write | `PUT /playlists/{id}/items` (first 100 URIs, an empty list clears) and `POST /playlists/{id}/items` (the rest, 100 each) |
 | read back | `GET /playlists/{id}/items?limit=50&offset=…` |
-| listing (reconcile; the picker's covers, web, at most 10 pages, ADR 0013 §9 amendment of 2026-11-03) | `GET /me/playlists?limit=50&offset=…`, at most 20 pages |
+| listing (reconcile; the picker's covers in the web, `GET /api/music/playlist-covers`, at most 10 pages, ADR 0013 §9 amendment of 2026-11-03) | `GET /me/playlists?limit=50&offset=…`, at most 20 pages |
 
 **Pagination** is by `offset` until `offset >= total` or an empty page, never by `next`, with a hard
 cap of 1000 items and 20 listing pages (over the cap is a failure, not a truncation). **Reading

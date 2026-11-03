@@ -299,7 +299,9 @@ TSS, FTP, RPM and zone numbers stay, because MOWL users know them.
   keeps gating. Package licences must be MIT, ISC, Apache-2.0 or OFL; the Spotify logo is the one
   asset under its owner's brand terms. The Reviewer checks licences from `package-lock.json` in
   each PR that adds a package. `no-third-party-hosts.test.ts` stays, with exactly one allowed host
-  (§9).
+  (§9). *(Amended by §9's amendment of 2026-11-03, #537: the allowed hosts are exactly the cover
+  hosts of `classbeat.covers`, `i.scdn.co`, `mosaic.scdn.co`, `image-cdn-ak.spotifycdn.com` and
+  `image-cdn-fa.spotifycdn.com`, still in `CoverArt` only.)*
 
 ### 9. Cover art
 
@@ -350,72 +352,180 @@ browser contacts a third party, and it changes a guard test, so UI7 has an Opus 
 
 > **Amendment, 2026-11-03 (issue #537; owner request: "When downloading the user's Spotify lists,
 > grab the image too"): playlist covers in the New class picker.** This replaces the sentence above
-> that "Playlist images are not used" and the "always use a neutral tile" for the **New class
-> playlist picker** only; Music's "Your playlists" keeps its initials until a later change. The
-> reason given there no longer holds: since SR-03 (#353) the web process reads Spotify through
+> that "Playlist images are not used", and the "always use a neutral tile" rule, for the **New class
+> playlist picker** only. Music's "Your playlists" keeps its initials until a later change. The
+> reason given above no longer holds: since SR-03 (#353) the web process reads Spotify through
 > `spotify_web` for Check again, on the web's urllib allowlist and with the web's Spotify token client.
 >
-> - **Source.** `mowl-workouts` 0.10.0: `spotify_web.my_playlists` entries carry `image`, the URL of
->   the playlist's smallest image at least 64 px wide, by the 0.7.0 rule, with one difference: when
->   **no** image in the list carries a width (Spotify lists a cover the owner uploaded with
+> - **Source.** `mowl-workouts` 0.10.0: `spotify_web.my_playlists` entries carry `image`. It is the
+>   URL of the playlist's smallest image at least 64 px wide, by the 0.7.0 rule, with one difference:
+>   when **no** image in the list carries a width (Spotify lists a cover the owner uploaded with
 >   `width: null`), it is the first image with a non-empty string URL. A width that is present but
->   not an int counts as a width. The library never requests the URL and checks no host.
-> - **Where it is read.** In the web route `GET /api/music/mowl-playlists`, and only when (a) song
->   picking admits the user (`classbeat.flags.song_picking_admits`, the gate of the Spotify routes)
->   and (b) the user has a Spotify connection whose status is `connected`. Otherwise no Spotify call
->   is made and the answer is the same as before, plus `cover: null` on every playlist. The read is
->   one `spotify_web.my_playlists(creds, max_pages=10)` (at most 500 entries, the listing's own cap)
->   through `classbeat.spotify.spotify_call`: the existing host `api.spotify.com` on the web's urllib
->   allowlist and the existing Spotify token client for a refresh. No new host on any server list,
->   no new client. It runs beside the MOWL read, under a total deadline of 8 s
->   (`egress.call_deadline`). The listing's rate limit (30 per user and 60 per IP per 10 minutes,
->   SR-05) is checked before either call and covers both.
-> - **A failure never fails the listing.** More than 500 playlists, the deadline, an allowlist
->   refusal, any `ConnectionFailure` (including `not_connected` and a 429): every `cover` is `null`
->   and the MOWL listing answers as it would have. Nothing about the Spotify failure is in the answer
->   (no category, no status); it is logged by category only.
-> - **A GET writes no state, narrowed for this read.** The access token is refreshed when it expires
->   within the margin, by ADR 0009 §6 (the rotation is written under the row lock; the token
->   endpoint's own `invalid_grant` or app-setup answer flips the connection there, because it is the
->   truth about the stored refresh token). Nothing else is written: no `record_result`
->   (`last_used_at`, `last_error`), and a 401 is not repeated, forces no refresh and never flips the
->   connection (its covers are `null`). `spotify_call` gets this as a read-only mode; its other
->   callers are unchanged.
-> - **Matching.** By the Spotify playlist id the MOWL entry already carries (`spotify_playlist_id`).
->   A Spotify playlist that is not in the MOWL list is dropped. The answer gains only
->   `cover: string | null` per MOWL playlist: no Spotify name, owner, description or count.
+>   not an int counts as a width. The library never requests the URL and checks no host. The wheel
+>   bump checks that the 0.10.0 release carries exactly this rule (magpern/mowl-workouts#26,
+>   squash `7a35ca8`).
+> - **A separate read-only endpoint, `GET /api/music/playlist-covers`.** `GET
+>   /api/music/mowl-playlists` is unchanged, including its 409, 429, 502 and 503 answers. The picker
+>   renders from it at once with initials. Only after it answered 200 with at least one playlist does
+>   the page ask for covers; tiles get a cover when that second answer arrives. The page never waits
+>   for covers and never shows an error for them.
+>   - **Answer.** `{covers: [{spotify_playlist_id, cover}]}`: the user's own Spotify playlists whose
+>     image passed the host pin below, at most 500. No name, owner, description or count. The page
+>     matches them to the MOWL list by `spotify_playlist_id`; an id that is not in the MOWL list is
+>     ignored.
+>   - **When it reads Spotify.** All of these must hold; otherwise it answers 200 `{covers: []}` with
+>     no Spotify call:
+>     - song picking admits the user (`classbeat.flags.song_picking_admits`, the gate of the Spotify
+>       routes);
+>     - the user has a Spotify connection whose status is `connected`;
+>     - no job of the user that calls Spotify (the song-picking kinds of ADR 0008) is queued or
+>       running;
+>     - no cover-read cooldown is pending (below).
+>   - **Every failure is `{covers: []}`, answered 200.** This covers more than 500 playlists (the
+>     library fails rather than truncating), the deadline, an allowlist refusal, a Spotify 429 and any
+>     `ConnectionFailure`. The answer carries no category or status from Spotify; the failure is
+>     logged by category only. The endpoint's own answers are only 401 (signed out) and 429 (its own
+>     rate limit, with `Retry-After`).
+>   - **Its own rate limit.** `playlist-covers`: 10 per user and 30 per IP per 10 minutes, checked
+>     before the connection is opened. It is the fixed-window limiter of the other provider-calling
+>     routes; every request counts.
+>   - **No CSRF.** It is a GET and writes no cover. A cross-site top-level navigation can trigger it,
+>     but only within its rate limit.
+> - **The read.** One `spotify_web.my_playlists(creds, max_pages=10)` (at most 10 requests, 500
+>   entries) through `classbeat.spotify.spotify_call` in a **read-only mode**. It uses the existing
+>   host `api.spotify.com` on the web's urllib allowlist and the existing Spotify token client for a
+>   refresh. No new host on any server list, no new client.
+>   - **What the read-only mode writes.** A token that expires within the margin is refreshed first,
+>     exactly by ADR 0009 §6: the rotation is written under the row lock, and the token endpoint's own
+>     `invalid_grant` or app-setup answer flips the connection there, because that is the truth about
+>     the stored refresh token. Nothing else is written. There is no `record_result` (no
+>     `last_used_at`, no `last_error`). A 401 is not repeated, forces no refresh and never flips the
+>     connection; its covers are `[]`. The other callers of `spotify_call` are unchanged.
+>   - **What the 8 s bounds.** Only the `my_playlists` requests: `egress.call_deadline(8)` inside the
+>     `run_library_call` thread, as the job's reads do. A refresh the read triggers runs before that,
+>     on the event loop, with its own bounds: the row-lock wait (`lock_timeout`, 5 s) and the token
+>     request's total deadline (`CLASSBEAT_SPOTIFY_REFRESH_TIMEOUT_SECONDS`, 10 by default, at most
+>     20).
+>   - **A refresh is never cancelled.** Nothing wraps `spotify_call` or the refresh in
+>     `asyncio.timeout`, `wait_for` or any other cancellation. ADR 0009 §6: a refresh cancelled after
+>     Spotify answered, but before its transaction stored the rotated refresh token, loses that token,
+>     and the next refresh is `invalid_grant`, which flips the connection. If the endpoint's own
+>     caller stops waiting (the browser leaves and the request is cancelled), the call runs to the end
+>     under `asyncio.shield` and its result is dropped.
+>   - **Worst case.** About 5 + 10 + 8 = 23 s with the defaults, and 33 s with the largest refresh
+>     timeout. The page does not wait for it.
+> - **Spotify's 429 and the user's app quota (threat model T72).**
+>   - **Budget.** Each read sends at most 10 Spotify requests plus at most one refresh. The rate limit
+>     caps that at about 100 requests per user per 10 minutes on the user's own Spotify app.
+>   - **Cooldown.** A Spotify 429 on this read starts a per-user cover-read cooldown for its
+>     `Retry-After`: at least 60 s, at most 1 hour, and 60 s when the header is absent or unreadable.
+>     It is stored in the Postgres rate-limit table (a bucket filled to its limit for that window), so
+>     every web process honours it. No cover read is sent until it has passed.
+>   - **Jobs.** The read never runs while a Spotify-calling job of the user is queued or running.
+>     Neither the read nor its 429 touches any job, including `jobs.spotify_rate_limits` and
+>     `jobs.spotify_retry_after`. A cover read can therefore not push a song pick toward
+>     `quota_exhausted`: it backs off on its own 429 and stays out of a pick's way.
 > - **Host pin** (`classbeat.covers.playlist_cover_url`, a whole-string `re.fullmatch`, checked
 >   before the answer is built). Exactly these three shapes:
->   - `https://i\.scdn\.co/image/[0-9a-f]{40}`, the album pin: a playlist with fewer than four
->     albums shows one album's cover, and older uploaded covers are served here;
+>   - `https://i\.scdn\.co/image/[0-9a-f]{40}`, the album pin. A playlist with fewer than four
+>     albums shows one album's cover, and older uploaded covers are served here.
 >   - `https://mosaic\.scdn\.co/(?:300|640)/(?:[0-9a-f]{40}){4}`, Spotify's 2x2 mosaic of four
->     album images (the 60 px size is never chosen, it is under 64 px);
+>     album images. The 60 px size is never chosen: it is under 64 px.
 >   - `https://image-cdn-(?:ak|fa)\.spotifycdn\.com/image/[0-9a-f]{40}`, uploaded covers.
 >
->   Anything else is `null` and the tile shows initials: a query, fragment, port, userinfo,
->   uppercase hex, another size or length, another scheme, and every other Spotify image host
->   (Blend, Daily Mix, seed mixes, `pickasso` and so on, all generated playlists). Spotify does not
->   document these hosts; the shapes are what its answers contain, the fakes encode exactly them,
->   and the owner's live activation checks them (`docs/runbooks/m4-live-activation.md`). A shape
->   not covered fails closed to initials; widening it is a reviewed change of this list, the CSP and
->   `CoverArt` together. **A song's `cover` keeps the album pin alone** (`cover_url`, unchanged):
->   the playlist shapes are never accepted in a `song_list`.
-> - **Not stored.** The URL is in no table, cache, job input, audit row, export or log; it lives in
->   the one response (`Cache-Control: no-store`). It needs no retention or export entry.
-> - **Never to or from a model.** The listing is not model input, a design job's music input names
->   only `spotify_playlist_id`, and the job input schema has no cover field (an extra field is
->   refused).
-> - **Browser.** The tile uses `CoverArt`, whose second check takes a `kind`: `album` (the default,
->   the album pin only, every existing use) or `playlist` (the three shapes). The CSP's `img-src`
->   becomes `'self' https://i.scdn.co https://mosaic.scdn.co https://image-cdn-ak.spotifycdn.com
->   https://image-cdn-fa.spotifycdn.com`, built from one host list in `classbeat.covers`, and a test
->   keeps the CSP, the backend patterns and `CoverArt`'s patterns in step. The frontend guard
->   test's exemption stays `CoverArt` only, for exactly these hosts.
-> - **Privacy.** As for album covers: no referrer, no classbeat cookie, no classbeat data; the
+>   Anything else is left out of the answer and its tile shows initials: a query, fragment, port,
+>   userinfo, uppercase hex, another size or length, another scheme, and every other Spotify image
+>   host (Blend, Daily Mix, seed mixes, `pickasso` and so on, all generated playlists).
+>
+>   Spotify does not document these hosts. The shapes are what its answers contain; the fakes encode
+>   exactly them, and the owner's live activation checks them (`docs/runbooks/m4-live-activation.md`).
+>   A shape not covered fails closed to initials. Widening it is a reviewed change of this list, the
+>   CSP and `CoverArt` together.
+>
+>   **A song's `cover` keeps the album pin alone** (`cover_url`, unchanged): the playlist shapes are
+>   never accepted in a `song_list`.
+> - **Not stored.** The URL is in no table, cache, job input, audit row, export or log. It lives in
+>   the one response (`Cache-Control: no-store`), so it needs no retention or export entry. The
+>   cooldown stores no URL.
+> - **Never to or from a model.** The cover endpoint is not model input. A design job's music input
+>   names only `spotify_playlist_id`, and the job input schema has no cover field (`extra="forbid"`).
+> - **Browser.**
+>   - The tile uses `CoverArt`. Its second check takes a `kind`: `album` (the default, the album pin
+>     only, every existing use) or `playlist` (the three shapes).
+>   - The CSP's `img-src` becomes the path-scoped sources of "CSP widening" below, built from one
+>     list in `classbeat.covers`. A test keeps that list, the backend patterns and `CoverArt`'s
+>     patterns in step.
+>   - The frontend guard test's exemption stays `CoverArt` only, for exactly these hosts.
+> - **Privacy.** As for album covers: no referrer, no classbeat cookie, no classbeat data. The
 >   viewer's IP address and browser reach Spotify's CDN, now on three more host names; the M6
 >   privacy notice names Spotify's CDN for both.
-> - **Contracts this amends in part:** ADR 0009 §10 (a second exception), §11 (the listing row) and
->   §12 (row M-3 gains `image`, 0.10.0); threat model T73 and T97.
+>
+> **CSP widening (part of this amendment).** A CSP applies to the whole document, not to one
+> component, so letting the picker load playlist covers lets any `<img>` on any page load from the
+> same sources.
+>
+> The alternatives considered:
+>
+> 1. **Keep the album pin only, and show initials for mosaic and uploaded covers.** This needs no CSP
+>    change, but most user playlists (four or more albums give a mosaic) would still show initials,
+>    which defeats the owner's request. Rejected.
+> 2. **Proxy the images through our origin.** `img-src` would stay `'self'` plus `i.scdn.co`, and
+>    Spotify's CDN would not see the viewer. But the server would then fetch a URL taken from a
+>    Spotify answer, which ADR 0009 §10 forbids (SSRF, T73). It would also need a new egress host
+>    list and a new client in the web process, plus caching and size limits. Rejected.
+> 3. **Whole-host sources** (`https://mosaic.scdn.co https://image-cdn-ak.spotifycdn.com
+>    https://image-cdn-fa.spotifycdn.com`). This is simple, but it lets an injected or look-alike
+>    `<img>` load any path on those hosts. Rejected in favour of 4.
+> 4. **Path-scoped sources (chosen).** CSP host sources accept a path; one that ends in `/` matches
+>    that prefix. `img-src` becomes exactly:
+>
+>    `'self' https://i.scdn.co/image/ https://mosaic.scdn.co/300/ https://mosaic.scdn.co/640/
+>    https://image-cdn-ak.spotifycdn.com/image/ https://image-cdn-fa.spotifycdn.com/image/`
+>
+>    This also narrows the existing album entry from the whole of `i.scdn.co` to `/image/`. What it
+>    narrows: a first request to one of these hosts outside the pinned path prefixes is blocked by
+>    the browser. What it does not narrow: the CSP ignores paths after a redirect (the host is still
+>    checked), and a path prefix cannot express "40 hex digits".
+>
+> **Why the widening is acceptable.** The control remains the whole-string checks on the server
+> (`playlist_cover_url`, before the answer) and in `CoverArt` (before any `<img>` is rendered). The
+> CSP is the second line, against a URL that gets past both, for example an XSS. Only `CoverArt`
+> renders an `<img>` (the guard test). Every source is a Spotify CDN path that serves images only,
+> over https, with no referrer and no cookie of ours.
+>
+> **Residual risk, accepted:** Spotify's CDN, now on four host names, learns the viewer's IP address
+> and browser, and which covers they load. An attacker who could make Spotify serve an image under
+> those paths gains nothing beyond showing that image in a tile.
+>
+> **Change together** (the feature PR):
+>
+> - Backend: `classbeat.covers` (the host list and both patterns); `classbeat.headers` (the
+>   `img-src` and its docstring); `backend/tests/test_web.py` (the exact `img-src` at about lines
+>   212 and 290).
+> - Frontend: `CoverArt.tsx`; `CoverArt.test.tsx` (it uses `mosaic.scdn.co` as "another host" at
+>   about line 13, so the test must pick a host that stays outside); `no-third-party-hosts.test.ts`
+>   (its allowed hosts, and its assertion that `https://mosaic.scdn.co` is caught in `CoverArt` must
+>   become a host still refused).
+> - e2e: `e2e/tests/helpers.ts` (about lines 92 to 100: the context lets only `https://i.scdn.co`
+>   through, and must let exactly the pinned hosts through); `e2e/tests/mu-covers.spec.ts` (line 126,
+>   the literal `img-src`; lines 180 to 201, which assert that `mosaic.scdn.co` is CSP-blocked and
+>   must instead show a pinned path loading and an unpinned path or host blocked);
+>   `e2e/tests/smoke.spec.ts` (line 10, the literal `img-src`).
+> - Docs: AGENTS.md's frontend bullets ("one allowed host", the literal CSP); §8 above ("exactly one
+>   allowed host", which carries a note pointing here).
+>
+> None of these may be loosened beyond the list above. Each must still fail for a host or path
+> outside it.
+>
+> **Contracts this amends in part:**
+>
+> - ADR 0009 §6: the read-only mode (no `record_result`, no 401 repeat or refresh, no
+>   `needs_reconnect` from the read), and the web as a refresh caller.
+> - ADR 0009 §10: the Hosts bullet (the web's urllib list since SR-03) and a second URL exception.
+> - ADR 0009 §11: the listing row.
+> - ADR 0009 §12: row M-3 gains `image` (0.10.0).
+> - ADR 0013 §8: the guard test's allowed hosts.
+> - Threat model T72, T73 and T97.
 
 ### 10. Accessibility and devices
 
