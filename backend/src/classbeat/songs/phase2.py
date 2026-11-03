@@ -70,7 +70,7 @@ from classbeat.agent import (
 from classbeat.agent.provider import ModelProvider
 from classbeat.connections import OpenConnection, hold, open_connection
 from classbeat.crypto.keks import KeyRing
-from classbeat.design import revision, sport
+from classbeat.design import corrections, revision, sport
 from classbeat.design.guidance import rule_set_for
 from classbeat.design.music import MusicStep, load_music
 from classbeat.jobs import Complete, FencedSession, JobFailure, JobRun
@@ -363,6 +363,7 @@ async def run_phase_two(
     p, final, step = await final_music(run, keyring, given, config)
     try:
         rules = rule_set_for(given.brief)
+        await corrections.attach(run, step)  # the class's beat-one corrections (ADR 0007)
         ctx = DesignContext.build(given.brief, step.data, rules, given.plan_gates)  # #496
         design_config = stage_config(
             agent, config, turns=agent.limits.max_turns, calls=agent.limits.max_tool_calls

@@ -275,7 +275,10 @@ async def test_a_class_is_designed_on_a_fake_mix_and_saved_to_mowl(
         "unsure_beat_one": music["unsure_beat_one"],
         "fingerprint": sbm.fingerprint(stored_map.map),
         "link_id": str(link.id),
+        "songs": music["songs"],  # ADR 0007 amendment "beat-one corrections"; no correction
     }
+    assert music["songs"]
+    assert all("title" not in s for s in music["songs"])
     assert str(link.playlist_id) not in json.dumps(music)
     assert revision.provenance["crossfade_sec"] == 0.0
     music_source = menv.ops.sql(

@@ -50,7 +50,7 @@ from classbeat.agent.running import design_stage_for
 from classbeat.config import Settings
 from classbeat.context import UserContext
 from classbeat.crypto.keks import KeyRing
-from classbeat.design import mixadmit, revision, sport
+from classbeat.design import corrections, mixadmit, revision, sport
 from classbeat.design.music import MusicStep, load_music
 from classbeat.design.sport_rules import rules_for
 from classbeat.design.swedebeat_music import swedebeat_step
@@ -186,10 +186,16 @@ async def music_step(
     """The music step of the class's source: the user's Spotify playlist in MOWL, or their
     Swedebeat mix (``swedebeat_step``; the caller checked the flag with ``mixadmit.still_on``)."""
     if isinstance(music, SwedebeatMusicChoice):
-        return await swedebeat_step(run, runtime.keyring, music.mix_id, connection_id=connection_id)
-    return await load_music(
-        run, runtime.keyring, music.spotify_playlist_id, connection_id=connection_id
-    )
+        step = await swedebeat_step(run, runtime.keyring, music.mix_id, connection_id=connection_id)
+    else:
+        step = await load_music(
+            run, runtime.keyring, music.spotify_playlist_id, connection_id=connection_id
+        )
+    try:  # the class's beat-one corrections for this music (ADR 0007 amendment)
+        return await corrections.attach(run, step)
+    except BaseException:
+        step.close()
+        raise
 
 
 async def admit(db: AsyncSession, ctx: UserContext, parsed: BaseModel) -> Admitted | Refused:

@@ -32,14 +32,14 @@ import json
 import uuid
 from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Annotated, Any, Final, Literal
+from typing import Annotated, Any, Final, Literal, Self
 from uuid import UUID
 
 from mowl import workout
-from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, ValidationError, model_validator
 from sqlalchemy import text
 
-from classbeat.agent import DesignResult, Provenance, WorkoutDraft, provenance
+from classbeat.agent import DesignResult, Provenance, WorkoutDraft, beat_one, mix_input, provenance
 from classbeat.agent.loop import StageOutcome
 from classbeat.agent.schemas import AnyDraft, RunningDraft
 from classbeat.design.music import MusicStep
@@ -100,6 +100,40 @@ class UnknownBpmTrack(BaseModel):
     title: str = Field(max_length=200)
 
 
+class BeatOneCorrection(BaseModel):
+    """One applied beat-one correction (ADR 0007 amendment "beat-one corrections")."""
+
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    song: int = Field(ge=1, le=500)
+    beats: int = Field(ge=-3, le=3)
+
+    @model_validator(mode="after")
+    def _not_zero(self) -> Self:
+        if self.beats == 0:
+            raise ValueError("a correction moves beat 1")
+        return self
+
+
+class RevisionSong(BaseModel):
+    """A song the class plays, for the beat-one control (``classbeat.agent.beat_one.songs``):
+    seconds of the class as heard; ``title`` for a Spotify track only. Shown to the user only."""
+
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    song: int = Field(ge=1, le=500)
+    start: float = Field(ge=0, le=86400)
+    end: float = Field(ge=0, le=86400)
+    bpm: float = Field(gt=0, le=1000)
+    estimate: bool
+    title: str | None = Field(default=None, max_length=200)
+
+
+# Absent on every revision before the amendment, which therefore validates and dumps as before.
+BeatOneList = Annotated[list[BeatOneCorrection] | None, Field(default=None, max_length=500)]
+SongList = Annotated[list[RevisionSong] | None, Field(default=None, max_length=500)]
+
+
 class SpotifyRevisionMusic(BaseModel):
     """``class_revisions.music`` of a draft on a Spotify playlist."""
 
@@ -112,6 +146,8 @@ class SpotifyRevisionMusic(BaseModel):
     # ADR 0008 section 4: a draft designed on picked songs names the approved ``song_list``
     # revision it was made from; absent on every other draft (stored exactly as before).
     song_list_id: UUID | None = None
+    beat_one: BeatOneList = None
+    songs: SongList = None
 
 
 class SwedebeatRevisionMusic(BaseModel):
@@ -131,9 +167,27 @@ class SwedebeatRevisionMusic(BaseModel):
     unsure_beat_one: list[int] = Field(max_length=500)
     fingerprint: str = Field(pattern=r"^[0-9a-f]{64}$")
     link_id: UUID
+    beat_one: BeatOneList = None
+    songs: SongList = None
 
 
 RevisionMusic = SpotifyRevisionMusic | SwedebeatRevisionMusic
+
+
+def _beat_one_fields(
+    music: RevisionMusic, step: MusicStep, music_map: dict[str, Any], duration_sec: int
+) -> RevisionMusic:
+    """ADR 0007 amendment "beat-one corrections" item 5: the corrections applied (absent when
+    none) and the songs the class plays, from the corrected map it was fitted to."""
+    applied = beat_one.as_list(mix_input.corrections_of(step.data))
+    return music.model_copy(
+        update={
+            "beat_one": [BeatOneCorrection(**c) for c in applied] or None,
+            "songs": [RevisionSong(**s) for s in beat_one.songs(music_map, duration_sec)],
+        }
+    )
+
+
 REVISION_MUSIC: Final = TypeAdapter[RevisionMusic](
     Annotated[RevisionMusic, Field(discriminator="source")]
 )
@@ -253,6 +307,7 @@ def build(
             unknown_bpm=[UnknownBpmTrack(index=u.index, title=u.title) for u in step.unknown_bpm],
             song_list_id=song_list_id,
         )
+    music = _beat_one_fields(music, step, music_map, result.duration_sec)
     content_hash = hashlib.sha256(canonical(content)).digest()
     if base_hash is not None and content_hash == base_hash:
         raise JobFailure("invalid_output")
