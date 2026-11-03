@@ -262,9 +262,9 @@ docker compose --profile maint run --rm maint python -m classbeat keys wipe --co
 uv run alembic upgrade head    # migrations as the owner role, CLASSBEAT_MIGRATIONS_DATABASE_URL
 ```
 
-The domain library `mowl` (`mowl-workouts`) is pinned as `backend/vendor/mowl_workouts-0.9.0-py3-none-any.whl`,
-built from the v0.9.0 tag (commit `d0aae26f`; vendored wheel SHA-256 `90bf7dea…`, release asset
-`e1806148…`, 66860 bytes) **without** the bundled Swedebeat app key by `scripts/build-mowl-wheel.sh`
+The domain library `mowl` (`mowl-workouts`) is pinned as `backend/vendor/mowl_workouts-0.10.0-py3-none-any.whl`,
+built from the v0.10.0 tag (commit `74e8c91c`; vendored wheel SHA-256 `c3188d13…`, release asset
+`03024fe8…`, 67137 bytes) **without** the bundled Swedebeat app key by `scripts/build-mowl-wheel.sh`
 (needs `gh` access to the private repo; it checks the tag's commit, the missing key file, the release
 asset's pinned size and SHA-256, that the release wheel holds the key file by name (never read), and that
 every other file and the `Requires-Dist` lines match the release wheel). After a rebuild run `uv lock`. classbeat leaves out
@@ -300,6 +300,10 @@ in either direction (`TARGET_SPORT`) and a program id that is not a positive int
 any request: a new mix or playlist for running (`RUNNING_MUSIC`) and segment `ActivityTypeID: 1`; `RUNNING_UPDATE`
 is gone. `workout.save`'s cycling requests are unchanged (a cycling update without `target` sends no read), and
 classbeat does not use the running calls yet.
+0.10.0 adds `image` to `spotify_web.my_playlists` entries (#537, ADR 0013 §9 amendment): the URL of the playlist's
+smallest image at least 64 px wide by the 0.7.0 rule, except that when no image in the list carries a width (an
+uploaded cover, listed with `width: null`) it is the first image with a non-empty string URL; never requested by the
+library and not host-checked there. Track entries and every request are unchanged, and classbeat does not use it yet.
 
 Database tests need a throwaway Postgres whose application database has the roles of
 `docker/postgres/init/10-roles.sql` (ADR 0002 section 4). Give it a name and port of its own
