@@ -142,7 +142,7 @@ test('Google re-authentication: no auth_time fails closed with a sentence, a fre
 
   const changePassword = async () => {
     await page.goto('/account#security')
-    await page.getByLabel('New password').fill('another long passphrase')
+    await page.getByLabel('New password', { exact: true }).fill('another long passphrase')
     await page.getByLabel('Repeat the new password').fill('another long passphrase')
     await page.getByRole('button', { name: 'Save password' }).click()
     const dialog = page.getByRole('dialog')
