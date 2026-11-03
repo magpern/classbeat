@@ -520,9 +520,10 @@ them), that a canary in the dummy secret files never shows in the rendered files
 no `*CLIENT_SECRET*` variable. For the secret files (#511) it checks that every service that mounts a
 secret has `group_add: ["10010"]` and runs as a non-root user (`postgres` for the postgres image,
 whose gosu would drop the group), that each secret is the file `secrets/<its own name>` mounted at that
-name, that no service bind-mounts `secrets/`, a folder above it or a file in it, uses `volumes_from` or
-shares the pid or ipc namespace of the host or another container, that the one named volume has no
-driver options, and that no command, entrypoint or healthcheck names `/run/secrets` (a text match that
+name, that the only bind mounts are `docker/postgres/init`, `queue` and `maint`, read-only (so no
+`secrets/`, `/proc`, Docker socket or other host path), that no service uses `volumes_from`, shares the
+pid or ipc namespace of the host or another container, is privileged or gets devices, added
+capabilities or the Docker API socket, that the one named volume has no driver options, and that no command, entrypoint or healthcheck names `/run/secrets` (a text match that
 catches mistakes, not someone hiding the path on purpose: the compose file is reviewed); on the server,
 the mode and group of each real file.
 That a uid 10001 container with group 10010 reads a `root:10010` mode 640 or 440 file and one without

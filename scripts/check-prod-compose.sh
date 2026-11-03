@@ -175,7 +175,7 @@ check_secret_mounts() {
   q '[.services[] | .pid // "", .ipc // "" | tostring | select(test("^(host|service:|container:)"))] | length == 0' \
     || fail "no service shares the pid or ipc namespace of the host or another container" || return 1
   q '[.volumes // {} | .[] | keys - ["name"] | length] | all(. == 0)' \
-    || fail "the named volume is a plain local volume (no driver, driver_opts or external)" || return 1
+    || fail "the named volume is a plain local volume: its name only (no driver, driver_opts, external or labels)" || return 1
   q '(.secrets.app_secret_key.file // "" | rtrimstr("/app_secret_key")) as $sd | $sd != "" and $sd != (.secrets.app_secret_key.file // "")
      and (.secrets | to_entries | all(.value | type == "object" and ((keys - ["name","file"]) == [])) )
      and (.secrets | to_entries | all(.value.file == $sd + "/" + .key))' \
@@ -187,6 +187,22 @@ check_secret_mounts() {
      | [.services[] | .volumes // [] | .[] | select(.type == "bind") | .source // "" | rtrimstr("/")
         | select(. as $s | $s == $sd or ($sd | startswith($s + "/")) or ($s | startswith($sd + "/")))] | length == 0' \
     || fail "no service bind-mounts secrets/, a folder above it or a file in it" || return 1
+  # An allow-list, not a text match against secrets/ (#512 review B2): /proc, /proc/1/root, the
+  # Docker socket, /sys, /dev or a link to secrets/ would all reach another container's secrets
+  # through the shared group. Production binds only the three SQL folders, read-only, and mounts
+  # nothing but those binds, named volumes and tmpfs. (The owner's uncommitted compose.bridge.yaml,
+  # proton-bridge-smtp.md, is not rendered here.)
+  q '(.secrets.app_secret_key.file | rtrimstr("/app_secret_key")) as $sd | ($sd | rtrimstr("/secrets")) as $pd
+     | $pd != $sd and ([.services[] | .volumes // [] | .[]
+        | select(.type != "volume" and .type != "tmpfs")
+        | select((.type == "bind" and .read_only == true
+            and ((.source // "" | rtrimstr("/")) as $s | [$pd + "/docker/postgres/init", $pd + "/docker/postgres/queue",
+                 $pd + "/docker/postgres/maint"] | index($s) != null)) | not)] | length == 0)' \
+    || fail "the only bind mounts are docker/postgres/init, queue and maint, read-only (no /proc, socket or other host path)" \
+    || return 1
+  q '[.services[] | select(.privileged == true or ((.devices // []) | length > 0) or ((.cap_add // []) | length > 0)
+      or ((.device_cgroup_rules // []) | length > 0) or has("use_api_socket"))] | length == 0' \
+    || fail "no service is privileged, gets devices or added capabilities, or the Docker API socket" || return 1
   q '(.secrets.app_secret_key.file | rtrimstr("/app_secret_key")) as $sd
      | [.configs // {} | .[] | .file // "" | select(startswith($sd + "/"))] | length == 0' \
     || fail "no config comes from secrets/" || return 1
@@ -369,7 +385,25 @@ for m in \
   '.volumes["db-data"].driver_opts = {"type":"none","o":"bind","device":(.secrets.app_secret_key.file | rtrimstr("/app_secret_key"))}' \
   '.volumes["db-data"].driver_opts = {"type":"none","o":"bind","device":"/"}' \
   '.volumes["db-data"].driver = "local-persist"' \
-  '.volumes["db-data"].external = true'; do
+  '.volumes["db-data"].external = true' \
+  '.services.worker.volumes = [{"type":"bind","source":"/proc","target":"/hostproc","read_only":true}]' \
+  '.services.worker.volumes = [{"type":"bind","source":"/proc/1/root","target":"/h","read_only":true}]' \
+  '.services.web.volumes = [{"type":"bind","source":"/var/run/docker.sock","target":"/var/run/docker.sock"}]' \
+  '.services.migrate.volumes = [{"type":"bind","source":"/sys","target":"/s","read_only":true}]' \
+  '.services.worker.volumes = [{"type":"bind","source":"/dev/sda1","target":"/d"}]' \
+  '.services.worker.volumes = [{"type":"bind","source":(.secrets.app_secret_key.file | rtrimstr("/secrets/app_secret_key") + "/link-to-secrets"),"target":"/s","read_only":true}]' \
+  '.services.db.volumes += [{"type":"bind","source":(.secrets.app_secret_key.file | rtrimstr("/secrets/app_secret_key") + "/docker"),"target":"/d","read_only":true}]' \
+  '.services.db.volumes |= map(if .type == "bind" then .read_only = false else . end)' \
+  '.services["db-functions"].volumes |= map(if .type == "bind" then del(.read_only) else . end)' \
+  '.services.worker.volumes = [{"type":"npipe","source":"//./pipe/docker_engine","target":"/p"}]' \
+  '.services.worker.volumes = [{"type":"cluster","source":"x","target":"/c"}]' \
+  '.services.worker.privileged = true' \
+  '.services.db.devices = [{"source":"/dev/sda","target":"/dev/sda","permissions":"rwm"}]' \
+  '.services.db.cap_add = ["DAC_READ_SEARCH"]' \
+  '.services.web.cap_add = ["SYS_PTRACE"]' \
+  '.services.migrate.device_cgroup_rules = ["b 8:* rmw"]' \
+  '.services.worker.use_api_socket = true' \
+  '.volumes["db-data"].labels = {"x":"y"}'; do
   expect_refused shared "$shared" "$m"
 done
 for m in \
@@ -377,6 +411,10 @@ for m in \
   '.services.worker.volumes_from = ["web"]' \
   '.services.worker.pid = "service:web"' \
   '.services.worker.ipc = "container:classbeat-prod-web-1"' \
+  '.services.worker.volumes = [{"type":"bind","source":"/proc","target":"/hostproc","read_only":true}]' \
+  '.services.worker.volumes = [{"type":"bind","source":"/proc/1/root","target":"/h","read_only":true}]' \
+  '.services.web.volumes = [{"type":"bind","source":"/var/run/docker.sock","target":"/var/run/docker.sock"}]' \
+  '.services.worker.privileged = true' \
   '.volumes["db-data"].driver_opts = {"type":"none","o":"bind","device":(.secrets.app_secret_key.file | rtrimstr("/app_secret_key"))}'; do
   expect_refused loopback "$loopback" "$m"
 done
