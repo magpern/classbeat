@@ -141,3 +141,13 @@ async def test_rows_for_other_music_are_counted_as_stale_and_not_shown(renv: Rev
     assert detail["pending"] is False
     assert all(s["beats"] == 0 for s in detail["songs"])
     assert base
+
+
+async def test_a_revision_of_another_class_is_not_found(renv: ReviseEnv) -> None:
+    class_id, _ = await renv.design()
+    _, other_base = await renv.design()
+    made = await put(renv.browser, class_id, 1, {"beats": 1, "revision_id": str(other_base)})
+    assert made.status_code == 404
+    gone = await delete(renv.browser, class_id, 1, other_base)
+    assert gone.status_code == 404
+    assert rows(renv, class_id) == []
