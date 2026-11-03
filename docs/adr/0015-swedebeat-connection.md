@@ -233,3 +233,41 @@ call, and any live call. Agents run none (AGENTS.md safety envelope).
 - Swedebeat's real wording and token lifetime are unknown until the owner's live check.
 - `GET /api/connections` has a new top-level `swedebeat` block and a per-row `account`.
 - Threat model: T19 and T94 updated, T104 to T107 new, the Swedebeat accepted risk rewritten.
+
+## Amendment of 2026-11-03: the per-user "I use Swedebeat" preference (issue #525)
+
+Owner decision (2026-11-03, chat): MOWL is always required; Spotify and Swedebeat are optional per user, and
+a user without Swedebeat never sees Swedebeat features. This amends §6 and §8 (and ADR 0016 §2).
+
+- **Storage.** A new owned table `user_preferences` (migration `0027_user_preferences`): `id`, `owner_id`
+  (`UNIQUE`, one row per user at most, `ON DELETE CASCADE` from `users`), `uses_swedebeat boolean NOT NULL
+  DEFAULT false`, `created_at`, `updated_at`; forced owner RLS (`owner_isolation`), the app role's grants from
+  the default privileges, nothing for `classbeat_maint`. No row is every preference at its default: reading
+  never writes, so a user who never touches the switch has no row. A table rather than a column on `users`
+  because `users` is an account table without owner RLS, and the next per-user switch (Spotify is optional
+  too) gets a column here. No backfill: the migration role is subject to the forced RLS of `connections`, and
+  the flag has been off in every deployment; a user who already holds a Swedebeat connection still sees its
+  status and Disconnect and turns the switch on once.
+- **Code.** `classbeat.connections.preferences` (inside the package allowed to open a `user_session`): every
+  read and write runs as the user and also filters on `owner_id`. `swedebeat_on` = the effective
+  `swedebeat_enabled` flag (environment, then admin flag; ADR 0011 §7) **and** the preference, the flag read
+  first. The preference only narrows: with the flag off it turns nothing on.
+- **API.** `GET /api/connections`' `swedebeat` block gains `uses_swedebeat` (the preference as stored;
+  `enabled` stays the flag). `PUT /api/connections/swedebeat/preference {"uses_swedebeat": bool}` (signed in,
+  CSRF by the middleware, strict boolean, no other key) stores it; it is accepted whatever the flag says,
+  because `false` must always work and `true` with the flag off has no effect.
+- **What the preference gates.** Off: `GET /api/music/swedebeat-mixes` answers 404 `feature_off` before any
+  rate-limit slot, connection or MOWL call; `POST /api/connections/swedebeat` answers 404 `feature_off`
+  before anything is sent; a new `design_draft` on a Swedebeat mix is refused `feature_off` at admission
+  (`mixadmit.admit_mix`, before the listing). Never gated: `DELETE /api/connections/swedebeat`, Disconnect
+  MOWL, the account export and deletion. Not gated (work on what a class already has, still behind the flag):
+  the revise of a class already designed on a mix, an existing match, its hand-off and its verify, and the
+  worker's re-checks, which read the flag only.
+- **Account page.** The card exists only while the flag is on or the user holds a Swedebeat connection
+  (the "coming soon" line is gone). With the flag on it starts with the switch "I use Swedebeat"; the connect
+  form and the "not available on this server" line need it on. A stored connection's status and Disconnect
+  show whatever the switch says. The new-class page asks for the mix list, and offers "Use my Swedebeat
+  mix", only with the flag and the switch on; the class page offers "Match with Swedebeat" only with the
+  switch on.
+- **Guards.** `user_preferences` is in the export registry (a section), the deletion coverage (cascade) and
+  the retention registry (no content columns; deleted with the account); tests plant and check it.

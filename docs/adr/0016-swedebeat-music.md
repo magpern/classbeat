@@ -80,6 +80,11 @@ sees no difference, and a test pins it (§8).
 
 If MOWL lists no mix, the page says so and points at the Swedebeat app; it never offers to create one.
 
+*Amended 2026-11-03 (issue #525, ADR 0015's amendment of that date):* the user's own "I use Swedebeat"
+preference (default off) narrows this further. While it is off the mix choice is not offered, `GET
+/api/music/swedebeat-mixes` is 404 `feature_off` with no MOWL call, and a new design on a mix is refused
+`feature_off` at admission; the flag stays the kill switch.
+
 ### 3. (a) "My Swedebeat mix" in the guided builder
 
 `MusicChoice` (ADR 0008 §9: "Use my playlist" / "Pick songs for me") gets a third choice, **"Use my
