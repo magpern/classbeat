@@ -19,7 +19,9 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_valida
 
 from classbeat.design.rules.enums import (
     MIN_N_PERCENTILE,
+    RATIONALE_SPORTS,
     RULE_SPECS,
+    SPORTS,
     Basis,
     BriefOverride,
     ClassType,
@@ -108,6 +110,9 @@ class Profile(_Strict):
             raise ValueError("moderate evidence ships info rules only")
         if self.n < MIN_N_PERCENTILE and any(r.basis in ("p5", "p95") for r in self.rules):
             raise ValueError(f"a percentile basis needs n >= {MIN_N_PERCENTILE}")
+        for r in self.rules:
+            if RATIONALE_SPORTS.get(r.rationale_id, self.sport) != self.sport:
+                raise ValueError(f"rationale {r.rationale_id} is not worded for {self.sport}")
         return self
 
     @property
@@ -210,10 +215,11 @@ def select_profile(
 ) -> Profile | None:
     """The profile for an explicit class type and length, or ``None`` (never an error).
 
-    The label nearest to ``length_min`` wins, within 3 minutes only; any ``(class_type, label)``
-    without a file, any other sport and any non-finite or non-positive length gives ``None``.
+    The label nearest to ``length_min`` wins, within 3 minutes only, among the profiles of
+    ``sport``; any ``(sport, class_type, label)`` without a file, an unknown sport and any
+    non-finite or non-positive length gives ``None``. A sport never borrows another's profile.
     """
-    if sport != "cycling" or not math.isfinite(length_min) or length_min <= 0:
+    if sport not in SPORTS or not math.isfinite(length_min) or length_min <= 0:
         return None
     reg = registry or default_registry()
     labels = reg.labels(sport, class_type)

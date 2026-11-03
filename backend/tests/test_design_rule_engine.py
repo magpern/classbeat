@@ -151,7 +151,7 @@ def _ids(hits: list[RuleHit]) -> list[str]:
 
 
 def test_every_shipped_rule_has_a_pair() -> None:
-    assert len(CASES) == 81
+    assert len(CASES) == 81 + 22  # six cycling profiles, two running (P9)
 
 
 @pytest.mark.parametrize(("profile", "rule"), CASES, ids=[f"{p.id}:{r.rule}" for p, r in CASES])

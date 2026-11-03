@@ -9,8 +9,8 @@ own go-ahead.
 ## What lives where
 
 - In the repository: `profiles/schema.json`, `profiles/index.json`, one file per profile
-  (`profiles/<sport>/<class_type>_<label>.json`; today six under `cycling/`: plain and interval at 30,
-  45 and 60 minutes), the closed enums (`design/rules/enums.py`), the sentences (`RATIONALES` in
+  (`profiles/<sport>/<class_type>_<label>.json`; today six under `cycling/`, plain and interval at 30,
+  45 and 60 minutes, and two under `running/`, interval at 30 and 45 minutes), the closed enums (`design/rules/enums.py`), the sentences (`RATIONALES` in
   `design/rules/rationales.py`) and the loader (`design/rules/profile.py`).
 - **Not** in the repository: the collection and aggregation scripts, the raw snapshot, the programs
   read and the commands used (ADR 0017 section 6.3). They stay in the owner's private notes. The
@@ -31,12 +31,20 @@ Per profile: `n` (classes in the cell), `evidence` (`strong`, `moderate` or `wea
 | either | observed range widened 10 % | `range_10` | `n < 25`; forces `severity: info` |
 
 Metrics are the `Metric` catalogue in `enums.py`, measured on a timeline the way
-`design/rules/engine.py` measures a draft. `RULE_SPECS` fixes the metric and side of every rule id;
+`design/rules/engine.py` measures a draft. A cell is classified by its structure and timeline length,
+never by a title: a class that reaches zone 5 or above is `interval`, one that stays in zones 1 to 4
+is `plain`, a single continuous effort of 20 minutes or more is a test (`ftp_test`); the label is the
+30, 45 or 60 within 4 minutes of the timeline, since timelines run shorter than their labels. `RULE_SPECS` fixes the metric and side of every rule id;
 the loader refuses a mismatch. Evidence decides what ships (the loader enforces it):
 
 - **strong** (`n >= 25`): `warn` and `info` rules.
 - **moderate**: `info` rules only; a `warn` is refused.
 - **weak**: ships **nothing**; do not add a file with an empty `rules` list.
+
+The loader only checks `n >= 25` for percentiles. The grade itself comes from the generator: `strong`
+needs `n >= 25`; the running profiles of 2026-11-03 used `moderate` for a cell of 15 to 24 classes
+drawn from at least 5 independent sets of classes (the cycling HIIT precedent of ADR 0017 is 15), and
+`weak` for everything else. Classes whose timelines are identical count once.
 
 Medians and quartiles are never bounds, and length (`total_minutes`) is never a rule. Numbers come
 from the generator, never typed by hand; a bound that fires on most good drafts is fixed by a new
@@ -116,17 +124,29 @@ exists on the running suite. So:
    section 5). A rule that fires on most good drafts calls for a new profile version, not a looser
    check.
 
-## Adding a sport (for example running)
+## Adding a sport
 
-`Sport` in `enums.py` is `Literal["cycling"]` and `select_profile` returns `None` for any other
-sport, so running classes get no rules, no prompt section and no note. **P9 (running profiles) is
-blocked until aggregate data exists**; no running threshold may be invented, borrowed from cycling
-or estimated. Once the owner has a running analysis made under the same rules (aggregates only, the
-same `n >= 25` and evidence grading):
+`Sport` in `enums.py` lists the sports with profiles (`cycling`, `running`). `select_profile(class_type,
+length, sport)` chooses only among that sport's files and never borrows another sport's profile;
+an unknown sport gives `None`. Sentences that name the activity are tied to one sport in
+`RATIONALE_SPORTS` (`ride`, `riding` and standing for cycling, `run` and `running` for running), and
+the loader refuses a profile that names a sentence of another sport; every other sentence is worded
+for any sport. A new sport is a code PR (Opus review, schema bump): the `Sport` value, its worded
+sentences, any new metric with its `RULE_SPECS` entry and engine support, `schema.json` regenerated,
+then its profile files under the rules above.
 
-1. Code PR (Opus review, schema bump): add the sport to `Sport`, let `select_profile` and the brief
-   choose it, add any new metric (for example incline) with its `RULE_SPECS` entry, rationale ids and
-   engine support, regenerate `schema.json`, and update the cycling-only assertions in
-   `tests/test_design_rule_profiles.py`.
-2. Data PR: `profiles/running/<class_type>_<label>.json`, `index.json` entries, digests, versions,
-   suite bump and the checklist above. The directory stays absent until then.
+### Running (P9, snapshot 2026-11-03)
+
+- Ships `running/interval_30.json` and `running/interval_45.json`, `moderate`, `range_10`, `info`
+  only. Plain, 55-minute and test cells are `weak` and ship nothing, so `select_profile` gives `None`
+  for them.
+- No TSS rule: the running load model is not calibrated (ADR 0018), so a TSS bound from published
+  values would be compared with a draft's library TSS. No standing rule: running classes are not
+  ridden standing.
+- No incline metric yet: a draft has no gradient field until the running draft exists (ADR 0018 R1),
+  and fewer than a third of the classes use any incline above the base setting. Add it with R1 or
+  later as a code PR (new `Metric`, `RULE_SPECS`, engine, schema) once the draft carries a gradient.
+- A brief has no sport until R1, so `select_profile_for_brief` stays cycling and no running profile
+  reaches a design job, the prompt or a note yet. R1 passes the sport and adds running
+  `class_patterns` cases; the suite test that every shipped profile has a following case covers
+  cycling profiles until then.
