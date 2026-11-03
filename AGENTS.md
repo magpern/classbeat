@@ -514,7 +514,7 @@ once as a warning (the name only) and offers nothing. `compose.prod.yaml` passes
 `secrets/oauth_<provider>_client_secret` files on web only (they must exist; empty is off; the redirect URI
 is `<CLASSBEAT_PUBLIC_BASE_URL>/oauth/<provider>/callback`; `scripts/check-prod-compose.sh` checks the
 placement and that no client secret is a variable; owner steps: `docs/runbooks/vps-deploy.md` section 5a).
-The dev `compose.yaml` passes none of them; `compose.e2e.yaml` sets them for the e2e stack.
+The dev `compose.yaml` passes them the same way, with every secret file empty from `scripts/worktree.sh init` (every provider off until set); `compose.e2e.yaml` sets them for the e2e stack.
 Web and worker refuse to start as a superuser, a `BYPASSRLS` role or a table owner (no
 override). In CI (`CI=true`) a missing
 `CLASSBEAT_TEST_DATABASE_URL` or missing roles fail the database tests instead of skipping them.
