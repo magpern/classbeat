@@ -21,7 +21,9 @@ from classbeat.agent.schemas import Brief, RunningDraft, WorkoutDraft
 from classbeat.agent.stage import Stage
 from classbeat.jobs.credits import QuotaRefused
 from classbeat.plan_gates import PlanGates, draft_problems, max_draft_seconds
-from classbeat.quota.gates import check_brief
+from classbeat.plans import Plan
+from classbeat.quota.bounds import Bounds, effective
+from classbeat.quota.gates import check_brief, gates_for
 
 FREE = PlanGates(max_class_minutes=30, games=False, races=True, ftp_tests=True)
 OPEN = PlanGates(max_class_minutes=90, games=True, races=True, ftp_tests=True)
@@ -87,6 +89,16 @@ def test_the_gates_are_a_strict_server_model() -> None:
         PlanGates.model_validate({**FREE.model_dump(), "extra": 1})
     with pytest.raises(ValidationError, match="less than or equal to 180"):
         PlanGates.model_validate({**FREE.model_dump(), "max_class_minutes": 181})
+
+
+def test_the_cap_a_job_carries_is_the_plans_under_the_environments_bound() -> None:
+    pro = Plan("pro", "Pro", 20, 100, 25, 3, 200_000_000, "pro", frozenset(), 90, True, False, True)
+    assert gates_for(pro, Bounds()) == PlanGates(
+        max_class_minutes=90, games=True, races=False, ftp_tests=True
+    )
+    assert gates_for(pro, Bounds(class_minutes_max=45)).max_class_minutes == 45
+    assert effective(pro, Bounds(class_minutes_max=45)).max_class_minutes == 45
+    assert effective(pro, Bounds(class_minutes_max=180)).max_class_minutes == 90
 
 
 # --- the worker: every draft ------------------------------------------------------------------
