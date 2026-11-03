@@ -57,7 +57,7 @@ recorded here. Read samples are official SATS programs (public camps).
 Whether `v1/programs` create/update needs the program or each segment to carry `ActivityTypeID: 1`,
 how a user-made running program stores `Gradient` and whether `list_workouts` for a user's running
 programs needs a different request: only a running program the owner saves in the app (then a second
-read-only probe) can answer that. Agents write nothing to the account.
+read-only probe) can answer that. This read-only pass wrote nothing to the account (the owner-authorized save test of 2026-11-03 is described below).
 
 Reproduce (read-only): `mowl.api.call(creds, "GET", "v1/ProgramCategories")`, then
 `POST v1/programs` with `ProgramCategoryID` = 8249, then `mowl.api.get_workout(creds, id)`.
