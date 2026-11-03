@@ -15,3 +15,6 @@ COPY queue /queue
 COPY maint /maint
 # Whatever file modes the checkout had: readable by the postgres user (uid 999) the services run as.
 RUN chmod -R a+rX,go-w /docker-entrypoint-initdb.d /queue /maint
+# Not root: compose runs both services as postgres anyway (the shared group 10010 must survive, so no
+# gosu re-exec from a root entrypoint), and the image says so by itself.
+USER postgres
