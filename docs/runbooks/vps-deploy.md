@@ -142,8 +142,11 @@ cap's log use the client address (ADR 0003 section 9): the TCP peer, unless the 
 proxy. **The decision (#492):**
 
 - web trusts **exactly one** peer, swag, at a fixed private address (`PROXY_IP`). Not a range: any
-  other container on that network, the host, and Cloudflare are not trusted. Prod refuses a public
-  address there at start, and `scripts/check-prod-compose.sh` refuses a range or a list.
+  other container on that network, the host, and Cloudflare are not trusted. In prod, web refuses
+  to start unless the trusted proxy is one private address (a range, a list, a public address or a
+  name is refused). `scripts/check-prod-compose.sh` refuses the same in its dummy rendering and, when
+  `PROXY_IP` is set in the shell or in the checkout's `.env`, checks that real value too (one
+  private IPv4 address); run it on the server before the first `up` (section 9).
 - swag sends `X-Forwarded-For: $remote_addr`, **overwriting** what the visitor sent, and clears
   `X-Real-IP`, `CF-Connecting-IP`, `True-Client-IP`, `Forwarded`, `X-Forwarded-Host`.
 - Behind Cloudflare's proxy, swag restores `$remote_addr` from `CF-Connecting-IP` only when the
@@ -162,11 +165,14 @@ Once, pick two `/24`s that clash with nothing on the machine or the LAN (`docker
 `compose.prod.yaml`; the example below uses `172.29.90.0/24` for `proxy`.
 
 ```bash
-docker network create --internal --subnet 172.29.90.0/24 classbeat-proxy
+docker network create --internal --subnet 172.29.90.0/24 --ip-range 172.29.90.128/25 --gateway 172.29.90.1 classbeat-proxy
 ```
 
 `--internal`: the network carries swag-to-web traffic only (swag keeps its own default network for
-the internet; web goes out over `web-out`). Then give swag a fixed address on it, in swag's own
+the internet; web goes out over `web-out`). `--ip-range`: Docker hands out addresses to containers
+without a fixed one (web, anything attached by mistake) only from `.128` to `.255`, so swag's fixed
+`.10` can never be given to another container, even while swag is stopped or being recreated.
+If you pick another subnet, keep swag's address inside it and outside the `--ip-range`. Then give swag a fixed address on it, in swag's own
 compose file (the owner's, not in this repository):
 
 ```yaml
@@ -184,8 +190,8 @@ networks:
 
 and recreate swag (`docker compose up -d swag` in swag's directory). If swag already has a
 `networks:` list, keep every entry and add this one. **Attach nothing else to `classbeat-proxy`.**
-Check: `docker network inspect classbeat-proxy` lists swag at `172.29.90.10` and, after section 9,
-the classbeat web container, nothing else.
+Check: `docker network inspect classbeat-proxy` shows `"IPRange": "172.29.90.128/25"`, lists swag at
+`172.29.90.10` and, after section 9, the classbeat web container (at `.128` or above), nothing else.
 
 ### 6b. Alternative: web on 127.0.0.1 (a proxy on the host)
 
@@ -258,6 +264,7 @@ Either mode works; **which one is the owner's decision.**
 ```bash
 cd /opt/classbeat
 docker compose config -q            # every required variable is set (COMPOSE_FILE from .env)
+scripts/check-prod-compose.sh       # needs jq; checks the real PROXY_IP in .env is one private address
 docker compose up -d --wait
 docker compose ps
 ```
@@ -387,12 +394,14 @@ testers arrive. The secret files are backed up separately (section 5).
 `scripts/check-prod-compose.sh` (also a CI step) renders `compose.prod.yaml` alone and with the
 loopback overlay using dummy values, checks the invariants (no Caddy and no published port, web on
 `127.0.0.1` only with the overlay, one private trusted proxy equal to `PROXY_IP` or the `web-out`
-gateway, only web on the proxy network, internal `backend`, `db` unpublished, read-only web without
+gateway, the real `PROXY_IP` from the shell or `.env` when one is set, swag's address outside the
+section 6a `--ip-range`, only web on the proxy network, internal `backend`, `db` unpublished, read-only web without
 capabilities, healthchecks, no model key on web, the secret placement, log rotation), proves each
 unsafe mutation of the rendered files is refused, and runs `nginx -t` on the swag sample with
-stand-ins for swag's `ssl.conf` and the Cloudflare list, plus the lines the app relies on (the
-`X-Forwarded-For` overwrite, the real-ip header, the body cap, the SSE location, no CSP or
-`Referrer-Policy` and no per-location headers). That the Docker port relay presents the `web-out`
+stand-ins for swag's `ssl.conf` and the Cloudflare list, plus the lines the app relies on (exactly
+one `X-Forwarded-For` line, the `$remote_addr` overwrite, no other include, the real-ip header, the
+body cap, `server_tokens off`, the SSE location, no CSP or `Referrer-Policy`, no per-location
+headers and no `proxy_intercept_errors`). That the Docker port relay presents the `web-out`
 gateway (section 6b) was checked on a throwaway container on Docker 29.
 
 Not checked: a running prod stack behind a real swag (the image, Cloudflare, the certificate, the

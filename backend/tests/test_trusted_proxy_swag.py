@@ -18,7 +18,7 @@ from classbeat.auth import request_ip
 from classbeat.config import Settings
 
 SWAG = "172.29.90.10"  # swag on the proxy network (the runbook's example)
-OTHER_ON_PROXY_NETWORK = "172.29.90.11"  # any other container the owner attaches there
+OTHER_ON_PROXY_NETWORK = "172.29.90.130"  # any other container there (from --ip-range .128/25)
 WEB_OUT_GATEWAY = "172.29.80.1"  # a host process reaching web over web-out
 CLOUDFLARE_EDGE = "173.245.48.5"  # inside a Cloudflare range
 VISITOR = "198.51.100.7"
