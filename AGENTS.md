@@ -34,7 +34,11 @@ never widens a role's authority. Agent definitions live in `.claude/agents/`.
 handling, jobs with leases and fencing, Spotify OAuth, and approvals and external writes. The
 issue says so in its "Owner:" line; everything else keeps a Sonnet Developer. The Reviewer is a
 fresh context either way, never the Developer's: Opus for those PRs and the others listed in
-the review gate.
+the review gate. **Tooling is not security-critical by default** (roadmap Amendment 13, owner,
+2026-11-03): compose files, deployment and CI/guard scripts, runbooks and the like have a Sonnet
+Developer and a Sonnet Reviewer, except that a change to how secrets are mounted, exposed or
+read (file modes or groups, secret handling in config) gets one final Opus review of the final
+head after the Sonnet rounds, never an Opus Developer.
 
 ## Unit of work: one issue, one PR
 
@@ -66,7 +70,9 @@ the end of a milestone. It escalates only genuine blockers (see "Escalation" bel
 2. The Reviewer was a fresh context: **Opus** for security-critical PRs (encryption and keys,
    auth and sessions, tenant isolation and RLS, guards and roles, jobs with leases and fencing
    and the queue SQL, approvals and external writes, Spotify OAuth, egress and model keys,
-   billing); **Sonnet** is enough for the rest (UI, tests, docs, tooling). When in doubt, Opus.
+   billing); **Sonnet** is enough for the rest (UI, tests, docs, tooling; Amendment 13 for
+   tooling that touches secret handling). The first review of any new security design is Opus.
+   When in doubt, Opus.
 3. **A new head SHA needs a new review**, scoped as follows (roadmap Amendment 2):
    - *Merge-only update:* the only change since the reviewed head is a merge of `main` with
      no hand-resolved conflict (`git diff <reviewed>..<head>` equals `main`'s own change), and
@@ -76,11 +82,12 @@ the end of a milestone. It escalates only genuine blockers (see "Escalation" bel
    - *Fix round after a `FAIL`:* a **delta review** of the diff since the last reviewed head,
      verifying each earlier finding and whatever the delta touches. The same Reviewer is resumed
      for it on non-security PRs and for test-only fixes on security-critical PRs; a fresh Opus
-     Reviewer when a security fix changes behaviour, or after a second `FAIL` (owner, 2026-10-29).
+     Reviewer only when the fix changes behaviour of security-critical application code (owner,
+     2026-10-29; Amendment 13, 2026-11-03). After a second `FAIL` the Architect re-assesses the
+     design (for guard checks, allowlists over blocklists) before another review.
      **Delta reviews by Sonnet (roadmap Amendment 4, owner, 2026-10-30):** a delta that only
      adds or changes tests or docs, loosens no guard test, and has no hand-resolved conflict in
-     production code, may be reviewed by a fresh Sonnet even on a security-critical PR, but not
-     after a second `FAIL`; it must still check each earlier finding by a mutation of the code
+     production code, may be reviewed by a fresh Sonnet even on a security-critical PR; it must still check each earlier finding by a mutation of the code
      the new test protects (by reading, for a docs-only finding).
    Reviewers rely on CI for the full suite and run only the targeted test files and mutation
    checks of the guarantees that changed: at most about 8 mutations per review, chosen by
