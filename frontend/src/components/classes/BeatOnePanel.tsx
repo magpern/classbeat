@@ -100,7 +100,7 @@ export function BeatOnePanel({
 
   return (
     <section
-      className="panel flex flex-col gap-3"
+      className="panel flex w-full min-w-0 flex-col gap-3"
       aria-labelledby="beat-one-title"
       data-testid="beat-one"
     >
@@ -131,7 +131,7 @@ export function BeatOnePanel({
                   </p>
                 ) : null}
               </div>
-              <div className="flex items-center gap-2" role="group" aria-label={`Beat 1 of ${name}`}>
+              <div className="flex min-w-0 flex-wrap items-center gap-2" role="group" aria-label={`Beat 1 of ${name}`}>
                 <Button
                   variant="secondary"
                   aria-label={`Move beat 1 of ${name} earlier`}
@@ -142,7 +142,7 @@ export function BeatOnePanel({
                 >
                   Earlier
                 </Button>
-                <output aria-live="polite" className="min-w-32 text-center">
+                <output aria-live="polite" className="min-w-24 text-center">
                   {beatsInWords(song.beats)}
                 </output>
                 <Button
