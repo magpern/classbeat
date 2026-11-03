@@ -55,6 +55,12 @@ describe('the plan refusal sentences', () => {
       'Your plan does not include races. Take them out and try again.',
     )
     expect(quotaText(body({ quota: 'feature', feature: 'ftp_tests' }))).toContain('FTP tests')
+    // Own properties only: inherited names must not reach the sentence as a function's source.
+    for (const feature of ['constructor', 'toString', '__proto__', 'hasOwnProperty']) {
+      expect(quotaText(body({ quota: 'feature', feature }))).toBe(
+        'Your plan does not include part of this class. Take it out and try again.',
+      )
+    }
     expect(quotaText(body({ quota: 'feature', feature: '<b>x</b>' }))).toBe(
       'Your plan does not include part of this class. Take it out and try again.',
     )
@@ -86,7 +92,8 @@ describe('the plan panel on the account page', () => {
         name: 'Instructor',
         source: 'code',
         ends_at: '2026-12-15T00:00:00Z',
-        limits: { classes_per_month: 30, revisions_per_class: 25, concurrent_jobs: 2 },
+        limits: { classes_per_month: 30, revisions_per_class: 25, concurrent_jobs: 2, max_class_minutes: 60 },
+        gates: { games: true, races: true, ftp_tests: true },
         classes_held: 3,
         cost_share: 0.4,
       },
@@ -97,6 +104,18 @@ describe('the plan panel on the account page', () => {
     expect(screen.getByTestId('plan-classes').textContent).toBe('3 of 30 classes in October')
     expect(screen.getByRole('progressbar', { name: /budget used/ }).getAttribute('aria-valuenow')).toBe('40')
     expect(screen.queryByRole('button', { name: /trial/i })).toBeNull()
+  })
+
+  it('never renders or requests a price, even if the answer carried one', async () => {
+    const api = fakeApi({
+      ...ACCOUNT,
+      'GET /api/account/plan': { ...PLAN_FREE, monthly_price_cents: 990, intro_price_cents: 400, currency: 'USD' },
+    })
+    renderAt('/account#plan')
+    const panel = (await screen.findByTestId('plan-name')).closest('section, [role="region"], [role="tabpanel"]')
+    expect(panel).not.toBeNull()
+    expect(panel?.textContent).not.toMatch(/price|\$|USD|990|9\.90/i)
+    expect(api.calls.every((call) => !call.path.startsWith('/api/admin'))).toBe(true)
   })
 
   it('redeems a code with CSRF and refreshes the panel', async () => {

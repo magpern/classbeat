@@ -73,7 +73,10 @@ export function quotaText(error: ApiError): string {
       : `Your plan allows classes of up to ${String(limit)} minutes. Choose a shorter length.`
   }
   if (detail.quota === 'feature') {
-    const name = typeof detail.feature === 'string' ? FEATURES[detail.feature] : undefined
+    const name =
+      typeof detail.feature === 'string' && Object.hasOwn(FEATURES, detail.feature)
+        ? FEATURES[detail.feature]
+        : undefined
     return name === undefined
       ? 'Your plan does not include part of this class. Take it out and try again.'
       : `Your plan does not include ${name}. Take them out and try again.`
