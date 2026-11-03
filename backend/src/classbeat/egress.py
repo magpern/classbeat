@@ -118,13 +118,14 @@ MOWL_HOST = "api.mowl.com"  # the library's base URL
 SWEDEBEAT_WWW_HOST = "www.swedebeat.se"
 SWEDEBEAT_CLOUD_HOST = "cloud.swedebeat.se"
 # The host(s) of the MOWL temporary links that serve a Swedebeat mix's audio (ADR 0016 §4). Exact
-# lower case DNS names, https on 443, no wildcard and never a whole cloud provider domain. **Empty
-# until the owner confirms the host in the live check** (a reviewed PR then fills it): with an empty
-# list the media fetch is refused for every host. A literal, so nothing in the environment, a file
+# lower case DNS names, https on 443, no wildcard and never a whole cloud provider domain. The one
+# host is the owner's live check of 2026-11-03 (docs/runbooks/swedebeat-mix-media-host.md): a
+# bucket's own accelerated endpoint, named by MOWL's temporary link. Any other name is a new live
+# check. A literal, so nothing in the environment, a file
 # or a setting can widen it (a guard test pins that and that no other source feeds the list). It is
 # on no urllib list: ``WORKER_HOSTS`` and ``WEB_URLLIB_HOSTS`` never hold it, so the library's MOWL
 # opener (and its ``authorization`` header) cannot reach it.
-MOWL_MEDIA_HOSTS: Final[frozenset[str]] = frozenset()
+MOWL_MEDIA_HOSTS: Final[frozenset[str]] = frozenset({"users-playlists.s3-accelerate.amazonaws.com"})
 # The model providers classbeat may use (ADR 0012 §1); ``fake`` is not one (no host).
 ModelProviderName = Literal["anthropic", "openai", "deepseek"]
 # Each provider's one API host (ADR 0012 §2). Code, not a setting.
