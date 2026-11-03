@@ -14,7 +14,7 @@ import { SelectField } from '../../components/classes/fields'
 import { Field, Notice, Section, useAction } from '../../components/forms'
 import { Button } from '../../components/ui/button'
 import { Chip } from '../../components/ui/chip'
-import { Dialog, DialogContent, DialogDescription, DialogTitle } from '../../components/ui/dialog'
+import { Dialog, DialogContent, DialogDescription, DialogTitle, DialogTrigger } from '../../components/ui/dialog'
 import { Link, useRouter } from '../../router/Router'
 import { dayOf, endOfDay, FEATURES, PLANS, sourceLabel } from './format'
 import { Credits } from './Credits'
@@ -287,14 +287,9 @@ function DeleteUser({ userId, email }: { userId: string; email: string }) {
 
   return (
     <Dialog open={open} onOpenChange={close}>
-      <Button
-        variant="danger"
-        onClick={() => {
-          close(true)
-        }}
-      >
-        Delete account
-      </Button>
+      <DialogTrigger asChild>
+        <Button variant="danger">Delete account</Button>
+      </DialogTrigger>
       {open ? (
         <DialogContent aria-describedby="delete-user-description">
           <DialogTitle>Delete this account?</DialogTitle>

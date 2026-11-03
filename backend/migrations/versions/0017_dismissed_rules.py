@@ -5,7 +5,7 @@ Revises: 0016_swedebeat_flag
 Create Date: 2026-11-01
 
 The soft-rule ids a user dismissed for one class: a JSON array of at most 32 strings (the CHECK holds that), empty by
-default. Only ids from ``classbeat.design.rules.ids`` are written, by the class dismissal route;
+default. Only ids in ``RULE_IDS`` of ``classbeat.design.rules.enums`` are written, by the class dismissal route;
 the database holds the shape and the cap (the ids themselves are checked by the application, so
 adding a rule id needs no migration). No new table and no new policy: ``classes`` already has
 forced owner row security, and the application role already holds table-level ``UPDATE`` on it

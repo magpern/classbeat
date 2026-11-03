@@ -192,6 +192,23 @@ describe('a failed design', () => {
     expect(document.body).not.toHaveTextContent('upstream_unavailable')
   })
 
+  it('shows the server sentence of a failed Swedebeat match, not the generic "try again" text', async () => {
+    const stopped = 'Swedebeat asks to slow down. This match has stopped.'
+    fakeApi({
+      ...SESSION_ROUTES,
+      [`GET ${JOB}`]: jobBody('failed', {
+        kind: 'swedebeat_match',
+        error_category: 'rate_limited',
+        error_message: stopped,
+      }),
+    })
+    renderAt(`/jobs/${JOB_ID}`)
+    expect(await screen.findByRole('heading', { name: 'The Swedebeat match stopped' })).toBeInTheDocument()
+    expect(screen.getByText(stopped)).toBeInTheDocument()
+    expect(document.body).not.toHaveTextContent('try again')
+    expect(document.body).not.toHaveTextContent('rate_limited')
+  })
+
   it('points to the account page when MOWL has to be connected again', async () => {
     fakeApi({
       ...SESSION_ROUTES,

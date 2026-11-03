@@ -35,6 +35,8 @@ export interface Job {
   cancelRequested: boolean
   /** An ADR 0005 section 4 category, never an error text. */
   errorCategory: string | null
+  /** The server's own plain sentence for the failure or wait (`error_message`); null when it has none. */
+  errorMessage: string | null
   /** The song list this job waits on (ADR 0008 section 5); null for other jobs. */
   approvalRevisionId: string | null
   /** When the wait for approval ends. */
@@ -58,6 +60,7 @@ export function decodeJob(value: unknown): Job {
     classId: text(item, 'class_id'),
     cancelRequested: flag(item, 'cancel_requested'),
     errorCategory: optionalText(item, 'error_category'),
+    errorMessage: optionalText(item, 'error_message'),
     approvalRevisionId: optionalText(item, 'approval_revision_id'),
     expiresAt: optionalText(item, 'expires_at'),
     approvedAt: optionalText(item, 'approved_at'),
