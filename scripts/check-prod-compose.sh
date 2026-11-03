@@ -5,11 +5,14 @@
 #   scripts/check-prod-compose.sh        (needs docker, jq; run from anywhere)
 # 1. `docker compose config` accepts compose.prod.yaml alone (swag on a shared Docker network) and
 #    with compose.prod.loopback.yaml (a proxy on the host, web on 127.0.0.1);
-# 2. the invariants of the production stack hold for both;
+# 2. the invariants of the production stack hold for both (with the OAuth settings of #507: the
+#    client ids only from their variables, the client secrets as files on web only, never a value
+#    in the rendered files), and compose.prod.yaml's defaults leave every OAuth client id empty;
 # 3. a self-test: each unsafe mutation of the rendered files must fail step 2 (fails closed);
 # 4. the owner's real PROXY_IP, when one is set (their shell, else PROD_CHECK_ENV_FILE, default the
 #    checkout's .env): compose.prod.yaml rendered with it must trust one private IPv4 address (#495);
 # 5. the runbook's `docker network create` keeps swag's fixed address outside Docker's --ip-range;
+# 4b. that env file and the compose files hold no *CLIENT_SECRET* variable (a file under secrets/ only);
 # 6. `nginx -t` accepts docs/runbooks/swag-classbeat.subdomain.conf, and the lines the app's
 #    client address, body cap, SSE stream and headers rely on are in it (X-Forwarded-For set
 #    exactly once);
@@ -35,9 +38,16 @@ env_file="${PROD_CHECK_ENV_FILE:-$root/.env}"
 # Copies next to dummy secret files, so the checkout's own secrets/ is never read.
 cp compose.prod.yaml compose.prod.loopback.yaml "$tmp/"
 mkdir "$tmp/secrets"
+oauth_providers=(google github microsoft)
 for n in postgres_password database_owner_password database_password database_maint_password \
   app_secret_key connection_kek smtp_password anthropic_api_key openai_api_key deepseek_api_key swedebeat_app; do
   : > "$tmp/secrets/$n"
+done
+# The OAuth client secret files hold a canary (a dummy, never a real secret): it must not appear in
+# any rendered file, so compose never inlines a client secret (#507).
+oauth_canary="oauth-canary-$RANDOM$RANDOM$RANDOM"
+for p in "${oauth_providers[@]}"; do
+  printf '%s' "$oauth_canary-$p" > "$tmp/secrets/oauth_${p}_client_secret"
 done
 
 swag_ip=172.29.90.10
@@ -47,6 +57,13 @@ export SMTP_CA_FILE=/run/smtp-ca/bridge.pem
 export COMPOSE_PROJECT_NAME=classbeat-prod-check
 unset COMPOSE_FILE PROXY_NETWORK WEB_HOST_PORT
 dir="$native/${tmp##*/}"
+# compose.prod.yaml's defaults: no OAuth variable set, so every provider is off.
+unset OAUTH_GOOGLE_CLIENT_ID OAUTH_GITHUB_CLIENT_ID OAUTH_MICROSOFT_CLIENT_ID OAUTH_VISIBLE_PROVIDERS
+defaults="$(docker compose -f "$dir/compose.prod.yaml" config --format json)"
+# Dummy client ids (public values, not secret): web's settings must equal them, so they come from
+# the variables and from nothing written into the compose files.
+export OAUTH_GOOGLE_CLIENT_ID=check-google-client-id OAUTH_GITHUB_CLIENT_ID=check-github-client-id
+export OAUTH_MICROSOFT_CLIENT_ID=check-microsoft-client-id OAUTH_VISIBLE_PROVIDERS=google,github
 shared="$(docker compose -f "$dir/compose.prod.yaml" config --format json)"
 loopback="$(docker compose -f "$dir/compose.prod.yaml" -f "$dir/compose.prod.loopback.yaml" config --format json)"
 
@@ -115,6 +132,58 @@ check_common() {
     || fail "only web joins web-out" || return 1
   q '[.services[] | select((.logging.options["max-size"] // null) == null)] | length == 0' \
     || fail "every service needs log rotation" || return 1
+  check_oauth || return 1
+}
+
+# OAuth sign-in (#507, ADR 0003 section 5). Each client secret is a file secret under secrets/,
+# mounted on web only at /run/secrets/<name> (where the app reads it); no service has a variable
+# whose name says client secret; the OAuth settings are web's only; the canary in the dummy secret
+# files appears nowhere in the rendered files (no `content:` or `environment:` secret, no literal).
+check_oauth() {
+  local p n
+  for p in "${oauth_providers[@]}"; do
+    n="oauth_${p}_client_secret"
+    jq -e --arg n "$n" '[.services | to_entries[] | select(.value.secrets // [] | map(.source) | index($n)) | .key] == ["web"]' \
+      <<<"$J" >/dev/null || fail "$n is mounted on web only" || return 1
+    jq -e --arg n "$n" '[.services.web.secrets[] | select(.source == $n)] | length == 1 and all((.target // $n) | . == $n or . == "/run/secrets/" + $n)' \
+      <<<"$J" >/dev/null || fail "$n is mounted once, at /run/secrets/$n" || return 1
+    jq -e --arg n "$n" '.secrets[$n] | type == "object" and ((keys - ["name","file"]) == []) and (.file // "" | endswith("/secrets/" + $n))' \
+      <<<"$J" >/dev/null || fail "$n is the file secrets/$n and nothing else" || return 1
+  done
+  q '[.services[] | .environment // {} | keys[] | select(test("SECRET"; "i"))] | length == 0' \
+    || fail "no service has a secret in a variable (OAuth client secrets are files)" || return 1
+  q '[.services | to_entries[] | select(.value.environment // {} | keys | any(startswith("CLASSBEAT_OAUTH_"))) | .key] == ["web"]' \
+    || fail "the OAuth settings belong to web only" || return 1
+  q '(.services.web.environment | with_entries(select(.key | startswith("CLASSBEAT_OAUTH_"))) | keys)
+     == ["CLASSBEAT_OAUTH_GITHUB_CLIENT_ID","CLASSBEAT_OAUTH_GOOGLE_CLIENT_ID","CLASSBEAT_OAUTH_MICROSOFT_CLIENT_ID","CLASSBEAT_OAUTH_VISIBLE_PROVIDERS"]' \
+    || fail "web gets the three OAuth client ids and the visible providers, nothing else" || return 1
+  q '.services.web.environment | .CLASSBEAT_OAUTH_GOOGLE_CLIENT_ID == "check-google-client-id"
+     and .CLASSBEAT_OAUTH_GITHUB_CLIENT_ID == "check-github-client-id"
+     and .CLASSBEAT_OAUTH_MICROSOFT_CLIENT_ID == "check-microsoft-client-id"
+     and .CLASSBEAT_OAUTH_VISIBLE_PROVIDERS == "google,github"' \
+    || fail "the OAuth client ids and visible providers come from their variables" || return 1
+  if grep -Fq -- "$oauth_canary" <<<"$J"; then
+    fail "an OAuth client secret's value is in the rendered compose file"; return 1
+  fi
+}
+
+# compose.prod.yaml without any OAuth variable: every provider off, Google the only visible name.
+check_oauth_defaults() {
+  q '.services.web.environment | .CLASSBEAT_OAUTH_GOOGLE_CLIENT_ID == "" and .CLASSBEAT_OAUTH_GITHUB_CLIENT_ID == ""
+     and .CLASSBEAT_OAUTH_MICROSOFT_CLIENT_ID == "" and .CLASSBEAT_OAUTH_VISIBLE_PROVIDERS == "google"' \
+    || fail "without its variable, each OAuth client id is empty (provider off); visible providers default to google" \
+    || return 1
+  check_oauth_files "$tmp" || return 1
+}
+
+# The compose files as written: no variable named like a client secret, no client secret literal.
+check_oauth_files() {
+  local d="$1" f
+  for f in compose.prod.yaml compose.prod.loopback.yaml; do
+    if grep -E -i 'client_secret' "$d/$f" | grep -Evq '^[[:space:]]*(#.*|- oauth_(google|github|microsoft)_client_secret|oauth_(google|github|microsoft)_client_secret:|file: \./secrets/oauth_(google|github|microsoft)_client_secret)[[:space:]]*$'; then
+      fail "$f: client_secret only as the three secret names and their secrets/ files"; return 1
+    fi
+  done
 }
 
 # compose.prod.yaml alone: swag reaches web over the owner's external proxy network.
@@ -143,6 +212,7 @@ check_loopback() {
 
 J="$shared"; check_shared || exit 1
 J="$loopback"; check_loopback || exit 1
+J="$defaults"; check_oauth_defaults || exit 1
 
 # Self-test: every mutation is unsafe and must be refused.
 expect_refused() {
@@ -179,9 +249,47 @@ for m in \
   '.services.mailpit = {"image":"axllent/mailpit","logging":.services.web.logging}' \
   '.volumes["caddy-data"] = {}' \
   '.services.extra = {"image":"busybox","networks":{"proxy":null},"logging":.services.web.logging}' \
-  '.services.extra = {"image":"busybox","networks":{"web-out":null},"logging":.services.web.logging}'; do
+  '.services.extra = {"image":"busybox","networks":{"web-out":null},"logging":.services.web.logging}' \
+  '.services.worker.secrets += [{"source":"oauth_google_client_secret","target":"/run/secrets/oauth_google_client_secret"}]' \
+  '.services.migrate.secrets += [{"source":"oauth_github_client_secret"}]' \
+  '.services.maint = {"image":.services.web.image,"networks":{"backend":null},"logging":.services.web.logging,"secrets":[{"source":"oauth_microsoft_client_secret"}]}' \
+  '.services.web.secrets |= map(select(.source != "oauth_github_client_secret"))' \
+  '.services.web.secrets |= map(if .source == "oauth_google_client_secret" then .target = "/tmp/google" else . end)' \
+  '.secrets.oauth_google_client_secret = {"name":"x","environment":"OAUTH_GOOGLE_CLIENT_SECRET"}' \
+  '.secrets.oauth_github_client_secret = {"name":"x","content":"a-literal-secret"}' \
+  '.secrets.oauth_microsoft_client_secret.file = "/etc/hostname"' \
+  '.services.web.environment.CLASSBEAT_OAUTH_GOOGLE_CLIENT_SECRET = "x"' \
+  '.services.worker.environment.OAUTH_GITHUB_CLIENT_SECRET = "x"' \
+  '.services.worker.environment.CLASSBEAT_OAUTH_GOOGLE_CLIENT_ID = "check-google-client-id"' \
+  '.services.web.environment.CLASSBEAT_OAUTH_GOOGLE_CLIENT_ID = "a-literal-in-compose"' \
+  '.services.web.environment.CLASSBEAT_OAUTH_VISIBLE_PROVIDERS = "google"' \
+  '.services.web.environment.CLASSBEAT_OAUTH_EXTRA = "x"'; do
   expect_refused shared "$shared" "$m"
 done
+# The client secret's value (the canary in the dummy file) anywhere in the rendered file.
+expect_refused shared "$shared" ".services.web.labels = {\"note\": \"$oauth_canary-google\"}"
+for m in \
+  '.services.web.environment.CLASSBEAT_OAUTH_GOOGLE_CLIENT_ID = "a-literal-in-compose"' \
+  '.services.web.environment.CLASSBEAT_OAUTH_VISIBLE_PROVIDERS = "google,microsoft"' \
+  'del(.services.web.environment.CLASSBEAT_OAUTH_MICROSOFT_CLIENT_ID)'; do
+  expect_refused oauth_defaults "$defaults" "$m"
+done
+# The compose files as written (copies; the checkout's files are never changed).
+mkdir "$tmp/files"
+expect_files_refused() {
+  cp "$tmp/compose.prod.yaml" "$tmp/compose.prod.loopback.yaml" "$tmp/files/"
+  sed -i -E "$2" "$tmp/files/$1"
+  if (check_oauth_files "$tmp/files" 2>/dev/null); then
+    echo "check-prod-compose: self-test: accepted an unsafe $1: $2" >&2; exit 1
+  fi
+}
+# shellcheck disable=SC2016  # a literal compose variable, not a shell one
+expect_files_refused compose.prod.yaml \
+  's|^(      CLASSBEAT_OAUTH_VISIBLE_PROVIDERS:.*)$|\1\n      CLASSBEAT_OAUTH_GOOGLE_CLIENT_SECRET: ${OAUTH_GOOGLE_CLIENT_SECRET:-}|'
+expect_files_refused compose.prod.yaml 's|^  oauth_google_client_secret:$|  oauth_google_client_secret: {content: abc}|'
+expect_files_refused compose.prod.yaml 's|file: \./secrets/oauth_github_client_secret|environment: OAUTH_GITHUB_CLIENT_SECRET|'
+expect_files_refused compose.prod.loopback.yaml \
+  's|^(      CLASSBEAT_TRUSTED_PROXIES:.*)$|\1\n      OAUTH_CLIENT_SECRET: abc|'
 # The owner's PROXY_IP itself (it reaches CLASSBEAT_TRUSTED_PROXIES unchanged): a range, a list, a
 # public or an empty address must be refused even when the variable and the setting agree.
 good_ip="$swag_ip"
@@ -197,7 +305,8 @@ for m in \
   '.services.web.environment.CLASSBEAT_TRUSTED_PROXIES = "172.29.90.10"' \
   '.services.web.environment.CLASSBEAT_TRUSTED_PROXIES = "172.29.80.0/24"' \
   '.services.web.networks.proxy = {"aliases":["classbeat-web"]}' \
-  '.services.worker.ports = [{"host_ip":"127.0.0.1","target":8000,"published":"8081"}]'; do
+  '.services.worker.ports = [{"host_ip":"127.0.0.1","target":8000,"published":"8081"}]' \
+  '.services.worker.secrets += [{"source":"oauth_microsoft_client_secret"}]'; do
   expect_refused loopback "$loopback" "$m"
 done
 
@@ -229,6 +338,29 @@ case "$rc" in
   2) owner_note="no real PROXY_IP set here (only dummies checked)" ;;
   *) exit 1 ;;
 esac
+
+# --- No OAuth client secret in an env file (#507) --------------------------------------------------
+# A client secret goes in secrets/oauth_<provider>_client_secret, never in .env (compose would not
+# pass it on anyway). Only the variable's name is matched; its value is never printed.
+check_env_no_client_secret() {
+  [[ -f "$1" ]] || return 0
+  if grep -Eiq '^[[:space:]]*(export[[:space:]]+)?[a-z0-9_]*client_secret[a-z0-9_]*[[:space:]]*=' "$1"; then
+    fail "$1 holds a *CLIENT_SECRET* variable: put a client secret in secrets/oauth_<provider>_client_secret"
+    return 1
+  fi
+}
+check_env_no_client_secret "$env_file" || exit 1
+check_env_no_client_secret .env.example || exit 1
+for line in 'OAUTH_GOOGLE_CLIENT_SECRET=x' 'export OAUTH_GITHUB_CLIENT_SECRET=' '  oauth_microsoft_client_secret = x' \
+  'CLASSBEAT_OAUTH_GOOGLE_CLIENT_SECRET=x' 'CLIENT_SECRET=x'; do
+  printf 'OAUTH_GOOGLE_CLIENT_ID=check\n%s\n' "$line" > "$tmp/oauth.env"
+  if (check_env_no_client_secret "$tmp/oauth.env" 2>/dev/null); then
+    echo "check-prod-compose: self-test: accepted an env file with '$line'" >&2; exit 1
+  fi
+done
+printf 'OAUTH_GOOGLE_CLIENT_ID=123-abc.apps.googleusercontent.com\n# the secret is in secrets/oauth_google_client_secret\n' \
+  > "$tmp/oauth.env"
+check_env_no_client_secret "$tmp/oauth.env" || { echo "check-prod-compose: self-test: refused a good env file" >&2; exit 1; }
 # Self-test: the env file's and the shell's value, as compose reads them.
 owner_env="$tmp/owner.env"
 expect_owner() {
@@ -404,4 +536,4 @@ if ! nginx_t; then
   echo "check-prod-compose: no IPv6 here: nginx -t ran without the [::]:443 listen line" >&2
 fi
 
-echo "compose.prod.yaml (shared network and loopback), runbook network, swag site config and self-tests: ok; $owner_note"
+echo "compose.prod.yaml (shared network and loopback, OAuth secrets on web only), runbook network, swag site config and self-tests: ok; $owner_note"
