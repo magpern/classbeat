@@ -58,7 +58,7 @@ export function RevisionsPanel({
                 <button
                   type="button"
                   className="button"
-                  aria-label={`Use version ${String(r.number)}`}
+                  aria-label={`Use this version ${String(r.number)}`}
                   disabled={busy}
                   onClick={() => {
                     onUse(r)
