@@ -52,6 +52,9 @@ class ClassOut(BaseModel):
     profile: list[tuple[int, int]] = []
     # ADR 0012 section 7: the current revision has a zone 7 interval, so its TSS is approximate.
     tss_approximate: bool = False
+    # ADR 0018 section 1: the class's sport, for every class (a cycling brief's ``model_dump``
+    # leaves ``sport`` out, so ``brief`` alone does not say it). Older classes are cycling.
+    sport: Literal["cycling", "running"] = "cycling"
 
     @classmethod
     def of(cls, row: Any) -> "ClassOut":
@@ -84,6 +87,7 @@ class ClassOut(BaseModel):
             open_job=job,
             profile=[(int(z), int(sec)) for z, sec in row.profile],
             tss_approximate=bool(row.tss_approximate),
+            sport="running" if row.sport == "running" else "cycling",
         )
 
 
