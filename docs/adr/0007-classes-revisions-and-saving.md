@@ -890,7 +890,9 @@ are listed at the end.
    such rows stay inert, the page counts them as "for earlier music", and they go with the class.
 4. **Applying** (issue BC2; the pure functions in `classbeat.agent.beat_one`, BC1). A job that produces a draft reads the
    class's corrections for the music step's fingerprint in a fenced transaction (`class_id` from
-   the fenced job row, the owner from the lease, never the input) and carries them in `MusicData`.
+   the fenced job row, the owner from the lease, never the input) and carries them with the music
+   data (`mix_input.MixData` or `mix_input.SpotifyData`; `model_input` is left as it is, so the
+   eval suite's digest and every recorded route stay valid).
    `mix_input.music_map` applies them to its copy after the crossfade conversion, as the library's
    `_entry` does, so the fit (`sync.fit_to_music`), the timeline, the quality report, the
    warnings (a corrected mix song is no longer "an estimate": the library's `beat1_shift` rule)
