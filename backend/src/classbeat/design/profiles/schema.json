@@ -87,7 +87,11 @@
             "load_enough",
             "load_bounded",
             "hard_not_early",
-            "standing_bounded"
+            "standing_bounded",
+            "warmup_ramp_run",
+            "hard_share_enough_run",
+            "hard_share_not_all_run",
+            "top_zone_present_run"
           ],
           "title": "Rationale Id",
           "type": "string"
@@ -199,7 +203,10 @@
       "type": "string"
     },
     "sport": {
-      "const": "cycling",
+      "enum": [
+        "cycling",
+        "running"
+      ],
       "title": "Sport",
       "type": "string"
     },

@@ -31,6 +31,16 @@
       "file": "cycling/interval_60.json",
       "version": 1,
       "digest": "5980dec8bba0b553a53fd48109cd6327a0470d31697e7ca25fae93fcf2bcdbdf"
+    },
+    "running.interval.30": {
+      "file": "running/interval_30.json",
+      "version": 1,
+      "digest": "a4b41e1ba8ce524966201b18d21c6079887684ba07568eccac7d831cc4c901ef"
+    },
+    "running.interval.45": {
+      "file": "running/interval_45.json",
+      "version": 1,
+      "digest": "b09798b3ba43b03e2bc275615c57177df477c20b88b438e89fa197732f800f62"
     }
   }
 }

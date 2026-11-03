@@ -60,9 +60,15 @@ def test_the_category_is_in_the_manifest_for_the_design_group_only() -> None:
 
 
 def test_a_follows_case_for_every_shipped_profile_and_every_kind_of_ask() -> None:
-    shipped = set(default_registry().profiles)
+    profiles = default_registry().profiles.values()
+    shipped = {p.id for p in profiles if p.sport == "cycling"}
     chosen = {p.id for c in FOLLOWING if (p := select_profile_for_brief(c.brief))}
     assert chosen == shipped
+    # A brief has no sport until running classes are designed (ADR 0018 R1), so no brief selects
+    # a running profile yet and the suite has no running case; R1 adds them with the sport.
+    assert {p.sport for p in profiles} == {"cycling", "running"}
+    selected = [select_profile_for_brief(c.brief) for c in CASES]
+    assert {p.id for p in selected if p is not None} <= shipped
     assert {c.name for c in FOLLOWING} == set(FOLLOWS)
     asked = {
         field

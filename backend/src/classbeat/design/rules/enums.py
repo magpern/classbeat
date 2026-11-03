@@ -10,7 +10,7 @@ from typing import Final, Literal, get_args
 
 SOURCE: Final = "professional studio library"
 
-Sport = Literal["cycling"]
+Sport = Literal["cycling", "running"]
 ClassType = Literal["plain", "interval", "hiit", "journey", "ftp_test"]
 Evidence = Literal["strong", "moderate", "weak"]
 Basis = Literal["p5", "p95", "range_10"]
@@ -64,6 +64,10 @@ RationaleId = Literal[
     "load_bounded",
     "hard_not_early",
     "standing_bounded",
+    "warmup_ramp_run",
+    "hard_share_enough_run",
+    "hard_share_not_all_run",
+    "top_zone_present_run",
 ]
 # The brief fields that make a rule's expectation wrong (ADR 0017 section 1). ``intensity:*`` is
 # the stored intensity; ``style`` and ``text`` stand for a non-empty field of the stored brief.
@@ -80,6 +84,20 @@ METRICS: Final = get_args(Metric)
 RULE_IDS: Final = get_args(RuleId)
 RATIONALE_IDS: Final = get_args(RationaleId)
 BRIEF_OVERRIDES: Final = get_args(BriefOverride)
+
+# Sentences worded for one sport only (``ride``, ``run``, standing): a profile of another sport may
+# not name them. Every other rationale is worded for any sport (ADR 0017 sections 4 and 7).
+RATIONALE_SPORTS: Final[dict[str, Sport]] = {
+    "warmup_ramp": "cycling",
+    "hard_share_enough": "cycling",
+    "hard_share_not_all": "cycling",
+    "top_zone_present": "cycling",
+    "standing_bounded": "cycling",
+    "warmup_ramp_run": "running",
+    "hard_share_enough_run": "running",
+    "hard_share_not_all_run": "running",
+    "top_zone_present_run": "running",
+}
 
 # Only a profile with this many classes may use a percentile bound (ADR 0017 section 2).
 MIN_N_PERCENTILE: Final = 25

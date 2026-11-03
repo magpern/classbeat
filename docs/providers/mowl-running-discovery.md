@@ -16,8 +16,7 @@ recorded here. Read samples are official programs of a professional studio libra
   (48 visible to the account; ids in the thousands, so scanning small ids misses them). Each has
   `ActivityTypeID`, `IsOfficial`, `NumberOfWorkouts` (0 even where programs exist, do not trust it),
   `CreatorName`. Running camps exist as official and user-made categories (ids from the 8000s to the 9000s).
-- List a camp with `POST v1/programs` and `ProgramCategoryID` = the camp id (12 programs each for
-  8248 and 8249). The list entry has the program's own `ActivityTypeID: 1`, `TSS`, `TotalDuration`,
+- List a camp with `POST v1/programs` and `ProgramCategoryID` = the camp id (two of the studio's running camps listed 12 programs each on 2026-11-02; listing is not repeatable from every account). The list entry has the program's own `ActivityTypeID: 1`, `TSS`, `TotalDuration`,
   `PlaylistID`, but **no segments**: read each with `GET v1/programs/{id}`.
 - Search keys tried (`SearchText`, `Search`, `Keyword`) are not filters.
 
@@ -59,7 +58,7 @@ programs needs a different request: only a running program the owner saves in th
 read-only probe) can answer that. This read-only pass wrote nothing to the account (the owner-authorized save test of 2026-11-03 is described below).
 
 Reproduce (read-only): `mowl.api.call(creds, "GET", "v1/ProgramCategories")`, then
-`POST v1/programs` with `ProgramCategoryID` = 8249, then `mowl.api.get_workout(creds, id)`.
+`POST v1/programs` with the `ProgramCategoryID` of a running camp, then `mowl.api.get_workout(creds, id)`.
 
 ## Live save test (2026-11-03, owner-authorized)
 

@@ -1,0 +1,179 @@
+{
+  "schema": 1,
+  "id": "running.interval.45",
+  "version": 1,
+  "sport": "running",
+  "class_type": "interval",
+  "label_minutes": 45,
+  "evidence": "moderate",
+  "n": 18,
+  "source": "professional studio library",
+  "snapshot": "2026-11-03",
+  "rules": [
+    {
+      "rule": "warmup_short",
+      "metric": "first_zone4plus_s",
+      "low": 375,
+      "high": null,
+      "basis": "range_10",
+      "severity": "info",
+      "rationale_id": "warmup_ramp_run",
+      "brief_overrides": [
+        "intensity:hard",
+        "ftp_test",
+        "style",
+        "text"
+      ]
+    },
+    {
+      "rule": "hard_start_late",
+      "metric": "first_zone4plus_s",
+      "low": null,
+      "high": 915,
+      "basis": "range_10",
+      "severity": "info",
+      "rationale_id": "hard_start_late",
+      "brief_overrides": [
+        "intensity:easy",
+        "style",
+        "text"
+      ]
+    },
+    {
+      "rule": "cooldown_long",
+      "metric": "cooldown_s",
+      "low": null,
+      "high": 192,
+      "basis": "range_10",
+      "severity": "info",
+      "rationale_id": "cooldown_not_long",
+      "brief_overrides": [
+        "style",
+        "text"
+      ]
+    },
+    {
+      "rule": "hard_share_low",
+      "metric": "zone4plus_time_share",
+      "low": 0.36,
+      "high": null,
+      "basis": "range_10",
+      "severity": "info",
+      "rationale_id": "hard_share_enough_run",
+      "brief_overrides": [
+        "intensity:easy",
+        "style",
+        "text"
+      ]
+    },
+    {
+      "rule": "hard_share_high",
+      "metric": "zone4plus_time_share",
+      "low": null,
+      "high": 0.574,
+      "basis": "range_10",
+      "severity": "info",
+      "rationale_id": "hard_share_not_all_run",
+      "brief_overrides": [
+        "intensity:hard",
+        "races",
+        "sprints",
+        "style",
+        "text"
+      ]
+    },
+    {
+      "rule": "top_zone_share_low",
+      "metric": "zone5plus_time_share",
+      "low": 0.041,
+      "high": null,
+      "basis": "range_10",
+      "severity": "info",
+      "rationale_id": "top_zone_present_run",
+      "brief_overrides": [
+        "intensity:easy",
+        "style",
+        "text"
+      ]
+    },
+    {
+      "rule": "top_zone_share_high",
+      "metric": "zone5plus_time_share",
+      "low": null,
+      "high": 0.348,
+      "basis": "range_10",
+      "severity": "info",
+      "rationale_id": "top_zone_bounded",
+      "brief_overrides": [
+        "sprints",
+        "races",
+        "intensity:hard",
+        "style",
+        "text"
+      ]
+    },
+    {
+      "rule": "zone_ceiling_exceeded",
+      "metric": "max_zone",
+      "low": null,
+      "high": 5.0,
+      "basis": "range_10",
+      "severity": "info",
+      "rationale_id": "zone_ceiling",
+      "brief_overrides": [
+        "intensity:hard",
+        "sprints",
+        "races",
+        "ftp_test",
+        "style",
+        "text"
+      ]
+    },
+    {
+      "rule": "mean_zone_low",
+      "metric": "mean_zone",
+      "low": 2.79,
+      "high": null,
+      "basis": "range_10",
+      "severity": "info",
+      "rationale_id": "mean_zone_enough",
+      "brief_overrides": [
+        "intensity:easy",
+        "style",
+        "text"
+      ]
+    },
+    {
+      "rule": "mean_zone_high",
+      "metric": "mean_zone",
+      "low": null,
+      "high": 3.38,
+      "basis": "range_10",
+      "severity": "info",
+      "rationale_id": "mean_zone_bounded",
+      "brief_overrides": [
+        "intensity:hard",
+        "races",
+        "sprints",
+        "style",
+        "text"
+      ]
+    },
+    {
+      "rule": "hard_too_early",
+      "metric": "zone4plus_share_in_first_25pct",
+      "low": null,
+      "high": 0.392,
+      "basis": "range_10",
+      "severity": "info",
+      "rationale_id": "hard_not_early",
+      "brief_overrides": [
+        "intensity:hard",
+        "races",
+        "sprints",
+        "style",
+        "text"
+      ]
+    }
+  ]
+}
