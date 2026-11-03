@@ -483,10 +483,19 @@ class Settings(BaseSettings):
         # prod the one trusted peer is the reverse proxy on a private Docker network (swag,
         # docs/runbooks/vps-deploy.md); a public range (Cloudflare's included: swag restores the
         # client from CF-Connecting-IP, never this app) would let the open internet pick its own.
-        if self.environment == "prod" and not all(
-            net.is_private for net in self.trusted_proxy_networks
-        ):
+        if self.environment != "prod":
+            return self
+        networks = self.trusted_proxy_networks
+        if not all(net.is_private for net in networks):
             raise ValueError("trusted_proxies must be private addresses when environment is prod")
+        # #495: exactly one host (/32 or /128), never a range or a list. A range on the proxy
+        # network would let any other container there forge X-Forwarded-For and choose its
+        # rate-limit bucket. Empty (nothing trusted) stays allowed: it fails closed.
+        if len(networks) > 1 or any(net.prefixlen != net.max_prefixlen for net in networks):
+            raise ValueError(
+                "trusted_proxies must be one address (not a range or a list) when environment "
+                "is prod"
+            )
         return self
 
     @field_validator("trusted_proxies")

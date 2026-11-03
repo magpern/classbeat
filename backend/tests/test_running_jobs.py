@@ -7,9 +7,10 @@ in the worker (a queued running design or revise whose flag went off ends ``feat
 nothing); a running class designed and revised end to end on the running prompts and schema, its
 brief stored with the sport, its revision, provenance, views and export; the refusals at creation
 (a bike-only knob, a Swedebeat mix, song picking, a class of the other sport) and in the final
-store (two queued jobs of different sports); Save refusing a running class until R1b; a running
-design or revise on a model whose recorded result does not cover running ends ``model_config``
-before any request (ADR 0012 amendment of 2026-11-03, issue #465), while cycling is unaffected.
+store (two queued jobs of different sports); Save admitting a running class (R1b) and the class
+API naming every class's sport; a running design or revise on a model whose recorded result does
+not cover running ends ``model_config`` before any request (ADR 0012 amendment of 2026-11-03,
+issue #465), while cycling is unaffected.
 """
 
 import json
@@ -357,9 +358,12 @@ async def test_a_design_admitted_before_the_class_was_fixed_cannot_store_the_oth
     assert stored["sport"] == "cycling"
 
 
-async def test_save_refuses_a_running_class_until_r1b(
+async def test_save_admits_a_running_class_and_the_class_api_says_its_sport(
     renv: ReviseEnv, fake_mowl: FakeMowlMusic
 ) -> None:
+    """R1b (#490) replaces R1a's refusal: a running class designed by the worker is admitted
+    for Save (its run is ``test_save_running``). The class list and detail name every class's
+    sport (R1a review finding 7): a running class ``running``, a cycling one ``cycling``."""
     class_id, _, revision_id = await running_class(renv)
     [revision] = renv.revisions(class_id)
     body = {
@@ -371,11 +375,17 @@ async def test_save_refuses_a_running_class_until_r1b(
             "mowl_connection_id": str(renv.browser.connection_id),
         },
     }
-    refused = await create(renv, body)
-    assert refused.status_code == 409, refused.text
-    assert refused.json()["detail"]["reason"] == "invalid_input"
-    saves = renv.sql("SELECT count(*) FROM jobs WHERE kind = 'save_workout'").scalar_one()
-    assert saves == 0
+    admitted = await create(renv, body)
+    assert admitted.status_code == 201, admitted.text
+    ride_id, _ = await renv.design()
+    listed = await renv.browser.get("/api/classes")
+    assert listed.status_code == 200, listed.text
+    sports = {c["id"]: c["sport"] for c in listed.json()["classes"]}
+    assert sports == {str(class_id): "running", str(ride_id): "cycling"}
+    for wanted, expected in ((class_id, "running"), (ride_id, "cycling")):
+        detail = await renv.browser.get(f"/api/classes/{wanted}")
+        assert detail.status_code == 200, detail.text
+        assert detail.json()["sport"] == expected
 
 
 async def test_save_refuses_by_the_classs_sport_not_by_the_shape_of_the_content(

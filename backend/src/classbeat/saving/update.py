@@ -11,7 +11,8 @@ read-first comparison, never the sport check. ``consumes_credit = False``: no le
 model call.
 
 **``admit``** (the jobs API's create transaction, under the owner lock): the revision checks of
-``classbeat.saving.approval``, the connection (``not_connected``), the saved row
+``classbeat.saving.approval``, ``running_enabled`` for a running class (``feature_off``), the
+connection (``not_connected``), the saved row
 (``invalid_input``: another user's, another class's, a detached or an unknown row), the music
 link (``music_unlinked``) and the unresolved-write rule (``write_unresolved``). A refusal is a
 409 with its reason and creates nothing.
@@ -21,16 +22,18 @@ no effect never resumes at ``save``, so the read-first check runs again):
 
 1. ``prepare``: the connection is opened (the input's and the context's), then one fenced
    transaction: orphaned class writes marked, the unresolved-write rule (``uncertain_write``),
-   ``hold``, the revision, the saved row (its program id) and the link (its playlist id) again
-   from the database. Then the **preflight**: My Workouts' first page, outside any operation;
+   ``hold``, the revision, ``running_enabled`` for a running class (``feature_off``, ADR 0018
+   section 5), the saved row (its program id) and the link (its playlist id) again from the
+   database. Then the **preflight**: My Workouts' first page, outside any operation;
    its ProgramIDs are the **baseline**. A failing preflight is an ordinary failure, no row.
 2. ``read`` (outside any operation): ``get_workout(program_id)``. Not there, or not served to
    this account: ``program_missing``. Its own ``ActivityTypeID`` missing, unknown or not the
-   class's sport (``mowl_state.program_sport`` against ``mowl_state.spec_sport`` of the stored
-   revision; every class is cycling until R1, #463): ``program_other_sport``, **also with
-   ``overwrite``**. Public, not normalizable, or its normalized state not the saved row's
-   ``state_hash`` (or that is NULL): ``program_changed``, unless ``overwrite``. Nothing is
-   written in any of these cases. Its normalized hash is the write's ``before_hash``. One
+   class's sport (``mowl_state.program_sport`` against ``approval.Revision.sport``, the class's
+   stored brief's, ADR 0018 M8 R1b): ``program_other_sport``, **also with ``overwrite``**, in
+   both directions (a running class onto a cycling program and the reverse).
+   Public, not normalizable, or its normalized state not the saved row's ``state_hash`` (or
+   that is NULL): ``program_changed``, unless ``overwrite``. Nothing is written in any of these
+   cases. Its normalized hash is the write's ``before_hash``. One
    exception keeps a crashed attempt's write from being reported as the user's edit: when this
    job's own operation row (key ``<job_id>:update``) is ``pending``, ``uncertain`` or
    ``succeeded``, the refusal is deferred to the decide guard, ``perform`` meets the row and
@@ -39,9 +42,12 @@ no effect never resumes at ``save``, so the read-first check runs again):
 3. ``save``: ``perform`` of ``mowl_update_workout`` (``classbeat.saving.update_operation``), the
    call being ``workout.save(spec, creds, playlist_id, program_id=program_id)`` inside
    ``call_deadline_until`` of an instant taken before ``pending`` is written,
-   ``single_request = False``; the guard re-reads the link row and the saved row under ``hold``
-   and compares the playlist id and the program id. An answer naming another program is
-   ``UncertainAnswer`` (the library raises first: MOWL made a copy).
+   ``single_request = False``. For a running class the library reads the target once more
+   inside the call and refuses, before any write, anything but that program with its own
+   ``ActivityTypeID`` 1 (mowl-workouts 0.9.0); the bound counts that read. The guard re-reads
+   the link row and the saved row under ``hold`` and compares the playlist id and the program
+   id. An answer naming another program is ``UncertainAnswer`` (the library raises first: MOWL
+   made a copy).
 4. ``verify`` (best effort): the program is read back; equal to the spec, the saved row's
    ``state_hash`` is set, otherwise it stays NULL. The job ends ``completed`` either way.
 """
@@ -125,6 +131,8 @@ async def admit(db: AsyncSession, ctx: UserContext, parsed: BaseModel) -> Admitt
     found = await approval.revision(db, ctx, parsed.the_class, parsed.revision_id, parsed.digest)
     if isinstance(found, approval.Refusal):
         return Refused(found.reason)
+    if await approval.running_refused(db, found):
+        return Refused("feature_off")  # ADR 0018 section 5: running is off now
     if ctx.connection("mowl") != parsed.mowl_connection_id:
         return Refused("not_connected")
     info = await connections.find_in(db, ctx, parsed.mowl_connection_id)
@@ -171,6 +179,8 @@ async def _approved(
         )
         if isinstance(found, approval.Refusal):
             raise JobFailure(PREPARE_CATEGORY.get(found.reason, "invalid_input"))
+        if await approval.running_refused(fs.db, found):
+            raise JobFailure("feature_off")  # switched off since the job was queued
         target = await approval.saved_target(
             fs.db, run.ctx, given.the_class, given.saved_workout_id
         )
@@ -219,7 +229,7 @@ def _refusal(program: object, plan: Plan, overwrite: bool) -> tuple[str | None, 
         normal = None
     before = None if normal is None else mowl_state.state_hash(normal).hex()
     sport = mowl_state.program_sport(program)
-    if sport is None or sport != mowl_state.spec_sport(plan.revision.spec):
+    if sport is None or sport != plan.revision.sport:
         # Another sport, or one we cannot tell (missing or unknown ``ActivityTypeID``): the
         # library would rewrite it with this class's sport and bodies (issue #485).
         return before, "program_other_sport"
@@ -285,7 +295,8 @@ async def save(run: JobRun, keyring: KeyRing, plan: Plan, read: Read) -> int:
     """Stage ``save``: the update as an external operation; returns the ProgramID."""
     revision, opened, playlist_id = plan.revision, plan.opened, plan.playlist_id
     target = plan.target
-    bound = operation.bound_seconds(revision.segments)
+    # A running update's call starts with the library's own read of the target (0.9.0).
+    bound = operation.bound_seconds(revision.segments, reads=1 if revision.running else 0)
     # Anchored before ``perform`` writes ``pending``, as for Save (``classbeat.saving.kind``).
     deadline_at = time.monotonic() + bound
 

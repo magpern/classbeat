@@ -12,12 +12,25 @@ against the authenticated user and failing closed:
   another class, is ``invalid_input``, never a different answer), and it is a ``draft``;
 - its stored ``content_hash`` equals the approved one (``hash_mismatch``) and the SHA-256 of its
   canonical content recomputed now (``invalid_input``: the row is not what was hashed);
-- the class is a cycling class (ADR 0018, M8 R1a: a running class is refused ``invalid_input``
-  until R1b, #490, adds its save; the sport is the class's stored brief's, absent = cycling);
-- the content is a ``WorkoutDraft`` whose spec passes ``workout.validate`` (``invalid_input``);
+- the class's sport is the class's stored brief's (ADR 0018 section 1, M8 R1b): absent (every
+  class stored before R1a) or ``cycling`` is cycling, ``running`` is running, anything else is
+  ``invalid_input``. Never the browser's, a model's or the program's in MOWL;
+- the content is the sport's draft (``WorkoutDraft`` for cycling, ``RunningDraft`` for running,
+  ``agent.schemas.draft_model``, never the other one) whose spec passes ``workout.validate``
+  (which validates a running spec as running) (``invalid_input``). A running spec carries the
+  library's ``"sport": "running"`` (``RunningDraft.to_spec``), a cycling one no ``"sport"``, so
+  the spec's sport is always the brief's;
+- a running revision was designed on an existing MOWL playlist (ADR 0018 section 2, Amendment
+  2): its music is a ``mowl_spotify_playlist`` without picked songs; a Swedebeat mix or a
+  ``song_list_id`` is ``invalid_input`` (the library would refuse new music anyway, and Save never
+  attaches anything);
 - the revision's ``music.link_id`` names a ``mowl_playlist_links`` row of the user of the
   revision's source (``spotify`` for a playlist, ``swedebeat`` for a mix, ADR 0016 section 3)
   (``music_unlinked``: the MOWL account changed since the revision was designed, section 9).
+
+The ``running_enabled`` flag is not checked here (the reconcilers rebuild the spec through
+``revision`` and must still decide a running write when the flag is off): the Save and Update
+kinds check it next to these, ``running_refused``.
 
 For an Update (``classbeat.saving.update``) also ``saved_target``: the saved row is the user's
 own live row of that class (``invalid_input`` otherwise, section 9: a detached row is never
@@ -39,9 +52,16 @@ from pydantic import ValidationError
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from classbeat.agent.schemas import WorkoutDraft
+from classbeat.agent.schemas import draft_model
 from classbeat.context import UserContext
-from classbeat.design.revision import MIX_SOURCE, MUSIC_SOURCE, REVISION_MUSIC, canonical
+from classbeat.design import sport as class_sport
+from classbeat.design.revision import (
+    MIX_SOURCE,
+    MUSIC_SOURCE,
+    REVISION_MUSIC,
+    SpotifyRevisionMusic,
+    canonical,
+)
 from classbeat.operations.attach import SOURCE
 from classbeat.operations.swedebeat import SOURCE as MIX_LINK_SOURCE
 
@@ -74,6 +94,11 @@ class Revision:
     spec: dict[str, Any]
     link_id: UUID
     link_source: str = SOURCE  # ``mowl_playlist_links.source`` of the link (``LINK_SOURCES``)
+    sport: str = class_sport.CYCLING  # the class's stored brief's (``sport_of_brief``)
+
+    @property
+    def running(self) -> bool:
+        return self.sport == class_sport.RUNNING
 
     @property
     def content_hash_hex(self) -> str:
@@ -89,13 +114,28 @@ class Refusal:
     reason: str  # invalid_input, hash_mismatch, music_unlinked
 
 
-def spec_of(content: object) -> dict[str, Any] | None:
-    """The library spec of a stored draft, if it still validates (``WorkoutDraft`` from its JSON,
-    as the dispatcher validates the model's draft, then ``workout.validate``); else None."""
+SPORTS: Final = (class_sport.CYCLING, class_sport.RUNNING)
+
+
+def sport_of_brief(value: object) -> str | None:
+    """The class's sport from ``classes.brief ->> 'sport'``: absent (NULL) is cycling, as every
+    class stored before ADR 0018; ``cycling`` or ``running`` exactly; None for anything else."""
+    if value is None:
+        return class_sport.CYCLING
+    return value if isinstance(value, str) and value in SPORTS else None
+
+
+def spec_of(content: object, sport: str = class_sport.CYCLING) -> dict[str, Any] | None:
+    """The library spec of a stored draft of ``sport``, if it still validates (the sport's draft
+    schema from its JSON, as the dispatcher validates the model's draft, then
+    ``workout.validate``, which checks a running spec as running); else None. The spec's own
+    sport must be ``sport`` (a cycling spec has no ``"sport"``)."""
     try:
-        draft = WorkoutDraft.model_validate_json(json.dumps(content))
+        draft = draft_model(sport).model_validate_json(json.dumps(content))
         spec = draft.to_spec()
         workout.validate(spec)
+        if workout.sport_of(spec) != sport:
+            return None
     except (ValidationError, ValueError, TypeError, KeyError):
         return None
     return spec
@@ -113,20 +153,25 @@ async def revision(
     ).first()
     if row is None or row.kind != "draft":
         return Refusal("invalid_input")
-    if row.sport is not None and row.sport != "cycling":
-        return Refusal("invalid_input")  # ADR 0018: no running save before R1b (#490)
+    sport = sport_of_brief(row.sport)
+    if sport is None:
+        return Refusal("invalid_input")  # a brief whose sport is neither: never guessed
     stored = bytes(row.content_hash)
     if stored != content_hash:
         return Refusal("hash_mismatch")
     if hashlib.sha256(canonical(row.content)).digest() != stored:
         return Refusal("invalid_input")
-    spec = spec_of(row.content)
+    spec = spec_of(row.content, sport)
     if spec is None:
         return Refusal("invalid_input")
     try:
         music = REVISION_MUSIC.validate_json(json.dumps(row.music))
     except ValidationError:
         return Refusal("music_unlinked")
+    if sport == class_sport.RUNNING and not (
+        isinstance(music, SpotifyRevisionMusic) and music.song_list_id is None
+    ):
+        return Refusal("invalid_input")  # running v1: an existing MOWL playlist only
     return Revision(
         class_id=row.class_id,
         revision_id=row.id,
@@ -135,7 +180,15 @@ async def revision(
         spec=spec,
         link_id=music.link_id,
         link_source=LINK_SOURCES[music.source],
+        sport=sport,
     )
+
+
+async def running_refused(db: AsyncSession, found: Revision) -> bool:
+    """Whether Save or Update must refuse ``feature_off``: the class is running and
+    ``running_enabled`` (the environment's switch and the admin flag, stricter wins) is off now
+    (ADR 0018 section 5). A cycling class never reads the flag."""
+    return found.running and not await class_sport.running_on(db)
 
 
 async def linked_playlist(

@@ -23,8 +23,10 @@
 #
 # Networks: `backend` is internal (no route out): db, migrate and db-functions live only there.
 # `proxy` is the owner's external network (created once, `docker network create --internal
-# --subnet ...`, runbook section 6) that only swag and web join: the only inbound path to the app;
-# swag has a fixed address on it (PROXY_IP). `web-out` is web's way out (SMTP, the Spotify and
+# --subnet ... --ip-range ...`, runbook section 6a) that only swag and web join: the only inbound
+# path to the app; swag has a fixed address on it (PROXY_IP), outside the --ip-range Docker hands
+# out to other containers. PROXY_IP is one private IPv4 address, never a range or a list (prod
+# refuses to start otherwise). `web-out` is web's way out (SMTP, the Spotify and
 # Google/GitHub/Microsoft token endpoints) and joins nothing else. `egress` is the worker's way out
 # to the model providers, MOWL and Spotify. No service publishes a port; the variant where the
 # proxy reaches web on 127.0.0.1 instead is the overlay compose.prod.loopback.yaml.

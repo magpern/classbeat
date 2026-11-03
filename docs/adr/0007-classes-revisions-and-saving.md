@@ -832,3 +832,22 @@ job).
   0024, `jobs.error_category` only), nothing written; `overwrite` skips only the "changed" comparison,
   never this check, and the page offers no "Update anyway" for it. The sport is not part of
   `normalized_program`, so stored `state_hash` values stay valid.
+- **Running classes are saved and updated (M8 R1b, #490, 2026-11-03; ADR 0018 Amendment 2):** the
+  class's sport is its stored brief's (`classes.brief ->> 'sport'`: absent or `cycling` is
+  cycling, `running` is running, anything else `invalid_input`), never the content's, a model's or
+  the program's. It replaces the `spec_sport` seam above: the Update sport check compares the
+  program's own `ActivityTypeID` with `approval.Revision.sport`, both directions, `overwrite`
+  included. The approval reads the content with the sport's schema only (`RunningDraft` or
+  `WorkoutDraft`) and refuses a running revision on a Swedebeat mix or picked songs
+  (`invalid_input`); Save then calls the same `workout.save(spec, creds, playlist_id)` (0.9.0 sends
+  the program's `ActivityTypeID` 1, segments 0, running interval bodies with a float `Gradient`,
+  on the existing playlist of the class's link; it never attaches music) and Update the same call
+  with `program_id` (the library reads the target once more and refuses anything but a running
+  program; the bound counts that read: `bound_seconds(segments, reads=1)`). Operation kinds, keys,
+  hashes, contexts, guards and reconcilers are unchanged. `running_enabled` off is `feature_off`
+  for Save and Update of a running class, at creation and in `prepare` (before the preflight); the
+  reconcilers do not read it. The normal form gains a running variant (`"sport": "running"`, and
+  per interval only `sec`, `zone` and `gradient`); a cycling spec and a program whose
+  `ActivityTypeID` is 0 or missing keep the old form, so no stored `state_hash` changes; any other
+  `ActivityTypeID` is not normalizable. Running update is supported by the library (0.9.0, owner
+  live test of #482) but has not been run end to end by classbeat against live MOWL.

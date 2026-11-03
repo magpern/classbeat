@@ -14,8 +14,16 @@ request number** (``fail``; 1 is the program, then three per segment, then the s
 answered as MOWL making a copy: a new, empty program with the header, the original untouched).
 ``hold_at`` stops a write request before it is applied until ``release`` is set. ``edit``,
 ``publish`` and ``delete`` play the user changing a program in the MOWL app; ``set_activity_type``
-sets or removes its own ``ActivityTypeID`` (issue #485), served on reads. Public test values
-only; never the network.
+sets or removes its own ``ActivityTypeID`` (issue #485), served on reads.
+
+Running programs (ADR 0018, M8 R1b): the fake keeps what the library writes as it is (the
+program's ``ActivityTypeID`` 1, the segments' 0, the running interval bodies with their float
+``Gradient``) and serves it on reads; My Workouts marks each entry with its program's own
+``ActivityTypeID`` when the program has one (the real listing's sport, issue #485), and ``plant``
+plants a running spec as the library writes it. ``RUNNING_DRAFT`` and ``RUNNING_BRIEF`` are a
+running class; ``SaveEnv.plant`` takes a ``brief`` (``classes.brief``; None leaves it NULL, a
+legacy cycling class). Cycling behaviour is unchanged. Public test values only; never the
+network.
 """
 
 import copy
@@ -37,7 +45,7 @@ from mowl import workout
 
 from authtools import ORIGIN, Env
 from classbeat import saving
-from classbeat.agent.schemas import WorkoutDraft
+from classbeat.agent.schemas import Brief, RunningDraft, WorkoutDraft
 from classbeat.design.revision import canonical
 from classbeat.egress import WORKER_ALLOWLIST, build_allowlist_opener
 from classbeat.jobs import KindRegistry, queue
@@ -94,6 +102,44 @@ DRAFT: dict[str, Any] = WorkoutDraft.model_validate(
 ).model_dump(mode="json", exclude_none=True)
 SEGMENTS = len(DRAFT["segments"])
 WRITES = 2 + 3 * SEGMENTS  # the requests ``workout.save`` makes for DRAFT
+
+
+# A running class (ADR 0018): its content is a ``RunningDraft`` (no ``"sport"`` key: the class's
+# brief says it), designed on an existing MOWL playlist.
+RUNNING_DRAFT: dict[str, Any] = RunningDraft.model_validate(
+    {
+        "name": "Thursday run",
+        "description": "Invented running test class",
+        "segments": [
+            {
+                "name": "Warm up",
+                "kind": "warmup",
+                "intervals": [{"sec": 300, "zone": 2, "gradient": 0, "cue": "easy jog"}],
+            },
+            {
+                "name": "Hills",
+                "kind": "main",
+                "intervals": [
+                    {"sec": 240, "zone": 4, "gradient": 1},
+                    {"sec": 60, "zone": 2, "gradient": 0},
+                    {"sec": 120, "zone": 5, "gradient": 0},
+                ],
+            },
+            {
+                "name": "Cool down",
+                "kind": "cooldown",
+                "intervals": [{"sec": 180, "zone": 1, "gradient": 0}],
+            },
+        ],
+    }
+).model_dump(mode="json", exclude_none=True)
+RUNNING_BRIEF: dict[str, Any] = Brief.model_validate(
+    {"sport": "running", "length_min": 15, "intensity": "moderate"}
+).stored()
+
+
+def running_spec_of(content: dict[str, Any]) -> dict[str, Any]:
+    return RunningDraft.model_validate(content).to_spec()
 
 
 def draft_hash(content: dict[str, Any]) -> bytes:
@@ -164,9 +210,10 @@ class FakeMowlPrograms(FakeMowlMusic):
         with self._lock:
             program = self._new_program(token, _program_body(spec, playlist_id))
             program.public = public
+            sport = workout.sport_of(spec)
             for s in spec["segments"]:
                 segment = self._new_segment(token, _segment_body(s))
-                segment.intervals = [workout.interval_body(i) for i in s["intervals"]]
+                segment.intervals = [workout.interval_body(i, sport) for i in s["intervals"]]
                 program.segment_ids.append(segment.id)
         return program.id
 
@@ -253,10 +300,7 @@ class FakeMowlPrograms(FakeMowlMusic):
         page, per_page = int(form.get("PageNumber", 0)), int(form.get("itemsPerPage", 50))
         newest = sorted(self.owned(token), key=lambda p: p.id, reverse=True)
         shown = newest[page * per_page : (page + 1) * per_page]
-        return self._ok(
-            req,
-            [{"ProgramID": p.id, "Name": p.body["Name"], "IsPublic": p.public} for p in shown],
-        )
+        return self._ok(req, [_listed(p) for p in shown])
 
     def _program(self, req: urllib.request.Request, program_id: int) -> Any:
         self.requests.append(f"GET {req.full_url}")
@@ -371,6 +415,15 @@ class FakeMowlPrograms(FakeMowlMusic):
 _MISSING: Any = object()
 
 
+def _listed(p: Program) -> dict[str, Any]:
+    """A My Workouts entry; with the program's own ``ActivityTypeID`` when it has one (MOWL's
+    listing marks each entry's sport the same way, ``workout.listed_sport``)."""
+    entry: dict[str, Any] = {"ProgramID": p.id, "Name": p.body["Name"], "IsPublic": p.public}
+    if "ActivityTypeID" in p.body:
+        entry["ActivityTypeID"] = p.body["ActivityTypeID"]
+    return entry
+
+
 def _program_body(spec: dict[str, Any], playlist_id: int) -> dict[str, Any]:
     return {
         "ProgramCategoryID": 17,
@@ -380,7 +433,9 @@ def _program_body(spec: dict[str, Any], playlist_id: int) -> dict[str, Any]:
         "PlaylistID": playlist_id,
         "IsPublic": False,
         "TSS": workout.tss(spec),
-        "ActivityTypeID": 0,
+        "ActivityTypeID": workout.RUNNING_ACTIVITY_TYPE
+        if workout.sport_of(spec) == "running"
+        else 0,
     }
 
 
@@ -477,9 +532,10 @@ class SaveEnv:
         *,
         kind: str = "draft",
         content_hash: bytes | None = None,
+        music: dict[str, Any] | None = None,
     ) -> UUID:
         content = copy.deepcopy(DRAFT if content is None else content)
-        music = {
+        music = music or {
             "source": "mowl_spotify_playlist",
             "link_id": str(link_id),
             "fingerprint": "a" * 64,
@@ -494,15 +550,31 @@ class SaveEnv:
             h=content_hash or draft_hash(content), music=json.dumps(music),
         ).scalar_one()  # fmt: skip
 
-    async def saved_class(self, token: str = TOKEN_A) -> Saved:
+    async def saved_class(
+        self,
+        token: str = TOKEN_A,
+        content: dict[str, Any] | None = None,
+        brief: dict[str, Any] | None = None,
+    ) -> Saved:
         owner, connection = await self.owner(token)
-        return self.plant(owner, connection)
+        return self.plant(owner, connection, content, brief=brief)
 
-    def plant(self, owner: UUID, connection: UUID, content: dict[str, Any] | None = None) -> Saved:
+    async def running_class(self, token: str = TOKEN_A) -> Saved:
+        """A running class (ADR 0018): ``RUNNING_BRIEF`` stored, ``RUNNING_DRAFT`` its revision."""
+        return await self.saved_class(token, RUNNING_DRAFT, RUNNING_BRIEF)
+
+    def plant(
+        self,
+        owner: UUID,
+        connection: UUID,
+        content: dict[str, Any] | None = None,
+        *,
+        brief: dict[str, Any] | None = None,
+    ) -> Saved:
         class_id = self.sql(
-            "INSERT INTO classes (id, owner_id, title) VALUES (:id, :o, 'Tuesday climb') "
-            "RETURNING id",
-            id=uuid.uuid4(), o=owner,
+            "INSERT INTO classes (id, owner_id, title, brief) VALUES (:id, :o, 'Tuesday climb', "
+            "CAST(:brief AS jsonb)) RETURNING id",
+            id=uuid.uuid4(), o=owner, brief=None if brief is None else json.dumps(brief),
         ).scalar_one()  # fmt: skip
         link_id = self.plant_link(owner)
         content = copy.deepcopy(DRAFT if content is None else content)
