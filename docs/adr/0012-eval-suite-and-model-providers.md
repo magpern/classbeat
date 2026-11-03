@@ -785,3 +785,14 @@ the version bump below invalidates nothing in practice.
   the admin and the CLI for a group that runs the same tools on the same route keys); letting the bootstrap
   serve running after an owner override (no recorded evidence behind it, and the override would be one
   more switch to forget). Both rejected for the smaller rule above, which can be loosened later.
+
+## Amendment of 2026-11-03: soundless classes (issue #526)
+
+ADR 0007's amendment of 2026-11-03 (item 6) adds soundless `design` and `revise` stages (no music, no
+`get_music`, no fitting). They are named like cycling's, so `models.versions` keys them
+`soundless_design` and `soundless_revise`, and the `design` group's prompt versions become six; a result
+recorded without them is stale (`prompt_versions`). A soundless job uses a `design` route only when it is
+not stale for any reason, as a running job does (the bootstrap choice never covers it, `fake` does;
+`model_config` before any call otherwise), and the admin refuses `soundless_enabled = on` (422
+`soundless_not_evaluated`) unless every plan's `route_key` has such a route. The suite gains a
+`soundless` category and a new `suite_version` (issue #531). Cycling keeps section 5 unchanged.

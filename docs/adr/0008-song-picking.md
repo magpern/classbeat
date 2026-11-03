@@ -707,3 +707,11 @@ fakes meets A1 to A3 including superseded and expired approvals, the ownership c
 reconcile and every error category; concurrent users with different Client IDs never mix; a callback
 cannot connect the wrong account; one user's playlist is never overwritten by another; exact ids and
 order verified against the current API shape). Live activation (§11) is separate and the owner's.
+
+## Amendment of 2026-11-03: soundless classes (issue #526)
+
+ADR 0007's amendment of 2026-11-03 adds a "No music" source (`classes.music_source = {"source":
+"none"}`). Such a class never has a `song_list`, a pool or a final playlist: `design_with_songs` (every
+mode) and `revise_songs` on it are refused `invalid_input` at creation, by an explicit check of
+`music_source` (issue #530), and the class page offers no Change songs for it. Nothing else in this ADR
+changes.

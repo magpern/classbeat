@@ -851,3 +851,135 @@ job).
   `ActivityTypeID` is 0 or missing keep the old form, so no stored `state_hash` changes; any other
   `ActivityTypeID` is not normalizable. Running update is supported by the library (0.9.0, owner
   live test of #482) but has not been run end to end by classbeat against live MOWL.
+
+## Amendment of 2026-11-03: soundless classes, a "No music" source (issue #526)
+
+Status: Proposed (Architect scoping for #526; accepted when its docs PR merges). Owner decision
+(2026-11-03, chat): an instructor may want a class with no music (a soundless class, or no Spotify
+Premium). Today every design names music: `design_draft`'s `MusicChoice` is a Spotify playlist or a
+Swedebeat mix, and everything after it assumes a MOWL playlist and an analysis.
+
+### Scoping: what assumes music today
+
+| Area | Module(s) | What it assumes |
+|---|---|---|
+| Job input | `design/kind.py` (`MusicChoice`, `DesignDraftInput`, `ClassMusicSource`) | `source` is `mowl_spotify_playlist` or `mowl_swedebeat_mix`; running needs a Spotify playlist |
+| Admit | `design/kind.py` `admit`, `design/mixadmit.py`, `design/sport.py` | a mix is checked against the listing; a playlist is admitted as is |
+| Music stage | `design/music.py` (`MusicStep`, `load_music`), `design/swedebeat_music.py` | the attach or link, the analysis, the connection guard (`still_current`), `fingerprint`, `unknown_bpm` |
+| Design stage | `agent/design.py` (`DesignContext`, `check`, `get_music`), `agent/mix_input.py`, `agent/running.py` | every draft is fitted with `sync.fit_to_music` to a map; `"rpm": "beat"`; the timeline names tracks; music warnings |
+| Model input | `agent/model_input.py` (`first_message`, `REVISE_MESSAGE`, `MUSIC_CHANGED`), the system prompts | a `music` block (playlist name, tracks, BPM, drops) and prompt text about the playlist |
+| Revision | `design/revision.py` (`RevisionMusic`, `build`, `adopt_first`), `agent/records.py` (`Provenance.map_version`, `crossfade_sec`) | `music` has a `link_id` and a `fingerprint`; provenance has a map version |
+| Chat revise | `design/revise.py`, `design/chat.py`, `agent/revise.py` | the music step again, `music_changed` from the fingerprint, the `songs_requested` tool |
+| Save and Update | `saving/approval.py` (`Revision.link_id`, `linked_playlist`), `saving/kind.py`, `saving/operation.py` (`save_hash`, `save_context`), `saving/update.py`, `saving/update_operation.py`, `mowl_state.py` | a positive playlist id from the user's link row (`music_unlinked` otherwise); the normal form's `playlist_id` |
+| Song picking | `songs/admit.py`, `songs/phase2.py`, `songs/revise.py` | a class with picked songs has a Spotify source with `origin: "song_pick"` |
+| Swedebeat match and hand-off | `swedebeat_match/kind.py`, `classes/handoff.py`, `swedebeat_handoff/adopt.py` | the class has a `song_list`; the hand-off replaces a Spotify source with a mix |
+| Class API | `classes/schemas.py`, `classes/routes.py` | the page infers the music from songs and revisions; no field says "no music" |
+| Web | `components/songs/MusicChoice.tsx`, `pages/NewClassPage.tsx`, `pages/ClassPage.tsx`, `components/classes/SideColumn.tsx`, `pages/JobPage.tsx`, `api/jobs.ts`, `api/connections.ts` | New class always picks music; the class page offers Change songs and the Swedebeat section |
+| Evals | `evals/suite/manifest.json`, `evals/smoke/`, `models/versions.py` | every case has a playlist; the design group's prompt versions are the four stages of ADR 0012's amendment of 2026-11-03 |
+| Fakes and e2e | `tests/mowlfake.py`, `tests/savetools.py`, `e2e/fake-mowl/server.py`, `compose.e2e.yaml` | every saved program has a positive `PlaylistID` |
+
+No table changes: `classes.music_source` and `class_revisions.music` are `jsonb` with only a size
+check, and `saved_workouts.playlist_id` is already nullable. No migration, no new category.
+
+### Decision
+
+1. **The source.** A third `MusicChoice`, `{source: "none"}` (`NoMusicChoice`, `extra="forbid"`),
+   for a new cycling class only. It is stored as `classes.music_source = {"source": "none"}` by the
+   first design, like the others, and never changes for that class (the existing sources keep their
+   rules; a soundless class never gets a source later). A running brief with `none` is refused at
+   input (`invalid_input`, 422), as running v1 designs on an existing MOWL playlist only (ADR 0018
+   §2); running without music is a later change with its own prompts.
+2. **The flag.** Off unless `CLASSBEAT_SOUNDLESS_ENABLED` (compose `SOUNDLESS_ENABLED`, default
+   false, web and worker) and the admin flag `soundless_enabled` (`off`/`on`, can only tighten it)
+   allow it, the same shape as `running_enabled` (ADR 0018 §5). Off, a `none` design or a revise of
+   a soundless class is refused 409 `feature_off` at creation, a queued one ends `feature_off` before
+   any call, and Save and Update of a soundless class are `feature_off` at creation and in `prepare`
+   (the reconcilers do not read it). `GET /api/connections` carries the effective `soundless_enabled`.
+   It stays off for real users until the owner's live check below and an evaluated model (item 6).
+3. **No music step.** A soundless job enters no `music` stage and makes **no MOWL or Spotify call**
+   while designing or revising: no attach, no link, no listing, no analysis, no connection opened.
+   `MusicStep` is replaced on this path by a no-music step whose `still_current` and `close` do
+   nothing (the revision names no MOWL object, so there is no connection guard to repeat; Save
+   holds the connection itself). The job still names the user's current MOWL connection (the
+   generic checks are unchanged), because the class is made to be saved there. Credits, quotas,
+   the plan's length cap and gates apply as to any design.
+4. **The soundless design and revise stages** (`agent`, ADR 0006 §3). Their own system prompts
+   (an indoor-cycling class without music: no playlist, no beat, no drops), tools `preview_draft`
+   and `submit_draft` only (no `get_music`; the revise variant has no `songs_requested`), and their
+   own check: `workout.validate` of the draft as written, no `fit_to_music`; a `"beat"` cadence is
+   `invalid_draft` ("no music: give a cadence range"); the timeline is the spec's own starts with no
+   track; no quality report and no music warnings; TSS, duration and `tss_approximate` as today;
+   `within_plan` as today. The draft schemas (`WorkoutDraft`) do not change. `DesignResult` and
+   `Provenance` take `map_version` and `crossfade_sec` as `None` for a soundless draft (absent
+   values stay valid for every older revision, which always has both).
+5. **Model input.** The first message is the brief block (the cycling allowlist, unchanged) plus one
+   fixed sentence that the class has no music, and **no `music` key at all**; the revise message
+   leaves out the playlist sentences and `MUSIC_CHANGED`/`SONGS_CHANGED`. A model-input test pins
+   that no playlist, track, BPM, drop or section text, and no `music` key, reaches the model.
+6. **Prompt versions and the gate** (ADR 0012 §5 and its amendment of 2026-11-03). The stages are
+   named `design` and `revise`; `models.versions` keys them `soundless_design` (SL1) and
+   `soundless_revise` (SL2), so the `design` group has six prompt versions. A soundless job may use a
+   `design` route only when it is not stale for any reason (the predicate behind
+   `ModelChoice.running_covered`, which the implementation may rename for both uses with no change
+   in behaviour); the bootstrap choice never covers it, `fake` does; otherwise `model_config` before
+   any call. The admin refuses to store `soundless_enabled = on` (422 `soundless_not_evaluated`, a
+   `refused` audit row) unless every plan's `route_key` has such a route. The suite gains a
+   `soundless` category and a new `suite_version` in its own PR, so no result recorded before it can
+   cover soundless (none has been recorded live on any version).
+7. **The revision.** `class_revisions.music = {"source": "none"}` (`NoRevisionMusic`, strict,
+   `extra="forbid"`): no `link_id`, no fingerprint, no `unknown_bpm`. Provenance as today (item 4),
+   `origin` `design_draft` or `revise_draft`. Its `content_hash` rules are unchanged. A revise of a
+   soundless class never reports "the music changed".
+8. **Save and Update** (sections 5 to 8). For a revision whose music is `none`: no link is read and
+   `music_unlinked` cannot happen; `workout.save(spec, creds, -1)` (the library's "no music",
+   `PlaylistID: -1`), with `program_id` for Update, which therefore also clears a playlist someone
+   attached in the MOWL app (the read first sees that as `program_changed`, as any other change).
+   `saved_workouts.playlist_id` is NULL. Operation kinds, keys, the bound, the fence and the
+   uncertain-write rules are unchanged; `save_hash` and `save_context` carry `-1`. The normal form
+   (`mowl_state`) writes "no music" as `playlist_id: null`, and reads `PlaylistID` `-1`, `null` or
+   absent as `null`; any other value (a positive id, `0`) does not match, so a reconciler treats it
+   as inconclusive, never as proof. Existing classes always have a positive playlist id, so no stored
+   `state_hash` changes. The approval refuses `invalid_input` for a `none` revision of a running
+   class (item 1).
+9. **Song picking, the Swedebeat match and the hand-off** (ADR 0008, ADR 0016). A soundless class
+   has no `song_list` and no mix: `design_with_songs` and `revise_songs` on it, a match of it and a
+   hand-off for it are refused `invalid_input` at creation, whatever the class's revisions are (an
+   explicit check on `classes.music_source`, not only the absence of a list). The class page shows
+   neither Change songs nor the Swedebeat section for it.
+10. **The class API and the web.** `ClassOut` gains `soundless: bool` (true only when
+    `music_source.source` is `none`; false for every older class). New class offers "No music" next
+    to the playlists and mixes when `soundless_enabled` is on and the sport is cycling; the class
+    page shows a "No music" chip; the job page shows a soundless job without a music step; Save and
+    Update say the workout is saved without music. Export and deletion are unchanged (guard 12: no
+    new table or column).
+
+### Alternatives
+
+- **An empty or silent "playlist"** (a fake map of one silent track) so the existing stages run
+  unchanged: the model would be told about music that does not exist, `fit_to_music` would snap to
+  invented bars, and Save would still need a MOWL playlist. Rejected.
+- **No flag.** Rejected: the soundless prompts have no recorded evaluation yet, and what MOWL reads
+  back for a cycling program saved with `PlaylistID: -1` has not been observed.
+- **Soundless running in the same change.** Deferred: it needs a third and fourth prompt variant and
+  ADR 0018 keeps running on an existing playlist in v1.
+
+### Consequences
+
+- Seven implementation PRs (#527 to #533 below); the design group's prompt versions grow to six, so
+  any design-group result recorded before the suite bump is stale (`prompt_versions`).
+- **Owner step before the flag goes on** (live, never an agent's): one authorized cycling save with
+  `PlaylistID: -1` on a new private program, read back once, to confirm the read-back form item 8
+  assumes; then a recorded `suite --live` pass that covers the soundless stages and `models enable`.
+  Until both, `SOUNDLESS_ENABLED` stays false outside the e2e stack.
+
+### Issues (one PR each, in dependency order)
+
+| Issue | Scope | Depends on |
+|---|---|---|
+| SL1 #527 | `none` source, flag, admit, no-music step, soundless design stage, model input, revision music, provenance, prompt versions, the gate and the admin refusal | this amendment |
+| SL2 #528 | `revise_draft` of a soundless class (soundless revise stage, no `songs_requested`, chat) | #527 |
+| SL3 #529 | Save and Update with `PlaylistID: -1`, the normal form, reconcilers, fakes | #527 |
+| SL4 #530 | `ClassOut.soundless`; song picking, match and hand-off refuse a soundless class | #527 |
+| SL5 #531 | Evals: `soundless` suite category, new `suite_version`, smoke cases and fake scripts | #527, #528 |
+| SL6 #532 | Web: "No music" in New class, class page, job page, Save and Update texts | #527, #529, #530 |
+| SL7 #533 | E2E done-when on the fakes: design, revise, save, update; no playlist call | #527 to #532 |
