@@ -18,9 +18,12 @@
 # are the bytes that are restored. Then scripts/validate-backup.sh checks the archive holds only
 # classbeat's own schema (defence in depth; the signature is the control).
 #
-# Use a new project name (its own db volume). The script refuses the default project `classbeat`,
-# a project whose volume exists, and a database that already holds tables; after a failed
-# restore, remove the project (`docker compose down -v`) and start again. The secrets/ directory
+# Use a new project name (its own db volume). The script refuses a project whose volume exists and
+# a database that already holds tables: those two checks are what protect a live stack (production
+# runs as `classbeat-prod`, docs/runbooks/vps-deploy.md, so its name alone is never refused; the
+# runbook's rollback removes its volume first on purpose). It also refuses the default project
+# `classbeat` (the main checkout's own stack), so a forgotten COMPOSE_PROJECT_NAME never lands
+# there. After a failed restore, remove the project (`docker compose down -v`) and start again. The secrets/ directory
 # is the operator's own: the roles' passwords and the KEK files come from there, never from the
 # backup.
 #
@@ -107,7 +110,7 @@ fi
 project="$(docker compose config --format json | sed -n 's/^ *"name": *"\([^"]*\)".*/\1/p' | head -n 1)"
 [ -n "$project" ] || die "cannot tell the compose project name"
 [ "$project" != classbeat ] \
-  || die "refusing the default project 'classbeat' (the live stack); set COMPOSE_PROJECT_NAME to a new name"
+  || die "refusing the default project 'classbeat' (a forgotten COMPOSE_PROJECT_NAME); set it to a new name"
 [ -z "$(docker volume ls -q --filter "name=^${project}_db-data$")" ] \
   || die "the volume ${project}_db-data exists: restore only into a fresh project (docker compose down -v first, or pick a new name)"
 echo "restore.sh: restoring into compose project '$project'"
