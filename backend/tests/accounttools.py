@@ -89,6 +89,13 @@ class Person:
         )
         self.sql("INSERT INTO swedebeat_analyses (owner_id) VALUES (:u)", u=u)
         self.sql(
+            "INSERT INTO beat_one_corrections (owner_id, class_id, fingerprint, song, beats) "
+            "VALUES (:u, :c, :f, 3, -1)",
+            u=u,
+            c=class_id,
+            f="cd" * 32,
+        )
+        self.sql(
             "INSERT INTO swedebeat_handoffs (owner_id, class_id, match_revision_id, state, "
             "mixes_before, expires_at) VALUES (:u, :c, :rev, 'open', '[]'::jsonb, "
             "now() + interval '1 hour')",

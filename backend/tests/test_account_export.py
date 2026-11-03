@@ -190,3 +190,16 @@ async def test_the_export_holds_the_dismissed_rules_of_my_class(songenv: SongEnv
     document = (await export(mine)).json()
     assert [c["dismissed_rules"] for c in document["classes"]] == [["warmup_short"]]
     assert next(s for s in SECTIONS if s.table == "classes").omit == frozenset()
+
+
+async def test_the_export_holds_my_beat_one_corrections_without_the_fingerprint(
+    songenv: SongEnv,
+) -> None:
+    mine, other = await person(songenv), await person(songenv)
+    document = (await export(mine)).json()
+    rows = document["beat_one_corrections"]
+    assert [(r["class_id"], r["song"], r["beats"]) for r in rows] == [
+        (str(mine.found.class_id), 3, -1)
+    ]
+    assert "fingerprint" not in rows[0]
+    assert str(other.found.class_id) not in json.dumps(rows)

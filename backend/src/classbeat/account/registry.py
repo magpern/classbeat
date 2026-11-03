@@ -41,6 +41,8 @@ SECTIONS: tuple[Section, ...] = (
     _section("classes"),
     _section("class_revisions", "class_id, number", "content_hash"),
     _section("class_messages", "class_id, seq"),
+    # ADR 0007 amendment "beat-one corrections": the fingerprint is a hash of the music.
+    _section("beat_one_corrections", "class_id, song, id", "fingerprint"),
     _section("saved_workouts", omit="content_hash state_hash"),
     _section("class_playlists", omit="content_hash"),
     _section("mowl_playlist_links"),
