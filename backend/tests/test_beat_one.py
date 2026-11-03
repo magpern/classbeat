@@ -10,9 +10,8 @@ from typing import Any
 import pytest
 from mowl import spotify
 
-from classbeat.agent import model_input
-from classbeat.design import beat_one
-from classbeat.design.beat_one import Correction
+from classbeat.agent import beat_one, model_input
+from classbeat.agent.beat_one import Correction
 
 
 def mix_map() -> dict[str, Any]:
