@@ -181,7 +181,8 @@ async def get_class(
     )
     if enabled:
         return detail
-    # Flag off: the pointer is absent, not null (no match row was read).
+    # Flag off: the pointer is absent, not null (no match row was read). Built by hand, so
+    # test_flag_off_class_detail_is_the_flag_on_shape_without_the_pointer pins it to the model.
     return JSONResponse(detail.model_dump(mode="json", exclude={"swedebeat_match"}))
 
 

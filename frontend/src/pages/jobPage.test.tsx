@@ -209,6 +209,25 @@ describe('a failed design', () => {
     expect(document.body).not.toHaveTextContent('rate_limited')
   })
 
+  it('offers no "Try again" or new-design button for a rate-limited Swedebeat match', async () => {
+    // Even with a remembered design form for this job id, the button would start a new design.
+    window.sessionStorage.setItem(
+      `classbeat.design-input.${JOB_ID}`,
+      JSON.stringify({ title: 'Hills', brief: {}, music: {}, mowl_connection_id: 'c0000000-0000-4000-8000-000000000001' }),
+    )
+    fakeApi({
+      ...SESSION_ROUTES,
+      [`GET ${JOB}`]: jobBody('failed', {
+        kind: 'swedebeat_match',
+        error_category: 'rate_limited',
+        error_message: 'Swedebeat asks to slow down. This match has stopped.',
+      }),
+    })
+    renderAt(`/jobs/${JOB_ID}`)
+    expect(await screen.findByRole('heading', { name: 'The Swedebeat match stopped' })).toBeInTheDocument()
+    expect(screen.queryByRole('button')).toBeNull()
+  })
+
   it('points to the account page when MOWL has to be connected again', async () => {
     fakeApi({
       ...SESSION_ROUTES,

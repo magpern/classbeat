@@ -111,7 +111,8 @@ SMTP_SENDER=noreply@classbeat.example.test
 ```
 
 **With `SMTP_CA_FILE` set, every compose command in this runbook needs the overlay.** The CA mount
-lives in `compose.bridge.yaml` ([proton-bridge-smtp.md](proton-bridge-smtp.md) section 3), so add
+lives in `compose.bridge.yaml`, a file the operator creates next to `compose.prod.yaml` (it is not
+shipped in the repository; [proton-bridge-smtp.md](proton-bridge-smtp.md) section 3 has its content), so add
 `-f compose.bridge.yaml` after `-f compose.prod.yaml` in each command below (`config`, `up`, `pull`,
 `restart`, `run`, `exec`, `down`, including the update and rollback ones). Without it, `up` or a
 restart recreates `web` with the variable set but no mounted file, and `web` refuses to start.
