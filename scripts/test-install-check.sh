@@ -25,9 +25,21 @@ bad()  { echo "FAIL: $*" >&2; fails=$((fails + 1)); }
 "$root/scripts/release-assets.sh" build "$work/assets"
 ( cd "$work/assets" && sha256sum -c --quiet SHA256SUMS ) || bad "SHA256SUMS does not verify"
 # The asset list is exactly what the runbook downloads.
-want="SHA256SUMS check-prod-compose.sh compose.prod.lan.yaml compose.prod.loopback.yaml compose.prod.yaml prod.env.example swag-classbeat.subdomain.conf"
+want="SHA256SUMS backup.sh check-prod-compose.sh compose.prod.lan.yaml compose.prod.loopback.yaml compose.prod.yaml prod.env.example restore.sh swag-classbeat.subdomain.conf validate-backup.sh"
 got="$(cd "$work/assets" && printf '%s\n' * | tr '\n' ' ' | sed 's/ $//')"
 if [ "$got" = "$want" ]; then ok "asset list"; else bad "asset list is '$got', want '$want'"; fi
+# The runbook downloads exactly these files, in section 3 and again in section 11.
+runbook="$root/docs/runbooks/vps-deploy.md"
+if [ -f "$runbook" ]; then
+  names="$(printf '%s ' "$(cd "$work/assets" && printf '%s\n' *)" | tr -s ' \n' ' ' | sed 's/ $//')"
+  mapfile -t loops < <(awk '/^(  )?for f in /{buf=$0; while (buf ~ /\\$/) { getline nxt; sub(/\\$/, "", buf); buf = buf nxt } print buf}' "$runbook")
+  if [ "${#loops[@]}" -ne 2 ]; then bad "the runbook has ${#loops[@]} download loops, want 2 (sections 3 and 11)"; fi
+  for l in "${loops[@]}"; do
+    l="${l#*for f in }"; l="${l%%; do*}"
+    l="$(tr ' ' '\n' <<<"$l" | grep -v '^$' | sort | tr '\n' ' ' | sed 's/ $//')"
+    if [ "$l" = "$(tr ' ' '\n' <<<"$names" | sort | tr '\n' ' ' | sed 's/ $//')" ]; then ok "runbook download loop"; else bad "a runbook download loop differs from the assets: $l"; fi
+  done
+fi
 # No asset may be a secret holder: nothing but committed text files, none under secrets/ or named .env.
 if grep -rIlE -- '-----BEGIN [A-Z ]*PRIVATE KEY|swedebeat_app\.json' "$work/assets" >/dev/null; then bad "an asset mentions a key or the app key file"; fi
 

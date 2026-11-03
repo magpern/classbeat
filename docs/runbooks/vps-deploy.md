@@ -7,13 +7,17 @@ here is the owner's step: deploying, DNS, TLS and the mail account are in the sa
 with the owner's authorization" list (AGENTS.md). **Agents cannot reach the server.** The deploy is
 run from a local session on that machine (the owner's terminal, or a Claude Code session the owner
 starts there), one step at a time with the owner's go-ahead. Agents checked the files offline
-(`scripts/check-prod-compose.sh`, section 13); they never touched the server, DNS, Cloudflare or a provider.
+(`check-prod-compose.sh`, section 13); they never touched the server, DNS, Cloudflare or a provider.
 
 What is deployed: `compose.prod.yaml` (web, worker, db, and the one-shot migrate and db-functions)
-from the release image `ghcr.io/magpern/classbeat:X.Y.Z`, plus one site file in swag
+from the release images `ghcr.io/magpern/classbeat:X.Y.Z` and `ghcr.io/magpern/classbeat-db:X.Y.Z`
+(Postgres with the role, job-queue and admin-role SQL baked in), plus one site file in swag
 ([swag-classbeat.subdomain.conf](swag-classbeat.subdomain.conf)). Caddy, the edge of the first
 version of this runbook (#341), was removed in #492: swag already owns ports 80 and 443 on this
 machine, and a second, unused edge config would only drift.
+
+**Nothing is cloned.** The server needs Docker, the files of one GitHub Release (section 3), a
+`.env`, a `secrets/` folder and a token to pull the private images (section 4): ADR 0020, #519.
 
 ```
 visitor -> (Cloudflare, if proxied) -> :443 swag -(proxy, internal)-> web:8000 -(backend, internal)-> db
@@ -35,7 +39,7 @@ to a real SMTP service, or Proton Mail Bridge, [proton-bridge-smtp.md](proton-br
 - Disk for the Postgres volume and the json-file logs (at most 50 MB per container).
 - A mail account for the app (SMTP host, 587 with STARTTLS or 465 with TLS, a login, a sender on a
   domain you control, SPF and DKIM), or Bridge.
-- The release you deploy exists: `gh run list --workflow release.yml`, tag `vX.Y.Z`.
+- The release you deploy exists, with its assets: <https://github.com/magpern/classbeat/releases> (tag `vX.Y.Z`; the owner or an agent checks `gh run list --workflow release.yml`). No `git`, no clone.
 
 ## 2. What is reachable from the internet
 
@@ -47,28 +51,47 @@ container with a host mapping other than that (section 9).
 
 ## 3. Get the files
 
-The server needs `compose.prod.yaml` (and `compose.prod.loopback.yaml` for section 6b),
-`docker/postgres/` and the swag sample of the release you run. The repository is public:
+The server needs the files attached to the GitHub Release of the version you run. The repository is
+public, so no login is needed to download them (the images are private, section 4). Once:
 
 ```bash
 sudo mkdir -p /opt/classbeat && sudo chown "$USER" /opt/classbeat
-git clone https://github.com/magpern/classbeat.git /opt/classbeat
-cd /opt/classbeat && git checkout vX.Y.Z      # detached on the release tag, never main
+cd /opt/classbeat
+V=X.Y.Z                                           # the release, without the v
+for f in compose.prod.yaml compose.prod.loopback.yaml compose.prod.lan.yaml check-prod-compose.sh \
+  swag-classbeat.subdomain.conf prod.env.example backup.sh restore.sh validate-backup.sh SHA256SUMS; do
+  curl -fsSLO "https://github.com/magpern/classbeat/releases/download/v$V/$f"
+done
+sha256sum -c SHA256SUMS                           # every line OK
+chmod +x check-prod-compose.sh backup.sh restore.sh validate-backup.sh
+cp prod.env.example .env                          # filled in by section 5
 ```
 
-## 4. Pull the private image from GHCR
+(`gh release download "v$V" --repo magpern/classbeat` does the same.) The files are the release
+tag's own, byte for byte; CI checked them at that tag. They hold no secret. Keep them next to
+`.env` and `secrets/` in `/opt/classbeat`: the compose files use `./secrets/<name>`, and
+`check-prod-compose.sh` finds `.env` and `secrets/` beside itself. `swag-classbeat.subdomain.conf`
+goes to swag (section 7), not into the stack. A developer in a checkout of the repository finds the
+same files under `compose.prod*.yaml`, `scripts/` and `docs/runbooks/`; nothing in this runbook needs one.
 
-The package `ghcr.io/magpern/classbeat` is private (never change that). On the server, once:
+## 4. Pull the private images from GHCR
 
-1. On GitHub create a **fine-grained or classic token** with only `read:packages` for the
-   package, owned by you, expiring in 90 days. Use a token of its own, not your admin token.
+The packages `ghcr.io/magpern/classbeat` (the app) and `ghcr.io/magpern/classbeat-db` (Postgres with
+the SQL baked in) are private (never change that). On the server, once:
+
+1. On GitHub create a **personal access token (classic)** with only the `read:packages` scope,
+   owned by you, expiring in 90 days. Use a token of its own, not your admin token. (Fine-grained
+   tokens could not read GHCR packages when this was written; use one only if GitHub now offers
+   the `packages: read` permission for both packages.)
 2. `echo "$TOKEN" | docker login ghcr.io -u <github-user> --password-stdin` (type the token
    into the shell without it ending up in history: `read -rs TOKEN` first, then `unset TOKEN`).
    Docker keeps it in `~/.docker/config.json` of the deploy user (mode 600).
-3. `docker pull ghcr.io/magpern/classbeat:X.Y.Z` must work. Put the token's expiry in your
-   calendar: an expired token breaks the next update, not the running site.
+3. `docker pull ghcr.io/magpern/classbeat:X.Y.Z` and `docker pull ghcr.io/magpern/classbeat-db:X.Y.Z`
+   must both work. Put the token's expiry in your calendar: an expired token breaks the next
+   update, not the running site.
 
-Never use `latest` (there is none); `CLASSBEAT_VERSION` pins a release.
+Never use `latest` (there is none); `CLASSBEAT_VERSION` in `.env` pins a release, and both images
+and the compose files come from that one release.
 
 ## 5. Secrets and settings
 
@@ -86,12 +109,15 @@ the files compose mounts into it. The folder is mode 2700 and group 10010: only 
 enters it, and the setgid bit gives every new file in it group 10010 by itself. Never make a secret
 file world-readable (644), and put no account on the host into group 10010.
 
-One-time, with sudo (the group name is only a label; the number is what counts, and it must not
-already belong to something else):
+**The one step that needs `sudo` (first install only).** The group and the folder's group and
+setgid bit must be set by root, because an owner outside the group cannot set them himself. Do it
+before anything else in `secrets/`; `./check-prod-compose.sh` fails with the exact command if it was
+skipped. The group name is only a label; the number is what counts, and it must not already belong to
+something else:
 
 ```bash
 getent group 10010 || sudo groupadd --system --gid 10010 classbeat-secrets   # must have no members
-cd /opt/classbeat && mkdir -p secrets && sudo chgrp 10010 secrets && sudo chmod 2700 secrets   # sudo: an owner outside the group cannot set g+s
+cd /opt/classbeat && mkdir -p secrets && sudo chgrp 10010 secrets && sudo chmod 2700 secrets   # sudo: an owner outside the group cannot set the group or g+s
 ```
 
 Then as the deploy user (no sudo: the files get group 10010 from the folder, mode 640 from the umask):
@@ -112,10 +138,11 @@ ls -ln secrets/          # every file: <your uid> 10010, -rw-r-----
 ```
 
 Files made before this change (or anywhere else and moved in) keep their old group and mode; fix
-them once with `sudo chgrp 10010 secrets/* && chmod 640 secrets/*`. `scripts/check-prod-compose.sh`
+them once with `sudo chgrp 10010 secrets/* && chmod 640 secrets/*`. `./check-prod-compose.sh`
 checks every file named in `compose.prod.yaml` on the server: a regular file (not a link), group
-10010, the group may read and not write, nothing for others, and the folder closed to others
-(it prints names, modes and group numbers only, never a file's content).
+10010, the group may read and not write, nothing for others, and the folder group 10010 with the
+setgid bit and closed to others (it prints names, modes and group numbers and the command that fixes
+each, never a file's content; the sudo ones say so).
 
 Type or paste each value, with no `echo` of a real value into the shell history, for example
 `( umask 027; read -rs S && printf '%s' "$S" > secrets/anthropic_api_key; unset S )`.
@@ -147,17 +174,19 @@ off the server now** (a password manager or an encrypted offline copy). Losing `
 makes every stored MOWL and Spotify connection unreadable (ADR 0004); the database backup is no
 use without it.
 
-`/opt/classbeat/.env` (not committed). `COMPOSE_FILE` makes every plain `docker compose` command
-in this runbook, and `scripts/backup.sh` / `restore.sh`, use the production files; nothing below
-needs `-f`.
+`/opt/classbeat/.env` (not committed; section 3 copied `prod.env.example` to it, which has every
+variable with a placeholder and a comment). Fill in at least the values below. `COMPOSE_FILE` makes
+every plain `docker compose` command in this runbook, and `backup.sh` / `restore.sh`, use the
+production files; nothing below needs `-f`.
 
 ```
 COMPOSE_FILE=compose.prod.yaml
-COMPOSE_PROJECT_NAME=classbeat-prod              # scripts/restore.sh refuses the default name `classbeat`
+COMPOSE_PROJECT_NAME=classbeat-prod              # restore.sh refuses the default name `classbeat`
 # with Proton Mail Bridge: COMPOSE_FILE=compose.prod.yaml:compose.bridge.yaml   (proton-bridge-smtp.md)
 # with a proxy on the host: COMPOSE_FILE=compose.prod.yaml:compose.prod.loopback.yaml   (section 6b)
-# both: COMPOSE_FILE=compose.prod.yaml:compose.prod.loopback.yaml:compose.bridge.yaml   (in this order)
-CLASSBEAT_VERSION=X.Y.Z
+# with swag on another host: COMPOSE_FILE=compose.prod.yaml:compose.prod.lan.yaml   (section 6c)
+# both bridge and an overlay: the overlay first, bridge last
+CLASSBEAT_VERSION=X.Y.Z                          # the release whose files you downloaded
 CLASSBEAT_DOMAIN=classbeat.pernemark.se          # web gets CLASSBEAT_PUBLIC_BASE_URL=https://classbeat.pernemark.se
 PROXY_IP=172.29.90.10                            # swag's fixed address on the proxy network (section 6)
 # optional: PROXY_NETWORK=classbeat-proxy        # the network's name, if you chose another
@@ -198,7 +227,7 @@ either empty it is off. Nothing about it is ever typed into a chat, an issue or 
    OAUTH_GOOGLE_CLIENT_ID=1234567890-abc.apps.googleusercontent.com
    OAUTH_VISIBLE_PROVIDERS=google          # the default; which enabled providers get a button
    ```
-3. Put the client secret in its file, never in `.env` (`scripts/check-prod-compose.sh` refuses a
+3. Put the client secret in its file, never in `.env` (`./check-prod-compose.sh` refuses a
    `*CLIENT_SECRET*` variable there). `secrets/` is git-ignored and never committed. Paste it without
    it reaching the shell history or the screen:
    ```bash
@@ -208,7 +237,7 @@ either empty it is off. Nothing about it is ever typed into a chat, an issue or 
    ```
 4. Recreate web (only web reads these; the worker never gets them):
    ```bash
-   scripts/check-prod-compose.sh
+   ./check-prod-compose.sh
    docker compose up -d --wait web
    ```
 5. Test while the consent screen is in **Testing** mode: only the test users listed there (Google
@@ -237,8 +266,8 @@ proxy. **The decision (#492):**
 - web trusts **exactly one** peer, swag, at a fixed private address (`PROXY_IP`). Not a range: any
   other container on that network, the host, and Cloudflare are not trusted. In prod, web refuses
   to start unless the trusted proxy is one private address (a range, a list, a public address or a
-  name is refused). `scripts/check-prod-compose.sh` refuses the same in its dummy rendering and, when
-  `PROXY_IP` is set in the shell or in the checkout's `.env`, checks that real value too (one
+  name is refused). `./check-prod-compose.sh` refuses the same in its dummy rendering and, when
+  `PROXY_IP` is set in the shell or in `.env`, checks that real value too (one
   private IPv4 address); run it on the server before the first `up` (section 9).
 - swag sends `X-Forwarded-For: $remote_addr`, **overwriting** what the visitor sent, and clears
   `X-Real-IP`, `CF-Connecting-IP`, `True-Client-IP`, `Forwarded`, `X-Forwarded-Host`.
@@ -298,6 +327,39 @@ process on the host that can reach the port can then name a client; the internet
 overlay replaces its use). No `docker network create` is needed. In the swag sample, use
 `set $upstream_classbeat 127.0.0.1;` and port `8080` in both `proxy_pass` lines.
 
+### 6c. Alternative: swag on another machine (home or LAN)
+
+For a swag (or any nginx) that runs on a different machine of the same private network: add
+`compose.prod.lan.yaml` to `COMPOSE_FILE` (section 5). web joins no Docker network with the proxy.
+It is published on this server's LAN address only, `WEB_LAN_ADDRESS:WEB_HOST_PORT` (default 8080),
+and `PROXY_IP` is **swag's LAN address**, the one peer whose `X-Forwarded-For` web believes (a
+published port keeps the sender's address, so web sees swag itself). In `.env`:
+
+```
+COMPOSE_FILE=compose.prod.yaml:compose.prod.lan.yaml
+WEB_LAN_ADDRESS=192.168.1.20        # this server, on the LAN; one private IPv4, never 0.0.0.0
+PROXY_IP=192.168.1.10               # the machine swag runs on
+```
+
+In the swag sample set `set $upstream_classbeat 192.168.1.20;` and port `8080` in both `proxy_pass`
+lines. **The firewall is the boundary here, not the compose file:** nothing but swag may reach the
+port. Docker's published ports bypass `ufw` and `firewalld`, so the rule goes in the `DOCKER-USER`
+chain (it sees the packet after the port translation; match the original destination port):
+
+```bash
+sudo iptables -I DOCKER-USER -p tcp -m conntrack --ctorigdstport 8080 --ctdir ORIGINAL \
+  ! -s 192.168.1.10 -j DROP
+sudo iptables -L DOCKER-USER -n -v        # the rule is first; make it persistent with your distribution's tool
+```
+
+(with nftables-based Docker, the equivalent rule in the `DOCKER-USER` chain of the `filter` table).
+Check from a third machine on the LAN: `nc -vz 192.168.1.20 8080` must time out, and from the swag
+machine it must connect. `./check-prod-compose.sh` refuses a published address that is not
+loopback or one private IPv4, a second published port, and a `PROXY_IP` equal to the server's own
+address. The hop from swag to web is **plain HTTP across the LAN** (cookies and forwarded headers
+in clear): acceptable on a home network you control, not on a shared one. Everything else
+(sections 7 to 10) is unchanged.
+
 ## 7. The swag site config
 
 1. Copy [swag-classbeat.subdomain.conf](swag-classbeat.subdomain.conf) to
@@ -356,20 +418,21 @@ Either mode works; **which one is the owner's decision.**
 
 ```bash
 cd /opt/classbeat
-docker compose config -q            # every required variable is set (COMPOSE_FILE from .env)
-scripts/check-prod-compose.sh       # needs jq; the real PROXY_IP in .env, and secrets/ group 10010 mode 640
-docker compose pull
-# Every service reads each secret it mounts: one line "<service>: <file> OK" or "... FAIL" per
-# file, never a value (`test -r` asks the kernel and opens nothing). Any FAIL: fix the group and
-# mode (section 5) before `up`.
-for s in db migrate db-functions web worker; do
-  docker compose run --rm --no-deps -T --entrypoint sh "$s" -c \
-    'for f in /run/secrets/*; do if test -r "$f"; then echo "${f##*/} OK"; else echo "${f##*/} FAIL"; fi; done' \
-    | sed "s/^/$s: /"
-done
+sha256sum -c SHA256SUMS --quiet     # the downloaded files are unchanged (section 3)
+./check-prod-compose.sh             # needs jq and docker compose; .env, PROXY_IP, secrets/ group 10010 mode 640
+docker compose pull                 # both images; needs the token of section 4
+./check-prod-compose.sh --probe     # every service reads every secret it mounts
 docker compose up -d --wait
 docker compose ps
 ```
+
+The first check lints the files you downloaded with dummy values (a local edit that publishes a
+port or adds a mount is refused), renders your real `.env` and checks the real `PROXY_IP`, where web is
+published and the real secret files, with the fix for each failure (the group and the folder's
+setgid bit need `sudo` once, section 5). `--probe` runs, for each service that mounts a secret, the
+pulled image with a shell that asks the kernel whether each file in `/run/secrets` is readable: one
+line `<service>: <file> OK` or `... FAIL` per file, never a value; any `FAIL` fails the check, and
+you fix the group and mode (section 5) before `up`.
 
 `up` runs `migrate`, then `db-functions`, then starts `web` and `worker`; the Postgres init (roles)
 runs on the first start of the empty volume. Create the first admin and invite:
@@ -393,9 +456,9 @@ docker compose exec web python -m classbeat admin grant you@example.test
 - [ ] `docker network inspect classbeat-proxy` (6a): swag at `PROXY_IP` and classbeat's web only.
 - [ ] No mailpit container exists.
 - [ ] Sign up with the invite, receive the verification mail (check spam, SPF, DKIM).
-- [ ] The readability loop in section 9 printed `OK` for every file and no `FAIL`;
+- [ ] `./check-prod-compose.sh --probe` (section 9) printed `OK` for every file and no `FAIL`;
       `ls -ln secrets/` shows group `10010` and `-rw-r-----` (or stricter) on every file, and
-      `scripts/check-prod-compose.sh` passes on the server.
+      `./check-prod-compose.sh --probe` passes on the server.
 - [ ] `docker compose exec web ls /run/secrets` lists no model key; `exec worker` lists
       `anthropic_api_key` and no `oauth_*_client_secret`. `exec web touch /app/x` fails (read-only).
 - [ ] A design run shows live progress in the browser (SSE passes swag, and Cloudflare, unbuffered).
@@ -432,56 +495,74 @@ one line per address every 10 seconds, with the number it skipped), so a flood t
 
 ## 11. Update
 
-**Take a backup first** (section 12), always: it is the rollback.
+**Take a backup first** (section 12), always: it is the rollback. An update replaces the release's
+files and the version; nothing is cloned or checked out.
 
 ```bash
 cd /opt/classbeat
-git fetch --tags && git checkout vNEW             # the release you want
+OLD="$(sed -n 's/^CLASSBEAT_VERSION=//p' .env)"; NEW=X.Y.Z       # NEW = the release you want, no v
+mkdir -p "previous-$OLD" && cp compose.prod*.yaml check-prod-compose.sh backup.sh restore.sh validate-backup.sh \
+  swag-classbeat.subdomain.conf prod.env.example SHA256SUMS "previous-$OLD/"   # keep them: the rollback files
+for f in compose.prod.yaml compose.prod.loopback.yaml compose.prod.lan.yaml check-prod-compose.sh \
+  swag-classbeat.subdomain.conf prod.env.example backup.sh restore.sh validate-backup.sh SHA256SUMS; do
+  curl -fsSLo "$f" "https://github.com/magpern/classbeat/releases/download/v$NEW/$f"
+done
+sha256sum -c SHA256SUMS --quiet && chmod +x check-prod-compose.sh backup.sh restore.sh validate-backup.sh
+diff -u previous-$OLD/swag-classbeat.subdomain.conf swag-classbeat.subdomain.conf   # swag's copy changed?
+diff -u previous-$OLD/prod.env.example prod.env.example                              # new settings to put in .env?
 ( umask 027; touch secrets/swedebeat_app \
   secrets/oauth_google_client_secret secrets/oauth_github_client_secret secrets/oauth_microsoft_client_secret )
-scripts/check-prod-compose.sh                     # secrets/ files: group 10010, mode 640 or stricter
-sed -i 's/^CLASSBEAT_VERSION=.*/CLASSBEAT_VERSION=NEW/' .env   # NEW = the tag without the v
+sed -i "s/^CLASSBEAT_VERSION=.*/CLASSBEAT_VERSION=$NEW/" .env
+./check-prod-compose.sh                           # files, .env, secrets/: group 10010, mode 640 or stricter
 docker compose pull
+./check-prod-compose.sh --probe
 docker compose up -d --wait
 ```
 
 `up` re-runs `migrate` (idempotent) and `db-functions` before it replaces `web` and `worker`;
 the worker has 30 s to hand its leases back (ADR 0005). Read the release notes for owner-facing
-steps, and compare the release's swag sample with the installed one
-(`git diff vOLD vNEW -- docs/runbooks/swag-classbeat.subdomain.conf`). A stack older than the
+steps, and copy the swag sample to swag if the first `diff` shows a change. A stack older than the
 Swedebeat connection (#366) has no `secrets/swedebeat_app`, and one older than #507 has no
 `secrets/oauth_*_client_secret`; without them `up` fails with a missing-file error for that secret,
 which the `touch` line above fixes (an empty OAuth file keeps that provider off; `touch` never empties
 a file). A file it creates gets group 10010 from the folder and mode 640 from `umask 027`. A stack
 set up before #511 has files of mode 600 and the deploy user's group, which the containers cannot
 read: run the one-time commands of section 5 (`groupadd`, `chgrp` and `chmod 2700` on the folder,
-then `sudo chgrp 10010 secrets/* && chmod 640 secrets/*`) before `up`.
+then `sudo chgrp 10010 secrets/* && chmod 640 secrets/*`) before `up`; the check names them.
 
 ### Rollback
 
 Migrations are not run backwards: the old image's `migrate` service does `alembic upgrade head`,
 and a database stamped with a revision the old image does not know makes it fail ("Can't locate
 revision"), so `db-functions`, `web` and `worker` never start. Setting `CLASSBEAT_VERSION` back is
-therefore **only** safe when the release you are leaving added no migration (compare the revision
-files between the two tags: `git diff --stat vOLD vNEW -- backend/migrations/versions`). Some
-migrations also drop or reshape data, so treat none as reversible.
+therefore **only** safe when the release you are leaving added no migration. Compare the revision
+files of the two images (no clone needed):
 
-- **No migration in the release:** set `CLASSBEAT_VERSION` back to the previous tag,
-  `git checkout vOLD`, `docker compose up -d --wait`.
-- **A migration ran** (any kind): restore the pre-update backup with `scripts/restore.sh`
+```bash
+for v in $OLD $NEW; do docker run --rm --entrypoint ls "ghcr.io/magpern/classbeat:$v" /app/migrations/versions > "/tmp/rev-$v"; done
+diff "/tmp/rev-$OLD" "/tmp/rev-$NEW" && echo "no migration between $OLD and $NEW"
+```
+
+Some migrations also drop or reshape data, so treat none as reversible.
+
+- **No migration in the release:** restore the previous release's files (`cp previous-$OLD/* .`;
+  they are the ones you downloaded for it), set `CLASSBEAT_VERSION=$OLD` in `.env`,
+  `./check-prod-compose.sh && docker compose pull && docker compose up -d --wait`. (If the
+  `previous-$OLD` folder is gone, download that release's assets again as in section 3.)
+- **A migration ran** (any kind): restore the pre-update backup with `restore.sh`
   ([backup-restore.md](backup-restore.md), "Restoring into a fresh stack": it verifies the signature,
   validates the archive, runs `migrate` and `db-functions` of the image you go back to, restores,
   and refuses a volume that still exists or a database that holds tables).
   ```bash
   docker compose down                                            # keeps volumes
-  git checkout vOLD && sed -i 's/^CLASSBEAT_VERSION=.*/CLASSBEAT_VERSION=OLD/' .env
+  cp previous-$OLD/* . && sed -i "s/^CLASSBEAT_VERSION=.*/CLASSBEAT_VERSION=$OLD/" .env
   docker volume rm "$(docker compose config --format json | jq -r .name)_db-data"
-  scripts/restore.sh --expect-signer "$S_FPR" "$BACKUP_DIR/classbeat-<UTC timestamp>.dump.gpg"
+  ./restore.sh --expect-signer "$S_FPR" "$BACKUP_DIR/classbeat-<UTC timestamp>.dump.gpg"
   docker compose up -d --wait
   ```
   Anything written since the backup is lost; tell the testers. Deleting `db-data` here is the one
   deliberate exception to the rule below, and only once the backup is verified and off the volume
-  (`scripts/restore.sh --verify-only ...` first).
+  (`./restore.sh --verify-only ...` first).
 
 Never delete `db-data` to "reset" a production stack.
 
@@ -493,18 +574,20 @@ follow-up; until then that procedure has no prepared command on the server.
 
 ## 12. Backups and the restore drill
 
-Unchanged by the move to swag: [backup-restore.md](backup-restore.md) is the procedure
-(`scripts/backup.sh`, `scripts/restore.sh`, `scripts/validate-backup.sh`, the drill
-`scripts/backup-restore-drill.sh`, the recipient and signing keys, schedule and retention). The
-scripts pick the stack like any compose command, so with `COMPOSE_FILE` in `.env` (section 5) they
-run from `/opt/classbeat` as they are. Install the schedule there (cron or a systemd timer as the
-deploy user), keep the copies off this machine, and run the drill once on your own data before the
-testers arrive. The secret files are backed up separately (section 5).
+Unchanged by the move to swag and by the image-only install: [backup-restore.md](backup-restore.md) is
+the procedure. `backup.sh`, `restore.sh` and `validate-backup.sh` are release assets (section 3) and
+run from `/opt/classbeat`, where `COMPOSE_FILE` in `.env` (section 5) picks the production stack; write
+`./backup.sh` where that runbook says `scripts/backup.sh`. The restore drill script
+(`scripts/backup-restore-drill.sh`) and the recipient and signing keys are covered there; the drill
+is a developer tool that needs a checkout (run it on any machine against your own backup, or copy the
+file from the release tag). Install the schedule (cron or a systemd timer as the deploy user), keep
+the copies off this machine, and run the drill once on your own data before the testers arrive. The
+secret files are backed up separately (section 5).
 
 ## 13. What agents checked, and what they did not
 
-`scripts/check-prod-compose.sh` (also a CI step) renders `compose.prod.yaml` alone and with the
-loopback overlay using dummy values, checks the invariants (no Caddy and no published port, web on
+`scripts/check-prod-compose.sh` (also a CI step, and the release asset `check-prod-compose.sh` you run
+in section 9) renders `compose.prod.yaml` alone and with the loopback and LAN overlays using dummy values, checks the invariants (no Caddy and no published port, web on
 `127.0.0.1` only with the overlay, one private trusted proxy equal to `PROXY_IP` or the `web-out`
 gateway, the real `PROXY_IP` from the shell or `.env` when one is set, swag's address outside the
 section 6a `--ip-range`, only web on the proxy network, internal `backend`, `db` unpublished, read-only web without
@@ -527,8 +610,8 @@ profiles and checks that:
   for the postgres image, whose gosu would drop the group; uid or gid 0 or `root` however written is
   refused);
 - each secret is the file `secrets/<its own name>`, mounted at that name;
-- the only bind mounts are `docker/postgres/init`, `queue` and `maint`, read-only (so no `secrets/`,
-  `/proc`, Docker socket or other host path);
+- no bind mounts at all, only the named volume and tmpfs (the SQL is in the `classbeat-db` image, so no
+  `secrets/`, `/proc`, Docker socket or other host path); `db` and `db-functions` run that image;
 - no service uses `volumes_from`, `configs` or `post_start`/`pre_stop` hooks, shares the pid or ipc
   namespace of the host or another container, is privileged, or gets devices, added capabilities or
   the Docker API socket;

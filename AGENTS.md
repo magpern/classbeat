@@ -177,10 +177,13 @@ a release and still needs the owner's authorization.
 3. `.github/workflows/release.yml` then verifies the tag is SemVer and on `main`, builds
    `linux/amd64` and `linux/arm64`, pushes `ghcr.io/magpern/classbeat` with tags `X.Y.Z`,
    `X.Y` (not for pre-releases) and `sha-<short>` plus provenance and SBOM attestations, and
-   creates the GitHub Release with generated notes (marked pre-release if the tag has a
-   hyphen). There is no `latest` tag; deployments pin a version.
-4. Check the run with `gh run list --workflow release.yml`. The package stays private; never
-   change its visibility. Never move or delete a pushed tag: fix forward with a new version.
+   also pushes `ghcr.io/magpern/classbeat-db` (Postgres with the init, queue and maint SQL; same
+   tags), and creates the GitHub Release with generated notes (marked pre-release if the tag has a
+   hyphen) and the deploy files as assets (`scripts/release-assets.sh`, `SHA256SUMS`; ADR 0020:
+   a server needs no clone, `docs/runbooks/vps-deploy.md`). There is no `latest` tag; deployments
+   pin a version.
+4. Check the run with `gh run list --workflow release.yml`. The packages stay private; never
+   change their visibility. Never move or delete a pushed tag: fix forward with a new version.
 
 ## Security rules
 
@@ -781,7 +784,7 @@ The `checks` job runs these as steps; the image scan is a step of `e2e`:
 | Secret scan | gitleaks over the pull request's own commits (a merge group's: `base_sha..head_sha`); the weekly and manual runs scan the whole history |
 | bash -n, shellcheck | every `scripts/*.sh` |
 | CI gate and change-filter tests | `scripts/test-ci-gate.sh` |
-| Postgres image pinned alike | compose's `db` and `db-functions` and the `backend` and `backend-tests` jobs' services use the same exact `postgres` tag (the queue functions' md5 depends on it) |
+| Postgres image pinned alike | compose's `db` and `db-functions` and the `backend` and `backend-tests` jobs' services use the same exact `postgres` tag, which is also the `FROM` of `docker/postgres/Dockerfile` (the queue functions' md5 depends on it); a further step builds that image and diffs its SQL with the repository's; `scripts/test-install-check.sh` builds the release assets and runs the released `check-prod-compose.sh` from an install folder |
 | uv version, actionlint | `setup-uv`'s version equals the Dockerfile's uv tag (`scripts/ci-uv-version.sh`); actionlint (with shellcheck) on every workflow |
 | pip-audit | `uv export --frozen` (production, then all groups) through `pip-audit` (pinned) |
 | npm audit | `npm audit --audit-level=high` in `frontend/` and `e2e/` |
