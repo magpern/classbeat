@@ -35,12 +35,15 @@ from dataclasses import dataclass
 from typing import Annotated, Any, Final, Literal, Self
 from uuid import UUID
 
+from mowl import music as music_lib
 from mowl import workout
 from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, ValidationError, model_validator
 from sqlalchemy import text
 
+from classbeat import __version__ as classbeat_version
 from classbeat.agent import DesignResult, Provenance, WorkoutDraft, beat_one, mix_input, provenance
 from classbeat.agent.loop import StageOutcome
+from classbeat.agent.records import mowl_version
 from classbeat.agent.schemas import AnyDraft, RunningDraft
 from classbeat.design.music import MusicStep
 from classbeat.jobs import FencedSession, JobFailure
@@ -254,23 +257,11 @@ class DraftRevision:
         return revision_id
 
 
-def build(
-    result: DesignResult,
-    outcome: StageOutcome,
-    music_map: dict[str, Any],
-    step: MusicStep,
-    *,
-    origin: Literal[
-        "design_draft", "revise_draft", "design_with_songs", "revise_songs"
-    ] = "design_draft",
-    base_revision_id: UUID | None = None,
-    base_hash: bytes | None = None,
-    request_message_id: UUID | None = None,
-    song_list_id: UUID | None = None,
-    rules: Mapping[str, Any] | None = None,
-) -> DraftRevision:
-    """The revision to store; ``invalid_output`` if the draft no longer validates, or (a revise)
-    if it is the base draft again: a revision that changes nothing is not stored."""
+def _content_and_music(
+    result: DesignResult, music_map: dict[str, Any], step: MusicStep, song_list_id: UUID | None
+) -> tuple[dict[str, Any], bytes, RevisionMusic, bool]:
+    """The fitted content (validated again, server-side), its hash, the revision's music and
+    whether it is a running draft; ``invalid_output`` if the draft no longer validates."""
     draft = fitted_draft(result)
     running = isinstance(draft, RunningDraft)
     try:  # again, server-side, before it is stored
@@ -308,7 +299,29 @@ def build(
             song_list_id=song_list_id,
         )
     music = _beat_one_fields(music, step, music_map, result.duration_sec)
-    content_hash = hashlib.sha256(canonical(content)).digest()
+    return content, hashlib.sha256(canonical(content)).digest(), music, running
+
+
+def build(
+    result: DesignResult,
+    outcome: StageOutcome,
+    music_map: dict[str, Any],
+    step: MusicStep,
+    *,
+    origin: Literal[
+        "design_draft", "revise_draft", "design_with_songs", "revise_songs"
+    ] = "design_draft",
+    base_revision_id: UUID | None = None,
+    base_hash: bytes | None = None,
+    request_message_id: UUID | None = None,
+    song_list_id: UUID | None = None,
+    rules: Mapping[str, Any] | None = None,
+) -> DraftRevision:
+    """The revision to store; ``invalid_output`` if the draft no longer validates, or (a revise)
+    if it is the base draft again: a revision that changes nothing is not stored."""
+    content, content_hash, music, running = _content_and_music(
+        result, music_map, step, song_list_id
+    )
     if base_hash is not None and content_hash == base_hash:
         raise JobFailure("invalid_output")
     made: Provenance = provenance(
@@ -326,5 +339,51 @@ def build(
         content_hash=content_hash,
         music=music.model_dump(mode="json", exclude_none=True),
         provenance=made.model_dump(mode="json"),
+        parent_id=base_revision_id,
+    )
+
+
+class RefitProvenance(BaseModel):
+    """``class_revisions.provenance`` of a ``refit_draft`` revision (ADR 0007 amendment
+    "beat-one corrections", item 6): no model ran, so no model field, usage or cost."""
+
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    origin: Literal["beat_one"]
+    base_revision_id: UUID
+    classbeat_version: str = Field(min_length=1, max_length=64)
+    mowl_version: str = Field(min_length=1, max_length=64)
+    map_version: int = Field(ge=1)
+    crossfade_sec: float = Field(ge=0, le=12)
+    sport: Literal["running"] | None = None
+
+
+def build_refit(
+    result: DesignResult,
+    music_map: dict[str, Any],
+    step: MusicStep,
+    *,
+    base_revision_id: UUID,
+    song_list_id: UUID | None = None,
+) -> DraftRevision:
+    """The base's content fitted again to the corrected music. Stored even when the content is
+    the base's again: its ``music.beat_one`` records the corrections now applied."""
+    content, content_hash, music, running = _content_and_music(
+        result, music_map, step, song_list_id
+    )
+    made = RefitProvenance(
+        origin="beat_one",
+        base_revision_id=base_revision_id,
+        classbeat_version=classbeat_version,
+        mowl_version=mowl_version(),
+        map_version=int(music_map.get("version", music_lib.MAP_VERSION)),
+        crossfade_sec=float(music_map.get("crossfade", 0.0)),
+        sport="running" if running else None,
+    )
+    return DraftRevision(
+        content=content,
+        content_hash=content_hash,
+        music=music.model_dump(mode="json", exclude_none=True),
+        provenance=made.model_dump(mode="json", exclude_none=True),
         parent_id=base_revision_id,
     )
