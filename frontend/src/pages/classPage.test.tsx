@@ -158,7 +158,7 @@ describe('the class page', () => {
       },
     })
     renderAt(PAGE)
-    fireEvent.click(await screen.findByRole('button', { name: 'Use version 2' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Use this version 2' }))
     await waitFor(() => {
       expect(api.to('POST', `${CLASS_PATH}/current`)).toHaveLength(1)
     })
@@ -180,7 +180,7 @@ describe('the class page', () => {
       [`POST ${CLASS_PATH}/current`]: () => reason(409, 'hash_mismatch'),
     })
     renderAt(PAGE)
-    fireEvent.click(await screen.findByRole('button', { name: 'Use version 2' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Use this version 2' }))
     expect(await screen.findByText(/That version is not the one this page showed/)).toBeInTheDocument()
     await waitFor(() => {
       expect(api.to('GET', CLASS_PATH).length).toBeGreaterThanOrEqual(2)
