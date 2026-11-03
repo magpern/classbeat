@@ -20,7 +20,7 @@ from classbeat.account.export import build_export
 from classbeat.agent import Provenance
 from classbeat.classes import duplicate as dup
 from ctx import make_context
-from jobapi import Browser
+from jobapi import Browser, new_key
 from jobtools import new_class
 from revisetools import ReviseEnv
 from savetools import DRAFT as SAVE_DRAFT
@@ -72,6 +72,14 @@ NOT_COPIED = (
     "external_operations",
     "class_playlists",
 )
+
+
+async def post_duplicate(
+    browser: Browser, class_id: UUID | str, body: dict[str, Any], key: str | None = None
+) -> httpx.Response:
+    """``POST .../duplicate`` with an ``Idempotency-Key`` (a fresh one unless given)."""
+    headers = {"Idempotency-Key": key or new_key()}
+    return await browser.post(f"/api/classes/{class_id}/duplicate", body, headers)
 
 
 def digest(content: dict[str, Any]) -> bytes:
@@ -133,9 +141,11 @@ class Source:
             **more,
         }
 
-    async def duplicate(self, class_id: UUID | str | None = None, **more: Any) -> httpx.Response:
+    async def duplicate(
+        self, class_id: UUID | str | None = None, *, key: str | None = None, **more: Any
+    ) -> httpx.Response:
         target = self.class_id if class_id is None else class_id
-        return await self.browser.post(f"/api/classes/{target}/duplicate", self.body(**more))
+        return await post_duplicate(self.browser, target, self.body(**more), key)
 
     def classes(self) -> int:
         return sql(
@@ -216,10 +226,14 @@ def test_only_the_users_own_music_choice_is_copied() -> None:
 
 def test_a_duplicate_provenance_copies_how_it_was_made_and_no_run_usage_or_cost() -> None:
     source, revision = uuid.uuid4(), uuid.uuid4()
-    built = dup.provenance_copy(PROVENANCE, source, revision, 3)
+    key, request = "k" * 16, "c" * 64
+    built = dup.provenance_copy(
+        PROVENANCE, source, revision, 3, idempotency_key=key, request_hash=request
+    )
     assert built["origin"] == "duplicate"
     assert built["duplicated_from"] == {
         "class_id": str(source), "revision_id": str(revision), "number": 3,
+        "idempotency_key": key, "request_hash": request,
     }  # fmt: skip
     assert (built["agent_run_ids"], built["cost_micros"]) == ([], 0)
     assert set(built["usage"].values()) == {0}
@@ -266,9 +280,13 @@ async def test_a_duplicate_is_a_new_class_with_revision_1_and_nothing_else(
     assert (rev.content, bytes(rev.content_hash)) == (mine.content, digest(mine.content))
     assert rev.music == {k: v for k, v in mine.music.items() if k != "song_list_id"}
     assert rev.provenance["origin"] == "duplicate"
-    assert rev.provenance["duplicated_from"] == {
+    source = rev.provenance["duplicated_from"]
+    assert {k: source[k] for k in ("class_id", "revision_id", "number")} == {
         "class_id": str(mine.class_id), "revision_id": str(mine.revision_id), "number": 1,
     }  # fmt: skip
+    assert source["request_hash"] == dup.request_digest(
+        mine.class_id, mine.revision_id, digest(mine.content), "My copy"
+    )
     assert (rev.provenance["agent_run_ids"], rev.provenance["cost_micros"]) == ([], 0)
     for table in NOT_COPIED:
         count = sql(mine.admin, f"SELECT count(*) FROM {table} WHERE class_id = :c",  # noqa: S608
@@ -322,7 +340,7 @@ async def test_another_users_class_or_revision_is_not_found_and_nothing_is_made(
         ("nope", mine.body()),
     ]
     for class_id, body in cases:
-        got = await mine.browser.post(f"/api/classes/{class_id}/duplicate", body)
+        got = await post_duplicate(mine.browser, class_id, body)
         assert (got.status_code, got.json()) == (404, NOT_FOUND), (class_id, body)
     assert (mine.classes(), theirs.classes()) == counts
     assert mine.ledger() == []
@@ -423,6 +441,72 @@ async def test_deleting_the_source_leaves_the_copy_and_the_copy_is_exported(
     assert made["revision_id"] in exported
 
 
+async def test_a_retried_request_makes_one_class_and_takes_one_credit(
+    two: tuple[Source, Source],
+) -> None:
+    mine, theirs = two
+    key = new_key()
+    first = await mine.duplicate(key=key)
+    again = await mine.duplicate(key=key)
+    assert (first.status_code, again.status_code) == (201, 200), again.text
+    assert again.json() == first.json()
+    assert len(mine.ledger()) == 1
+    other = await mine.duplicate(key=key, title="Another name")
+    assert (other.status_code, other.json()) == (
+        409, {"detail": {"reason": "idempotency_mismatch"}},
+    )  # fmt: skip
+    # Keys are per user: the other user's same key makes their own copy.
+    theirs_first = await theirs.duplicate(key=key)
+    assert theirs_first.status_code == 201
+    assert theirs_first.json()["class_id"] != first.json()["class_id"]
+    assert len(mine.ledger()) == 1
+    assert len(theirs.ledger()) == 1
+
+
+async def test_the_idempotency_key_is_required(two: tuple[Source, Source]) -> None:
+    mine, _ = two
+    path = f"/api/classes/{mine.class_id}/duplicate"
+    missing = await mine.browser.post(path, mine.body())
+    bad = await mine.browser.post(path, mine.body(), {"Idempotency-Key": "short"})
+    assert (missing.status_code, missing.json()["detail"]["reason"]) == (
+        400, "idempotency_key_missing",
+    )  # fmt: skip
+    assert (bad.status_code, bad.json()["detail"]["reason"]) == (400, "idempotency_key_invalid")
+    assert mine.ledger() == []
+
+
+async def test_a_soundless_class_is_refused_until_its_flag_is_read(
+    browsers: Any, jobs_admin: Connection
+) -> None:
+    mine = Source(jobs_admin, await browsers(mowl=False), music_source={"source": "none"})
+    got = await mine.duplicate()
+    assert (got.status_code, got.json()["detail"]["reason"]) == (409, "feature_off")
+    assert mine.ledger() == []
+
+
+async def test_a_copy_without_music_is_refused_by_revise_before_anything_is_written(
+    renv: ReviseEnv,
+) -> None:
+    class_id, base = await renv.design()
+    # The class's songs were picked: its music source names its own playlists (ADR 0008).
+    picked = {
+        "source": "mowl_spotify_playlist", "spotify_playlist_id": PLAYLIST_ID,
+        "origin": "song_pick", "class_playlist_id": str(uuid.uuid4()),
+    }  # fmt: skip
+    renv.sql("UPDATE classes SET music_source = CAST(:m AS jsonb) WHERE id = :c",
+             m=json.dumps(picked), c=class_id)  # fmt: skip
+    content = renv.revisions(class_id)[0].content
+    body = {"revision_id": str(base), "content_hash": digest(content).hex(), "title": "Copy"}
+    made = await post_duplicate(renv.browser, class_id, body)
+    assert made.status_code == 201, made.text
+    copy_id, copy_rev = UUID(made.json()["class_id"]), UUID(made.json()["revision_id"])
+    asked = await renv.ask(copy_id, copy_rev)
+    assert (asked.status_code, asked.json()["detail"]["reason"]) == (409, "not_changeable")
+    assert renv.messages(copy_id) == []
+    jobs = renv.sql("SELECT count(*) FROM jobs WHERE class_id = :c", c=copy_id).scalar_one()
+    assert jobs == 0
+
+
 # --- independence through the real pipelines ----------------------------------------------------
 
 
@@ -431,7 +515,7 @@ async def test_revising_the_copy_leaves_the_source(renv: ReviseEnv) -> None:
     source_revisions = renv.revisions(class_id)
     content = source_revisions[0].content
     body = {"revision_id": str(base), "content_hash": digest(content).hex(), "title": "Copy"}
-    got = await renv.browser.post(f"/api/classes/{class_id}/duplicate", body)
+    got = await post_duplicate(renv.browser, class_id, body)
     assert got.status_code == 201, got.text
     copy_id, copy_rev = UUID(got.json()["class_id"]), UUID(got.json()["revision_id"])
     job_id, _ = await renv.revise(copy_id, copy_rev, "revise_good")
@@ -453,7 +537,7 @@ async def test_saving_the_copy_leaves_the_source_unsaved(senv: SaveEnv, save_bro
     )  # fmt: skip
     sb = await save_browser(saved)
     body = {"revision_id": str(saved.revision_id), "content_hash": saved.hash_hex, "title": "Copy"}
-    got = await sb.browser.post(f"/api/classes/{saved.class_id}/duplicate", body)
+    got = await post_duplicate(sb.browser, saved.class_id, body)
     assert got.status_code == 201, got.text
     copied = Saved(
         saved.owner, saved.connection, UUID(got.json()["class_id"]),

@@ -181,6 +181,10 @@ class DuplicatedFrom(BaseModel):
     class_id: UUID
     revision_id: UUID
     number: int = Field(ge=1)
+    # The request that made the copy (D item 7): a retry with the same key is answered with this
+    # class instead of a second one.
+    idempotency_key: str = Field(pattern=r"^[A-Za-z0-9_-]{16,64}$")
+    request_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
 
 
 class Provenance(BaseModel):

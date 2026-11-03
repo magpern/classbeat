@@ -5,13 +5,19 @@ date; issue #547).
 signed-in user whose revision 1 is a copy of one draft of their own class. One ``user_session``,
 every statement scoped by ``owner_id``:
 
+0. the whole transaction runs under the owner advisory lock (``jobs.user.lock_owner``), taken
+   first, as job creation does; then the ``Idempotency-Key`` (the jobs API's convention): the same
+   key and request again answer 200 with the class made before, the same key with another request
+   is 409 ``idempotency_mismatch`` (the key and the request hash live in the copy's
+   ``provenance.duplicated_from``, so a retry never takes a second credit);
 1. the source class and the draft are the user's own (a foreign, unknown or malformed id, and a
    revision that is not a draft of that class, are the same 404 ``not_found``); the sent hash must
    be the stored one (409 ``hash_mismatch``), which must still be the SHA-256 of the canonical
    content, and the content must validate under the class's sport (500 ``internal`` otherwise);
    a class with no stored brief is 409 ``not_ready``;
 2. a running class while ``running_enabled`` is off, and a class or draft on a Swedebeat mix while
-   ``swedebeat_enabled`` is off, are 409 ``feature_off``;
+   ``swedebeat_enabled`` is off, are 409 ``feature_off``; so is a soundless class (``{source:
+   "none"}``, #526) until its flag exists here (fail closed);
 3. the user's **current** plan: the brief and the copied draft (409 ``quota`` ``length`` or
    ``feature``), then one class of the month (``MeteredLedger.take_class``, 409 ``quota``
    ``classes``). Every refusal raises or returns before anything is written, and a raised refusal
@@ -35,7 +41,7 @@ from dataclasses import dataclass
 from typing import Annotated, Any, Final
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, Header, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from sqlalchemy import text
@@ -48,6 +54,8 @@ from classbeat.context import UserContext, require_context
 from classbeat.db import user_session
 from classbeat.flags.effective import running_enabled, swedebeat_enabled
 from classbeat.jobs.credits import QuotaRefused
+from classbeat.jobs.http import IDEMPOTENCY_KEY, canonical_json
+from classbeat.jobs.user import lock_owner
 from classbeat.quota.gates import check_brief, check_content, current_gates
 from classbeat.saving.approval import spec_of, sport_of_brief
 
@@ -60,6 +68,7 @@ HASH: Final = re.compile(r"^[0-9a-f]{64}$")
 SPOTIFY_ID: Final = re.compile(r"^[0-9A-Za-z]{22}$")
 MIX_ID: Final = re.compile(r"^[0-9A-Za-z_-]{1,64}$")
 MIX_SOURCE: Final = "mowl_swedebeat_mix"
+SOUNDLESS_SOURCE: Final = "none"
 PLAYLIST_SOURCE: Final = "mowl_spotify_playlist"
 # The descriptive fields of the source revision's provenance: how the content was made. Run ids,
 # usage, cost and the lineage of the source class are never copied.
@@ -91,6 +100,13 @@ _SOURCE = text(
     "c.music_source FROM classes c JOIN class_revisions r ON r.owner_id = c.owner_id "
     "AND r.class_id = c.id AND r.id = :revision_id AND r.kind = 'draft' "
     "WHERE c.owner_id = :owner_id AND c.id = :class_id"
+)
+# The user's own duplicate made with this key, if any (the replay of D item 7).
+_BY_KEY = text(
+    "SELECT class_id, id, provenance -> 'duplicated_from' ->> 'request_hash' AS request_hash "
+    "FROM class_revisions WHERE owner_id = :owner_id AND kind = 'draft' "
+    "AND provenance ->> 'origin' = 'duplicate' "
+    "AND provenance -> 'duplicated_from' ->> 'idempotency_key' = :key LIMIT 1"
 )
 _NEW_CLASS = text(
     "INSERT INTO classes (id, owner_id, title, brief, music_source) "
@@ -128,6 +144,7 @@ class Outcome:
     reason: str | None = None
     class_id: UUID | None = None
     revision_id: UUID | None = None
+    replay: bool = False  # an earlier request with the same key made this class
 
 
 def clean_title(raw: str) -> str | None:
@@ -174,7 +191,26 @@ def music_copy(music: Any) -> dict[str, Any]:
     return copied
 
 
-def provenance_copy(source: Any, class_id: UUID, revision_id: UUID, number: int) -> dict[str, Any]:
+def request_digest(class_id: UUID, revision_id: UUID, content_hash: bytes, title: str) -> str:
+    """The SHA-256 (hex) of the canonical request a key stands for."""
+    request = {
+        "class_id": str(class_id),
+        "revision_id": str(revision_id),
+        "content_hash": content_hash.hex(),
+        "title": title,
+    }
+    return hashlib.sha256(canonical_json(request)).hexdigest()
+
+
+def provenance_copy(
+    source: Any,
+    class_id: UUID,
+    revision_id: UUID,
+    number: int,
+    *,
+    idempotency_key: str,
+    request_hash: str,
+) -> dict[str, Any]:
     """The duplicate's provenance (``ValidationError`` when the source's no longer checks)."""
     found = _dict(source)
     fields = {k: found[k] for k in DESCRIPTIVE if k in found}
@@ -186,6 +222,8 @@ def provenance_copy(source: Any, class_id: UUID, revision_id: UUID, number: int)
                 "class_id": str(class_id),
                 "revision_id": str(revision_id),
                 "number": number,
+                "idempotency_key": idempotency_key,
+                "request_hash": request_hash,
             },
             "agent_run_ids": [],
             "usage": ZERO_USAGE,
@@ -199,6 +237,8 @@ def provenance_copy(source: Any, class_id: UUID, revision_id: UUID, number: int)
 async def _flags_refuse(
     db: AsyncSession, settings: Settings, sport: str, music_source: Any, music: Any
 ) -> bool:
+    if _dict(music_source).get("source") == SOUNDLESS_SOURCE:
+        return True  # #526: refused until the soundless flag is read here (fail closed)
     if sport == "running" and not await running_enabled(db, settings.running_enabled):
         return True
     on_mix = (
@@ -216,11 +256,21 @@ async def duplicate(
     revision_id: UUID,
     content_hash: bytes,
     title: str,
+    idempotency_key: str,
 ) -> Outcome:
     """The module docstring's transaction. ``QuotaRefused`` propagates (409 ``quota``)."""
     require_context(ctx)
     ids = {"owner_id": ctx.user_id, "class_id": class_id, "revision_id": revision_id}
+    request_hash = request_digest(class_id, revision_id, content_hash, title)
     async with user_session(factory, ctx) as db:
+        await lock_owner(db, ctx)  # before the period lock, as job creation (ADR 0011)
+        earlier = (
+            await db.execute(_BY_KEY, {"owner_id": ctx.user_id, "key": idempotency_key})
+        ).first()
+        if earlier is not None:
+            if earlier.request_hash != request_hash:
+                return Outcome("idempotency_mismatch")
+            return Outcome(None, earlier.class_id, earlier.id, replay=True)
         row = (await db.execute(_SOURCE, ids)).first()
         if row is None:
             return Outcome("not_found")
@@ -242,7 +292,14 @@ async def duplicate(
         ):
             return Outcome("internal")
         try:
-            provenance = provenance_copy(row.provenance, class_id, row.id, row.number)
+            provenance = provenance_copy(
+                row.provenance,
+                class_id,
+                row.id,
+                row.number,
+                idempotency_key=idempotency_key,
+                request_hash=request_hash,
+            )
         except ValidationError:
             return Outcome("internal")
         if await _flags_refuse(db, settings, sport, row.music_source, row.music):
@@ -304,10 +361,18 @@ STATUS: Final = {"not_found": 404, "internal": 500}
     responses={404: {}, 409: {}, 422: {}, 500: {}},
 )
 async def duplicate_class(
-    class_id: str, request: Request, ctx: Annotated[UserContext, Depends(auth.require_user)]
+    class_id: str,
+    request: Request,
+    ctx: Annotated[UserContext, Depends(auth.require_user)],
+    idempotency_key: Annotated[str | None, Header()] = None,
 ) -> DuplicateOut | JSONResponse:
-    """409 reasons: ``hash_mismatch``, ``not_ready``, ``feature_off`` and ``quota`` (the jobs
-    API's body: ``quota`` ``classes``, ``length`` or ``feature``, no money)."""
+    """201 with the new class, 200 with the same one for a replayed key. 400 for the header;
+    409 reasons: ``idempotency_mismatch``, ``hash_mismatch``, ``not_ready``, ``feature_off`` and
+    ``quota`` (the jobs API's body: ``quota`` ``classes``, ``length`` or ``feature``, no money)."""
+    if idempotency_key is None:
+        return _refuse("idempotency_key_missing", 400)
+    if not IDEMPOTENCY_KEY.fullmatch(idempotency_key):
+        return _refuse("idempotency_key_invalid", 400)
     wanted = _uuid(class_id)
     if wanted is None:
         return _refuse("not_found", 404)
@@ -330,10 +395,14 @@ async def duplicate_class(
             body.revision_id,
             bytes.fromhex(body.content_hash),
             title,
+            idempotency_key,
         )
     except QuotaRefused as refused:  # nothing was created
         return JSONResponse({"detail": {**refused.detail(), "reason": "quota"}}, status_code=409)
     if done.reason is not None or done.class_id is None or done.revision_id is None:
         reason = done.reason or "internal"
         return _refuse(reason, STATUS.get(reason, 409))
-    return DuplicateOut(class_id=done.class_id, revision_id=done.revision_id)
+    made = DuplicateOut(class_id=done.class_id, revision_id=done.revision_id)
+    if done.replay:
+        return JSONResponse(made.model_dump(mode="json"), status_code=200)
+    return made
