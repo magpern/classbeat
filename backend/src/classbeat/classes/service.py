@@ -48,6 +48,13 @@ SELECT c.id, c.title, c.created_at, c.updated_at, c.current_revision_id,
         WHERE d.owner_id = c.owner_id AND d.class_id = c.id AND d.detached_at IS NOT NULL
     ) AS detached_count,
     coalesce(pf.profile, '[]'::jsonb) AS profile,
+    -- ADR 0018 section 1: the stored brief's sport, else (a class still in its first design) the
+    -- newest design job's, as ``design.sport`` reads it; anything but 'running' is cycling.
+    CASE WHEN coalesce(c.brief, (SELECT j.input -> 'brief' FROM jobs j
+            WHERE j.owner_id = c.owner_id AND j.class_id = c.id
+                AND j.kind IN ('design_draft', 'design_with_songs')
+            ORDER BY j.created_at DESC LIMIT 1)) ->> 'sport' = 'running'
+        THEN 'running' ELSE 'cycling' END AS sport,
     CASE WHEN jsonb_typeof(cur.provenance -> 'tss_approximate') = 'boolean'
         THEN (cur.provenance ->> 'tss_approximate')::boolean
         ELSE EXISTS (SELECT 1 FROM jsonb_array_elements(coalesce(pf.profile, '[]'::jsonb)) z

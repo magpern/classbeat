@@ -43,6 +43,12 @@ them; `reset=1` also forgets every program), `save-state` (the counter, the inje
 number of programs per account, no tokens), `save-listing?hidden=1|0` (My Workouts answers empty,
 as if MOWL's listing had not caught up with a write; `save-arm` shows it again) and `save-programs` (each program's account number,
 header, segment names and every interval's duration and zone) are for the programs.
+
+Running programs (ADR 0018, M8 R1b) are kept as the library writes them: the program's own
+`ActivityTypeID` 1, each segment's 0 and the running interval bodies with their float `Gradient`,
+served on reads as written. My Workouts marks each entry with its program's own `ActivityTypeID`
+(the real listing's sport) and `save-programs` adds `activity_type`, `segment_activity_types` and
+every interval's `gradients`. Cycling programs answer exactly as before apart from those added keys.
 """
 
 import contextlib
@@ -264,6 +270,17 @@ def apply_write(token: str, method: str, path: str, body: object, copy: bool = F
     return None
 
 
+def listed_entry(program_id: int, program: dict[str, object]) -> dict[str, object]:
+    """A My Workouts entry, with the program's own ActivityTypeID when it has one (MOWL marks
+    each entry's sport so, ADR 0018 Amendment 2; classbeat reads only the ProgramID)."""
+    body = program["body"]
+    assert isinstance(body, dict)
+    entry: dict[str, object] = {"ProgramID": program_id, "Name": body.get("Name"), "IsPublic": False}
+    if "ActivityTypeID" in body:
+        entry["ActivityTypeID"] = body["ActivityTypeID"]
+    return entry
+
+
 def read_program(program_id: int, program: dict[str, object]) -> dict[str, object]:
     """`GET v1/programs/<id>` in the shape `mowl.workout.summarize` reads."""
     body = program["body"]
@@ -467,10 +484,7 @@ class Handler(BaseHTTPRequestHandler):
                 reverse=True,
             )
             shown = mine[page * per_page : (page + 1) * per_page]
-            listed = [
-                {"ProgramID": i, "Name": PROGRAMS[i]["body"].get("Name"), "IsPublic": False}  # type: ignore[union-attr]
-                for i in shown
-            ]
+            listed = [listed_entry(i, PROGRAMS[i]) for i in shown]
         self.ok(listed)
 
     def read(self, path: str) -> None:
@@ -605,6 +619,14 @@ class Handler(BaseHTTPRequestHandler):
                         "segments": [str(s["body"].get("Name")) for s in segments],  # type: ignore[union-attr]
                         "intervals": [
                             [iv.get("Duration"), iv.get("ScaleCoggan")]
+                            for s in segments
+                            for iv in s["intervals"]  # type: ignore[union-attr]
+                        ],
+                        # ADR 0018: the sport as written (1 running, 0 cycling) and the incline.
+                        "activity_type": body.get("ActivityTypeID"),
+                        "segment_activity_types": [s["body"].get("ActivityTypeID") for s in segments],  # type: ignore[union-attr]
+                        "gradients": [
+                            iv.get("Gradient")
                             for s in segments
                             for iv in s["intervals"]  # type: ignore[union-attr]
                         ],

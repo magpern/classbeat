@@ -6,9 +6,11 @@ and a hash only, never a body, a program or playlist id or a name. ``consumes_cr
 no ledger call, no model call, no ``agent_runs``.
 
 **``admit``** (the jobs API's create transaction, under the owner lock): the approval checks of
-``classbeat.saving.approval``, then the connection (the context's MOWL connection and
-``connected``: ``not_connected``), the music link (``music_unlinked``) and the unresolved-write
-rule (``write_unresolved``). A refusal is a 409 with its reason and creates nothing.
+``classbeat.saving.approval``, ``running_enabled`` for a running class (``feature_off``, ADR 0018
+section 5: off, a running class is not saved, whenever it was designed), then the connection
+(the context's MOWL connection and ``connected``: ``not_connected``), the music link
+(``music_unlinked``) and the unresolved-write rule (``write_unresolved``). A refusal is a 409
+with its reason and creates nothing.
 
 Stages, and **every attempt starts at ``prepare``** (a retry after a reconciliation that proved
 no effect, after a lost lease or a shutdown, never resumes at ``save``):
@@ -17,14 +19,17 @@ no effect, after a lost lease or a shutdown, never resumes at ``save``):
    fenced transaction: the orphaned class writes are marked and the unresolved-write rule applied
    (another job's ``pending`` or any ``uncertain`` save/update row of the class: the job fails
    ``uncertain_write``, nothing is sent), ``hold`` share-locks the connection, the approval
-   checks run again from the database (``invalid_input``, ``music_unlinked``) and the playlist id
-   is read from the link row. Then the **preflight**: My Workouts' first page through
-   ``call_opened``, outside any operation. Its ProgramIDs are the **baseline**. A preflight that
-   fails is an ordinary failure with the usual retry classes and no operation row.
+   checks run again from the database (``invalid_input``, ``music_unlinked``), the flag again for
+   a running class (``feature_off``) and the playlist id is read from the link row. Then the
+   **preflight**: My Workouts' first page through ``call_opened``, outside any operation. Its
+   ProgramIDs are the **baseline**. A preflight that fails is an ordinary failure with the usual
+   retry classes and no operation row.
 2. ``save``: ``perform`` of ``mowl_save_workout`` (``classbeat.saving.operation``), the call being
-   ``workout.save(spec, creds, playlist_id)`` in a thread inside ``call_deadline_until`` of an
-   instant taken before ``pending`` is written (``bound`` from then, so a late thread start
-   consumes the bound instead of extending it),
+   ``workout.save(spec, creds, playlist_id)`` (a running class's spec says ``"sport": "running"``,
+   so the library sends the program's ``ActivityTypeID`` 1, segments 0 and running interval
+   bodies, with the existing playlist of the link; it never attaches music) in a thread inside
+   ``call_deadline_until`` of an instant taken before ``pending`` is written (``bound`` from
+   then, so a late thread start consumes the bound instead of extending it),
    ``single_request = False`` (every failure of the write is ``uncertain``); the guard re-reads the
    link row under ``hold`` and compares the playlist id. An answer without a whole-number
    ``program_id`` is ``UncertainAnswer``.
@@ -127,6 +132,8 @@ async def admit(db: AsyncSession, ctx: UserContext, parsed: BaseModel) -> Admitt
     found = await approval.revision(db, ctx, parsed.the_class, parsed.revision_id, parsed.digest)
     if isinstance(found, approval.Refusal):
         return Refused(found.reason)
+    if await approval.running_refused(db, found):
+        return Refused("feature_off")  # ADR 0018 section 5: running is off now
     if ctx.connection("mowl") != parsed.mowl_connection_id:
         return Refused("not_connected")
     info = await connections.find_in(db, ctx, parsed.mowl_connection_id)
@@ -171,6 +178,8 @@ async def _approved(run: JobRun, given: SaveWorkoutInput, opened: OpenConnection
         )
         if isinstance(found, approval.Refusal):
             raise JobFailure(PREPARE_CATEGORY.get(found.reason, "invalid_input"))
+        if await approval.running_refused(fs.db, found):
+            raise JobFailure("feature_off")  # switched off since the job was queued
         playlist_id = await approval.linked_playlist(
             fs.db, run.ctx, found.link_id, found.link_source
         )
