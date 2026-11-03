@@ -25,7 +25,7 @@ bad()  { echo "FAIL: $*" >&2; fails=$((fails + 1)); }
 "$root/scripts/release-assets.sh" build "$work/assets"
 ( cd "$work/assets" && sha256sum -c --quiet SHA256SUMS ) || bad "SHA256SUMS does not verify"
 # The asset list is exactly what the runbook downloads.
-want="SHA256SUMS check-prod-compose.sh compose.prod.loopback.yaml compose.prod.yaml prod.env.example swag-classbeat.subdomain.conf"
+want="SHA256SUMS check-prod-compose.sh compose.prod.lan.yaml compose.prod.loopback.yaml compose.prod.yaml prod.env.example swag-classbeat.subdomain.conf"
 got="$(cd "$work/assets" && printf '%s\n' * | tr '\n' ' ' | sed 's/ $//')"
 if [ "$got" = "$want" ]; then ok "asset list"; else bad "asset list is '$got', want '$want'"; fi
 # No asset may be a secret holder: nothing but committed text files, none under secrets/ or named .env.
@@ -69,9 +69,25 @@ echo 'OAUTH_GOOGLE_CLIENT_SECRET=x' >> "$install/.env"
 expect "a client secret in .env" 1 'CLIENT_SECRET'
 sed -i '/CLIENT_SECRET/d' "$install/.env"
 
+# 1b. Where web is published (real values): the loopback and LAN overlays.
+cp "$install/.env" "$work/env.good"
+printf 'COMPOSE_FILE=compose.prod.yaml:compose.prod.lan.yaml\nWEB_LAN_ADDRESS=0.0.0.0\n' >> "$install/.env"
+expect "LAN overlay on every interface" 1 'web is published on .0\.0\.0\.0'
+sed -i 's/^WEB_LAN_ADDRESS=.*/WEB_LAN_ADDRESS=8.8.8.8/' "$install/.env"
+expect "LAN overlay on a public address" 1 'only 127\.0\.0\.1 or one private LAN address'
+sed -i 's/^WEB_LAN_ADDRESS=.*/WEB_LAN_ADDRESS=172.29.90.10/' "$install/.env"
+expect "swag's address is this server's" 1 'PROXY_IP .* is this server'
+sed -i 's/^WEB_LAN_ADDRESS=.*/WEB_LAN_ADDRESS=192.168.1.20/; s/^PROXY_IP=.*/PROXY_IP=192.168.1.10/' "$install/.env"
+sed -i 's/^COMPOSE_FILE=compose.prod.yaml$//' "$install/.env"
+cp "$install/.env" "$work/env.lan"
+cp "$work/env.good" "$install/.env"
+
 # 2. The secret files (needs group 10010).
 if (( can_gid )); then
   expect "good install" 0 '^install check'
+  cp "$work/env.lan" "$install/.env"
+  expect "good LAN install" 0 '^install check'
+  cp "$work/env.good" "$install/.env"
   chmod 644 "$install/secrets/connection_kek"
   expect "mode 644" 1 'chmod 640 secrets/connection_kek'
   mksecrets; chmod 600 "$install/secrets/app_secret_key"
