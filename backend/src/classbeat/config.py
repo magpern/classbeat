@@ -2,6 +2,7 @@
 
 import ipaddress
 import json
+import logging
 import os
 import re
 import ssl
@@ -17,6 +18,8 @@ from sqlalchemy.engine import URL, make_url
 from sqlalchemy.exc import ArgumentError
 
 from classbeat.emailnorm import normalize_email
+
+logger = logging.getLogger(__name__)
 
 DATABASE_DRIVER = "postgresql+psycopg"
 DEFAULT_SECRETS_DIR = "/run/secrets"
@@ -34,6 +37,21 @@ SECRET_FILE_FIELDS = (
     "openai_api_key",
     "deepseek_api_key",
     "swedebeat_app",
+)
+# Secret files the app runs without (the feature is off): an unreadable one is not set, with a
+# warning naming the field (#511). Every other secret file that exists but cannot be read is fatal.
+OPTIONAL_SECRET_FILE_FIELDS = frozenset(
+    {
+        "smtp_password",
+        "oauth_google_client_secret",
+        "oauth_github_client_secret",
+        "oauth_microsoft_client_secret",
+        "swedebeat_app",
+    }
+)
+# Read by the SQL init scripts too, with the same bytes (tests/test_roles_script.py): kept exact.
+BYTE_EXACT_SECRET_FIELDS = frozenset(
+    {"database_password", "database_owner_password", "database_maint_password"}
 )
 # Each model provider's key file (ADR 0006 §9, ADR 0012 §2): worker only, never the web app.
 MODEL_KEY_FIELDS = {
@@ -72,17 +90,35 @@ def secrets_dir() -> Path:
     return Path(os.environ.get("CLASSBEAT_SECRETS_DIR") or DEFAULT_SECRETS_DIR)
 
 
-def read_secret_files(directory: Path, names: tuple[str, ...]) -> dict[str, str]:
-    """Read ``<directory>/<name>`` for each name; missing files and directories are skipped."""
+def read_secret_files(
+    directory: Path, names: tuple[str, ...], optional: frozenset[str] = frozenset()
+) -> dict[str, str]:
+    """Read ``<directory>/<name>`` for each name; missing files and directories are skipped.
+
+    A file of a name in ``optional`` that cannot be read (its mode or group, #511) counts as not
+    set, and one warning names the field, never the path's content; any other unreadable file
+    raises. A file holding only whitespace counts as empty, except the three database passwords,
+    which ``10-roles.sql`` and ``31-maint-password.psql`` read byte for byte the same way.
+    """
     if not directory.is_dir():
         return {}
     values: dict[str, str] = {}
     for name in names:
         path = directory / name
         if path.is_file():
-            text = path.read_bytes().decode("utf-8")
+            try:
+                raw = path.read_bytes()
+            except OSError:
+                if name not in optional:
+                    raise
+                logger.warning("secret file %s is not readable; treated as not set", name)
+                continue
+            text = raw.decode("utf-8")
             # Only the trailing newline an editor or `echo` adds; spaces may be part of a secret.
-            values[name] = text.removesuffix("\n").removesuffix("\r")
+            text = text.removesuffix("\n").removesuffix("\r")
+            if name not in BYTE_EXACT_SECRET_FIELDS and not text.strip():
+                text = ""  # a blank file is the empty placeholder: that secret is off
+            values[name] = text
     return values
 
 
@@ -97,7 +133,9 @@ class SecretFilesSettingsSource(PydanticBaseSettingsSource):
         return None, field_name, False  # unused: __call__ reads the files directly
 
     def __call__(self) -> dict[str, Any]:
-        return dict(read_secret_files(secrets_dir(), SECRET_FILE_FIELDS))
+        return dict(
+            read_secret_files(secrets_dir(), SECRET_FILE_FIELDS, OPTIONAL_SECRET_FILE_FIELDS)
+        )
 
 
 class WithoutSecretsSource(PydanticBaseSettingsSource):
