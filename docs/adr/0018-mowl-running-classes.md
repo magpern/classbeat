@@ -317,7 +317,7 @@ The owner authorized a one-program live save test on 2026-11-03; the results are
 - **Still unverified and refused:** a NEW mix or playlist attach for a running class (it creates objects in
   MOWL and running audio sync is untested) and segment `ActivityTypeID` 1. Running v1 designs on an existing
   MOWL playlist only.
-- **R1 is split:** R1a (#463: `sport` on the brief, the flag, running draft schema and prompt) and R1b (#490:
+- **R1 is split:** R1a (#463, merged as #491: `sport` on the brief, the flag, running draft schema and prompt) and R1b (#490:
   save, update and reconcile). A running class cannot be saved until R1b; with `running_enabled` off, existing
   running classes cannot be saved or updated either (§5).
 - **The flag stays off for real users until E1** (#465) puts running evals behind the model-enable gate:

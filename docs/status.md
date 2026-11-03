@@ -278,8 +278,8 @@ Agents do not deploy, change DNS, create provider apps, or contact MOWL, Spotify
 - **Model enablement.** [m3c-model-enable.md](runbooks/m3c-model-enable.md): place the OpenAI key (DeepSeek later), give a `--max-usd` for each first live run, then a recorded run and `models enable`. Until a pass is recorded, the bootstrap Anthropic model serves users. OpenAI and DeepSeek stay `owner_pending` until you answer ADR 0012's questions (extend the Spotify risk acceptance to OpenAI; keep DeepSeek disabled; stale routes; thresholds; a full-suite run before Opus 5.5 is used by a tier).
 - **Mail for the app (#352).** Account mail goes through any SMTP relay (the app's `CLASSBEAT_SMTP_*` settings; no code change). The owner picks a transactional email service (EU-hosted if that matters; a free tier is enough for the beta), adds its SPF, DKIM and DMARC records in Cloudflare, and puts the SMTP password in the `smtp_password` secret file. Cloudflare Email Routing only forwards incoming mail (for example `admin@<domain>` to a personal inbox); it cannot send. Proton Mail Bridge is no longer the plan (it needs a desktop app that stays logged in on the server); [proton-bridge-smtp.md](runbooks/proton-bridge-smtp.md) stays for reference. Agents do not touch mail accounts.
 - **Swedebeat live media host check.** `MOWL_MEDIA_HOSTS` is empty, so an uncached mix ends `media_host_not_allowed` and no media request is sent (ADR 0016). The owner confirms the host from one authorized live analysis, then a reviewed change may add that exact host. Agents do not edit the constant and do not create `SWEDEBEAT_APP`.
-- **Running live checks (M8).** ADR 0018 is Accepted (owner, 2026-11-02). The read-only capture ran on 2026-11-02 (PR #468) and a one-program live save test on 2026-11-03 (see the live activation log); agents run no further live check without a go-ahead. Running profiles (#401) are merged for two interval cells (#486); more cells need more classes. No live running check has been authorized beyond the 2026-11-02 read-only discovery and the one-program save test of 2026-11-03.
-- **App name and domain.** The repository name is classbeat. The beta can run on `classbeat.pernemark.se`. The owner is considering `classbeat.eu` (about $20 for 3 years; the apex is fine for the app, no `app.` subdomain needed). The domain fixes the passkey RP ID, the Google OAuth redirect URI and the secure cookies, so it is chosen before enabling passkeys or Google sign-in. Check the renewal price and a trademark search first; the owner decides.
+- **Running live checks (M8).** ADR 0018 is Accepted (owner, 2026-11-02). The read-only capture ran on 2026-11-02 (PR #468) and a one-program live save test on 2026-11-03 (see the live activation log); agents run no further live check without a go-ahead. Running profiles (#401) are merged for two interval cells (#486); more cells need more classes. No live running check has been authorized beyond the 2026-11-02 read-only discovery, the one-program save test and the one-program update test of 2026-11-03, and the read-only studio-library reads of the same day.
+- **App name and domain.** The repository name is classbeat. The beta can run on `classbeat.pernemark.se`. The owner is considering `classbeat.eu` (the owner quotes about $20 for 3 years, unchecked; the apex is fine for the app, no `app.` subdomain needed). The domain fixes the passkey RP ID, the Google OAuth redirect URI and the secure cookies, so it is chosen before enabling passkeys or Google sign-in. Check the renewal price and a trademark search first; the owner decides.
 - **Google OAuth app creation.** Google sign-in stays off until the owner creates the OAuth client and sets `CLASSBEAT_OAUTH_GOOGLE_CLIENT_ID` plus the `oauth_google_client_secret` file. It is not blocked on a new domain: the consent screen can stay in testing mode with the beta testers as test users, and the redirect URI can be on `classbeat.pernemark.se`. A public consent screen needs the final domain. The app asks for `auth_time` itself (ADR 0003 §5). GitHub and Microsoft are the same kind of owner step when those apps are wanted.
 - **Legal line placeholder.** Sign-in and sign-up show a beta sentence (`frontend/src/components/auth/AuthScreen.tsx`): "By continuing you agree to take part in the invite-only beta. classbeat is not made by or affiliated with MOWL, Spotify or Swedebeat." The real legal line is the owner's.
 - **M5 product questions** ([ADR 0011](adr/0011-tiers-quotas-and-admin.md) §11, Q1 to Q10): limits and cost caps per tier, which plan the testers get, trial on or off, quota period, refund on cancel, overlapping codes, Free feature gates, the Pro priority queue, audit-log retention, prices. Agents build on the defaults; an answer changes seeds or settings, not the design.
@@ -330,8 +330,29 @@ with the owner's authorization and what it created.
   `PUT v1/segments`, `DELETE v1/segments/{id}/intervals`, `PUT v1/segments/{id}/intervals/multiple`,
   `PUT v1/programs/{id}/segments`, `GET v1/programs/{id}`. Findings in
   [docs/providers/mowl-running-discovery.md](providers/mowl-running-discovery.md) and ADR 0018 Amendment 2.
-  Not tested: update of a running program, a new playlist/mix on a running program, segment `ActivityTypeID` 1.
+  Not tested then: update of a running program (tested later the same day, next entry), a new playlist/mix on a running program, segment `ActivityTypeID` 1.
  
+
+- 2026-11-03: authorized live write, MOWL running update test (ADR 0018 Amendment 3). Owner go-ahead in chat
+  ("if you need it you have my go. Just don't alter any existing. Create a new, then alter it"), with the owner's
+  temporary password from chat used only to sign in (stdin of a one-off script; never written to the repo, a log
+  or a file; the token was never printed). Created in the owner's MOWL account: **one NEW private program** named
+  "classbeat running update test v2 (safe to delete)" (it was created as v1 and re-saved as v2; program 336241, 6
+  segments in total over the two saves, 4 intervals each); `mowl-workouts` has no program delete, so the owner
+  deletes it in the app. No existing program was touched. Requests: `login`, `POST v1/programs` (list), the
+  create sequence of the save test, then the update: `PUT v1/programs/{id}` with the program id, three new
+  segments (`PUT v1/segments`, `DELETE v1/segments/{id}/intervals`, `PUT v1/segments/{id}/intervals/multiple`),
+  `PUT v1/programs/{id}/segments`, `GET v1/programs/{id}`, then `PUT v1/programs/{id}` with the `PlaylistID` of an
+  already-analysed playlist read from the account's own listing (no new attach). Result: the update works, the
+  playlist id is accepted and kept. Not tested: a NEW mix or playlist attach for a running program and segment
+  `ActivityTypeID` 1.
+- 2026-11-03: owner-authorized live reads of the studio library for ADR 0017 / P9 (issue #388, #401). Owner
+  go-ahead in chat ("Grab what you need", "you can look in [the studio's] public camps (read only)", then a camp
+  link). Read-only calls with the same sign-in: `GET v1/ProgramCategories` (list and single records, about 120
+  camp ids scanned), `POST v1/programs` (camp listings, counts of the cycling library) and `GET v1/programs/{id}`
+  for 64 official running programs. Raw JSON stayed in the session scratchpad outside any repository and was
+  deleted with the session's scratch files; only aggregates were published (#486, ADR 0017 §7). Nothing was
+  created or changed in the account.
 
 ## Exceptions
 
