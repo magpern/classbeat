@@ -60,9 +60,9 @@ test('design, change, pick an older version, save, change and update', async ({ 
   // Version 2 by chat, then back to version 1 (the page asks the server to make it current).
   await reviseByChat(page, 'revise_good', 'Make the first minutes easier.', 2)
   await expect(page.getByRole('listitem').filter({ hasText: 'Version 2' }).getByText('Current')).toBeVisible()
-  await page.getByRole('button', { name: 'Use version 1' }).click()
+  await page.getByRole('button', { name: 'Use this version 1' }).click()
   await expect(page.getByRole('listitem').filter({ hasText: 'Version 1' }).getByText('Current')).toBeVisible()
-  await expect(page.getByRole('button', { name: 'Use version 1' })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Use this version 1' })).toHaveCount(0)
 
   // Save version 1: the page says what is written, the click is the approval.
   await savePanel(page).getByRole('button', { name: 'Save to MOWL' }).click()
