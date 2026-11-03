@@ -238,6 +238,77 @@ def test_trusted_proxies_and_numeric_settings_are_validated() -> None:
             Settings(**{name: value})  # pyright: ignore[reportArgumentType]
 
 
+@pytest.mark.parametrize(
+    "proxies",
+    [
+        "0.0.0.0/0",
+        "::/0",
+        "173.245.48.0/20",  # a Cloudflare range: swag restores the client, never the app
+        "172.29.90.10, 8.8.8.8",
+        "172.0.0.0/8",  # wider than 172.16.0.0/12, so partly public
+    ],
+)
+def test_prod_refuses_a_public_trusted_proxy(proxies: str) -> None:
+    with pytest.raises(ValidationError, match="trusted_proxies must be private"):
+        Settings(
+            environment="prod", public_base_url="https://classbeat.example", trusted_proxies=proxies
+        )
+    # Outside prod the rule does not apply (the e2e and dev stacks choose their own).
+    assert Settings(trusted_proxies=proxies).trusted_proxy_networks
+
+
+@pytest.mark.parametrize(
+    "proxies",
+    [
+        "172.29.90.0/24",  # the proxy network itself: any container on it could name a client
+        "172.16.0.0/12",
+        "10.0.0.0/8",
+        "172.29.90.10/31",
+        "fd00::/64",
+        "172.29.90.10,172.29.90.130",  # a list, even of single private addresses
+        "172.29.90.10, fd00::1",
+    ],
+)
+def test_prod_refuses_a_trusted_range_or_list(proxies: str) -> None:
+    # #495: in prod the trusted proxy is exactly one host (/32 or /128).
+    with pytest.raises(ValidationError, match="trusted_proxies must be one address"):
+        Settings(
+            environment="prod", public_base_url="https://classbeat.example", trusted_proxies=proxies
+        )
+    assert Settings(trusted_proxies=proxies).trusted_proxy_networks
+
+
+@pytest.mark.parametrize("proxies", ["swag", "classbeat-web", "172.29.90.10 172.29.90.130"])
+def test_prod_refuses_a_hostname_as_trusted_proxy(proxies: str) -> None:
+    with pytest.raises(ValidationError, match="must list IP addresses or CIDR ranges"):
+        Settings(
+            environment="prod", public_base_url="https://classbeat.example", trusted_proxies=proxies
+        )
+
+
+@pytest.mark.parametrize(
+    "proxies",
+    [
+        "",
+        "172.29.90.10",
+        "172.29.80.1",
+        "  172.29.90.10  ",
+        "172.29.90.10/32",
+        "172.29.90.10,",
+        "fd00::1",
+        "fd00::1/128",
+    ],
+)
+def test_prod_accepts_one_private_trusted_proxy(proxies: str) -> None:
+    settings = Settings(
+        environment="prod", public_base_url="https://classbeat.example", trusted_proxies=proxies
+    )
+    assert settings.trusted_proxies == proxies
+    networks = settings.trusted_proxy_networks
+    assert len(networks) <= 1
+    assert all(net.prefixlen == net.max_prefixlen for net in networks)
+
+
 def test_default_ports_are_dropped_from_the_public_origin() -> None:
     assert Settings(public_base_url="https://classbeat.example:443").public_base_url == (
         "https://classbeat.example"

@@ -448,9 +448,14 @@ Fixed windows are counted in `rate_limits` with one upsert per check. There is n
 - **Provider-calling routes** are limited too: MOWL connect (above), Spotify connect start, and
   `GET /api/music/mowl-playlists` (30 per user and 60 per IP per 10 minutes, every request counts; #354).
 - **When a limit trips:** the request gets 429 with `Retry-After`. There is no permanent lockout.
-- **Client IP:** the peer address. When the peer is in `CLASSBEAT_TRUSTED_PROXIES` (Caddy on the
-  VPS; empty by default), it is the right-most `X-Forwarded-For` entry that is not a trusted
-  proxy. uvicorn's own proxy-header handling is turned off.
+- **Client IP:** the peer address. When the peer is in `CLASSBEAT_TRUSTED_PROXIES` (empty by
+  default), it is the right-most `X-Forwarded-For` entry that is not a trusted proxy. uvicorn's own
+  proxy-header handling is turned off. In production (#492) the one trusted peer is the owner's swag
+  (nginx) container at its fixed private address on the proxy network (or the web-out gateway with
+  the loopback overlay); swag overwrites `X-Forwarded-For` with its `$remote_addr`, which it restores
+  from `CF-Connecting-IP` only for peers in Cloudflare's ranges. The app never reads
+  `CF-Connecting-IP` and never trusts Cloudflare's ranges, and with `CLASSBEAT_ENVIRONMENT=prod` it
+  refuses to start with a trusted proxy that is not a private address.
 
 | Action | Per (account, IP) | Per account, all IPs | Per IP |
 |---|---|---|---|

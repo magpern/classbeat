@@ -1,0 +1,24 @@
+# Overlay for compose.prod.yaml (#492): for a reverse proxy that runs on the host itself (nginx
+# from the distribution, or swag with `network_mode: host`) and so cannot join a Docker network.
+# web is published on the host's loopback only and leaves the `proxy` network:
+#
+#   COMPOSE_FILE=compose.prod.yaml:compose.prod.loopback.yaml      (in .env; runbook section 6)
+#
+# Docker's port relay connects to web from the gateway of `web-out` (172.29.80.1, fixed in
+# compose.prod.yaml), so that address, and nothing else, is the trusted proxy: anything on the host
+# that can reach 127.0.0.1:WEB_HOST_PORT can name a client, the open internet cannot (the port is
+# never bound to another address; scripts/check-prod-compose.sh checks both). PROXY_IP must still be
+# set for compose.prod.yaml to interpolate; this file replaces its value. Needs Docker Compose
+# 2.24.4 or later (`!override`).
+#
+#   WEB_HOST_PORT  the loopback port the host's proxy forwards to (default 8080)       optional
+
+services:
+  web:
+    ports:
+      - "127.0.0.1:${WEB_HOST_PORT:-8080}:8000"
+    networks: !override
+      web-out: {}
+      backend: {}
+    environment:
+      CLASSBEAT_TRUSTED_PROXIES: 172.29.80.1

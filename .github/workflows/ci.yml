@@ -129,10 +129,12 @@ jobs:
           [ "$fn" = "$db" ] && [ "$ci" = "$db" ] && [ "$shards" = "$db" ] \
             || { echo "::error::db, db-functions and the backend jobs must use the same postgres image"; exit 1; }
 
-      # compose.prod.yaml and the Caddyfile (issue #341): config parses with dummy values, the
-      # production invariants hold (only caddy publishes ports, no mailpit, internal backend
-      # network, no model key on web ...) and `caddy validate` accepts the Caddyfile.
-      - name: Production compose and Caddyfile
+      # compose.prod.yaml behind swag (issues #341, #492): config parses with dummy values alone and
+      # with compose.prod.loopback.yaml, the production invariants hold (no caddy, no published port
+      # but web on 127.0.0.1 with the overlay, one private trusted proxy, no mailpit, internal
+      # backend network, no model key on web ...), a self-test shows each unsafe mutation refused,
+      # and `nginx -t` plus the required lines accept docs/runbooks/swag-classbeat.subdomain.conf.
+      - name: Production compose and swag config
         run: scripts/check-prod-compose.sh
 
       # Every setup-uv step's version equals the Dockerfile's uv tag (scripts/ci-uv-version.sh).

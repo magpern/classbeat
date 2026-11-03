@@ -27,8 +27,8 @@ Facts that shape the design:
 
 - **Sign-in happens before a `UserContext` exists.** ADR 0003 §1 keeps all account tables as
   system tables in `classbeat.auth` (no RLS, guard 8, user-scoped queries, 404 for foreign ids).
-- **The deployment** is a beta at `https://classbeat.pernemark.se` behind Caddy (#341). Web already
-  takes its public origin only from `CLASSBEAT_PUBLIC_BASE_URL` (CSRF origin check, mail links,
+- **The deployment** is a beta at `https://classbeat.pernemark.se` behind the owner's swag/nginx
+  proxy (#341, #492). Web already takes its public origin only from `CLASSBEAT_PUBLIC_BASE_URL` (CSRF origin check, mail links,
   T37), never from `Host` or `X-Forwarded-*`.
 - **Browsers refuse an IP address as an RP ID**, and WebAuthn needs a secure context. Local
   development and the e2e stack use `http://127.0.0.1:<port>` today (`localhost` is refused with
@@ -84,7 +84,7 @@ tests.
 
 - **`CLASSBEAT_WEBAUTHN_RP_ID`** (optional). Default: the host of `CLASSBEAT_PUBLIC_BASE_URL`.
   **Never derived from a request header**: not `Host`, `Origin`, `X-Forwarded-Host` or anything
-  Caddy sets. Both values are read once at start.
+  the proxy sets. Both values are read once at start.
 - **Expected origin** is exactly the `CLASSBEAT_PUBLIC_BASE_URL` origin (scheme, host, port), one
   value, compared by py_webauthn against `clientDataJSON.origin`. No list, no wildcard, no related
   origins (`/.well-known/webauthn`) until a second domain exists.
