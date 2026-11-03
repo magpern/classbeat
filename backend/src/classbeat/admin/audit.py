@@ -13,6 +13,7 @@ import time
 import unicodedata
 from collections.abc import Mapping
 from dataclasses import dataclass, field
+from datetime import date
 from typing import Annotated, Any, Final, Literal
 from uuid import UUID
 
@@ -22,6 +23,7 @@ from pydantic import (
     BaseModel,
     ConfigDict,
     Field,
+    StrictBool,
     StringConstraints,
     ValidationError,
 )
@@ -215,13 +217,27 @@ class SettingSetParams(Params):
     text_length: Annotated[int, Field(ge=0, le=100_000)] | None = None
 
 
+PlanPrice = Literal["monthly_price_cents", "intro_price_cents", "intro_price_until", "currency"]
+
+
 class PlanUpdateParams(Params):
-    """A plan limit edit (AD4 #222): the limits asked for (refused ones included)."""
+    """A plan edit (AD4 #222, #496): the limits, gates and prices asked for (refused ones
+    included), the prices cleared by name; a currency only as three capital letters, a date only
+    as a date, so no free text."""
 
     classes_per_month: Annotated[int, Field(ge=-(10**12), le=10**12)] | None = None
     revisions_per_class: Annotated[int, Field(ge=-(10**12), le=10**12)] | None = None
     concurrent_jobs: Annotated[int, Field(ge=-(10**12), le=10**12)] | None = None
     monthly_cost_micros: Annotated[int, Field(ge=-(10**12), le=10**12)] | None = None
+    max_class_minutes: Annotated[int, Field(ge=-(10**12), le=10**12)] | None = None
+    games_allowed: StrictBool | None = None
+    races_allowed: StrictBool | None = None
+    ftp_tests_allowed: StrictBool | None = None
+    monthly_price_cents: Annotated[int, Field(ge=-(10**12), le=10**12)] | None = None
+    intro_price_cents: Annotated[int, Field(ge=-(10**12), le=10**12)] | None = None
+    intro_price_until: date | None = None
+    currency: Annotated[str, StringConstraints(pattern=r"^[A-Z]{3}$")] | None = None
+    cleared: list[PlanPrice] | None = None
 
 
 MODEL_PATTERN: Final = r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,99}$"

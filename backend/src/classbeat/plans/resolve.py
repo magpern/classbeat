@@ -25,7 +25,8 @@ _ACTIVE = (
 )
 _PLAN = text(
     "SELECT id, name, rank, classes_per_month, revisions_per_class, concurrent_jobs, "  # noqa: S608
-    "monthly_cost_micros, route_key, features FROM plans WHERE id = coalesce(("
+    "monthly_cost_micros, route_key, features, max_class_minutes, games_allowed, races_allowed, "
+    "ftp_tests_allowed FROM plans WHERE id = coalesce(("
     "SELECT p.id FROM entitlements e JOIN plans p ON p.id = e.plan_id "
     f"WHERE {_ACTIVE} ORDER BY p.rank DESC LIMIT 1), :free)"
 )
@@ -47,6 +48,12 @@ class Plan:
     monthly_cost_micros: int
     route_key: str
     features: frozenset[str]
+    # Migration 0026 (#496): the longest class and the feature gates. Prices are never read here:
+    # only the admin area reads them (``classbeat.admin.settings``).
+    max_class_minutes: int
+    games: bool
+    races: bool
+    ftp_tests: bool
 
 
 async def effective_plan(db: AsyncSession, ctx: UserContext) -> Plan:
@@ -65,6 +72,10 @@ async def effective_plan(db: AsyncSession, ctx: UserContext) -> Plan:
         monthly_cost_micros=row.monthly_cost_micros,
         route_key=row.route_key,
         features=frozenset(row.features),
+        max_class_minutes=row.max_class_minutes,
+        games=row.games_allowed,
+        races=row.races_allowed,
+        ftp_tests=row.ftp_tests_allowed,
     )
 
 

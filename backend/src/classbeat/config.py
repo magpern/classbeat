@@ -250,6 +250,9 @@ class Settings(BaseSettings):
     # plan's concurrent jobs and revisions per class alike.
     classes_per_month_max: int = Field(default=200, ge=0, le=10_000)
     monthly_cost_micros_max: int = Field(default=300_000_000, ge=0, le=100_000_000_000)
+    # Issue #496: the environment's upper bound on every plan's ``max_class_minutes`` (the
+    # brief's own range, 10 to 180); a plan's effective cap is the smaller of the row and this.
+    class_minutes_max: int = Field(default=180, ge=10, le=180)
     chat_max_requests: int = Field(default=50, ge=1, le=200)
     chat_context_requests: int = Field(default=10, ge=1, le=30)
     # ADR 0007 section 8: how long a new MOWL workout may take to appear in My Workouts. Unset

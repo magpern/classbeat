@@ -36,6 +36,7 @@ from classbeat.agent.design import (
     DesignResult,
     design_stage,
     is_running,
+    within_plan,
 )
 from classbeat.agent.guidance import rules_result
 from classbeat.agent.revise import (
@@ -203,13 +204,13 @@ def running_design_stage(ctx: DesignContext) -> Stage:
         return ToolAnswer({"track": mix_input.track_detail(ctx.map, args.track)})
 
     def preview_draft(args: RunningDraftInput) -> ToolAnswer:
-        result = check_running(args.draft, ctx.map)
+        result = within_plan(ctx.gates, check_running(args.draft, ctx.map))
         return ToolAnswer(
             {**_summary(result, accepted=False), **rules_result(ctx.rules, result.spec)}
         )
 
     def submit_draft(args: RunningDraftInput) -> ToolAnswer:
-        result = check_running(args.draft, ctx.map)
+        result = within_plan(ctx.gates, check_running(args.draft, ctx.map))
         return ToolAnswer(
             {**_summary(result, accepted=True), **rules_result(ctx.rules, result.spec)},
             output=result,
@@ -231,11 +232,13 @@ def running_revise_stage(ctx: ReviseContext) -> Stage:
     _require_running(ctx)
     if ctx.songs_changed:
         raise ValueError("a running class has no song picking")
-    design = running_design_stage(DesignContext(ctx.brief, ctx.map, ctx.summary, ctx.rules))
+    design = running_design_stage(
+        DesignContext(ctx.brief, ctx.map, ctx.summary, ctx.rules, ctx.gates)
+    )
     tools = {t.name: t for t in design.tools}
 
     def submit_draft(args: RunningReviseInput) -> ToolAnswer:
-        result = check_running(args.draft, ctx.map)
+        result = within_plan(ctx.gates, check_running(args.draft, ctx.map))
         return ToolAnswer(
             {**_summary(result, accepted=True), **rules_result(ctx.rules, result.spec)},
             output=ReviseResult(result, args.note),
