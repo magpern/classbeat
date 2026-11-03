@@ -14,8 +14,9 @@ model call.
 ``classbeat.saving.approval``, ``running_enabled`` for a running class (``feature_off``), the
 connection (``not_connected``), the saved row
 (``invalid_input``: another user's, another class's, a detached or an unknown row), the music
-link (``music_unlinked``) and the unresolved-write rule (``write_unresolved``). A refusal is a
-409 with its reason and creates nothing.
+link (``music_unlinked``) and the unresolved-write rule (``write_unresolved``), last the user's
+current plan (409 ``quota``, as Save: the program already in MOWL is never touched by a refusal).
+A refusal is a 409 with its reason and creates nothing.
 
 Stages, and **every attempt starts at ``prepare``** (a retry after a reconciliation that proved
 no effect never resumes at ``save``, so the read-first check runs again):
@@ -76,6 +77,7 @@ from classbeat.jobs import KINDS, Complete, JobFailure, JobKind, JobRun
 from classbeat.jobs.inputs import JobInput
 from classbeat.jobs.kinds import Admitted, Refused
 from classbeat.operations import CallResult, OperationRequest, UncertainAnswer, orphans, perform
+from classbeat.quota.gates import check_stored_draft
 from classbeat.saving import approval, operation, update_operation
 from classbeat.saving.kind import (
     JOB_CLASS,
@@ -144,6 +146,8 @@ async def admit(db: AsyncSession, ctx: UserContext, parsed: BaseModel) -> Admitt
         return Refused("music_unlinked")
     if await orphans.write_unresolved(db, ctx, parsed.the_class):
         return Refused("write_unresolved")
+    # #496: no model runs, so the revision must fit the user's current plan (409 ``quota``).
+    await check_stored_draft(db, ctx, found.spec)
     return Admitted()
 
 

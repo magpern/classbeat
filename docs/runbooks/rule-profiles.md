@@ -149,8 +149,7 @@ then its profile files under the rules above.
 - R1a (#463) gives the brief its sport. A running class gets only running profiles through
   `classbeat.design.sport_rules` (`select_profile_for`, `rules_for`; cycling still goes through
   `select_profile_for_brief` and `rule_set_for` unchanged), and a profile with any rule above `info`
-  applies nothing. `sport_rules.py` is not yet in the suite's `RULE_SOURCES`: the suite designs
-  cycling classes only, so its digest and every recorded result stay valid. E1 adds running
-  `class_patterns` cases, lists `design/sport_rules.py` in `RULE_SOURCES` and bumps
-  `suite_version` once; the suite test that every shipped profile has a following case covers
-  cycling profiles until then.
+  applies nothing. E1 (#465, suite version 10) lists `design/sport_rules.py` and
+  `agent/running_input.py` in `RULE_SOURCES` and adds one `deviates` `class_patterns` case per running
+  profile (`cp_run_hard_start_30`, `cp_run_capped_45`); running rules are `info` only, so a `follows`
+  case would never fail and none is added. A changed running profile is a new suite, as for cycling.

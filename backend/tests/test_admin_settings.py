@@ -20,6 +20,7 @@ from authtools import Env, running_env
 from classbeat.admin.routes import admin_area_routes, gate_problems
 from dbtools import migration_module
 from flows import Browser
+from modeltools import add_result, clear_gate
 from test_plans_routes import plant_ledger
 
 SETTINGS = "/api/admin/settings"
@@ -290,6 +291,7 @@ async def test_running_is_a_real_flag_on_under_the_environment_and_off_when_stor
     assert (off_env["effective"], off_env["source"], off_env["environment"]) == (
         "off", "environment", "off",
     )  # fmt: skip
+    route_every_plan(superuser)  # an evaluated model for every plan (issue #465)
     assert (await put(actor, "running_enabled", "on")).status_code == 200
     still = flag(await actor.get(SETTINGS), "running_enabled")
     assert (still["effective"], still["source"]) == ("off", "environment")  # never past it
@@ -308,6 +310,67 @@ async def test_running_is_a_real_flag_on_under_the_environment_and_off_when_stor
     store(superuser, "running_enabled", "maybe")  # an invalid stored value reads as off
     bad_view = flag(await actor.get(SETTINGS), "running_enabled")
     assert (bad_view["stored_valid"], bad_view["effective"]) == (False, "off")
+
+
+@pytest.fixture(autouse=True)
+def clean_gate(superuser: Connection) -> Any:
+    clear_gate(superuser)
+    yield
+    clear_gate(superuser)
+
+
+def route_every_plan(
+    conn: Connection, *, prompt_versions: dict[str, str] | None = None, skip: str | None = None
+) -> None:
+    """A passing design-group result and a ``design`` route at it for every plan's route key
+    (``skip``: all but that one), inserted as the superuser (setup only)."""
+    clear_gate(conn)
+    result = add_result(conn, prompt_versions=prompt_versions)
+    keys = conn.execute(text("SELECT DISTINCT route_key FROM plans")).scalars().all()
+    for key in keys:
+        if key == skip:
+            continue
+        conn.execute(
+            text(
+                "INSERT INTO model_routes (route_key, stage_group, provider, model, effort, "
+                "eval_result_id, set_at, set_by, gate_passed) SELECT :k, 'design', provider, "
+                "model, effort, id, now(), 'setup', true FROM model_eval_results WHERE id = :r"
+            ),
+            {"k": key, "r": result},
+        )
+
+
+async def test_running_is_stored_on_only_on_an_evaluated_model_for_every_plan(
+    env: Env, make_actor: Any, superuser: Connection
+) -> None:
+    """ADR 0012 amendment of 2026-11-03 (issue #465): ``on`` needs, for every plan's route key, a
+    ``design`` route whose result covers running; ``off`` never does."""
+    from classbeat.models.versions import running_prompt_versions
+
+    actor = await stepped_admin(env, make_actor)
+    env.app.state.settings = env.settings.model_copy(update={"running_enabled": True})
+    clear_gate(superuser)
+    cycling_only = {
+        k: v for k, v in running_prompt_versions("design").items() if not k.startswith("running")
+    }
+    cases = [
+        {},  # no route at all: the bootstrap choice has no recorded result
+        {"skip": "pro"},  # one plan's jobs would run on the bootstrap
+        {"prompt_versions": cycling_only},  # a result recorded without the running stages
+    ]
+    for case in cases:
+        if case:
+            route_every_plan(superuser, **case)
+        refused = await put(actor, "running_enabled", "on")
+        assert refused.status_code == 422, refused.text
+        assert refused.json()["detail"]["reason"] == "running_not_evaluated"
+        assert stored(superuser, "running_enabled") is None
+    last = [r for r in rows_of(superuser, actor.user_id) if r.action == "setting.set"][-1]
+    assert (last.outcome, last.reason) == ("refused", "running_not_evaluated")
+    assert (await put(actor, "running_enabled", "off")).status_code == 200  # tightening: always
+    route_every_plan(superuser)
+    assert (await put(actor, "running_enabled", "on")).status_code == 200
+    assert stored(superuser, "running_enabled") == "on"
 
 
 # --- flag writes ------------------------------------------------------------------------------

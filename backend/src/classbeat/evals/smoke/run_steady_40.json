@@ -1,0 +1,19 @@
+{
+ "name": "run_steady_40",
+ "about": "One steady easy 40 minute run: a long stretch in one zone is asked for.",
+ "brief": {
+  "sport": "running",
+  "length_min": 40,
+  "intensity": "easy",
+  "style": "steady",
+  "text": "One steady easy run today, no intervals."
+ },
+ "music": {
+  "tracks": 11
+ },
+ "expect": {
+  "allow_issues": [
+   "zone_run_too_long"
+  ]
+ }
+}

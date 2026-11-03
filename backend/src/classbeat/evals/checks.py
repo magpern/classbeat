@@ -42,6 +42,20 @@ The suite's checks (ADR 0012 section 4), run only for a case whose ``expect`` as
   (``kept_efforts``: climbs, races and FTP tests for ``easier`` too, whose sprints may soften;
   for ``shorter`` no kind of effort the base had may vanish).
 
+A running case (``brief.sport == "running"``, ADR 0018, issue #465) runs the same checks with
+these differences:
+
+- ``validate`` is ``workout.validate_running``;
+- ``sprints_and_races``, ``climbs`` and ``ftp_test`` are replaced by ``running_shape``: every
+  fitted interval holds only a length, a zone of 1 to 5 and a gradient of 0 or 1 (no cadence,
+  position, game or FTP test reached the spec), and by ``incline`` when the case asks for one
+  (``expect.incline_min_sec``: at least that many seconds at gradient 1);
+- ``zones`` measures the share in zone 4 or above (running's top zone is 5) against
+  ``RUNNING_HARD_SHARE``;
+- no ``tss`` check: the running load model is not calibrated (ADR 0018 Amendment 2), so no bound
+  is invented for it (a revision's ``easier`` still compares the TSS with its base's);
+- ``pattern_*`` use the running profile of the brief (``design.sport_rules``), never a cycling one.
+
 A check's detail holds numbers and rule names only, never draft or music text.
 """
 
@@ -57,7 +71,7 @@ from classbeat.agent.limits import Limits
 from classbeat.agent.loop import StageOutcome
 from classbeat.design.revision import canonical, fitted_draft
 from classbeat.design.rules import evaluate
-from classbeat.design.selection import select_profile_for_brief
+from classbeat.design.sport_rules import select_profile_for
 from classbeat.evals.cases import Case, PatternExpect, Range, RevisionExpect
 
 DURATION_TOLERANCE: Final = 0.05
@@ -90,6 +104,16 @@ TOLERATED_ISSUES: Final = frozenset({"beat_off", "loudness_mismatch"})
 ON_BOUNDARY_SEC: Final = 1.0
 PHRASE_WINDOW_SEC: Final = 8.0
 BEATS_PER_BAR: Final = 4
+# Running (issue #465): zone 4 and up is hard (zones 1 to 5), the share per intensity a guide as
+# HARD_SHARE is, and the keys a fitted running interval may hold.
+RUNNING_HARD_ZONE: Final = 4
+RUNNING_HARD_SHARE: Final[dict[str, Range]] = {
+    "easy": (0.0, 0.15),
+    "moderate": (0.10, 0.50),
+    "hard": (0.25, 0.75),
+}
+RUNNING_ZONES: Final = (1, 5)
+RUNNING_KEYS: Final = frozenset({"sec", "zone", "gradient"})
 # Revisions: easier is at most this share of the base's TSS; the cooldown keeps within this.
 EASIER_TSS: Final = 0.95
 COOLDOWN_KEEP_SEC: Final = 60
@@ -196,6 +220,7 @@ def run_checks(
 ) -> list[Check]:
     """``music_map`` is the map the stage was given; the ``music_sync`` checks need it."""
     spec, brief, expect = result.spec, case.brief, case.expect
+    running = brief.sport == "running"
     total = result.duration_sec
     checks: list[Check] = []
 
@@ -209,11 +234,12 @@ def run_checks(
         first["kind"] == "warmup" and workout.seconds(first) >= 60 and bool(mains),
         f"{len(segs)} segments, {len(mains)} main, first is {first['kind']}",
     )
+    validate = workout.validate_running if running else workout.validate
     try:
-        workout.validate(spec)
-        add("validate", True, "the fitted spec passes workout.validate")
+        validate(spec)
+        add("validate", True, f"the fitted spec passes workout.{validate.__name__}")
     except ValueError:
-        add("validate", False, "the fitted spec fails workout.validate")
+        add("validate", False, f"the fitted spec fails workout.{validate.__name__}")
 
     asked = brief.length_min * 60
     if expect.revision is not None and expect.revision.length_min is not None:
@@ -234,35 +260,43 @@ def run_checks(
         f"{len(cooldowns)} cooldown, last {workout.seconds(segs[-1])} s",
     )
 
+    if running:
+        checks.extend(running_checks(case, spec))
     bursts = _bursts(spec)
     races = [i for i in bursts if RACE_SEC[0] <= i["sec"] <= RACE_SEC[1]]
-    add(
-        "sprints_and_races",
-        len(bursts) >= brief.sprints + brief.races and len(races) >= brief.races,
-        f"{len(bursts)} bursts and {len(races)} race-shaped for "
-        f"{brief.sprints} sprints and {brief.races} races asked",
-    )
-    climbs = _climbs(spec)
-    add("climbs", climbs >= brief.climbs, f"{climbs} climbs for {brief.climbs} asked")
+    if not running:
+        add(
+            "sprints_and_races",
+            len(bursts) >= brief.sprints + brief.races and len(races) >= brief.races,
+            f"{len(bursts)} bursts and {len(races)} race-shaped for "
+            f"{brief.sprints} sprints and {brief.races} races asked",
+        )
+        climbs = _climbs(spec)
+        add("climbs", climbs >= brief.climbs, f"{climbs} climbs for {brief.climbs} asked")
 
-    ftp = [i["ftp_test"] for _, i in _intervals(spec) if "ftp_test" in i]
-    add(
-        "ftp_test",
-        ftp == ([brief.ftp_test] if brief.ftp_test else []),
-        f"FTP tests {ftp} for {brief.ftp_test} asked",
-    )
+        ftp = [i["ftp_test"] for _, i in _intervals(spec) if "ftp_test" in i]
+        add(
+            "ftp_test",
+            ftp == ([brief.ftp_test] if brief.ftp_test else []),
+            f"FTP tests {ftp} for {brief.ftp_test} asked",
+        )
 
-    hard = sum(i["sec"] for _, i in _intervals(spec) if i["zone"] >= HARD_ZONE)
+    hard_zone = RUNNING_HARD_ZONE if running else HARD_ZONE
+    hard = sum(i["sec"] for _, i in _intervals(spec) if i["zone"] >= hard_zone)
     share = hard / total if total else 0.0
-    bounds = expect.hard_share or HARD_SHARE[brief.intensity]
-    add("zones", _between(share, bounds), f"zone {HARD_ZONE}+ share {share:.2f}, bounds {bounds}")
+    shares = RUNNING_HARD_SHARE if running else HARD_SHARE
+    bounds = expect.hard_share or shares[brief.intensity]
+    add("zones", _between(share, bounds), f"zone {hard_zone}+ share {share:.2f}, bounds {bounds}")
 
-    tss_bounds = tss_bounds_for(case, total, zone7=has_zone7(spec), zone7_margin=zone7_tss_margin)
-    add(
-        "tss",
-        _between(result.tss, tss_bounds),
-        f"TSS {result.tss}, bounds {tss_bounds[0]:.0f} to {tss_bounds[1]:.0f}",
-    )
+    if not running:
+        tss_bounds = tss_bounds_for(
+            case, total, zone7=has_zone7(spec), zone7_margin=zone7_tss_margin
+        )
+        add(
+            "tss",
+            _between(result.tss, tss_bounds),
+            f"TSS {result.tss}, bounds {tss_bounds[0]:.0f} to {tss_bounds[1]:.0f}",
+        )
 
     moved = str(result.quality.get("changes_on_music", "0 of 0"))
     on, _, of = moved.partition(" of ")
@@ -308,6 +342,27 @@ def run_checks(
         f"{limits.max_tool_calls}, cost {outcome.cost_micros} of {max_cost} micro-dollars",
     )
     return checks
+
+
+def running_checks(case: Case, spec: dict[str, Any]) -> list[Check]:
+    """``running_shape`` and, when the case asks for an incline, ``incline`` (see the module)."""
+    low, high = RUNNING_ZONES
+    intervals = [i for _, i in _intervals(spec)]
+    keys = sorted({k for i in intervals for k in i} - RUNNING_KEYS)
+    zones = sorted({int(i["zone"]) for i in intervals if not low <= i["zone"] <= high})
+    grades = sorted({float(i.get("gradient", 0)) for i in intervals} - {0.0, 1.0})
+    out = [
+        Check(
+            "running_shape",
+            spec.get("sport") == "running" and not keys and not zones and not grades,
+            f"other keys {keys}, zones outside {low} to {high} {zones}, other gradients {grades}",
+        )
+    ]
+    want = case.expect.incline_min_sec
+    if want is not None:
+        up = sum(i["sec"] for i in intervals if float(i.get("gradient", 0)) == 1.0)
+        out.append(Check("incline", up >= want, f"{up} s at gradient 1, at least {want} s asked"))
+    return out
 
 
 def failed(checks: Sequence[Check]) -> list[str]:
@@ -463,7 +518,7 @@ def _first_hard_sec(spec: dict[str, Any]) -> int:
 def pattern_checks(case: Case, want: PatternExpect, spec: dict[str, Any]) -> list[Check]:
     """The ``class_patterns`` checks (see ``PatternExpect``); no profile for the case's brief is
     a failed case, not a pass: the case must be about a shipped profile."""
-    profile = select_profile_for_brief(case.brief)
+    profile = select_profile_for(case.brief)
     if profile is None:
         return [Check("pattern_profile", False, "no rule profile applies to the case's brief")]
     hits = evaluate(spec, case.brief, profile)

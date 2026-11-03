@@ -65,7 +65,7 @@ from classbeat.design.sport_rules import rules_for
 from classbeat.jobs import KINDS, Complete, FencedSession, JobFailure, JobKind, JobRun
 from classbeat.jobs.inputs import ModelJobInput
 from classbeat.jobs.kinds import Admitted, Refused
-from classbeat.quota.route import with_plan
+from classbeat.quota.route import with_plan, with_plan_run
 
 KIND: Final = "revise_draft"
 STAGES: Final = ("music", "revise")
@@ -192,6 +192,8 @@ async def run(job_run: JobRun) -> Complete:
     if isinstance(music, SwedebeatMusicChoice):
         await mixadmit.still_on(job_run, runtime.swedebeat_enabled)  # before anything is called
     model = await group_model(runtime, job_run, given.route_key, "design")  # before any MOWL call
+    if brief.sport == sport.RUNNING:
+        sport.require_evaluated(model)  # an evaluated model only (ADR 0012, issue #465)
     await job_run.stage("music")
     step = await music_step(job_run, runtime, music, given.mowl_connection_id)
     handed_over = False  # the outcome's ``release`` closes the step from then on
@@ -277,7 +279,7 @@ REVISE_DRAFT: Final = KINDS.register(
         KIND,
         ReviseDraftInput,
         STAGES,
-        run,
+        with_plan_run(run),  # the current plan's gates for an input without any (#496)
         consumes_credit=False,
         admit=with_plan(admit),
         server_fields=frozenset(
