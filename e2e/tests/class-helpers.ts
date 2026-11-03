@@ -20,6 +20,12 @@ export interface FakeProgram {
   segments: string[]
   /** Every interval's [duration, zone]. */
   intervals: number[][]
+  /** The program's own sport as written: 1 running, 0 cycling (ADR 0018); absent on old programs. */
+  activity_type?: number | null
+  /** Each segment's own `ActivityTypeID` (0 for every segment of a running program). */
+  segment_activity_types?: (number | null)[]
+  /** Every interval's incline (`Gradient`): 0 flat, 1 incline for a running program. */
+  gradients?: (number | null)[]
 }
 
 /** The zone of every interval of a program, in order. */
@@ -80,6 +86,38 @@ export async function designAndOpen(page: Page, title: string, playlistName: str
   await expect(page).toHaveURL(/\/classes\/[0-9a-f-]{36}$/)
   await expect(page.getByRole('heading', { name: title })).toBeVisible()
   return id
+}
+
+/** Open the new-class form and choose Running (the control exists only while the flag is on), then
+ *  fill it for the recorded running script (30 minutes, one playlist) and start the design. */
+export async function startRunningDesign(page: Page, title: string, playlistName: string): Promise<string> {
+  await page.getByRole('link', { name: 'New class' }).click()
+  const form = page.getByRole('form', { name: 'New class' })
+  await form.getByRole('button', { name: 'Running', exact: true }).click()
+  await form.getByLabel('Class name').fill(title)
+  await form.getByRole('radio', { name: playlistName }).check({ force: true })
+  await form.getByLabel('Length in minutes').fill('30')
+  await form.getByRole('button', { name: 'Design my class' }).click()
+  await expect(page).toHaveURL(/\/jobs\/[0-9a-f-]{36}$/)
+  return jobId(page)
+}
+
+/** Design the recorded running class from the playlist and open its class page. */
+export async function designRunningAndOpen(page: Page, title: string, playlistName: string): Promise<string> {
+  useModelScript('running_first_draft')
+  const id = await startRunningDesign(page, title, playlistName)
+  await expect(page.getByRole('heading', { name: 'Your class is ready' })).toBeVisible(LONG)
+  expect((await getJob(page, id)).state).toBe('completed')
+  await page.goto('/classes')
+  await page.getByRole('link', { name: title }).click()
+  await expect(page).toHaveURL(/\/classes\/[0-9a-f-]{36}$/)
+  await expect(page.getByRole('heading', { name: title })).toBeVisible()
+  return id
+}
+
+/** The fake MOWL's `save-sport`: the program in MOWL is now another sport's (0 cycling, 1 running). */
+export const setProgramSport = (programId: number, sport: 0 | 1): void => {
+  fakeControl('POST', `save-sport?program=${String(programId)}&sport=${String(sport)}`)
 }
 
 export function classId(page: Page): string {
