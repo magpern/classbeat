@@ -291,6 +291,9 @@ def read_program(program_id: int, program: dict[str, object]) -> dict[str, objec
         "Playlist": {"PlaylistType": "Spotify", "PlaylistName": "E2E"},
         "TotalDuration": total,
         "TSS": body.get("TSS"),
+        # The program's own sport as written (the library sends 0 for cycling): Update refuses a
+        # program whose ActivityTypeID is missing or not the class's sport (issue #485).
+        **({"ActivityTypeID": body["ActivityTypeID"]} if "ActivityTypeID" in body else {}),
         "Segments": segments,
     }
 

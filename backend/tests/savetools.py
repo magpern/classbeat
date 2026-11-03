@@ -13,7 +13,8 @@ request number** (``fail``; 1 is the program, then three per segment, then the s
 ``noid`` (applied, answered without its id), ``copy`` (an update's ``PUT v1/programs/<id>``
 answered as MOWL making a copy: a new, empty program with the header, the original untouched).
 ``hold_at`` stops a write request before it is applied until ``release`` is set. ``edit``,
-``publish`` and ``delete`` play the user changing a program in the MOWL app. Public test values
+``publish`` and ``delete`` play the user changing a program in the MOWL app; ``set_activity_type``
+sets or removes its own ``ActivityTypeID`` (issue #485), served on reads. Public test values
 only; never the network.
 """
 
@@ -183,6 +184,17 @@ class FakeMowlPrograms(FakeMowlMusic):
             segment = self.segments[self.programs[program_id].segment_ids[0]]
             segment.intervals[0] = {**segment.intervals[0], "ScaleCoggan": zone}
 
+    def set_activity_type(self, program_id: int, value: Any = None) -> None:
+        """The program's own ``ActivityTypeID`` as reads show it (issue #485): MOWL's 0 cycling
+        or 1 running, an unknown value, or ``None`` to leave it out of the read altogether.
+        Every program starts at 0 (the library's create and update send it; ``plant`` too)."""
+        with self._lock:
+            body = self.programs[program_id].body
+            if value is None:
+                body.pop("ActivityTypeID", None)
+            else:
+                body["ActivityTypeID"] = value
+
     def publish(self, program_id: int) -> None:
         with self._lock:
             self.programs[program_id].public = True
@@ -284,6 +296,8 @@ class FakeMowlPrograms(FakeMowlMusic):
             "Playlist": {"PlaylistType": "Spotify", "PlaylistName": "Invented"},
             "TotalDuration": total,
             "TSS": body.get("TSS"),
+            # The program's own sport, as written (0 unless ``set_activity_type`` changed it).
+            **({"ActivityTypeID": body["ActivityTypeID"]} if "ActivityTypeID" in body else {}),
             "Segments": segments,
         }
 
