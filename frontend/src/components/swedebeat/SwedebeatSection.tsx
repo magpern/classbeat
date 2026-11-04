@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import type { ClassSummary } from '../../api/classes'
-import { getConnections, type Connection } from '../../api/connections'
+import { getConnections, getConnectionsView, type Connection } from '../../api/connections'
 import { createMatchJob, getSwedebeatMatch, swedebeatError, needsReconnect, type SwedebeatMatch } from '../../api/swedebeatMatch'
 import { isFeatureOff } from '../../api/spotify'
 import { actionKey, dropActionKey } from '../../lib/submittedInput'
@@ -44,13 +44,42 @@ function useSwedebeatConnection(): Connection | null | undefined {
   return found
 }
 
+/**
+ * Whether this user said "I use Swedebeat" (#525) and their connection; `undefined` while loading.
+ * Starting a match is offered only to such a user; a match that already exists still shows.
+ */
+function useStartChoice(): { uses: boolean; connection: Connection | null } | undefined {
+  const [found, setFound] = useState<{ uses: boolean; connection: Connection | null } | undefined>(undefined)
+  useEffect(() => {
+    let live = true
+    getConnectionsView().then(
+      (all) => {
+        if (live) {
+          setFound({
+            uses: all.swedebeat.usesSwedebeat,
+            connection: all.connections.find((c) => c.provider === 'swedebeat') ?? null,
+          })
+        }
+      },
+      () => {
+        if (live) setFound({ uses: false, connection: null })
+      },
+    )
+    return () => {
+      live = false
+    }
+  }, [])
+  return found
+}
+
 function StartMatch({ summary }: { summary: ClassSummary }) {
-  const connection = useSwedebeatConnection()
+  const choice = useStartChoice()
+  const connection = choice?.connection
   const action = useAction()
   const { navigate } = useRouter()
   const [reconnect, setReconnect] = useState(false)
   const listId = summary.songs.state === 'approved' ? summary.songs.revisionId : null
-  if (listId === null) return null
+  if (listId === null || choice === undefined || !choice.uses) return null
   const ready = connection?.status === 'connected'
 
   const start = () => {
@@ -79,7 +108,6 @@ function StartMatch({ summary }: { summary: ClassSummary }) {
         See which of these songs Swedebeat has, so you can build the mix there. Only titles and artists are
         looked up, and nothing is written to your Swedebeat account.
       </p>
-      {connection === undefined ? <p className="m-0 text-muted">Loading</p> : null}
       {connection === null ? (
         <p className="m-0">
           <Link to="/account#connections">Connect Swedebeat on your account page first</Link>

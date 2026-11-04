@@ -34,6 +34,7 @@ from classbeat.swedebeat_match.revision import (
     build,
 )
 from ctx import make_context
+from preftools import use_swedebeat
 from revisesongtools import change, current, picked, replace_script, revise_script
 from songtools import SongEnv, song_id
 
@@ -216,6 +217,7 @@ async def test_missing_songs_are_replaced_rematched_and_the_selection_approved(
         {"token": "swedebeat-test-token", "device_id": "0123456789abcdef"},
         public={"email": "rider@example.com"},
     )
+    await use_swedebeat(songenv.factory, rider.user_id)  # #525: the user's own switch
     with _enabled(songenv):
         class_id, base, first_list = await picked(songenv, rider)
         stored = songenv.revision(first_list)
@@ -377,6 +379,7 @@ async def test_a_catalogue_replace_calls_nothing_when_the_flag_is_off(
         {"token": "swedebeat-test-token", "device_id": "0123456789abcdef"},
         public={"email": "rider@example.com"},
     )
+    await use_swedebeat(songenv.factory, rider.user_id)  # #525: the user's own switch
     with _enabled(songenv):
         class_id, base, first_list = await picked(songenv, rider)
         stored = songenv.revision(first_list)
@@ -464,6 +467,7 @@ async def test_either_catalogue_flag_check_refuses_on_its_own(
         {"token": "swedebeat-test-token", "device_id": "0123456789abcdef"},
         public={"email": "rider@example.com"},
     )
+    await use_swedebeat(songenv.factory, rider.user_id)  # #525: the user's own switch
     with _enabled(songenv):
         class_id, base, first_list = await picked(songenv, rider)
         stored = songenv.revision(first_list)
@@ -497,3 +501,62 @@ async def test_either_catalogue_flag_check_refuses_on_its_own(
         assert answer.json()["detail"]["reason"] == "feature_off"
         assert catalogue.calls == []
         assert _jobs(songenv, class_id) == before
+
+
+async def test_a_catalogue_replace_calls_nothing_while_the_preference_is_off(
+    songenv: SongEnv, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """#525: with the flag on and a connected Swedebeat row, the user's own switch off refuses
+    the replace before anything is read; turned off after the approval, the queued re-match ends
+    ``feature_off`` and searches nothing."""
+    catalogue = CatalogueFake()
+    monkeypatch.setattr(
+        match_kind, "catalogue_client", lambda: swedebeat_cloud_test_client(catalogue)
+    )
+    rider = await songenv.rider()
+    await connections.save(
+        songenv.factory,
+        songenv.ring,
+        make_context(rider.user_id),
+        "swedebeat",
+        {"token": "swedebeat-test-token", "device_id": "0123456789abcdef"},
+        public={"email": "rider@example.com"},
+    )
+    with _enabled(songenv):
+        class_id, base, first_list = await picked(songenv, rider)
+        stored = songenv.revision(first_list)
+        parsed = SongListContent.model_validate(stored.content)
+        match_id = _insert_match(
+            songenv,
+            rider.user_id,
+            class_id,
+            first_list,
+            bytes(stored.content_hash),
+            [_song(n, song, missing=n == 3) for n, song in enumerate(parsed.songs, start=1)],
+        )
+        before = _jobs(songenv, class_id)
+        refused = await change(
+            rider, class_id, base, replace=None, request=None, match_revision_id=str(match_id)
+        )
+        assert refused.status_code == 409, refused.text
+        assert refused.json()["detail"]["reason"] == "feature_off"
+        assert _jobs(songenv, class_id) == before
+        assert catalogue.calls == []
+
+        await use_swedebeat(songenv.factory, rider.user_id)
+        songenv.script = replace_script()
+        started = await change(
+            rider, class_id, base, replace=None, request=None, match_revision_id=str(match_id)
+        )
+        assert started.status_code == 201, started.text
+        job_id = UUID(started.json()["id"])
+        waiting = await songenv.run(job_id)
+        assert waiting.state == "waiting_for_approval", (waiting.state, waiting.error_category)
+        digest = bytes(waiting.approval_hash).hex()
+        approved = await rider.approve(job_id, waiting.approval_revision_id, digest)
+        assert approved.status_code == 200, approved.text
+        await use_swedebeat(songenv.factory, rider.user_id, on=False)
+        songenv.script = revise_script()
+        done = await songenv.run(job_id)
+        assert (done.state, done.error_category) == ("failed", "feature_off")
+        assert catalogue.calls == []
