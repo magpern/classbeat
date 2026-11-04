@@ -32,6 +32,9 @@ module holds the checks that are not the input's own validation:
   ``none`` on a class whose music is not ``none``, or other music on a class whose music is
   ``none``, is ``invalid_input``; ``check_stored`` repeats it in the final fenced store after
   ``revision.adopt_first``, so two queued jobs of different kinds cannot both land.
+- **A revise of a soundless class** (SL2, #528) is admitted by ``admit_class`` through the same
+  gate (``admit_soundless``); in the worker ``still_on`` and ``require_covered`` run before any
+  call, as for a design. Its final store repeats ``check_stored``.
 - **No music step** (item 3). ``NoMusicStep`` stands in for ``design.music.MusicStep``: no MOWL or
   Spotify call, and its ``still_current`` and ``close`` do nothing (the revision names no MOWL
   object).
@@ -157,13 +160,16 @@ _STORED_SOURCE = text(
 )
 
 
-async def admit_class(db: AsyncSession, owner_id: UUID, class_id: UUID) -> Refused | None:
-    """A revise of a class: a soundless class cannot be revised until SL2 (#528) adds its stage,
-    so it is ``feature_off``, before anything is reserved."""
+async def admit_class(db: AsyncSession, ctx: UserContext, class_id: UUID) -> Refused | None:
+    """A revise of a class (SL2, #528): a music class passes untouched; a soundless one goes
+    through the same gate as its design (``admit_soundless``: the switch, the job's own plan's
+    route, every plan's route), before the job row is written. None admits."""
     source = (
-        await db.execute(_STORED_SOURCE, {"owner_id": owner_id, "class_id": class_id})
+        await db.execute(_STORED_SOURCE, {"owner_id": ctx.user_id, "class_id": class_id})
     ).scalar_one_or_none()
-    return Refused("feature_off") if is_none(source) else None
+    if not is_none(source):
+        return None
+    return await admit_soundless(db, ctx)
 
 
 async def still_on(run: JobRun) -> None:

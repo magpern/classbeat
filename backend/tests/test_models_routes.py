@@ -190,15 +190,24 @@ def test_the_running_prompt_versions_are_those_of_stages_built_from_real_context
             music_changed=False,
         )
     )
-    from classbeat.agent.soundless import SoundlessContext, soundless_design_stage
+    from classbeat.agent.soundless import (
+        SoundlessContext,
+        SoundlessReviseContext,
+        soundless_design_stage,
+        soundless_revise_stage,
+    )
 
     soundless_design = soundless_design_stage(SoundlessContext(design_case.brief))
+    soundless_revise = soundless_revise_stage(
+        SoundlessReviseContext(revise_case.brief, revise_case.revise.base, (), "easier")
+    )
     assert running_prompt_versions("design") == {
         "design": design.prompt_version,
         "revise": revise.prompt_version,
         "running_design": running_design.prompt_version,
         "running_revise": running_revise.prompt_version,
         "soundless_design": soundless_design.prompt_version,
+        "soundless_revise": soundless_revise.prompt_version,
     }
 
 

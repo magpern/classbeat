@@ -29,6 +29,7 @@ from classbeat.connections.swedebeat_account import (
 )
 from classbeat.log import redact
 from ctx import make_context
+from preftools import use_swedebeat
 from swedebeatcore import FakeSwedebeat
 from swedebeatfake import EMAIL, PASSWORD, make_app_key
 from test_mowl_redaction import Everything, captured
@@ -60,7 +61,9 @@ async def test_no_secret_in_logs_events_or_responses_on_any_path(
     swedebeat_app: dict[str, str],
     captured: Everything,
 ) -> None:
-    actor = await make_actor(await env.user("user@example.com"))
+    user_id = await env.user("user@example.com")
+    await use_swedebeat(env.factory, user_id)  # #525: the user's own switch
+    actor = await make_actor(user_id)
     texts: list[str] = []
     steps: list[tuple[dict[str, Any], int]] = [
         ({"password": WRONG_PASSWORD}, 400),

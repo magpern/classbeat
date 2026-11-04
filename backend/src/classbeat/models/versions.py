@@ -22,7 +22,8 @@
   2026-11-03, ``routes.resolve_route``'s ``running_covered``).
 - The soundless ``design`` stage (``classbeat.agent.soundless``, ADR 0007 amendment of
   2026-11-03, #527) is named ``design`` too and keyed ``soundless_design`` here
-  (``SOUNDLESS_STAGES``; SL2 adds ``soundless_revise``). It belongs to the ``design`` group, so a
+  (``SOUNDLESS_STAGES``); its ``revise`` (SL2, #528) is keyed ``soundless_revise``. Both belong
+  to the ``design`` group, so a
   result recorded without it is stale for ``prompt_versions``; a result that has it still covers
   soundless only from ``routes.SOUNDLESS_SUITE_VERSION`` on.
 - ``running_suite_version()``: the manifest's ``suite_version``, read from the package's
@@ -49,16 +50,28 @@ from classbeat.agent.design import DesignContext, design_stage
 from classbeat.agent.pick_pool import PoolContext, pool_stage
 from classbeat.agent.revise import ReviseContext, revise_stage
 from classbeat.agent.running import running_design_stage, running_revise_stage
-from classbeat.agent.soundless import SoundlessContext, soundless_design_stage
+from classbeat.agent.soundless import (
+    SoundlessContext,
+    SoundlessReviseContext,
+    soundless_design_stage,
+    soundless_revise_stage,
+)
 from classbeat.agent.stage import Stage
 
 MANIFEST: Final = Path(__file__).resolve().parent.parent / "evals" / "suite" / "manifest.json"
 # The running stages' keys (their stage names are ``design`` and ``revise``, as cycling's).
 RUNNING_STAGES: Final = {"design": "running_design", "revise": "running_revise"}
 # The soundless stages' keys (their stage name is ``design``, as cycling's).
-SOUNDLESS_STAGES: Final = {"design": "soundless_design"}
+SOUNDLESS_STAGES: Final = {"design": "soundless_design", "revise": "soundless_revise"}
 GROUP_STAGES: Final[dict[str, tuple[str, ...]]] = {
-    "design": ("design", "revise", "running_design", "running_revise", "soundless_design"),
+    "design": (
+        "design",
+        "revise",
+        "running_design",
+        "running_revise",
+        "soundless_design",
+        "soundless_revise",
+    ),
     "songs": ("pick_pool", "choose_songs"),
 }
 
@@ -93,7 +106,10 @@ def _running_stages() -> tuple[Stage, ...]:
 def _soundless_stages() -> tuple[Stage, ...]:
     blank = _no_context()
     blank.brief = SimpleNamespace(sport="cycling")  # the soundless builder checks the sport only
-    return (soundless_design_stage(cast(SoundlessContext, blank)),)
+    return (
+        soundless_design_stage(cast(SoundlessContext, blank)),
+        soundless_revise_stage(cast(SoundlessReviseContext, blank)),
+    )
 
 
 @cache
