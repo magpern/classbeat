@@ -523,43 +523,38 @@ async def test_a_soundless_class_is_refused_while_the_gate_is_off(
     assert mine.ledger() == []
 
 
-async def test_a_soundless_copy_stays_soundless_and_its_revise_is_the_kinds_to_answer(
+async def test_a_soundless_copy_stays_soundless_and_its_revise_follows_the_gate(
     renv: ReviseEnv, soundless: Callable[..., None]
 ) -> None:
-    browser = renv.browser  # the real job registry, with a MOWL connection
-    mine = soundless_source(renv.denv.ops.admin, browser)
+    """A soundless copy keeps ``{source: "none"}`` (class and revision), and a revise of it goes
+    through ``music_kind.admit_class`` like any soundless revise (SL2): the gate's refusal, with
+    nothing written, while the gate is closed; accepted once it is open."""
+    mine = soundless_source(renv.denv.ops.admin, renv.browser)
     soundless()
     made = await mine.duplicate()
     assert made.status_code == 201, made.text
-    found, [rev] = copy_rows(mine.admin, made.json()["class_id"])
+    copy_id, copy_rev = UUID(made.json()["class_id"]), UUID(made.json()["revision_id"])
+    found, [rev] = copy_rows(mine.admin, str(copy_id))
     assert (found.music_source, rev.music) == (NONE, NONE)
-    # A revise of the copy goes through ``music_kind.admit_class`` like any soundless revise.
-    asked = await browser.post(
-        "/api/jobs",
-        {
-            "kind": "revise_draft",
-            "input": {
-                "class_id": made.json()["class_id"],
-                "base_revision_id": made.json()["revision_id"],
-                "request": "Make the start easier.",
-                "mowl_connection_id": str(browser.connection_id),
-            },
-        },
-        {"Idempotency-Key": new_key()},
-    )
-    expected = await music_admit_class_reason(mine, made.json()["class_id"])
-    assert (asked.status_code, asked.json()["detail"]["reason"]) == (409, expected)
-    assert sql(mine.admin, "SELECT count(*) FROM jobs WHERE class_id = :c",
-               c=made.json()["class_id"]).scalar_one() == 0  # fmt: skip
 
+    def written() -> tuple[int, int]:
+        jobs = renv.sql("SELECT count(*) FROM jobs WHERE class_id = :c", c=copy_id).scalar_one()
+        return jobs, len(renv.messages(copy_id))
 
-async def music_admit_class_reason(mine: Source, class_id: str) -> str | None:
-    """What ``music_kind.admit_class`` answers for the class now (``feature_off`` until SL2)."""
-    from classbeat.db import user_session
-
-    async with user_session(mine.browser.env.factory, make_context(mine.owner)) as db:
-        refused = await music_kind.admit_class(db, mine.owner, UUID(class_id))
-    return None if refused is None else refused.reason
+    for setting, reason in (
+        ({"enabled": False}, "feature_off"),  # the environment's switch
+        ({"fake": False}, "soundless_not_evaluated"),  # the user's own plan is not covered
+    ):
+        soundless(**setting)
+        asked = await renv.ask(copy_id, copy_rev)
+        assert (asked.status_code, asked.json()["detail"]["reason"]) == (409, reason), setting
+        assert written() == (0, 0), setting
+    soundless()  # the gate open again
+    asked = await renv.ask(copy_id, copy_rev)
+    assert asked.status_code == 201, asked.text
+    assert written() == (1, 1)
+    found, _ = copy_rows(mine.admin, str(copy_id))
+    assert found.music_source == NONE  # the kind never changes
 
 
 async def test_a_copy_without_music_is_refused_by_revise_before_anything_is_written(
