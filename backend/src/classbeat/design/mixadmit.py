@@ -6,6 +6,8 @@ nothing:
 
 1. ``feature_off`` unless the effective ``swedebeat_enabled`` flag is on (the environment's
    switch, ``MixAdmission.enabled``, then the stored flag; stricter wins). Nothing else is read.
+   Also ``feature_off`` while the user's own "I use Swedebeat" preference is off (#525); the
+   preference is read only once the flag is on.
 2. ``not_connected`` unless the job's ``mowl_connection_id`` is the user's MOWL connection and
    ``connected``.
 3. ``invalid_input`` unless ``mix_id`` is in the user's **own fresh listing** (``POST
@@ -16,10 +18,11 @@ nothing:
 4. ``analysis_limit`` (with ``limit`` and ``used``) when the mix has no usable cached analysis and
    the user started ``mixlimit.ANALYSES_PER_DAY`` new analyses in the last 24 hours.
 
-The worker repeats what can change after creation: ``still_on`` (a queued job whose flag went off
-ends ``feature_off``, calling nothing), and the listing and ``mixlimit.reserve`` inside
-``swedebeat_music`` before anything is attached or fetched. ``revise_draft`` on a class designed
-on a mix checks the flag and the limit (``admit_class_mix``); its mix id is the class's own.
+The worker repeats what can change after creation: ``still_on`` (a queued job whose flag went off,
+or for a new design whose user turned the preference off, ends ``feature_off``, calling nothing),
+and the listing and ``mixlimit.reserve`` inside ``swedebeat_music`` before anything is attached or
+fetched. ``revise_draft`` on a class designed on a mix checks the flag and the limit
+(``admit_class_mix``); its mix id is the class's own.
 
 The web app sets ``MixAdmission`` at start (``classbeat.web``: the switch and the listing, which
 opens the user's MOWL connection through ``classbeat.connections``). Without it the switch is off
@@ -38,6 +41,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from classbeat import connections, egress
 from classbeat.connections import ConnectionFailure, Credentials, call_opened, open_connection
+from classbeat.connections.preferences import uses_swedebeat_in
 from classbeat.context import UserContext
 from classbeat.crypto.keks import KeyRing
 from classbeat.design import mixlimit
@@ -146,6 +150,8 @@ async def admit_mix(
     config = current()
     if not await flag_on(db, config.enabled) or config.listing is None:
         return Refused("feature_off")
+    if not await uses_swedebeat_in(db, ctx.user_id):
+        return Refused("feature_off")
     if not await _connected(db, ctx, connection_id):
         return Refused("not_connected")
     try:
@@ -178,10 +184,14 @@ async def admit_class_mix(
     return await _limit(db, ctx.user_id, row.mix_id, connection_id)
 
 
-async def still_on(run: JobRun, environment_on: bool) -> None:
+async def still_on(run: JobRun, environment_on: bool, *, new_design: bool = False) -> None:
     """In the worker, before the music step of a job on a mix: ``feature_off`` when the flag is
-    off now (the job was queued while it was on), before anything is called."""
+    off now (the job was queued while it was on), before anything is called. For a new design
+    (``new_design``, not a revise of a class already on a mix) also when the user turned their
+    "I use Swedebeat" preference off meanwhile (#525)."""
     async with run.fenced() as fs:
         on = await flag_on(fs.db, environment_on)
+        if on and new_design:
+            on = await uses_swedebeat_in(fs.db, run.lease.owner_id)
     if not on:
         raise JobFailure("feature_off")
