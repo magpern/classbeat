@@ -94,6 +94,10 @@ class ConnectionsOut(BaseModel):
     # admin flag), so the new-class form offers Running only when a running design would be
     # admitted. Signed-in users only; nothing here says anything about the user's own account.
     running_enabled: bool = False
+    # ADR 0007 amendment of 2026-11-03 (#527): the effective ``soundless_enabled`` (the
+    # environment's switch, a stored ``on`` and every plan's route covering soundless), so the
+    # form offers "No music" only when a soundless design would be admitted.
+    soundless_enabled: bool = False
 
 
 def failure_response(failure: ConnectionFailure) -> JSONResponse:
@@ -126,12 +130,18 @@ async def get_connections(
     email = await swedebeat_email(factory, ctx) if held else None
     async with system_session(factory) as db:
         running = await effective.running_enabled(db, request.app.state.settings.running_enabled)
+        # Imported here: ``classbeat.design`` imports this package (its music step opens the
+        # MOWL connection), so the routes module must not import it at its own import time.
+        from classbeat.design import music_kind
+
+        soundless = await music_kind.soundless_on(db)
     return ConnectionsOut(
         connections=[
             ConnectionOut.of(row, email if row.provider == "swedebeat" else None) for row in rows
         ],
         swedebeat=SwedebeatAccessOut(enabled=access.enabled, available=access.available),
         running_enabled=running,
+        soundless_enabled=soundless,
     )
 
 

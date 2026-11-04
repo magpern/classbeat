@@ -6,11 +6,17 @@ Input: ``{class_id, base_revision_id, mowl_connection_id}`` (``RefitDraftInput``
 ``base_revision_hash``, which only ``admit`` sets.
 
 **Create time** (``admit``, in the create transaction, the class row locked by
-``chat.create_state``): ``invalid_input`` unless the base is a ``draft`` of the class;
+``chat.create_state``), before anything is reserved: ``invalid_input`` for a soundless class
+(``music_kind.is_none`` on the locked class's ``music_source``; never ``music_kind.admit_class``
+or ``admit_music``, whose answers follow the soundless gate, so a refit can never reach a music
+step on a class with no music); ``not_changeable`` for a class with no ``music_source`` (a #550
+copy of a class on picked songs); ``invalid_input`` unless the base is a ``draft`` of the class;
 ``stale_base`` unless it is the class's current revision; the running flag
-(``sport.admit_class``); ``refit_limit`` (``MAX_REFITS`` refit revisions per class); for a class
-on a Swedebeat mix, its flag and analysis limit (``mixadmit.admit_class_mix``). The one open job
-per class and the plan's concurrent jobs are the jobs API's, as for every kind.
+(``sport.admit_class``); ``refit_limit`` (``MAX_REFITS`` refit revisions per class);
+``nothing_pending`` when the corrections for the base's fingerprint already equal its
+``music.beat_one``; for a class on a Swedebeat mix, its flag and analysis limit
+(``mixadmit.admit_class_mix``). The one open job per class and the plan's concurrent jobs are the
+jobs API's, as for every kind.
 
 **Pipeline** (stages ``music``, ``fit``):
 
@@ -31,7 +37,8 @@ per class and the plan's concurrent jobs are the jobs API's, as for every kind.
 
 import hashlib
 import json
-from typing import Annotated, ClassVar, Final, Self
+from collections.abc import Mapping
+from typing import Annotated, Any, ClassVar, Final, Self
 from uuid import UUID
 
 from pydantic import BaseModel, StringConstraints, ValidationError, model_validator
@@ -44,9 +51,10 @@ from classbeat.agent.running import check_running
 from classbeat.agent.schemas import RunningDraft, stored_draft
 from classbeat.agent.stage import ToolError
 from classbeat.context import UserContext
-from classbeat.design import chat, mixadmit, revision, sport
+from classbeat.design import chat, mixadmit, music_kind, revision, sport
 from classbeat.design.kind import (
     CLASS_MUSIC_SOURCE,
+    NoMusicChoice,
     SwedebeatMusicChoice,
     current_runtime,
     music_step,
@@ -76,6 +84,16 @@ class RefitDraftInput(JobInput):
         return self
 
 
+_SOURCE = text("SELECT music_source FROM classes WHERE id = :class_id AND owner_id = :owner_id")
+_BASE_MUSIC = text(
+    "SELECT music FROM class_revisions WHERE id = :base AND owner_id = :owner_id "
+    "AND class_id = :class_id"
+)
+_ROWS = text(
+    "SELECT song, beats FROM beat_one_corrections WHERE owner_id = :owner_id "
+    "AND class_id = :class_id AND fingerprint = :fingerprint"
+)
+
 _REFITS = text(
     "SELECT count(*) FROM class_revisions WHERE owner_id = :owner_id AND class_id = :class_id "
     "AND kind = 'draft' AND provenance ->> 'origin' = 'beat_one'"
@@ -100,9 +118,19 @@ async def admit(db: AsyncSession, ctx: UserContext, parsed: BaseModel) -> Admitt
     if not isinstance(parsed, RefitDraftInput) or parsed.class_id is None:
         raise ValueError("admit gets this kind's input")
     class_id = parsed.class_id
+    ids = {"owner_id": ctx.user_id, "class_id": class_id}
     state = await chat.create_state(db, ctx.user_id, class_id, parsed.base_revision_id)
-    if not state.exists or state.base_kind != "draft" or state.base_hash is None:
+    if not state.exists:
         return Refused("invalid_input")  # a foreign or unknown id answers like any other
+    # The class row is locked now (create_state). The music kind first, read here and never
+    # through music_kind.admit_class / admit_music (they follow the soundless gate).
+    source = (await db.execute(_SOURCE, ids)).scalar_one_or_none()
+    if music_kind.is_none(source):
+        return Refused("invalid_input")
+    if source is None:
+        return Refused("not_changeable")  # no music to fit to (#550's copy of picked songs)
+    if state.base_kind != "draft" or state.base_hash is None:
+        return Refused("invalid_input")
     if state.current != parsed.base_revision_id:
         return Refused("stale_base")
     running = await sport.admit_class(db, ctx.user_id, class_id)
@@ -111,10 +139,26 @@ async def admit(db: AsyncSession, ctx: UserContext, parsed: BaseModel) -> Admitt
     done = (await db.execute(_REFITS, {"owner_id": ctx.user_id, "class_id": class_id})).scalar_one()
     if done >= MAX_REFITS:
         return Refused("refit_limit", {"limit": MAX_REFITS, "count": int(done)})
+    if not await _pending(db, ids, parsed.base_revision_id):
+        return Refused("nothing_pending")
     mix = await mixadmit.admit_class_mix(db, ctx, class_id, parsed.mowl_connection_id)
     if mix is not None:
         return mix
     return Admitted({"base_revision_hash": state.base_hash.hex()})
+
+
+async def _pending(db: AsyncSession, ids: Mapping[str, Any], base: UUID) -> bool:
+    """Whether the class's corrections for the base's fingerprint differ from what the base was
+    fitted with (its ``music.beat_one``)."""
+    music = (await db.execute(_BASE_MUSIC, {**ids, "base": base})).scalar_one_or_none()
+    if not isinstance(music, dict) or not isinstance(music.get("fingerprint"), str):  # pyright: ignore[reportUnknownMemberType]
+        return False  # no beat data to fit to
+    fingerprint: str = music["fingerprint"]  # pyright: ignore[reportUnknownVariableType]
+    rows = (await db.execute(_ROWS, {**ids, "fingerprint": fingerprint})).all()
+    wanted = {(int(r.song), int(r.beats)) for r in rows}
+    applied = music.get("beat_one") or []  # pyright: ignore[reportUnknownMemberType, reportUnknownVariableType]
+    have = {(int(c["song"]), int(c["beats"])) for c in applied}  # pyright: ignore[reportUnknownArgumentType, reportUnknownVariableType]
+    return wanted != have
 
 
 def refit(draft: object, m: dict[str, object]) -> DesignResult:
@@ -162,6 +206,8 @@ async def run(job_run: JobRun) -> Complete:
         base_music = revision.REVISION_MUSIC.validate_json(json.dumps(row.music))
     except ValidationError:
         raise JobFailure("internal") from None
+    if music_kind.is_none(row.music_source) or isinstance(music, NoMusicChoice):
+        raise JobFailure("invalid_input")  # defence in depth: admit refuses a soundless class
     if brief.sport == sport.RUNNING:
         if isinstance(music, SwedebeatMusicChoice):
             raise JobFailure("internal")  # running v1 has no mix (ADR 0018)

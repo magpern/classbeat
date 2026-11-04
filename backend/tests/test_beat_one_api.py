@@ -49,7 +49,7 @@ async def test_set_replace_and_clear_one_songs_correction(renv: ReviseEnv) -> No
     detail = (await renv.browser.get(f"/api/classes/{class_id}")).json()["beat_one"]
     assert detail["available"] is True
     assert detail["revision_id"] == str(base)
-    assert (detail["pending"], detail["stale"]) == (False, 0)
+    assert (detail["pending"], detail["stale"]) == (False, [])
     first = detail["songs"][0]
     assert (first["song"], first["beats"], first["applied"]) == (1, 0, 0)
     assert first["title"]
@@ -131,13 +131,13 @@ async def test_another_users_class_is_not_found_and_unchanged(
 
 async def test_rows_for_other_music_are_counted_as_stale_and_not_shown(renv: ReviseEnv) -> None:
     class_id, base = await renv.design()
-    renv.sql(
-        "INSERT INTO beat_one_corrections (owner_id, class_id, fingerprint, song, beats) "
-        "VALUES (:o, :c, :f, 1, 3)",
+    row = renv.sql(
+        "INSERT INTO beat_one_corrections (owner_id, class_id, fingerprint, song, beats, bpm) "
+        "VALUES (:o, :c, :f, 1, 3, 120) RETURNING id",
         o=renv.owner, c=class_id, f="a" * 64,
-    )  # fmt: skip
+    ).scalar_one()  # fmt: skip
     detail = (await renv.browser.get(f"/api/classes/{class_id}")).json()["beat_one"]
-    assert detail["stale"] == 1
+    assert detail["stale"] == [{"id": str(row), "song": 1, "beats": 3}]
     assert detail["pending"] is False
     assert all(s["beats"] == 0 for s in detail["songs"])
     assert base
@@ -151,3 +151,111 @@ async def test_a_revision_of_another_class_is_not_found(renv: ReviseEnv) -> None
     gone = await delete(renv.browser, class_id, 1, other_base)
     assert gone.status_code == 404
     assert rows(renv, class_id) == []
+
+
+async def call(browser: Browser, method: str, path: str) -> httpx.Response:
+    headers = await browser.headers()
+    made = await browser.client.request(method, path, headers=headers)
+    browser.client.cookies.clear()
+    return made
+
+
+async def test_a_stale_row_is_cleared_by_id_and_another_classes_row_is_404(
+    renv: ReviseEnv,
+) -> None:
+    class_id, base = await renv.design()
+    other_class, _ = await renv.design()
+    mine = renv.sql(
+        "INSERT INTO beat_one_corrections (owner_id, class_id, fingerprint, song, beats, bpm) "
+        "VALUES (:o, :c, :f, 1, 3, 120) RETURNING id",
+        o=renv.owner, c=class_id, f="a" * 64,
+    ).scalar_one()  # fmt: skip
+    theirs = renv.sql(
+        "INSERT INTO beat_one_corrections (owner_id, class_id, fingerprint, song, beats, bpm) "
+        "VALUES (:o, :c, :f, 1, 2, 120) RETURNING id",
+        o=renv.owner, c=other_class, f="a" * 64,
+    ).scalar_one()  # fmt: skip
+    wrong = await call(renv.browser, "DELETE", f"/api/classes/{class_id}/beat-one/rows/{theirs}")
+    assert wrong.status_code == 404, "a row of another class of the same user"
+    assert len(rows(renv, other_class)) == 1
+    done = await call(renv.browser, "DELETE", f"/api/classes/{class_id}/beat-one/rows/{mine}")
+    assert done.status_code == 200
+    assert done.json()["stale"] == []
+    assert rows(renv, class_id) == []
+    assert base
+
+
+async def test_clear_all_removes_every_row_of_the_class_only(renv: ReviseEnv) -> None:
+    class_id, base = await renv.design()
+    other_class, other_base = await renv.design()
+    await put(renv.browser, class_id, 1, {"beats": 2, "revision_id": str(base)})
+    await put(renv.browser, other_class, 1, {"beats": 1, "revision_id": str(other_base)})
+    renv.sql(
+        "INSERT INTO beat_one_corrections (owner_id, class_id, fingerprint, song, beats, bpm) "
+        "VALUES (:o, :c, :f, 1, 3, 120)",
+        o=renv.owner, c=class_id, f="a" * 64,
+    )  # fmt: skip
+    done = await call(renv.browser, "DELETE", f"/api/classes/{class_id}/beat-one")
+    assert done.status_code == 200
+    assert rows(renv, class_id) == []
+    assert len(rows(renv, other_class)) == 1
+
+
+async def test_the_cap_counts_the_current_music_only(
+    renv: ReviseEnv, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from classbeat.classes import beat_one as api_beat_one
+
+    monkeypatch.setattr(api_beat_one, "MAX_PER_CLASS", 1)
+    class_id, base = await renv.design()
+    renv.sql(
+        "INSERT INTO beat_one_corrections (owner_id, class_id, fingerprint, song, beats, bpm) "
+        "VALUES (:o, :c, :f, 1, 3, 120), (:o, :c, :f, 2, 3, 120)",
+        o=renv.owner, c=class_id, f="a" * 64,
+    )  # fmt: skip
+    first = await put(renv.browser, class_id, 1, {"beats": 1, "revision_id": str(base)})
+    assert first.status_code == 200, "stale rows do not count"
+    again = await put(renv.browser, class_id, 1, {"beats": 2, "revision_id": str(base)})
+    assert again.status_code == 200, "replacing a song's own row is always allowed"
+    over = await put(renv.browser, class_id, 2, {"beats": 1, "revision_id": str(base)})
+    assert (over.status_code, over.json()["detail"]["reason"]) == (409, "correction_limit")
+
+
+@pytest.mark.parametrize(
+    ("source", "reason"), [('{"source": "none"}', "no_beat_data"), (None, "not_changeable")]
+)
+async def test_a_soundless_class_or_one_with_no_music_source_takes_no_correction(
+    renv: ReviseEnv, source: str | None, reason: str
+) -> None:
+    class_id, base = await renv.design()
+    renv.sql(
+        "UPDATE classes SET music_source = CAST(:s AS jsonb) WHERE id = :c", s=source, c=class_id
+    )
+    made = await put(renv.browser, class_id, 1, {"beats": 1, "revision_id": str(base)})
+    assert (made.status_code, made.json()["detail"]["reason"]) == (409, reason)
+    detail = (await renv.browser.get(f"/api/classes/{class_id}")).json()["beat_one"]
+    assert detail["available"] is False
+    assert rows(renv, class_id) == []
+
+
+async def test_clearing_a_song_with_a_revision_that_is_not_current_is_stale_base(
+    renv: ReviseEnv,
+) -> None:
+    class_id, base = await renv.design()
+    await put(renv.browser, class_id, 1, {"beats": 1, "revision_id": str(base)})
+    await renv.revise(class_id, base, "revise_good")
+    made = await delete(renv.browser, class_id, 1, base)
+    assert (made.status_code, made.json()["detail"]["reason"]) == (409, "stale_base")
+    assert len(rows(renv, class_id)) == 1, "nothing deleted"
+
+
+async def test_a_row_records_the_bpm_and_a_changed_bpm_is_flagged(renv: ReviseEnv) -> None:
+    class_id, base = await renv.design()
+    await put(renv.browser, class_id, 1, {"beats": 1, "revision_id": str(base)})
+    stored = renv.sql("SELECT bpm FROM beat_one_corrections WHERE class_id = :c", c=class_id)
+    song = (await renv.browser.get(f"/api/classes/{class_id}")).json()["beat_one"]["songs"][0]
+    assert stored.scalar_one() == pytest.approx(song["bpm"])
+    assert song["bpm_changed"] is False
+    renv.sql("UPDATE beat_one_corrections SET bpm = bpm + 10 WHERE class_id = :c", c=class_id)
+    song = (await renv.browser.get(f"/api/classes/{class_id}")).json()["beat_one"]["songs"][0]
+    assert song["bpm_changed"] is True
