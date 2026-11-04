@@ -77,6 +77,9 @@ CATEGORIES: Final = (
     # class, or of one classbeat cannot tell; nothing is written, ``overwrite`` included, and it
     # is not retried.
     "program_other_sport",
+    # ADR 0007 amendment "beat-one corrections" (migration 0029): a ``refit_draft`` whose music
+    # is no longer the base revision's (another fingerprint); nothing is stored, not retried.
+    "music_changed",
 )
 # Retried by the worker (a new attempt with backoff). ``lease_lost`` is retried by the reaper and
 # ``operation_busy`` is requeued without an attempt (``classbeat.jobs.transitions``).
