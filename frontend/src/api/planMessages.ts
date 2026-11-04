@@ -63,11 +63,18 @@ const FEATURES: Record<string, string> = {
  * The sentence for a 409 `quota`. The kind is the body's `quota` field, defaulting to `classes`;
  * `cost` means the month's model budget is used up; `length` (#496) that the class is longer than
  * the plan allows (`limit` in minutes); `feature` that the plan does not include `feature`.
+ * With `forVersion` the length and feature sentences are about choosing an older version (Make
+ * current), where "choose a shorter length" would not fit.
  */
-export function quotaText(error: ApiError): string {
+export function quotaText(error: ApiError, forVersion = false): string {
   const detail = detailOf(error)
   if (detail.quota === 'length') {
     const limit = whole(detail.limit)
+    if (forVersion) {
+      return limit === null
+        ? 'That version is longer than your plan allows. Choose another version.'
+        : `Your plan allows classes of up to ${String(limit)} minutes, and that version is longer. Choose another version.`
+    }
     return limit === null
       ? 'Your plan does not allow a class this long. Choose a shorter length.'
       : `Your plan allows classes of up to ${String(limit)} minutes. Choose a shorter length.`
@@ -77,6 +84,11 @@ export function quotaText(error: ApiError): string {
       typeof detail.feature === 'string' && Object.hasOwn(FEATURES, detail.feature)
         ? FEATURES[detail.feature]
         : undefined
+    if (forVersion) {
+      return name === undefined
+        ? 'That version uses something your plan does not include. Choose another version.'
+        : `That version uses ${name}, which your plan does not include. Choose another version.`
+    }
     return name === undefined
       ? 'Your plan does not include part of this class. Take it out and try again.'
       : `Your plan does not include ${name}. Take them out and try again.`

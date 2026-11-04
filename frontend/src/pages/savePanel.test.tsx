@@ -9,7 +9,7 @@ import {
   classBody,
   classRoutes,
 } from '../test/classFixtures'
-import { fakeApi, reason } from '../test/fakeApi'
+import { fakeApi, json, reason } from '../test/fakeApi'
 import { CLASS_ID, SESSION_ROUTES, jobBody, sse } from '../test/jobFixtures'
 import { renderAt } from '../test/render'
 
@@ -207,6 +207,41 @@ describe('Save', () => {
     await waitFor(() => {
       expect(api.to('GET', OPS).length).toBeGreaterThanOrEqual(2)
     })
+  })
+
+  const QUOTA_REFUSALS: [string, Record<string, unknown>, RegExp][] = [
+    [
+      'classes',
+      { quota: 'classes', limit: 3, used: 3, period_end: '2026-11-01T00:00:00Z', plan: 'free' },
+      /You have used your 3 classes for October\. More from 1 November\./,
+    ],
+    [
+      'cost',
+      { quota: 'cost', period_end: '2026-11-01T00:00:00Z', plan: 'free' },
+      /You have used what your plan allows for October, so no more classes can be designed for now\./,
+    ],
+    [
+      'length',
+      { quota: 'length', limit: 60, plan: 'free' },
+      /Your plan allows classes of up to 60 minutes\. Choose a shorter length\./,
+    ],
+    [
+      'feature',
+      { quota: 'feature', feature: 'races', plan: 'free' },
+      /Your plan does not include races\. Take them out and try again\./,
+    ],
+  ]
+  it.each(QUOTA_REFUSALS)('words the %s plan refusal with its own sentence', async (_kind, detail, sentence) => {
+    start(
+      { saved: UNSAVED },
+      { 'POST /api/jobs': () => json({ detail: { reason: 'quota', ...detail } }, 409) },
+    )
+    renderAt(PAGE)
+    fireEvent.click(await screen.findByRole('button', { name: 'Save to MOWL' }))
+    fireEvent.click(within(screen.getByRole('group', { name: 'Confirm' })).getByRole('button', { name: 'Save to MOWL' }))
+    const alert = await screen.findByRole('alert')
+    expect(alert).toHaveTextContent(sentence)
+    expect(alert).not.toHaveTextContent('what your plan allows for now')
   })
 })
 
