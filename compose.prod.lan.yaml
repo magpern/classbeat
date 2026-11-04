@@ -1,0 +1,26 @@
+# Overlay for compose.prod.yaml (ADR 0020, #567): for a reverse proxy (swag) that runs on ANOTHER
+# machine of the home network and reaches web over the LAN. web leaves the `proxy` Docker network
+# (there is none to share) and is published on this server's LAN address only:
+#
+#   COMPOSE_FILE=compose.prod.yaml:compose.prod.lan.yaml           (in .env; runbook section 6c)
+#
+#   WEB_LAN_ADDRESS  this server's own private IPv4 address on the LAN            required
+#   WEB_HOST_PORT    the port swag connects to (default 8080)                     optional
+#   PROXY_IP         swag's LAN address: the one peer whose X-Forwarded-For web believes
+#
+# Published ports keep the sender's address (Docker NATs them), so web sees swag's own address,
+# which compose.prod.yaml already trusts as PROXY_IP (one private address, never a range).
+# NOTHING here stops another machine on the LAN from connecting to the port: the boundary is the
+# host firewall, which must drop everything but PROXY_IP to WEB_HOST_PORT (runbook section 6c;
+# Docker's published ports bypass ufw, so the rule goes in the DOCKER-USER chain). The hop from
+# swag to web is plain HTTP across the LAN. scripts/check-prod-compose.sh checks that exactly one
+# port is published, on one private address (never 0.0.0.0, IPv6 or loopback here), and that
+# web does not join the proxy network. Needs Docker Compose 2.24.4 or later (`!override`).
+
+services:
+  web:
+    ports:
+      - "${WEB_LAN_ADDRESS:?set WEB_LAN_ADDRESS to this server's LAN address}:${WEB_HOST_PORT:-8080}:8000"
+    networks: !override
+      web-out: {}
+      backend: {}
