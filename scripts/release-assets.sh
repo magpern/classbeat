@@ -17,9 +17,13 @@ root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 assets=(
   "compose.prod.yaml compose.prod.yaml"
   "compose.prod.loopback.yaml compose.prod.loopback.yaml"
+  "compose.prod.lan.yaml compose.prod.lan.yaml"
   "scripts/check-prod-compose.sh check-prod-compose.sh"
   "docs/runbooks/swag-classbeat.subdomain.conf swag-classbeat.subdomain.conf"
   "docs/runbooks/prod.env.example prod.env.example"
+  "scripts/backup.sh backup.sh"
+  "scripts/restore.sh restore.sh"
+  "scripts/validate-backup.sh validate-backup.sh"
 )
 
 case "${1:-}" in
@@ -35,7 +39,7 @@ case "${1:-}" in
       [ -f "$root/$src" ] && [ ! -L "$root/$src" ] || { echo "release-assets: $src is not a regular file" >&2; exit 1; }
       cp "$root/$src" "$dir/$name"
     done
-    chmod 0755 "$dir/check-prod-compose.sh"
+    chmod 0755 "$dir/check-prod-compose.sh" "$dir/backup.sh" "$dir/restore.sh" "$dir/validate-backup.sh"
     ( cd "$dir" && sha256sum -- * > SHA256SUMS )
     ;;
   *)
