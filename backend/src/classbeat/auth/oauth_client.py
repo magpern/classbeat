@@ -126,6 +126,8 @@ def authorization_url(
         if provider.name == MICROSOFT:
             extra["prompt"] = "login"
         elif provider.name == GOOGLE:
+            # No prompt=login: Google does not document it, and nothing in its answer would show
+            # it was honoured. Freshness rests on auth_time alone (#522, ADR 0003 section 5).
             extra["claims"] = AUTH_TIME_CLAIMS
     url, _ = _client(provider, redirect_uri, None).create_authorization_url(
         provider.authorize_url, state=state, code_verifier=verifier, **extra
