@@ -456,9 +456,13 @@ check_prod_file_text() {   # check_prod_file_text DIR [FILE...] (default: the th
 }
 
 # The compose files as written: no variable named like a client secret, no client secret literal.
+# check_oauth_files DIR [FILE...] (default: the three production files; the repo mode adds the dev
+# compose.yaml, #521).
 check_oauth_files() {
-  local d="$1" f
-  for f in compose.prod.yaml compose.prod.loopback.yaml compose.prod.lan.yaml; do
+  local d="$1" f files=(compose.prod.yaml compose.prod.loopback.yaml compose.prod.lan.yaml)
+  shift
+  (( $# == 0 )) || files=("$@")
+  for f in "${files[@]}"; do
     if grep -E -i 'client_secret' "$d/$f" | grep -Evq '^[[:space:]]*(#.*|- oauth_(google|github|microsoft)_client_secret|oauth_(google|github|microsoft)_client_secret:|file: \./secrets/oauth_(google|github|microsoft)_client_secret)[[:space:]]*$'; then
       fail "$f: client_secret only as the three secret names and their secrets/ files"; return 1
     fi
@@ -771,12 +775,14 @@ for m in \
   'del(.services.web.environment.CLASSBEAT_OAUTH_MICROSOFT_CLIENT_ID)'; do
   expect_refused oauth_defaults "$defaults" "$m"
 done
+# The dev compose.yaml as it is (#521): the same rule as the production files.
+check_oauth_files "$root" compose.yaml || exit 1
 # The compose files as written (copies; the checkout's files are never changed).
 mkdir "$tmp/files"
 expect_files_refused() {
-  cp "$tmp/compose.prod.yaml" "$tmp/compose.prod.loopback.yaml" "$tmp/files/"
+  cp "$tmp/compose.prod.yaml" "$tmp/compose.prod.loopback.yaml" "$root/compose.yaml" "$tmp/files/"
   sed -i -E "$2" "$tmp/files/$1"
-  if (check_oauth_files "$tmp/files" 2>/dev/null); then
+  if (check_oauth_files "$tmp/files" compose.prod.yaml compose.prod.loopback.yaml compose.yaml 2>/dev/null); then
     echo "check-prod-compose: self-test: accepted an unsafe $1: $2" >&2; exit 1
   fi
 }
@@ -787,6 +793,10 @@ expect_files_refused compose.prod.yaml 's|^  oauth_google_client_secret:$|  oaut
 expect_files_refused compose.prod.yaml 's|file: \./secrets/oauth_github_client_secret|environment: OAUTH_GITHUB_CLIENT_SECRET|'
 expect_files_refused compose.prod.loopback.yaml \
   's|^(      CLASSBEAT_TRUSTED_PROXIES:.*)$|\1\n      OAUTH_CLIENT_SECRET: abc|'
+# shellcheck disable=SC2016  # a literal compose variable, not a shell one
+expect_files_refused compose.yaml \
+  's|^(      CLASSBEAT_OAUTH_VISIBLE_PROVIDERS:.*)$|\1\n      CLASSBEAT_OAUTH_GOOGLE_CLIENT_SECRET: ${OAUTH_GOOGLE_CLIENT_SECRET:-}|'
+expect_files_refused compose.yaml 's|file: \./secrets/oauth_github_client_secret|environment: OAUTH_GITHUB_CLIENT_SECRET|'
 # The same bypasses as YAML (#517): a compose file merged after compose.prod.yaml (and after each
 # overlay), rendered with every profile and run through the whole variant check, on every variant. The
 # text rule is bypassed on purpose here (expect_yaml_refused looks at the render only), so the

@@ -9,6 +9,7 @@ import {
   stageLabel,
   USE_CHANGE_SONGS,
   USE_FINISH_SONGS,
+  USE_NEW_CLASS_FOR_MUSIC_SOUNDLESS,
   USE_NEW_CLASS_FOR_SONGS,
   USE_OTHER_MUSIC_RUNNING,
 } from '../../api/jobMessages'
@@ -22,7 +23,7 @@ import { Button } from '../ui/button'
 import { UncertainAttach } from './UncertainAttach'
 
 /** Where the class's songs stand, for the answer to a request that only asks for other songs. */
-type SongsWay = 'change' | 'own' | 'pending' | 'running'
+type SongsWay = 'change' | 'own' | 'pending' | 'running' | 'soundless'
 
 export const MAX_REQUEST_CHARS = 2000
 
@@ -132,11 +133,13 @@ function Unanswered({
         <p>
           {songs === 'change'
             ? USE_CHANGE_SONGS
-            : songs === 'running'
-              ? USE_OTHER_MUSIC_RUNNING
-              : songs === 'own'
-                ? USE_NEW_CLASS_FOR_SONGS
-                : USE_FINISH_SONGS}
+            : songs === 'soundless'
+              ? USE_NEW_CLASS_FOR_MUSIC_SOUNDLESS
+              : songs === 'running'
+                ? USE_OTHER_MUSIC_RUNNING
+                : songs === 'own'
+                  ? USE_NEW_CLASS_FOR_SONGS
+                  : USE_FINISH_SONGS}
         </p>
         {canChangeSongs ? (
           <Button
@@ -154,7 +157,7 @@ function Unanswered({
     )
   }
   if (job.state === 'failed') {
-    const sentence = reviseFailureText(job.errorCategory)
+    const sentence = reviseFailureText(job.errorCategory, songs === 'soundless')
     return (
       <p className="chat__outcome" role="alert">
         {sentence}{' '}
@@ -229,7 +232,7 @@ function History({
                 ))}
               </ul>
             ) : null}
-            {m.change?.musicChanged === true ? (
+            {m.change?.musicChanged === true && songs !== 'soundless' ? (
               <p className="chat__text">The music changed: the playlist in MOWL is not the one before.</p>
             ) : null}
             {m.body ? (
@@ -351,7 +354,9 @@ export function ChatPanel({
         openJobId={running?.id ?? null}
         onView={onView}
         songs={
-          summary.sport === 'running'
+          summary.soundless
+            ? 'soundless'
+            : summary.sport === 'running'
             ? 'running'
             : summary.songs.state === 'approved' && summary.songs.revisionId !== null
             ? 'change'

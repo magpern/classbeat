@@ -97,6 +97,8 @@ export interface RunningBrief {
 export type DesignMusic =
   | { source: 'mowl_spotify_playlist'; spotify_playlist_id: string }
   | { source: 'mowl_swedebeat_mix'; mix_id: string }
+  /** A soundless class (ADR 0007 amendment 2026-11-03): no music, no playlist, cycling only. */
+  | { source: 'none' }
 
 export interface DesignInput {
   title?: string

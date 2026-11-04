@@ -273,7 +273,7 @@ describe('Update', () => {
   it('shows the Updated sentence when the update ended before the reload saw it open', async () => {
     const path = `/api/jobs/${SAVE_JOB}`
     start(
-      { saved: saved() },
+      { saved: saved({ latest_verified: true }) },
       {
         'POST /api/jobs': () => jobBody('queued', { id: SAVE_JOB, kind: 'update_workout' }),
         [`GET ${path}`]: jobBody('completed', { id: SAVE_JOB, kind: 'update_workout' }),
@@ -527,5 +527,142 @@ describe('an undecided write', () => {
     for (const call of api.calls) expect(call.path.startsWith('/api/')).toBe(true)
     expect(classBody().id).toBe(CLASS_ID)
     expect(CLASS_PATH).toContain(CLASS_ID)
+  })
+})
+
+
+// SL6 (#532, ADR 0007 item 8): "now matches" only when the last write was read back and matched.
+describe('verified or not', () => {
+  const path = `/api/jobs/${SAVE_JOB}`
+
+  function startUpdate(cls: Record<string, unknown>, more: Record<string, object | (() => unknown)> = {}) {
+    return start(cls, {
+      'POST /api/jobs': () => jobBody('queued', { id: SAVE_JOB, kind: 'update_workout' }),
+      [`GET ${path}`]: jobBody('completed', { id: SAVE_JOB, kind: 'update_workout' }),
+      [`GET ${path}/events`]: () => sse([1, 'completed']),
+      ...more,
+    })
+  }
+
+  async function runUpdate() {
+    renderAt(PAGE)
+    fireEvent.click(await screen.findByRole('button', { name: 'Update saved workout' }))
+    fireEvent.click(
+      within(screen.getByRole('group', { name: 'Confirm' })).getByRole('button', { name: 'Update workout' }),
+    )
+  }
+
+  it('a verified Update says the MOWL workout now matches, in a polite status', async () => {
+    startUpdate({ saved: saved({ latest_verified: true }) })
+    await runUpdate()
+    const sentence = await screen.findByText('Updated. Your MOWL workout now matches this version.')
+    expect(sentence).toHaveAttribute('role', 'status')
+  })
+
+  it('an unverified Update never says it matches, and points to the MOWL app', async () => {
+    startUpdate({ saved: saved({ latest_verified: false }), current_revision_number: 2 })
+    await runUpdate()
+    const sentence = await screen.findByText(/The update went through, but classbeat could not confirm MOWL now matches/)
+    expect(sentence).toHaveTextContent(/it may still have a playlist you added in the app/)
+    expect(sentence).toHaveTextContent(/Check the workout in the MOWL app/)
+    expect(sentence).toHaveAttribute('role', 'status')
+    expect(screen.queryByText(/Your MOWL workout now matches this version/)).toBeNull()
+  })
+
+  it('an answer without the verified flag is not worded as a match either', async () => {
+    startUpdate({ saved: saved() })
+    await runUpdate()
+    expect(await screen.findByText(/could not confirm MOWL now matches/)).toBeInTheDocument()
+    expect(screen.queryByText(/now matches this version/)).toBeNull()
+  })
+
+  it('reads the flag after the job ended, not from the page held before it', async () => {
+    // The page starts on an unverified row; the answer after the job says the write was verified.
+    let reads = 0
+    startUpdate(
+      { saved: saved({ latest_verified: false }) },
+      {
+        [`GET ${CLASS_PATH}`]: () => {
+          reads += 1
+          return classBody({ saved: saved({ latest_verified: reads > 1 }) })
+        },
+      },
+    )
+    await runUpdate()
+    expect(await screen.findByText('Updated. Your MOWL workout now matches this version.')).toBeInTheDocument()
+  })
+
+  it('a failed read of the class counts as not confirmed', async () => {
+    let reads = 0
+    startUpdate(
+      { saved: saved({ latest_verified: true }) },
+      {
+        [`GET ${CLASS_PATH}`]: () => {
+          reads += 1
+          return reads === 1 ? classBody({ saved: saved({ latest_verified: true }) }) : reason(500, 'internal')
+        },
+      },
+    )
+    await runUpdate()
+    expect(await screen.findByText(/could not confirm MOWL now matches/)).toBeInTheDocument()
+  })
+})
+
+describe('the state line', () => {
+  it('stays the plain up-to-date line whatever the verified flag (a save found by Check again has none)', async () => {
+    for (const latest_verified of [true, false, undefined]) {
+      start({ saved: saved({ latest_up_to_date: true, latest_verified }) })
+      const view = renderAt(PAGE)
+      expect(await screen.findByTestId('saved-state')).toHaveTextContent('Saved to MOWL as version 1. It is up to date.')
+      view.unmount()
+    }
+  })
+})
+
+describe('a soundless class', () => {
+  it('asks to save it without music and says so when it is saved', async () => {
+    const path = `/api/jobs/${SAVE_JOB}`
+    const api = start(
+      { soundless: true, saved: UNSAVED },
+      {
+        'POST /api/jobs': () => jobBody('queued', { id: SAVE_JOB, kind: 'save_workout' }),
+        [`GET ${path}`]: jobBody('completed', { id: SAVE_JOB, kind: 'save_workout' }),
+        [`GET ${path}/events`]: () => sse([1, 'completed']),
+      },
+    )
+    renderAt(PAGE)
+    fireEvent.click(await screen.findByRole('button', { name: 'Save to MOWL' }))
+    const dialog = screen.getByRole('group', { name: 'Confirm' })
+    expect(dialog).toHaveTextContent(/as a new workout without music\. It is private/)
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Save to MOWL' }))
+    expect(await screen.findByText(/Saved without music\. The workout is in your MOWL account, private/)).toBeInTheDocument()
+    // No playlist is named anywhere in what the page sends.
+    expect(JSON.stringify(jobsPosts(api)[0]!.body)).not.toMatch(/playlist/)
+  })
+
+  it('a class with music keeps the plain Saved sentence and confirm text', async () => {
+    start({ saved: UNSAVED })
+    renderAt(PAGE)
+    fireEvent.click(await screen.findByRole('button', { name: 'Save to MOWL' }))
+    expect(screen.getByRole('group', { name: 'Confirm' })).not.toHaveTextContent(/without music/)
+  })
+
+  it('an Update says it is written without music, and an unverified one does not claim a match', async () => {
+    const path = `/api/jobs/${SAVE_JOB}`
+    start(
+      { soundless: true, saved: saved({ latest_verified: false }) },
+      {
+        'POST /api/jobs': () => jobBody('queued', { id: SAVE_JOB, kind: 'update_workout' }),
+        [`GET ${path}`]: jobBody('completed', { id: SAVE_JOB, kind: 'update_workout' }),
+        [`GET ${path}/events`]: () => sse([1, 'completed']),
+      },
+    )
+    renderAt(PAGE)
+    fireEvent.click(await screen.findByRole('button', { name: 'Update saved workout' }))
+    const dialog = screen.getByRole('group', { name: 'Confirm' })
+    expect(dialog).toHaveTextContent(/with version 1, without music\./)
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Update workout' }))
+    expect(await screen.findByText(/could not confirm MOWL now matches/)).toBeInTheDocument()
+    expect(screen.queryByText(/now matches this version/)).toBeNull()
   })
 })

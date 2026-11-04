@@ -135,6 +135,12 @@ const FAILURES: Record<string, FailureText> = {
     detail:
       'You have analysed 10 new mixes in the last 24 hours. Mixes analysed before still work; try a new one tomorrow.',
   },
+  // ADR 0007 amendment 2026-11-03, item 2: the soundless switch is on but this plan's model route has
+  // not been evaluated for classes with no music. Plain words; never a route or plan name.
+  soundless_not_evaluated: {
+    title: 'Classes with no music are not ready for your plan yet',
+    detail: 'Nothing was designed. Choose a playlist instead, or try again later.',
+  },
   music_unlinked: {
     title: 'The music of this version is not in your MOWL account',
     detail:
@@ -142,12 +148,21 @@ const FAILURES: Record<string, FailureText> = {
   },
 }
 
+const SOUNDLESS_INVALID: FailureText = {
+  title: 'The request could not be used',
+  detail: 'A class with no music is for cycling and has no songs or mix. Check the form and start again.',
+}
+
 const FALLBACK: FailureText = {
   title: 'The design did not finish',
   detail: 'Try again later.',
 }
 
-const FEATURE_OFF: Record<'swedebeat' | 'running', FailureText> = {
+const FEATURE_OFF: Record<'swedebeat' | 'running' | 'soundless', FailureText> = {
+  soundless: {
+    title: 'Classes with no music are switched off right now',
+    detail: 'Nothing was designed. Choose a playlist instead, or try again later.',
+  },
   swedebeat: {
     title: 'Swedebeat is switched off right now',
     detail: 'Nothing was designed. Try again later, or use another kind of music.',
@@ -166,9 +181,11 @@ const FEATURE_OFF: Record<'swedebeat' | 'running', FailureText> = {
 export function failureText(
   category: string | null,
   kind = '',
-  feature: 'swedebeat' | 'running' | null = null,
+  feature: 'swedebeat' | 'running' | 'soundless' | null = null,
 ): FailureText {
   if (category === 'feature_off' && feature !== null) return FEATURE_OFF[feature]
+  // A class with no music is cycling only and has no songs or mix: say what to change.
+  if (category === 'invalid_input' && feature === 'soundless') return SOUNDLESS_INVALID
   if (isSongKind(kind)) {
     const song = songFailure(category)
     if (song !== null) return song
@@ -223,9 +240,17 @@ const REFIT_STEPS: readonly { stage: string; label: string }[] = [
   { stage: 'fit', label: 'Moving the changes onto the corrected beats' },
 ]
 
+const SOUNDLESS_STEPS: readonly { stage: string; label: string }[] = [{ stage: 'design', label: 'Building your class' }]
+
 /** The checklist of the Designing page for a job, in the order its stages run. */
-export function designSteps(kind: string, approved: boolean): readonly { stage: string; label: string }[] {
+export function designSteps(
+  kind: string,
+  approved: boolean,
+  soundless = false,
+): readonly { stage: string; label: string }[] {
   if (kind === 'refit_draft') return REFIT_STEPS
+  // A soundless design reads no playlist and makes no MOWL or Spotify call (ADR 0007 amendment item 3).
+  if (soundless && kind === 'design_draft') return SOUNDLESS_STEPS
   if (kind === 'revise_songs') return REVISE_SONGS_STEPS
   if (kind === 'design_with_songs') return approved ? APPROVED_STEPS : PICK_STEPS
   return DRAFT_STEPS
@@ -268,6 +293,10 @@ export const USE_OTHER_MUSIC_RUNNING =
 export const USE_FINISH_SONGS =
   'This request is only about the songs, so nothing changed. Finish or retry the song pick on this page first; then use Change songs.'
 
+/** The same for a class with no music: there are no songs, so there is nothing to change. */
+export const USE_NEW_CLASS_FOR_MUSIC_SOUNDLESS =
+  'This request is only about the music, so nothing changed. This class has no music; to add some, design a new class with a playlist.'
+
 const REVISE_FAILURES: Record<string, string> = {
   upstream_unavailable: 'MOWL could not be reached. Nothing changed. Try again in a few minutes.',
   rate_limited: 'MOWL asked classbeat to slow down. Nothing changed. Wait a few minutes and try again.',
@@ -287,6 +316,7 @@ const REVISE_FAILURES: Record<string, string> = {
   outbound_blocked: 'Something went wrong on our side. Nothing changed. Try again later.',
   internal: 'Something went wrong on our side. Nothing changed. Try again later.',
   music_unlinked: 'The music of this version is not in your connected MOWL account. Change it and save the new version.',
+  soundless_not_evaluated: 'Classes with no music are not ready for your plan yet. Nothing changed. Try again later.',
   use_change_songs: USE_CHANGE_SONGS,
   program_changed: 'This workout was changed in MOWL after classbeat saved it.',
   program_missing: 'This workout is no longer in your MOWL account.',
@@ -294,7 +324,11 @@ const REVISE_FAILURES: Record<string, string> = {
 }
 
 /** The sentence for a failed change request; the category code is never shown. */
-export function reviseFailureText(category: string | null): string {
+export function reviseFailureText(category: string | null, soundless = false): string {
+  // `feature_off` of a revise is the soundless switch only for a class with no music.
+  if (soundless && category === 'feature_off') {
+    return 'Classes with no music are switched off right now. Nothing changed. Try again later.'
+  }
   return category !== null && Object.hasOwn(REVISE_FAILURES, category)
     ? REVISE_FAILURES[category]!
     : 'The change did not finish. Nothing changed. Try again later.'

@@ -52,6 +52,7 @@ type Source =
       swedebeat: SwedebeatMixAvailability
       mixes: SwedebeatMix[]
       runningEnabled: boolean
+      soundlessEnabled: boolean
     }
 
 const PLAYLIST_ERRORS: Record<string, string> = {
@@ -73,6 +74,7 @@ const CREATE_ERRORS: Record<string, string> = {
   class_busy: 'This class already has a design running.',
   idempotency_mismatch: 'That did not work. Check the form and try again.',
   feature_off: 'Running classes are not available right now. Switch to Cycling, or try again later.',
+  soundless_not_evaluated: 'Classes with no music are not ready for your plan yet. Choose a playlist, or try again later.',
   // #509: the designer for the user's plan has not been checked for running classes yet.
   running_not_evaluated:
     'Running classes are not available on your plan yet. Nothing was charged. Switch to Cycling, or try again later.',
@@ -99,9 +101,13 @@ async function songsAvailability(
   return { kind: 'ready', spotifyConnectionId: spotify.id }
 }
 
-function createError(error: unknown): string {
+const SOUNDLESS_FEATURE_OFF = 'Classes with no music are not available right now. Choose a playlist, or try again later.'
+
+/** `noMusic`: the form asked for "No music", so a `feature_off` is the soundless switch, not running's. */
+function createError(error: unknown, noMusic = false): string {
   const refusal = planRefusalText(error)
   if (refusal !== null) return refusal
+  if (noMusic && error instanceof ApiError && error.reason === 'feature_off') return SOUNDLESS_FEATURE_OFF
   if (error instanceof ApiError && error.reason !== null) {
     const known = Object.hasOwn(CREATE_ERRORS, error.reason) ? CREATE_ERRORS[error.reason] : undefined
     if (known !== undefined) return known
@@ -125,7 +131,7 @@ function NewClass() {
     const abort = new AbortController()
     void (async () => {
       try {
-        const { connections, swedebeat: swedebeatAccess, runningEnabled } = await getConnectionsView()
+        const { connections, swedebeat: swedebeatAccess, runningEnabled, soundlessEnabled } = await getConnectionsView()
         const mowl = connections.find((c) => c.provider === 'mowl')
         if (mowl === undefined || mowl.status !== 'connected') {
           setSource({ status: 'no_mowl', reconnect: mowl !== undefined })
@@ -149,7 +155,7 @@ function NewClass() {
             }
           }
         }
-        setSource({ status: 'ready', connection: mowl, playlists, songs, swedebeat, mixes, runningEnabled })
+        setSource({ status: 'ready', connection: mowl, playlists, songs, swedebeat, mixes, runningEnabled, soundlessEnabled })
       } catch (error) {
         if (abort.signal.aborted) return
         if (error instanceof ApiError && error.status === 409) {
@@ -201,6 +207,7 @@ function NewClass() {
           swedebeat={source.swedebeat}
           mixes={source.mixes}
           runningEnabled={source.runningEnabled}
+          soundlessEnabled={source.soundlessEnabled}
         />
       ) : null}
     </div>
@@ -235,6 +242,7 @@ function ClassForm({
   swedebeat,
   mixes,
   runningEnabled,
+  soundlessEnabled,
 }: {
   connection: Connection
   playlists: Playlist[]
@@ -243,6 +251,8 @@ function ClassForm({
   mixes: SwedebeatMix[]
   /** The effective `running_enabled` flag: without it the form has no Running at all. */
   runningEnabled: boolean
+  /** The effective `soundless_enabled` flag: without it the form has no "No music". */
+  soundlessEnabled: boolean
 }) {
   const { navigate } = useRouter()
   const preset = readPreset(useQuery())
@@ -256,6 +266,8 @@ function ClassForm({
   const [sport, setSport] = useState<'cycling' | 'running'>('cycling')
   // Running is never on the form while the flag is off, whatever the state says.
   const running = runningEnabled && sport === 'running'
+  // "No music" is cycling only and never on the form while the flag is off, whatever the state says.
+  const noMusic = soundlessEnabled && !running && music === 'none'
   const [length, setLength] = useState(preset.length)
   const [intensity, setIntensity] = useState<Brief['intensity']>(preset.intensity)
   const [climbs, setClimbs] = useState(preset.climbs)
@@ -305,8 +317,8 @@ function ClassForm({
     const name = title.trim()
     let invalid: string | null = null
     if (name === '' || name.length > 100) invalid = 'Give the class a name of up to 100 characters.'
-    else if ((running || music === 'playlist') && playlist === '') invalid = 'Choose a playlist.'
-    else if (!running && music === 'swedebeat_mix' && mixId === '') invalid = 'Choose a Swedebeat mix.'
+    else if (!noMusic && (running || music === 'playlist') && playlist === '') invalid = 'Choose a playlist.'
+    else if (!running && !noMusic && music === 'swedebeat_mix' && mixId === '') invalid = 'Choose a Swedebeat mix.'
     else if (!inRange(brief.length_min, 10, 180)) invalid = 'The length is 10 to 180 minutes.'
     else if (allowed !== null && brief.length_min > allowed.maxMinutes) invalid = lengthSentence(allowed.maxMinutes)
     else if (!inRange(brief.climbs, 0, 10)) invalid = 'Climbs are 0 to 10.'
@@ -333,7 +345,7 @@ function ClassForm({
     }
     setProblem(invalid)
     if (invalid !== null || fullBrief === null) return
-    if (!running && 'climbs' in fullBrief && music === 'pick' && songs.kind === 'ready') {
+    if (!running && !noMusic && 'climbs' in fullBrief && music === 'pick' && songs.kind === 'ready') {
       const pickInput: PickInput = {
         title: name,
         brief: fullBrief,
@@ -353,8 +365,9 @@ function ClassForm({
       }, startError)
       return
     }
-    const musicInput: DesignInput['music'] =
-      !running && music === 'swedebeat_mix'
+    const musicInput: DesignInput['music'] = noMusic
+      ? { source: 'none' }
+      : !running && music === 'swedebeat_mix'
         ? { source: 'mowl_swedebeat_mix', mix_id: mixId }
         : { source: 'mowl_spotify_playlist', spotify_playlist_id: playlist }
     const input: DesignInput = {
@@ -372,15 +385,15 @@ function ClassForm({
       const job = await createDesignJob(input, key)
       rememberInput(job.id, input)
       navigate(`/jobs/${job.id}`)
-    }, createError)
+    }, (error) => createError(error, noMusic))
   }
 
   const lengthNumber = whole(length)
   const effort = EFFORTS.find((e) => e.value === intensity)
   const chosenPlaylist = playlists.find((p) => p.spotifyPlaylistId === playlist)
   const chosenMix = mixes.find((m) => m.mixId === mixId)
-  const picking = !running && music === 'pick' && songs.kind === 'ready'
-  const onSwedebeatMix = !running && music === 'swedebeat_mix' && swedebeat.kind === 'ready'
+  const picking = !running && !noMusic && music === 'pick' && songs.kind === 'ready'
+  const onSwedebeatMix = !running && !noMusic && music === 'swedebeat_mix' && swedebeat.kind === 'ready'
   const summary = [
     { label: 'Length', value: Number.isInteger(lengthNumber) ? `${String(lengthNumber)} min` : 'Not set' },
     { label: 'Effort', value: effort?.label ?? '' },
@@ -393,7 +406,9 @@ function ClassForm({
         ]),
     {
       label: 'Music',
-      value: picking
+      value: noMusic
+        ? 'No music'
+        : picking
         ? 'Songs picked for you'
         : onSwedebeatMix
           ? chosenMix
@@ -415,9 +430,7 @@ function ClassForm({
   if (
     playlists.length === 0 &&
     (running ||
-      (songs.kind !== 'ready' &&
-    swedebeat.kind !== 'ready' &&
-    swedebeat.kind !== 'failed'))
+      (!soundlessEnabled && songs.kind !== 'ready' && swedebeat.kind !== 'ready' && swedebeat.kind !== 'failed'))
   ) {
     return (
       <Card>
@@ -526,9 +539,15 @@ function ClassForm({
         <Card className={section}>
           <CardTitle className="mb-0">Music</CardTitle>
           {running ? null : (
-            <MusicChoice songs={songs} swedebeat={swedebeat} value={music} onChange={setMusic} />
+            <MusicChoice
+              songs={songs}
+              swedebeat={swedebeat}
+              soundless={soundlessEnabled}
+              value={music}
+              onChange={setMusic}
+            />
           )}
-          {running || music === 'playlist' ? <PlaylistTiles playlists={playlists} value={playlist} onChange={setPlaylist} covers={covers} /> : null}
+          {!noMusic && (running || music === 'playlist') ? <PlaylistTiles playlists={playlists} value={playlist} onChange={setPlaylist} covers={covers} /> : null}
           {onSwedebeatMix ? <MixTiles mixes={mixes} value={mixId} onChange={setMixId} /> : null}
           <StylePicker value={style} onChange={setStyle} />
         </Card>

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { ApiError } from '../../api/client'
-import { getRevision, type ClassSummary } from '../../api/classes'
+import { getClass, getRevision, type ClassSummary } from '../../api/classes'
 import { getConnections } from '../../api/connections'
 import { retryLabel, stageLabel } from '../../api/jobMessages'
 import { cancelJob, isTerminal, type Job } from '../../api/jobs'
@@ -9,7 +9,9 @@ import {
   OUTCOME_TEXT,
   refusalChangesPage,
   saveFailureText,
+  savedText,
   saveReasonText,
+  updatedText,
   type WriteKind,
   type WriteOutcome,
 } from '../../api/saveMessages'
@@ -28,6 +30,12 @@ type Mode = 'save' | 'update' | 'overwrite'
 interface Finished {
   kind: WriteKind
   job: Job
+  /**
+   * For a completed Update: whether the class's newest saved row was read back and matched, read
+   * from the class after the job ended (`checking` until that answer is in; a failed read counts
+   * as not confirmed, so the page never claims a match it did not see).
+   */
+  verified: boolean | 'checking'
 }
 
 /** The live progress of the class's running save or update, from the job's events. */
@@ -38,7 +46,7 @@ function WriteRun({
 }: {
   jobId: string
   kind: WriteKind
-  onFinished: (done: Finished) => void
+  onFinished: (done: { kind: WriteKind; job: Job }) => void
 }) {
   const { job, progress, problem, setJob } = useJobProgress(jobId)
   const action = useAction()
@@ -86,20 +94,18 @@ function WriteRun({
 
 function Outcome({
   done,
+  soundless,
   onUpdateAnyway,
 }: {
   done: Finished
+  soundless: boolean
   onUpdateAnyway: () => void
 }) {
   const { job, kind } = done
   if (job.state === 'completed') {
-    return (
-      <Notice kind="success">
-        {kind === 'save'
-          ? 'Saved. The workout is in your MOWL account, private.'
-          : 'Updated. Your MOWL workout now matches this version.'}
-      </Notice>
-    )
+    if (kind === 'save') return <Notice kind="success">{savedText(soundless)}</Notice>
+    if (done.verified === 'checking') return <Notice>Updated. Checking what MOWL kept…</Notice>
+    return <Notice kind={done.verified ? 'success' : 'info'}>{updatedText(done.verified)}</Notice>
   }
   if (job.state === 'failed' && job.errorCategory === 'uncertain_write') {
     return (
@@ -262,6 +268,7 @@ export function SavePanel({
         {finished ? (
           <Outcome
             done={finished}
+            soundless={summary.soundless}
             onUpdateAnyway={() => {
               setMode('overwrite')
             }}
@@ -273,8 +280,20 @@ export function SavePanel({
             key={run.id}
             jobId={run.id}
             kind={run.kind}
-            onFinished={(done) => {
+            onFinished={(ended) => {
+              const needsRead = ended.kind === 'update' && ended.job.state === 'completed'
+              const done: Finished = { ...ended, verified: needsRead ? 'checking' : true }
               setFinished(done)
+              if (needsRead) {
+                // Read the class once more for the saved row's verified flag; a failed read is
+                // "not confirmed".
+                void getClass(summary.id).then(
+                  (fresh) => fresh.saved.latestVerified === true,
+                  () => false,
+                ).then((verified) => {
+                  setFinished((now) => (now === done ? { ...done, verified } : now))
+                })
+              }
               setStarted(null)
               setVersion((n) => n + 1)
               onReload()
@@ -311,7 +330,8 @@ export function SavePanel({
               <>
                 <p>
                   classbeat will add version {number ?? '?'} of this class to your MOWL account as a
-                  new workout. It is private: only you can see it.
+                  new workout{summary.soundless ? ' without music' : ''}. It is private: only you can
+                  see it.
                   {hasSaved ? ' A new workout will be added; the one you saved earlier stays as it is.' : ''}
                 </p>
                 <ConfirmButtons
@@ -331,7 +351,8 @@ export function SavePanel({
                 <p>
                   classbeat will first read the workout in your MOWL account. If you changed it in
                   MOWL after classbeat saved it, classbeat stops and writes nothing. Otherwise it
-                  replaces the workout with version {number ?? '?'}. It stays private, in your MOWL
+                  replaces the workout with version {number ?? '?'}
+                  {summary.soundless ? ', without music' : ''}. It stays private, in your MOWL
                   account.
                 </p>
                 <ConfirmButtons

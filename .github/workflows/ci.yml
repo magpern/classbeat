@@ -522,6 +522,17 @@ jobs:
           printf '{"key": "%s", "iv": "%s"}' "$(openssl rand -hex 16)" "$(openssl rand -hex 8)" \
             > secrets/swedebeat_app
 
+      # ADR 0003 section 5: the three OAuth client secrets are empty from init (each provider off).
+      - name: Check init made the OAuth client secret files empty
+        working-directory: .
+        run: |
+          set -euo pipefail
+          for p in google github microsoft; do
+            f="secrets/oauth_${p}_client_secret"
+            [ -f "$f" ] && [ ! -s "$f" ] \
+              || { echo "::error::init must create an empty $f"; exit 1; }
+          done
+
       - name: Start the stack
         working-directory: .
         run: docker compose up -d --build --wait
@@ -636,6 +647,21 @@ jobs:
               echo "::error::a container other than web mounts swedebeat_app"
               exit 1
             fi
+          done
+
+      # ADR 0003 section 5: the OAuth client secret files are on web only (#521).
+      - name: Check the OAuth client secrets are mounted on web only
+        working-directory: .
+        run: |
+          set -euo pipefail
+          config="$(docker compose --profile '*' config --format json)"
+          for p in google github microsoft; do
+            n="oauth_${p}_client_secret"
+            holders="$(jq -r --arg n "$n" '[.services | to_entries[]
+              | select((.value.secrets // []) | map(.source) | index($n)) | .key] | sort | join(" ")' <<< "$config")"
+            [ "$holders" = "web" ] || { echo "::error::$n must be mounted on web only (is: $holders)"; exit 1; }
+            docker compose exec -T worker sh -c "! test -e /run/secrets/$n" \
+              || { echo "::error::the worker can read $n"; exit 1; }
           done
 
       # ADR 0006 section 9, ADR 0012 section 2: each model key is a file on the worker only,
