@@ -151,7 +151,7 @@ function Designing({
   const picking = isSongKind(job.kind) && job.approvedAt === null
   // The class name comes from the form this browser remembered; without it the title says "your class".
   const name = recallInput(job.id)?.title ?? recallPick(job.id)?.title ?? 'your class'
-  const steps = designSteps(job.kind, job.approvedAt !== null)
+  const steps = designSteps(job.kind, job.approvedAt !== null, recallInput(job.id)?.music.source === 'none')
   const current = progress.stage ?? job.stage
   const step = stepNumber(steps, current)
   return (
@@ -324,7 +324,13 @@ function Failed({ job }: { job: Job }) {
   }
   const kept = recallInput(job.id)
   const feature =
-    kept?.brief.sport === 'running' ? 'running' : kept?.music.source === 'mowl_swedebeat_mix' ? 'swedebeat' : null
+    kept?.brief.sport === 'running'
+      ? 'running'
+      : kept?.music.source === 'mowl_swedebeat_mix'
+        ? 'swedebeat'
+        : kept?.music.source === 'none'
+          ? 'soundless'
+          : null
   const text = failureText(job.errorCategory, '', feature)
   return <Ended job={job} title={text.title} detail={text.detail} account={text.account === true} />
 }

@@ -1,7 +1,7 @@
 import { Link } from '../../router/Router'
 import { ChipButton } from '../ui/chip'
 
-export type Music = 'playlist' | 'pick' | 'swedebeat_mix'
+export type Music = 'playlist' | 'pick' | 'swedebeat_mix' | 'none'
 
 /** What "Pick songs for me" needs (ADR 0008 section 9). `off`: the feature is hidden. */
 export type SongsAvailability =
@@ -23,20 +23,25 @@ export type SwedebeatMixAvailability =
  * The music choice of the new-class form: a playlist from MOWL, song picking, or a Swedebeat mix.
  * Without Spotify and the working-playlist consent the second choice is not selectable and links
  * to the wizard; with song picking switched off nothing is shown. The Swedebeat mix choice needs
- * the effective `swedebeat_enabled` flag (the page itself needs the MOWL connection).
+ * the effective `swedebeat_enabled` flag (the page itself needs the MOWL connection). "No music"
+ * (a soundless class, ADR 0007 amendment of 2026-11-03) is offered only when `soundless` is true:
+ * the page passes the effective `soundless_enabled` flag and never offers it for a running class.
  */
 export function MusicChoice({
   songs,
   swedebeat,
+  soundless = false,
   value,
   onChange,
 }: {
   songs: SongsAvailability
   swedebeat: SwedebeatMixAvailability
+  /** Whether "No music" is offered: the effective `soundless_enabled` flag, cycling only. */
+  soundless?: boolean
   value: Music
   onChange: (music: Music) => void
 }) {
-  if (songs.kind === 'off' && swedebeat.kind === 'off') return null
+  if (songs.kind === 'off' && swedebeat.kind === 'off' && !soundless) return null
   const ready = songs.kind === 'ready'
   const swedebeatReady = swedebeat.kind === 'ready'
   return (
@@ -75,6 +80,16 @@ export function MusicChoice({
             Use my Swedebeat mix
           </ChipButton>
         ) : null}
+        {soundless ? (
+          <ChipButton
+            pressed={value === 'none'}
+            onClick={() => {
+              onChange('none')
+            }}
+          >
+            No music
+          </ChipButton>
+        ) : null}
       </div>
       {songs.kind === 'needs_spotify' ? (
         <p className="m-0 text-[0.9375rem] text-muted">
@@ -97,6 +112,12 @@ export function MusicChoice({
           Claude suggests songs, checks them against MOWL’s BPM and length, and shows you the list.
           Candidates go into a private working playlist in your Spotify; the playlist for your class
           is created only after you approve the songs.
+        </p>
+      ) : null}
+      {soundless && value === 'none' ? (
+        <p className="m-0 text-[0.9375rem] text-muted">
+          classbeat designs the class without a playlist or songs: you get the intervals, efforts
+          and cues, and you play your own music. It is saved to MOWL without music.
         </p>
       ) : null}
       {swedebeatReady && value === 'swedebeat_mix' ? (

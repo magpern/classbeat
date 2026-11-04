@@ -35,6 +35,12 @@ export interface SavedSummary {
    */
   latestSavedWorkoutId: string | null
   detachedCount: number
+  /**
+   * SL6 (#532): whether the newest saved row was read back from MOWL and matched (`state_hash` set).
+   * False: MOWL took the write but classbeat could not confirm it (ADR 0007 item 8). Null: no saved
+   * row, or an answer without the field; neither is ever worded as a match.
+   */
+  latestVerified: boolean | null
 }
 
 /** The class's newest song list (ADR 0008 section 9). */
@@ -278,6 +284,7 @@ function decodeClass(value: unknown): ClassSummary {
       latestUpToDate: optionalFlag(saved, 'latest_up_to_date'),
       latestSavedWorkoutId: optionalText(saved, 'latest_saved_workout_id'),
       detachedCount: optionalCount(saved, 'detached_count') ?? 0,
+      latestVerified: optionalFlag(saved, 'latest_verified'),
     },
     openJob,
     profile: decodeProfile(item.profile),
