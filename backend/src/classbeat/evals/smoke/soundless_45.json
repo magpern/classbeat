@@ -1,0 +1,11 @@
+{
+ "name": "soundless_45",
+ "soundless": true,
+ "about": "A moderate 45 minute class with three climbs, ridden without music.",
+ "brief": {
+  "length_min": 45,
+  "intensity": "moderate",
+  "climbs": 3
+ },
+ "expect": {}
+}

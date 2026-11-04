@@ -1,0 +1,11 @@
+{
+ "name": "soundless_30_sprints",
+ "soundless": true,
+ "about": "A hard 30 minute class with two sprints, ridden without music.",
+ "brief": {
+  "length_min": 30,
+  "intensity": "hard",
+  "sprints": 2
+ },
+ "expect": {}
+}

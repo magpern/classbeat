@@ -314,6 +314,27 @@ async def test_a_cancel_during_the_music_step_stores_nothing(
     assert renv.current(class_id) == base
 
 
+def _running_gate(renv: ReviseEnv, flag: str | None = "on", *, covers: bool = True) -> None:
+    """The running gate of #509: the environment's switch on, the web's ``fake`` covering (or
+    not) and the admin flag stored ``flag`` (nothing stored is off)."""
+    from classbeat.design import sport
+
+    sport.configure(sport.SportGate(running_enabled=True, fake_covers=covers))
+    renv.sql("DELETE FROM app_settings WHERE key = 'running_enabled'")
+    if flag is not None:
+        renv.sql(
+            "INSERT INTO app_settings (key, value) VALUES ('running_enabled', CAST(:v AS jsonb))",
+            v=json.dumps(flag),
+        )
+
+
+def _running_gate_off(renv: ReviseEnv) -> None:
+    from classbeat.design import sport
+
+    renv.sql("DELETE FROM app_settings WHERE key = 'running_enabled'")
+    sport.configure(None)
+
+
 async def _running_class(renv: ReviseEnv) -> tuple[UUID, UUID]:
     """A running class designed with the running gate on: (class id, its revision); the class's
     corrections cover every song, so a refit has work to do."""
@@ -338,19 +359,31 @@ async def _running_class(renv: ReviseEnv) -> tuple[UUID, UUID]:
 
 
 async def test_a_running_class_is_refused_while_the_running_flag_is_off(renv: ReviseEnv) -> None:
-    from classbeat.design import sport
-
-    sport.configure(sport.SportGate(running_enabled=True))
+    _running_gate(renv)
     try:
         class_id, base = await _running_class(renv)
-        renv.sql(
-            "INSERT INTO app_settings (key, value) VALUES ('running_enabled', '\"off\"'::jsonb)"
-        )
+        _running_gate(renv, "off")
         made = await ask(renv, class_id, base)
         assert (made.status_code, made.json()["detail"]["reason"]) == (409, "feature_off")
     finally:
-        renv.sql("DELETE FROM app_settings WHERE key = 'running_enabled'")
-        sport.configure(None)
+        _running_gate_off(renv)
+
+
+async def test_a_running_class_is_refused_while_its_plan_has_no_running_route(
+    renv: ReviseEnv,
+) -> None:
+    """The whole running gate (#509) applies at admit, coverage included, though a refit calls no
+    model: the same answer as a running revise of the class."""
+    _running_gate(renv)
+    try:
+        class_id, base = await _running_class(renv)
+        _running_gate(renv, covers=False)
+        made = await ask(renv, class_id, base)
+        assert (made.status_code, made.json()["detail"]["reason"]) == (
+            409, "running_not_evaluated",
+        )  # fmt: skip
+    finally:
+        _running_gate_off(renv)
 
 
 async def test_a_queued_running_refit_whose_flag_went_off_ends_feature_off_calling_nothing(
@@ -358,26 +391,24 @@ async def test_a_queued_running_refit_whose_flag_went_off_ends_feature_off_calli
 ) -> None:
     from classbeat.design import sport
 
-    sport.configure(sport.SportGate(running_enabled=True))
+    _running_gate(renv)
     try:
         class_id, base = await _running_class(renv)
         made = await ask(renv, class_id, base)
         assert made.status_code == 201, made.text
         reads = len(fake_mowl.reads)
-        sport.configure(sport.SportGate(running_enabled=False))
+        sport.configure(sport.SportGate(running_enabled=False, fake_covers=True))
         await run_refit(renv)
         row = renv.denv.ops.row(UUID(made.json()["id"]))
         assert (row.state, row.error_category) == ("failed", "feature_off")
         assert len(fake_mowl.reads) == reads, "nothing was called"
         assert len(renv.revisions(class_id)) == 1
     finally:
-        sport.configure(None)
+        _running_gate_off(renv)
 
 
 async def test_a_running_class_is_refitted_with_the_running_check(renv: ReviseEnv) -> None:
-    from classbeat.design import sport
-
-    sport.configure(sport.SportGate(running_enabled=True))
+    _running_gate(renv)
     try:
         class_id, base = await _running_class(renv)
         job_id = await refit(renv, class_id, base)
@@ -386,4 +417,4 @@ async def test_a_running_class_is_refitted_with_the_running_check(renv: ReviseEn
         assert second.provenance["sport"] == "running"
         assert "beat_one" in second.music
     finally:
-        sport.configure(None)
+        _running_gate_off(renv)

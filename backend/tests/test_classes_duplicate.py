@@ -20,7 +20,7 @@ from sqlalchemy.engine import Connection
 from classbeat.account.export import build_export
 from classbeat.agent import Provenance
 from classbeat.classes import duplicate as dup
-from classbeat.design import music_kind
+from classbeat.design import music_kind, sport
 from ctx import make_context
 from jobapi import Browser, new_key, owner_lock_key, until_waiting_on_the_owner_lock
 from jobcore import JobsEnv
@@ -480,6 +480,47 @@ async def test_the_idempotency_key_is_required(two: tuple[Source, Source]) -> No
     assert mine.ledger() == []
 
 
+async def test_a_running_class_is_admitted_only_through_the_running_gate(
+    browsers: Any, jobs_admin: Connection
+) -> None:
+    """#509 (ADR 0018 Amendment 5): a running copy goes through ``sport.admit_running``, as a
+    running design does: the switch, a stored ``on`` (nothing stored is off) and the user's own
+    plan covered (``running_not_evaluated``), before anything is written."""
+    mine = Source(
+        jobs_admin,
+        await browsers(mowl=False),
+        brief=RUNNING_BRIEF,
+        content=RUNNING_DRAFT,
+        music={**MUSIC, "link_id": LINK},
+    )
+    classes = mine.classes()
+
+    def gate(*, enabled: bool = True, fake: bool = True, stored: bool = True) -> None:
+        sport.configure(sport.SportGate(running_enabled=enabled, fake_covers=fake))
+        sql(jobs_admin, "DELETE FROM app_settings WHERE key = 'running_enabled'")
+        if stored:
+            sql(jobs_admin, "INSERT INTO app_settings (key, value) "
+                "VALUES ('running_enabled', '\"on\"'::jsonb)")  # fmt: skip
+
+    try:
+        for setting, reason in (
+            ({"enabled": False}, "feature_off"),  # the environment's switch
+            ({"stored": False}, "feature_off"),  # nothing stored: off since #509
+            ({"fake": False}, "running_not_evaluated"),  # the user's own plan has no route
+        ):
+            gate(**setting)
+            got = await mine.duplicate()
+            assert (got.status_code, got.json()["detail"]["reason"]) == (409, reason), setting
+        assert mine.classes() == classes
+        assert mine.ledger() == []
+        gate()  # all three hold
+        made = await mine.duplicate()
+        assert made.status_code == 201, made.text
+    finally:
+        sport.configure(None)
+        sql(jobs_admin, "DELETE FROM app_settings WHERE key = 'running_enabled'")
+
+
 NONE: dict[str, str] = {"source": "none"}
 
 
@@ -738,3 +779,231 @@ async def test_saving_the_copy_leaves_the_source_unsaved(senv: SaveEnv, save_bro
     after = {r.class_id: r for r in senv.saved_rows(saved.owner)}
     assert set(after) == {saved.class_id, copied.class_id}
     assert after[copied.class_id].program_id == copy_row.program_id
+
+
+# --- beat-one corrections (DU3, #585; the beat-one amendment's item 8) --------------------------
+
+FP = "ab" * 32  # the fingerprint of ``Source``'s default music
+OTHER_FP = "ef" * 32
+
+
+def put_correction(
+    admin: Connection, owner: UUID, class_id: UUID, song: int, beats: int,
+    *, fingerprint: str = FP, bpm: float = 128.0,
+) -> UUID:  # fmt: skip
+    return sql(
+        admin,
+        "INSERT INTO beat_one_corrections (owner_id, class_id, fingerprint, song, beats, bpm) "
+        "VALUES (:o, :c, :f, :s, :b, :bpm) RETURNING id",
+        o=owner, c=class_id, f=fingerprint, s=song, b=beats, bpm=bpm,
+    ).scalar_one()  # fmt: skip
+
+
+def corrections(admin: Connection, class_id: UUID | str) -> list[Any]:
+    return sql(
+        admin,
+        "SELECT id, owner_id, class_id, fingerprint, song, beats, bpm FROM beat_one_corrections "
+        "WHERE class_id = :c ORDER BY fingerprint, song",
+        c=class_id,
+    ).all()
+
+
+def owned_corrections(admin: Connection, owner: UUID) -> int:
+    return sql(
+        admin, "SELECT count(*) FROM beat_one_corrections WHERE owner_id = :o", o=owner
+    ).scalar_one()
+
+
+async def pending(browser: Browser, class_id: object) -> bool:
+    """BC4's ``pending`` of the class detail, read through the class API (the real computation):
+    the rows for the current revision's fingerprint differ from what it applied."""
+    got = await browser.get(f"/api/classes/{class_id}")
+    assert got.status_code == 200, got.text
+    block = got.json()["beat_one"]
+    assert block["available"], block
+    return block["pending"]
+
+
+BEAT_ONE = [{"song": 1, "beats": 2}, {"song": 3, "beats": -1}]
+SONGS = [
+    {"song": n, "start": 240.0 * (n - 1), "end": 240.0 * n, "bpm": bpm, "estimate": False}
+    for n, bpm in ((1, 124.5), (2, 128.0), (3, 130.0))
+]
+
+
+def with_beat_one(music: dict[str, Any] | None = None) -> dict[str, Any]:
+    base = music or {
+        "source": "mowl_spotify_playlist", "link_id": LINK, "fingerprint": FP,
+        "unknown_bpm": [], "song_list_id": SONG_LIST,
+    }  # fmt: skip
+    return {**base, "beat_one": BEAT_ONE, "songs": SONGS}
+
+
+def test_only_a_copy_with_music_gets_corrections_and_only_for_its_fingerprint() -> None:
+    playlist = {"source": "mowl_spotify_playlist", "spotify_playlist_id": PLAYLIST_ID}
+    mix = {"source": "mowl_swedebeat_mix", "mix_id": "mix-1"}
+    music = {"source": "mowl_spotify_playlist", "fingerprint": FP}
+    assert dup.corrections_fingerprint(playlist, music) == FP
+    assert dup.corrections_fingerprint(mix, {**music, "source": "mowl_swedebeat_mix"}) == FP
+    assert dup.corrections_fingerprint(None, music) is None  # picked songs: no music source
+    assert dup.corrections_fingerprint(dict(NONE), music) is None  # a soundless copy
+    assert dup.corrections_fingerprint(playlist, dict(NONE)) is None  # soundless revision music
+    assert dup.corrections_fingerprint(playlist, {"source": "mowl_spotify_playlist"}) is None
+    assert dup.corrections_fingerprint(playlist, {**music, "fingerprint": "AB" * 32}) is None
+    assert dup.corrections_fingerprint(playlist, None) is None
+
+
+async def test_a_copy_gets_the_corrections_for_the_chosen_revisions_music_and_nothing_else(
+    two: tuple[Source, Source],
+) -> None:
+    mine, theirs = two
+    mine = Source(mine.admin, mine.browser, music=with_beat_one())
+    elsewhere = Source(mine.admin, mine.browser)  # another class of mine, on the same music
+    put_correction(mine.admin, mine.owner, mine.class_id, 1, 2, bpm=124.5)
+    put_correction(mine.admin, mine.owner, mine.class_id, 3, -1, bpm=130.0)
+    put_correction(mine.admin, mine.owner, mine.class_id, 2, 3, fingerprint=OTHER_FP)  # stale
+    put_correction(mine.admin, mine.owner, elsewhere.class_id, 4, 1)  # another class of mine
+    put_correction(theirs.admin, theirs.owner, theirs.class_id, 5, -2)  # another user's class
+    source_rows = corrections(mine.admin, mine.class_id)
+    theirs_before = owned_corrections(theirs.admin, theirs.owner)
+    got = await mine.duplicate()
+    assert got.status_code == 201, got.text
+    copy_id = got.json()["class_id"]
+    copied = corrections(mine.admin, copy_id)
+    assert [(r.fingerprint, r.song, r.beats, r.bpm) for r in copied] == [
+        (FP, 1, 2, 124.5), (FP, 3, -1, 130.0),
+    ]  # fmt: skip
+    assert {(r.owner_id, str(r.class_id)) for r in copied} == {(mine.owner, copy_id)}
+    assert not {r.id for r in copied} & {r.id for r in source_rows}, "new ids"
+    # The copy's revision keeps what was applied, so its corrections read as applied.
+    _, [rev] = copy_rows(mine.admin, copy_id)
+    assert rev.music["beat_one"] == BEAT_ONE
+    assert await pending(mine.browser, mine.class_id) is False
+    assert await pending(mine.browser, copy_id) is False
+    # The source, the other class and the other user are only read.
+    assert corrections(mine.admin, mine.class_id) == source_rows
+    assert len(corrections(mine.admin, elsewhere.class_id)) == 1
+    assert owned_corrections(theirs.admin, theirs.owner) == theirs_before
+
+
+async def test_an_older_revision_gets_the_corrections_for_its_own_fingerprint(
+    browsers: Any, jobs_admin: Connection
+) -> None:
+    """The chosen revision's fingerprint, not the current revision's: revision 2 (current) is on
+    other music; duplicating revision 1 copies revision 1's rows."""
+    mine = Source(jobs_admin, await browsers(mowl=False))
+    newer = {**mine.music, "fingerprint": OTHER_FP}
+    newer_id = sql(
+        jobs_admin,
+        "INSERT INTO class_revisions (id, owner_id, class_id, number, kind, content, "
+        "content_hash, music, provenance, parent_id) VALUES (:id, :o, :c, 2, 'draft', "
+        "CAST(:content AS jsonb), :h, CAST(:music AS jsonb), CAST(:p AS jsonb), :parent) "
+        "RETURNING id",
+        id=uuid.uuid4(), o=mine.owner, c=mine.class_id, content=json.dumps(mine.content),
+        h=digest(mine.content), music=json.dumps(newer), p=json.dumps(PROVENANCE),
+        parent=mine.revision_id,
+    ).scalar_one()  # fmt: skip
+    sql(jobs_admin, "UPDATE classes SET current_revision_id = :r WHERE id = :c",
+        r=newer_id, c=mine.class_id)  # fmt: skip
+    put_correction(jobs_admin, mine.owner, mine.class_id, 1, 1)
+    put_correction(jobs_admin, mine.owner, mine.class_id, 2, -3, fingerprint=OTHER_FP)
+    got = await mine.duplicate()  # revision 1
+    assert got.status_code == 201, got.text
+    copied = corrections(jobs_admin, got.json()["class_id"])
+    assert [(r.fingerprint, r.song, r.beats) for r in copied] == [(FP, 1, 1)]
+
+
+async def test_a_copy_without_a_music_source_or_soundless_gets_no_corrections(
+    browsers: Any, jobs_admin: Connection, soundless: Callable[..., None]
+) -> None:
+    browser: Browser = await browsers(mowl=False)
+    picked = {
+        "source": "mowl_spotify_playlist", "spotify_playlist_id": PLAYLIST_ID,
+        "origin": "song_pick", "class_playlist_id": str(uuid.uuid4()),
+    }  # fmt: skip
+    on_picked = Source(jobs_admin, browser, music_source=picked, music=with_beat_one())
+    # A soundless class whose chosen revision still names music with a fingerprint: the class's
+    # kind decides, so the copy (``{source: "none"}``) gets nothing.
+    soundless_class = Source(jobs_admin, browser, music_source=NONE, music=with_beat_one())
+    # A class on a playlist whose chosen revision is soundless music: no fingerprint, nothing.
+    soundless_revision = Source(jobs_admin, browser, music=dict(NONE))
+    soundless()
+    for source in (on_picked, soundless_class, soundless_revision):
+        put_correction(jobs_admin, source.owner, source.class_id, 1, 2)
+        got = await source.duplicate()
+        assert got.status_code == 201, got.text
+        assert corrections(jobs_admin, got.json()["class_id"]) == []
+        assert len(corrections(jobs_admin, source.class_id)) == 1  # the source keeps its rows
+
+
+async def test_the_copy_holds_at_most_the_cap_of_one_fingerprint(
+    two: tuple[Source, Source],
+) -> None:
+    """The source cannot hold more than 200 rows for one fingerprint through the API; planted
+    ones still never give the copy more than the cap (lowest songs first)."""
+    mine, _ = two
+    sql(
+        mine.admin,
+        "INSERT INTO beat_one_corrections (owner_id, class_id, fingerprint, song, beats, bpm) "
+        "SELECT :o, :c, :f, s, 1, 128 FROM generate_series(1, 201) s",
+        o=mine.owner, c=mine.class_id, f=FP,
+    )  # fmt: skip
+    got = await mine.duplicate()
+    assert got.status_code == 201, got.text
+    copied = corrections(mine.admin, got.json()["class_id"])
+    assert [r.song for r in copied] == list(range(1, 201))
+
+
+async def test_a_refused_or_replayed_duplicate_copies_no_corrections(
+    two: tuple[Source, Source],
+) -> None:
+    mine, _ = two
+    put_correction(mine.admin, mine.owner, mine.class_id, 1, 2)
+    put_correction(mine.admin, mine.owner, mine.class_id, 2, -1)
+    refused = await mine.duplicate(content_hash="0" * 64)
+    assert refused.status_code == 409
+    mine.free_plan()
+    mine.hold(3)
+    over = await mine.duplicate()
+    assert (over.status_code, over.json()["detail"]["quota"]) == (409, "classes")
+    assert owned_corrections(mine.admin, mine.owner) == 2
+    sql(mine.admin, "DELETE FROM credit_ledger WHERE owner_id = :o", o=mine.owner)
+    key = new_key()
+    first = await mine.duplicate(key=key)
+    again = await mine.duplicate(key=key)
+    assert (first.status_code, again.status_code) == (201, 200), again.text
+    assert len(corrections(mine.admin, first.json()["class_id"])) == 2
+    assert owned_corrections(mine.admin, mine.owner) == 4  # the source's 2 and one copy of them
+
+
+async def test_copied_corrections_live_and_die_with_the_copy_and_the_account(
+    two: tuple[Source, Source],
+) -> None:
+    mine, _ = two
+    put_correction(mine.admin, mine.owner, mine.class_id, 3, -1, bpm=124.5)
+    first = (await mine.duplicate()).json()
+    second = (await mine.duplicate(title="Second copy")).json()
+    # Deleting the source leaves the copies' rows.
+    headers = await mine.browser.headers()
+    deleted = await mine.browser.client.delete(f"/api/classes/{mine.class_id}", headers=headers)
+    assert deleted.status_code == 200, deleted.text
+    assert corrections(mine.admin, mine.class_id) == []
+    assert len(corrections(mine.admin, first["class_id"])) == 1
+    # The export holds the copies' rows (guard 12: without the fingerprint).
+    document = await build_export(mine.browser.env.factory, make_context(mine.owner))
+    assert document is not None
+    exported = document["beat_one_corrections"]
+    assert sorted((r["class_id"], r["song"], r["beats"], r["bpm"]) for r in exported) == sorted(
+        [(first["class_id"], 3, -1, 124.5), (second["class_id"], 3, -1, 124.5)]
+    )
+    assert all("fingerprint" not in r for r in exported)
+    # Deleting one copy deletes its rows only (the class cascade).
+    deleted = await mine.browser.client.delete(
+        f"/api/classes/{first['class_id']}", headers=await mine.browser.headers()
+    )
+    assert deleted.status_code == 200, deleted.text
+    assert corrections(mine.admin, first["class_id"]) == []
+    assert len(corrections(mine.admin, second["class_id"])) == 1
+    # Deleting the account deletes the rest (guard 10).
+    sql(mine.admin, "DELETE FROM users WHERE id = :o", o=mine.owner)
+    assert owned_corrections(mine.admin, mine.owner) == 0

@@ -55,6 +55,8 @@ CATEGORY_GROUPS: Final[dict[str, frozenset[str]]] = {
     "missing_music": frozenset({"design", "songs"}),
     "class_patterns": frozenset({"design"}),
     "running": frozenset({"design"}),  # ADR 0012 amendment of 2026-11-03 (ADR 0018, issue #465)
+    # ADR 0007 amendment of 2026-11-03 (soundless classes, issue #531); suite version 11
+    "soundless": frozenset({"design"}),
     "adversarial": frozenset({"design", "songs"}),
     "cost": frozenset({"design", "songs"}),
 }
@@ -92,6 +94,10 @@ RULE_SOURCES: Final = (
     # the suite held running cases, so the earlier digests stayed valid.
     "design/sport_rules.py",
     "agent/running_input.py",
+    # Soundless (ADR 0007 amendment of 2026-11-03, issue #531): what the model sees of a class with
+    # no music (the brief, the timeline of the draft as written, the two first messages). Kept out
+    # until the suite held soundless cases, so the earlier digests stayed valid.
+    "agent/soundless_input.py",
 )
 CONSTANT_MODULES: Final[tuple[ModuleType, ...]] = (checks, music, pick, pick_world, song_checks)
 CONSTANT_NAME: Final = re.compile(r"^[A-Z][A-Z0-9_]*$")

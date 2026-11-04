@@ -2,8 +2,9 @@
 # Decides which CI jobs a change needs. Writes backend/frontend/stack/all (true|false) to
 # $GITHUB_OUTPUT, or to stdout when that is unset (local use).
 #
-#   EVENT_NAME  github.event_name; pull_request and merge_group diff, anything else means "run
-#               everything"
+#   EVENT_NAME  github.event_name; pull_request and merge_group diff, anything else (push to main,
+#               schedule, workflow_dispatch, an unknown event) means "run everything": a push has
+#               no base/head diff, and the run on main is the safety net for the merged result
 #   BASE_SHA    the pull request's base commit, or the merge group's base_sha (the target branch tip)
 #   HEAD_SHA    the pull request's head commit, or the merge group's head_sha (the merged result)
 #
