@@ -452,13 +452,27 @@ describe('the new-class form', () => {
     expect(api.to('GET', '/api/music/swedebeat-mixes')).toHaveLength(0)
   })
 
+  it('does not call the mix list or show the mix choice while "I use Swedebeat" is off (#525)', async () => {
+    const api = fakeApi({
+      ...READY,
+      'GET /api/connections': {
+        connections: [MOWL],
+        swedebeat: { enabled: true, available: true, uses_swedebeat: false },
+      },
+    })
+    renderAt('/classes/new')
+    await screen.findByLabelText('Class name')
+    expect(screen.queryByRole('button', { name: 'Use my Swedebeat mix' })).toBeNull()
+    expect(api.to('GET', '/api/music/swedebeat-mixes')).toHaveLength(0)
+  })
+
   it('designs on a chosen Swedebeat mix with plain list errors', async () => {
     const mixId = 'mix-sunday-climb'
     const api = fakeApi({
       ...SESSION_ROUTES,
       'GET /api/connections': {
         connections: [MOWL],
-        swedebeat: { enabled: true, available: true },
+        swedebeat: { enabled: true, available: true, uses_swedebeat: true },
       },
       'GET /api/music/mowl-playlists': READY['GET /api/music/mowl-playlists'],
       'GET /api/music/swedebeat-mixes': {
@@ -490,7 +504,7 @@ describe('the new-class form', () => {
       ...SESSION_ROUTES,
       'GET /api/connections': {
         connections: [MOWL],
-        swedebeat: { enabled: true, available: true },
+        swedebeat: { enabled: true, available: true, uses_swedebeat: true },
       },
       'GET /api/music/mowl-playlists': READY['GET /api/music/mowl-playlists'],
       'GET /api/music/swedebeat-mixes': () => reason(503, 'upstream_unavailable'),
@@ -507,7 +521,7 @@ describe('the new-class form', () => {
       ...SESSION_ROUTES,
       'GET /api/connections': {
         connections: [MOWL],
-        swedebeat: { enabled: true, available: true },
+        swedebeat: { enabled: true, available: true, uses_swedebeat: true },
       },
       'GET /api/music/mowl-playlists': { playlists: [] },
       'GET /api/music/swedebeat-mixes': () => reason(503, 'upstream_unavailable'),

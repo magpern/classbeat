@@ -259,7 +259,7 @@ async def run(job_run: JobRun) -> Complete:
     if given.brief.sport == sport.RUNNING:
         await sport.still_on(job_run)  # ADR 0018 section 5: before anything is called
     if isinstance(given.music, SwedebeatMusicChoice):
-        await mixadmit.still_on(job_run, runtime.swedebeat_enabled)  # before anything is called
+        await mixadmit.still_on(job_run, runtime.swedebeat_enabled, new_design=True)
     if isinstance(given.music, NoMusicChoice):
         await music_kind.still_on(job_run)  # #527: the switch, before anything is called
     model = await group_model(runtime, job_run, given.route_key, "design")  # before any MOWL call

@@ -40,8 +40,10 @@ PINNED = {
     # The running stages (ADR 0018), listed since E1 (#465) under their own keys.
     "running_design": "40fcbacc476575681d2549581f374ce74b2b46ad8fae589febcc0fe2a9a73b45",
     "running_revise": "2e06a0378e08a974fddcce833399553a197f4ba927de678cb04ce6aabfceac6f",
-    # The soundless design stage (ADR 0007 amendment of 2026-11-03, #527), under its own key.
+    # The soundless design and revise stages (ADR 0007 amendment of 2026-11-03, #527 and #528),
+    # under their own keys.
     "soundless_design": "52da78f0973b7abd280c87aa74972bf588a85687158fb8ae735e5a49dac3d64a",
+    "soundless_revise": "2ec3f408165649bb6dfd7f8015f4caa8f5fad0c16f169e7d9c33bb3618861fb6",
 }
 PLANTED = "Zq9 planted brief text"
 PLANTED_STYLE = "Zq9 planted style"

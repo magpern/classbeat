@@ -2,9 +2,11 @@
 T20, T93 and T97).
 
 - ``Content-Security-Policy``, the app's first, as a response header (never a ``<meta>`` in
-  ``index.html``): everything from our own origin only, with one exception, album covers from
-  ``https://i.scdn.co`` in ``img-src`` (``classbeat.covers``). No inline or ``eval`` script, no
-  inline ``<style>``, no plugins, no ``<base>``, forms only to us, and no framing by anyone.
+  ``index.html``): everything from our own origin only, with one exception, album and playlist
+  covers in ``img-src``: exactly the path-scoped Spotify CDN sources of
+  ``classbeat.covers.IMG_SOURCES`` (ADR 0013 section 9 and its "CSP widening", #537). No inline
+  or ``eval`` script, no inline ``<style>``, no plugins, no ``<base>``, forms only to us, and no
+  framing by anyone.
 - ``Referrer-Policy: no-referrer``, page-wide, so a cover request (or any link) carries no
   classbeat URL.
 
@@ -19,13 +21,13 @@ from starlette.requests import Request
 from starlette.responses import PlainTextResponse, Response
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
-from classbeat.covers import COVER_HOST
+from classbeat.covers import IMG_SOURCES
 
 CSP_DIRECTIVES: Final = (
     "default-src 'self'",
     "script-src 'self'",
     "style-src 'self'",
-    f"img-src 'self' {COVER_HOST}",
+    " ".join(("img-src 'self'", *IMG_SOURCES)),
     "font-src 'self'",
     "connect-src 'self'",
     "media-src 'none'",

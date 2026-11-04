@@ -24,7 +24,7 @@ import {
 import { MixTiles } from '../components/newclass/MixTiles'
 import { EffortCards } from '../components/newclass/EffortCards'
 import { SelectInput, TextArea, TextInput } from '../components/newclass/inputs'
-import { PlaylistTiles } from '../components/newclass/PlaylistTiles'
+import { PlaylistTiles, usePlaylistCovers } from '../components/newclass/PlaylistTiles'
 import { SideCard } from '../components/newclass/SideCard'
 import { Stepper } from '../components/newclass/Stepper'
 import { StylePicker } from '../components/newclass/StylePicker'
@@ -135,7 +135,8 @@ function NewClass() {
         const songs = await songsAvailability(connections, abort.signal)
         let swedebeat: SwedebeatMixAvailability = { kind: 'off' }
         let mixes: SwedebeatMix[] = []
-        if (swedebeatAccess.enabled) {
+        // The flag and the user's own "I use Swedebeat" (#525): with either off, no mix choice and no listing.
+        if (swedebeatAccess.enabled && swedebeatAccess.usesSwedebeat) {
           try {
             const listed = await getSwedebeatMixes(abort.signal)
             if (listed !== null) {
@@ -248,6 +249,8 @@ function ClassForm({
   const action = useAction()
   const [title, setTitle] = useState('')
   const [playlist, setPlaylist] = useState('')
+  // Playlist covers only for a user with a Spotify connection (#537); initials until they arrive.
+  const covers = usePlaylistCovers(playlists.length > 0 && (songs.kind === 'ready' || songs.kind === 'needs_consent'))
   const [mixId, setMixId] = useState('')
   const [music, setMusic] = useState<Music>('playlist')
   const [sport, setSport] = useState<'cycling' | 'running'>('cycling')
@@ -525,7 +528,7 @@ function ClassForm({
           {running ? null : (
             <MusicChoice songs={songs} swedebeat={swedebeat} value={music} onChange={setMusic} />
           )}
-          {running || music === 'playlist' ? <PlaylistTiles playlists={playlists} value={playlist} onChange={setPlaylist} /> : null}
+          {running || music === 'playlist' ? <PlaylistTiles playlists={playlists} value={playlist} onChange={setPlaylist} covers={covers} /> : null}
           {onSwedebeatMix ? <MixTiles mixes={mixes} value={mixId} onChange={setMixId} /> : null}
           <StylePicker value={style} onChange={setStyle} />
         </Card>
