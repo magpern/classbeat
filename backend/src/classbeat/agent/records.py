@@ -172,6 +172,21 @@ class ProvenanceRules(BaseModel):
     digest: str = Field(pattern=r"^[0-9a-f]{64}$")
 
 
+class DuplicatedFrom(BaseModel):
+    """ADR 0007 amendment of 2026-11-03 (#536): the revision a duplicate class's revision 1 was
+    copied from, ids of the same user only. Read to name the source class, never followed."""
+
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    class_id: UUID
+    revision_id: UUID
+    number: int = Field(ge=1)
+    # The request that made the copy (D item 7): a retry with the same key is answered with this
+    # class instead of a second one.
+    idempotency_key: str = Field(pattern=r"^[A-Za-z0-9_-]{16,64}$")
+    request_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+
+
 class Provenance(BaseModel):
     """``class_revisions.provenance`` (ADR 0006 section 6)."""
 
@@ -187,13 +202,15 @@ class Provenance(BaseModel):
     # ``None`` on a soundless class's draft (#527): no music, no map. Every older revision has both.
     map_version: int | None = Field(ge=1)
     crossfade_sec: float | None = Field(ge=0, le=12)
-    agent_run_ids: list[UUID] = Field(min_length=1)
+    # At least one run, except a duplicate (no model ran for it; checked in ``_duplicate``).
+    agent_run_ids: list[UUID]
     usage: ProvenanceUsage
     cost_micros: int = Field(ge=0)
     # ADR 0007 section 2; absent on revisions stored before it.
-    origin: Literal["design_draft", "revise_draft", "design_with_songs", "revise_songs"] | None = (
-        None
-    )
+    origin: (
+        Literal["design_draft", "revise_draft", "design_with_songs", "revise_songs", "duplicate"]
+        | None
+    ) = None
     base_revision_id: UUID | None = None
     request_message_id: UUID | None = None
     # ADR 0008 section 3, on a ``song_list`` revision: the version of the song schemas and the
@@ -211,6 +228,19 @@ class Provenance(BaseModel):
     rules: ProvenanceRules | None = None
     # ADR 0018: a running class's draft says so; absent is cycling (every revision before it).
     sport: Literal["running"] | None = None
+    # ADR 0007 amendment of 2026-11-03: set exactly on ``origin: "duplicate"``.
+    duplicated_from: DuplicatedFrom | None = None
+
+    @model_validator(mode="after")
+    def _duplicate(self) -> Self:
+        """A duplicate names its source, ran no model and cost nothing; nothing else is one."""
+        if self.origin == "duplicate":
+            spent = self.cost_micros or any(self.usage.model_dump().values())
+            if self.duplicated_from is None or self.agent_run_ids or spent:
+                raise ValueError("a duplicate names its source and copies no run, usage or cost")
+        elif self.duplicated_from is not None or not self.agent_run_ids:
+            raise ValueError("only a duplicate has a source and no run")
+        return self
 
     @model_validator(mode="after")
     def _lineage(self) -> Self:
@@ -228,7 +258,14 @@ class Provenance(BaseModel):
         """A revision that was not made from picked songs is stored exactly as before: the two
         song fields are left out when unset (additive, ADR 0008 section 3)."""
         out: dict[str, Any] = handler(self)
-        for key in ("schema_version", "stage_versions", "tss_approximate", "rules", "sport"):
+        for key in (
+            "schema_version",
+            "stage_versions",
+            "tss_approximate",
+            "rules",
+            "sport",
+            "duplicated_from",
+        ):
             if out.get(key) is None:
                 out.pop(key, None)
         return out
