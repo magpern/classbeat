@@ -20,6 +20,7 @@ from ctx import make_context
 from jobapi import Browser, new_key
 from mowlfake import FakeMowl
 from optools import TOKEN_A, TOKEN_B
+from preftools import use_swedebeat
 from test_swedebeat_verify import (  # noqa: F401 - the fixtures: env, work, henv
     HandEnv,
     _check,
@@ -37,6 +38,7 @@ SAME = "shared-mix-b5-0001"
 
 async def rider_of(browsers: Any, henv: HandEnv, token: str) -> Browser:
     browser: Browser = await browsers()
+    await use_swedebeat(henv.ops.factory, browser.user_id)  # #525: the user's own switch
     henv.ops.app.app.dependency_overrides.clear()
     browser.connection_id = await henv.ops.connect(browser.user_id, token)
     return browser

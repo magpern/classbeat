@@ -29,7 +29,7 @@ from classbeat.agent.schemas import clean_text
 
 MIN_BEATS: Final = -3
 MAX_BEATS: Final = 3
-MAX_SONG: Final = 500  # also the ``song`` check of migration 0027
+MAX_SONG: Final = 500  # also the ``song`` check of migration 0029
 MAX_PER_CLASS: Final = 200  # rows for the class's current fingerprint (409 ``correction_limit``)
 MAX_SONGS: Final = 200  # entries of a revision's ``music.songs`` (a class is at most 180 minutes)
 MAX_TITLE: Final = 100  # characters of a song title in ``music.songs``

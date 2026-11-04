@@ -79,6 +79,14 @@ const PIXEL = Buffer.from(
   'base64',
 )
 
+/** The cover hosts (`classbeat.covers.IMG_SOURCES`' origins), exactly; nothing else leaves the stack. */
+export const COVER_ORIGINS = [
+  'https://i.scdn.co',
+  'https://mosaic.scdn.co',
+  'https://image-cdn-ak.spotifycdn.com',
+  'https://image-cdn-fa.spotifycdn.com',
+]
+
 export const test = base.extend<{ networkGuard: void }>({
   extraHTTPHeaders: async ({}, use) => {
     await use({ 'X-Forwarded-For': randomClientIp() })
@@ -87,14 +95,15 @@ export const test = base.extend<{ networkGuard: void }>({
     async ({ context, baseURL }, use) => {
       const allowed = new URL(baseURL ?? 'http://127.0.0.1').origin
       const blocked: string[] = []
-      // The one third party the pages may ask for: album cover art from Spotify's image host
-      // (CSP img-src, frontend CoverArt). The fake Spotify names such URLs; the answer is a pixel.
+      // The one third party the pages may ask for: album and playlist covers from Spotify's image
+      // hosts (CSP img-src, frontend CoverArt; ADR 0013 section 9 and its amendment of 2026-11-03).
+      // The fake Spotify names such URLs; the answer is a pixel. The CSP limits the paths.
       await context.route(
-        (url) => url.origin === 'https://i.scdn.co',
+        (url) => COVER_ORIGINS.includes(url.origin),
         (route) => route.fulfill({ status: 200, contentType: 'image/png', body: PIXEL }),
       )
       await context.route(
-        (url) => url.origin !== allowed && url.origin !== 'https://i.scdn.co',
+        (url) => url.origin !== allowed && !COVER_ORIGINS.includes(url.origin),
         async (route) => {
           blocked.push(new URL(route.request().url()).origin)
           await route.abort('blockedbyclient')

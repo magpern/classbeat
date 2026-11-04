@@ -12,6 +12,12 @@ for a class designed on a Swedebeat mix ``feature_off`` and ``analysis_limit``
 (``mixadmit.admit_class_mix``, ADR 0016 sections 2 and 7).
 It stores the base's hash and inserts the user's ``class_messages`` row with the job.
 
+A class whose ``music_source`` is ``none`` (a soundless class, ADR 0007 amendment of 2026-11-03;
+#528) is admitted through ``music_kind.admit_class`` (the three-condition gate: ``feature_off`` or
+``soundless_not_evaluated``, before the job row) and runs ``_run_soundless`` instead: no ``music``
+stage, no MOWL or Spotify call, the soundless ``revise`` stage, revision music ``{"source":
+"none"}``, ``music_changed`` never told.
+
 **Pipeline** (stages ``music``, ``revise``), every attempt from the top with a new provider, so a
 retry restarts the stage from its beginning and the final store is the only write:
 
@@ -51,12 +57,14 @@ from classbeat.agent import Brief, run_stage
 from classbeat.agent.records import JobStageHost
 from classbeat.agent.revise import ReviseContext, ReviseResult, SongsRequested
 from classbeat.agent.running import revise_stage_for
-from classbeat.agent.schemas import clean_text, stored_draft
+from classbeat.agent.schemas import AnyDraft, clean_text, stored_draft
+from classbeat.agent.soundless import SoundlessReviseContext, soundless_revise_stage
 from classbeat.context import UserContext
 from classbeat.design import chat, diff, limits, mixadmit, music_kind, revision, sport
 from classbeat.design.kind import (
     CLASS_MUSIC_SOURCE,
     NoMusicChoice,
+    Runtime,
     SwedebeatMusicChoice,
     current_runtime,
     group_model,
@@ -113,7 +121,7 @@ async def admit(db: AsyncSession, ctx: UserContext, parsed: BaseModel) -> Admitt
     running = await sport.admit_class(db, ctx.user_id, class_id)  # ADR 0018: the running flag
     if running is not None:
         return running
-    soundless = await music_kind.admit_class(db, ctx.user_id, class_id)  # #527: SL2 revises it
+    soundless = await music_kind.admit_class(db, ctx, class_id)  # #528: the soundless gate
     if soundless is not None:
         return soundless
     chat_limits = limits.current()
@@ -190,7 +198,7 @@ async def run(job_run: JobRun) -> Complete:
     except ValidationError:
         raise JobFailure("internal") from None
     if isinstance(music, NoMusicChoice):
-        raise JobFailure("feature_off")  # #527: a soundless class has no revise stage before SL2
+        return await _run_soundless(job_run, given, base, brief, base_draft, runtime)
     if brief.sport == sport.RUNNING:
         if isinstance(music, SwedebeatMusicChoice):
             raise JobFailure("internal")  # running v1 has no mix (ADR 0018)
@@ -278,6 +286,90 @@ async def run(job_run: JobRun) -> Complete:
     finally:
         if not handed_over:
             step.close()
+
+
+async def _run_soundless(
+    job_run: JobRun,
+    given: ReviseDraftInput,
+    base: chat.BaseForRun,
+    brief: Brief,
+    base_draft: AnyDraft,
+    runtime: Runtime,
+) -> Complete:
+    """A revise of a soundless class (#528): no ``music`` stage and no MOWL or Spotify call; the
+    soundless ``revise`` stage over the brief, the base draft and the requests, then the store
+    with a ``NoMusicStep``. The switch and the model's coverage are checked first (the worker's
+    backstop to ``admit``). No ``songs_requested`` exit, no ``music_changed``, no rules section."""
+    if (
+        given.class_id is None
+        or given.request_message_id is None
+        or given.base_revision_hash is None
+    ):
+        raise JobFailure("internal")
+    if brief.sport != sport.CYCLING:
+        raise JobFailure("internal")  # the input refuses a running brief with no music
+    class_id, base_id = given.class_id, given.base_revision_id
+    request_message_id, base_hash = (
+        given.request_message_id,
+        bytes.fromhex(given.base_revision_hash),
+    )
+    await music_kind.still_on(job_run)  # the switch, before anything is called
+    model = await group_model(runtime, job_run, given.route_key, "design")
+    music_kind.require_covered(model)  # a model evaluated for soundless only
+    step = music_kind.NoMusicStep()
+    ctx = SoundlessReviseContext(
+        brief, base_draft, base.earlier_requests, given.request, given.plan_gates
+    )
+    outcome = await run_stage(
+        JobStageHost(job_run),
+        model.provider,
+        soundless_revise_stage(ctx),
+        ctx.first_message(),
+        model.agent,
+    )
+    if not isinstance(outcome.output, ReviseResult):
+        raise JobFailure("internal")
+    revised = outcome.output
+    draft = revision.build(
+        revised.result,
+        outcome,
+        None,
+        step,
+        origin="revise_draft",
+        base_revision_id=base_id,
+        base_hash=base_hash,
+        request_message_id=request_message_id,
+    )
+    change = diff.summarize(base.content, draft.content, brief.sport)
+
+    async def store(fs: FencedSession) -> UUID:
+        """The music kind, the revision, the compare-and-set, the assistant message."""
+        try:
+            await music_kind.check_stored(fs, soundless=True)  # the kind never changes
+            revision_id = await draft.store(fs)
+            params = {
+                "revision_id": revision_id,
+                "job_id": fs.lease.job_id,
+                "owner_id": fs.lease.owner_id,
+                "base": base_id,
+            }
+            await fs.db.execute(_CAS, params)  # no row: kept, but not current
+            await chat.insert_message(
+                fs.db,
+                owner_id=fs.lease.owner_id,
+                class_id=class_id,
+                job_id=fs.lease.job_id,
+                role="assistant",
+                body=revised.note,
+                base_revision_id=base_id,
+                result_revision_id=revision_id,
+                change=change,
+            )
+            return revision_id
+        except chat.MessageRefused:
+            raise JobFailure("internal") from None
+
+    return Complete(store, release=step.close)
 
 
 REVISE_DRAFT: Final = KINDS.register(

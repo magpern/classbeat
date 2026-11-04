@@ -7,14 +7,16 @@ no credit, no external write.
   user's current one). Ids only, never a title.
 - **admit** (the jobs API's create transaction): ``feature_off`` unless the effective
   ``swedebeat_enabled`` flag is on (``CLASSBEAT_SWEDEBEAT_ENABLED`` and the admin flag, stricter
-  wins), then ``not_connected`` unless the Swedebeat row is ``connected`` (a row that needs a
-  reconnect makes no call), then ``invalid_input`` unless the list is the user's ``song_list`` of
-  that class and still hashes to its stored hash. One open job per class and the per-user limit
-  are the jobs API's own.
-- **prepare**: the flag again, from the worker's own settings and the database (off: the job ends
-  ``feature_off`` and nothing is called), the list again (``song_list.load``), then the Swedebeat
-  connection is opened through ``UserContext`` (``classbeat.connections``), in the worker only, for
-  this job and nothing else; it must be the input's.
+  wins), then ``feature_off`` unless the user's own "I use Swedebeat" preference is on (#525; a
+  connection made before the preference existed does not count as one), then ``not_connected``
+  unless the Swedebeat row is ``connected`` (a row that needs a reconnect makes no call), then
+  ``invalid_input`` unless the list is the user's ``song_list`` of that class and still hashes to
+  its stored hash. One open job per class and the per-user limit are the jobs API's own.
+- **prepare**: the flag again, from the worker's own settings and the database, and the user's
+  preference (either off: the job ends ``feature_off`` and nothing is called), the list again
+  (``song_list.load``), then the Swedebeat connection is opened through ``UserContext``
+  (``classbeat.connections``), in the worker only, for this job and nothing else; it must be the
+  input's.
 - **match**: for each song in play order, at most ``MAX_SONGS``, one catalogue request
   (``classbeat.swedebeat_match.search``) with only its title and artist, one at a time, paced
   (``pace_seconds`` between two requests), a checkpoint before each. Two songs with the same
@@ -49,6 +51,7 @@ from classbeat.connections import (
     open_connection,
     record_result,
 )
+from classbeat.connections.preferences import uses_swedebeat_in
 from classbeat.context import UserContext
 from classbeat.flags import effective as flags
 from classbeat.jobs import KINDS, Complete, JobFailure, JobKind, JobRun
@@ -103,6 +106,8 @@ async def admit(db: AsyncSession, ctx: UserContext, parsed: BaseModel, /) -> Adm
         return Refused("invalid_input")
     if not await flags.swedebeat_enabled(db, config.current().enabled):
         return Refused("feature_off")
+    if not await uses_swedebeat_in(db, ctx.user_id):  # #525: nothing goes to Swedebeat
+        return Refused("feature_off")
     if not await _connected(db, ctx, parsed.swedebeat_connection_id):
         return Refused("not_connected")
     stored = await song_list.load(db, ctx.user_id, parsed.the_class, parsed.song_list_revision_id)
@@ -125,6 +130,8 @@ async def _prepare(
 ) -> tuple[song_list.SongListRevision, OpenConnection]:
     async with run.fenced() as fs:
         enabled = await flags.swedebeat_enabled(fs.db, cfg.enabled)
+        if enabled:  # #525: the user's own switch, re-read before any request
+            enabled = await uses_swedebeat_in(fs.db, run.lease.owner_id)
         job_class = (await fs.db.execute(JOB_CLASS, run.lease.params())).scalar_one_or_none()
         stored = None
         if enabled:

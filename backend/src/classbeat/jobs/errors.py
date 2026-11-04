@@ -77,7 +77,7 @@ CATEGORIES: Final = (
     # class, or of one classbeat cannot tell; nothing is written, ``overwrite`` included, and it
     # is not retried.
     "program_other_sport",
-    # ADR 0007 amendment "beat-one corrections" (migration 0027): a ``refit_draft`` whose music
+    # ADR 0007 amendment "beat-one corrections" (migration 0029): a ``refit_draft`` whose music
     # is no longer the base revision's (another fingerprint); nothing is stored, not retried.
     "music_changed",
 )

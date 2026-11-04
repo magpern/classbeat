@@ -278,6 +278,13 @@ class SoundlessDraftInput(BaseModel):
     draft: SoundlessDraft
 
 
+class SoundlessReviseInput(SoundlessDraftInput):
+    """``submit_draft`` of a soundless ``revise``: the draft and the optional note, as
+    ``ReviseInput`` (shown to the user as plain text, never sent back to a model)."""
+
+    note: Note = Field(default="", description="One sentence on what you changed (optional).")
+
+
 class SongsRequestedInput(BaseModel):
     """``songs_requested`` of the ``revise`` stage: the request asks for other songs and for
     nothing else, so there is nothing to revise. It takes no data."""
