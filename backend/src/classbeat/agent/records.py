@@ -184,8 +184,9 @@ class Provenance(BaseModel):
     prompt_version: str = Field(pattern=r"^[0-9a-f]{64}$")
     classbeat_version: str = Field(min_length=1, max_length=64)
     mowl_version: str = Field(min_length=1, max_length=64)
-    map_version: int = Field(ge=1)
-    crossfade_sec: float = Field(ge=0, le=12)
+    # ``None`` on a soundless class's draft (#527): no music, no map. Every older revision has both.
+    map_version: int | None = Field(ge=1)
+    crossfade_sec: float | None = Field(ge=0, le=12)
     agent_run_ids: list[UUID] = Field(min_length=1)
     usage: ProvenanceUsage
     cost_micros: int = Field(ge=0)
@@ -252,7 +253,7 @@ class Provenance(BaseModel):
 
 def provenance(
     runs: Sequence[StageOutcome],
-    music_map: Mapping[str, Any],
+    music_map: Mapping[str, Any] | None,
     *,
     origin: Literal[
         "design_draft", "revise_draft", "design_with_songs", "revise_songs"
@@ -282,9 +283,12 @@ def provenance(
         prompt_version=last.info.prompt_version,
         classbeat_version=classbeat_version,
         mowl_version=mowl_version(),
-        map_version=int(music_map.get("version", music.MAP_VERSION)),
-        # As fitted: a stored map without the key is converted to the default first.
-        crossfade_sec=float(music_map.get("crossfade", spotify.CROSSFADE_SEC)),
+        # None for a soundless class (no map); otherwise as fitted: a stored map without the key
+        # is converted to the default first.
+        map_version=None if music_map is None else int(music_map.get("version", music.MAP_VERSION)),
+        crossfade_sec=(
+            None if music_map is None else float(music_map.get("crossfade", spotify.CROSSFADE_SEC))
+        ),
         agent_run_ids=[r.run_id for r in runs],
         usage=ProvenanceUsage(
             input_tokens=usage.input_tokens,

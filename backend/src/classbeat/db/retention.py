@@ -102,8 +102,9 @@ RETENTION: Mapping[str, Retention] = MappingProxyType(
             "account",
             "mowl_connection",
         ),
-        # ADR 0007 amendment "beat-one corrections" (#535): a song number and a whole-beat shift
-        # per class and music fingerprint (a hash of the user's own music); no title, no id.
+        # ADR 0007 amendment "beat-one corrections" (#535): a song number, a whole-beat shift and
+        # the song's BPM per class and music fingerprint (a hash of the user's own music); no title,
+        # no id.
         "beat_one_corrections": _entry("", "fingerprint", "class", "account"),
         "agent_runs": _entry(
             "",

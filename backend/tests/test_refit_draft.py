@@ -68,9 +68,10 @@ def correct_all(renv: ReviseEnv, class_id: UUID, beats: int = 2) -> list[dict[st
     out = []
     for song in base.music["songs"]:
         renv.sql(
-            "INSERT INTO beat_one_corrections (owner_id, class_id, fingerprint, song, beats) "
-            "VALUES (:o, :c, :f, :s, :b)",
+            "INSERT INTO beat_one_corrections (owner_id, class_id, fingerprint, song, beats, bpm) "
+            "VALUES (:o, :c, :f, :s, :b, :bpm)",
             o=renv.owner, c=class_id, f=base.music["fingerprint"], s=song["song"], b=beats,
+            bpm=song["bpm"],
         )  # fmt: skip
         out.append({"song": song["song"], "beats": beats})
     return out
@@ -106,15 +107,35 @@ async def test_a_refit_stores_the_corrected_draft_as_the_current_child_without_a
     assert renv.messages(class_id) == [], "a refit is not a chat revision"
 
 
-async def test_a_refit_with_nothing_to_move_is_stored_with_the_same_content(
+async def test_a_refit_with_nothing_pending_is_refused_and_stores_nothing(
     renv: ReviseEnv,
 ) -> None:
     class_id, base = await renv.design()
+    made = await ask(renv, class_id, base)  # no corrections at all
+    assert (made.status_code, made.json()["detail"]["reason"]) == (409, "nothing_pending")
+    correct_all(renv, class_id)
     await refit(renv, class_id, base)
-    first, second = renv.revisions(class_id)
-    assert second.content == first.content
-    assert bytes(second.content_hash) == bytes(first.content_hash)
-    assert "beat_one" not in second.music
+    current = renv.current(class_id)
+    assert current is not None
+    again = await ask(renv, class_id, current)  # the corrections are applied now
+    assert (again.status_code, again.json()["detail"]["reason"]) == (409, "nothing_pending")
+    assert len(renv.revisions(class_id)) == 2
+
+
+@pytest.mark.parametrize(
+    ("source", "reason"), [('{"source": "none"}', "invalid_input"), (None, "not_changeable")]
+)
+async def test_a_soundless_class_or_one_with_no_music_source_is_refused(
+    renv: ReviseEnv, source: str | None, reason: str
+) -> None:
+    class_id, base = await renv.design()
+    correct_all(renv, class_id)
+    renv.sql(
+        "UPDATE classes SET music_source = CAST(:s AS jsonb) WHERE id = :c", s=source, c=class_id
+    )
+    made = await ask(renv, class_id, base)
+    assert (made.status_code, made.json()["detail"]["reason"]) == (409, reason)
+    assert len(renv.revisions(class_id)) == 1
 
 
 async def test_music_that_changed_since_the_base_ends_music_changed_and_stores_nothing(
@@ -139,6 +160,7 @@ async def test_admit_refuses_a_stale_base_a_foreign_one_a_busy_class_and_too_man
     assert foreign.status_code == 409
     assert foreign.json()["detail"]["reason"] == "invalid_input"
     await renv.revise(class_id, base, "revise_good")
+    correct_all(renv, class_id)  # rows for the current fingerprint, so a refit has work to do
     stale = await ask(renv, class_id, base)
     assert (stale.status_code, stale.json()["detail"]["reason"]) == (409, "stale_base")
     current = renv.current(class_id)

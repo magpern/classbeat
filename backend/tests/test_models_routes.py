@@ -190,11 +190,15 @@ def test_the_running_prompt_versions_are_those_of_stages_built_from_real_context
             music_changed=False,
         )
     )
+    from classbeat.agent.soundless import SoundlessContext, soundless_design_stage
+
+    soundless_design = soundless_design_stage(SoundlessContext(design_case.brief))
     assert running_prompt_versions("design") == {
         "design": design.prompt_version,
         "revise": revise.prompt_version,
         "running_design": running_design.prompt_version,
         "running_revise": running_revise.prompt_version,
+        "soundless_design": soundless_design.prompt_version,
     }
 
 
@@ -862,3 +866,48 @@ async def test_a_running_job_needs_a_design_route_recorded_with_the_running_stag
     assert (await resolve(factory, s, "songs")).running_covered is False  # design only
     add_result(admin, passed=False)  # a newer failure: no standing pass
     assert await covers() is False
+
+
+async def test_a_soundless_job_needs_a_covering_route_and_a_soundless_suite_version(
+    admin: Connection,
+    factory: Factory,
+    app_database_url: str,
+    kek_dir: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """ADR 0007 amendment of 2026-11-03, item 6 (#527): ``covers(db, key, "soundless")`` (the web)
+    and ``ModelChoice.soundless_covered`` (the worker) agree: running's rule **and** the result's
+    ``suite_version`` at least ``SOUNDLESS_SUITE_VERSION``, which is ``None`` in SL1."""
+    s = worker(app_database_url, kek_dir, "anthropic")
+
+    async def covers(variant: Any = "soundless", key: str = DEFAULT_ROUTE_KEY) -> bool:
+        async with system_session(factory) as db:
+            return await routes_module.covers(db, key, variant)
+
+    assert await covers() is False  # no route: the bootstrap choice
+    add_result(admin, age_minutes=1)
+    await enable(factory, s, "anthropic", OPUS, "medium")
+    assert await covers("running") is True
+    assert await covers() is False  # SL1: no suite version covers soundless
+    choice = await resolve(factory, s)
+    assert (choice.running_covered, choice.soundless_covered) == (True, False)
+    monkeypatch.setattr(routes_module, "SOUNDLESS_SUITE_VERSION", running_suite_version() + 1)
+    assert await covers() is False  # recorded below the soundless suite version
+    assert (await resolve(factory, s)).soundless_covered is False
+    monkeypatch.setattr(routes_module, "SOUNDLESS_SUITE_VERSION", running_suite_version())
+    assert await covers() is True
+    assert (await resolve(factory, s)).soundless_covered is True
+    assert await covers(key="pro") is False  # another plan's key has no route
+    assert await covers("unknown") is False  # not a variant
+    add_result(admin, group="songs")
+    await enable(factory, s, "anthropic", OPUS, "medium", group="songs")
+    assert (await resolve(factory, s, "songs")).soundless_covered is False  # design only
+    # A route at a result recorded before SL1 (no soundless stage) is stale: it covers neither.
+    old = {k: v for k, v in running_prompt_versions("design").items() if k != "soundless_design"}
+    before = add_result(admin, prompt_versions=old, age_minutes=0.5)
+    admin.execute(
+        text("UPDATE model_routes SET eval_result_id = :r WHERE stage_group = 'design'"),
+        {"r": before},
+    )
+    assert await covers() is False
+    assert await covers("running") is False

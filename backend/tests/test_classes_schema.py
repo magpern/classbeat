@@ -592,7 +592,7 @@ def test_deleting_the_class_then_the_user_leaves_nothing_in_the_registered_table
            listed_duration=600, map={})  # fmt: skip
     # Migration 0027: a beat-one correction of the class (ADR 0007 amendment).
     insert(admin, "beat_one_corrections", owner_id=owner, class_id=class_id,
-           fingerprint="ab" * 32, song=2, beats=1)  # fmt: skip
+           fingerprint="ab" * 32, song=2, beats=1, bpm=128.0)  # fmt: skip
     # Migration 0020: when a new mix analysis started (the daily limit).
     insert(admin, "swedebeat_analyses", owner_id=owner)
     match = admin.execute(

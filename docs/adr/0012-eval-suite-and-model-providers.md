@@ -800,7 +800,13 @@ stale (`prompt_versions`), for running coverage too.
 - **Coverage.** A `design` route covers soundless when it is not stale for any reason **and** its result's
   `suite_version` is at least `models.routes.SOUNDLESS_SUITE_VERSION` (`None` until #531 sets it to 11), so
   a result recorded before the soundless cases existed never counts. The bootstrap choice never covers it,
-  `fake` does. It is checked per attempt in the worker (`model_config` before any call), per job in `admit`
+  `fake` does: in the worker its `fake` bypass (dev and CI; the worker refuses `fake` in prod), and in the
+  web process, which has no provider, only when the web's own `CLASSBEAT_MODEL_PROVIDER` is `fake` **and**
+  `CLASSBEAT_ENVIRONMENT` is not `prod` (`design.music_kind.fake_covers`), so a production web treats
+  nothing as covered without a recorded route (pinned by tests). `compose.yaml` passes no
+  `CLASSBEAT_MODEL_PROVIDER` to web, so a plain dev stack cannot switch soundless on; the e2e stack can.
+  `admit` checks, in this order, the switch (`feature_off`), the job's own plan's route
+  (`soundless_not_evaluated`) and every plan's route (`feature_off`). It is checked per attempt in the worker (`model_config` before any call), per job in `admit`
   (409 `soundless_not_evaluated`, before any credit is reserved) and per request in the effective
   `soundless_enabled` flag, which is on only with the environment switch, a stored `on` (missing is `off`)
   and coverage for every plan key. The admin refuses to store `on` without coverage (422
