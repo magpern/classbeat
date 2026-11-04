@@ -527,6 +527,11 @@ async def full_flows(world: World, admin: Connection, known: Known) -> dict[str,
     known.add("swedebeat_wrong_password", SWEDEBEAT_BAD_PHRASE)
     known.add("swedebeat_app_key", world.swedebeat.key)
     known.add("swedebeat_app_iv", world.swedebeat.iv)
+    # #525: the rider says "I use Swedebeat" first (default off: connect would be 404).
+    preference = await actor.call(
+        "PUT", "/api/connections/swedebeat/preference", {"uses_swedebeat": True}
+    )
+    assert preference.status_code == 200, preference.text
     wrong = await actor.post(
         "/api/connections/swedebeat", {"email": SWEDEBEAT_EMAIL, "password": SWEDEBEAT_BAD_PHRASE}
     )

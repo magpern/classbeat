@@ -407,7 +407,8 @@ def test_cycling_prompt_versions_and_schemas_are_unchanged() -> None:
     assert set(versions) - set(CYCLING_PROMPT_VERSIONS) == {
         "running_design",
         "running_revise",
-        "soundless_design",  # #527: the soundless stage, also under its own key
+        "soundless_design",  # #527: the soundless stages, also under their own keys
+        "soundless_revise",  # #528
     }
     assert "gradient" not in json.dumps(DraftInput.model_json_schema())
     assert "gradient" not in json.dumps(ReviseInput.model_json_schema())

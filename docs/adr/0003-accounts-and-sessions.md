@@ -293,6 +293,68 @@ is no Starlette session middleware.
     requires `auth_time` within the last 5 minutes. A missing or older `auth_time` fails
     closed. Google omits `auth_time` unless asked, so it also gets `claims={"id_token":{"auth_time":
     {"essential":true}}}`; Microsoft's app registration adds it as an optional claim.
+  - **Amendment (2026-11-03, #522): Google re-authentication without `auth_time`.** On the
+    owner's dev stack every Google re-authentication failed with `reauth_failed` `{"why":
+    "auth_time"}`: Google answered the `max_age=0` and `claims` request with an ID token whose
+    `auth_time` was missing or older than 5 minutes, so it did not make the user sign in again.
+    The Architect asked for option (a) of the issue: accept a Google token without `auth_time`
+    when the request carried `prompt=login`, the flow's state, nonce and PKCE verify and `iat` is
+    at most 120 s old, and to fall back to option (b) if that is no real proof of freshness.
+    **It is not, so (b) holds:**
+    - Google documents `none`, `consent` and `select_account` as its `prompt` values, not
+      `login` (the test of this section already said so), and it may refuse an unknown value.
+      Even where a provider honours `prompt=login`, nothing in the answer shows it did.
+    - A fresh `iat` shows only that the token was minted now. Google mints one silently from any
+      live Google session, which is exactly what the walk-up threat has (an unlocked browser
+      signed in to both classbeat and Google). State, nonce and PKCE bind the token to this
+      flow and this browser, which is that same browser. With a stolen classbeat cookie in
+      another browser, an attacker cannot complete the Google flow as the victim anyway, so
+      the extra checks add nothing there either.
+    - The evidence suggests Google already ignores `max_age=0`, a parameter of the same kind
+      ("authenticate again now"): the old `why` did not say whether `auth_time` was missing or
+      old, which the live check below separates. Google's discovery document lists no `auth_time`
+      in `claims_supported` and does not advertise `claims_parameter_supported`, so the `claims`
+      request may be ignored too. Relying on `prompt=login` would be relying on the same
+      unverifiable behaviour.
+
+    **Rule (unchanged in substance, now explicit):** an OIDC re-authentication (Google and
+    Microsoft) is accepted only when the ID token has `auth_time` no more than 5 minutes old
+    and no more than 60 s in the future, on top of every check above (state, PKCE, nonce, `iss`,
+    `aud`, `exp`, `iat`) and the session and identity rules of the outcome table. `iat` alone
+    never counts. Google keeps `max_age=0` and the `claims` request (they make a fresh
+    `auth_time` possible, for example right after the user signed in to Google again) and gets
+    no `prompt=login`; Microsoft keeps `prompt=login` and its registered `auth_time` claim. A
+    failure is recorded as `reauth_failed` with `why` `auth_time_missing`, `auth_time_old` or
+    `auth_time_future` and the provider, and the page says the provider did not confirm a sign-in
+    of the last 5 minutes and nothing was changed, then "Use your password instead" (or, without
+    a password, how to set one by a reset). The re-authentication prompt says up front that Google
+    and Microsoft confirm only a sign-in of the last 5 minutes.
+
+    **Consequence for Google-only accounts:** if Google never sends a fresh `auth_time`, an
+    account without a password cannot pass any guarded action (§6) through Google. Its only way
+    forward is a password reset (the reset request works for any enabled user, with or without a
+    password), then re-authentication with that password. The reset signs the user out
+    everywhere, forgets their known devices, and lets them remove linked sign-in methods in the
+    same step (§5, "Reset"). That is accepted for the beta: the way out works and the page
+    describes it. Re-authentication by an email code or link (option (c) of #522) is a possible
+    follow-up; it is not built and needs its own decision.
+
+    **Logging:** every callback that does not end `ok` writes one `WARNING` line
+    `oauth callback refused: provider=… purpose=… outcome=… why=…` (`classbeat.auth.oauth_routes`),
+    where `why` is a fixed word (`no_flow`, `state_mismatch`, `provider_error=<an error code>`,
+    `no_session`, `auth_time_missing`, …) or the provider error's check name. It never holds a
+    code, state, nonce, token, query string or email.
+
+    **Owner's live check** (agents make no live call): with Google enabled, link Google to an
+    account with a password, wait more than 10 minutes, start a guarded action and choose
+    "Confirm with Google". Expected today: the page shows the sentence above and the web log one
+    line `... purpose=reauth outcome=reauth_stale why=auth_time_missing` (Google sends no
+    `auth_time`) or `why=auth_time_old` (it sends the old sign-in's time). Then sign out of
+    Google, sign in to Google again and within 5 minutes repeat "Confirm with Google": if it
+    passes, Google sends a fresh `auth_time` after a real sign-in and the rule works as designed;
+    if it still fails with `auth_time_missing`, Google re-authentication cannot work for us and
+    the Architect decides whether to hide the Google button in the prompt or build option (c).
+    Report only the `why` words, never a token or claim value.
   - **GitHub:** it can't force a re-login, so a GitHub re-authentication only proves a live
     GitHub session (an accepted risk).
   - **Order and fallback:** users with a password are offered it first. A user whose provider

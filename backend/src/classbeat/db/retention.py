@@ -102,6 +102,9 @@ RETENTION: Mapping[str, Retention] = MappingProxyType(
             "account",
             "mowl_connection",
         ),
+        # Issue #525 (migration 0028): the user's own switches, booleans and dates only; nothing
+        # provider-derived. Gone with the account; the one row per user is the whole record.
+        "user_preferences": _entry("", "", "account"),
         # ADR 0007 amendment "beat-one corrections" (#535): a song number, a whole-beat shift and
         # the song's BPM per class and music fingerprint (a hash of the user's own music); no title,
         # no id.

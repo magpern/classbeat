@@ -7,8 +7,13 @@ Its status is the ``swedebeat`` row of ``GET /api/connections`` and its ``swedeb
   environment's switch and the admin flag, ``classbeat.flags``). 503 ``app_key_unavailable``
   before the rate limit is spent when this server has no Swedebeat app key. Rate limited per user,
   IP and Swedebeat email before the sign-in, like MOWL; a success releases the slots.
+  Also 404 ``feature_off`` while the user's own "I use Swedebeat" preference is off (#525).
 - ``DELETE``: disconnect (recent authentication). Deletes the row; local only. Never gated by the
-  flag: a user can always remove what is stored about them.
+  flag or the preference: a user can always remove what is stored about them.
+- ``PUT /preference``: store the user's "I use Swedebeat" preference
+  (``{"uses_swedebeat": bool}``, signed in, CSRF by the middleware). Allowed whatever the flag says:
+  storing ``true`` while the flag is off turns nothing on (``preferences.swedebeat_on`` needs
+  both), and ``false`` always works.
 
 Failures answer with the category alone: ``invalid_credentials`` (400), ``device_in_use`` (409),
 ``upstream_unavailable`` (503), ``app_key_unavailable`` (503), ``rate_limited`` (429, with
@@ -20,11 +25,12 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, Field, SecretStr
+from pydantic import BaseModel, ConfigDict, Field, SecretStr, StrictBool
 
 from classbeat import auth
 from classbeat.config import Settings
 from classbeat.connections.errors import ConnectionFailure
+from classbeat.connections.preferences import set_uses_swedebeat, uses_swedebeat
 from classbeat.connections.repository import disconnect, list_connections
 from classbeat.connections.routes import ConnectionOut, event, failure_response
 from classbeat.connections.swedebeat_account import (
@@ -40,6 +46,16 @@ router = APIRouter(prefix="/api/connections/swedebeat", tags=["connections"])
 
 PASSWORD_MAX = 1024
 _REFUSAL_STATUS = {"device_in_use": 409, "app_key_unavailable": 503}
+
+
+class PreferenceIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    uses_swedebeat: StrictBool
+
+
+class PreferenceOut(BaseModel):
+    uses_swedebeat: bool
 
 
 class SwedebeatConnectIn(BaseModel):
@@ -68,6 +84,8 @@ async def connect_swedebeat_route(
     settings: Settings = request.app.state.settings
     access = await swedebeat_access(settings, request.app.state.session_factory)
     if not access.enabled:
+        raise HTTPException(status_code=404, detail={"reason": "feature_off"})
+    if not await uses_swedebeat(request.app.state.session_factory, ctx):
         raise HTTPException(status_code=404, detail={"reason": "feature_off"})
     if not access.available:  # nothing would be sent: spend no rate-limit slot
         return _refusal_response(SwedebeatRefusal("app_key_unavailable"))
@@ -119,3 +137,14 @@ async def disconnect_swedebeat(
     if await disconnect(request.app.state.session_factory, ctx, PROVIDER):
         await event(request, ctx, "connection_disconnected", provider=PROVIDER)
     return Response(status_code=204)
+
+
+@router.put("/preference", response_model=PreferenceOut)
+async def put_preference(
+    body: PreferenceIn,
+    request: Request,
+    ctx: Annotated[UserContext, Depends(auth.require_user)],
+) -> PreferenceOut:
+    """Store "I use Swedebeat" for the signed-in user only (owner row security, ``owner_id``)."""
+    stored = await set_uses_swedebeat(request.app.state.session_factory, ctx, body.uses_swedebeat)
+    return PreferenceOut(uses_swedebeat=stored)

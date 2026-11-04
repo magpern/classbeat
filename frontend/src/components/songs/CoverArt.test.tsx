@@ -1,7 +1,7 @@
 import { fireEvent, render, screen } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
 import { decodeSongList } from '../../api/songs'
-import { CoverArt, CoverMosaic, initials, isCoverUrl } from './CoverArt'
+import { CoverArt, CoverMosaic, initials, isCoverUrl, isPlaylistCoverUrl } from './CoverArt'
 import { SongRows } from './SongRows'
 
 // Invented URLs only: jsdom never loads an image, and nothing here asks a network.
@@ -10,7 +10,9 @@ const HOST = ['https:', '', 'i.scdn.co'].join('/')
 const GOOD = `${HOST}/image/${HEX}`
 
 const DROPPED = [
-  ['another host', `${['https:', '', 'mosaic.scdn.co'].join('/')}/image/${HEX}`],
+  ['another host', `${['https:', '', 'daily-mix.scdn.co'].join('/')}/image/${HEX}`],
+  ['the mosaic host (a playlist cover only)', `${['https:', '', 'mosaic.scdn.co'].join('/')}/300/${HEX.repeat(4)}`],
+  ['an uploaded cover (a playlist cover only)', `${['https:', '', 'image-cdn-ak.spotifycdn.com'].join('/')}/image/${HEX}`],
   ['evil host', `${['https:', '', 'evil.example'].join('/')}/image/${HEX}`],
   ['host suffix', `${HOST}.evil.example/image/${HEX}`],
   ['http', `${GOOD.replace('https:', 'http:')}`],
@@ -101,5 +103,46 @@ describe('the song rows', () => {
     const { container } = render(<SongRows songs={list.songs} />)
     expect([...container.querySelectorAll('img')].map((img) => img.getAttribute('src'))).toEqual([GOOD])
     expect(screen.getAllByTestId('cover-tile')).toHaveLength(2)
+  })
+})
+
+// Playlist covers (ADR 0013 section 9, amendment of 2026-11-03, #537).
+const url = (host: string, path: string) => `${['https:', '', host].join('/')}${path}`
+const PLAYLIST_KEPT = [
+  ['the album pin', GOOD],
+  ['a 300 px mosaic', url('mosaic.scdn.co', `/300/${HEX.repeat(4)}`)],
+  ['a 640 px mosaic', url('mosaic.scdn.co', `/640/${HEX.repeat(4)}`)],
+  ['an uploaded cover (ak)', url('image-cdn-ak.spotifycdn.com', `/image/${HEX}`)],
+  ['an uploaded cover (fa)', url('image-cdn-fa.spotifycdn.com', `/image/${HEX}`)],
+] as const
+const PLAYLIST_DROPPED = [
+  ...DROPPED.slice(0, 1),
+  ...DROPPED.slice(3),
+  ['a 60 px mosaic', url('mosaic.scdn.co', `/60/${HEX.repeat(4)}`)],
+  ['a mosaic of three', url('mosaic.scdn.co', `/300/${HEX.repeat(3)}`)],
+  ['a mosaic with a query', url('mosaic.scdn.co', `/300/${HEX.repeat(4)}?x=1`)],
+  ['another image-cdn host', url('image-cdn-xx.spotifycdn.com', `/image/${HEX}`)],
+  ['an image-cdn look-alike', url('image-cdn-ak.spotifycdn.com.evil.example', `/image/${HEX}`)],
+  ['an uploaded cover with a trailing newline', `${url('image-cdn-ak.spotifycdn.com', `/image/${HEX}`)}\n`],
+  ['a Blend cover', url('blend-playlist-covers.spotifycdn.com', `/v2/${HEX}.png`)],
+] as const
+
+describe('isPlaylistCoverUrl', () => {
+  it.each(PLAYLIST_KEPT)('accepts %s', (_name, value) => {
+    expect(isPlaylistCoverUrl(value)).toBe(true)
+  })
+
+  it.each(PLAYLIST_DROPPED)('drops %s', (_name, value) => {
+    expect(isPlaylistCoverUrl(value)).toBe(false)
+  })
+
+  it('shows a playlist cover only with kind="playlist"', () => {
+    const mosaic = PLAYLIST_KEPT[1][1]
+    const asPlaylist = render(<CoverArt src={mosaic} label="Hills" kind="playlist" size="lg" />)
+    expect(asPlaylist.container.querySelector('img')?.getAttribute('src')).toBe(mosaic)
+    expect(asPlaylist.container.querySelector('img')?.getAttribute('referrerpolicy')).toBe('no-referrer')
+    asPlaylist.unmount()
+    const asAlbum = render(<CoverArt src={mosaic} label="Hills" />)
+    expect(asAlbum.container.querySelector('img')).toBeNull()
   })
 })

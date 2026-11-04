@@ -141,3 +141,12 @@ def test_the_songs_of_a_spotify_playlist_are_its_tracks_with_clean_titles() -> N
     assert out[1]["start"] == pytest.approx(180 - m["crossfade"], abs=0.1)
     assert out[0]["end"] == out[1]["start"]
     assert out[2]["end"] == pytest.approx(m["duration"], abs=0.1)
+
+
+def test_songs_skip_an_entry_without_bpm_or_track_instead_of_failing() -> None:
+    m = mix_map()
+    del m["songs"][1]["bpm"]
+    assert [s["song"] for s in beat_one.songs(m, 300)] == [1]
+    spot = spotify_map()
+    del spot["songs"][0]["track"]
+    assert beat_one.songs(spot, 10_000)  # the other tracks still listed

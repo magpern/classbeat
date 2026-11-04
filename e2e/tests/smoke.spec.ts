@@ -6,8 +6,12 @@ test('landing page loads and the API is reachable', async ({ page }) => {
   await expect(page.getByRole('status')).toHaveText('API: ok')
 })
 
-// ADR 0013 section 9: the web process sends the app's CSP and no-referrer on every response.
-const IMG_SRC = "img-src 'self' https://i.scdn.co"
+// ADR 0013 section 9: the web process sends the app's CSP and no-referrer on every response; its
+// img-src is path-scoped to the cover shapes (the amendment of 2026-11-03, "CSP widening").
+const IMG_SRC =
+  "img-src 'self' https://i.scdn.co/image/ https://mosaic.scdn.co/300/ https://mosaic.scdn.co/640/ " +
+  'https://image-cdn-ak.spotifycdn.com/image/ https://image-cdn-fa.spotifycdn.com/image/;'
+
 
 test('the SPA and the API carry the CSP and Referrer-Policy headers', async ({ page, request }) => {
   const violations: string[] = []

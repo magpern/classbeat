@@ -26,6 +26,7 @@ function connections(swedebeatStatus: 'connected' | 'needs_reconnect' | null = '
         ? []
         : [{ id: SWEDE_ID, provider: 'swedebeat', status: swedebeatStatus, account: 'a@example.test', ...base }]),
     ],
+    swedebeat: { enabled: true, available: true, uses_swedebeat: true },
   }
 }
 
@@ -137,6 +138,19 @@ describe('the Swedebeat part of the class page', () => {
     })
     expect(call?.headers.get('Idempotency-Key')).toMatch(/^[A-Za-z0-9_-]{16,64}$/)
     everyCallIsOurs(api)
+  })
+
+  it('offers no match start while "I use Swedebeat" is off (#525)', async () => {
+    const view = { ...connections(null), swedebeat: { enabled: true, available: true, uses_swedebeat: false } }
+    const api = fakeApi(routes({ swedebeat_match: null }, { 'GET /api/connections': view }, null))
+    renderAt(PAGE)
+    await screen.findByRole('heading', { level: 1 })
+    await waitFor(() => {
+      expect(api.to('GET', '/api/connections').length).toBeGreaterThan(0)
+    })
+    await new Promise((resolve) => setTimeout(resolve, 50))
+    expect(screen.queryByRole('button', { name: 'Match with Swedebeat' })).toBeNull()
+    expect(screen.queryByRole('link', { name: /Connect Swedebeat on your account page/ })).toBeNull()
   })
 
   it('asks to connect Swedebeat first when there is no connection', async () => {
@@ -445,6 +459,31 @@ describe('Next, in the Swedebeat app', () => {
       expect(window.location.pathname).toBe(`/jobs/${NEW_JOB.id}`)
     })
     expect(api.to('POST', `${HANDOFF}/design`)[0]?.body).toEqual({})
+  })
+
+  it('offers no design on the verified mix while "I use Swedebeat" is off (#525)', async () => {
+    const api = step({
+      [`GET ${HANDOFF}`]: () => handoffBody({ state: 'verified', verdict: 'ok', mix_id: 'mix-1', checked_at: '2026-11-02T10:00:00Z' }),
+      'GET /api/connections': { ...connections(), swedebeat: { enabled: true, available: true, uses_swedebeat: false } },
+    })
+    renderAt(PAGE)
+    expect(await screen.findByTestId('needs-preference')).toHaveTextContent('I use Swedebeat” is off')
+    expect(screen.getByText('Mix verified')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Design the class on this mix' })).toBeNull()
+    expect(api.to('POST', `${HANDOFF}/design`)).toHaveLength(0)
+  })
+
+  it('says only that it could not check when the connections cannot be read (#525)', async () => {
+    const api = step({
+      [`GET ${HANDOFF}`]: () => handoffBody({ state: 'verified', verdict: 'ok', mix_id: 'mix-1', checked_at: '2026-11-02T10:00:00Z' }),
+      'GET /api/connections': () => reason(503, 'upstream_unavailable'),
+    })
+    renderAt(PAGE)
+    expect(await screen.findByTestId('preference-unknown')).toHaveTextContent('could not check')
+    expect(screen.queryByTestId('needs-preference')).toBeNull()
+    expect(screen.queryByText(/Turn it on/)).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Design the class on this mix' })).toBeNull()
+    expect(api.to('POST', `${HANDOFF}/design`)).toHaveLength(0)
   })
 
   it('"Not now" writes nothing and can be taken back', async () => {

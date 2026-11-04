@@ -192,6 +192,18 @@ async def test_the_export_holds_the_dismissed_rules_of_my_class(songenv: SongEnv
     assert next(s for s in SECTIONS if s.table == "classes").omit == frozenset()
 
 
+async def test_the_export_holds_my_preferences_and_not_the_other_users(songenv: SongEnv) -> None:
+    """#525: ``user_preferences`` is a section; the planted row ("I use Swedebeat" on) is mine."""
+    mine, other = await person(songenv), await person(songenv)
+    songenv.sql(
+        "UPDATE user_preferences SET uses_swedebeat = false WHERE owner_id = :u", u=other.user_id
+    )
+    answer = await export(mine)
+    assert answer.status_code == 200, answer.text
+    [row] = answer.json()["user_preferences"]
+    assert (row["owner_id"], row["uses_swedebeat"]) == (str(mine.user_id), True)
+
+
 async def test_the_export_holds_my_beat_one_corrections_without_the_fingerprint(
     songenv: SongEnv,
 ) -> None:
