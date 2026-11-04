@@ -638,6 +638,7 @@ committed compose files, not a security boundary; a default-deny key allow-list 
 real files' mode and group on the server (runbook section 5), which is the actual boundary. An unreadable optional secret file (`smtp_password`, `oauth_*_client_secret`,
 `swedebeat_app`) counts as not set with a warning naming the field; any other unreadable one is
 fatal; a file of blanks is empty, except the three database passwords (read byte for byte).
+`scripts/check-prod-compose.sh` has been default-deny since #517: a key or service of the production compose files that its allow-list (`check_keys`) does not name is refused, so adding one needs a reviewed change to that script.
 
 ### End-to-end tests
 

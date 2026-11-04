@@ -150,7 +150,7 @@ Files made before this change (or anywhere else and moved in) keep their old gro
 them once with `sudo chgrp 10010 secrets/* && chmod 640 secrets/*`. `./check-prod-compose.sh`
 checks every file named in `compose.prod.yaml` on the server: a regular file (not a link), group
 10010, the group may read and not write, nothing for others, and the folder group 10010 with the
-setgid bit and closed to others (it prints names, modes and group numbers and the command that fixes
+setgid bit and mode 2700, nothing for the group or others (it prints names, modes and group numbers and the command that fixes
 each, never a file's content; the sudo ones say so).
 
 Type or paste each value, with no `echo` of a real value into the shell history, for example
@@ -677,22 +677,36 @@ no `*CLIENT_SECRET*` variable. For the secret files (#511) the compose checks ar
 against honest mistakes** in the owner's own committed, reviewed compose files. They are **not a security
 boundary** against someone who can edit those files (such a person could run anything). The boundary
 for the secrets is on the server: each file's mode and group (`<deploy user>:10010`, 640, in a 2700
-folder; section 5) and which services mount which secret. The script renders every variant with all
-profiles and checks that:
-- every service that mounts a secret has `group_add: ["10010"]` and runs as a non-root user (`postgres`
-  for the postgres image, whose gosu would drop the group; uid or gid 0 or `root` however written is
-  refused);
+folder; section 5) and which services mount which secret. The script is **default-deny** (#517). It renders every variant (`compose.prod.yaml` alone and with
+the loopback and LAN overlays) with all profiles (`--profile '*'`), and every key of the rendered
+file must be on an allow-list of exactly what those files use today: at the top level (`name`,
+`services`, `networks`, `volumes`, `secrets`, `x-*`), per service **by name** (a new service is
+refused) and in each nested block (secret mounts, volume entries, `healthcheck`, `logging` and its
+options, `depends_on`, service `networks`, `ports`, and the top-level networks with `ipam`, volumes and
+secrets). Any other key is refused by its name: `configs`, `post_start`/`pre_stop`, `profiles`, `pid`,
+`ipc`, `privileged`, `cap_add`, `devices`, `volumes_from`, `userns_mode`, `cgroup`, `cgroup_parent`,
+`uts`, `runtime`, `gpus`, `provider`, `network_mode`, a driver option or a bind on a volume, and a key
+Compose adds later. **Adding a compose key or a service to the production files therefore needs a
+change to the allow-list in the script** (`check_keys`), reviewed with it. `env_file`, `label_file`,
+`profiles`, `extends` and `include` are refused in the files' text, because the render drops them
+(Compose copies an `env_file` into `environment`). On the allowed keys it checks the values:
+- every service that mounts a secret has `group_add: ["10010"]` and no `group_add` has another group;
+  no service runs as root (uid or gid 0 or `root`, however written: `00`, `+0`, `postgres:0`), and a
+  postgres service that mounts a secret runs as `postgres` (whose gosu would drop the group);
+- `security_opt` is exactly `["no-new-privileges:true"]` (no seccomp, apparmor, systempaths or label
+  option) and `cap_drop` exactly `["ALL"]` where present;
 - each secret is the file `secrets/<its own name>`, mounted at that name;
 - no bind mounts at all, only the named volume and tmpfs (the SQL is in the `classbeat-db` image, so no
   `secrets/`, `/proc`, Docker socket or other host path); `db` and `db-functions` run that image;
-- no service uses `volumes_from`, `configs` or `post_start`/`pre_stop` hooks, shares the pid or ipc
-  namespace of the host or another container, is privileged, or gets devices, added capabilities or
-  the Docker API socket;
-- the one named volume has no driver options;
+- the one named volume has its name only; the commands, entrypoints and tmpfs mounts are the ones in
+  the files; every service logs with `json-file`;
 - no command, entrypoint or healthcheck names `/run/secrets` (a text match).
 
-These rules list the known channels one by one; a default-deny key allow-list is follow-up #517. On the
-server, the script also checks the mode and group of each real file.
+Each of these, and each bypass the #512 reviews found (`volumes_from`, a volume's `driver_opts`, shared
+pid or ipc, binds of `/proc`, `/proc/1/root` and the Docker socket, `configs`, hooks, a profiled
+service, root as `00`), plus a key and a service nobody has heard of, is a self-test on every variant.
+On the server, the script also checks the mode and group of each real file and that the `secrets/`
+folder gives the group and others nothing (mode 2700).
 That a uid 10001 container with group 10010 reads a `root:10010` mode 640 or 440 file and one without
 the group cannot, and that gosu drops the group, was checked with `compose.prod.yaml` on Docker 29.9.2 /
 Compose 5.6.1 (#511). That the Docker port relay presents the `web-out`
