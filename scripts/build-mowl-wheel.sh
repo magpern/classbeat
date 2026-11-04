@@ -4,7 +4,7 @@
 # on GitHub carries mowl/_swedebeat_app.json (written by that repo's release workflow from a
 # secret); the source never does, so a wheel built from the tagged source has no key file.
 #
-#   scripts/build-mowl-wheel.sh            # v0.9.0 into backend/vendor/
+#   scripts/build-mowl-wheel.sh            # v0.10.0 into backend/vendor/
 #
 # Needs `gh` signed in with read access to magpern/mowl-workouts (private) and `uv`. It never
 # prints a token. Then refresh the lock: `cd backend && uv lock`.
@@ -19,19 +19,19 @@
 #
 # What was pinned (the release asset's size and digest are checked, so a re-uploaded asset
 # stops the build; the vendored wheel's hash is what uv.lock verifies at install time):
-#   tag v0.9.0 commit        d0aae26f02e451c4ad9288fedd77f035d98f3ec0
-#   release asset size       66860 bytes
-#   release asset sha256     e1806148bb41bd50c632365ffdc8ec75d5f780fc9c868e7cd290420627b35e24
-#   vendored wheel sha256    90bf7dea6be22b26f4de81ffc385855489a27cb2c5b9fea2531bb4fbb882b26e
+#   tag v0.10.0 commit       74e8c91c72d6903893af1b17d63dec088bfa6124
+#   release asset size       67137 bytes
+#   release asset sha256     03024fe84d28394e99805bae378dba3cbef69a56672eed27d0857330e7a2c169
+#   vendored wheel sha256    c3188d1317c00ad5f71cdfd10a7e068827227f7b4aa13917c7903ca1cf5f2bd2
 # The two wheels differ (the release one has the key file), so their digests differ too.
 set -euo pipefail
 
 REPO=magpern/mowl-workouts
-TAG=v0.9.0
-COMMIT=d0aae26f02e451c4ad9288fedd77f035d98f3ec0
-WHEEL=mowl_workouts-0.9.0-py3-none-any.whl
-RELEASE_SIZE=66860
-RELEASE_SHA256=e1806148bb41bd50c632365ffdc8ec75d5f780fc9c868e7cd290420627b35e24
+TAG=v0.10.0
+COMMIT=74e8c91c72d6903893af1b17d63dec088bfa6124
+WHEEL=mowl_workouts-0.10.0-py3-none-any.whl
+RELEASE_SIZE=67137
+RELEASE_SHA256=03024fe84d28394e99805bae378dba3cbef69a56672eed27d0857330e7a2c169
 KEY_FILE=mowl/_swedebeat_app.json
 
 PYTHON="$(command -v python3 || command -v python || true)"

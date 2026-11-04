@@ -65,6 +65,34 @@ async def running_enabled(db: AsyncSession, environment_on: bool) -> bool:
     return core.running_setting(environment_on, await _stored(db, "running_enabled"))
 
 
+async def soundless_switch(db: AsyncSession, environment_on: bool) -> bool:
+    """``CLASSBEAT_SOUNDLESS_ENABLED`` and a stored ``soundless_enabled`` of exactly ``on``
+    (``core.soundless_switch``: missing, ``null`` or invalid is off). Not the effective flag:
+    ``soundless_enabled`` also checks coverage."""
+    if not environment_on:
+        return False
+    return core.soundless_switch(environment_on, await _stored(db, "soundless_enabled"))
+
+
+async def soundless_enabled(db: AsyncSession, environment_on: bool, *, fake_covers: bool) -> bool:
+    """The effective ``soundless_enabled`` (ADR 0007 amendment of 2026-11-03, item 2), computed
+    on every read: the switch (``soundless_switch``) **and** every plan's ``route_key`` has a
+    ``design`` route that covers soundless now (``models.routes.every_plan_covers``), so a plan
+    added later or a route cleared later turns it off without anyone storing anything.
+    ``fake_covers`` is the web's own ``fake`` model provider outside prod
+    (``design.music_kind.SoundlessGate``), which counts as covering, as the worker's ``fake``
+    bypass does; it is never true in prod."""
+    if not await soundless_switch(db, environment_on):
+        return False
+    if fake_covers:
+        return True
+    # Imported here: ``classbeat.models`` loads the agent's stage definitions, which the plans
+    # package (a reader of this module) must not import at its own import time.
+    from classbeat.models.routes import every_plan_covers
+
+    return await every_plan_covers(db, "soundless")
+
+
 async def trial(db: AsyncSession) -> TrialSetting | None:
     return core.trial_setting(await _stored(db, "trial"))
 
