@@ -5,15 +5,16 @@ track, no BPM, no drop, breakdown or section. ``model_input`` (one of the eval s
 sources) is not edited, so a music class's input and the suite's digest stay byte-identical; this
 module reuses its allowlisted brief (``model_input.brief_for_model``) rather than copying it.
 
-This module is deliberately **not** in the suite's ``RULE_SOURCES`` yet: SL5 (#531) adds it there
-together with the ``soundless`` category and the suite version bump, so no result recorded before
-then can cover soundless (``models.routes.SOUNDLESS_SUITE_VERSION``).
+This module is one of the suite's rule sources (``evals.suite.RULE_SOURCES``, SL5 #531), so a change
+to it is a new suite version and makes the recorded results stale; the suite's ``soundless``
+category and ``models.routes.SOUNDLESS_SUITE_VERSION`` (11) came with it, so no result recorded
+before suite version 11 covers soundless.
 
 **No rules section.** The soft-rules section (``classbeat.design.guidance``, a rule source) tells
 the model to deviate "when the brief or the music asks for it"; a soundless class has no music, and
 rewording that text would change the suite's digest, which SL1 must not. So the soundless stage
-gets no rules section and no rule hits until SL5 decides it with the suite bump; the class's
-patterns are only in the system prompt.
+gets no rules section and no rule hits (SL5 kept it so: the suite's soundless cases run without
+them, as a job does); the class's patterns are only in the system prompt.
 
 - the brief: ``model_input.brief_for_model`` (the cycling allowlist), nothing else;
 - the timeline of a draft: ``timeline_for_model``, per interval its start, length, zone, cadence,

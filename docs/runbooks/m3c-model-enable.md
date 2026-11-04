@@ -49,7 +49,7 @@ is left of it as its ceiling, a failed run still counts what it spent, and a run
 charged everything that was left. Costs err high (prices are in `classbeat.agent.prices`, versioned by
 `PRICES_VERSION`; verify them against the provider's price page before the first live run). Also set the
 spend limit in the provider's own dashboard: it is the cap that does not depend on classbeat. A full
-suite at `--repeat 3` is 97 cases (suite version 10) times 3 runs; the printed ceiling is the number to approve.
+suite at `--repeat 3` is 101 cases (suite version 11) times 3 runs; the printed ceiling is the number to approve.
 
 ## Steps
 

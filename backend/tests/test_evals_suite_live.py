@@ -80,21 +80,21 @@ def key(kek_dir: Path) -> None:
     (kek_dir / "openai_api_key").write_text(PLANTED, "utf-8")
 
 
-def small_suite() -> Suite:
+def small_suite(small: dict[str, tuple[str, str]] = SMALL) -> Suite:
     """A digest-consistent suite of three cases (one run each), built as ``load_suite`` builds
     the real one: the same case models, sources and constants, its own manifest and digest."""
     full = load_suite()
     data = copy.deepcopy(read_manifest_data())
     data["rules"]["repeat"] = 1
     data["categories"] = {category: {} for category in data["categories"]}
-    for category, (group, name) in SMALL.items():
+    for category, (group, name) in small.items():
         data["categories"][category] = {group: [name]}
-    kept = {name for _, name in SMALL.values()}
+    kept = {name for _, name in small.values()}
     data["expected_outcomes"] = {
         n: o for n, o in data.get("expected_outcomes", {}).items() if n in kept
     }
-    design = {n: full.design_cases[n] for _, (g, n) in SMALL.items() if g == "design"}
-    songs = {n: full.song_cases[n] for _, (g, n) in SMALL.items() if g == "songs"}
+    design = {n: full.design_cases[n] for _, (g, n) in small.items() if g == "design"}
+    songs = {n: full.song_cases[n] for _, (g, n) in small.items() if g == "songs"}
     dumped = {n: c.model_dump(mode="json") for n, c in {**design, **songs}.items()}
     data["digest"] = suite_digest(data, dumped, digest_sources(), check_constants())
     return Suite(Manifest.model_validate(data), design, songs)
@@ -510,6 +510,38 @@ async def test_a_good_fixture_set_writes_format_2_and_records_passing_rows(
         assert row.total_cost_micros == group_cost
     assert len({r.run_id for r in rows}) == 1
     assert f"recorded result {rows[0].id}" in out
+
+
+async def test_a_soundless_run_records_the_soundless_stages_in_its_header_and_its_row(
+    tmp_path: Path, admin: Connection, factory: async_sessionmaker[AsyncSession]
+) -> None:
+    """SL5 (#531): a soundless case runs through the suite command like any design case, its
+    results header names the prompt version of every stage (``soundless_design`` and
+    ``soundless_revise`` among them) and the recorded ``design`` row holds the same versions."""
+    suite = small_suite(
+        {
+            "soundless": ("design", "soundless_45"),
+            "revisions": ("design", "soundless_revise_sprints"),
+        }
+    )
+    replays = Replays(suite)
+    code, out, err, path = await _in_thread(_run_offline, tmp_path, factory, replays, suite)
+    assert code == 0, (out, err)
+    assert all(api.problems == [] for api in replays.apis)
+    doc = json.loads(path.read_bytes())
+    versions = doc["prompt_versions"]
+    assert {"design", "revise", "running_design", "running_revise"} <= set(versions)
+    assert {"soundless_design", "soundless_revise", "pick_pool", "choose_songs"} <= set(versions)
+    assert len(versions) == 8
+    assert len(set(versions.values())) == 8  # every stage has a prompt version of its own
+    assert sorted(r["case"] for r in doc["results"]) == ["soundless_45", "soundless_revise_sprints"]
+    assert all(r["passed"] and r["category"] != "" for r in doc["results"])
+    assert all(c["ok"] for r in doc["results"] for c in r["checks"])
+    (row,) = stored(admin)
+    assert row.stage_group == "design"
+    assert row.passed is True
+    assert row.prompt_versions == running_prompt_versions("design")
+    assert {"soundless_design", "soundless_revise"} <= set(row.prompt_versions)
 
 
 async def test_a_bad_fixture_set_records_a_failing_row(

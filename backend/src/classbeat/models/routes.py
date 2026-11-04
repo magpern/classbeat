@@ -41,11 +41,12 @@ row with them; nothing here commits.
   soundless classes when it covers running as above (not stale for any reason, so its result has
   the running code's prompt versions of every design-group stage, ``soundless_design`` included)
   **and** its result's ``suite_version`` is at least ``SOUNDLESS_SUITE_VERSION``, the first suite
-  version whose design group holds soundless cases. SL1 sets it to ``None``: no recorded result
-  covers soundless until SL5 (#531) sets it, so no result recorded in between can. The bootstrap
-  choice never covers it. ``covers(db, route_key, variant)`` is the check without a key file (the
-  admin, the effective flag, ``admit``), ``ModelChoice.soundless_covered`` the worker's per
-  attempt; ``every_plan_covers`` asks it for every plan's ``route_key``.
+  version whose design group holds soundless cases. SL1 left it ``None`` (nothing covered
+  soundless); SL5 (#531) set it to 11 with the suite bump, so a result recorded on an earlier
+  suite version (10 or below, however recent its prompt versions) does not cover soundless. The
+  bootstrap choice never covers it. ``covers(db, route_key, variant)`` is the check without a key
+  file (the admin, the effective flag, ``admit``), ``ModelChoice.soundless_covered`` the worker's
+  per attempt; ``every_plan_covers`` asks it for every plan's ``route_key``.
 - "Newest" is ``recorded_at``, then the insertion order ``seq`` (``store``), so it is
   deterministic for results recorded in one transaction.
 
@@ -78,9 +79,9 @@ from classbeat.models.versions import (
 log = logging.getLogger(__name__)
 
 MAX_ACTOR: Final = 200
-# The first suite version whose design group holds soundless cases (see the module). ``None``:
-# nothing covers soundless yet (SL1, #527); SL5 (#531) sets it with the suite bump.
-SOUNDLESS_SUITE_VERSION: int | None = None
+# The first suite version whose design group holds soundless cases (see the module): 11, the suite
+# bump of SL5 (#531). SL1 (#527) left it ``None`` so that nothing covered soundless before.
+SOUNDLESS_SUITE_VERSION: int | None = 11
 Variant = Literal["running", "soundless"]
 VARIANTS: Final = ("running", "soundless")
 

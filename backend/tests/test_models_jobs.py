@@ -140,8 +140,11 @@ async def test_a_job_with_a_route_runs_on_the_routes_replay_provider_and_records
     row = denv.ops.row(job_id)
     assert (row.state, row.error_category) == ("completed", None)
     assert builds.chosen == [
-        ModelChoice("openai", SOL, "medium", "default", result_id, running_covered=True)
-    ]
+        ModelChoice(
+            "openai", SOL, "medium", "default", result_id, running_covered=True,
+            soundless_covered=True,  # a result on suite version 11 (SL5, #531)
+        )
+    ]  # fmt: skip
     [api] = builds.replays
     assert api.problems == []
     assert len(api.requests) >= 2

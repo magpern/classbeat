@@ -56,10 +56,24 @@ these differences:
   is invented for it (a revision's ``easier`` still compares the TSS with its base's);
 - ``pattern_*`` use the running profile of the brief (``design.sport_rules``), never a cycling one.
 
+A soundless case (``case.soundless``, ADR 0007 amendment of 2026-11-03, issue #531) is a cycling
+class with no music, run through the soundless stages. It has every cycling check that does not
+need music (``structure``, ``validate``, ``cooldown``, ``sprints_and_races``, ``climbs``,
+``ftp_test``, ``zones``, ``tss``, ``forbidden_text``, ``limits`` and a revise case's own) with
+these differences:
+
+- ``duration`` is the asked length only (within 5 %): there is no music to bound it;
+- no ``changes_on_music`` and no ``quality_issues``: the soundless stages make no quality report;
+- ``no_beat``: no interval has the ``"beat"`` cadence (it follows the music, and there is none);
+- ``no_music_reference``: nothing the draft says (names, description, cues, a revise note) names
+  music (``MUSIC_WORDS``). The cues of a draft are the model's own words, and a class with no music
+  that tells the rider to ride to a song is a wrong class.
+
 A check's detail holds numbers and rule names only, never draft or music text.
 """
 
 import math
+import re
 from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Any, Final
@@ -114,6 +128,14 @@ RUNNING_HARD_SHARE: Final[dict[str, Range]] = {
 }
 RUNNING_ZONES: Final = (1, 5)
 RUNNING_KEYS: Final = frozenset({"sec", "zone", "gradient"})
+# A soundless class says nothing about music (issue #531). Whole words only; "the beat" and "the
+# drop" are the music's, where a bare "beat" or "drop" is also what a rider does to a personal
+# best or to the resistance.
+MUSIC_WORDS: Final = re.compile(
+    r"\b(?:music|songs?|playlists?|soundtrack|lyrics?|chorus|bpm|tunes?|the beat|the drop"
+    r"|beat drop|spotify|swedebeat)\b",
+    re.IGNORECASE,
+)
 # Revisions: easier is at most this share of the base's TSS; the cooldown keeps within this.
 EASIER_TSS: Final = 0.95
 COOLDOWN_KEEP_SEC: Final = 60
@@ -244,7 +266,10 @@ def run_checks(
     asked = brief.length_min * 60
     if expect.revision is not None and expect.revision.length_min is not None:
         asked = expect.revision.length_min * 60  # the request asked for another length
-    if expect.duration == "asked":
+    if case.soundless:
+        ok = abs(total - asked) <= DURATION_TOLERANCE * asked
+        add("duration", ok, f"{total} s for {asked} s asked, no music")
+    elif expect.duration == "asked":
         ok = abs(total - asked) <= DURATION_TOLERANCE * asked and total <= music_sec + 1
         add("duration", ok, f"{total} s for {asked} s asked, music {math.floor(music_sec)} s")
     else:
@@ -298,20 +323,26 @@ def run_checks(
             f"TSS {result.tss}, bounds {tss_bounds[0]:.0f} to {tss_bounds[1]:.0f}",
         )
 
-    moved = str(result.quality.get("changes_on_music", "0 of 0"))
-    on, _, of = moved.partition(" of ")
-    ratio = int(on) / int(of) if int(of) else 1.0
-    add(
-        "changes_on_music",
-        ratio >= expect.changes_on_music_min,
-        f"{moved} interval starts on the music, at least {expect.changes_on_music_min:.2f}",
-    )
-    allowed = TOLERATED_ISSUES | set(expect.allow_issues)
-    codes = {str(i["code"]) for i in result.quality["issues"]} - allowed
-    if "zone_run_too_long" in codes and _run_holds_ftp_test(spec, result.quality):
-        codes.discard("zone_run_too_long")  # a 20 minute test is one long run by definition
-    codes = sorted(codes)
-    add("quality_issues", not codes, f"issues left: {codes}")
+    if case.soundless:
+        beats = sum(1 for _, i in _intervals(spec) if i.get("rpm") == "beat")
+        add("no_beat", beats == 0, f"{beats} intervals with the beat cadence")
+        said = [t for t in _texts(result, note) if MUSIC_WORDS.search(t)]
+        add("no_music_reference", not said, f"{len(said)} texts that name music")
+    else:
+        moved = str(result.quality.get("changes_on_music", "0 of 0"))
+        on, _, of = moved.partition(" of ")
+        ratio = int(on) / int(of) if int(of) else 1.0
+        add(
+            "changes_on_music",
+            ratio >= expect.changes_on_music_min,
+            f"{moved} interval starts on the music, at least {expect.changes_on_music_min:.2f}",
+        )
+        allowed = TOLERATED_ISSUES | set(expect.allow_issues)
+        codes = {str(i["code"]) for i in result.quality["issues"]} - allowed
+        if "zone_run_too_long" in codes and _run_holds_ftp_test(spec, result.quality):
+            codes.discard("zone_run_too_long")  # a 20 minute test is one long run by definition
+        codes = sorted(codes)
+        add("quality_issues", not codes, f"issues left: {codes}")
 
     if case.revise is not None:
         content = fitted_draft(result).model_dump(mode="json", exclude_none=True)

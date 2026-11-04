@@ -29,9 +29,9 @@ BY_NAME = {c.name: c for c in CASES}
 LIMITS = (POOL_LIMITS, CHOOSE_LIMITS)
 
 
-def test_the_smoke_set_has_the_three_pick_cases_beside_the_twenty_six() -> None:
+def test_the_smoke_set_has_the_three_pick_cases_beside_the_thirty() -> None:
     assert [c.name for c in CASES] == ["injected_title", "pick_30", "replace_two"]
-    assert len(load_cases()) == 26  # the design and revise cases (7 running, #465)
+    assert len(load_cases()) == 30  # the design and revise cases (7 running, 4 soundless)
     for case in CASES:
         assert script_for(case).turns
 

@@ -20,6 +20,7 @@ import copy
 from typing import Any
 
 import runningscripts
+import soundlessscripts
 from classbeat.agent.providers.fake import FakeProvider, FakeScript
 from classbeat.evals.cases import Case
 from smokedrafts import make_draft
@@ -43,6 +44,8 @@ def _turn(call: dict[str, Any], usage: dict[str, int]) -> dict[str, Any]:
 
 
 def good_draft(case: Case) -> dict[str, Any]:
+    if case.soundless:  # the soundless smoke cases (issue #531)
+        return soundlessscripts.good_draft(case)
     if case.brief.sport == "running":  # the running smoke cases (issue #465)
         return runningscripts.good_draft(case)
     b = case.brief
@@ -115,6 +118,8 @@ def revise_script(case: Case) -> FakeScript:
 
 
 def script_for(case: Case) -> FakeScript:
+    if case.soundless:
+        return soundlessscripts.script_for(case)
     if case.brief.sport == "running":
         return runningscripts.script_for(case)
     if case.revise is not None:
