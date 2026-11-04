@@ -25,13 +25,18 @@ class SavedOut(BaseModel):
     another class). ``saved_state`` says which: ``none`` (no live row), ``ok`` or
     ``inconsistent`` (a live row exists but the id is withheld, so the page can say the saved
     state needs attention instead of showing a missing id). ``detached_count`` counts the rows
-    detached by a MOWL disconnect, reconnect or ``keys wipe`` (section 9)."""
+    detached by a MOWL disconnect, reconnect or ``keys wipe`` (section 9). ``latest_verified``
+    (SL6, #532) is whether that newest row's ``state_hash`` is set, i.e. the last write was read
+    back and matched; false for a write MOWL took that classbeat could not confirm (for example a
+    soundless Update where MOWL kept a playlist attached in the app); ``None`` without a live
+    row."""
 
     count: int
     latest_revision_number: int | None
     latest_saved_at: datetime | None
     latest_up_to_date: bool | None
     latest_saved_workout_id: UUID | None
+    latest_verified: bool | None
     saved_state: Literal["none", "ok", "inconsistent"]
     detached_count: int
 
@@ -81,6 +86,7 @@ class ClassOut(BaseModel):
                 latest_saved_at=row.saved_at,
                 latest_up_to_date=bool(row.saved_up_to_date) if has_saved else None,
                 latest_saved_workout_id=row.saved_workout_id if has_saved else None,
+                latest_verified=bool(row.saved_verified) if has_saved else None,
                 saved_state=(
                     "none" if not has_saved else "ok" if row.saved_workout_id else "inconsistent"
                 ),

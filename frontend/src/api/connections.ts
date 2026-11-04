@@ -62,12 +62,15 @@ export async function getConnectionsView(): Promise<{
   swedebeat: SwedebeatAccess
   /** The effective `running_enabled` flag (ADR 0018 section 5); an answer without it means off. */
   runningEnabled: boolean
+  /** The effective `soundless_enabled` flag (ADR 0007 amendment 2026-11-03); an answer without it means off. */
+  soundlessEnabled: boolean
 }> {
   const body = object(await get('/api/connections'), 'connections')
   const access = body.swedebeat === undefined ? null : object(body.swedebeat, 'swedebeat')
   return {
     connections: list(body, 'connections').map(decodeConnection),
     runningEnabled: body.running_enabled === true,
+    soundlessEnabled: body.soundless_enabled === true,
     swedebeat:
       access === null
         ? { enabled: false, available: false, usesSwedebeat: false }

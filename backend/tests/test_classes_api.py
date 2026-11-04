@@ -363,6 +363,7 @@ async def test_the_saved_summary_names_the_newest_live_row_and_counts_detached_o
         "latest_saved_at": None,
         "latest_up_to_date": None,
         "latest_saved_workout_id": None,
+        "latest_verified": None,
         "saved_state": "none",
         "detached_count": 0,
     }
@@ -380,7 +381,27 @@ async def test_the_saved_summary_names_the_newest_live_row_and_counts_detached_o
     gone = await saved_summary(mine)
     assert (gone["count"], gone["latest_saved_workout_id"], gone["detached_count"]) == (0, None, 3)
     assert gone["latest_up_to_date"] is None
+    assert gone["latest_verified"] is None
     assert gone["saved_state"] == "none"
+
+
+async def test_the_saved_summary_says_whether_the_newest_row_was_verified(
+    two: tuple[Plant, Plant],
+) -> None:
+    """SL6 (#532): ``latest_verified`` is ``state_hash IS NOT NULL`` of the newest live row only."""
+    mine, _ = two
+    saved_row(mine, age=10, state_hash=b"\x01" * 32)  # an older verified row does not count
+    unverified = saved_row(mine, age=1)  # the newest: state_hash NULL
+    summary = await saved_summary(mine)
+    assert (summary["latest_saved_workout_id"], summary["latest_verified"]) == (
+        str(unverified),
+        False,
+    )
+
+    mine.sql(
+        "UPDATE saved_workouts SET state_hash = :h WHERE id = :i", h=b"\x02" * 32, i=unverified
+    )
+    assert (await saved_summary(mine))["latest_verified"] is True
 
 
 async def test_another_users_class_and_my_other_class_never_contribute(

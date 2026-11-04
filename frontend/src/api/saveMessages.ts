@@ -114,3 +114,29 @@ export const OUTCOME_TEXT: Record<WriteKind, Record<WriteOutcome, string>> = {
     decided: 'Understood. The next update replaces your MOWL copy with this version.',
   },
 }
+
+/**
+ * The sentence for a completed Save (ADR 0007 section 5; SL6, #532): a soundless class says it
+ * was saved without music.
+ */
+export function savedText(soundless: boolean): string {
+  return soundless
+    ? 'Saved without music. The workout is in your MOWL account, private.'
+    : 'Saved. The workout is in your MOWL account, private.'
+}
+
+/**
+ * The sentence for a completed Update. "Now matches" is claimed only when classbeat read the
+ * workout back and it matched (the saved row's `state_hash` is set, ADR 0007 section 8); an
+ * Update MOWL took without that read-back matching says so and never claims a match.
+ */
+export function updatedText(verified: boolean): string {
+  return verified
+    ? 'Updated. Your MOWL workout now matches this version.'
+    : 'The update went through, but classbeat could not confirm MOWL now matches (it may still have a playlist you added in the app). Check the workout in the MOWL app.'
+}
+
+/** The state line when the newest saved version is current but its last write was not confirmed. */
+export function unconfirmedStateLine(savedNumber: string): string {
+  return `Saved to MOWL as version ${savedNumber}. MOWL took it, but classbeat could not confirm the workout there matches. Check it in the MOWL app.`
+}
