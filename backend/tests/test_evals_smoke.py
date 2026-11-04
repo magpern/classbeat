@@ -1,5 +1,5 @@
-"""The smoke set in CI (ADR 0006 section 8, issue #95): 26 cases (21 designs and 5 revisions; 7 of
-them running classes, ADR 0018 and issue #465),
+"""The smoke set in CI (ADR 0006 section 8, issue #95): 30 cases (24 designs and 6 revisions; 7 of
+them running classes, ADR 0018 and issue #465, and 4 soundless, ADR 0007 and issue #531),
 each run through the real design or revise stage against a recorded ``FakeProvider`` script and
 synthetic music, then checked. No model, no network. Also: the checks fail on drafts that break a
 rule, and a failed run is a failed case."""
@@ -30,12 +30,16 @@ CASES = load_cases()
 BY_NAME = {c.name: c for c in CASES}
 
 
-def test_there_are_twenty_six_distinct_cases_with_a_script_each() -> None:
-    assert len(CASES) == 26  # 21 designs and 5 revisions
-    assert len({c.name for c in CASES}) == 26
+def test_there_are_thirty_distinct_cases_with_a_script_each() -> None:
+    assert len(CASES) == 30  # 24 designs and 6 revisions
+    assert len({c.name for c in CASES}) == 30
     assert sorted(c.name for c in CASES if c.revise) == [
         "revise_adversarial_music", "revise_easier", "revise_more_sprints", "revise_other_songs",
-        "run_revise_easier",
+        "run_revise_easier", "soundless_revise_sprints",
+    ]  # fmt: skip
+    assert sorted(c.name for c in CASES if c.soundless) == [
+        "soundless_30_sprints", "soundless_45", "soundless_adversarial",
+        "soundless_revise_sprints",
     ]  # fmt: skip
     assert sorted(c.name for c in CASES if c.brief.sport == "running") == [
         "run_adversarial", "run_bike_words_30", "run_incline_35", "run_interval_30",
@@ -55,10 +59,10 @@ def test_the_cases_cover_the_asked_options() -> None:
     assert min(b.length_min for b in briefs) == 10
     assert max(b.length_min for b in briefs) >= 60
     assert any(len(b.text) == 2000 for b in briefs)  # a long free-text brief
-    assert any(c.music.no_bpm for c in CASES)  # missing BPM
-    assert any(c.music.sections == "none" for c in CASES)
+    assert any(c.music.no_bpm for c in CASES if not c.soundless)  # missing BPM
+    assert any(c.music.sections == "none" for c in CASES if not c.soundless)
     assert any(c.expect.duration == "music" for c in CASES)  # music shorter than the ask
-    assert sum(bool(c.expect.forbidden_text) for c in CASES) == 5  # adversarial tool output
+    assert sum(bool(c.expect.forbidden_text) for c in CASES) == 6  # adversarial tool output
 
 
 @pytest.mark.parametrize("case", CASES, ids=lambda c: c.name)

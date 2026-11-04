@@ -8,8 +8,10 @@
 # 2. the invariants of the production stack hold for both (with the OAuth settings of #507: the
 #    client ids only from their variables, the client secrets as files on web only, never a value
 #    in the rendered files; #511: every service that mounts a secret has group 10010 and a non-root
-#    user, each secret is secrets/<its own name>, and the known ways around a secret mount are
-#    refused), and compose.prod.yaml's defaults leave every OAuth client id empty;
+#    user, each secret is secrets/<its own name>; #517: DEFAULT DENY, every key of the rendered files
+#    (all profiles) must be on the allow-list of check_keys, and env_file, label_file, profiles,
+#    extends and include are refused in the files' text), and compose.prod.yaml's defaults leave
+#    every OAuth client id empty;
 # (the SQL the database services run is in the release's classbeat-db image: no bind mounts, ADR 0020)
 # 3. a self-test: each unsafe mutation of the rendered files must fail step 2 (fails closed);
 # 4. the owner's real PROXY_IP, when one is set (their shell, else PROD_CHECK_ENV_FILE, default the
@@ -17,19 +19,31 @@
 # 4b. that env file and the compose files hold no *CLIENT_SECRET* variable (a file under secrets/ only);
 # 4c. on the server (that env file's COMPOSE_FILE names compose.prod.yaml, or PROD_CHECK_SECRETS_DIR
 #    is set): each real secret file is a regular file of group 10010, mode 640 or stricter, in a
-#    folder closed to others, and no host account has that group (#511; metadata only, no content);
+#    folder that gives the group and others nothing (mode 2700), and no host account has that group
+#    (#511, #517; metadata only, no content);
+# 4d. in an install folder, when the swag container is running (PROD_CHECK_SWAG_CONTAINER, default
+#    `swag`) and web trusts PROXY_IP itself: PROXY_IP is one of that container's addresses (#500;
+#    a typo inside Docker's range passes 4); not visible (no Docker daemon, no such container) is
+#    a note, not a failure;
 # 5. the runbook's `docker network create` keeps swag's fixed address outside Docker's --ip-range;
-# 6. `nginx -t` accepts docs/runbooks/swag-classbeat.subdomain.conf, and the lines the app's
-#    client address, body cap, SSE stream and headers rely on are in it (X-Forwarded-For set
-#    exactly once);
-# and a self-test for 4, 4b, 4c, 5 and 6 as for 2. On the server: run it in /opt/classbeat after writing
+# 6. `nginx -t` accepts docs/runbooks/swag-classbeat.subdomain.conf, and the directives the app's
+#    client address, body cap, SSE stream and headers rely on are in it. The file is read as nginx
+#    reads it (directives and blocks, not lines, #500): X-Forwarded-For is set exactly once, in
+#    the server, to $remote_addr, and no location sets a proxy_set_header or add_header;
+# 6b. PROD_CHECK_SWAG_CONF=/path/to/the/real/file (runbook sections 7 and 9): the same rules and
+#    `nginx -t` on the owner's live swag file, in either mode (with DNS only, the Cloudflare include
+#    and real_ip_header may both be absent);
+# and a self-test for 4, 4b, 4c, 4d, 5 and 6 as for 2. On the server: run it in /opt/classbeat after writing
 # .env (runbook section 9).
 #
 # What it is: a best-effort lint of the owner's own committed, reviewed compose files against honest
 # mistakes. It is NOT a security boundary against someone who can edit those files (they could run
 # anything). The boundary for the secrets is on the server: the files' mode and group (4c, runbook
-# section 5) and which services mount which secret. Its compose rules list the known channels one by
-# one; a default-deny key allow-list is follow-up #517.
+# section 5) and which services mount which secret. Its compose rules are default-deny (#517): a key
+# or a service the allow-list (check_keys) does not name is refused, so adding one to the production
+# files needs a reviewed change to this script (runbook section 13). The swag rules read directives, but are the
+# same kind of lint: they refuse the known ways to forge the client address, and nginx -t is the
+# syntax check; the file is also read by swag, not by this script.
 # Two places it runs (ADR 0020, #566):
 #   a checkout (CI and developers): everything above, including the self-tests, the runbook and
 #     the swag sample (needs docs/ and the nginx image);
@@ -55,6 +69,14 @@ while (( $# )); do
   esac
   shift
 done
+# The owner's own swag site file (runbook sections 7 and 9), checked with the same rules as the sample
+# (#500). Made absolute here, before the script changes directory.
+swag_live="${PROD_CHECK_SWAG_CONF:-}"
+if [[ -n "$swag_live" ]]; then
+  [[ "$swag_live" == /* || "$swag_live" =~ ^[A-Za-z]:[/\\] ]] || swag_live="$PWD/$swag_live"
+  [[ -f "$swag_live" && -r "$swag_live" ]] \
+    || { echo "check-prod-compose: PROD_CHECK_SWAG_CONF=$swag_live is not a readable file (copy it somewhere you can read, runbook section 9)" >&2; exit 1; }
+fi
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 if [[ -f "$here/../compose.prod.yaml" && -d "$here/../docs/runbooks" ]]; then
   root="$(cd "$here/.." && pwd)"; layout=checkout
@@ -239,8 +261,84 @@ check_common() {
     || fail "only web joins web-out" || return 1
   q '[.services[] | select((.logging.options["max-size"] // null) == null)] | length == 0' \
     || fail "every service needs log rotation" || return 1
+  check_keys || return 1
   check_oauth || return 1
   check_secret_mounts || return 1
+}
+
+# Default deny (#517, after the #512 reviews B1 to B5 found one channel after another). Every key of
+# the rendered file (rendered with every profile) must be on this allow-list, which is exactly what
+# compose.prod.yaml and its two overlays use today: at the top level, per service BY NAME (a new
+# service is refused) and in each nested block. Anything else is refused by its name: configs,
+# post_start and pre_stop, profiles, pid, ipc, privileged, cap_add, devices, volumes_from, userns_mode,
+# cgroup, cgroup_parent, uts, runtime, gpus, provider, env_file, a bind or a driver option on a
+# volume, a key Compose adds later. Adding a key or a service to the production files needs a change
+# here, reviewed with it (runbook section 13). The value checks below and in check_secret_mounts still
+# apply to the allowed keys. The render drops env_file, label_file and profiles (check_prod_file_text
+# reads the files for them).
+# shellcheck disable=SC2016  # jq variables, not shell ones
+check_keys() {
+  local bad
+  bad="$(jq -r '
+    def allowed_services: {
+      "db": ["command","entrypoint","environment","group_add","healthcheck","image","logging","networks",
+             "restart","secrets","user","volumes"],
+      "db-functions": ["command","depends_on","entrypoint","group_add","image","logging","networks","restart",
+             "secrets","tmpfs","user"],
+      "migrate": ["cap_drop","command","depends_on","entrypoint","environment","group_add","image","logging",
+             "networks","restart","secrets","security_opt"],
+      "web": ["cap_drop","command","depends_on","entrypoint","environment","expose","group_add","healthcheck",
+             "image","logging","networks","ports","read_only","restart","secrets","security_opt","tmpfs"],
+      "worker": ["cap_drop","command","depends_on","entrypoint","environment","group_add","image","logging",
+             "networks","restart","secrets","security_opt","stop_grace_period"]
+    };
+    # The keys of $o that are not in $allowed, named with their path; a non-mapping is refused whole.
+    def extra($o; $allowed; $where):
+      if $o == null then empty
+      elif ($o | type) != "object" then "\($where) (not a mapping)"
+      else ($o | keys - $allowed)[] | "\($where).\(.)" end;
+    ((keys | map(select(startswith("x-") | not))) - ["name","services","networks","volumes","secrets"])[],
+    (.services | to_entries[] | .key as $n | .value as $v
+      | if (allowed_services | has($n)) | not then "services.\($n)"
+        else
+          extra($v; allowed_services[$n]; "services.\($n)"),
+          ($v.secrets // [] | .[] | extra(.; ["source","target"]; "services.\($n).secrets[]")),
+          ($v.volumes // [] | .[] | extra(.; ["type","source","target","volume"]; "services.\($n).volumes[]"),
+             extra(.volume; []; "services.\($n).volumes[].volume")),
+          extra($v.healthcheck; ["test","interval","timeout","retries","start_period"]; "services.\($n).healthcheck"),
+          extra($v.logging; ["driver","options"]; "services.\($n).logging"),
+          extra($v.logging.options; ["max-size","max-file"]; "services.\($n).logging.options"),
+          ($v.depends_on // {} | .[] | extra(.; ["condition","required"]; "services.\($n).depends_on.*")),
+          ($v.networks // {} | .[] | extra(.; ["aliases"]; "services.\($n).networks.*")),
+          ($v.ports // [] | .[] | extra(.; ["host_ip","mode","protocol","published","target"]; "services.\($n).ports[]"))
+        end),
+    (.networks // {} | to_entries[] | .key as $n
+      | extra(.value; ["name","external","internal","ipam"]; "networks.\($n)"),
+        extra(.value.ipam; ["config"]; "networks.\($n).ipam"),
+        (.value.ipam.config // [] | .[] | extra(.; ["subnet","gateway"]; "networks.\($n).ipam.config[]"))),
+    (.volumes // {} | to_entries[] | extra(.value; ["name"]; "volumes.\(.key)")),
+    (.secrets // {} | to_entries[] | extra(.value; ["name","file"]; "secrets.\(.key)"))
+  ' <<<"$J")" || fail "the rendered file could not be read as compose keys" || return 1
+  [[ -z "$bad" ]] || fail "not on the allow-list of compose keys (check_keys in scripts/check-prod-compose.sh): $(tr '\n' ' ' <<<"$bad")" \
+    || return 1
+  # The values of the allowed keys that reach the host or another container.
+  q '[.services[] | .logging.driver] | all(. == "json-file")' || fail "every service logs with json-file" || return 1
+  q '[.services[] | select(has("security_opt")) | .security_opt] | all(. == ["no-new-privileges:true"])' \
+    || fail "security_opt is exactly [\"no-new-privileges:true\"] (no seccomp, apparmor, systempaths or label option)" || return 1
+  q '[.services[] | select(has("cap_drop")) | .cap_drop] | all(. == ["ALL"])' \
+    || fail "cap_drop is exactly [\"ALL\"]" || return 1
+  jq -e --arg g "$secrets_gid" '[.services[] | select(has("group_add")) | .group_add | map(tostring)] | all(. == [$g])' <<<"$J" >/dev/null \
+    || fail "group_add is exactly [\"$secrets_gid\"] (no other group, root's included)" || return 1
+  # The command, entrypoint and tmpfs mounts are the ones the files have: a changed one is a reviewed
+  # change to this list (an entrypoint or a tmpfs option can reach what the keys above cannot).
+  q 'def known: {
+       "db": {}, "web": {"tmpfs": ["/tmp"]}, "worker": {"command": ["python","-m","classbeat.worker"]},
+       "migrate": {"command": ["alembic","upgrade","head"]},
+       "db-functions": {"entrypoint": ["sh","/queue/db-functions.sh"], "tmpfs": ["/run/pgpass:mode=0700,uid=999,gid=999"]}
+     };
+     [.services | to_entries[] | .key as $n | .value as $v | known[$n] as $k
+       | ["command","entrypoint","tmpfs"][] | select(($v[.] // null) != ($k[.] // null))] | length == 0' \
+    || fail "command, entrypoint and tmpfs are the ones in the production files" || return 1
 }
 
 # Secret files (#511). Outside Swarm a file secret is a bind mount with the host file's owner and
@@ -248,36 +346,32 @@ check_common() {
 # (secrets_gid). The postgres image's root entrypoint re-execs as postgres through gosu, which drops
 # supplementary groups: a postgres service runs as postgres from the start. Each top-level secret is
 # the file secrets/<its own name> (no second name for a file, #508 review), mounted at its own name,
-# and nothing reaches secrets/ another way: no bind mount of the folder, a parent or a file in it, no
-# configs at all, no post_start/pre_stop hooks, no volumes_from, no shared pid or ipc namespace, no named volume with driver
-# options, and no command, entrypoint or healthcheck that names /run/secrets or secrets/ (a plain
-# text match against honest mistakes; a reviewed compose file is the guard against intent).
+# and nothing reaches secrets/ another way: no bind mount at all, and (check_keys, default deny) no
+# configs, post_start/pre_stop hook, volumes_from, shared pid or ipc namespace, privileged,
+# devices, added capability or named volume with driver options, because none of those keys is on the
+# allow-list; no command, entrypoint or healthcheck names /run/secrets or secrets/ (a plain text match
+# against honest mistakes; a reviewed compose file is the guard against intent).
 secrets_gid=10010
 # shellcheck disable=SC2016  # jq variables, not shell ones
 check_secret_mounts() {
   jq -e --arg g "$secrets_gid" '[.services[] | select((.secrets // []) | length > 0)
       | (.group_add // []) | map(tostring) | index($g)] | all(. != null)' <<<"$J" >/dev/null \
     || fail "every service that mounts a secret has group_add [\"$secrets_gid\"]" || return 1
+  # Numerically: "00", "+0", "0000:0" and "postgres:0" are uid or gid 0 too (#512 review). Every
+  # service, not only those with a secret: none runs as root.
+  q '[.services[] | .user // "" | tostring | split(":")[] | select(test("^[+-]?0+$") or . == "root")] | length == 0' \
+    || fail "no service runs as root (uid or gid 0 or root, however written)" || return 1
   q '[.services[] | select((.secrets // []) | length > 0) | select(.image // "" | test("(^|/)(postgres|classbeat-db)([:@]|$)"))
       | .user // "" | tostring] | all(. == "postgres" or . == "999" or . == "999:999")' \
     || fail "a postgres service that mounts a secret runs as postgres (gosu would drop the group)" || return 1
-  q '[.services[] | select((.secrets // []) | length > 0) | .user // "" | tostring
-      | split(":")[] | select(test("^0+$") or . == "root")] | length == 0' \
-    || fail "no service that mounts a secret runs as root (uid or gid 0 or root, however written)" || return 1
   # Only the app image has a non-root USER of its own; any other image must name one.
   q '[.services[] | select((.secrets // []) | length > 0) | select(.image // "" | startswith("ghcr.io/magpern/classbeat:") | not)
       | .user // "" | tostring | select(. == "")] | length == 0' \
     || fail "a service that mounts a secret and is not the app image names its non-root user" || return 1
-  # With one shared group, any secret file that reaches a container is readable there: no service
-  # takes another's mounts (volumes_from) or sees its processes' files (/proc/<pid>/root, through a
-  # shared pid or ipc namespace), and the one named volume is a plain local volume (driver_opts could
-  # bind secrets/ itself; external, a volume made elsewhere).
-  q '[.services[] | select(has("volumes_from"))] | length == 0' \
-    || fail "no service uses volumes_from (it would copy another service's secret mounts)" || return 1
-  q '[.services[] | .pid // "", .ipc // "" | tostring | select(test("^(host|service:|container:)"))] | length == 0' \
-    || fail "no service shares the pid or ipc namespace of the host or another container" || return 1
-  q '[.volumes // {} | .[] | keys - ["name"] | length] | all(. == 0)' \
-    || fail "the named volume is a plain local volume: its name only (no driver, driver_opts, external or labels)" || return 1
+  # With one shared group, any secret file that reaches a container is readable there. volumes_from,
+  # a shared pid or ipc namespace, configs, hooks, privileged, devices, added capabilities and a named
+  # volume's driver options are refused by check_keys (none is on the allow-list); what follows checks
+  # the values of the keys that are.
   q '(.secrets.app_secret_key.file // "" | rtrimstr("/app_secret_key")) as $sd | $sd != "" and $sd != (.secrets.app_secret_key.file // "")
      and (.secrets | to_entries | all(.value | type == "object" and ((keys - ["name","file"]) == [])) )
      and (.secrets | to_entries | all(.value.file == $sd + "/" + .key))' \
@@ -297,15 +391,6 @@ check_secret_mounts() {
   q '[.services[] | .volumes // [] | .[] | select(.type != "volume" and .type != "tmpfs")] | length == 0' \
     || fail "no bind mounts: only the named volume and tmpfs (the SQL is in the classbeat-db image; no /proc, socket or other host path)" \
     || return 1
-  q '[.services[] | select(.privileged == true or ((.devices // []) | length > 0) or ((.cap_add // []) | length > 0)
-      or ((.device_cgroup_rules // []) | length > 0) or has("use_api_socket"))] | length == 0' \
-    || fail "no service is privileged, gets devices or added capabilities, or the Docker API socket" || return 1
-  # A file config is a bind mount of any host path outside Swarm (#512 review B3), and a lifecycle
-  # hook runs with its own user and privileges (B4). Production uses neither.
-  q '(has("configs") | not) and ([.services[] | select(has("configs"))] | length == 0)' \
-    || fail "no configs (a file config is a bind of a host path)" || return 1
-  q '[.services[] | select(has("post_start") or has("pre_stop"))] | length == 0' \
-    || fail "no post_start or pre_stop hooks (they run with their own user and privileges)" || return 1
   q '[.services[] | [.command, .entrypoint, .healthcheck.test] | tostring | select(test("run/secrets|secrets/"))] | length == 0' \
     || fail "no command, entrypoint or healthcheck names /run/secrets or secrets/ (the app reads its files itself)" \
     || return 1
@@ -350,6 +435,24 @@ check_oauth_defaults() {
     || fail "without its variable, each OAuth client id is empty (provider off); visible providers default to google" \
     || return 1
   check_oauth_files "$tmp" || return 1
+  check_prod_file_text "$tmp" || return 1
+}
+
+# Keys that leave no trace in the rendered file (#517): env_file and label_file are read and dropped
+# (Compose copies an env_file into `environment`, where a file of secrets/ would sit in the render and
+# `docker inspect`), `profiles` only hides a service from a render without `--profile '*'`, and
+# `extends` and `include` pull in text this script never sees. Production uses none, so any of them in
+# the files is refused by its name. Comment lines are skipped; a mention after code on a line is not.
+check_prod_file_text() {   # check_prod_file_text DIR [FILE...] (default: the three production files)
+  local d="$1" f files=(compose.prod.yaml compose.prod.loopback.yaml compose.prod.lan.yaml)
+  local re=$'(^|[[:space:]{,"\'])(env_file|label_file|profiles|extends|include)["\']?[[:space:]]*:'
+  shift
+  (( $# == 0 )) || files=("$@")
+  for f in "${files[@]}"; do
+    if grep -Ev '^[[:space:]]*#' "$d/$f" | grep -Eq -- "$re"; then
+      fail "$f: no env_file, label_file, profiles, extends or include in the production files (the render drops them)"; return 1
+    fi
+  done
 }
 
 # The compose files as written: no variable named like a client secret, no client secret literal.
@@ -408,13 +511,26 @@ J="$defaults"; check_oauth_defaults || exit 1
 
 if [[ $mode == repo ]]; then   # the self-tests and the checkout-only checks (ADR 0020)
 # Self-test: every mutation is unsafe and must be refused.
-expect_refused() {
-  local variant="$1" base="$2" mutation="$3"
-  J="$(jq "$mutation" <<<"$base")"
-  if ("check_$variant" 2>/dev/null); then
+expect_refused() {   # expect_refused VARIANT BASE MUTATION [FRAGMENT of the message it must give]
+  local variant="$1" base="$2" mutation="$3" why="${4:-}"
+  J="$(jq "$mutation" <<<"$base")" \
+    || { echo "check-prod-compose: self-test: a mutation does not apply: $mutation" >&2; exit 1; }
+  if ("check_$variant" 2>"$tmp/refuse.log"); then
     echo "check-prod-compose: self-test: accepted an unsafe $variant file: $mutation" >&2
     exit 1
   fi
+  if [[ -n "$why" ]] && ! grep -qF -- "$why" "$tmp/refuse.log"; then
+    cat "$tmp/refuse.log" >&2
+    echo "check-prod-compose: self-test: refused for another reason than '$why' ($variant): $mutation" >&2
+    exit 1
+  fi
+}
+expect_accepted() {   # expect_accepted VARIANT BASE MUTATION: a harmless change must still pass
+  local variant="$1" base="$2" mutation="$3"
+  J="$(jq "$mutation" <<<"$base")" \
+    || { echo "check-prod-compose: self-test: a mutation does not apply: $mutation" >&2; exit 1; }
+  ("check_$variant" 2>"$tmp/accept.log") \
+    || { cat "$tmp/accept.log" >&2; echo "check-prod-compose: self-test: refused a harmless $variant change: $mutation" >&2; exit 1; }
 }
 for m in \
   '.services.caddy = {"image":"caddy:2.10.2","ports":[{"target":443,"published":"443"}],"logging":.services.web.logging}' \
@@ -527,55 +643,126 @@ for m in \
   '.volumes["db-data"].labels = {"x":"y"}'; do
   expect_refused shared "$shared" "$m"
 done
-for m in \
-  'del(.services.web.group_add)' \
-  '.services.worker.volumes_from = ["web"]' \
-  '.services.worker.pid = "service:web"' \
-  '.services.worker.ipc = "container:classbeat-prod-web-1"' \
-  '.services.worker.volumes = [{"type":"bind","source":"/proc","target":"/hostproc","read_only":true}]' \
-  '.services.worker.volumes = [{"type":"bind","source":"/proc/1/root","target":"/h","read_only":true}]' \
-  '.services.web.volumes = [{"type":"bind","source":"/var/run/docker.sock","target":"/var/run/docker.sock"}]' \
-  '.services.worker.privileged = true' \
-  '.volumes["db-data"].driver_opts = {"type":"none","o":"bind","device":(.secrets.app_secret_key.file | rtrimstr("/app_secret_key"))}'; do
-  expect_refused loopback "$loopback" "$m"
-done
-expect_refused loopback "$loopback" '.services.worker.volumes = [{"type":"bind","source":(.secrets.app_secret_key.file | rtrimstr("/app_secret_key")),"target":"/s"}]'
-# #512 review 3 (B3 to B5) and the numeric root rule, on both variants. The full set of channels is
-# follow-up #517 (default-deny key allow-list).
+# Default deny, on EVERY variant (#517; the #512 review's B1 to B5, the numeric-root rule, and keys and
+# services nobody has heard of). Each entry is FRAGMENT|MUTATION: the mutated render must be refused
+# and the message must contain FRAGMENT, so a mutation that trips some other rule, or does not apply,
+# cannot pass for the rule it is for.
+sd='(.secrets.app_secret_key.file | rtrimstr("/app_secret_key"))'
+deny=(
+  # B1: another service's mounts, a volume that is a bind of any host path, shared namespaces
+  'services.worker.volumes_from|.services.worker.volumes_from = ["web"]'
+  'services.migrate.volumes_from|.services.migrate.volumes_from = ["web:ro"]'
+  'volumes.db-data.driver_opts|.volumes["db-data"].driver_opts = {"type":"none","o":"bind","device":'"$sd"'}'
+  'volumes.db-data.driver_opts|.volumes["db-data"].driver_opts = {"type":"none","o":"bind","device":"/"}'
+  'volumes.db-data.driver|.volumes["db-data"].driver = "local-persist"'
+  'volumes.db-data.external|.volumes["db-data"].external = true'
+  'services.worker.pid|.services.worker.pid = "service:web"'
+  'services.worker.pid|.services.worker.pid = "host"'
+  'services.migrate.pid|.services.migrate.pid = "container:classbeat-prod-web-1"'
+  'services.worker.ipc|.services.worker.ipc = "service:web"'
+  'services.db.ipc|.services.db.ipc = "host"'
+  # B2: binds of /proc, /proc/1/root, the Docker socket and the secrets folder itself
+  'services.worker.volumes|.services.worker.volumes = [{"type":"bind","source":"/proc","target":"/hostproc","read_only":true}]'
+  'services.worker.volumes|.services.worker.volumes = [{"type":"bind","source":"/proc/1/root","target":"/h","read_only":true}]'
+  'services.web.volumes|.services.web.volumes = [{"type":"bind","source":"/var/run/docker.sock","target":"/var/run/docker.sock"}]'
+  'services.migrate.volumes|.services.migrate.volumes = [{"type":"bind","source":'"$sd"',"target":"/s"}]'
+  'no bind mounts|.services.db.volumes += [{"type":"bind","source":"/proc","target":"/hostproc"}]'
+  'no bind mounts|.services.db.volumes += [{"type":"bind","source":"/proc/1/root","target":"/h"}]'
+  'no bind mounts|.services.db.volumes += [{"type":"bind","source":"/var/run/docker.sock","target":"/var/run/docker.sock"}]'
+  'no bind mounts|.services.db.volumes += [{"type":"npipe","source":"//./pipe/docker_engine","target":"/p"}]'
+  'bind|.services.db.volumes += [{"type":"bind","source":'"$sd"',"target":"/s"}]'
+  # B3: configs (a file config is a bind of any host path)
+  'configs|.configs = {"c":{"name":"x","file":"/proc"}} | .services.worker.configs = [{"source":"c","target":"/hostproc"}]'
+  'configs|.configs = {"c":{"name":"x","file":"/"}} | .services.worker.configs = [{"source":"c","target":"/host"}]'
+  'configs|.configs = {"c":{"name":"x","file":"/var/run/docker.sock"}} | .services.web.configs = [{"source":"c","target":"/s"}]'
+  'configs|.configs = {"c":{"name":"x","file":'"$sd"'}} | .services.worker.configs = [{"source":"c","target":"/s"}]'
+  'configs|.configs = {"c":{"name":"x","file":"/proc"}}'
+  'services.worker.configs|.services.worker.configs = [{"source":"c","target":"/s"}]'
+  # B4: lifecycle hooks with their own user and privileges
+  'services.web.post_start|.services.web.post_start = [{"command":["sh","-c","id"],"user":"root","privileged":true}]'
+  'services.worker.pre_stop|.services.worker.pre_stop = [{"command":["sh","-c","id"]}]'
+  # B5: a service behind profiles (the render holds it because of --profile "*"): a new service
+  'services.spy|.services.spy = {"image":"busybox","profiles":["ops"],"pid":"host","privileged":true,"group_add":["10010"],"volumes":[{"type":"bind","source":"/","target":"/host"}],"logging":.services.web.logging}'
+  'services.web.profiles|.services.web.profiles = ["ops"]'
+  # root, however written (a numeric zero, a sign, a group, the name)
+  'services.worker.user|.services.worker.user = "00"'
+  'services.web.user|.services.web.user = "0000:0"'
+  'services.migrate.user|.services.migrate.user = "10001:0"'
+  'services.worker.user|.services.worker.user = "10001:root"'
+  'services.web.user|.services.web.user = "10001"'
+  'runs as root|.services.db.user = "+0"'
+  'runs as root|.services.db.user = "0"'
+  'runs as root|.services.db.user = "0:0"'
+  'runs as root|.services["db-functions"].user = "0000:0"'
+  'runs as root|.services.db.user = "postgres:0"'
+  'runs as root|.services["db-functions"].user = "999:root"'
+  'runs as root|.services.db.user = "root"'
+  'runs as root|.services.db.user = "00"'
+  'runs as postgres|.services.db.user = "1000"'
+  'runs as postgres|del(.services["db-functions"].user)'
+  'runs as root|.services.db.user = 0'
+  # a brand-new key, a brand-new top-level key and a brand-new service
+  'services.web.brand_new_compose_key|.services.web.brand_new_compose_key = true'
+  'services.db.brand_new_compose_key|.services.db.brand_new_compose_key = {"a":1}'
+  'brand_new_top_level|.brand_new_top_level = {}'
+  'services.brand_new_service|.services.brand_new_service = {"image":.services.web.image,"logging":.services.web.logging}'
+  # host-reaching keys the issue names
+  'services.worker.userns_mode|.services.worker.userns_mode = "host"'
+  'services.worker.cgroup|.services.worker.cgroup = "host"'
+  'services.worker.cgroup_parent|.services.worker.cgroup_parent = "/"'
+  'services.worker.uts|.services.worker.uts = "host"'
+  'services.worker.runtime|.services.worker.runtime = "runc"'
+  'services.worker.gpus|.services.worker.gpus = "all"'
+  'services.worker.provider|.services.worker.provider = {"type":"x"}'
+  'services.worker.env_file|.services.worker.env_file = [{"path":"./secrets/app_secret_key"}]'
+  'services.worker.label_file|.services.worker.label_file = ["./secrets/app_secret_key"]'
+  'services.worker.privileged|.services.worker.privileged = true'
+  'services.db.devices|.services.db.devices = [{"source":"/dev/sda","target":"/dev/sda","permissions":"rwm"}]'
+  'services.db.cap_add|.services.db.cap_add = ["DAC_READ_SEARCH"]'
+  'services.migrate.device_cgroup_rules|.services.migrate.device_cgroup_rules = ["b 8:* rmw"]'
+  'services.worker.use_api_socket|.services.worker.use_api_socket = true'
+  'services.web.network_mode|.services.web.network_mode = "host"'
+  # security_opt exactly no-new-privileges, cap_drop exactly ALL, group_add exactly 10010
+  'security_opt is exactly|.services.worker.security_opt += ["seccomp=unconfined"]'
+  'security_opt is exactly|.services.web.security_opt = ["no-new-privileges:true","apparmor=unconfined"]'
+  'security_opt is exactly|.services.migrate.security_opt = ["no-new-privileges:true","systempaths=unconfined"]'
+  'security_opt is exactly|.services.worker.security_opt = ["no-new-privileges:true","label=disable"]'
+  'cap_drop is exactly|.services.migrate.cap_drop = ["NET_RAW"]'
+  'cap_drop is exactly|.services.migrate.cap_drop = ["ALL","CHOWN"]'
+  'group_add is exactly|.services.worker.group_add = ["10010","0"]'
+  'group_add is exactly|.services.db.group_add = ["0"]'
+  # nested blocks
+  'services.worker.secrets[].mode|.services.worker.secrets[0].mode = 292'
+  'services.worker.secrets[].uid|.services.worker.secrets[0].uid = "0"'
+  'services.db.volumes[].bind|.services.db.volumes[0].bind = {"create_host_path":true}'
+  'services.db.volumes[].volume.subpath|.services.db.volumes[0].volume.subpath = "x"'
+  'services.web.healthcheck.start_interval|.services.web.healthcheck.start_interval = "1s"'
+  'services.web.logging.options.tag|.services.web.logging.options.tag = "x"'
+  'every service logs with json-file|.services.web.logging.driver = "syslog"'
+  'services.web.ports[].x_extra|.services.web.ports = [{"host_ip":"127.0.0.1","target":8000,"published":"8080","x_extra":1}]'
+  'services.worker.depends_on.*.restart|.services.worker.depends_on["db-functions"].restart = true'
+  'services.worker.networks.*.ipv4_address|.services.worker.networks.egress = {"ipv4_address":"10.0.0.9"}'
+  'networks.egress.driver_opts|.networks.egress.driver_opts = {"x":"y"}'
+  'networks.backend.ipam.driver|.networks.backend.ipam.driver = "x"'
+  'networks.egress.attachable|.networks.egress.attachable = true'
+  'secrets.app_secret_key.x_extra|.secrets.app_secret_key.x_extra = 1'
+  # a changed command, entrypoint or tmpfs
+  'command, entrypoint and tmpfs|.services.web.entrypoint = ["sh","-c","id"]'
+  'command, entrypoint and tmpfs|.services.db.command = ["postgres","-c","x=y"]'
+  'command, entrypoint and tmpfs|.services["db-functions"].entrypoint = ["sh","-c","id"]'
+  'command, entrypoint and tmpfs|.services.web.tmpfs = ["/tmp:exec"]'
+  'services.worker.tmpfs|.services.worker.tmpfs = ["/x"]'
+)
 for v in shared loopback lan; do
   case "$v" in shared) base="$shared" ;; loopback) base="$loopback" ;; *) base="$lan" ;; esac
-  for m in \
-    '.configs = {"c":{"name":"x","file":"/proc"}} | .services.worker.configs = [{"source":"c","target":"/hostproc"}]' \
-    '.configs = {"c":{"name":"x","file":"/"}} | .services.worker.configs = [{"source":"c","target":"/host"}]' \
-    '.configs = {"c":{"name":"x","file":"/var/run/docker.sock"}} | .services.web.configs = [{"source":"c","target":"/s"}]' \
-    '.configs = {"c":{"name":"x","file":(.secrets.app_secret_key.file | rtrimstr("/app_secret_key"))}} | .services.worker.configs = [{"source":"c","target":"/s"}]' \
-    '.configs = {"c":{"name":"x","file":"/proc"}}' \
-    '.services.worker.configs = [{"source":"c","target":"/s"}]' \
-    '.services.web.post_start = [{"command":["sh","-c","id"],"user":"root","privileged":true}]' \
-    '.services.worker.pre_stop = [{"command":["sh","-c","id"]}]' \
-    '.services.worker.user = "00"' \
-    '.services.web.user = "0000:0"' \
-    '.services.migrate.user = "10001:0"' \
-    '.services.worker.user = "10001:root"'; do
-    expect_refused "$v" "$base" "$m"
+  for e in "${deny[@]}"; do
+    expect_refused "$v" "$base" "${e#*|}" "${e%%|*}"
   done
+  # the allow-list is not a refuse-everything: an extension key and the files as they are pass
+  expect_accepted "$v" "$base" '.["x-note"] = {"a":1}'
+  expect_accepted "$v" "$base" '.'
 done
-# B5: a service behind `profiles:` must be in the render, so the checks above see it. As YAML merged
-# after the production files (and the loopback overlay), with every profile like the renders above.
-mkdir "$tmp/yaml"
-ln -s ../secrets "$tmp/yaml/secrets"
-cp "$tmp/compose.prod.yaml" "$tmp/compose.prod.loopback.yaml" "$tmp/yaml/"
-printf '%s\n' 'services:' '  spy:' '    image: busybox' '    profiles: [ops]' '    pid: host' '    privileged: true' \
-  '    group_add: ["10010"]' '    volumes:' '      - /:/host' > "$tmp/yaml/profiled.yaml"
-ydir="$native/${tmp##*/}/yaml"
-spy_s="$(render -f "$ydir/compose.prod.yaml" -f "$ydir/profiled.yaml")"
-spy_l="$(render -f "$ydir/compose.prod.yaml" -f "$ydir/compose.prod.loopback.yaml" -f "$ydir/profiled.yaml")"
-if ! jq -e '.services | has("spy")' <<<"$spy_s" >/dev/null || ! jq -e '.services | has("spy")' <<<"$spy_l" >/dev/null; then
-  echo "check-prod-compose: self-test: the render left out a profiled service" >&2; exit 1
-fi
-if (J="$spy_s"; check_shared 2>/dev/null) || (J="$spy_l"; check_loopback 2>/dev/null); then
-  echo "check-prod-compose: self-test: accepted a profiled service with pid host, privileged and a bind of /" >&2; exit 1
-fi
+
 # The client secret's value (the canary in the dummy file) anywhere in the rendered file.
 expect_refused shared "$shared" ".services.web.labels = {\"note\": \"$oauth_canary-google\"}"
 for m in \
@@ -600,6 +787,151 @@ expect_files_refused compose.prod.yaml 's|^  oauth_google_client_secret:$|  oaut
 expect_files_refused compose.prod.yaml 's|file: \./secrets/oauth_github_client_secret|environment: OAUTH_GITHUB_CLIENT_SECRET|'
 expect_files_refused compose.prod.loopback.yaml \
   's|^(      CLASSBEAT_TRUSTED_PROXIES:.*)$|\1\n      OAUTH_CLIENT_SECRET: abc|'
+# The same bypasses as YAML (#517): a compose file merged after compose.prod.yaml (and after each
+# overlay), rendered with every profile and run through the whole variant check, on every variant. The
+# text rule is bypassed on purpose here (expect_yaml_refused looks at the render only), so the
+# allow-list is what refuses; expect_text_refused then checks the keys the render drops.
+mkdir "$tmp/yaml"
+ln -s ../secrets "$tmp/yaml/secrets"
+cp "$tmp/compose.prod.yaml" "$tmp/compose.prod.loopback.yaml" "$tmp/compose.prod.lan.yaml" "$tmp/yaml/"
+ydir="$native/${tmp##*/}/yaml"
+yaml_render() {   # yaml_render VARIANT: the variant's files plus mutation.yaml, every profile
+  case "$1" in
+    shared) render -f "$ydir/compose.prod.yaml" -f "$ydir/mutation.yaml" ;;
+    loopback) render -f "$ydir/compose.prod.yaml" -f "$ydir/compose.prod.loopback.yaml" -f "$ydir/mutation.yaml" ;;
+    *) render -f "$ydir/compose.prod.yaml" -f "$ydir/compose.prod.lan.yaml" -f "$ydir/mutation.yaml" ;;
+  esac
+}
+yaml_verdict() {   # yaml_verdict WANT(accepted|refused) FRAGMENT TEXT
+  local want="$1" why="$2" v out rc
+  printf '%s\n' "$3" > "$tmp/yaml/mutation.yaml"
+  for v in shared loopback lan; do
+    out="$(yaml_render "$v" 2>"$tmp/yaml-render.log")" \
+      || { cat "$tmp/yaml-render.log" >&2; echo "check-prod-compose: self-test: a YAML mutation does not render ($v): $3" >&2; exit 1; }
+    rc=0; (J="$out"; "check_$v" 2>"$tmp/yaml-refuse.log") || rc=$?
+    if [[ "$want" == accepted && "$rc" != 0 ]]; then
+      cat "$tmp/yaml-refuse.log" >&2; echo "check-prod-compose: self-test: refused a harmless YAML file ($v): $3" >&2; exit 1
+    fi
+    if [[ "$want" == refused ]]; then
+      [[ "$rc" != 0 ]] || { echo "check-prod-compose: self-test: accepted unsafe YAML ($v): $3" >&2; exit 1; }
+      grep -qF -- "$why" "$tmp/yaml-refuse.log" \
+        || { cat "$tmp/yaml-refuse.log" >&2; echo "check-prod-compose: self-test: refused for another reason than '$why' ($v): $3" >&2; exit 1; }
+    fi
+  done
+}
+expect_yaml_refused() { yaml_verdict refused "$1" "$2"; }   # expect_yaml_refused FRAGMENT TEXT
+expect_text_refused() {   # expect_text_refused TEXT: the files' text, for the keys the render drops
+  printf '%s\n' "$1" > "$tmp/yaml/mutation.yaml"
+  if (check_prod_file_text "$tmp/yaml" mutation.yaml 2>/dev/null); then
+    echo "check-prod-compose: self-test: the text rule accepted: $1" >&2; exit 1
+  fi
+}
+expect_yaml_refused configs 'configs:
+  hostproc:
+    file: /proc
+services:
+  worker:
+    configs:
+      - source: hostproc
+        target: /hostproc'
+expect_yaml_refused services.web.post_start 'services:
+  web:
+    post_start:
+      - command: ["sh", "-c", "id"]
+        user: root
+        privileged: true'
+expect_yaml_refused services.worker.pre_stop 'services:
+  worker:
+    pre_stop:
+      - command: ["sh", "-c", "id"]'
+expect_yaml_refused services.worker.volumes_from 'services:
+  worker:
+    volumes_from: [web]'
+expect_yaml_refused volumes.db-data.driver_opts 'volumes:
+  db-data:
+    driver_opts: {type: none, o: bind, device: /}'
+expect_yaml_refused services.worker.pid 'services:
+  worker:
+    pid: "service:web"'
+expect_yaml_refused services.worker.volumes 'services:
+  worker:
+    volumes:
+      - type: bind
+        source: /proc/1/root
+        target: /h'
+expect_yaml_refused services.worker.stop_signal 'services:
+  worker:
+    stop_signal: SIGKILL'
+expect_yaml_refused services.worker.cgroup_parent 'services:
+  worker:
+    cgroup_parent: elsewhere'
+expect_yaml_refused 'security_opt is exactly' 'services:
+  worker:
+    security_opt: [seccomp=unconfined]'
+# B5, both ways: the render holds a profiled service (--profile "*"), as a new service, and the text
+# rule refuses the key itself.
+expect_yaml_refused services.spy 'services:
+  spy:
+    image: busybox
+    profiles: [ops]
+    pid: host
+    privileged: true
+    group_add: ["10010"]
+    logging: {driver: json-file, options: {max-size: 10m}}
+    volumes:
+      - /:/host'
+printf 'services:\n  spy:\n    image: busybox\n    profiles: [ops]\n' > "$tmp/yaml/mutation.yaml"
+jq -e '.services | has("spy")' <<<"$(yaml_render shared)" >/dev/null \
+  || { echo "check-prod-compose: self-test: the render left out a profiled service" >&2; exit 1; }
+expect_yaml_refused services.brand_new_service 'services:
+  brand_new_service:
+    image: busybox
+    logging: {driver: json-file, options: {max-size: 10m}}'
+# Harmless: an extension key, and a comment that names a forbidden key, pass both rules.
+yaml_verdict accepted "" 'x-note: fine'
+printf '# profiles: [x] and env_file: y in a comment\nx-note: fine\n' > "$tmp/yaml/mutation.yaml"
+check_prod_file_text "$tmp/yaml" mutation.yaml \
+  || { echo "check-prod-compose: self-test: the text rule refused a comment" >&2; exit 1; }
+# The keys the render drops (and the two that pull in text this script never sees), in the files' text.
+expect_text_refused 'services:
+  worker:
+    env_file: ./secrets/app_secret_key'
+expect_text_refused 'services:
+  worker:
+    env_file:
+      - path: ./secrets/connection_kek
+        required: false'
+expect_text_refused 'services:
+  worker:
+    label_file: ./secrets/app_secret_key'
+expect_text_refused 'services:
+  spy:
+    image: busybox
+    profiles: [ops]'
+expect_text_refused 'services:
+  spy: {image: busybox, profiles: [ops]}'
+expect_text_refused 'services:
+  worker:
+    "env_file": [./secrets/app_secret_key]'
+expect_text_refused 'services: {worker: {env_file: [./secrets/app_secret_key]}}'
+expect_text_refused 'include:
+  - ./other.yaml'
+expect_text_refused 'services:
+  worker:
+    extends:
+      file: other.yaml
+      service: web'
+# The same, written into each real file (copies): none of the three may carry one.
+mkdir "$tmp/textfiles"
+for f in compose.prod.yaml compose.prod.loopback.yaml compose.prod.lan.yaml; do
+  for key in 'env_file: ./secrets/app_secret_key' 'label_file: ./secrets/app_secret_key' 'profiles: [ops]'; do
+    cp "$tmp/compose.prod.yaml" "$tmp/compose.prod.loopback.yaml" "$tmp/compose.prod.lan.yaml" "$tmp/textfiles/"
+    sed -i -E "0,/^services:/s||services:\n  web:\n    $key|" "$tmp/textfiles/$f"
+    if (check_prod_file_text "$tmp/textfiles" 2>/dev/null); then
+      echo "check-prod-compose: self-test: accepted $f with '$key'" >&2; exit 1
+    fi
+  done
+done
 # The owner's PROXY_IP itself (it reaches CLASSBEAT_TRUSTED_PROXIES unchanged): a range, a list, a
 # public or an empty address must be refused even when the variable and the setting agree.
 good_ip="$swag_ip"
@@ -660,6 +992,7 @@ check_owner_proxy_ip() {
     return 2
   fi
   value="$(jq -r '.services.web.environment.CLASSBEAT_TRUSTED_PROXIES // ""' <<<"$out")"
+  owner_trusted="$value"
   proxy_ip_ok "$value" || fail "the real PROXY_IP must be one private IPv4 address (swag's), not a range, list or name" \
     || return 1
 }
@@ -669,6 +1002,24 @@ case "$rc" in
   2) owner_note="no real PROXY_IP set here (only dummies checked)" ;;
   *) exit 1 ;;
 esac
+
+# The real PROXY_IP against the address swag really has (#500): a typo such as .130 for .10 is inside
+# Docker's allocation range, so the form check above passes it while web would trust nobody.
+# swag_address_verdict PROXY_IP "ADDRESS..." (swag's addresses on its networks, empty when the
+# container is not visible): 0 the address is one of them, 1 it is not, 2 nothing to compare.
+swag_address_verdict() {
+  local want="$1" have="$2" a
+  [[ -n "${have//[[:space:]]/}" ]] || return 2
+  for a in $have; do [[ "$a" == "$want" ]] && return 0; done
+  fail "PROXY_IP is $want but the running swag container has ${have% }: set PROXY_IP to swag's address (runbook section 6a)" || return 1
+}
+# The running swag container's addresses (no output when it is not running or Docker cannot be asked).
+swag_addresses() {
+  local name="${PROD_CHECK_SWAG_CONTAINER:-swag}"
+  [[ "$name" =~ ^[A-Za-z0-9][A-Za-z0-9_.-]*$ ]] || { fail "PROD_CHECK_SWAG_CONTAINER is not a container name"; return 1; }
+  docker inspect --format '{{if .State.Running}}{{range .NetworkSettings.Networks}}{{.IPAddress}} {{end}}{{end}}' \
+    "$name" 2>/dev/null || true
+}
 
 # Where the real stack publishes web (install mode): only web publishes a port, and only on loopback
 # (the host's own proxy) or on one private LAN address (compose.prod.lan.yaml, swag on another host),
@@ -688,6 +1039,21 @@ check_real_ports() {   # check_real_ports RENDERED_JSON
 }
 if [[ "$mode" == install ]]; then
   check_real_ports "$real_json" || exit 1
+  # Only where web trusts PROXY_IP itself: not under the loopback overlay (the web-out gateway) and
+  # not with a published port (the LAN overlay: swag is on another host).
+  if [[ -n "${owner_trusted:-}" ]]; then
+    if [[ "$(jq -r '.services.web.environment.CLASSBEAT_TRUSTED_PROXIES // ""' <<<"$real_json")" == "$owner_trusted" ]] \
+        && jq -e '.services.web.ports // [] | length == 0' <<<"$real_json" >/dev/null; then
+      rc=0; swag_address_verdict "$owner_trusted" "$(swag_addresses)" || rc=$?
+      case "$rc" in
+        0) owner_note="$owner_note; PROXY_IP is the running swag container's address" ;;
+        2) owner_note="$owner_note; the swag container is not visible here: compare PROXY_IP with \`docker inspect\` by hand (runbook section 9)" ;;
+        *) exit 1 ;;
+      esac
+    else
+      owner_note="$owner_note; swag is not on the shared network of this host: PROXY_IP not compared with its address"
+    fi
+  fi
 fi
 
 # --- No OAuth client secret in an env file (#507) --------------------------------------------------
@@ -741,8 +1107,9 @@ fi
 # Only the metadata of each file compose.prod.yaml names (stat: type, group number, mode); a file is
 # never opened, and nothing but its name, mode and group number is printed. Each must be a regular
 # file (not a link), group secrets_gid, readable by the group, not writable by it, nothing for
-# others; the folder gives others nothing. Runs on the server: when the env file's COMPOSE_FILE names
-# compose.prod.yaml (runbook section 5), or when PROD_CHECK_SECRETS_DIR names a folder to check.
+# others; the folder gives the group and others nothing (mode & 077 == 0, i.e. 2700; #517). Runs on
+# the server: when the env file's COMPOSE_FILE names compose.prod.yaml (runbook section 5), or when
+# PROD_CHECK_SECRETS_DIR names a folder to check.
 # Every failure says what to run; the steps that need sudo are marked (an owner outside the group
 # cannot set the group or the setgid bit on the folder, which is why the first install needs sudo
 # once, runbook section 5).
@@ -752,7 +1119,7 @@ check_secret_files() {   # check_secret_files DIR GID NAME...
   [[ -d "$d" && ! -L "$d" ]] || fail "$d is not a folder (runbook section 5: mkdir secrets, then the one-time sudo step)" || return 1
   ds="$(stat -c '%g %a' "$d")" || fail "$d: stat failed" || return 1
   g="${ds% *}"; a="${ds#* }"
-  (( (8#$a & 8#007) == 0 )) || fail "$d: mode $a gives others access: chmod 2700 $d" || return 1
+  (( (8#$a & 8#077) == 0 )) || fail "$d: mode $a gives the group or others access: chmod 2700 $d" || return 1
   [[ "$g" == "$gid" ]] \
     || fail "$d: group $g, must be $gid. One-time, needs sudo: sudo chgrp $gid $d && sudo chmod 2700 $d (runbook section 5)" || return 1
   (( (8#$a & 8#2000) != 0 )) \
@@ -819,7 +1186,7 @@ check_secret_files "$st_dir" "$mygid" "${secret_names[@]}" \
 # shellcheck disable=SC2016  # each mutation is eval'd below, with $st_dir set
 for m in 'chmod 644 "$st_dir/app_secret_key"' 'chmod 600 "$st_dir/connection_kek"' 'chmod 604 "$st_dir/smtp_password"' \
   'chmod 660 "$st_dir/database_password"' 'chmod 650 "$st_dir/postgres_password"' 'chmod 641 "$st_dir/anthropic_api_key"' \
-  'rm "$st_dir/oauth_google_client_secret"' 'chmod 755 "$st_dir"' 'chmod 2701 "$st_dir"' \
+  'rm "$st_dir/oauth_google_client_secret"' 'chmod 755 "$st_dir"' 'chmod 2701 "$st_dir"' 'chmod 2750 "$st_dir"' 'chmod 2710 "$st_dir"' 'chmod 2770 "$st_dir"' \
   'rm "$st_dir/swedebeat_app"; install -m 640 /dev/null "$tmp/outside"; ln -s "$tmp/outside" "$st_dir/swedebeat_app"' \
   'rm "$st_dir/deepseek_api_key"; mkdir -m 750 "$st_dir/deepseek_api_key"'; do
   reset_secret_files
@@ -895,59 +1262,218 @@ for m in \
   expect_runbook_refused "$m"
 done
 
-# --- The swag site config: the lines the app relies on, then nginx's own syntax check -------------
-sfail() { echo "check-prod-compose: $site: $*" >&2; return 1; }
-# shellcheck disable=SC2016  # literal nginx variables, not shell ones
-check_site() {
-  local code n
-  code="$(sed -e 's/#.*//' "$1")"   # comments do not count
-  has() { grep -Eq -- "$1" <<<"$code"; }
-  # X-Forwarded-For exactly once, overwritten with $remote_addr: a second line (whatever its value)
-  # sends a visitor-chosen entry right of swag's, and the app takes the right-most (#495).
-  n="$(grep -Eic -- "^[[:space:]]*proxy_set_header[[:space:]]+[\"']?x-forwarded-for[\"']?([[:space:]]|$)" <<<"$code" || true)"
-  [ "$n" = 1 ] || sfail "exactly one proxy_set_header X-Forwarded-For (found $n)" || return 1
-  has '^[[:space:]]*proxy_set_header X-Forwarded-For \$remote_addr;[[:space:]]*$' \
-    || sfail "X-Forwarded-For must be overwritten with \$remote_addr" || return 1
-  if has 'proxy_add_x_forwarded_for|include /config/nginx/proxy\.conf'; then
-    sfail "never append to a visitor's X-Forwarded-For (no proxy.conf)"; return 1
-  fi
-  # Only swag's TLS settings and the Cloudflare list are included: anything else could set headers.
-  if grep -E '^[[:space:]]*include[[:space:]]' <<<"$code" \
-      | grep -Evq '^[[:space:]]*include /config/nginx/(ssl|cf_real-ip)\.conf;[[:space:]]*$'; then
-    sfail "include only /config/nginx/ssl.conf and cf_real-ip.conf"; return 1
-  fi
-  has '^[[:space:]]*client_max_body_size 1m;' || sfail "client_max_body_size 1m (the app's cap is 64 KiB)" || return 1
-  if has 'add_header[[:space:]]+(Content-Security-Policy|Referrer-Policy)|proxy_hide_header|more_clear_headers'; then
-    sfail "the app's CSP and Referrer-Policy are neither added, hidden nor replaced here"; return 1
-  fi
-  if ! has '^[[:space:]]*server_name [a-z0-9.-]+;' || has 'server_name[^;]*\*'; then
-    sfail "server_name is the exact host"; return 1
-  fi
-  has '^[[:space:]]*server_tokens off;' || sfail "server_tokens off (no nginx version)" || return 1
-  if has 'server_tokens[[:space:]]+(on|build)|proxy_intercept_errors[[:space:]]+on'; then
-    sfail "no server_tokens on; the app's own errors pass through (no proxy_intercept_errors)"; return 1
-  fi
-  has '^[[:space:]]*real_ip_header CF-Connecting-IP;' || sfail "real IP from CF-Connecting-IP (Cloudflare ranges only)" || return 1
-  if has 'real_ip_recursive[[:space:]]+on|set_real_ip_from'; then
-    sfail "Cloudflare ranges belong in cf_real-ip.conf only, non-recursive"; return 1
-  fi
-  has 'add_header Strict-Transport-Security' || sfail "HSTS is the edge's job" || return 1
-  # The SSE location: unbuffered, long read timeout, and no proxy_set_header or add_header in any
-  # location (one there would silently drop the server-level forwarded headers or edge headers).
+# swag's address against PROXY_IP (#500): a match, a typo inside Docker's range, a second network,
+# and nothing to compare.
+swag_address_verdict 172.29.90.10 "172.29.90.10 " 2>/dev/null || { echo "check-prod-compose: self-test: swag's own address refused" >&2; exit 1; }
+swag_address_verdict 172.29.90.10 "10.1.0.5 172.29.90.10 " 2>/dev/null || { echo "check-prod-compose: self-test: swag's address on its second network refused" >&2; exit 1; }
+if (swag_address_verdict 172.29.90.130 "172.29.90.10 " 2>/dev/null); then
+  echo "check-prod-compose: self-test: a PROXY_IP that is not swag's address was accepted" >&2; exit 1
+fi
+rc=0; swag_address_verdict 172.29.90.10 "  " 2>/dev/null || rc=$?
+[[ "$rc" == 2 ]] || { echo "check-prod-compose: self-test: no swag address must be 'nothing to compare', not a verdict" >&2; exit 1; }
+fi
+
+# --- The swag site config: nginx's directives, not its lines; then nginx's own syntax check -------
+# #500: the first version counted lines, and four spellings of a second `proxy_set_header
+# X-Forwarded-For` got past it (a second directive on the line of another, one split over two lines,
+# one after a quoted "#" the comment stripper ate, one inside a one-line location). So the file is
+# read the way nginx reads it (site_directives, a tokenizer for ngx_conf_read_token's rules) and the
+# rules (site_verdict) look at directives and the block each one is in. Why not `nginx -T`: it dumps
+# the files as written, comments and layout intact, so it normalizes nothing; and the tokenizer needs
+# no Docker, which the owner's pre-deploy run may not reach. `nginx -t` still runs on the same file.
+# This is a best-effort lint of honest mistakes, like the compose checks (see the header).
+site_label="$site"
+sfail() { echo "check-prod-compose: $site_label: $*" >&2; return 1; }
+
+# site_directives FILE: one tab-separated record per token run, in file order:
+#   D<TAB>ctx<TAB>name<TAB>arg...   a directive (ctx: empty, server, server/location)
+#   B<TAB>ctx<TAB>name<TAB>arg...   a block opens (only `server`, then `location` inside it)
+#   E<TAB>ctx                       a block closed (ctx: where we are now)
+#   ERR<TAB>message                 not readable (exit 1)
+# Tokens as nginx reads them: whitespace separates; `#` starts a comment only at the start of a token;
+# '...' and "..." quote (so `;` `{` `#` inside are text) and must be followed by a delimiter; a
+# backslash makes the next character plain; `${name}` is `$name` and its `{` opens no block; `}`
+# inside a token is text; `;` ends a directive, `{` opens a block, `}` closes it. Tokens are unquoted
+# and their tabs and newlines become spaces.
+site_directives() {
   awk '
-    /^[[:space:]]*location / { inloc = 1; sse = ($0 ~ /events/); next }
-    inloc && /^[[:space:]]*}/ { inloc = 0; next }
-    inloc && /(proxy_set_header|add_header)/ { print "location sets " $1; bad = 1 }
-    inloc && sse && /proxy_buffering off;/ { buf = 1 }
-    inloc && sse && /proxy_read_timeout (9[0-9][0-9]|[1-9][0-9][0-9][0-9]+)s;/ { rt = 1 }
-    END { if (!buf) print "the SSE location needs proxy_buffering off"; if (!rt) print "the SSE location needs proxy_read_timeout of at least 900s"; exit (bad || !buf || !rt) }
-  ' <<<"$code" >&2 || sfail "location blocks" || return 1
+    function err(m,   t, ln) { t = substr(s, 1, i); ln = gsub(/\n/, "", t) + 1; print "ERR\tline " ln ": " m; failed = 1; exit 1 }
+    function emit(kind,   line, k) {
+      line = kind "\t" ctx
+      for (k = 1; k <= nt; k++) line = line "\t" tk[k]
+      print line; nt = 0
+    }
+    function esc(d) { return (d == "\"" || d == "\047" || d == "\\") ? d : "\\" d }
+    { s = s $0 "\n" }
+    END {
+      n = length(s); i = 1; nt = 0; depth = 0; ctx = ""
+      while (i <= n) {
+        c = substr(s, i, 1)
+        if (c == " " || c == "\t" || c == "\n" || c == "\r") { i++; continue }
+        if (c == "#") { while (i <= n && substr(s, i, 1) != "\n") i++; continue }
+        if (c == ";") { if (nt == 0) err("unexpected ;"); emit("D"); i++; continue }
+        if (c == "{") {
+          if (nt == 0) err("unexpected {")
+          if (depth == 0 && !(tk[1] == "server" && nt == 1)) err("only a server block is read at the top of this file")
+          if (depth == 1 && tk[1] != "location") err("only location blocks are read inside the server")
+          if (depth >= 2) err("no block inside a location")
+          emit("B"); depth++; ctx = (depth == 1 ? "server" : "server/location"); i++; continue
+        }
+        if (c == "}") {
+          if (nt > 0) err("missing ; before }")
+          if (depth == 0) err("unexpected }")
+          depth--; ctx = (depth == 0 ? "" : "server"); print "E\t" ctx; i++; continue
+        }
+        tok = ""
+        if (c == "\"" || c == "\047") {
+          q = c; i++; closed = 0
+          while (i <= n) {
+            c = substr(s, i, 1)
+            if (c == "\\") { d = substr(s, i + 1, 1); tok = tok esc(d); i += 2; continue }
+            if (c == q) { closed = 1; i++; break }
+            tok = tok c; i++
+          }
+          if (!closed) err("unterminated quote")
+          if (i <= n && substr(s, i, 1) !~ /[ \t\r\n;{)]/) err("unexpected character after a closing quote")
+        } else {
+          v = 0
+          while (i <= n) {
+            c = substr(s, i, 1)
+            if (c == "\\") { d = substr(s, i + 1, 1); tok = tok esc(d); i += 2; v = 0; continue }
+            if (c == " " || c == "\t" || c == "\n" || c == "\r" || c == ";") break
+            if (c == "{") { if (v) { tok = tok c; i++; continue } break }
+            v = (c == "$"); tok = tok c; i++
+          }
+        }
+        while (match(tok, /\$\{[A-Za-z0-9_]+\}/)) tok = substr(tok, 1, RSTART - 1) "$" substr(tok, RSTART + 2, RLENGTH - 3) substr(tok, RSTART + RLENGTH)
+        gsub(/[\t\r\n]/, " ", tok)
+        tk[++nt] = tok
+      }
+      if (nt > 0) err("missing ; at the end")
+      if (depth > 0) err("missing } at the end")
+    }
+  ' "$1"
 }
+
+# site_verdict LIVE: reads site_directives' records; prints each broken rule, exits 1 if any.
+# LIVE=1 (the owner's file) lets the Cloudflare include and real_ip_header both be absent (DNS only,
+# runbook section 8); the sample must have both.
+# shellcheck disable=SC2016  # literal nginx variables, not shell ones
+site_verdict() {
+  awk -F'\t' -v live="$1" '
+    BEGIN { rih = 0; cfinc = 0 }
+    function bad(m) { print m; nbad++ }
+    function fin() { if (inloc) { if (sse && !buf) bad("the SSE location needs proxy_buffering off"); if (sse && !rt) bad("the SSE location needs proxy_read_timeout of at least 900s") } inloc = 0 }
+    { kind = $1; ctx = $2; name = $3; a1 = tolower($4); args = ""
+      for (k = 4; k <= NF; k++) args = args (k > 4 ? " " : "") $k }
+    kind == "B" {
+      if (name == "server") nserver++
+      else { fin(); inloc = 1; buf = 0; rt = 0; sse = (index(args, "events") > 0) }
+      next
+    }
+    kind == "E" { fin(); next }
+    kind != "D" { next }
+    index(args, "proxy_add_x_forwarded_for") { bad("never append to a visitor X-Forwarded-For (no proxy_add_x_forwarded_for)") }
+    name == "proxy_set_header" {
+      if (ctx == "server/location") bad("a location sets proxy_set_header (it replaces every inherited one, X-Forwarded-For included): set none there")
+      if (a1 == "x-forwarded-for") {
+        nxff++
+        if (ctx != "server" || NF != 5 || $5 != "$remote_addr") badxff = 1
+      }
+    }
+    name == "add_header" {
+      if (ctx == "server/location") bad("a location sets add_header (it replaces every inherited one): set none there")
+      if (a1 == "content-security-policy" || a1 == "referrer-policy") bad("the app CSP and Referrer-Policy are neither added, hidden nor replaced here")
+      if (a1 == "strict-transport-security" && ctx == "server") hsts = 1
+    }
+    name == "proxy_hide_header" || name == "more_clear_headers" || name == "more_set_headers" { bad("the app CSP and Referrer-Policy are neither added, hidden nor replaced here") }
+    name == "include" {
+      if (ctx != "server" || NF != 4 || ($4 != "/config/nginx/ssl.conf" && $4 != "/config/nginx/cf_real-ip.conf")) bad("include only /config/nginx/ssl.conf and cf_real-ip.conf, in the server")
+      if ($4 == "/config/nginx/cf_real-ip.conf") cfinc = 1
+    }
+    name == "client_max_body_size" { nbody++; if (ctx != "server" || NF != 4 || $4 != "1m") bad("client_max_body_size 1m in the server only (the app cap is 64 KiB)") }
+    name == "server_name" { nsn++; if (ctx != "server" || NF != 4 || $4 !~ /^[a-z0-9.-]+$/) bad("server_name is the exact host") }
+    name == "server_tokens" { if (NF != 4 || a1 != "off") bad("no server_tokens on"); else if (ctx == "server") sto = 1 }
+    name == "proxy_intercept_errors" && a1 != "off" { bad("the app own errors pass through (no proxy_intercept_errors)") }
+    name == "real_ip_header" { if (ctx == "server" && NF == 4 && $4 == "CF-Connecting-IP") rih = 1; else bad("real IP from CF-Connecting-IP (Cloudflare ranges only)") }
+    name == "real_ip_recursive" && a1 != "off" { bad("Cloudflare ranges belong in cf_real-ip.conf only, non-recursive") }
+    name == "set_real_ip_from" { bad("Cloudflare ranges belong in cf_real-ip.conf only, non-recursive") }
+    ctx == "server/location" && name == "proxy_buffering" && a1 == "off" { buf = 1 }
+    ctx == "server/location" && name == "proxy_read_timeout" && $4 ~ /^(9[0-9][0-9]|[1-9][0-9][0-9][0-9]+)s$/ { rt = 1 }
+    END {
+      if (nserver != 1) bad("exactly one server block (found " nserver + 0 ")")
+      if (nxff != 1) bad("exactly one proxy_set_header X-Forwarded-For (found " nxff + 0 ")")
+      else if (badxff) bad("X-Forwarded-For must be overwritten with $remote_addr, once, in the server and in no location")
+      if (nbody != 1) bad("client_max_body_size 1m (found " nbody + 0 " directives)")
+      if (nsn != 1) bad("exactly one server_name, the exact host (found " nsn + 0 ")")
+      if (!sto) bad("server_tokens off in the server (no nginx version)")
+      if (!hsts) bad("add_header Strict-Transport-Security in the server (HSTS is the edge job)")
+      if (live ? (rih != cfinc) : !(rih && cfinc)) bad("real IP: include /config/nginx/cf_real-ip.conf and real_ip_header CF-Connecting-IP go together" (live ? " (both or neither with DNS only)" : ""))
+      exit (nbad > 0)
+    }
+  '
+}
+check_site() {   # check_site FILE [live]
+  local dirs msgs l
+  dirs="$(site_directives "$1")" || {
+    msgs="${dirs##*$'\n'}"; sfail "cannot read it as nginx directives: ${msgs#ERR$'\t'}"; return 1
+  }
+  msgs="$(site_verdict "${2:+1}" <<<"$dirs")" || {
+    while IFS= read -r l; do sfail "$l" || true; done <<<"$msgs"
+    return 1
+  }
+}
+
+# nginx -t on FILE with stand-ins for swag's ssl.conf and the Cloudflare list. Needs the Docker daemon
+# and the nginx image (pulled from Docker Hub on first use, runbook section 9).
+nginx_site_t() {   # nginx_site_t FILE
+  mkdir -p "$tmp/nginx"
+  printf 'ssl_certificate /tmp/cert.pem;\nssl_certificate_key /tmp/key.pem;\n' > "$tmp/nginx/ssl.conf"
+  printf 'set_real_ip_from 173.245.48.0/20;\n' > "$tmp/nginx/cf_real-ip.conf"
+  printf 'events {}\nhttp {\n  resolver 127.0.0.11;\n  include /config/nginx/proxy-confs/classbeat.subdomain.conf;\n}\n' > "$tmp/nginx/nginx.conf"
+  cp "$1" "$tmp/nginx/site.conf" || { sfail "cannot copy it (readable by this user?)"; return 1; }
+  nginx_t() {
+    docker run --rm --network none \
+      -v "$dir/nginx/site.conf:/config/nginx/proxy-confs/classbeat.subdomain.conf:ro" \
+      -v "$dir/nginx/ssl.conf:/config/nginx/ssl.conf:ro" \
+      -v "$dir/nginx/cf_real-ip.conf:/config/nginx/cf_real-ip.conf:ro" \
+      -v "$dir/nginx/nginx.conf:/check/nginx.conf:ro" \
+      "$nginx_image" sh -c 'set -e; mkdir -p /config/log/nginx
+        openssl req -x509 -newkey rsa:2048 -nodes -subj /CN=classbeat.example.test -days 1 \
+          -keyout /tmp/key.pem -out /tmp/cert.pem 2>/dev/null
+        nginx -t -q -c /check/nginx.conf' >"$tmp/nginx.log" 2>&1
+  }
+  if ! nginx_t; then
+    # nginx -t opens its listening sockets; a kernel without IPv6 (some VMs) cannot open [::]:443.
+    # Only then, check the rest without that one line and say so.
+    grep -q 'Address family not supported' "$tmp/nginx.log" || { cat "$tmp/nginx.log" >&2; sfail "nginx -t failed"; return 1; }
+    sed -i '/listen \[::\]:443 ssl;/d' "$tmp/nginx/site.conf"
+    nginx_t || { cat "$tmp/nginx.log" >&2; sfail "nginx -t failed"; return 1; }
+    echo "check-prod-compose: no IPv6 here: nginx -t ran without the [::]:443 listen line" >&2
+  fi
+}
+
+if [[ $mode == repo ]]; then   # the sample and its self-tests (ADR 0020)
 check_site "$site" || exit 1
+# expect_site_refused SED [FRAGMENT]: the mutated sample must be refused, and with FRAGMENT in the
+# message when given (so a mutation that merely fails to parse cannot pass for the rule it is for).
 expect_site_refused() {
   sed -E "$1" "$site" > "$tmp/site-mutated.conf"
-  if (check_site "$tmp/site-mutated.conf" 2>/dev/null); then
+  if (check_site "$tmp/site-mutated.conf" 2>"$tmp/site-refuse.log"); then
     echo "check-prod-compose: self-test: accepted an unsafe site config: $1" >&2; exit 1
+  fi
+  if [[ -n "${2:-}" ]] && ! grep -qF -- "$2" "$tmp/site-refuse.log"; then
+    cat "$tmp/site-refuse.log" >&2
+    echo "check-prod-compose: self-test: refused for another reason than '$2': $1" >&2; exit 1
+  fi
+}
+# The harmless rewrites: the same directives in another layout must still pass (the tokenizer must
+# not see a second directive, or lose one, where nginx sees none).
+expect_site_accepted() {
+  sed -E "$1" "$site" > "$tmp/site-mutated.conf"
+  if ! (check_site "$tmp/site-mutated.conf" 2>"$tmp/site-accept.log"); then
+    cat "$tmp/site-accept.log" >&2
+    echo "check-prod-compose: self-test: refused a valid site config: $1" >&2; exit 1
   fi
 }
 # shellcheck disable=SC2016  # literal nginx variables, not shell ones
@@ -958,45 +1484,67 @@ for m in \
   '/proxy_set_header X-Forwarded-For \$remote_addr;/i\    proxy_set_header "X-Forwarded-For" $http_x_forwarded_for;' \
   '/proxy_set_header X-Forwarded-For \$remote_addr;/d' \
   's/proxy_set_header X-Forwarded-For \$remote_addr;/proxy_set_header X-Forwarded-For $http_x_forwarded_for;/' \
+  's/^( *)location @classbeat_down \{$/\1server { server_name classbeat.example.test; }\n&/' \
+  '$a\server { listen 8443; server_name other.example.test; }' \
   '/include \/config\/nginx\/ssl.conf;/a\    include /config/nginx/proxy.conf;' \
   '/include \/config\/nginx\/ssl.conf;/a\    include /config/nginx/extra-headers.conf;' \
   '/server_tokens off;/d' \
   's/server_tokens off;/server_tokens on;/' \
   '/error_page 502/a\    proxy_intercept_errors on;' \
   '/client_max_body_size 1m;/d' \
+  '/client_max_body_size 1m;/a\    client_max_body_size 100m;' \
   '/add_header Strict-Transport-Security/a\    add_header Content-Security-Policy "default-src *" always;' \
   's/proxy_buffering off;/proxy_buffering on;/' \
   '/return 502/a\        add_header Cache-Control "no-store" always;' \
-  's/real_ip_header CF-Connecting-IP;/real_ip_header X-Forwarded-For;/'; do
+  's/real_ip_header CF-Connecting-IP;/real_ip_header X-Forwarded-For;/' \
+  '/include \/config\/nginx\/cf_real-ip.conf;/d' \
+  's/^( *)location \/ \{$/&\n        if ($host) { return 200; }/' \
+  's/proxy_set_header X-Forwarded-For \$remote_addr;/proxy_set_header X-Forwarded-For $remote_addr/'; do
   expect_site_refused "$m"
 done
-
-mkdir -p "$tmp/nginx"
-printf 'ssl_certificate /tmp/cert.pem;\nssl_certificate_key /tmp/key.pem;\n' > "$tmp/nginx/ssl.conf"
-printf 'set_real_ip_from 173.245.48.0/20;\n' > "$tmp/nginx/cf_real-ip.conf"
-printf 'events {}\nhttp {\n  resolver 127.0.0.11;\n  include /config/nginx/proxy-confs/classbeat.subdomain.conf;\n}\n' > "$tmp/nginx/nginx.conf"
-cp "$site" "$tmp/nginx/site.conf"
-nginx_t() {
-  docker run --rm --network none \
-    -v "$dir/nginx/site.conf:/config/nginx/proxy-confs/classbeat.subdomain.conf:ro" \
-    -v "$dir/nginx/ssl.conf:/config/nginx/ssl.conf:ro" \
-    -v "$dir/nginx/cf_real-ip.conf:/config/nginx/cf_real-ip.conf:ro" \
-    -v "$dir/nginx/nginx.conf:/check/nginx.conf:ro" \
-    "$nginx_image" sh -c 'set -e; mkdir -p /config/log/nginx
-      openssl req -x509 -newkey rsa:2048 -nodes -subj /CN=classbeat.example.test -days 1 \
-        -keyout /tmp/key.pem -out /tmp/cert.pem 2>/dev/null
-      nginx -t -q -c /check/nginx.conf' >"$tmp/nginx.log" 2>&1
-}
-if ! nginx_t; then
-  # nginx -t opens its listening sockets; a kernel without IPv6 (some VMs) cannot open [::]:443.
-  # Only then, check the rest without that one line and say so.
-  grep -q 'Address family not supported' "$tmp/nginx.log" || { cat "$tmp/nginx.log" >&2; sfail "nginx -t failed"; exit 1; }
-  sed -i '/listen \[::\]:443 ssl;/d' "$tmp/nginx/site.conf"
-  nginx_t || { cat "$tmp/nginx.log" >&2; sfail "nginx -t failed"; exit 1; }
-  echo "check-prod-compose: no IPv6 here: nginx -t ran without the [::]:443 listen line" >&2
+# The four spellings of a second X-Forwarded-For that the line-based check missed (#500), each with
+# the visitor-chosen value and with $remote_addr, and a location that carries the header itself.
+# shellcheck disable=SC2016  # literal nginx variables, not shell ones
+for v in '$http_x_forwarded_for' '$remote_addr'; do
+  one='exactly one proxy_set_header X-Forwarded-For (found 2)'
+  # (a) a second directive on the line of X-Forwarded-Proto, after the overwrite
+  expect_site_refused 's/^( *proxy_set_header X-Forwarded-Proto https;)$/\1 proxy_set_header X-Forwarded-For '"$v"';/' "$one"
+  # (b) the directive split over two lines (after its name, and before its value)
+  expect_site_refused 's/^( *proxy_set_header X-Forwarded-Proto https;)$/\1\n    proxy_set_header\n        X-Forwarded-For '"$v"';/' "$one"
+  expect_site_refused 's/^( *proxy_set_header X-Forwarded-Proto https;)$/\1\n    proxy_set_header X-Forwarded-For\n        '"$v"';/' "$one"
+  # (c) after a quoted "#" (and after a "#" inside a token) that a comment stripper would cut at
+  expect_site_refused 's/^( *proxy_set_header Host \$host;)$/\1\n    proxy_set_header X-Real-IP "#"; proxy_set_header X-Forwarded-For '"$v"';/' "$one"
+  expect_site_refused 's/^( *proxy_set_header Host \$host;)$/\1\n    proxy_set_header X-Real-IP a#b; proxy_set_header X-Forwarded-For '"$v"';/' "$one"
+  # (d) a one-line location block, and a multi-line one: a location's own proxy_set_header replaces
+  # every inherited one, so it is refused whatever it sets
+  expect_site_refused 's/^( *)location @classbeat_down \{$/\1location \/api\/ { proxy_set_header X-Forwarded-For '"$v"'; proxy_pass http:\/\/$upstream_classbeat:8000; }\n&/' \
+    'a location sets proxy_set_header'
+  expect_site_refused 's/^( *)location \/ \{$/&\n        proxy_set_header\n            X-Forwarded-For '"$v"';/' \
+    'a location sets proxy_set_header'
+done
+# A location that sets some other header drops the server-level overwrite from what it forwards.
+# shellcheck disable=SC2016  # literal nginx variables, not shell ones
+expect_site_refused 's/^( *)location @classbeat_down \{$/\1location \/api\/ { proxy_set_header Host $host; proxy_pass http:\/\/$upstream_classbeat:8000; }\n&/' \
+  'a location sets proxy_set_header'
+# shellcheck disable=SC2016  # literal nginx variables, not shell ones
+for m in \
+  's/proxy_set_header X-Forwarded-For \$remote_addr;/proxy_set_header\n        "x-forwarded-for"\n        ${remote_addr}; # proxy_set_header X-Forwarded-For $http_x_forwarded_for;/' \
+  's/^( *proxy_set_header Host \$host;)$/\1\n    proxy_set_header X-Real-IP "a # b ; proxy_set_header X-Forwarded-For x"; proxy_set_header X-Real-Host a#b;/' \
+  's/^( *)location @classbeat_down \{$/\1location = \/health { return 200 "ok"; }\n&/' \
+  's/^( *proxy_set_header X-Forwarded-Proto https;)$/\1 # proxy_set_header X-Forwarded-For $http_x_forwarded_for;/'; do
+  expect_site_accepted "$m"
+done
+nginx_site_t "$site" || exit 1
 fi
 
+# The owner's own file (PROD_CHECK_SWAG_CONF, runbook sections 7 and 9): the same rules and nginx -t.
+if [[ -n "$swag_live" ]]; then
+  site_label="$swag_live"
+  check_site "$swag_live" live || exit 1
+  nginx_site_t "$swag_live" || exit 1
+  owner_note="$owner_note; the swag site config $swag_live passes the directive rules and nginx -t"
 fi
+
 # --- The secret files, as every service sees them (--probe) --------------------------------------
 # What the runbook did by hand: for each service that mounts secrets, run the pulled image with a
 # shell that asks the kernel (`test -r`, nothing is opened or printed) about every file in
@@ -1039,4 +1587,4 @@ if [[ $mode == install ]]; then
   echo "install check (compose files with dummies, .env, secrets/): ok; $owner_note"
   exit 0
 fi
-echo "compose.prod.yaml (shared network and loopback, OAuth secrets on web only, secret files by group 10010), runbook network, swag site config and self-tests: ok; $owner_note"
+echo "compose.prod.yaml (shared network, loopback and LAN, default-deny keys, OAuth secrets on web only, secret files by group 10010), runbook network, swag site config and self-tests: ok; $owner_note"

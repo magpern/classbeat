@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react'
 import type { ClassSummary } from '../../api/classes'
 import { classStatus, lengthLabel, profileSeconds, profileTss } from '../../lib/classCards'
 import { Link } from '../../router/Router'
@@ -7,7 +8,7 @@ import { MiniProfile } from './MiniProfile'
 import { TssValue } from './TssValue'
 
 /** One class: mini profile on the stage, title, length, TSS and a status chip. Titles are text. */
-export function ClassCard({ cls }: { cls: ClassSummary }) {
+export function ClassCard({ cls, actions }: { cls: ClassSummary; actions?: ReactNode }) {
   const status = classStatus(cls)
   const seconds = profileSeconds(cls.profile)
   return (
@@ -29,8 +30,9 @@ export function ClassCard({ cls }: { cls: ClassSummary }) {
           </span>
         </p>
       ) : null}
-      <p className="m-0">
+      <p className="m-0 flex flex-wrap items-center justify-between gap-2">
         <Chip tone={status.tone}>{status.label}</Chip>
+        {actions}
       </p>
     </Card>
   )

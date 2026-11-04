@@ -12,13 +12,13 @@ The database can tighten what the environment allows, never loosen it:
 - ``swedebeat_enabled``: stored ``off`` or ``on``; absent means ``on``, but only under the
   environment's kill switch (``CLASSBEAT_SWEDEBEAT_ENABLED``, off by default): the database
   can switch Swedebeat off for everyone, never on past the environment (ADR 0015).
-- ``running_enabled``: the same shape and rule as ``swedebeat_enabled``, under
-  ``CLASSBEAT_RUNNING_ENABLED`` (off by default): running classes (ADR 0018 section 5).
-- ``soundless_enabled`` (ADR 0007 amendment of 2026-11-03, #527): stored ``off`` or ``on``, under
-  ``CLASSBEAT_SOUNDLESS_ENABLED`` (off by default), but **unlike** the two above a missing,
-  ``null`` or invalid stored value is ``off``: only a stored ``on`` switches it on, so clearing
-  the row turns it off. ``soundless_switch`` is that part; the effective flag also needs every
-  plan's model route to cover soundless (``classbeat.flags.effective.soundless_enabled``).
+- ``running_enabled`` (ADR 0018 section 5 and its amendment of 2026-11-04, #509) and
+  ``soundless_enabled`` (ADR 0007 amendment of 2026-11-03, #527): stored ``off`` or ``on``, under
+  ``CLASSBEAT_RUNNING_ENABLED`` and ``CLASSBEAT_SOUNDLESS_ENABLED`` (off by default), but
+  **unlike** ``swedebeat_enabled`` a missing, ``null`` or invalid stored value is ``off``: only a
+  stored ``on`` switches it on, so clearing the row turns it off. ``running_switch`` and
+  ``soundless_switch`` are that part; the effective flag also needs every plan's model route to
+  cover the variant (``classbeat.flags.effective.running_enabled`` and ``soundless_enabled``).
 - ``trial``: ``{plan, days}``; absent or invalid is off.
 - ``banner``: ``{text, level}``; absent or invalid is none. Its text is plain text: no control
   character (``Cc``), no format character (``Cf``: the bidi embeddings, overrides and isolates,
@@ -114,14 +114,13 @@ def swedebeat_setting(environment_on: bool, stored: Any) -> bool:
     return stored == "on"
 
 
-def running_setting(environment_on: bool, stored: Any) -> bool:
-    """Whether running classes are on (ADR 0018 section 5), as ``swedebeat_setting``: never while
-    the environment's switch is off; else the stored ``off``/``on`` (absent is on; an invalid
-    value is off, the stricter reading)."""
-    if not environment_on:
+def running_switch(environment_on: bool, stored: Any) -> bool:
+    """The switch part of ``running_enabled`` (ADR 0018 amendment of 2026-11-04, #509), as
+    ``soundless_switch``: the environment's switch is on **and** the stored value is exactly
+    ``on``. Absent (``None``, also the cleared JSON ``null``) is off; an invalid value is off and
+    logged by key. Coverage is not checked here (``flags.effective``)."""
+    if not environment_on or stored is None:
         return False
-    if stored is None:
-        return True
     if not isinstance(stored, str) or stored not in _RUNNING_STORED:
         _invalid("running_enabled")
         return False
@@ -131,7 +130,7 @@ def running_setting(environment_on: bool, stored: Any) -> bool:
 def soundless_switch(environment_on: bool, stored: Any) -> bool:
     """The switch part of ``soundless_enabled`` (ADR 0007 amendment of 2026-11-03, item 2): the
     environment's switch is on **and** the stored value is exactly ``on``. Absent (``None``, also
-    the cleared JSON ``null``) is off, not on as for ``running_enabled``; an invalid value is off
+    the cleared JSON ``null``) is off, as for ``running_enabled``; an invalid value is off
     and logged by key. Coverage is not checked here (``flags.effective``)."""
     if not environment_on or stored is None:
         return False

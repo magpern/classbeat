@@ -235,8 +235,8 @@ async def admit(db: AsyncSession, ctx: UserContext, parsed: BaseModel) -> Admitt
     every plan's route). Every check here reads only: the jobs API reserves the credit after."""
     if not isinstance(parsed, DesignDraftInput):
         return Refused("invalid_input")
-    # ADR 0018: the running flag and the class's fixed sport, before anything else is read.
-    refused = await sport.admit_brief(db, ctx.user_id, parsed.brief, parsed.class_id)
+    # ADR 0018 (#509): the running gate and the class's fixed sport, before anything else is read.
+    refused = await sport.admit_brief(db, ctx, parsed.brief, parsed.class_id)
     if refused is not None:
         return refused
     soundless = isinstance(parsed.music, NoMusicChoice)

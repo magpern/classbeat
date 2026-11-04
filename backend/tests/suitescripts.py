@@ -20,6 +20,7 @@ from typing import Any
 from mowl import music
 
 import runningscripts
+import soundlessscripts
 from classbeat.agent import DesignContext
 from classbeat.agent.design import check
 from classbeat.agent.providers.fake import FakeProvider, FakeScript
@@ -287,6 +288,8 @@ def good_draft(case: Case) -> dict[str, Any]:
 
 def script_for(case: Case, draft: dict[str, Any] | None = None) -> FakeScript:
     """The case's recorded script; with ``draft``, the same turns submitting that draft."""
+    if case.soundless:
+        return soundlessscripts.script_for(case, draft)
     if case.brief.sport == "running":
         return runningscripts.script_for(case, draft)
     chosen = good_draft(case) if draft is None else draft

@@ -46,8 +46,9 @@ async def _run(settings: Settings) -> None:
         await engine.dispose()
     # The job kinds' runtime (design_draft, D1): the key ring and a new model provider per run.
     design.configure(design.runtime_from_settings(settings, keyring))
-    # A queued running design or revise checks the running switch again (ADR 0018 section 5).
-    sport.configure(sport.SportGate(running_enabled=settings.running_enabled))
+    # A queued running design or revise checks the running switch again (ADR 0018 section 5);
+    # coverage is the model's (#509).
+    sport.configure(sport.SportGate.from_settings(settings))
     # A queued soundless design checks the soundless switch again (#527); coverage is the model's.
     music_kind.configure(music_kind.SoundlessGate.from_settings(settings))
     # The environment's plan bounds (#496): a job stored without gates is run under the current

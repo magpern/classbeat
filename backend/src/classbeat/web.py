@@ -192,8 +192,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # design_with_songs' admit reads the feature switch (ADR 0008 section 10); importing
     # classbeat.songs registered the kind.
     songs.configure(songs.SongConfig.from_settings(settings))
-    # The design kinds' admit reads the running switch (ADR 0018 section 5).
-    sport.configure(sport.SportGate(running_enabled=settings.running_enabled))
+    # The design kinds' admit reads the running gate, with the web's own ``fake`` counting as
+    # covering only outside prod (ADR 0018 section 5 and its amendment of 2026-11-04, #509).
+    sport.configure(sport.SportGate.from_settings(settings))
     # ... and the soundless switch, with the web's own ``fake`` counting as covering only outside
     # prod (ADR 0007 amendment of 2026-11-03, #527).
     music_kind.configure(music_kind.SoundlessGate.from_settings(settings))

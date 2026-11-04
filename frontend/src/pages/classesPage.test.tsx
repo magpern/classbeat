@@ -38,6 +38,16 @@ describe('My classes', () => {
     expect(screen.getByText('Being designed')).toBeInTheDocument()
   })
 
+  it('offers Duplicate on a card with a version and not on one still being designed', async () => {
+    renderAtWith([
+      classBody({ title: 'Hills' }),
+      classBody({ id: SECOND, title: 'Second', current_revision_id: null, current_revision_number: null, profile: [] }),
+    ])
+    const button = await screen.findByRole('button', { name: 'Duplicate Hills' })
+    expect(button.textContent).toBe('Duplicate')
+    expect(screen.queryByRole('button', { name: 'Duplicate Second' })).toBeNull()
+  })
+
   it('shows a mini profile, the length and the TSS on a card', async () => {
     renderAtWith([classBody()])
     expect(await screen.findByRole('img', { name: /Class profile, 17 min, 3 intervals/ })).toBeInTheDocument()

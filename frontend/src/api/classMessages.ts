@@ -16,6 +16,8 @@ const REASONS: Record<string, string> = {
     'This class is busy with another task, perhaps from another tab. The page has been reloaded. Wait for it to finish, then try again.',
   revision_limit:
     'This class has reached the most changes one class can have. Keep the version you like, or design a new class.',
+  not_changeable:
+    'This class has no music of its own, so it cannot be changed by chat. You can still view, use and save its versions.',
   chat_full:
     'This conversation is full. Keep the version you like, or design a new class.',
   not_found: 'This class, or that version, no longer exists. The page has been reloaded.',
@@ -25,14 +27,15 @@ const REASONS: Record<string, string> = {
     'classbeat may still be writing this class to MOWL, and deleting it now would remove the only record of that write. Wait a few minutes, then try to delete it again.',
   music_unlinked:
     'The music of this version is not in your connected MOWL account. Change it and save the new version.',
+  // #509: a running class's change, while running is not checked for the user's plan.
+  running_not_evaluated:
+    'Running classes cannot be changed on your plan right now, so your request was not sent and nothing was charged. Try again later.',
   // ADR 0007 amendment "beat-one corrections".
   no_beat_data:
     'This version has no beat data to correct. Ask for a change by chat first, then try again.',
   correction_limit:
     'This class has as many timing fixes as it can hold. Reset some, then try again.',
   nothing_pending: 'The current version already uses these timing fixes.',
-  not_changeable:
-    'This class has no music of its own to fit, so its timing cannot be changed here.',
   refit_limit:
     'This class has had its timing fixed as often as it can. Design a new class to start again.',
 }

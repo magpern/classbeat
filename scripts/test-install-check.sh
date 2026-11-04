@@ -74,6 +74,13 @@ sed -i 's|^    user: postgres$|&\n    ports: ["5432:5432"]|' "$install/compose.p
 expect "a local edit publishing db's port is caught" 1 'only web may publish a port|db must not publish ports'
 
 cp "$work/compose.prod.yaml.good" "$install/compose.prod.yaml"
+# Default deny (#517): a key or a file reference the allow-list does not name is caught in the folder.
+sed -i 's|^    user: postgres$|&\n    privileged: true|' "$install/compose.prod.yaml"
+expect "a local edit adding privileged is caught" 1 'not on the allow-list.*services\.db\.privileged'
+cp "$work/compose.prod.yaml.good" "$install/compose.prod.yaml"
+sed -i 's|^    user: postgres$|&\n    env_file: ./secrets/app_secret_key|' "$install/compose.prod.yaml"
+expect "a local edit adding env_file is caught" 1 'no env_file, label_file, profiles'
+cp "$work/compose.prod.yaml.good" "$install/compose.prod.yaml"
 sed -i 's/^PROXY_IP=.*/PROXY_IP=8.8.8.8/' "$install/.env"
 expect "a public PROXY_IP" 1 'PROXY_IP must be one private'
 sed -i 's/^PROXY_IP=.*/PROXY_IP=172.29.90.10/' "$install/.env"
@@ -100,6 +107,14 @@ if (( can_gid )); then
   cp "$work/env.lan" "$install/.env"
   expect "good LAN install" 0 '^install check'
   cp "$work/env.good" "$install/.env"
+  # 2b. The owner's own swag file (PROD_CHECK_SWAG_CONF, #500). The directive rules run before
+  # nginx -t, so a refused file needs no Docker daemon here.
+  # shellcheck disable=SC2016  # a literal nginx variable
+  sed -E 's/^( *proxy_set_header X-Forwarded-Proto https;)$/\1 proxy_set_header X-Forwarded-For $http_x_forwarded_for;/' \
+    "$install/swag-classbeat.subdomain.conf" > "$work/swag-bad.conf"
+  PROD_CHECK_SWAG_CONF="$work/swag-bad.conf" expect "swag file with a second X-Forwarded-For" 1 \
+    'exactly one proxy_set_header X-Forwarded-For \(found 2\)'
+  PROD_CHECK_SWAG_CONF="$work/swag-missing.conf" expect "swag file that is not there" 1 'is not a readable file'
   chmod 644 "$install/secrets/connection_kek"
   expect "mode 644" 1 'chmod 640 secrets/connection_kek'
   mksecrets; chmod 600 "$install/secrets/app_secret_key"
@@ -110,6 +125,8 @@ if (( can_gid )); then
   expect "folder group says sudo" 1 'One-time, needs sudo: sudo chgrp 10010 '
   mksecrets; as_root chmod g-s "$install/secrets"
   expect "folder without setgid" 1 'no setgid bit.*sudo chmod 2700'
+  mksecrets; chmod 2750 "$install/secrets"
+  expect "folder open to the group" 1 'gives the group or others access'
   mksecrets; rm "$install/secrets/openai_api_key"
   expect "missing file" 1 'openai_api_key is missing'
   mksecrets
@@ -123,6 +140,9 @@ cat > "$stub/docker" <<STUB
 #!/usr/bin/env bash
 if [ "\${1:-}" = compose ] && [[ " \$* " == *" exec "* ]]; then
   printf '%s' "\${DB_REV-}"; exit \${DB_RC:-0}
+fi
+if [ "\${1:-}" = inspect ]; then
+  printf '%s' "\${SWAG_OUT-}"; exit 0
 fi
 if [ "\${1:-}" = run ]; then
   printf '%s' "\${REVS_OUT-}"; exit \${REVS_RC:-0}
@@ -152,6 +172,18 @@ if (( can_gid )); then
     bash -c 'cd "$1" && ./check-prod-compose.sh --probe' _ "$install" >"$work/probe-rc.log" 2>&1; then
     bad "probe: a failing docker run passed"
   else ok "probe: docker run fails"; fi
+fi
+
+# 3b. PROXY_IP against the running swag container's address (stub `docker inspect`, #500).
+if (( can_gid )); then
+  swag_run() { ( cd "$install" && PATH="$stub:$PATH" SWAG_OUT="$1" ./check-prod-compose.sh --install 2>&1 ); }
+  if out="$(swag_run '172.29.90.10 ')" && grep -q "PROXY_IP is the running swag container's address" <<<"$out"; then
+    ok "swag address: PROXY_IP matches"; else bad "swag address: PROXY_IP matches: $(tail -2 <<<"$out")"; fi
+  if out="$(swag_run '172.29.90.130 ')"; then bad "swag address: a different PROXY_IP passed"
+  elif grep -q 'PROXY_IP is 172.29.90.10 but the running swag container has 172.29.90.130' <<<"$out"; then ok "swag address: mismatch"
+  else bad "swag address: mismatch message: $(tail -2 <<<"$out")"; fi
+  if out="$(swag_run '')" && grep -q 'swag container is not visible here' <<<"$out"; then
+    ok "swag address: not visible is a note, not a failure"; else bad "swag address: not visible: $(tail -2 <<<"$out")"; fi
 fi
 
 # 4. --rollback-check OLD: the database's revision must be one OLD's image carries (stub docker).
