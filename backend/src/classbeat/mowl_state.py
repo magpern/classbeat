@@ -17,6 +17,13 @@ read before running), keeps the form above **unchanged**, without a ``sport`` ke
 ``state_hash`` changes. The two forms never compare equal, so a ride never matches a run. A
 program whose ``ActivityTypeID`` is anything else is not normalizable (``ValueError``).
 
+**No music** (a soundless class, ADR 0007 amendment of 2026-11-03, item 8): the intended
+``playlist_id`` ``-1`` (the library's "no music") is ``"playlist_id": null`` in the normal form, and
+a read ``PlaylistID`` of ``-1``, ``null`` or a missing field is ``null`` too; any other value (a
+positive id, ``0``) is itself and so never matches "no music". Every program saved before was
+read with a positive id, so no stored ``state_hash`` changes. **Unverified live:** which of the
+three MOWL returns for a program saved with ``-1`` (the owner's first live check).
+
 ``matches`` compares an intended spec with a read program through it, and ``state_hash`` is the
 SHA-256 of its canonical JSON (``saved_workouts.state_hash``). The save's reconciler and verify
 step use it; SV2's update compares the same hash before it writes.
@@ -128,6 +135,14 @@ def _spec_running(spec: Mapping[str, Any]) -> bool:
     raise ValueError("not a sport")
 
 
+NO_PLAYLIST: Final = -1  # the library's "no music" ``PlaylistID``
+
+
+def _playlist(value: int | None) -> int | None:
+    """A playlist id in the normal form: "no music" (``-1`` or none) is None."""
+    return None if value is None or value == NO_PLAYLIST else value
+
+
 def normalized_spec(spec: Mapping[str, Any], playlist_id: int | None) -> dict[str, Any]:
     """What ``workout.save(spec, creds, playlist_id)`` writes, in the normal form."""
     running = _spec_running(spec)
@@ -147,7 +162,7 @@ def normalized_spec(spec: Mapping[str, Any], playlist_id: int | None) -> dict[st
         "name": _text(spec["name"]),
         "description": _text(spec.get("description", ""), optional=True),
         "public": False,  # the library always writes IsPublic false
-        "playlist_id": playlist_id,
+        "playlist_id": _playlist(playlist_id),
         "segments": segments,
     }
     if running:
@@ -231,7 +246,7 @@ def normalized_program(program: object) -> dict[str, Any]:
             "name": _text(p["Name"]),
             "description": _text(p.get("Description"), optional=True),
             "public": public,
-            "playlist_id": None if playlist is None else _int(playlist),
+            "playlist_id": None if playlist is None else _playlist(_int(playlist)),
             "segments": segments,
         }
         if running:

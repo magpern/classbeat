@@ -18,8 +18,9 @@
   playlist under the same checks as a Spotify link. Still no MOWL playlist id and no map.
   A soundless class (ADR 0007 amendment of 2026-11-03, item 7; #527): exactly
   ``{source: "none"}`` (``NoRevisionMusic``): no link, no fingerprint, no ``unknown_bpm``. Its
-  provenance has ``map_version`` and ``crossfade_sec`` ``None``. ``REVISION_MUSIC`` (what Save
-  reads for its link) does not take it: Save of a soundless class is SL3 (#529).
+  provenance has ``map_version`` and ``crossfade_sec`` ``None``. ``REVISION_MUSIC`` (the two
+  music shapes, with a link) does not take it; Save reads ``approval.SAVED_MUSIC``, which does,
+  and writes such a revision with no playlist (SL3, #529).
   The revision is the user's own and is deleted with its class or account (ADR 0010).
 - **provenance**: ``classbeat.agent.records.provenance``: provider, model, effort, the prompt and
   tool-schema version, classbeat's and mowl-workouts' versions, ``map_version`` and the map's
