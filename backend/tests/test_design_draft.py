@@ -70,8 +70,15 @@ async def test_a_draft_is_designed_on_a_new_playlist_and_stored(
         "link_id": str(link_id),
         "fingerprint": revision.music["fingerprint"],
         "unknown_bpm": [],
+        # ADR 0007 amendment "beat-one corrections": the songs the class plays; no correction.
+        "songs": revision.music["songs"],
     }
     assert len(revision.music["fingerprint"]) == 64
+    songs = revision.music["songs"]
+    assert songs
+    assert [s["song"] for s in songs] == list(range(1, len(songs) + 1))
+    assert all(s["title"] for s in songs)
+    assert "beat_one" not in revision.music
 
     [run] = denv.agent_runs(job_id)
     made = Provenance.model_validate_json(json.dumps(revision.provenance))

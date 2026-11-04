@@ -423,7 +423,68 @@ async def test_soundless_is_stored_on_only_when_every_plan_covers_soundless(
     env.app.state.settings = env.settings.model_copy(update={"soundless_enabled": True})
     cleared = await actor.call("DELETE", f"{SETTINGS}/soundless_enabled", None)
     assert cleared.status_code == 200, cleared.text
-    assert cleared.json()["effective"] == "off"  # cleared is off, unlike running_enabled
+    assert cleared.json()["effective"] == "off"  # cleared is off, as for running_enabled
+
+
+async def test_running_shows_on_only_with_every_plan_covered_read_on_every_request(
+    env: Env, make_actor: Any, superuser: Connection
+) -> None:
+    """ADR 0018 amendment of 2026-11-04 (#509): the shown effective ``running_enabled`` is the
+    three conditions, read again on every request: nothing stored, the admin's DELETE, a route
+    cleared later, a plan added later and the kill switch each turn it off."""
+    actor = await stepped_admin(env, make_actor)
+    env.app.state.settings = env.settings.model_copy(update={"running_enabled": True})
+
+    async def shown() -> Any:
+        return flag(await actor.get(SETTINGS), "running_enabled")
+
+    route_every_plan(superuser)
+    nothing = await shown()
+    assert (nothing["effective"], nothing["stored"]) == ("off", None)  # environment-only: off
+    stored_on = await put(actor, "running_enabled", "on")
+    assert stored_on.status_code == 200, stored_on.text
+    assert stored_on.json()["effective"] == "on"
+    superuser.execute(text("DELETE FROM model_routes WHERE route_key = 'pro'"))
+    assert (await shown())["effective"] == "off"  # a route cleared later, nothing stored
+    route_every_plan(superuser)
+    assert (await shown())["effective"] == "on"
+    superuser.execute(
+        text(
+            "INSERT INTO plans (id, name, rank, classes_per_month, revisions_per_class, "
+            "concurrent_jobs, monthly_cost_micros, route_key) "
+            "VALUES ('later', 'Later', 99, 3, 3, 1, 10000000, 'later')"
+        )
+    )
+    try:
+        assert (await shown())["effective"] == "off"  # a plan added later, with no route
+    finally:
+        superuser.execute(text("DELETE FROM plans WHERE id = 'later'"))
+    assert (await shown())["effective"] == "on"
+    env.app.state.settings = env.settings.model_copy(update={"running_enabled": False})
+    assert (await shown())["effective"] == "off"  # the kill switch
+    env.app.state.settings = env.settings.model_copy(update={"running_enabled": True})
+    cleared = await actor.call("DELETE", f"{SETTINGS}/running_enabled", None)
+    assert cleared.status_code == 200, cleared.text
+    assert cleared.json()["effective"] == "off"  # cleared (the JSON null) is off
+
+
+@pytest.mark.parametrize(("environment", "accepted"), [("dev", True), ("prod", False)])
+async def test_the_webs_own_fake_covers_running_outside_prod_only(
+    env: Env, make_actor: Any, superuser: Connection, environment: str, accepted: bool
+) -> None:
+    """As for soundless: the web's own ``fake`` covers running only outside prod."""
+    actor = await stepped_admin(env, make_actor)
+    env.app.state.settings = env.settings.model_copy(
+        update={"running_enabled": True, "model_provider": "fake", "environment": environment}
+    )
+    clear_gate(superuser)
+    answer = await put(actor, "running_enabled", "on")
+    if accepted:
+        assert answer.status_code == 200, answer.text
+        assert answer.json()["effective"] == "on"
+    else:
+        assert answer.status_code == 422, answer.text
+        assert answer.json()["detail"]["reason"] == "running_not_evaluated"
 
 
 @pytest.mark.parametrize(("environment", "accepted"), [("dev", True), ("prod", False)])

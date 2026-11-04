@@ -34,28 +34,33 @@ in the same transaction after it (ADR 0007 section 2): the class's first design 
 
 import hashlib
 import json
+import logging
 import uuid
 from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Annotated, Any, Final, Literal
+from typing import Annotated, Any, Final, Literal, Self
 from uuid import UUID
 
 from mowl import workout
-from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, ValidationError, model_validator
 from sqlalchemy import text
 
-from classbeat.agent import DesignResult, Provenance, WorkoutDraft, provenance
+from classbeat.agent import DesignResult, Provenance, WorkoutDraft, beat_one, mix_input, provenance
 from classbeat.agent.loop import StageOutcome
 from classbeat.agent.schemas import AnyDraft, RunningDraft
 from classbeat.design.music import MusicStep
 from classbeat.design.music_kind import NoMusicStep
 from classbeat.jobs import FencedSession, JobFailure
 
+logger = logging.getLogger(__name__)
+
 MUSIC_SOURCE: Final = "mowl_spotify_playlist"
 MIX_SOURCE: Final = "mowl_swedebeat_mix"
 NO_MUSIC_SOURCE: Final = "none"
 MAX_CONTENT_BYTES: Final = 65536  # the class_revisions.content check of migration 0004
 MAX_BRIEF_BYTES: Final = 4096  # the classes.brief check of migration 0005
+# ADR 0007 amendment "beat-one corrections" item 5: canonical ``songs`` plus ``beat_one``.
+MAX_BEAT_ONE_BYTES: Final = 131072
 
 # The parent, when given, must be a revision of the job's own class (the schema's foreign key
 # checks only the owner), else no row is inserted.
@@ -107,6 +112,40 @@ class UnknownBpmTrack(BaseModel):
     title: str = Field(max_length=200)
 
 
+class BeatOneCorrection(BaseModel):
+    """One applied beat-one correction (ADR 0007 amendment "beat-one corrections")."""
+
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    song: int = Field(ge=1, le=500)
+    beats: int = Field(ge=-3, le=3)
+
+    @model_validator(mode="after")
+    def _not_zero(self) -> Self:
+        if self.beats == 0:
+            raise ValueError("a correction moves beat 1")
+        return self
+
+
+class RevisionSong(BaseModel):
+    """A song the class plays, for the beat-one control (``classbeat.agent.beat_one.songs``):
+    seconds of the class as heard; ``title`` for a Spotify track only. Shown to the user only."""
+
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    song: int = Field(ge=1, le=500)
+    start: float = Field(ge=0, le=86400)
+    end: float = Field(ge=0, le=86400)
+    bpm: float = Field(gt=0, le=1000)
+    estimate: bool
+    title: str | None = Field(default=None, max_length=100)
+
+
+# Absent on every revision before the amendment, which therefore validates and dumps as before.
+BeatOneList = Annotated[list[BeatOneCorrection] | None, Field(default=None, max_length=500)]
+SongList = Annotated[list[RevisionSong] | None, Field(default=None, max_length=200)]
+
+
 class SpotifyRevisionMusic(BaseModel):
     """``class_revisions.music`` of a draft on a Spotify playlist."""
 
@@ -119,6 +158,8 @@ class SpotifyRevisionMusic(BaseModel):
     # ADR 0008 section 4: a draft designed on picked songs names the approved ``song_list``
     # revision it was made from; absent on every other draft (stored exactly as before).
     song_list_id: UUID | None = None
+    beat_one: BeatOneList = None
+    songs: SongList = None
 
 
 class SwedebeatRevisionMusic(BaseModel):
@@ -138,6 +179,8 @@ class SwedebeatRevisionMusic(BaseModel):
     unsure_beat_one: list[int] = Field(max_length=500)
     fingerprint: str = Field(pattern=r"^[0-9a-f]{64}$")
     link_id: UUID
+    beat_one: BeatOneList = None
+    songs: SongList = None
 
 
 class NoRevisionMusic(BaseModel):
@@ -150,6 +193,32 @@ class NoRevisionMusic(BaseModel):
 
 
 RevisionMusic = SpotifyRevisionMusic | SwedebeatRevisionMusic
+
+
+def _beat_one_fields(
+    music: RevisionMusic, step: MusicStep, music_map: dict[str, Any], duration_sec: int
+) -> RevisionMusic:
+    """ADR 0007 amendment "beat-one corrections" item 5: the corrections applied (absent when
+    none) and the songs the class plays, from the corrected map it was fitted to."""
+    applied = beat_one.as_list(mix_input.corrections_of(step.data))
+    songs: list[dict[str, Any]] = []
+    skipped = 0
+    for entry in beat_one.songs(music_map, duration_sec):
+        try:  # a BPM MOWL reported out of range (0.01, -5, 2000) drops that song's beat data
+            songs.append(RevisionSong.model_validate(entry).model_dump(exclude_none=True))
+        except ValidationError:
+            skipped += 1
+    if skipped:  # never fail a paid design for it; a count only
+        logger.warning("beat-one songs without usable beat data", extra={"skipped": skipped})
+    # The new fields only, never the whole ``music`` or ``unknown_bpm``: at most about 103 KB on
+    # any valid map (200 songs, titles of 100 characters; 200 corrections), so this is a defence.
+    if len(canonical({"beat_one": applied, "songs": songs})) > MAX_BEAT_ONE_BYTES:
+        raise JobFailure("invalid_output")
+    # Validated as a whole (not ``model_copy``, which skips the list bounds).
+    whole = {**music.model_dump(mode="python"), "beat_one": applied or None, "songs": songs}
+    return type(music).model_validate(whole)
+
+
 REVISION_MUSIC: Final = TypeAdapter[RevisionMusic](
     Annotated[RevisionMusic, Field(discriminator="source")]
 )
@@ -275,6 +344,9 @@ def build(
             unknown_bpm=[UnknownBpmTrack(index=u.index, title=u.title) for u in step.unknown_bpm],
             song_list_id=song_list_id,
         )
+    if not isinstance(step, NoMusicStep) and not isinstance(music, NoRevisionMusic):
+        assert music_map is not None  # noqa: S101 - checked above
+        music = _beat_one_fields(music, step, music_map, result.duration_sec)  # not soundless
     content_hash = hashlib.sha256(canonical(content)).digest()
     if base_hash is not None and content_hash == base_hash:
         raise JobFailure("invalid_output")

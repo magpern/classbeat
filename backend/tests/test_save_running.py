@@ -52,10 +52,11 @@ CYCLING_HASHES = {
 
 @pytest.fixture(autouse=True)
 def running_on(senv: SaveEnv) -> Iterator[None]:
-    """The environment's switch on (after ``senv``, whose app set it from its settings, off);
-    no stored admin flag, so the effective flag is on."""
+    """The environment's switch on (after ``senv``, whose app set it from its settings, off) and
+    the admin flag stored ``on`` (#509: nothing stored is off). Save reads the switch only, so no
+    route is needed."""
     sport.configure(sport.SportGate(running_enabled=True))
-    admin_flag(senv, None)  # app_settings outlives a test: start and end without the row
+    admin_flag(senv, "on")  # app_settings outlives a test: the fixture removes the row after
     try:
         yield
     finally:
@@ -75,6 +76,8 @@ def admin_flag(senv: SaveEnv, value: str | None) -> None:
 def switch_off(senv: SaveEnv, how: str) -> None:
     if how == "environment":
         sport.configure(sport.SportGate(running_enabled=False))
+    elif how == "cleared":
+        admin_flag(senv, None)  # #509: nothing stored is off, as the admin's DELETE leaves it
     else:
         admin_flag(senv, "off")
 
@@ -499,7 +502,7 @@ async def test_the_update_reconciler_decides_a_running_write_both_ways(
     # Unchanged, nothing new in the listing: provably no effect, even with the flag off now.
     admin_flag(uenv.s, "off")
     assert await update_operation.UPDATE.reconcile(check) == Reconciliation("failed")
-    admin_flag(uenv.s, None)
+    admin_flag(uenv.s, "on")
     fresh = fake_programs.plant(
         TOKEN_A, running_spec_of(RUNNING_DRAFT_2), playlist_id=LINKED_PLAYLIST
     )
@@ -596,7 +599,7 @@ async def test_the_revision_check_reads_the_sport_and_rebuilds_the_running_spec(
     assert (found.sport, found.running, found.spec) == ("running", True, RUN_SPEC)
 
 
-@pytest.mark.parametrize("off", ["environment", "database"])
+@pytest.mark.parametrize("off", ["environment", "database", "cleared"])
 async def test_save_and_update_of_a_running_class_are_feature_off_while_running_is_off(
     uenv: UpdateEnv, fake_programs: FakeMowlPrograms, update_browser: Any, off: str
 ) -> None:
@@ -616,7 +619,7 @@ async def test_save_and_update_of_a_running_class_are_feature_off_while_running_
             lambda: uenv.job(live, revision, RUNNING_DRAFT_2),
         ):
             sport.configure(sport.SportGate(running_enabled=True))
-            admin_flag(uenv.s, None)
+            admin_flag(uenv.s, "on")
             job_id = queue()  # queued while running was on
             switch_off(uenv.s, off)
             since, lists = len(fake_programs.requests), fake_programs.lists
@@ -631,7 +634,7 @@ async def test_save_and_update_of_a_running_class_are_feature_off_while_running_
         assert uenv.row(ride_job).state == "completed"
     finally:
         sport.configure(sport.SportGate(running_enabled=True))
-        admin_flag(uenv.s, None)
+        admin_flag(uenv.s, "on")
     [program] = fake_programs.owned(TOKEN_A)  # the running program, unchanged
     assert mowl_state.matches(
         RUN_SPEC, fake_programs.read_program(program), playlist_id=LINKED_PLAYLIST

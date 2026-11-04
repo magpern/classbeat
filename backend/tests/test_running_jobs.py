@@ -43,13 +43,16 @@ RUN: dict[str, Any] = {"sport": "running", "length_min": 30, "intensity": "moder
 
 @pytest.fixture(autouse=True)
 def running_on(renv: ReviseEnv) -> Iterator[None]:
-    """The environment's switch on, in the web and the worker alike (one process here); after
-    ``renv``, whose app set it from its settings (off) when it was built."""
-    sport.configure(sport.SportGate(running_enabled=True))
+    """The environment's switch on, in the web and the worker alike (one process here), the web's
+    ``fake`` covering (as the e2e stack) and the admin flag stored ``on`` (#509: nothing stored
+    is off); after ``renv``, whose app set the gate from its settings (off) when it was built."""
+    sport.configure(sport.SportGate(running_enabled=True, fake_covers=True))
+    admin_flag(renv, "on")
     try:
         yield
     finally:
         sport.configure(None)
+        admin_flag(renv, None)
 
 
 def admin_flag(renv: ReviseEnv, value: str | None) -> None:
@@ -99,14 +102,14 @@ async def test_a_running_design_is_refused_feature_off_while_the_flag_is_off(
     renv: ReviseEnv, fake_mowl: FakeMowlMusic, off: str
 ) -> None:
     if off == "environment":
-        sport.configure(sport.SportGate(running_enabled=False))
-        admin_flag(renv, "on")  # the database can never switch it on past the environment
+        sport.configure(sport.SportGate(running_enabled=False, fake_covers=True))
+        # the database can never switch it on past the environment (the fixture stored ``on``)
     else:
         admin_flag(renv, "off")
     try:
         refused = await create(renv, design_body(renv, RUN))
     finally:
-        admin_flag(renv, None)
+        admin_flag(renv, "on")
     assert refused.status_code == 409, refused.text
     assert refused.json()["detail"]["reason"] == "feature_off"
     assert jobs(renv) == 0
@@ -115,15 +118,8 @@ async def test_a_running_design_is_refused_feature_off_while_the_flag_is_off(
     assert cycling.status_code == 201, cycling.text
 
 
-@pytest.mark.parametrize("stored", [None, "on"])
-async def test_a_running_design_is_admitted_with_both_switches_on(
-    renv: ReviseEnv, stored: str | None
-) -> None:
-    admin_flag(renv, stored)
-    try:
-        made = await create(renv, design_body(renv, RUN))
-    finally:
-        admin_flag(renv, None)
+async def test_a_running_design_is_admitted_with_both_switches_on(renv: ReviseEnv) -> None:
+    made = await create(renv, design_body(renv, RUN))  # the fixture stored ``on``
     assert made.status_code == 201, made.text
     stored_input = renv.sql(
         "SELECT input FROM jobs WHERE id = :j", j=UUID(made.json()["id"])
@@ -145,7 +141,7 @@ async def test_a_queued_running_design_whose_flag_went_off_ends_feature_off_call
     try:
         await renv.run(design.KIND)
     finally:
-        admin_flag(renv, None)
+        admin_flag(renv, "on")
     row = renv.denv.ops.row(UUID(made.json()["id"]))
     assert (row.state, row.error_category) == ("failed", "feature_off")
     assert renv.providers == []  # no model was built
@@ -228,7 +224,7 @@ async def test_a_running_revise_is_refused_or_ends_feature_off_while_the_flag_is
         try:
             refused = await renv.ask(class_id, base)
         finally:
-            admin_flag(renv, None)
+            admin_flag(renv, "on")
         assert refused.status_code == 409, refused.text
         assert refused.json()["detail"]["reason"] == "feature_off"
         return

@@ -359,6 +359,7 @@ describe('asking for a change', () => {
     ['revision_limit', /most changes one class can have/],
     ['chat_full', /conversation is full/],
     ['class_busy', /busy with another task/],
+    ['running_not_evaluated', /cannot be changed on your plan right now/],
   ])('answers the reason %s in a plain sentence', async (code, sentence) => {
     fakeApi({
       ...SESSION_ROUTES,

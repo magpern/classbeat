@@ -16,6 +16,21 @@ ends `model_config` before any MOWL or model call, and the admin refuses to stor
 (422 `running_not_evaluated`) until **every plan's route key** has one. `CLASSBEAT_RUNNING_ENABLED` stays the
 kill switch.
 
+Since #509 ([ADR 0018](../adr/0018-mowl-running-classes.md) Amendment 5) running is on only when **all three**
+hold, checked on every page load and every request: `RUNNING_ENABLED=true`, `running_enabled` stored exactly
+`on`, and every plan's route key covered as above. What the admin sees:
+
+- **Settings page, `running_enabled`:** *effective* `on` only with all three. With nothing stored (also after
+  **Clear**, the DELETE) it shows `off`, even with `RUNNING_ENABLED=true`. Storing `on` answers
+  `running_not_evaluated` while any plan lacks a covering route.
+- **After a plan is added or a route is cleared or goes stale** (a newer failed result, a new suite version or
+  prompt), *effective* turns `off` by itself, while *stored* still says `on`. The New class form stops offering
+  Running at the next page load; nothing needs to be stored again once the route is back.
+- **Users:** a running design or change is refused before anything is charged. A user whose own plan lacks a
+  covering route sees "Running classes are not available on your plan yet"; when only another plan lacks
+  one, running is simply off for everyone (`feature_off`). A job that was already queued when its route went
+  away ends with "classbeat cannot design classes right now" (`model_config`), with its credit returned.
+
 ## Rules
 
 - **Agents and CI never run these commands.** Each live run needs the owner's go-ahead for that one command
@@ -55,9 +70,11 @@ Run from the stack's checkout, in the worker container (it has the key file and 
 3. **Enable the route for every plan key** that will serve running (the admin's Model routes page or
    `docker compose exec worker python -m classbeat models enable KEY design anthropic claude-opus-5-5 medium
    --yes`), as in [m3c-model-enable.md](m3c-model-enable.md). `models list` must show no stale reason.
-4. **Switch running on.** Set `RUNNING_ENABLED=true` in `.env` (web and worker; restart both), or store
-   `running_enabled` = `on` on the admin's Settings page, which refuses with `running_not_evaluated` while a
-   plan's key lacks a covering route. Record the decision in `docs/status.md`.
+4. **Switch running on.** Both are needed: set `RUNNING_ENABLED=true` in `.env` (web and worker; restart both),
+   **and** store `running_enabled` = `on` on the admin's Settings page, which refuses with
+   `running_not_evaluated` while a plan's key lacks a covering route. Check that *effective* shows `on`. Record
+   the decision in `docs/status.md`. To switch it off, store `off` or **Clear** it (both are off), or set
+   `RUNNING_ENABLED=false`.
 
 ## After a change
 
