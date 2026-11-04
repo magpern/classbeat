@@ -728,17 +728,15 @@ jobs:
           docker run --rm --user postgres --entrypoint sh classbeat-db-check -c \
             'for f in /queue/* /maint/* /docker-entrypoint-initdb.d/*; do test -r "$f" || { echo "unreadable: $f"; exit 1; }; done'
 
-      # The first scan found 26 fixable HIGH/CRITICAL findings, all in /usr/local/bin/gosu (Go standard
-      # library of the postgres:17.11 base image); the operating system packages are clean. gosu is
-      # never run here: the image starts as the postgres user (USER postgres, no re-exec from root), so
-      # that one file is skipped. The fix is a newer postgres tag, which moves the queue functions' md5
-      # (queue_digests.py) and is the Architect's call; drop --skip-files then.
+      # The 26 fixable HIGH/CRITICAL findings of /usr/local/bin/gosu (Go standard library of the
+      # postgres:17.11 base image) are time-boxed in .trivyignore, each ID with an exp: date and a
+      # reason; every other file and package stays a gate. The fix is a newer postgres tag, which
+      # moves the queue functions' md5 (queue_digests.py); remove the entries with it.
       - name: Scan the database image
         working-directory: .
         run: |
           "$RUNNER_TEMP/trivy" image \
             --severity HIGH,CRITICAL --ignore-unfixed --exit-code 1 \
-            --skip-files /usr/local/bin/gosu --skip-files usr/local/bin/gosu \
             classbeat-db-check
 
       # Playwright steps run only when the UI, e2e, compose or Docker files changed (the
