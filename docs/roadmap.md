@@ -1,5 +1,31 @@
 # classbeat roadmap: a class designer for Intelligent Cycling (MOWL) as a web app
 
+## Amendment 14 (2026-11-04, owner decision: token cost of the agent process)
+
+Where it differs, this amendment wins over Amendments 2, 4 and 13 and AGENTS.md. Every other
+gate (`PASS` per head SHA in the `Agent review (<model>): PASS|FAIL <head SHA>` comment, no
+approving review, merge only with `--match-head-commit`, merge check, no self-approval) is
+unchanged.
+
+- **Reviewer reuse ("first review new context, second re-use context"):** the first review of a
+  PR is a fresh context. Every later round on the same PR (a delta review after a `FAIL`, a
+  scoped review after a hand-resolved merge) resumes the **same Reviewer agent** with the new
+  head instead of spawning a new one, on security-critical PRs too; the Reviewer stays Opus
+  there and stays independent of the Developer and the Architect. This replaces the "fresh
+  Opus" for a delta that changes security-critical application code (Amendments 2, 4 and 13).
+  A fresh Reviewer is used only after a second `FAIL` on the same PR (after the Architect's
+  re-assessment), or when the Reviewer cannot be resumed (the comment says so). A Sonnet delta
+  review for a tests or docs-only delta on a security-critical PR (Amendment 4) stays an
+  option; resuming the same Opus Reviewer is the default.
+- **Mutation checks scoped:** only for the guarantees a PR adds or a fix changes, at most about
+  8 per review (Amendment 4's cap stays). A docs-only or test-only delta gets none beyond the
+  earlier finding it addresses, verified by reading or by one mutation. A docs-only review
+  needs no throwaway database.
+- **AGENTS.md split:** AGENTS.md is loaded into every agent's context, so its long "Developer
+  commands" reference (settings by feature, frontend, stack, e2e, CI and security checks) moved
+  unchanged to [developer-commands.md](developer-commands.md). AGENTS.md keeps the rules and a
+  short list of the essential commands.
+
 ## Amendment 13 (2026-11-03, owner decision: fewer Opus calls)
 
 Where it differs, this amendment wins over Amendments 1, 2 and 4 and AGENTS.md. It loosens model
@@ -16,7 +42,8 @@ is unchanged.
   in config), it gets exactly one final Opus review of the final head after the Sonnet rounds,
   not an Opus Developer.
 - **Delta rounds after a first `FAIL`** are reviewed by Sonnet unless the fix changes behaviour
-  of security-critical application code (then a fresh Opus). After a second `FAIL` on any PR the
+  of security-critical application code (then the Opus Reviewer, resumed under Amendment 14; a
+  fresh Opus only when it cannot be resumed). After a second `FAIL` on any PR the
   Architect re-assesses the design before another review (prefer allowlists over blocklists for
   guard checks), as the three-cycle rule says.
 
@@ -100,7 +127,8 @@ Where it differs, this amendment wins over Revision 6's review gate ("Developmen
   merge of `main` with no hand-resolved conflict, and CI is green, the Architect's mechanical
   merge check carries the verdict. A scoped fresh review is needed if `main` changed a module
   the PR changes or calls, or a conflict was resolved by hand.
-- **Fix rounds** after a `FAIL` get a fresh **delta review**: the diff since the last reviewed
+- **Fix rounds** after a `FAIL` get a **delta review** (fresh when this amendment was written;
+  by the resumed first Reviewer since Amendment 14): the diff since the last reviewed
   head, each earlier finding verified, and whatever the delta touches.
 - **Reviewers rely on CI** for the full suite; they run targeted tests and mutation checks of
   the guarantees that changed.
@@ -127,7 +155,8 @@ Where it differs, this amendment wins over Amendment 2's reviewer-model rule.
   security-critical PR may be done by a fresh **Sonnet** when the delta only adds or changes
   tests or docs, loosens no guard test (netguard, session guard, egress guard, RLS and role
   tests), and has no hand-resolved conflict in production code. After a second `FAIL` the
-  reviewer is a fresh Opus again.
+  reviewer is a fresh Opus again. (Amendment 14: resuming the same Opus Reviewer is now the
+  default for any delta round; this Sonnet option remains.)
 - **Review effort:** reviewers run targeted test files, never the full suite (CI does), and about
   8 mutation checks per review, chosen by risk; the mutation each earlier finding needs in a
   delta review is outside that cap, and a docs-only finding is verified by reading.

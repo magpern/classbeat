@@ -2,7 +2,8 @@
 
 This is an optional development-agent profile alongside Claude Code and Codex.
 It does not change classbeat's application model providers, model routes or data policy.
-Read AGENTS.md in full, the roadmap, status and relevant ADRs before working.
+Read AGENTS.md in full, the roadmap, status and relevant ADRs before working, and
+docs/developer-commands.md for the area you touch.
 Roadmap Amendment 11 authorizes the model substitutions for Cursor sessions.
 
 ## Role selection
@@ -67,7 +68,9 @@ contacting people retain their specific owner-authorization requirements.
 
 ## Review and merge
 
-Each reviewer starts with a fresh context, without author or Architect conversation.
+Each reviewer's first review of a PR starts with a fresh context, without author or Architect
+conversation; later rounds on the same PR resume that reviewer (roadmap Amendment 14), and a
+fresh one is used only after a second FAIL or when it cannot be resumed.
 Supply the PR, current head SHA, issue and repository evidence, not the author's conclusions.
 Cursor documents clean subagent contexts; if an interface cannot provide that isolation,
 open a separate fresh Cursor session. A self-review or generic in-session review is not PASS.
@@ -75,7 +78,7 @@ open a separate fresh Cursor session. A self-review or generic in-session review
 Grok 4.7 High reviews every Cursor PR, including security-critical PRs, their tests/docs-only
 deltas, uncertain classifications and reviews after a second FAIL. The security categories in
 AGENTS.md remain the classification source.
-About eight risk-based mutations per review plus the ones earlier findings require,
+About eight risk-based mutations per review, only for guarantees the PR adds or a fix changes,
 targeted checks and current-SHA green CI are required as described in the shared gate.
 
 Verdicts remain PR comments, for example:
