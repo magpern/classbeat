@@ -50,6 +50,10 @@ const REASONS: Record<string, string> = {
     "This class has no finished design yet, so there is nothing to copy. Try again when it is ready.",
   feature_off:
     "Classes like this one cannot be made right now, so it cannot be copied.",
+  soundless_not_evaluated:
+    "Classes without music are not available on your plan yet, so this one cannot be copied.",
+  not_changeable:
+    "This class has no music of its own, so it cannot be changed by chat. You can still view, use and save its versions.",
   hash_mismatch:
     "That version is not the one this page showed: it was changed elsewhere. Reload the page and try again.",
   not_found: "This class, or that version, no longer exists.",

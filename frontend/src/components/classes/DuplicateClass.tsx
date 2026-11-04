@@ -61,6 +61,9 @@ export function DuplicateClass({
     <Dialog
       open={open}
       onOpenChange={(next) => {
+        // While the request is in flight the dialog stays open (Escape, a click outside and the
+        // close button do nothing): a reopen would make a new key and could make a second copy.
+        if (!next && sending) return
         setOpen(next)
         if (next) {
           setName(copyTitle(title))

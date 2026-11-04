@@ -92,14 +92,39 @@ test('duplicate a class, save the copy, isolation and the monthly limit', async 
   expect(posted.status()).toBe(404)
   await other.close()
 
-  // The free plan's three classes this month: the design and the copy took two; one more copy
-  // takes the third, and the next is refused with the usual sentence.
-  await page.goto('/classes')
-  await page.getByRole('button', { name: 'Duplicate E2E duplicate copy' }).click()
-  await page.getByRole('dialog').getByRole('button', { name: 'Duplicate' }).click()
-  await expect(page.getByRole('heading', { name: 'E2E duplicate copy (copy)' })).toBeVisible(LONG)
+  // A replayed request (the same Idempotency-Key, made at run time) makes no second copy and
+  // takes no second credit: 201, then 200 with the same class. This copy is the plan's third class.
+  const timeline = await (await page.request.get(`/api/classes/${copy}/history`)).json()
+  const version = timeline.revisions[0] as { id: string; content_hash: string }
+  const ownSession = await (await page.request.get('/api/auth/session')).json()
+  const key = randomUUID()
+  const replay = () =>
+    page.request.post(`/api/classes/${copy}/duplicate`, {
+      headers: {
+        'X-CSRF-Token': ownSession.csrf_token as string,
+        Origin: new URL(baseURL!).origin,
+        'Idempotency-Key': key,
+      },
+      data: { revision_id: version.id, content_hash: version.content_hash, title: 'E2E replayed copy' },
+    })
+  const classesBefore = (await (await page.request.get('/api/classes')).json()).classes.length as number
+  const first = await replay()
+  const again = await replay()
+  expect([first.status(), again.status()]).toEqual([201, 200])
+  expect((await again.json()).class_id).toBe((await first.json()).class_id)
+  const classesAfter = (await (await page.request.get('/api/classes')).json()).classes.length as number
+  expect(classesAfter).toBe(classesBefore + 1)
+
+  // The free plan's three classes this month are used (the design, the dialog's copy and the
+  // replayed one): Duplicate in My classes is refused with the usual sentence, in full.
+  const months = [
+    'January', 'February', 'March', 'April', 'May', 'June',
+    'July', 'August', 'September', 'October', 'November', 'December',
+  ]
+  const now = new Date()
+  const sentence = `You have used your 3 classes for ${months[now.getUTCMonth()]!}. More from 1 ${months[(now.getUTCMonth() + 1) % 12]!}.`
   await page.goto('/classes')
   await page.getByRole('button', { name: 'Duplicate E2E duplicate', exact: true }).click()
   await page.getByRole('dialog').getByRole('button', { name: 'Duplicate' }).click()
-  await expect(page.getByRole('dialog').getByRole('alert')).toContainText('You have used')
+  await expect(page.getByRole('dialog').getByRole('alert')).toHaveText(sentence)
 })

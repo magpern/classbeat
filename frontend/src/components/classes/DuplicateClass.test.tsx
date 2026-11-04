@@ -82,6 +82,66 @@ describe('DuplicateClass', () => {
   })
 })
 
+describe('DuplicateClass keys and requests in flight', () => {
+  beforeEach(() => {
+    mocks.duplicateClass.mockReset()
+    mocks.getRevision.mockReset().mockResolvedValue({ raw: { name: 'x', segments: [] } })
+    mocks.navigate.mockReset()
+  })
+
+  const keyOf = (call: number): string => (mocks.duplicateClass.mock.calls[call] as string[])[4]!
+
+  it('makes a new key on each opening and sends the same key on a retry within one', async () => {
+    mocks.duplicateClass.mockRejectedValue(refusal(409, { reason: 'not_ready' }))
+    open()
+    fireEvent.click(screen.getByRole('button', { name: 'Duplicate' }))
+    await screen.findByRole('alert')
+    fireEvent.click(screen.getByRole('button', { name: 'Duplicate' }))
+    await waitFor(() => {
+      expect(mocks.duplicateClass).toHaveBeenCalledTimes(2)
+    })
+    expect(keyOf(1)).toBe(keyOf(0)) // a retry is the same request
+    fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' })
+    await waitFor(() => {
+      expect(screen.queryByRole('dialog')).toBeNull()
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Duplicate Tuesday climb' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Duplicate' }))
+    await waitFor(() => {
+      expect(mocks.duplicateClass).toHaveBeenCalledTimes(3)
+    })
+    expect(keyOf(2)).not.toBe(keyOf(0)) // a new opening is a new request
+  })
+
+  it('sends once on a double click and stays open while the request is in flight', async () => {
+    let finish: (value: { classId: string; revisionId: string }) => void = () => undefined
+    mocks.duplicateClass.mockReturnValue(
+      new Promise((resolve) => {
+        finish = resolve
+      }),
+    )
+    open()
+    const button = screen.getByRole('button', { name: 'Duplicate' })
+    fireEvent.click(button)
+    fireEvent.click(button)
+    await waitFor(() => {
+      expect(mocks.duplicateClass).toHaveBeenCalledTimes(1)
+    })
+    expect(screen.getByRole<HTMLButtonElement>('button', { name: 'Duplicating…' }).disabled).toBe(true)
+    fireEvent.click(screen.getByRole<HTMLButtonElement>('button', { name: 'Duplicating…' }))
+    // Escape and the close button do not close the dialog while it sends.
+    fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' })
+    fireEvent.click(screen.getByRole('button', { name: 'Close' }))
+    expect(screen.getByRole('dialog')).toBeTruthy()
+    await Promise.resolve()
+    expect(mocks.duplicateClass).toHaveBeenCalledTimes(1)
+    finish({ classId: 'c9', revisionId: 'r9' })
+    await waitFor(() => {
+      expect(mocks.navigate).toHaveBeenCalledWith('/classes/c9')
+    })
+  })
+})
+
 describe('duplicate words', () => {
   it('proposes a copy name within the server limit', () => {
     expect(copyTitle('Tuesday climb')).toBe('Tuesday climb (copy)')
@@ -96,6 +156,17 @@ describe('duplicate words', () => {
     expect(duplicateReasonText(refusal(409, { reason: 'hash_mismatch' }))).toContain('changed elsewhere')
     expect(duplicateReasonText(refusal(404, { reason: 'not_found' }))).toContain('no longer exists')
     expect(duplicateReasonText(refusal(422, { reason: 'invalid_input' }))).toContain('1 to 100 characters')
+    expect(duplicateReasonText(refusal(409, { reason: 'idempotency_mismatch' }))).toContain(
+      'already asked for with other details',
+    )
+    expect(duplicateReasonText(refusal(409, { reason: 'soundless_not_evaluated' }))).toContain(
+      'not available on your plan yet',
+    )
+    expect(duplicateReasonText(refusal(409, { reason: 'not_changeable' }))).toContain('no music of its own')
+    // Anything else gets the generic sentence, never the raw reason.
+    expect(duplicateReasonText(refusal(400, { reason: 'idempotency_key_missing' }))).not.toContain(
+      'idempotency_key_missing',
+    )
     expect(
       duplicateReasonText(refusal(409, { reason: 'quota', quota: 'length', limit: 30, used: 45, plan: 'free' })),
     ).toContain('up to 30 minutes')
