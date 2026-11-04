@@ -359,19 +359,22 @@ and change `PROXY_IP` in the same file to the LAN address of the machine swag ru
 In the swag sample set `set $upstream_classbeat 192.168.1.20;` and port `8080` in both `proxy_pass`
 lines. **The firewall is the boundary here, not the compose file:** nothing but swag may reach the
 port. Docker's published ports bypass `ufw` and `firewalld`, so the rule goes in the `DOCKER-USER`
-chain (it sees the packet after the port translation; match the original destination port):
+chain (it sees the packet after the port translation; match the original destination, this server's
+address **and** the port, so the rule does not drop other forwarded traffic of this host to a port 8080
+that is not web's):
 
 ```bash
-sudo iptables -I DOCKER-USER -p tcp -m conntrack --ctorigdstport 8080 --ctdir ORIGINAL \
-  ! -s 192.168.1.10 -j DROP
+sudo iptables -I DOCKER-USER -p tcp -m conntrack --ctorigdst 192.168.1.20 --ctorigdstport 8080 \
+  --ctdir ORIGINAL ! -s 192.168.1.10 -j DROP
 sudo iptables -L DOCKER-USER -n -v        # the rule is first; make it persistent with your distribution's tool
 ```
 
 (with nftables-based Docker, the equivalent rule in the `DOCKER-USER` chain of the `filter` table).
 Check from a third machine on the LAN: `nc -vz 192.168.1.20 8080` must time out, and from the swag
 machine it must connect. `./check-prod-compose.sh` refuses a published address that is not
-loopback or one private IPv4, a second published port, and a `PROXY_IP` equal to the server's own
-address. The hop from swag to web is **plain HTTP across the LAN** (cookies and forwarded headers
+loopback or one private IPv4, more than one published port of web (both overlays together, or a
+second port from an overlay of your own) and any port of another service, and a `PROXY_IP` equal to
+the server's own address. It cannot see the firewall: the rule above is yours to check. The hop from swag to web is **plain HTTP across the LAN** (cookies and forwarded headers
 in clear): acceptable on a home network you control, not on a shared one. Everything else
 (sections 7 to 10) is unchanged.
 
@@ -447,9 +450,10 @@ sha256sum -c SHA256SUMS --quiet     # the downloaded files are unchanged (sectio
 PROD_CHECK_SWAG_CONF=/opt/swag/config/nginx/proxy-confs/classbeat.subdomain.conf ./check-prod-compose.sh
                                     # again, with your swag file (section 7, step 5); the path is yours
 docker compose pull                 # both images; needs the token of section 4
+# the version as .env holds it, with any quotes, blanks or carriage return dropped (CLASSBEAT_VERSION="1.2.3" is valid)
+V="$(sed -n 's/^CLASSBEAT_VERSION=//p' .env | tr -d "\"' \r")"
 { date -u +%FT%TZ; docker image inspect --format '{{index .RepoDigests 0}}' \
-  "ghcr.io/magpern/classbeat:$(sed -n 's/^CLASSBEAT_VERSION=//p' .env)" \
-  "ghcr.io/magpern/classbeat-db:$(sed -n 's/^CLASSBEAT_VERSION=//p' .env)"; } >> deployed-images.txt   # the digests you run
+  "ghcr.io/magpern/classbeat:$V" "ghcr.io/magpern/classbeat-db:$V"; } >> deployed-images.txt   # the digests you run
 ./check-prod-compose.sh --probe     # every service reads every secret it mounts
 docker compose up -d --wait
 docker compose ps
@@ -553,7 +557,8 @@ files and the version; nothing is cloned or checked out.
 
 ```bash
 cd /opt/classbeat
-OLD="$(sed -n 's/^CLASSBEAT_VERSION=//p' .env)"; NEW=X.Y.Z       # NEW = the release you want, no v
+OLD="$(sed -n 's/^CLASSBEAT_VERSION=//p' .env | tr -d "\"' \r")"; NEW=X.Y.Z   # NEW = the release you want, no v
+echo "$OLD"                                       # write it down: a new shell has no $OLD (Rollback, below)
 # 1. Download into a staging folder and verify there: a failed download changes nothing that runs.
 rm -rf "staging-$NEW" && mkdir "staging-$NEW"
 for f in compose.prod.yaml compose.prod.loopback.yaml compose.prod.lan.yaml check-prod-compose.sh \
@@ -601,6 +606,8 @@ therefore **only** safe when the release you are leaving ran no migration the ol
 before you touch anything; it needs no clone. With the stack still running on the new release:
 
 ```bash
+cd /opt/classbeat
+OLD=X.Y.Z      # the version you were running (section 11 printed it); a new shell does not have $OLD, set it again
 ./check-prod-compose.sh --rollback-check "$OLD"     # OLD = the version you would go back to
 ```
 

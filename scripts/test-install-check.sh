@@ -26,12 +26,28 @@ bad()  { echo "FAIL: $*" >&2; fails=$((fails + 1)); }
 ( cd "$work/assets" && sha256sum -c --quiet SHA256SUMS ) || bad "SHA256SUMS does not verify"
 # The asset list is exactly what the runbook downloads.
 want="SHA256SUMS backup.sh check-prod-compose.sh compose.prod.lan.yaml compose.prod.loopback.yaml compose.prod.yaml prod.env.example restore.sh swag-classbeat.subdomain.conf validate-backup.sh"
-got="$(cd "$work/assets" && printf '%s\n' * | tr '\n' ' ' | sed 's/ $//')"
+# find, not a glob: a glob (`*`) would not list a dotfile, so a hidden asset (a .env) could never fail this.
+list_dir() { find "$work/assets" -mindepth 1 -maxdepth 1 -printf '%f\n'; }
+got="$(list_dir | LC_ALL=C sort | tr '\n' ' ' | sed 's/ $//')"
 if [ "$got" = "$want" ]; then ok "asset list"; else bad "asset list is '$got', want '$want'"; fi
+# SHA256SUMS names every other asset, none twice (dotfiles included, were there any).
+sums="$(awk '{print $2}' "$work/assets/SHA256SUMS" | LC_ALL=C sort | tr '\n' ' ' | sed 's/ $//')"
+others="$(list_dir | grep -vx SHA256SUMS | LC_ALL=C sort | tr '\n' ' ' | sed 's/ $//')"
+if [ "$sums" = "$others" ]; then ok "SHA256SUMS lists every asset"; else bad "SHA256SUMS lists '$sums', the assets are '$others'"; fi
+# A hidden asset is refused by the build (its glob and sha256sum would skip it). Run on a copy of the
+# script in a scratch tree that holds the asset sources, with one extra dotfile entry.
+fake="$work/fake-root"; mkdir -p "$fake/scripts"
+while read -r src _; do mkdir -p "$fake/$(dirname "$src")"; cp "$root/$src" "$fake/$src"; done < <("$root/scripts/release-assets.sh" list)
+sed 's|^  "scripts/backup.sh backup.sh"$|&\n  "scripts/backup.sh .hidden"|' "$root/scripts/release-assets.sh" > "$fake/scripts/release-assets.sh"
+chmod +x "$fake/scripts/release-assets.sh"
+if ! grep -q '\.hidden' "$fake/scripts/release-assets.sh"; then bad "hidden-asset test: the scratch script was not edited"
+elif out="$("$fake/scripts/release-assets.sh" build "$work/fake-assets" 2>&1)"; then bad "a dotfile asset was built"
+elif grep -q 'must not start with a dot' <<<"$out"; then ok "a hidden asset is refused"
+else bad "hidden asset refused for another reason: $out"; fi
 # The runbook downloads exactly these files, in section 3 and again in section 11.
 runbook="$root/docs/runbooks/vps-deploy.md"
 if [ -f "$runbook" ]; then
-  names="$(printf '%s ' "$(cd "$work/assets" && printf '%s\n' *)" | tr -s ' \n' ' ' | sed 's/ $//')"
+  names="$(printf '%s ' "$(list_dir)" | tr -s ' \n' ' ' | sed 's/ $//')"
   mapfile -t loops < <(awk '/^(  )?for f in /{buf=$0; while (buf ~ /\\$/) { getline nxt; sub(/\\$/, "", buf); buf = buf nxt } print buf}' "$runbook")
   if [ "${#loops[@]}" -ne 2 ]; then bad "the runbook has ${#loops[@]} download loops, want 2 (sections 3 and 11)"; fi
   for l in "${loops[@]}"; do
@@ -51,9 +67,11 @@ sed -i -e 's/^CLASSBEAT_VERSION=.*/CLASSBEAT_VERSION=1.2.3/' "$install/.env"
 names=(postgres_password database_owner_password database_password database_maint_password app_secret_key
   connection_kek smtp_password anthropic_api_key openai_api_key deepseek_api_key swedebeat_app
   oauth_google_client_secret oauth_github_client_secret oauth_microsoft_client_secret)
+canary="secret-canary-$RANDOM$RANDOM$RANDOM"
 mksecrets() {
   rm -rf "$install/secrets"; mkdir -m 2700 "$install/secrets"
-  local n; for n in "${names[@]}"; do install -m 640 /dev/null "$install/secrets/$n"; done
+  # Each file holds a canary (never a real secret): no output of the check may ever contain it.
+  local n; for n in "${names[@]}"; do install -m 640 /dev/null "$install/secrets/$n"; printf '%s-%s' "$canary" "$n" > "$install/secrets/$n"; done
   if (( can_gid )); then as_root chgrp "$gid" "$install/secrets" "$install"/secrets/*; as_root chmod 2700 "$install/secrets"; fi
 }
 run_check() { ( cd "$install" && ./check-prod-compose.sh "$@" 2>&1 ); }
@@ -61,6 +79,7 @@ expect() {   # expect NAME WANT_RC PATTERN [args...]: exit status and a pattern 
   local name="$1" want="$2" pat="$3" out rc=0
   shift 3
   out="$(run_check "$@")" || rc=$?
+  if grep -q -- "$canary" <<<"$out"; then bad "$name: the output holds the content of a secret file"; return; fi
   if [ "$rc" = "$want" ] && grep -Eq -- "$pat" <<<"$out"; then ok "$name"; else bad "$name (rc $rc, want $want; pattern '$pat'): $(tail -3 <<<"$out")"; fi
 }
 
@@ -88,6 +107,15 @@ echo 'OAUTH_GOOGLE_CLIENT_SECRET=x' >> "$install/.env"
 expect "a client secret in .env" 1 'CLIENT_SECRET'
 sed -i '/CLIENT_SECRET/d' "$install/.env"
 
+# 1a. A parent folder that holds compose.prod.yaml and docs/runbooks is not a checkout: the script
+# next to the install folder's files is an install, whatever the folder above it holds (#575 review).
+parent="$work/parent"; mkdir -p "$parent/docs/runbooks" "$parent/inst"
+cp "$install/compose.prod.yaml" "$parent/"
+cp "$install"/check-prod-compose.sh "$install"/compose.prod.*.yaml "$install"/compose.prod.yaml "$parent/inst/"
+out="$(cd "$parent/inst" && ./check-prod-compose.sh 2>&1)" && rc=0 || rc=$?
+if [ "$rc" = 1 ] && grep -Eq 'no .*\.env: cp prod\.env\.example' <<<"$out"; then ok "a parent folder with compose.prod.yaml and docs/runbooks is still an install"
+else bad "parent-folder layout (rc $rc): $(tail -2 <<<"$out")"; fi
+
 # 1b. Where web is published (real values): the loopback and LAN overlays.
 cp "$install/.env" "$work/env.good"
 printf 'COMPOSE_FILE=compose.prod.yaml:compose.prod.lan.yaml\nWEB_LAN_ADDRESS=0.0.0.0\n' >> "$install/.env"
@@ -96,6 +124,16 @@ sed -i 's/^WEB_LAN_ADDRESS=.*/WEB_LAN_ADDRESS=8.8.8.8/' "$install/.env"
 expect "LAN overlay on a public address" 1 'only 127\.0\.0\.1 or one private LAN address'
 sed -i 's/^WEB_LAN_ADDRESS=.*/WEB_LAN_ADDRESS=172.29.90.10/' "$install/.env"
 expect "swag's address is this server's" 1 'PROXY_IP .* is this server'
+# Both shipped overlays together publish web twice (loopback and LAN): only one overlay at a time.
+sed -i 's/^COMPOSE_FILE=.*/COMPOSE_FILE=compose.prod.yaml:compose.prod.loopback.yaml:compose.prod.lan.yaml/; s/^WEB_LAN_ADDRESS=.*/WEB_LAN_ADDRESS=192.168.1.20/' "$install/.env"
+expect "both overlays together" 1 'web publishes at most one port'
+sed -i 's/^COMPOSE_FILE=.*/COMPOSE_FILE=compose.prod.yaml:compose.prod.lan.yaml/' "$install/.env"
+# A second port from an overlay of the owner's own, next to the LAN one.
+printf 'services:\n  web:\n    ports:\n      - "192.168.1.20:8081:8000"\n' > "$install/compose.extra.yaml"
+sed -i 's/^COMPOSE_FILE=.*/COMPOSE_FILE=compose.prod.yaml:compose.prod.lan.yaml:compose.extra.yaml/' "$install/.env"
+expect "a second port from an own overlay" 1 'web publishes at most one port'
+rm -f "$install/compose.extra.yaml"
+sed -i 's/^COMPOSE_FILE=.*/COMPOSE_FILE=compose.prod.yaml:compose.prod.lan.yaml/' "$install/.env"
 sed -i 's/^WEB_LAN_ADDRESS=.*/WEB_LAN_ADDRESS=192.168.1.20/; s/^PROXY_IP=.*/PROXY_IP=192.168.1.10/' "$install/.env"
 sed -i 's/^COMPOSE_FILE=compose.prod.yaml$//' "$install/.env"
 cp "$install/.env" "$work/env.lan"
@@ -148,6 +186,12 @@ if [ "\${1:-}" = run ]; then
   printf '%s' "\${REVS_OUT-}"; exit \${REVS_RC:-0}
 fi
 if [ "\${1:-}" = compose ] && [[ " \$* " == *" run "* ]]; then
+  if [ -n "\${PROBE_REAL-}" ]; then
+    # Runs the check's own probe script (the argument after -c) on this folder's secrets/.
+    script=""; prev=""
+    for a in "\$@"; do if [ "\$prev" = -c ]; then script="\$a"; fi; prev="\$a"; done
+    exec sh -c "\${script//\/run\/secrets/\$PROBE_REAL}"
+  fi
   printf '%s' "\${PROBE_OUT-}"
   exit \${PROBE_RC:-0}
 fi
@@ -172,6 +216,15 @@ if (( can_gid )); then
     bash -c 'cd "$1" && ./check-prod-compose.sh --probe' _ "$install" >"$work/probe-rc.log" 2>&1; then
     bad "probe: a failing docker run passed"
   else ok "probe: docker run fails"; fi
+  # The probe script itself (not a canned answer): it lists every secret file and prints no content.
+  # The files hold a canary, so a script that printed them (cat, head) would be caught here.
+  if PATH="$stub:$PATH" PROBE_REAL="$install/secrets" \
+    bash -c 'cd "$1" && ./check-prod-compose.sh --probe' _ "$install" >"$work/probe-real.log" 2>&1 \
+    && grep -q '^web: app_secret_key OK' "$work/probe-real.log" \
+    && [ "$(grep -c ': .* OK$' "$work/probe-real.log")" -ge "${#names[@]}" ] \
+    && ! grep -q -- "$canary" "$work/probe-real.log" && ! grep -q 'FAIL' "$work/probe-real.log"; then
+    ok "probe: the real script lists the secret files and prints no content"
+  else bad "probe: the real script"; tail -3 "$work/probe-real.log" | cut -c1-120 >&2; fi
 fi
 
 # 3b. PROXY_IP against the running swag container's address (stub `docker inspect`, #500).

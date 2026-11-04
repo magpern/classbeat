@@ -104,7 +104,11 @@ services:
       CLASSBEAT_MAINT_DATABASE_URL: postgresql+psycopg://classbeat_maint@db:5432/classbeat
       # ADR 0015: the Swedebeat connection is off unless the owner switches it on here.
       CLASSBEAT_SWEDEBEAT_ENABLED: ${SWEDEBEAT_ENABLED:-false}
-      # ADR 0018: running classes are off unless the owner switches them on here.
+      # ADR 0018: running classes are off unless the owner switches them on here. This is the kill
+      # switch only: a plain dev stack can no longer switch running on with it (it was enough before
+      # #590). Running also needs an admin-stored `on` and a `design` route covering running for
+      # every plan; web gets no CLASSBEAT_MODEL_PROVIDER here, so its `fake` never counts as
+      # covering, and no recorded route does either until the owner records one.
       CLASSBEAT_RUNNING_ENABLED: ${RUNNING_ENABLED:-false}
       # ADR 0007 (soundless classes): the kill switch only, off by default. Even on, a plain dev
       # stack cannot switch soundless on: web gets no CLASSBEAT_MODEL_PROVIDER here, so its `fake`

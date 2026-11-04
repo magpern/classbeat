@@ -64,6 +64,9 @@ jobs:
   checks:
     name: Checks
     runs-on: ubuntu-24.04
+    # A hung check (the site-config tokenizer, a Docker pull) must fail the job, not run to GitHub's
+    # six-hour default.
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -150,23 +153,6 @@ jobs:
           from="$(sed -n 's/^FROM //p' docker/postgres/Dockerfile)"
           [ "$from" = "$db" ] \
             || { echo "::error::docker/postgres/Dockerfile must be FROM $db (found '$from')"; exit 1; }
-
-      # The classbeat-db image builds, and the SQL baked into it is byte for byte the repository's
-      # (what the release would push and compose.prod.yaml runs). Nothing is pushed.
-      - name: Database image builds with the repository's SQL
-        run: |
-          set -euo pipefail
-          docker build -q -t classbeat-db-check docker/postgres
-          cid="$(docker create classbeat-db-check)"
-          trap 'docker rm -f "$cid" >/dev/null' EXIT
-          mkdir "$RUNNER_TEMP/dbimg"
-          docker cp "$cid:/queue" "$RUNNER_TEMP/dbimg/queue"
-          docker cp "$cid:/maint" "$RUNNER_TEMP/dbimg/maint"
-          docker cp "$cid:/docker-entrypoint-initdb.d" "$RUNNER_TEMP/dbimg/init"
-          for d in queue maint init; do diff -r "docker/postgres/$d" "$RUNNER_TEMP/dbimg/$d"; done
-          # The postgres user must be able to read every file.
-          docker run --rm --user postgres --entrypoint sh classbeat-db-check -c \
-            'for f in /queue/* /maint/* /docker-entrypoint-initdb.d/*; do test -r "$f" || { echo "unreadable: $f"; exit 1; }; done'
 
       # compose.prod.yaml behind swag (issues #341, #492, #500): config parses with dummy values alone
       # and with each overlay; the production invariants hold (no caddy, no published port but web,
@@ -713,6 +699,41 @@ jobs:
           "$RUNNER_TEMP/trivy" image \
             --severity HIGH,CRITICAL --ignore-unfixed --exit-code 1 \
             "$image"
+
+      # The classbeat-db image (what the release would push and compose.prod.yaml runs, ADR 0020)
+      # builds, holds the repository's SQL and has no HIGH or CRITICAL finding with a fix. Here and
+      # not in `checks`: it needs Docker, so it runs for a `stack` change (docker/ is one), not on
+      # every pull request; main and the weekly run do it too (#470, review of #573). Nothing is pushed.
+      - name: Database image builds with the repository's SQL
+        working-directory: .
+        run: |
+          set -euo pipefail
+          docker build -q -t classbeat-db-check docker/postgres
+          cid="$(docker create classbeat-db-check)"
+          trap 'docker rm -f "$cid" >/dev/null' EXIT
+          mkdir "$RUNNER_TEMP/dbimg"
+          # Every folder of the build context must be in the image, at the path the Dockerfile gives
+          # it (init is the entrypoint's init folder): a new folder the Dockerfile does not COPY
+          # fails `docker cp` here, so the comparison is not only of what the Dockerfile names.
+          n=0
+          for dir in docker/postgres/*/; do
+            d="$(basename "$dir")"
+            if [ "$d" = init ]; then target=/docker-entrypoint-initdb.d; else target="/$d"; fi
+            docker cp "$cid:$target" "$RUNNER_TEMP/dbimg/$d"
+            diff -r "docker/postgres/$d" "$RUNNER_TEMP/dbimg/$d"
+            n=$((n + 1))
+          done
+          [ "$n" -ge 3 ] || { echo "::error::expected the init, queue and maint folders in docker/postgres"; exit 1; }
+          # The postgres user must be able to read every file.
+          docker run --rm --user postgres --entrypoint sh classbeat-db-check -c \
+            'for f in /queue/* /maint/* /docker-entrypoint-initdb.d/*; do test -r "$f" || { echo "unreadable: $f"; exit 1; }; done'
+
+      - name: Scan the database image
+        working-directory: .
+        run: |
+          "$RUNNER_TEMP/trivy" image \
+            --severity HIGH,CRITICAL --ignore-unfixed --exit-code 1 \
+            classbeat-db-check
 
       # Playwright steps run only when the UI, e2e, compose or Docker files changed (the
       # `playwright` output of scripts/ci-changes.sh); the stack checks and the image scan above
