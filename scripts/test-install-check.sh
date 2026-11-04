@@ -232,6 +232,11 @@ if [ "\${1:-}" = inspect ]; then
   printf '%s' "\${SWAG_OUT-}"; exit 0
 fi
 if [ "\${1:-}" = run ]; then
+  # The rollback check's ls of the old image needs no network (#591): refuse it without the flag.
+  if [[ " \$* " == *" --entrypoint ls "* ]]; then
+    printf '%s\\n' "\$*" >> "$work/ls-run.args"
+    [[ " \$* " == *" --network none "* ]] || { echo "stub: docker run ls without --network none" >&2; exit 97; }
+  fi
   printf '%s' "\${REVS_OUT-}"; exit \${REVS_RC:-0}
 fi
 if [ "\${1:-}" = compose ] && [[ " \$* " == *" run "* ]]; then
@@ -319,6 +324,9 @@ rb "rollback: empty alembic_version" 1 'no Alembic revision' '' "$old_files"
 rb "rollback: odd revision text" 1 'odd revision' $'0026; drop\n' "$old_files"
 rb "rollback: db not reachable" 1 'cannot read the database revision' '' "$old_files" 1
 rb "rollback: image not pulled" 1 'cannot list the migrations' $'0026_plan_gates\n' '' 0 1
+if [ -s "$work/ls-run.args" ] && ! grep -qv -- '--network none' "$work/ls-run.args"; then
+  ok "rollback: the old image's ls runs with --network none"
+else bad "rollback: the old image's ls ran without --network none: $(tail -1 "$work/ls-run.args" 2>&1)"; fi
 if ( cd "$install" && ./check-prod-compose.sh --rollback-check >/dev/null 2>&1 ); then bad "rollback: no version given passed"; else ok "rollback: needs a version"; fi
 
 (( fails == 0 )) || { echo "test-install-check: $fails failure(s)" >&2; exit 1; }

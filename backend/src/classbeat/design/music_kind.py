@@ -218,16 +218,23 @@ _JOB_CLASS_SOURCE = text(
 )
 
 
-async def check_stored(fs: FencedSession, soundless: bool) -> None:
-    """In a design's final fenced transaction, after ``revision.adopt_first``: a soundless
-    revision needs the class's ``music_source`` to be ``none``, and a music revision a class whose
-    source is not ``none``. Otherwise (a job of the other kind landed first) ``invalid_input``,
-    which rolls the whole store back."""
+async def check_stored(fs: FencedSession, soundless: bool, *, before_adopt: bool = False) -> None:
+    """In a design's final fenced transaction: a soundless revision needs the class's
+    ``music_source`` to be ``none``, and a music revision a class whose source is not ``none``.
+    Otherwise (a job of the other kind landed first) ``invalid_input``, which rolls the whole
+    store back.
+
+    Call it BEFORE ``revision.adopt_first`` (#589), which writes ``music_source`` whenever the
+    class has no current revision yet. A first soundless design has no source until
+    ``adopt_first`` writes ``none``, so with ``before_adopt`` a soundless check also accepts an
+    unset source (a music source is still refused); the strict check follows ``adopt_first``."""
     source = (
         await fs.db.execute(
             _JOB_CLASS_SOURCE, {"job_id": fs.lease.job_id, "owner_id": fs.lease.owner_id}
         )
     ).scalar_one_or_none()
+    if soundless and before_adopt and source is None:
+        return
     if is_none(source) != soundless:
         raise JobFailure("invalid_input")
 

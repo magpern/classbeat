@@ -299,6 +299,9 @@ async def run(job_run: JobRun) -> Complete:
             ``not_connected`` here rolls it back and ends the job with that category."""
             await step.still_current(fs)
             revision_id = await draft.store(fs)
+            # Before ``adopt_first``, which writes ``music_source`` of a class with no current
+            # revision whatever it holds (#589).
+            await music_kind.check_stored(fs, soundless=False)  # the class's music kind (#527)
             adopted = await revision.adopt_first(
                 fs,
                 revision_id,
@@ -306,7 +309,6 @@ async def run(job_run: JobRun) -> Complete:
                 given.music.model_dump(mode="json"),
             )
             await sport.check_stored(fs, given.brief.sport)  # the class's sport never changes
-            await music_kind.check_stored(fs, soundless=False)  # nor its music kind (#527)
             if not adopted and isinstance(given.music, SwedebeatMusicChoice):
                 # A verified hand-off designs on the mix, replacing the Spotify source.
                 from classbeat.swedebeat_handoff.adopt import adopt_verified_mix
@@ -346,13 +348,17 @@ async def _run_soundless(job_run: JobRun, given: DesignDraftInput, model: GroupM
     draft = revision.build(outcome.output, outcome, None, step)
 
     async def store(fs: FencedSession) -> UUID:
-        """In the final fenced transaction: the revision, the class's first ``music_source`` of
-        ``none``, then the sport and the music kind checked again (either rolls it all back)."""
+        """In the final fenced transaction: the revision, the music kind checked, the class's first
+        ``music_source`` of ``none``, then the sport and the music kind checked again (any of
+        them rolls it all back)."""
         await step.still_current(fs)
         revision_id = await draft.store(fs)
+        # A music source is refused before ``adopt_first`` can overwrite it (#589); an unset one
+        # is the first design, which ``adopt_first`` sets to ``none``.
+        await music_kind.check_stored(fs, soundless=True, before_adopt=True)
         await revision.adopt_first(fs, revision_id, given.brief.stored(), dict(music_kind.NO_MUSIC))
         await sport.check_stored(fs, given.brief.sport)
-        await music_kind.check_stored(fs, soundless=True)
+        await music_kind.check_stored(fs, soundless=True)  # strict, for a class already adopted
         return revision_id
 
     return Complete(store, release=step.close)
