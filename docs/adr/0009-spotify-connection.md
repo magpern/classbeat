@@ -259,13 +259,15 @@ worker (refresh) alike, through `classbeat.egress` (§10).
 >   refreshed first, as above, including the token endpoint's own flip. Then:
 >   - step 3 records nothing (no `record_result`: no `last_used_at`, no `last_error`);
 >   - a 401 is not repeated and forces no refresh;
->   - the read never writes `needs_reconnect`.
+>   - the read never writes `needs_reconnect` itself; `open_connection` keeps its own flip of a row
+>     whose secret no longer decrypts (ADR 0004 §5).
 >
 >   This is stricter than the rules above (fewer writes, no flips). The other callers are
 >   unchanged.
 > - **A refresh is never cancelled** by a deadline or by the caller going away: no `asyncio.timeout`
->   or `wait_for` around `spotify_call` or the refresh, and `asyncio.shield` when the request that
->   started it is cancelled. Otherwise a rotated refresh token could be lost (the "Rotation is
+>   or `wait_for` around `spotify_call` or the refresh, and the refresh alone runs as its own task
+>   under `asyncio.shield` (a strong reference kept until it ends) when the request that started it
+>   is cancelled. Otherwise a rotated refresh token could be lost (the "Rotation is
 >   persisted" rule above).
 
 ### 7. Disconnect, a changed Client ID and a changed account

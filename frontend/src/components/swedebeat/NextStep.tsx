@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useId, useRef, useState } from 'react'
 import { ApiError } from '../../api/client'
 import type { ClassSummary } from '../../api/classes'
+import { getConnectionsView } from '../../api/connections'
 import { failureText } from '../../api/jobMessages'
 import { getJob, isTerminal } from '../../api/jobs'
 import {
@@ -18,7 +19,7 @@ import {
 import { getSwedebeatMixes, type SwedebeatMix } from '../../api/swedebeatMixes'
 import { minutes } from '../../lib/songs'
 import { actionKey, dropActionKey } from '../../lib/submittedInput'
-import { useRouter } from '../../router/Router'
+import { Link, useRouter } from '../../router/Router'
 import { Notice, useAction } from '../forms'
 import { Button } from '../ui/button'
 import { Card, CardTitle } from '../ui/card'
@@ -81,6 +82,9 @@ export function NextStep({
   const [picked, setPicked] = useState<string | null>(null)
   const [waiting, setWaiting] = useState(false)
   const [jobProblem, setJobProblem] = useState<string | null>(null)
+  // The user's "I use Swedebeat" (#525): starting this step and designing on the mix need it.
+  // `unknown` when it could not be read: the page then claims nothing about the switch.
+  const [preference, setPreference] = useState<'on' | 'off' | 'unknown' | null>(null)
   const action = useAction()
   const locked = useRef(false)
   const alive = useRef(true)
@@ -91,6 +95,21 @@ export function NextStep({
     alive.current = true
     return () => {
       alive.current = false
+    }
+  }, [])
+
+  useEffect(() => {
+    let live = true
+    getConnectionsView().then(
+      (view) => {
+        if (live) setPreference(view.swedebeat.usesSwedebeat ? 'on' : 'off')
+      },
+      () => {
+        if (live) setPreference('unknown')
+      },
+    )
+    return () => {
+      live = false
     }
   }, [])
 
@@ -280,6 +299,17 @@ export function NextStep({
           Checking your mixes in MOWL
         </p>
       ) : null}
+      {preference === 'off' ? (
+        <p className="m-0 text-muted" data-testid="needs-preference">
+          “I use Swedebeat” is off. Turn it on on <Link to="/account#connections">your account page</Link> to
+          start this step or design the class on the mix. A step you already started can still be checked.
+        </p>
+      ) : null}
+      {preference === 'unknown' ? (
+        <p className="m-0 text-muted" data-testid="preference-unknown">
+          classbeat could not check your Swedebeat setting. Reload the page to design the class on this mix.
+        </p>
+      ) : null}
       {jobProblem !== null ? <Notice kind="error">{jobProblem}</Notice> : null}
       {reconnect ? <ReconnectPrompt /> : null}
       {action.error ? <Notice kind="error">{action.error}</Notice> : null}
@@ -289,9 +319,11 @@ export function NextStep({
       {verified ? (
         <div className="flex flex-wrap items-center gap-3">
           <Chip tone="ok">Mix verified</Chip>
-          <Button disabled={busy || summary.openJob !== null} onClick={design}>
-            Design the class on this mix
-          </Button>
+          {preference === 'on' ? (
+            <Button disabled={busy || summary.openJob !== null} onClick={design}>
+              Design the class on this mix
+            </Button>
+          ) : null}
         </div>
       ) : (
         <div className="flex flex-wrap gap-3">

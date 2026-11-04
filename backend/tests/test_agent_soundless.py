@@ -25,12 +25,16 @@ from classbeat.agent import model_input
 from classbeat.agent.design import SYSTEM_PROMPT as CYCLING_PROMPT
 from classbeat.agent.dispatcher import dispatch
 from classbeat.agent.provider import ToolCall
+from classbeat.agent.revise import ReviseResult
 from classbeat.agent.schemas import Brief, SoundlessDraft, WorkoutDraft
 from classbeat.agent.soundless import (
+    REVISE_SYSTEM_PROMPT,
     SYSTEM_PROMPT,
     SoundlessContext,
+    SoundlessReviseContext,
     check_soundless,
     soundless_design_stage,
+    soundless_revise_stage,
 )
 from classbeat.agent.soundless_input import NO_MUSIC, first_message
 from classbeat.agent.stage import Stage, ToolError
@@ -279,3 +283,79 @@ def test_the_revision_music_is_exactly_the_source() -> None:
     assert not is_none({"source": "mowl_spotify_playlist"})
     assert not is_none("none")
     assert copy.deepcopy(NO_MUSIC_SOURCE) == {"source": "none"}
+
+
+# --- the soundless revise stage (SL2, #528) ------------------------------------------------------
+
+
+def revise_ctx(request: str = "Make the start easier.") -> SoundlessReviseContext:
+    return SoundlessReviseContext(
+        brief(), WorkoutDraft.model_validate(soundless_draft()), ("Earlier ask",), request
+    )
+
+
+def test_the_revise_stage_has_two_tools_and_no_songs_requested() -> None:
+    s = soundless_revise_stage(revise_ctx())
+    assert s.name == "revise"
+    assert [t.name for t in s.tools] == ["preview_draft", "submit_draft"]
+    assert s.final_tool == "submit_draft"
+    assert s.also_final == ()
+    gone = dispatch(s, ToolCall("c1", "songs_requested", {}))
+    assert not gone.ok  # an unknown tool: the cycling exit cannot end a soundless revise
+    assert json.loads(gone.result.content)["error"] == "unknown_tool"
+
+
+def test_the_revise_submit_ends_with_the_checked_draft_and_the_note_and_refuses_beat() -> None:
+    s = soundless_revise_stage(revise_ctx())
+    done = dispatch(
+        s, ToolCall("c2", "submit_draft", {"draft": soundless_draft(), "note": "Eased it."})
+    )
+    assert done.ok
+    assert done.final
+    assert isinstance(done.output, ReviseResult)
+    assert done.output.note == "Eased it."
+    assert done.output.result.map_version is None
+    beat = soundless_draft()
+    beat["segments"][0]["intervals"][0]["rpm"] = "beat"
+    assert not dispatch(s, ToolCall("c3", "submit_draft", {"draft": beat})).ok
+    short = PlanGates(max_class_minutes=10, games=True, races=True, ftp_tests=True)
+    gated = SoundlessReviseContext(
+        brief(), WorkoutDraft.model_validate(soundless_draft()), (), "x", short
+    )
+    refused = call(soundless_revise_stage(gated), "submit_draft", {"draft": soundless_draft()})
+    assert (refused["ok"], refused["error"]) == (False, "not_allowed")
+
+
+def test_the_revise_input_has_no_music_key_and_no_music_text() -> None:
+    ctx = revise_ctx("Make the start easier.")
+    head, body = ctx.first_message().split("\n\n", 1)
+    assert NO_MUSIC in head
+    payload = json.loads(body)
+    assert set(payload) == {"brief", "base_draft", "earlier_requests", "request"}
+    assert payload["earlier_requests"] == ["Earlier ask"]
+    s = soundless_revise_stage(ctx)
+    tools = json.dumps([t.input_model.model_json_schema() for t in s.tools])
+    tools += " ".join(t.description for t in s.tools)
+    for word in MUSIC_WORDS:
+        assert not mentions(head, word), word
+        assert not mentions(REVISE_SYSTEM_PROMPT, word), word
+    for word in (*MUSIC_WORDS, "music"):
+        assert not mentions(tools, word), word
+
+
+def test_a_running_brief_never_gets_the_soundless_revise_stage() -> None:
+    running = Brief.model_validate({"sport": "running", "length_min": 30})
+    with pytest.raises(ValueError, match="cycling"):
+        soundless_revise_stage(
+            SoundlessReviseContext(running, WorkoutDraft.model_validate(soundless_draft()), (), "x")
+        )
+
+
+def test_the_soundless_revise_prompt_version_is_its_own_and_in_the_design_group() -> None:
+    versions = all_prompt_versions()
+    assert versions["soundless_revise"] == soundless_revise_stage(revise_ctx()).prompt_version
+    others = [v for k, v in versions.items() if k != "soundless_revise"]
+    assert versions["soundless_revise"] not in others
+    assert "soundless_revise" in GROUP_STAGES["design"]
+    assert len(GROUP_STAGES["design"]) == 6
+    assert REVISE_SYSTEM_PROMPT != SYSTEM_PROMPT
