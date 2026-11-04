@@ -572,6 +572,7 @@ check_lan() {
 # the owner's own is allowed, exactly as proton-bridge-smtp.md writes it: compose.bridge.yaml's
 # read-only bind of ./smtp-ca/bridge.pem into web at /run/smtp-ca/bridge.pem, and the external network
 # `bridge-mail` (any name) that web alone joins. Anything else is refused like in the dummy files.
+# (Older Compose writes the short bind syntax with `bind: {create_host_path: true}`, newer with `{}`.)
 # Nothing here reads a secret file: compose renders a file secret as its path. Only key names and rule
 # messages are printed, never a value or a variable name (check_keys).
 # shellcheck disable=SC2016  # jq variables, not shell ones
@@ -586,7 +587,8 @@ strip_bridge='
         and ($vs | length) == 1 and ($vs[0] | type) == "object"
         and (($vs[0] | keys) - ["type","source","target","read_only","bind"]) == []
         and $vs[0].type == "bind" and $root != "" and $vs[0].source == $root + "/smtp-ca/bridge.pem"
-        and $vs[0].target == "/run/smtp-ca/bridge.pem" and $vs[0].read_only == true and ($vs[0].bind // {}) == {}
+        and $vs[0].target == "/run/smtp-ca/bridge.pem" and $vs[0].read_only == true
+        and (($vs[0].bind // {}) | . == {} or . == {"create_host_path": true})
     then del(.networks["bridge-mail"], .services.web.networks["bridge-mail"], .services.web.volumes)
     else . end'
 check_real() {
@@ -1030,12 +1032,15 @@ expect_yaml_refused 'services.db.environment: 1 variable' 'services:
 grep -qF -- 'dummy-secret-connection_kek' "$tmp/yaml-refuse.log" \
   && { echo "check-prod-compose: self-test: a refused env_file's value was printed" >&2; exit 1; }
 expect_yaml_refused 'services.web.environment: 1 variable' 'services: {web: {"env_file": [{path: ./spy.env}]}}'
-expect_yaml_refused 'services.worker.label_file' 'services:
+# (Compose versions differ in what they keep: label_file itself, or only the labels it reads.)
+expect_yaml_refused 'services.worker.label' 'services:
   worker:
     ? label_file
     : ./spy.env'
-expect_yaml_refused 'services.worker.profiles' 'services:
-  worker:
+expect_yaml_refused 'services.spy' 'services:
+  spy:
+    image: busybox
+    logging: {driver: json-file, options: {max-size: 10m}}
     "profiles": [ops]'
 expect_yaml_refused 'services.spy' '? include
 : [./other.yaml]'
