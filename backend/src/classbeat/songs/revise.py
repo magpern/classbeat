@@ -4,7 +4,8 @@
   "spotify")``; ``consumes_credit = False`` (a class is one credit however often it is revised).
   Server fields: ``base_revision_hash`` and ``request_message_id``.
 - **admit** (the jobs API's create transaction, under the owner lock, the class row locked), each
-  refusal writing nothing: ``song_picking_off``; ``invalid_input`` unless the base is a ``draft``
+  refusal writing nothing: ``song_picking_off``; ``invalid_input`` for a soundless class
+  (``music_kind.refuse_soundless``, #530); ``invalid_input`` unless the base is a ``draft``
   of the class; ``stale_base`` unless it is the current revision; ``revision_limit`` (it makes one
   chat revision, counted with ``revise_draft``'s); the month's model cost cap (409 ``quota``
   ``cost``, ``classbeat.quota.check_cost``); ``not_song_picked`` when the base draft has no
@@ -37,8 +38,9 @@
   the request, told the songs changed; the final transaction: ``final_checks``, the draft
   revision (parent: the base, ``music.song_list_id``), the compare-and-set of
   ``current_revision_id`` **and** ``music_source`` (the new final playlist) from the base, the
-  final playlist's MOWL id and the assistant message. If the base is no longer current the
-  revision is kept, not current, and the class's music is unchanged. The earlier
+  final playlist's MOWL id and the assistant message (a class whose ``music_source`` is ``none``
+  rolls it back ``invalid_input``, ``music_kind.check_stored``). If the base is no longer
+  current the revision is kept, not current, and the class's music is unchanged. The earlier
   ``class_playlists`` row and its playlist are never touched (history).
 """
 
@@ -58,7 +60,7 @@ from classbeat.agent.provider import ModelProvider
 from classbeat.agent.revise import ReviseContext, ReviseResult, revise_stage
 from classbeat.context import UserContext
 from classbeat.crypto.keks import KeyRing
-from classbeat.design import chat, corrections, diff, limits, revision
+from classbeat.design import chat, corrections, diff, limits, music_kind, revision
 from classbeat.design.guidance import rule_set_for
 from classbeat.design.kind import current_runtime, group_model
 from classbeat.flags import effective as flags
@@ -121,6 +123,10 @@ async def admit(db: AsyncSession, ctx: UserContext, parsed: BaseModel, /) -> Adm
     if not await flags.song_picking_admits(db, ctx, config.current().enabled):
         return Refused("song_picking_off")
     given, class_id, owner = parsed, parsed.class_id, ctx.user_id
+    # ADR 0007 amendment item 9 (#530): a soundless class has no songs to change.
+    soundless = await music_kind.refuse_soundless(db, owner, class_id)
+    if soundless is not None:
+        return soundless
     state = await chat.create_state(db, owner, class_id, given.base_revision_id)
     if not state.exists or state.base_kind != "draft" or state.base_hash is None:
         return Refused("invalid_input")  # a foreign or unknown id answers like any other
@@ -339,6 +345,8 @@ async def run_revise_phase_two(
             """``final_checks``, the revision, the compare-and-set, the MOWL id, the message."""
             await final_checks(fs, p, final, step)
             revision_id = await draft.store(fs)
+            # Never over a ``none`` source (#530): checked before the compare-and-set writes it.
+            await music_kind.check_stored(fs, soundless=False)
             params = {
                 "revision_id": revision_id,
                 "music_source": source,
