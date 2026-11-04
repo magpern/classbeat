@@ -87,7 +87,8 @@ plans = Table(
     _ts("created_at", nullable=False, default_now=True),
     _ts("updated_at", nullable=False, default_now=True),
     _uuid("updated_by"),
-    # Migration 0026 (#496): the class length cap, the feature gates and the prices (admin only).
+    # Migration 0026 (#496): the class length cap, the feature gates and the prices. The prices
+    # are readable by classbeat_maint only (migration 0030, #510): select(plans) as the app fails.
     Column("max_class_minutes", Integer, nullable=False, server_default=text("180")),
     Column("games_allowed", Boolean, nullable=False, server_default=text("true")),
     Column("races_allowed", Boolean, nullable=False, server_default=text("true")),

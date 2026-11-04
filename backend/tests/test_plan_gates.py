@@ -228,7 +228,16 @@ def test_the_running_stages_hold_the_length_cap(data: MusicData) -> None:
     })[1].ok  # fmt: skip
 
 
-# --- prices stay in the admin area ------------------------------------------------------------
+# --- prices stay in the admin area: a lint ----------------------------------------------------
+#
+# The real guard is the database privilege (#510, migration 0030_plan_price_privilege, guard 2 in
+# ``tests/role_guard.py``): ``classbeat_app`` holds ``SELECT`` on every column of ``plans`` but the
+# prices and their currency, so any read of a price as the app role, whatever the query looks like
+# (``SELECT p``, ``(p).*``, ``jsonb_agg(p)``, an aliased import, ``getattr``), fails with
+# "permission denied" (``tests/test_plans_schema.py``, ``test_the_app_role_cannot_read_a_price``).
+# This source scan only points at the module early, in review; it is known to miss deliberate or
+# unusual shapes and is not a security boundary. ``currency`` is left out here because the word
+# is part of "concurrency"; the privilege covers it.
 
 PRICE_COLUMNS = ("monthly_price_cents", "intro_price_cents", "intro_price_until")
 # Where a price column may be named or ``plans`` read whole: its table's mirror and the admin
@@ -334,10 +343,10 @@ def test_the_price_guard_leaves_explicit_reads_alone(source: str) -> None:
     assert price_offences(source) == []
 
 
-def test_no_module_outside_the_admin_area_can_read_a_price() -> None:
-    """Billing is off (ADR 0011 section 8): nothing but the admin area reads or returns a price,
-    so no public route or the user's plan can show one. Every other read of ``plans`` names its
-    columns."""
+def test_no_module_outside_the_admin_area_names_a_price() -> None:
+    """A lint (the privilege is the guard, above): billing is off (ADR 0011 section 8) and only
+    the admin area, as ``classbeat_maint``, reads or returns a price. Every other read of
+    ``plans`` names its columns, or the app role's query fails at the database."""
     offenders = {
         str(path.relative_to(SRC)): found
         for path in sorted(SRC.rglob("*.py"))

@@ -127,9 +127,20 @@ SELECT 'REVOKE UPDATE, DELETE, TRUNCATE ON TABLE public.model_eval_results FROM 
 -- The M5 tables (migration 0007_tiers, ADR 0011 section 1): exactly the grants of its APP_GRANTS,
 -- restored after the blanket re-grant above (a table-level REVOKE also drops column grants).
 -- tests/test_roles_rerun.py checks a re-run leaves every table as a plain migration does.
-SELECT 'REVOKE ALL ON TABLE public.plans FROM classbeat_app',
-       'GRANT SELECT ON TABLE public.plans TO classbeat_app'
+-- plans: column-level SELECT without the prices and their currency (migration
+-- 0030_plan_price_privilege, #510): the same list as its APP_COLUMNS, granted only for the
+-- columns that exist (a database migrated before 0026 has fewer), so a price is never readable.
+SELECT 'REVOKE ALL ON TABLE public.plans FROM classbeat_app'
  WHERE to_regclass('public.plans') IS NOT NULL \gexec
+SELECT format('GRANT SELECT (%s) ON TABLE public.plans TO classbeat_app',
+              string_agg(quote_ident(attname), ', ' ORDER BY attnum))
+  FROM pg_attribute
+ WHERE attrelid = to_regclass('public.plans') AND attnum > 0 AND NOT attisdropped
+   AND attname = ANY (ARRAY['id', 'name', 'rank', 'classes_per_month', 'revisions_per_class',
+                            'concurrent_jobs', 'monthly_cost_micros', 'route_key', 'features',
+                            'created_at', 'updated_at', 'updated_by', 'max_class_minutes',
+                            'games_allowed', 'races_allowed', 'ftp_tests_allowed'])
+HAVING count(*) > 0 \gexec
 SELECT 'REVOKE ALL ON TABLE public.app_settings FROM classbeat_app',
        'GRANT SELECT ON TABLE public.app_settings TO classbeat_app'
  WHERE to_regclass('public.app_settings') IS NOT NULL \gexec

@@ -25,7 +25,8 @@ SYSTEM_TABLES: MappingProxyType[str, str] = MappingProxyType(
         "connection_keks": "check values of the KEK ids (ADR 0004), read at startup before "
         "any user; reached only through classbeat.crypto.keks",
         # ADR 0011 section 1 (M5).
-        "plans": "the tiers and their limits, the same for every user; read-only for the app",
+        "plans": "the tiers and their limits, the same for every user; read-only for the app, "
+        "without the price columns (migration 0030)",
         "redeem_codes": "multi-use plan codes (hash only), looked up by hash before redeeming",
         "app_settings": "the database flags and settings (ADR 0011 section 7), not per user",
         "admin_audit": "append-only admin audit log; keeps nulled ids after an account goes",

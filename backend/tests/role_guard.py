@@ -48,7 +48,9 @@ RESTRICTED_APP_PRIVILEGES = {
     # never updated by the app (a bug can't extend ``ends_at`` or un-revoke); the ledger and the
     # lock rows are narrowed further by policies and the ledger trigger. ``admin_audit`` is in
     # ``NO_APP_ACCESS``.
-    "plans": {"SELECT"},
+    # ``plans`` has no table-level privilege: its SELECT is per column, without the prices
+    # (migration 0030, #510; ``COLUMN_PRIVILEGES`` below).
+    "plans": set(),
     "app_settings": {"SELECT"},
     "entitlements": {"SELECT", "INSERT"},
     "code_redemptions": {"SELECT", "INSERT"},
@@ -60,10 +62,25 @@ RESTRICTED_APP_PRIVILEGES = {
     # route disables a model) and, like every table, no TRUNCATE.
     "model_eval_results": {"SELECT", "INSERT"},
 }
+# Every column of ``plans`` the app role may read: all but the prices and their currency
+# (migration 0030, #510, ADR 0011 amendment 2026-11-04). The database refuses a price to the app,
+# whatever the query looks like; a column added later stays unreadable until it is listed here
+# and granted by its migration.
+PLAN_PRICE_COLUMNS = frozenset(
+    {"monthly_price_cents", "intro_price_cents", "intro_price_until", "currency"}
+)
+APP_PLAN_COLUMNS = frozenset(
+    {
+        "id", "name", "rank", "classes_per_month", "revisions_per_class", "concurrent_jobs",
+        "monthly_cost_micros", "route_key", "features", "created_at", "updated_at", "updated_by",
+        "max_class_minutes", "games_allowed", "races_allowed", "ftp_tests_allowed",
+    }
+)  # fmt: skip
 # The only column-level privileges in public, exactly: (table, column) -> {(grantee, privilege)}.
 # ``redeem_codes.redeemed_count`` is what a redeem increments (ADR 0011 section 2).
 COLUMN_PRIVILEGES = {
     ("redeem_codes", "redeemed_count"): {(APP, "UPDATE")},
+    **{("plans", column): {(APP, "SELECT")} for column in APP_PLAN_COLUMNS},
 }
 SEQUENCE_PRIVILEGES = {"USAGE", "SELECT"}
 # Built-in languages that PUBLIC may use (Postgres' own default).
@@ -288,6 +305,18 @@ def check_roles(conn: Connection) -> list[str]:
         f"column-level privileges in public must be exactly {expected_columns}, "
         f"are {found_columns}",
     )
+    # What the app role can actually read, however it got it (a table-level grant, PUBLIC, a
+    # membership): no price column of plans (#510).
+    readable_prices = conn.execute(
+        text(
+            "SELECT a.attname FROM pg_attribute a "
+            "WHERE a.attrelid = to_regclass('public.plans') AND a.attname = ANY(:prices) "
+            "AND NOT a.attisdropped AND has_column_privilege(:app, a.attrelid, a.attnum, 'SELECT')"
+        ),
+        {"prices": sorted(PLAN_PRICE_COLUMNS), "app": APP},
+    ).scalars()
+    for column in readable_prices:
+        problems.append(f"plans.{column}: classbeat_app can read a price column")
 
     # Functions (in public, and user-made ones anywhere): PUBLIC may call none; classbeat_app
     # only the queue's SECURITY DEFINER functions owned by classbeat_queue (ADR 0005 section 3;

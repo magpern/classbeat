@@ -11,12 +11,13 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import pytest
-from sqlalchemy import Engine, inspect, text
+from sqlalchemy import Engine, inspect, select, text
 from sqlalchemy.engine import Connection
 from sqlalchemy.exc import DBAPIError, IntegrityError
 
 from classbeat.db import RETENTION, SYSTEM_TABLES
 from classbeat.plans import tables
+from dbtools import migration_module
 from jobtools import as_user, digest, engine_for, new_user
 from retention_guard import check_retention
 from rls_guard import check_tables
@@ -111,7 +112,7 @@ def test_the_guards_hold_on_the_migrated_schema(admin: Connection) -> None:
 
 
 EXPECTED_GRANTS = {
-    "plans": {"SELECT"},
+    "plans": set(),  # per column, without the prices (migration 0030, #510)
     "app_settings": {"SELECT"},
     "entitlements": {"SELECT", "INSERT"},
     "code_redemptions": {"SELECT", "INSERT"},
@@ -148,6 +149,62 @@ def test_the_app_role_has_exactly_the_adr_grants(admin: Connection) -> None:
     ).scalar_one()
 
 
+PRICES = ("monthly_price_cents", "intro_price_cents", "intro_price_until", "currency")
+
+
+def test_the_app_role_reads_every_plan_column_but_the_prices(admin: Connection) -> None:
+    """#510: the database, not a source scan, keeps the prices from the app role."""
+    columns = admin.execute(
+        text(
+            "SELECT attname, has_column_privilege('classbeat_app', attrelid, attnum, 'SELECT') "
+            "FROM pg_attribute WHERE attrelid = CAST('public.plans' AS regclass) "
+            "AND attnum > 0 AND NOT attisdropped"
+        )
+    ).all()
+    readable = {name for name, can in columns if can}
+    assert readable == {name for name, _ in columns} - set(PRICES)
+    assert set(PRICES) <= {name for name, _ in columns}
+
+
+# Each of these reads a price, by name or as part of the whole row; the guard of #496 missed the
+# last shapes. The app role is refused every one of them by the database.
+PRICE_READS = (
+    *(f"SELECT {column} FROM plans" for column in PRICES),  # noqa: S608 - constants
+    "SELECT id FROM plans WHERE currency IS NULL",
+    "SELECT id FROM plans ORDER BY monthly_price_cents",
+    "SELECT * FROM plans",
+    "SELECT p FROM plans p",
+    "SELECT (p).* FROM plans p",
+    "SELECT jsonb_agg(p) FROM plans p",
+    "SELECT array_agg(p) FROM plans p",
+    "SELECT to_jsonb(p) FROM plans p",
+    "SELECT row_to_json(p) FROM plans p",
+    "TABLE plans",
+    "SELECT p.* FROM entitlements e JOIN plans p ON p.id = e.plan_id",
+    "SELECT q.id FROM (SELECT * FROM plans) q",
+)
+
+
+@pytest.mark.parametrize("statement", PRICE_READS)
+def test_the_app_role_cannot_read_a_price(app: Engine, statement: str) -> None:
+    with app.connect() as conn, pytest.raises(DBAPIError, match="permission denied"):
+        conn.execute(text(statement))
+
+
+def test_the_app_role_cannot_select_the_core_plans_table(app: Engine) -> None:
+    with app.connect() as conn, pytest.raises(DBAPIError, match="permission denied"):
+        conn.execute(select(tables.plans))
+
+
+def test_the_app_role_reads_the_plan_columns_it_needs(app: Engine) -> None:
+    allowed = [c.name for c in tables.plans.columns if c.name not in PRICES]
+    with app.connect() as conn:
+        rows = conn.execute(select(*(tables.plans.c[name] for name in allowed))).all()
+        assert len(rows) == 3
+        assert conn.execute(text("SELECT count(*) FROM plans")).scalar_one() == 3
+        assert conn.execute(text("SELECT 1 FROM plans WHERE id = 'free'")).scalar_one() == 1
+
+
 def test_the_role_guard_fails_on_a_new_column_grant_or_a_wider_table_grant(
     admin: Connection,
 ) -> None:
@@ -168,12 +225,28 @@ def test_the_role_guard_fails_on_a_new_column_grant_or_a_wider_table_grant(
             "REVOKE UPDATE (redeemed_count) ON public.redeem_codes FROM classbeat_app",
             "GRANT UPDATE (redeemed_count) ON public.redeem_codes TO classbeat_app",
         ),
+        # #510: a price for the app, by column or through the whole table.
+        (
+            "GRANT SELECT (monthly_price_cents) ON public.plans TO classbeat_app",
+            "REVOKE SELECT (monthly_price_cents) ON public.plans FROM classbeat_app",
+        ),
+        (
+            "GRANT SELECT (currency) ON public.plans TO classbeat_app",
+            "REVOKE SELECT (currency) ON public.plans FROM classbeat_app",
+        ),
+        (
+            "GRANT SELECT ON public.plans TO classbeat_app",
+            # A table-level REVOKE drops the column grants too: put migration 0030's back.
+            "REVOKE ALL ON public.plans FROM classbeat_app; "
+            + migration_module("plan_price_privilege").APP_GRANT,
+        ),
     ):
         admin.execute(text(grant))
         try:
             assert check_roles(admin) != [], grant
         finally:
-            admin.execute(text(undo))
+            for statement in undo.split("; "):
+                admin.execute(text(statement))
     assert check_roles(admin) == []
 
 

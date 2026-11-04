@@ -63,6 +63,20 @@ def test_maint_cannot_read_a_secret_column(admin: Connection) -> None:
         assert found is False, f"{table}.{column}"
 
 
+def test_maint_reads_the_plan_prices_the_app_cannot(admin: Connection) -> None:
+    """#510: the prices are readable by the admin role only (the app role's grant is per column
+    without them, migration 0030; guard 2)."""
+    for column in ("monthly_price_cents", "intro_price_cents", "intro_price_until", "currency"):
+        held = admin.execute(
+            text(
+                "SELECT has_column_privilege(:r, 'public.plans', :c, 'SELECT'), "
+                "has_column_privilege('classbeat_app', 'public.plans', :c, 'SELECT')"
+            ),
+            {"r": MAINT, "c": column},
+        ).one()
+        assert tuple(held) == (True, False), column
+
+
 def test_a_secret_column_grant_fails(admin: Connection) -> None:
     admin.execute(text(f"GRANT SELECT (password_hash) ON users TO {MAINT}"))
     problems = check_maint(admin)

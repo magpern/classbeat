@@ -7,6 +7,7 @@ Its own module: the re-run touches every table, which must not leak into other t
 migrated schema (``auth_schema`` migrates and drops it per module)."""
 
 import os
+import re
 import shutil
 import subprocess
 from collections.abc import Iterator
@@ -17,7 +18,7 @@ from sqlalchemy import text
 from sqlalchemy.engine import Connection, make_url
 
 from conftest import RoleUrls
-from dbtools import tiers_migration
+from dbtools import migration_module, tiers_migration
 from jobtools import engine_for
 from role_guard import check_roles
 
@@ -61,10 +62,25 @@ def test_every_m5_table_is_restored_after_the_re_grant() -> None:
         revoke = f"'REVOKE ALL ON TABLE public.{table} FROM classbeat_app'"
         assert script.count(revoke) == 1, table
         assert script.index(revoke) > regrant, table
+        if table == "plans":
+            continue  # per column since migration 0030 (#510): the next test
         if privileges:
             grant = f"'GRANT {privileges} ON TABLE public.{table} TO classbeat_app'"
             assert script.count(grant) == 1, table
             assert script.index(grant) > script.index(revoke), table
+
+
+def test_plans_get_the_columns_of_migration_0030_and_no_price() -> None:
+    """The re-run grants ``plans`` column by column, the same list as migration 0030's
+    ``APP_COLUMNS``, after the revoke; never the table-level ``SELECT`` that would cover a price."""
+    script = ROLES.read_text("utf-8")
+    migration = migration_module("plan_price_privilege")
+    assert "GRANT SELECT ON TABLE public.plans" not in script
+    grant = script.index("GRANT SELECT (%s) ON TABLE public.plans TO classbeat_app")
+    assert grant > script.index("'REVOKE ALL ON TABLE public.plans FROM classbeat_app'")
+    (listed,) = re.findall(r"attname = ANY \(ARRAY\[([^\]]*)\]\)", script[grant:])
+    assert re.findall(r"'(\w+)'", listed) == list(migration.APP_COLUMNS)
+    assert not set(migration.APP_COLUMNS) & set(migration.PRICE_COLUMNS)
 
 
 def test_running_the_roles_file_again_keeps_the_migrated_privileges(
@@ -78,6 +94,9 @@ def test_running_the_roles_file_again_keeps_the_migrated_privileges(
     before = app_privileges(admin)
     assert ("admin_audit", "*", "SELECT") not in before
     assert ("redeem_codes", "redeemed_count", "UPDATE") in before
+    assert ("plans", "*", "SELECT") not in before
+    assert ("plans", "rank", "SELECT") in before
+    assert ("plans", "monthly_price_cents", "SELECT") not in before
     assert check_roles(admin) == []
     # The passwords the tests use (role_urls set random ones), so the re-run changes none.
     (tmp_path / "owner").write_text(make_url(role_urls.owner).password or "", "utf-8")
