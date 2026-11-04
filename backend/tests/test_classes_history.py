@@ -12,6 +12,7 @@ import pytest
 from sqlalchemy import text
 from sqlalchemy.engine import Connection
 
+from classbeat.classes import history
 from jobapi import Browser
 from jobtools import new_class
 
@@ -178,6 +179,15 @@ async def test_the_timeline_says_what_asked_for_each_revision_and_where_it_stand
     assert r2["parent_number"] == 1
     assert (r3["from_songs"], r3["saved"], r1["from_songs"]) == (True, "none", False)
     assert r1["content_hash"] == digest(V1).hex()
+    assert (r1["cost_micros"], r2["cost_micros"]) == (7, 7)  # as the revisions route computes it
+    assert body["unreadable"] == 0
+    # The same cost as the revisions route, a non-number included (it reads 0 there too).
+    revision(mine.admin, mine.owner, mine.class_id, 4, V2, provenance=provenance(cost_micros="x"))
+    timeline = (await mine.browser.get(f"/api/classes/{mine.class_id}/history")).json()
+    tree = (await mine.browser.get(f"/api/classes/{mine.class_id}/revisions")).json()
+    costs = {r["number"]: r["cost_micros"] for r in timeline["revisions"]}
+    assert costs == {r["number"]: r["cost_micros"] for r in tree["revisions"]}
+    assert costs[4] == 0
     assert r1["summary"] == {"segments": 2, "intervals": 3, "total_sec": 540}
     assert r2["summary"]["total_sec"] == 720
     assert isinstance(r1["tss"], float)
@@ -259,18 +269,74 @@ async def test_another_users_class_or_revisions_and_malformed_ids_are_not_found(
     assert [r["number"] for r in listed["revisions"]] == [1, 2, 3]
 
 
-async def test_a_stored_draft_that_no_longer_validates_is_internal_with_the_reason_only(
+async def test_a_draft_that_no_longer_validates_is_left_out_and_compare_is_internal(
     two: tuple[Plant, Plant],
 ) -> None:
     mine, _ = two
     broken = {"name": "x", "segments": [{"name": "y", "kind": "main", "intervals": "no"}]}
     bad = revision(mine.admin, mine.owner, mine.class_id, 4, broken)
-    for path in (
-        f"/api/classes/{mine.class_id}/history",
-        f"/api/classes/{mine.class_id}/history/compare?from={mine.r1}&to={bad}",
-    ):
-        got = await mine.browser.get(path)
-        assert (got.status_code, got.json()) == (500, {"detail": {"reason": "internal"}}), path
+    listed = await mine.browser.get(f"/api/classes/{mine.class_id}/history")
+    assert listed.status_code == 200
+    body = listed.json()
+    assert ([r["number"] for r in body["revisions"]], body["unreadable"]) == ([1, 2, 3], 1)
+    path = f"/api/classes/{mine.class_id}/history/compare?from={mine.r1}&to={bad}"
+    got = await mine.browser.get(path)
+    assert (got.status_code, got.json()) == (500, {"detail": {"reason": "internal"}})
+
+
+async def test_the_timeline_reads_at_most_200_revisions_oldest_first(
+    two: tuple[Plant, Plant],
+) -> None:
+    mine, _ = two
+    big = new_class(mine.admin, mine.owner, "Many")
+    sql(
+        mine.admin,
+        "INSERT INTO class_revisions (id, owner_id, class_id, number, kind, content, content_hash, "
+        "music, provenance) SELECT gen_random_uuid(), :o, :c, n, 'draft', CAST(:content AS jsonb), "
+        ":h, CAST(:music AS jsonb), CAST(:p AS jsonb) FROM generate_series(1, 201) AS n",
+        o=mine.owner, c=big, content=json.dumps(V1), h=digest(V1), music=json.dumps(music()),
+        p=json.dumps(provenance()),
+    )  # fmt: skip
+    body = (await mine.browser.get(f"/api/classes/{big}/history")).json()
+    assert [r["number"] for r in body["revisions"]] == list(range(1, 201))
+
+
+async def test_the_request_is_only_ever_a_user_message(two: tuple[Plant, Plant]) -> None:
+    """An assistant row named as the request (which no store writes) is never shown as one."""
+    mine, _ = two
+    note = insert(
+        mine.admin, "class_messages", owner_id=mine.owner, class_id=mine.class_id, seq=2,
+        role="assistant", body="A model note",
+    )  # fmt: skip
+    revision(
+        mine.admin, mine.owner, mine.class_id, 4, V2, parent_id=mine.r2,
+        provenance=provenance(origin="revise_draft", base_revision_id=str(mine.r2),
+                              request_message_id=str(note)),
+    )  # fmt: skip
+    body = (await mine.browser.get(f"/api/classes/{mine.class_id}/history")).json()
+    r4 = next(r for r in body["revisions"] if r["number"] == 4)
+    assert r4["request"] is None
+    assert "A model note" not in json.dumps(body)
+
+
+def test_every_statement_names_the_owner_even_without_row_security(
+    two: tuple[Plant, Plant],
+) -> None:
+    """The statements run as the superuser (no row security): their own ``owner_id`` filters are
+    what keep another user's class, revisions and source class out."""
+    mine, theirs = two
+    copy = new_class(mine.admin, mine.owner, "Copy")
+    revision(
+        mine.admin, mine.owner, copy, 1, V1,
+        provenance=provenance(origin="duplicate", agent_run_ids=[],
+                              duplicated_from={"class_id": str(theirs.class_id), "number": 1}),
+    )  # fmt: skip
+    params = {"owner_id": mine.owner, "class_id": theirs.class_id, "ids": None, "limit": 200}
+    assert mine.admin.execute(history._CLASS, params).first() is None  # pyright: ignore[reportPrivateUsage]
+    assert mine.admin.execute(history._ROWS, params).all() == []  # pyright: ignore[reportPrivateUsage]
+    assert mine.admin.execute(history._PAIR, params).all() == []  # pyright: ignore[reportPrivateUsage]
+    [row] = mine.admin.execute(history._ROWS, params | {"class_id": copy}).all()  # pyright: ignore[reportPrivateUsage]
+    assert (row.source_class_id, row.source_title) == (None, None)
 
 
 async def test_a_soundless_class_cannot_be_changed_while_its_revise_is_refused(
@@ -314,5 +380,5 @@ async def test_a_running_class_is_read_with_the_running_schema(two: tuple[Plant,
     assert change["intervals"] == {"added": 1, "removed": 0, "changed": 1}
     # A cycling draft under a running brief does not validate: never shown with the wrong schema.
     revision(mine.admin, mine.owner, run, 3, V1)
-    got = await mine.browser.get(f"/api/classes/{run}/history")
-    assert got.status_code == 500
+    got = (await mine.browser.get(f"/api/classes/{run}/history")).json()
+    assert ([r["number"] for r in got["revisions"]], got["unreadable"]) == ([1, 2], 1)

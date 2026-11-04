@@ -10,7 +10,8 @@ whether the music is the same, as booleans only.
 
 Read only, one ``user_session`` per call, every statement scoped by ``owner_id`` and ``class_id``.
 Another user's id, an unknown one, a malformed one and a revision that is not a draft of this class
-are the same 404 ``not_found``. A stored content that no longer validates is 500 ``internal`` with
+are the same 404 ``not_found``. A stored draft that no longer validates is left out of the timeline
+and counted (``unreadable``); compare answers 500 ``internal`` for it, with
 the reason only. No MOWL or Spotify id, link id, fingerprint or run id leaves this module: the
 lengths and TSS are computed here from the stored content with ``mowl.workout`` (never a model
 number), and the music comparison answers with booleans.
@@ -31,7 +32,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from classbeat import auth
 from classbeat.agent.design import ZONE7
 from classbeat.agent.schemas import stored_draft
-from classbeat.classes.service import stored_brief
+from classbeat.classes.service import REVISION_LIMIT, stored_brief
 from classbeat.context import UserContext, require_context
 from classbeat.db import user_session
 from classbeat.design import diff, music_kind
@@ -40,7 +41,10 @@ Factory = async_sessionmaker[AsyncSession]
 
 router = APIRouter(prefix="/api/classes", tags=["classes"])
 
-HISTORY_LIMIT: Final = 200  # the most revisions a class can hold (CLASSBEAT_REVISIONS_PER_CLASS)
+# The revisions route's bound (``service.REVISION_LIMIT``). Design revisions from Swedebeat
+# hand-offs are not chat revisions, so ``CLASSBEAT_REVISIONS_PER_CLASS`` does not cap a class:
+# this does, and it bounds the per-row TSS work.
+HISTORY_LIMIT: Final = REVISION_LIMIT
 _UUID = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
 # The ``uuid`` text check in SQL, so a malformed id in a stored provenance never fails the read.
 _UUID_SQL: Final = "'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'"
@@ -50,9 +54,14 @@ _CLASS = text(
     "WHERE owner_id = :owner_id AND id = :class_id"
 )
 
-_ROWS = text(f"""
+# ``{music}``: the timeline reads only whether a draft names a song list (``class_revisions.music``
+# has no size check); compare, two rows, reads the whole value.
+_ROWS_SELECT = f"""
 SELECT r.id, r.number, r.created_at, r.parent_id, p.number AS parent_number, r.content,
-    r.content_hash, r.music, r.provenance,
+    r.content_hash, r.provenance, {{music}},
+    -- as the revisions route computes it (``classes.service._REVISION_SELECT``)
+    CASE WHEN jsonb_typeof(r.provenance -> 'cost_micros') = 'number'
+        THEN (r.provenance ->> 'cost_micros')::bigint ELSE 0 END AS cost_micros,
     coalesce(r.provenance ->> 'origin', 'design_draft') AS origin,
     (r.id = c.current_revision_id) AS is_current,
     m.body AS request,
@@ -76,11 +85,16 @@ LEFT JOIN classes src ON src.owner_id = r.owner_id
 WHERE r.owner_id = :owner_id AND r.class_id = :class_id AND r.kind = 'draft'
     AND (CAST(:ids AS uuid[]) IS NULL OR r.id = ANY(CAST(:ids AS uuid[])))
 ORDER BY r.number
-LIMIT :limit""")  # noqa: S608 - constants only
+LIMIT :limit"""  # noqa: S608 - constants only
+_ROWS = text(
+    _ROWS_SELECT.replace("{music}", "(r.music ->> 'song_list_id') IS NOT NULL AS from_songs")
+)
+_PAIR = text(_ROWS_SELECT.replace("{music}", "r.music"))
 
 
 class Unreadable(Exception):
-    """A stored revision that no longer validates: answered 500 ``internal``, nothing shown."""
+    """A stored revision that no longer validates: compare answers 500 ``internal``; the timeline
+    leaves the entry out and counts it (``HistoryOut.unreadable``)."""
 
 
 class SummaryOut(BaseModel):
@@ -108,6 +122,7 @@ class TimelineEntryOut(BaseModel):
     is_current: bool
     content_hash: str
     summary: SummaryOut
+    cost_micros: int
     tss: float | None
     tss_approximate: bool
     request: str | None
@@ -124,6 +139,9 @@ class HistoryOut(BaseModel):
     # gate): the function the revise's ``admit`` calls, so the two cannot disagree.
     can_change: bool
     revisions: list[TimelineEntryOut]
+    # Drafts that no longer validate under the class's sport: left out of ``revisions``, so one
+    # legacy row never hides the rest of the history and its Make current.
+    unreadable: int = 0
 
 
 class WarningsOut(BaseModel):
@@ -212,7 +230,6 @@ def entry(row: Any, sport: str) -> TimelineEntryOut:
     validates under the class's sport)."""
     spec = _spec(row.content, sport)
     intervals = [i for s in spec["segments"] for i in s["intervals"]]
-    music = _dict(row.music)
     saved: Literal["live", "detached", "none"] = (
         "live" if row.saved_live else "detached" if row.saved_detached else "none"
     )
@@ -225,6 +242,7 @@ def entry(row: Any, sport: str) -> TimelineEntryOut:
         created_at=row.created_at,
         is_current=bool(row.is_current),
         content_hash=bytes(row.content_hash).hex(),
+        cost_micros=int(row.cost_micros),
         summary=SummaryOut(
             segments=len(spec["segments"]),
             intervals=len(intervals),
@@ -234,7 +252,7 @@ def entry(row: Any, sport: str) -> TimelineEntryOut:
         tss_approximate=_approximate(_dict(row.provenance), spec),
         request=row.request if row.origin == "revise_draft" else None,
         saved=saved,
-        from_songs=music.get("song_list_id") is not None,
+        from_songs=bool(row.from_songs),
         duplicated_from=_duplicated_from(row),
     )
 
@@ -260,7 +278,14 @@ async def history(factory: Factory, ctx: UserContext, class_id: UUID) -> History
         can_change = bool(found.can_change) and (
             await music_kind.admit_class(db, ctx.user_id, class_id) is None
         )
-    return HistoryOut(sport=sport, can_change=can_change, revisions=[entry(r, sport) for r in rows])
+    entries: list[TimelineEntryOut] = []
+    unreadable = 0
+    for row in rows:
+        try:
+            entries.append(entry(row, sport))
+        except Unreadable:
+            unreadable += 1  # left out, counted; its content is never shown
+    return HistoryOut(sport=sport, can_change=can_change, revisions=entries, unreadable=unreadable)
 
 
 def _warnings(music: dict[str, Any]) -> WarningsOut:
@@ -310,7 +335,7 @@ async def compare(
     require_context(ctx)
     async with user_session(factory, ctx) as db:
         sport = _sport(await stored_brief(db, ctx.user_id, class_id))
-        rows = (await db.execute(_ROWS, _params(ctx, class_id, [from_id, to_id]))).all()
+        rows = (await db.execute(_PAIR, _params(ctx, class_id, [from_id, to_id]))).all()
     by_id = {r.id: r for r in rows}
     if from_id not in by_id or to_id not in by_id:
         return None
@@ -325,17 +350,14 @@ def _uuid(raw: str) -> UUID | None:
     return UUID(raw) if _UUID.fullmatch(raw.lower()) else None
 
 
-@router.get("/{class_id}/history", response_model=HistoryOut, responses={404: {}, 500: {}})
+@router.get("/{class_id}/history", response_model=HistoryOut, responses={404: {}})
 async def get_history(
     class_id: str, request: Request, ctx: Annotated[UserContext, Depends(auth.require_user)]
 ) -> HistoryOut | JSONResponse:
     wanted = _uuid(class_id)
     if wanted is None:
         return _refuse("not_found", 404)
-    try:
-        found = await history(request.app.state.session_factory, ctx, wanted)
-    except Unreadable:
-        return _refuse("internal", 500)
+    found = await history(request.app.state.session_factory, ctx, wanted)
     return _refuse("not_found", 404) if found is None else found
 
 

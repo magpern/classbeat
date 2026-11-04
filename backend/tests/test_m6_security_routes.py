@@ -658,6 +658,24 @@ OWNED_ROUTES = [
 ]
 
 
+async def test_compare_with_one_own_and_one_foreign_revision_is_not_found(
+    env: Env, browsers: Any, make_actor: Any, superuser: Connection
+) -> None:
+    """The compare route names two revisions: one of the caller's own and one of another user's,
+    in either order, answers exactly as an unknown id does; both own answer 200."""
+    alice_rows = await plant(env, superuser, (await browsers(mowl=False)).user_id)
+    bob_rows = await plant(env, superuser, (await browsers(mowl=False)).user_id)
+    alice: Actor = await make_actor(alice_rows.user)
+    base = f"/api/classes/{alice_rows.class_id}/history/compare"
+    own, theirs = alice_rows.revision_id, bob_rows.revision_id
+    reference = await alice.call("GET", f"{base}?from={own}&to={UNKNOWN}")
+    assert reference.status_code == 404
+    for older, newer in ((own, theirs), (theirs, own)):
+        answer = await alice.call("GET", f"{base}?from={older}&to={newer}")
+        assert (answer.status_code, answer.json()) == (404, reference.json())
+    assert (await alice.call("GET", f"{base}?from={own}&to={own}")).status_code == 200
+
+
 def test_every_owned_route_has_a_case() -> None:
     """Each ``owned`` route of the classification has a case below, and the reverse."""
     cases = {(r.method, r.template.split("?")[0]) for r in OWNED_ROUTES}
