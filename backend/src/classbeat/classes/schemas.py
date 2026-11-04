@@ -56,6 +56,9 @@ class ClassOut(BaseModel):
     # ADR 0018 section 1: the class's sport, for every class (a cycling brief's ``model_dump``
     # leaves ``sport`` out, so ``brief`` alone does not say it). Older classes are cycling.
     sport: Literal["cycling", "running"] = "cycling"
+    # ADR 0007 amendment of 2026-11-03, item 10 (#530): true only when the class's
+    # ``music_source`` is ``{"source": "none"}`` (a soundless class); false for every older class.
+    soundless: bool = False
 
     @classmethod
     def of(cls, row: Any) -> "ClassOut":
@@ -89,6 +92,7 @@ class ClassOut(BaseModel):
             profile=[(int(z), int(sec)) for z, sec in row.profile],
             tss_approximate=bool(row.tss_approximate),
             sport="running" if row.sport == "running" else "cycling",
+            soundless=row.soundless is True,
         )
 
 

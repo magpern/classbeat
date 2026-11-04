@@ -823,3 +823,187 @@ async def test_override_repeats_the_stored_approval_before_verify(
         ).scalar_one()
         == "checked"
     )
+
+
+# --- a soundless class has no hand-off (ADR 0007 amendment of 2026-11-03, item 9; #530) -----------
+
+NO_MUSIC = {"source": "none"}
+
+
+def _set_source(henv: HandEnv, class_id: UUID, value: dict[str, Any] | None) -> None:
+    henv.sql(
+        "UPDATE classes SET music_source = CAST(:m AS jsonb) WHERE id = :c",
+        m=None if value is None else json.dumps(value),
+        c=class_id,
+    )
+
+
+def _source(henv: HandEnv, class_id: UUID) -> Any:
+    return henv.sql("SELECT music_source FROM classes WHERE id = :c", c=class_id).scalar_one()
+
+
+def _handoff_state(henv: HandEnv, class_id: UUID) -> list[Any]:
+    rows = henv.sql(
+        "SELECT state, verdict, mix_id FROM swedebeat_handoffs WHERE class_id = :c ORDER BY 1",
+        c=class_id,
+    ).all()
+    return [tuple(r) for r in rows]
+
+
+async def test_every_handoff_step_refuses_a_soundless_class(
+    browsers: Any, henv: HandEnv, mowl_api: FakeMowl
+) -> None:
+    browser = await rider(browsers, henv)
+    mowl_api.add_mix("Shown", token=TOKEN_A, mix_id="shown", listed_seconds=30)
+    # Before any row: the snapshot is refused before the user's mixes are listed.
+    fresh = plant(henv, browser.user_id, [30])
+    _set_source(henv, fresh, NO_MUSIC)
+    calls = mowl_api.list_calls
+    started = await _start(browser, fresh)
+    assert (started.status_code, started.json()["detail"]["reason"]) == (422, "invalid_input")
+    assert mowl_api.list_calls == calls
+    assert _handoff_state(henv, fresh) == []
+    # With a live row: every step that reads or uses it is refused, and nothing is queued.
+    class_id = plant(henv, browser.user_id, [30])
+    assert (await _start(browser, class_id)).status_code == 200
+    before, calls = _handoff_state(henv, class_id), mowl_api.list_calls
+    _set_source(henv, class_id, NO_MUSIC)
+    url = f"/api/classes/{class_id}/swedebeat-handoff"
+    answers = [
+        await browser.get(url),
+        await _start(browser, class_id),
+        await _check(browser, class_id),
+        await browser.post(f"{url}/override", {"mix_id": "shown"}),
+        await browser.post(f"{url}/design", {}, {"Idempotency-Key": new_key()}),
+    ]
+    assert [(a.status_code, a.json()["detail"]["reason"]) for a in answers] == [
+        (422, "invalid_input")
+    ] * 5
+    assert mowl_api.list_calls == calls
+    assert _handoff_state(henv, class_id) == before
+    jobs = henv.sql("SELECT count(*) FROM jobs WHERE owner_id = :o", o=browser.user_id)
+    assert jobs.scalar_one() == 0
+    # The same class with its music: the row reads again (the refusal was the soundless check).
+    _set_source(henv, class_id, {"source": "mowl_spotify_playlist", "origin": "song_pick"})
+    assert (await browser.get(url)).status_code == 200
+
+
+async def test_the_verify_job_refuses_a_soundless_class_at_admit_and_when_recording(
+    browsers: Any, henv: HandEnv, mowl_api: FakeMowl
+) -> None:
+    from classbeat.db import user_session
+
+    browser = await rider(browsers, henv)
+    mowl_api.add_mix("Already there", token=TOKEN_A, mix_id="old-mix", listed_seconds=150)
+    class_id = plant(henv, browser.user_id, [150])
+    assert (await _start(browser, class_id)).status_code == 200
+    # ``admit`` itself, past the hand-off API's own check (the kind is the last line).
+    connection = browser.connection_id
+    assert connection is not None
+    ctx = make_context(browser.user_id, connections=[("mowl", connection)])
+    parsed = verify_kind.VerifyInput(class_id=class_id, mowl_connection_id=connection)
+    _set_source(henv, class_id, NO_MUSIC)
+    async with user_session(henv.ops.factory, ctx) as db:
+        refused = await verify_kind.admit(db, ctx, parsed)
+    assert refused == verify_kind.Refused("invalid_input")
+    _set_source(henv, class_id, None)
+    async with user_session(henv.ops.factory, ctx) as db:
+        admitted = await verify_kind.admit(db, ctx, parsed)
+    assert isinstance(admitted, verify_kind.Admitted)
+    # Queued while it had no source; soundless by the time the verdict is recorded.
+    mowl_api.add_mix(
+        "The new mix",
+        token=TOKEN_A,
+        mix_id="new-mix",
+        listed_seconds=150,
+        audio_seconds=150,
+        link="beats",
+    )
+    assert (await _check(browser, class_id)).status_code == 201
+    before = _handoff_state(henv, class_id)
+    _set_source(henv, class_id, NO_MUSIC)
+    job_id = await henv.run_verify()
+    row = henv.ops.row(job_id)
+    assert (row.state, row.error_category) == ("failed", "invalid_input")
+    assert mowl_api.attaches == ["new-mix"]  # it got as far as the analysis, then recorded nothing
+    assert _handoff_state(henv, class_id) == before
+    assert _source(henv, class_id) == NO_MUSIC
+
+
+async def test_the_handoff_adopt_never_writes_over_a_none_source(
+    browsers: Any, henv: HandEnv, mowl_api: FakeMowl, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The adopt's own compare-and-set, with the design store's ``check_stored`` switched off so
+    only the adopt stands between the verified mix and a soundless class."""
+    from classbeat.design import music_kind
+
+    browser = await rider(browsers, henv)
+    mowl_api.add_mix("Already there", token=TOKEN_A, mix_id="old-mix", listed_seconds=150)
+    class_id = plant(henv, browser.user_id, [150])
+    assert (await _start(browser, class_id)).status_code == 200
+    mowl_api.add_mix(
+        "The new mix",
+        token=TOKEN_A,
+        mix_id="new-mix",
+        listed_seconds=150,
+        audio_seconds=150,
+        link="beats",
+    )
+    assert (await _check(browser, class_id)).status_code == 201
+    verified = henv.ops.row(await henv.run_verify())
+    assert (verified.state, verified.error_category) == ("completed", None)
+    design.configure(
+        design.Runtime(
+            keyring=henv.ops.keyring,
+            models=FactoryModels(lambda: from_dict(_draft_script())),
+            agent=CONFIG,
+            swedebeat_enabled=True,
+        )
+    )
+    designed = await browser.post(
+        f"/api/classes/{class_id}/swedebeat-handoff/design", {}, {"Idempotency-Key": new_key()}
+    )
+    assert designed.status_code == 201, designed.text
+    current = henv.sql(
+        "SELECT current_revision_id FROM classes WHERE id = :c", c=class_id
+    ).scalar_one()
+    _set_source(henv, class_id, NO_MUSIC)
+
+    async def not_checked(fs: Any, soundless: bool) -> None:
+        return None
+
+    monkeypatch.setattr(music_kind, "check_stored", not_checked)
+    registry = KindRegistry()
+    registry.register(design.DESIGN_DRAFT)
+    lease = henv.ops.app.settings.job_lease_seconds
+    claimed = await queue.claim(henv.ops.factory, "sl4-d", lease, [design.KIND])
+    assert claimed is not None
+    await execute(
+        Execution(claimed),
+        henv.ops.factory,
+        registry,
+        RunConfig(lease_seconds=lease),
+        asyncio.Event(),
+    )
+    row = henv.ops.row(claimed.job_id)
+    assert (row.state, row.error_category) == ("failed", "invalid_input")
+    assert _source(henv, class_id) == NO_MUSIC
+    after = henv.sql("SELECT current_revision_id FROM classes WHERE id = :c", c=class_id)
+    assert after.scalar_one() == current
+
+
+async def test_the_snapshot_refuses_a_class_that_turned_soundless_while_listing(
+    browsers: Any, henv: HandEnv, mowl_api: FakeMowl, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """``open_from`` checks again in the transaction that stores the row (#530)."""
+    browser = await rider(browsers, henv)
+    class_id = plant(henv, browser.user_id, [30])
+
+    async def _listed(*_args: object, **_kwargs: object) -> tuple[list[str], None]:
+        _set_source(henv, class_id, NO_MUSIC)  # between the two transactions
+        return ["shown"], None
+
+    monkeypatch.setattr(handoff_api, "list_mix_ids", _listed)
+    started = await _start(browser, class_id)
+    assert (started.status_code, started.json()["detail"]["reason"]) == (422, "invalid_input")
+    assert _handoff_state(henv, class_id) == []
