@@ -24,6 +24,16 @@ plants a running spec as the library writes it. ``RUNNING_DRAFT`` and ``RUNNING_
 running class; ``SaveEnv.plant`` takes a ``brief`` (``classes.brief``; None leaves it NULL, a
 legacy cycling class). Cycling behaviour is unchanged. Public test values only; never the
 network.
+
+No music (a soundless class, ADR 0007 amendment of 2026-11-03, item 8): the fake accepts
+``PlaylistID: -1`` on a create and an update, as the library sends it. **What real MOWL returns
+for such a program is unverified** (the owner's live check), so ``no_music_read`` chooses how a
+program stored with ``-1`` reads back: ``"-1"`` (as written, the default), ``"null"`` or
+``"absent"`` (no ``PlaylistID`` key); ``Playlist`` is null for it either way. ``keep_playlist``
+plays the other unverified case: an update sending ``-1`` keeps a positive playlist the program
+already had (attached in the app, ``edit(program_id, PlaylistID=...)``). ``SaveEnv.plant`` takes
+``soundless`` (the class's ``music_source`` and the revision's music ``{"source": "none"}``; the
+user's link row is planted anyway, so a test can show it is never read).
 """
 
 import copy
@@ -185,6 +195,8 @@ class FakeMowlPrograms(FakeMowlMusic):
     list_status: int | None = None
     get_status: int | None = None
     hold_at: int | None = None
+    no_music_read: str = "-1"  # how a stored ``PlaylistID: -1`` reads: "-1", "null", "absent"
+    keep_playlist: bool = False  # an update sending ``-1`` keeps a positive ``PlaylistID``
     held: threading.Event = field(default_factory=threading.Event)
     release: threading.Event = field(default_factory=threading.Event)
     _next_program: int = FIRST_PROGRAM
@@ -330,14 +342,21 @@ class FakeMowlPrograms(FakeMowlMusic):
             total += int(s.body["TotalDuration"])
             segments.append({"SegmentID": sid, **s.body, "Intervals": intervals})
         body = program.body
+        playlist = body.get("PlaylistID")
+        music = isinstance(playlist, int) and playlist > 0
+        shown: dict[str, Any] = {"PlaylistID": playlist}
+        if not music and playlist == -1:  # no music: how MOWL shows it is unverified
+            shown = {"-1": {"PlaylistID": -1}, "null": {"PlaylistID": None}, "absent": {}}[
+                self.no_music_read
+            ]
         return {
             "ProgramID": program.id,
             "Name": body["Name"],
             "Description": body.get("Description"),
             "ShortDescription": body.get("ShortDescription"),
             "IsPublic": program.public,
-            "PlaylistID": body.get("PlaylistID"),
-            "Playlist": {"PlaylistType": "Spotify", "PlaylistName": "Invented"},
+            **shown,
+            "Playlist": {"PlaylistType": "Spotify", "PlaylistName": "Invented"} if music else None,
             "TotalDuration": total,
             "TSS": body.get("TSS"),
             # The program's own sport, as written (0 unless ``set_activity_type`` changed it).
@@ -382,6 +401,10 @@ class FakeMowlPrograms(FakeMowlMusic):
                 return {"ProgramID": made.id, "Name": made.body["Name"]}
             if program is None or program.token != token:
                 return _MISSING
+            had = program.body.get("PlaylistID")
+            keep = isinstance(had, int) and had > 0 and header.get("PlaylistID") == -1
+            if self.keep_playlist and keep:  # unverified: MOWL keeps the app's playlist
+                header["PlaylistID"] = had
             program.body.update(header)
             program.public = bool(header.get("IsPublic"))
             return {"ProgramID": program.id, "Name": program.body["Name"]}
@@ -475,6 +498,7 @@ def fake_programs(monkeypatch: pytest.MonkeyPatch) -> FakeMowlPrograms:
     return fake
 
 
+NO_MUSIC: dict[str, str] = {"source": "none"}  # a soundless class's music (#527)
 LINKED_PLAYLIST = ACCOUNT_BASE[TOKEN_A] + 1  # what the fake attach of account A hands out first
 
 
@@ -558,9 +582,15 @@ class SaveEnv:
         token: str = TOKEN_A,
         content: dict[str, Any] | None = None,
         brief: dict[str, Any] | None = None,
+        *,
+        soundless: bool = False,
     ) -> Saved:
         owner, connection = await self.owner(token)
-        return self.plant(owner, connection, content, brief=brief)
+        return self.plant(owner, connection, content, brief=brief, soundless=soundless)
+
+    async def soundless_class(self, token: str = TOKEN_A) -> Saved:
+        """A soundless class: ``music_source`` and its revision's music ``{"source": "none"}``."""
+        return await self.saved_class(token, soundless=True)
 
     async def running_class(self, token: str = TOKEN_A) -> Saved:
         """A running class (ADR 0018): ``RUNNING_BRIEF`` stored, ``RUNNING_DRAFT`` its revision."""
@@ -573,15 +603,18 @@ class SaveEnv:
         content: dict[str, Any] | None = None,
         *,
         brief: dict[str, Any] | None = None,
+        soundless: bool = False,
     ) -> Saved:
         class_id = self.sql(
-            "INSERT INTO classes (id, owner_id, title, brief) VALUES (:id, :o, 'Tuesday climb', "
-            "CAST(:brief AS jsonb)) RETURNING id",
+            "INSERT INTO classes (id, owner_id, title, brief, music_source) VALUES (:id, :o, "
+            "'Tuesday climb', CAST(:brief AS jsonb), CAST(:music AS jsonb)) RETURNING id",
             id=uuid.uuid4(), o=owner, brief=None if brief is None else json.dumps(brief),
+            music=json.dumps(NO_MUSIC) if soundless else None,
         ).scalar_one()  # fmt: skip
         link_id = self.plant_link(owner)
         content = copy.deepcopy(DRAFT if content is None else content)
-        revision_id = self.plant_revision(owner, class_id, link_id, content)
+        music = NO_MUSIC if soundless else None
+        revision_id = self.plant_revision(owner, class_id, link_id, content, music=music)
         return Saved(owner, connection, class_id, revision_id, link_id, content)
 
     def job(self, saved: Saved, columns: dict[str, Any] | None = None, **overrides: Any) -> UUID:
