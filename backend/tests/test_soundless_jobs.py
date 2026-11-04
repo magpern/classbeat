@@ -25,7 +25,7 @@ from classbeat.agent.records import Provenance
 from classbeat.agent.schemas import WorkoutDraft
 from classbeat.agent.soundless import SYSTEM_PROMPT
 from classbeat.agent.stage import prompt_version
-from classbeat.design import music_kind
+from classbeat.design import music_kind, revision
 from classbeat.models import routes as routes_module
 from classbeat.models.versions import all_prompt_versions, running_suite_version
 from designtools import BRIEF, FakeMowlMusic
@@ -407,6 +407,59 @@ async def test_a_design_of_the_other_kind_admitted_before_cannot_store(
     assert len(renv.revisions(class_id)) == 1
     source = renv.sql("SELECT music_source FROM classes WHERE id = :c", c=class_id).scalar_one()
     assert music_kind.is_none(source) == (first == "soundless")
+
+
+@pytest.mark.parametrize("kind", ["music", "soundless"])
+async def test_the_design_stores_check_the_music_kind_before_adopt_first(
+    renv: ReviseEnv,
+    fake_mowl: FakeMowlMusic,
+    monkeypatch: pytest.MonkeyPatch,
+    kind: str,
+) -> None:
+    """#589: a class with no current revision, whose ``music_source`` the superuser sets to the
+    other kind after admit, is refused ``invalid_input`` BEFORE ``adopt_first`` runs. The store is
+    one transaction that rolls back, so the result alone cannot show the order: the spy shows that
+    ``adopt_first`` was never reached, and nothing is written (no revision, no events of a
+    revision, the source as seeded)."""
+    if kind == "music":
+        asked, seeded, script = SPOTIFY, NONE, "good_first_draft"
+    else:
+        asked, seeded, script = NONE, SPOTIFY, "soundless_first_draft"
+    renv.use(script)
+    made = await create(renv, design_body(renv, asked))
+    assert made.status_code == 201, made.text
+    job_id, class_id = UUID(made.json()["id"]), UUID(made.json()["class_id"])
+    renv.sql(
+        "UPDATE classes SET music_source = CAST(:m AS jsonb) WHERE id = :c",
+        m=json.dumps(seeded),
+        c=class_id,
+    )
+    before = renv.sql(
+        "SELECT current_revision_id, brief FROM classes WHERE id = :c", c=class_id
+    ).one()
+    assert before.current_revision_id is None
+    reached: list[bool] = []
+    original = revision.adopt_first
+
+    async def spy(*args: Any, **kwargs: Any) -> bool:
+        reached.append(True)
+        return await original(*args, **kwargs)
+
+    monkeypatch.setattr(revision, "adopt_first", spy)
+    await renv.run(design.KIND)
+    row = renv.denv.ops.row(job_id)
+    assert (row.state, row.error_category) == ("failed", "invalid_input")
+    assert reached == []  # refused before adopt_first
+    assert renv.revisions(class_id) == []
+    assert renv.denv.revisions(job_id) == []
+    after = renv.sql(
+        "SELECT music_source, current_revision_id, brief FROM classes WHERE id = :c", c=class_id
+    ).one()
+    assert (after.music_source, after.current_revision_id, after.brief) == (
+        seeded,
+        None,
+        before.brief,
+    )
 
 
 async def test_a_running_brief_with_no_music_is_refused_at_input(renv: ReviseEnv) -> None:

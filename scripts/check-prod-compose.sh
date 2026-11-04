@@ -121,7 +121,7 @@ rollback_check() {   # rollback_check OLD
   local old="$1" revs files
   revs="$(docker compose exec -T db psql -U postgres -d classbeat -X -At -c 'select version_num from alembic_version' 2>/dev/null)" \
     || { echo "check-prod-compose: cannot read the database revision (is db running? docker compose up -d db)" >&2; return 1; }
-  files="$(docker run --rm --entrypoint ls "ghcr.io/magpern/classbeat:$old" /app/migrations/versions 2>/dev/null)" \
+  files="$(docker run --rm --network none --entrypoint ls "ghcr.io/magpern/classbeat:$old" /app/migrations/versions 2>/dev/null)" \
     || { echo "check-prod-compose: cannot list the migrations of ghcr.io/magpern/classbeat:$old (docker login, then docker pull it)" >&2; return 1; }
   rollback_verdict "$old" "$revs" "$files"
 }
