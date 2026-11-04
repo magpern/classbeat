@@ -202,3 +202,16 @@ async def test_the_export_holds_my_preferences_and_not_the_other_users(songenv: 
     assert answer.status_code == 200, answer.text
     [row] = answer.json()["user_preferences"]
     assert (row["owner_id"], row["uses_swedebeat"]) == (str(mine.user_id), True)
+
+
+async def test_the_export_holds_my_beat_one_corrections_without_the_fingerprint(
+    songenv: SongEnv,
+) -> None:
+    mine, other = await person(songenv), await person(songenv)
+    document = (await export(mine)).json()
+    rows = document["beat_one_corrections"]
+    assert [(r["class_id"], r["song"], r["beats"], r["bpm"]) for r in rows] == [
+        (str(mine.found.class_id), 3, -1, 124.5)
+    ]
+    assert "fingerprint" not in rows[0]
+    assert str(other.found.class_id) not in json.dumps(rows)

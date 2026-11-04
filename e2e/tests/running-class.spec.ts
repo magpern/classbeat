@@ -13,10 +13,10 @@ import {
   savedState,
   setProgramSport,
   signedInWithMowl,
+  storeRunning,
   zonesOf,
   type FakeProgram,
 } from './class-helpers'
-import { sql } from './song-helpers'
 
 // M8 F1 (ADR 0018, issue #466): a running class designed, saved and updated on the fakes. The stack
 // turns running on for web and worker (compose.e2e.yaml); the worker replays the recorded running
@@ -26,6 +26,10 @@ import { sql } from './song-helpers'
 test.describe.configure({ mode: 'serial' })
 test.setTimeout(180_000)
 
+test.beforeAll(() => {
+  storeRunning('on') // #509: nothing stored is off
+})
+
 test.beforeEach(() => {
   fakeMowl('arm', PLAYLISTS.draft.id)
   saveArm('', true) // no programs, no injected failures
@@ -34,7 +38,7 @@ test.beforeEach(() => {
 test.afterAll(() => {
   saveArm('', true)
   useModelScript('good_first_draft')
-  sql("DELETE FROM app_settings WHERE key = 'running_enabled'")
+  storeRunning(null)
 })
 
 /** The program holds the running content of the script's draft, private, on the linked playlist,
@@ -166,10 +170,7 @@ test('with the admin switch off the form has no Running control', async ({
   await expect(form.getByRole('button', { name: 'Running', exact: true })).toBeVisible()
 
   // The stored admin flag can only tighten the environment's (ADR 0018 section 5).
-  sql(
-    "INSERT INTO app_settings (key, value) VALUES ('running_enabled', '\"off\"') " +
-      "ON CONFLICT (key) DO UPDATE SET value = '\"off\"'",
-  )
+  storeRunning('off')
   try {
     await page.reload()
     const off = page.getByRole('form', { name: 'New class' })
@@ -177,7 +178,13 @@ test('with the admin switch off the form has no Running control', async ({
     await expect(off.getByRole('button', { name: 'Running', exact: true })).toHaveCount(0)
     await expect(off.getByText('Sport', { exact: true })).toHaveCount(0)
     await expect(off.getByLabel('Climbs', { exact: true })).toBeVisible()
+    // #509: the admin's DELETE (nothing stored) is off too, not on as before.
+    storeRunning(null)
+    await page.reload()
+    const cleared = page.getByRole('form', { name: 'New class' })
+    await expect(cleared.getByLabel('Class name')).toBeVisible()
+    await expect(cleared.getByRole('button', { name: 'Running', exact: true })).toHaveCount(0)
   } finally {
-    sql("DELETE FROM app_settings WHERE key = 'running_enabled'")
+    storeRunning('on')
   }
 })

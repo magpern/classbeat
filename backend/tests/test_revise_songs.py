@@ -14,6 +14,7 @@ from classbeat.agent.revise import SYSTEM_PROMPT
 from classbeat.design import kind as design
 from classbeat.design import limits as design_limits
 from classbeat.songs import pick
+from optools import TOKEN_B
 from revisesongtools import (
     REQUEST,
     change,
@@ -25,6 +26,7 @@ from revisesongtools import (
     revise_script,
 )
 from songtools import CHOSEN, SongEnv, design_script, failing_script, song_id
+from spotifyfake import CLIENT_B, USER_B
 
 pytestmark = pytest.mark.usefixtures("songenv")
 
@@ -369,3 +371,50 @@ async def test_a_resume_waits_for_an_undecided_playlist_write(songenv: SongEnv) 
     jobs, counts = jobs_of(songenv, rider.user_id), songenv.counts()
     refused(await resume_change(rider, class_id, base, list_id), "write_unresolved")
     assert (jobs_of(songenv, rider.user_id), songenv.counts()) == (jobs, counts)
+
+
+def _seconds(content: dict[str, Any]) -> list[int]:
+    return [i["sec"] for s in content["segments"] for i in s["intervals"]]
+
+
+async def _changed(songenv: SongEnv, rider: Any) -> tuple[UUID, UUID, UUID, str]:
+    """A picked class with a song change run to its wait: (class, job, list, hash hex)."""
+    class_id, base, _ = await picked(songenv, rider)
+    job_id, list_id, digest = await changed_waiting(songenv, rider, class_id, base)
+    return class_id, job_id, list_id, digest
+
+
+async def _finish(songenv: SongEnv, rider: Any, job_id: UUID, list_id: UUID, digest: str) -> None:
+    assert (await rider.approve(job_id, list_id, digest)).status_code == 200
+    songenv.script = revise_script()
+    row = await songenv.run(job_id)
+    assert (row.state, row.error_category) == ("completed", None)
+
+
+async def test_a_song_change_applies_the_class_corrections_for_its_new_music(
+    songenv: SongEnv,
+) -> None:
+    """ADR 0007 amendment "beat-one corrections" item 4: revise_songs reads the class's
+    corrections for the new playlist's fingerprint. Two riders make the same change, so their new
+    music has the same fingerprint; rows on the second rider's class shift its draft only."""
+    first = await songenv.rider()
+    class_a, job_a, list_a, digest_a = await _changed(songenv, first)
+    await _finish(songenv, first, job_a, list_a, digest_a)
+    draft_a = songenv.revision(current(songenv, class_a))
+    fingerprint, songs = draft_a.music["fingerprint"], draft_a.music["songs"]
+    assert "beat_one" not in draft_a.music
+
+    second = await songenv.rider(client_id=CLIENT_B, spotify_user=USER_B, mowl_token=TOKEN_B)
+    class_b, job_b, list_b, digest_b = await _changed(songenv, second)
+    for song in songs:
+        songenv.sql(
+            "INSERT INTO beat_one_corrections (owner_id, class_id, fingerprint, song, beats, bpm) "
+            "VALUES (:o, :c, :f, :s, 2, :b)",
+            o=second.user_id, c=class_b, f=fingerprint, s=song["song"], b=song["bpm"],
+        )  # fmt: skip
+    await _finish(songenv, second, job_b, list_b, digest_b)
+    draft_b = songenv.revision(current(songenv, class_b))
+    assert draft_b.music["fingerprint"] == fingerprint
+    assert draft_b.music["beat_one"] == [{"song": s["song"], "beats": 2} for s in songs]
+    assert _seconds(draft_b.content) != _seconds(draft_a.content), "the fit moved"
+    assert sum(_seconds(draft_b.content)) == sum(_seconds(draft_a.content))

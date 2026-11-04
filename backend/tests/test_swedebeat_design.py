@@ -277,7 +277,10 @@ async def test_a_class_is_designed_on_a_fake_mix_and_saved_to_mowl(
         "unsure_beat_one": music["unsure_beat_one"],
         "fingerprint": sbm.fingerprint(stored_map.map),
         "link_id": str(link.id),
+        "songs": music["songs"],  # ADR 0007 amendment "beat-one corrections"; no correction
     }
+    assert music["songs"]
+    assert all("title" not in s for s in music["songs"])
     assert str(link.playlist_id) not in json.dumps(music)
     assert revision.provenance["crossfade_sec"] == 0.0
     music_source = menv.ops.sql(
@@ -699,3 +702,38 @@ async def test_save_refuses_a_mix_revision_whose_link_is_gone_or_of_another_sour
     gone = await create(browser, body)
     assert gone.json()["detail"]["reason"] == "music_unlinked"
     assert str(uuid.UUID(revision.music["link_id"])) == revision.music["link_id"]
+
+
+async def test_a_design_on_a_mix_applies_the_corrections_its_class_holds(
+    browsers: Any, menv: MixEnv, mowl_api: FakeMowl
+) -> None:
+    """ADR 0007 amendment "beat-one corrections" item 4 on a mix: the second class designs on the
+    cached map (the same fingerprint), with rows set between its job's creation and its run."""
+    browser = await rider(browsers, menv)
+    add_mix(mowl_api)
+    created = await create(browser, design_body(browser))
+    await menv.run_next()
+    [first] = revisions(menv, UUID(created.json()["id"]))
+    fingerprint, songs = first.music["fingerprint"], first.music["songs"]
+    assert "beat_one" not in first.music
+    again = await create(browser, design_body(browser))
+    assert again.status_code == 201, again.text
+    class_b = UUID(again.json()["class_id"])
+    for song in songs:
+        menv.ops.sql(
+            "INSERT INTO beat_one_corrections (owner_id, class_id, fingerprint, song, beats, bpm) "
+            "VALUES (:o, :c, :f, :s, 2, :b)",
+            o=browser.user_id, c=class_b, f=fingerprint, s=song["song"], b=song["bpm"],
+        )  # fmt: skip
+    await menv.run_next()
+    [second] = revisions(menv, UUID(again.json()["id"]))
+    assert second.music["fingerprint"] == fingerprint
+    assert second.music["beat_one"] == [{"song": s["song"], "beats": 2} for s in songs]
+    secs = [
+        [i["sec"] for s in r.content["segments"] for i in s["intervals"]] for r in (first, second)
+    ]
+    assert secs[0] != secs[1], "the fit moved"
+    assert sum(secs[0]) == sum(secs[1])
+    assert all(not s["estimate"] for s in second.music["songs"]), (
+        "corrected songs are not estimates"
+    )

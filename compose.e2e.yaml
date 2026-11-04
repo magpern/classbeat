@@ -142,6 +142,10 @@ services:
       CLASSBEAT_SWEDEBEAT_ENABLED: "true"
       # ADR 0018: running classes are on in the e2e stack only (the default stack keeps them off).
       CLASSBEAT_RUNNING_ENABLED: "true"
+      # ADR 0018 amendment of 2026-11-04 (#509): running is on only with a stored `on` and every
+      # plan's route covering running; the web's own `fake` outside prod counts as covering (the
+      # worker replays scripts with `fake` too). The web builds no provider and holds no key.
+      CLASSBEAT_MODEL_PROVIDER: fake
       CLASSBEAT_OAUTH_GOOGLE_CLIENT_ID: e2e-fake-google-client
       CLASSBEAT_OAUTH_MICROSOFT_CLIENT_ID: e2e-fake-microsoft-client
       # Microsoft is shown on the sign-in screen here; the default shows Google only (issue 389).

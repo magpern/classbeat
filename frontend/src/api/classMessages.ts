@@ -27,6 +27,9 @@ const REASONS: Record<string, string> = {
     'classbeat may still be writing this class to MOWL, and deleting it now would remove the only record of that write. Wait a few minutes, then try to delete it again.',
   music_unlinked:
     'The music of this version is not in your connected MOWL account. Change it and save the new version.',
+  // #509: a running class's change, while running is not checked for the user's plan.
+  running_not_evaluated:
+    'Running classes cannot be changed on your plan right now, so your request was not sent and nothing was charged. Try again later.',
 }
 
 /** A 409 or 404 means what the page shows is out of date: it shows the reason and reloads. */
