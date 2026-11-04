@@ -33,6 +33,15 @@ parent, no job, the music without the source class's ``song_list_id``, a provena
 is read or copied: no saved workout, operation, job, message, song list, Swedebeat match or
 hand-off, playlist or usage row. No MOWL, Spotify, Swedebeat or model request is made; ownership
 of the music is re-checked by the paths that use it (revise, Save).
+
+Beat-one corrections (DU3, #585; the beat-one amendment's item 8 is the text of record): the copy's
+revision 1 keeps ``music.beat_one``, and after it is stored the same transaction copies the source
+class's ``beat_one_corrections`` rows for the chosen revision's ``music.fingerprint`` to the copy
+(same fingerprint, song, beats and BPM; a new id; the user's ``owner_id``; the copy's class), so
+the copy's corrections read as applied, not pending, and Apply does not strip them. Rows for other
+fingerprints are not copied, and neither are any rows when the copy has no ``music_source`` (a
+class on picked songs, which cannot be refitted) or is soundless. At most ``MAX_PER_CLASS`` rows
+(the table's cap for one fingerprint) are copied, lowest song first; the source cannot hold more.
 """
 
 import hashlib
@@ -51,6 +60,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from classbeat import auth, quota
+from classbeat.agent.beat_one import MAX_PER_CLASS
 from classbeat.agent.records import Provenance
 from classbeat.config import Settings
 from classbeat.context import UserContext, require_context
@@ -120,6 +130,15 @@ _NEW_REVISION = text(
     "music, provenance, job_id, parent_id) VALUES (:id, :owner_id, :class_id, 1, 'draft', "
     "CAST(:content AS jsonb), :content_hash, CAST(:music AS jsonb), CAST(:provenance AS jsonb), "
     "NULL, NULL)"
+)
+# DU3: the source class's corrections for the chosen revision's fingerprint, re-keyed to the copy.
+# Both sides name the caller's ``owner_id`` (and row security holds them to it too); ``id``,
+# ``created_at`` and ``updated_at`` are the table's defaults.
+_COPY_CORRECTIONS = text(
+    "INSERT INTO beat_one_corrections (owner_id, class_id, fingerprint, song, beats, bpm) "
+    "SELECT :owner_id, :new_class_id, fingerprint, song, beats, bpm FROM beat_one_corrections "
+    "WHERE owner_id = :owner_id AND class_id = :class_id AND fingerprint = :fingerprint "
+    "ORDER BY song LIMIT :cap"
 )
 _ADOPT = text(
     "UPDATE classes SET current_revision_id = :revision_id "
@@ -200,6 +219,16 @@ def music_copy(music: Any) -> dict[str, Any]:
     copied = _dict(music)
     copied.pop("song_list_id", None)
     return copied
+
+
+def corrections_fingerprint(source: dict[str, str] | None, music: Any) -> str | None:
+    """The fingerprint whose corrections the copy gets, or ``None`` for none: the copy has a
+    music source that is not ``none`` (``source`` is ``music_source_copy``'s answer) and the
+    chosen revision's music is not ``none`` and has a well-formed fingerprint."""
+    if source is None or music_kind.is_none(source) or music_kind.is_none(music):
+        return None
+    found = _dict(music).get("fingerprint")
+    return found if isinstance(found, str) and HASH.fullmatch(found) else None
 
 
 def request_digest(class_id: UUID, revision_id: UUID, content_hash: bytes, title: str) -> str:
@@ -359,6 +388,18 @@ async def duplicate(
         )
         if adopted.rowcount != 1:  # pyright: ignore[reportAttributeAccessIssue]
             raise RuntimeError("the duplicate's revision was not made current")
+        fingerprint = corrections_fingerprint(source, row.music)
+        if fingerprint is not None:
+            await db.execute(
+                _COPY_CORRECTIONS,
+                {
+                    "owner_id": ctx.user_id,
+                    "class_id": class_id,
+                    "new_class_id": new_class,
+                    "fingerprint": fingerprint,
+                    "cap": MAX_PER_CLASS,
+                },
+            )
     return Outcome(None, new_class, new_revision)
 
 
