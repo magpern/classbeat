@@ -162,8 +162,10 @@ async def _pending(db: AsyncSession, ids: Mapping[str, Any], base: UUID) -> bool
 
 
 def refit(draft: object, m: dict[str, object]) -> DesignResult:
-    """The stored draft fitted to ``m`` with its sport's checks; ``internal`` if it no longer
-    fits (a stored draft was valid when it was stored)."""
+    """The stored draft fitted to ``m`` with its sport's checks. If the fitted draft no longer
+    validates, the job ends ``invalid_output``: the category of a job whose result is unusable,
+    shared with the design kinds (no model ran here; the stored draft was valid when stored, so
+    this means the corrected grid left no valid fit)."""
     try:
         if isinstance(draft, RunningDraft):
             return check_running(draft, m)  # pyright: ignore[reportArgumentType]

@@ -737,3 +737,134 @@ async def test_a_design_on_a_mix_applies_the_corrections_its_class_holds(
     assert all(not s["estimate"] for s in second.music["songs"]), (
         "corrected songs are not estimates"
     )
+
+
+async def test_a_refit_of_a_class_on_a_mix_uses_the_cached_map_and_calls_nothing(
+    browsers: Any, menv: MixEnv, mowl_api: FakeMowl
+) -> None:
+    """``refit_draft`` on a Swedebeat-mix class (ADR 0007 amendment item 6): the flag and the
+    analysis limit at admit (``mixadmit.admit_class_mix``), the flag again in the run, then the
+    cached map, so no MOWL or Swedebeat request and no fetch or analysis; the revision is stored."""
+    from classbeat.design.refit import KIND as REFIT_KIND
+    from classbeat.design.refit import REFIT_DRAFT
+
+    browser = await rider(browsers, menv)
+    add_mix(mowl_api)
+    created = await create(browser, design_body(browser))
+    await menv.run_next()
+    [first] = revisions(menv, UUID(created.json()["id"]))
+    for song in first.music["songs"]:
+        menv.ops.sql(
+            "INSERT INTO beat_one_corrections (owner_id, class_id, fingerprint, song, beats, bpm) "
+            "VALUES (:o, :c, :f, :s, 2, :b)",
+            o=browser.user_id, c=first.class_id, f=first.music["fingerprint"], s=song["song"],
+            b=song["bpm"],
+        )  # fmt: skip
+    body = {
+        "kind": REFIT_KIND,
+        "input": {
+            "class_id": str(first.class_id),
+            "base_revision_id": str(first.id),
+            "mowl_connection_id": str(browser.connection_id),
+        },
+    }
+    made = await create(browser, body)
+    assert made.status_code == 201, made.text
+    requests, fetches = len(mowl_api.requests), len(menv.media.requests)
+    analyses = menv.analyses(browser.user_id)
+
+    menv.configure()
+    registry = KindRegistry()
+    registry.register(REFIT_DRAFT)
+    lease = menv.ops.app.settings.job_lease_seconds
+    row = await queue.claim(menv.ops.factory, "bc3-w", lease, [REFIT_KIND])
+    assert row is not None
+    await execute(
+        Execution(row), menv.ops.factory, registry, RunConfig(lease_seconds=lease),
+        asyncio.Event(),
+    )  # fmt: skip
+    job = menv.ops.row(UUID(made.json()["id"]))
+    assert (job.state, job.error_category) == ("completed", None)
+    assert len(mowl_api.requests) == requests, "a cache hit: no MOWL or Swedebeat request"
+    assert (len(menv.media.requests), menv.analyses(browser.user_id)) == (fetches, analyses)
+    [refitted] = revisions(menv, UUID(made.json()["id"]))
+    assert refitted.parent_id == first.id
+    assert refitted.music["source"] == "mowl_swedebeat_mix"
+    assert refitted.music["beat_one"] == [
+        {"song": s["song"], "beats": 2} for s in first.music["songs"]
+    ]
+
+
+async def test_a_refit_of_a_mix_class_is_refused_while_swedebeat_is_off(
+    browsers: Any, menv: MixEnv, mowl_api: FakeMowl
+) -> None:
+    from classbeat.design.refit import KIND as REFIT_KIND
+
+    browser = await rider(browsers, menv)
+    add_mix(mowl_api)
+    created = await create(browser, design_body(browser))
+    await menv.run_next()
+    [first] = revisions(menv, UUID(created.json()["id"]))
+    menv.ops.sql(
+        "INSERT INTO beat_one_corrections (owner_id, class_id, fingerprint, song, beats, bpm) "
+        "VALUES (:o, :c, :f, 1, 2, 124)",
+        o=browser.user_id, c=first.class_id, f=first.music["fingerprint"],
+    )  # fmt: skip
+    flag(menv, "off")
+    body = {
+        "kind": REFIT_KIND,
+        "input": {
+            "class_id": str(first.class_id),
+            "base_revision_id": str(first.id),
+            "mowl_connection_id": str(browser.connection_id),
+        },
+    }
+    try:
+        made = await create(browser, body)
+    finally:
+        flag(menv, None)
+    assert (made.status_code, made.json()["detail"]["reason"]) == (409, "feature_off")
+
+
+async def test_a_queued_refit_of_a_mix_class_whose_flag_went_off_ends_feature_off(
+    browsers: Any, menv: MixEnv, mowl_api: FakeMowl
+) -> None:
+    from classbeat.design.refit import KIND as REFIT_KIND
+    from classbeat.design.refit import REFIT_DRAFT
+
+    browser = await rider(browsers, menv)
+    add_mix(mowl_api)
+    created = await create(browser, design_body(browser))
+    await menv.run_next()
+    [first] = revisions(menv, UUID(created.json()["id"]))
+    menv.ops.sql(
+        "INSERT INTO beat_one_corrections (owner_id, class_id, fingerprint, song, beats, bpm) "
+        "VALUES (:o, :c, :f, 1, 2, 124)",
+        o=browser.user_id, c=first.class_id, f=first.music["fingerprint"],
+    )  # fmt: skip
+    body = {
+        "kind": REFIT_KIND,
+        "input": {
+            "class_id": str(first.class_id),
+            "base_revision_id": str(first.id),
+            "mowl_connection_id": str(browser.connection_id),
+        },
+    }
+    made = await create(browser, body)
+    assert made.status_code == 201, made.text
+    requests = len(mowl_api.requests)
+    menv.environment_on = False  # CLASSBEAT_SWEDEBEAT_ENABLED off by the time the job runs
+    menv.configure()
+    registry = KindRegistry()
+    registry.register(REFIT_DRAFT)
+    lease = menv.ops.app.settings.job_lease_seconds
+    row = await queue.claim(menv.ops.factory, "bc3-w", lease, [REFIT_KIND])
+    assert row is not None
+    await execute(
+        Execution(row), menv.ops.factory, registry, RunConfig(lease_seconds=lease),
+        asyncio.Event(),
+    )  # fmt: skip
+    job = menv.ops.row(UUID(made.json()["id"]))
+    assert (job.state, job.error_category) == ("failed", "feature_off")
+    assert len(mowl_api.requests) == requests
+    assert revisions(menv, UUID(made.json()["id"])) == []
