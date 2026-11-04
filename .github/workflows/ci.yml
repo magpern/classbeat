@@ -1,10 +1,14 @@
 name: CI
 
-# Not on push to main: main only receives squashes the merge queue has tested. A pull request and
-# a merge group (the queue's merged result, `merge_group`) run what their diff needs; the weekly run
-# (and a manual one) runs everything, which also picks up new advisories.
+# A pull request runs what its diff needs. Every push to main (a squash merge) runs everything: the
+# `main` ruleset does not require a branch to be up to date, so a PR that was green on its own head
+# can still break the merged result, and this run is the safety net. The weekly run (and a manual
+# one) runs everything too and picks up new advisories. `merge_group` is unused (the repository
+# has no merge queue); its code is kept in case one returns.
 on:
   pull_request:
+  push:
+    branches: [main]
   merge_group:
   schedule:
     - cron: '0 4 * * 1' # Monday 04:00 UTC
@@ -13,11 +17,13 @@ on:
 permissions:
   contents: read
 
-# Only a pull request's older run is cancelled. A merge group never is (its ref is unique per
-# group, and the queue itself drops a group it no longer needs).
+# A pull request's older run is cancelled, and so is an older run on main: in a burst of merges
+# only the latest push run completes (it holds every earlier merge). The event is in the group
+# name so the weekly run, which also has the ref refs/heads/main, never shares a group with a push
+# run. A merge group never is cancelled (its ref is unique per group).
 concurrency:
-  group: ci-${{ github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  group: ci-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' || github.event_name == 'push' }}
 
 jobs:
   # Which jobs does this change need? See scripts/ci-changes.sh (tested by scripts/test-ci-gate.sh).
@@ -75,18 +81,29 @@ jobs:
           echo "${SHA256}  gitleaks.tgz" | sha256sum --check
           tar -xzf gitleaks.tgz gitleaks
 
-      # A pull request's own commits (#116 item 8; the checkout holds every branch), or a merge
-      # group's commits on top of its base; the weekly and manual runs scan the whole history of
-      # every branch.
+      # A pull request's own commits (#116 item 8; the checkout holds every branch), a merge
+      # group's commits on top of its base, or the commits a push to main added (`before` to the
+      # pushed commit); the weekly and manual runs scan the whole history of every branch. A push
+      # whose `before` is zero or not in the checkout (a first push, a force-push) scans the whole
+      # history instead: more, never less.
       - name: Secret scan
         env:
           EVENT_NAME: ${{ github.event_name }}
           # A merge group's base is the target branch tip, its head the queue's merged commit.
           BASE_SHA: ${{ github.event_name == 'merge_group' && github.event.merge_group.base_sha || github.event.pull_request.base.sha }}
           HEAD_SHA: ${{ github.event_name == 'merge_group' && github.event.merge_group.head_sha || github.event.pull_request.head.sha }}
+          PUSH_BEFORE: ${{ github.event.before }}
+          PUSH_SHA: ${{ github.sha }}
         run: |
           set -euo pipefail
-          if [ "$EVENT_NAME" = pull_request ] || [ "$EVENT_NAME" = merge_group ]; then
+          if [ "$EVENT_NAME" = push ] && [[ "$PUSH_BEFORE" =~ ^[0-9a-f]{40}$ ]] \
+            && [ "$PUSH_BEFORE" != 0000000000000000000000000000000000000000 ] \
+            && git cat-file -e "${PUSH_BEFORE}^{commit}" 2> /dev/null \
+            && git cat-file -e "${PUSH_SHA}^{commit}" \
+            && [ "$(git rev-list --count "${PUSH_BEFORE}..${PUSH_SHA}")" -gt 0 ]; then
+            "$RUNNER_TEMP/gitleaks" git --redact --verbose --exit-code 1 \
+              --log-opts="--diff-merges=first-parent ${PUSH_BEFORE}..${PUSH_SHA}" .
+          elif [ "$EVENT_NAME" = pull_request ] || [ "$EVENT_NAME" = merge_group ]; then
             # A missing SHA or an empty range would make gitleaks report "no leaks" over 0
             # commits: fail instead. --diff-merges=first-parent makes `git log -p` show the diff
             # of a merge commit, so a secret added only in a hand-resolved merge is scanned.
@@ -150,11 +167,14 @@ jobs:
           docker run --rm --user postgres --entrypoint sh classbeat-db-check -c \
             'for f in /queue/* /maint/* /docker-entrypoint-initdb.d/*; do test -r "$f" || { echo "unreadable: $f"; exit 1; }; done'
 
-      # compose.prod.yaml behind swag (issues #341, #492): config parses with dummy values alone and
-      # with compose.prod.loopback.yaml, the production invariants hold (no caddy, no published port
-      # but web on 127.0.0.1 with the overlay, one private trusted proxy, no mailpit, internal
-      # backend network, no model key on web ...), a self-test shows each unsafe mutation refused,
-      # and `nginx -t` plus the required lines accept docs/runbooks/swag-classbeat.subdomain.conf.
+      # compose.prod.yaml behind swag (issues #341, #492, #500): config parses with dummy values alone
+      # and with each overlay; the production invariants hold (no caddy, no published port but web,
+      # one private trusted proxy, no mailpit, internal backend network, no model key on web, the
+      # secret placement ...); the runbook's proxy network keeps swag's address out of Docker's
+      # range; a self-test shows each unsafe mutation refused; and `nginx -t` plus the directive
+      # rules (read as nginx reads them, with a self-test per spelling of a second
+      # X-Forwarded-For) accept docs/runbooks/swag-classbeat.subdomain.conf. The script has more
+      # checks than any count here: its header lists them.
       - name: Production compose and swag config
         run: scripts/check-prod-compose.sh
 

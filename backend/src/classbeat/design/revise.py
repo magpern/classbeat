@@ -134,7 +134,7 @@ async def admit(db: AsyncSession, ctx: UserContext, parsed: BaseModel) -> Admitt
     # job); the worker's ``invalid_input`` for a missing source stays as the second line.
     if not await _has_music_source(db, ctx.user_id, class_id):
         return Refused("not_changeable")
-    running = await sport.admit_class(db, ctx.user_id, class_id)  # ADR 0018: the running flag
+    running = await sport.admit_class(db, ctx, class_id)  # ADR 0018 (#509): the running gate
     if running is not None:
         return running
     soundless = await music_kind.admit_class(db, ctx, class_id)  # #528: the soundless gate

@@ -148,6 +148,11 @@ changes "ci-shards script"  pull_request      "scripts/ci-shards.sh"            
 changes "test script"       pull_request      "scripts/test-ci-gate.sh"             "true true true true"
 changes ".gitattributes"    pull_request      ".gitattributes"                      "true true true true"
 changes "unrelated script"  pull_request      "scripts/other.sh"                    "false false false false"
+# A push to main (and any event that is not a pull request or merge group) runs everything, even
+# for a change a pull request would skip.
+changes "push, docs only"   push              "README.md docs/x.md"                 "true true true true"
+changes "push, unrelated"   push              "scripts/other.sh"                    "true true true true"
+changes "unknown event"     workflow_run      "README.md"                           "true true true true"
 changes ".env.example"      pull_request      ".env.example"                        "false false true false"
 changes ".trivyignore"      pull_request      ".trivyignore"                        "false false true false"
 changes ".github changes"   pull_request      ".github/workflows/ci.yml"            "true true true true"
@@ -228,6 +233,17 @@ fail_closed "merge group, unknown head runs everything" EVENT_NAME=merge_group B
 fail_closed "merge group, no base runs everything"      EVENT_NAME=merge_group HEAD_SHA=HEAD
 fail_closed "merge group, empty SHAs run everything"    EVENT_NAME=merge_group BASE_SHA= HEAD_SHA=
 fail_closed "pull request, no head runs everything"     EVENT_NAME=pull_request BASE_SHA=HEAD
+fail_closed "push without SHAs runs everything"         EVENT_NAME=push
+# A missing or empty event name is malformed: the script fails (so `changes` fails and the gate
+# with it) instead of guessing.
+for ev in "" unset; do
+  if [ "$ev" = unset ]; then
+    (cd "$tmp" && env -u GITHUB_OUTPUT -u EVENT_NAME "$here/ci-changes.sh" > /dev/null 2>&1) && rc=0 || rc=$?
+  else
+    (cd "$tmp" && env -u GITHUB_OUTPUT EVENT_NAME="$ev" "$here/ci-changes.sh" > /dev/null 2>&1) && rc=0 || rc=$?
+  fi
+  if [ "$rc" -ne 0 ]; then report ok "changes: event name '${ev:-empty}' fails closed"; else report FAIL "changes: event name '${ev:-empty}' did not fail"; fi
+done
 
 # ci-shards.sh: the shard count is the length of the backend-tests `shard` list, and only a
 # matrix that is exactly `shard: [1..N]` has one. Needs yq (on the CI runners; skipped without).

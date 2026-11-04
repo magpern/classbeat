@@ -75,6 +75,9 @@ const CREATE_ERRORS: Record<string, string> = {
   idempotency_mismatch: 'That did not work. Check the form and try again.',
   feature_off: 'Running classes are not available right now. Switch to Cycling, or try again later.',
   soundless_not_evaluated: 'Classes with no music are not ready for your plan yet. Choose a playlist, or try again later.',
+  // #509: the designer for the user's plan has not been checked for running classes yet.
+  running_not_evaluated:
+    'Running classes are not available on your plan yet. Nothing was charged. Switch to Cycling, or try again later.',
   invalid_input: `The class was not accepted. Check the fields; the style and description together may be over ${String(MAX_BRIEF_BYTES)} bytes.`,
 }
 
