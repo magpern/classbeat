@@ -90,7 +90,9 @@ x-app: &app
 
 services:
   db:
-    image: postgres:17.11
+    # The release's database image (docker/postgres/Dockerfile): postgres:17.11 with the role init
+    # scripts, the queue functions and the maint role baked in, so the server needs no checkout.
+    image: ghcr.io/magpern/classbeat-db:${CLASSBEAT_VERSION:?set CLASSBEAT_VERSION to a release tag}
     restart: unless-stopped
     logging: *logging
     # As postgres from the start (not root, then gosu), so group 10010 reaches the init scripts.
@@ -105,7 +107,6 @@ services:
       - database_password
     volumes:
       - db-data:/var/lib/postgresql/data
-      - ./docker/postgres/init:/docker-entrypoint-initdb.d:ro
     networks:
       - backend
     healthcheck:
@@ -133,7 +134,7 @@ services:
   # The job queue's role and functions (ADR 0005 section 3), run as the superuser after the
   # migrations; same arrangement as compose.yaml (the password goes through a tmpfs PGPASSFILE).
   db-functions:
-    image: postgres:17.11
+    image: ghcr.io/magpern/classbeat-db:${CLASSBEAT_VERSION:?set CLASSBEAT_VERSION to a release tag}
     restart: "no"
     logging: *logging
     user: postgres
@@ -144,9 +145,6 @@ services:
       - database_maint_password
     tmpfs:
       - /run/pgpass:mode=0700,uid=999,gid=999
-    volumes:
-      - ./docker/postgres/queue:/queue:ro
-      - ./docker/postgres/maint:/maint:ro
     networks:
       - backend
     depends_on:

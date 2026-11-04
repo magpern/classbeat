@@ -18,6 +18,7 @@ from classbeat.connections import ConnectionFailure
 from classbeat.connections.swedebeat_account import device_id_for
 from classbeat.db import user_session
 from ctx import make_context
+from preftools import use_swedebeat
 from swedebeatcore import FakeSwedebeat
 from swedebeatfake import EMAIL, EMAIL_B, PASSWORD, PASSWORD_B
 
@@ -38,7 +39,9 @@ async def env(
 
 
 async def actor_for(env: Env, make_actor: Any, email: str = USER) -> Any:
-    return await make_actor(await env.user(email))
+    user_id = await env.user(email)
+    await use_swedebeat(env.factory, user_id)  # #525: the user's own switch, default off
+    return await make_actor(user_id)
 
 
 async def user_ctx(env: Env, email: str = USER) -> Any:
@@ -90,7 +93,7 @@ async def test_connect_stores_token_and_device_id_encrypted_and_shows_the_status
     assert [(c["provider"], c["status"], c["account"]) for c in listed["connections"]] == [
         ("swedebeat", "connected", EMAIL)
     ]
-    assert listed["swedebeat"] == {"enabled": True, "available": True}
+    assert listed["swedebeat"] == {"enabled": True, "available": True, "uses_swedebeat": True}
     secret = await owned(env, "SELECT secret FROM connections")
     [token] = swedebeat_api.tokens
     assert isinstance(secret, bytes) and token.encode() not in secret  # noqa: PT018
@@ -223,7 +226,7 @@ async def test_without_the_app_key_connect_says_so_and_sends_nothing(
     )  # fmt: skip
     assert swedebeat_api.logins == []
     assert (await actor.get("/api/connections")).json()["swedebeat"] == {
-        "enabled": True, "available": False,
+        "enabled": True, "available": False, "uses_swedebeat": True,
     }  # fmt: skip
     # No rate-limit slot was spent on a request that sent nothing: 10 more refusals, no 429.
     for _ in range(10):
