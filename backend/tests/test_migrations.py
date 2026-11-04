@@ -32,7 +32,7 @@ def applied_revisions(database_url: str) -> list[str]:
 
 def test_the_revisions_form_one_line() -> None:
     script = ScriptDirectory.from_config(alembic_config())
-    assert script.get_heads() == ["0029_beat_one_corrections"]
+    assert script.get_heads() == ["0030_plan_price_privilege"]
     assert script.get_base() == "0001_baseline"
 
 
@@ -53,7 +53,7 @@ def test_upgrade_head_then_downgrade_base(
     config = alembic_config()
     try:
         command.upgrade(config, "head")
-        assert applied_revisions(database_url) == ["0029_beat_one_corrections"]
+        assert applied_revisions(database_url) == ["0030_plan_price_privilege"]
         command.downgrade(config, "base")
         assert applied_revisions(database_url) == []
     finally:
@@ -219,3 +219,34 @@ def test_0027_admits_the_soundless_flag_and_the_downgrade_deletes_its_row(
                 connection.execute(insert)
     finally:
         engine.dispose()
+
+
+def test_0030_plan_price_privilege_up_and_down(
+    owner_database_url: str, database_url: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """#510: at head the app role reads no price column of ``plans``; the downgrade gives back the
+    table-level ``SELECT`` of migration 0007, and upgrading again takes it away."""
+    monkeypatch.setenv("CLASSBEAT_MIGRATIONS_DATABASE_URL", owner_database_url)
+    config = alembic_config()
+    admin = create_engine(database_url)
+    check = (
+        "SELECT has_table_privilege('classbeat_app', 'public.plans', 'SELECT'), "
+        "has_column_privilege('classbeat_app', 'public.plans', 'monthly_price_cents', 'SELECT'), "
+        "has_column_privilege('classbeat_app', 'public.plans', 'currency', 'SELECT'), "
+        "has_column_privilege('classbeat_app', 'public.plans', 'rank', 'SELECT')"
+    )
+
+    def held() -> tuple[bool, ...]:
+        with admin.connect() as connection:
+            return tuple(connection.execute(text(check)).one())
+
+    try:
+        command.upgrade(config, "head")
+        assert held() == (False, False, False, True)
+        command.downgrade(config, "0029_beat_one_corrections")
+        assert held() == (True, True, True, True)
+        command.upgrade(config, "head")
+        assert held() == (False, False, False, True)
+    finally:
+        admin.dispose()
+        command.downgrade(config, "base")
