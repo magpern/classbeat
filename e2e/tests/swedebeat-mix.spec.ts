@@ -12,6 +12,7 @@ import {
   swedebeatMixState,
   workerLogTail,
 } from './swedebeat-mix-helpers'
+import { useSwedebeatThroughUi } from './swedebeat-helpers'
 
 // ADR 0016 section 3 path (a) on the fakes with the production (empty) MOWL media list (A6).
 // The positive media fetch stays in backend/tests/test_swedebeat_fetch.py.
@@ -28,6 +29,7 @@ async function signedInWithMowl(page: import('@playwright/test').Page, tag: stri
   const email = uniqueEmail(tag)
   await signUpThroughUi(page, email)
   await signInThroughUi(page, email)
+  await useSwedebeatThroughUi(page) // #525: the mix choice needs the user's own switch
   await connectMowl(page)
   return email
 }

@@ -132,7 +132,8 @@ function NewClass() {
         const songs = await songsAvailability(connections, abort.signal)
         let swedebeat: SwedebeatMixAvailability = { kind: 'off' }
         let mixes: SwedebeatMix[] = []
-        if (swedebeatAccess.enabled) {
+        // The flag and the user's own "I use Swedebeat" (#525): with either off, no mix choice and no listing.
+        if (swedebeatAccess.enabled && swedebeatAccess.usesSwedebeat) {
           try {
             const listed = await getSwedebeatMixes(abort.signal)
             if (listed !== null) {

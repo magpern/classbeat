@@ -1,15 +1,17 @@
-import { useCallback, useEffect, useState, type FormEvent } from 'react'
+import { useCallback, useEffect, useId, useState, type FormEvent } from 'react'
 import { ApiError } from '../../api/client'
 import {
   connectSwedebeat,
   disconnectSwedebeat,
   getConnectionsView,
+  setSwedebeatPreference,
   type Connection,
   type SwedebeatAccess,
 } from '../../api/connections'
 import { errorMessage } from '../../api/messages'
 import { useGuard } from '../../auth/prompts'
 import { Field, Notice, Section, useAction } from '../forms'
+import { Switch } from '../ui/switch'
 
 // Plain words for the connect failures (ADR 0015 section 7). The raw code is never shown.
 const CONNECT_ERRORS: Record<string, string> = {
@@ -50,7 +52,10 @@ function since(iso: string): string {
 
 /**
  * Swedebeat (ADR 0015, ADR 0013): optional, for instructors who teach with Swedebeat music.
- * Off, the card says it is coming soon. On, and the server holds Swedebeat's app key, it shows
+ * The card exists only while the effective flag is on, or while the user still holds a Swedebeat
+ * connection (so Disconnect is always reachable). With the flag on it starts with the user's own
+ * "I use Swedebeat" switch (#525, default off); everything else Swedebeat needs that switch on.
+ * On, and the server holds Swedebeat's app key, it shows
  * the connect form (email and password, used once, never kept), then the connected state with the
  * email, and a confirmed disconnect. If another device holds the Swedebeat session, the user is
  * asked before it is signed out.
@@ -65,6 +70,7 @@ export function Swedebeat() {
   const [taken, setTaken] = useState(false)
   const [confirmingDisconnect, setConfirmingDisconnect] = useState(false)
   const action = useAction()
+  const switchId = useId()
 
   const load = useCallback(async () => {
     const all = await getConnectionsView()
@@ -128,22 +134,54 @@ export function Swedebeat() {
     })
   }
 
+  const choose = (on: boolean) => {
+    setNote(null)
+    setTaken(false)
+    void action.run(async () => {
+      const stored = await setSwedebeatPreference(on)
+      setView((was) => (was === null ? was : { ...was, access: { ...was.access, usesSwedebeat: stored } }))
+    })
+  }
+
+  // Nothing about Swedebeat shows until it is known whether this user may see it.
   if (view === null) {
-    return (
+    return loadFailed ? (
       <Section title="Swedebeat">
-        {loadFailed ? <Notice kind="error">The connections could not be loaded.</Notice> : <p>Loading</p>}
+        <Notice kind="error">The connections could not be loaded.</Notice>
       </Section>
-    )
+    ) : null
   }
 
   const { access, account } = view
-  const needsForm = access.enabled && access.available && (account === null || account.status === 'needs_reconnect')
+  // A note ("Swedebeat is disconnected.") keeps the card until the page is loaded again.
+  if (!access.enabled && account === null && note === null) return null
+  const on = access.enabled && access.usesSwedebeat
+  const needsForm = on && access.available && (account === null || account.status === 'needs_reconnect')
   return (
     <Section title="Swedebeat">
       {note ? <Notice kind="success">{note}</Notice> : null}
       {action.error ? <Notice kind="error">{action.error}</Notice> : null}
-      {!access.enabled && account === null ? <p className="text-muted">Swedebeat is coming soon.</p> : null}
-      {access.enabled && !access.available && account === null ? (
+      {access.enabled ? (
+        <div className="flex flex-col gap-2">
+          <div className="flex items-center gap-3">
+            <Switch
+              id={switchId}
+              checked={access.usesSwedebeat}
+              disabled={action.busy}
+              onCheckedChange={choose}
+            />
+            <label htmlFor={switchId} className="font-medium">
+              I use Swedebeat
+            </label>
+          </div>
+          <p className="m-0 text-muted" data-testid="swedebeat-preference-state">
+            {access.usesSwedebeat
+              ? 'classbeat offers your Swedebeat mixes when you design a class.'
+              : 'Turn this on if you teach with Swedebeat music. Until then classbeat shows nothing about Swedebeat.'}
+          </p>
+        </div>
+      ) : null}
+      {on && !access.available && account === null ? (
         <p className="text-muted">Swedebeat sign-in is not available on this server.</p>
       ) : null}
       {account ? (

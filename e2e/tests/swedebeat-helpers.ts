@@ -1,3 +1,4 @@
+import { expect, type Page } from '@playwright/test'
 import { inContainer } from './spotify-helpers'
 
 // Shared by the Swedebeat spec: the fake Swedebeat's public test data and test control
@@ -62,3 +63,15 @@ export const catalogueCalls = (): (string | null)[] =>
   fakeState()
     .calls.filter((c) => c.path === '/track/extendedsearch')
     .map((c) => c.email)
+
+/**
+ * Turns on the signed-in user's "I use Swedebeat" switch on the account page (#525: default off, and
+ * every Swedebeat feature needs it), the way a user does.
+ */
+export async function useSwedebeatThroughUi(page: Page): Promise<void> {
+  if (!page.url().includes('/account')) await page.goto('/account')
+  const toggle = page.getByRole('region', { name: 'Swedebeat', exact: true }).getByRole('switch', { name: 'I use Swedebeat' })
+  await expect(toggle).toBeVisible()
+  if ((await toggle.getAttribute('aria-checked')) !== 'true') await toggle.click()
+  await expect(toggle).toHaveAttribute('aria-checked', 'true')
+}
