@@ -9,7 +9,9 @@ process creates at start (written to /ca/ca.pem). Nothing leaves the stack.
 Only the back channel lives here (token exchange and JWKS). The browser's authorization step is
 played by Playwright, which answers the redirect to the provider's authorize URL itself and
 puts everything the fake needs into the authorization `code`:
-base64url(JSON {sub, email, email_verified, nonce, [tid, oid]}). The ID token is built from it.
+base64url(JSON {sub, email, email_verified, nonce, [tid, oid], [auth_time]}). The ID token is
+built from it. `auth_time` is the sign-in's age in seconds, or null for a token without the claim
+(as Google may send for a re-authentication, #522); absent, it is now.
 """
 
 import base64
@@ -82,6 +84,12 @@ def id_token(host: str, client_id: str, grant: dict[str, object]) -> str:
         "email": grant.get("email"),
         "email_verified": grant.get("email_verified", False),
     }
+    if "auth_time" in grant:
+        age = grant["auth_time"]
+        if age is None:
+            del claims["auth_time"]
+        else:
+            claims["auth_time"] = now - int(str(age))
     if host == "login.microsoftonline.com":
         tid, oid = str(grant["tid"]), str(grant["oid"])
         claims.update(iss=f"https://login.microsoftonline.com/{tid}/v2.0", tid=tid, oid=oid, sub=oid)
