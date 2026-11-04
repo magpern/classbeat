@@ -1097,9 +1097,11 @@ listed at the end. It follows the soundless amendment above and keeps its rules.
    - **At most 200 rows for the class's current fingerprint** (409 `correction_limit`). Rows for
      other fingerprints are **kept and not counted**: Make current can bring them back to life
      (item 8). They are bounded anyway. A user writes only rows for the current fingerprint, at
-     most one per song the music plays. The fingerprint changes only through a job: a design, a
-     revise, Change songs, a refit, or a mix analysed again. Jobs are bounded per class by the
-     revision limits.
+     most 200 per fingerprint, and a class gets a new fingerprint only through a job: a design, a
+     revise, Change songs, or a mix analysed again (a refit keeps the fingerprint). Chat revisions
+     are bounded by the revision limits, but a new design of an existing class is not. The real
+     bound is therefore about (the credits the user spends on the class + the revisions) × 200
+     rows. That is harmless, so no per-class bound on fingerprints is added.
    - No title, no Spotify or MOWL id, no map.
 
    Guard 10: deleted with the class and the account. Guard 12: exported (`class_id`, `song`,
@@ -1153,9 +1155,16 @@ listed at the end. It follows the soundless amendment above and keeps its rules.
      Spotify track. The title is cleaned, Spotify-derived like `unknown_bpm`, and gone with the
      class.
 
-   **Size:** at most 200 `songs` (a class is at most 180 minutes) and titles of at most 100
-   characters. `revision.build` refuses `invalid_output` for a `music` over 64 KB as canonical JSON:
-   the same bound as `content`, kept in code because the column has no check.
+   **Size: the new fields only.** `songs` holds at most 200 entries (a class is at most 180
+   minutes), each with a title of at most 100 characters. `beat_one` holds at most 200 entries (the
+   cap of item 2). A `songs` entry is at most about 490 bytes of canonical JSON (about 90 bytes of
+   numbers and keys, plus a title of at most 100 characters at up to 4 bytes each). A `beat_one`
+   entry is about 25 bytes. The two lists together are therefore at most about 103 KB on any valid
+   map. `revision.build` checks the canonical size of `songs` plus `beat_one` against 128 KB, as a
+   defence that valid input cannot reach. The check never covers the whole `music` object or the existing `unknown_bpm` (up to 500
+   titles of 200 characters, about 110 KB, as today), so nothing that is valid today is refused.
+   Stored revisions, Swedebeat match revisions (`swedebeat_match/revision.py`) and `song_list`
+   inserts do not go through `build`, so they are unaffected and no migration is needed.
 
    **One source for "estimate":** `songs[].estimate` is computed from the corrected map. For a mix
    song that means a beat-1 margin below the library's 1.3 and no correction; for a Spotify track,
@@ -1170,15 +1179,20 @@ listed at the end. It follows the soundless amendment above and keeps its rules.
    - **`admit`** runs in the create transaction with the class row locked. Before anything is
      reserved it refuses:
      - a class whose `music_source` is `{"source": "none"}`: `invalid_input`, through
-       `design.music_kind` once SL1 adds it, and until then through an explicit check of
-       `classes.music_source`, in the same list as SL4's refusals;
+       `design.music_kind.is_none` on the locked class's `music_source`. It **never** goes through
+       `music_kind.admit_class` or `admit_music`, whose answers follow the soundless gate
+       (`feature_off` today). Once SL2 lands, those would let a soundless class through, and a refit
+       would then run a music step on a class with no music;
      - a class with no `music_source` (a duplicate of a class on picked songs, #550's item 5): 409
-       `not_changeable`, as `revise_draft` does;
+       `not_changeable`, as #550 specifies for `revise_draft`;
      - a base that is not a `draft` of the class (`invalid_input`), or not its current revision
        (`stale_base`);
      - the running flag (`sport.admit_class`), and a mix's flag and analysis limit
        (`mixadmit.admit_class_mix`), as for a revise;
-     - more than 50 refits per class (409 `refit_limit`).
+     - more than 50 refits per class (409 `refit_limit`);
+     - nothing to apply: the corrections for the base's fingerprint already equal its
+       `music.beat_one` (409 `nothing_pending`), so a click cannot store an identical revision and
+       use up the limit.
 
      The one-open-job-per-class index (`class_busy`) and the plan's concurrent jobs apply as for
      every kind. `admit` stores the base's hash.
@@ -1194,7 +1208,10 @@ listed at the end. It follows the soundless amendment above and keeps its rules.
      5. the final fenced transaction runs the connection guard, stores the revision (`parent_id` =
         base; provenance `{origin: "beat_one", base_revision_id, classbeat_version, mowl_version,
         map_version, crossfade_sec, sport?}`, no model fields) and sets `current_revision_id` by the
-        revise compare-and-set.
+        revise compare-and-set. The revision is built by `revision.build_refit`, which shares
+        `revision.build`'s content and music code, and so its validation and the size check of item
+        5. It writes the provenance above itself, because `records.provenance` and its `origin`
+        literal describe model runs; `beat_one` is the refit's origin.
 
      The revision is stored even when the content is unchanged, because its `music.beat_one`
      records the applied set. Saved then stays "up to date", since that compares content hashes
@@ -1206,7 +1223,10 @@ listed at the end. It follows the soundless amendment above and keeps its rules.
    does.
    - **`PUT /api/classes/{id}/beat-one/{song}`** with `{beats, revision_id}` sets one song's total
      for the music of `revision_id`:
-     - the class's `music_source` is checked first, explicitly: `none` is 409 `no_beat_data`;
+     - the class's `music_source` is checked first, explicitly: `none` (`music_kind.is_none`) is
+       409 `no_beat_data`, and no `music_source` (a #550 copy of a class on picked songs, which
+       `refit_draft` refuses) is 409 `not_changeable`. The class detail then has `available: false`,
+       so the page shows neither the panel nor **Apply**;
      - `revision_id` must be the current revision (409 `stale_base`);
      - its `music` must have `songs` (409 `no_beat_data`) containing `song` (422 `invalid_input`);
      - `beats` must be a JSON integer from -3 to 3, not 0 (422);
@@ -1214,9 +1234,12 @@ listed at the end. It follows the soundless amendment above and keeps its rules.
 
      The fingerprint and the song's BPM are read from that revision, never sent by the browser.
    - **`DELETE /api/classes/{id}/beat-one/{song}?revision_id=`** clears the current music's row for
-     `song` (idempotent).
+     `song` (idempotent). The same checks as PUT: a revision of another class is 404, and one that
+     is not the current revision is 409 `stale_base`, and nothing is deleted.
    - **`DELETE /api/classes/{id}/beat-one/rows/{row_id}`** clears **any** row of the class by its
-     id: a stale one, or one for a song the current revision no longer reaches.
+     id: a stale one, or one for a song the current revision no longer reaches. It is keyed by
+     `owner_id`, `class_id` and `id`. A row id of another class of the same user deletes nothing and
+     answers 404; another user's row is hidden by RLS and gets the same 404.
    - **`DELETE /api/classes/{id}/beat-one`** clears every row of the class.
 
    An open job does not block a change: the job applies what it read, and its revision's `beat_one`
@@ -1236,8 +1259,9 @@ listed at the end. It follows the soundless amendment above and keeps its rules.
    - **Duplicate** (#550): the copy's revision keeps `music.beat_one`, and the same transaction
      copies the source class's rows for that revision's fingerprint, re-keyed to the copy's class
      (same fingerprint, song, beats and BPM). Otherwise the copy would show `pending` and **Apply**
-     would strip the corrections. Whichever of the two ADR amendments lands second words the other's
-     item to match.
+     would strip the corrections. **This text is the text of record.** #550's amendment and its
+     implementation (DU1) add the row copy to the duplicate transaction, and make sure its insert
+     guard allows that insert, whichever lands second.
 9. **When the music changes under the corrections.** A mix's fingerprint is the hash of its map.
    Analysing it again (after the 30-day cache, an eviction at 20 maps per user, or a new
    `music.MAP_VERSION` in a wheel upgrade) gives a new fingerprint, and the class's corrections go
@@ -1286,7 +1310,7 @@ listed at the end. It follows the soundless amendment above and keeps its rules.
 | BC0 (#538) | this amendment (and the ADR 0016 §1 note) | docs / Opus | none |
 | BC1 (#539) | the next free migration (the table, RLS, `music_changed`), guards 10 and 12, `classbeat.agent.beat_one` (pure apply, songs) | Opus / Opus | BC0 |
 | BC2 (#540) | apply in every draft kind (not soundless), revision `music.beat_one` and `songs` with the size cap | Opus / Opus | BC1 |
-| BC3 (#541) | kind `refit_draft`, refusing a soundless class and a class with no music source | Opus / Opus | BC2 |
-| BC4 (#542) | the API (set, clear, clear by row, clear all; the current-fingerprint cap; the soundless refusal) and `beat_one` on the class detail | Opus / Opus | BC1, BC2 |
+| BC3 (#541) | kind `refit_draft` (refusing a soundless class through `music_kind.is_none`, a class with no music source, and nothing pending; built by `build_refit`) | Opus / Opus | BC2 |
+| BC4 (#542) | the API (set, clear, clear by row, clear all; the current-fingerprint cap; the soundless and no-source refusals) and `beat_one` on the class detail | Opus / Opus | BC1, BC2 |
 | BC5 (#543) | the class page panel, Vitest | Sonnet / Sonnet | BC3, BC4 |
 | BC6 (#544) | Playwright on the fakes, axe, T123 | Sonnet / Sonnet | BC5 |
