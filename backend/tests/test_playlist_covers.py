@@ -9,6 +9,7 @@ runs; a Spotify 429 starts the cooldown; a refresh the read triggers is never ca
 
 import asyncio
 import json
+import time
 import uuid
 from datetime import UTC, datetime, timedelta
 from typing import Any
@@ -18,6 +19,7 @@ from mowl import spotify_web
 from sqlalchemy import text
 from sqlalchemy.engine import Connection
 
+from classbeat import egress
 from classbeat.auth import ratelimit
 from classbeat.spotify import access
 from classbeat.spotify.http import SpotifyHttp
@@ -157,6 +159,74 @@ def plant_job(admin: Connection, owner: uuid.UUID, kind: str, state: str) -> uui
     elif state == "waiting_for_approval":
         extra = {"approval_hash": b"\x01" * 32, "expires_at": datetime.now(UTC) + timedelta(days=1)}
     return new_job(admin, owner, kind=kind, state=state, **extra)
+
+
+async def test_with_song_picking_off_no_spotify_request_is_sent(
+    spot: Spot, admin: Connection
+) -> None:
+    """``CLASSBEAT_SONG_PICKING`` off is the kill switch: an entitled user with a connected Spotify
+    row gets no covers and nothing is sent (the route's own check, ``design/routes.py``)."""
+    actor, ctx = await rider(spot, admin)  # entitled and connected
+    assert await row(spot, ctx) is not None
+    playlists(spot)
+    state = spot.env.app.state
+    settings = state.settings
+    state.settings = settings.model_copy(update={"song_picking": False})
+    try:
+        answer = await actor.get(URL)
+    finally:
+        state.settings = settings
+    assert (answer.status_code, answer.json()) == (200, {"covers": []})
+    assert spot.fake.seen == []
+    # The same user with the setting back on is read: the check above is what stopped it.
+    assert len((await actor.get(URL)).json()["covers"]) == len(PINNED)
+
+
+def deadline_left() -> float | None:
+    """The seconds left on this thread's ``egress.call_deadline``, or None without one."""
+    at = getattr(egress._thread_deadline, "at", None)  # pyright: ignore[reportPrivateUsage]
+    return None if at is None else at - time.monotonic()
+
+
+@pytest.mark.parametrize("expires_in", [3000, 10])
+async def test_the_listing_requests_run_under_an_8_second_deadline_and_the_refresh_under_none(
+    spot: Spot, admin: Connection, monkeypatch: pytest.MonkeyPatch, expires_in: float
+) -> None:
+    """ADR 0013 section 9, "What the 8 s bounds": ``my_playlists`` runs inside
+    ``egress.call_deadline(8)`` in its thread; a refresh (``expires_in=10``) runs before it, on
+    the event loop, under no call deadline (it keeps its own lock wait and timeout)."""
+    actor, _ = await rider(spot, admin, expires_in=expires_in)
+    playlists(spot)
+    seen: list[float | None] = []
+    listing = spotify_web.my_playlists
+
+    def recorded(*args: Any, **kwargs: Any) -> Any:
+        seen.append(deadline_left())
+        return listing(*args, **kwargs)
+
+    monkeypatch.setattr(spotify_web, "my_playlists", recorded)
+    held = HeldRefresh(spot.http)
+    held.go_on.set()
+    refresh_deadlines: list[float | None] = []
+    inner_refresh = held.refresh
+
+    async def refresh(*args: Any, **kwargs: Any) -> Any:
+        refresh_deadlines.append(deadline_left())
+        return await inner_refresh(*args, **kwargs)
+
+    monkeypatch.setattr(held, "refresh", refresh)
+    state = spot.env.app.state
+    state.spotify_http = held
+    try:
+        assert len((await actor.get(URL)).json()["covers"]) == len(PINNED)
+    finally:
+        state.spotify_http = spot.http
+    assert len(seen) == 1
+    left = seen[0]
+    assert left is not None, "the listing ran with no call deadline"
+    assert 0 < left <= 8.0
+    assert left > 6.0  # it was set just before the listing, not inherited from elsewhere
+    assert refresh_deadlines == ([None] if expires_in == 10 else [])
 
 
 @pytest.mark.parametrize("kind", ["design_with_songs", "revise_songs"])

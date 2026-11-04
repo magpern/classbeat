@@ -81,9 +81,11 @@ SWEDEBEAT_MIXES_IP = Limit("swedebeat-mixes", "ip", 60, 600)
 # be triggered cross-site, so it has buckets of its own; every request counts.
 PLAYLIST_COVERS_USER = Limit("playlist-covers", "account", 10, 600)
 PLAYLIST_COVERS_IP = Limit("playlist-covers", "ip", 30, 600)
-# The cover read's cooldown after a Spotify 429: one row per user whose ``window_start`` is the
-# instant the cooldown ends (a dedicated bucket hash, not a fixed window), checked as still in the
-# future. The purge (windows over two hours old) removes it two hours after it ended.
+# The cover read's cooldown after a Spotify 429: a dedicated bucket hash per user (not a fixed
+# window). Each 429 inserts a row whose ``window_start`` is the instant that cooldown ends; the
+# check asks whether any row's end is still in the future, so the latest end counts and a later,
+# shorter Retry-After never shortens a running cooldown. The purge (windows over two hours old)
+# removes each row two hours after it ended.
 COVER_COOLDOWN_ACTION = "cover-cooldown"
 COVER_COOLDOWN_MIN_SECONDS = 60
 COVER_COOLDOWN_MAX_SECONDS = 3600
@@ -223,7 +225,8 @@ class RateLimiter:
 
     async def start_cooldown(self, value: str, retry_after: int | None) -> int:
         """Start (or extend) the cover read's cooldown for ``value`` (a user id) by Spotify's
-        ``Retry-After``: at least 60 s, at most an hour, 60 s without one. Returns the seconds."""
+        ``Retry-After``: at least 60 s, at most an hour, 60 s without one. Inserts one row per
+        call (its end instant; a duplicate end is ignored). Returns the seconds."""
         seconds = retry_after if isinstance(retry_after, int) and retry_after > 0 else 0
         seconds = min(max(seconds, COVER_COOLDOWN_MIN_SECONDS), COVER_COOLDOWN_MAX_SECONDS)
         ends = func.clock_timestamp() + func.make_interval(

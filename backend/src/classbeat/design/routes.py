@@ -38,10 +38,12 @@ never model input).
   minutes, every request counts): 429 ``rate_limited`` before anything else.
 - **Every other outcome is 200.** ``{covers: []}``, with no Spotify call, unless song picking
   admits the user, no song-picking job of theirs is queued or running
-  (``jobs.service.cover_read_admitted``) and no cover-read cooldown is pending. Every failure of
-  the read (no or a non-connected Spotify connection, a refused or failed refresh, a 401, the
-  deadline, an allowlist refusal, more than 500 playlists) is ``{covers: []}`` too, logged by
-  category only.
+  (``jobs.service.cover_read_admitted``) and no cover-read cooldown is pending. Every provider
+  failure of the read (no or a non-connected Spotify connection, a refused or failed refresh, a
+  401, the deadline, an allowlist refusal, more than 500 playlists) is ``{covers: []}`` too,
+  logged by category only. A database error in the cooldown or open-job check still answers 500
+  (the page shows initials either way; hardening, #470). The open-job check runs once, before a
+  read that can take about 28 s, so a pick admitted meanwhile can overlap it (#470).
 - **The read**: one ``spotify_web.my_playlists(max_pages=10)`` through ``spotify_call`` in its
   read-only mode (existing host and token client; no ``record_result``, a 401 never flips; a
   refresh is shielded, never cancelled). ``egress.call_deadline`` bounds only the listing requests

@@ -1,5 +1,5 @@
 import { screen, waitFor, within } from '@testing-library/react'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { fakeApi, json, reason } from '../test/fakeApi'
 import { SESSION_ROUTES } from '../test/jobFixtures'
 import { renderAt } from '../test/render'
@@ -70,6 +70,35 @@ describe('playlist covers in the New class picker', () => {
     expect(within(screen.getByRole('radiogroup', { name: 'Playlist' })).getAllByRole('radio')).toHaveLength(3)
     expect(document.querySelectorAll('img')).toHaveLength(2)
     expect(api.to('GET', '/api/music/playlist-covers')).toHaveLength(1)
+  })
+
+  it('renders the picker with initials at once and adds covers when the slow answer arrives', async () => {
+    let answer: (value: Response) => void = () => undefined
+    const pending = new Promise<Response>((resolve) => {
+      answer = resolve
+    })
+    fakeApi(READY)
+    // fakeApi answers at once; hold this one request open instead.
+    const answered = globalThis.fetch
+    vi.stubGlobal('fetch', (input: RequestInfo | URL, init?: RequestInit) =>
+      (typeof input === 'string' ? input : input instanceof URL ? input.pathname : input.url).endsWith(
+        '/api/music/playlist-covers',
+      )
+        ? pending
+        : answered(input, init),
+    )
+    renderAt('/classes/new')
+    // The covers request is still open: every tile has its initials and the form can be used.
+    expect(await screen.findByRole('radio', { name: 'Hills' })).toBeInTheDocument()
+    expect(within(tile('Hills')).getByText('H')).toBeInTheDocument()
+    expect(within(tile('Sprint Mix')).getByText('SM')).toBeInTheDocument()
+    expect(document.querySelectorAll('img')).toHaveLength(0)
+    expect(screen.getByRole('button', { name: 'Design my class' })).toBeInTheDocument()
+    answer(json({ covers: [{ spotify_playlist_id: HILLS, cover: MOSAIC }] }))
+    await waitFor(() => {
+      expect(tile('Hills').querySelector('img')?.getAttribute('src')).toBe(MOSAIC)
+    })
+    expect(within(tile('Sprint Mix')).getByText('SM')).toBeInTheDocument()
   })
 
   it('never shows a URL outside the pinned shapes, even when the API sent one', async () => {
