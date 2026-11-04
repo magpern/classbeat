@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import type { RevisionSummary } from '../../api/classes'
 import {
   askedFor,
+  compareFailureText,
   compareRevisions,
   describeComparison,
   getHistory,
@@ -19,7 +20,7 @@ function when(iso: string): string {
   return Number.isNaN(date.getTime()) ? '' : date.toLocaleString()
 }
 
-type Compared = { key: string; lines: string[]; title: string } | { key: string; failed: true }
+type Compared = { key: string; lines: string[]; title: string } | { key: string; failed: string }
 
 /**
  * The class history (ADR 0007 amendment of 2026-11-03, part H): every version, newest first, with
@@ -34,6 +35,7 @@ export function HistoryPanel({
   viewingId,
   onView,
   onUse,
+  onCanChange,
   busy,
 }: {
   classId: string
@@ -41,6 +43,8 @@ export function HistoryPanel({
   viewingId: string | null
   onView: (id: string) => void
   onUse: (revision: RevisionSummary) => void
+  /** Told whether Change it works for this class, once the history says (the server refuses it otherwise). */
+  onCanChange?: (can: boolean) => void
   busy: boolean
 }) {
   // Read again whenever the versions or the current one change (a change, a pick).
@@ -48,22 +52,59 @@ export function HistoryPanel({
   const [loaded, setLoaded] = useState<{ key: string; history: History } | null>(null)
   const [selected, setSelected] = useState<string[]>([])
   const [compared, setCompared] = useState<Compared | null>(null)
+  const [readFailed, setReadFailed] = useState(false)
   useEffect(() => {
     const abort = new AbortController()
     getHistory(classId, abort.signal).then(
       (history) => {
-        if (!abort.signal.aborted) setLoaded({ key, history })
+        if (abort.signal.aborted) return
+        setReadFailed(false)
+        setLoaded({ key, history })
+        onCanChange?.(history.canChange)
       },
-      () => undefined,
+      () => {
+        if (!abort.signal.aborted) setReadFailed(true)
+      },
     )
     return () => {
       abort.abort()
     }
+    // onCanChange is a setter of the page; a new function must not read the history again.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [classId, key])
 
-  const history = loaded !== null && loaded.key === key ? loaded.history : null
+  // While the history is read again for the same set of versions (Make current only moves the
+  // flag), the last answer stays on screen with the flag taken from the page, so the list does not
+  // fall back to the plain one and back. A different set of versions shows the plain list until read.
+  const sameVersions =
+    loaded !== null &&
+    loaded.history.revisions.length === revisions.length &&
+    loaded.history.revisions.every((r) => revisions.some((s) => s.id === r.id))
+  const history =
+    loaded === null
+      ? null
+      : loaded.key === key
+        ? loaded.history
+        : sameVersions
+          ? {
+              ...loaded.history,
+              revisions: loaded.history.revisions.map((r) => ({
+                ...r,
+                isCurrent: revisions.find((s) => s.id === r.id)?.isCurrent ?? r.isCurrent,
+              })),
+            }
+          : null
   if (history === null) {
-    return <RevisionsPanel revisions={revisions} viewingId={viewingId} onView={onView} onUse={onUse} busy={busy} />
+    return (
+      <>
+        {readFailed ? (
+          <p className="muted m-0" role="status" data-testid="history-unavailable">
+            The version history could not be read, so only the plain list is shown.
+          </p>
+        ) : null}
+        <RevisionsPanel revisions={revisions} viewingId={viewingId} onView={onView} onUse={onUse} busy={busy} />
+      </>
+    )
   }
   const ordered = [...history.revisions].sort((a, b) => b.number - a.number)
   const byId = new Map(history.revisions.map((r) => [r.id, r]))
@@ -83,8 +124,8 @@ export function HistoryPanel({
       (found) => {
         setCompared({ key: wanted, title, lines: describeComparison(found) })
       },
-      () => {
-        setCompared({ key: wanted, failed: true })
+      (error: unknown) => {
+        setCompared({ key: wanted, failed: compareFailureText(error) })
       },
     )
   }
@@ -102,6 +143,13 @@ export function HistoryPanel({
           switched off. You can still view, compare, use and save its versions.
         </p>
       )}
+      {history.unreadable > 0 ? (
+        <p className="m-0" data-testid="unreadable-versions">
+          {history.unreadable === 1
+            ? '1 earlier version can no longer be read and is not listed.'
+            : `${String(history.unreadable)} earlier versions can no longer be read and are not listed.`}
+        </p>
+      ) : null}
       <ol className="rows revisions" aria-label="Version history">
         {ordered.map((r) => {
           const summary = revisions.find((s) => s.id === r.id)
@@ -175,7 +223,7 @@ export function HistoryPanel({
         <section aria-labelledby="compare-title" className="flex flex-col gap-2" data-testid="comparison">
           {'failed' in shownComparison ? (
             <p role="alert" className="m-0">
-              The two versions could not be compared. Try again.
+              {shownComparison.failed}
             </p>
           ) : (
             <>

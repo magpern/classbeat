@@ -269,12 +269,15 @@ export function ChatPanel({
   summary,
   revisions,
   messages,
+  canChange = true,
   onReload,
   onView,
 }: {
   summary: ClassSummary
   revisions: RevisionSummary[]
   messages: ClassMessage[]
+  /** False when the class history says Change it is not available (the server would refuse it). */
+  canChange?: boolean
   onReload: () => void
   onView: (revisionId: string) => void
 }) {
@@ -339,9 +342,11 @@ export function ChatPanel({
   const blocked =
     summary.currentRevisionId === null
       ? 'There is no version to change yet.'
-      : running !== null && !revising
-        ? 'This class is busy with another task. You can ask for a change when it is done.'
-        : null
+      : !canChange
+        ? 'Change it is not available for this class right now. You can still view, compare, use and save its versions.'
+        : running !== null && !revising
+          ? 'This class is busy with another task. You can ask for a change when it is done.'
+          : null
 
   return (
     <section className="panel chat" aria-labelledby="chat-title">

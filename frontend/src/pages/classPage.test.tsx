@@ -521,3 +521,69 @@ describe('a class that is not there', () => {
     expect(screen.getByRole('button', { name: 'Try again' })).toBeInTheDocument()
   })
 })
+
+// Issue #555: the history says whether Change it works; the box does not offer what the server refuses.
+describe('Change it and the class history', () => {
+  const HISTORY_PATH = `/api/classes/${CLASS_ID}/history`
+  const historyBody = (canChange: boolean) => ({
+    sport: 'cycling',
+    can_change: canChange,
+    unreadable: 0,
+    revisions: [
+      {
+        id: REV1,
+        number: 1,
+        parent_number: null,
+        origin: 'design_draft',
+        created_at: '2026-10-01T10:00:00Z',
+        is_current: true,
+        content_hash: 'ab'.repeat(32),
+        summary: { segments: 1, intervals: 2, total_sec: 600 },
+        tss: 40,
+        tss_approximate: false,
+        request: null,
+        saved: 'none',
+        from_songs: false,
+        duplicated_from: null,
+      },
+    ],
+  })
+
+  it('disables Change it with a sentence when the history says it is not available', async () => {
+    fakeApi({
+      ...SESSION_ROUTES,
+      ...classRoutes(),
+      'GET /api/connections': MOWL,
+      [`GET ${HISTORY_PATH}`]: historyBody(false),
+    })
+    renderAt(PAGE)
+    expect((await screen.findAllByText(/Change it is not available for this class right now/)).length).toBeGreaterThan(1)
+    expect(screen.getByRole('button', { name: 'Change it' })).toBeDisabled()
+    expect(screen.getByLabelText('What should change?')).toBeDisabled()
+  })
+
+  it('decodes and shows the count of versions that can no longer be read', async () => {
+    fakeApi({
+      ...SESSION_ROUTES,
+      ...classRoutes(),
+      'GET /api/connections': MOWL,
+      [`GET ${HISTORY_PATH}`]: { ...historyBody(true), unreadable: 2 },
+    })
+    renderAt(PAGE)
+    expect(await screen.findByTestId('unreadable-versions')).toHaveTextContent(
+      '2 earlier versions can no longer be read and are not listed.',
+    )
+  })
+
+  it('keeps Change it enabled when the history says it works', async () => {
+    fakeApi({
+      ...SESSION_ROUTES,
+      ...classRoutes(),
+      'GET /api/connections': MOWL,
+      [`GET ${HISTORY_PATH}`]: historyBody(true),
+    })
+    renderAt(PAGE)
+    await screen.findByTestId('history-entry')
+    expect(screen.getByRole('button', { name: 'Change it' })).toBeEnabled()
+  })
+})

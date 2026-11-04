@@ -1,6 +1,7 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { RevisionSummary } from '../../api/classes'
+import { ApiError } from '../../api/client'
 import {
   askedFor,
   describeComparison,
@@ -80,20 +81,25 @@ const ENTRIES = [
   entry(2, { request: 'Make the climbs longer', isCurrent: true, saved: 'live' }),
   entry(3, { origin: 'design_draft', fromSongs: true, parentNumber: 2 }),
 ]
-const HISTORY: History = { sport: 'cycling', canChange: true, revisions: ENTRIES }
+const HISTORY: History = { sport: 'cycling', canChange: true, revisions: ENTRIES, unreadable: 0 }
 
-function show(onUse = vi.fn(), onView = vi.fn()) {
-  render(
+function panel(props: { busy?: boolean; onCanChange?: (can: boolean) => void; onUse?: () => void; onView?: () => void; revisions?: RevisionSummary[] } = {}) {
+  return (
     <HistoryPanel
       classId="c1"
-      revisions={ENTRIES.map(summary)}
+      revisions={props.revisions ?? ENTRIES.map(summary)}
       viewingId="r2"
-      onView={onView}
-      onUse={onUse}
-      busy={false}
-    />,
+      onView={props.onView ?? vi.fn()}
+      onUse={props.onUse ?? vi.fn()}
+      onCanChange={props.onCanChange}
+      busy={props.busy ?? false}
+    />
   )
-  return { onUse, onView }
+}
+
+function show(onUse = vi.fn(), onView = vi.fn(), more: { busy?: boolean; onCanChange?: (can: boolean) => void } = {}) {
+  const view = render(panel({ onUse, onView, ...more }))
+  return { onUse, onView, view }
 }
 
 describe('HistoryPanel', () => {
@@ -172,6 +178,101 @@ describe('HistoryPanel', () => {
       expect(api.getHistory).toHaveBeenCalled()
     })
     expect(screen.getByRole('button', { name: 'Use this version 1' })).toBeTruthy()
+    expect(screen.queryByTestId('history-entry')).toBeNull()
+  })
+})
+
+describe('HistoryPanel states', () => {
+  beforeEach(() => {
+    api.getHistory.mockReset()
+    api.compareRevisions.mockReset()
+  })
+
+  it('disables Use this version while the page is busy (a task is running or a switch is under way)', async () => {
+    api.getHistory.mockResolvedValue(HISTORY)
+    const { onUse } = show(vi.fn(), vi.fn(), { busy: true })
+    await screen.findAllByTestId('history-entry')
+    const use = screen.getByRole('button', { name: 'Use this version 1' })
+    expect(use).toBeDisabled()
+    fireEvent.click(use)
+    expect(onUse).not.toHaveBeenCalled()
+  })
+
+  it('says how many versions can no longer be read, and nothing when all can', async () => {
+    api.getHistory.mockResolvedValue({ ...HISTORY, unreadable: 2 })
+    const first = show()
+    expect((await screen.findByTestId('unreadable-versions')).textContent).toBe(
+      '2 earlier versions can no longer be read and are not listed.',
+    )
+    first.view.unmount()
+    api.getHistory.mockResolvedValue({ ...HISTORY, unreadable: 1 })
+    const second = show()
+    expect((await screen.findByTestId('unreadable-versions')).textContent).toBe(
+      '1 earlier version can no longer be read and is not listed.',
+    )
+    second.view.unmount()
+    api.getHistory.mockResolvedValue(HISTORY)
+    show()
+    await screen.findAllByTestId('history-entry')
+    expect(screen.queryByTestId('unreadable-versions')).toBeNull()
+  })
+
+  it('tells the page whether Change it works', async () => {
+    const onCanChange = vi.fn()
+    api.getHistory.mockResolvedValue({ ...HISTORY, canChange: false })
+    show(vi.fn(), vi.fn(), { onCanChange })
+    await screen.findAllByTestId('history-entry')
+    expect(onCanChange).toHaveBeenLastCalledWith(false)
+  })
+
+  it('says which way a comparison failed', async () => {
+    api.getHistory.mockResolvedValue(HISTORY)
+    show()
+    for (const n of [1, 2]) {
+      fireEvent.click(await screen.findByRole('button', { name: `Compare version ${String(n)}` }))
+    }
+    api.compareRevisions.mockRejectedValue(new ApiError(404, 'not_found', null, undefined))
+    fireEvent.click(screen.getByRole('button', { name: 'Compare versions 1 and 2' }))
+    expect((await screen.findByRole('alert')).textContent).toBe(
+      'One of these versions is no longer there.',
+    )
+    api.compareRevisions.mockRejectedValue(new ApiError(500, 'internal', null, undefined))
+    fireEvent.click(screen.getByRole('button', { name: 'Compare versions 1 and 2' }))
+    await waitFor(() => {
+      expect(screen.getByRole('alert').textContent).toBe(
+        'One of these versions can no longer be read, so the two cannot be compared.',
+      )
+    })
+  })
+
+  it('says so when the history cannot be read, next to the plain list', async () => {
+    api.getHistory.mockRejectedValue(new Error('down'))
+    show()
+    expect((await screen.findByTestId('history-unavailable')).textContent).toContain('could not be read')
+    expect(screen.getByRole('button', { name: 'Use this version 1' })).toBeTruthy()
+  })
+
+  it('keeps the timeline while it is read again after Make current, with the new current flag', async () => {
+    api.getHistory.mockResolvedValueOnce(HISTORY)
+    const { view } = show()
+    await screen.findAllByTestId('history-entry')
+    // Make current moves the flag only: the same versions, the history read again (never answered here).
+    api.getHistory.mockReturnValue(new Promise(() => undefined))
+    const moved = ENTRIES.map((e) => summary({ ...e, isCurrent: e.number === 1 }))
+    view.rerender(panel({ revisions: moved }))
+    const rows = screen.getAllByTestId('history-entry')
+    expect(rows).toHaveLength(3)
+    expect(within(rows[2]!).getByText('Current')).toBeTruthy()
+    expect(within(rows[1]!).queryByText('Current')).toBeNull()
+    expect(screen.queryByRole('list', { name: 'Versions' })).toBeNull()
+  })
+
+  it('shows the plain list while a new set of versions is read', async () => {
+    api.getHistory.mockResolvedValueOnce(HISTORY)
+    const { view } = show()
+    await screen.findAllByTestId('history-entry')
+    api.getHistory.mockReturnValue(new Promise(() => undefined))
+    view.rerender(panel({ revisions: [...ENTRIES.map(summary), summary(entry(4))] }))
     expect(screen.queryByTestId('history-entry')).toBeNull()
   })
 })

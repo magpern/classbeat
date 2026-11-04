@@ -43,10 +43,13 @@ function WriteRun({
   jobId,
   kind,
   onFinished,
+  onLost,
 }: {
   jobId: string
   kind: WriteKind
   onFinished: (done: { kind: WriteKind; job: Job }) => void
+  /** The task cannot be read any more (404): the page drops it and reads the class again. */
+  onLost: () => void
 }) {
   const { job, progress, problem, setJob } = useJobProgress(jobId)
   const action = useAction()
@@ -59,7 +62,16 @@ function WriteRun({
     }
   }, [job, over, kind, onFinished])
 
-  if (problem === 'not_found') return <Notice>This task is no longer there.</Notice>
+  const lost = useRef(false)
+  useEffect(() => {
+    if (problem === 'not_found' && !lost.current) {
+      lost.current = true
+      onLost()
+    }
+  }, [problem, onLost])
+
+  // The page shows the sentence (`lost`) and drops this progress, so it does not stay after a reload.
+  if (problem === 'not_found') return null
   const stopping = job?.cancelRequested === true || progress.cancelRequested
   return (
     <div className="chat__run" role="status" aria-live="polite" data-testid="save-progress">
@@ -154,6 +166,8 @@ export function SavePanel({
   // holds it: following the created job keeps its outcome from being lost.
   const [started, setStarted] = useState<{ id: string; kind: WriteKind } | null>(null)
   const [decision, setDecision] = useState<string | null>(null)
+  // The task this page followed could not be read any more (it is gone, or not ours any more).
+  const [lost, setLost] = useState(false)
   // After Do it anyway on an update the MOWL copy may be partly written: the next Update is an
   // overwrite, and still goes through the dialog.
   const [overwriteNext, setOverwriteNext] = useState(false)
@@ -224,6 +238,7 @@ export function SavePanel({
         setMode(null)
         setFinished(null)
         setStarted({ id: job.id, kind })
+        setLost(false)
         setDecision(null)
         setAgain(null)
         if (kind === 'update' && overwrite) setOverwriteNext(false)
@@ -275,11 +290,22 @@ export function SavePanel({
           />
         ) : null}
         {action.error ? <Notice kind="error">{action.error}</Notice> : null}
+        {lost ? (
+          <Notice>
+            classbeat can no longer read that task, so it cannot tell how it ended. The line above
+            shows what MOWL holds for this class now; check it before you try again.
+          </Notice>
+        ) : null}
         {run ? (
           <WriteRun
             key={run.id}
             jobId={run.id}
             kind={run.kind}
+            onLost={() => {
+              setStarted(null)
+              setLost(true)
+              onReload()
+            }}
             onFinished={(ended) => {
               const needsRead = ended.kind === 'update' && ended.job.state === 'completed'
               const done: Finished = { ...ended, verified: needsRead ? 'checking' : true }

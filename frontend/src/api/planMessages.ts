@@ -59,17 +59,27 @@ const FEATURES: Record<string, string> = {
   ftp_tests: 'FTP tests',
 }
 
+/** What to do about a plan refusal of Save or Update: the version itself has to change. */
+const SAVE_WAYS = 'Change it to fit, or make an earlier version current, then save again.'
+
 /**
  * The sentence for a 409 `quota`. The kind is the body's `quota` field, defaulting to `classes`;
  * `cost` means the month's model budget is used up; `length` (#496) that the class is longer than
  * the plan allows (`limit` in minutes); `feature` that the plan does not include `feature`.
- * With `forVersion` the length and feature sentences are about choosing an older version (Make
- * current), where "choose a shorter length" would not fit.
+ * `target` says what the refused request was about: a `new` class (the default: choose a shorter
+ * length), an older `version` made current ("choose another version"), or a `save` of the current
+ * version to MOWL, which is not a place to choose a length at all.
  */
-export function quotaText(error: ApiError, forVersion = false): string {
+export function quotaText(error: ApiError, target: 'new' | 'version' | 'save' = 'new'): string {
   const detail = detailOf(error)
+  const forVersion = target === 'version'
   if (detail.quota === 'length') {
     const limit = whole(detail.limit)
+    if (target === 'save') {
+      return limit === null
+        ? `Your plan does not allow a class this long, so this version cannot be saved. ${SAVE_WAYS}`
+        : `Your plan allows classes of up to ${String(limit)} minutes, and this version is longer, so it cannot be saved. ${SAVE_WAYS}`
+    }
     if (forVersion) {
       return limit === null
         ? 'That version is longer than your plan allows. Choose another version.'
@@ -84,6 +94,11 @@ export function quotaText(error: ApiError, forVersion = false): string {
       typeof detail.feature === 'string' && Object.hasOwn(FEATURES, detail.feature)
         ? FEATURES[detail.feature]
         : undefined
+    if (target === 'save') {
+      return name === undefined
+        ? `This version uses something your plan does not include, so it cannot be saved. ${SAVE_WAYS}`
+        : `This version uses ${name}, which your plan does not include, so it cannot be saved. ${SAVE_WAYS}`
+    }
     if (forVersion) {
       return name === undefined
         ? 'That version uses something your plan does not include. Choose another version.'

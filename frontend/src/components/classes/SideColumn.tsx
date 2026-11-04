@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import type { ClassMessage, ClassSummary, RevisionSummary } from '../../api/classes'
 import { ChangeSongs } from '../songs/ChangeSongs'
 import { ChatPanel } from './ChatPanel'
@@ -26,12 +27,21 @@ export function SideColumn({
   onUse: (revision: RevisionSummary) => void
   reload: () => void
 }) {
+  // Whether the class's history says Change it works (true until it says otherwise).
+  const [canChange, setCanChange] = useState(true)
   return (
     <aside aria-label="Save, change and versions" className="flex min-w-0 flex-col gap-5">
       <div>
         <ChangeSongs summary={summary} />
       </div>
-      <ChatPanel summary={summary} revisions={revisions} messages={messages} onReload={reload} onView={onView} />
+      <ChatPanel
+        summary={summary}
+        revisions={revisions}
+        messages={messages}
+        canChange={canChange}
+        onReload={reload}
+        onView={onView}
+      />
       <div id="versions" className="scroll-mt-4">
         <HistoryPanel
           classId={summary.id}
@@ -39,6 +49,7 @@ export function SideColumn({
           viewingId={viewingId}
           onView={onView}
           onUse={onUse}
+          onCanChange={setCanChange}
           busy={busy}
         />
       </div>

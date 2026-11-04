@@ -223,12 +223,12 @@ describe('Save', () => {
     [
       'length',
       { quota: 'length', limit: 60, plan: 'free' },
-      /Your plan allows classes of up to 60 minutes\. Choose a shorter length\./,
+      /Your plan allows classes of up to 60 minutes, and this version is longer, so it cannot be saved\. Change it to fit, or make an earlier version current, then save again\./,
     ],
     [
       'feature',
       { quota: 'feature', feature: 'races', plan: 'free' },
-      /Your plan does not include races\. Take them out and try again\./,
+      /This version uses races, which your plan does not include, so it cannot be saved\. Change it to fit/,
     ],
   ]
   it.each(QUOTA_REFUSALS)('words the %s plan refusal with its own sentence', async (_kind, detail, sentence) => {
@@ -242,6 +242,21 @@ describe('Save', () => {
     const alert = await screen.findByRole('alert')
     expect(alert).toHaveTextContent(sentence)
     expect(alert).not.toHaveTextContent('what your plan allows for now')
+    // The version exists already: no sentence asks for a length to be chosen.
+    expect(alert).not.toHaveTextContent(/Choose a shorter length|Take them out and try again/)
+  })
+
+  it.each(QUOTA_REFUSALS)('words the %s plan refusal of an Update the same way', async (_kind, detail, sentence) => {
+    start(
+      { saved: saved() },
+      { 'POST /api/jobs': () => json({ detail: { reason: 'quota', ...detail } }, 409) },
+    )
+    renderAt(PAGE)
+    fireEvent.click(await screen.findByRole('button', { name: 'Update saved workout' }))
+    fireEvent.click(within(screen.getByRole('group', { name: 'Confirm' })).getByRole('button', { name: 'Update workout' }))
+    const alert = await screen.findByRole('alert')
+    expect(alert).toHaveTextContent(sentence)
+    expect(alert).not.toHaveTextContent(/Choose a shorter length|Take them out and try again/)
   })
 })
 
@@ -375,6 +390,80 @@ describe('Update', () => {
     ).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /Update anyway/ })).not.toBeInTheDocument()
     expect(jobsPosts(api)).toHaveLength(0)
+  })
+})
+
+// Issue #560: once the outcome sentence is there the progress block (with its Stop button) goes.
+describe('the progress after the outcome', () => {
+  const path = `/api/jobs/${SAVE_JOB}`
+
+  async function click(open: string, confirm: string) {
+    renderAt(PAGE)
+    fireEvent.click(await screen.findByRole('button', { name: open }))
+    fireEvent.click(within(screen.getByRole('group', { name: 'Confirm' })).getByRole('button', { name: confirm }))
+  }
+
+  it('a Save that ended before the reload is gone from the progress when its sentence shows', async () => {
+    start(
+      { saved: UNSAVED },
+      {
+        'POST /api/jobs': () => jobBody('queued', { id: SAVE_JOB, kind: 'save_workout' }),
+        [`GET ${path}`]: jobBody('completed', { id: SAVE_JOB, kind: 'save_workout' }),
+        [`GET ${path}/events`]: () => sse([1, 'completed']),
+      },
+    )
+    await click('Save to MOWL', 'Save to MOWL')
+    expect(await screen.findByText(/Saved\. The workout is in your MOWL account, private/)).toBeInTheDocument()
+    expect(screen.queryByTestId('save-progress')).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Stop' })).toBeNull()
+  })
+
+  it('an Update that ended before the reload is gone from the progress when its sentence shows', async () => {
+    start(
+      { saved: saved({ latest_verified: true }) },
+      {
+        'POST /api/jobs': () => jobBody('queued', { id: SAVE_JOB, kind: 'update_workout' }),
+        [`GET ${path}`]: jobBody('completed', { id: SAVE_JOB, kind: 'update_workout' }),
+        [`GET ${path}/events`]: () => sse([1, 'completed']),
+      },
+    )
+    await click('Update saved workout', 'Update workout')
+    expect(await screen.findByText(/Updated\. Your MOWL workout now matches this version/)).toBeInTheDocument()
+    expect(screen.queryByTestId('save-progress')).toBeNull()
+  })
+
+  it('a failed Save is gone from the progress when its sentence shows', async () => {
+    start(
+      { saved: UNSAVED },
+      {
+        'POST /api/jobs': () => jobBody('queued', { id: SAVE_JOB, kind: 'save_workout' }),
+        [`GET ${path}`]: jobBody('failed', { id: SAVE_JOB, kind: 'save_workout', error_category: 'upstream_unavailable' }),
+        [`GET ${path}/events`]: () => sse([1, 'failed']),
+      },
+    )
+    await click('Save to MOWL', 'Save to MOWL')
+    expect(await screen.findByText(/MOWL could not be reached\. Nothing was written/)).toBeInTheDocument()
+    expect(screen.queryByTestId('save-progress')).toBeNull()
+  })
+
+  it('a task that cannot be read any more says so once, drops the progress and frees the buttons', async () => {
+    const api = start(
+      { saved: UNSAVED },
+      {
+        'POST /api/jobs': () => jobBody('queued', { id: SAVE_JOB, kind: 'save_workout' }),
+        [`GET ${path}`]: () => reason(404, 'not_found'),
+      },
+    )
+    await click('Save to MOWL', 'Save to MOWL')
+    const notice = await screen.findByText(/classbeat can no longer read that task/)
+    expect(notice).toHaveTextContent(/check it before you try again/)
+    expect(document.body).not.toHaveTextContent('This task is no longer there')
+    expect(screen.queryByTestId('save-progress')).toBeNull()
+    expect(screen.getByRole('button', { name: 'Save to MOWL' })).toBeEnabled()
+    // The class is read again, so a stale open job does not keep the panel waiting.
+    await waitFor(() => {
+      expect(api.to('GET', CLASS_PATH).length).toBeGreaterThanOrEqual(2)
+    })
   })
 })
 
