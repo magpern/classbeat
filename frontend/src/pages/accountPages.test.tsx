@@ -249,6 +249,70 @@ describe('account page', () => {
     expect(screen.getByRole('tab', { name: 'Sign-in and security' })).toHaveAttribute('aria-selected', 'true')
   })
 
+  it('says why a provider re-authentication failed and offers the password (#522)', async () => {
+    fakeApi({
+      'GET /api/auth/session': SIGNED_IN,
+      'GET /api/auth/identities': IDENTITIES,
+      'GET /api/auth/mfa': MFA_OFF,
+    })
+    renderAt('/account?oauth=reauth_stale')
+    const alert = await screen.findByRole('alert')
+    expect(alert).toHaveTextContent(/did not confirm that you signed in again in the last 5 minutes/)
+    expect(alert).toHaveTextContent(/nothing was changed/)
+    await waitFor(() => {
+      expect(alert).toHaveTextContent(/Use your password instead\.$/)
+    })
+    expect(alert).not.toHaveTextContent(/Forgot your password/)
+  })
+
+  it('without a password, a failed re-authentication explains how to set one (#522)', async () => {
+    fakeApi({
+      'GET /api/auth/session': SIGNED_IN,
+      'GET /api/auth/identities': { ...IDENTITIES, has_password: false },
+      'GET /api/auth/mfa': MFA_OFF,
+    })
+    renderAt('/account?oauth=reauth_stale')
+    const alert = await screen.findByRole('alert')
+    await waitFor(() => {
+      expect(alert).toHaveTextContent(/choose "Forgot your password\?" on the sign-in page/)
+    })
+    expect(alert).not.toHaveTextContent(/Use your password instead/)
+  })
+
+  it('when the password status cannot be read, a failed re-authentication gives both ways (#522)', async () => {
+    fakeApi({
+      'GET /api/auth/session': SIGNED_IN,
+      'GET /api/auth/identities': () => reason(500, 'boom'),
+      'GET /api/auth/mfa': MFA_OFF,
+    })
+    renderAt('/account?oauth=reauth_stale')
+    const alert = (await screen.findAllByRole('alert'))[0]
+    await waitFor(() => {
+      expect(alert).toHaveTextContent(/Use your password instead, if you have one\./)
+    })
+  })
+
+  it('the re-authentication prompt says Google confirms only a sign-in of the last 5 minutes', async () => {
+    fakeApi({
+      ...base,
+      'GET /api/auth/identities': {
+        ...IDENTITIES,
+        identities: [{ id: 'i2', provider: 'google', email_at_link: null, created_at: '2026-01-01T00:00:00Z' }],
+      },
+      'POST /api/auth/password/change': reason(403, 'reauth_required'),
+    })
+    renderAt('/account#security')
+    await screen.findByRole('button', { name: 'Unlink Google' })
+    type('New password', 'a brand new passphrase')
+    type('Repeat the new password', 'a brand new passphrase')
+    fireEvent.click(screen.getByRole('button', { name: 'Save password' }))
+    const dialog = await screen.findByRole('dialog')
+    await within(dialog).findByRole('button', { name: 'Confirm with Google' })
+    expect(dialog).toHaveTextContent(
+      'Google can confirm it only if you signed in there in the last 5 minutes. Your password always works.',
+    )
+  })
+
   it('does not treat inherited object keys as outcome codes', async () => {
     fakeApi({
       'GET /api/auth/session': SIGNED_IN,

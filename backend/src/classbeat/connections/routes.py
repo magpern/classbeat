@@ -24,6 +24,7 @@ from pydantic import BaseModel, Field, SecretStr
 from classbeat import auth
 from classbeat.connections.errors import ConnectionFailure
 from classbeat.connections.mowl_account import PROVIDER, connect_mowl
+from classbeat.connections.preferences import uses_swedebeat
 from classbeat.connections.repository import ConnectionInfo, disconnect, list_connections
 from classbeat.connections.swedebeat_account import swedebeat_access, swedebeat_email
 from classbeat.context import UserContext
@@ -81,10 +82,13 @@ class ConnectionOut(BaseModel):
 
 class SwedebeatAccessOut(BaseModel):
     """Whether the Swedebeat card may show its form (ADR 0015): the flag is on, and this server
-    holds Swedebeat's app key. Neither says anything about the user's own connection."""
+    holds Swedebeat's app key. Neither says anything about the user's own connection.
+    ``uses_swedebeat`` is the user's own "I use Swedebeat" preference (#525, default false): the
+    card's form and the mix choice need it and ``enabled`` both."""
 
     enabled: bool
     available: bool
+    uses_swedebeat: bool = False
 
 
 class ConnectionsOut(BaseModel):
@@ -139,7 +143,11 @@ async def get_connections(
         connections=[
             ConnectionOut.of(row, email if row.provider == "swedebeat" else None) for row in rows
         ],
-        swedebeat=SwedebeatAccessOut(enabled=access.enabled, available=access.available),
+        swedebeat=SwedebeatAccessOut(
+            enabled=access.enabled,
+            available=access.available,
+            uses_swedebeat=await uses_swedebeat(factory, ctx),
+        ),
         running_enabled=running,
         soundless_enabled=soundless,
     )

@@ -102,6 +102,9 @@ RETENTION: Mapping[str, Retention] = MappingProxyType(
             "account",
             "mowl_connection",
         ),
+        # Issue #525 (migration 0028): the user's own switches, booleans and dates only; nothing
+        # provider-derived. Gone with the account; the one row per user is the whole record.
+        "user_preferences": _entry("", "", "account"),
         "agent_runs": _entry(
             "",
             "stage provider model model_answered effort prompt_version outcome job_kind "

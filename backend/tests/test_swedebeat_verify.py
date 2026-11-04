@@ -37,6 +37,7 @@ from jobapi import Browser, new_key
 from mediafake import FakeMedia
 from mowlfake import FakeMowl
 from optools import TOKEN_A, OpsEnv
+from preftools import use_swedebeat
 
 pytestmark = pytest.mark.usefixtures("jenv", "mowl_api")
 
@@ -121,6 +122,7 @@ def henv(xenv: OpsEnv, mowl_api: FakeMowl, monkeypatch: pytest.MonkeyPatch) -> I
 
 async def rider(browsers: Any, henv: HandEnv) -> Browser:
     browser: Browser = await browsers()
+    await use_swedebeat(henv.ops.factory, browser.user_id)  # #525: the user's own switch
     henv.ops.app.app.dependency_overrides.clear()
     browser.connection_id = await henv.ops.connect(browser.user_id, TOKEN_A)
     return browser
@@ -331,6 +333,21 @@ async def test_a_new_mix_is_analysed_ok_and_designs_the_class(
             swedebeat_enabled=True,
         )
     )
+    # #525: with "I use Swedebeat" off the design admission refuses; no job, no credit.
+    await use_swedebeat(henv.ops.factory, browser.user_id, on=False)
+    refused = await browser.post(
+        f"/api/classes/{class_id}/swedebeat-handoff/design", {}, {"Idempotency-Key": new_key()}
+    )
+    assert (refused.status_code, refused.json()) == (404, {"detail": {"reason": "feature_off"}})
+    assert (
+        henv.sql(
+            "SELECT count(*) FROM jobs WHERE owner_id = :o AND kind = :k",
+            o=browser.user_id,
+            k=design.KIND,
+        ).scalar_one()
+        == 0
+    )
+    await use_swedebeat(henv.ops.factory, browser.user_id)
     designed = await browser.post(
         f"/api/classes/{class_id}/swedebeat-handoff/design", {}, {"Idempotency-Key": new_key()}
     )
@@ -577,6 +594,26 @@ async def test_flag_off_and_a_foreign_class_and_a_forged_body(
     assert forged.status_code == 422
     foreign = await other.get(f"/api/classes/{class_id}/swedebeat-handoff")
     assert foreign.status_code == 404
+
+
+async def test_starting_the_hand_off_needs_the_preference_and_lists_nothing_without_it(
+    browsers: Any, henv: HandEnv, mowl_api: FakeMowl
+) -> None:
+    """#525: flag on, an approved match, "I use Swedebeat" off: starting the step is 404
+    ``feature_off`` before the rate limit or MOWL's Swedebeat listing; no row is written."""
+    browser = await rider(browsers, henv)
+    mowl_api.add_mix("Shown", token=TOKEN_A, mix_id="shown", listed_seconds=30)
+    class_id = plant(henv, browser.user_id, [30])
+    await use_swedebeat(henv.ops.factory, browser.user_id, on=False)
+    calls = mowl_api.list_calls
+    off = await _start(browser, class_id)
+    assert (off.status_code, off.json()) == (404, {"detail": {"reason": "feature_off"}})
+    assert mowl_api.list_calls == calls
+    assert henv.sql("SELECT count(*) FROM swedebeat_handoffs").scalar_one() == 0
+    await use_swedebeat(henv.ops.factory, browser.user_id)
+    on = await _start(browser, class_id)
+    assert on.status_code == 200, on.text
+    assert mowl_api.list_calls == calls + 1
 
 
 async def test_picking_a_draft_of_the_same_song_list_keeps_the_match(
