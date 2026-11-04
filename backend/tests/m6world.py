@@ -493,7 +493,7 @@ async def full_flows(world: World, admin: Connection, known: Known) -> dict[str,
     known.add("invite_code", invite, shown=True)
     oauth_browser = WebBrowser(env)
     started = await oauth_browser.post(
-        "/api/auth/oauth/google/start", {"purpose": "sign_in", "invite_code": invite}
+        "/api/auth/oauth/google/start", {"purpose": "sign_up", "invite_code": invite}
     )
     assert started.status_code == 200, started.text
     authorize = started.json()["authorization_url"]

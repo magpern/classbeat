@@ -63,7 +63,7 @@ Every table has an `id uuid` primary key (server default) unless a key is named.
 | `known_devices` | `user_id`, `device_hash` (unique), `created_at`, `last_used_at` | HMAC (`device` key, §8) |
 | `pending_signups` | `token_hash` (unique; null until the email is entered), `email`, `email_normalized` (both null until then; not unique: each row has its own token and the first confirmation wins), `password_hash` (nullable), `provider`, `subject`, `browser_hash` (all three set together or null), `invite_id` → `invites`, `expires_at` | SHA-256; argon2id |
 | `auth_tokens` | `purpose` (`reset_password`, `change_email`), `token_hash` (unique), `user_id`, `new_email`, `email_at_issue`, `expires_at`, `used_at` | SHA-256 |
-| `oauth_flows` | `flow_hash` (unique), `provider`, `purpose` (`sign_in`, `link`, `reauth`), `state_hash`, `nonce`, `pkce_verifier`, `user_id` (for `link`/`reauth`), `invite_id` → `invites`, `return_to`, `expires_at` | the flow id and state as SHA-256; the verifier and nonce are kept as given, live ≤ 10 min and are deleted on use |
+| `oauth_flows` | `flow_hash` (unique), `provider`, `purpose` (`sign_in`, `sign_up` (#617), `link`, `reauth`), `state_hash`, `nonce`, `pkce_verifier`, `user_id` (for `link`/`reauth`), `invite_id` → `invites`, `return_to`, `expires_at` | the flow id and state as SHA-256; the verifier and nonce are kept as given, live ≤ 10 min and are deleted on use |
 | `invites` | `code_hash` (unique), `created_by` (*set null*; null for the CLI), `used_by` (*set null*), `expires_at`, `used_at` | SHA-256 |
 | `mfa_totp` | `user_id` (unique), `secret_ciphertext`, `nonce`, `key_id`, `confirmed_at`, `last_step` | AES-256-GCM (§8) |
 | `mfa_recovery_codes` | `user_id`, `code_hash`, `used_at` | HMAC-SHA256 (§8) |
@@ -262,8 +262,12 @@ Authlib's `AsyncOAuth2Client` (httpx) is used with our own state storage in `oau
 is no Starlette session middleware.
 
 - **Start:** `POST /api/auth/oauth/{provider}/start`, CSRF-checked:
-  - It takes an optional invite code for `sign_in`. A code that is given is checked as for a
+  - It takes an optional invite code for `sign_up`. A code that is given is checked as for a
     password sign-up (and gets its own error); its id goes into the flow, not consumed yet.
+    **Amendment (2026-11-04, #617):** the sign-in screen starts `sign_in` and the sign-up screen
+    `sign_up` (migration 0031); a code sent with `sign_in` is ignored (not checked, not stored).
+    A failed `sign_up` callback returns to `/signup?oauth=…`, every other sign-in failure to
+    `/signin?oauth=…`; `no_account` also carries `&provider=` (the flow's provider).
   - It creates the flow: `state` (32 bytes), a PKCE verifier (S256), a nonce for OIDC, and an
     expiry of 10 minutes.
   - It sets the flow id as the `__Host-classbeat_oauth` cookie (`HttpOnly`, `SameSite=Lax`,
@@ -368,7 +372,7 @@ is no Starlette session middleware.
 - **Outbound hosts:** only the provider endpoints (T19).
 
 **Callback outcomes** (identity key `(provider, subject)`, never email, T1). The flow purpose
-is evaluated first, then the rows for `sign_in` from the top:
+is evaluated first, then the rows for `sign_in` and `sign_up` from the top:
 
 | Situation | Result |
 |---|---|
@@ -376,7 +380,8 @@ is evaluated first, then the rows for `sign_in` from the top:
 | Flow purpose `reauth` | The identity must belong to the flow's user; then `reauth_at = now()` and the session rotates |
 | `sign_in`, identity exists | Sign in to its user (unless the user is disabled: the generic failure) |
 | New identity, the provider verified the email, and it matches an existing user | **Nothing is created or linked.** The page says an account with this email exists: sign in to it and link from the account page. Only someone in control of that mailbox can get here, so nothing leaks |
-| New identity, sign-up mode `closed`, or `invite` without a valid invite in the flow | **Nothing is created.** The page says an invite is needed (in `invite` mode, with a field to enter one and start again) |
+| New identity, flow purpose `sign_in` (the sign-in screen; #617, amendment of 2026-11-04) | **Nothing is created, linked or handed off**, in every sign-up mode. The outcome is `no_account`: the page says no classbeat account is linked to that provider account and links to sign-up |
+| New identity (`sign_up`), sign-up mode `closed`, or `invite` without a valid invite in the flow | **Nothing is created.** The page says an invite is needed (in `invite` mode, with a field to enter one and start again) |
 | New identity, the provider verified the email, and no user has it | Create the user (verified) and the identity, consuming the invite with the same conditional `UPDATE` as a password sign-up, in one transaction; if the invite is gone by then, the transaction rolls back and the page says the invite is no longer valid |
 | New identity, the email is unverified or missing (always Microsoft) | See the hand-off below |
 

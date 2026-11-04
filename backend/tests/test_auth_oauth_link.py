@@ -12,7 +12,7 @@ from authtools import Env
 from classbeat import auth
 from classbeat.auth.cookies import OAUTH_COOKIE
 from flows import PASSWORD, Browser, age_reauth, reason, signed_in
-from oauthtools import location, make_invite, sign_in_with, start
+from oauthtools import location, make_invite, sign_in_with, sign_up_with, start
 from oidcfake import DROP, FakeProviders
 from smtpfake import SmtpFake
 
@@ -55,8 +55,8 @@ async def test_the_email_collision_path_sign_in_to_the_account_then_link(
         "g@example.com", password_hash=await oenv.app.state.password_hasher.hash(PASSWORD)
     )
     stranger = Browser(oenv)
-    outcome = await sign_in_with(stranger, fake, "google", invite=await make_invite(oenv))
-    assert location(outcome) == "/signin?oauth=account_exists"
+    outcome = await sign_up_with(stranger, fake, "google", invite=await make_invite(oenv))
+    assert location(outcome) == "/signup?oauth=account_exists"
     assert await oenv.scalar("SELECT count(*) FROM identities") == 0
     owner = Browser(oenv)
     assert (await owner.sign_in("g@example.com")).status_code == 200

@@ -77,7 +77,9 @@ OAUTH_ERROR_CODES = frozenset(
 
 
 class StartIn(BaseModel):
-    purpose: Literal["sign_in", "link", "reauth"] = "sign_in"
+    # ``sign_in`` (the sign-in screen) never creates an account; only ``sign_up`` (the sign-up
+    # screen) may, and only it carries an invite (#617).
+    purpose: Literal["sign_in", "sign_up", "link", "reauth"] = "sign_in"
     invite_code: str | None = Field(default=None, max_length=FIELD_MAX)
     return_to: str | None = Field(default=None, max_length=FIELD_MAX)
 
@@ -129,7 +131,7 @@ async def start(
         user_id = ctx.user_id
     invite_id: UUID | None = None
     settings = request.app.state.settings
-    if body.purpose == "sign_in" and body.invite_code:
+    if body.purpose == "sign_up" and body.invite_code:
         async with system_session(factory(request)) as db:
             invite_mode = await flags.signup_mode(db, settings.signup_mode) == "invite"
             if invite_mode:
@@ -162,7 +164,16 @@ async def start(
 def _target(flow: Flow | None, outcome: Outcome) -> str:
     purpose = flow.purpose if flow else "sign_in"
     if outcome.code != "ok":
-        base = "/account" if purpose in ("link", "reauth") else "/signin"
+        if purpose in ("link", "reauth"):
+            base = "/account"
+        elif purpose == "sign_up":
+            base = "/signup"  # the screen the flow started on, with its invite field (#617)
+        else:
+            base = "/signin"
+        if outcome.code == "no_account" and flow is not None:
+            # Which provider account has none, for the page's sentence (#617). ``flow.provider``
+            # is one of the three names the table's check allows, never anything a client sent.
+            return f"{base}?oauth=no_account&provider={flow.provider}"
         return f"{base}?oauth={outcome.code}"
     return_to = safe_return_to(flow.return_to if flow else None)  # checked again before use
     match outcome.next:

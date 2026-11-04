@@ -16,7 +16,7 @@ from authtools import Env, running_env
 from classbeat import auth, songs
 from flows import PASSWORD, Browser, reason
 from jobtools import engine_for
-from oauthtools import CLIENT_IDS, location, sign_in_with, start
+from oauthtools import CLIENT_IDS, location, sign_up_with, start
 from oidcfake import FakeProviders
 from revisesongtools import change, picked
 from smtpfake import SmtpFake
@@ -176,8 +176,8 @@ async def test_the_database_at_closed_refuses_oauth_sign_ups_even_with_an_invite
             code = await invite(env)
             with stored(database_url, signup_mode="closed"):
                 browser = Browser(env)
-                response = await sign_in_with(browser, fake, "google", invite=code)
-                assert location(response) == "/signin?oauth=invite_required"
+                response = await sign_up_with(browser, fake, "google", invite=code)
+                assert location(response) == "/signup?oauth=invite_required"
                 assert not browser.signed_in
                 assert await env.scalar("SELECT count(*) FROM users") == 0
                 assert await env.scalar("SELECT used_at IS NULL FROM invites") is True
@@ -196,8 +196,8 @@ async def test_the_database_at_invite_tightens_an_open_environment_for_oauth(
     ) as env:
         env.app.state.oauth.transport = fake.transport
         with stored(database_url, signup_mode="invite"):
-            response = await sign_in_with(Browser(env), fake, "google")
-            assert location(response) == "/signin?oauth=invite_required"
+            response = await sign_up_with(Browser(env), fake, "google")
+            assert location(response) == "/signup?oauth=invite_required"
             assert await env.scalar("SELECT count(*) FROM users") == 0
 
 
@@ -216,12 +216,12 @@ async def test_a_flow_started_under_invite_is_refused_at_the_callback_once_close
         env.app.state.oauth.transport = fake.transport
         code = await invite(env)
         browser = Browser(env)
-        started = await start(browser, "google", "sign_in", invite_code=code)
+        started = await start(browser, "google", "sign_up", invite_code=code)
         assert started.status_code == 200
         assert await env.scalar("SELECT invite_id IS NOT NULL FROM oauth_flows") is True
         with stored(database_url, signup_mode="closed"):
             response = await browser.get(fake.complete(started.json()["authorization_url"]))
-        assert location(response) == "/signin?oauth=invite_required"
+        assert location(response) == "/signup?oauth=invite_required"
         assert not browser.signed_in
         assert await env.scalar("SELECT count(*) FROM users") == 0
         assert await env.scalar("SELECT count(*) FROM pending_signups") == 0
@@ -234,7 +234,7 @@ async def test_a_flow_started_under_invite_is_refused_at_the_callback_once_close
 async def hand_off_row(env: Env, fake: FakeProviders, smtp: SmtpFake, code: str) -> tuple[Any, str]:
     """A provider hand-off with an invite, its email filled in: the browser and the mail token."""
     browser = Browser(env)
-    response = await sign_in_with(browser, fake, "microsoft", invite=code)
+    response = await sign_up_with(browser, fake, "microsoft", invite=code)
     assert location(response) == "/signin?oauth=email_needed"
     sent = await browser.post("/api/auth/oauth/pending/email", {"email": "new@example.com"})
     assert sent.status_code == 202

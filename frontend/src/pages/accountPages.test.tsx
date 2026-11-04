@@ -82,10 +82,75 @@ describe('sign-in page', () => {
       expect(goToProvider).toHaveBeenCalledWith('https://idp.example/authorize?x=1')
     })
     expect(api.to('POST', '/api/auth/oauth/google/start')[0]?.body).toEqual({
-      purpose: 'sign_in',
+      purpose: 'sign_up',
       invite_code: 'inv-1',
       return_to: null,
     })
+    expect(screen.queryByText('Enter your invite code first.')).toBeNull()
+  })
+
+  it('does not start a provider sign-up without an invite code (#617)', async () => {
+    goToProvider.mockClear()
+    const api = fakeApi({
+      'GET /api/auth/oauth/providers': { providers: ['google'] },
+      'POST /api/auth/oauth/google/start': { authorization_url: 'https://idp.example/authorize?x=1' },
+    })
+    renderAt('/signup')
+    const google = await screen.findByRole('button', { name: 'Continue with Google' })
+    const invite = screen.getByLabelText(/Invite code/)
+    expect(invite).toBeRequired()
+    expect(invite).not.toHaveAttribute('aria-invalid')
+    type(/Invite code/, '   ') // blanks only count as empty
+    fireEvent.click(google)
+    expect(await screen.findByRole('alert')).toHaveTextContent(/^Enter your invite code first\.$/)
+    expect(invite).toHaveAttribute('aria-invalid', 'true')
+    expect(invite).toHaveFocus()
+    expect(api.to('POST', '/api/auth/oauth/google/start')).toHaveLength(0)
+    expect(goToProvider).not.toHaveBeenCalled()
+    expect(window.location.pathname).toBe('/signup')
+    // Typing a code clears the mark; then the same button starts the sign-up flow.
+    type(/Invite code/, 'inv-3')
+    expect(screen.queryByText('Enter your invite code first.')).toBeNull()
+    expect(invite).not.toHaveAttribute('aria-invalid')
+    fireEvent.click(google)
+    await waitFor(() => {
+      expect(goToProvider).toHaveBeenCalledWith('https://idp.example/authorize?x=1')
+    })
+    expect(api.to('POST', '/api/auth/oauth/google/start')[0]?.body).toMatchObject({
+      purpose: 'sign_up',
+      invite_code: 'inv-3',
+    })
+  })
+
+  it('tells an unknown Google account on sign-in to create an account, without invite text (#617)', async () => {
+    fakeApi({ 'GET /api/auth/oauth/providers': { providers: ['google'] } })
+    renderAt('/signin?oauth=no_account&provider=google')
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      /^No classbeat account is linked to this Google account\. Create an account to join the invite-only beta\.$/,
+    )
+    const links = screen.getAllByRole('link', { name: 'Create an account' })
+    expect(links).toHaveLength(1)
+    expect(links[0]).toHaveAttribute('href', '/signup')
+    expect(screen.queryByText(/invite code/i)).toBeNull()
+    expect(screen.queryByText(/below/i)).toBeNull()
+    expect(screen.queryByLabelText(/Invite code/)).toBeNull()
+    fireEvent.click(links[0] as HTMLElement)
+    expect(await screen.findByRole('heading', { name: 'Create an account' })).toBeInTheDocument()
+    expect(window.location.pathname).toBe('/signup')
+  })
+
+  it('shows no "Create an account" link for other sign-in outcomes', async () => {
+    fakeApi({ 'GET /api/auth/oauth/providers': { providers: [] } })
+    renderAt('/signin?oauth=invite_invalid')
+    expect(await screen.findByRole('alert')).toHaveTextContent(/no longer valid/)
+    expect(screen.queryByRole('link', { name: 'Create an account' })).toBeNull()
+  })
+
+  it('explains a failed provider sign-up on the sign-up page, above the invite field (#617)', async () => {
+    fakeApi({ 'GET /api/auth/oauth/providers': { providers: ['google'] } })
+    renderAt('/signup?oauth=invite_required')
+    expect(await screen.findByRole('alert')).toHaveTextContent(/need an invite to create an account/)
+    expect(screen.getByLabelText(/Invite code/)).toBeInTheDocument()
   })
 
   it('signs in with a provider without an invite code', async () => {

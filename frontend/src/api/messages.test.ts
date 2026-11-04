@@ -33,3 +33,33 @@ describe('oauthOutcomeMessage for a failed re-authentication', () => {
     expect(oauthOutcomeMessage('denied', true)).toBe('The sign-in was cancelled at the provider.')
   })
 })
+
+describe('oauthOutcomeMessage for a new provider account on the sign-in screen (#617)', () => {
+  const tail = 'Create an account to join the invite-only beta.'
+
+  it('names the provider account that has no classbeat account', () => {
+    expect(oauthOutcomeMessage('no_account', undefined, 'google')).toBe(
+      `No classbeat account is linked to this Google account. ${tail}`,
+    )
+    expect(oauthOutcomeMessage('no_account', undefined, 'github')).toBe(
+      `No classbeat account is linked to this GitHub account. ${tail}`,
+    )
+    expect(oauthOutcomeMessage('no_account', undefined, 'microsoft')).toBe(
+      `No classbeat account is linked to this Microsoft account. ${tail}`,
+    )
+  })
+
+  it('never shows an unknown or missing provider name', () => {
+    for (const provider of [null, undefined, '<b>evil</b>', 'toString']) {
+      expect(oauthOutcomeMessage('no_account', undefined, provider)).toBe(
+        `No classbeat account is linked to this provider account. ${tail}`,
+      )
+    }
+  })
+
+  it('says nothing about an invite code or a field below', () => {
+    const text = oauthOutcomeMessage('no_account', undefined, 'google')
+    expect(text).not.toMatch(/invite code|below/i)
+    expect(text).not.toBe(oauthOutcomeMessage('invite_required'))
+  })
+})

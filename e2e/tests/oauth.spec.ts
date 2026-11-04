@@ -1,5 +1,6 @@
 import { type Page } from '@playwright/test'
 import { createInvite, expect, linkFromMail, PASSWORD, signUpThroughUi, test, uniqueEmail } from './helpers'
+import { audit } from './mu-helpers'
 import { sql } from './song-helpers'
 
 // OAuth sign-in against the fake provider of compose.e2e.yaml (the `e2e` profile). The fake
@@ -83,13 +84,57 @@ test('sign up and sign in with Google through the fake provider', async ({ page 
   await expect(page.getByRole('alert')).toContainText('only way to sign in')
 })
 
-test('a first Google sign-in without an invite creates nothing and says why', async ({ page }) => {
+/** How many accounts have this test address, as the database superuser. */
+function accountsWith(email: string): number {
+  if (!/^[\w.+-]+@example\.test$/.test(email)) throw new Error('not a test address')
+  return Number(sql(`SELECT count(*) FROM users WHERE email = '${email}'`))
+}
+
+test('sign-up with Google and no invite never leaves the page (#617)', async ({ page }) => {
   const email = uniqueEmail('noinvite')
+  let providerVisits = 0
   await playProvider(page, 'accounts.google.com', { sub: `g-${email}`, email, emailVerified: true })
+  page.on('request', (request) => {
+    if (request.url().startsWith('https://accounts.google.com/')) providerVisits += 1
+  })
   await page.goto('/signup')
+  const invite = page.getByLabel(/Invite code/)
   await page.getByRole('button', { name: 'Continue with Google' }).click()
-  await expect(page.getByRole('alert')).toContainText('need an invite')
+  await expect(page.getByRole('alert')).toHaveText('Enter your invite code first.')
+  await expect(invite).toHaveAttribute('aria-invalid', 'true')
+  await expect(invite).toHaveAttribute('required', '')
+  await expect(invite).toBeFocused()
+  expect(new URL(page.url()).pathname).toBe('/signup')
+  expect(providerVisits).toBe(0)
+  expect(accountsWith(email)).toBe(0)
+  const findings = await audit(page, 'Sign up, invite missing', page.getByRole('button', { name: 'Create account' }))
+  expect(findings.problems).toEqual([])
+})
+
+test('sign-in with an unknown Google account says no account is linked and creates nothing (#617)', async ({ page }) => {
+  const email = uniqueEmail('noaccount')
+  await playProvider(page, 'accounts.google.com', { sub: `g-${email}`, email, emailVerified: true })
+  await page.goto('/signin')
+  await page.getByRole('button', { name: 'Continue with Google' }).click()
+  await expect(page.getByRole('alert')).toHaveText(
+    'No classbeat account is linked to this Google account. Create an account to join the invite-only beta.',
+  )
+  expect(new URL(page.url()).pathname).toBe('/signin')
+  await expect(page.getByText(/invite code/i)).toHaveCount(0)
+  await expect(page.getByLabel(/Invite code/)).toHaveCount(0)
   await expect(page.getByRole('navigation', { name: 'Account' })).toContainText('Sign in')
+  expect(accountsWith(email)).toBe(0)
+  const findings = await audit(page, 'Sign in, no account', page.getByRole('button', { name: 'Sign in', exact: true }))
+  expect(findings.problems).toEqual([])
+
+  // The link goes to sign-up, where a valid invite still starts the Google flow and creates it.
+  await page.setViewportSize({ width: 1280, height: 720 })
+  await page.getByRole('link', { name: 'Create an account', exact: true }).click()
+  await expect(page.getByRole('heading', { name: 'Create an account' })).toBeVisible()
+  await page.getByLabel(/Invite code/).fill(createInvite())
+  await page.getByRole('button', { name: 'Continue with Google' }).click()
+  await expect(page.getByRole('button', { name: email })).toBeVisible()
+  expect(accountsWith(email)).toBe(1)
 })
 
 test('Microsoft: an unverified email is handed off to the address page and confirmed by mail', async ({ page }) => {

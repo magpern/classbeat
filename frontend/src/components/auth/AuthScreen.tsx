@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from 'react'
+import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { getOAuthProviders, startOAuth } from '../../api/auth'
 import { providerName } from '../../api/messages'
 import { goToProvider } from '../../lib/navigation'
@@ -13,6 +13,8 @@ interface Props {
   returnTo: string | null
   /** An error from a provider round trip (the `?oauth=` code), shown above the form. */
   notice?: string | null
+  /** A link shown right under the notice (sign-in's "Create an account" for `no_account`). */
+  noticeLink?: { to: string; text: string } | null
   /** The email and password path; throws on failure, which is shown in plain language. */
   onSubmit: (values: { email: string; password: string; invite: string }) => Promise<void>
 }
@@ -38,12 +40,17 @@ const COPY = {
  * server lists (`oauth_visible_providers`); none listed means no buttons and no divider.
  * Sign up carries the beta invite code once, for both ways of creating the account.
  */
-export function AuthScreen({ mode, returnTo, notice, onSubmit }: Props) {
+const INVITE_FIRST = 'Enter your invite code first.'
+
+export function AuthScreen({ mode, returnTo, notice, noticeLink, onSubmit }: Props) {
   const copy = COPY[mode]
   const [providers, setProviders] = useState<string[]>([])
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [invite, setInvite] = useState('')
+  // Sign-up only: a provider was chosen with the invite field empty (#617). Nothing is sent.
+  const [inviteMissing, setInviteMissing] = useState(false)
+  const inviteRef = useRef<HTMLInputElement>(null)
   const action = useAction()
 
   useEffect(() => {
@@ -60,9 +67,19 @@ export function AuthScreen({ mode, returnTo, notice, onSubmit }: Props) {
   }
 
   const start = (provider: string) => {
+    const inviteCode = mode === 'signup' ? invite.trim() : ''
+    if (mode === 'signup' && inviteCode === '') {
+      // A provider sign-up needs the invite in the flow: stay on the page and say so.
+      action.clear()
+      setInviteMissing(true)
+      inviteRef.current?.focus()
+      return
+    }
+    setInviteMissing(false)
     void action.run(async () => {
-      const url = await startOAuth(provider, 'sign_in', {
-        inviteCode: mode === 'signup' ? invite.trim() : '',
+      // Sign-in never creates an account and sends no invite; sign-up carries the invite.
+      const url = await startOAuth(provider, mode === 'signup' ? 'sign_up' : 'sign_in', {
+        inviteCode,
         returnTo: returnTo ?? undefined,
       })
       goToProvider(url)
@@ -75,14 +92,24 @@ export function AuthScreen({ mode, returnTo, notice, onSubmit }: Props) {
         <p className="auth__lead">classbeat is invite-only for now. Enter the invite code you were given.</p>
       ) : null}
       {notice ? <Notice kind="error">{notice}</Notice> : null}
+      {notice && noticeLink ? (
+        <p className="card__links">
+          <Link to={noticeLink.to}>{noticeLink.text}</Link>
+        </p>
+      ) : null}
+      {inviteMissing ? <Notice kind="error">{INVITE_FIRST}</Notice> : null}
       {action.error ? <Notice kind="error">{action.error}</Notice> : null}
       {mode === 'signup' ? (
         <Field
+          ref={inviteRef}
           label="Invite code"
           autoComplete="off"
           value={invite}
+          required
+          aria-invalid={inviteMissing ? true : undefined}
           onChange={(e) => {
             setInvite(e.target.value)
+            if (e.target.value.trim() !== '') setInviteMissing(false)
           }}
         />
       ) : null}

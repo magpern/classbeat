@@ -183,7 +183,8 @@ export async function getOAuthProviders(signal?: AbortSignal): Promise<string[]>
   return strings(body, 'providers')
 }
 
-export type OAuthPurpose = 'sign_in' | 'link' | 'reauth'
+/** `sign_in` never creates an account; only `sign_up` does, and only it carries an invite (#617). */
+export type OAuthPurpose = 'sign_in' | 'sign_up' | 'link' | 'reauth'
 
 /** The provider's authorization URL; the caller sends the browser there. */
 export async function startOAuth(

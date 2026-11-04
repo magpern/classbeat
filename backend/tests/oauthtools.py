@@ -68,6 +68,13 @@ async def sign_in_with(
     return await browser.get(callback)
 
 
+async def sign_up_with(
+    browser: Browser, fake: FakeProviders, provider: str, **kwargs: Any
+) -> httpx.Response:
+    """``sign_in_with`` from the sign-up screen: the only purpose that may create an account."""
+    return await sign_in_with(browser, fake, provider, purpose="sign_up", **kwargs)
+
+
 def location(response: httpx.Response) -> str:
     assert response.status_code == 303, response.text
     return response.headers["location"]

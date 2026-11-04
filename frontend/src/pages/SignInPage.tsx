@@ -21,7 +21,11 @@ export function SignInPage() {
     <AuthScreen
       mode="signin"
       returnTo={returnTo}
-      notice={outcome && outcome !== 'email_needed' ? oauthOutcomeMessage(outcome) : null}
+      notice={
+        outcome && outcome !== 'email_needed' ? oauthOutcomeMessage(outcome, undefined, query.get('provider')) : null
+      }
+      // A new provider account has no classbeat account: sign-up is where an invite creates one (#617).
+      noticeLink={outcome === 'no_account' ? { to: '/signup', text: 'Create an account' } : null}
       onSubmit={async ({ email, password }) => {
         const { role } = await login(email, password)
         await refresh()

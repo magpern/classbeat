@@ -177,7 +177,9 @@ oauth_flows = Table(
     _ts("created_at", nullable=False, default_now=True),
     _ts("expires_at", nullable=False),
     CheckConstraint("provider IN ('google', 'github', 'microsoft')", name="oauth_flows_provider"),
-    CheckConstraint("purpose IN ('sign_in', 'link', 'reauth')", name="oauth_flows_purpose"),
+    CheckConstraint(
+        "purpose IN ('sign_in', 'sign_up', 'link', 'reauth')", name="oauth_flows_purpose"
+    ),
 )
 
 mfa_totp = Table(
