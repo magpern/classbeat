@@ -175,6 +175,9 @@ function ReauthPrompt({ onDone }: PromptProps) {
   }
 
   const linked = state?.identities.map((item) => item.provider) ?? []
+  // Google and Microsoft prove a new sign-in only with an auth_time of the last 5 minutes (ADR
+  // 0003 section 5, #522); Google may not send one, so the prompt says so before the user goes.
+  const oidc = linked.filter((provider) => provider === 'google' || provider === 'microsoft')
   return (
     <>
       <h2 id="prompt-title">Confirm it is you</h2>
@@ -226,6 +229,12 @@ function ReauthPrompt({ onDone }: PromptProps) {
           Confirm with {providerName(provider)}
         </button>
       ))}
+      {oidc.length > 0 ? (
+        <p className="text-sm text-muted">
+          {oidc.map(providerName).join(' and ')} can confirm it only if you signed in there in the last 5
+          minutes.{state?.hasPassword ? ' Your password always works.' : ''}
+        </p>
+      ) : null}
       <button
         className="button button--link"
         type="button"

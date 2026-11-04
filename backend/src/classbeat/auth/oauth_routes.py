@@ -52,6 +52,28 @@ logger = logging.getLogger(__name__)
 router = APIRouter(tags=["auth"])
 
 FIELD_MAX = 1024
+# The ``error`` values of RFC 6749 4.1.2.1 and OpenID Connect Core 3.1.2.6. Only these are
+# logged; anything else is "unrecognized" (the query is the sender's text, never logged).
+OAUTH_ERROR_CODES = frozenset(
+    {
+        "invalid_request",
+        "unauthorized_client",
+        "access_denied",
+        "unsupported_response_type",
+        "invalid_scope",
+        "server_error",
+        "temporarily_unavailable",
+        "interaction_required",
+        "login_required",
+        "account_selection_required",
+        "consent_required",
+        "invalid_request_uri",
+        "invalid_request_object",
+        "request_not_supported",
+        "request_uri_not_supported",
+        "registration_not_supported",
+    }
+)
 
 
 class StartIn(BaseModel):
@@ -159,12 +181,20 @@ async def _handle(
 ) -> Outcome:
     query = request.query_params
     state, code = query.get("state", ""), query.get("code")
-    if flow is None or flow.provider != provider or not flow.state_matches(state):
-        return Outcome("invalid")
-    if query.get("error") or not code:
-        return Outcome("denied")
+    if flow is None:
+        return Outcome("invalid", why="no_flow")  # no cookie, expired, or already used
+    if flow.provider != provider:
+        return Outcome("invalid", why="provider_mismatch")
+    if not flow.state_matches(state):
+        return Outcome("invalid", why="state_mismatch")
+    error = query.get("error")
+    if error:
+        named = error if error in OAUTH_ERROR_CODES else "unrecognized"
+        return Outcome("denied", why=f"provider_error={named}")
+    if not code:
+        return Outcome("denied", why="no_code")
     if flow.purpose in ("link", "reauth") and (info is None or info.user_id != flow.user_id):
-        return Outcome("session_mismatch")
+        return Outcome("session_mismatch", why="no_session" if info is None else "other_user")
     runtime = _runtime(request)
     try:
         identity = await identify(
@@ -176,7 +206,7 @@ async def _handle(
             nonce=flow.nonce,
         )
     except ProviderError as exc:
-        logger.warning("oauth callback refused (%s): %s", provider, exc)
+        # The text names the failed check, never a token or body (``ProviderError``).
         async with system_session(factory(request)) as db:
             await record_event(
                 db,
@@ -185,7 +215,7 @@ async def _handle(
                 ip=request_ip(request),
                 detail={"provider": provider},
             )
-        return Outcome("invalid")
+        return Outcome("invalid", why=f"provider: {exc}")
     async with system_session(factory(request)) as db:
         return await apply(
             db,
@@ -220,6 +250,16 @@ async def callback(
         async with system_session(factory(request)) as db:
             flow = await take_flow(db, cookie)  # before the code is exchanged: single use
     outcome = await _handle(request, provider, flow, info)
+    if outcome.code != "ok":
+        # One line for every refused callback (#522): before it, only a provider error was
+        # logged and the rest sat in auth_events alone. Provider, purpose, outcome and why only.
+        logger.warning(
+            "oauth callback refused: provider=%s purpose=%s outcome=%s why=%s",
+            provider,
+            flow.purpose if flow else "unknown",
+            outcome.code,
+            outcome.why or outcome.code,
+        )
     response = RedirectResponse(_target(flow, outcome), status_code=303)
     clear_oauth_cookie(response)
     response.headers["Cache-Control"] = "no-store"

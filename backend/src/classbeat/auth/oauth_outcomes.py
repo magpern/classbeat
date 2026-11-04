@@ -67,6 +67,9 @@ class Outcome:
     new_pending_token: str | None = None
     mail: MailMessage | None = None
     next: str = ""  # "signed_in", "linked", "reauthed" or "email_needed"
+    # Why a non-ok outcome happened, for the operator's log line (#522): a fixed word, never a
+    # code, state, nonce, token or email.
+    why: str = ""
 
 
 class Refused(Exception):
@@ -75,8 +78,8 @@ class Refused(Exception):
         self.code = code
 
 
-def _fail(code: str) -> Outcome:
-    return Outcome(code)
+def _fail(code: str, why: str = "") -> Outcome:
+    return Outcome(code, why=why or code)
 
 
 async def apply(db: AsyncSession, req: Request) -> Outcome:
@@ -97,7 +100,7 @@ def _own_session(req: Request) -> SessionInfo | None:
 async def _link(db: AsyncSession, req: Request) -> Outcome:
     info = _own_session(req)
     if info is None:
-        return _fail("session_mismatch")
+        return _fail("session_mismatch", "not_the_flows_user")
     ident, user_id = req.identity, info.user_id
     if await add_identity(
         db,
@@ -118,34 +121,46 @@ async def _link(db: AsyncSession, req: Request) -> Outcome:
     owner = await identity_owner(db, req.flow.provider, ident.subject)
     if owner is not None and owner[0] == user_id:
         return Outcome("ok", next="linked")  # already linked to this very account
-    return _fail("identity_taken")  # on another user: refused
+    return _fail("identity_taken", "linked_to_another_user")  # on another user: refused
+
+
+def _stale_auth_time(auth_time: int | None, now: float) -> str | None:
+    """Why an OIDC re-authentication is not fresh, or None when it is (ADR 0003 section 5 and its
+    #522 amendment). Without ``auth_time`` nothing in the ID token proves the user signed in again:
+    a provider that ignores ``max_age=0`` mints a fresh token, with a fresh ``iat``, from a
+    session that is hours old. So a missing claim fails closed for every provider."""
+    if auth_time is None:
+        return "auth_time_missing"
+    if now - auth_time > REAUTH_MAX_AGE:
+        return "auth_time_old"
+    if auth_time - now > AUTH_TIME_SKEW:
+        return "auth_time_future"
+    return None
 
 
 async def _reauth(db: AsyncSession, req: Request) -> Outcome:
     info = _own_session(req)
     if info is None:
-        return _fail("session_mismatch")
+        return _fail("session_mismatch", "not_the_flows_user")
     owner = await identity_owner(db, req.flow.provider, req.identity.subject)
     if owner is None or owner[0] != info.user_id:
-        return _fail("identity_mismatch")
+        return _fail("identity_mismatch", "not_linked_to_this_user")
     if req.flow.provider != "github":
-        # OIDC: a missing, old or future auth_time fails closed (the provider may ignore
-        # max_age=0 or leave the claim out).
         now = time.time() if req.now is None else req.now
-        auth_time = req.identity.auth_time
-        if (
-            auth_time is None
-            or now - auth_time > REAUTH_MAX_AGE
-            or auth_time - now > AUTH_TIME_SKEW
-        ):
+        why = _stale_auth_time(req.identity.auth_time, now)
+        if why is not None:
             await record_event(
-                db, "reauth_failed", user_id=info.user_id, ip=req.ip, detail={"why": "auth_time"}
+                db,
+                "reauth_failed",
+                user_id=info.user_id,
+                ip=req.ip,
+                detail={"why": why, "provider": req.flow.provider},
             )
-            return _fail("reauth_stale")
+            return _fail("reauth_stale", why)
     try:
         issued = await rotate_session(db, info, reauth=True, user_agent=req.user_agent, ip=req.ip)
     except SessionGone:
-        return _fail("session_mismatch")
+        return _fail("session_mismatch", "session_gone")
     await record_event(
         db, "reauth", user_id=info.user_id, ip=req.ip, detail={"provider": req.flow.provider}
     )
@@ -172,7 +187,7 @@ async def _sign_in(db: AsyncSession, req: Request) -> Outcome:
         user_id, disabled = owner
         if disabled:
             await record_event(db, "sign_in_failed", user_id=user_id, ip=req.ip)
-            return _fail("invalid")  # the generic failure
+            return _fail("invalid", "user_disabled")  # the generic failure
         return await _session_for(db, req, user_id)
     if ident.email_verified and ident.email and await find_user(db, ident.email) is not None:
         return _fail("account_exists")  # nothing is created or linked

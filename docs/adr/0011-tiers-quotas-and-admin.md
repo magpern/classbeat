@@ -528,3 +528,35 @@ startable before this ADR is accepted. Fakes only.
 Order: DB1; then AR1, PL1 and QT1 in parallel (QT1 once #180 to #182 merged); FL1 after QT1;
 AD1 to AD3 in parallel, AD4 and FE1 after FL1; FE2, AD5 and SEC1; FE3; T1 last. M5 is done technically when SEC1
 and T1 are green.
+
+## Amendment (2026-11-03): history and duplicate (#536)
+
+Proposed with ADR 0007's amendment of the same date, to be confirmed by the Architect.
+
+- **History is not gated.** §8 listed "history" among possible per-plan gates and Q7 keeps every
+  gate off in the beta. The revision timeline, compare and Make current are available on every plan;
+  no `plans` column is added (it would need the admin edit and guard 11 for a gate nobody sets). If
+  the owner gates it later, it is a column like `games_allowed` with default true.
+- **A duplicate counts as a class.** It creates a class row and no job, and costs no model money, but
+  it opens a fresh revision allowance (ADR 0007 §4 counts chat revisions per class), so an uncounted
+  duplicate would turn one class of the month into unlimited revisions. `MeteredLedger.take_class`
+  (new, same module) does what `reserve` does for the classes limit, in the duplicate's transaction:
+  the period's `quota_periods` row locked, held counted, `QuotaRefused` `classes` at the effective
+  `classes_per_month` (409 `quota`, the usual body and sentence), otherwise one `credit_ledger` row
+  inserted `reserved` with `job_id` NULL (`INSERT ... RETURNING id`) and turned `committed` by that
+  `id` (no reason, `settled_at = now()`) at once in the same transaction; `_COMMIT`, which matches on
+  `job_id`, is not reused. The caller holds the owner advisory lock (`jobs.user.lock_owner`) before
+  `take_class` locks the period row, the order job creation uses (owner lock, then the period), so
+  duplicates and job creates serialise the same way and cannot deadlock. A retried duplicate with
+  the same `Idempotency-Key` takes no second credit (ADR 0007 amendment, D item 7). Both steps are what the existing policies and `credit_ledger_guard`
+  already allow the app role; no migration. The row counts as held (committed), is never released
+  (there is no job to fail), can be refunded by an admin like any committed credit (§3), and stays
+  when either class is deleted. The cost cap is not checked: a duplicate spends no model money, and
+  the copy's revisions are checked against the cap by the revise kinds' `admit` as always.
+- **Gates of the current plan.** The copied brief (`check_brief`) and draft (`check_content`) are
+  checked against the user's **current** effective plan, as Make current is (#496): 409 `quota`
+  `length` or `feature`; nothing is created.
+- **Known difference in the figures.** A duplicate's committed row has no job, like a committed
+  credit whose job was deleted with its class, in the admin ledger list and the export; the
+  account page's held count includes duplicates and Usage's `classes_designed` does not. Recorded,
+  not fixed (a marker would need a column).

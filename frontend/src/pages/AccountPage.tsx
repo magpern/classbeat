@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { logout, logoutAll } from '../api/auth'
+import { getIdentities, logout, logoutAll } from '../api/auth'
 import { oauthOutcomeMessage } from '../api/messages'
 import { useSession } from '../auth/SessionContext'
 import { Connections } from '../components/account/Connections'
@@ -73,6 +73,9 @@ function Account() {
   const { navigate } = useRouter()
   const outcome = useQuery().get('oauth')
   const [tab, setTab] = useState<TabId>(() => initialTab(outcome))
+  // Whether a failed provider re-authentication can point to the password (#522).
+  // undefined while loading, null when it could not be read.
+  const [hasPassword, setHasPassword] = useState<boolean | null | undefined>(undefined)
   const action = useAction()
   const email = session?.user?.email ?? ''
   const name = email.includes('@') ? email.slice(0, email.indexOf('@')) : email
@@ -84,6 +87,22 @@ function Account() {
       navigate('/signin')
     })
   }
+
+  useEffect(() => {
+    if (outcome !== 'reauth_stale') return
+    const controller = new AbortController()
+    getIdentities(controller.signal).then(
+      (state) => {
+        setHasPassword(state.hasPassword)
+      },
+      () => {
+        if (!controller.signal.aborted) setHasPassword(null)
+      },
+    )
+    return () => {
+      controller.abort()
+    }
+  }, [outcome])
 
   // A fragment-only navigation (a link to `/account#plan`, the browser's back button) changes
   // the tab without remounting the page.
@@ -126,7 +145,7 @@ function Account() {
         Object.hasOwn(OAUTH_NOTES, outcome) ? (
           <Notice kind="success">{OAUTH_NOTES[outcome]}</Notice>
         ) : (
-          <Notice kind="error">{oauthOutcomeMessage(outcome)}</Notice>
+          <Notice kind="error">{oauthOutcomeMessage(outcome, hasPassword)}</Notice>
         )
       ) : null}
       {action.error ? <Notice kind="error">{action.error}</Notice> : null}
