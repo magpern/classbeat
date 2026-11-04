@@ -81,9 +81,25 @@ def test_a_spotify_correction_moves_every_section_of_that_track_only() -> None:
             assert new == old
 
 
-def test_a_song_the_map_lacks_is_skipped() -> None:
+def test_a_song_the_map_lacks_is_skipped_with_a_warning(caplog: pytest.LogCaptureFixture) -> None:
     m = mix_map()
-    assert beat_one.apply(m, [Correction(song=9, beats=1)]) == m
+    with caplog.at_level("WARNING", logger="classbeat.agent.beat_one"):
+        assert beat_one.apply(m, [Correction(song=9, beats=1)]) == m
+    [record] = caplog.records
+    assert getattr(record, "skipped", None) == 1
+
+
+def test_songs_are_at_most_200_with_titles_of_at_most_100_characters() -> None:
+    tracks = [
+        {"SpotifyTrackID": f"{n:022d}", "Title": "x" * 300, "Artist": "a", "Duration": 60_000,
+         "BPM": 120}
+        for n in range(1, 251)
+    ]  # fmt: skip
+    m = model_input.music_map(spotify.build_map(tracks, {}))
+    out = beat_one.songs(m, 100_000)
+    assert len(out) == beat_one.MAX_SONGS == 200
+    assert all(len(s["title"]) == 100 for s in out)
+    assert all(isinstance(s[k], float) for s in out for k in ("start", "end", "bpm"))
 
 
 def test_corrections_apply_once_each_whatever_the_order() -> None:

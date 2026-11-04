@@ -1,11 +1,12 @@
 """Beat-one corrections per class (ADR 0007 amendment "beat-one corrections", #535, BC1)
 
 Revision ID: 0027_beat_one_corrections
-Revises: 0026_plan_gates
+Revises: 0027_soundless_flag
 Create Date: 2026-11-03
 
 - ``beat_one_corrections``: one row per song of a class's music whose beat 1 the user moved by
-  whole beats, keyed by the fingerprint of the music it was set on. Owned and class-owned: owner
+  whole beats, keyed by the fingerprint of the music it was set on, with the song's BPM when it was
+  set (the page asks the user to listen again when it changes). Owned and class-owned: owner
   RLS, gone with the class and the account. No title, no provider id, no map: nothing shared, and
   no analysis is ever written by a correction.
 - ``jobs.error_category`` gains ``music_changed``: a ``refit_draft`` whose music's fingerprint is
@@ -19,7 +20,7 @@ from alembic import op
 from classbeat.db.rls import enable_owner_rls
 
 revision: str = "0027_beat_one_corrections"
-down_revision: str | Sequence[str] | None = "0026_plan_gates"
+down_revision: str | Sequence[str] | None = "0027_soundless_flag"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
@@ -52,6 +53,8 @@ BEAT_ONE_CORRECTIONS = """
             CONSTRAINT beat_one_corrections_song CHECK (song BETWEEN 1 AND 500),
         beats smallint NOT NULL
             CONSTRAINT beat_one_corrections_beats CHECK (beats BETWEEN -3 AND 3 AND beats <> 0),
+        bpm real NOT NULL
+            CONSTRAINT beat_one_corrections_bpm CHECK (bpm > 0 AND bpm <= 1000),
         created_at timestamptz NOT NULL DEFAULT now(),
         updated_at timestamptz NOT NULL DEFAULT now(),
         CONSTRAINT beat_one_corrections_owner_id_id_key UNIQUE (owner_id, id),

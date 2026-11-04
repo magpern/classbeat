@@ -106,8 +106,9 @@ class DesignResult:
     tss: float
     # A zone 7 interval in the fitted draft (ADR 0012 section 7); always for running (ADR 0018).
     tss_approximate: bool
-    map_version: int
-    crossfade_sec: float
+    # The map's; ``None`` for a soundless class, which has no map (``classbeat.agent.soundless``).
+    map_version: int | None
+    crossfade_sec: float | None
 
 
 @dataclass(frozen=True)

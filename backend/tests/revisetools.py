@@ -31,6 +31,7 @@ class ReviseEnv:
     providers: list[FakeProvider] = field(default_factory=lambda: list[FakeProvider]())
     context_requests: int = 10
     running_covered: bool = True  # False: the route's result does not cover running (#465)
+    soundless_covered: bool = True  # False: the route's result does not cover soundless (#527)
 
     def runtime(self) -> Runtime:
         def build() -> FakeProvider:
@@ -41,7 +42,11 @@ class ReviseEnv:
 
         return Runtime(
             keyring=self.denv.ops.keyring,
-            models=FactoryModels(build, running_covered=self.running_covered),
+            models=FactoryModels(
+                build,
+                running_covered=self.running_covered,
+                soundless_covered=self.soundless_covered,
+            ),
             agent=CONFIG,
             context_requests=self.context_requests,
         )

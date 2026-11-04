@@ -2,7 +2,8 @@
 
 Input: ``{class_id | title, brief, music, mowl_connection_id}`` (``DesignDraftInput``), the music
 being ``{source: "mowl_spotify_playlist", spotify_playlist_id}`` or, on the user's Swedebeat mix
-(ADR 0016 section 3), ``{source: "mowl_swedebeat_mix", mix_id}``. Stages:
+(ADR 0016 section 3), ``{source: "mowl_swedebeat_mix", mix_id}``, or for a cycling class with no
+music (ADR 0007 amendment of 2026-11-03, #527) ``{source: "none"}``. Stages:
 
 1. ``music`` (``classbeat.design.music``): the link or the attach, then the read-only analysis,
    with a checkpoint before every library read and the BPM wait inside the lease and budget; on
@@ -20,6 +21,14 @@ being ``{source: "mowl_spotify_playlist", spotify_playlist_id}`` or, on the user
    ``draft`` revision (``classbeat.design.revision``, provenance ``origin = design_draft``) and,
    for the class's first design, its ``brief``, ``music_source`` and ``current_revision_id``
    (ADR 0007 section 2); the job ends ``completed``.
+
+**A soundless class** (``NoMusicChoice``, ``classbeat.design.music_kind``): ``admit`` checks the
+music kind of the class (``admit_music``) and the soundless gate (``admit_soundless``: the switch,
+the job's own plan's route, every plan's route) before any credit is reserved; the worker checks
+the switch again and that the attempt's model covers soundless, before any call. There is **no**
+``music`` stage and no MOWL or Spotify call: the ``design`` stage is ``classbeat.agent.soundless``
+over the brief alone, the step is a ``NoMusicStep``, the revision's music ``{"source": "none"}``,
+the class's first ``music_source`` the same, and ``music_kind.check_stored`` runs in the store.
 
 It consumes the class's credit (``consumes_credit``, ADR 0007 section 3). Its ``admit`` sets the
 ``route_key`` of the user's effective plan (``classbeat.quota.route``, AD5 #223); on a mix it first
@@ -47,10 +56,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from classbeat.agent import AgentConfig, Brief, DesignContext, JobStageHost, run_stage
 from classbeat.agent.design import DesignResult
 from classbeat.agent.running import design_stage_for
+from classbeat.agent.soundless import SoundlessContext, soundless_design_stage
 from classbeat.config import Settings
 from classbeat.context import UserContext
 from classbeat.crypto.keks import KeyRing
-from classbeat.design import corrections, mixadmit, revision, sport
+from classbeat.design import corrections, mixadmit, music_kind, revision, sport
 from classbeat.design.music import MusicStep, load_music
 from classbeat.design.sport_rules import rules_for
 from classbeat.design.swedebeat_music import swedebeat_step
@@ -86,7 +96,18 @@ class SwedebeatMusicChoice(BaseModel):
     mix_id: MixId
 
 
-MusicChoice = Annotated[SpotifyMusicChoice | SwedebeatMusicChoice, Field(discriminator="source")]
+class NoMusicChoice(BaseModel):
+    """A cycling class with no music (ADR 0007 amendment of 2026-11-03, item 1; #527). Also the
+    class's stored ``music_source`` (``{"source": "none"}``)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    source: Literal["none"]
+
+
+MusicChoice = Annotated[
+    SpotifyMusicChoice | SwedebeatMusicChoice | NoMusicChoice, Field(discriminator="source")
+]
 
 
 class ClassSpotifyMusic(SpotifyMusicChoice):
@@ -99,9 +120,11 @@ class ClassSpotifyMusic(SpotifyMusicChoice):
 
 
 ClassMusicSource = Annotated[
-    ClassSpotifyMusic | SwedebeatMusicChoice, Field(discriminator="source")
+    ClassSpotifyMusic | SwedebeatMusicChoice | NoMusicChoice, Field(discriminator="source")
 ]
-CLASS_MUSIC_SOURCE: Final = TypeAdapter[ClassSpotifyMusic | SwedebeatMusicChoice](ClassMusicSource)
+CLASS_MUSIC_SOURCE: Final = TypeAdapter[ClassSpotifyMusic | SwedebeatMusicChoice | NoMusicChoice](
+    ClassMusicSource
+)
 
 
 class DesignDraftInput(ModelJobInput):
@@ -125,6 +148,13 @@ class DesignDraftInput(ModelJobInput):
         Swedebeat mix in v1)."""
         if self.brief.sport == "running" and not isinstance(self.music, SpotifyMusicChoice):
             raise ValueError("a running class designs on a MOWL playlist only")
+        return self
+
+    @model_validator(mode="after")
+    def _no_hand_off_without_music(self) -> Self:
+        """A hand-off designs on a mix (ADR 0016 section 7), never on no music."""
+        if self.handoff_id is not None and isinstance(self.music, NoMusicChoice):
+            raise ValueError("a hand-off designs on a mix")
         return self
 
 
@@ -200,13 +230,24 @@ async def music_step(
 
 async def admit(db: AsyncSession, ctx: UserContext, parsed: BaseModel) -> Admitted | Refused:
     """A Spotify playlist is admitted as before; a Swedebeat mix only through
-    ``mixadmit.admit_mix`` (the flag, the MOWL connection, the user's own listing, the limit)."""
+    ``mixadmit.admit_mix`` (the flag, the MOWL connection, the user's own listing, the limit); no
+    music only through ``music_kind.admit_soundless`` (the switch, the job's own plan's route,
+    every plan's route). Every check here reads only: the jobs API reserves the credit after."""
     if not isinstance(parsed, DesignDraftInput):
         return Refused("invalid_input")
     # ADR 0018: the running flag and the class's fixed sport, before anything else is read.
     refused = await sport.admit_brief(db, ctx.user_id, parsed.brief, parsed.class_id)
     if refused is not None:
         return refused
+    soundless = isinstance(parsed.music, NoMusicChoice)
+    # #527: the class's music kind never changes; then the soundless gate.
+    refused = await music_kind.admit_music(db, ctx.user_id, soundless, parsed.class_id)
+    if refused is not None:
+        return refused
+    if soundless:
+        refused = await music_kind.admit_soundless(db, ctx)
+        if refused is not None:
+            return refused
     if isinstance(parsed.music, SwedebeatMusicChoice):
         refused = await mixadmit.admit_mix(db, ctx, parsed.music.mix_id, parsed.mowl_connection_id)
         if refused is not None:
@@ -225,9 +266,14 @@ async def run(job_run: JobRun) -> Complete:
         await sport.still_on(job_run)  # ADR 0018 section 5: before anything is called
     if isinstance(given.music, SwedebeatMusicChoice):
         await mixadmit.still_on(job_run, runtime.swedebeat_enabled)  # before anything is called
+    if isinstance(given.music, NoMusicChoice):
+        await music_kind.still_on(job_run)  # #527: the switch, before anything is called
     model = await group_model(runtime, job_run, given.route_key, "design")  # before any MOWL call
     if given.brief.sport == sport.RUNNING:
         sport.require_evaluated(model)  # an evaluated model only (ADR 0012, issue #465)
+    if isinstance(given.music, NoMusicChoice):
+        music_kind.require_covered(model)  # a model evaluated for soundless only (#527)
+        return await _run_soundless(job_run, given, model)
     await job_run.stage("music")
     step = await music_step(job_run, runtime, given.music, given.mowl_connection_id)
     handed_over = False  # the outcome's ``release`` closes the step from then on
@@ -260,6 +306,7 @@ async def run(job_run: JobRun) -> Complete:
                 given.music.model_dump(mode="json"),
             )
             await sport.check_stored(fs, given.brief.sport)  # the class's sport never changes
+            await music_kind.check_stored(fs, soundless=False)  # nor its music kind (#527)
             if not adopted and isinstance(given.music, SwedebeatMusicChoice):
                 # A verified hand-off designs on the mix, replacing the Spotify source.
                 from classbeat.swedebeat_handoff.adopt import adopt_verified_mix
@@ -277,6 +324,38 @@ async def run(job_run: JobRun) -> Complete:
     finally:
         if not handed_over:
             step.close()
+
+
+async def _run_soundless(job_run: JobRun, given: DesignDraftInput, model: GroupModel) -> Complete:
+    """A soundless design (#527): no ``music`` stage and no MOWL or Spotify call; the soundless
+    ``design`` stage over the brief, then the store with a ``NoMusicStep``. No rules section
+    (``classbeat.agent.soundless_input`` says why)."""
+    if given.brief.sport != sport.CYCLING:
+        raise JobFailure("internal")  # the input refuses a running brief with no music
+    step = music_kind.NoMusicStep()
+    ctx = SoundlessContext(given.brief, given.plan_gates)  # #496
+    outcome = await run_stage(
+        JobStageHost(job_run),
+        model.provider,
+        soundless_design_stage(ctx),
+        ctx.first_message(),
+        model.agent,
+    )
+    if not isinstance(outcome.output, DesignResult):
+        raise JobFailure("internal")
+    draft = revision.build(outcome.output, outcome, None, step)
+
+    async def store(fs: FencedSession) -> UUID:
+        """In the final fenced transaction: the revision, the class's first ``music_source`` of
+        ``none``, then the sport and the music kind checked again (either rolls it all back)."""
+        await step.still_current(fs)
+        revision_id = await draft.store(fs)
+        await revision.adopt_first(fs, revision_id, given.brief.stored(), dict(music_kind.NO_MUSIC))
+        await sport.check_stored(fs, given.brief.sport)
+        await music_kind.check_stored(fs, soundless=True)
+        return revision_id
+
+    return Complete(store, release=step.close)
 
 
 DESIGN_DRAFT: Final = KINDS.register(
