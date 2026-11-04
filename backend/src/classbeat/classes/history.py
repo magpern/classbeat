@@ -34,7 +34,7 @@ from classbeat.agent.schemas import stored_draft
 from classbeat.classes.service import stored_brief
 from classbeat.context import UserContext, require_context
 from classbeat.db import user_session
-from classbeat.design import diff
+from classbeat.design import diff, music_kind
 
 Factory = async_sessionmaker[AsyncSession]
 
@@ -118,8 +118,10 @@ class TimelineEntryOut(BaseModel):
 
 class HistoryOut(BaseModel):
     sport: Literal["cycling", "running"]
-    # The class has a stored brief and its own music source, which Change it needs: a duplicate of
-    # a class on picked songs has none (ADR 0007 amendment of 2026-11-03, part D item 5).
+    # A revise would be admitted now as far as the music goes: a stored brief, a music source (a
+    # duplicate of a class on picked songs has none, ADR 0007 amendment of 2026-11-03 part D item 5)
+    # and ``design.music_kind.admit_class`` admitting it (a soundless class until SL2, then its
+    # gate): the function the revise's ``admit`` calls, so the two cannot disagree.
     can_change: bool
     revisions: list[TimelineEntryOut]
 
@@ -255,9 +257,10 @@ async def history(factory: Factory, ctx: UserContext, class_id: UUID) -> History
             return None
         sport = _sport(await stored_brief(db, ctx.user_id, class_id))
         rows = (await db.execute(_ROWS, _params(ctx, class_id))).all()
-    return HistoryOut(
-        sport=sport, can_change=bool(found.can_change), revisions=[entry(r, sport) for r in rows]
-    )
+        can_change = bool(found.can_change) and (
+            await music_kind.admit_class(db, ctx.user_id, class_id) is None
+        )
+    return HistoryOut(sport=sport, can_change=can_change, revisions=[entry(r, sport) for r in rows])
 
 
 def _warnings(music: dict[str, Any]) -> WarningsOut:

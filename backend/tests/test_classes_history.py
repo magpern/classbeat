@@ -273,6 +273,22 @@ async def test_a_stored_draft_that_no_longer_validates_is_internal_with_the_reas
         assert (got.status_code, got.json()) == (500, {"detail": {"reason": "internal"}}), path
 
 
+async def test_a_soundless_class_cannot_be_changed_while_its_revise_is_refused(
+    two: tuple[Plant, Plant],
+) -> None:
+    """``can_change`` asks ``music_kind.admit_class``, as the revise's ``admit`` does: a soundless
+    class is refused until SL2 (#528), so it is false (and then follows the gate)."""
+    mine, _ = two
+    quiet = new_class(mine.admin, mine.owner, "Quiet")
+    sql(mine.admin, "UPDATE classes SET brief = CAST(:b AS jsonb), "
+        "music_source = CAST(:m AS jsonb) WHERE id = :c",
+        b=json.dumps({"length_min": 30}), m=json.dumps({"source": "none"}), c=quiet)  # fmt: skip
+    revision(mine.admin, mine.owner, quiet, 1, V1, music={"source": "none"})
+    body = (await mine.browser.get(f"/api/classes/{quiet}/history")).json()
+    assert body["can_change"] is False
+    assert [r["number"] for r in body["revisions"]] == [1]
+
+
 async def test_a_running_class_is_read_with_the_running_schema(two: tuple[Plant, Plant]) -> None:
     mine, _ = two
     run = new_class(mine.admin, mine.owner, "Run")
