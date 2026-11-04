@@ -61,8 +61,9 @@ the web `urllib` allowlist gains only `www.swedebeat.se` (already done in #366).
   stateful manual hand-off. Different risk, different review, and (b) must not hold (a) back.
 - Out of scope for both: creating or editing a Swedebeat mix by any means (no API call, no scripted
   app); reading a user's mix track list; a Swedebeat revoke or token-refresh call; playing audio;
-  sharing a mix or an analysis between users; correcting beat 1 (the library's `correct_beat_one`, a
-  later issue); any live call.
+  sharing a mix or an analysis between users; correcting beat 1 (the library's `correct_beat1`; now
+  designed per class in ADR 0007's amendment "beat-one corrections", #535, which never writes
+  `swedebeat_mix_maps`); any live call.
 
 ### 2. The flag and who sees what
 
