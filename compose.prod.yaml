@@ -11,7 +11,8 @@
 # Configuration only: deploying is the owner's step.
 #
 # Variables (a .env next to this file; values are the owner's, none are committed):
-#   CLASSBEAT_VERSION  image tag from ghcr.io/magpern/classbeat (X.Y.Z, never `latest`)   required
+#   CLASSBEAT_VERSION  release tag of ghcr.io/magpern/classbeat and of ghcr.io/magpern/classbeat-db
+#                      (the database image, same tag; X.Y.Z, never `latest`)              required
 #   CLASSBEAT_DOMAIN   the public host name, no scheme (classbeat.pernemark.se)           required
 #   PROXY_IP           swag's fixed IPv4 address on the proxy network: the only peer whose
 #                      X-Forwarded-For web believes (ADR 0003 section 9)                   required

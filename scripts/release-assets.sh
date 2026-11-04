@@ -36,6 +36,9 @@ case "${1:-}" in
     [ -z "$(ls -A "$dir")" ] || { echo "release-assets: $dir is not empty" >&2; exit 1; }
     for a in "${assets[@]}"; do
       src="${a% *}"; name="${a#* }"
+      # `sha256sum -- *` and the release's `$assets/*` glob skip dotfiles: a hidden asset (a .env, say)
+      # would be uploaded by neither or checksummed by neither, so its name may not start with a dot.
+      [[ "$name" != .* && "$name" != */* ]] || { echo "release-assets: asset name '$name' must not start with a dot or hold a slash" >&2; exit 1; }
       [ -f "$root/$src" ] && [ ! -L "$root/$src" ] || { echo "release-assets: $src is not a regular file" >&2; exit 1; }
       cp "$root/$src" "$dir/$name"
     done

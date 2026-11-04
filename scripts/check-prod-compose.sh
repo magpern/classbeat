@@ -16,7 +16,10 @@
 # 3. a self-test: each unsafe mutation of the rendered files must fail step 2 (fails closed);
 # 4. the owner's real PROXY_IP, when one is set (their shell, else PROD_CHECK_ENV_FILE, default the
 #    checkout's .env): compose.prod.yaml rendered with it must trust one private IPv4 address (#495);
-# 4b. that env file and the compose files hold no *CLIENT_SECRET* variable (a file under secrets/ only);
+# 4b. that env file (and, in a checkout, .env.example) holds no *CLIENT_SECRET* variable; and in the compose
+#    files (the three production ones, in a checkout also the dev compose.yaml) `client_secret` appears
+#    only as the three secret names and their ./secrets/ files, in check_oauth_files (step 2): a client
+#    secret is a file under secrets/ only;
 # 4c. on the server (that env file's COMPOSE_FILE names compose.prod.yaml, or PROD_CHECK_SECRETS_DIR
 #    is set): each real secret file is a regular file of group 10010, mode 640 or stricter, in a
 #    folder that gives the group and others nothing (mode 2700), and no host account has that group
@@ -78,7 +81,10 @@ if [[ -n "$swag_live" ]]; then
     || { echo "check-prod-compose: PROD_CHECK_SWAG_CONF=$swag_live is not a readable file (copy it somewhere you can read, runbook section 9)" >&2; exit 1; }
 fi
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-if [[ -f "$here/../compose.prod.yaml" && -d "$here/../docs/runbooks" ]]; then
+# A checkout has scripts/release-assets.sh next to this script; the released install folder never does
+# (it is not an asset). The test needs it, or a parent folder that happens to hold a compose.prod.yaml
+# and docs/runbooks would make an install folder inside it look like a checkout (#470, review of #575).
+if [[ -f "$here/release-assets.sh" && -f "$here/../compose.prod.yaml" && -d "$here/../docs/runbooks" ]]; then
   root="$(cd "$here/.." && pwd)"; layout=checkout
 else
   root="$here"; layout=install
@@ -981,6 +987,13 @@ for m in \
   '.services.db.ports = [{"host_ip":"192.168.1.20","target":5432,"published":"5432"}]'; do
   expect_refused lan "$lan" "$m"
 done
+# swag is this server (PROXY_IP equal to WEB_LAN_ADDRESS): the web setting matches PROXY_IP, so only the
+# clause `$ip != $lan` of check_lan can refuse it (the mutation list above is refused by the first clause
+# alone: a mutation removing `$ip != $lan` survived, review of #576).
+lan_same="$(PROXY_IP="$lan_ip" render -f "$dir/compose.prod.yaml" -f "$dir/compose.prod.lan.yaml")"
+swag_keep="$swag_ip"; swag_ip="$lan_ip"
+expect_refused lan "$lan_same" '.' "and not this server"
+swag_ip="$swag_keep"
 fi
 
 # --- The owner's real PROXY_IP (#495) -------------------------------------------------------------
@@ -1038,6 +1051,11 @@ check_real_ports() {   # check_real_ports RENDERED_JSON
   local j="$1" host trusted
   jq -e '[.services | to_entries[] | select(.key != "web") | select(.value.ports // [] | length > 0)] | length == 0' <<<"$j" >/dev/null \
     || fail "only web may publish a port" || return 1
+  # As tight as the shipped overlays (check_loopback, check_lan): at most one port, tcp, to web's 8000.
+  # Both overlays together, or a second port from an overlay of the owner's own, would publish web twice
+  # (#470, review of #576). The host port may differ from 8080 (WEB_HOST_PORT).
+  jq -e '(.services.web.ports // []) | length <= 1 and all(.target == 8000 and (.protocol // "tcp") == "tcp")' <<<"$j" >/dev/null \
+    || fail "web publishes at most one port (container port 8000, tcp): use one overlay, not both (runbook section 6 or 6c)" || return 1
   trusted="$(jq -r '.services.web.environment.CLASSBEAT_TRUSTED_PROXIES // ""' <<<"$j")"
   while IFS= read -r host; do
     [[ "$host" == 127.0.0.1 ]] || proxy_ip_ok "$host" \
@@ -1305,8 +1323,9 @@ sfail() { echo "check-prod-compose: $site_label: $*" >&2; return 1; }
 # backslash makes the next character plain; `${name}` is `$name` and its `{` opens no block; `}`
 # inside a token is text; `;` ends a directive, `{` opens a block, `}` closes it. Tokens are unquoted
 # and their tabs and newlines become spaces.
+# shellcheck disable=SC2016  # awk's $ variables, not shell ones
 site_directives() {
-  awk '
+  timeout 30 awk '
     function err(m,   t, ln) { t = substr(s, 1, i); ln = gsub(/\n/, "", t) + 1; print "ERR\tline " ln ": " m; failed = 1; exit 1 }
     function emit(kind,   line, k) {
       line = kind "\t" ctx
@@ -1370,7 +1389,7 @@ site_directives() {
 # runbook section 8); the sample must have both.
 # shellcheck disable=SC2016  # literal nginx variables, not shell ones
 site_verdict() {
-  awk -F'\t' -v live="$1" '
+  timeout 30 awk -F'\t' -v live="$1" '
     BEGIN { rih = 0; cfinc = 0 }
     function bad(m) { print m; nbad++ }
     function fin() { if (inloc) { if (sse && !buf) bad("the SSE location needs proxy_buffering off"); if (sse && !rt) bad("the SSE location needs proxy_read_timeout of at least 900s") } inloc = 0 }
@@ -1424,14 +1443,20 @@ site_verdict() {
   '
 }
 check_site() {   # check_site FILE [live]
-  local dirs msgs l
-  dirs="$(site_directives "$1")" || {
+  local dirs msgs l rc=0
+  # Both awk programs run under `timeout 30` (exit 124): a loop in them must fail the check, not hang it.
+  dirs="$(site_directives "$1")" || rc=$?
+  if (( rc == 124 )); then sfail "reading it as nginx directives took more than 30 seconds"; return 1; fi
+  if (( rc != 0 )); then
     msgs="${dirs##*$'\n'}"; sfail "cannot read it as nginx directives: ${msgs#ERR$'\t'}"; return 1
-  }
-  msgs="$(site_verdict "${2:+1}" <<<"$dirs")" || {
+  fi
+  rc=0
+  msgs="$(site_verdict "${2:+1}" <<<"$dirs")" || rc=$?
+  if (( rc == 124 )); then sfail "checking its directives took more than 30 seconds"; return 1; fi
+  if (( rc != 0 )); then
     while IFS= read -r l; do sfail "$l" || true; done <<<"$msgs"
     return 1
-  }
+  fi
 }
 
 # nginx_log_summary LOG: what a failed `nginx -t` said, without its words (#470, from the review of
@@ -1557,6 +1582,12 @@ for v in '$http_x_forwarded_for' '$remote_addr'; do
   expect_site_refused 's/^( *)location \/ \{$/&\n        proxy_set_header\n            X-Forwarded-For '"$v"';/' \
     'a location sets proxy_set_header'
 done
+# A backslash inside a quoted string (#470, review of #592): `\\"` ends the string after one backslash
+# (sed turns the four backslashes below into two, nginx reads two as one), so the second
+# X-Forwarded-For after it is a real directive.
+# shellcheck disable=SC2016  # literal nginx variables, not shell ones
+expect_site_refused 's/^( *proxy_set_header Host \$host;)$/\1\n    proxy_set_header X-Real-IP "a\\\\"; proxy_set_header X-Forwarded-For $http_x_forwarded_for;/' \
+  'exactly one proxy_set_header X-Forwarded-For (found 2)'
 # A location that sets some other header drops the server-level overwrite from what it forwards.
 # shellcheck disable=SC2016  # literal nginx variables, not shell ones
 expect_site_refused 's/^( *)location @classbeat_down \{$/\1location \/api\/ { proxy_set_header Host $host; proxy_pass http:\/\/$upstream_classbeat:8000; }\n&/' \
@@ -1566,7 +1597,9 @@ for m in \
   's/proxy_set_header X-Forwarded-For \$remote_addr;/proxy_set_header\n        "x-forwarded-for"\n        ${remote_addr}; # proxy_set_header X-Forwarded-For $http_x_forwarded_for;/' \
   's/^( *proxy_set_header Host \$host;)$/\1\n    proxy_set_header X-Real-IP "a # b ; proxy_set_header X-Forwarded-For x"; proxy_set_header X-Real-Host a#b;/' \
   's/^( *)location @classbeat_down \{$/\1location = \/health { return 200 "ok"; }\n&/' \
-  's/^( *proxy_set_header X-Forwarded-Proto https;)$/\1 # proxy_set_header X-Forwarded-For $http_x_forwarded_for;/'; do
+  's/^( *proxy_set_header X-Forwarded-Proto https;)$/\1 # proxy_set_header X-Forwarded-For $http_x_forwarded_for;/' \
+  's/^( *proxy_set_header Host \$host;)$/\1\n    proxy_set_header X-Real-IP "a \\" ; proxy_set_header X-Forwarded-For x";/' \
+  's/^( *proxy_set_header Host \$host;)$/\1\n    proxy_set_header X-Real-IP a\\;proxy_set_header X-Forwarded-For x;/'; do
   expect_site_accepted "$m"
 done
 # nginx_log_summary prints no word of the log (#470): a planted canary in every place nginx quotes

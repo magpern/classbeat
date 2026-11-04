@@ -831,6 +831,7 @@ The backend test shard count has one source: the `shard` list of the `backend-te
 | `ci` | always | the required check; see the gate below |
 
 A docs-only PR therefore runs `changes`, `checks` and `ci` (plus `pr-title`).
+The `backend` filter also includes the files backend tests read outside `backend/` (`compose*.yaml`, `Dockerfile`, `.env.example`, `scripts/worktree.sh`), and the `classbeat-db` image build, SQL comparison and Trivy scan run in the `e2e` job (a `stack` change).
 
 **The `ci` gate** (`scripts/ci-gate.sh`, tested by `scripts/test-ci-gate.sh` in `checks`) fails
 unless `changes` and `checks` succeeded and every other job either succeeded or was skipped while
