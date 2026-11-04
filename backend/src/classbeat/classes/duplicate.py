@@ -15,9 +15,11 @@ every statement scoped by ``owner_id``:
    be the stored one (409 ``hash_mismatch``), which must still be the SHA-256 of the canonical
    content, and the content must validate under the class's sport (500 ``internal`` otherwise);
    a class with no stored brief is 409 ``not_ready``;
-2. a running class while ``running_enabled`` is off, and a class or draft on a Swedebeat mix while
-   ``swedebeat_enabled`` is off (the class's current source **or** the chosen revision's music on
-   a mix: the stricter rule, on purpose), are 409 ``feature_off``; a soundless class (``{source:
+2. a running class is admitted only by ``design.sport.admit_running``, as a running design is
+   (``feature_off``, or ``running_not_evaluated`` for the user's uncovered plan; ADR 0018 Amendment
+   5, #509), and a class or draft on a Swedebeat mix while ``swedebeat_enabled`` is off (the
+   class's current source **or** the chosen revision's music on a mix: the stricter rule, on
+   purpose) is 409 ``feature_off``; a soundless class (``{source:
    "none"}``, #526) is admitted only by ``design.music_kind.admit_soundless``, as a soundless
    design is (``feature_off``, or ``soundless_not_evaluated`` for the user's uncovered plan), and
    its copy stays ``none`` (source and revision music);
@@ -56,7 +58,8 @@ from classbeat.config import Settings
 from classbeat.context import UserContext, require_context
 from classbeat.db import user_session
 from classbeat.design import music_kind
-from classbeat.flags.effective import running_enabled, swedebeat_enabled
+from classbeat.design import sport as sport_gate
+from classbeat.flags.effective import swedebeat_enabled
 from classbeat.jobs.credits import QuotaRefused
 from classbeat.jobs.http import IDEMPOTENCY_KEY, canonical_json
 from classbeat.jobs.user import lock_owner
@@ -258,8 +261,10 @@ async def _flag_refusal(
         refused = await music_kind.admit_soundless(db, ctx)  # the soundless design's own gate
         if refused is not None:
             return refused.reason
-    if sport == "running" and not await running_enabled(db, settings.running_enabled):
-        return "feature_off"
+    if sport == "running":
+        refused = await sport_gate.admit_running(db, ctx)  # the running design's own gate (#509)
+        if refused is not None:
+            return refused.reason
     on_mix = (
         _dict(music_source).get("source") == MIX_SOURCE or _dict(music).get("source") == MIX_SOURCE
     )

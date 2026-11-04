@@ -214,6 +214,8 @@ testers?
 (ADR 0015 §6): stored `off` or `on`, stricter wins, with the environment as the kill switch.
 Off means **`feature_off`**: the new-class UI shows cycling only, and the API rejects
 `sport=running`. `song_picking` (`off` / `granted` / `on`) is a separate flag.
+**Superseded in part by Amendment 5** (2026-11-04, #509): a missing stored value is `off`, not
+`on`, and the effective flag also needs every plan's route to cover running.
 
 ### 6. Roadmap and milestones
 
@@ -329,3 +331,49 @@ ADR 0007's amendment of 2026-11-03 adds a "No music" source for **cycling** clas
 it is refused `invalid_input` at input, and a running revision with `none` music is `invalid_input` at Save
 and Update: running v1 still designs on an existing MOWL playlist only (§2). Soundless running would need
 its own design and revise prompts and is a later change.
+
+## Amendment 5 (2026-11-04, Architect, #509): the running gate cannot be switched on around it
+
+The Opus review of #502 found that the coverage check of E1 (#465) ran only when an admin **stored**
+`running_enabled` = `on`. Section 5 copied `swedebeat_enabled`, where a missing stored value counts as `on`,
+so the admin's `DELETE` (the JSON `null`) or `CLASSBEAT_RUNNING_ENABLED=true` with nothing stored turned
+running on without it. The worker still refused every running job (`model_config`), so no unevaluated model
+ran, but the New class form offered Running and every running design failed with a vague sentence. Running
+now uses the soundless gate's pattern (ADR 0007 amendment of 2026-11-03, item 2):
+
+1. **Three conditions, on every read.** Running is on only when `CLASSBEAT_RUNNING_ENABLED` is on (the kill
+   switch, unchanged), the stored `running_enabled` is exactly `on`, and every plan's `route_key` has a
+   `design` route that covers running (`models.routes.every_plan_covers(db, "running")`: not stale for any
+   reason, never the bootstrap). `flags.effective.running_enabled` computes it per request; it is what
+   `GET /api/connections` returns (so the form), what the admin's Settings page shows as effective, and what
+   `admit` ends with. A plan added later or a route cleared later turns it off without anyone storing
+   anything.
+2. **A missing, `null` or invalid stored value is `off`** (`flags.core.running_switch`). This is the safer
+   reading: clearing the row can only take running away. **Upgrade consequence:** a deployment that relied
+   on the environment alone (nothing stored) loses running until an admin stores `on`, which needs coverage;
+   production ships with the environment off, so nothing changes there. No migration: no row is changed.
+3. **Refused at creation.** A running design (`design_draft` with a running brief) and a revise of a
+   running class go through `design.sport.admit_running` in `admit`, before the job row and before any credit
+   is reserved, in this order: the switch (409 `feature_off`), the job's **own** plan's route (409
+   `running_not_evaluated`, with its own sentence on the form and the class page; checked before the next
+   step, or it could never be answered), every plan's route (409 `feature_off`).
+4. **The worker keeps its backstops.** A queued running job ends `feature_off` when the switch (environment
+   and stored value) is off by then, and `model_config` when its attempt's model does not cover running
+   (`GroupModel.running_covered`), both before any MOWL or model call. Save and Update make no model call and
+   read the switch only, at creation and in `prepare` (a stored `on` under the environment).
+5. **The race with the route writes.** The admin's check at store time and `admit` read `model_routes`
+   without the row locks `set_route` and `clear_route` take. No lock is added: the stored value is now only
+   the switch, and coverage is never cached, so a route cleared just after the admin stored `on` makes the
+   very next read off. A job admitted in the instant before a route is cleared reaches the worker, which
+   resolves its model again on every attempt and ends it `model_config` before any call; at worst that one
+   job fails, nothing is sent and its credit is released, as for any failed job.
+6. **The web's `fake`.** As for soundless: in the web, `fake` counts as covering only when the web's own
+   `CLASSBEAT_MODEL_PROVIDER` is `fake` and `CLASSBEAT_ENVIRONMENT` is not `prod` (`music_kind.fake_covers`),
+   both for the effective flag and for the admin's check before storing `on`. `compose.yaml` passes no model
+   provider to web; the e2e stack sets `fake` on web so its running specs (which store `on` through `sql`)
+   keep working. A production web never treats anything as covered without a recorded route.
+
+**Alternatives.** Keep "absent is on" and only add coverage to the effective flag: smaller, but a cleared row
+would still mean "on as far as the admin decided", which is the reading that caused this. Take the route
+writes' lock in the admin check: it protects nothing once coverage is read on every request (5).
+
