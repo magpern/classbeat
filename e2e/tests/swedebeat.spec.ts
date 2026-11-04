@@ -10,6 +10,7 @@ import {
   holdSession,
   resetSwedebeat,
   setOutage,
+  useSwedebeatThroughUi,
 } from './swedebeat-helpers'
 
 // Swedebeat connect end to end (ADR 0015) against the fake Swedebeat of compose.e2e.yaml, which
@@ -29,6 +30,7 @@ async function newUser(page: Page, tag: string): Promise<void> {
   const email = uniqueEmail(tag)
   await signUpThroughUi(page, email)
   await signInThroughUi(page, email) // a fresh sign-in counts as recent authentication
+  await useSwedebeatThroughUi(page)
 }
 
 const card = (page: Page) => page.getByRole('region', { name: 'Swedebeat', exact: true })

@@ -61,8 +61,9 @@ the web `urllib` allowlist gains only `www.swedebeat.se` (already done in #366).
   stateful manual hand-off. Different risk, different review, and (b) must not hold (a) back.
 - Out of scope for both: creating or editing a Swedebeat mix by any means (no API call, no scripted
   app); reading a user's mix track list; a Swedebeat revoke or token-refresh call; playing audio;
-  sharing a mix or an analysis between users; correcting beat 1 (the library's `correct_beat_one`, a
-  later issue); any live call.
+  sharing a mix or an analysis between users; correcting beat 1 (the library's `correct_beat1`; now
+  designed per class in ADR 0007's amendment "beat-one corrections", #535, which never writes
+  `swedebeat_mix_maps`); any live call.
 
 ### 2. The flag and who sees what
 
@@ -79,6 +80,14 @@ sees no difference, and a test pins it (§8).
 | (b) match a selection | yes | yes (the catalogue token) | yes (the selection comes from song picking) |
 
 If MOWL lists no mix, the page says so and points at the Swedebeat app; it never offers to create one.
+
+*Amended 2026-11-03 (issue #525, ADR 0015's amendment of that date):* the user's own "I use Swedebeat"
+preference (default off) narrows this further. While it is off the mix choice is not offered, `GET
+/api/music/swedebeat-mixes` is 404 `feature_off` with no MOWL call; a new design on a mix (the hand-off's
+design included), a `swedebeat_match` job, a catalogue replace and starting the hand-off are refused
+`feature_off`, and such work already queued ends `feature_off` before any request. A revise of a class already
+on a mix and the steps of a hand-off already started are not gated by it (ADR 0015's amendment lists them).
+The flag stays the kill switch.
 
 ### 3. (a) "My Swedebeat mix" in the guided builder
 

@@ -70,9 +70,15 @@ def importers(module: str) -> set[str]:
 def test_the_jobs_api_service_is_reached_only_from_its_routes() -> None:
     """``classbeat.jobs.service`` opens plain user sessions on jobs (the user's own writes); no
     worker, job-kind or core module may import it, only the web routes (J3, #87); and those
-    routes only from the web app (#115 item 6)."""
-    assert importers("classbeat.jobs.service") == {"classbeat.jobs.routes"}
+    routes only from the web app (#115 item 6). The music routes' cover read asks it one
+    read-only question, whether a song pick of the user is open (``cover_read_admitted``, ADR 0013
+    section 9 amendment, #537); they are web routes too, reached only from the web app."""
+    assert importers("classbeat.jobs.service") == {
+        "classbeat.jobs.routes",
+        "classbeat.design.routes",
+    }
     assert importers("classbeat.jobs.routes") == {"classbeat.web"}
+    assert importers("classbeat.design.routes") == {"classbeat.web"}
 
 
 def test_the_users_operation_actions_are_reached_only_from_their_routes() -> None:
