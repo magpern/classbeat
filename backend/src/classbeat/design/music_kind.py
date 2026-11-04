@@ -32,6 +32,11 @@ module holds the checks that are not the input's own validation:
   ``none`` on a class whose music is not ``none``, or other music on a class whose music is
   ``none``, is ``invalid_input``; ``check_stored`` repeats it in the final fenced store after
   ``revision.adopt_first``, so two queued jobs of different kinds cannot both land.
+- **No songs and no Swedebeat** (item 9, #530). ``refuse_soundless`` is the explicit
+  ``invalid_input`` of ``design_with_songs`` (every mode), ``revise_songs``, ``swedebeat_match``,
+  the hand-off and ``swedebeat_verify_mix`` for a soundless class; their final fenced stores call
+  ``check_stored(fs, soundless=False)`` (the hand-off's adopt refuses a ``none`` source in its own
+  compare-and-set), so none of them writes over a ``none`` source.
 - **No music step** (item 3). ``NoMusicStep`` stands in for ``design.music.MusicStep``: no MOWL or
   Spotify call, and its ``still_current`` and ``close`` do nothing (the revision names no MOWL
   object).
@@ -150,6 +155,14 @@ async def admit_music(
     if known is not None and is_none(known) != soundless:
         return Refused("invalid_input")
     return None
+
+
+async def refuse_soundless(db: AsyncSession, owner_id: UUID, class_id: UUID) -> Refused | None:
+    """Song picking, the Swedebeat match, the hand-off and ``swedebeat_verify_mix`` of a class
+    (item 9, #530): ``invalid_input`` when the class is soundless (its ``music_source``, or its
+    newest revision's music while it has none, is ``none``), read explicitly rather than inferred
+    from a missing song list or match. None admits. Reads only."""
+    return await admit_music(db, owner_id, False, class_id)
 
 
 _STORED_SOURCE = text(

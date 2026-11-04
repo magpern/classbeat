@@ -96,6 +96,8 @@ export interface ClassSummary {
   title: string
   /** ADR 0018 section 1: the class's sport; an answer without it is cycling. */
   sport: 'cycling' | 'running'
+  /** ADR 0007 amendment item 10 (#530): a class with no music; an answer without it is not. */
+  soundless: boolean
   createdAt: string
   updatedAt: string
   currentRevisionId: string | null
@@ -184,6 +186,7 @@ function decodeClass(value: unknown): ClassSummary {
     id: text(item, 'id'),
     title: text(item, 'title'),
     sport: item.sport === 'running' ? 'running' : 'cycling',
+    soundless: item.soundless === true,
     createdAt: text(item, 'created_at'),
     updatedAt: text(item, 'updated_at'),
     currentRevisionId: optionalText(item, 'current_revision_id'),

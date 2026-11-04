@@ -14,10 +14,11 @@ import { ReconnectPrompt } from './ReconnectPrompt'
 
 /**
  * The Swedebeat part of the class page (ADR 0016, B4). Nothing shows while the
- * `swedebeat_enabled` flag is off (the class answer then has no match key at all).
+ * `swedebeat_enabled` flag is off (the class answer then has no match key at all), and nothing
+ * for a soundless class (no match, no hand-off: ADR 0007 amendment item 9, #530).
  */
 export function SwedebeatSection({ summary, onReload }: { summary: ClassSummary; onReload: () => void }) {
-  if (!summary.swedebeatOn) return null
+  if (!summary.swedebeatOn || summary.soundless) return null
   return summary.swedebeatMatch === null ? (
     <StartMatch summary={summary} />
   ) : (

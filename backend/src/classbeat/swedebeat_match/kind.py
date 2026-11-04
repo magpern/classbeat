@@ -8,7 +8,8 @@ no credit, no external write.
 - **admit** (the jobs API's create transaction): ``feature_off`` unless the effective
   ``swedebeat_enabled`` flag is on (``CLASSBEAT_SWEDEBEAT_ENABLED`` and the admin flag, stricter
   wins), then ``not_connected`` unless the Swedebeat row is ``connected`` (a row that needs a
-  reconnect makes no call), then ``invalid_input`` unless the list is the user's ``song_list`` of
+  reconnect makes no call), then ``invalid_input`` for a soundless class
+  (``music_kind.refuse_soundless``, #530) and unless the list is the user's ``song_list`` of
   that class and still hashes to its stored hash. One open job per class and the per-user limit
   are the jobs API's own.
 - **prepare**: the flag again, from the worker's own settings and the database (off: the job ends
@@ -25,7 +26,8 @@ no credit, no external write.
   that wait); a 5xx or a timeout is ``upstream_unavailable`` (retried); success records
   ``last_used_at``.
 - **store**: the ``swedebeat_match`` revision under the list
-  (``classbeat.swedebeat_match.revision``).
+  (``classbeat.swedebeat_match.revision``), refused ``invalid_input`` (nothing stored) when the
+  class's ``music_source`` is ``none`` by then (``music_kind.check_stored``).
 
 Registered in ``classbeat.jobs.KINDS`` on import, by the worker (which runs it) and the web app (the
 jobs API validates with the same registry). Only categories are logged, never a title or the token.
@@ -50,8 +52,9 @@ from classbeat.connections import (
     record_result,
 )
 from classbeat.context import UserContext
+from classbeat.design import music_kind
 from classbeat.flags import effective as flags
-from classbeat.jobs import KINDS, Complete, JobFailure, JobKind, JobRun
+from classbeat.jobs import KINDS, Complete, FencedSession, JobFailure, JobKind, JobRun
 from classbeat.jobs.inputs import JobInput
 from classbeat.jobs.kinds import Admitted, Refused
 from classbeat.songs import song_list
@@ -105,6 +108,9 @@ async def admit(db: AsyncSession, ctx: UserContext, parsed: BaseModel, /) -> Adm
         return Refused("feature_off")
     if not await _connected(db, ctx, parsed.swedebeat_connection_id):
         return Refused("not_connected")
+    soundless = await music_kind.refuse_soundless(db, ctx.user_id, parsed.the_class)  # #530
+    if soundless is not None:
+        return soundless
     stored = await song_list.load(db, ctx.user_id, parsed.the_class, parsed.song_list_revision_id)
     if stored is None or len(stored.content.songs) > MAX_SONGS:
         return Refused("invalid_input")
@@ -217,7 +223,12 @@ async def run(job_run: JobRun) -> Complete:
     revision = build(
         songs, song_list_id=given.song_list_revision_id, song_list_hash=stored.content_hash
     )
-    return Complete(revision.store)
+
+    async def store(fs: FencedSession) -> UUID:
+        await music_kind.check_stored(fs, soundless=False)  # never for a soundless class (#530)
+        return await revision.store(fs)
+
+    return Complete(store)
 
 
 SWEDEBEAT_MATCH: Final = KINDS.register(
