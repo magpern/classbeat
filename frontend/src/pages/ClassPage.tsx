@@ -101,7 +101,9 @@ function ClassBody({
   const shown = useRevision(classId, viewingId)
   const busy = summary.openJob !== null
   const [deleting, setDeleting] = useState(false)
-  const canChangeSongs = summary.songs.state === 'approved' && summary.songs.revisionId !== null
+  // A soundless class has no songs to change (#530).
+  const canChangeSongs =
+    !summary.soundless && summary.songs.state === 'approved' && summary.songs.revisionId !== null
   const goTo = (id: string) => {
     const target = document.getElementById(id)
     target?.scrollIntoView?.({ block: 'start' })

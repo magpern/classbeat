@@ -43,13 +43,17 @@
 set -euo pipefail
 export MSYS_NO_PATHCONV=1   # Git Bash: paths below are for the container, never converted
 
-mode=auto; probe=0
-for arg in "$@"; do
-  case "$arg" in
+mode=auto; probe=0; rollback_old=""
+while (( $# )); do
+  case "$1" in
     --install) mode=install ;;
     --probe) mode=install; probe=1 ;;
-    *) echo "usage: check-prod-compose.sh [--install] [--probe]" >&2; exit 2 ;;
+    --rollback-check) mode=install; shift; rollback_old="${1:-}"
+      [[ "$rollback_old" =~ ^[0-9A-Za-z][0-9A-Za-z.+-]*$ ]] \
+        || { echo "usage: check-prod-compose.sh --rollback-check OLD_VERSION (e.g. 1.2.3)" >&2; exit 2; } ;;
+    *) echo "usage: check-prod-compose.sh [--install] [--probe] [--rollback-check OLD_VERSION]" >&2; exit 2 ;;
   esac
+  shift
 done
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 if [[ -f "$here/../compose.prod.yaml" && -d "$here/../docs/runbooks" ]]; then
@@ -61,6 +65,39 @@ fi
 [[ -f "$root/compose.prod.yaml" && -f "$root/compose.prod.loopback.yaml" && -f "$root/compose.prod.lan.yaml" ]] \
   || { echo "check-prod-compose: compose.prod.yaml, compose.prod.loopback.yaml and compose.prod.lan.yaml must be next to this script" >&2; exit 1; }
 cd "$root"
+
+# --- Rollback test, no clone (ADR 0020 decision 7) -------------------------------------------------
+# Going back to release OLD is safe only if the live database is at a revision OLD knows, i.e. the
+# release you leave ran no migration OLD lacks. The database's Alembic revision is read from
+# alembic_version; OLD's revisions are the migration files in its image (a revision's id is its file
+# name). Unknown revision: OLD's `migrate` would fail ("Can't locate revision"); restore the backup.
+rollback_verdict() {   # rollback_verdict OLD "REVISIONS (one per line)" "FILE LISTING (one per line)"
+  local old="$1" revs="$2" files="$3" rev n=0
+  while IFS= read -r rev; do
+    [[ -n "$rev" ]] || continue
+    n=$((n + 1))
+    [[ "$rev" =~ ^[A-Za-z0-9_]+$ ]] || { echo "check-prod-compose: the database reports an odd revision; not rolling back" >&2; return 1; }
+    grep -Fxq -- "$rev.py" <<<"$files" || {
+      echo "check-prod-compose: the database is at revision $rev, which release $old does not have: its migrate would fail." >&2
+      echo "check-prod-compose: do not set CLASSBEAT_VERSION back; restore the pre-update backup (runbook section 11, Rollback)." >&2
+      return 1
+    }
+  done <<<"$revs"
+  (( n > 0 )) || { echo "check-prod-compose: the database has no Alembic revision (alembic_version is empty)" >&2; return 1; }
+  echo "rollback check: every database revision is known to release $old: no migration ran that it lacks"
+}
+rollback_check() {   # rollback_check OLD
+  local old="$1" revs files
+  revs="$(docker compose exec -T db psql -U postgres -d classbeat -X -At -c 'select version_num from alembic_version' 2>/dev/null)" \
+    || { echo "check-prod-compose: cannot read the database revision (is db running? docker compose up -d db)" >&2; return 1; }
+  files="$(docker run --rm --entrypoint ls "ghcr.io/magpern/classbeat:$old" /app/migrations/versions 2>/dev/null)" \
+    || { echo "check-prod-compose: cannot list the migrations of ghcr.io/magpern/classbeat:$old (docker login, then docker pull it)" >&2; return 1; }
+  rollback_verdict "$old" "$revs" "$files"
+}
+if [[ -n "$rollback_old" ]]; then
+  rollback_check "$rollback_old"
+  exit $?
+fi
 # Git Bash on Windows: the native docker needs a Windows path (pwd -W); elsewhere it is plain pwd.
 native="$(pwd -W 2>/dev/null || pwd)"
 tmp="$(mktemp -d "$root/.prod-check.XXXXXX")"
