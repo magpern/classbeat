@@ -176,6 +176,27 @@ describe('HistoryPanel', () => {
   })
 })
 
+describe('HistoryPanel when Change it is not available', () => {
+  beforeEach(() => {
+    api.getHistory.mockReset()
+  })
+
+  it('says so for any class whose history cannot be changed, and not otherwise', async () => {
+    api.getHistory.mockResolvedValue({ ...HISTORY, canChange: false })
+    show()
+    const note = await screen.findByTestId('cannot-change')
+    expect(note.textContent).toContain('Change it is not available for this class right now')
+    expect(note.textContent).not.toContain('This copy')
+  })
+
+  it('shows no note when the class can be changed', async () => {
+    api.getHistory.mockResolvedValue(HISTORY)
+    show()
+    await screen.findAllByTestId('history-entry')
+    expect(screen.queryByTestId('cannot-change')).toBeNull()
+  })
+})
+
 describe('history words', () => {
   it('says what asked for a version', () => {
     expect(askedFor(entry(1))).toBe('First design')

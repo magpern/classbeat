@@ -16,6 +16,7 @@ import { Card, Notice, useAction } from '../components/forms'
 import { RequireAuth } from '../components/RequireAuth'
 import { useClassData, useRevision, type ClassData } from '../hooks/useClassData'
 import { contentHash } from '../lib/canonical'
+import { DuplicateClass } from '../components/classes/DuplicateClass'
 import { Link } from '../router/Router'
 
 export function ClassPage({ classId }: { classId: string }) {
@@ -175,6 +176,12 @@ function ClassBody({
               Change songs
             </Button>
           ) : null}
+          <DuplicateClass
+            classId={classId}
+            title={summary.title}
+            revisionId={viewingId}
+            versionNumber={viewing?.number ?? null}
+          />
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="secondary" aria-label="More actions">

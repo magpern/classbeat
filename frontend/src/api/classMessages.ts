@@ -16,6 +16,8 @@ const REASONS: Record<string, string> = {
     'This class is busy with another task, perhaps from another tab. The page has been reloaded. Wait for it to finish, then try again.',
   revision_limit:
     'This class has reached the most changes one class can have. Keep the version you like, or design a new class.',
+  not_changeable:
+    'This class has no music of its own, so it cannot be changed by chat. You can still view, use and save its versions.',
   chat_full:
     'This conversation is full. Keep the version you like, or design a new class.',
   not_found: 'This class, or that version, no longer exists. The page has been reloaded.',

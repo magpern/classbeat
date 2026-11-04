@@ -8,6 +8,7 @@ import { Card, CardContent, CardTitle } from '../components/ui/card'
 import { ChipButton } from '../components/ui/chip'
 import { useClassList } from '../hooks/useClassList'
 import { matchesFilter, type ClassFilter } from '../lib/classCards'
+import { DuplicateClass } from '../components/classes/DuplicateClass'
 import { Link } from '../router/Router'
 
 export function ClassesPage() {
@@ -105,7 +106,17 @@ function Classes() {
             <ul className="m-0 grid list-none grid-cols-1 gap-4 p-0 sm:grid-cols-2 xl:grid-cols-3">
               {shown.map((c) => (
                 <li key={c.id}>
-                  <ClassCard cls={c} />
+                  <ClassCard
+                    cls={c}
+                    actions={
+                      <DuplicateClass
+                        classId={c.id}
+                        title={c.title}
+                        revisionId={c.currentRevisionId}
+                        versionNumber={c.currentRevisionNumber}
+                      />
+                    }
+                  />
                 </li>
               ))}
             </ul>
