@@ -725,3 +725,46 @@ async def test_a_queued_match_whose_user_turned_the_preference_off_calls_nothing
     row = _job(admin, job_id)
     assert (row.state, row.error_category) == ("failed", "feature_off")
     assert catalogue.calls == []
+
+
+def _soundless(admin: Connection, class_id: UUID, value: Any) -> None:
+    admin.execute(
+        text("UPDATE classes SET music_source = CAST(:m AS jsonb) WHERE id = :c"),
+        {"m": None if value is None else json.dumps(value), "c": class_id},
+    )
+
+
+async def test_a_soundless_class_is_not_matched_at_admit_or_in_the_store(
+    env: Env, admin: Connection, make_actor: Any, catalogue: CatalogueFake, configured: None
+) -> None:
+    """ADR 0007 amendment of 2026-11-03, item 9 (#530): the class's ``music_source`` is read
+    explicitly, so even a class that still holds a song list is refused when it is soundless."""
+    rider = await _rider(
+        env,
+        make_actor,
+        account="soundless@example.com",
+        swedebeat_email=EMAIL,
+        password=PASSWORD,
+        start=91,
+        bpm=107.0,
+        class_title="Soundless Brief",
+    )
+    _soundless(admin, rider.class_id, {"source": "none"})
+    refused = await _post_job(rider.actor, _body(rider))
+    assert (refused.status_code, refused.json()["detail"]["reason"]) == (409, "invalid_input")
+    assert catalogue.calls == []
+    jobs = admin.execute(
+        text("SELECT count(*) FROM jobs WHERE owner_id = :o"), {"o": rider.user_id}
+    ).scalar_one()
+    assert jobs == 0
+    # Admitted while it has no source; soundless by the store: nothing is stored.
+    _soundless(admin, rider.class_id, None)
+    assert (await _post_job(rider.actor, _body(rider))).status_code == 201
+    _soundless(admin, rider.class_id, {"source": "none"})
+    job_id = await _run(env)
+    row = _job(admin, job_id)
+    assert (row.state, row.error_category) == ("failed", "invalid_input")
+    stored = admin.execute(
+        text("SELECT count(*) FROM class_revisions WHERE job_id = :id"), {"id": job_id}
+    ).scalar_one()
+    assert stored == 0
