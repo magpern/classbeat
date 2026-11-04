@@ -60,15 +60,23 @@ cd /opt/classbeat
 V=X.Y.Z                                           # the release, without the v
 for f in compose.prod.yaml compose.prod.loopback.yaml compose.prod.lan.yaml check-prod-compose.sh \
   swag-classbeat.subdomain.conf prod.env.example backup.sh restore.sh validate-backup.sh SHA256SUMS; do
-  curl -fsSLO "https://github.com/magpern/classbeat/releases/download/v$V/$f"
+  curl --proto '=https' --tlsv1.2 -fsSLO "https://github.com/magpern/classbeat/releases/download/v$V/$f"
 done
 sha256sum -c SHA256SUMS                           # every line OK
-chmod +x check-prod-compose.sh backup.sh restore.sh validate-backup.sh
+chmod +x check-prod-compose.sh backup.sh restore.sh validate-backup.sh   # a download has no exec bit
 cp prod.env.example .env                          # filled in by section 5
 ```
 
 (`gh release download "v$V" --repo magpern/classbeat` does the same.) The files are the release
-tag's own, byte for byte; CI checked them at that tag. They hold no secret. Keep them next to
+tag's own repository files, byte for byte (only `SHA256SUMS` is generated at release time). They
+hold no secret.
+
+**What `sha256sum -c` proves, and what it does not.** `SHA256SUMS` comes from the same release over
+the same connection as the files, so it catches a truncated or corrupted download and **nothing
+else**; it is not protection against tampering. You trust GitHub's TLS and the people with write
+access to the repository and its releases: no worse than the `git clone` of a tag this replaced, and
+no better. The downloaded `check-prod-compose.sh` comes from the same place, so it cannot vouch for
+itself. Attesting the assets and images so a server can verify them is follow-up #583. Keep them next to
 `.env` and `secrets/` in `/opt/classbeat`: the compose files use `./secrets/<name>`, and
 `check-prod-compose.sh` finds `.env` and `secrets/` beside itself. `swag-classbeat.subdomain.conf`
 goes to swag (section 7), not into the stack. A developer in a checkout of the repository finds the
@@ -80,9 +88,10 @@ The packages `ghcr.io/magpern/classbeat` (the app) and `ghcr.io/magpern/classbea
 the SQL baked in) are private (never change that). On the server, once:
 
 1. On GitHub create a **personal access token (classic)** with only the `read:packages` scope,
-   owned by you, expiring in 90 days. Use a token of its own, not your admin token. (Fine-grained
-   tokens could not read GHCR packages when this was written; use one only if GitHub now offers
-   the `packages: read` permission for both packages.)
+   expiring in 90 days. A classic `read:packages` token reads **every package its account can
+   see**, so create it on an account (or machine user) that is given read access to these two
+   packages and little else; never your admin token. (That fine-grained tokens cannot read GHCR is
+   unverified here; use one only if GitHub now offers a packages-read permission scoped to both packages.)
 2. `echo "$TOKEN" | docker login ghcr.io -u <github-user> --password-stdin` (type the token
    into the shell without it ending up in history: `read -rs TOKEN` first, then `unset TOKEN`).
    Docker keeps it in `~/.docker/config.json` of the deploy user (mode 600).
@@ -333,7 +342,11 @@ For a swag (or any nginx) that runs on a different machine of the same private n
 `compose.prod.lan.yaml` to `COMPOSE_FILE` (section 5). web joins no Docker network with the proxy.
 It is published on this server's LAN address only, `WEB_LAN_ADDRESS:WEB_HOST_PORT` (default 8080),
 and `PROXY_IP` is **swag's LAN address**, the one peer whose `X-Forwarded-For` web believes (a
-published port keeps the sender's address, so web sees swag itself). In `.env`:
+published port keeps the sender's address, so web sees swag itself; confirm it with the checklist's
+413 / logged-address test, as 6b was checked). **`PROXY_IP` must be an address swag has of its own on
+the LAN** (swag on the host network, or a macvlan address). If swag runs in a bridge container on
+another host Y, it reaches web from Y's address and every process and container on Y becomes a
+trusted proxy that can name any client address: give swag its own address, or accept that. In `.env`:
 
 ```
 COMPOSE_FILE=compose.prod.yaml:compose.prod.lan.yaml
@@ -423,10 +436,19 @@ cd /opt/classbeat
 sha256sum -c SHA256SUMS --quiet     # the downloaded files are unchanged (section 3)
 ./check-prod-compose.sh             # needs jq and docker compose; .env, PROXY_IP, secrets/ group 10010 mode 640
 docker compose pull                 # both images; needs the token of section 4
+{ date -u +%FT%TZ; docker image inspect --format '{{index .RepoDigests 0}}' \
+  "ghcr.io/magpern/classbeat:$(sed -n 's/^CLASSBEAT_VERSION=//p' .env)" \
+  "ghcr.io/magpern/classbeat-db:$(sed -n 's/^CLASSBEAT_VERSION=//p' .env)"; } >> deployed-images.txt   # the digests you run
 ./check-prod-compose.sh --probe     # every service reads every secret it mounts
 docker compose up -d --wait
 docker compose ps
 ```
+
+Tags are mutable, so `deployed-images.txt` records the digest each pull resolved to; compare it
+with a later pull of the same version. Optionally, `gh attestation verify
+oci://ghcr.io/magpern/classbeat:X.Y.Z -R magpern/classbeat` checks an attestation by GitHub; the
+release's `provenance: mode=max` is buildx's registry attestation, not that, so the command may find
+nothing until #583 is built (unverified).
 
 The first check lints the files you downloaded with dummy values (a local edit that publishes a
 port or adds a mount is refused), renders your real `.env` and checks the real `PROXY_IP`, where web is
@@ -503,23 +525,32 @@ files and the version; nothing is cloned or checked out.
 ```bash
 cd /opt/classbeat
 OLD="$(sed -n 's/^CLASSBEAT_VERSION=//p' .env)"; NEW=X.Y.Z       # NEW = the release you want, no v
-mkdir -p "previous-$OLD" && cp compose.prod*.yaml check-prod-compose.sh backup.sh restore.sh validate-backup.sh \
-  swag-classbeat.subdomain.conf prod.env.example SHA256SUMS "previous-$OLD/"   # keep them: the rollback files
+# 1. Download into a staging folder and verify there: a failed download changes nothing that runs.
+rm -rf "staging-$NEW" && mkdir "staging-$NEW"
 for f in compose.prod.yaml compose.prod.loopback.yaml compose.prod.lan.yaml check-prod-compose.sh \
   swag-classbeat.subdomain.conf prod.env.example backup.sh restore.sh validate-backup.sh SHA256SUMS; do
-  curl -fsSLo "$f" "https://github.com/magpern/classbeat/releases/download/v$NEW/$f"
+  curl --proto '=https' --tlsv1.2 -fsSLo "staging-$NEW/$f" "https://github.com/magpern/classbeat/releases/download/v$NEW/$f"
 done
-sha256sum -c SHA256SUMS --quiet && chmod +x check-prod-compose.sh backup.sh restore.sh validate-backup.sh
+( cd "staging-$NEW" && sha256sum -c SHA256SUMS --quiet )          # truncation only, see section 3
+# 2. Keep the files you run now (the rollback files), then replace them.
+mkdir -p "previous-$OLD" && cp compose.prod*.yaml check-prod-compose.sh backup.sh restore.sh validate-backup.sh \
+  swag-classbeat.subdomain.conf prod.env.example SHA256SUMS "previous-$OLD/"
+mv -f "staging-$NEW"/* . && rmdir "staging-$NEW"
+chmod +x check-prod-compose.sh backup.sh restore.sh validate-backup.sh   # a download has no exec bit
 diff -u previous-$OLD/swag-classbeat.subdomain.conf swag-classbeat.subdomain.conf   # swag's copy changed?
 diff -u previous-$OLD/prod.env.example prod.env.example                              # new settings to put in .env?
 ( umask 027; touch secrets/swedebeat_app \
   secrets/oauth_google_client_secret secrets/oauth_github_client_secret secrets/oauth_microsoft_client_secret )
 sed -i "s/^CLASSBEAT_VERSION=.*/CLASSBEAT_VERSION=$NEW/" .env
 ./check-prod-compose.sh                           # files, .env, secrets/: group 10010, mode 640 or stricter
-docker compose pull
+docker compose pull                               # then append the new digests to deployed-images.txt (section 9)
 ./check-prod-compose.sh --probe
 docker compose up -d --wait
 ```
+
+Your own `compose.bridge.yaml` (`proton-bridge-smtp.md`) is not a release asset and is never touched.
+`db` is **recreated on every update** (its image reference changes with `CLASSBEAT_VERSION`), so
+Postgres restarts for a few seconds; the data volume is kept.
 
 `up` re-runs `migrate` (idempotent) and `db-functions` before it replaces `web` and `worker`;
 the worker has 30 s to hand its leases back (ADR 0005). Read the release notes for owner-facing
@@ -537,21 +568,26 @@ then `sudo chgrp 10010 secrets/* && chmod 640 secrets/*`) before `up`; the check
 Migrations are not run backwards: the old image's `migrate` service does `alembic upgrade head`,
 and a database stamped with a revision the old image does not know makes it fail ("Can't locate
 revision"), so `db-functions`, `web` and `worker` never start. Setting `CLASSBEAT_VERSION` back is
-therefore **only** safe when the release you are leaving added no migration. Compare the revision
-files of the two images (no clone needed):
+therefore **only** safe when the release you are leaving ran no migration the old one lacks. Test it
+before you touch anything; it needs no clone. With the stack still running on the new release:
 
 ```bash
-for v in $OLD $NEW; do docker run --rm --entrypoint ls "ghcr.io/magpern/classbeat:$v" /app/migrations/versions > "/tmp/rev-$v"; done
-diff "/tmp/rev-$OLD" "/tmp/rev-$NEW" && echo "no migration between $OLD and $NEW"
+./check-prod-compose.sh --rollback-check "$OLD"     # OLD = the version you would go back to
 ```
 
-Some migrations also drop or reshape data, so treat none as reversible.
+It reads the database's Alembic revision (`alembic_version`) and the migration files in
+`ghcr.io/magpern/classbeat:$OLD` (a revision's id is its file name; log in and pull first if the
+image is gone), and answers either "every database revision is known to release OLD" (exit 0) or
+names the revision OLD lacks and tells you to restore the backup (exit 1). Some migrations also drop
+or reshape data, so even a pass is a rollback of the software, not of data written since.
 
-- **No migration in the release:** restore the previous release's files (`cp previous-$OLD/* .`;
+- **The check passes (no migration):** restore the previous release's files (`cp previous-$OLD/* .`;
   they are the ones you downloaded for it), set `CLASSBEAT_VERSION=$OLD` in `.env`,
-  `./check-prod-compose.sh && docker compose pull && docker compose up -d --wait`. (If the
-  `previous-$OLD` folder is gone, download that release's assets again as in section 3.)
-- **A migration ran** (any kind): restore the pre-update backup with `restore.sh`
+  `./check-prod-compose.sh && docker compose pull && docker compose up -d --wait`. If the
+  `previous-$OLD` folder is gone, download that release's assets again as in section 3. The first
+  release that carries assets has no earlier release with assets: going back below it needs that
+  tag's checkout once (`git clone --depth 1 --branch vOLD`, files only).
+- **The check fails (a migration ran), or you cannot run it:** restore the pre-update backup with `restore.sh`
   ([backup-restore.md](backup-restore.md), "Restoring into a fresh stack": it verifies the signature,
   validates the archive, runs `migrate` and `db-functions` of the image you go back to, restores,
   and refuses a volume that still exists or a database that holds tables).
@@ -631,7 +667,7 @@ The image-only install (ADR 0020) adds checks of its own, run by `scripts/test-i
 the release assets build with a verifying `SHA256SUMS`, the runbook's download loops list exactly the
 assets, the `classbeat-db` image holds the repository's SQL, and the released `check-prod-compose.sh`
 passes and fails (a local compose edit, a bad `.env`, each wrong secret mode or group, the LAN
-overlay's address, `--probe` against a stub `docker`) from a folder with no `docs/`.
+overlay's address, `--probe` and `--rollback-check` against a stub `docker`) from a folder with no `docs/`.
 
 Not checked: the release run itself (the first real tag builds both images and attaches the assets;
 agents cannot push tags), pulling the private images with a real token, and a running prod stack

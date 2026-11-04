@@ -121,6 +121,12 @@ fi
 stub="$work/bin"; mkdir "$stub"
 cat > "$stub/docker" <<STUB
 #!/usr/bin/env bash
+if [ "\${1:-}" = compose ] && [[ " \$* " == *" exec "* ]]; then
+  printf '%s' "\${DB_REV-}"; exit \${DB_RC:-0}
+fi
+if [ "\${1:-}" = run ]; then
+  printf '%s' "\${REVS_OUT-}"; exit \${REVS_RC:-0}
+fi
 if [ "\${1:-}" = compose ] && [[ " \$* " == *" run "* ]]; then
   printf '%s' "\${PROBE_OUT-}"
   exit \${PROBE_RC:-0}
@@ -147,6 +153,24 @@ if (( can_gid )); then
     bad "probe: a failing docker run passed"
   else ok "probe: docker run fails"; fi
 fi
+
+# 4. --rollback-check OLD: the database's revision must be one OLD's image carries (stub docker).
+rb() {   # rb NAME WANT_RC PATTERN DB_REV REVS_OUT [DB_RC REVS_RC]
+  local name="$1" want="$2" pat="$3" out rc=0
+  out="$(cd "$install" && PATH="$stub:$PATH" DB_REV="$4" REVS_OUT="$5" DB_RC="${6:-0}" REVS_RC="${7:-0}" \
+    ./check-prod-compose.sh --rollback-check 1.2.2 2>&1)" || rc=$?
+  if [ "$rc" = "$want" ] && grep -Eq -- "$pat" <<<"$out"; then ok "$name"; else bad "$name (rc $rc, want $want): $(tail -2 <<<"$out")"; fi
+}
+old_files=$'0001_baseline.py\n0025_running_flag.py\n0026_plan_gates.py\n__pycache__\n'
+rb "rollback: revision known to OLD" 0 'every database revision is known' $'0026_plan_gates\n' "$old_files"
+rb "rollback: revision newer than OLD" 1 'revision 0027_new, which release 1.2.2 does not have' $'0027_new\n' "$old_files"
+rb "rollback: one of two unknown" 1 '0027_other' $'0026_plan_gates\n0027_other\n' "$old_files"
+rb "rollback: a prefix is not a match" 1 '0026_plan' $'0026_plan\n' "$old_files"
+rb "rollback: empty alembic_version" 1 'no Alembic revision' '' "$old_files"
+rb "rollback: odd revision text" 1 'odd revision' $'0026; drop\n' "$old_files"
+rb "rollback: db not reachable" 1 'cannot read the database revision' '' "$old_files" 1
+rb "rollback: image not pulled" 1 'cannot list the migrations' $'0026_plan_gates\n' '' 0 1
+if ( cd "$install" && ./check-prod-compose.sh --rollback-check >/dev/null 2>&1 ); then bad "rollback: no version given passed"; else ok "rollback: needs a version"; fi
 
 (( fails == 0 )) || { echo "test-install-check: $fails failure(s)" >&2; exit 1; }
 echo "test-install-check: ok"
