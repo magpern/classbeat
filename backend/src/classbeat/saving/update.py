@@ -11,11 +11,12 @@ read-first comparison, never the sport check. ``consumes_credit = False``: no le
 model call.
 
 **``admit``** (the jobs API's create transaction, under the owner lock): the revision checks of
-``classbeat.saving.approval``, ``running_enabled`` for a running class (``feature_off``), the
-connection (``not_connected``), the saved row
+``classbeat.saving.approval``, ``running_enabled`` for a running class and the soundless switch for
+a soundless revision (``feature_off``), the connection (``not_connected``), the saved row
 (``invalid_input``: another user's, another class's, a detached or an unknown row), the music
-link (``music_unlinked``) and the unresolved-write rule (``write_unresolved``), last the user's
-current plan (409 ``quota``, as Save: the program already in MOWL is never touched by a refusal).
+link (``music_unlinked``; a soundless revision names none and writes ``PlaylistID: -1``) and
+the unresolved-write rule (``write_unresolved``), last the user's current plan (409 ``quota``,
+as Save: the program already in MOWL is never touched by a refusal).
 A refusal is a 409 with its reason and creates nothing.
 
 Stages, and **every attempt starts at ``prepare``** (a retry after a reconciliation that proved
@@ -24,9 +25,11 @@ no effect never resumes at ``save``, so the read-first check runs again):
 1. ``prepare``: the connection is opened (the input's and the context's), then one fenced
    transaction: orphaned class writes marked, the unresolved-write rule (``uncertain_write``),
    ``hold``, the revision, ``running_enabled`` for a running class (``feature_off``, ADR 0018
-   section 5), the saved row (its program id) and the link (its playlist id) again from the
-   database. Then the **preflight**: My Workouts' first page, outside any operation;
-   its ProgramIDs are the **baseline**. A failing preflight is an ordinary failure, no row.
+   section 5) and the soundless switch for a soundless revision (``feature_off``), the saved row
+   (its program id) and the link (its playlist id; ``-1`` and no link read for a soundless
+   revision) again from the database. Then the **preflight**: My Workouts' first page, outside
+   any operation; its ProgramIDs are the **baseline**. A failing preflight is an ordinary
+   failure, no row.
 2. ``read`` (outside any operation): ``get_workout(program_id)``. Not there, or not served to
    this account: ``program_missing``. Its own ``ActivityTypeID`` missing, unknown or not the
    class's sport (``mowl_state.program_sport`` against ``approval.Revision.sport``, the class's
@@ -46,9 +49,13 @@ no effect never resumes at ``save``, so the read-first check runs again):
    ``single_request = False``. For a running class the library reads the target once more
    inside the call and refuses, before any write, anything but that program with its own
    ``ActivityTypeID`` 1 (mowl-workouts 0.9.0); the bound counts that read. The guard re-reads
-   the link row and the saved row under ``hold`` and compares the playlist id and the program
-   id. An answer naming another program is ``UncertainAnswer`` (the library raises first: MOWL
-   made a copy).
+   the link row (none for a soundless revision) and the saved row under ``hold`` and compares
+   the playlist id and the program id. An answer naming another program is ``UncertainAnswer``
+   (the library raises first: MOWL made a copy). **Unverified live:** that MOWL clears a
+   playlist attached in the app when a cycling update sends ``PlaylistID: -1`` (ADR 0007
+   amendment of 2026-11-03, item 8). If it keeps it, nothing reads as done: the read after the
+   write does not match (``verify`` leaves ``state_hash`` NULL, so the next Update reads the
+   program as changed), and a lost answer stays ``uncertain`` (the reconciler is inconclusive).
 4. ``verify`` (best effort): the program is read back; equal to the spec, the saved row's
    ``state_hash`` is set, otherwise it stays NULL. The job ends ``completed`` either way.
 """
@@ -135,6 +142,8 @@ async def admit(db: AsyncSession, ctx: UserContext, parsed: BaseModel) -> Admitt
         return Refused(found.reason)
     if await approval.running_refused(db, found):
         return Refused("feature_off")  # ADR 0018 section 5: running is off now
+    if await approval.soundless_refused(db, found):
+        return Refused("feature_off")  # soundless is switched off now
     if ctx.connection("mowl") != parsed.mowl_connection_id:
         return Refused("not_connected")
     info = await connections.find_in(db, ctx, parsed.mowl_connection_id)
@@ -142,7 +151,7 @@ async def admit(db: AsyncSession, ctx: UserContext, parsed: BaseModel) -> Admitt
         return Refused("not_connected")
     if await approval.saved_target(db, ctx, parsed.the_class, parsed.saved_workout_id) is None:
         return Refused("invalid_input")
-    if await approval.linked_playlist(db, ctx, found.link_id, found.link_source) is None:
+    if await approval.playlist_for(db, ctx, found) is None:
         return Refused("music_unlinked")
     if await orphans.write_unresolved(db, ctx, parsed.the_class):
         return Refused("write_unresolved")
@@ -185,14 +194,14 @@ async def _approved(
             raise JobFailure(PREPARE_CATEGORY.get(found.reason, "invalid_input"))
         if await approval.running_refused(fs.db, found):
             raise JobFailure("feature_off")  # switched off since the job was queued
+        if await approval.soundless_refused(fs.db, found):
+            raise JobFailure("feature_off")  # switched off since the job was queued
         target = await approval.saved_target(
             fs.db, run.ctx, given.the_class, given.saved_workout_id
         )
         if target is None:
             raise JobFailure("invalid_input")  # detached (a reconnect), gone, or not this class's
-        playlist_id = await approval.linked_playlist(
-            fs.db, run.ctx, found.link_id, found.link_source
-        )
+        playlist_id = await approval.playlist_for(fs.db, run.ctx, found)
         if playlist_id is None:
             raise JobFailure("music_unlinked")
     return found, playlist_id, target
@@ -307,9 +316,8 @@ async def save(run: JobRun, keyring: KeyRing, plan: Plan, read: Read) -> int:
     async def guard(db: AsyncSession) -> bool:
         if not await hold(db, run.ctx, opened):
             return False
-        playlist_now = await approval.linked_playlist(
-            db, run.ctx, revision.link_id, revision.link_source
-        )
+        # A soundless revision names no link: ``NO_PLAYLIST`` without a read (``playlist_for``).
+        playlist_now = await approval.playlist_for(db, run.ctx, revision)
         target_now = await approval.saved_target(
             db, run.ctx, revision.class_id, target.saved_workout_id
         )
