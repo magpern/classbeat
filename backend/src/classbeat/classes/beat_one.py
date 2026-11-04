@@ -73,7 +73,6 @@ _DELETE_ROW: Final = text(
 _DELETE_ALL: Final = text(
     "DELETE FROM beat_one_corrections WHERE owner_id = :owner_id AND class_id = :class_id"
 )
-BPM_TOLERANCE: Final = 0.5  # a stored BPM further than this from the song's now: listen again
 
 
 @dataclass(frozen=True, slots=True)
@@ -124,6 +123,13 @@ def _music(kind: Any, raw: Any) -> RevisionMusic | None:
         return None
 
 
+def _bpm_changed(stored: Any, now: float) -> bool:
+    """Whether the song's BPM is not the one the row was set at. The column is single-precision
+    (128.3 reads back as 128.30000305) and ``songs`` holds one decimal, so both are compared
+    after rounding to one decimal; any real change of tempo shows."""
+    return round(float(stored), 1) != round(float(now), 1)
+
+
 def _usable(source: Any) -> bool:
     """A class whose music can be corrected: neither soundless nor without a music source."""
     return source is not None and not music_kind.is_none(source)
@@ -143,7 +149,7 @@ def _build(
             s.song, s.start, s.end, s.bpm, s.estimate, s.title,
             int(mine[s.song].beats) if s.song in mine else 0,
             applied.get(s.song, 0),
-            s.song in mine and abs(float(mine[s.song].bpm) - s.bpm) > BPM_TOLERANCE,
+            s.song in mine and _bpm_changed(mine[s.song].bpm, s.bpm),
         )
         for s in music.songs
     )  # fmt: skip

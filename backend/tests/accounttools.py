@@ -88,6 +88,7 @@ class Person:
             u=u,
         )
         self.sql("INSERT INTO swedebeat_analyses (owner_id) VALUES (:u)", u=u)
+        self.sql("INSERT INTO user_preferences (owner_id, uses_swedebeat) VALUES (:u, true)", u=u)
         self.sql(
             "INSERT INTO beat_one_corrections (owner_id, class_id, fingerprint, song, beats, bpm) "
             "VALUES (:u, :c, :f, 3, -1, 124.5)",

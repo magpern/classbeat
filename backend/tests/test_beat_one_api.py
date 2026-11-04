@@ -259,3 +259,12 @@ async def test_a_row_records_the_bpm_and_a_changed_bpm_is_flagged(renv: ReviseEn
     renv.sql("UPDATE beat_one_corrections SET bpm = bpm + 10 WHERE class_id = :c", c=class_id)
     song = (await renv.browser.get(f"/api/classes/{class_id}")).json()["beat_one"]["songs"][0]
     assert song["bpm_changed"] is True
+
+
+def test_bpm_changed_ignores_single_precision_and_sees_a_real_change() -> None:
+    from classbeat.classes.beat_one import _bpm_changed  # pyright: ignore[reportPrivateUsage]
+
+    assert _bpm_changed(128.30000305, 128.3) is False  # real column read back
+    assert _bpm_changed(127.99999, 128.0) is False
+    assert _bpm_changed(128.3, 128.4) is True
+    assert _bpm_changed(120.0, 126.0) is True
