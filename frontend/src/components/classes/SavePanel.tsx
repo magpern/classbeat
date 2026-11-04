@@ -11,7 +11,6 @@ import {
   saveFailureText,
   savedText,
   saveReasonText,
-  unconfirmedStateLine,
   updatedText,
   type WriteKind,
   type WriteOutcome,
@@ -245,9 +244,7 @@ export function SavePanel({
       ? 'This class was saved earlier to a previous MOWL connection. That workout is no longer linked, so it cannot be updated. Save adds a new one to your current MOWL account.'
       : 'Not saved to MOWL yet.'
     : upToDate
-      ? saved.latestVerified === false
-        ? unconfirmedStateLine(String(saved.latestRevisionNumber ?? '?'))
-        : `Saved to MOWL as version ${String(saved.latestRevisionNumber ?? '?')}. It is up to date.`
+      ? `Saved to MOWL as version ${String(saved.latestRevisionNumber ?? '?')}. It is up to date.`
       : `Saved to MOWL as version ${String(saved.latestRevisionNumber ?? '?')}. The current version (${String(number ?? '?')}) has changes that are not saved yet.`
 
   const canWrite = current !== null && !busy && !action.busy

@@ -135,8 +135,3 @@ export function updatedText(verified: boolean): string {
     ? 'Updated. Your MOWL workout now matches this version.'
     : 'The update went through, but classbeat could not confirm MOWL now matches (it may still have a playlist you added in the app). Check the workout in the MOWL app.'
 }
-
-/** The state line when the newest saved version is current but its last write was not confirmed. */
-export function unconfirmedStateLine(savedNumber: string): string {
-  return `Saved to MOWL as version ${savedNumber}. MOWL took it, but classbeat could not confirm the workout there matches. Check it in the MOWL app.`
-}

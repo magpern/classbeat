@@ -606,22 +606,14 @@ describe('verified or not', () => {
     await runUpdate()
     expect(await screen.findByText(/could not confirm MOWL now matches/)).toBeInTheDocument()
   })
+})
 
-  it('the state line of an up-to-date row whose last write was not confirmed says so', async () => {
-    start({ saved: saved({ latest_up_to_date: true, latest_verified: false }) })
-    renderAt(PAGE)
-    const line = await screen.findByTestId('saved-state')
-    expect(line).toHaveTextContent(/Saved to MOWL as version 1\. MOWL took it, but classbeat could not confirm/)
-    expect(line).not.toHaveTextContent('It is up to date')
-  })
-
-  it('a verified or unknown up-to-date row keeps the plain state line', async () => {
-    for (const latest_verified of [true, undefined]) {
+describe('the state line', () => {
+  it('stays the plain up-to-date line whatever the verified flag (a save found by Check again has none)', async () => {
+    for (const latest_verified of [true, false, undefined]) {
       start({ saved: saved({ latest_up_to_date: true, latest_verified }) })
       const view = renderAt(PAGE)
-      expect(await screen.findByTestId('saved-state')).toHaveTextContent(
-        'Saved to MOWL as version 1. It is up to date.',
-      )
+      expect(await screen.findByTestId('saved-state')).toHaveTextContent('Saved to MOWL as version 1. It is up to date.')
       view.unmount()
     }
   })
