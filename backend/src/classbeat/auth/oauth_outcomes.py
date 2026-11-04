@@ -1,9 +1,11 @@
 """What a verified provider identity does at the callback (ADR 0003 section 5, the table of
 callback outcomes). Identities are keyed by ``(provider, subject)``, never by email (T1).
 
-The flow purpose is evaluated first (``link``, ``reauth``), then the ``sign_in`` rows from the
-top. Everything runs in the caller's transaction; the multi-step writes sit in a savepoint that
-rolls back as a whole (for example when the invite is gone by the time the account is created).
+The flow purpose is evaluated first (``link``, ``reauth``), then the ``sign_in`` and
+``sign_up`` rows from the top: a new identity on a ``sign_in`` flow ends ``no_account`` before any
+invite check, so only a ``sign_up`` flow can create an account (#617). Everything runs in the
+caller's transaction; the multi-step writes sit in a savepoint that rolls back as a whole (for
+example when the invite is gone by the time the account is created).
 """
 
 import secrets
@@ -191,6 +193,10 @@ async def _sign_in(db: AsyncSession, req: Request) -> Outcome:
         return await _session_for(db, req, user_id)
     if ident.email_verified and ident.email and await find_user(db, ident.email) is not None:
         return _fail("account_exists")  # nothing is created or linked
+    if req.flow.purpose != "sign_up":
+        # The sign-in screen (#617): a new identity has no account, whatever the sign-up mode
+        # or invite. Nothing is created, linked or handed off; only a sign-up flow may create.
+        return _fail("no_account")
     mode = await flags.signup_mode(db, settings.signup_mode)  # stricter of env and database
     gated = mode != "open"
     if mode == "closed" or (gated and req.flow.invite_id is None):

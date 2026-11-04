@@ -346,9 +346,9 @@ async def test_every_refused_callback_logs_one_line(
     state = parse_qs(urlsplit(started.json()["authorization_url"]).query)["state"][0]
     response = await browser.get(f"/oauth/google/callback?{urlencode({'state': state})}")
     assert location(response) == "/signin?oauth=denied"
-    # A sign-in outcome refused by the table (no invite).
+    # A sign-in outcome refused by the table (no account, #617).
     response = await sign_in_with(Browser(oenv), fake, "google")
-    assert location(response) == "/signin?oauth=invite_required"
+    assert location(response) == "/signin?oauth=no_account&provider=google"
     assert refused(logs) == [
         "oauth callback refused: provider=google purpose=unknown outcome=invalid why=no_flow",
         "oauth callback refused: provider=microsoft purpose=sign_in outcome=invalid "
@@ -360,8 +360,7 @@ async def test_every_refused_callback_logs_one_line(
         "oauth callback refused: provider=google purpose=sign_in outcome=denied "
         "why=provider_error=unrecognized",
         "oauth callback refused: provider=google purpose=sign_in outcome=denied why=no_code",
-        "oauth callback refused: provider=google purpose=sign_in outcome=invite_required "
-        "why=invite_required",
+        "oauth callback refused: provider=google purpose=sign_in outcome=no_account why=no_account",
     ]
     assert all(r.levelno == logging.WARNING for r in refused_records(logs))
     assert "Evil" not in logs.text

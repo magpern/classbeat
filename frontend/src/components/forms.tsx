@@ -1,10 +1,11 @@
-import { useCallback, useId, useRef, useState, type InputHTMLAttributes, type ReactNode } from 'react'
+import { useCallback, useId, useRef, useState, type InputHTMLAttributes, type ReactNode, type Ref } from 'react'
 import { errorMessage } from '../api/messages'
 import { PromptCancelled } from '../auth/prompts'
 
 interface FieldProps extends Omit<InputHTMLAttributes<HTMLInputElement>, 'id'> {
   label: string
   hint?: string
+  ref?: Ref<HTMLInputElement>
 }
 
 export function Field({ label, hint, ...input }: FieldProps) {

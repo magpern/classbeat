@@ -5,7 +5,7 @@ from alembic import command
 from alembic.config import Config
 from alembic.script import ScriptDirectory
 from sqlalchemy import create_engine, text
-from sqlalchemy.exc import ProgrammingError
+from sqlalchemy.exc import IntegrityError, ProgrammingError
 
 from classbeat.auth.tables import metadata
 from classbeat.db import SYSTEM_TABLES
@@ -32,7 +32,7 @@ def applied_revisions(database_url: str) -> list[str]:
 
 def test_the_revisions_form_one_line() -> None:
     script = ScriptDirectory.from_config(alembic_config())
-    assert script.get_heads() == ["0030_plan_price_privilege"]
+    assert script.get_heads() == ["0031_oauth_sign_up_purpose"]
     assert script.get_base() == "0001_baseline"
 
 
@@ -53,7 +53,7 @@ def test_upgrade_head_then_downgrade_base(
     config = alembic_config()
     try:
         command.upgrade(config, "head")
-        assert applied_revisions(database_url) == ["0030_plan_price_privilege"]
+        assert applied_revisions(database_url) == ["0031_oauth_sign_up_purpose"]
         command.downgrade(config, "base")
         assert applied_revisions(database_url) == []
     finally:
@@ -187,7 +187,6 @@ def test_0027_admits_the_soundless_flag_and_the_downgrade_deletes_its_row(
 ) -> None:
     """#527: the ``app_settings.key`` check takes ``soundless_enabled`` after 0027, refuses it
     before, and the downgrade deletes a stored row first (as 0025 does) instead of failing."""
-    from sqlalchemy.exc import IntegrityError
 
     engine = create_engine(owner_database_url)  # the app role only reads app_settings
     insert = text(
@@ -248,5 +247,49 @@ def test_0030_plan_price_privilege_up_and_down(
         command.upgrade(config, "head")
         assert held() == (False, False, False, True)
     finally:
+        admin.dispose()
+        command.downgrade(config, "base")
+
+
+def test_0031_oauth_sign_up_purpose_up_and_down(
+    owner_database_url: str, database_url: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """#617: ``oauth_flows.purpose`` takes ``sign_up`` at head; the downgrade deletes a waiting
+    ``sign_up`` flow and refuses the value again, keeping the other flows."""
+    monkeypatch.setenv("CLASSBEAT_MIGRATIONS_DATABASE_URL", owner_database_url)
+    config = alembic_config()
+    admin = create_engine(database_url)
+
+    def insert(purpose: str, flow: str) -> None:
+        with admin.begin() as connection:
+            connection.execute(
+                text(
+                    "INSERT INTO oauth_flows (flow_hash, provider, purpose, state_hash, "
+                    "pkce_verifier, expires_at) VALUES (:f, 'google', :p, 's', 'v', now())"
+                ),
+                {"f": flow.encode(), "p": purpose},
+            )
+
+    def purposes() -> list[str]:
+        with admin.connect() as connection:
+            rows = connection.execute(text("SELECT purpose FROM oauth_flows ORDER BY purpose"))
+            return [row[0] for row in rows]
+
+    try:
+        command.upgrade(config, "head")
+        insert("sign_in", "a")
+        insert("sign_up", "b")
+        with pytest.raises(IntegrityError):
+            insert("sign_upp", "c")
+        command.downgrade(config, "0030_plan_price_privilege")
+        assert purposes() == ["sign_in"]
+        with pytest.raises(IntegrityError):
+            insert("sign_up", "d")
+        command.upgrade(config, "head")
+        insert("sign_up", "e")
+        assert purposes() == ["sign_in", "sign_up"]
+    finally:
+        with admin.begin() as connection:
+            connection.execute(text("DELETE FROM oauth_flows"))
         admin.dispose()
         command.downgrade(config, "base")

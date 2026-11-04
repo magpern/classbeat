@@ -38,6 +38,7 @@ const OAUTH_OUTCOMES: Record<string, string> = {
   session_mismatch: 'You were signed out or switched account while signing in. Sign in again.',
   account_exists:
     'An account with that email already exists. Sign in to it with your password, then link the provider from your account page.',
+  // Only a sign-up flow gets this (it lands on /signup, whose invite field is below the box).
   invite_required:
     'You need an invite to create an account. Enter your invite code below and try again.',
   invite_invalid: 'That invite is no longer valid. Ask for a new one.',
@@ -52,7 +53,12 @@ const OAUTH_OUTCOMES: Record<string, string> = {
  * `undefined` while that is still loading (the first sentence only, so the text never flips from
  * one advice to another), `null` when it could not be read (both ways).
  */
-export function oauthOutcomeMessage(code: string, hasPassword?: boolean | null): string {
+export function oauthOutcomeMessage(
+  code: string,
+  hasPassword?: boolean | null,
+  provider?: string | null,
+): string {
+  if (code === 'no_account') return noAccountMessage(provider ?? null)
   if (code === 'reauth_stale') {
     if (hasPassword === undefined) return REAUTH_STALE
     if (hasPassword === true) return `${REAUTH_STALE} Use your password instead.`
@@ -61,6 +67,18 @@ export function oauthOutcomeMessage(code: string, hasPassword?: boolean | null):
   }
   const known = Object.hasOwn(OAUTH_OUTCOMES, code) ? OAUTH_OUTCOMES[code] : undefined
   return known ?? 'The sign-in could not be completed. Try again.'
+}
+
+const KNOWN_PROVIDERS = ['google', 'github', 'microsoft']
+
+/**
+ * A new provider account on the sign-in screen (`no_account`, #617): it has no classbeat account,
+ * and creating one needs the sign-up screen and an invite. The provider comes from the callback's
+ * `&provider=`; only the three known names are shown, anything else reads as "provider account".
+ */
+function noAccountMessage(provider: string | null): string {
+  const name = provider !== null && KNOWN_PROVIDERS.includes(provider) ? `${providerName(provider)} account` : 'provider account'
+  return `No classbeat account is linked to this ${name}. Create an account to join the invite-only beta.`
 }
 
 function waitText(seconds: number): string {

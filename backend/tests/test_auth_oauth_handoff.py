@@ -8,7 +8,7 @@ import pytest
 from authtools import Env
 from classbeat.auth.cookies import PENDING_COOKIE
 from flows import Browser, reason
-from oauthtools import location, make_invite, sign_in_with
+from oauthtools import location, make_invite, sign_in_with, sign_up_with
 from oidcfake import DROP, TENANT, FakeProviders
 from smtpfake import SmtpFake
 
@@ -20,7 +20,7 @@ async def hand_off(env: Env, fake: FakeProviders, browser: Browser | None = None
     browser = browser or Browser(env)
     invite = kwargs.pop("invite", None) or await make_invite(env)
     provider = kwargs.pop("provider", "microsoft")
-    response = await sign_in_with(browser, fake, provider, invite=invite, **kwargs)
+    response = await sign_up_with(browser, fake, provider, invite=invite, **kwargs)
     return browser, response
 
 
@@ -76,9 +76,20 @@ async def test_an_unverified_or_missing_provider_email_hands_off_too(
 
 async def test_the_hand_off_still_needs_an_invite(oenv: Env, fake: FakeProviders) -> None:
     browser = Browser(oenv)
-    response = await sign_in_with(browser, fake, "microsoft")
-    assert location(response) == "/signin?oauth=invite_required"
+    response = await sign_up_with(browser, fake, "microsoft")
+    assert location(response) == "/signup?oauth=invite_required"
     assert await oenv.scalar("SELECT count(*) FROM pending_signups") == 0
+    assert PENDING_COOKIE not in browser.cookies
+
+
+async def test_the_sign_in_screen_never_hands_off(oenv: Env, fake: FakeProviders) -> None:
+    """#617: an unknown Microsoft identity (no verified email) on the sign-in screen ends
+    ``no_account``, even with an invite in the flow; no pending row, no cookie."""
+    browser = Browser(oenv)
+    response = await sign_in_with(browser, fake, "microsoft", invite=await make_invite(oenv))
+    assert location(response) == "/signin?oauth=no_account&provider=microsoft"
+    assert await oenv.scalar("SELECT count(*) FROM pending_signups") == 0
+    assert await oenv.scalar("SELECT used_at IS NULL FROM invites") is True
     assert PENDING_COOKIE not in browser.cookies
 
 
