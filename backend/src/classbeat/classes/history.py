@@ -135,8 +135,8 @@ class HistoryOut(BaseModel):
     sport: Literal["cycling", "running"]
     # A revise would be admitted now as far as the music goes: a stored brief, a music source (a
     # duplicate of a class on picked songs has none, ADR 0007 amendment of 2026-11-03 part D item 5)
-    # and ``design.music_kind.admit_class`` admitting it (a soundless class until SL2, then its
-    # gate): the function the revise's ``admit`` calls, so the two cannot disagree.
+    # and ``design.music_kind.admit_class`` admitting it (for a soundless class, the soundless
+    # gate for this user, SL2): the function the revise's ``admit`` calls, so the two agree.
     can_change: bool
     revisions: list[TimelineEntryOut]
     # Drafts that no longer validate under the class's sport: left out of ``revisions``, so one
@@ -276,7 +276,7 @@ async def history(factory: Factory, ctx: UserContext, class_id: UUID) -> History
         sport = _sport(await stored_brief(db, ctx.user_id, class_id))
         rows = (await db.execute(_ROWS, _params(ctx, class_id))).all()
         can_change = bool(found.can_change) and (
-            await music_kind.admit_class(db, ctx.user_id, class_id) is None
+            await music_kind.admit_class(db, ctx, class_id) is None
         )
     entries: list[TimelineEntryOut] = []
     unreadable = 0

@@ -13,6 +13,7 @@ from sqlalchemy import text
 from sqlalchemy.engine import Connection
 
 from classbeat.classes import history
+from classbeat.design import music_kind
 from jobapi import Browser
 from jobtools import new_class
 
@@ -339,20 +340,32 @@ def test_every_statement_names_the_owner_even_without_row_security(
     assert (row.source_class_id, row.source_title) == (None, None)
 
 
-async def test_a_soundless_class_cannot_be_changed_while_its_revise_is_refused(
+async def test_a_soundless_class_can_be_changed_only_while_its_gate_is_open(
     two: tuple[Plant, Plant],
 ) -> None:
-    """``can_change`` asks ``music_kind.admit_class``, as the revise's ``admit`` does: a soundless
-    class is refused until SL2 (#528), so it is false (and then follows the gate)."""
+    """``can_change`` asks ``music_kind.admit_class`` with the user's context, as the revise's
+    ``admit`` does (SL2): for a soundless class it follows the soundless gate."""
     mine, _ = two
     quiet = new_class(mine.admin, mine.owner, "Quiet")
     sql(mine.admin, "UPDATE classes SET brief = CAST(:b AS jsonb), "
         "music_source = CAST(:m AS jsonb) WHERE id = :c",
         b=json.dumps({"length_min": 30}), m=json.dumps({"source": "none"}), c=quiet)  # fmt: skip
     revision(mine.admin, mine.owner, quiet, 1, V1, music={"source": "none"})
-    body = (await mine.browser.get(f"/api/classes/{quiet}/history")).json()
-    assert body["can_change"] is False
-    assert [r["number"] for r in body["revisions"]] == [1]
+    path = f"/api/classes/{quiet}/history"
+    try:
+        music_kind.configure(None)  # the gate closed: the switch off
+        body = (await mine.browser.get(path)).json()
+        assert body["can_change"] is False
+        assert [r["number"] for r in body["revisions"]] == [1]
+        music_kind.configure(music_kind.SoundlessGate(enabled=True, fake_covers=True))
+        sql(mine.admin, "INSERT INTO app_settings (key, value) "
+            "VALUES ('soundless_enabled', '\"on\"'::jsonb)")  # fmt: skip
+        assert (await mine.browser.get(path)).json()["can_change"] is True
+        music_kind.configure(music_kind.SoundlessGate(enabled=True, fake_covers=False))
+        assert (await mine.browser.get(path)).json()["can_change"] is False  # plan not covered
+    finally:
+        music_kind.configure(None)
+        sql(mine.admin, "DELETE FROM app_settings WHERE key = 'soundless_enabled'")
 
 
 async def test_a_running_class_is_read_with_the_running_schema(two: tuple[Plant, Plant]) -> None:
