@@ -24,16 +24,19 @@ from classbeat.design.kind import (
     runtime_from_settings,
 )
 from classbeat.design.limits import configure as configure_limits
+from classbeat.design.refit import REFIT_DRAFT, RefitDraftInput
 from classbeat.design.revise import KIND as REVISE_KIND
 from classbeat.design.revise import REVISE_DRAFT, ReviseDraftInput
 
 __all__ = [
     "DESIGN_DRAFT",
     "KIND",
+    "REFIT_DRAFT",
     "REVISE_DRAFT",
     "REVISE_KIND",
     "DesignDraftInput",
     "MusicChoice",
+    "RefitDraftInput",
     "ReviseDraftInput",
     "Runtime",
     "configure",
