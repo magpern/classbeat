@@ -307,6 +307,25 @@ def test_the_request_deadline_rules() -> None:
         pass
 
 
+def test_call_deadline_at_reads_this_threads_innermost_deadline() -> None:
+    """The public read of the thread's deadline (#470, #579): None outside every block, the
+    earliest instant inside nested blocks, restored on exit, and per thread."""
+    assert egress.call_deadline_at() is None
+    now = time.monotonic()
+    with call_deadline(5):
+        assert egress.call_deadline_at() == pytest.approx(now + 5, abs=0.5)
+        with call_deadline(60):
+            assert egress.call_deadline_at() == pytest.approx(now + 5, abs=0.5)
+        with call_deadline_until(now + 2):
+            assert egress.call_deadline_at() == pytest.approx(now + 2, abs=0.01)
+        other: list[float | None] = []
+        thread = threading.Thread(target=lambda: other.append(egress.call_deadline_at()))
+        thread.start()
+        thread.join()
+        assert other == [None]
+    assert egress.call_deadline_at() is None
+
+
 def _until(check: Any, seconds: float = 5.0) -> None:
     deadline = time.monotonic() + seconds
     while not check():

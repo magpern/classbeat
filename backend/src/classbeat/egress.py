@@ -451,13 +451,20 @@ def call_deadline_until(at: float) -> Iterator[None]:
         _thread_deadline.at = previous
 
 
+def call_deadline_at() -> float | None:
+    """The ``time.monotonic()`` instant of this thread's innermost ``call_deadline`` (the earliest
+    one in force), or None outside every block. Read-only: it builds nothing and sends nothing."""
+    at: float | None = getattr(_thread_deadline, "at", None)
+    return at
+
+
 def request_deadline(timeout: object) -> float:
     """The monotonic time by which a request with this ``timeout`` must be over."""
     total = REQUEST_FALLBACK_SECONDS
     if isinstance(timeout, int | float) and not isinstance(timeout, bool) and timeout > 0:
         total = float(timeout)
     at = time.monotonic() + total
-    call: float | None = getattr(_thread_deadline, "at", None)
+    call = call_deadline_at()
     return at if call is None else min(at, call)
 
 

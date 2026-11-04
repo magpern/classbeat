@@ -39,7 +39,9 @@ module holds the checks that are not the input's own validation:
   ``invalid_input`` of ``design_with_songs`` (every mode), ``revise_songs``, ``swedebeat_match``,
   the hand-off and ``swedebeat_verify_mix`` for a soundless class; their final fenced stores call
   ``check_stored(fs, soundless=False)`` (the hand-off's adopt refuses a ``none`` source in its own
-  compare-and-set), so none of them writes over a ``none`` source.
+  compare-and-set), so none of them writes over a ``none`` source. ``swedebeat_match`` and
+  ``swedebeat_verify_mix`` also call ``still_has_music`` in the worker before their outside calls
+  (#470), so a class soundless by then gets no catalogue lookup, mix listing or attach.
 - **No music step** (item 3). ``NoMusicStep`` stands in for ``design.music.MusicStep``: no MOWL or
   Spotify call, and its ``still_current`` and ``close`` do nothing (the revision names no MOWL
   object).
@@ -166,6 +168,15 @@ async def refuse_soundless(db: AsyncSession, owner_id: UUID, class_id: UUID) -> 
     newest revision's music while it has none, is ``none``), read explicitly rather than inferred
     from a missing song list or match. None admits. Reads only."""
     return await admit_music(db, owner_id, False, class_id)
+
+
+async def still_has_music(fs: FencedSession, class_id: UUID) -> None:
+    """In the worker, before a job that needs a music class calls anything outside (the match's
+    catalogue lookups, the verify job's mix listing and attach; #470, #587): ``invalid_input``
+    when the class is soundless by now, read as ``refuse_soundless`` reads it. Reads only; the
+    final stores' ``check_stored`` stays the guard of what is written."""
+    if await refuse_soundless(fs.db, fs.lease.owner_id, class_id) is not None:
+        raise JobFailure("invalid_input")
 
 
 _STORED_SOURCE = text(

@@ -41,9 +41,14 @@ never model input).
   (``jobs.service.cover_read_admitted``) and no cover-read cooldown is pending. Every provider
   failure of the read (no or a non-connected Spotify connection, a refused or failed refresh, a
   401, the deadline, an allowlist refusal, more than 500 playlists) is ``{covers: []}`` too,
-  logged by category only. A database error in the cooldown or open-job check still answers 500
-  (the page shows initials either way; hardening, #470). The open-job check runs once, before a
-  read that can take about 28 s, so a pick admitted meanwhile can overlap it (#470).
+  logged by category only. A database error anywhere in the read (the cooldown and open-job
+  checks, opening the connection, starting a cooldown after a 429) is ``{covers: []}`` too, logged
+  as ``database_error`` with nothing of the error's text (#470); a gate that cannot answer never
+  gives covers. Both gates (song picking and the open-job check, and the cooldown) are checked
+  before the connection is opened and **again** right before the listing is sent, after any
+  refresh (``spotify_call``'s ``before_read``), so a pick admitted during the refresh (its lock
+  wait and timeout, up to about 30 s) holds the read; only one admitted during the listing itself
+  (at most 8 s) can overlap it, the accepted window of ADR 0013 section 9 (#470).
 - **The read**: one ``spotify_web.my_playlists(max_pages=10)`` through ``spotify_call`` in its
   read-only mode (existing host and token client; no ``record_result``, a 401 never flips; a
   refresh is shielded, never cancelled). ``egress.call_deadline`` bounds only the listing requests
@@ -66,6 +71,7 @@ from fastapi.responses import JSONResponse
 from mowl import api as mowl_api
 from mowl import spotify_web
 from pydantic import BaseModel
+from sqlalchemy.exc import SQLAlchemyError
 
 from classbeat import auth, egress
 from classbeat.agent.schemas import clean_text
@@ -206,13 +212,39 @@ def _covers(answer: object) -> list[CoverOut]:
     return out
 
 
+class _NotAdmitted(Exception):
+    """The gates said no at the re-check right before the listing: nothing is sent."""
+
+
+async def _admitted(state: Any, ctx: UserContext) -> bool:
+    """No cooldown runs, song picking admits the user and no song pick of theirs is open."""
+    if await state.limiter.cooling_down(str(ctx.user_id)):
+        return False
+    return await jobs_service.cover_read_admitted(state.session_factory, ctx, song_picking_on=True)
+
+
 async def _read_covers(request: Request, ctx: UserContext) -> list[CoverOut]:
+    if not request.app.state.settings.song_picking:
+        return []
+    try:
+        return await _gated_read(request, ctx)
+    except SQLAlchemyError:
+        # A gate that cannot answer gives no covers; the error's text (SQL, parameters) is not
+        # logged, only its category (#470).
+        logger.warning("playlist covers unavailable: database_error")
+        return []
+
+
+async def _gated_read(request: Request, ctx: UserContext) -> list[CoverOut]:
     state = request.app.state
-    user = str(ctx.user_id)
-    if not state.settings.song_picking or await state.limiter.cooling_down(user):
+    if not await _admitted(state, ctx):
         return []
-    if not await jobs_service.cover_read_admitted(state.session_factory, ctx, song_picking_on=True):
-        return []
+
+    async def still_admitted() -> None:
+        # Again after any refresh, right before the listing (#470, ADR 0013 section 9).
+        if not await _admitted(state, ctx):
+            raise _NotAdmitted
+
     try:
         answer = await spotify_call(
             state.session_factory,
@@ -222,10 +254,14 @@ async def _read_covers(request: Request, ctx: UserContext) -> list[CoverOut]:
             http=spotify_http(request),
             margin_seconds=state.settings.spotify_refresh_margin_seconds,
             read_only=True,
+            before_read=still_admitted,
         )
+    except _NotAdmitted:
+        logger.info("playlist covers unavailable: not_admitted")
+        return []
     except ConnectionFailure as failure:
         if failure.category in SPOTIFY_429:
-            await state.limiter.start_cooldown(user, failure.retry_after)
+            await state.limiter.start_cooldown(str(ctx.user_id), failure.retry_after)
         logger.info("playlist covers unavailable: %s", failure.category)
         return []
     except OutboundBlocked:

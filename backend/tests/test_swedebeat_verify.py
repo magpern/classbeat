@@ -921,11 +921,82 @@ async def test_the_verify_job_refuses_a_soundless_class_at_admit_and_when_record
     )
     assert (await _check(browser, class_id)).status_code == 201
     before = _handoff_state(henv, class_id)
+    listed = mowl_api.list_calls
     _set_source(henv, class_id, NO_MUSIC)
     job_id = await henv.run_verify()
     row = henv.ops.row(job_id)
     assert (row.state, row.error_category) == ("failed", "invalid_input")
-    assert mowl_api.attaches == ["new-mix"]  # it got as far as the analysis, then recorded nothing
+    # Soundless before the job ran: refused before the listing (#470), nothing attached.
+    assert mowl_api.list_calls == listed
+    assert mowl_api.attaches == []
+    assert _handoff_state(henv, class_id) == before
+    assert _source(henv, class_id) == NO_MUSIC
+
+
+async def _verify_turning_soundless(
+    browsers: Any, henv: HandEnv, mowl_api: FakeMowl, monkeypatch: pytest.MonkeyPatch, when: str
+) -> tuple[Any, int, list[Any], UUID]:
+    """A check queued on a class with no source that turns soundless ``when`` (``listed``: after
+    the mix listing, before the attach; ``analysed``: after the analysis, before the record) or
+    ``never``. Returns the job row, the listing calls and the hand-off state before, the class."""
+    browser = await rider(browsers, henv)
+    mowl_api.add_mix("Already there", token=TOKEN_A, mix_id="old-mix", listed_seconds=150)
+    class_id = plant(henv, browser.user_id, [150])
+    assert (await _start(browser, class_id)).status_code == 200
+    _set_source(henv, class_id, None)
+    mowl_api.add_mix(
+        "The new mix",
+        token=TOKEN_A,
+        mix_id="new-mix",
+        listed_seconds=150,
+        audio_seconds=150,
+        link="beats",
+    )
+    assert (await _check(browser, class_id)).status_code == 201
+    before = _handoff_state(henv, class_id)
+    listed = mowl_api.list_calls
+    if when == "listed":
+        parse = verify_kind.parse_mixes
+
+        def parse_then_flip(listing: Any) -> Any:
+            _set_source(henv, class_id, NO_MUSIC)
+            return parse(listing)
+
+        monkeypatch.setattr(verify_kind, "parse_mixes", parse_then_flip)
+    elif when == "analysed":
+        load = verify_kind.load_swedebeat_mix
+
+        async def load_then_flip(*args: Any, **kwargs: Any) -> Any:
+            analysis = await load(*args, **kwargs)
+            _set_source(henv, class_id, NO_MUSIC)
+            return analysis
+
+        monkeypatch.setattr(verify_kind, "load_swedebeat_mix", load_then_flip)
+    row = henv.ops.row(await henv.run_verify())
+    return row, listed, before, class_id
+
+
+@pytest.mark.parametrize("when", ["listed", "analysed", "never"])
+async def test_the_verify_job_checks_soundless_again_before_the_attach(
+    browsers: Any, henv: HandEnv, mowl_api: FakeMowl, monkeypatch: pytest.MonkeyPatch, when: str
+) -> None:
+    """#470 (from the review of #587): a class that turns soundless after the listing gets no
+    attach and no analysis; one that turns soundless during the analysis is refused when the
+    verdict is recorded (``check_stored``); the control (``never``) attaches and verifies."""
+    row, listed, before, class_id = await _verify_turning_soundless(
+        browsers, henv, mowl_api, monkeypatch, when
+    )
+    assert mowl_api.list_calls > listed  # the job's listing ran (the analysis lists again)
+    if when == "never":
+        assert (row.state, row.error_category) == ("completed", None)
+        assert mowl_api.attaches == ["new-mix"]
+        assert _handoff_state(henv, class_id) != before
+        return
+    assert (row.state, row.error_category) == ("failed", "invalid_input")
+    if when == "listed":
+        assert (mowl_api.list_calls, mowl_api.attaches) == (listed + 1, [])
+    else:
+        assert mowl_api.attaches == ["new-mix"]
     assert _handoff_state(henv, class_id) == before
     assert _source(henv, class_id) == NO_MUSIC
 
