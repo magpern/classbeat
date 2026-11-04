@@ -268,3 +268,59 @@ def test_bpm_changed_ignores_single_precision_and_sees_a_real_change() -> None:
     assert _bpm_changed(127.99999, 128.0) is False
     assert _bpm_changed(128.3, 128.4) is True
     assert _bpm_changed(120.0, 126.0) is True
+
+
+async def test_clearing_a_song_leaves_the_same_song_of_another_class_on_the_same_music(
+    renv: ReviseEnv,
+) -> None:
+    first, first_base = await renv.design()
+    second, second_base = await renv.design()  # the same playlist: the same fingerprint
+    await put(renv.browser, first, 1, {"beats": 2, "revision_id": str(first_base)})
+    await put(renv.browser, second, 1, {"beats": -1, "revision_id": str(second_base)})
+    cleared = await delete(renv.browser, first, 1, first_base)
+    assert cleared.status_code == 200
+    assert rows(renv, first) == []
+    assert [(s, b) for _, s, b in rows(renv, second)] == [(1, -1)]
+
+
+async def test_clearing_a_song_leaves_its_row_for_earlier_music(renv: ReviseEnv) -> None:
+    """ADR items 2 and 9: rows for other music are kept, so Make current can bring them back."""
+    class_id, base = await renv.design()
+    renv.sql(
+        "INSERT INTO beat_one_corrections (owner_id, class_id, fingerprint, song, beats, bpm) "
+        "VALUES (:o, :c, :f, 1, 3, 120)",
+        o=renv.owner, c=class_id, f="a" * 64,
+    )  # fmt: skip
+    await put(renv.browser, class_id, 1, {"beats": 1, "revision_id": str(base)})
+    cleared = await delete(renv.browser, class_id, 1, base)
+    assert cleared.status_code == 200
+    assert rows(renv, class_id) == [("a" * 64, 1, 3)]
+
+
+async def test_parallel_corrections_never_pass_the_cap(
+    renv: ReviseEnv, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The class row lock (``FOR UPDATE``) serializes the count and the insert: many PUTs at once
+    for different songs store exactly the cap, and every answer is 200 or 409."""
+    import asyncio
+
+    from classbeat.classes import beat_one as api_beat_one
+
+    monkeypatch.setattr(api_beat_one, "MAX_PER_CLASS", 2)
+    class_id, base = await renv.design()
+    songs = [s["song"] for s in renv.revisions(class_id)[0].music["songs"]]
+    headers = await renv.browser.headers()
+    client = renv.browser.client
+
+    async def one(song: int) -> int:
+        made = await client.put(
+            f"/api/classes/{class_id}/beat-one/{song}",
+            headers=headers,
+            json={"beats": 1, "revision_id": str(base)},
+        )
+        return made.status_code
+
+    answers = await asyncio.gather(*(one(s) for s in songs * 3))
+    renv.browser.client.cookies.clear()
+    assert set(answers) <= {200, 409}
+    assert len(rows(renv, class_id)) == 2
