@@ -1209,6 +1209,20 @@ revision 1 is a copy of the chosen revision. One `user_session` transaction:
    was deleted since is free again (the user deleted the class it made). The page also disables its
    button while the request is in flight.
 
+8. **Beat-one corrections** (the beat-one amendment, #549, item 8, is the text of record). The
+   copy's revision 1 keeps `music.beat_one` (item 4 copies `music` except `song_list_id`), and the
+   same duplicate transaction copies the source class's `beat_one_corrections` rows for that
+   revision's `music.fingerprint`, re-keyed to the copy's class: same `fingerprint`, `song`,
+   `beats` and `bpm`, new `id`, `owner_id` the user's, under that table's cap (at most 200 rows for
+   the class's current fingerprint) and its unique key. Otherwise the copy would show the
+   corrections as `pending` and **Apply** would strip them. Rows for other fingerprints are not
+   copied. A copy that gets no `music_source` (a class on picked songs, item 5) gets no rows: it
+   cannot be refitted (`not_changeable`). The insert guard allows that insert in
+   `classbeat.classes.duplicate`. **Sequencing:** the table comes with BC1 (#553), which is not on
+   `main` while DU1 (#547) is written, so the copy is a follow-up PR, DU3 (#585), that depends on
+   BC1 and DU1 and adds the insert and its test. DU3 must merge before the beat-one panel ships, so
+   no user sees a copy without its corrections.
+
 **Independence.** The two classes share no row: changing, revising, saving, updating or deleting
 one never touches the other (`duplicated_from` is an opaque id in the copy's provenance, read only
 to show the source's title). The duplicate's revision 1 is not a chat revision, so the revision
@@ -1249,4 +1263,5 @@ compare view and the duplicate dialog.
 review: new routes that take revision ids, tenant isolation); HI2 #546, timeline, compare view and Make current on the page with e2e (Sonnet, Sonnet;
 depends on HI1); DU1 #547, duplicate (backend; Opus Developer, Opus review: class-owned data,
 quotas, music ownership); DU2 #548, Duplicate on the class page and My classes with e2e (Sonnet,
-Sonnet; depends on DU1 and HI2).
+Sonnet; depends on DU1 and HI2); DU3 #585, copy the beat-one corrections (backend; Opus, Opus;
+depends on BC1 #553 and DU1).
