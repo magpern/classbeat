@@ -34,6 +34,7 @@ jobs:
       backend: ${{ steps.filter.outputs.backend }}
       frontend: ${{ steps.filter.outputs.frontend }}
       stack: ${{ steps.filter.outputs.stack }}
+      playwright: ${{ steps.filter.outputs.playwright }}
       all: ${{ steps.filter.outputs.all }}
       # The backend test shard count, from the backend-tests matrix's shard list (the one source).
       shards: ${{ steps.shards.outputs.total }}
@@ -687,9 +688,18 @@ jobs:
             --severity HIGH,CRITICAL --ignore-unfixed --exit-code 1 \
             "$image"
 
-      - run: npm ci
-      - run: npm run typecheck
-      - run: npx playwright install --with-deps chromium
+      # Playwright steps run only when the UI, e2e, compose or Docker files changed (the
+      # `playwright` output of scripts/ci-changes.sh); the stack checks and the image scan above
+      # and below run for every `stack` change. main and the weekly run do everything.
+      - name: Install the e2e dependencies
+        if: needs.changes.outputs.playwright == 'true'
+        run: npm ci
+      - name: Typecheck the e2e suite
+        if: needs.changes.outputs.playwright == 'true'
+        run: npm run typecheck
+      - name: Install Chromium
+        if: needs.changes.outputs.playwright == 'true'
+        run: npx playwright install --with-deps chromium
 
       # M6 (#338): back up, destroy, restore into a fresh project and verify (rows, RLS, sign-in,
       # right key decrypts, wrong key fails). Own compose projects; the image build is a cache hit.
@@ -699,6 +709,7 @@ jobs:
         run: scripts/backup-restore-drill.sh ci
 
       - name: Run the tests
+        if: needs.changes.outputs.playwright == 'true'
         run: npx playwright test
 
       # Everything the E2E run did went through web and worker (sign-ins, connects, picks, saves,
@@ -731,7 +742,7 @@ jobs:
           [ "$checked" -gt 0 ] || { echo "::error::no secret files were checked"; exit 1; }
 
       - name: Upload the report
-        if: failure()
+        if: failure() && needs.changes.outputs.playwright == 'true'
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: playwright-report
