@@ -1,6 +1,6 @@
 import { ApiError } from './client'
 import { errorMessage } from './messages'
-import { planRefusalText } from './planMessages'
+import { planRefusalText, quotaText } from './planMessages'
 import type { ChangeSummary } from './classes'
 import { clock } from '../lib/workout'
 
@@ -55,6 +55,12 @@ export function classReasonText(error: unknown): string {
     return 'This class changed meanwhile. The page has been reloaded.'
   }
   return errorMessage(error)
+}
+
+/** The text of a refused Make current: a plan-limit refusal is about the version, not the length to choose. */
+export function currentReasonText(error: unknown): string {
+  if (error instanceof ApiError && error.reason === 'quota') return quotaText(error, true)
+  return classReasonText(error)
 }
 
 export function originLabel(origin: string): string {
