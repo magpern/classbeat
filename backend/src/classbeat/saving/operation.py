@@ -5,7 +5,9 @@ account, as an external operation.
   ``{kind, content_hash (hex), playlist_id}``: what the write does, never who asks.
 - **Context** (stored with every attempt's ``pending`` row): ``{revision_id, content_hash,
   playlist_id, baseline}``, plus the protocol's ``bound_seconds``. ``baseline`` is the
-  ProgramIDs of My Workouts' first page read just before the write.
+  ProgramIDs of My Workouts' first page read just before the write. A soundless class (ADR 0007
+  amendment of 2026-11-03, item 8) carries ``playlist_id`` ``-1`` (the library's "no music") in
+  both the hash and the context; a playlist class's hash and context are unchanged.
 - **The bound**: ``30 s * (3 + 3 * segments)``, at most 30 minutes; the call runs inside
   ``classbeat.egress.call_deadline_until`` of an instant taken just before the ``pending`` row is
   written plus the bound, which ends every request of it by then however late its thread starts
@@ -15,6 +17,8 @@ account, as an external operation.
   built from the operation row and the revision **of the operation's own class** (one statement
   joining both on ``owner_id`` and ``class_id``), so it can only ever name the class, revision
   and operation of one owner and one class. ``ON CONFLICT DO NOTHING`` makes it idempotent.
+  A ``playlist_id`` of ``-1`` is stored as NULL (``saved_workouts.playlist_id`` keeps its
+  ``CHECK (playlist_id > 0)``), so the row is written after a successful soundless save.
 - **The reconciler** (bounded: one listing, at most ``MAX_PROGRAM_READS`` program reads) compares
   My Workouts' first page now with the baseline. Only *new* programs count:
 
@@ -47,7 +51,7 @@ import logging
 import unicodedata
 from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime, timedelta
-from typing import Any, Final, cast
+from typing import Any, Final, Literal, cast
 from uuid import UUID
 
 from mowl import api as mowl_api
@@ -75,6 +79,7 @@ KEY_SUFFIX: Final = ":save"
 PAGE_SIZE: Final = 50  # ``api.list_workouts``' page
 REQUEST_SECONDS: Final = 30.0  # the total deadline of one request (the library's timeout)
 MAX_PROGRAM_READS: Final = 3
+NO_PLAYLIST: Final = -1  # ``approval.NO_PLAYLIST``: a soundless class's ``PlaylistID``
 
 _lag: float | None = None
 
@@ -258,6 +263,16 @@ _SAVED = text(
 )
 
 
+def stored_playlist(value: object) -> int | Literal[False] | None:
+    """``saved_workouts.playlist_id`` for a context's ``playlist_id``: a positive id as it is,
+    the library's "no music" (``-1``) as None (NULL); False for anything else (never stored)."""
+    if isinstance(value, bool) or not isinstance(value, int):
+        return False
+    if value == NO_PLAYLIST:
+        return None
+    return value if 0 < value <= 2**63 - 1 else False
+
+
 async def _write_saved(db: AsyncSession, owner_id: UUID, operation: Operation) -> None:
     external_id = operation.external_id
     context = operation.context
@@ -272,7 +287,8 @@ async def _write_saved(db: AsyncSession, owner_id: UUID, operation: Operation) -
     if operation.kind != KIND or operation.class_id is None or not 0 < program_id <= 2**63 - 1:
         logger.warning("saved workout not written: not a save", extra={"kind": KIND})
         return
-    if isinstance(playlist_id, bool) or not isinstance(playlist_id, int):
+    stored = stored_playlist(playlist_id)
+    if stored is False:
         logger.warning("saved workout not written: no playlist", extra={"kind": KIND})
         return
     await db.execute(
@@ -286,7 +302,7 @@ async def _write_saved(db: AsyncSession, owner_id: UUID, operation: Operation) -
             "revision_id": revision_id,
             "content_hash": content_hash,
             "program_id": program_id,
-            "playlist_id": playlist_id,
+            "playlist_id": stored,
         },
     )
 
