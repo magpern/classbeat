@@ -3,7 +3,10 @@
 ## Before any `gh pr merge` (read this first)
 
 - No `Agent review (<model>): PASS <sha>` comment for the PR's **current head commit** → **do
-  not merge.** Run the review: spawn a fresh agent (the `reviewer` agent in `.claude/agents/`;
+  not merge.** Run the review: spawn a fresh agent for the PR's first review and **resume that
+  same agent** (SendMessage to its agent id, with the new head) for every later round on the
+  PR, security-critical PRs too; a fresh one only after a second `FAIL` or when it cannot be
+  resumed (the comment says so) (the `reviewer` agent in `.claude/agents/`;
   `model: opus` for security-critical PRs and the first review of a new security design, Sonnet
   for the rest, for tooling (one final Opus review if it changes secret handling) and for
   delta reviews unless the fix changes security-critical application code; AGENTS.md review

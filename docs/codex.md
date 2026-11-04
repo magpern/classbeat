@@ -3,13 +3,15 @@
 ## Start here
 
 AGENTS.md is the shared rulebook, automatically discovered by Codex. Read it in full,
-then roadmap.md, status.md and the issue's ADRs. Roadmap Amendment 10 maps the Claude
+then roadmap.md, status.md and the issue's ADRs, and developer-commands.md for the area you
+touch. Roadmap Amendment 10 maps the Claude
 tiers to Codex; it changes development tooling only, not the application's model routing.
 The existing Claude setup stays available.
 
 The checked-in .codex/config.toml selects GPT-6 Astra with high reasoning for the
 Architect / Orchestrator and raises project_doc_max_bytes to 131072: AGENTS.md is over
-64 KB and must not be silently truncated. Trust the checkout in Codex so its project
+64 KB and must not be silently truncated (it was split on 2026-11-04 and is smaller now; the
+budget stays as a margin). Trust the checkout in Codex so its project
 configuration and custom agents load. Check instruction loading on the first session.
 If your interface ignores project config, explicitly read the complete file from disk
 and set the equivalent instruction budget in its supported configuration.
@@ -49,7 +51,9 @@ They are not executable orchestrators: the Architect must assign issues, worktre
 review requests. Each writer owns one issue branch and one worktree. Do not run Claude
 and Codex writers on the same branch.
 
-A reviewer must start with no inherited author/Architect conversation; supply the PR,
+A reviewer's first review of a PR must start with no inherited author/Architect conversation;
+later rounds on the same PR resume that same reviewer session with the new head (roadmap
+Amendment 14); a fresh one only after a second FAIL or when it cannot be resumed; supply the PR,
 head SHA, issue and repository evidence instead. If the interface can only fork the
 author's history, open a separate fresh Codex session for review. Never replace this
 with the author's own /review. Reviewers may inspect files and run targeted checks in
@@ -70,7 +74,7 @@ Never use --auto, --admin, approving reviews or ruleset changes to bypass the ga
    Resume the next unblocked issue, without re-planning completed milestones.
 2. Use `bash scripts/worktree.sh new <issue> <slug>` from the checkout, then change into
    the printed worktree. Its branch, ports, database volume and secrets are isolated.
-3. Follow AGENTS.md's backend/frontend commands. Run lint, type checks and targeted
+3. Follow AGENTS.md's backend/frontend commands (full reference: developer-commands.md). Run lint, type checks and targeted
    tests for the change. Use its Compose/e2e instructions when required; CI runs the
    full suite. Do not weaken a check to make it pass.
 4. Create one PR closing the issue, with scope, each acceptance criterion and its test

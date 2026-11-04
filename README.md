@@ -12,8 +12,8 @@ Swedebeat.
 - How agents work on it: [AGENTS.md](AGENTS.md)
 - Decisions: [docs/adr/](docs/adr/)
 
-Getting started locally is described in AGENTS.md under "Developer commands" once the
-skeleton lands.
+Getting started locally is described in AGENTS.md under "Developer commands" (the essentials)
+and in [docs/developer-commands.md](docs/developer-commands.md) (the full reference).
 
 ## Refreshing the queue functions' md5
 
