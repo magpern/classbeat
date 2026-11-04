@@ -157,7 +157,7 @@ async def mowl_playlists(
         return JSONResponse({"detail": {"reason": "outbound_blocked"}}, status_code=502)
     if failure is not None:
         headers: dict[str, str] = {}
-        if failure.category in SPOTIFY_429:
+        if failure.category == "rate_limited":  # MOWL's only 429 category; not the Spotify set
             headers["Retry-After"] = str(failure.retry_after or DEFAULT_RETRY_AFTER)
         return JSONResponse(
             {"detail": {"reason": failure.category}},

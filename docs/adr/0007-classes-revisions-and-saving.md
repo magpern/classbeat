@@ -1352,7 +1352,9 @@ pick, checked against the current plan since #496 (`check_stored_draft`, 409 `qu
 call and no credit; `classbeat.design.diff.summarize` computes the change summary of §3 from two
 stored drafts. The page's `RevisionsPanel` lists revisions and offers Make current. A class is
 created only by `classbeat.jobs.user.create` (a design job), and a revision only in a job's final
-fenced transaction. Nothing here changes the queue, the write protocol or any table.
+fenced transaction. Nothing here changes the queue, the write protocol or any table. Duplicate is
+`POST /api/classes/{id}/duplicate` with an `Idempotency-Key`: 201 for a new copy and 200 for a replay of
+the same key and request (item 7 of D).
 
 ### H. Revision history (no migration, no new table)
 
@@ -1408,7 +1410,8 @@ revision 1 is a copy of the chosen revision. One `user_session` transaction:
    a running class while `running_enabled` is off; for a Swedebeat mix while `swedebeat_enabled` is
    off when **either** the class's current `music_source` **or** the chosen revision's `music` is a
    mix (the copy takes the class's source, item 5, but its revision 1 still names the mix's link);
-   and for a soundless class (`music_source` `{source: "none"}`, #526) unless the full soundless
+   and for a soundless class (the class's current `music_source` **or** the chosen revision's `music`
+   is `{source: "none"}`, #526, as for a mix; `classes.duplicate` checks both) unless the full soundless
    gate admits it for this user: `design.music_kind.admit_soundless`, the same three conditions a
    soundless design meets (the switch, then the user's own plan's `design` route covering soundless,
    answered 409 `soundless_not_evaluated`, then every plan's route, `feature_off`). No model runs
@@ -1517,10 +1520,12 @@ the ledger row would need a column (a migration and the ledger trigger); it is l
 change if the admin view needs it.
 
 **A guard keeps the exception narrow.** DU1 adds a source guard (`tests/test_insert_guard.py`) that
-allows `INSERT INTO classes` only in `classbeat.jobs.user` and `classbeat.classes.duplicate`, and
+allows `INSERT INTO classes` only in `classbeat.jobs.user` and `classbeat.classes.duplicate`,
 `INSERT INTO class_revisions` only in the job final-transaction modules (`design.revision`,
-`songs.song_list`, `swedebeat_match.revision`) and `classbeat.classes.duplicate`; a new site fails
-CI until it is added there with a reason.
+`songs.song_list`, `swedebeat_match.revision`) and `classbeat.classes.duplicate`, and, since BC1/DU3
+and BC4, `INSERT INTO beat_one_corrections` only in `classbeat.classes.duplicate` (the copied rows) and
+`classbeat.classes.beat_one` (the corrections API); a new site fails CI until it is added there with a
+reason.
 
 **Tests.** Timeline fields and compare (unit and API; 404 for another user's class or revisions of
 another class); duplicate: isolation (another user's class or revision 404, nothing created), hash

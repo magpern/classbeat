@@ -89,8 +89,20 @@ async def test_a_song_change_resume_of_a_soundless_class_is_refused(songenv: Son
     job_id, list_id = await changed_approved(songenv, rider, class_id, base)
     songenv.script = failing_script("auth")
     assert (await songenv.run(job_id)).error_category == "model_config"
+    source = klass(songenv, class_id).music_source
     make_soundless(songenv, class_id)
+    before = (jobs_of(songenv, rider.user_id), songenv.counts(), drafts(songenv, class_id))
     refused(await resume_change(rider, class_id, base, list_id))
+    # Nothing written: no job, no credit or row movement, no revision (#587).
+    assert (jobs_of(songenv, rider.user_id), songenv.counts(), drafts(songenv, class_id)) == before
+    # The control: the same resume on the class with its music again is admitted, so the refusal
+    # above was the soundless check and nothing else.
+    songenv.sql(
+        "UPDATE classes SET music_source = CAST(:m AS jsonb) WHERE id = :c",
+        m=json.dumps(source),
+        c=class_id,
+    )
+    assert (await resume_change(rider, class_id, base, list_id)).status_code == 201
 
 
 async def test_the_pick_store_never_writes_over_a_none_source(songenv: SongEnv) -> None:

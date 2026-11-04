@@ -264,6 +264,25 @@ async def test_a_row_records_the_bpm_and_a_changed_bpm_is_flagged(renv: ReviseEn
     assert song["bpm_changed"] is True
 
 
+@pytest.mark.parametrize("bpm", [0, -5, 1001, 100000])
+async def test_a_song_whose_bpm_the_column_cannot_hold_is_refused_not_a_500(
+    renv: ReviseEnv, bpm: int
+) -> None:
+    """``beat_one_corrections.bpm`` has a CHECK (0 < bpm <= 1000). ``RevisionSong`` bounds the same
+    range, so music with another value reads as no beat data: a 4xx and nothing written, never the
+    CHECK's 500 (#562, #470)."""
+    class_id, base = await renv.design()
+    renv.sql(
+        "UPDATE class_revisions SET music = jsonb_set(music, '{songs,0,bpm}', CAST(:b AS jsonb)) "
+        "WHERE id = :r",
+        b=str(bpm),
+        r=base,
+    )
+    made = await put(renv.browser, class_id, 1, {"beats": 1, "revision_id": str(base)})
+    assert made.status_code in (409, 422), made.text
+    assert rows(renv, class_id) == []
+
+
 def test_bpm_changed_ignores_single_precision_and_sees_a_real_change() -> None:
     from classbeat.classes.beat_one import _bpm_changed  # pyright: ignore[reportPrivateUsage]
 

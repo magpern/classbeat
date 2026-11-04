@@ -281,6 +281,12 @@ a user without Swedebeat never sees Swedebeat features. This amends §6 and §8 
     lists the user's mixes in MOWL and may attach, fetch and analyse the one they made) and "This is the
     right mix" (reads the listing). The page says, while the preference is off, that the switch is off,
     that starting the step or designing on the mix needs it, and that a started step can still be checked;
+  - "Check again" on an uncertain `mowl_attach_swedebeat_mix` operation (`operations.swedebeat`, reached
+    from `operations/routes.py`): it lists the user's mixes through MOWL's Swedebeat endpoint and reads
+    neither the preference nor the flag (the flag gap predates the preference; it sends nothing to
+    Swedebeat's catalogue and acts only on an attach the user's own job started);
+  - Save and Update of a class designed on a mix: they send the mix's `PlaylistID` to MOWL, as for any
+    class on a playlist, and read neither switch;
   - reading what exists: the class, its match, the hand-off row.
 - **Account page.** The card exists only while the flag is on or the user holds a Swedebeat connection
   (the "coming soon" line is gone). With the flag on it starts with the switch "I use Swedebeat"; the connect
