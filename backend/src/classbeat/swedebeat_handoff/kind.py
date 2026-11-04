@@ -3,7 +3,8 @@
 One press of "I made the mix" or "Check again". No credit. The server sets ``handoff_id``; a
 request carries the class and at most a candidate mix id.
 
-- **admit**: ``feature_off`` before the hand-off is read; then the MOWL connection; then the
+- **admit**: ``feature_off`` before the hand-off is read; then the MOWL connection; then
+  ``invalid_input`` for a soundless class (``music_kind.refuse_soundless``, #530); then the
   stored match, which counts only when it is the current draft's song list; then a live,
   unexpired row for that match; then at most 10 jobs of this kind per user per hour. A verified
   row is not a job (the endpoint answers 200). Nothing is attached here.
@@ -13,7 +14,8 @@ request carries the class and at most a candidate mix id.
   none is ``not_found``; several are remembered so the user can pick, and nothing is attached.
   A client mix id is analysed only when it is in that fresh listing. The analysis is §3's
   (``load_swedebeat_mix``: the same hosts, limits and daily slot). The length verdict is stored
-  on the row; ``ok`` sets ``verified``.
+  on the row; ``ok`` sets ``verified``. Recording it refuses ``invalid_input`` (nothing written)
+  when the class's ``music_source`` is ``none`` by then (``music_kind.check_stored``).
 """
 
 import logging
@@ -27,6 +29,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from classbeat.classes.selection import stored_approval
 from classbeat.connections import call_opened, find_in, open_connection
 from classbeat.context import UserContext
+from classbeat.design import music_kind
 from classbeat.design.swedebeat_music import load_swedebeat_mix
 from classbeat.flags import effective as flags
 from classbeat.jobs import KINDS, Complete, JobFailure, JobKind, JobRun
@@ -80,6 +83,9 @@ async def admit(db: AsyncSession, ctx: UserContext, parsed: BaseModel, /) -> Adm
         return Refused("feature_off")
     if not await _connected(db, ctx, parsed.mowl_connection_id):
         return Refused("not_connected")
+    soundless = await music_kind.refuse_soundless(db, ctx.user_id, parsed.the_class)  # #530
+    if soundless is not None:
+        return soundless
     bound, reason = await stored_approval(db, ctx.user_id, parsed.the_class)
     if bound is None:
         return Refused(reason or "stale_match")
@@ -125,6 +131,7 @@ async def _record(
         row = await by_id(fs.db, run.lease.owner_id, handoff_id)
         if row is None or row.expired:
             raise JobFailure("handoff_expired")
+        await music_kind.check_stored(fs, soundless=False)  # never for a soundless class (#530)
         bound, _reason = await stored_approval(fs.db, run.lease.owner_id, row.class_id)
         if bound is None or bound.revision_id != match_id:
             raise JobFailure("invalid_input")
