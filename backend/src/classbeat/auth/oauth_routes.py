@@ -8,7 +8,6 @@ before the SPA catch-all; its query string (code, state) is never logged.
 """
 
 import logging
-import re
 from typing import Annotated, Literal
 from uuid import UUID
 
@@ -53,9 +52,28 @@ logger = logging.getLogger(__name__)
 router = APIRouter(tags=["auth"])
 
 FIELD_MAX = 1024
-# An OAuth ``error`` value (RFC 6749 4.1.2.1) is logged only when it looks like one: the query
-# is the sender's text, and nothing else of it is ever logged.
-_ERROR_CODE = re.compile(r"[a-z_]{1,64}")
+# The ``error`` values of RFC 6749 4.1.2.1 and OpenID Connect Core 3.1.2.6. Only these are
+# logged; anything else is "unrecognized" (the query is the sender's text, never logged).
+OAUTH_ERROR_CODES = frozenset(
+    {
+        "invalid_request",
+        "unauthorized_client",
+        "access_denied",
+        "unsupported_response_type",
+        "invalid_scope",
+        "server_error",
+        "temporarily_unavailable",
+        "interaction_required",
+        "login_required",
+        "account_selection_required",
+        "consent_required",
+        "invalid_request_uri",
+        "invalid_request_object",
+        "request_not_supported",
+        "request_uri_not_supported",
+        "registration_not_supported",
+    }
+)
 
 
 class StartIn(BaseModel):
@@ -171,7 +189,7 @@ async def _handle(
         return Outcome("invalid", why="state_mismatch")
     error = query.get("error")
     if error:
-        named = error if _ERROR_CODE.fullmatch(error) else "unrecognized"
+        named = error if error in OAUTH_ERROR_CODES else "unrecognized"
         return Outcome("denied", why=f"provider_error={named}")
     if not code:
         return Outcome("denied", why="no_code")

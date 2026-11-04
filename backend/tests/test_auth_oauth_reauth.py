@@ -250,7 +250,7 @@ async def signed_in_as_other(env: Env, browser: Browser) -> None:
     browser.cookies[auth.SESSION_COOKIE] = other.cookies[auth.SESSION_COOKIE]
 
 
-async def test_the_identity_of_another_user_is_refused(
+async def test_a_google_account_linked_to_nobody_is_refused(
     oenv: Env, fake: FakeProviders, logs: pytest.LogCaptureFixture
 ) -> None:
     browser = await linked(oenv, fake)
@@ -258,6 +258,52 @@ async def test_the_identity_of_another_user_is_refused(
         browser, fake, "google", purpose="reauth", sub="not-mine", auth_time=int(time.time())
     )
     assert location(response) == "/account?oauth=identity_mismatch"
+    assert refused(logs) == [
+        "oauth callback refused: provider=google purpose=reauth outcome=identity_mismatch "
+        "why=not_linked_to_this_user"
+    ]
+
+
+async def test_a_google_account_linked_to_another_classbeat_user_is_refused(
+    oenv: Env, fake: FakeProviders, logs: pytest.LogCaptureFixture
+) -> None:
+    """The owner check, not only the "linked to nobody" one: user B's Google account must not
+    re-authenticate user A's session, even with a fresh auth_time."""
+    browser = await linked(oenv, fake)  # user A, with Google subject "sub-1"
+    other = await signed_in(oenv, "other@example.com")
+    linked_b = await sign_in_with(other, fake, "google", purpose="link", sub="theirs")
+    assert location(linked_b) == "/account?oauth=linked"
+    owner_b = await oenv.scalar(
+        "SELECT user_id::text FROM identities WHERE provider = 'google' AND subject = 'theirs'"
+    )
+    assert owner_b == await oenv.scalar(
+        "SELECT id::text FROM users WHERE email = 'other@example.com'"
+    )
+    events = await oenv.scalar("SELECT count(*) FROM auth_events")
+    identities = await oenv.scalar("SELECT count(*) FROM identities")
+    old = browser.cookies[auth.SESSION_COOKIE]
+    logs.clear()
+
+    response = await sign_in_with(
+        browser, fake, "google", purpose="reauth", sub="theirs", auth_time=int(time.time())
+    )
+    assert location(response) == "/account?oauth=identity_mismatch"
+    assert browser.cookies[auth.SESSION_COOKIE] == old  # not rotated
+    assert await oenv.scalar(
+        "SELECT bool_and(s.reauth_at < now() - interval '5 minutes') FROM sessions s"
+        " JOIN users u ON u.id = s.user_id WHERE u.email = 'me@example.com'"
+    )
+    assert (await browser.get("/api/auth/session")).json()["session"]["recent_auth"] is False
+    # Nothing is recorded or changed: no reauth event (no event at all), no identity moved.
+    assert await oenv.scalar("SELECT count(*) FROM auth_events") == events
+    assert await oenv.scalar("SELECT count(*) FROM auth_events WHERE kind = 'reauth'") == 0
+    assert await oenv.scalar("SELECT count(*) FROM identities") == identities
+    assert (
+        await oenv.scalar(
+            "SELECT user_id::text FROM identities WHERE provider = 'google' AND subject = 'theirs'"
+        )
+        == owner_b
+    )
     assert refused(logs) == [
         "oauth callback refused: provider=google purpose=reauth outcome=identity_mismatch "
         "why=not_linked_to_this_user"
@@ -280,7 +326,13 @@ async def test_every_refused_callback_logs_one_line(
     wrong = fake.complete(started.json()["authorization_url"]).replace("/google/", "/microsoft/")
     assert location(await browser.get(wrong)) == "/signin?oauth=invalid"
     # Denied at the provider: a well-formed error is named, anything else is not echoed.
-    for error, named in (("access_denied", "access_denied"), ("<script>Evil", "unrecognized")):
+    # A well-formed word that is no OAuth error code is not echoed either (an allowlist).
+    cases = (
+        ("access_denied", "access_denied"),
+        ("<script>Evil", "unrecognized"),
+        ("made_up_word", "unrecognized"),
+    )
+    for error, named in cases:
         browser = Browser(oenv)
         started = await start(browser, "google")
         state = parse_qs(urlsplit(started.json()["authorization_url"]).query)["state"][0]
@@ -305,12 +357,15 @@ async def test_every_refused_callback_logs_one_line(
         "why=provider_error=access_denied",
         "oauth callback refused: provider=google purpose=sign_in outcome=denied "
         "why=provider_error=unrecognized",
+        "oauth callback refused: provider=google purpose=sign_in outcome=denied "
+        "why=provider_error=unrecognized",
         "oauth callback refused: provider=google purpose=sign_in outcome=denied why=no_code",
         "oauth callback refused: provider=google purpose=sign_in outcome=invite_required "
         "why=invite_required",
     ]
     assert all(r.levelno == logging.WARNING for r in refused_records(logs))
     assert "Evil" not in logs.text
+    assert "made_up_word" not in logs.text
 
 
 async def test_the_log_line_holds_no_code_state_nonce_token_or_email(

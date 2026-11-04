@@ -279,6 +279,19 @@ describe('account page', () => {
     expect(alert).not.toHaveTextContent(/Use your password instead/)
   })
 
+  it('when the password status cannot be read, a failed re-authentication gives both ways (#522)', async () => {
+    fakeApi({
+      'GET /api/auth/session': SIGNED_IN,
+      'GET /api/auth/identities': () => reason(500, 'boom'),
+      'GET /api/auth/mfa': MFA_OFF,
+    })
+    renderAt('/account?oauth=reauth_stale')
+    const alert = (await screen.findAllByRole('alert'))[0]
+    await waitFor(() => {
+      expect(alert).toHaveTextContent(/Use your password instead, if you have one\./)
+    })
+  })
+
   it('the re-authentication prompt says Google confirms only a sign-in of the last 5 minutes', async () => {
     fakeApi({
       ...base,

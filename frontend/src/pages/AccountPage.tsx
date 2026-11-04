@@ -74,7 +74,8 @@ function Account() {
   const outcome = useQuery().get('oauth')
   const [tab, setTab] = useState<TabId>(() => initialTab(outcome))
   // Whether a failed provider re-authentication can point to the password (#522).
-  const [hasPassword, setHasPassword] = useState<boolean | null>(null)
+  // undefined while loading, null when it could not be read.
+  const [hasPassword, setHasPassword] = useState<boolean | null | undefined>(undefined)
   const action = useAction()
   const email = session?.user?.email ?? ''
   const name = email.includes('@') ? email.slice(0, email.indexOf('@')) : email
@@ -94,7 +95,9 @@ function Account() {
       (state) => {
         setHasPassword(state.hasPassword)
       },
-      () => undefined,
+      () => {
+        if (!controller.signal.aborted) setHasPassword(null)
+      },
     )
     return () => {
       controller.abort()

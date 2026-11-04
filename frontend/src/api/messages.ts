@@ -48,11 +48,13 @@ const OAUTH_OUTCOMES: Record<string, string> = {
 
 /**
  * The text for an OAuth outcome. A failed re-authentication (`reauth_stale`, ADR 0003 section 5
- * and #522) says what failed and offers the password when the account has one (`hasPassword`;
- * null while unknown, which offers the way to set one too).
+ * and #522) says what failed and offers the password when the account has one (`hasPassword`):
+ * `undefined` while that is still loading (the first sentence only, so the text never flips from
+ * one advice to another), `null` when it could not be read (both ways).
  */
-export function oauthOutcomeMessage(code: string, hasPassword: boolean | null = null): string {
+export function oauthOutcomeMessage(code: string, hasPassword?: boolean | null): string {
   if (code === 'reauth_stale') {
+    if (hasPassword === undefined) return REAUTH_STALE
     if (hasPassword === true) return `${REAUTH_STALE} Use your password instead.`
     if (hasPassword === false) return `${REAUTH_STALE} ${SET_A_PASSWORD}`
     return `${REAUTH_STALE} Use your password instead, if you have one. ${SET_A_PASSWORD}`

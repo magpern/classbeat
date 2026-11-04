@@ -310,8 +310,11 @@ is no Starlette session middleware.
       flow and this browser, which is that same browser. With a stolen classbeat cookie in
       another browser, an attacker cannot complete the Google flow as the victim anyway, so
       the extra checks add nothing there either.
-    - The evidence shows Google already ignoring `max_age=0`, a parameter of the same kind
-      ("authenticate again now"). Relying on `prompt=login` would be relying on the same
+    - The evidence suggests Google already ignores `max_age=0`, a parameter of the same kind
+      ("authenticate again now"): the old `why` did not say whether `auth_time` was missing or
+      old, which the live check below separates. Google's discovery document lists no `auth_time`
+      in `claims_supported` and does not advertise `claims_parameter_supported`, so the `claims`
+      request may be ignored too. Relying on `prompt=login` would be relying on the same
       unverifiable behaviour.
 
     **Rule (unchanged in substance, now explicit):** an OIDC re-authentication (Google and
@@ -325,8 +328,16 @@ is no Starlette session middleware.
     `auth_time_future` and the provider, and the page says the provider did not confirm a sign-in
     of the last 5 minutes and nothing was changed, then "Use your password instead" (or, without
     a password, how to set one by a reset). The re-authentication prompt says up front that Google
-    and Microsoft confirm only a sign-in of the last 5 minutes. A re-authentication by email
-    code or link (option (c)) is not built; it would need its own decision.
+    and Microsoft confirm only a sign-in of the last 5 minutes.
+
+    **Consequence for Google-only accounts:** if Google never sends a fresh `auth_time`, an
+    account without a password cannot pass any guarded action (§6) through Google. Its only way
+    forward is a password reset (the reset request works for any enabled user, with or without a
+    password), then re-authentication with that password. The reset signs the user out
+    everywhere, forgets their known devices, and lets them remove linked sign-in methods in the
+    same step (§5, "Reset"). That is accepted for the beta: the way out works and the page
+    describes it. Re-authentication by an email code or link (option (c) of #522) is a possible
+    follow-up; it is not built and needs its own decision.
 
     **Logging:** every callback that does not end `ok` writes one `WARNING` line
     `oauth callback refused: provider=… purpose=… outcome=… why=…` (`classbeat.auth.oauth_routes`),
