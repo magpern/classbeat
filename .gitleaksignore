@@ -6,3 +6,7 @@
 # test canary ("AKIA" + 12 digits, shorter than a real AWS access key id) that the tests assert is never stored. It
 # is not a secret. The weekly full-history scan flags it; the fingerprint is commit-bound (the commit that added it).
 814ba7d94a16255147f38d56a2e97c4a976bbca9:backend/tests/cataloguefake.py:generic-api-key:33
+# False positive (reviewed): docs/runbooks/swedebeat-match.md line 28 on the old unmerged branch 387-swedebeat-match-done-when
+# mentions an environment setting (the on/off switch of the Swedebeat feature) right after the words "the app key"; the
+# flagged 22-character text is that setting's name and value, not a key. The weekly scan reads every remote branch.
+49751394e3cb77075d1af9902694737a263b3044:docs/runbooks/swedebeat-match.md:generic-api-key:28
