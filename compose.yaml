@@ -106,6 +106,10 @@ services:
       CLASSBEAT_SWEDEBEAT_ENABLED: ${SWEDEBEAT_ENABLED:-false}
       # ADR 0018: running classes are off unless the owner switches them on here.
       CLASSBEAT_RUNNING_ENABLED: ${RUNNING_ENABLED:-false}
+      # ADR 0007 (soundless classes): the kill switch only, off by default. Even on, a plain dev
+      # stack cannot switch soundless on: web gets no CLASSBEAT_MODEL_PROVIDER here, so its `fake`
+      # never counts as covering soundless, and no recorded route covers it before SL5.
+      CLASSBEAT_SOUNDLESS_ENABLED: ${SOUNDLESS_ENABLED:-false}
       # OAuth sign-in (ADR 0003 section 5), web only, as in compose.prod.yaml: a provider is on only
       # when its client id here and its secret file secrets/oauth_<provider>_client_secret both hold
       # a value (init creates the files empty, so every provider is off until set).
@@ -153,6 +157,8 @@ services:
       CLASSBEAT_SWEDEBEAT_ENABLED: ${SWEDEBEAT_ENABLED:-false}
       # ADR 0018: a queued running design or revise checks the switch again; the same as web's.
       CLASSBEAT_RUNNING_ENABLED: ${RUNNING_ENABLED:-false}
+      # ADR 0007 (soundless classes): a queued soundless design checks the switch again.
+      CLASSBEAT_SOUNDLESS_ENABLED: ${SOUNDLESS_ENABLED:-false}
     # The model API keys are the worker's only: web, migrate and maint never mount them
     # (ADR 0006 section 9, ADR 0012 section 2).
     secrets:
