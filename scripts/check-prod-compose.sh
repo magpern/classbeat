@@ -58,8 +58,8 @@ else
   root="$here"; layout=install
 fi
 [[ "$mode" != auto ]] || { [[ "$layout" == install ]] && mode=install || mode=repo; }
-[[ -f "$root/compose.prod.yaml" && -f "$root/compose.prod.loopback.yaml" ]] \
-  || { echo "check-prod-compose: compose.prod.yaml and compose.prod.loopback.yaml must be next to this script" >&2; exit 1; }
+[[ -f "$root/compose.prod.yaml" && -f "$root/compose.prod.loopback.yaml" && -f "$root/compose.prod.lan.yaml" ]] \
+  || { echo "check-prod-compose: compose.prod.yaml, compose.prod.loopback.yaml and compose.prod.lan.yaml must be next to this script" >&2; exit 1; }
 cd "$root"
 # Git Bash on Windows: the native docker needs a Windows path (pwd -W); elsewhere it is plain pwd.
 native="$(pwd -W 2>/dev/null || pwd)"
@@ -74,7 +74,7 @@ owner_proxy_ip="${PROXY_IP-}"
 env_file="${PROD_CHECK_ENV_FILE:-$root/.env}"
 # Every variable the dummies below replace, as the owner had it: --probe runs compose with these.
 dummy_names=(CLASSBEAT_VERSION CLASSBEAT_DOMAIN PROXY_IP SMTP_HOST SMTP_SENDER SMTP_CA_FILE COMPOSE_PROJECT_NAME
-  COMPOSE_FILE PROXY_NETWORK WEB_HOST_PORT OAUTH_GOOGLE_CLIENT_ID OAUTH_GITHUB_CLIENT_ID OAUTH_MICROSOFT_CLIENT_ID
+  COMPOSE_FILE PROXY_NETWORK WEB_HOST_PORT WEB_LAN_ADDRESS OAUTH_GOOGLE_CLIENT_ID OAUTH_GITHUB_CLIENT_ID OAUTH_MICROSOFT_CLIENT_ID
   OAUTH_VISIBLE_PROVIDERS)
 declare -A real_set=() real_val=()
 for n in "${dummy_names[@]}"; do
@@ -89,12 +89,12 @@ restore_real_env() {
 if [[ "$mode" == install ]]; then
   # The real settings render with the real .env before the dummies below replace anything.
   [[ -f "$env_file" ]] || { echo "check-prod-compose: no $env_file: cp prod.env.example .env and fill it in (runbook section 5)" >&2; exit 1; }
-  docker compose config -q 2>"$tmp/real-config.log" \
+  real_json="$(docker compose config --format json 2>"$tmp/real-config.log")" \
     || { cat "$tmp/real-config.log" >&2; echo "check-prod-compose: docker compose config fails with your .env (above): set the variables it names" >&2; exit 1; }
 fi
 
 # Copies next to dummy secret files, so the checkout's own secrets/ is never read.
-cp compose.prod.yaml compose.prod.loopback.yaml "$tmp/"
+cp compose.prod.yaml compose.prod.loopback.yaml compose.prod.lan.yaml "$tmp/"
 mkdir "$tmp/secrets"
 oauth_providers=(google github microsoft)
 for n in postgres_password database_owner_password database_password database_maint_password \
@@ -114,6 +114,8 @@ export SMTP_HOST=smtp.example.test SMTP_SENDER=noreply@example.test
 export SMTP_CA_FILE=/run/smtp-ca/bridge.pem
 export COMPOSE_PROJECT_NAME=classbeat-prod-check
 unset COMPOSE_FILE PROXY_NETWORK WEB_HOST_PORT
+lan_ip=192.168.1.20   # the dummy WEB_LAN_ADDRESS (a private address, not swag's)
+export WEB_LAN_ADDRESS="$lan_ip"
 dir="$native/${tmp##*/}"
 # Every render enables all profiles: a service behind `profiles:` would otherwise be left out of the
 # rendered file and so of every check below (#512 review B5).
@@ -127,10 +129,11 @@ export OAUTH_GOOGLE_CLIENT_ID=check-google-client-id OAUTH_GITHUB_CLIENT_ID=chec
 export OAUTH_MICROSOFT_CLIENT_ID=check-microsoft-client-id OAUTH_VISIBLE_PROVIDERS=google,github
 shared="$(render -f "$dir/compose.prod.yaml")"
 loopback="$(render -f "$dir/compose.prod.yaml" -f "$dir/compose.prod.loopback.yaml")"
+lan="$(render -f "$dir/compose.prod.yaml" -f "$dir/compose.prod.lan.yaml")"
 
 J=""
 fail() { echo "check-prod-compose: $*" >&2; return 1; }
-q() { jq -e "$1" <<<"$J" >/dev/null; }
+q() { jq -e "$@" <<<"$J" >/dev/null; }
 
 # One private IPv4 address (10/8, 172.16/12, 192.168/16), surrounding blanks aside as the app strips
 # them: never a range, a list, a name, an IPv6 or a public address (#495).
@@ -315,7 +318,7 @@ check_oauth_defaults() {
 # The compose files as written: no variable named like a client secret, no client secret literal.
 check_oauth_files() {
   local d="$1" f
-  for f in compose.prod.yaml compose.prod.loopback.yaml; do
+  for f in compose.prod.yaml compose.prod.loopback.yaml compose.prod.lan.yaml; do
     if grep -E -i 'client_secret' "$d/$f" | grep -Evq '^[[:space:]]*(#.*|- oauth_(google|github|microsoft)_client_secret|oauth_(google|github|microsoft)_client_secret:|file: \./secrets/oauth_(google|github|microsoft)_client_secret)[[:space:]]*$'; then
       fail "$f: client_secret only as the three secret names and their secrets/ files"; return 1
     fi
@@ -346,8 +349,24 @@ check_loopback() {
     || fail "the trusted proxy is the web-out gateway (Docker's port relay)" || return 1
 }
 
+# With compose.prod.lan.yaml: swag on another host reaches web on this server's LAN address (#567).
+# Exactly one published port, on the one private address, not loopback, not a wildcard, not IPv6
+# (an empty or missing host_ip is a wildcard), web off the proxy network, swag (PROXY_IP) the one
+# trusted peer and not this server.
+# shellcheck disable=SC2016  # jq variables, not shell ones
+check_lan() {
+  check_common || return 1
+  q --arg ip "$lan_ip" '.services.web.ports | length == 1 and all(.host_ip == $ip and .target == 8000
+      and (.published | tostring) == "8080" and (.protocol // "tcp") == "tcp")' \
+    || fail "web is published once, on WEB_LAN_ADDRESS only (never 0.0.0.0, IPv6 or loopback)" || return 1
+  q '.services.web.networks | has("proxy") | not' || fail "web leaves the proxy network" || return 1
+  jq -e --arg ip "$swag_ip" --arg lan "$lan_ip" '.services.web.environment.CLASSBEAT_TRUSTED_PROXIES == $ip and $ip != $lan' <<<"$J" >/dev/null \
+    || fail "the trusted proxy is PROXY_IP (swag's LAN address), and not this server" || return 1
+}
+
 J="$shared"; check_shared || exit 1
 J="$loopback"; check_loopback || exit 1
+J="$lan"; check_lan || exit 1
 J="$defaults"; check_oauth_defaults || exit 1
 
 if [[ $mode == repo ]]; then   # the self-tests and the checkout-only checks (ADR 0020)
@@ -486,8 +505,8 @@ done
 expect_refused loopback "$loopback" '.services.worker.volumes = [{"type":"bind","source":(.secrets.app_secret_key.file | rtrimstr("/app_secret_key")),"target":"/s"}]'
 # #512 review 3 (B3 to B5) and the numeric root rule, on both variants. The full set of channels is
 # follow-up #517 (default-deny key allow-list).
-for v in shared loopback; do
-  if [[ "$v" == shared ]]; then base="$shared"; else base="$loopback"; fi
+for v in shared loopback lan; do
+  case "$v" in shared) base="$shared" ;; loopback) base="$loopback" ;; *) base="$lan" ;; esac
   for m in \
     '.configs = {"c":{"name":"x","file":"/proc"}} | .services.worker.configs = [{"source":"c","target":"/hostproc"}]' \
     '.configs = {"c":{"name":"x","file":"/"}} | .services.worker.configs = [{"source":"c","target":"/host"}]' \
@@ -564,7 +583,27 @@ for m in \
   expect_refused loopback "$loopback" "$m"
 done
 
+# The LAN overlay (#567): one port on the one private address, web off the proxy network.
+for m in \
+  '.services.web.ports[0].host_ip = "0.0.0.0"' \
+  '.services.web.ports[0].host_ip = "::"' \
+  '.services.web.ports[0].host_ip = "127.0.0.1"' \
+  '.services.web.ports[0].host_ip = "192.168.1.21"' \
+  'del(.services.web.ports[0].host_ip)' \
+  '.services.web.ports[0].target = 5432' \
+  '.services.web.ports[0].published = "80"' \
+  '.services.web.ports[0].protocol = "udp"' \
+  '.services.web.ports += [{"host_ip":"192.168.1.20","target":8000,"published":"8081"}]' \
+  '.services.web.networks.proxy = {"aliases":["classbeat-web"]}' \
+  '.services.web.environment.CLASSBEAT_TRUSTED_PROXIES = "172.29.80.1"' \
+  '.services.web.environment.CLASSBEAT_TRUSTED_PROXIES = "192.168.1.20"' \
+  '.services.web.environment.CLASSBEAT_TRUSTED_PROXIES = "192.168.1.0/24"' \
+  '.services.worker.ports = [{"host_ip":"192.168.1.20","target":8000,"published":"8082"}]' \
+  '.services.db.ports = [{"host_ip":"192.168.1.20","target":5432,"published":"5432"}]'; do
+  expect_refused lan "$lan" "$m"
+done
 fi
+
 # --- The owner's real PROXY_IP (#495) -------------------------------------------------------------
 # Native path for docker on Git Bash (pwd -W): the file is under the checkout or $tmp.
 native_path() { local p="$1"; [[ "$p" == "$root"/* ]] && p="$native/${p#"$root"/}"; printf '%s' "$p"; }
@@ -593,6 +632,26 @@ case "$rc" in
   2) owner_note="no real PROXY_IP set here (only dummies checked)" ;;
   *) exit 1 ;;
 esac
+
+# Where the real stack publishes web (install mode): only web publishes a port, and only on loopback
+# (the host's own proxy) or on one private LAN address (compose.prod.lan.yaml, swag on another host),
+# never on every interface; swag is not this server (#567).
+check_real_ports() {   # check_real_ports RENDERED_JSON
+  local j="$1" host trusted
+  jq -e '[.services | to_entries[] | select(.key != "web") | select(.value.ports // [] | length > 0)] | length == 0' <<<"$j" >/dev/null \
+    || fail "only web may publish a port" || return 1
+  trusted="$(jq -r '.services.web.environment.CLASSBEAT_TRUSTED_PROXIES // ""' <<<"$j")"
+  while IFS= read -r host; do
+    [[ "$host" == 127.0.0.1 ]] || proxy_ip_ok "$host" \
+      || fail "web is published on '${host:-every interface}': only 127.0.0.1 or one private LAN address (WEB_LAN_ADDRESS), never 0.0.0.0, a name or IPv6" \
+      || return 1
+    [[ "$host" != "$trusted" ]] \
+      || fail "PROXY_IP ($trusted) is this server's own published address: it must be swag's address on the other host" || return 1
+  done < <(jq -r '.services.web.ports // [] | .[] | .host_ip // ""' <<<"$j")
+}
+if [[ "$mode" == install ]]; then
+  check_real_ports "$real_json" || exit 1
+fi
 
 # --- No OAuth client secret in an env file (#507) --------------------------------------------------
 # A client secret goes in secrets/oauth_<provider>_client_secret, never in .env (compose would not

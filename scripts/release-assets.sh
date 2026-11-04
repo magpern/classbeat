@@ -17,6 +17,7 @@ root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 assets=(
   "compose.prod.yaml compose.prod.yaml"
   "compose.prod.loopback.yaml compose.prod.loopback.yaml"
+  "compose.prod.lan.yaml compose.prod.lan.yaml"
   "scripts/check-prod-compose.sh check-prod-compose.sh"
   "docs/runbooks/swag-classbeat.subdomain.conf swag-classbeat.subdomain.conf"
   "docs/runbooks/prod.env.example prod.env.example"
