@@ -6,7 +6,8 @@ credit (a class is one credit however often it is revised) and writes nothing ou
 
 **Create time** (``admit``, in the create transaction under the owner lock, the class row locked):
 ``invalid_input`` unless the base is a ``draft`` of the class; ``stale_base`` unless it is the
-class's current revision; ``revision_limit`` (``classbeat.design.limits``), then the month's
+class's current revision; ``not_changeable`` for a class without a music source (a duplicate of
+a class on picked songs, #536); ``revision_limit`` (``classbeat.design.limits``), then the month's
 model cost cap (``classbeat.quota.check_cost``: 409 ``quota`` ``cost``), then ``chat_full``, then
 for a class designed on a Swedebeat mix ``feature_off`` and ``analysis_limit``
 (``mixadmit.admit_class_mix``, ADR 0016 sections 2 and 7).
@@ -109,6 +110,16 @@ class ReviseDraftInput(ModelJobInput):
         return self
 
 
+_MUSIC_SOURCE = text(
+    "SELECT music_source IS NOT NULL FROM classes WHERE owner_id = :owner_id AND id = :class_id"
+)
+
+
+async def _has_music_source(db: AsyncSession, owner_id: UUID, class_id: UUID) -> bool:
+    found = await db.execute(_MUSIC_SOURCE, {"owner_id": owner_id, "class_id": class_id})
+    return bool(found.scalar_one_or_none())
+
+
 async def admit(db: AsyncSession, ctx: UserContext, parsed: BaseModel) -> Admitted | Refused:
     if not isinstance(parsed, ReviseDraftInput) or parsed.class_id is None:
         raise ValueError("admit gets this kind's input")
@@ -118,6 +129,11 @@ async def admit(db: AsyncSession, ctx: UserContext, parsed: BaseModel) -> Admitt
         return Refused("invalid_input")  # a foreign or unknown id answers like any other
     if state.current != given.base_revision_id:
         return Refused("stale_base")
+    # ADR 0007 amendment of 2026-11-03 (#536, D item 5): a duplicate of a class on picked songs has
+    # a brief but no music source of its own. Refused before anything is written (no message, no
+    # job); the worker's ``invalid_input`` for a missing source stays as the second line.
+    if not await _has_music_source(db, ctx.user_id, class_id):
+        return Refused("not_changeable")
     running = await sport.admit_class(db, ctx, class_id)  # ADR 0018 (#509): the running gate
     if running is not None:
         return running

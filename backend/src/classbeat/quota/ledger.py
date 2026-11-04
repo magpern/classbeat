@@ -52,6 +52,17 @@ _RESERVE = text(
     "INSERT INTO credit_ledger (owner_id, job_id, period, plan_id, state) "
     "VALUES (:o, :j, :p, :plan, 'reserved')"
 )
+# A duplicated class (ADR 0011 amendment of 2026-11-03): no job, so the row is taken and
+# committed at once, in the duplicate's transaction; both steps are what the policies and
+# ``credit_ledger_guard`` allow the app role (reserved, then reserved -> committed at now()).
+_TAKE = text(
+    "INSERT INTO credit_ledger (owner_id, job_id, period, plan_id, state) "
+    "VALUES (:o, NULL, :p, :plan, 'reserved') RETURNING id"
+)
+_COMMIT_TAKEN = text(
+    "UPDATE credit_ledger SET state = 'committed', reason = NULL, settled_at = now() "
+    "WHERE owner_id = :o AND id = :id AND job_id IS NULL AND state = 'reserved'"
+)
 _STATE = text("SELECT state FROM credit_ledger WHERE owner_id = :o AND job_id = :j")
 _COMMIT = text(
     "UPDATE credit_ledger SET state = 'committed', reason = NULL, settled_at = now() "
@@ -107,6 +118,32 @@ class MeteredLedger:
                 "cost", limit=limits.monthly_cost_micros, used=used, period_end=end, plan=plan.id
             )
         await db.execute(_RESERVE, {**params, "j": job_id, "plan": plan.id})
+
+    async def take_class(self, db: AsyncSession, ctx: UserContext) -> None:
+        """One class of the month for a class made without a job (a duplicate, ADR 0011
+        amendment of 2026-11-03): the period row locked and held counted as ``reserve`` does,
+        ``QuotaRefused`` ``classes`` at the limit; otherwise a row with no job, committed in the
+        caller's transaction. No model runs, so the cost cap is not checked here."""
+        ctx = require_context(ctx)
+        first = await period(db)
+        params = {"o": ctx.user_id, "p": first}
+        await db.execute(_PERIOD_ROW, params)
+        await db.execute(_LOCK, params)
+        held = int((await db.execute(_HELD, params)).scalar_one())
+        plan = await effective_plan(db, ctx)
+        limits = effective(plan, self._bounds())
+        if held >= limits.classes_per_month:
+            raise QuotaRefused(
+                "classes",
+                limit=limits.classes_per_month,
+                used=held,
+                period_end=next_month(first),
+                plan=plan.id,
+            )
+        row_id = (await db.execute(_TAKE, {**params, "plan": plan.id})).scalar_one()
+        done = await db.execute(_COMMIT_TAKEN, {"o": ctx.user_id, "id": row_id})
+        if done.rowcount != 1:  # pyright: ignore[reportAttributeAccessIssue]
+            raise RuntimeError("credit_ledger: the taken class was not committed")
 
     async def allows(self, db: AsyncSession, ctx: UserContext, job_id: UUID) -> bool:
         ctx = require_context(ctx)

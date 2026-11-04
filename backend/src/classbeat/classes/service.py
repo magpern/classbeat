@@ -56,6 +56,8 @@ SELECT c.id, c.title, c.created_at, c.updated_at, c.current_revision_id,
                 AND j.kind IN ('design_draft', 'design_with_songs')
             ORDER BY j.created_at DESC LIMIT 1)) ->> 'sport' = 'running'
         THEN 'running' ELSE 'cycling' END AS sport,
+    -- ADR 0007 amendment item 10 (#530): only a stored source 'none' is soundless.
+    coalesce(c.music_source ->> 'source' = 'none', false) AS soundless,
     CASE WHEN jsonb_typeof(cur.provenance -> 'tss_approximate') = 'boolean'
         THEN (cur.provenance ->> 'tss_approximate')::boolean
         ELSE EXISTS (SELECT 1 FROM jsonb_array_elements(coalesce(pf.profile, '[]'::jsonb)) z
