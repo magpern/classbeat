@@ -1,10 +1,10 @@
 # syntax=docker/dockerfile:1
 # One image for the web server and the worker. Base images are pinned by exact tag.
 
-FROM ghcr.io/astral-sh/uv:0.13.6 AS uv
+FROM ghcr.io/astral-sh/uv:0.13.7 AS uv
 
 # --- frontend build ---------------------------------------------------------------------
-FROM node:24.22.1-bookworm-slim AS frontend
+FROM node:24.22.2-bookworm-slim AS frontend
 WORKDIR /build/frontend
 COPY frontend/package.json frontend/package-lock.json ./
 RUN npm ci
