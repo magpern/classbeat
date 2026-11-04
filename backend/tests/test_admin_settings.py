@@ -378,9 +378,10 @@ async def test_soundless_is_stored_on_only_when_every_plan_covers_soundless(
     env: Env, make_actor: Any, superuser: Connection, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """ADR 0007 amendment of 2026-11-03, item 2 (#527): ``on`` needs, for every plan's route key,
-    a ``design`` route that covers soundless (``SOUNDLESS_SUITE_VERSION``, ``None`` in SL1, so
-    nothing does); ``off`` never does. The shown effective value is the three conditions, read
-    again on every request: a route cleared later or the admin's DELETE turns it off."""
+    a ``design`` route that covers soundless (``SOUNDLESS_SUITE_VERSION``, 11 since SL5; a result
+    below it, or the SL1 ``None``, covers nothing); ``off`` never does. The shown effective value
+    is the three conditions, read again on every request: a route cleared later or the admin's
+    DELETE turns it off."""
     from classbeat.models import routes as routes_module
     from classbeat.models.versions import running_suite_version
 
@@ -393,7 +394,8 @@ async def test_soundless_is_stored_on_only_when_every_plan_covers_soundless(
 
     for setup in ("none", "sl1", "below", "skip"):
         if setup == "sl1":
-            route_every_plan(superuser)  # SOUNDLESS_SUITE_VERSION is None: covers nothing
+            monkeypatch.setattr(routes_module, "SOUNDLESS_SUITE_VERSION", None)  # as in SL1
+            route_every_plan(superuser)  # covers nothing
         elif setup == "below":
             monkeypatch.setattr(
                 routes_module, "SOUNDLESS_SUITE_VERSION", running_suite_version() + 1

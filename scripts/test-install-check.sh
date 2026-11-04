@@ -74,6 +74,13 @@ sed -i 's|^    user: postgres$|&\n    ports: ["5432:5432"]|' "$install/compose.p
 expect "a local edit publishing db's port is caught" 1 'only web may publish a port|db must not publish ports'
 
 cp "$work/compose.prod.yaml.good" "$install/compose.prod.yaml"
+# Default deny (#517): a key or a file reference the allow-list does not name is caught in the folder.
+sed -i 's|^    user: postgres$|&\n    privileged: true|' "$install/compose.prod.yaml"
+expect "a local edit adding privileged is caught" 1 'not on the allow-list.*services\.db\.privileged'
+cp "$work/compose.prod.yaml.good" "$install/compose.prod.yaml"
+sed -i 's|^    user: postgres$|&\n    env_file: ./secrets/app_secret_key|' "$install/compose.prod.yaml"
+expect "a local edit adding env_file is caught" 1 'no env_file, label_file, profiles'
+cp "$work/compose.prod.yaml.good" "$install/compose.prod.yaml"
 sed -i 's/^PROXY_IP=.*/PROXY_IP=8.8.8.8/' "$install/.env"
 expect "a public PROXY_IP" 1 'PROXY_IP must be one private'
 sed -i 's/^PROXY_IP=.*/PROXY_IP=172.29.90.10/' "$install/.env"
@@ -118,6 +125,8 @@ if (( can_gid )); then
   expect "folder group says sudo" 1 'One-time, needs sudo: sudo chgrp 10010 '
   mksecrets; as_root chmod g-s "$install/secrets"
   expect "folder without setgid" 1 'no setgid bit.*sudo chmod 2700'
+  mksecrets; chmod 2750 "$install/secrets"
+  expect "folder open to the group" 1 'gives the group or others access'
   mksecrets; rm "$install/secrets/openai_api_key"
   expect "missing file" 1 'openai_api_key is missing'
   mksecrets

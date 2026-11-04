@@ -139,6 +139,10 @@ CLASSIFIED: dict[tuple[str, str], str] = {
     ("DELETE", "/api/classes/{class_id}"): "owned",
     ("PUT", "/api/classes/{class_id}/dismissed-rules/{rule_id}"): "owned",
     ("DELETE", "/api/classes/{class_id}/dismissed-rules/{rule_id}"): "owned",
+    ("PUT", "/api/classes/{class_id}/beat-one/{song}"): "owned",
+    ("DELETE", "/api/classes/{class_id}/beat-one/{song}"): "owned",
+    ("DELETE", "/api/classes/{class_id}/beat-one/rows/{row_id}"): "owned",
+    ("DELETE", "/api/classes/{class_id}/beat-one"): "owned",
     ("GET", "/api/admin/whoami"): "admin",
     ("GET", "/api/admin/users"): "admin",
     ("GET", "/api/admin/users/{user_id}"): "admin",
@@ -512,6 +516,7 @@ OWNED_PATH_PARAMS = (
     "class_id",
     "revision_id",
     "rule_id",
+    "row_id",
 )
 
 
@@ -529,6 +534,7 @@ class Rows:
     operation_id: uuid.UUID
     session_id: uuid.UUID
     identity_id: uuid.UUID
+    row_id: uuid.UUID  # a beat-one correction of the class (ADR 0007 amendment)
 
     @property
     def digest(self) -> str:
@@ -537,12 +543,14 @@ class Rows:
     def params(self) -> dict[str, uuid.UUID | str]:
         return {
             "rule_id": RULE_ID,
+            "song": "1",
             "class_id": self.class_id,
             "job_id": self.job_id,
             "revision_id": self.revision_id,
             "operation_id": self.operation_id,
             "session_id": self.session_id,
             "identity_id": self.identity_id,
+            "row_id": self.row_id,
         }
 
 
@@ -580,8 +588,17 @@ async def plant(env: Env, conn: Connection, user: uuid.UUID) -> Rows:
         ),
         {"u": user, "s": uuid.uuid4().hex},
     ).scalar_one()
+    row_id = conn.execute(
+        text(
+            "INSERT INTO beat_one_corrections (owner_id, class_id, fingerprint, song, beats, bpm) "
+            "VALUES (:o, :c, :f, 1, 1, 120) RETURNING id"
+        ),
+        {"o": user, "c": class_id, "f": "ab" * 32},
+    ).scalar_one()
     other_session = (await env.login(user)).id
-    return Rows(user, class_id, job_id, revision_id, operation_id, other_session, identity_id)
+    return Rows(
+        user, class_id, job_id, revision_id, operation_id, other_session, identity_id, row_id
+    )
 
 
 def _now(conn: Connection) -> Any:
@@ -602,6 +619,10 @@ class OwnedRoute:
     @property
     def key(self) -> tuple[str, str]:
         return (self.method, self.template)
+
+
+def _beat_one(rows: Rows) -> dict[str, Any]:
+    return {"beats": 1, "revision_id": str(rows.revision_id)}
 
 
 def _pick(rows: Rows) -> dict[str, str]:
@@ -669,6 +690,16 @@ OWNED_ROUTES = [
     OwnedRoute("DELETE", "/api/classes/{class_id}", control=frozenset({200, 409})),
     OwnedRoute("PUT", "/api/classes/{class_id}/dismissed-rules/{rule_id}"),
     OwnedRoute("DELETE", "/api/classes/{class_id}/dismissed-rules/{rule_id}"),
+    # ADR 0007 amendment "beat-one corrections": the planted draft has no beat data, so the
+    # owner's call is 409 ``no_beat_data``; a foreign class or revision is 404 like an unknown one.
+    OwnedRoute("PUT", "/api/classes/{class_id}/beat-one/{song}", _beat_one, frozenset({409})),
+    OwnedRoute(
+        "DELETE",
+        "/api/classes/{class_id}/beat-one/{song}?revision_id={revision_id}",
+        control=frozenset({409}),
+    ),
+    OwnedRoute("DELETE", "/api/classes/{class_id}/beat-one/rows/{row_id}"),
+    OwnedRoute("DELETE", "/api/classes/{class_id}/beat-one"),
     OwnedRoute("DELETE", "/api/auth/sessions/{session_id}", control=frozenset({204})),
     OwnedRoute("DELETE", "/api/auth/identities/{identity_id}", control=frozenset({204, 409})),
 ]
@@ -712,6 +743,7 @@ def owned_state(conn: Connection, rows: Rows) -> dict[str, Any]:
         "sessions": one("SELECT count(*) FROM sessions WHERE user_id = :u"),
         "identities": one("SELECT id FROM identities WHERE user_id = :u"),
         "events": one("SELECT count(*) FROM job_events WHERE job_id = :j"),
+        "beat_one": one("SELECT id, beats FROM beat_one_corrections WHERE owner_id = :u"),
     }
 
 
@@ -735,7 +767,7 @@ async def test_owned_routes_answer_404_for_another_users_ids(
     bob_rows = await plant(env, superuser, (await browsers(mowl=False)).user_id)
     alice: Actor = await make_actor(alice_rows.user)
     bob: Actor = await make_actor(bob_rows.user)
-    unknown = {n: uuid.UUID(UNKNOWN) for n in OWNED_PATH_PARAMS}
+    unknown = {n: uuid.UUID(UNKNOWN) for n in OWNED_PATH_PARAMS} | {"song": "1"}
     body = route.body(alice_rows) if route.body else None
     # What an id that exists nowhere gets is the reference answer.
     reference = await bob.call(route.method, fill(route.template, **unknown), body, route.headers)

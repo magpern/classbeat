@@ -58,6 +58,7 @@ RELEASED: dict[int, str] = {
     8: "8430bb29da3865e02d5b9167c8b3c772b2fde1bced2398a414169a46ceadfc23",
     9: "620404228abea85076b2281d15018a362cdac33031b93df262d45155b610465d",
     10: "81694e693cb39a93c943f5354b17bab339b954292998fa0ce844bb759d76f07b",
+    11: "efae43a32917755baac3d7d4de949129f40d6618355b734a79b247d37d196e56",
 }
 
 SUITE = load_suite()
@@ -169,10 +170,11 @@ def test_the_suite_holds_every_smoke_and_song_case_once_in_its_group() -> None:
     index = MANIFEST.case_index()
     assert set(SUITE.design_cases) == {c.name for c in load_cases()} | DESIGN_OWN
     assert set(SUITE.song_cases) == {c.name for c in load_pick_cases()} | SONG_OWN
-    # #206, #208, #209, #399 and #465 (two running class_patterns cases)
+    # #206, #208, #209, #399 and #465 (two running class_patterns cases); the smoke set holds the
+    # soundless cases of #531 (four of its 30 cases)
     assert (len(DESIGN_OWN), len(SONG_OWN)) == (29 + 12 + 10 + 2, 8 + 7)
-    assert (len(SUITE.design_cases), len(SUITE.song_cases)) == (26 + 53, 3 + 15)
-    assert len(index) == 26 + 53 + 3 + 15
+    assert (len(SUITE.design_cases), len(SUITE.song_cases)) == (30 + 53, 3 + 15)
+    assert len(index) == 30 + 53 + 3 + 15
     assert all(index[n][1] == "design" for n in SUITE.design_cases)
     assert all(index[n][1] == "songs" for n in SUITE.song_cases)
     assert set(MANIFEST.categories) == set(suite.CATEGORY_GROUPS)
@@ -180,12 +182,20 @@ def test_the_suite_holds_every_smoke_and_song_case_once_in_its_group() -> None:
         "adversarial_brief", "adversarial_music", "revise_adversarial_music", "injected_title",
         "adv_brief_requests", "adv_malformed_hits", "adv_malformed_music", "adv_oversized_hits",
         "adv_oversized_music", "adv_pool_requests", "adv_tool_requests", "revise_adv_requests",
-        "run_adversarial",
+        "run_adversarial", "soundless_adversarial",
     }  # fmt: skip
     assert {n for n, (cat, _) in index.items() if cat == "running"} == {
         "run_interval_30", "run_interval_45", "run_steady_40", "run_incline_35",
         "run_bike_words_30", "run_revise_easier",
     }  # fmt: skip
+    assert {n for n, (cat, _) in index.items() if cat == "soundless"} == {
+        "soundless_45", "soundless_30_sprints", "soundless_revise_sprints",
+    }  # fmt: skip
+    soundless = {n for n, c in SUITE.design_cases.items() if c.soundless}
+    assert soundless == {n for n, (cat, _) in index.items() if cat == "soundless"} | {
+        "soundless_adversarial"
+    }
+    assert all(index[n][1] == "design" for n in soundless)  # the design stage group only
     running = {n for n, c in SUITE.design_cases.items() if c.brief.sport == "running"}
     assert running == {n for n, (cat, _) in index.items() if cat == "running"} | {
         "run_adversarial", "cp_run_hard_start_30", "cp_run_capped_45",

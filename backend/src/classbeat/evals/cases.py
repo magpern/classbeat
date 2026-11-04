@@ -138,9 +138,29 @@ class Case(BaseModel):
     name: str = Field(pattern=r"^[a-z0-9_]{1,40}$")
     about: str = Field(min_length=1, max_length=200)
     brief: Brief
-    music: MusicSpec
+    # A soundless case (ADR 0007 amendment of 2026-11-03, issue #531) is a cycling class with no
+    # music: the runner gives it the soundless stages and no music at all. It may not name
+    # ``music``; the default fills the field only so its type stays one for every case (nothing
+    # builds or reads it for a soundless case), and every other case must name its music.
+    soundless: bool = False
+    music: MusicSpec = Field(default_factory=lambda: MusicSpec(tracks=1))
     expect: Expect = Field(default_factory=Expect)
     revise: ReviseSpec | None = None  # a revise case; none: a design case
+
+    @model_validator(mode="after")
+    def _soundless_is_cycling_and_unjudged_on_music(self) -> "Case":
+        if ("music" in self.model_fields_set) == self.soundless:
+            raise ValueError("a soundless case names no music, any other case names its music")
+        if not self.soundless:
+            return self
+        e = self.expect
+        if self.brief.sport != "cycling":
+            raise ValueError("a soundless case is a cycling class")
+        if e.duration != "asked" or e.music_sync is not None or e.patterns is not None:
+            raise ValueError("a soundless case is judged on the asked length, with no music checks")
+        if self.revise is not None and isinstance(self.revise.base, RunningDraft):
+            raise ValueError("a soundless case's base draft is a cycling draft")
+        return self
 
     @model_validator(mode="after")
     def _revision_needs_a_base(self) -> "Case":

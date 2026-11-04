@@ -287,7 +287,7 @@ def test_the_digest_sources_include_every_rule_source() -> None:
         "agent/guidance.py", "agent/model_input.py", "design/guidance.py", "design/selection.py",
         "design/rules/__init__.py", "design/rules/engine.py", "design/rules/enums.py",
         "design/rules/profile.py", "design/rules/rationales.py", "design/profiles/index.json",
-        "design/sport_rules.py", "agent/running_input.py",
+        "design/sport_rules.py", "agent/running_input.py", "agent/soundless_input.py",
     }  # fmt: skip
 
 

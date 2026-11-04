@@ -270,8 +270,9 @@ async def test_a_route_is_set_at_the_newest_pass_without_any_key_file(
     assert await unusable(factory, web) == "no_key"
     choice = await resolve(factory, worker(app_database_url, kek_dir, "anthropic"))
     assert choice == ModelChoice(
-        "anthropic", OPUS, "medium", "default", newest, (), running_covered=True
-    )
+        "anthropic", OPUS, "medium", "default", newest, (), running_covered=True,
+        soundless_covered=True,  # a result on suite version 11 (SL5, #531)
+    )  # fmt: skip
 
 
 async def _routes(factory: Factory) -> Any:
@@ -886,20 +887,26 @@ async def test_a_soundless_job_needs_a_covering_route_and_a_soundless_suite_vers
 ) -> None:
     """ADR 0007 amendment of 2026-11-03, item 6 (#527): ``covers(db, key, "soundless")`` (the web)
     and ``ModelChoice.soundless_covered`` (the worker) agree: running's rule **and** the result's
-    ``suite_version`` at least ``SOUNDLESS_SUITE_VERSION``, which is ``None`` in SL1."""
+    ``suite_version`` at least ``SOUNDLESS_SUITE_VERSION``, which SL5 (#531) set to 11 (``None``
+    in SL1: nothing covered)."""
     s = worker(app_database_url, kek_dir, "anthropic")
 
     async def covers(variant: Any = "soundless", key: str = DEFAULT_ROUTE_KEY) -> bool:
         async with system_session(factory) as db:
             return await routes_module.covers(db, key, variant)
 
+    assert routes_module.SOUNDLESS_SUITE_VERSION == 11 == running_suite_version()
     assert await covers() is False  # no route: the bootstrap choice
-    add_result(admin, age_minutes=1)
+    add_result(admin, age_minutes=1)  # recorded on the running suite, version 11
     await enable(factory, s, "anthropic", OPUS, "medium")
     assert await covers("running") is True
-    assert await covers() is False  # SL1: no suite version covers soundless
+    assert await covers() is True
     choice = await resolve(factory, s)
-    assert (choice.running_covered, choice.soundless_covered) == (True, False)
+    assert (choice.running_covered, choice.soundless_covered) == (True, True)
+    monkeypatch.setattr(routes_module, "SOUNDLESS_SUITE_VERSION", None)  # the SL1 state
+    assert await covers() is False
+    assert await covers("running") is True
+    assert (await resolve(factory, s)).soundless_covered is False
     monkeypatch.setattr(routes_module, "SOUNDLESS_SUITE_VERSION", running_suite_version() + 1)
     assert await covers() is False  # recorded below the soundless suite version
     assert (await resolve(factory, s)).soundless_covered is False
@@ -920,3 +927,39 @@ async def test_a_soundless_job_needs_a_covering_route_and_a_soundless_suite_vers
     )
     assert await covers() is False
     assert await covers("running") is False
+
+
+async def test_a_result_recorded_before_suite_version_11_does_not_cover_soundless(
+    admin: Connection, factory: Factory, app_database_url: str, kek_dir: Path
+) -> None:
+    """SL5 (#531): the real constant. A result on suite version 10 with all eight current prompt
+    versions (the six ``design`` stages and the two ``songs`` ones; the soundless stage's included)
+    does not cover soundless; one on version 11 does. The result of the earlier suite is also
+    stale for running (the suite changed), so the soundless rule never lets it through."""
+    assert routes_module.SOUNDLESS_SUITE_VERSION == 11
+    assert [routes_module.soundless_suite(v) for v in (1, 10, 11, 12)] == [False] * 2 + [True] * 2
+    versions = {**running_prompt_versions("design"), **running_prompt_versions("songs")}
+    assert len(versions) == 8
+    assert {"soundless_design", "soundless_revise"} <= set(versions)
+    s = worker(app_database_url, kek_dir, "anthropic")
+    add_result(admin, age_minutes=2)
+    await enable(factory, s, "anthropic", OPUS, "medium")
+    older = add_result(admin, suite_version=10, prompt_versions=versions, age_minutes=1)
+    current = add_result(admin, age_minutes=0.5)
+
+    def route_at(result_id: Any) -> None:
+        admin.execute(
+            text("UPDATE model_routes SET eval_result_id = :r WHERE stage_group = 'design'"),
+            {"r": result_id},
+        )
+
+    async def covered() -> tuple[bool, bool, bool]:
+        async with system_session(factory) as db:
+            soundless = await routes_module.covers(db, DEFAULT_ROUTE_KEY, "soundless")
+            running = await routes_module.covers(db, DEFAULT_ROUTE_KEY, "running")
+        return soundless, running, (await resolve(factory, s)).soundless_covered
+
+    route_at(older)
+    assert await covered() == (False, False, False)
+    route_at(current)
+    assert await covered() == (True, True, True)

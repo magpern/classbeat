@@ -102,7 +102,7 @@ gate "shards missing, six results"            1 "$(needs success success success
 gate "shards missing from needs"              1 "$(needs success success success skipped skipped true false false | jq -c 'del(.["backend-tests"])')" "success success success skipped skipped"
 gate "a shard listed as its own job"          1 "$(needs success success success skipped skipped true false false | jq -c '.["backend-tests-1"] = {"result": "success"}')" "success success success success skipped skipped success"
 
-# changes <name> <event> <"file file ..."> <expected "backend frontend stack all">
+# changes <name> <event> <"file file ..."> <expected "backend frontend stack playwright all">
 tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
 git -C "$tmp" init -q
@@ -125,54 +125,54 @@ changes() {
   if [ "$out" = "$want " ]; then report ok "changes: $name"; else report FAIL "changes: $name (got '$out', want '$want')"; fi
 }
 
-#       name                event             files                                 backend frontend stack all
-changes "docs only"         pull_request      "README.md docs/x.md AGENTS.md"       "false false false false"
-changes "backend only"      pull_request      "backend/app/x.py"                    "true false true false"
-changes "design rules"      pull_request      "backend/src/classbeat/design/rules/rationales.py" "true true true false"
-changes "design profiles"   pull_request      "backend/src/classbeat/design/profiles/index.json" "true true true false"
-changes "frontend only"     pull_request      "frontend/src/a.ts"                   "false true true false"
-changes "e2e only"          pull_request      "e2e/tests/a.ts"                      "false false true false"
-changes "Dockerfile"        pull_request      "Dockerfile"                          "false false true false"
-changes "compose file"      pull_request      "compose.e2e.yaml"                    "false false true false"
-changes "docker files"      pull_request      "docker/nginx/x.conf"                 "false false true false"
-changes "db init script"    pull_request      "docker/postgres/init/10-roles.sql"   "true false true false"
-changes "worktree script"   pull_request      "scripts/worktree.sh"                 "false false true false"
-changes "backup script"     pull_request      "scripts/backup.sh"                   "false false true false"
-changes "restore script"    pull_request      "scripts/restore.sh"                  "false false true false"
-changes "drill script"      pull_request      "scripts/backup-restore-drill.sh"     "false false true false"
-changes "validate script"   pull_request      "scripts/validate-backup.sh"          "false false true false"
-changes "drill probe"       pull_request      "scripts/drill/probe.py"              "false false true false"
-changes "ci-gate script"    pull_request      "scripts/ci-gate.sh"                  "true true true true"
-changes "ci-changes script" pull_request      "scripts/ci-changes.sh"               "true true true true"
-changes "ci-shards script"  pull_request      "scripts/ci-shards.sh"                "true true true true"
-changes "test script"       pull_request      "scripts/test-ci-gate.sh"             "true true true true"
-changes ".gitattributes"    pull_request      ".gitattributes"                      "true true true true"
-changes "unrelated script"  pull_request      "scripts/other.sh"                    "false false false false"
+#       name                event             files                                 backend frontend stack playwright all
+changes "docs only"         pull_request      "README.md docs/x.md AGENTS.md"       "false false false false false"
+changes "backend only"      pull_request      "backend/app/x.py"                    "true false true false false"
+changes "design rules"      pull_request      "backend/src/classbeat/design/rules/rationales.py" "true true true false false"
+changes "design profiles"   pull_request      "backend/src/classbeat/design/profiles/index.json" "true true true false false"
+changes "frontend only"     pull_request      "frontend/src/a.ts"                   "false true true true false"
+changes "e2e only"          pull_request      "e2e/tests/a.ts"                      "false false true true false"
+changes "Dockerfile"        pull_request      "Dockerfile"                          "false false true true false"
+changes "compose file"      pull_request      "compose.e2e.yaml"                    "false false true true false"
+changes "docker files"      pull_request      "docker/nginx/x.conf"                 "false false true true false"
+changes "db init script"    pull_request      "docker/postgres/init/10-roles.sql"   "true false true true false"
+changes "worktree script"   pull_request      "scripts/worktree.sh"                 "false false true false false"
+changes "backup script"     pull_request      "scripts/backup.sh"                   "false false true false false"
+changes "restore script"    pull_request      "scripts/restore.sh"                  "false false true false false"
+changes "drill script"      pull_request      "scripts/backup-restore-drill.sh"     "false false true false false"
+changes "validate script"   pull_request      "scripts/validate-backup.sh"          "false false true false false"
+changes "drill probe"       pull_request      "scripts/drill/probe.py"              "false false true false false"
+changes "ci-gate script"    pull_request      "scripts/ci-gate.sh"                  "true true true true true"
+changes "ci-changes script" pull_request      "scripts/ci-changes.sh"               "true true true true true"
+changes "ci-shards script"  pull_request      "scripts/ci-shards.sh"                "true true true true true"
+changes "test script"       pull_request      "scripts/test-ci-gate.sh"             "true true true true true"
+changes ".gitattributes"    pull_request      ".gitattributes"                      "true true true true true"
+changes "unrelated script"  pull_request      "scripts/other.sh"                    "false false false false false"
 # A push to main (and any event that is not a pull request or merge group) runs everything, even
 # for a change a pull request would skip.
-changes "push, docs only"   push              "README.md docs/x.md"                 "true true true true"
-changes "push, unrelated"   push              "scripts/other.sh"                    "true true true true"
-changes "unknown event"     workflow_run      "README.md"                           "true true true true"
-changes ".env.example"      pull_request      ".env.example"                        "false false true false"
-changes ".trivyignore"      pull_request      ".trivyignore"                        "false false true false"
-changes ".github changes"   pull_request      ".github/workflows/ci.yml"            "true true true true"
+changes "push, docs only"   push              "README.md docs/x.md"                 "true true true true true"
+changes "push, unrelated"   push              "scripts/other.sh"                    "true true true true true"
+changes "unknown event"     workflow_run      "README.md"                           "true true true true true"
+changes ".env.example"      pull_request      ".env.example"                        "false false true false false"
+changes ".trivyignore"      pull_request      ".trivyignore"                        "false false true false false"
+changes ".github changes"   pull_request      ".github/workflows/ci.yml"            "true true true true true"
 # The filters are path prefixes with a trailing slash: a name that only starts like one is not it.
-changes "backend-like name" pull_request      "backend-notes.md"                    "false false false false"
-changes "backendx dir"      pull_request      "backendx/a.py"                       "false false false false"
-changes "frontendx dir"     pull_request      "frontendx/a.ts"                      "false false false false"
-changes "e2e-like name"     pull_request      "e2e-notes.md"                        "false false false false"
-changes "docker-like name"  pull_request      "docker-notes.md"                     "false false false false"
-changes "postgres-like dir" pull_request      "docker/postgres-notes/a.sql"         "false false true false"
-changes "nested backend"    pull_request      "docs/backend/a.md"                   "false false false false"
-changes "nested frontend"   pull_request      "docs/frontend/a.md"                  "false false false false"
-changes "schedule"          schedule          "README.md"                           "true true true true"
-changes "manual dispatch"   workflow_dispatch "README.md"                           "true true true true"
+changes "backend-like name" pull_request      "backend-notes.md"                    "false false false false false"
+changes "backendx dir"      pull_request      "backendx/a.py"                       "false false false false false"
+changes "frontendx dir"     pull_request      "frontendx/a.ts"                      "false false false false false"
+changes "e2e-like name"     pull_request      "e2e-notes.md"                        "false false false false false"
+changes "docker-like name"  pull_request      "docker-notes.md"                     "false false false false false"
+changes "postgres-like dir" pull_request      "docker/postgres-notes/a.sql"         "false false true true false"
+changes "nested backend"    pull_request      "docs/backend/a.md"                   "false false false false false"
+changes "nested frontend"   pull_request      "docs/frontend/a.md"                  "false false false false false"
+changes "schedule"          schedule          "README.md"                           "true true true true true"
+changes "manual dispatch"   workflow_dispatch "README.md"                           "true true true true true"
 # A merge group diffs its base_sha (the target branch tip) against its head_sha like a pull request.
-changes "merge group docs"  merge_group       "README.md docs/x.md"                 "false false false false"
-changes "merge group back"  merge_group       "backend/app/x.py"                    "true false true false"
-changes "merge group front" merge_group       "frontend/src/a.ts"                   "false true true false"
-changes "merge group ci"    merge_group       ".github/workflows/ci.yml"            "true true true true"
-changes "unknown event"     push              "README.md"                           "true true true true"
+changes "merge group docs"  merge_group       "README.md docs/x.md"                 "false false false false false"
+changes "merge group back"  merge_group       "backend/app/x.py"                    "true false true false false"
+changes "merge group front" merge_group       "frontend/src/a.ts"                   "false true true true false"
+changes "merge group ci"    merge_group       ".github/workflows/ci.yml"            "true true true true true"
+changes "unknown event"     push              "README.md"                           "true true true true true"
 
 
 # Paths that need care: a command-line list of files per case, created and committed as given.
@@ -204,21 +204,21 @@ add_quote_name() { echo a > 'backend/app/q"x.py'; }
 add_newline_name() { echo a > "backend/app/a"$'\n'"b.py"; }
 add_backslash_name() { mkdir -p frontend && echo a > 'frontend/a\b.ts'; }
 add_docs_non_ascii() { echo a > "docs/$(printf '\303\245').md"; }
-changes_git "move out of backend/"          "true false true false" mv_out_of_backend
-changes_git "move backend/ to frontend/"    "true true true false"  mv_backend_to_frontend
-changes_git "non-ASCII name in backend/"    "true false true false" add_non_ascii
-changes_git "double quote in backend/ name" "true false true false" add_quote_name
-changes_git "newline in backend/ name"      "true false true false" add_newline_name
+changes_git "move out of backend/"          "true false true false false" mv_out_of_backend
+changes_git "move backend/ to frontend/"    "true true true true false"  mv_backend_to_frontend
+changes_git "non-ASCII name in backend/"    "true false true false false" add_non_ascii
+changes_git "double quote in backend/ name" "true false true false false" add_quote_name
+changes_git "newline in backend/ name"      "true false true false false" add_newline_name
 # A backslash is a path separator on Windows; the case only makes sense elsewhere.
 case "$(uname -s)" in
   MINGW* | MSYS* | CYGWIN*) ;;
-  *) changes_git "backslash in frontend/ name"   "false true true false" add_backslash_name ;;
+  *) changes_git "backslash in frontend/ name"   "false true true true false" add_backslash_name ;;
 esac
-changes_git "non-ASCII name in docs/"       "false false false false" add_docs_non_ascii
+changes_git "non-ASCII name in docs/"       "false false false false false" add_docs_non_ascii
 
 # An unresolvable base runs everything instead of failing.
 out="$(cd "$tmp" && env -u GITHUB_OUTPUT EVENT_NAME=pull_request BASE_SHA=0000000000000000000000000000000000000001   HEAD_SHA=HEAD "$here/ci-changes.sh" 2> /dev/null | cut -d= -f2 | tr '\n' ' ')"
-if [ "$out" = "true true true true " ]; then report ok "changes: unknown base runs everything"; else report FAIL "changes: unknown base (got '$out')"; fi
+if [ "$out" = "true true true true true " ]; then report ok "changes: unknown base runs everything"; else report FAIL "changes: unknown base (got '$out')"; fi
 
 # The same for a merge group, and for a merge group (or pull request) without its SHAs: the
 # diff cannot be computed, so everything runs (fail closed), never "nothing changed".
@@ -226,7 +226,7 @@ fail_closed() { # fail_closed <name> <env assignments...>
   local name="$1" out
   shift
   out="$(cd "$tmp" && env -u GITHUB_OUTPUT -u BASE_SHA -u HEAD_SHA "$@" "$here/ci-changes.sh" 2> /dev/null | cut -d= -f2 | tr '\n' ' ')"
-  if [ "$out" = "true true true true " ]; then report ok "changes: $name"; else report FAIL "changes: $name (got '$out')"; fi
+  if [ "$out" = "true true true true true " ]; then report ok "changes: $name"; else report FAIL "changes: $name (got '$out')"; fi
 }
 fail_closed "merge group, unknown base runs everything" EVENT_NAME=merge_group BASE_SHA=0000000000000000000000000000000000000001 HEAD_SHA=HEAD
 fail_closed "merge group, unknown head runs everything" EVENT_NAME=merge_group BASE_SHA=HEAD HEAD_SHA=0000000000000000000000000000000000000002
@@ -234,6 +234,9 @@ fail_closed "merge group, no base runs everything"      EVENT_NAME=merge_group H
 fail_closed "merge group, empty SHAs run everything"    EVENT_NAME=merge_group BASE_SHA= HEAD_SHA=
 fail_closed "pull request, no head runs everything"     EVENT_NAME=pull_request BASE_SHA=HEAD
 fail_closed "push without SHAs runs everything"         EVENT_NAME=push
+fail_closed "push runs everything, Playwright too"      EVENT_NAME=push BASE_SHA=HEAD HEAD_SHA=HEAD
+fail_closed "schedule runs everything, Playwright too"  EVENT_NAME=schedule
+fail_closed "dispatch runs everything, Playwright too"  EVENT_NAME=workflow_dispatch
 # A missing or empty event name is malformed: the script fails (so `changes` fails and the gate
 # with it) instead of guessing.
 for ev in "" unset; do

@@ -96,6 +96,12 @@ export function HistoryPanel({
         Versions
       </h2>
       <p className="muted m-0">Pick two versions to compare them.</p>
+      {history.canChange || history.revisions.length === 0 ? null : (
+        <p className="m-0" data-testid="cannot-change">
+          Change it is not available for this class right now: it has no music of its own, or its kind of class is
+          switched off. You can still view, compare, use and save its versions.
+        </p>
+      )}
       <ol className="rows revisions" aria-label="Version history">
         {ordered.map((r) => {
           const summary = revisions.find((s) => s.id === r.id)
