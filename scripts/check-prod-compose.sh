@@ -10,8 +10,9 @@
 #    in the rendered files; #511: every service that mounts a secret has group 10010 and a non-root
 #    user, each secret is secrets/<its own name>; #517: DEFAULT DENY, every key of the rendered files
 #    (all profiles) must be on the allow-list of check_keys, and env_file, label_file, profiles,
-#    extends and include are refused in the files' text), and compose.prod.yaml's defaults leave
-#    every OAuth client id empty;
+#    extends and include are refused in the files' text (a lint); #610: each service's variables by
+#    name (whatever an env_file, however spelled, adds is refused, its name never printed) and the
+#    top-level networks by key), and compose.prod.yaml's defaults leave every OAuth client id empty;
 # (the SQL the database services run is in the release's classbeat-db image: no bind mounts, ADR 0020)
 # 3. a self-test: each unsafe mutation of the rendered files must fail step 2 (fails closed);
 # 4. the owner's real PROXY_IP, when one is set (their shell, else PROD_CHECK_ENV_FILE, default the
@@ -53,7 +54,9 @@
 #   an install folder (the released script next to compose.prod.yaml, no docs/): the pre-deploy
 #     check on the server, `./check-prod-compose.sh [--probe]` from /opt/classbeat. It checks the
 #     files there with dummy values (so a local edit of a compose file is caught), renders the real
-#     .env, checks the real PROXY_IP, the env file and the real secret files and their folder, and
+#     .env, runs that real render (COMPOSE_FILE, every profile) through the same allow-list and
+#     secret-mount rules (#610; the documented compose.bridge.yaml shape is allowed), checks the real
+#     PROXY_IP, the env file and the real secret files and their folder, and
 #     with --probe runs, per service that mounts secrets, a readability test of every secret file
 #     from the pulled image (prints "<service>: <file> OK|FAIL", never a value; needs
 #     `docker compose pull` first). `--install` forces that mode in a checkout.
@@ -154,8 +157,15 @@ restore_real_env() {
 if [[ "$mode" == install ]]; then
   # The real settings render with the real .env before the dummies below replace anything.
   [[ -f "$env_file" ]] || { echo "check-prod-compose: no $env_file: cp prod.env.example .env and fill it in (runbook section 5)" >&2; exit 1; }
-  real_json="$(docker compose config --format json 2>"$tmp/real-config.log")" \
-    || { cat "$tmp/real-config.log" >&2; echo "check-prod-compose: docker compose config fails with your .env (above): set the variables it names" >&2; exit 1; }
+  # Compose's own error output is never printed, on this or any render (#616 review): it quotes the
+  # offending line of an env_file, so a secret file that does not parse as one (a `~` in a client
+  # secret, a JSON key, base64) would be printed. A fixed sentence instead; the owner can run
+  # `docker compose config -q` by hand to see Compose's message on their own terminal.
+  real_json="$(docker compose config --format json 2>/dev/null)" \
+    || { echo "check-prod-compose: docker compose config fails with your .env: a required variable is unset (CLASSBEAT_VERSION, CLASSBEAT_DOMAIN, PROXY_IP, SMTP_HOST, SMTP_SENDER) or a file in COMPOSE_FILE, or an env_file it names, does not parse. Compose's message is not printed (it can quote a line of a secret file): run \`docker compose config -q\` yourself to read it" >&2; exit 1; }
+  # The same with every profile, for the allow-list (check_real, #610).
+  real_all_json="$(docker compose --profile '*' config --format json 2>/dev/null)" \
+    || { echo "check-prod-compose: docker compose --profile '*' config fails with your .env although the plain render passes: a service behind a profile needs a variable or file the others do not (run \`docker compose --profile '*' config -q\` yourself to read Compose's message; it is not printed here)" >&2; exit 1; }
 fi
 
 # Copies next to dummy secret files, so the checkout's own secrets/ is never read.
@@ -164,7 +174,9 @@ mkdir "$tmp/secrets"
 oauth_providers=(google github microsoft)
 for n in postgres_password database_owner_password database_password database_maint_password \
   app_secret_key connection_kek smtp_password anthropic_api_key openai_api_key deepseek_api_key swedebeat_app; do
-  : > "$tmp/secrets/$n"
+  # One line without `=` (a dummy, never a real secret): an env_file of it, however spelled, gives
+  # the variable "" in the render, which check_keys refuses (#610); an empty file would add nothing.
+  printf 'dummy-secret-%s' "$n" > "$tmp/secrets/$n"
 done
 # The OAuth client secret files hold a canary (a dummy, never a real secret): it must not appear in
 # any rendered file, so compose never inlines a client secret (#507).
@@ -184,7 +196,11 @@ export WEB_LAN_ADDRESS="$lan_ip"
 dir="$native/${tmp##*/}"
 # Every render enables all profiles: a service behind `profiles:` would otherwise be left out of the
 # rendered file and so of every check below (#512 review B5).
-render() { docker compose "$@" --profile '*' config --format json; }
+# Compose's error output is never printed (#616 review: it can quote a line of a secret file).
+render() {
+  docker compose "$@" --profile '*' config --format json 2>/dev/null \
+    || { echo "check-prod-compose: docker compose config fails on the compose files with dummy values (Compose's message is not printed: run \`docker compose config -q\` yourself)" >&2; return 1; }
+}
 # compose.prod.yaml's defaults: no OAuth variable set, so every provider is off.
 unset OAUTH_GOOGLE_CLIENT_ID OAUTH_GITHUB_CLIENT_ID OAUTH_MICROSOFT_CLIENT_ID OAUTH_VISIBLE_PROVIDERS
 defaults="$(render -f "$dir/compose.prod.yaml")"
@@ -280,8 +296,11 @@ check_common() {
 # cgroup, cgroup_parent, uts, runtime, gpus, provider, env_file, a bind or a driver option on a
 # volume, a key Compose adds later. Adding a key or a service to the production files needs a change
 # here, reviewed with it (runbook section 13). The value checks below and in check_secret_mounts still
-# apply to the allowed keys. The render drops env_file, label_file and profiles (check_prod_file_text
-# reads the files for them).
+# apply to the allowed keys. The render drops env_file but copies its variables into `environment`,
+# which is allowed by variable name per service (#610), and keeps label_file and profiles (refused here);
+# include and extends are resolved into it. check_prod_file_text is a fast lint of the files' text for the
+# same keys, not the check: a quoted or explicit (`? env_file`) key gets past a line match. Top-level
+# networks are allowed by key too (#598 review finding 5).
 # shellcheck disable=SC2016  # jq variables, not shell ones
 check_keys() {
   local bad
@@ -326,6 +345,45 @@ check_keys() {
     (.secrets // {} | to_entries[] | extra(.value; ["name","file"]; "secrets.\(.key)"))
   ' <<<"$J")" || fail "the rendered file could not be read as compose keys" || return 1
   [[ -z "$bad" ]] || fail "not on the allow-list of compose keys (check_keys in scripts/check-prod-compose.sh): $(tr '\n' ' ' <<<"$bad")" \
+    || return 1
+  # Each service's variables, by name (#610). The render drops env_file but copies the file into
+  # `environment`, however the key was spelled (`"env_file"`, `? env_file`, a flow mapping), so the
+  # text rule (check_prod_file_text) is only a fast lint and this is the check: a variable the files do
+  # not set is refused. Its name is never printed: an env_file of a secret file gives a variable whose
+  # name or value is the secret (a line without `=` becomes the name "" with the line as its value).
+  bad="$(jq -r '
+    def app: ["CLASSBEAT_ADMIN_EMAILS","CLASSBEAT_CONNECTION_KEK_ID","CLASSBEAT_DATABASE_URL",
+      "CLASSBEAT_DEEPSEEK_ENABLED","CLASSBEAT_ENVIRONMENT","CLASSBEAT_LOG_LEVEL","CLASSBEAT_PUBLIC_BASE_URL",
+      "CLASSBEAT_SIGNUP_MODE","CLASSBEAT_SMTP_HOST","CLASSBEAT_SMTP_PORT","CLASSBEAT_SMTP_SENDER",
+      "CLASSBEAT_SMTP_TLS","CLASSBEAT_SMTP_USERNAME"];
+    def flags: ["CLASSBEAT_RUNNING_ENABLED","CLASSBEAT_SOUNDLESS_ENABLED","CLASSBEAT_SWEDEBEAT_ENABLED"];
+    def allowed_env: {
+      "db": ["POSTGRES_DB","POSTGRES_PASSWORD_FILE"],
+      "db-functions": [],
+      "migrate": (app + ["CLASSBEAT_MIGRATIONS_DATABASE_URL"]),
+      "worker": (app + flags + ["CLASSBEAT_MODEL_PROVIDER"]),
+      "web": (app + flags + ["CLASSBEAT_MAINT_DATABASE_URL","CLASSBEAT_OAUTH_GITHUB_CLIENT_ID",
+        "CLASSBEAT_OAUTH_GOOGLE_CLIENT_ID","CLASSBEAT_OAUTH_MICROSOFT_CLIENT_ID","CLASSBEAT_OAUTH_VISIBLE_PROVIDERS",
+        "CLASSBEAT_SMTP_CA_FILE","CLASSBEAT_TRUSTED_PROXIES"])
+    };
+    .services | to_entries[] | .key as $n | (.value.environment // {}) as $e
+    | if ($e | type) != "object" then "services.\($n).environment (not a mapping)"
+      else (($e | keys) - (allowed_env[$n] // [])) as $x
+        | ((allowed_env[$n] // []) - ($e | keys)) as $m
+        | (if ($x | length) > 0 then "services.\($n).environment: \($x | length) variable(s) the production files do not set (names not printed)" else empty end),
+          (if ($m | length) > 0 then "services.\($n).environment lacks \($m | join(" "))" else empty end)
+      end' <<<"$J")" || fail "the rendered environment could not be read" || return 1
+  [[ -z "$bad" ]] || fail "variables not on the allow-list (an env_file, however spelled, is copied into environment; check_keys): $(tr '\n' ' ' <<<"$bad")" \
+    || return 1
+  # Top-level networks by key (#598 review, finding 5): only the ones the shipped files use. proxy is
+  # the owner's external network; every other one is the project's own (not external, its default
+  # name `<project>_<key>`), so a `name:` cannot join web or the worker to some other existing network.
+  bad="$(jq -r '.name as $p | .networks // {} | to_entries[]
+      | if (.key | IN("backend","egress","proxy","web-out")) | not then "networks.\(.key)"
+        elif .key != "proxy" and ((.value.external // false) or .value.name != ($p + "_" + .key))
+        then "networks.\(.key) (external or renamed)" else empty end' <<<"$J")" \
+    || fail "the rendered networks could not be read" || return 1
+  [[ -z "$bad" ]] || fail "networks: only backend, egress, web-out (the project's own) and the external proxy: $(tr '\n' ' ' <<<"$bad")" \
     || return 1
   # The values of the allowed keys that reach the host or another container.
   q '[.services[] | .logging.driver] | all(. == "json-file")' || fail "every service logs with json-file" || return 1
@@ -444,11 +502,12 @@ check_oauth_defaults() {
   check_prod_file_text "$tmp" || return 1
 }
 
-# Keys that leave no trace in the rendered file (#517): env_file and label_file are read and dropped
-# (Compose copies an env_file into `environment`, where a file of secrets/ would sit in the render and
-# `docker inspect`), `profiles` only hides a service from a render without `--profile '*'`, and
-# `extends` and `include` pull in text this script never sees. Production uses none, so any of them in
-# the files is refused by its name. Comment lines are skipped; a mention after code on a line is not.
+# A fast lint (#517) of keys production never uses: env_file (Compose copies the file into
+# `environment`, where a file of secrets/ would sit in the render and `docker inspect`), label_file,
+# `profiles` (hides a service from a render without `--profile '*'`), `extends` and `include`. It reads
+# lines, so a quoted or explicit (`? env_file`) key can get past it: the check is the render's
+# (check_keys: variables by name, label_file and profiles by key, #610). Comment lines are skipped; a
+# mention after code on a line is not.
 check_prod_file_text() {   # check_prod_file_text DIR [FILE...] (default: the three production files)
   local d="$1" f files=(compose.prod.yaml compose.prod.loopback.yaml compose.prod.lan.yaml)
   local re=$'(^|[[:space:]{,"\'])(env_file|label_file|profiles|extends|include)["\']?[[:space:]]*:'
@@ -512,6 +571,37 @@ check_lan() {
   q '.services.web.networks | has("proxy") | not' || fail "web leaves the proxy network" || return 1
   jq -e --arg ip "$swag_ip" --arg lan "$lan_ip" '.services.web.environment.CLASSBEAT_TRUSTED_PROXIES == $ip and $ip != $lan' <<<"$J" >/dev/null \
     || fail "the trusted proxy is PROXY_IP (swag's LAN address), and not this server" || return 1
+}
+
+# The owner's real render (#610, #598 review finding 2): compose.prod.yaml with the overlays COMPOSE_FILE
+# names, the real .env and every profile, run through the same allow-list (check_keys) and secret-mount
+# rules. The value checks of check_common are left out: they compare with the dummies. One addition of
+# the owner's own is allowed, exactly as proton-bridge-smtp.md writes it: compose.bridge.yaml's
+# read-only bind of ./smtp-ca/bridge.pem into web at /run/smtp-ca/bridge.pem, and the external network
+# `bridge-mail` (any name) that web alone joins. Anything else is refused like in the dummy files.
+# (Older Compose writes the short bind syntax with `bind: {create_host_path: true}`, newer with `{}`.)
+# Nothing here reads a secret file: compose renders a file secret as its path. Only key names and rule
+# messages are printed, never a value or a variable name (check_keys).
+# shellcheck disable=SC2016  # jq variables, not shell ones
+strip_bridge='
+  (.secrets.app_secret_key.file // "" | rtrimstr("/secrets/app_secret_key")) as $root
+  | (.networks["bridge-mail"] // null) as $nw
+  | (.services.web.volumes // []) as $vs
+  | if $nw != null and ($nw | type) == "object" and (($nw | keys) - ["name","external","ipam"]) == []
+        and $nw.external == true and ($nw.ipam // {}) == {} and ($nw.name | type) == "string" and $nw.name != ""
+        and [.services | to_entries[] | select(.value.networks // {} | has("bridge-mail")) | .key] == ["web"]
+        and .services.web.networks["bridge-mail"] == null
+        and ($vs | length) == 1 and ($vs[0] | type) == "object"
+        and (($vs[0] | keys) - ["type","source","target","read_only","bind"]) == []
+        and $vs[0].type == "bind" and $root != "" and $vs[0].source == $root + "/smtp-ca/bridge.pem"
+        and $vs[0].target == "/run/smtp-ca/bridge.pem" and $vs[0].read_only == true
+        and (($vs[0].bind // {}) | . == {} or . == {"create_host_path": true})
+    then del(.networks["bridge-mail"], .services.web.networks["bridge-mail"], .services.web.volumes)
+    else . end'
+check_real() {
+  J="$(jq "$strip_bridge" <<<"$J")" || fail "the real render could not be read" || return 1
+  check_keys || return 1
+  check_secret_mounts || return 1
 }
 
 J="$shared"; check_shared || exit 1
@@ -762,6 +852,18 @@ deny=(
   'command, entrypoint and tmpfs|.services["db-functions"].entrypoint = ["sh","-c","id"]'
   'command, entrypoint and tmpfs|.services.web.tmpfs = ["/tmp:exec"]'
   'services.worker.tmpfs|.services.worker.tmpfs = ["/x"]'
+  # variables by name (#610): what an env_file, however spelled, leaves in the render
+  'services.worker.environment: 1 variable|.services.worker.environment[""] = "a-secret-file-line"'
+  'services.web.environment: 1 variable|.services.web.environment.SPY = "1"'
+  'services.db.environment: 1 variable|.services.db.environment.CLASSBEAT_DATABASE_URL = "x"'
+  'services.worker.environment: 2 variable|.services.worker.environment += {"CLASSBEAT_MAINT_DATABASE_URL":"x","A":"b"}'
+  'services.migrate.environment lacks CLASSBEAT_MIGRATIONS_DATABASE_URL|del(.services.migrate.environment.CLASSBEAT_MIGRATIONS_DATABASE_URL)'
+  # top-level networks by key, and the project's own by name (#598 review, finding 5)
+  'networks.spy|.networks.spy = {"name":"classbeat-prod-check_spy","ipam":{}}'
+  'networks.backendx|.networks.backendx = {"name":"classbeat-prod-check_backendx","ipam":{}}'
+  'networks.egress (external or renamed)|.networks.egress.name = "some-other-network"'
+  'networks.egress (external or renamed)|.networks.egress.external = true'
+  'networks.backend (external or renamed)|.networks.backend.name = "bridge"'
 )
 for v in shared loopback lan; do
   case "$v" in shared) base="$shared" ;; loopback) base="$loopback" ;; *) base="$lan" ;; esac
@@ -771,7 +873,15 @@ for v in shared loopback lan; do
   # the allow-list is not a refuse-everything: an extension key and the files as they are pass
   expect_accepted "$v" "$base" '.["x-note"] = {"a":1}'
   expect_accepted "$v" "$base" '.'
+  # The allow-list itself passes the shipped files through the real-render check (no bridge overlay).
+  expect_accepted real "$base" '.'
 done
+# A refused variable's name and value are never printed (an env_file of a secret file puts the secret
+# in either, #610).
+expect_refused shared "$shared" '.services.worker.environment["name-canary-610"] = "value-canary-610"' 'services.worker.environment: 1 variable'
+if grep -qE 'name-canary-610|value-canary-610' "$tmp/refuse.log"; then
+  echo "check-prod-compose: self-test: a refused variable's name or value was printed" >&2; exit 1
+fi
 
 # The client secret's value (the canary in the dummy file) anywhere in the rendered file.
 expect_refused shared "$shared" ".services.web.labels = {\"note\": \"$oauth_canary-google\"}"
@@ -822,8 +932,8 @@ yaml_verdict() {   # yaml_verdict WANT(accepted|refused) FRAGMENT TEXT
   local want="$1" why="$2" v out rc
   printf '%s\n' "$3" > "$tmp/yaml/mutation.yaml"
   for v in shared loopback lan; do
-    out="$(yaml_render "$v" 2>"$tmp/yaml-render.log")" \
-      || { cat "$tmp/yaml-render.log" >&2; echo "check-prod-compose: self-test: a YAML mutation does not render ($v): $3" >&2; exit 1; }
+    out="$(yaml_render "$v")" \
+      || { echo "check-prod-compose: self-test: a YAML mutation does not render ($v): $3" >&2; exit 1; }
     rc=0; (J="$out"; "check_$v" 2>"$tmp/yaml-refuse.log") || rc=$?
     if [[ "$want" == accepted && "$rc" != 0 ]]; then
       cat "$tmp/yaml-refuse.log" >&2; echo "check-prod-compose: self-test: refused a harmless YAML file ($v): $3" >&2; exit 1
@@ -903,6 +1013,102 @@ expect_yaml_refused services.brand_new_service 'services:
   brand_new_service:
     image: busybox
     logging: {driver: json-file, options: {max-size: 10m}}'
+# The text rule's bypasses (#598 review, finding 1; #610): env_file, label_file, profiles and include
+# spelled so a line match misses them (a quoted key, YAML's explicit `? key`, a flow mapping). The render
+# is the check: the env_file's variables land in environment (check_keys refuses them by name, without
+# printing one), the other keys stay in the render or bring a new service. The secret file's canary (an
+# OAuth dummy, one line without `=`) becomes the variable "" and must never be printed.
+printf 'SPY=1\n' > "$tmp/yaml/spy.env"
+printf 'services:\n  spy:\n    image: busybox\n    logging: {driver: json-file, options: {max-size: 10m}}\n' > "$tmp/yaml/other.yaml"
+expect_yaml_refused 'services.worker.environment: 1 variable' 'services:
+  worker:
+    "env_file": ./secrets/oauth_google_client_secret'
+grep -qF -- "$oauth_canary" "$tmp/yaml-refuse.log" \
+  && { echo "check-prod-compose: self-test: a refused env_file's value was printed" >&2; exit 1; }
+expect_yaml_refused 'services.worker.environment: 1 variable' "services:
+  worker:
+    'env_file': [./spy.env]"
+expect_yaml_refused 'services.worker.environment: 1 variable' 'services:
+  worker:
+    ? env_file
+    : ./spy.env'
+expect_yaml_refused 'services.db.environment: 1 variable' 'services:
+  db:
+    ? env_file
+    : ./secrets/connection_kek'
+grep -qF -- 'dummy-secret-connection_kek' "$tmp/yaml-refuse.log" \
+  && { echo "check-prod-compose: self-test: a refused env_file's value was printed" >&2; exit 1; }
+expect_yaml_refused 'services.web.environment: 1 variable' 'services: {web: {"env_file": [{path: ./spy.env}]}}'
+# (Compose versions differ in what they keep: label_file itself, or only the labels it reads.)
+expect_yaml_refused 'services.worker.label' 'services:
+  worker:
+    ? label_file
+    : ./spy.env'
+expect_yaml_refused 'services.spy' 'services:
+  spy:
+    image: busybox
+    logging: {driver: json-file, options: {max-size: 10m}}
+    "profiles": [ops]'
+expect_yaml_refused 'services.spy' '? include
+: [./other.yaml]'
+# The real render (check_real, #610): the documented compose.bridge.yaml of proton-bridge-smtp.md passes;
+# any other shape of it, and anything else the dummy files would refuse, does not.
+mkdir -p "$tmp/yaml/smtp-ca"; : > "$tmp/yaml/smtp-ca/bridge.pem"
+real_verdict() {   # real_verdict WANT(accepted|refused) FRAGMENT TEXT: shared and loopback, plus mutation.yaml
+  local want="$1" why="$2" v out rc
+  printf '%s\n' "$3" > "$tmp/yaml/mutation.yaml"
+  for v in shared loopback lan; do
+    out="$(yaml_render "$v")" \
+      || { echo "check-prod-compose: self-test: a real-render mutation does not render ($v): $3" >&2; exit 1; }
+    rc=0; (J="$out"; check_real 2>"$tmp/real-refuse.log") || rc=$?
+    if [[ "$want" == accepted && "$rc" != 0 ]]; then
+      cat "$tmp/real-refuse.log" >&2; echo "check-prod-compose: self-test: the real-render check refused ($v): $3" >&2; exit 1
+    fi
+    if [[ "$want" == refused ]]; then
+      [[ "$rc" != 0 ]] || { echo "check-prod-compose: self-test: the real-render check accepted ($v): $3" >&2; exit 1; }
+      grep -qF -- "$why" "$tmp/real-refuse.log" \
+        || { cat "$tmp/real-refuse.log" >&2; echo "check-prod-compose: self-test: real render refused for another reason than '$why' ($v): $3" >&2; exit 1; }
+    fi
+  done
+}
+bridge='services:
+  web:
+    volumes:
+      - ./smtp-ca/bridge.pem:/run/smtp-ca/bridge.pem:ro
+    networks:
+      - bridge-mail
+networks:
+  bridge-mail:
+    external: true
+    name: proton-bridge-net'
+real_verdict accepted '' "$bridge"
+real_verdict refused services.web.volumes "${bridge/:ro/}"
+real_verdict refused services.web.volumes "${bridge/.\/smtp-ca\/bridge.pem:/.\/secrets:}"
+real_verdict refused services.web.volumes "${bridge/\/run\/smtp-ca\/bridge.pem/\/run\/secrets\/x}"
+real_verdict refused services.web.volumes "${bridge/external: true/external: false}"
+real_verdict refused services.web.volumes "${bridge/services:/services:
+  worker:
+    networks: [bridge-mail]}"
+real_verdict refused services.web.volumes "${bridge//bridge-mail/mail-net}"
+real_verdict refused 'networks.spynet' 'services:
+  web:
+    networks: [spynet]
+networks:
+  spynet:
+    external: true
+    name: somebody-elses-network'
+real_verdict refused 'services.web.environment: 1 variable' "${bridge/  web:/  web:
+    \"env_file\": ./secrets/oauth_github_client_secret}"
+real_verdict refused 'services.worker.environment: 1 variable' 'services:
+  worker:
+    ? env_file
+    : ./spy.env'
+expect_refused real "$shared" '.services.db.volumes += [{"type":"bind","source":"/proc","target":"/h"}]' 'no bind mounts'
+expect_refused real "$shared" '.services.db.user = "0"' 'runs as root'
+real_verdict refused 'services.spy' 'services:
+  spy:
+    image: busybox
+    profiles: [ops]'
 # Harmless: an extension key, and a comment that names a forbidden key, pass both rules.
 yaml_verdict accepted "" 'x-note: fine'
 printf '# profiles: [x] and env_file: y in a comment\nx-note: fine\n' > "$tmp/yaml/mutation.yaml"
@@ -1067,6 +1273,8 @@ check_real_ports() {   # check_real_ports RENDERED_JSON
 }
 if [[ "$mode" == install ]]; then
   check_real_ports "$real_json" || exit 1
+  ( J="$real_all_json"; check_real ) \
+    || { echo "check-prod-compose: the real render (your .env, COMPOSE_FILE and every profile) is refused (above)" >&2; exit 1; }
   # Only where web trusts PROXY_IP itself: not under the loopback overlay (the web-out gateway) and
   # not with a published port (the LAN overlay: swag is on another host).
   if [[ -n "${owner_trusted:-}" ]]; then
@@ -1656,14 +1864,14 @@ probe_verdict() {   # probe_verdict SERVICE OUTPUT
 }
 probe_secrets() {
   local svcs svc out rc=0
-  mapfile -t svcs < <(docker compose config --format json | jq -r '.services | to_entries[]
+  mapfile -t svcs < <(docker compose config --format json 2>/dev/null | jq -r '.services | to_entries[]
     | select((.value.secrets // []) | length > 0) | .key')
   (( ${#svcs[@]} > 0 )) || { fail "no service mounts a secret (wrong COMPOSE_FILE?)"; return 1; }
   for svc in "${svcs[@]}"; do
     out="$(docker compose run --rm --no-deps -T --entrypoint sh "$svc" -c \
       'for f in /run/secrets/*; do if test -r "$f"; then echo "${f##*/} OK"; else echo "${f##*/} FAIL"; fi; done' \
-      2>"$tmp/probe-$svc.log")" \
-      || { cat "$tmp/probe-$svc.log" >&2; fail "$svc: could not run the pulled image (docker compose pull first?)"; return 1; }
+      2>/dev/null)" \
+      || { fail "$svc: could not run the pulled image (docker compose pull first? Compose's message is not printed: it can quote a line of a secret file)"; return 1; }
     probe_verdict "$svc" "$out" || rc=1
   done
   return "$rc"
@@ -1674,7 +1882,7 @@ if (( probe )); then
 fi
 
 if [[ $mode == install ]]; then
-  echo "install check (compose files with dummies, .env, secrets/): ok; $owner_note"
+  echo "install check (compose files with dummies, the real render on the allow-list, .env, secrets/): ok; $owner_note"
   exit 0
 fi
-echo "compose.prod.yaml (shared network, loopback and LAN, default-deny keys, OAuth secrets on web only, secret files by group 10010), runbook network, swag site config and self-tests: ok; $owner_note"
+echo "compose.prod.yaml (shared network, loopback and LAN, default-deny keys, variables and networks, OAuth secrets on web only, secret files by group 10010), runbook network, swag site config and self-tests: ok; $owner_note"
