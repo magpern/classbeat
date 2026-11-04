@@ -3,13 +3,16 @@ item 7, BC4): set, replace and clear one song's correction of the current revisi
 refusal, another user's class, and the ``beat_one`` block of the class detail. The class is
 designed through the jobs API on the fake MOWL; never the network."""
 
+import asyncio
 from typing import Any
 from uuid import UUID
 
 import httpx
 import pytest
+from sqlalchemy import text
 
 from jobapi import Browser
+from jobtools import engine_for
 from revisetools import ReviseEnv
 
 pytestmark = pytest.mark.usefixtures("jenv")
@@ -323,4 +326,49 @@ async def test_parallel_corrections_never_pass_the_cap(
     answers = await asyncio.gather(*(one(s) for s in songs * 3))
     renv.browser.client.cookies.clear()
     assert set(answers) <= {200, 409}
+    assert len(rows(renv, class_id)) == 2
+
+
+async def test_corrections_wait_behind_the_class_row_lock_and_never_pass_the_cap(
+    renv: ReviseEnv, monkeypatch: pytest.MonkeyPatch, database_url: str
+) -> None:
+    """Item 7's cap under the class row lock, on every run: while the test's own transaction
+    holds ``FOR UPDATE`` on the class row the route locks, every parallel request waits on it (so
+    none can count before another inserts); once it is released exactly the cap is stored."""
+    from classbeat.classes import beat_one as api_beat_one
+
+    monkeypatch.setattr(api_beat_one, "MAX_PER_CLASS", 2)
+    class_id, base = await renv.design()
+    songs = [s["song"] for s in renv.revisions(class_id)[0].music["songs"]][:4]
+    assert len(songs) == 4
+    headers = await renv.browser.headers()
+    client = renv.browser.client
+
+    async def one(song: int) -> int:
+        made = await client.put(
+            f"/api/classes/{class_id}/beat-one/{song}",
+            headers=headers,
+            json={"beats": 1, "revision_id": str(base)},
+        )
+        return made.status_code
+
+    with engine_for(database_url) as engine, engine.connect() as holder:
+        holder.execute(text("SELECT id FROM classes WHERE id = :c FOR UPDATE"), {"c": class_id})
+        tasks = [asyncio.create_task(one(s)) for s in songs]
+        loop = asyncio.get_running_loop()
+        deadline = loop.time() + 10
+        while renv.sql(
+            "SELECT count(*) FROM pg_stat_activity WHERE usename = 'classbeat_app' "
+            "AND wait_event_type = 'Lock' AND wait_event <> 'advisory'"
+        ).scalar_one() < len(songs):
+            assert not any(t.done() for t in tasks), "a correction ran past the class row lock"
+            assert loop.time() < deadline, "the corrections never waited for the class row"
+            await asyncio.sleep(0.02)
+        assert not any(t.done() for t in tasks)
+        assert rows(renv, class_id) == []
+        holder.commit()
+        answers = await asyncio.gather(*tasks)
+    renv.browser.client.cookies.clear()
+    assert set(answers) <= {200, 409}, answers
+    assert sorted(answers) == [200, 200, 409, 409]
     assert len(rows(renv, class_id)) == 2

@@ -3,6 +3,8 @@
 One ``user_session`` per step. The flag is the route's, before this is called. ``match_revision_id``
 is the stored approval when it belongs to the current draft's song list (``stored_approval``);
 a request never supplies it. A row whose ``expires_at`` has passed is refused and never revived.
+A soundless class (``music_source`` ``none``) has no hand-off: every step that reads or opens a
+row answers ``invalid_input`` (ADR 0007 amendment of 2026-11-03, item 9; #530).
 """
 
 from collections.abc import Mapping
@@ -21,6 +23,7 @@ from classbeat.connections import ConnectionFailure, open_connection, run_librar
 from classbeat.context import UserContext, require_context
 from classbeat.crypto.keks import KeyRing
 from classbeat.db import user_session
+from classbeat.design import music_kind
 from classbeat.design.kind import DESIGN_DRAFT, DesignDraftInput, SwedebeatMusicChoice
 from classbeat.egress import OutboundBlocked
 from classbeat.jobs.credits import CreditLedger
@@ -70,9 +73,12 @@ async def _bound_row(
 ) -> tuple[Handoff | None, Step | None]:
     """The live row when the stored match still belongs to the current song list.
 
-    A ``Step`` is the refusal (no row, expired, or the match does not belong). None for the
-    second value means the caller may snapshot.
+    A ``Step`` is the refusal (a soundless class, no row, expired, or the match does not
+    belong). None for the second value means the caller may snapshot.
     """
+    soundless = await music_kind.refuse_soundless(db, owner, class_id)  # #530
+    if soundless is not None:
+        return None, Step(reason=soundless.reason)
     bound, reason = await stored_approval(db, owner, class_id)
     if bound is None:
         return None, Step(reason=reason or "stale_match")
@@ -121,6 +127,9 @@ async def open_from(factory: Factory, ctx: UserContext, class_id: UUID, mix_ids:
     owner = ctx.user_id
     try:
         async with user_session(factory, ctx) as db:
+            soundless = await music_kind.refuse_soundless(db, owner, class_id)  # #530
+            if soundless is not None:
+                return Step(reason=soundless.reason)
             bound, reason = await stored_approval(db, owner, class_id)
             if bound is None:
                 return Step(reason=reason or "stale_match")

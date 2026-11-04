@@ -41,6 +41,8 @@ It runs after the user's Approve (the same job, ``approved``) or for a **resume*
    then the ``draft`` revision (``music.song_list_id``), the class's first design adopted by
    compare-and-set (``brief``, ``music_source`` with ``origin: "song_pick"`` and
    ``class_playlist_id``, ``current_revision_id``), and ``class_playlists.mowl_playlist_id``.
+   A class whose ``music_source`` is ``none`` (a soundless class, #530) rolls it all back
+   ``invalid_input`` (``music_kind.check_stored``): nothing is written over a ``none`` source.
 
 **Failures keep what exists**: the created and verified playlist, its row, the MOWL link; a retry
 reuses succeeded operations by key. An uncertain create or fill ends the job ``uncertain_write``
@@ -70,7 +72,7 @@ from classbeat.agent import (
 from classbeat.agent.provider import ModelProvider
 from classbeat.connections import OpenConnection, hold, open_connection
 from classbeat.crypto.keks import KeyRing
-from classbeat.design import corrections, revision, sport
+from classbeat.design import corrections, music_kind, revision, sport
 from classbeat.design.guidance import rule_set_for
 from classbeat.design.music import MusicStep, load_music
 from classbeat.jobs import Complete, FencedSession, JobFailure, JobRun
@@ -391,6 +393,9 @@ async def run_phase_two(
         """The final transaction (module docstring, step 7)."""
         await final_checks(fs, p, final, step)
         revision_id = await draft.store(fs)
+        # Never over a ``none`` source (#530): checked before ``adopt_first``, which writes
+        # ``music_source`` whenever the class has no current revision yet.
+        await music_kind.check_stored(fs, soundless=False)
         await revision.adopt_first(fs, revision_id, given.brief.stored(), music_source(final))
         await sport.check_stored(fs, given.brief.sport)  # the class's sport never changes
         await mark_mowl(fs, p, final, mowl_playlist_id)
