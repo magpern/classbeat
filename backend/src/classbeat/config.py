@@ -343,6 +343,10 @@ class Settings(BaseSettings):
     # admin flag ``running_enabled`` can only tighten it), read by the web (admit) and the worker
     # (a queued running job checks it again).
     running_enabled: bool = False
+    # ADR 0007 amendment of 2026-11-03 (soundless classes, #527): the environment's kill switch
+    # only (off by default). The admin flag ``soundless_enabled`` must also be stored ``on`` and
+    # every plan's model route must cover soundless (``classbeat.flags.effective``).
+    soundless_enabled: bool = False
     swedebeat_app_file: Path = Path("/app/swedebeat_app.json")
 
     @classmethod
