@@ -10,7 +10,7 @@ import {
   classRoutes,
 } from '../test/classFixtures'
 import { fakeApi, json, reason } from '../test/fakeApi'
-import { CLASS_ID, SESSION_ROUTES, jobBody, sse } from '../test/jobFixtures'
+import { CLASS_ID, SESSION_ROUTES, jobBody, openStream, sse } from '../test/jobFixtures'
 import { renderAt } from '../test/render'
 
 const PAGE = `/classes/${CLASS_ID}`
@@ -463,6 +463,45 @@ describe('the progress after the outcome', () => {
     // The class is read again, so a stale open job does not keep the panel waiting.
     await waitFor(() => {
       expect(api.to('GET', CLASS_PATH).length).toBeGreaterThanOrEqual(2)
+    })
+  })
+})
+
+describe('the "can no longer read that task" notice', () => {
+  const lostPath = `/api/jobs/${SAVE_JOB}`
+  const NEXT_JOB = 'e2222222-2222-4222-8222-222222222222'
+
+  it('is gone when the next Save is started, and not before', async () => {
+    let posts = 0
+    start(
+      { saved: UNSAVED },
+      {
+        'POST /api/jobs': () => {
+          posts += 1
+          return jobBody('queued', { id: posts === 1 ? SAVE_JOB : NEXT_JOB, kind: 'save_workout' })
+        },
+        [`GET ${lostPath}`]: () => reason(404, 'not_found'),
+        [`GET /api/jobs/${NEXT_JOB}`]: () => jobBody('running', { id: NEXT_JOB, kind: 'save_workout' }),
+        [`GET /api/jobs/${NEXT_JOB}/events`]: () => openStream(),
+      },
+    )
+    renderAt(PAGE)
+    fireEvent.click(await screen.findByRole('button', { name: 'Save to MOWL' }))
+    fireEvent.click(within(screen.getByRole('group', { name: 'Confirm' })).getByRole('button', { name: 'Save to MOWL' }))
+    expect(await screen.findByText(/classbeat can no longer read that task/)).toBeInTheDocument()
+    // A reload of the class does not clear it (it tells the user to check MOWL first) ...
+    await waitFor(() => {
+      expect(posts).toBe(1)
+    })
+    expect(screen.getByText(/classbeat can no longer read that task/)).toBeInTheDocument()
+    // ... starting the next write does.
+    fireEvent.click(screen.getByRole('button', { name: 'Save to MOWL' }))
+    fireEvent.click(within(screen.getByRole('group', { name: 'Confirm' })).getByRole('button', { name: 'Save to MOWL' }))
+    await waitFor(() => {
+      expect(posts).toBe(2)
+    })
+    await waitFor(() => {
+      expect(screen.queryByText(/classbeat can no longer read that task/)).toBeNull()
     })
   })
 })

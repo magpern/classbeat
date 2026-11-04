@@ -577,14 +577,21 @@ async def test_a_pick_or_cooldown_that_starts_during_the_refresh_holds_the_listi
 
 
 async def test_before_read_is_the_read_only_modes_only() -> None:
+    """A real user context and a factory that fails if used: the refusal is a ``ValueError``
+    raised before anything is opened (#608), not whatever a missing argument happens to raise."""
+    from ctx import make_context
+
     async def hook() -> None:
         return None
 
+    def untouchable(*_args: Any, **_kwargs: Any) -> Any:
+        raise AssertionError("no database session may be opened")
+
     with pytest.raises(ValueError, match="read-only"):
         await access._call(  # pyright: ignore[reportPrivateUsage]
+            untouchable,  # type: ignore[arg-type]
             None,  # type: ignore[arg-type]
-            None,  # type: ignore[arg-type]
-            None,  # type: ignore[arg-type]
+            make_context(),
             lambda _creds: None,
             http=None,
             write=False,
@@ -593,3 +600,43 @@ async def test_before_read_is_the_read_only_modes_only() -> None:
             single_request=False,
             before_read=hook,
         )
+
+
+async def test_a_database_error_opening_the_connection_is_no_covers(
+    spot: Spot, admin: Connection, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """ADR 0013 section 9 (#470, #610): the gates passed, then opening the Spotify connection
+    fails in the database. No covers, no listing, the category only in the log."""
+    actor, _ = await rider(spot, admin)
+    playlists(spot)
+
+    async def broken_open(*_args: Any, **_kwargs: Any) -> Any:
+        raise db_error()
+
+    monkeypatch.setattr(access, "open_connection", broken_open)
+    caplog.set_level("INFO")
+    answer = await actor.get(URL)
+    assert (answer.status_code, answer.json()) == (200, {"covers": []})
+    assert listing_requests(spot) == 0
+    assert "playlist covers unavailable: database_error" in caplog.text
+    assert CANARY not in caplog.text
+
+
+async def test_a_database_error_in_the_rate_limit_check_is_the_apps_500(
+    spot: Spot, admin: Connection, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """ADR 0013 section 9 (#610): the limiter runs before the read and is not one of its
+    gates. A limiter that cannot count answers the app's ordinary 500 (no error text), never
+    ``{covers: []}`` and never an unlimited read."""
+    actor, _ = await rider(spot, admin)
+    playlists(spot)
+
+    async def broken_begin(_buckets: Any) -> Any:
+        raise db_error()
+
+    monkeypatch.setattr(spot.env.app.state.limiter, "begin", broken_begin)
+    answer = await actor.get(URL)
+    assert answer.status_code == 500
+    assert CANARY not in answer.text
+    assert CANARY not in caplog.text
+    assert listing_requests(spot) == 0

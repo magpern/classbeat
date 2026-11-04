@@ -36,8 +36,9 @@ never model input).
 
 - **Its own rate limit** (``auth.playlist_covers_buckets``: 10 per user and 30 per IP per 10
   minutes, every request counts): 429 ``rate_limited`` before anything else.
-- **Every other outcome is 200.** ``{covers: []}``, with no Spotify call, unless song picking
-  admits the user, no song-picking job of theirs is queued or running
+- **Every other outcome is 200** (but for the app's 500 when the database fails in the sign-in
+  lookup or the rate-limit check, which run before the read). ``{covers: []}``, with no Spotify
+  call, unless song picking admits the user, no song-picking job of theirs is queued or running
   (``jobs.service.cover_read_admitted``) and no cover-read cooldown is pending. Every provider
   failure of the read (no or a non-connected Spotify connection, a refused or failed refresh, a
   401, the deadline, an allowlist refusal, more than 500 playlists) is ``{covers: []}`` too,
@@ -48,7 +49,7 @@ never model input).
   before the connection is opened and **again** right before the listing is sent, after any
   refresh (``spotify_call``'s ``before_read``), so a pick admitted during the refresh (its lock
   wait and timeout, up to about 30 s) holds the read; only one admitted during the listing itself
-  (at most 8 s) can overlap it, the accepted window of ADR 0013 section 9 (#470).
+  (about 8 s) can overlap it, the accepted window of ADR 0013 section 9 (#470).
 - **The read**: one ``spotify_web.my_playlists(max_pages=10)`` through ``spotify_call`` in its
   read-only mode (existing host and token client; no ``record_result``, a 401 never flips; a
   refresh is shielded, never cancelled). ``egress.call_deadline`` bounds only the listing requests

@@ -9,7 +9,8 @@ leave the effective flag off and ``admit`` refusing, with no job and no credit),
 ``admit``'s checks, and the effective flag ``GET /api/connections`` returns; the worker's
 backstops (``feature_off``, ``model_config``) before any call; the music kind never changing, at
 ``admit`` and in the final store, both ways. The revise is ``test_soundless_revise.py`` (SL2);
-Save and Update are ``test_save_soundless.py`` (SL3).
+Save and Update are ``test_save_soundless.py`` (SL3); here only that a class this path designs
+is admitted for Save (#586).
 """
 
 import json
@@ -186,6 +187,29 @@ async def test_a_soundless_design_completes_with_no_music_call_and_stores_no_mus
     told = sent.spec.first_message + json.dumps([r for t in sent.turns for r in t[0]], default=str)
     assert not any(word in told.lower() for word in ("playlist", "track", "bpm", "drop"))
     assert prompt_version(sent.spec.system, sent.spec.tools) == made.prompt_version
+
+
+async def test_a_class_designed_without_music_is_admitted_for_save(
+    renv: ReviseEnv, fake_mowl: FakeMowlMusic
+) -> None:
+    """#586 (SL3 review): the class the real SL1 path stores (``music_source`` and revision music
+    ``none``, no link) is admitted by Save's approval, not only the rows ``test_save_soundless``
+    inserts, so the two cannot drift apart. Creation only: the write is that file's."""
+    class_id, job_id = await soundless_class(renv)
+    [rev] = renv.denv.revisions(job_id)
+    save = {
+        "kind": "save_workout",
+        "input": {
+            "class_id": str(class_id),
+            "revision_id": str(rev.id),
+            "content_hash": bytes(rev.content_hash).hex(),
+            "mowl_connection_id": str(renv.browser.connection_id),
+        },
+    }
+    made = await create(renv, save)
+    assert made.status_code == 201, made.text
+    assert made.json()["kind"] == "save_workout"
+    assert fake_mowl.requests == []  # a created job calls nothing; no link was ever needed
 
 
 # --- the gate at creation -------------------------------------------------------------------

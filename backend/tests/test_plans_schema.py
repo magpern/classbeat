@@ -250,6 +250,46 @@ def test_the_role_guard_fails_on_a_new_column_grant_or_a_wider_table_grant(
     assert check_roles(admin) == []
 
 
+@pytest.mark.parametrize("route", ["public", "membership", "table_through_group"])
+def test_guard_two_names_a_price_the_app_can_read_by_any_route(
+    admin: Connection, route: str
+) -> None:
+    """#606: guard 2 asks the database what ``classbeat_app`` can read (``has_column_privilege``),
+    so a price reached through PUBLIC or through a role the app is a member of is found, with its
+    own message, and not only a grant made directly to the app role."""
+    setup = {
+        "public": ["GRANT SELECT (intro_price_cents) ON public.plans TO PUBLIC"],
+        "membership": [
+            "CREATE ROLE price_reader_610 NOLOGIN",
+            "GRANT SELECT (currency) ON public.plans TO price_reader_610",
+            "GRANT price_reader_610 TO classbeat_app WITH INHERIT TRUE",
+        ],
+        "table_through_group": [
+            "CREATE ROLE price_reader_610 NOLOGIN",
+            "GRANT SELECT ON public.plans TO price_reader_610",
+            "GRANT price_reader_610 TO classbeat_app WITH INHERIT TRUE",
+        ],
+    }[route]
+    teardown = [
+        "REVOKE SELECT (intro_price_cents) ON public.plans FROM PUBLIC",
+        "DROP OWNED BY price_reader_610",
+        "DROP ROLE IF EXISTS price_reader_610",
+    ]
+    try:
+        for statement in setup:
+            admin.execute(text(statement))
+        problems = check_roles(admin)
+        assert any("classbeat_app can read a price column" in p for p in problems), problems
+    finally:
+        for statement in teardown:
+            if "price_reader_610" in statement and route == "public":
+                continue
+            if "intro_price_cents" in statement and route != "public":
+                continue
+            admin.execute(text(statement))
+    assert check_roles(admin) == []
+
+
 def test_the_rls_guard_requires_the_ledger_and_entitlement_policies(
     admin: Connection,
 ) -> None:
