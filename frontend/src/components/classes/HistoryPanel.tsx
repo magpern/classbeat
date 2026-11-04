@@ -76,10 +76,23 @@ export function HistoryPanel({
   // While the history is read again for the same set of versions (Make current only moves the
   // flag), the last answer stays on screen with the flag taken from the page, so the list does not
   // fall back to the plain one and back. A different set of versions shows the plain list until read.
+  // "The same" means every field of a version that both sides carry and the list renders (its
+  // number, kind, parent, time and length), not only its id; the flag is the one thing taken from
+  // the page.
   const sameVersions =
     loaded !== null &&
     loaded.history.revisions.length === revisions.length &&
-    loaded.history.revisions.every((r) => revisions.some((s) => s.id === r.id))
+    loaded.history.revisions.every((r) =>
+      revisions.some(
+        (s) =>
+          s.id === r.id &&
+          s.number === r.number &&
+          s.origin === r.origin &&
+          s.parentNumber === r.parentNumber &&
+          s.createdAt === r.createdAt &&
+          s.totalSec === r.totalSec,
+      ),
+    )
   const history =
     loaded === null
       ? null

@@ -1170,8 +1170,10 @@ listed at the end. It follows the soundless amendment above and keeps its rules.
    hash exactly as before.
    - `beat_one`: the corrections applied, `[{song, beats}]` sorted by song (absent when none).
    - `songs`: the songs the class plays (those starting before the fitted workout ends), each
-     `{song, start, end, bpm, estimate}` in seconds of the class as heard, plus `title` for a
-     Spotify track. The title is cleaned, Spotify-derived like `unknown_bpm`, and gone with the
+     `{song, start, end, bpm, estimate}` in seconds of the class as heard, `start`, `end` and `bpm`
+     rounded to one decimal (`agent/beat_one.py`), plus `title` for a Spotify track. A song whose
+     values fail the schema (a BPM MOWL reported outside 0 to 1000) is left out of `songs`, with a
+     logged count, and never fails the job. The title is cleaned, Spotify-derived like `unknown_bpm`, and gone with the
      class.
 
    **Size: the new fields only.** `songs` holds at most 200 entries (a class is at most 180
@@ -1203,10 +1205,12 @@ listed at the end. It follows the soundless amendment above and keeps its rules.
      - a class whose `music_source` is `{"source": "none"}`: `invalid_input`, through
        `design.music_kind.is_none` on the locked class's `music_source`. It **never** goes through
        `music_kind.admit_class` or `admit_music`. Neither answers the question a refit asks:
-       `admit_class` follows the soundless gate (`feature_off` today, and once SL2 lands it would let
-       a soundless class through, so a refit would run a music step on a class with no music), and
-       `admit_music` compares a design job's music kind with the class's and answers `invalid_input`
-       only for a mismatch;
+       `admit_class` passes a music class and sends a soundless one through the soundless gate
+       (`feature_off` when it is closed, an admit when it is open, so a refit would then run a music
+       step on a class with no music), and `admit_music` takes the design job's own music kind and
+       answers `invalid_input` only when that kind differs from the class's known one (its stored
+       source, else its newest revision's music), so it never refuses a soundless class for a
+       soundless request;
      - a class with no `music_source` (a duplicate of a class on picked songs, #550's item 5): 409
        `not_changeable`, as #550 specifies for `revise_draft`;
      - a base that is not a `draft` of the class (`invalid_input`), or not its current revision
@@ -1270,8 +1274,11 @@ listed at the end. It follows the soundless amendment above and keeps its rules.
    says which.
 
    `GET /api/classes/{id}` gains `beat_one: {available, revision_id, songs, pending, stale}`:
-   - `songs`: the current revision's songs, each with the class's `beats`, what the revision
-     `applied`, and `bpm_changed`;
+   - `songs`: the current revision's `music.songs` (`song`, `start`, `end`, `bpm`, `estimate` and,
+     for a Spotify track, `title`), each with the class's `beats` (0 when it has none), the `beats`
+     the revision `applied` (0 when none) and `bpm_changed`. `bpm_changed` compares the row's BPM
+     with the song's after rounding both to one decimal, because the column is single-precision
+     (128.3 reads back as 128.30000305) and `songs` holds one decimal;
    - `pending`: true when the corrections for the current fingerprint differ from the revision's
      `music.beat_one`;
    - `stale`: the rows for other fingerprints and for songs the revision does not play, as
@@ -1372,10 +1379,9 @@ the same key and request (item 7 of D).
    duplicate, `duplicated_from` `{class_id, number, class_title}` (title `null` when that class is
    gone or not the user's); the body also says `can_change`: a revise would be admitted now as far
    as the class's music goes, that is the class has a stored brief and a music source **and**
-   `design.music_kind.admit_class` admits it. For a soundless class that is false while SL2 (#528)
-   has not merged (`admit_class` answers `feature_off` for every `none` class) and, once SL2 lands,
-   it follows the soundless gate, because `can_change` calls the same function the revise's
-   `admit` calls. At most 200 revisions are read, oldest first (a fixed
+   `design.music_kind.admit_class` admits it. For a soundless class it follows the soundless gate
+   (SL2, #528, has merged), because `can_change` calls the same function the revise's `admit`
+   calls. At most 200 revisions are read, oldest first (a fixed
    `LIMIT`, the revisions route's bound): design revisions from Swedebeat hand-offs are not chat
    revisions, so the revision limit does not cap them, and the `LIMIT` is what bounds the per-row
    TSS work. Compare reads two contents of at most 64 KB and makes no external call, so it needs no
@@ -1449,8 +1455,7 @@ revision 1 is a copy of the chosen revision. One `user_session` transaction:
    `{source: "none"}` (#526, gated as item 2 says). A soundless copy keeps `classes.music_source =
    {source: "none"}` and its revision 1's `music` `{source: "none"}`, so the soundless amendment's
    item 1 ("the kind never changes", `music_kind.check_stored`) holds for the copy; a revise of the
-   copy goes through `music_kind.admit_class` like any revise (`feature_off` until SL2, #528, then
-   the gate). A class on picked songs
+   copy goes through `music_kind.admit_class` like any revise (the soundless gate, SL2, #528). A class on picked songs
    (the rule keys on the class's `music_source.origin` = `song_pick`, which names the source
    class's `class_playlists` row) gets `music_source` NULL: its working and final playlists stay the
    source class's. Ownership is re-checked at use by the existing paths: a revise attaches through

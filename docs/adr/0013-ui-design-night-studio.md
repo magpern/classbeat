@@ -392,7 +392,11 @@ browser contacts a third party, and it changes a guard test, so UI7 has an Opus 
 >     gate that cannot answer gives no covers; that error is logged as `database_error` with none of
 >     its text. The answer carries no category or status from Spotify; the failure is
 >     logged by category only. The endpoint's own answers are only 401 (signed out) and 429 (its own
->     rate limit, with `Retry-After`).
+>     rate limit, with `Retry-After`), plus the app's ordinary 500 when the database fails in the
+>     sign-in lookup or the rate-limit check that run before the read (hardening of 2026-11-04, #610:
+>     the app's `DBAPIError` handler answers it with no error text, as for every route). Those two
+>     are not turned into `{covers: []}`: a limiter that cannot count must not let the request
+>     through unlimited, and no cover is lost that the page needs.
 >   - **Its own rate limit.** `playlist-covers`: 10 per user and 30 per IP per 10 minutes, checked
 >     before the connection is opened. It is the fixed-window limiter of the other provider-calling
 >     routes; every request counts.
@@ -446,8 +450,8 @@ browser contacts a third party, and it changes a guard test, so UI7 has an Opus 
 >     The open-job check (with the song-picking and cooldown checks) runs before the connection is
 >     opened and again right before the listing is sent, after any refresh (`spotify_call`'s
 >     `before_read`, hardening of 2026-11-04, #470), so a pick admitted during the refresh (up to
->     about 30 s) holds the read. **Accepted:** a pick admitted during the listing itself (at most
->     8 s, `egress.call_deadline(8)`) can overlap it. Closing that window would need a lock the job
+>     about 30 s) holds the read. **Accepted:** a pick admitted during the listing itself (about
+>     8 s, `egress.call_deadline(8)`; the hand-off to the thread adds a little) can overlap it. Closing that window would need a lock the job
 >     claim waits for, for a decoration; the overlap costs a pick at most one 429 from the cover
 >     read's own requests, and a pick ends `quota_exhausted` only after three attempts in a row end
 >     with a Spotify 429, while the cover read backs off for the cooldown after its first. Neither the read nor its 429 touches any job, including `jobs.spotify_rate_limits` and
