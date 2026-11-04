@@ -35,7 +35,8 @@ row with them; nothing here commits.
   failed. ``resolve_route`` answers that as ``ModelChoice.running_covered``; the bootstrap choice
   never covers running (no recorded result stands behind it). The running job kinds refuse an
   uncovered choice ``model_config`` before any request (``design.sport.require_evaluated``), and
-  ``covers_running`` is the admin's check before ``running_enabled`` is stored ``on``. Cycling
+  ``covers(db, key, "running")`` is the check for one route key; the gate and the admin's
+  ``on`` use ``every_plan_covers`` over every plan (#590). Cycling
   keeps the rules above unchanged (a stale route keeps working for it, flagged).
 - **Soundless** (ADR 0007 amendment of 2026-11-03, item 6; #527): a ``design`` route covers
   soundless classes when it covers running as above (not stale for any reason, so its result has
@@ -417,8 +418,8 @@ async def covers(db: AsyncSession, route_key: str, variant: Variant) -> bool:
 
 
 async def covers_running(db: AsyncSession, route_key: str) -> bool:
-    """``covers(db, route_key, "running")``: the admin's check before ``running_enabled`` is
-    stored ``on`` (its rule unchanged, issue #465)."""
+    """``covers(db, route_key, "running")`` for one route key (issue #465). Production code uses
+    ``covers`` and ``every_plan_covers`` since #590; this name is kept for the tests of the rule."""
     return await covers(db, route_key, "running")
 
 
