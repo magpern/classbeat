@@ -119,6 +119,43 @@ export function storeRunning(value: 'on' | 'off' | null): void {
   )
 }
 
+/**
+ * The stored admin flag `soundless_enabled` (ADR 0007 amendment of 2026-11-03, #527): "No music" is
+ * offered only with the environment switch (the stack sets it), a stored `on` and every plan's route
+ * covering soundless; the web's own `fake` provider outside prod counts as covering. Nothing stored
+ * is off.
+ */
+export function storeSoundless(value: 'on' | 'off' | null): void {
+  if (value === null) {
+    sql("DELETE FROM app_settings WHERE key = 'soundless_enabled'")
+    return
+  }
+  sql(
+    `INSERT INTO app_settings (key, value) VALUES ('soundless_enabled', '"${value}"') ` +
+      `ON CONFLICT (key) DO UPDATE SET value = '"${value}"'`,
+  )
+}
+
+/** Open the new-class form, choose "No music" (no playlist), fill the brief the soundless script was
+ *  written for (30 minutes) and start the design. Returns the job's id. */
+export async function startSoundlessDesign(
+  page: Page,
+  title: string,
+  /** Runs once the form is filled and just before "Design my class": the form's own playlist list
+   *  has been read by then, so a spec can zero the fakes' counters here. */
+  beforeStart: () => void = () => undefined,
+): Promise<string> {
+  await page.getByRole('link', { name: 'New class' }).click()
+  const form = page.getByRole('form', { name: 'New class' })
+  await form.getByRole('button', { name: 'No music', exact: true }).click()
+  await form.getByLabel('Class name').fill(title)
+  await form.getByLabel('Length in minutes').fill('30')
+  beforeStart()
+  await form.getByRole('button', { name: 'Design my class' }).click()
+  await expect(page).toHaveURL(/\/jobs\/[0-9a-f-]{36}$/)
+  return jobId(page)
+}
+
 /** Design the recorded running class from the playlist and open its class page. */
 export async function designRunningAndOpen(page: Page, title: string, playlistName: string): Promise<string> {
   useModelScript('running_first_draft')

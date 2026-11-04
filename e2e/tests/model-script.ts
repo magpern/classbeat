@@ -13,6 +13,9 @@ export type ModelScript =
   | 'revise_description'
   | 'running_first_draft' // a running design: five zones, an incline per interval (ADR 0018)
   | 'running_revise' // its revision
+  | 'soundless_first_draft' // a design with no music source (ADR 0007 amendment of 2026-11-03)
+  | 'soundless_revise_good' // its revision: the first minutes easier
+  | 'soundless_revise_second' // a second revision: the second step easier
   | 'e2e_pick' // song picking, phase 1: search, pool, choose (the fake Spotify's catalogue)
   | 'e2e_change' // Change songs, phase 1: replace slot 2
   | 'e2e_swedebeat_mix' // design on a cached Swedebeat mix map (ADR 0016 A6)
