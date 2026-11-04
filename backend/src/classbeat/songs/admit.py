@@ -7,6 +7,8 @@ job, the per-user limit), in this order, each refusal writing nothing:
 1. ``song_picking_off`` unless ``CLASSBEAT_SONG_PICKING`` is on (``classbeat.songs.config``) and
    the effective ``song_picking`` flag admits the user (``classbeat.flags``: ``granted`` needs the
    ``song_picking`` feature, ``off`` refuses everyone, ``on`` admits everyone);
+   then ``invalid_input`` for a soundless class (``music_kind.refuse_soundless``, every mode;
+   ADR 0007 amendment of 2026-11-03, item 9);
 2. for ``mode = "resume"`` (section 6), instead of steps 3 to 6: ``not_connected`` (the Spotify
    row), then **the receipt rule**, ``receipt_invalid`` unless all hold, then ``account_changed``
    (the connected Spotify account must be the list's):
@@ -67,7 +69,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from classbeat import connections
 from classbeat.context import UserContext
-from classbeat.design import sport
+from classbeat.design import music_kind, sport
 from classbeat.flags import effective as flags
 from classbeat.jobs.kinds import SONG_KIND_NAMES, Admitted, Approving, Refused
 from classbeat.operations import orphans
@@ -213,6 +215,11 @@ async def admit(db: AsyncSession, ctx: UserContext, parsed: BaseModel, /) -> Adm
         return Refused("invalid_input")
     if not await flags.song_picking_admits(db, ctx, config.current().enabled):
         return Refused("song_picking_off")
+    # ADR 0007 amendment item 9 (#530): no song pick, resume or seed of a soundless class.
+    if parsed.class_id is not None:
+        soundless = await music_kind.refuse_soundless(db, ctx.user_id, parsed.class_id)
+        if soundless is not None:
+            return soundless
     if parsed.mode == "resume":
         return await _admit_resume(db, ctx, parsed)
     # ADR 0018: the input is cycling only; a class whose sport is fixed as running is refused.

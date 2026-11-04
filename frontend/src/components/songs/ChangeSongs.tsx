@@ -29,7 +29,8 @@ export function ChangeSongs({ summary }: { summary: ClassSummary }) {
   const action = useAction()
   const locked = useRef(false)
   const { navigate } = useRouter()
-  const eligible = summary.songs.state === 'approved' && revisionId !== null
+  // A soundless class has no songs to change (#530).
+  const eligible = !summary.soundless && summary.songs.state === 'approved' && revisionId !== null
 
   useEffect(() => {
     if (!eligible || revisionId === null) return

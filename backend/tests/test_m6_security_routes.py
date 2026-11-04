@@ -125,6 +125,8 @@ CLASSIFIED: dict[tuple[str, str], str] = {
     ("GET", "/api/classes/{class_id}/revisions"): "owned",
     ("GET", "/api/classes/{class_id}/revisions/{revision_id}"): "owned",
     ("GET", "/api/classes/{class_id}/messages"): "owned",
+    ("GET", "/api/classes/{class_id}/history"): "owned",
+    ("GET", "/api/classes/{class_id}/history/compare"): "owned",
     ("POST", "/api/classes/{class_id}/current"): "owned",
     ("POST", "/api/classes/{class_id}/duplicate"): "owned",
     ("POST", "/api/classes/{class_id}/swedebeat-match"): "owned",
@@ -622,6 +624,10 @@ OWNED_ROUTES = [
     OwnedRoute("GET", "/api/classes/{class_id}/revisions"),
     OwnedRoute("GET", "/api/classes/{class_id}/revisions/{revision_id}"),
     OwnedRoute("GET", "/api/classes/{class_id}/messages"),
+    OwnedRoute("GET", "/api/classes/{class_id}/history"),
+    OwnedRoute(
+        "GET", "/api/classes/{class_id}/history/compare?from={revision_id}&to={revision_id}"
+    ),
     OwnedRoute("POST", "/api/classes/{class_id}/current", _pick, frozenset({200, 409})),
     # The planted class has no stored brief: the owner's own duplicate is 409 not_ready.
     OwnedRoute(
@@ -666,6 +672,24 @@ OWNED_ROUTES = [
     OwnedRoute("DELETE", "/api/auth/sessions/{session_id}", control=frozenset({204})),
     OwnedRoute("DELETE", "/api/auth/identities/{identity_id}", control=frozenset({204, 409})),
 ]
+
+
+async def test_compare_with_one_own_and_one_foreign_revision_is_not_found(
+    env: Env, browsers: Any, make_actor: Any, superuser: Connection
+) -> None:
+    """The compare route names two revisions: one of the caller's own and one of another user's,
+    in either order, answers exactly as an unknown id does; both own answer 200."""
+    alice_rows = await plant(env, superuser, (await browsers(mowl=False)).user_id)
+    bob_rows = await plant(env, superuser, (await browsers(mowl=False)).user_id)
+    alice: Actor = await make_actor(alice_rows.user)
+    base = f"/api/classes/{alice_rows.class_id}/history/compare"
+    own, theirs = alice_rows.revision_id, bob_rows.revision_id
+    reference = await alice.call("GET", f"{base}?from={own}&to={UNKNOWN}")
+    assert reference.status_code == 404
+    for older, newer in ((own, theirs), (theirs, own)):
+        answer = await alice.call("GET", f"{base}?from={older}&to={newer}")
+        assert (answer.status_code, answer.json()) == (404, reference.json())
+    assert (await alice.call("GET", f"{base}?from={own}&to={own}")).status_code == 200
 
 
 def test_every_owned_route_has_a_case() -> None:
