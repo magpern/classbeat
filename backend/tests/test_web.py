@@ -209,7 +209,15 @@ CSP_EXPECTED = {
     "default-src": ["'self'"],
     "script-src": ["'self'"],
     "style-src": ["'self'"],
-    "img-src": ["'self'", "https://i.scdn.co"],
+    # ADR 0013 section 9 and its "CSP widening" (#537): exactly the path-scoped cover sources.
+    "img-src": [
+        "'self'",
+        "https://i.scdn.co/image/",
+        "https://mosaic.scdn.co/300/",
+        "https://mosaic.scdn.co/640/",
+        "https://image-cdn-ak.spotifycdn.com/image/",
+        "https://image-cdn-fa.spotifycdn.com/image/",
+    ],
     "font-src": ["'self'"],
     "connect-src": ["'self'"],
     "media-src": ["'none'"],
@@ -286,5 +294,33 @@ def test_the_policy_allows_no_other_image_host_and_nothing_unsafe() -> None:
     assert "unsafe" not in CONTENT_SECURITY_POLICY
     assert "data:" not in CONTENT_SECURITY_POLICY
     assert "*" not in CONTENT_SECURITY_POLICY
-    assert CONTENT_SECURITY_POLICY.count("https://") == 1
-    assert "img-src 'self' https://i.scdn.co;" in CONTENT_SECURITY_POLICY
+    assert CONTENT_SECURITY_POLICY.count("https://") == 5
+    assert (
+        "img-src 'self' https://i.scdn.co/image/ https://mosaic.scdn.co/300/ "
+        "https://mosaic.scdn.co/640/ https://image-cdn-ak.spotifycdn.com/image/ "
+        "https://image-cdn-fa.spotifycdn.com/image/;"
+    ) in CONTENT_SECURITY_POLICY
+
+
+def test_the_image_sources_are_the_cover_pins_prefixes() -> None:
+    """The CSP, ``classbeat.covers.IMG_SOURCES`` and the playlist pin stay in step: every source
+    is the fixed prefix of one pinned shape, each pinned shape starts with one source, and a song
+    cover (the album pin) starts with the album source only."""
+    from classbeat.covers import COVER_URL, IMG_SOURCES, PLAYLIST_COVER_URL
+    from classbeat.headers import CSP_DIRECTIVES
+
+    img = next(d for d in CSP_DIRECTIVES if d.startswith("img-src "))
+    assert img.split()[1:] == ["'self'", *IMG_SOURCES]
+    hex40 = "a" * 40
+    samples = {
+        "https://i.scdn.co/image/": f"https://i.scdn.co/image/{hex40}",
+        "https://mosaic.scdn.co/300/": f"https://mosaic.scdn.co/300/{hex40 * 4}",
+        "https://mosaic.scdn.co/640/": f"https://mosaic.scdn.co/640/{hex40 * 4}",
+        "https://image-cdn-ak.spotifycdn.com/image/": f"https://image-cdn-ak.spotifycdn.com/image/{hex40}",
+        "https://image-cdn-fa.spotifycdn.com/image/": f"https://image-cdn-fa.spotifycdn.com/image/{hex40}",
+    }
+    assert set(samples) == set(IMG_SOURCES)
+    for source, url in samples.items():
+        assert PLAYLIST_COVER_URL.fullmatch(url), url
+        assert [s for s in IMG_SOURCES if url.startswith(s)] == [source]
+    assert [s for s, url in samples.items() if COVER_URL.fullmatch(url)] == [IMG_SOURCES[0]]

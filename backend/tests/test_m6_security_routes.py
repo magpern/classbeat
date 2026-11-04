@@ -118,6 +118,7 @@ CLASSIFIED: dict[tuple[str, str], str] = {
     ("POST", "/api/external-operations/{operation_id}/do-it-anyway"): "owned",
     ("GET", "/api/music/mowl-playlists"): "session",
     ("GET", "/api/music/swedebeat-mixes"): "session",
+    ("GET", "/api/music/playlist-covers"): "session",
     ("GET", "/api/music/class-playlists"): "session",
     ("GET", "/api/classes"): "session",
     ("GET", "/api/classes/{class_id}"): "owned",

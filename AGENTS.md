@@ -303,7 +303,16 @@ classbeat does not use the running calls yet.
 0.10.0 adds `image` to `spotify_web.my_playlists` entries (#537, ADR 0013 §9 amendment): the URL of the playlist's
 smallest image at least 64 px wide by the 0.7.0 rule, except that when no image in the list carries a width (an
 uploaded cover, listed with `width: null`) it is the first image with a non-empty string URL; never requested by the
-library and not host-checked there. Track entries and every request are unchanged, and classbeat does not use it yet.
+library and not host-checked there. Track entries and every request are unchanged. classbeat uses it only in `GET /api/music/playlist-covers`
+(`classbeat.design.routes`, #537, ADR 0013 §9 amendment): the New class picker's covers, read per request through
+`spotify_call`'s read-only mode (no `record_result`, a 401 never flips, a refresh shielded and never cancelled; 8 s on
+the listing requests, at most 10 pages), only when song picking admits the user, the Spotify connection is `connected`,
+no `design_with_songs` or `revise_songs` job of theirs is queued or running (`jobs.service.cover_read_admitted`) and no
+cooldown runs (a Spotify 429 starts one for its `Retry-After`, 60 s to 1 hour, `RateLimiter.start_cooldown`); its own
+rate limit is 10 per user and 30 per IP per 10 minutes. It answers `{covers: [{spotify_playlist_id, cover}]}` with
+`Cache-Control: no-store`, each cover a whole-string match of `classbeat.covers.playlist_cover_url`, never stored, never
+model input; every failure is `{covers: []}`. The fake Spotify's playlists carry `images` from
+`spotifycore.playlist_images` (the e2e control `playlist?...&id=&images=`).
 
 Database tests need a throwaway Postgres whose application database has the roles of
 `docker/postgres/init/10-roles.sql` (ADR 0002 section 4). Give it a name and port of its own
@@ -565,11 +574,16 @@ npm run build        # typecheck, then Vite writes frontend/dist
   `localStorage` (try/catch, the page works without it); `public/theme-init.js` applies it before first paint.
 - Fonts are bundled (`@fontsource-variable/inter`, `@fontsource/archivo` 700 and 800, SIL OFL) and served from
   our origin; nothing is requested from a third-party host at runtime (`src/no-third-party-hosts.test.ts`
-  guards the sources), with **one allowed host**: album covers from `https://i.scdn.co`, named and shown only
+  guards the sources), with **one allowed exception**: album and playlist covers from Spotify's image hosts
+  `https://i.scdn.co`, `https://mosaic.scdn.co`, `https://image-cdn-ak.spotifycdn.com` and
+  `https://image-cdn-fa.spotifycdn.com` (ADR 0013 §9 and its amendment of 2026-11-03), named and shown only
   in `components/songs/CoverArt.tsx` (`<img referrerpolicy="no-referrer" loading="lazy">`, initials tile
-  otherwise; the guard exempts that host in that file only, and only `CoverArt` renders an `<img>`).
+  otherwise; `kind="album"` takes the album pin only, `kind="playlist"` the three playlist shapes; the guard
+  exempts those hosts in that file only, and only `CoverArt` renders an `<img>`).
 - The web process sends the app's Content-Security-Policy as a response header on every response
-  (`classbeat.headers`, never a `<meta>`): `'self'` for everything, `img-src 'self' https://i.scdn.co`, no
+  (`classbeat.headers`, never a `<meta>`): `'self'` for everything, `img-src 'self'` plus the path-scoped cover
+  sources of `classbeat.covers.IMG_SOURCES` (`https://i.scdn.co/image/`, `https://mosaic.scdn.co/300/` and
+  `/640/`, `https://image-cdn-ak.spotifycdn.com/image/`, `https://image-cdn-fa.spotifycdn.com/image/`), no
   inline script or style, no `data:`, `object-src`/`base-uri`/`frame-ancestors 'none'`; plus
   `Referrer-Policy: no-referrer`. New UI must work under it: no inline `<script>` or `<style>`, no `data:`
   images (the TOTP QR code is drawn as inline SVG for this reason), no other host.
@@ -725,6 +739,9 @@ or critical `@axe-core/playwright` violation (WCAG 2.2 A/AA tags), and no consol
 `admin grant`; turning on two-factor on the account page with a code computed from the shown key (`totpCode`)
 passes the admin's TOTP check for the session. `mu-covers.spec.ts` serves Songs for approval from API answers the
 test makes (the stack's fakes run no song pick) over the real CSP header, and the cover host from a page route.
+`playlist-covers.spec.ts` (#537) connects Spotify, gives the fake Spotify the fake MOWL's playlist ids with mosaic,
+uploaded, album, foreign-host and query images, and checks the New class tiles (three covers, initials for the rest,
+one `GET /v1/me/playlists` as the user, axe and both viewports and themes), and that without Spotify no covers are asked.
 
 The fakes' state is shared, so Playwright runs one worker. The Playwright context blocks every
 origin but the stack's. They use public test values only and are never part of the default stack.
