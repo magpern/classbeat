@@ -30,6 +30,9 @@ const REASONS: Record<string, string> = {
     'This version has no beat data to correct. Ask for a change by chat first, then try again.',
   correction_limit:
     'This class has as many timing fixes as it can hold. Reset some, then try again.',
+  nothing_pending: 'The current version already uses these timing fixes.',
+  not_changeable:
+    'This class has no music of its own to fit, so its timing cannot be changed here.',
   refit_limit:
     'This class has had its timing fixed as often as it can. Design a new class to start again.',
 }

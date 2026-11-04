@@ -44,7 +44,7 @@ function beatOne(extra: Record<string, unknown> = {}) {
     revision_id: REV1,
     songs: [song(1), song(2, { estimate: true })],
     pending: false,
-    stale: 0,
+    stale: [],
     ...extra,
   }
 }
@@ -62,7 +62,7 @@ const beatPath = (n: number) => `${CLASS_PATH}/beat-one/${String(n)}`
 
 describe('the Beat 1 panel', () => {
   it('is hidden without beat data, and for an answer without the block', async () => {
-    start({ available: false, revision_id: REV1, songs: [], pending: false, stale: 0 })
+    start({ available: false, revision_id: REV1, songs: [], pending: false, stale: [] })
     renderAt(PAGE)
     expect(await screen.findByTestId('saved-state')).toBeInTheDocument()
     expect(screen.queryByTestId('beat-one')).toBeNull()
@@ -158,12 +158,48 @@ describe('the Beat 1 panel', () => {
     })
   })
 
-  it('counts corrections for earlier music', async () => {
-    start(beatOne({ stale: 2 }))
+  it('lists corrections for earlier music, clears one by id and all at once', async () => {
+    const ROW = 'b3333333-3333-4333-8333-333333333333'
+    const stale = [{ id: ROW, song: 4, beats: -1 }]
+    const api = start(beatOne({ stale }), {
+      [`DELETE ${CLASS_PATH}/beat-one/rows/${ROW}`]: beatOne(),
+      [`DELETE ${CLASS_PATH}/beat-one`]: beatOne(),
+    })
     renderAt(PAGE)
-    expect(await screen.findByTestId('beat-one-stale')).toHaveTextContent(
-      '2 timing fixes were set on earlier music and are not used.',
-    )
+    const block = await screen.findByTestId('beat-one-stale')
+    expect(block).toHaveTextContent(/analysed again or changed/)
+    expect(block).toHaveTextContent('Song 4: 1 beat earlier')
+    fireEvent.click(within(block).getByRole('button', { name: 'Clear the earlier timing fix of song 4' }))
+    await waitFor(() => {
+      expect(screen.queryByTestId('beat-one-stale')).toBeNull()
+    })
+    expect(api.to('DELETE', `${CLASS_PATH}/beat-one/rows/${ROW}`)).toHaveLength(1)
+  })
+
+  it('Clear all timing fixes sends one DELETE for the class', async () => {
+    const api = start(beatOne({ stale: [{ id: 'b4444444-4444-4444-8444-444444444444', song: 1, beats: 2 }] }), {
+      [`DELETE ${CLASS_PATH}/beat-one`]: beatOne(),
+    })
+    renderAt(PAGE)
+    fireEvent.click(await screen.findByRole('button', { name: 'Clear all timing fixes' }))
+    await waitFor(() => {
+      expect(api.to('DELETE', `${CLASS_PATH}/beat-one`)).toHaveLength(1)
+    })
+  })
+
+  it('asks to listen again when the tempo of a corrected song changed', async () => {
+    start(beatOne({ songs: [song(1, { beats: 1, applied: 1, bpm_changed: true }), song(2)] }))
+    renderAt(PAGE)
+    expect(await screen.findByText(/tempo of this song changed/)).toBeInTheDocument()
+  })
+
+  it('says so when there is nothing to apply', async () => {
+    start(beatOne({ songs: [song(1, { beats: 1 }), song(2)], pending: true }), {
+      'POST /api/jobs': () => reason(409, 'nothing_pending'),
+    })
+    renderAt(PAGE)
+    fireEvent.click(await screen.findByRole('button', { name: 'Apply timing fixes' }))
+    expect(await screen.findByText('The current version already uses these timing fixes.')).toBeInTheDocument()
   })
 })
 
