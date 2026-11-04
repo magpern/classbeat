@@ -1,7 +1,7 @@
 import { fireEvent, screen, waitFor, within } from '@testing-library/react'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { beatsInWords } from '../components/classes/BeatOnePanel'
-import { CLASS_PATH, MOWL_CONNECTION, REV1, classRoutes } from '../test/classFixtures'
+import { CLASS_PATH, MOWL_CONNECTION, REV1, classBody, classRoutes } from '../test/classFixtures'
 import { fakeApi, reason } from '../test/fakeApi'
 import { CLASS_ID, SESSION_ROUTES, jobBody } from '../test/jobFixtures'
 import { renderAt } from '../test/render'
@@ -167,7 +167,7 @@ describe('the Beat 1 panel', () => {
     })
     renderAt(PAGE)
     const block = await screen.findByTestId('beat-one-stale')
-    expect(block).toHaveTextContent(/analysed again or changed/)
+    expect(block).toHaveTextContent(/analysed again or\s+changed/)
     expect(block).toHaveTextContent('Song 4: 1 beat earlier')
     fireEvent.click(within(block).getByRole('button', { name: 'Clear the earlier timing fix of song 4' }))
     await waitFor(() => {
@@ -200,6 +200,153 @@ describe('the Beat 1 panel', () => {
     renderAt(PAGE)
     fireEvent.click(await screen.findByRole('button', { name: 'Apply timing fixes' }))
     expect(await screen.findByText('The current version already uses these timing fixes.')).toBeInTheDocument()
+  })
+})
+
+// Every refusal the panel can meet, as the sentence the user reads (never the code).
+const SENTENCES: [string, number, string, string][] = [
+  ['correction_limit', 409, 'PUT', 'This class has as many timing fixes as it can hold. Reset some, then try again.'],
+  ['no_beat_data', 409, 'PUT', 'This version has no beat data to correct. Ask for a change by chat first, then try again.'],
+  ['refit_limit', 409, 'POST', 'This class has had its timing fixed as often as it can. Design a new class to start again.'],
+  ['invalid_input', 422, 'DELETE', 'That request could not be used. Check it and try again.'],
+]
+
+describe('the Beat 1 panel refusals and guards', () => {
+  it.each(SENTENCES)('%s (%i on %s) is shown as its sentence', async (why, status, method, sentence) => {
+    const del = `DELETE ${beatPath(1)}?revision_id=${REV1}`
+    start(beatOne({ songs: [song(1, { beats: 1 }), song(2)], pending: true }), {
+      [`PUT ${beatPath(1)}`]: () => reason(status, why),
+      [del]: () => reason(status, why),
+      'POST /api/jobs': () => reason(status, why),
+    })
+    renderAt(PAGE)
+    const name =
+      method === 'PUT'
+        ? /Move beat 1 of Opening .* later/
+        : method === 'DELETE'
+          ? /Reset beat 1 of Opening/
+          : 'Apply timing fixes'
+    fireEvent.click(await screen.findByRole('button', { name }))
+    expect(await screen.findByText(sentence)).toBeInTheDocument()
+    expect(screen.queryByText(new RegExp(why))).toBeNull()
+  })
+
+  it('Apply waits while the class has an open job', async () => {
+    const api = start(beatOne({ songs: [song(1, { beats: 1 }), song(2)], pending: true }), {
+      [`GET ${CLASS_PATH}`]: classBody({
+        beat_one: beatOne({ songs: [song(1, { beats: 1 }), song(2)], pending: true }),
+        open_job_id: REFIT_JOB,
+        open_job: { id: REFIT_JOB, kind: 'revise_draft', state: 'running' },
+      }),
+      [`GET /api/jobs/${REFIT_JOB}`]: jobBody('running', { id: REFIT_JOB, kind: 'revise_draft' }),
+      [`GET /api/jobs/${REFIT_JOB}/events`]: () => new Response('', { status: 204 }),
+    })
+    renderAt(PAGE)
+    const pending = await screen.findByTestId('beat-one-pending')
+    const button = within(pending).getByRole('button', { name: 'Apply timing fixes' })
+    expect(button).toBeDisabled()
+    expect(pending).toHaveTextContent('Wait for the running task to finish first.')
+    fireEvent.click(button)
+    expect(api.to('POST', '/api/jobs')).toHaveLength(0)
+  })
+
+  it('while a change is on its way, no other change or Apply can be sent', async () => {
+    const answer = beatOne({ songs: [song(1, { beats: 2 }), song(2)], pending: true })
+    start(beatOne({ songs: [song(1, { beats: 1 }), song(2)], pending: true }), {
+      [`PUT ${beatPath(1)}`]: answer,
+    })
+    const inner = globalThis.fetch
+    const held: (() => void)[] = []
+    const changes: string[] = []
+    vi.stubGlobal('fetch', (input: RequestInfo | URL, init?: RequestInit) => {
+      const method = init?.method ?? 'GET'
+      if (method === 'GET') return inner(input, init)
+      changes.push(`${method} ${typeof input === 'string' ? input : input instanceof URL ? input.pathname : input.url}`)
+      return new Promise<Response>((resolve) => {
+        held.push(() => {
+          resolve(inner(input, init))
+        })
+      })
+    })
+    renderAt(PAGE)
+    const later = await screen.findByRole('button', { name: /Move beat 1 of Opening .* later/ })
+    fireEvent.click(later)
+    await waitFor(() => {
+      expect(changes).toHaveLength(1)
+    })
+    const earlier = screen.getByRole('button', { name: /Move beat 1 of Opening .* earlier/ })
+    const reset = screen.getByRole('button', { name: /Reset beat 1 of Opening/ })
+    const apply = screen.getByRole('button', { name: 'Apply timing fixes' })
+    for (const button of [later, earlier, reset, apply]) {
+      expect(button).toBeDisabled()
+      fireEvent.click(button)
+    }
+    expect(changes).toEqual([`PUT ${beatPath(1)}`])
+    held.forEach((release) => {
+      release()
+    })
+    const row = screen.getByTestId('beat-one-song-1')
+    await waitFor(() => {
+      expect(within(row).getByText('2 beats later')).toBeInTheDocument()
+    })
+    expect(later).toBeEnabled()
+  })
+
+  it('a retry of Apply with the same fixes reuses its idempotency key', async () => {
+    let posts = 0
+    const api = start(beatOne({ songs: [song(1, { beats: 1 }), song(2)], pending: true }), {
+      'POST /api/jobs': () => {
+        posts += 1
+        return posts === 1
+          ? reason(503, 'unavailable')
+          : jobBody('queued', { id: REFIT_JOB, kind: 'refit_draft' })
+      },
+    })
+    renderAt(PAGE)
+    const apply = await screen.findByRole('button', { name: 'Apply timing fixes' })
+    fireEvent.click(apply)
+    await waitFor(() => {
+      expect(api.to('POST', '/api/jobs')).toHaveLength(1)
+    })
+    await waitFor(() => {
+      expect(apply).toBeEnabled()
+    })
+    fireEvent.click(apply)
+    await waitFor(() => {
+      expect(api.to('POST', '/api/jobs')).toHaveLength(2)
+    })
+    const [first, second] = api.to('POST', '/api/jobs')
+    expect(first?.headers.get('Idempotency-Key')).toBeTruthy()
+    expect(second?.headers.get('Idempotency-Key')).toBe(first?.headers.get('Idempotency-Key'))
+  })
+
+  it('announces the shift of a song politely', async () => {
+    start(beatOne())
+    renderAt(PAGE)
+    const row = await screen.findByTestId('beat-one-song-2')
+    const output = within(row).getByText('as analysed')
+    expect(output.tagName).toBe('OUTPUT')
+    expect(output).toHaveAttribute('aria-live', 'polite')
+  })
+
+  it('takes the server view when a refusal reloads the same version', async () => {
+    let gets = 0
+    const after = beatOne({ songs: [song(1, { beats: 2 }), song(2)], pending: true })
+    const api = start(beatOne(), {
+      [`GET ${CLASS_PATH}`]: () => {
+        gets += 1
+        return classBody({ beat_one: gets === 1 ? beatOne() : after })
+      },
+      [`PUT ${beatPath(1)}`]: () => reason(409, 'class_busy'),
+    })
+    renderAt(PAGE)
+    fireEvent.click(await screen.findByRole('button', { name: /Move beat 1 of Opening .* later/ }))
+    const row = await screen.findByTestId('beat-one-song-1')
+    await waitFor(() => {
+      expect(within(row).getByText('2 beats later')).toBeInTheDocument()
+    })
+    expect(api.to('GET', CLASS_PATH).length).toBeGreaterThan(1)
+    expect(screen.getByTestId('beat-one-pending')).toBeInTheDocument()
   })
 })
 
