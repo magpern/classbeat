@@ -186,9 +186,10 @@ async def revision(
 
 async def running_refused(db: AsyncSession, found: Revision) -> bool:
     """Whether Save or Update must refuse ``feature_off``: the class is running and
-    ``running_enabled`` (the environment's switch and the admin flag, stricter wins) is off now
-    (ADR 0018 section 5). A cycling class never reads the flag."""
-    return found.running and not await class_sport.running_on(db)
+    ``running_enabled``'s switch (the environment's and a stored ``on``) is off now (ADR 0018
+    section 5). Save makes no model call, so coverage is not read (#509). A cycling class never
+    reads the flag."""
+    return found.running and not await class_sport.running_switch(db)
 
 
 async def linked_playlist(

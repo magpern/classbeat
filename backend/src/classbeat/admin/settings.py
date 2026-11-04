@@ -17,14 +17,18 @@ read only.
   that is unknown (422 ``unknown_plan``) or ranks above ``instructor`` (422
   ``plan_above_instructor``), a key that is no flag, billing and Swedebeat included (422
   ``unknown_key``), and ``running_enabled`` stored ``on`` while a plan's ``route_key`` has no
-  ``design`` route whose recorded result covers running (422 ``running_not_evaluated``,
-  ``classbeat.models.routes.covers_running``; ADR 0012 amendment of 2026-11-03, issue #465), and
-  ``soundless_enabled`` stored ``on`` while a plan's ``route_key`` has no ``design`` route that
-  covers soundless (422 ``soundless_not_evaluated``, ``models.routes.every_plan_covers``; the
-  web's own ``fake`` provider outside prod counts, ``design.music_kind.fake_covers``; ADR 0007
-  amendment of 2026-11-03, #527). A refusal changes nothing and writes one ``refused`` audit row.
-  ``soundless_enabled``'s effective value is the three conditions (environment, stored ``on``,
-  every plan covered), computed on every read like the form's.
+  ``design`` route whose recorded result covers running (422 ``running_not_evaluated``; ADR 0012
+  amendment of 2026-11-03, issue #465), and ``soundless_enabled`` stored ``on`` while a plan's
+  ``route_key`` has no ``design`` route that covers soundless (422 ``soundless_not_evaluated``;
+  ADR 0007 amendment of 2026-11-03, #527); both through ``models.routes.every_plan_covers``, and
+  the web's own ``fake`` provider outside prod counts (``design.music_kind.fake_covers``). A
+  refusal changes nothing and writes one ``refused`` audit row. ``running_enabled``'s and
+  ``soundless_enabled``'s effective values are the three conditions (environment, stored ``on``,
+  every plan covered), computed on every read like the form's (ADR 0018 amendment of 2026-11-04,
+  #509), so the check at store time is not what keeps them safe: it reads the routes without the
+  row locks the route writes take, and a route cleared just after it only makes the next read
+  off (a job admitted in between ends ``model_config`` in the worker, which checks its model on
+  every attempt, before any call).
 - ``DELETE /settings/{key}``: clears the stored value (the JSON ``null``, which every reader takes
   as no row: maint has no ``DELETE`` on ``app_settings``), so the environment's value applies
   (404 ``not_found`` when nothing was stored).
@@ -67,7 +71,7 @@ from classbeat.db import system_session
 from classbeat.design.music_kind import fake_covers
 from classbeat.flags import core
 from classbeat.flags.core import FlagRefused
-from classbeat.models.routes import covers_running, every_plan_covers
+from classbeat.models.routes import Variant, every_plan_covers
 from classbeat.plans.entitle import TRIAL_MAX_PLAN, plan_ranks
 
 router = admin_router()
@@ -112,7 +116,6 @@ _PLAN_COLUMNS = (
 _PLANS = text(f"SELECT {_PLAN_COLUMNS} FROM plans ORDER BY rank")  # noqa: S608
 _PLAN_FOR_UPDATE = text(f"SELECT {_PLAN_COLUMNS} FROM plans WHERE id = :p FOR UPDATE")  # noqa: S608
 _RANKS = text("SELECT id, rank FROM plans WHERE id = ANY(:ids)")
-_ROUTE_KEYS = text("SELECT DISTINCT route_key FROM plans ORDER BY route_key")
 
 
 def _update_plan(columns: list[str]) -> Any:
@@ -299,6 +302,7 @@ def _flag(
     ranks: dict[str, int],
     emails: dict[UUID, str],
     soundless_covered: bool = False,
+    running_covered: bool = False,
 ) -> FlagOut:
     stored = None if row is None else row.value
     if key == "signup_mode":
@@ -315,7 +319,8 @@ def _flag(
         source = "database" if settings.swedebeat_enabled and stored is not None else "environment"
     elif key == "running_enabled":
         environment = "on" if settings.running_enabled else "off"
-        effective = "on" if core.running_setting(settings.running_enabled, stored) else "off"
+        switch = core.running_switch(settings.running_enabled, stored)
+        effective = "on" if switch and running_covered else "off"
         source = "database" if settings.running_enabled and stored is not None else "environment"
     elif key == "soundless_enabled":
         environment = "on" if settings.soundless_enabled else "off"
@@ -364,9 +369,12 @@ async def _view(session: AsyncSession, settings: Settings) -> SettingsOut:
     people = [r.updated_by for r in (*rows.values(), *plans) if r.updated_by is not None]
     emails = await auth.account_emails(session, people)
     ranks = {p.id: p.rank for p in plans}
-    covered = await _soundless_covered(session, settings)
+    soundless = await _covered(session, settings, "soundless")
+    running = await _covered(session, settings, "running")
     return SettingsOut(
-        flags=[_flag(k, settings, rows.get(k), ranks, emails, covered) for k in core.KEYS],
+        flags=[
+            _flag(k, settings, rows.get(k), ranks, emails, soundless, running) for k in core.KEYS
+        ],
         plans=[_plan_out(p, emails) for p in plans],
         bounds=BoundsOut(**_bounds(settings), trial_days=settings.trial_days_max),
         read_only=ReadOnlyOut(
@@ -440,7 +448,7 @@ async def set_flag(request: Request, actor: AdminActor, key: KeyPath, body: Sett
         if key == "trial":
             await _check_trial_plan(session, canonical["plan"])
         if key == "running_enabled" and canonical == "on":
-            await _check_running_evaluated(session)
+            await _check_running_evaluated(session, settings)
         if key == "soundless_enabled" and canonical == "on":
             await _check_soundless_evaluated(session, settings)
         await session.execute(_UPSERT, {"k": key, "v": json.dumps(canonical), "by": actor.user_id})
@@ -472,25 +480,24 @@ async def _check_trial_plan(session: AsyncSession, plan: str) -> None:
         raise AdminRefused("plan_above_instructor", 422)
 
 
-async def _check_running_evaluated(session: AsyncSession) -> None:
-    """Every plan's jobs would run running classes on a model whose recorded suite result covers
-    running (a ``design`` route that is not stale; never the bootstrap choice). The environment's
-    ``CLASSBEAT_RUNNING_ENABLED`` stays the kill switch, and the worker checks each job again."""
-    keys = (await session.execute(_ROUTE_KEYS)).scalars().all()
-    if not keys or not all([await covers_running(session, k) for k in keys]):
-        raise AdminRefused("running_not_evaluated", 422)
-
-
-async def _soundless_covered(session: AsyncSession, settings: Settings) -> bool:
-    """Whether every plan's jobs would design soundless classes on a model that covers them now:
+async def _covered(session: AsyncSession, settings: Settings, variant: Variant) -> bool:
+    """Whether every plan's jobs would design ``variant`` classes on a model that covers them now:
     the web's own ``fake`` outside prod, or a covering ``design`` route for every ``route_key``."""
-    return fake_covers(settings) or await every_plan_covers(session, "soundless")
+    return fake_covers(settings) or await every_plan_covers(session, variant)
+
+
+async def _check_running_evaluated(session: AsyncSession, settings: Settings) -> None:
+    """``running_enabled`` is stored ``on`` only with coverage (#465). The effective flag checks
+    it again on every read (#509), so a plan added or a route cleared later still turns it off;
+    ``CLASSBEAT_RUNNING_ENABLED`` stays the kill switch, and the worker checks each job again."""
+    if not await _covered(session, settings, "running"):
+        raise AdminRefused("running_not_evaluated", 422)
 
 
 async def _check_soundless_evaluated(session: AsyncSession, settings: Settings) -> None:
     """``soundless_enabled`` is stored ``on`` only with coverage (#527). The effective flag checks
     it again on every read, so a plan added or a route cleared later still turns it off."""
-    if not await _soundless_covered(session, settings):
+    if not await _covered(session, settings, "soundless"):
         raise AdminRefused("soundless_not_evaluated", 422)
 
 

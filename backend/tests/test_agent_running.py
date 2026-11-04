@@ -469,11 +469,13 @@ def test_the_diff_compares_running_gradients() -> None:
     assert out["duration_sec"] == {"before": 1800, "after": 1800}
 
 
-def test_the_running_flag_follows_the_swedebeat_rule() -> None:
-    assert [core.running_setting(False, v) for v in (None, "on", "off")] == [False] * 3
-    assert [core.running_setting(True, v) for v in (None, "on", "off")] == [True, True, False]
-    assert core.running_setting(True, "maybe") is False  # invalid: the stricter reading
-    assert core.running_setting(True, True) is False
+def test_the_running_switch_needs_the_environment_and_a_stored_on() -> None:
+    """#509: as ``soundless_switch``, only a stored ``on`` under the environment switches it on;
+    nothing stored (or the cleared ``null``) is off."""
+    assert [core.running_switch(False, v) for v in (None, "on", "off")] == [False] * 3
+    assert [core.running_switch(True, v) for v in (None, "on", "off")] == [False, True, False]
+    assert core.running_switch(True, "maybe") is False  # invalid: the stricter reading
+    assert core.running_switch(True, True) is False
     assert core.validate_for_write("running_enabled", "on", trial_days_max=30) == "on"
     for bad in ("yes", True, None, 1, ["on"]):
         with pytest.raises(core.FlagRefused):

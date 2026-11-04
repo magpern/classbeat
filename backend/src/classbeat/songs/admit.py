@@ -216,7 +216,7 @@ async def admit(db: AsyncSession, ctx: UserContext, parsed: BaseModel, /) -> Adm
     if parsed.mode == "resume":
         return await _admit_resume(db, ctx, parsed)
     # ADR 0018: the input is cycling only; a class whose sport is fixed as running is refused.
-    fixed = await sport.admit_brief(db, ctx.user_id, parsed.brief, parsed.class_id)
+    fixed = await sport.admit_brief(db, ctx, parsed.brief, parsed.class_id)
     if fixed is not None:
         return fixed
     refused = await pick_checks(db, ctx, parsed.spotify_connection_id)

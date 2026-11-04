@@ -29,7 +29,6 @@ from classbeat.connections.swedebeat_account import swedebeat_access, swedebeat_
 from classbeat.context import UserContext
 from classbeat.db import system_session
 from classbeat.emailnorm import normalize_email
-from classbeat.flags import effective
 
 router = APIRouter(prefix="/api/connections", tags=["connections"])
 
@@ -90,9 +89,10 @@ class SwedebeatAccessOut(BaseModel):
 class ConnectionsOut(BaseModel):
     connections: list[ConnectionOut]
     swedebeat: SwedebeatAccessOut
-    # ADR 0018 section 5 (M8 U1): the effective ``running_enabled`` (environment switch, then the
-    # admin flag), so the new-class form offers Running only when a running design would be
-    # admitted. Signed-in users only; nothing here says anything about the user's own account.
+    # ADR 0018 section 5 (M8 U1, #509): the effective ``running_enabled`` (the environment's
+    # switch, a stored ``on`` and every plan's route covering running), so the new-class form
+    # offers Running only when a running design would be admitted. Signed-in users only;
+    # nothing here says anything about the user's own account.
     running_enabled: bool = False
     # ADR 0007 amendment of 2026-11-03 (#527): the effective ``soundless_enabled`` (the
     # environment's switch, a stored ``on`` and every plan's route covering soundless), so the
@@ -129,11 +129,11 @@ async def get_connections(
     held = any(row.provider == "swedebeat" for row in rows)
     email = await swedebeat_email(factory, ctx) if held else None
     async with system_session(factory) as db:
-        running = await effective.running_enabled(db, request.app.state.settings.running_enabled)
         # Imported here: ``classbeat.design`` imports this package (its music step opens the
         # MOWL connection), so the routes module must not import it at its own import time.
-        from classbeat.design import music_kind
+        from classbeat.design import music_kind, sport
 
+        running = await sport.running_on(db)
         soundless = await music_kind.soundless_on(db)
     return ConnectionsOut(
         connections=[

@@ -110,7 +110,7 @@ async def admit(db: AsyncSession, ctx: UserContext, parsed: BaseModel) -> Admitt
         return Refused("invalid_input")  # a foreign or unknown id answers like any other
     if state.current != given.base_revision_id:
         return Refused("stale_base")
-    running = await sport.admit_class(db, ctx.user_id, class_id)  # ADR 0018: the running flag
+    running = await sport.admit_class(db, ctx, class_id)  # ADR 0018 (#509): the running gate
     if running is not None:
         return running
     soundless = await music_kind.admit_class(db, ctx.user_id, class_id)  # #527: SL2 revises it
