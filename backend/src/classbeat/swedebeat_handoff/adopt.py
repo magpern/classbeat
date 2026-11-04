@@ -4,7 +4,9 @@ Called from ``design_draft``'s final transaction, after the draft revision is st
 hand-off started (``handoff_id`` set) becomes the class's current revision and its music source
 only when the verified row still names this mix and the stored match still belongs to the
 current draft's song list. Anything else fails the job ``invalid_input`` and rolls the revision
-back. A design that did not come from a hand-off is left as ``adopt_first`` stored it.
+back. A design that did not come from a hand-off is left as ``adopt_first`` stored it. The
+compare-and-set never writes over a ``none`` source (a soundless class, ADR 0007 amendment of
+2026-11-03, item 9; #530): such a class fails the job ``invalid_input`` too.
 """
 
 import json
@@ -25,6 +27,8 @@ _ADOPT = text(
     "UPDATE classes SET current_revision_id = :revision_id, "
     "music_source = CAST(:music AS jsonb), updated_at = now() "
     "WHERE owner_id = :owner_id AND id = :class_id AND current_revision_id = :expected "
+    # Never over a soundless class's ``none`` source (#530): no row, ``invalid_input``.
+    "AND (music_source IS NULL OR music_source ->> 'source' IS DISTINCT FROM 'none') "
     "RETURNING id"
 )
 
