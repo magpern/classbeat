@@ -7,8 +7,11 @@ credit (a class is one credit however often it is revised) and writes nothing ou
 **Create time** (``admit``, in the create transaction under the owner lock, the class row locked):
 ``invalid_input`` unless the base is a ``draft`` of the class; ``stale_base`` unless it is the
 class's current revision; ``not_changeable`` for a class without a music source (a duplicate of
-a class on picked songs, #536); ``revision_limit`` (``classbeat.design.limits``), then the month's
-model cost cap (``classbeat.quota.check_cost``: 409 ``quota`` ``cost``), then ``chat_full``, then
+a class on picked songs, #536); then the running gate of a running class (``sport.admit_class``,
+ADR 0018, #509: ``feature_off``, ``running_not_evaluated``) and the soundless gate of a soundless
+class (``music_kind.admit_class``, below), each before anything is written; ``revision_limit``
+(``classbeat.design.limits``), then the month's model cost cap (``classbeat.quota.check_cost``:
+409 ``quota`` ``cost``), then ``chat_full``, then
 for a class designed on a Swedebeat mix ``feature_off`` and ``analysis_limit``
 (``mixadmit.admit_class_mix``, ADR 0016 sections 2 and 7).
 It stores the base's hash and inserts the user's ``class_messages`` row with the job.
@@ -271,6 +274,7 @@ async def run(job_run: JobRun) -> Complete:
             """The connection guard, the revision, the compare-and-set, the assistant message."""
             try:
                 await step.still_current(fs)
+                await music_kind.check_stored(fs, soundless=False)  # the kind never changes (#470)
                 revision_id = await draft.store(fs)
                 params = {
                     "revision_id": revision_id,

@@ -344,3 +344,62 @@ async def test_a_revise_whose_class_changed_kind_before_the_store_stores_nothing
     assert len(renv.revisions(class_id)) == 1
     assert renv.current(class_id) == base.id
     assert [m.role for m in renv.messages(class_id)] == ["user"]  # the request only
+
+
+async def test_a_soundless_base_that_is_no_longer_current_at_the_store_is_kept_but_not_current(
+    renv: ReviseEnv, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """As for a music revise: the compare-and-set finds no row, the revision and the assistant
+    message are kept and the current revision stays as the other writer left it (#584 N1)."""
+    class_id, design_job = await soundless_class(renv)
+    [base] = renv.denv.revisions(design_job)
+    real = revise_mod.run_stage
+
+    async def move_then_run(*args: Any, **kwargs: Any) -> Any:
+        renv.sql("UPDATE classes SET current_revision_id = NULL WHERE id = :c", c=class_id)
+        return await real(*args, **kwargs)
+
+    monkeypatch.setattr(revise_mod, "run_stage", move_then_run)
+    job_id, _ = await renv.revise(class_id, base.id, "soundless_revise_good")
+    assert renv.denv.ops.row(job_id).state == "completed"
+    second = renv.revisions(class_id)[1]
+    assert (second.parent_id, second.music) == (base.id, NONE)
+    assert renv.current(class_id) is None  # unchanged: kept, not current
+    assert [m.role for m in renv.messages(class_id)] == ["user", "assistant"]
+
+
+async def test_an_unchanged_soundless_draft_fails_invalid_output(renv: ReviseEnv) -> None:
+    """A revise that returns the base draft again stores nothing (#584 N2), as for music."""
+    class_id, design_job = await soundless_class(renv)
+    [base] = renv.denv.revisions(design_job)
+    job_id, _ = await renv.revise(class_id, base.id, "soundless_revise_unchanged")
+    row = renv.denv.ops.row(job_id)
+    assert (row.state, row.error_category) == ("failed", "invalid_output")
+    assert len(renv.revisions(class_id)) == 1
+    assert renv.current(class_id) == base.id
+    assert [m.role for m in renv.messages(class_id)] == ["user"]  # the request only
+
+
+async def test_a_music_revise_whose_class_became_soundless_before_the_store_stores_nothing(
+    renv: ReviseEnv, fake_mowl: FakeMowlMusic, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The music store repeats the kind check (#584 N4), as the design store does: a class whose
+    ``music_source`` turned ``none`` meanwhile ends ``invalid_input`` and writes nothing."""
+    class_id, base = await renv.design()
+    real = revise_mod.diff.summarize
+
+    def flipped(*args: Any, **kwargs: Any) -> Any:
+        renv.sql(
+            "UPDATE classes SET music_source = CAST(:m AS jsonb) WHERE id = :c",
+            m=json.dumps(NONE),
+            c=class_id,
+        )
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(revise_mod.diff, "summarize", flipped)
+    job_id, _ = await renv.revise(class_id, base, "revise_good")
+    row = renv.denv.ops.row(job_id)
+    assert (row.state, row.error_category) == ("failed", "invalid_input")
+    assert len(renv.revisions(class_id)) == 1
+    assert renv.current(class_id) == base
+    assert [m.role for m in renv.messages(class_id)] == ["user"]

@@ -11,6 +11,7 @@ from uuid import UUID
 import pytest
 
 from classbeat.agent import WorkoutDraft
+from classbeat.connections.errors import ConnectionFailure
 from classbeat.design import DESIGN_DRAFT, KIND
 from classbeat.design import routes as design_routes
 from classbeat.egress import OutboundBlocked
@@ -207,3 +208,29 @@ async def test_a_blocked_outbound_request_answers_502_with_its_reason_only(
         {"detail": {"reason": "outbound_blocked"}},
     )
     assert "evil.example" not in response.text
+
+
+@pytest.mark.parametrize(
+    ("category", "retry_after", "header"),
+    [("rate_limited", 37, "37"), ("rate_limited", None, "60"), ("quota_exhausted", 37, None)],
+)
+async def test_only_mowls_rate_limit_carries_retry_after_on_the_playlist_list(
+    browsers: Any,
+    denv: DesignEnv,
+    monkeypatch: pytest.MonkeyPatch,
+    category: str,
+    retry_after: int | None,
+    header: str | None,
+) -> None:
+    """A MOWL route is not governed by the Spotify 429 set (#579, #470): ``Retry-After`` is sent
+    for ``rate_limited`` only, with the default when MOWL gave none."""
+    browser: Browser = await browsers(mowl=False)
+    await denv.ops.connect(browser.user_id, TOKEN_A)
+
+    async def failing(*args: Any, **kwargs: Any) -> Any:
+        raise ConnectionFailure(category, retry_after if category == "rate_limited" else None)
+
+    monkeypatch.setattr(design_routes, "run_library_call", failing)
+    response = await browser.get("/api/music/mowl-playlists")
+    assert response.headers.get("Retry-After") == header
+    assert response.json() == {"detail": {"reason": category}}

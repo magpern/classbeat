@@ -89,6 +89,15 @@ def test_a_song_the_map_lacks_is_skipped_with_a_warning(caplog: pytest.LogCaptur
     assert getattr(record, "skipped", None) == 1
 
 
+@pytest.mark.parametrize("make", [mix_map, spotify_map])
+def test_an_entry_without_a_song_never_raises_in_apply_as_songs_skips_it(make: Any) -> None:
+    """The library's maps always have ``song``; a map entry without it is skipped when ``apply``
+    looks for the song to move, as ``songs`` skips it (#553, #470), never a ``KeyError``."""
+    broken = copy.deepcopy(make())
+    del broken["songs"][0]["song"]
+    assert beat_one.apply(broken, [Correction(song=99, beats=1)]) == broken
+
+
 def test_songs_are_at_most_200_with_titles_of_at_most_100_characters() -> None:
     tracks = [
         {"SpotifyTrackID": f"{n:022d}", "Title": "x" * 300, "Artist": "a", "Duration": 60_000,

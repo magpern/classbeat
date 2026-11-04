@@ -56,6 +56,8 @@ COVERED = {
     "soundless_revise_good",
     "soundless_revise_second",
     "soundless_revise_songs_requested",
+    # the revised draft is the base draft again (#470), used by tests/test_soundless_revise.py
+    "soundless_revise_unchanged",
 }
 
 SPEC = StageSpec("design", "s", (), "m", "fake-model", "medium", 32_000, "submit_draft")

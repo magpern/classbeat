@@ -89,6 +89,15 @@ design included), a `swedebeat_match` job, a catalogue replace and starting the 
 on a mix and the steps of a hand-off already started are not gated by it (ADR 0015's amendment lists them).
 The flag stays the kill switch.
 
+*Noted 2026-11-04 (hardening, #467):* the read of one `swedebeat_match` revision of a class
+(`GET /api/classes/{id}/revisions/{rid}`) is the one route that cannot answer `feature_off` before any
+database work: it must tell a match revision from another kind to answer `feature_off` for the first and
+the normal revision for the second. With the flag off it therefore reads the flag per request and looks up
+the revision's key only (`match_view.is_match`: owner, class, kind; never its content), then answers 404
+`feature_off`. This is a deliberate, narrow exception to "before any database or provider work", pinned by
+`tests/test_classes_swedebeat_match.py` (no content load with the flag off; the lookup filters on the
+class).
+
 ### 3. (a) "My Swedebeat mix" in the guided builder
 
 `MusicChoice` (ADR 0008 §9: "Use my playlist" / "Pick songs for me") gets a third choice, **"Use my

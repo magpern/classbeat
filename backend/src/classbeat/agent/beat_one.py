@@ -61,9 +61,10 @@ def is_mix(m: Mapping[str, Any]) -> bool:
 
 def _entries(m: Mapping[str, Any], song: int) -> list[int]:
     """The map's ``song`` numbers a correction of ``song`` moves."""
+    # An entry without ``song`` is skipped, as ``songs`` skips it (the library's maps have it).
     if is_mix(m):
-        return [int(s["song"]) for s in m["songs"] if int(s["song"]) == song]
-    return [int(s["song"]) for s in m["songs"] if int(s.get("track", 0)) == song]
+        return [int(s["song"]) for s in m["songs"] if "song" in s and int(s["song"]) == song]
+    return [int(s["song"]) for s in m["songs"] if "song" in s and int(s.get("track", 0)) == song]
 
 
 def apply(m: Mapping[str, Any], corrections: Iterable[Correction]) -> dict[str, Any]:
