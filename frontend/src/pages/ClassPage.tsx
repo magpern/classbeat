@@ -165,6 +165,7 @@ function ClassBody({
         <h1 className="m-0 font-display text-3xl font-extrabold">{summary.title}</h1>
         <Chip tone={classStatus(summary).tone}>{classStatus(summary).label}</Chip>
         {summary.sport === 'running' ? <Chip data-testid="sport">Running</Chip> : null}
+        {summary.soundless ? <Chip data-testid="soundless">No music</Chip> : null}
         <div className="ml-auto flex items-center gap-2">
           {canChangeSongs ? (
             <Button
@@ -301,7 +302,7 @@ function ClassBody({
           {shown.status === 'ready' ? (
             <RevisionView
               revision={shown.revision}
-              musicChanged={answeredBy?.change?.musicChanged === true}
+              musicChanged={!summary.soundless && answeredBy?.change?.musicChanged === true}
               songs={songs}
               classId={classId}
             />
