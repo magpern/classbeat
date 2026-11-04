@@ -150,7 +150,7 @@ deployed"), so nothing has to migrate from a clone.
 
 ## Pull requests
 
-Each is its own issue and PR. #573 landed first; #575, #576 and #578 are stacked on each other's
+Each is its own issue and PR. #573 goes first; #575, #576 and #578 are stacked on each other's
 branches, and after a squash each needs a merge of `main` (a new head: the Architect's merge check,
 or a scoped review if a conflict is resolved by hand) before it is enqueued.
 
