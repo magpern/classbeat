@@ -390,3 +390,24 @@ async def test_a_running_brief_with_no_music_is_refused_at_input(renv: ReviseEnv
     refused = await create(renv, body)
     assert refused.status_code == 422, refused.text
     assert counts(renv) == (0, 0, 0)
+
+
+async def test_the_class_list_and_detail_say_which_class_is_soundless(
+    renv: ReviseEnv, fake_mowl: FakeMowlMusic
+) -> None:
+    """``ClassOut.soundless`` (item 10, SL4 #530): true only for a ``none`` source; false for a
+    music class and for a class with no source yet."""
+    music, _ = await renv.design()
+    quiet, _ = await soundless_class(renv)
+    empty = renv.sql(
+        "INSERT INTO classes (owner_id, title) VALUES (:o, 'No source yet') RETURNING id",
+        o=renv.owner,
+    ).scalar_one()
+    listed = await renv.browser.get("/api/classes")
+    assert listed.status_code == 200, listed.text
+    flags = {UUID(c["id"]): c["soundless"] for c in listed.json()["classes"]}
+    assert flags == {music: False, quiet: True, empty: False}
+    for class_id, expected in [(music, False), (quiet, True), (empty, False)]:
+        shown = await renv.browser.get(f"/api/classes/{class_id}")
+        assert shown.status_code == 200, shown.text
+        assert shown.json()["soundless"] is expected
