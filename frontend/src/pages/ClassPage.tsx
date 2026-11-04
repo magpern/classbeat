@@ -7,6 +7,7 @@ import { Chip } from '../components/ui/chip'
 import { Button } from '../components/ui/button'
 import { DeleteClass } from '../components/classes/DeleteClass'
 import { SavePanel } from '../components/classes/SavePanel'
+import { BeatOnePanel } from '../components/classes/BeatOnePanel'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '../components/ui/dropdown-menu'
 import { Ellipsis } from 'lucide-react'
 import { RevisionView } from '../components/classes/RevisionView'
@@ -230,7 +231,9 @@ function ClassBody({
             ? 'Songs are waiting for your approval. '
             : summary.openJob.kind === 'design_draft'
               ? 'This class is being designed. '
-              : 'The songs of this class are being worked on. '}
+              : summary.openJob.kind === 'refit_draft'
+                ? 'Your timing fixes are being applied. '
+                : 'The songs of this class are being worked on. '}
           <Link to={`/jobs/${summary.openJob.id}`}>
             {summary.openJob.state === 'waiting_for_approval' ? 'Review the songs' : 'See how it is going'}
           </Link>
@@ -305,6 +308,14 @@ function ClassBody({
               musicChanged={!summary.soundless && answeredBy?.change?.musicChanged === true}
               songs={songs}
               classId={classId}
+            />
+          ) : null}
+          {summary.beatOne.available && viewingId === summary.currentRevisionId ? (
+            <BeatOnePanel
+              key={summary.beatOne.revisionId ?? 'none'}
+              summary={summary}
+              busy={busy}
+              onReload={reload}
             />
           ) : null}
         </div>

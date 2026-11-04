@@ -30,6 +30,14 @@ const REASONS: Record<string, string> = {
   // #509: a running class's change, while running is not checked for the user's plan.
   running_not_evaluated:
     'Running classes cannot be changed on your plan right now, so your request was not sent and nothing was charged. Try again later.',
+  // ADR 0007 amendment "beat-one corrections".
+  no_beat_data:
+    'This version has no beat data to correct. Ask for a change by chat first, then try again.',
+  correction_limit:
+    'This class has as many timing fixes as it can hold. Reset some, then try again.',
+  nothing_pending: 'The current version already uses these timing fixes.',
+  refit_limit:
+    'This class has had its timing fixed as often as it can. Design a new class to start again.',
 }
 
 /** A 409 or 404 means what the page shows is out of date: it shows the reason and reloads. */

@@ -93,6 +93,12 @@ const FAILURES: Record<string, FailureText> = {
     title: 'This workout is gone from MOWL',
     detail: 'This workout is no longer in your MOWL account.',
   },
+  // ADR 0007 amendment "beat-one corrections": the music is not what the version was made on.
+  music_changed: {
+    title: 'The music changed',
+    detail:
+      'The playlist or mix is not the one this version was made on, so the timing fixes were not applied. Ask for a change by chat to design on the music as it is now.',
+  },
   // Issue #485: an Update never changes a workout's sport, "Update anyway" included.
   program_other_sport: {
     title: 'This workout is for another sport',
@@ -195,6 +201,7 @@ const STAGES: Record<string, string> = {
   read: 'Reading the workout in MOWL',
   save: 'Writing to MOWL',
   verify: 'Checking what MOWL kept',
+  fit: 'Moving the changes onto the corrected beats',
 }
 
 /** Phase 1 of picking songs in the plain words of ADR 0013 section 6. */
@@ -227,6 +234,12 @@ const DRAFT_STEPS: readonly { stage: string; label: string }[] = [
   { stage: 'design', label: 'Building your class' },
 ]
 
+/** `refit_draft` (ADR 0007 amendment "beat-one corrections"): no model, two stages. */
+const REFIT_STEPS: readonly { stage: string; label: string }[] = [
+  { stage: 'music', label: 'Reading your music' },
+  { stage: 'fit', label: 'Moving the changes onto the corrected beats' },
+]
+
 const SOUNDLESS_STEPS: readonly { stage: string; label: string }[] = [{ stage: 'design', label: 'Building your class' }]
 
 /** The checklist of the Designing page for a job, in the order its stages run. */
@@ -235,6 +248,7 @@ export function designSteps(
   approved: boolean,
   soundless = false,
 ): readonly { stage: string; label: string }[] {
+  if (kind === 'refit_draft') return REFIT_STEPS
   // A soundless design reads no playlist and makes no MOWL or Spotify call (ADR 0007 amendment item 3).
   if (soundless && kind === 'design_draft') return SOUNDLESS_STEPS
   if (kind === 'revise_songs') return REVISE_SONGS_STEPS

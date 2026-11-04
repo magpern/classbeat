@@ -234,6 +234,18 @@ export async function createReviseJob(input: ReviseInput, idempotencyKey: string
   return decodeJob(await post('/api/jobs', body, { 'Idempotency-Key': idempotencyKey }))
 }
 
+/** What `POST /api/jobs` takes for `refit_draft` (ADR 0007 amendment "beat-one corrections"). */
+export interface RefitInput {
+  class_id: string
+  base_revision_id: string
+  mowl_connection_id: string
+}
+
+export async function createRefitJob(input: RefitInput, idempotencyKey: string): Promise<Job> {
+  const body = { kind: 'refit_draft', input }
+  return decodeJob(await post('/api/jobs', body, { 'Idempotency-Key': idempotencyKey }))
+}
+
 // The user's Spotify playlists as MOWL lists them (backend/src/classbeat/design/routes.py).
 
 export interface Playlist {
