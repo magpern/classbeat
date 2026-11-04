@@ -16,8 +16,11 @@ every statement scoped by ``owner_id``:
    content, and the content must validate under the class's sport (500 ``internal`` otherwise);
    a class with no stored brief is 409 ``not_ready``;
 2. a running class while ``running_enabled`` is off, and a class or draft on a Swedebeat mix while
-   ``swedebeat_enabled`` is off, are 409 ``feature_off``; so is a soundless class (``{source:
-   "none"}``, #526) until its flag exists here (fail closed);
+   ``swedebeat_enabled`` is off (the class's current source **or** the chosen revision's music on
+   a mix: the stricter rule, on purpose), are 409 ``feature_off``; a soundless class (``{source:
+   "none"}``, #526) is admitted only by ``design.music_kind.admit_soundless``, as a soundless
+   design is (``feature_off``, or ``soundless_not_evaluated`` for the user's uncovered plan), and
+   its copy stays ``none`` (source and revision music);
 3. the user's **current** plan: the brief and the copied draft (409 ``quota`` ``length`` or
    ``feature``), then one class of the month (``MeteredLedger.take_class``, 409 ``quota``
    ``classes``). Every refusal raises or returns before anything is written, and a raised refusal
@@ -52,6 +55,7 @@ from classbeat.agent.records import Provenance
 from classbeat.config import Settings
 from classbeat.context import UserContext, require_context
 from classbeat.db import user_session
+from classbeat.design import music_kind
 from classbeat.flags.effective import running_enabled, swedebeat_enabled
 from classbeat.jobs.credits import QuotaRefused
 from classbeat.jobs.http import IDEMPOTENCY_KEY, canonical_json
@@ -68,7 +72,6 @@ HASH: Final = re.compile(r"^[0-9a-f]{64}$")
 SPOTIFY_ID: Final = re.compile(r"^[0-9A-Za-z]{22}$")
 MIX_ID: Final = re.compile(r"^[0-9A-Za-z_-]{1,64}$")
 MIX_SOURCE: Final = "mowl_swedebeat_mix"
-SOUNDLESS_SOURCE: Final = "none"
 PLAYLIST_SOURCE: Final = "mowl_spotify_playlist"
 # The descriptive fields of the source revision's provenance: how the content was made. Run ids,
 # usage, cost and the lineage of the source class are never copied.
@@ -181,6 +184,10 @@ def music_source_copy(source: Any) -> dict[str, str] | None:
         and MIX_ID.fullmatch(mix)
     ):
         return {"source": MIX_SOURCE, "mix_id": mix}
+    if music_kind.is_none(found) and set(found) == {"source"}:
+        return dict(
+            music_kind.NO_MUSIC
+        )  # a soundless class stays soundless (its kind never changes)
     return None
 
 
@@ -234,17 +241,27 @@ def provenance_copy(
     return built.model_dump(mode="json")
 
 
-async def _flags_refuse(
-    db: AsyncSession, settings: Settings, sport: str, music_source: Any, music: Any
-) -> bool:
-    if _dict(music_source).get("source") == SOUNDLESS_SOURCE:
-        return True  # #526: refused until the soundless flag is read here (fail closed)
+async def _flag_refusal(
+    db: AsyncSession,
+    settings: Settings,
+    ctx: UserContext,
+    sport: str,
+    music_source: Any,
+    music: Any,
+) -> str | None:
+    """The reason a flag refuses this copy, or None (item 2 of the module)."""
+    if music_kind.is_none(music_source) or music_kind.is_none(music):
+        refused = await music_kind.admit_soundless(db, ctx)  # the soundless design's own gate
+        if refused is not None:
+            return refused.reason
     if sport == "running" and not await running_enabled(db, settings.running_enabled):
-        return True
+        return "feature_off"
     on_mix = (
         _dict(music_source).get("source") == MIX_SOURCE or _dict(music).get("source") == MIX_SOURCE
     )
-    return on_mix and not await swedebeat_enabled(db, settings.swedebeat_enabled)
+    if on_mix and not await swedebeat_enabled(db, settings.swedebeat_enabled):
+        return "feature_off"
+    return None
 
 
 async def duplicate(
@@ -302,8 +319,9 @@ async def duplicate(
             )
         except ValidationError:
             return Outcome("internal")
-        if await _flags_refuse(db, settings, sport, row.music_source, row.music):
-            return Outcome("feature_off")
+        refusal = await _flag_refusal(db, settings, ctx, sport, row.music_source, row.music)
+        if refusal is not None:
+            return Outcome(refusal)
         plan, gates = await current_gates(db, ctx)
         check_brief(gates, brief, plan.id)  # QuotaRefused: length or feature
         check_content(gates, row.content, plan.id)  # pyright: ignore[reportUnknownArgumentType]

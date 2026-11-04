@@ -8,6 +8,7 @@ import copy
 import hashlib
 import json
 import uuid
+from collections.abc import Callable, Iterator
 from typing import Any
 from uuid import UUID
 
@@ -19,6 +20,7 @@ from sqlalchemy.engine import Connection
 from classbeat.account.export import build_export
 from classbeat.agent import Provenance
 from classbeat.classes import duplicate as dup
+from classbeat.design import music_kind
 from ctx import make_context
 from jobapi import Browser, new_key
 from jobtools import new_class
@@ -475,13 +477,86 @@ async def test_the_idempotency_key_is_required(two: tuple[Source, Source]) -> No
     assert mine.ledger() == []
 
 
-async def test_a_soundless_class_is_refused_until_its_flag_is_read(
-    browsers: Any, jobs_admin: Connection
+NONE: dict[str, str] = {"source": "none"}
+
+
+@pytest.fixture
+def soundless(jobs_admin: Connection) -> Iterator[Callable[..., None]]:
+    """``set(enabled=, fake=, stored=)``: the soundless gate (#527) of the web app under test, as
+    ``test_soundless_jobs`` sets it; cleared afterwards."""
+
+    def configure(*, enabled: bool = True, fake: bool = True, stored: bool = True) -> None:
+        music_kind.configure(music_kind.SoundlessGate(enabled=enabled, fake_covers=fake))
+        sql(jobs_admin, "DELETE FROM app_settings WHERE key = 'soundless_enabled'")
+        if stored:
+            sql(jobs_admin, "INSERT INTO app_settings (key, value) "
+                "VALUES ('soundless_enabled', '\"on\"'::jsonb)")  # fmt: skip
+
+    try:
+        yield configure
+    finally:
+        music_kind.configure(None)
+        sql(jobs_admin, "DELETE FROM app_settings WHERE key = 'soundless_enabled'")
+
+
+def soundless_source(admin: Connection, browser: Browser) -> Source:
+    return Source(admin, browser, music_source=NONE, music=dict(NONE))
+
+
+async def test_a_soundless_class_is_refused_while_the_gate_is_off(
+    browsers: Any, jobs_admin: Connection, soundless: Callable[..., None]
 ) -> None:
-    mine = Source(jobs_admin, await browsers(mowl=False), music_source={"source": "none"})
-    got = await mine.duplicate()
-    assert (got.status_code, got.json()["detail"]["reason"]) == (409, "feature_off")
+    mine = soundless_source(jobs_admin, await browsers(mowl=False))
+    classes = mine.classes()
+    for setting, reason in (
+        ({"enabled": False}, "feature_off"),  # the environment's switch
+        ({"stored": False}, "feature_off"),  # the admin flag not stored on
+        ({"fake": False}, "soundless_not_evaluated"),  # the user's own plan has no covering route
+    ):
+        soundless(**setting)
+        got = await mine.duplicate()
+        assert (got.status_code, got.json()["detail"]["reason"]) == (409, reason), setting
+    assert mine.classes() == classes
     assert mine.ledger() == []
+
+
+async def test_a_soundless_copy_stays_soundless_and_its_revise_is_the_kinds_to_answer(
+    renv: ReviseEnv, soundless: Callable[..., None]
+) -> None:
+    browser = renv.browser  # the real job registry, with a MOWL connection
+    mine = soundless_source(renv.denv.ops.admin, browser)
+    soundless()
+    made = await mine.duplicate()
+    assert made.status_code == 201, made.text
+    found, [rev] = copy_rows(mine.admin, made.json()["class_id"])
+    assert (found.music_source, rev.music) == (NONE, NONE)
+    # A revise of the copy goes through ``music_kind.admit_class`` like any soundless revise.
+    asked = await browser.post(
+        "/api/jobs",
+        {
+            "kind": "revise_draft",
+            "input": {
+                "class_id": made.json()["class_id"],
+                "base_revision_id": made.json()["revision_id"],
+                "request": "Make the start easier.",
+                "mowl_connection_id": str(browser.connection_id),
+            },
+        },
+        {"Idempotency-Key": new_key()},
+    )
+    expected = await music_admit_class_reason(mine, made.json()["class_id"])
+    assert (asked.status_code, asked.json()["detail"]["reason"]) == (409, expected)
+    assert sql(mine.admin, "SELECT count(*) FROM jobs WHERE class_id = :c",
+               c=made.json()["class_id"]).scalar_one() == 0  # fmt: skip
+
+
+async def music_admit_class_reason(mine: Source, class_id: str) -> str | None:
+    """What ``music_kind.admit_class`` answers for the class now (``feature_off`` until SL2)."""
+    from classbeat.db import user_session
+
+    async with user_session(mine.browser.env.factory, make_context(mine.owner)) as db:
+        refused = await music_kind.admit_class(db, mine.owner, UUID(class_id))
+    return None if refused is None else refused.reason
 
 
 async def test_a_copy_without_music_is_refused_by_revise_before_anything_is_written(
