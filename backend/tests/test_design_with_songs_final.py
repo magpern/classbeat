@@ -25,9 +25,9 @@ from classbeat.songs import phase2, pick
 from classbeat.songs.kind import PHASE_ONE
 from classbeat.songs.phase2 import PHASE_TWO
 from ctx import make_context
-from optools import TOKEN_A
+from optools import TOKEN_A, TOKEN_B
 from songtools import CHOSEN, SongEnv, design_script, failing_script
-from spotifyfake import CLIENT_A, USER_A
+from spotifyfake import CLIENT_A, CLIENT_B, USER_A, USER_B
 
 pytestmark = pytest.mark.usefixtures("songenv")
 
@@ -331,3 +331,39 @@ async def test_the_music_step_is_closed_whether_the_store_ran_or_not(
     assert row.state == ("cancelled" if cancelled else expected)
     [step] = steps
     assert step._opened is None  # pyright: ignore[reportPrivateUsage]
+
+
+def _seconds(content: dict[str, Any]) -> list[int]:
+    return [i["sec"] for s in content["segments"] for i in s["intervals"]]
+
+
+async def test_the_first_design_on_picked_songs_applies_the_class_corrections(
+    songenv: SongEnv,
+) -> None:
+    """ADR 0007 amendment "beat-one corrections" item 4: phase 2 reads the class's corrections
+    for the final playlist's fingerprint. Two riders pick the same songs, so their music has the
+    same fingerprint; rows on the second rider's class shift its design only."""
+    first = await songenv.rider()
+    job_a, _ = await songenv.approved(first)
+    row_a = await songenv.run(job_a)
+    assert (row_a.state, row_a.error_category) == ("completed", None)
+    draft_a = songenv.revision(klass(songenv, row_a.class_id).current_revision_id)
+    fingerprint, songs = draft_a.music["fingerprint"], draft_a.music["songs"]
+    assert "beat_one" not in draft_a.music
+
+    second = await songenv.rider(client_id=CLIENT_B, spotify_user=USER_B, mowl_token=TOKEN_B)
+    job_b, _ = await songenv.approved(second)
+    class_b = songenv.row(job_b).class_id
+    for song in songs:
+        songenv.sql(
+            "INSERT INTO beat_one_corrections (owner_id, class_id, fingerprint, song, beats, bpm) "
+            "VALUES (:o, :c, :f, :s, 2, :b)",
+            o=second.user_id, c=class_b, f=fingerprint, s=song["song"], b=song["bpm"],
+        )  # fmt: skip
+    row_b = await songenv.run(job_b)
+    assert (row_b.state, row_b.error_category) == ("completed", None)
+    draft_b = songenv.revision(klass(songenv, class_b).current_revision_id)
+    assert draft_b.music["fingerprint"] == fingerprint
+    assert draft_b.music["beat_one"] == [{"song": s["song"], "beats": 2} for s in songs]
+    assert _seconds(draft_b.content) != _seconds(draft_a.content), "the fit moved"
+    assert sum(_seconds(draft_b.content)) == sum(_seconds(draft_a.content))

@@ -259,6 +259,21 @@ export async function getMowlPlaylists(signal?: AbortSignal): Promise<Playlist[]
   })
 }
 
+/**
+ * The covers of the user's own Spotify playlists, by Spotify playlist id, for the New class
+ * picker (ADR 0013 section 9, amendment of 2026-11-03, #537). A malformed answer throws (the
+ * picker then shows initials); `CoverArt` checks each URL again before it is shown.
+ */
+export async function getPlaylistCovers(signal?: AbortSignal): Promise<Map<string, string>> {
+  const body = object(await get('/api/music/playlist-covers', signal), 'covers')
+  const covers = new Map<string, string>()
+  for (const entry of list(body, 'covers')) {
+    const item = object(entry, 'cover')
+    covers.set(text(item, 'spotify_playlist_id'), text(item, 'cover'))
+  }
+  return covers
+}
+
 // External operations (ADR 0005 section 7): the undecided attach and the user's two actions.
 
 export interface Operation {

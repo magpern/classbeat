@@ -2,7 +2,8 @@
 new-class builder's "Use my Swedebeat mix" picker (ADR 0016 section 3, A2). Web only; shaped like
 ``GET /api/music/mowl-playlists`` (``classbeat.design.routes``).
 
-- **Flag first.** With the effective ``swedebeat_enabled`` flag off the answer is 404
+- **Flag first, then the user's preference.** With the effective ``swedebeat_enabled`` flag off,
+  or the user's own "I use Swedebeat" preference off (#525, default off), the answer is 404
   ``feature_off`` before any rate-limit slot, connection or provider call.
 - **Needs the user's MOWL connection and no Swedebeat token**: the list goes through MOWL
   (``POST v1/swedebeat/Playlists``, the library's ``swedebeat_mixes``) with the user's MOWL token,
@@ -24,7 +25,7 @@ from pydantic import BaseModel
 
 from classbeat import auth
 from classbeat.connections import ConnectionFailure, open_connection, run_library_call
-from classbeat.connections.swedebeat_account import swedebeat_enabled
+from classbeat.connections.preferences import swedebeat_on
 from classbeat.connections.swedebeat_maps import analysed_mix_ids
 from classbeat.context import UserContext
 from classbeat.egress import OutboundBlocked
@@ -63,7 +64,7 @@ async def swedebeat_mixes(
     request: Request, ctx: Annotated[UserContext, Depends(auth.require_user)]
 ) -> MixesOut | JSONResponse:
     factory = request.app.state.session_factory
-    if not await swedebeat_enabled(request.app.state.settings, factory):
+    if not await swedebeat_on(request.app.state.settings, factory, ctx):
         raise HTTPException(status_code=404, detail={"reason": "feature_off"})
     attempt = await request.app.state.limiter.begin(
         auth.swedebeat_mixes_buckets(str(ctx.user_id), auth.request_ip(request))

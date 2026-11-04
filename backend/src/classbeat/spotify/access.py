@@ -24,10 +24,22 @@ refused (if another caller refreshed meanwhile, no request). Then:
 
 ``forbidden``, ``not_found`` and every other refusal never flip; ``invalid_grant`` and
 ``app_misconfigured`` from the token endpoint flip inside the refresh itself.
+
+**The read-only mode** (``read_only=True``; ADR 0013 section 9's amendment of 2026-11-03 and the
+note in ADR 0009 section 6, #537), for the New class picker's cover read only: a token inside the
+margin is refreshed first, exactly as above (the token endpoint's own flip included), and
+``open_connection`` keeps its own flip of a row whose secret no longer decrypts (ADR 0004 section
+5). Nothing else is written: no ``record_result``; a 401 is not repeated, forces no refresh and
+never flips. That refresh runs as its own task under ``asyncio.shield``, kept in ``_SHIELDED``
+(the loop holds tasks only weakly), so a request the browser leaves never cancels it: a refresh
+cut after Spotify answered but before its transaction stored the rotated refresh token would lose
+it. Only the refresh is shielded, so an abandoned request sends no further reads.
 """
 
+import asyncio
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Coroutine
+from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
@@ -69,6 +81,24 @@ async def refresh_if_needed(
     )
 
 
+# The read-only mode's shielded refreshes still running: a strong reference until each is done.
+_SHIELDED: set[asyncio.Task[Any]] = set()
+
+
+def _settle(task: asyncio.Task[Any]) -> None:
+    _SHIELDED.discard(task)
+    if not task.cancelled():
+        task.exception()  # retrieved, so an abandoned failure is not reported as never retrieved
+
+
+async def _shielded[R](coroutine: Coroutine[Any, Any, R]) -> R:
+    """Run ``coroutine`` as its own task that a cancellation of the caller does not cancel."""
+    task = asyncio.ensure_future(coroutine)
+    _SHIELDED.add(task)
+    task.add_done_callback(_settle)
+    return await asyncio.shield(task)
+
+
 def _expected(opened: OpenConnection, expect: OpenConnection | None) -> OpenConnection:
     """The row as opened now must be the connection the caller held (``expect``): the same row,
     generation and Spotify account. A refresh keeps all three; a reconnect, a Client ID change or
@@ -89,9 +119,10 @@ async def _attempt[T](
     opened: OpenConnection,
     fn: Callable[[Credentials], T],
     single_request: bool = False,
+    record: bool = True,
 ) -> tuple[T | None, ConnectionFailure | None]:
     """One library call. A 401 is returned unrecorded (the caller refreshes and decides); any
-    other failure is recorded as ``last_error`` (never a flip)."""
+    other failure is recorded as ``last_error`` (never a flip). ``record=False`` records nothing."""
     failure: ConnectionFailure | None = None
     try:
         result = await connections.run_library_call(
@@ -103,9 +134,10 @@ async def _attempt[T](
     except ConnectionFailure as error:
         failure = error
     else:
-        await connections.record_result(factory, ctx, opened, None)
+        if record:
+            await connections.record_result(factory, ctx, opened, None)
         return result, None
-    if failure.http_status != UNAUTHORIZED:
+    if record and failure.http_status != UNAUTHORIZED:
         await connections.record_result(factory, ctx, opened, failure.category)
     return None, failure
 
@@ -121,6 +153,7 @@ async def spotify_call[T](
     margin_seconds: float = DEFAULT_REFRESH_MARGIN_SECONDS,
     expect: OpenConnection | None = None,
     single_request: bool = False,
+    read_only: bool = False,
 ) -> T:
     """Run ``fn(credentials)`` (a ``mowl.spotify_web`` call) for ``ctx``'s Spotify connection.
 
@@ -128,7 +161,8 @@ async def spotify_call[T](
     every time the row is opened here it must still be that row, generation and Spotify account,
     or nothing is sent (``not_connected``). ``single_request``: ``fn`` is exactly one HTTP
     request, so a refusal of it proves no effect (``ConnectionFailure.not_applied``,
-    ``run_library_call``).
+    ``run_library_call``). ``read_only``: the cover read's mode (module docstring); not with
+    ``write``.
 
     ``ConnectionFailure`` with a category of ADR 0009 section 8 (or ``not_connected``,
     ``key_unavailable``, ``decrypt_failed`` before any call), its ``provider`` ``"spotify"``;
@@ -145,6 +179,7 @@ async def spotify_call[T](
             margin_seconds=margin_seconds,
             expect=expect,
             single_request=single_request,
+            read_only=read_only,
         )
     except ConnectionFailure as failure:
         failure.provider = PROVIDER
@@ -162,16 +197,20 @@ async def _call[T](
     margin_seconds: float,
     expect: OpenConnection | None,
     single_request: bool,
+    read_only: bool = False,
 ) -> T:
+    if read_only and write:
+        raise ValueError("the read-only mode never writes")
     http = http if http is not None else SpotifyHttp()
     opened = _expected(await open_connection(factory, ring, ctx, PROVIDER), expect)
     if _expiring(opened, margin_seconds, time.time()):
-        await refresh_if_needed(factory, ring, ctx, http, margin_seconds=margin_seconds)
+        refresh = refresh_if_needed(factory, ring, ctx, http, margin_seconds=margin_seconds)
+        await (_shielded(refresh) if read_only else refresh)
         opened = _expected(await open_connection(factory, ring, ctx, PROVIDER), expect)
-    result, failure = await _attempt(factory, ctx, opened, fn, single_request)
+    result, failure = await _attempt(factory, ctx, opened, fn, single_request, record=not read_only)
     if failure is None:
         return result  # pyright: ignore[reportReturnType]
-    if failure.http_status != UNAUTHORIZED:
+    if read_only or failure.http_status != UNAUTHORIZED:
         raise failure
     # A 401: refresh, conditional on the row still holding the refused access token.
     await refresh_if_needed(

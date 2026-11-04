@@ -1,7 +1,7 @@
 """Beat-one corrections per class (ADR 0007 amendment "beat-one corrections", #535, BC1)
 
-Revision ID: 0027_beat_one_corrections
-Revises: 0027_soundless_flag
+Revision ID: 0029_beat_one_corrections
+Revises: 0028_user_preferences
 Create Date: 2026-11-03
 
 - ``beat_one_corrections``: one row per song of a class's music whose beat 1 the user moved by
@@ -19,8 +19,8 @@ from alembic import op
 
 from classbeat.db.rls import enable_owner_rls
 
-revision: str = "0027_beat_one_corrections"
-down_revision: str | Sequence[str] | None = "0027_soundless_flag"
+revision: str = "0029_beat_one_corrections"
+down_revision: str | Sequence[str] | None = "0028_user_preferences"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

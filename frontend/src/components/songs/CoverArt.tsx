@@ -2,26 +2,44 @@ import { useState } from 'react'
 import { cn } from '../../lib/cn'
 
 /**
- * The one place the app shows an album cover (ADR 0013 section 9). It is also the one source
- * file allowed to name the cover host (`no-third-party-hosts.test.ts`), and the CSP's `img-src`
- * allows only our origin and that host.
+ * The one place the app shows a cover (ADR 0013 section 9 and its amendment of 2026-11-03, #537).
+ * It is also the one source file allowed to name the cover hosts (`no-third-party-hosts.test.ts`),
+ * and the CSP's `img-src` allows only our origin and path prefixes on those hosts.
  *
- * - The URL is shown only when the whole string is `COVER_HOST`, `/image/` and 40 lowercase hex
- *   digits. The server checks the same before it stores and before it returns one; this is a
- *   second check, so a page never asks any other host.
+ * - An album cover (`kind="album"`, the default: song lists) is shown only when the whole string
+ *   is `COVER_HOST`, `/image/` and 40 lowercase hex digits.
+ * - A playlist cover (`kind="playlist"`: the New class picker) may also be Spotify's mosaic of
+ *   four album images at 300 or 640 px on `MOSAIC_HOST`, or an uploaded cover on one of
+ *   `UPLOAD_HOSTS`, each a whole-string match.
+ * - The server checks the same before it stores or returns one; this is a second check, so a page
+ *   never asks any other host or path.
  * - The image is loaded lazily, with no referrer, and shown unaltered (no crop, overlay, blur or
  *   tint) with a 4 px radius (8 px when large).
- * - A song without a cover, with a URL that fails the check, or whose image does not load gets a
- *   neutral tile with initials instead.
+ * - No cover, a URL that fails the check, or an image that does not load gets a neutral tile with
+ *   initials instead.
  *
- * The cover is decorative: the title and artist are always in the text beside it.
+ * The cover is decorative: the title and artist (or the playlist name) are always in the text
+ * beside it.
  */
 const COVER_HOST = 'https://i.scdn.co'
-const COVER_URL = new RegExp(`^${COVER_HOST.replaceAll('.', '\\.')}/image/[0-9a-f]{40}$`)
+const MOSAIC_HOST = 'https://mosaic.scdn.co'
+const UPLOAD_HOSTS = ['https://image-cdn-ak.spotifycdn.com', 'https://image-cdn-fa.spotifycdn.com']
+const HEX40 = '[0-9a-f]{40}'
+const escaped = (host: string) => host.replaceAll('.', '\\.')
+const ALBUM = `${escaped(COVER_HOST)}/image/${HEX40}`
+const COVER_URL = new RegExp(`^${ALBUM}$`)
+const PLAYLIST_COVER_URL = new RegExp(
+  `^(?:${ALBUM}|${escaped(MOSAIC_HOST)}/(?:300|640)/(?:${HEX40}){4}|(?:${UPLOAD_HOSTS.map(escaped).join('|')})/image/${HEX40})$`,
+)
 
 export function isCoverUrl(value: unknown): value is string {
   // In JavaScript `$` (no `m` flag) matches only at the very end: a trailing newline fails.
   return typeof value === 'string' && COVER_URL.test(value)
+}
+
+/** A playlist cover: the album pin, a 300 or 640 px mosaic, or an uploaded cover (#537). */
+export function isPlaylistCoverUrl(value: unknown): value is string {
+  return typeof value === 'string' && PLAYLIST_COVER_URL.test(value)
 }
 
 /** Up to two letters for the neutral tile: the first letters of the first two words. */
@@ -44,19 +62,22 @@ export function CoverArt({
   src,
   label,
   size = 'sm',
+  kind = 'album',
   className,
 }: {
-  /** The song's `cover` from the API, or null. */
+  /** The song's (or playlist's) `cover` from the API, or null. */
   src: string | null
-  /** The song's title (and artist): its initials fill the tile when there is no cover. */
+  /** The song's title (and artist), or the playlist's name: its initials fill the tile when there is no cover. */
   label: string
   size?: keyof typeof SIZES
+  /** Which pin the URL must match: `album` (song lists) or `playlist` (the New class picker). */
+  kind?: 'album' | 'playlist'
   className?: string
 }) {
   const [failed, setFailed] = useState<string | null>(null)
-  const show = isCoverUrl(src) && failed !== src
+  const valid = kind === 'playlist' ? isPlaylistCoverUrl(src) : isCoverUrl(src)
   const box = cn('shrink-0 overflow-hidden', SIZES[size], className)
-  if (!show) {
+  if (!valid || src === null || failed === src) {
     return (
       <span
         className={cn(box, 'inline-flex items-center justify-center bg-raised font-display font-bold text-muted')}

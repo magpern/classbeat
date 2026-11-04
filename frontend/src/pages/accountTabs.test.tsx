@@ -57,8 +57,9 @@ describe('account tabs', () => {
     expect(tabs[0]).toHaveAttribute('aria-selected', 'true')
     const panel = screen.getByRole('tabpanel')
     expect(panel).toHaveAttribute('aria-labelledby', tabs[0]?.id)
-    expect(within(panel).getByRole('heading', { name: 'Swedebeat' })).toBeInTheDocument()
-    expect(await within(panel).findByText('Swedebeat is coming soon.')).toBeInTheDocument()
+    // #525: no Swedebeat card for a user who has neither the flag nor a stored connection.
+    expect(await within(panel).findByRole('heading', { name: 'MOWL (Intelligent Cycling)' })).toBeInTheDocument()
+    expect(within(panel).queryByRole('heading', { name: 'Swedebeat' })).toBeNull()
   })
 
   it('move with the arrow keys and keep the open tab in the address', async () => {

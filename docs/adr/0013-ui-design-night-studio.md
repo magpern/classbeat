@@ -378,8 +378,12 @@ browser contacts a third party, and it changes a guard test, so UI7 has an Opus 
 >     - song picking admits the user (`classbeat.flags.song_picking_admits`, the gate of the Spotify
 >       routes);
 >     - the user has a Spotify connection whose status is `connected`;
->     - no job of the user that calls Spotify (the song-picking kinds of ADR 0008) is queued or
->       running;
+>     - no job of the user of the Spotify-calling kinds `design_with_songs` and `revise_songs`
+>       (`jobs.kinds.SONG_KIND_NAMES`) is `queued` or `running` (`jobs.service.cover_read_admitted`,
+>       one read as the user under RLS; a job `waiting_for_approval` is not counted, so an Approve
+>       right after a cover read can meet that read's 429 on the user's app, which is accepted).
+>       `classbeat.design.routes` may import `classbeat.jobs.service` for this one read (the
+>       session guard names it; both are reached only from the web app);
 >     - no cover-read cooldown is pending (below).
 >   - **Every failure is `{covers: []}`, answered 200.** This covers more than 500 playlists (the
 >     library fails rather than truncating), the deadline, an allowlist refusal, a Spotify 429 and any
@@ -389,8 +393,13 @@ browser contacts a third party, and it changes a guard test, so UI7 has an Opus 
 >   - **Its own rate limit.** `playlist-covers`: 10 per user and 30 per IP per 10 minutes, checked
 >     before the connection is opened. It is the fixed-window limiter of the other provider-calling
 >     routes; every request counts.
->   - **No CSRF.** It is a GET and writes no cover. A cross-site top-level navigation can trigger it,
->     but only within its rate limit.
+>   - **No CSRF; this GET writes** (a departure, recorded here, from the Architect's #119 rule for
+>     `mowl-playlists` that a GET writes no state). It may write a token rotation (the token's own
+>     upkeep under the row lock), the token endpoint's own flip (Spotify's `invalid_grant` or
+>     app-setup answer about the stored refresh token), `open_connection`'s flip of a row whose
+>     secret no longer decrypts, and the cooldown row. None of these is the cover, each would happen
+>     on the next job anyway, and all are bounded by the rate limit. A cross-site top-level
+>     navigation can trigger it, gets no readable answer, and only within the rate limit.
 > - **The read.** One `spotify_web.my_playlists(creds, max_pages=10)` (at most 10 requests, 500
 >   entries) through `classbeat.spotify.spotify_call` in a **read-only mode**. It uses the existing
 >   host `api.spotify.com` on the web's urllib allowlist and the existing Spotify token client for a
@@ -398,7 +407,9 @@ browser contacts a third party, and it changes a guard test, so UI7 has an Opus 
 >   - **What the read-only mode writes.** A token that expires within the margin is refreshed first,
 >     exactly by ADR 0009 §6: the rotation is written under the row lock, and the token endpoint's own
 >     `invalid_grant` or app-setup answer flips the connection there, because that is the truth about
->     the stored refresh token. Nothing else is written. There is no `record_result` (no
+>     the stored refresh token. `open_connection` keeps its own flip of a row whose secret no longer
+>     decrypts (ADR 0004 §5, a key-integrity event): the read-only mode is not a way around it.
+>     Nothing else is written. There is no `record_result` (no
 >     `last_used_at`, no `last_error`). A 401 is not repeated, forces no refresh and never flips the
 >     connection; its covers are `[]`. The other callers of `spotify_call` are unchanged.
 >   - **What the 8 s bounds.** Only the `my_playlists` requests: `egress.call_deadline(8)` inside the
@@ -409,18 +420,25 @@ browser contacts a third party, and it changes a guard test, so UI7 has an Opus 
 >   - **A refresh is never cancelled.** Nothing wraps `spotify_call` or the refresh in
 >     `asyncio.timeout`, `wait_for` or any other cancellation. ADR 0009 §6: a refresh cancelled after
 >     Spotify answered, but before its transaction stored the rotated refresh token, loses that token,
->     and the next refresh is `invalid_grant`, which flips the connection. If the endpoint's own
->     caller stops waiting (the browser leaves and the request is cancelled), the call runs to the end
->     under `asyncio.shield` and its result is dropped.
->   - **Worst case.** About 5 + 10 + 8 = 23 s with the defaults, and 33 s with the largest refresh
->     timeout. The page does not wait for it.
+>     and the next refresh is `invalid_grant`, which flips the connection. Only the refresh runs as its
+>     own task under `asyncio.shield`, with a strong reference kept until it ends (the event loop
+>     holds tasks only weakly): if the endpoint's caller stops waiting (the browser leaves and the
+>     request is cancelled), the refresh runs to the end and stores the rotation, and no listing
+>     request is sent after the cancel. A process shutdown can still cut a refresh, the same
+>     existing risk as Check again's web refresh.
+>   - **Worst case.** `refresh_spotify` tries the row lock twice (5 s each), so about
+>     5 + 5 + 10 + 8 = 28 s with the defaults, and 38 s with the largest refresh timeout. The page
+>     does not wait for it.
 > - **Spotify's 429 and the user's app quota (threat model T72).**
 >   - **Budget.** Each read sends at most 10 Spotify requests plus at most one refresh. The rate limit
 >     caps that at about 100 requests per user per 10 minutes on the user's own Spotify app.
 >   - **Cooldown.** A Spotify 429 on this read starts a per-user cover-read cooldown for its
 >     `Retry-After`: at least 60 s, at most 1 hour, and 60 s when the header is absent or unreadable.
->     It is stored in the Postgres rate-limit table (a bucket filled to its limit for that window), so
->     every web process honours it. No cover read is sent until it has passed.
+>     It is stored in the Postgres `rate_limits` table as one row of a dedicated bucket (an HMAC of
+>     `cover-cooldown` and the user id, nothing else) whose `window_start` is the instant the
+>     cooldown ends, and it is checked as `window_start > clock_timestamp()`, so every web process
+>     honours it for its full length (a fixed window would end at the next aligned boundary). The
+>     two-hour purge removes the row after it ended. No cover read is sent until it has passed.
 >   - **Jobs.** The read never runs while a Spotify-calling job of the user is queued or running.
 >     Neither the read nor its 429 touches any job, including `jobs.spotify_rate_limits` and
 >     `jobs.spotify_retry_after`. A cover read can therefore not push a song pick toward
@@ -501,7 +519,9 @@ browser contacts a third party, and it changes a guard test, so UI7 has an Opus 
 >
 > - Backend: `classbeat.covers` (the host list and both patterns); `classbeat.headers` (the
 >   `img-src` and its docstring); `backend/tests/test_web.py` (the exact `img-src` at about lines
->   212 and 290).
+>   212 and 290); `backend/tests/test_covers.py` (the `playlist_cover_url` cases, look-alike and
+>   redirect-shaped URLs included); the fakes' playlist images (`backend/tests/spotifycore.py`,
+>   `playlist_images`, which encode exactly the pinned shapes and some refused ones).
 > - Frontend: `CoverArt.tsx`; `CoverArt.test.tsx` (it uses `mosaic.scdn.co` as "another host" at
 >   about line 13, so the test must pick a host that stays outside); `no-third-party-hosts.test.ts`
 >   (its allowed hosts, and its assertion that `https://mosaic.scdn.co` is caught in `CoverArt` must

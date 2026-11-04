@@ -1,4 +1,4 @@
-"""Migration 0027 (ADR 0007 amendment "beat-one corrections", BC1): the class-owned
+"""Migration 0029 (ADR 0007 amendment "beat-one corrections", BC1): the class-owned
 ``beat_one_corrections`` table. Row security, the checks, one row per song and music, and the
 cascades with the class and the account."""
 
