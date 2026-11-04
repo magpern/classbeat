@@ -157,12 +157,15 @@ restore_real_env() {
 if [[ "$mode" == install ]]; then
   # The real settings render with the real .env before the dummies below replace anything.
   [[ -f "$env_file" ]] || { echo "check-prod-compose: no $env_file: cp prod.env.example .env and fill it in (runbook section 5)" >&2; exit 1; }
-  real_json="$(docker compose config --format json 2>"$tmp/real-config.log")" \
-    || { cat "$tmp/real-config.log" >&2; echo "check-prod-compose: docker compose config fails with your .env (above): set the variables it names" >&2; exit 1; }
-  # The same with every profile, for the allow-list (check_real, #610). Compose's own output is not
-  # printed here: the render above already showed any settings error.
+  # Compose's own error output is never printed, on this or any render (#616 review): it quotes the
+  # offending line of an env_file, so a secret file that does not parse as one (a `~` in a client
+  # secret, a JSON key, base64) would be printed. A fixed sentence instead; the owner can run
+  # `docker compose config -q` by hand to see Compose's message on their own terminal.
+  real_json="$(docker compose config --format json 2>/dev/null)" \
+    || { echo "check-prod-compose: docker compose config fails with your .env: a required variable is unset (CLASSBEAT_VERSION, CLASSBEAT_DOMAIN, PROXY_IP, SMTP_HOST, SMTP_SENDER) or a file in COMPOSE_FILE, or an env_file it names, does not parse. Compose's message is not printed (it can quote a line of a secret file): run \`docker compose config -q\` yourself to read it" >&2; exit 1; }
+  # The same with every profile, for the allow-list (check_real, #610).
   real_all_json="$(docker compose --profile '*' config --format json 2>/dev/null)" \
-    || { echo "check-prod-compose: docker compose --profile '*' config fails with your .env" >&2; exit 1; }
+    || { echo "check-prod-compose: docker compose --profile '*' config fails with your .env although the plain render passes: a service behind a profile needs a variable or file the others do not (run \`docker compose --profile '*' config -q\` yourself to read Compose's message; it is not printed here)" >&2; exit 1; }
 fi
 
 # Copies next to dummy secret files, so the checkout's own secrets/ is never read.
@@ -193,7 +196,11 @@ export WEB_LAN_ADDRESS="$lan_ip"
 dir="$native/${tmp##*/}"
 # Every render enables all profiles: a service behind `profiles:` would otherwise be left out of the
 # rendered file and so of every check below (#512 review B5).
-render() { docker compose "$@" --profile '*' config --format json; }
+# Compose's error output is never printed (#616 review: it can quote a line of a secret file).
+render() {
+  docker compose "$@" --profile '*' config --format json 2>/dev/null \
+    || { echo "check-prod-compose: docker compose config fails on the compose files with dummy values (Compose's message is not printed: run \`docker compose config -q\` yourself)" >&2; return 1; }
+}
 # compose.prod.yaml's defaults: no OAuth variable set, so every provider is off.
 unset OAUTH_GOOGLE_CLIENT_ID OAUTH_GITHUB_CLIENT_ID OAUTH_MICROSOFT_CLIENT_ID OAUTH_VISIBLE_PROVIDERS
 defaults="$(render -f "$dir/compose.prod.yaml")"
@@ -925,8 +932,8 @@ yaml_verdict() {   # yaml_verdict WANT(accepted|refused) FRAGMENT TEXT
   local want="$1" why="$2" v out rc
   printf '%s\n' "$3" > "$tmp/yaml/mutation.yaml"
   for v in shared loopback lan; do
-    out="$(yaml_render "$v" 2>"$tmp/yaml-render.log")" \
-      || { cat "$tmp/yaml-render.log" >&2; echo "check-prod-compose: self-test: a YAML mutation does not render ($v): $3" >&2; exit 1; }
+    out="$(yaml_render "$v")" \
+      || { echo "check-prod-compose: self-test: a YAML mutation does not render ($v): $3" >&2; exit 1; }
     rc=0; (J="$out"; "check_$v" 2>"$tmp/yaml-refuse.log") || rc=$?
     if [[ "$want" == accepted && "$rc" != 0 ]]; then
       cat "$tmp/yaml-refuse.log" >&2; echo "check-prod-compose: self-test: refused a harmless YAML file ($v): $3" >&2; exit 1
@@ -1051,8 +1058,8 @@ real_verdict() {   # real_verdict WANT(accepted|refused) FRAGMENT TEXT: shared a
   local want="$1" why="$2" v out rc
   printf '%s\n' "$3" > "$tmp/yaml/mutation.yaml"
   for v in shared loopback lan; do
-    out="$(yaml_render "$v" 2>"$tmp/yaml-render.log")" \
-      || { cat "$tmp/yaml-render.log" >&2; echo "check-prod-compose: self-test: a real-render mutation does not render ($v): $3" >&2; exit 1; }
+    out="$(yaml_render "$v")" \
+      || { echo "check-prod-compose: self-test: a real-render mutation does not render ($v): $3" >&2; exit 1; }
     rc=0; (J="$out"; check_real 2>"$tmp/real-refuse.log") || rc=$?
     if [[ "$want" == accepted && "$rc" != 0 ]]; then
       cat "$tmp/real-refuse.log" >&2; echo "check-prod-compose: self-test: the real-render check refused ($v): $3" >&2; exit 1
@@ -1857,14 +1864,14 @@ probe_verdict() {   # probe_verdict SERVICE OUTPUT
 }
 probe_secrets() {
   local svcs svc out rc=0
-  mapfile -t svcs < <(docker compose config --format json | jq -r '.services | to_entries[]
+  mapfile -t svcs < <(docker compose config --format json 2>/dev/null | jq -r '.services | to_entries[]
     | select((.value.secrets // []) | length > 0) | .key')
   (( ${#svcs[@]} > 0 )) || { fail "no service mounts a secret (wrong COMPOSE_FILE?)"; return 1; }
   for svc in "${svcs[@]}"; do
     out="$(docker compose run --rm --no-deps -T --entrypoint sh "$svc" -c \
       'for f in /run/secrets/*; do if test -r "$f"; then echo "${f##*/} OK"; else echo "${f##*/} FAIL"; fi; done' \
-      2>"$tmp/probe-$svc.log")" \
-      || { cat "$tmp/probe-$svc.log" >&2; fail "$svc: could not run the pulled image (docker compose pull first?)"; return 1; }
+      2>/dev/null)" \
+      || { fail "$svc: could not run the pulled image (docker compose pull first? Compose's message is not printed: it can quote a line of a secret file)"; return 1; }
     probe_verdict "$svc" "$out" || rc=1
   done
   return "$rc"
