@@ -252,6 +252,7 @@ test('the "No music" form and a soundless class page pass the accessibility audi
     document.documentElement.setAttribute('data-theme', 'dark')
   })
   useModelScript('soundless_first_draft')
+  await page.goto('/account') // a page with the navigation, as signedInWithMowl leaves it
   await startSoundlessDesign(page, 'E2E soundless axe')
   await expect(page.getByRole('heading', { name: 'Your class is ready' })).toBeVisible(LONG)
   await page.goto('/classes')
