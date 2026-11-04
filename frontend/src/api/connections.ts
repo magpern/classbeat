@@ -1,4 +1,4 @@
-import { del, get, post } from './client'
+import { del, get, post, request } from './client'
 import { flag, list, object, optionalText, text } from './decode'
 
 // Provider connections (ADR 0004, backend/src/classbeat/connections/routes.py). Statuses and
@@ -18,10 +18,15 @@ export interface Connection {
   account: string | null
 }
 
-/** Whether the Swedebeat card may show its form (ADR 0015): the flag is on and the server holds the app key. */
+/**
+ * Whether the Swedebeat card may show its form (ADR 0015): the flag is on and the server holds the app key.
+ * `usesSwedebeat` is the user's own "I use Swedebeat" preference (#525, default off): Swedebeat shows for a
+ * user only when `enabled` and `usesSwedebeat` are both true.
+ */
 export interface SwedebeatAccess {
   enabled: boolean
   available: boolean
+  usesSwedebeat: boolean
 }
 
 function decodeConnection(value: unknown): Connection {
@@ -65,8 +70,12 @@ export async function getConnectionsView(): Promise<{
     runningEnabled: body.running_enabled === true,
     swedebeat:
       access === null
-        ? { enabled: false, available: false }
-        : { enabled: flag(access, 'enabled'), available: flag(access, 'available') },
+        ? { enabled: false, available: false, usesSwedebeat: false }
+        : {
+            enabled: flag(access, 'enabled'),
+            available: flag(access, 'available'),
+            usesSwedebeat: access.uses_swedebeat === true,
+          },
   }
 }
 
@@ -84,4 +93,13 @@ export async function connectSwedebeat(
 
 export async function disconnectSwedebeat(): Promise<void> {
   await del('/api/connections/swedebeat')
+}
+
+/** Stores the user's "I use Swedebeat" preference (#525); returns what the server stored. */
+export async function setSwedebeatPreference(usesSwedebeat: boolean): Promise<boolean> {
+  const body = object(
+    await request('PUT', '/api/connections/swedebeat/preference', { body: { uses_swedebeat: usesSwedebeat } }),
+    'preference',
+  )
+  return flag(body, 'uses_swedebeat')
 }

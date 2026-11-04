@@ -18,6 +18,7 @@ from ctx import make_context
 from jobapi import Browser
 from mowlfake import FakeMowl
 from optools import TOKEN_A, TOKEN_B
+from preftools import use_swedebeat
 
 pytestmark = [pytest.mark.usefixtures("jenv", "mowl_api")]
 
@@ -35,6 +36,7 @@ async def env(clean_auth: None, app_database_url: str) -> AsyncIterator[Env]:
 
 async def rider(browsers: Any, env: Env, token: str | None = TOKEN_A) -> Browser:
     browser: Browser = await browsers(mowl=False)
+    await use_swedebeat(env.factory, browser.user_id)  # #525: the user's own switch
     if token is not None:
         await connections.save(
             env.factory, env.app.state.keyring, make_context(browser.user_id), "mowl",

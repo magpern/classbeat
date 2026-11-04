@@ -15,6 +15,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from classbeat import auth
 from classbeat.classes import handoff
+from classbeat.connections.preferences import swedebeat_on
 from classbeat.connections.swedebeat_account import swedebeat_enabled
 from classbeat.context import UserContext
 from classbeat.jobs.credits import CreditLedger
@@ -216,8 +217,9 @@ async def get_handoff(
 async def start_handoff(
     class_id: str, request: Request, ctx: Annotated[UserContext, Depends(auth.require_user)]
 ) -> HandoffOut | JSONResponse:
-    """Snapshot the user's mixes. The same live row again does not list them a second time."""
-    if not await _enabled(request):
+    """Snapshot the user's mixes. The same live row again does not list them a second time.
+    Starting needs the user's own "I use Swedebeat" too (#525); the later steps read the flag."""
+    if not await swedebeat_on(request.app.state.settings, request.app.state.session_factory, ctx):
         return _refuse("feature_off")
     wanted = _uuid(class_id)
     if wanted is None:
