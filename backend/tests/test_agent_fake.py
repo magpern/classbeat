@@ -51,6 +51,11 @@ COVERED = {
     # a soundless design (ADR 0007 amendment of 2026-11-03, #527), used by
     # tests/test_soundless_jobs.py: a "beat" refused by the schema, then the draft
     "soundless_first_draft",
+    # a soundless revise (SL2, #528), used by tests/test_soundless_revise.py: the revised draft,
+    # the second revise, and a request for other songs (the cycling exit is an unknown tool)
+    "soundless_revise_good",
+    "soundless_revise_second",
+    "soundless_revise_songs_requested",
 }
 
 SPEC = StageSpec("design", "s", (), "m", "fake-model", "medium", 32_000, "submit_draft")

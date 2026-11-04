@@ -88,6 +88,7 @@ class Person:
             u=u,
         )
         self.sql("INSERT INTO swedebeat_analyses (owner_id) VALUES (:u)", u=u)
+        self.sql("INSERT INTO user_preferences (owner_id, uses_swedebeat) VALUES (:u, true)", u=u)
         self.sql(
             "INSERT INTO swedebeat_handoffs (owner_id, class_id, match_revision_id, state, "
             "mixes_before, expires_at) VALUES (:u, :c, :rev, 'open', '[]'::jsonb, "
