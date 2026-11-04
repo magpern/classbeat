@@ -56,7 +56,9 @@ test.beforeAll(async ({ browser, baseURL }) => {
     if (new URL(request.url()).origin !== stack) foreign.push(request)
   })
   // The cover host answers here (a page route runs before the context's blocking route).
-  await page.route('https://i.scdn.co/**', (route) => route.fulfill({ contentType: 'image/png', body: PNG }))
+  for (const host of ['https://i.scdn.co', 'https://mosaic.scdn.co']) {
+    await page.route(`${host}/**`, (route) => route.fulfill({ contentType: 'image/png', body: PNG }))
+  }
 
   const json = (body: unknown) => ({ contentType: 'application/json', body: JSON.stringify(body) })
   await page.route(`**/api/jobs/${JOB}/events`, (route) =>
@@ -123,7 +125,10 @@ test('Songs for approval: covers come only from i.scdn.co through CoverArt', asy
 
   // The policy is the web process's header, and it names the cover host and no other.
   const csp = document!.headers()['content-security-policy'] ?? ''
-  expect(csp).toContain("img-src 'self' https://i.scdn.co;")
+  expect(csp).toContain(
+    "img-src 'self' https://i.scdn.co/image/ https://mosaic.scdn.co/300/ https://mosaic.scdn.co/640/ " +
+      'https://image-cdn-ak.spotifycdn.com/image/ https://image-cdn-fa.spotifycdn.com/image/;',
+  )
   expect(document!.headers()['referrer-policy']).toBe('no-referrer')
 
   // Three songs show their cover; the three others show the neutral tile with initials.
@@ -177,28 +182,43 @@ test('the browser itself refuses an image from any other host, and a data: image
         img.src = src
       })
     await load('other host', 'https://evil.example/pixel.png')
-    await load('scdn subdomain', 'https://mosaic.scdn.co/pixel.png')
+    await load('scdn subdomain', 'https://daily-mix.scdn.co/pixel.png')
+    await load('mosaic outside its sizes', 'https://mosaic.scdn.co/pixel.png')
+    await load('cover host outside /image/', 'https://i.scdn.co/pixel.png')
     await load('data uri', 'data:image/gif;base64,R0lGODlhAQABAAAAACw=')
     await load('cover host', 'https://i.scdn.co/image/' + 'a'.repeat(40))
+    await load('mosaic', 'https://mosaic.scdn.co/300/' + 'a'.repeat(160))
     return { results, blocked }
   })
   expect(verdicts.results).toEqual({
     'other host': 'failed',
     'scdn subdomain': 'failed',
+    'mosaic outside its sizes': 'failed',
+    'cover host outside /image/': 'failed',
     'data uri': 'failed',
     'cover host': 'loaded',
+    mosaic: 'loaded',
   })
-  expect(verdicts.blocked.sort()).toEqual(['data', 'https://evil.example/pixel.png', 'https://mosaic.scdn.co/pixel.png'])
-  // The refused ones were stopped by the policy itself (not by this test's blocking route), and
-  // only the cover host's request went out.
-  const seen = foreign.slice(before)
-  const failures = Object.fromEntries(
-    seen.map((request) => [new URL(request.url()).origin, request.failure()?.errorText ?? 'sent']),
+  expect(verdicts.blocked.sort()).toEqual(
+    [
+      'data',
+      'https://evil.example/pixel.png',
+      'https://daily-mix.scdn.co/pixel.png',
+      'https://mosaic.scdn.co/pixel.png',
+      'https://i.scdn.co/pixel.png',
+    ].sort(),
   )
-  expect(failures).toEqual({
-    'https://evil.example': 'csp',
-    'https://mosaic.scdn.co': 'csp',
+  // The refused ones were stopped by the policy itself (not by this test's blocking route), and
+  // only the pinned paths' requests went out.
+  const seen = foreign.slice(before)
+  const failures = seen.map((request) => [new URL(request.url()).pathname.startsWith('/pixel') ? new URL(request.url()).href : new URL(request.url()).origin, request.failure()?.errorText ?? 'sent'])
+  expect(Object.fromEntries(failures)).toEqual({
+    'https://evil.example/pixel.png': 'csp',
+    'https://daily-mix.scdn.co/pixel.png': 'csp',
+    'https://mosaic.scdn.co/pixel.png': 'csp',
+    'https://i.scdn.co/pixel.png': 'csp',
     'https://i.scdn.co': 'sent',
+    'https://mosaic.scdn.co': 'sent',
   })
   consoleErrors.length = 0
 })

@@ -23,17 +23,25 @@ const scripts = import.meta.glob<string>(['./**/*.{ts,tsx}', '!./**/*.test.{ts,t
 
 const REMOTE_URL = /(?:https?:)?\/\/(?!localhost\b|127\.0\.0\.1\b)[a-z0-9.-]+\.[a-z]{2,}/gi
 
-// The one exception (ADR 0013 section 9): album covers from Spotify's image host, named only in
-// CoverArt, which shows them. The exemption is that exact quoted string in that one file.
+// The one exception (ADR 0013 section 9 and its amendment of 2026-11-03, #537): album and playlist
+// covers from Spotify's image hosts, named only in CoverArt, which shows them. The exemption is
+// each exact quoted string in that one file.
 const COVER_ART = './components/songs/CoverArt.tsx'
 const SPOTIFY_LOGO = './components/songs/SpotifyAttribution.tsx'
-const COVER_HOST = "'https://i.scdn.co'"
+const COVER_HOSTS = [
+  'https://i.scdn.co',
+  'https://mosaic.scdn.co',
+  'https://image-cdn-ak.spotifycdn.com',
+  'https://image-cdn-fa.spotifycdn.com',
+]
+const QUOTED = COVER_HOSTS.map((host) => `'${host}'`)
+const COVER_HOST = QUOTED[0] ?? ''
 
-/** The remote URLs in a source file, after the SVG namespace and the one allowed host. */
+/** The remote URLs in a source file, after the SVG namespace and the allowed hosts. */
 function remoteUrls(path: string, source: string): string[] {
   // The SVG namespace is an identifier, not a request.
   let checked = source.replaceAll('http://www.w3.org/2000/svg', '')
-  if (path === COVER_ART) checked = checked.replaceAll(COVER_HOST, "''")
+  if (path === COVER_ART) for (const quoted of QUOTED) checked = checked.replaceAll(quoted, "''")
   return checked.match(REMOTE_URL) ?? []
 }
 
@@ -53,10 +61,10 @@ describe('no third-party hosts', () => {
     expect(remoteUrls(path, source)).toEqual([])
   })
 
-  it('CoverArt names the cover host once and no other host', () => {
+  it('CoverArt names each cover host once and no other host', () => {
     const source = scripts[COVER_ART] ?? ''
-    expect(source.split(COVER_HOST).length - 1).toBe(1)
-    expect(remoteUrls('./elsewhere.tsx', source)).toEqual(['https://i.scdn.co'])
+    for (const quoted of QUOTED) expect(source.split(quoted).length - 1).toBe(1)
+    expect(remoteUrls('./elsewhere.tsx', source).sort()).toEqual([...COVER_HOSTS].sort())
   })
 
   it('still fails for the cover host in any other file, and for any other host in CoverArt', () => {
@@ -64,7 +72,16 @@ describe('no third-party hosts', () => {
       'https://i.scdn.co',
     ])
     expect(remoteUrls('./components/songs/CoverArt2.tsx', `const a = ${COVER_HOST}`)).toHaveLength(1)
-    for (const other of ['https://mosaic.scdn.co', 'https://evil.example', '//cdn.example.com']) {
+    for (const quoted of QUOTED) {
+      expect(remoteUrls('./components/newclass/PlaylistTiles.tsx', `const a = ${quoted}`)).toHaveLength(1)
+    }
+    for (const other of [
+      'https://daily-mix.scdn.co',
+      'https://image-cdn-xx.spotifycdn.com',
+      'https://blend-playlist-covers.spotifycdn.com',
+      'https://evil.example',
+      '//cdn.example.com',
+    ]) {
       expect(remoteUrls(COVER_ART, `const a = '${other}'`)).toEqual([other])
     }
     // The host inside a longer string is not the exempt string: it is caught too.

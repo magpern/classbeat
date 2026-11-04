@@ -29,7 +29,7 @@ from classbeat.agent.schemas import clean_text
 
 MIN_BEATS: Final = -3
 MAX_BEATS: Final = 3
-MAX_SONG: Final = 500  # also the ``song`` check of migration 0027
+MAX_SONG: Final = 500  # also the ``song`` check of migration 0029
 MAX_PER_CLASS: Final = 200  # rows for the class's current fingerprint (409 ``correction_limit``)
 MAX_SONGS: Final = 200  # entries of a revision's ``music.songs`` (a class is at most 180 minutes)
 MAX_TITLE: Final = 100  # characters of a song title in ``music.songs``
@@ -96,8 +96,12 @@ def songs(m: Mapping[str, Any], workout_sec: float) -> list[dict[str, Any]]:
     a Spotify track. ``estimate``: a mix song whose beat-1 margin is below ``LOW_MARGIN`` and that
     has no correction, or a Spotify track MOWL had no BPM for."""
     out: list[dict[str, Any]] = []
+    skipped = 0
     if is_mix(m):
         for s in m["songs"]:
+            if not all(k in s for k in ("song", "start", "end", "bpm")):
+                skipped += 1  # the library's maps always have them: skip, never fail the job
+                continue
             if float(s["start"]) >= workout_sec:
                 continue
             margin = s.get("beat1_margin")
@@ -111,9 +115,13 @@ def songs(m: Mapping[str, Any], workout_sec: float) -> list[dict[str, Any]]:
                     "estimate": bool(unsure and not s.get("beat1_shift")),
                 }
             )
+        _log_skipped(skipped)
         return out[:MAX_SONGS]
     starts: dict[int, float] = {}
     for s in m["songs"]:
+        if "track" not in s or "start" not in s:
+            skipped += 1
+            continue
         track = int(s["track"])
         starts[track] = min(starts.get(track, float(s["start"])), float(s["start"]))
     order = sorted(starts)
@@ -134,4 +142,10 @@ def songs(m: Mapping[str, Any], workout_sec: float) -> list[dict[str, Any]]:
                 "title": clean_text(str(info.get("title") or ""))[:MAX_TITLE],
             }
         )
+    _log_skipped(skipped)
     return out[:MAX_SONGS]
+
+
+def _log_skipped(skipped: int) -> None:
+    if skipped:  # a count only, no ids or titles
+        logger.warning("beat-one songs skipped", extra={"skipped": skipped})

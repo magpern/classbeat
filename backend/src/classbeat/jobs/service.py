@@ -20,10 +20,11 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from classbeat import connections
 from classbeat.context import UserContext, require_context
 from classbeat.db import user_session
+from classbeat.flags import effective as flags
 from classbeat.jobs import user
 from classbeat.jobs.credits import CreditLedger, QuotaRefused
 from classbeat.jobs.inputs import JobInput
-from classbeat.jobs.kinds import Approving, KindRegistry
+from classbeat.jobs.kinds import SONG_KIND_NAMES, Approving, KindRegistry
 
 Factory = async_sessionmaker[AsyncSession]
 
@@ -60,6 +61,29 @@ class JobView:
     available_at: datetime
     spotify_failure: str | None
     spotify_retry_after: int | None
+
+
+# The cover read's gate (ADR 0013 section 9 amendment, #537): a queued or running job of the
+# Spotify-calling kinds (ADR 0008). A job waiting for approval is not counted: an Approve right
+# after a cover read can meet that read's 429 on the user's app, which is accepted.
+_OPEN_SONG_JOB = text(
+    "SELECT EXISTS (SELECT 1 FROM jobs WHERE owner_id = :owner_id "
+    "AND kind = ANY(:kinds) AND state IN ('queued', 'running'))"
+)
+
+
+async def cover_read_admitted(factory: Factory, ctx: UserContext, *, song_picking_on: bool) -> bool:
+    """Whether the picker's cover read may call Spotify for this user: song picking admits them
+    (``CLASSBEAT_SONG_PICKING`` is ``song_picking_on``, joined with the stored flag and the
+    user's features) and none of their song-picking jobs (``SONG_KIND_NAMES``) is queued or
+    running. Read-only, under RLS as the user."""
+    async with user_session(factory, ctx) as db:
+        if not await flags.song_picking_admits(db, ctx, song_picking_on):
+            return False
+        found = await db.execute(
+            _OPEN_SONG_JOB, {"owner_id": ctx.user_id, "kinds": list(SONG_KIND_NAMES)}
+        )
+        return not bool(found.scalar_one())
 
 
 async def _view(db: AsyncSession, ctx: UserContext, job_id: UUID) -> JobView | None:

@@ -14,7 +14,7 @@ from uuid import UUID
 
 import pytest
 
-from classbeat.agent import beat_one, mix_input
+from classbeat.agent import beat_one, mix_input, model_input
 from classbeat.agent.beat_one import Correction
 from classbeat.agent.mix_input import MixData, SpotifyData
 from classbeat.agent.model_input import MusicData
@@ -118,7 +118,7 @@ def test_the_fitted_map_of_a_mix_carries_its_corrections_and_the_cache_stays() -
     assert mix_input.unsure_beat_one(plain) == [0]
 
 
-def test_a_spotify_map_without_corrections_is_the_one_before() -> None:
+def test_a_spotify_map_with_corrections_is_the_plain_map_corrected() -> None:
     from mowl import spotify
 
     tracks = [{"SpotifyTrackID": "1" * 22, "Title": "t", "Artist": "a", "Duration": 200_000,
@@ -130,12 +130,23 @@ def test_a_spotify_map_without_corrections_is_the_one_before() -> None:
     assert moved != plain
 
 
-def test_the_size_check_covers_the_new_fields_only(monkeypatch: pytest.MonkeyPatch) -> None:
+def _probe(titles: str, bpm: float = 120.0) -> tuple[Any, Any, dict[str, Any]]:
+    """The reviewer's probe: about 112 KB of ``unknown_bpm`` titles, a 200-track playlist whose
+    titles are 100 four-byte characters, and a correction for every track."""
+    from mowl import spotify
+
     from classbeat.design import revision
-    from classbeat.jobs import JobFailure
+
+    tracks = [
+        {"SpotifyTrackID": f"{n:022d}", "Title": titles, "Artist": "a", "Duration": 60_000,
+         "BPM": bpm}
+        for n in range(1, 201)
+    ]  # fmt: skip
 
     class Step:
-        data = SpotifyData({"map": {}, "duration": 0.0}, 7, (), (Correction(1, 1),))
+        data = SpotifyData(
+            {"map": {}, "duration": 0.0}, 7, (), tuple(Correction(n, 1) for n in range(1, 201))
+        )
 
     music = revision.SpotifyRevisionMusic(
         source="mowl_spotify_playlist",
@@ -143,11 +154,73 @@ def test_the_size_check_covers_the_new_fields_only(monkeypatch: pytest.MonkeyPat
         fingerprint="a" * 64,
         unknown_bpm=[revision.UnknownBpmTrack(index=i, title="t" * 200) for i in range(500)],
     )
-    m = mix_input.music_map(MixData({"map": mix(), "duration": 240.0}, 9001))
-    # A valid music of about 110 KB of unknown_bpm titles is never refused for its size.
-    done = revision._beat_one_fields(music, Step(), m, 200)  # pyright: ignore[reportPrivateUsage, reportArgumentType]
-    assert done.beat_one is not None
-    assert done.songs is not None
-    monkeypatch.setattr(revision, "MAX_BEAT_ONE_BYTES", 50)
+    return music, Step(), model_input.music_map(spotify.build_map(tracks, {}))
+
+
+def test_the_size_check_covers_the_new_fields_only(monkeypatch: pytest.MonkeyPatch) -> None:
+    from classbeat.design import revision
+    from classbeat.jobs import JobFailure
+
+    music, step, m = _probe("\U0001d11e" * 100)  # a 4-byte character, 100 times
+    done = revision._beat_one_fields(music, step, m, 100_000)  # pyright: ignore[reportPrivateUsage, reportArgumentType]
+    new_fields = revision.canonical(
+        {"beat_one": done.model_dump(mode="json")["beat_one"],
+         "songs": done.model_dump(mode="json")["songs"]}
+    )  # fmt: skip
+    whole = revision.canonical(done.model_dump(mode="json", exclude_none=True))
+    assert len(done.songs or []) == 200
+    assert len(done.beat_one or []) == 200
+    assert 90_000 < len(new_fields) < revision.MAX_BEAT_ONE_BYTES
+    assert len(whole) > revision.MAX_BEAT_ONE_BYTES, "a check of the whole music would refuse it"
+    # It validates back as Save reads it.
+    assert revision.REVISION_MUSIC.validate_json(whole).songs == done.songs
+    monkeypatch.setattr(revision, "MAX_BEAT_ONE_BYTES", len(new_fields) - 1)
     with pytest.raises(JobFailure):
-        revision._beat_one_fields(music, Step(), m, 200)  # pyright: ignore[reportPrivateUsage, reportArgumentType]
+        revision._beat_one_fields(music, step, m, 100_000)  # pyright: ignore[reportPrivateUsage, reportArgumentType]
+
+
+@pytest.mark.parametrize("bpm", [-5.0, 2000.0, 0.01])
+def test_a_song_with_an_unusable_bpm_drops_its_beat_data_and_the_job_completes(
+    bpm: float, caplog: pytest.LogCaptureFixture
+) -> None:
+    from classbeat.design import revision
+
+    music, step, m = _probe("Song", bpm=bpm)
+    with caplog.at_level("WARNING", logger="classbeat.design.revision"):
+        done = revision._beat_one_fields(music, step, m, 100_000)  # pyright: ignore[reportPrivateUsage, reportArgumentType]
+    assert done.songs == []
+    assert any(getattr(r, "skipped", 0) == 200 for r in caplog.records)
+
+
+async def test_a_spotify_design_applies_the_corrections_its_class_holds(renv: ReviseEnv) -> None:
+    """ADR 0007 amendment item 4: ``design_draft`` reads the class's corrections for its music's
+    fingerprint. Class B's rows are set between its job's creation and its run."""
+    from classbeat import design
+    from designtools import BRIEF
+    from jobapi import new_key
+    from optools import PLAYLIST
+
+    a, _ = await renv.design()
+    first = renv.revisions(a)[0]
+    fingerprint, songs = first.music["fingerprint"], first.music["songs"]
+    renv.use("good_first_draft")
+    body = {
+        "kind": design.KIND,
+        "input": {
+            "title": "Second ride",
+            "brief": BRIEF,
+            "music": {"source": "mowl_spotify_playlist", "spotify_playlist_id": PLAYLIST},
+            "mowl_connection_id": str(renv.browser.connection_id),
+        },
+    }
+    made = await renv.browser.post("/api/jobs", body, {"Idempotency-Key": new_key()})
+    assert made.status_code == 201, made.text
+    b = UUID(made.json()["class_id"])
+    for song in songs:
+        correct(renv, renv.owner, b, fingerprint, song["song"], 2)
+    await renv.run(design.KIND)
+    [second] = renv.revisions(b)
+    assert second.music["fingerprint"] == fingerprint
+    assert second.music["beat_one"] == [{"song": s["song"], "beats": 2} for s in songs]
+    assert seconds(second.content) != seconds(first.content), "the fit moved"
+    assert sum(seconds(second.content)) == sum(seconds(first.content))
