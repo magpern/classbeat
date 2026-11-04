@@ -53,9 +53,11 @@ no effect never resumes at ``save``, so the read-first check runs again):
    the playlist id and the program id. An answer naming another program is ``UncertainAnswer``
    (the library raises first: MOWL made a copy). **Unverified live:** that MOWL clears a
    playlist attached in the app when a cycling update sends ``PlaylistID: -1`` (ADR 0007
-   amendment of 2026-11-03, item 8). If it keeps it, nothing reads as done: the read after the
-   write does not match (``verify`` leaves ``state_hash`` NULL, so the next Update reads the
-   program as changed), and a lost answer stays ``uncertain`` (the reconciler is inconclusive).
+   amendment of 2026-11-03, item 8, as amended 2026-11-04). If it keeps it, a received answer
+   ends ``completed`` but never verified: the read after the write does not match (``verify``
+   leaves ``state_hash`` NULL, so the next Update reads the program as changed); a lost answer
+   stays ``uncertain`` (the reconciler is inconclusive). The panel's sentence for the unverified
+   case is SL6's (#532).
 4. ``verify`` (best effort): the program is read back; equal to the spec, the saved row's
    ``state_hash`` is set, otherwise it stays NULL. The job ends ``completed`` either way.
 """

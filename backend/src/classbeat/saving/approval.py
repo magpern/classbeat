@@ -122,7 +122,13 @@ class Revision:
 
     @property
     def soundless(self) -> bool:
-        """A revision whose music is ``none`` (and so, checked, a class whose source is)."""
+        """A revision whose music is ``none`` (and so, checked, a class whose source is).
+
+        Derived from ``link_id is None`` on purpose: ``revision`` builds the only ``Revision``
+        without a link, and only for ``NoRevisionMusic``; every music shape Save accepts
+        (``SAVED_MUSIC``) carries a ``link_id`` (strict, required). A future music shape without a
+        link must not be added to ``SAVED_MUSIC`` without an explicit kind here, or it would be
+        written as "no music" (``playlist_for``)."""
         return self.link_id is None
 
     @property

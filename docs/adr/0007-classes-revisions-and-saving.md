@@ -1002,9 +1002,28 @@ set, positive. The music shapes need no migration. **The flag does** (item 2).
    - **unverified:** that a cycling Update with `PlaylistID: -1` clears a playlist someone attached
      to the program in the MOWL app. The library's docstring says it does; it has never been
      observed live (ADR 0018 Amendment 3 saw only a positive id kept on a running update). If MOWL
-     keeps the playlist, the read after the write does not match and the update is `uncertain`
-     under the existing rules (Check again, Do it anyway), never reported as done. The read first
-     already sees an attached playlist as `program_changed`.
+     keeps the playlist, the uncertain-write rules decide it unchanged (amended 2026-11-04 after
+     the SL3 review, #586; the earlier text said such an update "is `uncertain`", which those
+     rules do not give):
+     - **the write's answer arrives:** the operation is `succeeded` and the job ends `completed`
+       (the effect of the write is known: MOWL took it). The read after the write (`verify`)
+       shows a playlist, so it does not match: the saved row's `state_hash` stays NULL and is
+       never shown as verified, and the next Update's read first reports `program_changed`
+       (unless "Update anyway"). Making it `uncertain` would not help: the update reconciler
+       could never settle it (the read never matches and no longer equals `before_hash`), and
+       Do it anyway would send the same write again;
+     - **the write's answer is lost:** the operation is `uncertain`, and the reconciler finds the
+       target neither matching nor equal to `before_hash`, so it stays inconclusive (Check
+       again, Do it anyway), as for any other partial or unmatched update.
+     The read first already sees an attached playlist as `program_changed`.
+   - **Known gap, owned by SL6 (#532):** the Save and Update panel's "completed" sentence
+     ("Updated. Your MOWL workout now matches this version.") and its state line come from the
+     job and the saved row's `content_hash`, not from whether the last write was verified. For an
+     unverified soundless Update (the case above) it would claim a match the read-back
+     disproved. SL6 must expose whether the last write was verified (for example
+     `state_hash IS NOT NULL` on the class's saved summary) and, when it was not, say that the
+     write went through but classbeat could not confirm the workout matches (check it in the
+     MOWL app), never "now matches". SL3 changes no UI.
    - Operation kinds, keys, the bound, the fence and the uncertain-write rules are unchanged. The
      approval refuses `invalid_input` for a `none` revision of a running class (item 1).
 9. **Song picking, the Swedebeat match and the hand-off** (ADR 0008, ADR 0016). A soundless class has
