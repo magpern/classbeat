@@ -151,9 +151,13 @@ class Outcome:
 
 
 def clean_title(raw: str) -> str | None:
-    """The title with control and format characters removed and blanks collapsed, 1 to 100
-    characters; ``None`` otherwise."""
-    kept = "".join(" " if ch.isspace() else ch for ch in raw if unicodedata.category(ch)[0] != "C")
+    """The title with line breaks, tabs and other blanks turned into spaces, control and format
+    characters removed and blanks collapsed, 1 to 100 characters; ``None`` otherwise."""
+    kept = "".join(
+        " " if ch.isspace() else ch
+        for ch in raw
+        if ch.isspace() or unicodedata.category(ch)[0] != "C"
+    )
     title = " ".join(kept.split())
     return title if 1 <= len(title) <= TITLE_MAX else None
 

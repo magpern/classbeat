@@ -22,8 +22,9 @@ from classbeat.agent import Provenance
 from classbeat.classes import duplicate as dup
 from classbeat.design import music_kind
 from ctx import make_context
-from jobapi import Browser, new_key
-from jobtools import new_class
+from jobapi import Browser, new_key, owner_lock_key, until_waiting_on_the_owner_lock
+from jobcore import JobsEnv
+from jobtools import engine_for, new_class
 from revisetools import ReviseEnv
 from savetools import DRAFT as SAVE_DRAFT
 from savetools import RUNNING_BRIEF, RUNNING_DRAFT, Saved, SaveEnv
@@ -208,6 +209,8 @@ def copy_rows(admin: Connection, class_id: str) -> tuple[Any, list[Any]]:
 
 def test_the_title_is_cleaned_and_bounded() -> None:
     assert dup.clean_title("  Tuesday\u0000 climb \n(copy) ") == "Tuesday climb (copy)"
+    assert dup.clean_title("Tuesday\nclimb") == "Tuesday climb"  # a line break is a space
+    assert dup.clean_title("Tuesday\tclimb\r\nhard") == "Tuesday climb hard"
     assert dup.clean_title("a​b") == "ab"  # a format character is dropped
     assert dup.clean_title(" \t ") is None
     assert dup.clean_title("x" * 101) is None
@@ -580,6 +583,113 @@ async def test_a_copy_without_music_is_refused_by_revise_before_anything_is_writ
     assert renv.messages(copy_id) == []
     jobs = renv.sql("SELECT count(*) FROM jobs WHERE class_id = :c", c=copy_id).scalar_one()
     assert jobs == 0
+
+
+async def test_parallel_requests_with_one_key_wait_behind_the_owner_lock_and_make_one_class(
+    jenv: JobsEnv, two: tuple[Source, Source], database_url: str
+) -> None:
+    """D item 7 under the owner lock: while another transaction holds the user's lock, every
+    request waits, so the race between the key lookup and the insert happens on every run; once
+    the lock is released exactly one class and one credit exist."""
+    mine, _ = two
+    key = new_key()
+    classes = mine.classes()
+    with engine_for(database_url) as engine, engine.connect() as holder:
+        holder.execute(
+            text("SELECT pg_advisory_xact_lock(hashtextextended(:k, 0))"),
+            {"k": owner_lock_key(mine.owner)},
+        )
+        tasks = [asyncio.create_task(mine.duplicate(key=key)) for _ in range(5)]
+        await until_waiting_on_the_owner_lock(jenv)
+        assert not any(t.done() for t in tasks)
+        holder.commit()
+        answers = await asyncio.gather(*tasks)
+    assert sorted(a.status_code for a in answers) == [200, 200, 200, 200, 201]
+    assert len({a.json()["class_id"] for a in answers}) == 1
+    assert mine.classes() == classes + 1
+    assert len(mine.ledger()) == 1
+
+
+async def test_the_owner_lock_is_taken_before_the_period_lock(
+    jenv: JobsEnv, two: tuple[Source, Source], database_url: str
+) -> None:
+    """ADR 0011's order, as job creation: while another transaction holds the user's period row,
+    the duplicate waits on it already holding its owner lock (the other order could deadlock
+    against a job create)."""
+    mine, _ = two
+    with engine_for(database_url) as engine, engine.connect() as holder:
+        holder.execute(
+            text(
+                "INSERT INTO quota_periods (owner_id, period) VALUES "
+                "(:o, date_trunc('month', now() AT TIME ZONE 'UTC')::date) "
+                "ON CONFLICT (owner_id, period) DO NOTHING"
+            ),
+            {"o": mine.owner},
+        )
+        holder.execute(
+            text(
+                "SELECT id FROM quota_periods WHERE owner_id = :o "
+                "AND period = date_trunc('month', now() AT TIME ZONE 'UTC')::date FOR UPDATE"
+            ),
+            {"o": mine.owner},
+        )
+        task = asyncio.create_task(mine.duplicate())
+        loop = asyncio.get_running_loop()
+        deadline = loop.time() + 10
+        while not jenv.sql(
+            "SELECT count(*) FROM pg_stat_activity WHERE usename = 'classbeat_app' "
+            "AND wait_event_type = 'Lock' AND wait_event <> 'advisory'"
+        ).scalar_one():
+            assert loop.time() < deadline, "the duplicate never waited for the period row"
+            await asyncio.sleep(0.02)
+        assert not task.done()
+        held = jenv.sql(
+            "SELECT count(*) FROM pg_locks l JOIN pg_stat_activity a ON a.pid = l.pid, "
+            "(SELECT hashtextextended(:k, 0) AS h) x WHERE a.usename = 'classbeat_app' "
+            "AND l.locktype = 'advisory' AND l.granted AND l.objsubid = 1 "
+            "AND l.classid::bigint = ((x.h >> 32) & 4294967295) "
+            "AND l.objid::bigint = (x.h & 4294967295)",
+            k=owner_lock_key(mine.owner),
+        ).scalar_one()
+        assert held == 1, "the duplicate waits for the period row without the owner lock"
+        holder.commit()
+        answer = await task
+    assert answer.status_code == 201, answer.text
+
+
+async def test_a_mix_on_the_chosen_revision_is_refused_while_swedebeat_is_off(
+    browsers: Any, jobs_admin: Connection
+) -> None:
+    """D item 2, the stricter rule: the class's current source is a playlist, but the chosen
+    revision was fitted to a Swedebeat mix (before a hand-off back, say); the flag is off."""
+    mix_music = {
+        "source": "mowl_swedebeat_mix", "mix_id": "mix-1", "name": "Mix", "duration": 900.0,
+        "listed_duration": 900.0, "unsure_beat_one": [], "fingerprint": "cd" * 32,
+        "link_id": LINK,
+    }  # fmt: skip
+    mine = Source(jobs_admin, await browsers(mowl=False), music=mix_music)
+    classes = mine.classes()
+    got = await mine.duplicate()
+    assert (got.status_code, got.json()["detail"]["reason"]) == (409, "feature_off")
+    assert mine.classes() == classes
+    assert mine.ledger() == []
+
+
+async def test_changing_the_source_leaves_the_copy_and_account_deletion_removes_it(
+    two: tuple[Source, Source],
+) -> None:
+    mine, _ = two
+    made = (await mine.duplicate()).json()
+    before = copy_rows(mine.admin, made["class_id"])
+    sql(mine.admin, "UPDATE classes SET title = 'Renamed', current_revision_id = NULL "
+        "WHERE id = :c", c=mine.class_id)  # fmt: skip
+    assert copy_rows(mine.admin, made["class_id"]) == before
+    # The account's deletion cascades to the copy, as to every class (ADR 0014).
+    sql(mine.admin, "DELETE FROM users WHERE id = :o", o=mine.owner)
+    for table in ("classes", "class_revisions", "credit_ledger"):
+        left = sql(mine.admin, f"SELECT count(*) FROM {table} WHERE owner_id = :o",  # noqa: S608
+                   o=mine.owner).scalar_one()  # fmt: skip
+        assert left == 0, table
 
 
 # --- independence through the real pipelines ----------------------------------------------------
