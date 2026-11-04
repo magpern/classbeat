@@ -750,6 +750,17 @@ chip, the Incline column instead of Cadence and Position, five zones, no Change 
 `running_enabled` stored `off` or cleared hiding the control; since #509 the specs store `on` first (`storeRunning` in `class-helpers.ts`, through `sql`), and the e2e web runs the `fake` provider so it counts as covering. `mu-pages.spec.ts` also audits
 the New class form with Running chosen and a ready running class (26 pages).
 
+Soundless classes are on in the e2e stack only (`CLASSBEAT_SOUNDLESS_ENABLED: "true"` on web and worker in
+`compose.e2e.yaml`, the web also on `fake`; the defaults keep them off). `soundless.spec.ts` (SL7, ADR 0007 amendment of
+2026-11-03, #533) stores `soundless_enabled` `on` first (`storeSoundless`), then designs with "No music" and the
+`soundless_first_draft` script, revises by chat, saves (the fake MOWL stores `PlaylistID: -1`) and updates the same
+program, and asserts that design and revise made no music call: no attach, no playlist list (the fake's `list-state`
+and `list-arm` count `POST v1/Spotify/Playlists`, a count only), no track read, no Swedebeat call, no link row and
+no Spotify request. It also plays the unverified case with the fake's `save-no-music` and `save-playlist` knobs (an
+update that does not claim a match), audits the "No music" form and class page (`audit` in `mu-helpers.ts`) and
+checks that a playlist class still designs. What real MOWL does with `PlaylistID: -1` is **unverified**; the fake
+stores it as written and nothing in the spec shows how MOWL behaves.
+
 `beat-one.spec.ts` (ADR 0007 amendment "beat-one corrections", #535): on a fake Spotify playlist and on a seeded fake
 Swedebeat mix, Later on the class page's Beat 1 panel and Apply timing fixes (a `refit_draft` job, no model) move the fitted
 changes, a chat revision keeps the corrections, Save and Update write the corrected timing to the fake MOWL, another user gets

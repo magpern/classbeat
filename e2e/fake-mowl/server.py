@@ -51,6 +51,9 @@ number of programs per account, no tokens), `save-listing?hidden=1|0` (My Workou
 as if MOWL's listing had not caught up with a write; `save-arm` shows it again) and `save-programs` (each program's account number,
 header, segment names and every interval's duration and zone) are for the programs.
 
+`list-state` counts the calls to the playlist list (`POST v1/Spotify/Playlists`) and `list-arm` zeroes it;
+they change no answer (a soundless class makes none, SL7).
+
 Running programs (ADR 0018, M8 R1b) are kept as the library writes them: the program's own
 `ActivityTypeID` 1, each segment's 0 and the running interval bodies with their float `Gradient`,
 served on reads as written. My Workouts marks each entry with its program's own `ActivityTypeID`
@@ -106,6 +109,9 @@ LISTING = {"hidden": False}  # My Workouts answers empty: MOWL's listing has not
 # plays an update sending -1 that keeps a positive playlist attached in the app.
 NO_MUSIC: dict[str, object] = {"read": "-1", "keep": False}
 NO_MUSIC_READS = ("-1", "null", "absent")
+# Calls to the playlist list (`POST v1/Spotify/Playlists`), by anyone: a count only, the answer is
+# unchanged. A soundless class's design and revise must make none (SL7, #533).
+LISTINGS = {"calls": 0}
 POSITION_NAMES = {1: "Seated", 2: "Standing"}
 CYCLE_NAMES = {1: "SB", 4: "ACC"}
 TOKENS: set[str] = set()
@@ -368,6 +374,8 @@ class Handler(BaseHTTPRequestHandler):
             return
         if path == "/v1/Spotify/Playlists":
             # The new-class form's playlist list (U1): public test data, any caller.
+            with LOCK:
+                LISTINGS["calls"] += 1
             listed = [
                 {"ID": p.spotify_id, "Name": p.name, "TrackCount": TRACK_COUNT, "HasUnavailableTracks": False}  # noqa: E501
                 for p in PLAYLISTS
@@ -582,6 +590,12 @@ class Handler(BaseHTTPRequestHandler):
             if action == "swedebeat-arm":
                 swedebeat_mixes.reset()
             self.reply(200, swedebeat_mixes.state())
+            return
+        if action in ("list-arm", "list-state"):
+            with LOCK:
+                if action == "list-arm":
+                    LISTINGS["calls"] = 0
+                self.reply(200, dict(LISTINGS))
             return
         if action == "save-programs":
             self.save_programs()
