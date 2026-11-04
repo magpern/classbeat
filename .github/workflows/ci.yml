@@ -128,6 +128,27 @@ jobs:
           [[ "$db" =~ ^postgres:[0-9]+\.[0-9]+$ ]] || { echo "::error::compose db image must be an exact postgres tag"; exit 1; }
           [ "$fn" = "$db" ] && [ "$ci" = "$db" ] && [ "$shards" = "$db" ] \
             || { echo "::error::db, db-functions and the backend jobs must use the same postgres image"; exit 1; }
+          # The release's database image (docker/postgres/Dockerfile, ADR 0020) is built FROM it too.
+          from="$(sed -n 's/^FROM //p' docker/postgres/Dockerfile)"
+          [ "$from" = "$db" ] \
+            || { echo "::error::docker/postgres/Dockerfile must be FROM $db (found '$from')"; exit 1; }
+
+      # The classbeat-db image builds, and the SQL baked into it is byte for byte the repository's
+      # (what the release would push and compose.prod.yaml runs). Nothing is pushed.
+      - name: Database image builds with the repository's SQL
+        run: |
+          set -euo pipefail
+          docker build -q -t classbeat-db-check docker/postgres
+          cid="$(docker create classbeat-db-check)"
+          trap 'docker rm -f "$cid" >/dev/null' EXIT
+          mkdir "$RUNNER_TEMP/dbimg"
+          docker cp "$cid:/queue" "$RUNNER_TEMP/dbimg/queue"
+          docker cp "$cid:/maint" "$RUNNER_TEMP/dbimg/maint"
+          docker cp "$cid:/docker-entrypoint-initdb.d" "$RUNNER_TEMP/dbimg/init"
+          for d in queue maint init; do diff -r "docker/postgres/$d" "$RUNNER_TEMP/dbimg/$d"; done
+          # The postgres user must be able to read every file.
+          docker run --rm --user postgres --entrypoint sh classbeat-db-check -c \
+            'for f in /queue/* /maint/* /docker-entrypoint-initdb.d/*; do test -r "$f" || { echo "unreadable: $f"; exit 1; }; done'
 
       # compose.prod.yaml behind swag (issues #341, #492): config parses with dummy values alone and
       # with compose.prod.loopback.yaml, the production invariants hold (no caddy, no published port

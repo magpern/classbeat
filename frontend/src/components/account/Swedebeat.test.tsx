@@ -8,7 +8,7 @@ const ACCOUNT_ROUTES = {
   'GET /api/auth/identities': { identities: [], has_password: true, available: [] },
   'GET /api/auth/mfa': { totp_enabled: false, recovery_codes_left: 0 },
 }
-const ON = { enabled: true, available: true }
+const ON = { enabled: true, available: true, uses_swedebeat: true }
 const CONNECTED = {
   id: 'c0000000-0000-4000-8000-000000000002',
   provider: 'swedebeat',
@@ -42,17 +42,75 @@ async function fillAndConnect(password = PASSWORD) {
 }
 
 describe('Swedebeat connection on the account page', () => {
-  it('says it is coming soon while the flag is off, with no form', async () => {
-    fakeApi({ ...ACCOUNT_ROUTES, 'GET /api/connections': list({ enabled: false, available: true }) })
+  it('shows nothing about Swedebeat while the flag is off and nothing is stored', async () => {
+    const api = fakeApi({
+      ...ACCOUNT_ROUTES,
+      'GET /api/connections': list({ enabled: false, available: true, uses_swedebeat: true }),
+    })
+    renderAt('/account')
+    await waitFor(() => {
+      expect(api.to('GET', '/api/connections').length).toBeGreaterThan(0)
+    })
+    await screen.findByRole('tablist', { name: 'Account' })
+    expect(screen.queryByRole('heading', { name: 'Swedebeat' })).toBeNull()
+    expect(screen.queryByLabelText('I use Swedebeat')).toBeNull()
+    expect(screen.queryByText(/Swedebeat/)).toBeNull()
+    expect(api.to('PUT', '/api/connections/swedebeat/preference')).toHaveLength(0)
+  })
+
+  it('starts with the "I use Swedebeat" switch off and no form, card or mix wording', async () => {
+    fakeApi({
+      ...ACCOUNT_ROUTES,
+      'GET /api/connections': list({ enabled: true, available: true, uses_swedebeat: false }),
+    })
     renderAt('/account')
     const swedebeat = await card()
-    expect(await swedebeat.findByText('Swedebeat is coming soon.')).toBeInTheDocument()
+    const toggle = await swedebeat.findByRole('switch', { name: 'I use Swedebeat' })
+    expect(toggle).toHaveAttribute('aria-checked', 'false')
     expect(swedebeat.queryByLabelText('Swedebeat email')).toBeNull()
-    expect(swedebeat.queryByRole('button')).toBeNull()
+    expect(swedebeat.queryByText('Swedebeat sign-in is not available on this server.')).toBeNull()
+    expect(swedebeat.getByTestId('swedebeat-preference-state')).toHaveTextContent(/Turn this on/)
+  })
+
+  it('turning the switch on stores it and shows the connect form; off hides it again', async () => {
+    let uses = false
+    const api = fakeApi({
+      ...ACCOUNT_ROUTES,
+      'GET /api/connections': () => list({ enabled: true, available: true, uses_swedebeat: uses }),
+      'PUT /api/connections/swedebeat/preference': (body: unknown) => {
+        uses = (body as { uses_swedebeat: boolean }).uses_swedebeat
+        return { uses_swedebeat: uses }
+      },
+    })
+    renderAt('/account')
+    const swedebeat = await card()
+    fireEvent.click(await swedebeat.findByRole('switch', { name: 'I use Swedebeat' }))
+    expect(await swedebeat.findByLabelText('Swedebeat email')).toBeInTheDocument()
+    expect(swedebeat.getByRole('switch', { name: 'I use Swedebeat' })).toHaveAttribute('aria-checked', 'true')
+    fireEvent.click(swedebeat.getByRole('switch', { name: 'I use Swedebeat' }))
+    await waitFor(() => {
+      expect(swedebeat.queryByLabelText('Swedebeat email')).toBeNull()
+    })
+    expect(api.to('PUT', '/api/connections/swedebeat/preference').map((call) => call.body)).toEqual([
+      { uses_swedebeat: true },
+      { uses_swedebeat: false },
+    ])
+  })
+
+  it('keeps the stored connection and Disconnect visible while the switch is off', async () => {
+    fakeApi({
+      ...ACCOUNT_ROUTES,
+      'GET /api/connections': list({ enabled: true, available: true, uses_swedebeat: false }, [CONNECTED]),
+    })
+    renderAt('/account')
+    const swedebeat = await card()
+    expect(await swedebeat.findByTestId('swedebeat-status')).toHaveTextContent('Connected')
+    expect(swedebeat.getByRole('button', { name: 'Disconnect Swedebeat' })).toBeInTheDocument()
+    expect(swedebeat.queryByLabelText('Swedebeat password')).toBeNull()
   })
 
   it('says it is not available on this server when the flag is on but the key is missing', async () => {
-    fakeApi({ ...ACCOUNT_ROUTES, 'GET /api/connections': list({ enabled: true, available: false }) })
+    fakeApi({ ...ACCOUNT_ROUTES, 'GET /api/connections': list({ enabled: true, available: false, uses_swedebeat: true }) })
     renderAt('/account')
     const swedebeat = await card()
     expect(await swedebeat.findByText('Swedebeat sign-in is not available on this server.')).toBeInTheDocument()

@@ -1314,3 +1314,206 @@ listed at the end. It follows the soundless amendment above and keeps its rules.
 | BC4 (#542) | the API (set, clear, clear by row, clear all; the current-fingerprint cap; the soundless and no-source refusals) and `beat_one` on the class detail | Opus / Opus | BC1, BC2 |
 | BC5 (#543) | the class page panel, Vitest | Sonnet / Sonnet | BC3, BC4 |
 | BC6 (#544) | Playwright on the fakes, axe, T123 | Sonnet / Sonnet | BC5 |
+
+## Amendment (2026-11-03): class revision history and duplicate a class (#536)
+
+Owner (2026-11-03): "Class history" is the revision history of one class plus a **Duplicate**
+action. Proposed in the docs PR, to be confirmed by the Architect. The quota and gate choices are
+recorded in ADR 0011's amendment of the same date.
+
+**What exists (scoping).** `classbeat.classes.service` already serves the revision tree
+(`GET /api/classes/{id}/revisions`: number, parent number, origin, created, segments, intervals,
+`total_sec`, `cost_micros`, `is_current`) and one revision; `POST /api/classes/{id}/current` is §2's
+pick, checked against the current plan since #496 (`check_stored_draft`, 409 `quota`), with no model
+call and no credit; `classbeat.design.diff.summarize` computes the change summary of §3 from two
+stored drafts. The page's `RevisionsPanel` lists revisions and offers Make current. A class is
+created only by `classbeat.jobs.user.create` (a design job), and a revision only in a job's final
+fenced transaction. Nothing here changes the queue, the write protocol or any table.
+
+### H. Revision history (no migration, no new table)
+
+1. **Timeline.** A new read-only route `GET /api/classes/{id}/history` (its own module,
+   `classbeat.classes.history`, so the existing revisions route keeps its shape) lists every `draft`
+   revision with the revisions route's fields plus its `content_hash` (hex, for Make current) and,
+   computed in the web process from rows the user already owns: `tss` (`workout.tss` of the stored
+   content under the class's sport schema, the same function the change summary uses; `null` when it
+   cannot be computed, never a model number), `request` (the user's own `class_messages.body` of
+   `provenance.request_message_id`, `null` for a design or a duplicate), `saved` (`live`: a live
+   `saved_workouts` row has this `revision_id`; `detached`: only a detached one; `none`),
+   `from_songs` (the draft's `music.song_list_id` is set: designed on approved songs) and, for a
+   duplicate, `duplicated_from` `{class_id, number, class_title}` (title `null` when that class is
+   gone or not the user's); the body also says `can_change`: a revise would be admitted now as far
+   as the class's music goes, that is the class has a stored brief and a music source **and**
+   `design.music_kind.admit_class` admits it. For a soundless class that is false while SL2 (#528)
+   has not merged (`admit_class` answers `feature_off` for every `none` class) and, once SL2 lands,
+   it follows the soundless gate, because `can_change` calls the same function the revise's
+   `admit` calls. At most 200 revisions are read, oldest first (a fixed
+   `LIMIT`, the revisions route's bound): design revisions from Swedebeat hand-offs are not chat
+   revisions, so the revision limit does not cap them, and the `LIMIT` is what bounds the per-row
+   TSS work. Compare reads two contents of at most 64 KB and makes no external call, so it needs no
+   rate limit. Revisions stay immutable; nothing is written by a read.
+2. **Compare.** `GET /api/classes/{id}/history/compare?from=<revision id>&to=<revision id>` (signed in, read
+   only): both ids must be `draft` revisions of the user's own class (looked up with `owner_id` and
+   `class_id`; anything else is the same 404 `not_found`). The body is `diff.summarize(from, to,
+   sport)` unchanged (segments added and removed, intervals changed, added and removed, duration and
+   TSS before and after, `text_changed`), plus `warnings` `{from, to}` (the count of tracks MOWL had
+   no BPM for and of songs whose beat 1 is an estimate, per revision) and `music` `{same_source,
+   same_fingerprint}` (booleans only: no playlist id, mix id or title). A content that no longer
+   validates is 500 `internal` with the reason only. The page words it ("2 intervals changed, 3 min
+   longer, TSS 64 to 71, the music changed").
+3. **Make current** is §2 and #496 unchanged; the timeline offers it on every non-current draft.
+4. **Plan gate:** none. ADR 0011 section 8 listed "history" as a possible per-plan gate and Q7 keeps
+   every gate off in the beta; storing it would need a `plans` column, the admin edit and guard 11
+   for a gate nobody sets. History is on for every plan (ADR 0011 amendment of 2026-11-03).
+
+### D. Duplicate a class
+
+`POST /api/classes/{id}/duplicate {revision_id, content_hash, title}` with an `Idempotency-Key`
+header (signed in, CSRF, no recent authentication: it is the user's own work; `title` 1 to 100 characters after trimming and removing
+control characters; the page proposes "<title> (copy)" cut to 100). It creates a **new class** whose
+revision 1 is a copy of the chosen revision. One `user_session` transaction:
+
+1. **The source** is the user's own class (`owner_id`; a foreign, unknown or malformed id is 404
+   `not_found`, so another user cannot duplicate or probe a class), with a stored `classes.brief`
+   (a class still in its first design has none: 409 `not_ready`); the revision is a `draft` of that
+   class (404 otherwise), its stored `content_hash` equals the sent one (409 `hash_mismatch`) and the
+   SHA-256 of its canonical content recomputed now; the content validates under the class's sport
+   schema (`stored_draft`, then `workout.validate` / `validate_running`), else 500 `internal`. An
+   open job on the source does not block it: revisions are immutable and the source is only read.
+2. **Flags (fail closed, the stricter rule on purpose):** 409 `feature_off`, nothing created, for
+   a running class while `running_enabled` is off; for a Swedebeat mix while `swedebeat_enabled` is
+   off when **either** the class's current `music_source` **or** the chosen revision's `music` is a
+   mix (the copy takes the class's source, item 5, but its revision 1 still names the mix's link);
+   and for a soundless class (`music_source` `{source: "none"}`, #526) unless the full soundless
+   gate admits it for this user: `design.music_kind.admit_soundless`, the same three conditions a
+   soundless design meets (the switch, then the user's own plan's `design` route covering soundless,
+   answered 409 `soundless_not_evaluated`, then every plan's route, `feature_off`). No model runs
+   for a duplicate, but the copy is a soundless class the user could not have designed otherwise,
+   so it is admitted exactly as a design would be.
+3. **Plan, current plan only** (ADR 0011 amendment): the brief through `quota.gates.check_brief` and
+   the copied draft through `check_content` (409 `quota` `length` or `feature`, the usual sentence),
+   then one class credit (409 `quota` `classes`, `MeteredLedger.take_class`, ADR 0011). The whole
+   transaction runs under the owner advisory lock (`jobs.user.lock_owner`), taken first, before the
+   period lock, as job creation does. A refusal creates nothing.
+4. **What is created:** `classes` (`id` new, `title`, `brief` copied byte for byte, so the same
+   sport; `music_source` per item 5; `current_revision_id` the new revision; `dismissed_rules`
+   empty) and one `class_revisions` row: `number` 1, `kind` `draft`, `parent_id` NULL, `job_id`
+   NULL, `content` and `content_hash` copied, `music` copied **without** `song_list_id` (it names a
+   song list of the source class), and a provenance with `origin: "duplicate"` and
+   `duplicated_from: {class_id, revision_id, number}`: the descriptive fields (provider, model,
+   effort, versions, `map_version`, `crossfade_sec`, `tss_approximate`, `rules`, `sport`) are the
+   source revision's, because they describe how the content was made; `agent_run_ids` is empty,
+   `usage` zero and `cost_micros` 0, so no cost is copied. `Provenance` allows an empty
+   `agent_run_ids` only for `origin: "duplicate"`, which names neither a base nor a request.
+   **§2's rule "rows are created only by a job's final fenced transaction" gains this one exception:
+   the duplicate route inserts revision 1 of the class it creates in the same transaction**, from a
+   revision of the same user it has just re-validated; the browser sends ids and a hash, never
+   content.
+5. **Music, never trusted from the copy.** The copy's `music_source` comes from the source
+   class's **current** `classes.music_source`, never rebuilt from the chosen revision (a revision's
+   `music` holds no Spotify playlist id). The two can differ: after a Swedebeat hand-off
+   (`swedebeat_handoff/adopt.py` replaces the source with a mix) or a Change songs, an older
+   revision was fitted to other music. This is what Make current already allows, and a revise of
+   the copy handles it as any revise does (the music step's `music_changed` fact, §3). It is copied
+   only as the user's own choice: `{source: "mowl_spotify_playlist", spotify_playlist_id}` (a class
+   on the user's playlist), `{source: "mowl_swedebeat_mix", mix_id}`, or a soundless class's
+   `{source: "none"}` (#526, gated as item 2 says). A soundless copy keeps `classes.music_source =
+   {source: "none"}` and its revision 1's `music` `{source: "none"}`, so the soundless amendment's
+   item 1 ("the kind never changes", `music_kind.check_stored`) holds for the copy; a revise of the
+   copy goes through `music_kind.admit_class` like any revise (`feature_off` until SL2, #528, then
+   the gate). A class on picked songs
+   (the rule keys on the class's `music_source.origin` = `song_pick`, which names the source
+   class's `class_playlists` row) gets `music_source` NULL: its working and final playlists stay the
+   source class's. Ownership is re-checked at use by the existing paths: a revise attaches through
+   the user's own MOWL connection (§3), a mix must be in the user's own fresh listing
+   (`mixadmit`), Save needs a live link of the user (`music_unlinked`).
+
+   **A class without a music source is refused by the server at every entry point, not only by the
+   page.** Before this amendment a class with a stored brief always had a `music_source`
+   (`adopt_first` sets both); a copy of a class on picked songs is the first with a brief and none.
+   - `revise_draft`'s `admit` (`classbeat.design.revise`) refuses it with 409 `not_changeable`
+     right after the `stale_base` check and **before anything is written**: no `class_messages`
+     row, no job, no job slot. The worker's existing `invalid_input` (no `music_source` at run
+     time) stays as the second line. The page words the reason ("This class has no music of its
+     own, so it cannot be changed by chat") and hides Change it when the timeline's `can_change`
+     is false.
+   - `revise_songs` refuses already with `not_song_picked`: the copy has no song list (`song_list_id`
+     is dropped from its revision's `music`, and no `song_list` revision is copied).
+   - The Swedebeat match and hand-off need a `song_list` of the class to match; the copy has none,
+     so they refuse as for any class without one.
+   - Save and Update use the revision's `music.link_id` and do not read `music_source`, so the copy
+     can be saved (the link is the user's own and is checked live, §5).
+
+6. **Not copied:** `saved_workouts` (no MOWL program link, no Save/Update state), the song lists and
+   `approved_swedebeat_match_id`, `class_playlists`, Swedebeat hand-offs, jobs, events, external
+   operations, `class_messages`, `agent_runs`, the dismissed rules. No MOWL, Spotify, Swedebeat or
+   model request is made.
+
+7. **A retried request costs one credit.** The `Idempotency-Key` header follows the jobs API's
+   convention (16 to 64 of `A-Za-z0-9_-`, made by the page per user action; 400
+   `idempotency_key_missing` or `idempotency_key_invalid`). The key and the SHA-256 of the
+   canonical request (`class_id`, `revision_id`, `content_hash`, cleaned `title`) are stored in the
+   copy's `provenance.duplicated_from` (`idempotency_key`, `request_hash`; no migration). Under the
+   owner lock, before anything else is checked, the user's own duplicate revisions are looked up by
+   that key. A new copy answers 201 with `{class_id, revision_id}`; the same key and request answer
+   200 with the class made before (no second credit, no
+   second class); the same key with another request is 409 `idempotency_mismatch`. A key whose copy
+   was deleted since is free again (the user deleted the class it made). The page also disables its
+   button while the request is in flight.
+
+8. **Beat-one corrections** (the beat-one amendment, #549, item 8, is the text of record). The
+   copy's revision 1 keeps `music.beat_one` (item 4 copies `music` except `song_list_id`), and the
+   same duplicate transaction copies the source class's `beat_one_corrections` rows for that
+   revision's `music.fingerprint`, re-keyed to the copy's class: same `fingerprint`, `song`,
+   `beats` and `bpm`, new `id`, `owner_id` the user's, under that table's cap (at most 200 rows for
+   the class's current fingerprint) and its unique key. Otherwise the copy would show the
+   corrections as `pending` and **Apply** would strip them. Rows for other fingerprints are not
+   copied. A copy that gets no `music_source` (a class on picked songs, item 5) gets no rows: it
+   cannot be refitted (`not_changeable`). The insert guard allows that insert in
+   `classbeat.classes.duplicate`. **Sequencing:** the table comes with BC1 (#553), which is not on
+   `main` while DU1 (#547) is written, so the copy is a follow-up PR, DU3 (#585), that depends on
+   BC1 and DU1 and adds the insert and its test. DU3 must merge before the beat-one panel ships, so
+   no user sees a copy without its corrections.
+
+**Independence.** The two classes share no row: changing, revising, saving, updating or deleting
+one never touches the other (`duplicated_from` is an opaque id in the copy's provenance, read only
+to show the source's title). The duplicate's revision 1 is not a chat revision, so the revision
+limit (§4) counts from zero, which is why the duplicate takes a class credit (ADR 0011).
+
+**Account data.** No table or column is added: the class and its revision are exported and deleted
+with the account like any class (ADR 0014, guard 12 and the retention registry unchanged); deleting
+the source leaves the duplicate whole.
+
+**Known differences in the figures (recorded, not fixed now).** A duplicate's credit is a
+`committed` `credit_ledger` row with `job_id` NULL, which the admin user page's ledger list and the
+account export show exactly like a committed credit whose job was deleted with its class; the
+account page's held count includes duplicates, while Usage's `classes_designed` counts completed
+design jobs only, so the two numbers can differ by the month's duplicates. A "duplicate" marker on
+the ledger row would need a column (a migration and the ledger trigger); it is left for a later
+change if the admin view needs it.
+
+**A guard keeps the exception narrow.** DU1 adds a source guard (`tests/test_insert_guard.py`) that
+allows `INSERT INTO classes` only in `classbeat.jobs.user` and `classbeat.classes.duplicate`, and
+`INSERT INTO class_revisions` only in the job final-transaction modules (`design.revision`,
+`songs.song_list`, `swedebeat_match.revision`) and `classbeat.classes.duplicate`; a new site fails
+CI until it is added there with a reason.
+
+**Tests.** Timeline fields and compare (unit and API; 404 for another user's class or revisions of
+another class); duplicate: isolation (another user's class or revision 404, nothing created), hash
+and not-ready refusals, flags, every quota refusal creating nothing, N parallel duplicates at a
+limit of 1 giving one, the copy's provenance and music (no `song_list_id`, `music_source` rules),
+nothing of item 6 copied, the idempotent replay and mismatch, `revise_draft` refused
+`not_changeable` on a copy without a music source with no `class_messages` row and no job created,
+a soundless class with the gate off (`feature_off`, and `soundless_not_evaluated` for an uncovered
+plan, nothing created) and on (the copy and its revision stay `none`, and a revise of the copy is
+answered by `music_kind.admit_class`), then a revise of the copy (fake model) and a Save of the copy leaving the
+source's rows unchanged and vice versa, account export and deletion covering the copy, no request to
+any fake; page tests (Vitest), and Playwright on the fakes with the axe audit of the timeline,
+compare view and the duplicate dialog.
+
+**Issues** (one PR each): HI1 #545, timeline fields and compare (backend; Sonnet Developer, Opus
+review: new routes that take revision ids, tenant isolation); HI2 #546, timeline, compare view and Make current on the page with e2e (Sonnet, Sonnet;
+depends on HI1); DU1 #547, duplicate (backend; Opus Developer, Opus review: class-owned data,
+quotas, music ownership); DU2 #548, Duplicate on the class page and My classes with e2e (Sonnet,
+Sonnet; depends on DU1 and HI2); DU3 #585, copy the beat-one corrections (backend; Opus, Opus;
+depends on BC1 #553 and DU1).

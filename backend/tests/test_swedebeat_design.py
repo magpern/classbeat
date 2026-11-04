@@ -45,6 +45,7 @@ from jobtools import new_job
 from mediafake import FakeMedia
 from mowlfake import FakeMowl
 from optools import TOKEN_A, TOKEN_B, OpsEnv
+from preftools import use_swedebeat
 from savetools import FakeMowlPrograms
 
 pytestmark = pytest.mark.usefixtures("jenv", "mowl_api")
@@ -189,6 +190,7 @@ def menv(xenv: OpsEnv, mowl_api: FakeMowl, monkeypatch: pytest.MonkeyPatch) -> I
 
 async def rider(browsers: Any, menv: MixEnv, token: str = TOKEN_A) -> Browser:
     browser: Browser = await browsers()
+    await use_swedebeat(menv.ops.factory, browser.user_id)  # #525: the user's own switch
     menv.ops.app.app.dependency_overrides.clear()  # the real registry, as in production
     await menv.ops.connect(browser.user_id, token)  # a reconnect in place: the same id
     return browser
@@ -414,6 +416,20 @@ async def test_admit_refuses_feature_off_before_anything_is_read(
     assert jobs_of(menv, browser.user_id) == 0
 
 
+async def test_admit_refuses_feature_off_while_the_users_preference_is_off(
+    browsers: Any, menv: MixEnv, mowl_api: FakeMowl
+) -> None:
+    """#525: the flag is on, the user's "I use Swedebeat" is off: no listing, no job."""
+    browser = await rider(browsers, menv)
+    add_mix(mowl_api)
+    await use_swedebeat(menv.ops.factory, browser.user_id, on=False)
+    refused = await create(browser, design_body(browser))
+    assert refused.status_code == 409, refused.text
+    assert refused.json()["detail"]["reason"] == "feature_off"
+    assert mowl_api.list_calls == 0
+    assert jobs_of(menv, browser.user_id) == 0
+
+
 async def test_admit_refuses_without_the_users_mowl_connection(
     browsers: Any, menv: MixEnv, mowl_api: FakeMowl
 ) -> None:
@@ -458,6 +474,7 @@ async def test_a_stale_job_ends_feature_off_and_calls_nothing(
     menv: MixEnv, mowl_api: FakeMowl, off: str
 ) -> None:
     owner = await menv.ops.user()
+    await use_swedebeat(menv.ops.factory, owner)  # the flag, not the preference, ends it here
     connection = await menv.ops.connect(owner, TOKEN_A)
     add_mix(mowl_api)
     body = {
@@ -481,6 +498,27 @@ async def test_a_stale_job_ends_feature_off_and_calls_nothing(
     assert menv.media.requests == []
     assert menv.providers == []
     assert menv.analyses(owner) == 0
+
+
+async def test_a_queued_design_whose_user_turned_the_preference_off_ends_feature_off(
+    browsers: Any, menv: MixEnv, mowl_api: FakeMowl
+) -> None:
+    """#525: admitted with "I use Swedebeat" on, run after the user turned it off: the worker's
+    ``still_on`` ends the new design before any MOWL, media or model call."""
+    browser = await rider(browsers, menv)
+    add_mix(mowl_api)
+    created = await create(browser, design_body(browser))
+    assert created.status_code == 201, created.text
+    before = list(mowl_api.requests)
+    await use_swedebeat(menv.ops.factory, browser.user_id, on=False)
+    await menv.run_next()
+    row = menv.ops.row(UUID(created.json()["id"]))
+    assert (row.state, row.error_category) == ("failed", "feature_off")
+    assert mowl_api.requests == before  # nothing after admission
+    assert mowl_api.attaches == []
+    assert menv.media.requests == []
+    assert menv.providers == []
+    assert menv.analyses(browser.user_id) == 0
 
 
 # --- the daily limit of new analyses ------------------------------------------------------------
@@ -576,6 +614,8 @@ async def test_a_class_on_a_mix_is_revised_on_its_cached_map(
         flag(menv, None)
     assert refused.status_code == 409, refused.text
     assert refused.json()["detail"]["reason"] == "feature_off"
+    # #525 carve-out: a revise of a class already on a mix does not read the preference.
+    await use_swedebeat(menv.ops.factory, browser.user_id, on=False)
     revised = await create(browser, ask)
     assert revised.status_code == 201, revised.text
     await menv.run_next()

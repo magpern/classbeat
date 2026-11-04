@@ -28,7 +28,8 @@ What it encodes, from ADR 0009 (assumptions to verify at the first live run, ADR
   ``GET /v1/playlists/{id}`` (``fields`` is recorded, not applied: readers ignore extra keys);
   ``GET``, ``PUT`` and ``POST /v1/playlists/{id}/items`` (pages of at most 50, writes of at most
   100 URIs; entries name the track ``item``, or the legacy ``track`` with ``item_shape``);
-  ``GET /v1/me/playlists`` (pages of at most 50). ``/tracks`` is gone (404). Answers carry
+  ``GET /v1/me/playlists`` (pages of at most 50; each playlist's ``images`` from
+  ``playlist_images``, none by default). ``/tracks`` is gone (404). Answers carry
   ``next``, ``href``, ``uri`` and ``external_urls`` like Spotify's, so tests can show none is
   followed. Another account's playlist answers 404 (``foreign = "404"``, the default, strictest
   for isolation tests) or its metadata with 403 on its contents and writes (``"visible"``).
@@ -193,6 +194,9 @@ class Playlist:
     entries: list[str | None]  # track or episode URIs, ``spotify:local:...``, None (a null item)
     collaborators: set[str] = field(default_factory=lambda: set[str]())
     version: int = 1
+    # ``images`` as ``GET /me/playlists`` lists them (``playlist_images``); none by default, as for
+    # a playlist classbeat creates.
+    images: list[dict[str, Any]] = field(default_factory=lambda: list[dict[str, Any]]())
 
     @property
     def snapshot_id(self) -> str:
@@ -269,6 +273,44 @@ def album_images(album_id: str) -> list[dict[str, Any]]:
         }
         for size in sizes
     ]
+
+
+def _hex40(seed: str) -> str:
+    return hashlib.sha256(seed.encode()).hexdigest()[:40]
+
+
+# The playlist image shapes the picker's covers accept (ADR 0013 section 9 amendment, #537), and
+# some it must not. Invented, stable per seed; ``uploaded`` has no width, as Spotify lists a cover
+# the owner uploaded.
+PLAYLIST_IMAGE_KINDS = ("mosaic", "album", "uploaded", "uploaded_fa", "foreign", "query", "none")
+
+
+def playlist_images(kind: str, seed: str = "") -> list[dict[str, Any]]:
+    """A playlist's ``images`` shaped like Spotify's, largest first: ``mosaic`` (640, 300 and 60 px
+    on ``mosaic.scdn.co``, four album ids each), ``album`` (one album's ``i.scdn.co`` images),
+    ``uploaded`` and ``uploaded_fa`` (one ``image-cdn-ak``/``-fa.spotifycdn.com`` image with
+    ``width: null``), ``foreign`` (another host), ``query`` (a pinned URL with a query) or
+    ``none`` (no images)."""
+    if kind == "mosaic":
+        ids = "".join(_hex40(f"{seed}:mosaic:{n}") for n in range(4))
+        return [
+            {"url": f"https://mosaic.scdn.co/{size}/{ids}", "height": size, "width": size}
+            for size in (640, 300, 60)
+        ]
+    if kind == "album":
+        return album_images(f"playlist-{seed}")
+    if kind in ("uploaded", "uploaded_fa"):
+        host = "image-cdn-ak" if kind == "uploaded" else "image-cdn-fa"
+        url = f"https://{host}.spotifycdn.com/image/{_hex40(f'{seed}:uploaded')}"
+        return [{"url": url, "height": None, "width": None}]
+    if kind == "foreign":
+        return [{"url": f"https://images.example/{_hex40(seed)}.jpg", "height": 300, "width": 300}]
+    if kind == "query":
+        url = f"https://i.scdn.co/image/{_hex40(seed)}?size=300"
+        return [{"url": url, "height": 300, "width": 300}]
+    if kind == "none":
+        return []
+    raise ValueError(f"unknown playlist image kind: {kind}")
 
 
 def _catalogue() -> dict[str, dict[str, Any]]:
@@ -360,9 +402,17 @@ class FakeSpotify:
         public: bool = False,
         collaborative: bool = False,
         description: str = "",
+        images: Iterable[dict[str, Any]] = (),
+        playlist_id: str | None = None,
     ) -> Playlist:
+        """A playlist ``owner`` owns; ``playlist_id`` (22 characters) fixes its id, for a test
+        that matches it to a playlist the fake MOWL lists."""
         with self.lock:
-            return self._new_playlist(owner, name, description, public, collaborative, entries)
+            playlist = self._new_playlist(
+                owner, name, description, public, collaborative, entries, playlist_id
+            )
+            playlist.images = list(images)
+            return playlist
 
     def playlist_track_ids(self, playlist_id: str) -> list[str] | None:
         """The catalogue track ids a playlist holds now, in order (episodes, local files and null
@@ -702,10 +752,13 @@ class FakeSpotify:
         public: bool,
         collaborative: bool,
         entries: Iterable[str | None],
+        playlist_id: str | None = None,
     ) -> Playlist:
         self._next_playlist += 1
+        if playlist_id is not None and (len(playlist_id) != 22 or playlist_id in self.playlists):
+            raise ValueError("a new playlist id is 22 characters and not taken")
         playlist = Playlist(
-            f"FakeList{self._next_playlist:014d}",
+            playlist_id or f"FakeList{self._next_playlist:014d}",
             owner,
             name,
             description,
@@ -762,7 +815,7 @@ class FakeSpotify:
             "href": f"{API}/playlists/{playlist.id}",
             "uri": f"spotify:playlist:{playlist.id}",
             "external_urls": {"spotify": f"https://open.spotify.com/playlist/{playlist.id}"},
-            "images": [],
+            "images": [dict(image) for image in playlist.images],
         }
 
     def _entry(self, playlist: Playlist, uri: str | None) -> dict[str, Any]:

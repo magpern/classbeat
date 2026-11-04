@@ -63,6 +63,8 @@ SECTIONS: tuple[Section, ...] = (
     _section("code_redemptions"),
     _section("credit_ledger", omit="refunded_by"),
     _section("quota_periods", "period, id"),
+    # Issue #525: the user's own preferences ("I use Swedebeat"); at most one row.
+    _section("user_preferences"),
 )
 
 NOT_EXPORTED: Mapping[str, str] = MappingProxyType(
