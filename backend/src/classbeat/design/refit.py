@@ -11,7 +11,7 @@ Input: ``{class_id, base_revision_id, mowl_connection_id}`` (``RefitDraftInput``
 or ``admit_music``, whose answers follow the soundless gate, so a refit can never reach a music
 step on a class with no music); ``not_changeable`` for a class with no ``music_source`` (a #550
 copy of a class on picked songs); ``invalid_input`` unless the base is a ``draft`` of the class;
-``stale_base`` unless it is the class's current revision; the running flag
+``stale_base`` unless it is the class's current revision; the running gate
 (``sport.admit_class``); ``refit_limit`` (``MAX_REFITS`` refit revisions per class);
 ``nothing_pending`` when the corrections for the base's fingerprint already equal its
 ``music.beat_one``; for a class on a Swedebeat mix, its flag and analysis limit
@@ -133,7 +133,7 @@ async def admit(db: AsyncSession, ctx: UserContext, parsed: BaseModel) -> Admitt
         return Refused("invalid_input")
     if state.current != parsed.base_revision_id:
         return Refused("stale_base")
-    running = await sport.admit_class(db, ctx.user_id, class_id)
+    running = await sport.admit_class(db, ctx, class_id)  # ADR 0018 (#509): the running gate
     if running is not None:
         return running
     done = (await db.execute(_REFITS, {"owner_id": ctx.user_id, "class_id": class_id})).scalar_one()

@@ -2,6 +2,7 @@ import { expect, type Locator, type Page } from '@playwright/test'
 import { signInThroughUi, signUpThroughUi, uniqueEmail } from './helpers'
 import { connectMowl, choosePlaylist, fakeControl, getJob, jobId, startDesign } from './design-helpers'
 import { useModelScript, type ModelScript } from './model-script'
+import { sql } from './song-helpers'
 
 // Shared by class-save.spec.ts and class-usage.spec.ts (M3b T2, ADR 0007 section 13): sign up,
 // design a class, change it by chat, and read or steer the fake MOWL's programs.
@@ -100,6 +101,22 @@ export async function startRunningDesign(page: Page, title: string, playlistName
   await form.getByRole('button', { name: 'Design my class' }).click()
   await expect(page).toHaveURL(/\/jobs\/[0-9a-f-]{36}$/)
   return jobId(page)
+}
+
+/**
+ * The stored admin flag `running_enabled` (ADR 0018 section 5, #509): only a stored `on` switches
+ * running on under the stack's environment switch; nothing stored is off. The web runs the `fake`
+ * provider outside prod in this stack, which counts as covering every plan, so `on` is enough.
+ */
+export function storeRunning(value: 'on' | 'off' | null): void {
+  if (value === null) {
+    sql("DELETE FROM app_settings WHERE key = 'running_enabled'")
+    return
+  }
+  sql(
+    `INSERT INTO app_settings (key, value) VALUES ('running_enabled', '"${value}"') ` +
+      `ON CONFLICT (key) DO UPDATE SET value = '"${value}"'`,
+  )
 }
 
 /** Design the recorded running class from the playlist and open its class page. */

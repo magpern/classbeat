@@ -57,12 +57,27 @@ async def swedebeat_enabled(db: AsyncSession, environment_on: bool) -> bool:
     return core.swedebeat_setting(environment_on, await _stored(db, "swedebeat_enabled"))
 
 
-async def running_enabled(db: AsyncSession, environment_on: bool) -> bool:
-    """Off while ``CLASSBEAT_RUNNING_ENABLED`` is off (no read needed); else the stored flag
-    (ADR 0018 section 5)."""
+async def running_switch(db: AsyncSession, environment_on: bool) -> bool:
+    """``CLASSBEAT_RUNNING_ENABLED`` and a stored ``running_enabled`` of exactly ``on``
+    (``core.running_switch``: missing, ``null`` or invalid is off). Not the effective flag:
+    ``running_enabled`` also checks coverage."""
     if not environment_on:
         return False
-    return core.running_setting(environment_on, await _stored(db, "running_enabled"))
+    return core.running_switch(environment_on, await _stored(db, "running_enabled"))
+
+
+async def running_enabled(db: AsyncSession, environment_on: bool, *, fake_covers: bool) -> bool:
+    """The effective ``running_enabled`` (ADR 0018 amendment of 2026-11-04, #509), computed on
+    every read as ``soundless_enabled`` is: the switch (``running_switch``) **and** every plan's
+    ``route_key`` has a ``design`` route that covers running now
+    (``models.routes.every_plan_covers``). ``fake_covers`` as for ``soundless_enabled``."""
+    if not await running_switch(db, environment_on):
+        return False
+    if fake_covers:
+        return True
+    from classbeat.models.routes import every_plan_covers  # see ``soundless_enabled``
+
+    return await every_plan_covers(db, "running")
 
 
 async def soundless_switch(db: AsyncSession, environment_on: bool) -> bool:

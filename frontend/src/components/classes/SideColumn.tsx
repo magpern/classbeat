@@ -1,7 +1,7 @@
 import type { ClassMessage, ClassSummary, RevisionSummary } from '../../api/classes'
 import { ChangeSongs } from '../songs/ChangeSongs'
 import { ChatPanel } from './ChatPanel'
-import { RevisionsPanel } from './RevisionsPanel'
+import { HistoryPanel } from './HistoryPanel'
 
 /**
  * The side column of the class page (ADR 0013 section 5): Change songs, the Change it chat and the
@@ -33,7 +33,14 @@ export function SideColumn({
       </div>
       <ChatPanel summary={summary} revisions={revisions} messages={messages} onReload={reload} onView={onView} />
       <div id="versions" className="scroll-mt-4">
-        <RevisionsPanel revisions={revisions} viewingId={viewingId} onView={onView} onUse={onUse} busy={busy} />
+        <HistoryPanel
+          classId={summary.id}
+          revisions={revisions}
+          viewingId={viewingId}
+          onView={onView}
+          onUse={onUse}
+          busy={busy}
+        />
       </div>
     </aside>
   )
