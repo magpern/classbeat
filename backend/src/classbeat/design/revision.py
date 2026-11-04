@@ -33,6 +33,7 @@ in the same transaction after it (ADR 0007 section 2): the class's first design 
 
 import hashlib
 import json
+import logging
 import uuid
 from collections.abc import Mapping
 from dataclasses import dataclass
@@ -49,6 +50,8 @@ from classbeat.agent.schemas import AnyDraft, RunningDraft
 from classbeat.design.music import MusicStep
 from classbeat.design.music_kind import NoMusicStep
 from classbeat.jobs import FencedSession, JobFailure
+
+logger = logging.getLogger(__name__)
 
 MUSIC_SOURCE: Final = "mowl_spotify_playlist"
 MIX_SOURCE: Final = "mowl_swedebeat_mix"
@@ -197,17 +200,22 @@ def _beat_one_fields(
     """ADR 0007 amendment "beat-one corrections" item 5: the corrections applied (absent when
     none) and the songs the class plays, from the corrected map it was fitted to."""
     applied = beat_one.as_list(mix_input.corrections_of(step.data))
-    songs = beat_one.songs(music_map, duration_sec)
+    songs: list[dict[str, Any]] = []
+    skipped = 0
+    for entry in beat_one.songs(music_map, duration_sec):
+        try:  # a BPM MOWL reported out of range (0.01, -5, 2000) drops that song's beat data
+            songs.append(RevisionSong.model_validate(entry).model_dump(exclude_none=True))
+        except ValidationError:
+            skipped += 1
+    if skipped:  # never fail a paid design for it; a count only
+        logger.warning("beat-one songs without usable beat data", extra={"skipped": skipped})
     # The new fields only, never the whole ``music`` or ``unknown_bpm``: at most about 103 KB on
     # any valid map (200 songs, titles of 100 characters; 200 corrections), so this is a defence.
     if len(canonical({"beat_one": applied, "songs": songs})) > MAX_BEAT_ONE_BYTES:
         raise JobFailure("invalid_output")
-    return music.model_copy(
-        update={
-            "beat_one": [BeatOneCorrection(**c) for c in applied] or None,
-            "songs": [RevisionSong(**s) for s in songs],
-        }
-    )
+    # Validated as a whole (not ``model_copy``, which skips the list bounds).
+    whole = {**music.model_dump(mode="python"), "beat_one": applied or None, "songs": songs}
+    return type(music).model_validate(whole)
 
 
 REVISION_MUSIC: Final = TypeAdapter[RevisionMusic](
