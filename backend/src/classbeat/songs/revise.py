@@ -60,7 +60,7 @@ from classbeat.agent.provider import ModelProvider
 from classbeat.agent.revise import ReviseContext, ReviseResult, revise_stage
 from classbeat.context import UserContext
 from classbeat.crypto.keks import KeyRing
-from classbeat.design import chat, diff, limits, music_kind, revision
+from classbeat.design import chat, corrections, diff, limits, music_kind, revision
 from classbeat.design.guidance import rule_set_for
 from classbeat.design.kind import current_runtime, group_model
 from classbeat.flags import effective as flags
@@ -304,6 +304,7 @@ async def run_revise_phase_two(
         except ValidationError:
             raise JobFailure("internal") from None
         rules = rule_set_for(brief, base.dismissed_rules)
+        await corrections.attach(run, step)  # the class's beat-one corrections (ADR 0007)
         ctx = ReviseContext.build(
             brief,
             step.data,

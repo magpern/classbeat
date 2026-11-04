@@ -21,7 +21,8 @@ from typing import Any, Final
 from mowl import service
 from mowl.workout import mmss
 
-from classbeat.agent import model_input
+from classbeat.agent import beat_one, model_input
+from classbeat.agent.beat_one import Correction
 from classbeat.agent.model_input import EVENT_KINDS, LONGER_THAN_MUSIC, MusicData
 
 BEAT_ONE_ESTIMATE: Final = (
@@ -33,7 +34,30 @@ LOW_MARGIN: Final = service.LOW_MARGIN  # the library's beat-1 margin below whic
 
 @dataclass(frozen=True)
 class MixData(MusicData):
-    """The user's analysis of a Swedebeat mix: ``analysis`` holds only ``map`` and ``duration``."""
+    """The user's analysis of a Swedebeat mix: ``analysis`` holds only ``map`` and ``duration``.
+    ``beat_one``: the class's corrections for it (ADR 0007 amendment "beat-one corrections")."""
+
+    beat_one: tuple[Correction, ...] = ()
+
+
+@dataclass(frozen=True)
+class SpotifyData(MusicData):
+    """A Spotify playlist's analysis with the class's beat-one corrections for it. Defined here,
+    not on ``MusicData``, so the eval suite's digest (``model_input`` is one of its sources) is
+    unchanged; ``music_map`` applies them."""
+
+    beat_one: tuple[Correction, ...] = ()
+
+
+def with_corrections(data: MusicData, corrections: tuple[Correction, ...]) -> MusicData:
+    """``data`` carrying ``corrections`` (``MixData`` or ``SpotifyData``)."""
+    if isinstance(data, MixData):
+        return MixData(data.analysis, data.playlist_id, data.unavailable, corrections)
+    return SpotifyData(data.analysis, data.playlist_id, data.unavailable, corrections)
+
+
+def corrections_of(data: MusicData) -> tuple[Correction, ...]:
+    return data.beat_one if isinstance(data, MixData | SpotifyData) else ()
 
 
 def is_mix(m: Mapping[str, Any]) -> bool:
@@ -43,14 +67,17 @@ def is_mix(m: Mapping[str, Any]) -> bool:
 
 def music_map(data: MusicData) -> dict[str, Any]:
     """The map to fit and summarise: ``model_input.music_map``, or for a mix a copy with
-    crossfade 0."""
+    crossfade 0; then the class's beat-one corrections (``data.beat_one``), applied after the
+    crossfade as the library's own ``_entry`` does (ADR 0007 amendment "beat-one corrections")."""
     if not isinstance(data, MixData):
-        return model_input.music_map(data.analysis["map"])
-    m = copy.deepcopy(dict(data.analysis["map"]))
-    if not is_mix(m):
-        raise ValueError("a Swedebeat map has no tracks")
-    m["crossfade"] = 0.0
-    return m
+        m = model_input.music_map(data.analysis["map"])
+    else:
+        m = copy.deepcopy(dict(data.analysis["map"]))
+        if not is_mix(m):
+            raise ValueError("a Swedebeat map has no tracks")
+        m["crossfade"] = 0.0
+    applied = corrections_of(data)
+    return beat_one.apply(m, applied) if applied else m
 
 
 def music_summary(data: MusicData, m: Mapping[str, Any]) -> dict[str, Any]:
