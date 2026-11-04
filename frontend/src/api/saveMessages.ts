@@ -1,5 +1,6 @@
 import { ApiError } from './client'
 import { classReasonText } from './classMessages'
+import { planRefusalText } from './planMessages'
 
 // Plain sentences for Save, Update and the undecided write (ADR 0007 sections 5 to 8 and 12).
 // Category and reason codes are never shown.
@@ -29,13 +30,17 @@ const SAVE_REASONS: Record<string, string> = {
     'The music of this version is not in your connected MOWL account. Change it and save the new version.',
   invalid_input:
     'That could not be saved. The page has been reloaded; check the class and try again.',
-  quota: 'You have used up what your plan allows for now.',
   busy: 'You already have tasks running. Wait for one to finish, then try again.',
   idempotency_mismatch: 'That request was already sent with other contents. Reload the page and try again.',
 }
 
 /** The text of a refused Save or Update (a 409 or 404 at creation). */
 export function saveReasonText(error: unknown): string {
+  // A plan-limit refusal (409 `quota`: classes, cost, length, feature) says which limit it was.
+  if (error instanceof ApiError && error.reason === 'quota') {
+    const refusal = planRefusalText(error)
+    if (refusal !== null) return refusal
+  }
   if (error instanceof ApiError && error.reason !== null && Object.hasOwn(SAVE_REASONS, error.reason)) {
     return SAVE_REASONS[error.reason]!
   }

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { classReasonText, isStale } from '../api/classMessages'
+import { currentReasonText, isStale } from '../api/classMessages'
 import { getRevision, pickCurrent, type RevisionSummary } from '../api/classes'
 import { getSongList, type Song } from '../api/songs'
 import { classStatus } from '../lib/classCards'
@@ -144,7 +144,7 @@ function ClassBody({
         },
         (error) => {
           if (isStale(error)) reloadWithNotice()
-          return classReasonText(error)
+          return currentReasonText(error)
         },
       )
       .then((done) => {

@@ -1175,7 +1175,10 @@ listed at the end. It follows the soundless amendment above and keeps its rules.
      class.
 
    **Size: the new fields only.** `songs` holds at most 200 entries (a class is at most 180
-   minutes), each with a title of at most 100 characters. `beat_one` holds at most 200 entries (the
+   minutes), each with a title of at most 100 characters. A class whose music plays more than 200
+   songs keeps the first 200 in `songs`: the later songs get no control, a correction for one of
+   them is refused (422 `invalid_input`, it is not in `songs`), and the fit still uses the whole
+   map. `beat_one` holds at most 200 entries (the
    cap of item 2). A `songs` entry is at most about 490 bytes of canonical JSON (about 90 bytes of
    numbers and keys, plus a title of at most 100 characters at up to 4 bytes each). A `beat_one`
    entry is about 25 bytes. The two lists together are therefore at most about 103 KB on any valid
@@ -1199,9 +1202,11 @@ listed at the end. It follows the soundless amendment above and keeps its rules.
      reserved it refuses:
      - a class whose `music_source` is `{"source": "none"}`: `invalid_input`, through
        `design.music_kind.is_none` on the locked class's `music_source`. It **never** goes through
-       `music_kind.admit_class` or `admit_music`, whose answers follow the soundless gate
-       (`feature_off` today). Once SL2 lands, those would let a soundless class through, and a refit
-       would then run a music step on a class with no music;
+       `music_kind.admit_class` or `admit_music`. Neither answers the question a refit asks:
+       `admit_class` follows the soundless gate (`feature_off` today, and once SL2 lands it would let
+       a soundless class through, so a refit would run a music step on a class with no music), and
+       `admit_music` compares a design job's music kind with the class's and answers `invalid_input`
+       only for a mismatch;
      - a class with no `music_source` (a duplicate of a class on picked songs, #550's item 5): 409
        `not_changeable`, as #550 specifies for `revise_draft`;
      - a base that is not a `draft` of the class (`invalid_input`), or not its current revision

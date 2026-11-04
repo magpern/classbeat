@@ -187,6 +187,25 @@ describe('the class page', () => {
     })
   })
 
+  it.each([
+    [{ quota: 'length', limit: 60 }, /up to 60 minutes, and that version is longer\. Choose another version\./],
+    [{ quota: 'feature', feature: 'games' }, /That version uses games, which your plan does not include\. Choose another version\./],
+    [{ quota: 'classes', limit: 3, used: 3, period_end: '2026-11-01T00:00:00Z' }, /You have used your 3 classes for October/],
+  ])('words a plan refusal of Make current for a version (%j)', async (detail, sentence) => {
+    fakeApi({
+      ...SESSION_ROUTES,
+      ...classRoutes({
+        revisions: TWO_REVISIONS,
+        revisionBodies: { [REV2]: revisionBody(REV2, 2, CONTENT_V2) },
+      }),
+      [`POST ${CLASS_PATH}/current`]: () => json({ detail: { reason: 'quota', ...detail } }, 409),
+    })
+    renderAt(PAGE)
+    fireEvent.click(await screen.findByRole('button', { name: 'Use this version 2' }))
+    expect(await screen.findByText(sentence)).toBeInTheDocument()
+    expect(screen.queryByText(/Choose a shorter length/)).toBeNull()
+  })
+
   it('shows the live progress of a running change and reloads when it ends', async () => {
     let jobReads = 0
     let classReads = 0
