@@ -30,10 +30,36 @@
 # anything). The boundary for the secrets is on the server: the files' mode and group (4c, runbook
 # section 5) and which services mount which secret. Its compose rules list the known channels one by
 # one; a default-deny key allow-list is follow-up #517.
+# Two places it runs (ADR 0020, #566):
+#   a checkout (CI and developers): everything above, including the self-tests, the runbook and
+#     the swag sample (needs docs/ and the nginx image);
+#   an install folder (the released script next to compose.prod.yaml, no docs/): the pre-deploy
+#     check on the server, `./check-prod-compose.sh [--probe]` from /opt/classbeat. It checks the
+#     files there with dummy values (so a local edit of a compose file is caught), renders the real
+#     .env, checks the real PROXY_IP, the env file and the real secret files and their folder, and
+#     with --probe runs, per service that mounts secrets, a readability test of every secret file
+#     from the pulled image (prints "<service>: <file> OK|FAIL", never a value; needs
+#     `docker compose pull` first). `--install` forces that mode in a checkout.
 set -euo pipefail
 export MSYS_NO_PATHCONV=1   # Git Bash: paths below are for the container, never converted
 
-root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+mode=auto; probe=0
+for arg in "$@"; do
+  case "$arg" in
+    --install) mode=install ;;
+    --probe) mode=install; probe=1 ;;
+    *) echo "usage: check-prod-compose.sh [--install] [--probe]" >&2; exit 2 ;;
+  esac
+done
+here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [[ -f "$here/../compose.prod.yaml" && -d "$here/../docs/runbooks" ]]; then
+  root="$(cd "$here/.." && pwd)"; layout=checkout
+else
+  root="$here"; layout=install
+fi
+[[ "$mode" != auto ]] || { [[ "$layout" == install ]] && mode=install || mode=repo; }
+[[ -f "$root/compose.prod.yaml" && -f "$root/compose.prod.loopback.yaml" ]] \
+  || { echo "check-prod-compose: compose.prod.yaml and compose.prod.loopback.yaml must be next to this script" >&2; exit 1; }
 cd "$root"
 # Git Bash on Windows: the native docker needs a Windows path (pwd -W); elsewhere it is plain pwd.
 native="$(pwd -W 2>/dev/null || pwd)"
@@ -46,6 +72,26 @@ runbook=docs/runbooks/vps-deploy.md
 owner_proxy_ip_set="${PROXY_IP+set}"
 owner_proxy_ip="${PROXY_IP-}"
 env_file="${PROD_CHECK_ENV_FILE:-$root/.env}"
+# Every variable the dummies below replace, as the owner had it: --probe runs compose with these.
+dummy_names=(CLASSBEAT_VERSION CLASSBEAT_DOMAIN PROXY_IP SMTP_HOST SMTP_SENDER SMTP_CA_FILE COMPOSE_PROJECT_NAME
+  COMPOSE_FILE PROXY_NETWORK WEB_HOST_PORT OAUTH_GOOGLE_CLIENT_ID OAUTH_GITHUB_CLIENT_ID OAUTH_MICROSOFT_CLIENT_ID
+  OAUTH_VISIBLE_PROVIDERS)
+declare -A real_set=() real_val=()
+for n in "${dummy_names[@]}"; do
+  if [[ -v "$n" ]]; then real_set[$n]=1; real_val[$n]="${!n}"; fi
+done
+restore_real_env() {
+  local n
+  for n in "${dummy_names[@]}"; do
+    if [[ -n "${real_set[$n]:-}" ]]; then export "$n=${real_val[$n]}"; else unset "$n"; fi
+  done
+}
+if [[ "$mode" == install ]]; then
+  # The real settings render with the real .env before the dummies below replace anything.
+  [[ -f "$env_file" ]] || { echo "check-prod-compose: no $env_file: cp prod.env.example .env and fill it in (runbook section 5)" >&2; exit 1; }
+  docker compose config -q 2>"$tmp/real-config.log" \
+    || { cat "$tmp/real-config.log" >&2; echo "check-prod-compose: docker compose config fails with your .env (above): set the variables it names" >&2; exit 1; }
+fi
 
 # Copies next to dummy secret files, so the checkout's own secrets/ is never read.
 cp compose.prod.yaml compose.prod.loopback.yaml "$tmp/"
@@ -304,6 +350,7 @@ J="$shared"; check_shared || exit 1
 J="$loopback"; check_loopback || exit 1
 J="$defaults"; check_oauth_defaults || exit 1
 
+if [[ $mode == repo ]]; then   # the self-tests and the checkout-only checks (ADR 0020)
 # Self-test: every mutation is unsafe and must be refused.
 expect_refused() {
   local variant="$1" base="$2" mutation="$3"
@@ -517,6 +564,7 @@ for m in \
   expect_refused loopback "$loopback" "$m"
 done
 
+fi
 # --- The owner's real PROXY_IP (#495) -------------------------------------------------------------
 # Native path for docker on Git Bash (pwd -W): the file is under the checkout or $tmp.
 native_path() { local p="$1"; [[ "$p" == "$root"/* ]] && p="$native/${p#"$root"/}"; printf '%s' "$p"; }
@@ -557,6 +605,7 @@ check_env_no_client_secret() {
   fi
 }
 check_env_no_client_secret "$env_file" || exit 1
+if [[ $mode == repo ]]; then   # the self-tests and the checkout-only checks (ADR 0020)
 check_env_no_client_secret .env.example || exit 1
 for line in 'OAUTH_GOOGLE_CLIENT_SECRET=x' 'export OAUTH_GITHUB_CLIENT_SECRET=' '  oauth_microsoft_client_secret = x' \
   'CLASSBEAT_OAUTH_GOOGLE_CLIENT_SECRET=x' 'CLIENT_SECRET=x'; do
@@ -591,27 +640,36 @@ expect_owner 2 'CLASSBEAT_DOMAIN=classbeat.example.test'
 expect_owner 1 'PROXY_IP=172.29.90.10' set 172.29.90.0/24   # the shell's value wins, as in compose
 expect_owner 0 'PROXY_IP=172.29.90.0/24' set 172.29.90.10
 
+fi
 # --- The real secret files on the server (#511) ---------------------------------------------------
 # Only the metadata of each file compose.prod.yaml names (stat: type, group number, mode); a file is
 # never opened, and nothing but its name, mode and group number is printed. Each must be a regular
 # file (not a link), group secrets_gid, readable by the group, not writable by it, nothing for
 # others; the folder gives others nothing. Runs on the server: when the env file's COMPOSE_FILE names
 # compose.prod.yaml (runbook section 5), or when PROD_CHECK_SECRETS_DIR names a folder to check.
+# Every failure says what to run; the steps that need sudo are marked (an owner outside the group
+# cannot set the group or the setgid bit on the folder, which is why the first install needs sudo
+# once, runbook section 5).
 check_secret_files() {   # check_secret_files DIR GID NAME...
-  local d="$1" gid="$2" n st g a m
+  local d="$1" gid="$2" n st g a m ds
   shift 2
-  [[ -d "$d" && ! -L "$d" ]] || fail "$d is not a folder" || return 1
-  a="$(stat -c '%a' "$d")" || fail "$d: stat failed" || return 1
-  (( (8#$a & 8#007) == 0 )) || fail "$d: mode $a gives others access (chmod 2700)" || return 1
+  [[ -d "$d" && ! -L "$d" ]] || fail "$d is not a folder (runbook section 5: mkdir secrets, then the one-time sudo step)" || return 1
+  ds="$(stat -c '%g %a' "$d")" || fail "$d: stat failed" || return 1
+  g="${ds% *}"; a="${ds#* }"
+  (( (8#$a & 8#007) == 0 )) || fail "$d: mode $a gives others access: chmod 2700 $d" || return 1
+  [[ "$g" == "$gid" ]] \
+    || fail "$d: group $g, must be $gid. One-time, needs sudo: sudo chgrp $gid $d && sudo chmod 2700 $d (runbook section 5)" || return 1
+  (( (8#$a & 8#2000) != 0 )) \
+    || fail "$d: mode $a has no setgid bit, so new files would not get group $gid. One-time, needs sudo: sudo chmod 2700 $d" || return 1
   for n in "$@"; do
-    [[ ! -L "$d/$n" ]] || fail "secrets/$n is a symbolic link" || return 1
-    [[ -f "$d/$n" ]] || fail "secrets/$n is missing (an empty file is fine where the runbook says so)" || return 1
+    [[ ! -L "$d/$n" ]] || fail "secrets/$n is a symbolic link: replace it with a regular file" || return 1
+    [[ -f "$d/$n" ]] || fail "secrets/$n is missing: ( umask 027; install -m 640 /dev/null secrets/$n ) for an empty one (runbook section 5)" || return 1
     st="$(stat -c '%g %a' "$d/$n")" || fail "secrets/$n: stat failed" || return 1
     g="${st% *}"; a="${st#* }"; m=$(( 8#$a ))
-    [[ "$g" == "$gid" ]] || fail "secrets/$n: group $g, must be $gid (runbook section 5)" || return 1
-    (( (m & 8#007) == 0 )) || fail "secrets/$n: mode $a is readable or writable by others (chmod 640)" || return 1
-    (( (m & 8#040) != 0 )) || fail "secrets/$n: mode $a, the group must read it (chmod 640)" || return 1
-    (( (m & 8#030) == 0 )) || fail "secrets/$n: mode $a, the group may only read it (chmod 640)" || return 1
+    [[ "$g" == "$gid" ]] || fail "secrets/$n: group $g, must be $gid: sudo chgrp $gid secrets/$n (a file made in the folder gets it by itself)" || return 1
+    (( (m & 8#007) == 0 )) || fail "secrets/$n: mode $a is readable or writable by others: chmod 640 secrets/$n" || return 1
+    (( (m & 8#040) != 0 )) || fail "secrets/$n: mode $a, the group must read it: chmod 640 secrets/$n" || return 1
+    (( (m & 8#030) == 0 )) || fail "secrets/$n: mode $a, the group may only read it: chmod 640 secrets/$n" || return 1
   done
 }
 # No account on the host has the secrets group (by number): it is for the containers only.
@@ -627,18 +685,21 @@ mapfile -t secret_names < <(jq -r '.secrets | keys[]' <<<"$shared")
 server_secrets=""
 if [[ -n "${PROD_CHECK_SECRETS_DIR:-}" ]]; then
   server_secrets="$PROD_CHECK_SECRETS_DIR"
-elif [[ -f "$env_file" ]] && grep -Eq '^[[:space:]]*COMPOSE_FILE=[^#]*compose\.prod\.yaml' "$env_file"; then
+elif [[ "$mode" == install ]] || { [[ -f "$env_file" ]] && grep -Eq '^[[:space:]]*COMPOSE_FILE=[^#]*compose\.prod\.yaml' "$env_file"; }; then
   server_secrets="$root/secrets"
 fi
 if [[ -n "$server_secrets" ]]; then
   check_secret_files "$server_secrets" "$secrets_gid" "${secret_names[@]}" || exit 1
   if command -v getent >/dev/null; then
     check_secrets_group "$secrets_gid" "$(getent group "$secrets_gid" || true)" "$(getent passwd || true)" || exit 1
+    [[ -n "$(getent group "$secrets_gid" || true)" ]] \
+      || echo "check-prod-compose: note: group $secrets_gid has no name here; the number works anyway. To reserve it: sudo groupadd --system --gid $secrets_gid classbeat-secrets" >&2
   fi
   owner_note="$owner_note; secrets/ files are group $secrets_gid, mode 640 or stricter"
 else
   owner_note="$owner_note; no server secrets/ checked (not a compose.prod.yaml checkout)"
 fi
+if [[ $mode == repo ]]; then   # the self-tests and the checkout-only checks (ADR 0020)
 # Self-test with throwaway empty files of this user's own group (no root needed to make them).
 st_dir="$tmp/secret-files"
 mygid="$(id -g)"
@@ -685,6 +746,8 @@ if (check_secrets_group 10010 'classbeat-secrets:x:10010:deploy' 'root:x:0:0::/r
   echo "check-prod-compose: self-test: accepted a secrets group with an account in it" >&2; exit 1
 fi
 
+fi
+if [[ $mode == repo ]]; then   # the self-tests and the checkout-only checks (ADR 0020)
 # --- The runbook's proxy network (#495) -----------------------------------------------------------
 ip2int() { local a b c d; IFS=. read -r a b c d <<<"$1"; echo $(( (a << 24) | (b << 16) | (c << 8) | d )); }
 in_cidr() {   # in_cidr ADDRESS NET/LEN
@@ -837,4 +900,47 @@ if ! nginx_t; then
   echo "check-prod-compose: no IPv6 here: nginx -t ran without the [::]:443 listen line" >&2
 fi
 
+fi
+# --- The secret files, as every service sees them (--probe) --------------------------------------
+# What the runbook did by hand: for each service that mounts secrets, run the pulled image with a
+# shell that asks the kernel (`test -r`, nothing is opened or printed) about every file in
+# /run/secrets. Output: "<service>: <file> OK|FAIL", never a value. Any FAIL, or a service that
+# prints nothing, fails the check.
+probe_verdict() {   # probe_verdict SERVICE OUTPUT
+  local svc="$1" out="$2" line n=0 bad=0
+  while IFS= read -r line; do
+    [[ -n "$line" ]] || continue
+    if [[ "$line" =~ ^[A-Za-z0-9_.-]+\ (OK|FAIL)$ ]]; then
+      echo "$svc: $line"; n=$((n + 1))
+      [[ "${line##* }" == OK ]] || bad=1
+    else
+      echo "check-prod-compose: $svc: unexpected probe output (not a secret file line)" >&2; bad=1
+    fi
+  done <<<"$out"
+  (( n > 0 )) || fail "$svc: the probe listed no secret file (is the image pulled? docker compose pull)" || return 1
+  (( bad == 0 )) || fail "$svc: a secret file is not readable there: fix the group and mode (runbook section 5), then try again" || return 1
+}
+probe_secrets() {
+  local svcs svc out rc=0
+  mapfile -t svcs < <(docker compose config --format json | jq -r '.services | to_entries[]
+    | select((.value.secrets // []) | length > 0) | .key')
+  (( ${#svcs[@]} > 0 )) || { fail "no service mounts a secret (wrong COMPOSE_FILE?)"; return 1; }
+  for svc in "${svcs[@]}"; do
+    out="$(docker compose run --rm --no-deps -T --entrypoint sh "$svc" -c \
+      'for f in /run/secrets/*; do if test -r "$f"; then echo "${f##*/} OK"; else echo "${f##*/} FAIL"; fi; done' \
+      2>"$tmp/probe-$svc.log")" \
+      || { cat "$tmp/probe-$svc.log" >&2; fail "$svc: could not run the pulled image (docker compose pull first?)"; return 1; }
+    probe_verdict "$svc" "$out" || rc=1
+  done
+  return "$rc"
+}
+if (( probe )); then
+  ( restore_real_env; probe_secrets ) || exit 1
+  owner_note="$owner_note; every service reads every secret it mounts"
+fi
+
+if [[ $mode == install ]]; then
+  echo "install check (compose files with dummies, .env, secrets/): ok; $owner_note"
+  exit 0
+fi
 echo "compose.prod.yaml (shared network and loopback, OAuth secrets on web only, secret files by group 10010), runbook network, swag site config and self-tests: ok; $owner_note"
