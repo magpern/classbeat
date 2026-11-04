@@ -178,9 +178,10 @@ def test_the_soundless_prompt_version_is_its_own_and_in_the_design_group() -> No
     assert SYSTEM_PROMPT != CYCLING_PROMPT
 
 
-def test_the_new_module_stays_out_of_the_suites_digest() -> None:
-    """Item 6: SL5 adds ``agent/soundless_input.py`` with the suite bump; SL1 leaves the digest."""
-    assert "agent/soundless_input.py" not in suite.RULE_SOURCES
+def test_the_input_module_is_a_rule_source_of_the_suite() -> None:
+    """Item 6: SL5 (#531) added ``agent/soundless_input.py`` with the suite bump to 11; the stage
+    module's prompts are covered by the prompt versions, not by the digest."""
+    assert "agent/soundless_input.py" in suite.RULE_SOURCES
     assert "agent/soundless.py" not in suite.RULE_SOURCES
 
 
@@ -214,13 +215,14 @@ def test_the_key_is_a_flag_the_admin_may_store_off_or_on() -> None:
             core.validate_for_write("soundless_enabled", bad, trial_days_max=30)
 
 
-def test_no_suite_version_covers_soundless_until_sl5_sets_it(
+def test_a_suite_version_covers_soundless_from_the_first_with_soundless_cases(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    assert routes.SOUNDLESS_SUITE_VERSION is None
+    """SL5 (#531) set it to 11: the suite version whose design group holds the soundless cases."""
+    assert routes.SOUNDLESS_SUITE_VERSION == 11
+    assert [routes.soundless_suite(v) for v in (1, 10, 11, 12)] == [False, False, True, True]
+    monkeypatch.setattr(routes, "SOUNDLESS_SUITE_VERSION", None)  # the SL1 state: nothing covers
     assert not any(routes.soundless_suite(v) for v in (1, 10, 11, 10_000))
-    monkeypatch.setattr(routes, "SOUNDLESS_SUITE_VERSION", 11)
-    assert [routes.soundless_suite(v) for v in (10, 11, 12)] == [False, True, True]
 
 
 def test_a_bootstrap_choice_covers_neither_running_nor_soundless() -> None:

@@ -46,6 +46,7 @@ MANIFEST = Manifest.model_validate(
             "missing_music": {},
             "class_patterns": {"design": CLASS_PATTERNS},
             "running": {},
+            "soundless": {},
             "adversarial": {"design": ADV_DESIGN, "songs": ADV_SONGS},
             "cost": {},
         },

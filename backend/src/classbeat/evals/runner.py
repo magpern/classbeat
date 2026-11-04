@@ -7,8 +7,9 @@ error) is a failed case whose outcome is the failure category.
 
 ``CaseResult`` holds numbers, check names and details (numbers and rule names), the category and
 the shape of the class (per segment its name and kind, per interval its length, zone and the index
-of the track under it) only: no cues, no description, no song titles, no ids. ``results_table`` and
-``results_json`` are what the owner pastes into a PR; ``classbeat.evals.compare`` reads the JSON.
+of the track under it, none for a soundless class) only: no cues, no description, no song titles,
+no ids. ``results_table`` and ``results_json`` are what the owner pastes into a PR;
+``classbeat.evals.compare`` reads the JSON.
 
 The suite (ADR 0012 section 4.2) writes **format 2**: ``suite_results`` is one file per run of the
 suite, the ``SuiteHeader`` (suite version and digest, the choice, the prompt version of each stage,
@@ -18,6 +19,7 @@ then per run of a case the format-1 row plus its ``category`` (``suite_row``) or
 """
 
 import json
+import math
 import time
 import uuid
 from collections.abc import Callable, Mapping, Sequence
@@ -33,6 +35,13 @@ from classbeat.agent.provider import ModelProvider, Usage
 from classbeat.agent.records import mowl_version as _mowl_version
 from classbeat.agent.revise import ReviseContext, ReviseResult, SongsRequested
 from classbeat.agent.running import design_stage_for, revise_stage_for
+from classbeat.agent.soundless import (
+    SoundlessContext,
+    SoundlessReviseContext,
+    soundless_design_stage,
+    soundless_revise_stage,
+)
+from classbeat.agent.stage import Stage
 from classbeat.design.rules import default_registry
 from classbeat.design.sport_rules import rules_for
 from classbeat.evals.cases import Case
@@ -127,12 +136,25 @@ def _shape(i: dict[str, Any]) -> dict[str, Any]:
             "gradient": int(i["gradient"]),
             "track": int(i["track"]),
         }
-    return {
+    shape: dict[str, Any] = {
         "sec": int(i["sec"]),
         "zone": int(i["zone"]),
         "standing": bool(i["standing"]),
-        "track": int(i["track"]),
     }
+    if "track" in i:  # a soundless interval (``soundless_input.timeline_for_model``) has no track
+        shape["track"] = int(i["track"])
+    return shape
+
+
+def _soundless_stage(case: Case) -> tuple[Stage, str]:
+    """The soundless ``design`` or ``revise`` stage of the case and its first message."""
+    if case.revise is None:
+        design = SoundlessContext(case.brief)
+        return soundless_design_stage(design), design.first_message()
+    revise = SoundlessReviseContext(
+        case.brief, case.revise.base, tuple(case.revise.earlier_requests), case.revise.request
+    )
+    return soundless_revise_stage(revise), revise.first_message()
 
 
 async def run_case(
@@ -145,24 +167,33 @@ async def run_case(
     zone7_tss_margin: float = 0.0,
 ) -> CaseResult:
     """``zone7_tss_margin``: the suite's (its manifest); the smoke set runs with 0."""
-    music = build_music(case.music)
-    # As in production (ADR 0017 section 3): the rules of the brief's profile, if one applies,
-    # are in the model's input and in its tool results. Nothing is dismissed on a design run.
-    # A running case gets the running profile, prompt and schema (ADR 0018), as a running job does.
-    rules = rules_for(case.brief)
-    ctx = DesignContext.build(case.brief, music, rules)
-    stage, first = design_stage_for(ctx), ctx.first_message()
-    if case.revise is not None:
-        revise = ReviseContext.build(
-            case.brief,
-            music,
-            case.revise.base,
-            tuple(case.revise.earlier_requests),
-            case.revise.request,
-            music_changed=False,
-            rules=rules,
-        )
-        stage, first = revise_stage_for(revise), revise.first_message()
+    # A soundless case (ADR 0007 amendment of 2026-11-03, issue #531) is given the soundless stages
+    # as a soundless job gets them (``design.kind._run_soundless``, ``design.revise``): the brief
+    # and no music, no rules section, no music map, no gates.
+    music_sec = math.inf  # a soundless class is not bounded by any music
+    music_map: dict[str, Any] | None = None
+    if case.soundless:
+        stage, first = _soundless_stage(case)
+    else:
+        music = build_music(case.music)
+        # As in production (ADR 0017 section 3): the rules of the brief's profile, if one applies,
+        # are in the model's input and in its tool results. Nothing is dismissed on a design run.
+        # A running case gets the running profile, prompt and schema (ADR 0018), as a running job.
+        rules = rules_for(case.brief)
+        ctx = DesignContext.build(case.brief, music, rules)
+        stage, first = design_stage_for(ctx), ctx.first_message()
+        music_sec, music_map = float(ctx.map["duration"]), ctx.map
+        if case.revise is not None:
+            revise = ReviseContext.build(
+                case.brief,
+                music,
+                case.revise.base,
+                tuple(case.revise.earlier_requests),
+                case.revise.request,
+                music_changed=False,
+                rules=rules,
+            )
+            stage, first = revise_stage_for(revise), revise.first_message()
     host = EvalHost()
     started = clock()
 
@@ -243,10 +274,10 @@ async def run_case(
             result,
             done,
             config.limits,
-            float(ctx.map["duration"]),
+            music_sec,
             note,
             zone7_tss_margin=zone7_tss_margin,
-            music_map=ctx.map,
+            music_map=music_map,
         )
         zone7 = has_zone7(result.spec)
     except Exception as exc:
