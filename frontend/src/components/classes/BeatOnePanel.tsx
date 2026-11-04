@@ -44,6 +44,13 @@ export function BeatOnePanel({
   onReload: () => void
 }) {
   const [view, setView] = useState<BeatOne>(summary.beatOne)
+  // A reload of the same version (a refusal that reloads the page, say) brings a new block: the
+  // panel keeps its key, so it takes the server's view here, during render (no effect).
+  const [loaded, setLoaded] = useState<BeatOne>(summary.beatOne)
+  if (loaded !== summary.beatOne) {
+    setLoaded(summary.beatOne)
+    setView(summary.beatOne)
+  }
   const change = useAction()
   const apply = useAction()
   const attempt = useRef<{ fingerprint: string; key: string } | null>(null)
@@ -198,8 +205,10 @@ export function BeatOnePanel({
       {view.stale.length > 0 ? (
         <div className="flex flex-col gap-2" data-testid="beat-one-stale">
           <p className="m-0 text-muted">
-            This music was analysed again or changed, so your earlier timing fixes no longer apply.
-            They are kept: making an earlier version current uses them again.
+            These timing fixes are for music this version does not play: it was analysed again or
+            changed, or the song is not in this version. They are kept and do not count towards the
+            limit, so making an earlier version current can use them again. Clear them if you no
+            longer need them.
           </p>
           <ul className="m-0 flex list-none flex-col gap-2 p-0">
             {view.stale.map((row) => (
@@ -234,7 +243,7 @@ export function BeatOnePanel({
             the changes moved onto the corrected beats; save or update it in MOWL after that.
           </p>
           <p>
-            <Button disabled={apply.busy || busy} onClick={applyFixes}>
+            <Button disabled={change.busy || apply.busy || busy} onClick={applyFixes}>
               Apply timing fixes
             </Button>
           </p>
