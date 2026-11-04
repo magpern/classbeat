@@ -1062,3 +1062,255 @@ set, positive. The music shapes need no migration. **The flag does** (item 2).
 | SL5 #531 | Evals: `agent/soundless_input.py` in `RULE_SOURCES`, `soundless` category, `suite_version` 11, `SOUNDLESS_SUITE_VERSION = 11`, smoke cases and fake scripts | #527, #528 | Sonnet / Opus (it sets the coverage constant) |
 | SL6 #532 | Web: "No music" in New class, class page, chat panel, job page, Save panel | #527, #528, #529, #530 | Sonnet / Sonnet |
 | SL7 #533 | E2E done-when on the fakes: design, revise, save, update; no playlist call | #527 to #532 | Sonnet / Sonnet |
+
+## Amendment: beat-one corrections (2026-11-03, issue #535)
+
+Roadmap §6 asks for "beat-one corrections per user on top of an analysis" and a per-song control on
+the class page. §11 above said they are rows of a class-owned table registered in guard 10, never
+shared. The owner asked for them on 2026-11-03 (#535). This amendment is the design; the issues are
+listed at the end. It follows the soundless amendment above and keeps its rules.
+
+1. **The library.** The vendored `mowl-workouts` (0.10.0 since #556; the functions below are the same
+   as in 0.9.0) has `library.correct_beat1(creds, store, mix, song_no, beats)`, for a Swedebeat mix
+   only. It calls `api.find_swedebeat` (a MOWL request) and adds `beats` to the `beat1_shifts` of the
+   user's link in a `MapStore`, which every later workout of theirs on that mix reads. classbeat
+   **never calls it**: it would make a request from the web process, and a correction stored with
+   the link would reach every class of that user on the music. classbeat uses the pure function under
+   it, `library.shift_beat1(m, song_no, beats)`. That function moves a song's `first_downbeat`,
+   `first_phrase` and events by whole beats, in place, and raises `ValueError` for a song the map
+   does not have. classbeat runs it on its **own copy** of the map, once per correction, with the
+   stored total. No wheel change is needed. `beats` keeps the library's meaning: -3 to 3, never 0;
+   positive when the changes in that song come early, so beat 1 moves later. A shift is counted in
+   beats, so it follows the song's tempo.
+2. **The table** (the next free migration when BC1 merges; issue BC1). `beat_one_corrections` is
+   owned and class-owned (§1's rules). Columns:
+   - `id`, `owner_id`;
+   - `class_id`: an owner-inclusive foreign key to `classes`, `ON DELETE CASCADE`;
+   - `fingerprint text` (`^[0-9a-f]{64}$`);
+   - `song int` (1 to 500);
+   - `beats smallint` (`CHECK (beats BETWEEN -3 AND 3 AND beats <> 0)`; clearing deletes the row);
+   - `bpm real` (above 0, at most 1000; the song's BPM when the row was set, item 3);
+   - `created_at`, `updated_at`.
+
+   Constraints and limits:
+   - `UNIQUE (owner_id, class_id, fingerprint, song)`, RLS `owner_isolation`.
+   - **At most 200 rows for the class's current fingerprint** (409 `correction_limit`). Rows for
+     other fingerprints are **kept and not counted**: Make current can bring them back to life
+     (item 8). They are bounded anyway. A user writes only rows for the current fingerprint, at
+     most 200 per fingerprint, and a class gets a new fingerprint only through a job: a design, a
+     revise, Change songs, or a mix analysed again (a refit keeps the fingerprint). Chat revisions
+     are bounded by the revision limits, but a new design of an existing class is not. The real
+     bound is therefore about (the credits the user spends on the class + the revisions) × 200
+     rows. That is harmless, so no per-class bound on fingerprints is added.
+   - No title, no Spotify or MOWL id, no map.
+
+   Guard 10: deleted with the class and the account. Guard 12: exported (`class_id`, `song`,
+   `beats`, `bpm`, the times). `fingerprint` is left out because it is bookkeeping: the same value
+   is already in the exported revision's `music`. Nothing in the table is shared. A correction never
+   writes `swedebeat_mix_maps` or any analysis.
+3. **Which song.**
+   - On a Swedebeat mix a song is the map's 1-based `song` (a song found in the audio).
+   - On a Spotify playlist (the user's own or a class playlist of picked songs) it is the 1-based
+     track in play order. The library's Spotify map holds one entry per section, so a correction of
+     track `n` is applied to every entry with `track == n`. Spotify's beat 1 is the section start
+     the library derives (`beat1_source: "spotify section"`), so a whole-beat shift is meaningful
+     there too.
+
+   A correction is bound to the **fingerprint** of the music it was set on: the current revision's
+   `music.fingerprint`, computed before any correction. For Spotify that is the track ids and
+   lengths; for a mix, the map's hash. It is applied only while the music step's fingerprint is the
+   same, so an edited playlist, Change songs, or a mix analysed again never moves a different song.
+
+   - **At set time** the song must be one of the current revision's `music.songs` (422
+     `invalid_input` otherwise). Those are taken from the map, so the map has the song.
+   - **At apply time** a row for a song the map lacks is skipped and logged as a warning (a count
+     only, no ids). It cannot happen for the fingerprint the row was set on, but the job never fails
+     on it.
+   - **BPM arriving later.** The Spotify fingerprint ignores BPM. A track MOWL had no BPM for is
+     fitted at the library's guess of 120. When MOWL later learns the BPM, the fingerprint stays the
+     same and the stored shift is kept in beats, so it moves by the same number of beats at the new
+     tempo. The row records the BPM it was set at. When a song's current BPM differs from it, the
+     class detail says `bpm_changed` for that song and the page asks the user to listen again.
+4. **Applying** (issue BC2; the pure functions in `classbeat.agent.beat_one`, BC1). A job that
+   produces a draft reads the class's corrections for the music step's fingerprint in a fenced
+   transaction (`class_id` from the fenced job row, the owner from the lease, never the input). It
+   carries them with the music data: `mix_input.MixData` gains `beat_one`, and **`mix_input.SpotifyData`
+   is a new subclass** of `model_input.MusicData` for a Spotify run. `model_input` stays as it is,
+   because it is one of the eval suite's `RULE_SOURCES`, so the suite's digest and every recorded
+   route stay valid. `mix_input.music_map` applies the corrections to its copy after the crossfade
+   conversion, as the library's `_entry` does. So the fit (`sync.fit_to_music`), the timeline, the
+   quality report, the warnings and the model's music summary all see the corrected map. A corrected
+   mix song is no longer "an estimate" (the library's `beat1_shift` rule).
+
+   This holds for `design_draft` on an existing class, `revise_draft`, `design_with_songs`,
+   `revise_songs` and `refit_draft`. **A soundless design or revise** (the amendment above: no music
+   step) reads and applies no corrections. The model sees numbers only (times, BPM, song indices).
+   A correction never reaches it as text, and the model has no tool that sets one.
+5. **What a revision records.** `class_revisions.music` (both the Spotify and the Swedebeat form)
+   gains two optional fields. They are absent on every earlier revision, which therefore validate and
+   hash exactly as before.
+   - `beat_one`: the corrections applied, `[{song, beats}]` sorted by song (absent when none).
+   - `songs`: the songs the class plays (those starting before the fitted workout ends), each
+     `{song, start, end, bpm, estimate}` in seconds of the class as heard, plus `title` for a
+     Spotify track. The title is cleaned, Spotify-derived like `unknown_bpm`, and gone with the
+     class.
+
+   **Size: the new fields only.** `songs` holds at most 200 entries (a class is at most 180
+   minutes), each with a title of at most 100 characters. `beat_one` holds at most 200 entries (the
+   cap of item 2). A `songs` entry is at most about 490 bytes of canonical JSON (about 90 bytes of
+   numbers and keys, plus a title of at most 100 characters at up to 4 bytes each). A `beat_one`
+   entry is about 25 bytes. The two lists together are therefore at most about 103 KB on any valid
+   map. `revision.build` checks the canonical size of `songs` plus `beat_one` against 128 KB, as a
+   defence that valid input cannot reach. The check never covers the whole `music` object or the existing `unknown_bpm` (up to 500
+   titles of 200 characters, about 110 KB, as today), so nothing that is valid today is refused.
+   Stored revisions, Swedebeat match revisions (`swedebeat_match/revision.py`) and `song_list`
+   inserts do not go through `build`, so they are unaffected and no migration is needed.
+
+   **One source for "estimate":** `songs[].estimate` is computed from the corrected map. For a mix
+   song that means a beat-1 margin below the library's 1.3 and no correction; for a Spotify track,
+   one MOWL had no BPM for. The warnings use the same map. `unsure_beat_one` of a mix revision keeps
+   its meaning (the analysis's own list, uncorrected) and is read only for revisions without
+   `songs`.
+
+   A revision with `songs` is one with beat data, and the control is shown only for it. A revision
+   from before this amendment and a soundless class (`music: {source: "none"}`) have none.
+6. **Kind `refit_draft`** (issue BC3; no model, no credit, no cost, no `agent_runs`).
+   - **Input:** `{class_id, base_revision_id, mowl_connection_id}`.
+   - **`admit`** runs in the create transaction with the class row locked. Before anything is
+     reserved it refuses:
+     - a class whose `music_source` is `{"source": "none"}`: `invalid_input`, through
+       `design.music_kind.is_none` on the locked class's `music_source`. It **never** goes through
+       `music_kind.admit_class` or `admit_music`, whose answers follow the soundless gate
+       (`feature_off` today). Once SL2 lands, those would let a soundless class through, and a refit
+       would then run a music step on a class with no music;
+     - a class with no `music_source` (a duplicate of a class on picked songs, #550's item 5): 409
+       `not_changeable`, as #550 specifies for `revise_draft`;
+     - a base that is not a `draft` of the class (`invalid_input`), or not its current revision
+       (`stale_base`);
+     - the running flag (`sport.admit_class`), and a mix's flag and analysis limit
+       (`mixadmit.admit_class_mix`), as for a revise;
+     - more than 50 refits per class (409 `refit_limit`);
+     - nothing to apply: the corrections for the base's fingerprint already equal its
+       `music.beat_one` (409 `nothing_pending`), so a click cannot store an identical revision and
+       use up the limit.
+
+     The one-open-job-per-class index (`class_busy`) and the plan's concurrent jobs apply as for
+     every kind. `admit` stores the base's hash.
+   - **Run** (stages `music`, `fit`):
+     1. the class's music step (`kind.music_step`, unchanged checks);
+     2. a fingerprint other than the base's ends the job `music_changed` (a new job category, in
+        BC1's migration), and nothing is stored;
+     3. the corrections for that fingerprint are applied;
+     4. the base's stored content is fitted again (`agent.design.check`, or
+        `agent.running.check_running` for a running class). That keeps the total and moves each cut
+        to the corrected grid inside the fit's 6-second tolerance (a shift of at most 3 beats is at
+        most 3 s at 60 BPM);
+     5. the final fenced transaction runs the connection guard, stores the revision (`parent_id` =
+        base; provenance `{origin: "beat_one", base_revision_id, classbeat_version, mowl_version,
+        map_version, crossfade_sec, sport?}`, no model fields) and sets `current_revision_id` by the
+        revise compare-and-set. The revision is built by `revision.build_refit`, which shares
+        `revision.build`'s content and music code, and so its validation and the size check of item
+        5. It writes the provenance above itself, because `records.provenance` and its `origin`
+        literal describe model runs; `beat_one` is the refit's origin.
+
+     The revision is stored even when the content is unchanged, because its `music.beat_one`
+     records the applied set. Saved then stays "up to date", since that compares content hashes
+     (amendment of 2026-10-30). Refits are not chat revisions and do not count toward
+     `CLASSBEAT_REVISIONS_PER_CLASS`.
+7. **API** (issue BC4, `classbeat.classes`; CSRF and signed in; no recent authentication, because it
+   is the user's own work). Each call is one transaction with the class row locked. A foreign or
+   unknown class is 404, and so is a revision that is not one of the class's own, as Make current
+   does.
+   - **`PUT /api/classes/{id}/beat-one/{song}`** with `{beats, revision_id}` sets one song's total
+     for the music of `revision_id`:
+     - the class's `music_source` is checked first, explicitly: `none` (`music_kind.is_none`) is
+       409 `no_beat_data`, and no `music_source` (a #550 copy of a class on picked songs, which
+       `refit_draft` refuses) is 409 `not_changeable`. The class detail then has `available: false`,
+       so the page shows neither the panel nor **Apply**;
+     - `revision_id` must be the current revision (409 `stale_base`);
+     - its `music` must have `songs` (409 `no_beat_data`) containing `song` (422 `invalid_input`);
+     - `beats` must be a JSON integer from -3 to 3, not 0 (422);
+     - the cap of item 2 applies (409 `correction_limit`).
+
+     The fingerprint and the song's BPM are read from that revision, never sent by the browser.
+   - **`DELETE /api/classes/{id}/beat-one/{song}?revision_id=`** clears the current music's row for
+     `song` (idempotent). The same checks as PUT: a revision of another class is 404, and one that
+     is not the current revision is 409 `stale_base`, and nothing is deleted.
+   - **`DELETE /api/classes/{id}/beat-one/rows/{row_id}`** clears **any** row of the class by its
+     id: a stale one, or one for a song the current revision no longer reaches. It is keyed by
+     `owner_id`, `class_id` and `id`. A row id of another class of the same user deletes nothing and
+     answers 404; another user's row is hidden by RLS and gets the same 404.
+   - **`DELETE /api/classes/{id}/beat-one`** clears every row of the class.
+
+   An open job does not block a change: the job applies what it read, and its revision's `beat_one`
+   says which.
+
+   `GET /api/classes/{id}` gains `beat_one: {available, revision_id, songs, pending, stale}`:
+   - `songs`: the current revision's songs, each with the class's `beats`, what the revision
+     `applied`, and `bpm_changed`;
+   - `pending`: true when the corrections for the current fingerprint differ from the revision's
+     `music.beat_one`;
+   - `stale`: the rows for other fingerprints and for songs the revision does not play, as
+     `{id, song, beats}`, so they can be cleared one by one or all at once.
+8. **Make current and Duplicate.**
+   - **Make current** (`POST /api/classes/{id}/current`, §2) brings an older revision's fingerprint
+     back. Its rows are live again, and `pending` and `stale` are recomputed against it. This is why
+     stale rows are kept.
+   - **Duplicate** (#550): the copy's revision keeps `music.beat_one`, and the same transaction
+     copies the source class's rows for that revision's fingerprint, re-keyed to the copy's class
+     (same fingerprint, song, beats and BPM). Otherwise the copy would show `pending` and **Apply**
+     would strip the corrections. **This text is the text of record.** #550's amendment and its
+     implementation (DU1) add the row copy to the duplicate transaction, and make sure its insert
+     guard allows that insert, whichever lands second.
+9. **When the music changes under the corrections.** A mix's fingerprint is the hash of its map.
+   Analysing it again (after the 30-day cache, an eviction at 20 maps per user, or a new
+   `music.MAP_VERSION` in a wheel upgrade) gives a new fingerprint, and the class's corrections go
+   inert. The same happens to a Spotify class whose playlist changed. Nothing is deleted. The panel
+   counts the rows as set on earlier music and says: "This music was analysed again or changed, so
+   your earlier timing fixes no longer apply. They are kept: making an earlier version current uses
+   them again." The user can clear them.
+10. **Save and Update** are unchanged: they write the approved revision's content, which a refit or
+    a revise has fitted with the corrections. A changed correction therefore reaches MOWL only
+    through a new revision, and Saved shows "out of date" when its content differs. While
+    corrections are pending, the page says the current version does not include them yet and offers
+    **Apply timing fixes** (a `refit_draft` job) next to Save.
+11. **UI** (issue BC5). On the class page, when `beat_one.available`, a "Beat 1" panel shows:
+    - the songs the class plays: number or title, start, BPM, and an "estimate" or "tempo changed"
+      note;
+    - for each song, **Earlier** and **Later** (44 px targets, labelled with the song) and
+      **Reset**;
+    - the value in words ("beat 1 two beats later") in a live region;
+    - the plain-language effect ("If the changes in this song land early, move beat 1 later");
+    - the notice of item 9 with **Clear** per row and **Clear all**;
+    - the pending notice with **Apply**.
+
+    It uses Night Studio tokens and `src/components/ui` only, and has no flag. A soundless class
+    shows no panel.
+12. **Tests and threat model** (issue BC6, and each issue's own tests):
+    - unit tests of `beat_one.apply`: mix and Spotify maps, the event re-snap, a song the map lacks
+      skipped;
+    - RLS and cascade database tests, and the guard 10 and 12 entries;
+    - job tests on the in-process fakes: a correction shifts the fitted intervals; it survives a
+      chat revision; another class and another user are unchanged; a changed fingerprint is inert,
+      and a refit then ends `music_changed`; a soundless class is refused;
+    - API tests: the cap counts the current fingerprint only, rows are cleared by id and all at
+      once, and the soundless refusal holds;
+    - Vitest with the page;
+    - a Playwright spec on the e2e fakes, with an axe audit of the panel: a fake mix and a fake
+      Spotify playlist, set, apply, revise, Save and Update, export and delete.
+
+    New threat-model row **T123** (added by BC6): one user's correction reaching another user or
+    class, a correction moving a different song after the music changed, or a correction written
+    into a shared analysis. Controls: owned rows under RLS keyed by class and fingerprint, the
+    fingerprint read server-side from the current revision, corrections applied to a per-job copy
+    only, and no library call that writes a link.
+
+| Issue | Scope | Developer / review | Depends on |
+|---|---|---|---|
+| BC0 (#538) | this amendment (and the ADR 0016 §1 note) | docs / Opus | none |
+| BC1 (#539) | the next free migration (the table, RLS, `music_changed`), guards 10 and 12, `classbeat.agent.beat_one` (pure apply, songs) | Opus / Opus | BC0 |
+| BC2 (#540) | apply in every draft kind (not soundless), revision `music.beat_one` and `songs` with the size cap | Opus / Opus | BC1 |
+| BC3 (#541) | kind `refit_draft` (refusing a soundless class through `music_kind.is_none`, a class with no music source, and nothing pending; built by `build_refit`) | Opus / Opus | BC2 |
+| BC4 (#542) | the API (set, clear, clear by row, clear all; the current-fingerprint cap; the soundless and no-source refusals) and `beat_one` on the class detail | Opus / Opus | BC1, BC2 |
+| BC5 (#543) | the class page panel, Vitest | Sonnet / Sonnet | BC3, BC4 |
+| BC6 (#544) | Playwright on the fakes, axe, T123 | Sonnet / Sonnet | BC5 |
