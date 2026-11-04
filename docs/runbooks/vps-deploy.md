@@ -393,6 +393,15 @@ in clear): acceptable on a home network you control, not on a shared one. Everyt
    `X-Forwarded-For` instead of replacing it (the app would still pick swag's entry, but the sample
    does not depend on that).
 4. `docker exec swag nginx -t && docker exec swag nginx -s reload`.
+5. Check the file as installed, not only the sample: section 9 runs `check-prod-compose.sh` with
+   `PROD_CHECK_SWAG_CONF` set to the path of the copy in swag's volume (for example
+   `/opt/swag/config/nginx/proxy-confs/classbeat.subdomain.conf`; copy it somewhere you can read if
+   the volume is root-only). It reads the file as nginx does, directive by directive (several on a
+   line, one split over lines, `#` and `;` inside quotes, one-line `location` blocks), and refuses a
+   second `proxy_set_header X-Forwarded-For`, one that is not `$remote_addr`, one outside the
+   server block, any `proxy_set_header` or `add_header` in a location (it would replace every
+   inherited one), a second server block and the other lines the app relies on, then runs `nginx -t`
+   on it.
 
 What the sample does, so a later edit keeps it: proxies to `classbeat-web:8000` (web's alias on
 the proxy network, resolved per request so swag starts while classbeat is down); the progress
@@ -435,6 +444,8 @@ Either mode works; **which one is the owner's decision.**
 cd /opt/classbeat
 sha256sum -c SHA256SUMS --quiet     # the downloaded files are unchanged (section 3)
 ./check-prod-compose.sh             # needs jq and docker compose; .env, PROXY_IP, secrets/ group 10010 mode 640
+PROD_CHECK_SWAG_CONF=/opt/swag/config/nginx/proxy-confs/classbeat.subdomain.conf ./check-prod-compose.sh
+                                    # again, with your swag file (section 7, step 5); the path is yours
 docker compose pull                 # both images; needs the token of section 4
 { date -u +%FT%TZ; docker image inspect --format '{{index .RepoDigests 0}}' \
   "ghcr.io/magpern/classbeat:$(sed -n 's/^CLASSBEAT_VERSION=//p' .env)" \
@@ -457,6 +468,24 @@ setgid bit need `sudo` once, section 5). `--probe` runs, for each service that m
 pulled image with a shell that asks the kernel whether each file in `/run/secrets` is readable: one
 line `<service>: <file> OK` or `... FAIL` per file, never a value; any `FAIL` fails the check, and
 you fix the group and mode (section 5) before `up`.
+
+Needs of the check: the `docker compose` plugin (it renders your `.env`); `jq`; and, only for
+`PROD_CHECK_SWAG_CONF`, a running Docker daemon and the image `nginx:1.28.0`, which the check pulls
+from Docker Hub on its first run (`PROD_CHECK_NGINX_IMAGE` names another; the run needs the network
+once, then it is local). The check reads your `.env` and `secrets/` metadata and sends nothing out
+but that pull; it prints no value.
+
+When the swag container is running here (named `swag`, or `PROD_CHECK_SWAG_CONTAINER`) and the
+shared network is in use, the check also compares `PROXY_IP` with the address Docker gave swag and
+fails on a difference: a typo such as `.130` for `.10` lies inside Docker's allocation range, so the
+form check alone passes it, and web would then trust nobody and see every visitor as swag. When it
+cannot see swag (no daemon, another host, the loopback or LAN overlay, another container name) it
+says so and does not fail; then compare by hand:
+
+```bash
+docker inspect --format '{{range .NetworkSettings.Networks}}{{.IPAddress}} {{end}}' swag
+grep '^PROXY_IP=' .env
+```
 
 `up` runs `migrate`, then `db-functions`, then starts `web` and `worker`; the Postgres init (roles)
 runs on the first start of the empty volume. Create the first admin and invite:
@@ -631,10 +660,16 @@ gateway, the real `PROXY_IP` from the shell or `.env` when one is set, swag's ad
 section 6a `--ip-range`, only web on the proxy network, internal `backend`, `db` unpublished, read-only web without
 capabilities, healthchecks, no model key on web, the secret placement, log rotation), proves each
 unsafe mutation of the rendered files is refused, and runs `nginx -t` on the swag sample with
-stand-ins for swag's `ssl.conf` and the Cloudflare list, plus the lines the app relies on (exactly
-one `X-Forwarded-For` line, the `$remote_addr` overwrite, no other include, the real-ip header, the
-body cap, `server_tokens off`, the SSE location, no CSP or `Referrer-Policy`, no per-location
-headers and no `proxy_intercept_errors`). For OAuth sign-in (#507) it checks that the three client
+stand-ins for swag's `ssl.conf` and the Cloudflare list, plus the directives the app relies on
+(#500: the file is read as nginx reads it, not line by line, so a second directive on one line, split
+over lines, behind a quoted `#` or inside a one-line `location` is seen; exactly one
+`proxy_set_header X-Forwarded-For`, in the server, with `$remote_addr`; no other include, the
+real-ip header, the body cap, `server_tokens off`, one server block, the SSE location, no CSP or
+`Referrer-Policy`, no `proxy_set_header` or `add_header` in any location and no
+`proxy_intercept_errors`), and each spelling is a self-test case that is mutation-checked. With
+`PROD_CHECK_SWAG_CONF` it applies the same rules and `nginx -t` to your own swag file. Like the
+compose rules it is a lint of honest mistakes: it cannot know what else swag's own configuration
+adds around the file, so the post-deploy checklist's client-address test is still the proof. For OAuth sign-in (#507) it checks that the three client
 secrets are `secrets/` files mounted on web only, that no service has a variable named like a secret,
 that the client ids and visible providers come only from their variables (empty and `google` without
 them), that a canary in the dummy secret files never shows in the rendered files, and that `.env` holds

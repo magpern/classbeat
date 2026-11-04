@@ -146,6 +146,7 @@ describe('the new-class form', () => {
   it.each([
     ['class_busy', 409, 'already has a design running'],
     ['not_connected', 409, 'MOWL is not connected'],
+    ['running_not_evaluated', 409, 'Running classes are not available on your plan yet. Nothing was charged.'],
     ['busy', 429, 'already have designs running'],
   ])('explains the refusal %s in words', async (why, status, text) => {
     fakeApi({ ...READY, 'POST /api/jobs': reason(status, why) })

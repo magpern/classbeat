@@ -18,18 +18,28 @@
 # 4c. on the server (that env file's COMPOSE_FILE names compose.prod.yaml, or PROD_CHECK_SECRETS_DIR
 #    is set): each real secret file is a regular file of group 10010, mode 640 or stricter, in a
 #    folder closed to others, and no host account has that group (#511; metadata only, no content);
+# 4d. in an install folder, when the swag container is running (PROD_CHECK_SWAG_CONTAINER, default
+#    `swag`) and web trusts PROXY_IP itself: PROXY_IP is one of that container's addresses (#500;
+#    a typo inside Docker's range passes 4); not visible (no Docker daemon, no such container) is
+#    a note, not a failure;
 # 5. the runbook's `docker network create` keeps swag's fixed address outside Docker's --ip-range;
-# 6. `nginx -t` accepts docs/runbooks/swag-classbeat.subdomain.conf, and the lines the app's
-#    client address, body cap, SSE stream and headers rely on are in it (X-Forwarded-For set
-#    exactly once);
-# and a self-test for 4, 4b, 4c, 5 and 6 as for 2. On the server: run it in /opt/classbeat after writing
+# 6. `nginx -t` accepts docs/runbooks/swag-classbeat.subdomain.conf, and the directives the app's
+#    client address, body cap, SSE stream and headers rely on are in it. The file is read as nginx
+#    reads it (directives and blocks, not lines, #500): X-Forwarded-For is set exactly once, in
+#    the server, to $remote_addr, and no location sets a proxy_set_header or add_header;
+# 6b. PROD_CHECK_SWAG_CONF=/path/to/the/real/file (runbook sections 7 and 9): the same rules and
+#    `nginx -t` on the owner's live swag file, in either mode (with DNS only, the Cloudflare include
+#    and real_ip_header may both be absent);
+# and a self-test for 4, 4b, 4c, 4d, 5 and 6 as for 2. On the server: run it in /opt/classbeat after writing
 # .env (runbook section 9).
 #
 # What it is: a best-effort lint of the owner's own committed, reviewed compose files against honest
 # mistakes. It is NOT a security boundary against someone who can edit those files (they could run
 # anything). The boundary for the secrets is on the server: the files' mode and group (4c, runbook
 # section 5) and which services mount which secret. Its compose rules list the known channels one by
-# one; a default-deny key allow-list is follow-up #517.
+# one; a default-deny key allow-list is follow-up #517. The swag rules read directives, but are the
+# same kind of lint: they refuse the known ways to forge the client address, and nginx -t is the
+# syntax check; the file is also read by swag, not by this script.
 # Two places it runs (ADR 0020, #566):
 #   a checkout (CI and developers): everything above, including the self-tests, the runbook and
 #     the swag sample (needs docs/ and the nginx image);
@@ -55,6 +65,14 @@ while (( $# )); do
   esac
   shift
 done
+# The owner's own swag site file (runbook sections 7 and 9), checked with the same rules as the sample
+# (#500). Made absolute here, before the script changes directory.
+swag_live="${PROD_CHECK_SWAG_CONF:-}"
+if [[ -n "$swag_live" ]]; then
+  [[ "$swag_live" == /* || "$swag_live" =~ ^[A-Za-z]:[/\\] ]] || swag_live="$PWD/$swag_live"
+  [[ -f "$swag_live" && -r "$swag_live" ]] \
+    || { echo "check-prod-compose: PROD_CHECK_SWAG_CONF=$swag_live is not a readable file (copy it somewhere you can read, runbook section 9)" >&2; exit 1; }
+fi
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 if [[ -f "$here/../compose.prod.yaml" && -d "$here/../docs/runbooks" ]]; then
   root="$(cd "$here/.." && pwd)"; layout=checkout
@@ -660,6 +678,7 @@ check_owner_proxy_ip() {
     return 2
   fi
   value="$(jq -r '.services.web.environment.CLASSBEAT_TRUSTED_PROXIES // ""' <<<"$out")"
+  owner_trusted="$value"
   proxy_ip_ok "$value" || fail "the real PROXY_IP must be one private IPv4 address (swag's), not a range, list or name" \
     || return 1
 }
@@ -669,6 +688,24 @@ case "$rc" in
   2) owner_note="no real PROXY_IP set here (only dummies checked)" ;;
   *) exit 1 ;;
 esac
+
+# The real PROXY_IP against the address swag really has (#500): a typo such as .130 for .10 is inside
+# Docker's allocation range, so the form check above passes it while web would trust nobody.
+# swag_address_verdict PROXY_IP "ADDRESS..." (swag's addresses on its networks, empty when the
+# container is not visible): 0 the address is one of them, 1 it is not, 2 nothing to compare.
+swag_address_verdict() {
+  local want="$1" have="$2" a
+  [[ -n "${have//[[:space:]]/}" ]] || return 2
+  for a in $have; do [[ "$a" == "$want" ]] && return 0; done
+  fail "PROXY_IP is $want but the running swag container has ${have% }: set PROXY_IP to swag's address (runbook section 6a)" || return 1
+}
+# The running swag container's addresses (no output when it is not running or Docker cannot be asked).
+swag_addresses() {
+  local name="${PROD_CHECK_SWAG_CONTAINER:-swag}"
+  [[ "$name" =~ ^[A-Za-z0-9][A-Za-z0-9_.-]*$ ]] || { fail "PROD_CHECK_SWAG_CONTAINER is not a container name"; return 1; }
+  docker inspect --format '{{if .State.Running}}{{range .NetworkSettings.Networks}}{{.IPAddress}} {{end}}{{end}}' \
+    "$name" 2>/dev/null || true
+}
 
 # Where the real stack publishes web (install mode): only web publishes a port, and only on loopback
 # (the host's own proxy) or on one private LAN address (compose.prod.lan.yaml, swag on another host),
@@ -688,6 +725,21 @@ check_real_ports() {   # check_real_ports RENDERED_JSON
 }
 if [[ "$mode" == install ]]; then
   check_real_ports "$real_json" || exit 1
+  # Only where web trusts PROXY_IP itself: not under the loopback overlay (the web-out gateway) and
+  # not with a published port (the LAN overlay: swag is on another host).
+  if [[ -n "${owner_trusted:-}" ]]; then
+    if [[ "$(jq -r '.services.web.environment.CLASSBEAT_TRUSTED_PROXIES // ""' <<<"$real_json")" == "$owner_trusted" ]] \
+        && jq -e '.services.web.ports // [] | length == 0' <<<"$real_json" >/dev/null; then
+      rc=0; swag_address_verdict "$owner_trusted" "$(swag_addresses)" || rc=$?
+      case "$rc" in
+        0) owner_note="$owner_note; PROXY_IP is the running swag container's address" ;;
+        2) owner_note="$owner_note; the swag container is not visible here: compare PROXY_IP with \`docker inspect\` by hand (runbook section 9)" ;;
+        *) exit 1 ;;
+      esac
+    else
+      owner_note="$owner_note; swag is not on the shared network of this host: PROXY_IP not compared with its address"
+    fi
+  fi
 fi
 
 # --- No OAuth client secret in an env file (#507) --------------------------------------------------
@@ -895,59 +947,218 @@ for m in \
   expect_runbook_refused "$m"
 done
 
-# --- The swag site config: the lines the app relies on, then nginx's own syntax check -------------
-sfail() { echo "check-prod-compose: $site: $*" >&2; return 1; }
-# shellcheck disable=SC2016  # literal nginx variables, not shell ones
-check_site() {
-  local code n
-  code="$(sed -e 's/#.*//' "$1")"   # comments do not count
-  has() { grep -Eq -- "$1" <<<"$code"; }
-  # X-Forwarded-For exactly once, overwritten with $remote_addr: a second line (whatever its value)
-  # sends a visitor-chosen entry right of swag's, and the app takes the right-most (#495).
-  n="$(grep -Eic -- "^[[:space:]]*proxy_set_header[[:space:]]+[\"']?x-forwarded-for[\"']?([[:space:]]|$)" <<<"$code" || true)"
-  [ "$n" = 1 ] || sfail "exactly one proxy_set_header X-Forwarded-For (found $n)" || return 1
-  has '^[[:space:]]*proxy_set_header X-Forwarded-For \$remote_addr;[[:space:]]*$' \
-    || sfail "X-Forwarded-For must be overwritten with \$remote_addr" || return 1
-  if has 'proxy_add_x_forwarded_for|include /config/nginx/proxy\.conf'; then
-    sfail "never append to a visitor's X-Forwarded-For (no proxy.conf)"; return 1
-  fi
-  # Only swag's TLS settings and the Cloudflare list are included: anything else could set headers.
-  if grep -E '^[[:space:]]*include[[:space:]]' <<<"$code" \
-      | grep -Evq '^[[:space:]]*include /config/nginx/(ssl|cf_real-ip)\.conf;[[:space:]]*$'; then
-    sfail "include only /config/nginx/ssl.conf and cf_real-ip.conf"; return 1
-  fi
-  has '^[[:space:]]*client_max_body_size 1m;' || sfail "client_max_body_size 1m (the app's cap is 64 KiB)" || return 1
-  if has 'add_header[[:space:]]+(Content-Security-Policy|Referrer-Policy)|proxy_hide_header|more_clear_headers'; then
-    sfail "the app's CSP and Referrer-Policy are neither added, hidden nor replaced here"; return 1
-  fi
-  if ! has '^[[:space:]]*server_name [a-z0-9.-]+;' || has 'server_name[^;]*\*'; then
-    sfail "server_name is the exact host"; return 1
-  fi
-  has '^[[:space:]]*server_tokens off;' || sfail "server_tokens off (no nginx version)" || return 1
-  if has 'server_tokens[[:space:]]+(on|build)|proxy_intercept_errors[[:space:]]+on'; then
-    sfail "no server_tokens on; the app's own errors pass through (no proxy_intercept_errors)"; return 1
-  fi
-  has '^[[:space:]]*real_ip_header CF-Connecting-IP;' || sfail "real IP from CF-Connecting-IP (Cloudflare ranges only)" || return 1
-  if has 'real_ip_recursive[[:space:]]+on|set_real_ip_from'; then
-    sfail "Cloudflare ranges belong in cf_real-ip.conf only, non-recursive"; return 1
-  fi
-  has 'add_header Strict-Transport-Security' || sfail "HSTS is the edge's job" || return 1
-  # The SSE location: unbuffered, long read timeout, and no proxy_set_header or add_header in any
-  # location (one there would silently drop the server-level forwarded headers or edge headers).
+# swag's address against PROXY_IP (#500): a match, a typo inside Docker's range, a second network,
+# and nothing to compare.
+swag_address_verdict 172.29.90.10 "172.29.90.10 " 2>/dev/null || { echo "check-prod-compose: self-test: swag's own address refused" >&2; exit 1; }
+swag_address_verdict 172.29.90.10 "10.1.0.5 172.29.90.10 " 2>/dev/null || { echo "check-prod-compose: self-test: swag's address on its second network refused" >&2; exit 1; }
+if (swag_address_verdict 172.29.90.130 "172.29.90.10 " 2>/dev/null); then
+  echo "check-prod-compose: self-test: a PROXY_IP that is not swag's address was accepted" >&2; exit 1
+fi
+rc=0; swag_address_verdict 172.29.90.10 "  " 2>/dev/null || rc=$?
+[[ "$rc" == 2 ]] || { echo "check-prod-compose: self-test: no swag address must be 'nothing to compare', not a verdict" >&2; exit 1; }
+fi
+
+# --- The swag site config: nginx's directives, not its lines; then nginx's own syntax check -------
+# #500: the first version counted lines, and four spellings of a second `proxy_set_header
+# X-Forwarded-For` got past it (a second directive on the line of another, one split over two lines,
+# one after a quoted "#" the comment stripper ate, one inside a one-line location). So the file is
+# read the way nginx reads it (site_directives, a tokenizer for ngx_conf_read_token's rules) and the
+# rules (site_verdict) look at directives and the block each one is in. Why not `nginx -T`: it dumps
+# the files as written, comments and layout intact, so it normalizes nothing; and the tokenizer needs
+# no Docker, which the owner's pre-deploy run may not reach. `nginx -t` still runs on the same file.
+# This is a best-effort lint of honest mistakes, like the compose checks (see the header).
+site_label="$site"
+sfail() { echo "check-prod-compose: $site_label: $*" >&2; return 1; }
+
+# site_directives FILE: one tab-separated record per token run, in file order:
+#   D<TAB>ctx<TAB>name<TAB>arg...   a directive (ctx: empty, server, server/location)
+#   B<TAB>ctx<TAB>name<TAB>arg...   a block opens (only `server`, then `location` inside it)
+#   E<TAB>ctx                       a block closed (ctx: where we are now)
+#   ERR<TAB>message                 not readable (exit 1)
+# Tokens as nginx reads them: whitespace separates; `#` starts a comment only at the start of a token;
+# '...' and "..." quote (so `;` `{` `#` inside are text) and must be followed by a delimiter; a
+# backslash makes the next character plain; `${name}` is `$name` and its `{` opens no block; `}`
+# inside a token is text; `;` ends a directive, `{` opens a block, `}` closes it. Tokens are unquoted
+# and their tabs and newlines become spaces.
+site_directives() {
   awk '
-    /^[[:space:]]*location / { inloc = 1; sse = ($0 ~ /events/); next }
-    inloc && /^[[:space:]]*}/ { inloc = 0; next }
-    inloc && /(proxy_set_header|add_header)/ { print "location sets " $1; bad = 1 }
-    inloc && sse && /proxy_buffering off;/ { buf = 1 }
-    inloc && sse && /proxy_read_timeout (9[0-9][0-9]|[1-9][0-9][0-9][0-9]+)s;/ { rt = 1 }
-    END { if (!buf) print "the SSE location needs proxy_buffering off"; if (!rt) print "the SSE location needs proxy_read_timeout of at least 900s"; exit (bad || !buf || !rt) }
-  ' <<<"$code" >&2 || sfail "location blocks" || return 1
+    function err(m,   t, ln) { t = substr(s, 1, i); ln = gsub(/\n/, "", t) + 1; print "ERR\tline " ln ": " m; failed = 1; exit 1 }
+    function emit(kind,   line, k) {
+      line = kind "\t" ctx
+      for (k = 1; k <= nt; k++) line = line "\t" tk[k]
+      print line; nt = 0
+    }
+    function esc(d) { return (d == "\"" || d == "\047" || d == "\\") ? d : "\\" d }
+    { s = s $0 "\n" }
+    END {
+      n = length(s); i = 1; nt = 0; depth = 0; ctx = ""
+      while (i <= n) {
+        c = substr(s, i, 1)
+        if (c == " " || c == "\t" || c == "\n" || c == "\r") { i++; continue }
+        if (c == "#") { while (i <= n && substr(s, i, 1) != "\n") i++; continue }
+        if (c == ";") { if (nt == 0) err("unexpected ;"); emit("D"); i++; continue }
+        if (c == "{") {
+          if (nt == 0) err("unexpected {")
+          if (depth == 0 && !(tk[1] == "server" && nt == 1)) err("only a server block is read at the top of this file")
+          if (depth == 1 && tk[1] != "location") err("only location blocks are read inside the server")
+          if (depth >= 2) err("no block inside a location")
+          emit("B"); depth++; ctx = (depth == 1 ? "server" : "server/location"); i++; continue
+        }
+        if (c == "}") {
+          if (nt > 0) err("missing ; before }")
+          if (depth == 0) err("unexpected }")
+          depth--; ctx = (depth == 0 ? "" : "server"); print "E\t" ctx; i++; continue
+        }
+        tok = ""
+        if (c == "\"" || c == "\047") {
+          q = c; i++; closed = 0
+          while (i <= n) {
+            c = substr(s, i, 1)
+            if (c == "\\") { d = substr(s, i + 1, 1); tok = tok esc(d); i += 2; continue }
+            if (c == q) { closed = 1; i++; break }
+            tok = tok c; i++
+          }
+          if (!closed) err("unterminated quote")
+          if (i <= n && substr(s, i, 1) !~ /[ \t\r\n;{)]/) err("unexpected character after a closing quote")
+        } else {
+          v = 0
+          while (i <= n) {
+            c = substr(s, i, 1)
+            if (c == "\\") { d = substr(s, i + 1, 1); tok = tok esc(d); i += 2; v = 0; continue }
+            if (c == " " || c == "\t" || c == "\n" || c == "\r" || c == ";") break
+            if (c == "{") { if (v) { tok = tok c; i++; continue } break }
+            v = (c == "$"); tok = tok c; i++
+          }
+        }
+        while (match(tok, /\$\{[A-Za-z0-9_]+\}/)) tok = substr(tok, 1, RSTART - 1) "$" substr(tok, RSTART + 2, RLENGTH - 3) substr(tok, RSTART + RLENGTH)
+        gsub(/[\t\r\n]/, " ", tok)
+        tk[++nt] = tok
+      }
+      if (nt > 0) err("missing ; at the end")
+      if (depth > 0) err("missing } at the end")
+    }
+  ' "$1"
 }
+
+# site_verdict LIVE: reads site_directives' records; prints each broken rule, exits 1 if any.
+# LIVE=1 (the owner's file) lets the Cloudflare include and real_ip_header both be absent (DNS only,
+# runbook section 8); the sample must have both.
+# shellcheck disable=SC2016  # literal nginx variables, not shell ones
+site_verdict() {
+  awk -F'\t' -v live="$1" '
+    BEGIN { rih = 0; cfinc = 0 }
+    function bad(m) { print m; nbad++ }
+    function fin() { if (inloc) { if (sse && !buf) bad("the SSE location needs proxy_buffering off"); if (sse && !rt) bad("the SSE location needs proxy_read_timeout of at least 900s") } inloc = 0 }
+    { kind = $1; ctx = $2; name = $3; a1 = tolower($4); args = ""
+      for (k = 4; k <= NF; k++) args = args (k > 4 ? " " : "") $k }
+    kind == "B" {
+      if (name == "server") nserver++
+      else { fin(); inloc = 1; buf = 0; rt = 0; sse = (index(args, "events") > 0) }
+      next
+    }
+    kind == "E" { fin(); next }
+    kind != "D" { next }
+    index(args, "proxy_add_x_forwarded_for") { bad("never append to a visitor X-Forwarded-For (no proxy_add_x_forwarded_for)") }
+    name == "proxy_set_header" {
+      if (ctx == "server/location") bad("a location sets proxy_set_header (it replaces every inherited one, X-Forwarded-For included): set none there")
+      if (a1 == "x-forwarded-for") {
+        nxff++
+        if (ctx != "server" || NF != 5 || $5 != "$remote_addr") badxff = 1
+      }
+    }
+    name == "add_header" {
+      if (ctx == "server/location") bad("a location sets add_header (it replaces every inherited one): set none there")
+      if (a1 == "content-security-policy" || a1 == "referrer-policy") bad("the app CSP and Referrer-Policy are neither added, hidden nor replaced here")
+      if (a1 == "strict-transport-security" && ctx == "server") hsts = 1
+    }
+    name == "proxy_hide_header" || name == "more_clear_headers" || name == "more_set_headers" { bad("the app CSP and Referrer-Policy are neither added, hidden nor replaced here") }
+    name == "include" {
+      if (ctx != "server" || NF != 4 || ($4 != "/config/nginx/ssl.conf" && $4 != "/config/nginx/cf_real-ip.conf")) bad("include only /config/nginx/ssl.conf and cf_real-ip.conf, in the server")
+      if ($4 == "/config/nginx/cf_real-ip.conf") cfinc = 1
+    }
+    name == "client_max_body_size" { nbody++; if (ctx != "server" || NF != 4 || $4 != "1m") bad("client_max_body_size 1m in the server only (the app cap is 64 KiB)") }
+    name == "server_name" { nsn++; if (ctx != "server" || NF != 4 || $4 !~ /^[a-z0-9.-]+$/) bad("server_name is the exact host") }
+    name == "server_tokens" { if (NF != 4 || a1 != "off") bad("no server_tokens on"); else if (ctx == "server") sto = 1 }
+    name == "proxy_intercept_errors" && a1 != "off" { bad("the app own errors pass through (no proxy_intercept_errors)") }
+    name == "real_ip_header" { if (ctx == "server" && NF == 4 && $4 == "CF-Connecting-IP") rih = 1; else bad("real IP from CF-Connecting-IP (Cloudflare ranges only)") }
+    name == "real_ip_recursive" && a1 != "off" { bad("Cloudflare ranges belong in cf_real-ip.conf only, non-recursive") }
+    name == "set_real_ip_from" { bad("Cloudflare ranges belong in cf_real-ip.conf only, non-recursive") }
+    ctx == "server/location" && name == "proxy_buffering" && a1 == "off" { buf = 1 }
+    ctx == "server/location" && name == "proxy_read_timeout" && $4 ~ /^(9[0-9][0-9]|[1-9][0-9][0-9][0-9]+)s$/ { rt = 1 }
+    END {
+      if (nserver != 1) bad("exactly one server block (found " nserver + 0 ")")
+      if (nxff != 1) bad("exactly one proxy_set_header X-Forwarded-For (found " nxff + 0 ")")
+      else if (badxff) bad("X-Forwarded-For must be overwritten with $remote_addr, once, in the server and in no location")
+      if (nbody != 1) bad("client_max_body_size 1m (found " nbody + 0 " directives)")
+      if (nsn != 1) bad("exactly one server_name, the exact host (found " nsn + 0 ")")
+      if (!sto) bad("server_tokens off in the server (no nginx version)")
+      if (!hsts) bad("add_header Strict-Transport-Security in the server (HSTS is the edge job)")
+      if (live ? (rih != cfinc) : !(rih && cfinc)) bad("real IP: include /config/nginx/cf_real-ip.conf and real_ip_header CF-Connecting-IP go together" (live ? " (both or neither with DNS only)" : ""))
+      exit (nbad > 0)
+    }
+  '
+}
+check_site() {   # check_site FILE [live]
+  local dirs msgs l
+  dirs="$(site_directives "$1")" || {
+    msgs="${dirs##*$'\n'}"; sfail "cannot read it as nginx directives: ${msgs#ERR$'\t'}"; return 1
+  }
+  msgs="$(site_verdict "${2:+1}" <<<"$dirs")" || {
+    while IFS= read -r l; do sfail "$l" || true; done <<<"$msgs"
+    return 1
+  }
+}
+
+# nginx -t on FILE with stand-ins for swag's ssl.conf and the Cloudflare list. Needs the Docker daemon
+# and the nginx image (pulled from Docker Hub on first use, runbook section 9).
+nginx_site_t() {   # nginx_site_t FILE
+  mkdir -p "$tmp/nginx"
+  printf 'ssl_certificate /tmp/cert.pem;\nssl_certificate_key /tmp/key.pem;\n' > "$tmp/nginx/ssl.conf"
+  printf 'set_real_ip_from 173.245.48.0/20;\n' > "$tmp/nginx/cf_real-ip.conf"
+  printf 'events {}\nhttp {\n  resolver 127.0.0.11;\n  include /config/nginx/proxy-confs/classbeat.subdomain.conf;\n}\n' > "$tmp/nginx/nginx.conf"
+  cp "$1" "$tmp/nginx/site.conf" || { sfail "cannot copy it (readable by this user?)"; return 1; }
+  nginx_t() {
+    docker run --rm --network none \
+      -v "$dir/nginx/site.conf:/config/nginx/proxy-confs/classbeat.subdomain.conf:ro" \
+      -v "$dir/nginx/ssl.conf:/config/nginx/ssl.conf:ro" \
+      -v "$dir/nginx/cf_real-ip.conf:/config/nginx/cf_real-ip.conf:ro" \
+      -v "$dir/nginx/nginx.conf:/check/nginx.conf:ro" \
+      "$nginx_image" sh -c 'set -e; mkdir -p /config/log/nginx
+        openssl req -x509 -newkey rsa:2048 -nodes -subj /CN=classbeat.example.test -days 1 \
+          -keyout /tmp/key.pem -out /tmp/cert.pem 2>/dev/null
+        nginx -t -q -c /check/nginx.conf' >"$tmp/nginx.log" 2>&1
+  }
+  if ! nginx_t; then
+    # nginx -t opens its listening sockets; a kernel without IPv6 (some VMs) cannot open [::]:443.
+    # Only then, check the rest without that one line and say so.
+    grep -q 'Address family not supported' "$tmp/nginx.log" || { cat "$tmp/nginx.log" >&2; sfail "nginx -t failed"; return 1; }
+    sed -i '/listen \[::\]:443 ssl;/d' "$tmp/nginx/site.conf"
+    nginx_t || { cat "$tmp/nginx.log" >&2; sfail "nginx -t failed"; return 1; }
+    echo "check-prod-compose: no IPv6 here: nginx -t ran without the [::]:443 listen line" >&2
+  fi
+}
+
+if [[ $mode == repo ]]; then   # the sample and its self-tests (ADR 0020)
 check_site "$site" || exit 1
+# expect_site_refused SED [FRAGMENT]: the mutated sample must be refused, and with FRAGMENT in the
+# message when given (so a mutation that merely fails to parse cannot pass for the rule it is for).
 expect_site_refused() {
   sed -E "$1" "$site" > "$tmp/site-mutated.conf"
-  if (check_site "$tmp/site-mutated.conf" 2>/dev/null); then
+  if (check_site "$tmp/site-mutated.conf" 2>"$tmp/site-refuse.log"); then
     echo "check-prod-compose: self-test: accepted an unsafe site config: $1" >&2; exit 1
+  fi
+  if [[ -n "${2:-}" ]] && ! grep -qF -- "$2" "$tmp/site-refuse.log"; then
+    cat "$tmp/site-refuse.log" >&2
+    echo "check-prod-compose: self-test: refused for another reason than '$2': $1" >&2; exit 1
+  fi
+}
+# The harmless rewrites: the same directives in another layout must still pass (the tokenizer must
+# not see a second directive, or lose one, where nginx sees none).
+expect_site_accepted() {
+  sed -E "$1" "$site" > "$tmp/site-mutated.conf"
+  if ! (check_site "$tmp/site-mutated.conf" 2>"$tmp/site-accept.log"); then
+    cat "$tmp/site-accept.log" >&2
+    echo "check-prod-compose: self-test: refused a valid site config: $1" >&2; exit 1
   fi
 }
 # shellcheck disable=SC2016  # literal nginx variables, not shell ones
@@ -958,45 +1169,67 @@ for m in \
   '/proxy_set_header X-Forwarded-For \$remote_addr;/i\    proxy_set_header "X-Forwarded-For" $http_x_forwarded_for;' \
   '/proxy_set_header X-Forwarded-For \$remote_addr;/d' \
   's/proxy_set_header X-Forwarded-For \$remote_addr;/proxy_set_header X-Forwarded-For $http_x_forwarded_for;/' \
+  's/^( *)location @classbeat_down \{$/\1server { server_name classbeat.example.test; }\n&/' \
+  '$a\server { listen 8443; server_name other.example.test; }' \
   '/include \/config\/nginx\/ssl.conf;/a\    include /config/nginx/proxy.conf;' \
   '/include \/config\/nginx\/ssl.conf;/a\    include /config/nginx/extra-headers.conf;' \
   '/server_tokens off;/d' \
   's/server_tokens off;/server_tokens on;/' \
   '/error_page 502/a\    proxy_intercept_errors on;' \
   '/client_max_body_size 1m;/d' \
+  '/client_max_body_size 1m;/a\    client_max_body_size 100m;' \
   '/add_header Strict-Transport-Security/a\    add_header Content-Security-Policy "default-src *" always;' \
   's/proxy_buffering off;/proxy_buffering on;/' \
   '/return 502/a\        add_header Cache-Control "no-store" always;' \
-  's/real_ip_header CF-Connecting-IP;/real_ip_header X-Forwarded-For;/'; do
+  's/real_ip_header CF-Connecting-IP;/real_ip_header X-Forwarded-For;/' \
+  '/include \/config\/nginx\/cf_real-ip.conf;/d' \
+  's/^( *)location \/ \{$/&\n        if ($host) { return 200; }/' \
+  's/proxy_set_header X-Forwarded-For \$remote_addr;/proxy_set_header X-Forwarded-For $remote_addr/'; do
   expect_site_refused "$m"
 done
-
-mkdir -p "$tmp/nginx"
-printf 'ssl_certificate /tmp/cert.pem;\nssl_certificate_key /tmp/key.pem;\n' > "$tmp/nginx/ssl.conf"
-printf 'set_real_ip_from 173.245.48.0/20;\n' > "$tmp/nginx/cf_real-ip.conf"
-printf 'events {}\nhttp {\n  resolver 127.0.0.11;\n  include /config/nginx/proxy-confs/classbeat.subdomain.conf;\n}\n' > "$tmp/nginx/nginx.conf"
-cp "$site" "$tmp/nginx/site.conf"
-nginx_t() {
-  docker run --rm --network none \
-    -v "$dir/nginx/site.conf:/config/nginx/proxy-confs/classbeat.subdomain.conf:ro" \
-    -v "$dir/nginx/ssl.conf:/config/nginx/ssl.conf:ro" \
-    -v "$dir/nginx/cf_real-ip.conf:/config/nginx/cf_real-ip.conf:ro" \
-    -v "$dir/nginx/nginx.conf:/check/nginx.conf:ro" \
-    "$nginx_image" sh -c 'set -e; mkdir -p /config/log/nginx
-      openssl req -x509 -newkey rsa:2048 -nodes -subj /CN=classbeat.example.test -days 1 \
-        -keyout /tmp/key.pem -out /tmp/cert.pem 2>/dev/null
-      nginx -t -q -c /check/nginx.conf' >"$tmp/nginx.log" 2>&1
-}
-if ! nginx_t; then
-  # nginx -t opens its listening sockets; a kernel without IPv6 (some VMs) cannot open [::]:443.
-  # Only then, check the rest without that one line and say so.
-  grep -q 'Address family not supported' "$tmp/nginx.log" || { cat "$tmp/nginx.log" >&2; sfail "nginx -t failed"; exit 1; }
-  sed -i '/listen \[::\]:443 ssl;/d' "$tmp/nginx/site.conf"
-  nginx_t || { cat "$tmp/nginx.log" >&2; sfail "nginx -t failed"; exit 1; }
-  echo "check-prod-compose: no IPv6 here: nginx -t ran without the [::]:443 listen line" >&2
+# The four spellings of a second X-Forwarded-For that the line-based check missed (#500), each with
+# the visitor-chosen value and with $remote_addr, and a location that carries the header itself.
+# shellcheck disable=SC2016  # literal nginx variables, not shell ones
+for v in '$http_x_forwarded_for' '$remote_addr'; do
+  one='exactly one proxy_set_header X-Forwarded-For (found 2)'
+  # (a) a second directive on the line of X-Forwarded-Proto, after the overwrite
+  expect_site_refused 's/^( *proxy_set_header X-Forwarded-Proto https;)$/\1 proxy_set_header X-Forwarded-For '"$v"';/' "$one"
+  # (b) the directive split over two lines (after its name, and before its value)
+  expect_site_refused 's/^( *proxy_set_header X-Forwarded-Proto https;)$/\1\n    proxy_set_header\n        X-Forwarded-For '"$v"';/' "$one"
+  expect_site_refused 's/^( *proxy_set_header X-Forwarded-Proto https;)$/\1\n    proxy_set_header X-Forwarded-For\n        '"$v"';/' "$one"
+  # (c) after a quoted "#" (and after a "#" inside a token) that a comment stripper would cut at
+  expect_site_refused 's/^( *proxy_set_header Host \$host;)$/\1\n    proxy_set_header X-Real-IP "#"; proxy_set_header X-Forwarded-For '"$v"';/' "$one"
+  expect_site_refused 's/^( *proxy_set_header Host \$host;)$/\1\n    proxy_set_header X-Real-IP a#b; proxy_set_header X-Forwarded-For '"$v"';/' "$one"
+  # (d) a one-line location block, and a multi-line one: a location's own proxy_set_header replaces
+  # every inherited one, so it is refused whatever it sets
+  expect_site_refused 's/^( *)location @classbeat_down \{$/\1location \/api\/ { proxy_set_header X-Forwarded-For '"$v"'; proxy_pass http:\/\/$upstream_classbeat:8000; }\n&/' \
+    'a location sets proxy_set_header'
+  expect_site_refused 's/^( *)location \/ \{$/&\n        proxy_set_header\n            X-Forwarded-For '"$v"';/' \
+    'a location sets proxy_set_header'
+done
+# A location that sets some other header drops the server-level overwrite from what it forwards.
+# shellcheck disable=SC2016  # literal nginx variables, not shell ones
+expect_site_refused 's/^( *)location @classbeat_down \{$/\1location \/api\/ { proxy_set_header Host $host; proxy_pass http:\/\/$upstream_classbeat:8000; }\n&/' \
+  'a location sets proxy_set_header'
+# shellcheck disable=SC2016  # literal nginx variables, not shell ones
+for m in \
+  's/proxy_set_header X-Forwarded-For \$remote_addr;/proxy_set_header\n        "x-forwarded-for"\n        ${remote_addr}; # proxy_set_header X-Forwarded-For $http_x_forwarded_for;/' \
+  's/^( *proxy_set_header Host \$host;)$/\1\n    proxy_set_header X-Real-IP "a # b ; proxy_set_header X-Forwarded-For x"; proxy_set_header X-Real-Host a#b;/' \
+  's/^( *)location @classbeat_down \{$/\1location = \/health { return 200 "ok"; }\n&/' \
+  's/^( *proxy_set_header X-Forwarded-Proto https;)$/\1 # proxy_set_header X-Forwarded-For $http_x_forwarded_for;/'; do
+  expect_site_accepted "$m"
+done
+nginx_site_t "$site" || exit 1
 fi
 
+# The owner's own file (PROD_CHECK_SWAG_CONF, runbook sections 7 and 9): the same rules and nginx -t.
+if [[ -n "$swag_live" ]]; then
+  site_label="$swag_live"
+  check_site "$swag_live" live || exit 1
+  nginx_site_t "$swag_live" || exit 1
+  owner_note="$owner_note; the swag site config $swag_live passes the directive rules and nginx -t"
 fi
+
 # --- The secret files, as every service sees them (--probe) --------------------------------------
 # What the runbook did by hand: for each service that mounts secrets, run the pulled image with a
 # shell that asks the kernel (`test -r`, nothing is opened or printed) about every file in

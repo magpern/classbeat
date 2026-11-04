@@ -2,7 +2,7 @@ import { test, expect, type BrowserContext, type Page } from '@playwright/test'
 import { PASSWORD, signInThroughUi, signUpThroughUi, uniqueEmail } from './helpers'
 import { PLAYLISTS, connectMowl, fakeMowl, getJob, jobId } from './design-helpers'
 import { useModelScript } from './model-script'
-import { designRunningAndOpen } from './class-helpers'
+import { designRunningAndOpen, storeRunning } from './class-helpers'
 import {
   audit,
   grantAdmin,
@@ -32,12 +32,14 @@ test.beforeAll(async ({ browser, baseURL }) => {
   context = await stackContext(browser, baseURL!)
   page = await context.newPage()
   consoleErrors = watchConsole(page)
+  storeRunning('on') // the Running pages need the stored flag (#509: nothing stored is off)
 })
 
 test.afterAll(async () => {
   // The running design points the worker's script at running_first_draft; the specs after this one
   // design with the default script.
   useModelScript('good_first_draft')
+  storeRunning(null)
   await context.close()
 })
 
