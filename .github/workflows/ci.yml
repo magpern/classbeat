@@ -158,6 +158,13 @@ jobs:
       - name: Production compose and swag config
         run: scripts/check-prod-compose.sh
 
+      # The release's deploy files (ADR 0020, #566): scripts/release-assets.sh builds them with a
+      # verifying SHA256SUMS, and the asset copy of check-prod-compose.sh passes and fails, from an
+      # install folder with no docs/, on the cases scripts/test-install-check.sh lists (group 10010
+      # needs the runner's sudo; --probe runs against a stub docker).
+      - name: Release assets and the install check
+        run: scripts/test-install-check.sh
+
       # Every setup-uv step's version equals the Dockerfile's uv tag (scripts/ci-uv-version.sh).
       - name: uv version matches the Dockerfile
         run: scripts/ci-uv-version.sh

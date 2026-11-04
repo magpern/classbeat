@@ -126,6 +126,7 @@ CLASSIFIED: dict[tuple[str, str], str] = {
     ("GET", "/api/classes/{class_id}/revisions/{revision_id}"): "owned",
     ("GET", "/api/classes/{class_id}/messages"): "owned",
     ("POST", "/api/classes/{class_id}/current"): "owned",
+    ("POST", "/api/classes/{class_id}/duplicate"): "owned",
     ("POST", "/api/classes/{class_id}/swedebeat-match"): "owned",
     ("GET", "/api/classes/{class_id}/swedebeat-handoff"): "owned",
     ("POST", "/api/classes/{class_id}/swedebeat-handoff"): "owned",
@@ -593,6 +594,8 @@ class OwnedRoute:
     # What the owner's own call may answer: never 404. ``None``: no owner call (it would reach a
     # provider or is the destructive twin of a read checked on the same ids).
     control: frozenset[int] | None = frozenset({200})
+    # Headers every call of the route sends (the duplicate's ``Idempotency-Key``).
+    headers: dict[str, str] | None = None
 
     @property
     def key(self) -> tuple[str, str]:
@@ -602,6 +605,9 @@ class OwnedRoute:
 def _pick(rows: Rows) -> dict[str, str]:
     return {"revision_id": str(rows.revision_id), "content_hash": rows.digest}
 
+
+# One key for every call of the duplicate case (made per run, not a literal).
+DUPLICATE_KEY = uuid.uuid4().hex
 
 OWNED_ROUTES = [
     OwnedRoute("GET", "/api/jobs/{job_id}"),
@@ -617,6 +623,14 @@ OWNED_ROUTES = [
     OwnedRoute("GET", "/api/classes/{class_id}/revisions/{revision_id}"),
     OwnedRoute("GET", "/api/classes/{class_id}/messages"),
     OwnedRoute("POST", "/api/classes/{class_id}/current", _pick, frozenset({200, 409})),
+    # The planted class has no stored brief: the owner's own duplicate is 409 not_ready.
+    OwnedRoute(
+        "POST",
+        "/api/classes/{class_id}/duplicate",
+        lambda rows: _pick(rows) | {"title": "Copy"},
+        frozenset({409}),
+        {"Idempotency-Key": DUPLICATE_KEY},
+    ),
     # Flag off (the test app): 404 feature_off before the class is read. Flag on, a draft is not
     # a match, so the owner still gets 404 not_found.
     OwnedRoute(
@@ -700,27 +714,29 @@ async def test_owned_routes_answer_404_for_another_users_ids(
     unknown = {n: uuid.UUID(UNKNOWN) for n in OWNED_PATH_PARAMS}
     body = route.body(alice_rows) if route.body else None
     # What an id that exists nowhere gets is the reference answer.
-    reference = await bob.call(route.method, fill(route.template, **unknown), body)
+    reference = await bob.call(route.method, fill(route.template, **unknown), body, route.headers)
     assert reference.status_code == 404, reference.text
     before = owned_state(superuser, alice_rows), owned_state(superuser, bob_rows)
 
     for label, ids in crossings(route, bob_rows, alice_rows):
-        foreign = await bob.call(route.method, fill(route.template, **ids), body)
+        foreign = await bob.call(route.method, fill(route.template, **ids), body, route.headers)
         assert foreign.status_code == 404, (label, foreign.status_code, foreign.text)
         if foreign.headers.get("content-type", "").startswith("application/json"):
             assert foreign.json() == reference.json(), (label, foreign.text, reference.text)
     if "{class_id}" in route.template and "{revision_id}" in route.template:
         mixed = bob_rows.params() | {"revision_id": alice_rows.revision_id}
-        answer = await bob.call(route.method, fill(route.template, **mixed), body)
+        answer = await bob.call(route.method, fill(route.template, **mixed), body, route.headers)
         assert answer.status_code == 404, answer.text
         mixed = alice_rows.params() | {"class_id": bob_rows.class_id}
-        answer = await alice.call(route.method, fill(route.template, **mixed), body)
+        answer = await alice.call(route.method, fill(route.template, **mixed), body, route.headers)
         assert answer.status_code == 404, answer.text
     assert (owned_state(superuser, alice_rows), owned_state(superuser, bob_rows)) == before
 
     # The owner's own call is not a 404: the ids were real.
     if route.control is not None:
-        own = await alice.call(route.method, fill(route.template, **alice_rows.params()), body)
+        own = await alice.call(
+            route.method, fill(route.template, **alice_rows.params()), body, route.headers
+        )
         assert own.status_code in route.control, (own.status_code, own.text)
     else:
         sibling = await alice.get(f"/api/external-operations/{alice_rows.operation_id}")

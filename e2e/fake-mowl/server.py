@@ -32,6 +32,11 @@ answered as MOWL making a copy: a new, empty program with the header, the origin
 `save-edit?program=<id>` changes a program's name as the user would in the MOWL app.
 `save-sport?program=<id>&sport=0|1` sets a program's own `ActivityTypeID` (0 cycling, 1 running) as
 if the user had put another kind of program in its place (Update then answers `program_other_sport`).
+A program saved without music (`PlaylistID: -1`, a soundless class) is kept as written; how it reads
+back is **unverified** against real MOWL, so `save-no-music?read=-1|null|absent&keep=0|1` chooses it
+(`-1` as written by default; `null`; `absent`, no `PlaylistID` key; `Playlist` is null for it) and
+whether an Update sending -1 keeps a positive playlist the user attached in the app
+(`save-playlist?program=<id>&playlist=<n>`); `save-arm` resets both.
 
 It also speaks the Swedebeat calls (ADR 0016, A1; `swedebeat_mixes.py` beside it): the caller's
 mixes, the attach, the indexing and `TemporaryLinks`, whose link names an unlisted media host that no
@@ -95,6 +100,12 @@ SAVE = {"writes": 0, "next_program": 800_000, "next_segment": 950_000}
 FAIL: dict[int, str] = {}
 FAIL_MODES = ("refuse", "drop", "noid", "copy")
 LISTING = {"hidden": False}  # My Workouts answers empty: MOWL's listing has not caught up
+# A program saved without music (`PlaylistID: -1`, a soundless class, ADR 0007 amendment of
+# 2026-11-03, item 8). What real MOWL reads back for it is UNVERIFIED (the owner's live check):
+# `read` is how a stored -1 is served (`-1` as written, `null`, or `absent`: no key), and `keep`
+# plays an update sending -1 that keeps a positive playlist attached in the app.
+NO_MUSIC: dict[str, object] = {"read": "-1", "keep": False}
+NO_MUSIC_READS = ("-1", "null", "absent")
 POSITION_NAMES = {1: "Seated", 2: "Standing"}
 CYCLE_NAMES = {1: "SB", 4: "ACC"}
 TOKENS: set[str] = set()
@@ -241,6 +252,9 @@ def apply_write(token: str, method: str, path: str, body: object, copy: bool = F
         program = PROGRAMS.get(int(update[1]))
         if program is None or program["token"] != token:
             return None
+        had = program["body"].get("PlaylistID")  # type: ignore[union-attr]
+        if NO_MUSIC["keep"] and header.get("PlaylistID") == -1 and isinstance(had, int) and had > 0:
+            header["PlaylistID"] = had  # the unverified case: MOWL keeps the app's playlist
         program["body"].update(header)  # type: ignore[union-attr]
         return {"ProgramID": int(update[1]), "Name": header.get("Name")}
     if path == "/v1/programs":
@@ -300,14 +314,21 @@ def read_program(program_id: int, program: dict[str, object]) -> dict[str, objec
         assert isinstance(seg_body, dict)
         total += int(seg_body.get("TotalDuration") or 0)
         segments.append({"SegmentID": segment_id, **seg_body, "Intervals": intervals})
+    playlist = body.get("PlaylistID")
+    music = isinstance(playlist, int) and playlist > 0
+    shown: dict[str, object] = {"PlaylistID": playlist}
+    if playlist == -1:  # no music: served as `NO_MUSIC["read"]` says (unverified live)
+        shown = {"-1": {"PlaylistID": -1}, "null": {"PlaylistID": None}, "absent": {}}[
+            str(NO_MUSIC["read"])
+        ]
     return {
         "ProgramID": program_id,
         "Name": body.get("Name"),
         "Description": body.get("Description"),
         "ShortDescription": body.get("ShortDescription"),
         "IsPublic": bool(body.get("IsPublic")),
-        "PlaylistID": body.get("PlaylistID"),
-        "Playlist": {"PlaylistType": "Spotify", "PlaylistName": "E2E"},
+        **shown,
+        "Playlist": {"PlaylistType": "Spotify", "PlaylistName": "E2E"} if music else None,
         "TotalDuration": total,
         "TSS": body.get("TSS"),
         # The program's own sport as written (the library sends 0 for cycling): Update refuses a
@@ -575,6 +596,12 @@ class Handler(BaseHTTPRequestHandler):
         if action == "save-sport":
             self.save_sport((query.get("program") or [""])[0], (query.get("sport") or [""])[0])
             return
+        if action == "save-no-music":
+            self.save_no_music((query.get("read") or ["-1"])[0], (query.get("keep") or ["0"])[0])
+            return
+        if action == "save-playlist":
+            self.save_playlist((query.get("program") or [""])[0], (query.get("playlist") or [""])[0])
+            return
         playlist = BY_SPOTIFY.get((query.get("playlist") or [""])[0])
         if playlist is None:
             self.reply(404, {"Error": "unknown playlist"})
@@ -608,6 +635,24 @@ class Handler(BaseHTTPRequestHandler):
             if found is not None:
                 found["body"]["ActivityTypeID"] = int(sport)  # type: ignore[index]
         self.reply(200 if found is not None else 404, {"changed": found is not None})
+
+    def save_no_music(self, read: str, keep: str) -> None:
+        """How a program saved with `PlaylistID: -1` reads back, and whether an update sending -1
+        keeps an attached playlist (both unverified against real MOWL). `save-arm` resets both."""
+        if read not in NO_MUSIC_READS or keep not in ("0", "1"):
+            self.reply(400, {"Error": "read is -1|null|absent, keep is 0|1"})
+            return
+        with LOCK:
+            NO_MUSIC.update(read=read, keep=keep == "1")
+        self.reply(200, dict(NO_MUSIC))
+
+    def save_playlist(self, program: str, playlist: str) -> None:
+        """The user attaches a playlist to a program in the MOWL app (a positive id)."""
+        with LOCK:
+            found = PROGRAMS.get(int(program)) if program.isdigit() and playlist.isdigit() else None
+            if found is not None:
+                found["body"]["PlaylistID"] = int(playlist)  # type: ignore[index]
+        self.reply(200 if found is not None else 404, {"attached": found is not None})
 
     def save_programs(self) -> None:
         """What each program holds, for the tests: accounts numbered by their oldest program (no
@@ -661,6 +706,7 @@ class Handler(BaseHTTPRequestHandler):
                 FAIL.clear()
                 FAIL.update(wanted)
                 LISTING["hidden"] = False
+                NO_MUSIC.update(read="-1", keep=False)
                 if reset == "1":  # every program and segment is forgotten (a test's clean start)
                     PROGRAMS.clear()
                     SEGMENTS.clear()

@@ -55,12 +55,15 @@ class Actor:
     token: str
     client: httpx.AsyncClient
 
-    async def call(self, method: str, path: str, json: Any = None) -> httpx.Response:
+    async def call(
+        self, method: str, path: str, json: Any = None, extra: dict[str, str] | None = None
+    ) -> httpx.Response:
         info = await self.client.get("/api/auth/session", headers=session_cookie(self.token))
         headers = {
             "Origin": ORIGIN,
             "X-CSRF-Token": info.json()["csrf_token"],
             **session_cookie(self.token),
+            **(extra or {}),
         }
         response = await self.client.request(method, path, headers=headers, json=json)
         self.client.cookies.clear()
