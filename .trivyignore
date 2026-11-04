@@ -1,0 +1,35 @@
+# Go standard library v1.24.6 inside /usr/local/bin/gosu of the postgres:17.11 base image (the
+# classbeat-db image, ADR 0020); the fixes are in Go 1.25/1.26, so only a newer postgres tag removes
+# them. That tag moves the queue functions' md5 (queue_digests.py) and is a separate change (#610).
+# Unreachable in practice: gosu is never run here, the image starts as USER postgres and compose runs
+# the services as postgres, so there is no root entrypoint re-exec. Confirmed with Trivy 0.76.1 on
+# 2026-11-04; the 26 IDs below are exactly the fixable HIGH/CRITICAL findings of that one file. The
+# ignore is time-boxed to 90 days (AGENTS.md "New advisory"): remove it with the postgres bump, or
+# renew it only with a fresh reason in a reviewed change.
+
+CVE-2025-68121 exp:2027-02-02
+CVE-2025-61726 exp:2027-02-02
+CVE-2025-61729 exp:2027-02-02
+CVE-2026-111943 exp:2027-02-02
+CVE-2026-25679 exp:2027-02-02
+CVE-2026-27145 exp:2027-02-02
+CVE-2026-32280 exp:2027-02-02
+CVE-2026-32281 exp:2027-02-02
+CVE-2026-32283 exp:2027-02-02
+CVE-2026-33811 exp:2027-02-02
+CVE-2026-33814 exp:2027-02-02
+CVE-2026-33818 exp:2027-02-02
+CVE-2026-39820 exp:2027-02-02
+CVE-2026-39821 exp:2027-02-02
+CVE-2026-39822 exp:2027-02-02
+CVE-2026-39836 exp:2027-02-02
+CVE-2026-42499 exp:2027-02-02
+CVE-2026-42504 exp:2027-02-02
+CVE-2026-56853 exp:2027-02-02
+CVE-2026-56858 exp:2027-02-02
+CVE-2026-56859 exp:2027-02-02
+CVE-2026-56860 exp:2027-02-02
+CVE-2026-56862 exp:2027-02-02
+CVE-2026-78667 exp:2027-02-02
+CVE-2026-78669 exp:2027-02-02
+CVE-2026-97031 exp:2027-02-02
