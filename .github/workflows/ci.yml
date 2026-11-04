@@ -738,7 +738,7 @@ jobs:
         run: |
           "$RUNNER_TEMP/trivy" image \
             --severity HIGH,CRITICAL --ignore-unfixed --exit-code 1 \
-            --skip-files usr/local/bin/gosu \
+            --skip-files /usr/local/bin/gosu --skip-files usr/local/bin/gosu \
             classbeat-db-check
 
       # Playwright steps run only when the UI, e2e, compose or Docker files changed (the
