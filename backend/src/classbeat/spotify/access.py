@@ -33,12 +33,14 @@ margin is refreshed first, exactly as above (the token endpoint's own flip inclu
 never flips. That refresh runs as its own task under ``asyncio.shield``, kept in ``_SHIELDED``
 (the loop holds tasks only weakly), so a request the browser leaves never cancels it: a refresh
 cut after Spotify answered but before its transaction stored the rotated refresh token would lose
-it. Only the refresh is shielded, so an abandoned request sends no further reads.
+it. Only the refresh is shielded, so an abandoned request sends no further reads. Its
+``before_read`` hook is awaited after the refresh (when there is one) and right before the read is
+sent; when it raises, nothing is sent (the cover read re-checks its gates there, #470).
 """
 
 import asyncio
 import time
-from collections.abc import Callable, Coroutine
+from collections.abc import Awaitable, Callable, Coroutine
 from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -154,6 +156,7 @@ async def spotify_call[T](
     expect: OpenConnection | None = None,
     single_request: bool = False,
     read_only: bool = False,
+    before_read: Callable[[], Awaitable[None]] | None = None,
 ) -> T:
     """Run ``fn(credentials)`` (a ``mowl.spotify_web`` call) for ``ctx``'s Spotify connection.
 
@@ -162,7 +165,8 @@ async def spotify_call[T](
     or nothing is sent (``not_connected``). ``single_request``: ``fn`` is exactly one HTTP
     request, so a refusal of it proves no effect (``ConnectionFailure.not_applied``,
     ``run_library_call``). ``read_only``: the cover read's mode (module docstring); not with
-    ``write``.
+    ``write``. ``before_read`` (read-only mode only): awaited right before the read is sent, after
+    any refresh; whatever it raises propagates and nothing is sent.
 
     ``ConnectionFailure`` with a category of ADR 0009 section 8 (or ``not_connected``,
     ``key_unavailable``, ``decrypt_failed`` before any call), its ``provider`` ``"spotify"``;
@@ -180,6 +184,7 @@ async def spotify_call[T](
             expect=expect,
             single_request=single_request,
             read_only=read_only,
+            before_read=before_read,
         )
     except ConnectionFailure as failure:
         failure.provider = PROVIDER
@@ -198,15 +203,20 @@ async def _call[T](
     expect: OpenConnection | None,
     single_request: bool,
     read_only: bool = False,
+    before_read: Callable[[], Awaitable[None]] | None = None,
 ) -> T:
     if read_only and write:
         raise ValueError("the read-only mode never writes")
+    if before_read is not None and not read_only:
+        raise ValueError("before_read is the read-only mode's")
     http = http if http is not None else SpotifyHttp()
     opened = _expected(await open_connection(factory, ring, ctx, PROVIDER), expect)
     if _expiring(opened, margin_seconds, time.time()):
         refresh = refresh_if_needed(factory, ring, ctx, http, margin_seconds=margin_seconds)
         await (_shielded(refresh) if read_only else refresh)
         opened = _expected(await open_connection(factory, ring, ctx, PROVIDER), expect)
+    if before_read is not None:
+        await before_read()
     result, failure = await _attempt(factory, ctx, opened, fn, single_request, record=not read_only)
     if failure is None:
         return result  # pyright: ignore[reportReturnType]

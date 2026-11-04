@@ -186,6 +186,21 @@ if (( can_gid )); then
     ok "swag address: not visible is a note, not a failure"; else bad "swag address: not visible: $(tail -2 <<<"$out")"; fi
 fi
 
+# 3c. nginx -t failing on the owner's swag file (stub `docker run`, #470): only the bounded summary is
+# printed, never nginx's log, whose quoted tokens can come from the live file.
+if (( can_gid )); then
+  canary="CANARY-$RANDOM$RANDOM-swag"
+  { cat "$install/swag-classbeat.subdomain.conf"; printf '# %s\n' "$canary"; } > "$work/swag-canary.conf"
+  rc=0
+  out="$(cd "$install" && PATH="$stub:$PATH" PROD_CHECK_SWAG_CONF="$work/swag-canary.conf" REVS_RC=1 \
+    REVS_OUT="nginx: [emerg] unknown directive \"$canary\" in /config/nginx/proxy-confs/classbeat.subdomain.conf:7
+$canary" ./check-prod-compose.sh --install 2>&1)" || rc=$?
+  if [ "$rc" = 1 ] && grep -q 'nginx -t: emerg at line 7 of the site config' <<<"$out" \
+    && grep -q 'nginx -t failed' <<<"$out" && ! grep -qF -- "$canary" <<<"$out"; then
+    ok "nginx -t failure prints only the redacted summary"
+  else bad "nginx -t failure summary (rc $rc): $(grep -c -F -- "$canary" <<<"$out") canary line(s)"; fi
+fi
+
 # 4. --rollback-check OLD: the database's revision must be one OLD's image carries (stub docker).
 rb() {   # rb NAME WANT_RC PATTERN DB_REV REVS_OUT [DB_RC REVS_RC]
   local name="$1" want="$2" pat="$3" out rc=0

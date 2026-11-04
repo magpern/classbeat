@@ -9,7 +9,9 @@ request carries the class and at most a candidate mix id.
   unexpired row for that match; then at most 10 jobs of this kind per user per hour. A verified
   row is not a job (the endpoint answers 200). Nothing is attached here.
 - **run**: the flag again (a queued job ends ``feature_off`` with no request). An expired row
-  ends ``handoff_expired`` before the connection is opened. The match is checked again. The
+  ends ``handoff_expired`` before the connection is opened. A class soundless by now ends
+  ``invalid_input`` (``music_kind.still_has_music``), before the listing and again before the
+  attach (#470). The match is checked again. The
   user's mixes are listed. With no chosen mix, one new mix (not in the snapshot) is analysed;
   none is ``not_found``; several are remembered so the user can pick, and nothing is attached.
   A client mix id is analysed only when it is in that fresh listing. The analysis is §3's
@@ -165,6 +167,7 @@ async def _ready(
             raise JobFailure("invalid_input")
         if row.expired:
             raise JobFailure("handoff_expired")
+        await music_kind.still_has_music(fs, given.the_class)  # before the listing (#470)
         bound, _reason = await stored_approval(fs.db, run.lease.owner_id, given.the_class)
         if bound is None or bound.revision_id != row.match_revision_id:
             raise JobFailure("invalid_input")
@@ -225,6 +228,7 @@ async def run(job_run: JobRun) -> Complete:
         row = await by_id(fs.db, job_run.lease.owner_id, handoff_id)
         if row is None or row.expired:
             raise JobFailure("handoff_expired")
+        await music_kind.still_has_music(fs, given.the_class)  # before the attach (#470)
     analysis = await load_swedebeat_mix(
         job_run, settings.keyring, chosen, connection_id=given.mowl_connection_id
     )

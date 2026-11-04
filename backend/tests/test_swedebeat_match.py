@@ -764,7 +764,55 @@ async def test_a_soundless_class_is_not_matched_at_admit_or_in_the_store(
     job_id = await _run(env)
     row = _job(admin, job_id)
     assert (row.state, row.error_category) == ("failed", "invalid_input")
+    assert catalogue.calls == []  # refused in prepare, before any lookup (#470)
     stored = admin.execute(
         text("SELECT count(*) FROM class_revisions WHERE job_id = :id"), {"id": job_id}
     ).scalar_one()
     assert stored == 0
+
+
+@pytest.mark.parametrize("turns_soundless", [True, False])
+async def test_a_class_that_turns_soundless_while_matching_is_not_stored(
+    env: Env,
+    admin: Connection,
+    make_actor: Any,
+    catalogue: CatalogueFake,
+    configured: None,
+    monkeypatch: pytest.MonkeyPatch,
+    turns_soundless: bool,
+) -> None:
+    """Past the prepare check (#470) the store's ``check_stored`` still refuses: the lookups ran,
+    nothing is stored. The control stores the match."""
+    rider = await _rider(
+        env,
+        make_actor,
+        account=f"soundless-late-{turns_soundless}@example.com",
+        swedebeat_email=EMAIL,
+        password=PASSWORD,
+        start=91,
+        bpm=107.0,
+        class_title="Soundless Late",
+    )
+    _soundless(admin, rider.class_id, None)
+    real_match = match_kind.match
+
+    async def match_then_flip(*args: Any, **kwargs: Any) -> Any:
+        matched = await real_match(*args, **kwargs)
+        if turns_soundless:
+            _soundless(admin, rider.class_id, {"source": "none"})
+        return matched
+
+    monkeypatch.setattr(match_kind, "match", match_then_flip)
+    assert (await _post_job(rider.actor, _body(rider))).status_code == 201
+    job_id = await _run(env)
+    row = _job(admin, job_id)
+    assert catalogue.calls != []
+    stored = admin.execute(
+        text("SELECT count(*) FROM class_revisions WHERE job_id = :id"), {"id": job_id}
+    ).scalar_one()
+    if turns_soundless:
+        assert (row.state, row.error_category) == ("failed", "invalid_input")
+        assert stored == 0
+    else:
+        assert (row.state, row.error_category) == ("completed", None)
+        assert stored == 1

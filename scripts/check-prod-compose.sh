@@ -1434,8 +1434,33 @@ check_site() {   # check_site FILE [live]
   }
 }
 
+# nginx_log_summary LOG: what a failed `nginx -t` said, without its words (#470, from the review of
+# #592). nginx quotes tokens of the file in its messages, and on the owner's live file a token can be
+# a secret, so the log itself is never printed: per error line only its level (one of a fixed set)
+# and, for the site file, the line number (digits only), at most 5 lines, then a count. Nothing else
+# of the log or the file reaches the output.
+nginx_log_summary() {   # nginx_log_summary LOG
+  awk '
+    match($0, /\[(emerg|alert|crit|error|warn)\]/) {
+      n++
+      if (n > 5) next
+      level = substr($0, RSTART + 1, RLENGTH - 2)
+      where = "no site config line"
+      if ($0 ~ /classbeat\.subdomain\.conf:[0-9]+$/) {
+        line = $0; sub(/.*:/, "", line)
+        where = "line " substr(line, 1, 7) " of the site config"
+      }
+      print "nginx -t: " level " at " where
+    }
+    END {
+      if (n > 5) print "nginx -t: " (n - 5) " more error lines"
+      if (n == 0) print "nginx -t: no nginx error line (is the Docker daemon running and the nginx image pullable? runbook section 9)"
+    }' "$1" | while IFS= read -r l; do sfail "$l" || true; done
+}
+
 # nginx -t on FILE with stand-ins for swag's ssl.conf and the Cloudflare list. Needs the Docker daemon
-# and the nginx image (pulled from Docker Hub on first use, runbook section 9).
+# and the nginx image (pulled from Docker Hub on first use, runbook section 9). On a failure only
+# nginx_log_summary is printed, never the log.
 nginx_site_t() {   # nginx_site_t FILE
   mkdir -p "$tmp/nginx"
   printf 'ssl_certificate /tmp/cert.pem;\nssl_certificate_key /tmp/key.pem;\n' > "$tmp/nginx/ssl.conf"
@@ -1456,9 +1481,9 @@ nginx_site_t() {   # nginx_site_t FILE
   if ! nginx_t; then
     # nginx -t opens its listening sockets; a kernel without IPv6 (some VMs) cannot open [::]:443.
     # Only then, check the rest without that one line and say so.
-    grep -q 'Address family not supported' "$tmp/nginx.log" || { cat "$tmp/nginx.log" >&2; sfail "nginx -t failed"; return 1; }
+    grep -q 'Address family not supported' "$tmp/nginx.log" || { nginx_log_summary "$tmp/nginx.log"; sfail "nginx -t failed"; return 1; }
     sed -i '/listen \[::\]:443 ssl;/d' "$tmp/nginx/site.conf"
-    nginx_t || { cat "$tmp/nginx.log" >&2; sfail "nginx -t failed"; return 1; }
+    nginx_t || { nginx_log_summary "$tmp/nginx.log"; sfail "nginx -t failed"; return 1; }
     echo "check-prod-compose: no IPv6 here: nginx -t ran without the [::]:443 listen line" >&2
   fi
 }
@@ -1544,6 +1569,28 @@ for m in \
   's/^( *proxy_set_header X-Forwarded-Proto https;)$/\1 # proxy_set_header X-Forwarded-For $http_x_forwarded_for;/'; do
   expect_site_accepted "$m"
 done
+# nginx_log_summary prints no word of the log (#470): a planted canary in every place nginx quotes
+# file content must not appear; the level and the site file's line number must.
+canary="CANARY-$RANDOM$RANDOM-not-to-be-printed"
+{
+  printf 'nginx: [emerg] unknown directive "%s" in /config/nginx/proxy-confs/classbeat.subdomain.conf:12\n' "$canary"
+  printf 'nginx: [warn] "%s" in /config/nginx/ssl.conf:3\n' "$canary"
+  printf '%s\n' "$canary"
+  printf 'nginx: configuration file /check/nginx.conf test failed (%s)\n' "$canary"
+} > "$tmp/nginx-canary.log"
+nginx_log_summary "$tmp/nginx-canary.log" 2> "$tmp/nginx-summary.log"
+if grep -qF -- "$canary" "$tmp/nginx-summary.log" \
+  || ! grep -qF 'nginx -t: emerg at line 12 of the site config' "$tmp/nginx-summary.log" \
+  || ! grep -qF 'nginx -t: warn at no site config line' "$tmp/nginx-summary.log" \
+  || [[ "$(wc -l < "$tmp/nginx-summary.log")" -ne 2 ]]; then
+  echo "check-prod-compose: self-test: the nginx -t summary is not the bounded, redacted one" >&2; exit 1
+fi
+for _ in 1 2 3 4 5 6 7; do printf 'nginx: [emerg] "%s" in /x/classbeat.subdomain.conf:1\n' "$canary"; done > "$tmp/nginx-canary.log"
+nginx_log_summary "$tmp/nginx-canary.log" 2> "$tmp/nginx-summary.log"
+if grep -qF -- "$canary" "$tmp/nginx-summary.log" || [[ "$(wc -l < "$tmp/nginx-summary.log")" -ne 6 ]] \
+  || ! grep -qF 'nginx -t: 2 more error lines' "$tmp/nginx-summary.log"; then
+  echo "check-prod-compose: self-test: the nginx -t summary is not bounded to 5 lines" >&2; exit 1
+fi
 nginx_site_t "$site" || exit 1
 fi
 

@@ -15,9 +15,10 @@ no credit, no external write.
   per class and the per-user limit are the jobs API's own.
 - **prepare**: the flag again, from the worker's own settings and the database, and the user's
   preference (either off: the job ends ``feature_off`` and nothing is called), the list again
-  (``song_list.load``), then the Swedebeat connection is opened through ``UserContext``
-  (``classbeat.connections``), in the worker only, for this job and nothing else; it must be the
-  input's.
+  (``song_list.load``), ``invalid_input`` when the class is soundless by now
+  (``music_kind.still_has_music``, before any request, #470), then the Swedebeat connection is
+  opened through ``UserContext`` (``classbeat.connections``), in the worker only, for this job and
+  nothing else; it must be the input's.
 - **match**: for each song in play order, at most ``MAX_SONGS``, one catalogue request
   (``classbeat.swedebeat_match.search``) with only its title and artist, one at a time, paced
   (``pace_seconds`` between two requests), a checkpoint before each. Two songs with the same
@@ -140,6 +141,9 @@ async def _prepare(
             enabled = await uses_swedebeat_in(fs.db, run.lease.owner_id)
         job_class = (await fs.db.execute(JOB_CLASS, run.lease.params())).scalar_one_or_none()
         stored = None
+        if enabled and job_class == given.the_class:
+            # Soundless by now: no catalogue lookup (#470, #587); the store checks again.
+            await music_kind.still_has_music(fs, given.the_class)
         if enabled:
             stored = await song_list.load(
                 fs.db, run.lease.owner_id, given.the_class, given.song_list_revision_id

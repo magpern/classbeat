@@ -883,3 +883,4 @@ or `--ignore-vuln ID` for pip-audit with the same comment. An expired ignore is 
 PR that touches it. Never ignore without a reason.
 
 - Worktrees made before #520 lack the three `secrets/oauth_*_client_secret` files and `docker compose up` fails there: rerun `scripts/worktree.sh init` (safe to repeat).
+- Hardening #470 (D): `egress.call_deadline_at()` reads the thread's call deadline (tests use it, never `_thread_deadline`); the cover read checks its gates again right before the listing (`spotify_call`'s `before_read`) and answers `{covers: []}` on a database error; `swedebeat_match` and `swedebeat_verify_mix` check soundless again before their outside calls (`music_kind.still_has_music`); `check-prod-compose.sh` prints only a redacted, bounded `nginx -t` summary, never nginx's log.

@@ -184,7 +184,7 @@ async def test_with_song_picking_off_no_spotify_request_is_sent(
 
 def deadline_left() -> float | None:
     """The seconds left on this thread's ``egress.call_deadline``, or None without one."""
-    at = getattr(egress._thread_deadline, "at", None)  # pyright: ignore[reportPrivateUsage]
+    at = egress.call_deadline_at()
     return None if at is None else at - time.monotonic()
 
 
@@ -470,4 +470,126 @@ def test_a_cover_can_never_ride_in_a_design_jobs_music_input() -> None:
                 "spotify_playlist_id": playlist,
                 "cover": f"https://i.scdn.co/image/{'a' * 40}",
             }
+        )
+
+
+# --- hardening (#470): a gate that cannot answer, and the re-check before the listing ---------
+
+CANARY = "covers-db-canary-7f3a"
+
+
+def db_error() -> Exception:
+    from sqlalchemy.exc import OperationalError
+
+    return OperationalError(f"SELECT {CANARY}", {"p": CANARY}, Exception(CANARY))
+
+
+@pytest.mark.parametrize("where", ["cooling_down", "admitted_first", "admitted_again"])
+async def test_a_database_error_in_a_gate_is_no_covers_and_sends_nothing(
+    spot: Spot,
+    admin: Connection,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+    where: str,
+) -> None:
+    """ADR 0013 section 9: every failure is ``{covers: []}``. A gate that cannot answer gives no
+    covers (it never counts as admitted), no listing is sent, and the log names the category
+    only, never the error's text."""
+    from classbeat.jobs import service as jobs_service
+
+    actor, _ = await rider(spot, admin)
+    playlists(spot)
+    limiter = spot.env.app.state.limiter
+    if where == "cooling_down":
+
+        async def broken_cooldown(_value: str) -> bool:
+            raise db_error()
+
+        monkeypatch.setattr(limiter, "cooling_down", broken_cooldown)
+    else:
+        real = jobs_service.cover_read_admitted
+        calls: list[int] = []
+
+        async def broken_admitted(*args: Any, **kwargs: Any) -> bool:
+            calls.append(1)
+            if where == "admitted_first" or len(calls) == 2:
+                raise db_error()
+            return await real(*args, **kwargs)
+
+        monkeypatch.setattr(jobs_service, "cover_read_admitted", broken_admitted)
+    caplog.set_level("INFO")
+    answer = await actor.get(URL)
+    assert (answer.status_code, answer.json()) == (200, {"covers": []})
+    assert listing_requests(spot) == 0
+    assert "playlist covers unavailable: database_error" in caplog.text
+    assert CANARY not in caplog.text
+
+
+async def test_a_database_error_storing_the_cooldown_after_a_429_is_no_covers(
+    spot: Spot, admin: Connection, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    actor, _ = await rider(spot, admin)
+    playlists(spot)
+    limiter = spot.env.app.state.limiter
+
+    async def broken_start(_value: str, _retry_after: int | None) -> int:
+        raise db_error()
+
+    monkeypatch.setattr(limiter, "start_cooldown", broken_start)
+    spot.fake.inject("rate_limited", path=LISTING, retry_after=120)
+    caplog.set_level("INFO")
+    answer = await actor.get(URL)
+    assert (answer.status_code, answer.json()) == (200, {"covers": []})
+    assert listing_requests(spot) == 1
+    assert "playlist covers unavailable: database_error" in caplog.text
+    assert CANARY not in caplog.text
+
+
+@pytest.mark.parametrize("opened", ["song_pick", "cooldown"])
+async def test_a_pick_or_cooldown_that_starts_during_the_refresh_holds_the_listing(
+    spot: Spot, admin: Connection, opened: str
+) -> None:
+    """The gates are checked again after the refresh, right before the listing (#470): a song
+    pick queued (or a cooldown started) while the refresh runs sends no listing request. The
+    refresh itself still completes and stores its rotation."""
+    actor, ctx = await rider(spot, admin, expires_in=10)
+    playlists(spot)
+    before = await row(spot, ctx)
+    held = HeldRefresh(spot.http)
+    state = spot.env.app.state
+    state.spotify_http = held
+    try:
+        pending = asyncio.ensure_future(actor.get(URL))
+        await asyncio.wait_for(held.started.wait(), 5)
+        if opened == "song_pick":
+            plant_job(admin, spot.user_id(actor), "design_with_songs", "queued")
+        else:
+            await state.limiter.start_cooldown(str(spot.user_id(actor)), 120)
+        held.go_on.set()
+        answer = await asyncio.wait_for(pending, 10)
+    finally:
+        state.spotify_http = spot.http
+    assert (answer.status_code, answer.json()) == (200, {"covers": []})
+    assert listing_requests(spot) == 0
+    assert held.finished
+    assert len(spot.fake.requests(ACCOUNTS_HOST, TOKEN)) == 1
+    assert (await row(spot, ctx)).secret != before.secret
+
+
+async def test_before_read_is_the_read_only_modes_only() -> None:
+    async def hook() -> None:
+        return None
+
+    with pytest.raises(ValueError, match="read-only"):
+        await access._call(  # pyright: ignore[reportPrivateUsage]
+            None,  # type: ignore[arg-type]
+            None,  # type: ignore[arg-type]
+            None,  # type: ignore[arg-type]
+            lambda _creds: None,
+            http=None,
+            write=False,
+            margin_seconds=120,
+            expect=None,
+            single_request=False,
+            before_read=hook,
         )
