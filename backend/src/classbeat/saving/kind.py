@@ -7,9 +7,11 @@ no ledger call, no model call, no ``agent_runs``.
 
 **``admit``** (the jobs API's create transaction, under the owner lock): the approval checks of
 ``classbeat.saving.approval``, ``running_enabled`` for a running class (``feature_off``, ADR 0018
-section 5: off, a running class is not saved, whenever it was designed), then the connection
-(the context's MOWL connection and ``connected``: ``not_connected``), the music link
-(``music_unlinked``) and the unresolved-write rule (``write_unresolved``), last the user's
+section 5: off, a running class is not saved, whenever it was designed), the soundless switch for
+a soundless revision (``feature_off``, ADR 0007 amendment of 2026-11-03, item 2), then the
+connection (the context's MOWL connection and ``connected``: ``not_connected``), the music link
+(``music_unlinked``; a soundless revision has none and writes ``PlaylistID: -1``,
+``approval.playlist_for``) and the unresolved-write rule (``write_unresolved``), last the user's
 **current** plan (#496, ``classbeat.quota.gates.check_stored_draft``: a revision with a game, an
 FTP test or a length the plan does not include now is 409 ``quota`` ``feature`` or ``length``; the
 same for Update). A refusal is a 409 with its reason and creates nothing.
@@ -22,7 +24,8 @@ no effect, after a lost lease or a shutdown, never resumes at ``save``):
    (another job's ``pending`` or any ``uncertain`` save/update row of the class: the job fails
    ``uncertain_write``, nothing is sent), ``hold`` share-locks the connection, the approval
    checks run again from the database (``invalid_input``, ``music_unlinked``), the flag again for
-   a running class (``feature_off``) and the playlist id is read from the link row. Then the
+   a running class or a soundless revision (``feature_off``) and the playlist id is read from the
+   link row (``-1`` for a soundless revision, no link read). Then the
    **preflight**: My Workouts' first page through ``call_opened``, outside any operation. Its
    ProgramIDs are the **baseline**. A preflight that fails is an ordinary failure with the usual
    retry classes and no operation row.
@@ -33,7 +36,8 @@ no effect, after a lost lease or a shutdown, never resumes at ``save``):
    ``call_deadline_until`` of an instant taken before ``pending`` is written (``bound`` from
    then, so a late thread start consumes the bound instead of extending it),
    ``single_request = False`` (every failure of the write is ``uncertain``); the guard re-reads the
-   link row under ``hold`` and compares the playlist id. An answer without a whole-number
+   link row under ``hold`` and compares the playlist id (a soundless revision names no link: the
+   guard only holds the connection). An answer without a whole-number
    ``program_id`` is ``UncertainAnswer``.
 3. ``verify`` (best effort): the new program is read back and compared with the spec
    (``classbeat.mowl_state``); equal, the saved row's ``state_hash`` is set; otherwise it stays
@@ -137,12 +141,14 @@ async def admit(db: AsyncSession, ctx: UserContext, parsed: BaseModel) -> Admitt
         return Refused(found.reason)
     if await approval.running_refused(db, found):
         return Refused("feature_off")  # ADR 0018 section 5: running is off now
+    if await approval.soundless_refused(db, found):
+        return Refused("feature_off")  # soundless is switched off now
     if ctx.connection("mowl") != parsed.mowl_connection_id:
         return Refused("not_connected")
     info = await connections.find_in(db, ctx, parsed.mowl_connection_id)
     if info is None or info.provider != "mowl" or info.status != "connected":
         return Refused("not_connected")
-    if await approval.linked_playlist(db, ctx, found.link_id, found.link_source) is None:
+    if await approval.playlist_for(db, ctx, found) is None:
         return Refused("music_unlinked")
     if await orphans.write_unresolved(db, ctx, parsed.the_class):
         return Refused("write_unresolved")
@@ -153,8 +159,8 @@ async def admit(db: AsyncSession, ctx: UserContext, parsed: BaseModel) -> Admitt
 
 @dataclass(frozen=True)
 class Plan:
-    """What ``prepare`` approved: the revision, the playlist id under ``hold``, the opened
-    connection and the baseline."""
+    """What ``prepare`` approved: the revision, the playlist id under ``hold`` (``-1`` for a
+    soundless revision), the opened connection and the baseline."""
 
     revision: approval.Revision
     playlist_id: int
@@ -185,9 +191,9 @@ async def _approved(run: JobRun, given: SaveWorkoutInput, opened: OpenConnection
             raise JobFailure(PREPARE_CATEGORY.get(found.reason, "invalid_input"))
         if await approval.running_refused(fs.db, found):
             raise JobFailure("feature_off")  # switched off since the job was queued
-        playlist_id = await approval.linked_playlist(
-            fs.db, run.ctx, found.link_id, found.link_source
-        )
+        if await approval.soundless_refused(fs.db, found):
+            raise JobFailure("feature_off")  # switched off since the job was queued
+        playlist_id = await approval.playlist_for(fs.db, run.ctx, found)
         if playlist_id is None:
             raise JobFailure("music_unlinked")
     return Plan(found, playlist_id, opened, [])
@@ -260,6 +266,10 @@ async def save(run: JobRun, keyring: KeyRing, plan: Plan) -> int:
     async def guard(db: AsyncSession) -> bool:
         if not await hold(db, run.ctx, opened):
             return False
+        if revision.link_id is None:
+            # A soundless revision names no link: nothing to recheck, and the playlist written is
+            # the library's "no music" (``prepare`` set it; never a link's id).
+            return playlist_id == approval.NO_PLAYLIST
         row = (
             await db.execute(
                 _LINK_STILL,

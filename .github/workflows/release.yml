@@ -163,13 +163,23 @@ jobs:
     permissions:
       contents: write
     steps:
+      # The tag's own deploy files become release assets (ADR 0020), after both images exist: a
+      # release that carries a compose file always has the images it names.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
       - name: Create the release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_REPO: ${{ github.repository }}
           TAG: ${{ github.ref_name }}
+          RUNNER_TEMP: ${{ runner.temp }}
         run: |
           set -euo pipefail
+          assets="$RUNNER_TEMP/release-assets"
+          scripts/release-assets.sh build "$assets"
+          ( cd "$assets" && sha256sum -c SHA256SUMS )
           flags=()
           if [[ "$TAG" == *-* ]]; then flags+=(--prerelease); fi
-          gh release create "$TAG" --generate-notes --verify-tag "${flags[@]}"
+          gh release create "$TAG" --generate-notes --verify-tag "${flags[@]}" "$assets"/*
