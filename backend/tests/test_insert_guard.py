@@ -4,8 +4,8 @@
 A revision is created only in a job's final fenced transaction, with one exception: the duplicate
 route inserts revision 1 of the class it creates. A class is created only by the jobs API (a
 design job's class) and by the duplicate route. A beat-one correction is copied by the duplicate
-route to the class it creates (the beat-one amendment's item 8, DU3 #585); the corrections API
-(BC4) adds its own site here when it lands. This guard reads the backend's source and fails for
+route to the class it creates (the beat-one amendment's item 8, DU3 #585) and set by the
+corrections API (BC4, #542). This guard reads the backend's source and fails for
 an ``INSERT INTO`` one of these tables anywhere else, and for an allowed module that no longer
 has one (so the list never goes stale). A new site is added here
 with its reason, and reviewed.
@@ -27,6 +27,7 @@ ALLOWED: dict[str, set[str]] = {
     },
     "beat_one_corrections": {
         "classes/duplicate.py",  # the source's rows for the copied music, re-keyed to the copy
+        "classes/beat_one.py",  # the corrections API (BC4): one song's row, under the class lock
     },
 }
 

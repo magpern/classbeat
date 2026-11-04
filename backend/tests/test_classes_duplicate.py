@@ -814,15 +814,21 @@ def owned_corrections(admin: Connection, owner: UUID) -> int:
     ).scalar_one()
 
 
-def pending(rows: list[Any], music: dict[str, Any]) -> bool:
-    """BC4's ``pending`` of the class detail: the rows for the revision's fingerprint differ from
-    what the revision applied (``music.beat_one``)."""
-    wanted = {int(r.song): int(r.beats) for r in rows if r.fingerprint == music["fingerprint"]}
-    applied = {int(c["song"]): int(c["beats"]) for c in music.get("beat_one") or []}
-    return wanted != applied
+async def pending(browser: Browser, class_id: object) -> bool:
+    """BC4's ``pending`` of the class detail, read through the class API (the real computation):
+    the rows for the current revision's fingerprint differ from what it applied."""
+    got = await browser.get(f"/api/classes/{class_id}")
+    assert got.status_code == 200, got.text
+    block = got.json()["beat_one"]
+    assert block["available"], block
+    return block["pending"]
 
 
 BEAT_ONE = [{"song": 1, "beats": 2}, {"song": 3, "beats": -1}]
+SONGS = [
+    {"song": n, "start": 240.0 * (n - 1), "end": 240.0 * n, "bpm": bpm, "estimate": False}
+    for n, bpm in ((1, 124.5), (2, 128.0), (3, 130.0))
+]
 
 
 def with_beat_one(music: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -830,7 +836,7 @@ def with_beat_one(music: dict[str, Any] | None = None) -> dict[str, Any]:
         "source": "mowl_spotify_playlist", "link_id": LINK, "fingerprint": FP,
         "unknown_bpm": [], "song_list_id": SONG_LIST,
     }  # fmt: skip
-    return {**base, "beat_one": BEAT_ONE}
+    return {**base, "beat_one": BEAT_ONE, "songs": SONGS}
 
 
 def test_only_a_copy_with_music_gets_corrections_and_only_for_its_fingerprint() -> None:
@@ -872,8 +878,8 @@ async def test_a_copy_gets_the_corrections_for_the_chosen_revisions_music_and_no
     # The copy's revision keeps what was applied, so its corrections read as applied.
     _, [rev] = copy_rows(mine.admin, copy_id)
     assert rev.music["beat_one"] == BEAT_ONE
-    assert pending(source_rows, mine.music) is False
-    assert pending(copied, rev.music) is False
+    assert await pending(mine.browser, mine.class_id) is False
+    assert await pending(mine.browser, copy_id) is False
     # The source, the other class and the other user are only read.
     assert corrections(mine.admin, mine.class_id) == source_rows
     assert len(corrections(mine.admin, elsewhere.class_id)) == 1
