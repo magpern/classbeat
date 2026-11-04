@@ -32,7 +32,7 @@ def applied_revisions(database_url: str) -> list[str]:
 
 def test_the_revisions_form_one_line() -> None:
     script = ScriptDirectory.from_config(alembic_config())
-    assert script.get_heads() == ["0026_plan_gates"]
+    assert script.get_heads() == ["0027_soundless_flag"]
     assert script.get_base() == "0001_baseline"
 
 
@@ -53,7 +53,7 @@ def test_upgrade_head_then_downgrade_base(
     config = alembic_config()
     try:
         command.upgrade(config, "head")
-        assert applied_revisions(database_url) == ["0026_plan_gates"]
+        assert applied_revisions(database_url) == ["0027_soundless_flag"]
         command.downgrade(config, "base")
         assert applied_revisions(database_url) == []
     finally:
@@ -174,5 +174,44 @@ def test_0014_gives_each_plan_its_own_route_key_and_the_downgrade_restores_defau
             assert keys() == [("free", "free"), ("instructor", "instructor"), ("pro", "pro")]
             command.downgrade(alembic_config(), "0013_spotify_quota")
             assert keys() == [("free", "default"), ("instructor", "default"), ("pro", "default")]
+    finally:
+        engine.dispose()
+
+
+def test_0027_admits_the_soundless_flag_and_the_downgrade_deletes_its_row(
+    owner_database_url: str,
+) -> None:
+    """#527: the ``app_settings.key`` check takes ``soundless_enabled`` after 0027, refuses it
+    before, and the downgrade deletes a stored row first (as 0025 does) instead of failing."""
+    from sqlalchemy.exc import IntegrityError
+
+    engine = create_engine(owner_database_url)  # the app role only reads app_settings
+    insert = text(
+        "INSERT INTO app_settings (key, value) VALUES ('soundless_enabled', '\"on\"'::jsonb)"
+    )
+
+    def stored() -> list[str]:
+        with engine.connect() as connection:
+            rows = connection.execute(text("SELECT key FROM app_settings ORDER BY key")).all()
+        return [r[0] for r in rows]
+
+    try:
+        with migrated(owner_database_url, "0026_plan_gates"):
+            with pytest.raises(IntegrityError), engine.begin() as connection:
+                connection.execute(insert)
+            command.upgrade(alembic_config(), "0027_soundless_flag")
+            with engine.begin() as connection:
+                connection.execute(insert)
+                connection.execute(
+                    text(
+                        "INSERT INTO app_settings (key, value) "
+                        "VALUES ('running_enabled', '\"off\"'::jsonb)"
+                    )
+                )
+            assert stored() == ["running_enabled", "soundless_enabled"]
+            command.downgrade(alembic_config(), "0026_plan_gates")
+            assert stored() == ["running_enabled"]  # only the soundless row is gone
+            with pytest.raises(IntegrityError), engine.begin() as connection:
+                connection.execute(insert)
     finally:
         engine.dispose()
