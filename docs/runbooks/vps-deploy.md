@@ -694,9 +694,19 @@ secrets). Any other key is refused by its name: `configs`, `post_start`/`pre_sto
 `ipc`, `privileged`, `cap_add`, `devices`, `volumes_from`, `userns_mode`, `cgroup`, `cgroup_parent`,
 `uts`, `runtime`, `gpus`, `provider`, `network_mode`, a driver option or a bind on a volume, and a key
 Compose adds later. **Adding a compose key or a service to the production files therefore needs a
-change to the allow-list in the script** (`check_keys`), reviewed with it. `env_file`, `label_file`,
-`profiles`, `extends` and `include` are refused in the files' text, because the render drops them
-(Compose copies an `env_file` into `environment`). On the allowed keys it checks the values:
+change to the allow-list in the script** (`check_keys`), reviewed with it. Each service's variables
+are allowed **by name** too (#610): Compose drops `env_file` from the render but copies the file into
+`environment`, however the key is spelled (`"env_file"`, `? env_file`, a flow mapping), so a variable the
+files do not set is refused, and its name is never printed (an env file of a secret file puts the secret
+in the name or the value). The top-level networks are allowed by key (`backend`, `egress`, `web-out`, the
+project's own, and the external `proxy`). `env_file`, `label_file`, `profiles`, `extends` and `include`
+are also refused in the files' text, as a fast lint only (a quoted or explicit key gets past a line
+match; the render is the check). In section 9 the script also renders **your** configuration (`.env`,
+the files `COMPOSE_FILE` names, every profile) and runs it through the same allow-list and secret-mount
+rules, printing only key names and rule messages; the one addition of your own it accepts is
+`compose.bridge.yaml` exactly as [proton-bridge-smtp.md](proton-bridge-smtp.md) writes it (the read-only
+`./smtp-ca/bridge.pem` at `/run/smtp-ca/bridge.pem` and the external network `bridge-mail`, any `name:`,
+joined by web alone). On the allowed keys it checks the values:
 - every service that mounts a secret has `group_add: ["10010"]` and no `group_add` has another group;
   no service runs as root (uid or gid 0 or `root`, however written: `00`, `+0`, `postgres:0`), and a
   postgres service that mounts a secret runs as `postgres` (whose gosu would drop the group);

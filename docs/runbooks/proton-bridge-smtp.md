@@ -43,7 +43,10 @@ certificate only, not a CA: a CA would trust everything it signs for that host. 
    subject alternative names. If it only names `localhost` or `127.0.0.1`, classbeat refuses it by
    design; fix the Bridge side (a certificate for the service name), do not weaken the check.
 3. Mount it **read-only** into `web` and join `web` to the network Bridge is on, with a second compose
-   file `compose.bridge.yaml` next to `compose.prod.yaml` (not committed; adjust the network name):
+   file `compose.bridge.yaml` next to `compose.prod.yaml` (not committed; adjust only the network's
+   `name:`, the Docker network Bridge is on: `check-prod-compose.sh` accepts this file in exactly this
+   shape, the key `bridge-mail`, the read-only mount and web alone on that network, and refuses anything
+   else in it, #610):
    ```yaml
    services:
      web:

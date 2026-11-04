@@ -98,8 +98,37 @@ sed -i 's|^    user: postgres$|&\n    privileged: true|' "$install/compose.prod.
 expect "a local edit adding privileged is caught" 1 'not on the allow-list.*services\.db\.privileged'
 cp "$work/compose.prod.yaml.good" "$install/compose.prod.yaml"
 sed -i 's|^    user: postgres$|&\n    env_file: ./secrets/app_secret_key|' "$install/compose.prod.yaml"
-expect "a local edit adding env_file is caught" 1 'no env_file, label_file, profiles'
+expect "a local edit adding env_file is caught" 1 'services\.db\.environment: 1 variable|services\.db-functions\.environment'   # the render, before the text lint
 cp "$work/compose.prod.yaml.good" "$install/compose.prod.yaml"
+# The text rule's bypass (#610): an explicit `? env_file` key gets past the line match; the renders (the
+# dummy one, whose secret files hold a line, and the real one) do not.
+sed -i '0,/^    user: postgres$/s||&\n    ? env_file\n    : ./secrets/app_secret_key|' "$install/compose.prod.yaml"   # db only
+expect "a local edit adding '? env_file' is caught by the render" 1 'services\.db\.environment: 1 variable'
+cp "$work/compose.prod.yaml.good" "$install/compose.prod.yaml"
+# The real render (#610): an overlay of the owner's own in COMPOSE_FILE goes through the allow-list too.
+# Each case is refused by the real render alone (the dummy render never sees compose.extra.yaml), and the
+# secret file's content (a canary) never shows in the output (expect checks it).
+cp "$install/.env" "$work/env.before-real"
+sed -i 's/^COMPOSE_FILE=.*/COMPOSE_FILE=compose.prod.yaml:compose.extra.yaml/' "$install/.env"
+printf 'services:\n  web:\n    "env_file": ./secrets/app_secret_key\n' > "$install/compose.extra.yaml"
+expect "real render: a quoted env_file of a secret file" 1 'services\.web\.environment: 1 variable'
+printf 'services:\n  worker:\n    ? env_file\n    : ./secrets/connection_kek\n' > "$install/compose.extra.yaml"
+expect "real render: an explicit env_file key" 1 'services\.worker\.environment: 1 variable'
+printf 'services:\n  spy:\n    image: busybox\n    profiles: [ops]\n' > "$install/compose.extra.yaml"
+expect "real render: a profiled service" 1 'not on the allow-list.*services\.spy'
+printf 'services:\n  web:\n    networks: [spynet]\nnetworks:\n  spynet:\n    external: true\n    name: other\n' > "$install/compose.extra.yaml"
+expect "real render: a network of the owner's own" 1 'networks\.spynet'
+mkdir -p "$install/smtp-ca"; : > "$install/smtp-ca/bridge.pem"
+bridge='services:\n  web:\n    volumes:\n      - ./smtp-ca/bridge.pem:/run/smtp-ca/bridge.pem%s\n    networks:\n      - bridge-mail\nnetworks:\n  bridge-mail:\n    external: true\n    name: proton-bridge-net\n'
+# shellcheck disable=SC2059  # the format is ours
+printf "$bridge" '' > "$install/compose.bridge.yaml"
+sed -i 's/^COMPOSE_FILE=.*/COMPOSE_FILE=compose.prod.yaml:compose.bridge.yaml/' "$install/.env"
+expect "real render: the bridge overlay writable" 1 'services\.web\.volumes'
+# shellcheck disable=SC2059  # the format is ours
+printf "$bridge" ':ro' > "$install/compose.bridge.yaml"
+cp "$install/.env" "$work/env.bridge"
+rm -f "$install/compose.extra.yaml"
+cp "$work/env.before-real" "$install/.env"
 sed -i 's/^PROXY_IP=.*/PROXY_IP=8.8.8.8/' "$install/.env"
 expect "a public PROXY_IP" 1 'PROXY_IP must be one private'
 sed -i 's/^PROXY_IP=.*/PROXY_IP=172.29.90.10/' "$install/.env"
@@ -144,6 +173,8 @@ if (( can_gid )); then
   expect "good install" 0 '^install check'
   cp "$work/env.lan" "$install/.env"
   expect "good LAN install" 0 '^install check'
+  cp "$work/env.bridge" "$install/.env"
+  expect "good install with the documented compose.bridge.yaml (#610)" 0 '^install check'
   cp "$work/env.good" "$install/.env"
   # 2b. The owner's own swag file (PROD_CHECK_SWAG_CONF, #500). The directive rules run before
   # nginx -t, so a refused file needs no Docker daemon here.
