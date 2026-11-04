@@ -239,7 +239,7 @@ call, and any live call. Agents run none (AGENTS.md safety envelope).
 Owner decision (2026-11-03, chat): MOWL is always required; Spotify and Swedebeat are optional per user, and
 a user without Swedebeat never sees Swedebeat features. This amends §6 and §8 (and ADR 0016 §2).
 
-- **Storage.** A new owned table `user_preferences` (migration `0027_user_preferences`): `id`, `owner_id`
+- **Storage.** A new owned table `user_preferences` (migration `0028_user_preferences`): `id`, `owner_id`
   (`UNIQUE`, one row per user at most, `ON DELETE CASCADE` from `users`), `uses_swedebeat boolean NOT NULL
   DEFAULT false`, `created_at`, `updated_at`; forced owner RLS (`owner_isolation`), the app role's grants from
   the default privileges, nothing for `classbeat_maint`. No row is every preference at its default: reading
@@ -256,27 +256,38 @@ a user without Swedebeat never sees Swedebeat features. This amends §6 and §8 
   `enabled` stays the flag). `PUT /api/connections/swedebeat/preference {"uses_swedebeat": bool}` (signed in,
   CSRF by the middleware, strict boolean, no other key) stores it; it is accepted whatever the flag says,
   because `false` must always work and `true` with the flag off has no effect.
-- **What the preference gates.** Off (or no row, as for a user who connected before migration 0027):
-  - `GET /api/music/swedebeat-mixes` answers 404 `feature_off` before any rate-limit slot, connection or
-    MOWL call;
-  - `POST /api/connections/swedebeat` answers 404 `feature_off` before anything is sent;
-  - a new `design_draft` on a Swedebeat mix is refused `feature_off` at admission (`mixadmit.admit_mix`,
-    before the listing), and so is `POST /api/classes/{id}/swedebeat-handoff/design`, which goes through
-    that admission (404 `feature_off` from the hand-off routes' status map); a new design queued while it
-    was on ends `feature_off` in the worker before any call (`mixadmit.still_on(..., new_design=True)`);
-  - a `swedebeat_match` job is refused `feature_off` at admission (`swedebeat_match.kind.admit`, right
-    after the flag), whatever Swedebeat connection is stored, so no title or artist goes to Swedebeat.
+- **What the preference gates.** Off (or no row, as for a user who connected before migration 0028),
+  each of these answers `feature_off` before any request, and a job already queued ends `feature_off` in
+  the worker before any request:
+  - `GET /api/music/swedebeat-mixes` (404, before any rate-limit slot, connection or MOWL call);
+  - `POST /api/connections/swedebeat` (404, nothing sent to Swedebeat);
+  - a new `design_draft` on a Swedebeat mix (409 at admission, `mixadmit.admit_mix`, before the listing),
+    including `POST /api/classes/{id}/swedebeat-handoff/design`, which goes through that admission (404
+    from the hand-off routes' status map); queued, `mixadmit.still_on(..., new_design=True)`;
+  - a `swedebeat_match` job (409 at admission, right after the flag, whatever Swedebeat connection is
+    stored); queued, its `prepare` re-reads the preference;
+  - a catalogue replace (`revise_songs` naming a match: 409 at admission, `replace.gate`), and its re-match
+    after the approval (`replace.rematch` re-reads the preference before the catalogue call);
+  - starting the hand-off (`POST /api/classes/{id}/swedebeat-handoff`: 404 before the rate limit and MOWL's
+    Swedebeat listing).
+  So no song title or artist goes to Swedebeat's catalogue while the preference is off: the match and the
+  re-match are the only paths that send them, and both read it.
 - **Never gated:** `DELETE /api/connections/swedebeat`, Disconnect MOWL, the account export and deletion.
-- **Carve-out for classes the user already has (still behind the flag):** a revise of a class already
-  designed on a mix does not read the preference, so with it off such a revise may still reach MOWL's
-  Swedebeat endpoints (the listing, and the attach and fetch on a cache miss). The hand-off's check,
-  override and not-now on an existing match, and a match job already queued, read the flag only. The
-  owner's rule is about new Swedebeat use; work on an existing class keeps running until the flag goes off.
+- **What still runs with the preference off (still behind the flag), all on something the user already
+  has, and none of it sends a title or artist to Swedebeat:**
+  - a revise of a class already designed on a mix: it may still reach MOWL's Swedebeat endpoints (the
+    listing, and the attach and audio fetch of that mix on a cache miss);
+  - the steps of a hand-off the user already started: "I made the mix" / "Check again" (a verify job that
+    lists the user's mixes in MOWL and may attach, fetch and analyse the one they made) and "This is the
+    right mix" (reads the listing). The page says, while the preference is off, that the switch is off,
+    that starting the step or designing on the mix needs it, and that a started step can still be checked;
+  - reading what exists: the class, its match, the hand-off row.
 - **Account page.** The card exists only while the flag is on or the user holds a Swedebeat connection
   (the "coming soon" line is gone). With the flag on it starts with the switch "I use Swedebeat"; the connect
   form and the "not available on this server" line need it on. A stored connection's status and Disconnect
   show whatever the switch says. The new-class page asks for the mix list, and offers "Use my Swedebeat
   mix", only with the flag and the switch on; the class page offers "Match with Swedebeat" and "Design
-  the class on this mix" (the hand-off) only with the switch on, and says where to turn it on instead.
+  the class on this mix" (the hand-off) only with the switch on, and says where to turn it on instead;
+  when the preference cannot be read the hand-off says only that it could not check, and offers no design.
 - **Guards.** `user_preferences` is in the export registry (a section), the deletion coverage (cascade) and
   the retention registry (no content columns; deleted with the account); tests plant and check it.

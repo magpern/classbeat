@@ -82,10 +82,11 @@ If MOWL lists no mix, the page says so and points at the Swedebeat app; it never
 
 *Amended 2026-11-03 (issue #525, ADR 0015's amendment of that date):* the user's own "I use Swedebeat"
 preference (default off) narrows this further. While it is off the mix choice is not offered, `GET
-/api/music/swedebeat-mixes` is 404 `feature_off` with no MOWL call, a new design on a mix (the hand-off's
-design included) and a `swedebeat_match` job are refused `feature_off` at admission, and a queued new design
-ends `feature_off` in the worker. A revise of a class already on a mix is not gated by it. The flag stays the
-kill switch.
+/api/music/swedebeat-mixes` is 404 `feature_off` with no MOWL call; a new design on a mix (the hand-off's
+design included), a `swedebeat_match` job, a catalogue replace and starting the hand-off are refused
+`feature_off`, and such work already queued ends `feature_off` before any request. A revise of a class already
+on a mix and the steps of a hand-off already started are not gated by it (ADR 0015's amendment lists them).
+The flag stays the kill switch.
 
 ### 3. (a) "My Swedebeat mix" in the guided builder
 

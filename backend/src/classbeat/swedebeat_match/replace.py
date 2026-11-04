@@ -10,7 +10,8 @@ After the user approves the new ``song_list``, the same job matches that list ag
 (``swedebeat_match``'s catalogue call, on the fakes in tests) and stores a new match revision.
 A resume of that job matches only when that list has no match yet, so a retry does not search
 twice. The flag is read before the match revision and again before any catalogue call; off, the
-job is refused or ends ``feature_off`` and nothing is called.
+job is refused or ends ``feature_off`` and nothing is called. The user's own "I use Swedebeat"
+preference (#525) is read with it at admission (``gate``) and before the rematch's catalogue call.
 """
 
 import json
@@ -22,6 +23,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from classbeat.connections import find_in, open_connection
+from classbeat.connections.preferences import uses_swedebeat_in
 from classbeat.context import UserContext
 from classbeat.flags import effective as flags
 from classbeat.jobs import FencedSession, JobFailure, JobRun
@@ -91,8 +93,11 @@ class CatalogueReplace:
 
 
 async def gate(db: AsyncSession, ctx: UserContext) -> UUID | Refused:
-    """The flag, then the user's connected Swedebeat row. No match revision is read here."""
+    """The flag, the user's own "I use Swedebeat" preference (#525), then the user's connected
+    Swedebeat row. No match revision is read here."""
     if not await flags.swedebeat_enabled(db, config.current().enabled):
+        return Refused("feature_off")
+    if not await uses_swedebeat_in(db, ctx.user_id):
         return Refused("feature_off")
     connection_id = ctx.connection(PROVIDER)
     if connection_id is None:
@@ -149,6 +154,8 @@ async def rematch(run: JobRun, connection_id: UUID, song_list_id: UUID | None) -
     cfg = config.current()
     async with run.fenced() as fs:
         enabled = await flags.swedebeat_enabled(fs.db, cfg.enabled)
+        if enabled:  # #525: the user's own switch too, before any catalogue call
+            enabled = await uses_swedebeat_in(fs.db, run.lease.owner_id)
         named = await _list_of(fs, song_list_id)
     if not enabled:
         raise JobFailure("feature_off")

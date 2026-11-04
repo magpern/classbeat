@@ -596,6 +596,26 @@ async def test_flag_off_and_a_foreign_class_and_a_forged_body(
     assert foreign.status_code == 404
 
 
+async def test_starting_the_hand_off_needs_the_preference_and_lists_nothing_without_it(
+    browsers: Any, henv: HandEnv, mowl_api: FakeMowl
+) -> None:
+    """#525: flag on, an approved match, "I use Swedebeat" off: starting the step is 404
+    ``feature_off`` before the rate limit or MOWL's Swedebeat listing; no row is written."""
+    browser = await rider(browsers, henv)
+    mowl_api.add_mix("Shown", token=TOKEN_A, mix_id="shown", listed_seconds=30)
+    class_id = plant(henv, browser.user_id, [30])
+    await use_swedebeat(henv.ops.factory, browser.user_id, on=False)
+    calls = mowl_api.list_calls
+    off = await _start(browser, class_id)
+    assert (off.status_code, off.json()) == (404, {"detail": {"reason": "feature_off"}})
+    assert mowl_api.list_calls == calls
+    assert henv.sql("SELECT count(*) FROM swedebeat_handoffs").scalar_one() == 0
+    await use_swedebeat(henv.ops.factory, browser.user_id)
+    on = await _start(browser, class_id)
+    assert on.status_code == 200, on.text
+    assert mowl_api.list_calls == calls + 1
+
+
 async def test_picking_a_draft_of_the_same_song_list_keeps_the_match(
     browsers: Any, henv: HandEnv, mowl_api: FakeMowl
 ) -> None:

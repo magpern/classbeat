@@ -467,8 +467,21 @@ describe('Next, in the Swedebeat app', () => {
       'GET /api/connections': { ...connections(), swedebeat: { enabled: true, available: true, uses_swedebeat: false } },
     })
     renderAt(PAGE)
-    expect(await screen.findByTestId('design-needs-preference')).toHaveTextContent('I use Swedebeat')
+    expect(await screen.findByTestId('needs-preference')).toHaveTextContent('I use Swedebeat” is off')
     expect(screen.getByText('Mix verified')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Design the class on this mix' })).toBeNull()
+    expect(api.to('POST', `${HANDOFF}/design`)).toHaveLength(0)
+  })
+
+  it('says only that it could not check when the connections cannot be read (#525)', async () => {
+    const api = step({
+      [`GET ${HANDOFF}`]: () => handoffBody({ state: 'verified', verdict: 'ok', mix_id: 'mix-1', checked_at: '2026-11-02T10:00:00Z' }),
+      'GET /api/connections': () => reason(503, 'upstream_unavailable'),
+    })
+    renderAt(PAGE)
+    expect(await screen.findByTestId('preference-unknown')).toHaveTextContent('could not check')
+    expect(screen.queryByTestId('needs-preference')).toBeNull()
+    expect(screen.queryByText(/Turn it on/)).toBeNull()
     expect(screen.queryByRole('button', { name: 'Design the class on this mix' })).toBeNull()
     expect(api.to('POST', `${HANDOFF}/design`)).toHaveLength(0)
   })
