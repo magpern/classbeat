@@ -774,7 +774,7 @@ The e2e stack trusts the docker network as proxy so each test presents its own `
 address (separate rate limits). Sign-up is limited to 5 per IP and hour: use `down -v` between full
 runs of a stack that is not given per-test addresses.
 
-CI runs the same in the `e2e` job (when the stack changed) and uploads `playwright-report` only on failure.
+CI runs the same in the `e2e` job (when the playwright filter is true: UI, e2e, compose or Docker files) and uploads `playwright-report` only on failure.
 
 ### CI: what runs, and when
 
@@ -811,12 +811,12 @@ The backend test shard count has one source: the `shard` list of the `backend-te
 
 | Job | Runs | What it does |
 |---|---|---|
-| `changes` | always | `scripts/ci-changes.sh`: `git diff` of the PR's base and head (or the merge group's `base_sha` and `head_sha`) gives the outputs `backend` (`backend/`, `docker/postgres/`), `frontend` (`frontend/`), `stack` (`backend/`, `frontend/`, `e2e/`, `docker/`, `Dockerfile`, `compose*.yaml`, `.dockerignore`, `.env.example`, `.trivyignore`, `scripts/worktree.sh`) and `all`. Renames count at both paths; names are read NUL-separated; if the diff cannot be computed (an unknown commit, a missing SHA) everything runs. `all` is true on schedule/dispatch and when `.github/`, `.gitattributes` or `scripts/ci-changes.sh`, `ci-gate.sh`, `ci-shards.sh` or `test-ci-gate.sh` change (CI changes test themselves) and makes the others true |
+| `changes` | always | `scripts/ci-changes.sh`: `git diff` of the PR's base and head (or the merge group's `base_sha` and `head_sha`) gives the outputs `backend` (`backend/`, `docker/postgres/`), `frontend` (`frontend/`), `stack` (`backend/`, `frontend/`, `e2e/`, `docker/`, `Dockerfile`, `compose*.yaml`, `.dockerignore`, `.env.example`, `.trivyignore`, `scripts/worktree.sh`), `playwright` (`frontend/`, `e2e/`, `docker/`, `Dockerfile`, `compose*.yaml`, `.dockerignore`) and `all`. Renames count at both paths; names are read NUL-separated; if the diff cannot be computed (an unknown commit, a missing SHA) everything runs. `all` is true on schedule/dispatch and when `.github/`, `.gitattributes` or `scripts/ci-changes.sh`, `ci-gate.sh`, `ci-shards.sh` or `test-ci-gate.sh` change (CI changes test themselves) and makes the others true |
 | `checks` | always | the cheap checks as steps of one job (below) |
 | `backend` | `backend` | once per run: ruff, format, pyright, the queue functions' md5 regenerated on the pinned image (fails when `queue_digests.py` is stale), and the shard check: `backend/tests/shards.py check N` compares pytest's own collection with the split, so every test file runs in exactly one shard and none is empty |
 | `backend-tests` | `backend` | pytest in a matrix of 3 shards (`fail-fast: false`), each its own runner and Postgres service; a file's shard is `sha256(path) % N + 1` (`tests/shards.py list K N`), so the split needs no list and no dependency. Change the shard count only in the matrix (`shard: [1, 2, 3]`); `changes` reads it from there (`scripts/ci-shards.sh`) and passes it to the check and every shard |
 | `frontend` | `frontend` | lint, typecheck, Vitest, build |
-| `e2e` | `stack` | the stack, the checks below, the Trivy image scan, then Playwright |
+| `e2e` | `stack` | the stack, the checks below, the Trivy image scan, then Playwright only when `playwright` is true (UI, e2e, compose or Docker files, or `all`); a backend-only change skips it, `main` runs it after every merge |
 | `ci` | always | the required check; see the gate below |
 
 A docs-only PR therefore runs `changes`, `checks` and `ci` (plus `pr-title`).
