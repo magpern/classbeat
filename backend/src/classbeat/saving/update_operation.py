@@ -10,7 +10,9 @@ account re-saved in place, as an external operation.
   ``bound_seconds``. ``before_hash`` is the hex SHA-256 of the program's normalized state read
   just before the write (``classbeat.mowl_state``; null when the read program could not be
   normalized, which only an ``overwrite`` lets through), ``baseline`` the ProgramIDs of My
-  Workouts' first page read in ``prepare``.
+  Workouts' first page read in ``prepare``. A soundless class carries ``playlist_id`` ``-1``
+  (the library's "no music"); ``_known`` accepts ``-1`` there and only there (program ids and
+  the baseline stay positive), and the saved row gets ``playlist_id`` NULL for it.
 - **On success** (``on_succeeded``, same transaction as the ``succeeded`` row, whoever marks it):
   the ``saved_workouts`` row named by the context is moved to the written revision, **only** when
   it is live, has the operation's program id and belongs to the operation's own class (one
@@ -54,7 +56,7 @@ from classbeat.operations.kinds import (
     request_hash,
 )
 from classbeat.saving import reads
-from classbeat.saving.operation import PAGE_SIZE, listed_ids
+from classbeat.saving.operation import NO_PLAYLIST, PAGE_SIZE, listed_ids, stored_playlist
 
 logger = logging.getLogger(__name__)
 
@@ -110,10 +112,18 @@ def _whole(value: object) -> int | None:
     return value
 
 
+def _playlist(value: object) -> int | None:
+    """A context's ``playlist_id``: a positive id, or the library's "no music" (``-1``, a
+    soundless class); None for anything else. Only the playlist may be ``-1``."""
+    if type(value) is int and value == NO_PLAYLIST:
+        return NO_PLAYLIST
+    return _whole(value)
+
+
 def _known(context: Mapping[str, Any]) -> tuple[int, int, set[int], str | None] | None:
     """``(program_id, playlist_id, baseline, before_hash)`` from a stored context, or None."""
     program_id = _whole(context.get("program_id"))
-    playlist_id = _whole(context.get("playlist_id"))
+    playlist_id = _playlist(context.get("playlist_id"))
     baseline = context.get("baseline")
     before = context.get("before_hash")
     if program_id is None or playlist_id is None or not isinstance(baseline, list):
@@ -196,7 +206,7 @@ async def _write_updated(db: AsyncSession, owner_id: UUID, operation: Operation)
         logger.warning("saved workout not updated: unreadable operation", extra={"kind": KIND})
         return
     program_id = _whole(context.get("program_id"))
-    playlist_id = _whole(context.get("playlist_id"))
+    playlist_id = _playlist(context.get("playlist_id"))
     if (
         operation.kind != KIND
         or operation.class_id is None
@@ -212,7 +222,7 @@ async def _write_updated(db: AsyncSession, owner_id: UUID, operation: Operation)
             "owner_id": owner_id,
             "saved_workout_id": saved_workout_id,
             "program_id": program_id,
-            "playlist_id": playlist_id,
+            "playlist_id": stored_playlist(playlist_id),  # ``-1`` is NULL
             "operation_id": operation.id,
             "kind": KIND,
             "external_id": operation.external_id,
