@@ -2,7 +2,9 @@ import { useRef, useState } from 'react'
 import { ApiError } from '../../api/client'
 import { classReasonText, isStale } from '../../api/classMessages'
 import {
+  clearAllBeatOne,
   clearBeatOne,
+  clearBeatOneRow,
   setBeatOne,
   type BeatOne,
   type BeatOneSong,
@@ -65,6 +67,23 @@ export function BeatOnePanel({
       })
   }
 
+  const run = (task: () => Promise<BeatOne>) => {
+    void change
+      .run(task, (error) => {
+        if (isStale(error)) onReload()
+        return classReasonText(error)
+      })
+      .then((next) => {
+        if (next !== undefined) setView(next)
+      })
+  }
+  const clearRow = (rowId: string) => {
+    run(() => clearBeatOneRow(summary.id, rowId))
+  }
+  const clearAll = () => {
+    run(() => clearAllBeatOne(summary.id))
+  }
+
   const applyFixes = () => {
     if (revisionId === null) return
     const fingerprint = JSON.stringify([summary.id, revisionId, view.songs.map((s) => s.beats)])
@@ -125,6 +144,11 @@ export function BeatOnePanel({
                 <p className="m-0 text-muted text-[0.875rem]">
                   From {clock(song.start)}, {String(Math.round(song.bpm))} BPM
                 </p>
+                {song.bpmChanged ? (
+                  <p className="m-0 text-muted text-[0.875rem]">
+                    The tempo of this song changed since you set its beat 1: listen again.
+                  </p>
+                ) : null}
                 {song.estimate && song.beats === 0 ? (
                   <p className="m-0 text-muted text-[0.875rem]">
                     Beat 1 is an estimate here: listen to the first change in this song.
@@ -171,12 +195,37 @@ export function BeatOnePanel({
         })}
       </ol>
       {change.error ? <Notice kind="error">{change.error}</Notice> : null}
-      {view.stale > 0 ? (
-        <p className="m-0 text-muted" data-testid="beat-one-stale">
-          {view.stale === 1
-            ? 'One timing fix was set on earlier music and is not used.'
-            : `${String(view.stale)} timing fixes were set on earlier music and are not used.`}
-        </p>
+      {view.stale.length > 0 ? (
+        <div className="flex flex-col gap-2" data-testid="beat-one-stale">
+          <p className="m-0 text-muted">
+            This music was analysed again or changed, so your earlier timing fixes no longer apply.
+            They are kept: making an earlier version current uses them again.
+          </p>
+          <ul className="m-0 flex list-none flex-col gap-2 p-0">
+            {view.stale.map((row) => (
+              <li key={row.id} className="flex flex-wrap items-center gap-2">
+                <span>
+                  Song {String(row.song)}: {beatsInWords(row.beats)}
+                </span>
+                <Button
+                  variant="ghost"
+                  aria-label={`Clear the earlier timing fix of song ${String(row.song)}`}
+                  disabled={change.busy}
+                  onClick={() => {
+                    clearRow(row.id)
+                  }}
+                >
+                  Clear
+                </Button>
+              </li>
+            ))}
+          </ul>
+          <p className="m-0">
+            <Button variant="secondary" disabled={change.busy} onClick={clearAll}>
+              Clear all timing fixes
+            </Button>
+          </p>
+        </div>
       ) : null}
       {view.pending ? (
         <div className="notice" data-kind="info" role="status" data-testid="beat-one-pending">

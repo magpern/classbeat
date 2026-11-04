@@ -37,6 +37,15 @@ row with them; nothing here commits.
   uncovered choice ``model_config`` before any request (``design.sport.require_evaluated``), and
   ``covers_running`` is the admin's check before ``running_enabled`` is stored ``on``. Cycling
   keeps the rules above unchanged (a stale route keeps working for it, flagged).
+- **Soundless** (ADR 0007 amendment of 2026-11-03, item 6; #527): a ``design`` route covers
+  soundless classes when it covers running as above (not stale for any reason, so its result has
+  the running code's prompt versions of every design-group stage, ``soundless_design`` included)
+  **and** its result's ``suite_version`` is at least ``SOUNDLESS_SUITE_VERSION``, the first suite
+  version whose design group holds soundless cases. SL1 sets it to ``None``: no recorded result
+  covers soundless until SL5 (#531) sets it, so no result recorded in between can. The bootstrap
+  choice never covers it. ``covers(db, route_key, variant)`` is the check without a key file (the
+  admin, the effective flag, ``admit``), ``ModelChoice.soundless_covered`` the worker's per
+  attempt; ``every_plan_covers`` asks it for every plan's ``route_key``.
 - "Newest" is ``recorded_at``, then the insertion order ``seq`` (``store``), so it is
   deterministic for results recorded in one transaction.
 
@@ -49,6 +58,7 @@ import uuid
 from dataclasses import dataclass, field
 from typing import Final, Literal
 
+from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -68,6 +78,11 @@ from classbeat.models.versions import (
 log = logging.getLogger(__name__)
 
 MAX_ACTOR: Final = 200
+# The first suite version whose design group holds soundless cases (see the module). ``None``:
+# nothing covers soundless yet (SL1, #527); SL5 (#531) sets it with the suite bump.
+SOUNDLESS_SUITE_VERSION: int | None = None
+Variant = Literal["running", "soundless"]
+VARIANTS: Final = ("running", "soundless")
 
 RefusedReason = Literal[
     "invalid_route_key",
@@ -125,6 +140,9 @@ class ModelChoice:
     eval_result_id: uuid.UUID | None = None
     stale: tuple[StaleReason, ...] = ()
     running_covered: bool = False  # a route not stale at all; never the bootstrap (see the module)
+    soundless_covered: bool = (
+        False  # running_covered and a soundless suite version (see the module)
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -360,6 +378,7 @@ async def resolve_route(
         raise RouteUnusable(reason)
     for why in stale:
         _warn_stale(route_key, stage_group, why)
+    covered = stage_group == "design" and not stale
     return ModelChoice(
         found.provider,
         found.model,
@@ -367,19 +386,54 @@ async def resolve_route(
         route_key=route_key,
         eval_result_id=found.eval_result_id,
         stale=stale,
-        running_covered=stage_group == "design" and not stale,
+        running_covered=covered,
+        soundless_covered=covered and soundless_suite(row.suite_version),
     )
 
 
-async def covers_running(db: AsyncSession, route_key: str) -> bool:
-    """Whether a running job with ``route_key`` would find a ``design`` route that covers running
-    (see the module); no route (the bootstrap) does not. Reads no key file: the admin calls it."""
+def soundless_suite(suite_version: int) -> bool:
+    """Whether a result recorded on ``suite_version`` can cover soundless classes: never while
+    ``SOUNDLESS_SUITE_VERSION`` is ``None`` (read at each call, so the constant is the one rule)."""
+    minimum = SOUNDLESS_SUITE_VERSION
+    return minimum is not None and suite_version >= minimum
+
+
+async def covers(db: AsyncSession, route_key: str, variant: Variant) -> bool:
+    """Whether a job of ``variant`` (``running`` or ``soundless``) with ``route_key`` would find a
+    ``design`` route that covers it (see the module); no route (the bootstrap) does not, nor does
+    an unknown variant. Reads no key file: the web process calls it."""
+    if variant not in VARIANTS:
+        return False
     if not isinstance(route_key, str) or ROUTE_KEY.fullmatch(route_key) is None:
         return False
     found = await store.route(db, route_key, "design")
     if found is None:
         return False
-    return not await staleness(db, await store.result_of(db, found.eval_result_id))
+    row = await store.result_of(db, found.eval_result_id)
+    if await staleness(db, row):
+        return False
+    return variant == "running" or soundless_suite(row.suite_version)
+
+
+async def covers_running(db: AsyncSession, route_key: str) -> bool:
+    """``covers(db, route_key, "running")``: the admin's check before ``running_enabled`` is
+    stored ``on`` (its rule unchanged, issue #465)."""
+    return await covers(db, route_key, "running")
+
+
+_PLAN_ROUTE_KEYS = text("SELECT DISTINCT route_key FROM plans ORDER BY route_key")
+
+
+async def every_plan_covers(db: AsyncSession, variant: Variant) -> bool:
+    """Whether every plan's ``route_key`` has a ``design`` route that covers ``variant``, read now
+    (a plan added or a route cleared since turns it false). No plan at all is false."""
+    keys = (await db.execute(_PLAN_ROUTE_KEYS)).scalars().all()
+    if not keys:
+        return False
+    for key in keys:
+        if not await covers(db, key, variant):
+            return False
+    return True
 
 
 _warned: set[tuple[str, str, StaleReason]] = set()

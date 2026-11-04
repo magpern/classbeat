@@ -18,6 +18,7 @@ so this happens only for a map that is not the one the correction was set on.
 """
 
 import copy
+import logging
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from typing import Any, Final
@@ -29,10 +30,12 @@ from classbeat.agent.schemas import clean_text
 MIN_BEATS: Final = -3
 MAX_BEATS: Final = 3
 MAX_SONG: Final = 500  # also the ``song`` check of migration 0027
-MAX_PER_CLASS: Final = 200  # rows per class, all fingerprints (409 ``correction_limit``)
-MAX_SONGS: Final = 500  # entries of a revision's ``music.songs``
-MAX_TITLE: Final = 200
+MAX_PER_CLASS: Final = 200  # rows for the class's current fingerprint (409 ``correction_limit``)
+MAX_SONGS: Final = 200  # entries of a revision's ``music.songs`` (a class is at most 180 minutes)
+MAX_TITLE: Final = 100  # characters of a song title in ``music.songs``
 LOW_MARGIN: Final = float(service.LOW_MARGIN)  # below it the library calls beat 1 an estimate
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True, slots=True, order=True)
@@ -66,9 +69,15 @@ def _entries(m: Mapping[str, Any], song: int) -> list[int]:
 def apply(m: Mapping[str, Any], corrections: Iterable[Correction]) -> dict[str, Any]:
     """A copy of ``m`` with each correction applied once (``m`` is left as it was)."""
     out = copy.deepcopy(dict(m))
+    skipped = 0
     for c in sorted(set(corrections)):
-        for entry in _entries(out, c.song):
+        entries = _entries(out, c.song)
+        if not entries:
+            skipped += 1
+        for entry in entries:
             library.shift_beat1(out, entry, c.beats)
+    if skipped:  # not for the fingerprint it was set on; never fails the job (a count, no ids)
+        logger.warning("beat-one corrections skipped", extra={"skipped": skipped})
     return out
 
 

@@ -25,8 +25,8 @@ pytestmark = pytest.mark.usefixtures("jenv")
 
 def correct(renv: ReviseEnv, owner: UUID, class_id: UUID, fingerprint: str, song: int, beats: int):
     renv.sql(
-        "INSERT INTO beat_one_corrections (owner_id, class_id, fingerprint, song, beats) "
-        "VALUES (:o, :c, :f, :s, :b)",
+        "INSERT INTO beat_one_corrections (owner_id, class_id, fingerprint, song, beats, bpm) "
+        "VALUES (:o, :c, :f, :s, :b, 120)",
         o=owner, c=class_id, f=fingerprint, s=song, b=beats,
     )  # fmt: skip
 
@@ -128,3 +128,26 @@ def test_a_spotify_map_without_corrections_is_the_one_before() -> None:
     moved = mix_input.music_map(SpotifyData(analysis, 7, (), (Correction(1, 1),)))
     assert moved == beat_one.apply(plain, [Correction(1, 1)])
     assert moved != plain
+
+
+def test_the_size_check_covers_the_new_fields_only(monkeypatch: pytest.MonkeyPatch) -> None:
+    from classbeat.design import revision
+    from classbeat.jobs import JobFailure
+
+    class Step:
+        data = SpotifyData({"map": {}, "duration": 0.0}, 7, (), (Correction(1, 1),))
+
+    music = revision.SpotifyRevisionMusic(
+        source="mowl_spotify_playlist",
+        link_id=uuid.uuid4(),
+        fingerprint="a" * 64,
+        unknown_bpm=[revision.UnknownBpmTrack(index=i, title="t" * 200) for i in range(500)],
+    )
+    m = mix_input.music_map(MixData({"map": mix(), "duration": 240.0}, 9001))
+    # A valid music of about 110 KB of unknown_bpm titles is never refused for its size.
+    done = revision._beat_one_fields(music, Step(), m, 200)  # pyright: ignore[reportPrivateUsage, reportArgumentType]
+    assert done.beat_one is not None
+    assert done.songs is not None
+    monkeypatch.setattr(revision, "MAX_BEAT_ONE_BYTES", 50)
+    with pytest.raises(JobFailure):
+        revision._beat_one_fields(music, Step(), m, 200)  # pyright: ignore[reportPrivateUsage, reportArgumentType]

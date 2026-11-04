@@ -25,37 +25,55 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from classbeat.agent.beat_one import MAX_PER_CLASS, Correction
 from classbeat.context import UserContext, require_context
 from classbeat.db import user_session
+from classbeat.design import music_kind
 from classbeat.design.revision import REVISION_MUSIC, RevisionMusic
 
 Factory = async_sessionmaker[AsyncSession]
 
 _CURRENT: Final = text(
-    "SELECT c.current_revision_id, r.kind, r.music FROM classes c "
+    "SELECT c.current_revision_id, c.music_source, r.kind, r.music FROM classes c "
     "LEFT JOIN class_revisions r ON r.owner_id = c.owner_id AND r.class_id = c.id "
     "AND r.id = c.current_revision_id WHERE c.id = :class_id AND c.owner_id = :owner_id"
 )
 _LOCK: Final = text(
-    "SELECT current_revision_id FROM classes WHERE id = :class_id AND owner_id = :owner_id "
-    "FOR UPDATE"
+    "SELECT current_revision_id, music_source FROM classes "
+    "WHERE id = :class_id AND owner_id = :owner_id FOR UPDATE"
 )
 _REVISION: Final = text(
     "SELECT kind, music FROM class_revisions "
     "WHERE id = :revision_id AND owner_id = :owner_id AND class_id = :class_id"
 )
+# Every row of the class: the current fingerprint's, and the stale ones (other music).
 _ROWS: Final = text(
-    "SELECT fingerprint, song, beats FROM beat_one_corrections "
-    "WHERE owner_id = :owner_id AND class_id = :class_id ORDER BY song LIMIT :limit"
+    "SELECT id, fingerprint, song, beats, bpm FROM beat_one_corrections "
+    "WHERE owner_id = :owner_id AND class_id = :class_id ORDER BY song, created_at, id"
+)
+_COUNT: Final = text(
+    "SELECT count(*) FROM beat_one_corrections WHERE owner_id = :owner_id "
+    "AND class_id = :class_id AND fingerprint = :fingerprint"
+)
+_EXISTS: Final = text(
+    "SELECT 1 FROM beat_one_corrections WHERE owner_id = :owner_id AND class_id = :class_id "
+    "AND fingerprint = :fingerprint AND song = :song"
 )
 _UPSERT: Final = text(
-    "INSERT INTO beat_one_corrections (owner_id, class_id, fingerprint, song, beats) "
-    "VALUES (:owner_id, :class_id, :fingerprint, :song, :beats) "
+    "INSERT INTO beat_one_corrections (owner_id, class_id, fingerprint, song, beats, bpm) "
+    "VALUES (:owner_id, :class_id, :fingerprint, :song, :beats, :bpm) "
     "ON CONFLICT ON CONSTRAINT beat_one_corrections_one_per_song "
-    "DO UPDATE SET beats = EXCLUDED.beats, updated_at = now()"
+    "DO UPDATE SET beats = EXCLUDED.beats, bpm = EXCLUDED.bpm, updated_at = now()"
 )
-_DELETE: Final = text(
+_DELETE_SONG: Final = text(
     "DELETE FROM beat_one_corrections WHERE owner_id = :owner_id AND class_id = :class_id "
     "AND fingerprint = :fingerprint AND song = :song"
 )
+_DELETE_ROW: Final = text(
+    "DELETE FROM beat_one_corrections WHERE owner_id = :owner_id AND class_id = :class_id "
+    "AND id = :row_id RETURNING id"
+)
+_DELETE_ALL: Final = text(
+    "DELETE FROM beat_one_corrections WHERE owner_id = :owner_id AND class_id = :class_id"
+)
+BPM_TOLERANCE: Final = 0.5  # a stored BPM further than this from the song's now: listen again
 
 
 @dataclass(frozen=True, slots=True)
@@ -68,6 +86,14 @@ class SongView:
     title: str | None
     beats: int  # the class's correction for this music, 0 for none
     applied: int  # what the current revision applied, 0 for none
+    bpm_changed: bool  # the song's BPM is not the one the correction was set at
+
+
+@dataclass(frozen=True, slots=True)
+class StaleRow:
+    id: UUID
+    song: int
+    beats: int
 
 
 @dataclass(frozen=True, slots=True)
@@ -76,19 +102,21 @@ class View:
     revision_id: UUID | None = None
     songs: tuple[SongView, ...] = ()
     pending: bool = False
-    stale: int = 0
+    stale: tuple[StaleRow, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
 class Changed:
-    reason: str | None  # None, or not_found, stale_base, no_beat_data, invalid_input,
-    #                      correction_limit
+    # None, or not_found, stale_base, no_beat_data, not_changeable, invalid_input,
+    # correction_limit
+    reason: str | None
     view: View = field(default_factory=lambda: View(False))
 
 
 def _music(kind: Any, raw: Any) -> RevisionMusic | None:
-    """The current draft's music, or None when it is no draft or not readable."""
-    if kind != "draft" or raw is None:
+    """The current draft's music, or None when it is no draft, has no beat data or is not
+    readable (a soundless revision's ``{"source": "none"}`` among them)."""
+    if kind != "draft" or raw is None or music_kind.is_none(raw):
         return None
     try:
         return REVISION_MUSIC.validate_json(json.dumps(raw))
@@ -96,20 +124,36 @@ def _music(kind: Any, raw: Any) -> RevisionMusic | None:
         return None
 
 
-def _build(revision_id: UUID | None, music: RevisionMusic | None, rows: list[Any]) -> View:
-    if revision_id is None or music is None or not music.songs:
-        return View(False, revision_id, (), False, len(rows))
-    mine = {int(r.song): int(r.beats) for r in rows if r.fingerprint == music.fingerprint}
+def _usable(source: Any) -> bool:
+    """A class whose music can be corrected: neither soundless nor without a music source."""
+    return source is not None and not music_kind.is_none(source)
+
+
+def _build(
+    revision_id: UUID | None, source: Any, music: RevisionMusic | None, rows: list[Any]
+) -> View:
+    every = tuple(StaleRow(r.id, int(r.song), int(r.beats)) for r in rows)
+    if revision_id is None or not _usable(source) or music is None or not music.songs:
+        return View(False, revision_id, (), False, every)
+    played = {s.song for s in music.songs}
+    mine = {int(r.song): r for r in rows if r.fingerprint == music.fingerprint}
     applied = {c.song: c.beats for c in music.beat_one or []}
     songs = tuple(
         SongView(
             s.song, s.start, s.end, s.bpm, s.estimate, s.title,
-            mine.get(s.song, 0), applied.get(s.song, 0),
+            int(mine[s.song].beats) if s.song in mine else 0,
+            applied.get(s.song, 0),
+            s.song in mine and abs(float(mine[s.song].bpm) - s.bpm) > BPM_TOLERANCE,
         )
         for s in music.songs
     )  # fmt: skip
-    stale = sum(1 for r in rows if r.fingerprint != music.fingerprint)
-    return View(True, revision_id, songs, mine != applied, stale)
+    wanted = {song: int(r.beats) for song, r in mine.items() if song in played}
+    stale = tuple(
+        StaleRow(r.id, int(r.song), int(r.beats))
+        for r in rows
+        if r.fingerprint != music.fingerprint or int(r.song) not in played
+    )
+    return View(True, revision_id, songs, wanted != applied, stale)
 
 
 def _ids(ctx: UserContext, class_id: UUID, **more: Any) -> dict[str, Any]:
@@ -120,8 +164,8 @@ async def _view(db: AsyncSession, ctx: UserContext, class_id: UUID) -> View | No
     row = (await db.execute(_CURRENT, _ids(ctx, class_id))).first()
     if row is None:
         return None
-    rows = list((await db.execute(_ROWS, _ids(ctx, class_id, limit=MAX_PER_CLASS))).all())
-    return _build(row.current_revision_id, _music(row.kind, row.music), rows)
+    rows = list((await db.execute(_ROWS, _ids(ctx, class_id))).all())
+    return _build(row.current_revision_id, row.music_source, _music(row.kind, row.music), rows)
 
 
 async def view(factory: Factory, ctx: UserContext, class_id: UUID) -> View | None:
@@ -149,25 +193,55 @@ async def change(
         found = (await db.execute(_REVISION, _ids(ctx, class_id, revision_id=revision_id))).first()
         if found is None:  # not one of this class's own revisions: as an unknown id
             return Changed("not_found")
+        if music_kind.is_none(locked.music_source):  # soundless: nothing to correct
+            return Changed("no_beat_data")
+        if locked.music_source is None:  # a #550 copy of picked songs: no music to fit to
+            return Changed("not_changeable")
         if locked.current_revision_id != revision_id:
             return Changed("stale_base")
         music = _music(found.kind, found.music)
         if music is None or not music.songs:
             return Changed("no_beat_data")
-        if song not in {s.song for s in music.songs}:
+        by_song = {s.song: s for s in music.songs}
+        if song not in by_song:
             return Changed("invalid_input")
         params = _ids(ctx, class_id, fingerprint=music.fingerprint, song=song)
         if beats is None:
-            await db.execute(_DELETE, params)
+            await db.execute(_DELETE_SONG, params)
         else:
             try:
                 Correction(song=song, beats=beats)
             except ValueError:
                 return Changed("invalid_input")
-            rows = list((await db.execute(_ROWS, _ids(ctx, class_id, limit=MAX_PER_CLASS))).all())
-            exists = any(r.fingerprint == music.fingerprint and r.song == song for r in rows)
-            if not exists and len(rows) >= MAX_PER_CLASS:
+            exists = (await db.execute(_EXISTS, params)).first() is not None
+            count = (await db.execute(_COUNT, params)).scalar_one()
+            if not exists and count >= MAX_PER_CLASS:  # the current fingerprint's rows only
                 return Changed("correction_limit")
-            await db.execute(_UPSERT, {**params, "beats": beats})
+            await db.execute(_UPSERT, {**params, "beats": beats, "bpm": by_song[song].bpm})
+        done = await _view(db, ctx, class_id)
+    return Changed(None, done if done is not None else View(False))
+
+
+async def clear_row(factory: Factory, ctx: UserContext, class_id: UUID, row_id: UUID) -> Changed:
+    """Clear any row of the class by its id (keyed by owner, class and id): a row of another
+    class, or another user's, deletes nothing and is ``not_found``."""
+    require_context(ctx)
+    async with user_session(factory, ctx) as db:
+        if (await db.execute(_LOCK, _ids(ctx, class_id))).first() is None:
+            return Changed("not_found")
+        gone = (await db.execute(_DELETE_ROW, _ids(ctx, class_id, row_id=row_id))).first()
+        if gone is None:
+            return Changed("not_found")
+        done = await _view(db, ctx, class_id)
+    return Changed(None, done if done is not None else View(False))
+
+
+async def clear_all(factory: Factory, ctx: UserContext, class_id: UUID) -> Changed:
+    """Clear every row of the class. Idempotent."""
+    require_context(ctx)
+    async with user_session(factory, ctx) as db:
+        if (await db.execute(_LOCK, _ids(ctx, class_id))).first() is None:
+            return Changed("not_found")
+        await db.execute(_DELETE_ALL, _ids(ctx, class_id))
         done = await _view(db, ctx, class_id)
     return Changed(None, done if done is not None else View(False))

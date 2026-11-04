@@ -144,18 +144,28 @@ class BeatOneSongOut(BaseModel):
     title: str | None = None
     beats: int
     applied: int
+    bpm_changed: bool = False
+
+
+class BeatOneStaleOut(BaseModel):
+    """A row for other music or for a song the current revision does not play: cleared by id."""
+
+    id: UUID
+    song: int
+    beats: int
 
 
 class BeatOneOut(BaseModel):
-    """``available`` only when the current revision has beat data (``music.songs``);
-    ``pending`` when the corrections differ from what it applied; ``stale`` counts rows set on
-    other music."""
+    """``available`` only when the current revision has beat data (``music.songs``) and the class
+    has music to fit to (not soundless, not without a music source); ``revision_id`` is the
+    current revision; ``pending`` when the corrections differ from what it applied; ``stale``
+    lists the rows for other music and for songs it does not play."""
 
     available: bool
     revision_id: UUID | None = None
     songs: list[BeatOneSongOut] = []
     pending: bool = False
-    stale: int = 0
+    stale: list[BeatOneStaleOut] = []
 
     @classmethod
     def of(cls, view: Any) -> "BeatOneOut":
@@ -164,7 +174,7 @@ class BeatOneOut(BaseModel):
             revision_id=view.revision_id,
             songs=[BeatOneSongOut(**asdict(s)) for s in view.songs],
             pending=view.pending,
-            stale=view.stale,
+            stale=[BeatOneStaleOut(**asdict(r)) for r in view.stale],
         )
 
 

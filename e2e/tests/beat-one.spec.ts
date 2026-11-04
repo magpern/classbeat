@@ -234,4 +234,26 @@ test('a Swedebeat mix class: correct one song, apply and save', async ({ page })
   await expect(savedState(page)).toHaveText('Saved to MOWL as version 2. It is up to date.', LONG)
   const [saved] = savePrograms()
   expect(programSeconds(saved!)).toEqual(v2)
+
+  // A correction for earlier music (another fingerprint) is listed, cleared, and Clear all empties
+  // the class's corrections.
+  const owner = ownerIdForEmail(email)
+  sql(
+    `INSERT INTO beat_one_corrections (owner_id, class_id, fingerprint, song, beats, bpm) ` +
+      `VALUES ('${owner}', '${id}', '${'a'.repeat(64)}', 1, -2, 124)`,
+  )
+  await page.reload()
+  const stale = page.getByTestId('beat-one-stale')
+  await expect(stale).toContainText('Song 1: 2 beats earlier')
+  await stale.getByRole('button', { name: 'Clear the earlier timing fix of song 1' }).click()
+  await expect(stale).toHaveCount(0)
+  expect(sql(`SELECT count(*) FROM beat_one_corrections WHERE class_id = '${id}'`)).toBe('1')
+  sql(
+    `INSERT INTO beat_one_corrections (owner_id, class_id, fingerprint, song, beats, bpm) ` +
+      `VALUES ('${owner}', '${id}', '${'b'.repeat(64)}', 1, 3, 124)`,
+  )
+  await page.reload()
+  await page.getByRole('button', { name: 'Clear all timing fixes' }).click()
+  await expect(page.getByTestId('beat-one-stale')).toHaveCount(0)
+  expect(sql(`SELECT count(*) FROM beat_one_corrections WHERE class_id = '${id}'`)).toBe('0')
 })

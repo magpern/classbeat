@@ -133,6 +133,15 @@ export interface BeatOneSong {
   beats: number
   /** What the current version was fitted with. */
   applied: number
+  /** The song's BPM is not the one the correction was set at: listen again. */
+  bpmChanged: boolean
+}
+
+/** A correction for earlier music, or for a song the current version does not play. */
+export interface BeatOneStale {
+  id: string
+  song: number
+  beats: number
 }
 
 export interface BeatOne {
@@ -141,11 +150,11 @@ export interface BeatOne {
   songs: BeatOneSong[]
   /** The corrections differ from what the current version was fitted with. */
   pending: boolean
-  /** Corrections set on earlier music, not used. */
-  stale: number
+  /** Corrections not used by the current version, each clearable by id. */
+  stale: BeatOneStale[]
 }
 
-export const NO_BEAT_ONE: BeatOne = { available: false, revisionId: null, songs: [], pending: false, stale: 0 }
+export const NO_BEAT_ONE: BeatOne = { available: false, revisionId: null, songs: [], pending: false, stale: [] }
 
 function whole(source: JsonObject, key: string, low: number, high: number): number {
   const value = source[key]
@@ -169,14 +178,19 @@ export function decodeBeatOne(value: unknown): BeatOne {
         title: optionalText(item, 'title'),
         beats: whole(item, 'beats', -3, 3),
         applied: whole(item, 'applied', -3, 3),
+        bpmChanged: optionalFlag(item, 'bpm_changed') ?? false,
       }
+    })
+    const stale = list(value, 'stale').map((entry) => {
+      const item = object(entry, 'stale')
+      return { id: text(item, 'id'), song: whole(item, 'song', 1, 500), beats: whole(item, 'beats', -3, 3) }
     })
     return {
       available: flag(value, 'available'),
       revisionId: optionalText(value, 'revision_id'),
       songs,
       pending: flag(value, 'pending'),
-      stale: count(value, 'stale'),
+      stale,
     }
   } catch {
     return NO_BEAT_ONE // anything malformed hides the control
@@ -513,4 +527,14 @@ export async function clearBeatOne(
 ): Promise<BeatOne> {
   const query = `?revision_id=${encodeURIComponent(revisionId)}`
   return decodeBeatOne(await del(`${base(classId)}/beat-one/${String(song)}${query}`))
+}
+
+/** Clear one correction of the class by its id (for earlier music, or a song not played). */
+export async function clearBeatOneRow(classId: string, rowId: string): Promise<BeatOne> {
+  return decodeBeatOne(await del(`${base(classId)}/beat-one/rows/${encodeURIComponent(rowId)}`))
+}
+
+/** Clear every correction of the class. */
+export async function clearAllBeatOne(classId: string): Promise<BeatOne> {
+  return decodeBeatOne(await del(`${base(classId)}/beat-one`))
 }
