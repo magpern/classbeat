@@ -112,23 +112,25 @@ Agents merge only with:
 gh pr merge <n> --squash --match-head-commit <reviewed-sha>
 ```
 
-and only when CI is green, the `PASS` is for that SHA and no blocking comment is open. With the
-merge queue this **enqueues** the PR: the queue squashes it on top of `main` (and whatever is
-ahead of it), runs `ci` and `pr-title` on that merged result, and lands it only if they pass;
-`--match-head-commit` makes GitHub refuse it if the head moved after the review. The squash
-commit's title is the PR title (with ` (#<n>)`), so there is no `--subject`, and the PR title
-must be the Conventional Commits subject (`pr-title` checks it on the PR and checks the queued
-commits' subjects again in the merge group). The branch need not be up to date with `main`; a
-queue failure leaves the PR open, to be fixed and enqueued again (a new head needs a new
-review). Never `--auto`, never `--admin`, never an approving review, never a change to the
-ruleset to get a merge through.
+and only when the PR's **current head** has green required checks (`ci` and `pr-title`), the
+`PASS` is for that SHA and no blocking comment is open. `--match-head-commit` makes GitHub refuse
+the merge if the head moved after the review. The squash commit's title is the PR title (with
+` (#<n>)`), so there is no `--subject`, and the PR title must be the Conventional Commits subject
+(`pr-title` checks it on the PR). Never `--auto`, never `--admin`, never an approving review,
+never a change to the ruleset to get a merge through.
 
-The ruleset on `main` (GitHub Pro): pull request required, merge queue (squash), required
-checks `ci` and `pr-title`, no strict up-to-date requirement (the queue tests each PR merged on
-top of `main` and what is ahead of it, so a branch need not be rebased by hand), no direct pushes,
-squash only, zero required approvals. `CODEOWNERS` (`* @magpern`) is informational. The
-Architect switches the ruleset to this after #307 merges; until then it still requires the
-branch to be up to date.
+The ruleset on `main` (GitHub Pro): pull request required, required checks `ci` and `pr-title`,
+squash only, no direct pushes, zero required approvals, and **no requirement that the branch is up
+to date** (owner, 2026-11-04: every merge made every other open PR "behind" and cost it a full CI
+run). There is **no merge queue** (not available on this repository). `CODEOWNERS` (`* @magpern`)
+is informational.
+
+So a PR is merged on its own green head and its `PASS`, without updating the branch. Merge `main`
+into a PR branch only for a real conflict (GitHub says the PR is "dirty") or when `main` changed
+files the PR changes or calls in a way that needs checking; that new head is then reviewed again
+(review gate, item 3). The safety net for a PR that was green alone but breaks with something
+merged earlier is the full CI run on `main` after every merge (see "CI: what runs, and when"):
+a red `main` is fixed forward first, before other merges.
 
 ## Branches, worktrees and commits
 
@@ -759,13 +761,19 @@ CI runs the same in the `e2e` job (when the stack changed) and uploads `playwrig
 
 CI is expensive (every job bills at least a minute; a full run took 11 to 17 minutes before the
 backend tests were sharded, see #307 for the timings now), so a pull request only runs what its
-change needs. `ci.yml` has no `push` trigger: `main` only receives squashes the merge queue has
-tested. It runs on `pull_request`, on `merge_group` (the queue's merged result: the PR squashed on
-top of `main` and the groups ahead of it; the required checks `ci` and `pr-title` must pass there
-before the squash lands), weekly (Monday 04:00 UTC, which picks up new advisories) and on
-`workflow_dispatch`; the last two run everything. A newer push cancels a pull request's older run;
-a merge group's run is never cancelled by concurrency (`cancel-in-progress` is true only for
-`pull_request`).
+change needs. `ci.yml` runs on `pull_request`, on every `push` to `main`, weekly (Monday 04:00
+UTC, which picks up new advisories) and on `workflow_dispatch`. It also still has a `merge_group`
+trigger, unused because the repository has no merge queue.
+
+The **push to `main`** (every squash merge) runs everything (`changes` sets `all=true` for any event
+that is not a pull request or merge group, as for the weekly and manual runs): the ruleset does not
+require a PR to be up to date, so this full run on the merged result is what catches a semantic
+conflict between PRs that were each green alone. Its concurrency group is per event and ref with
+`cancel-in-progress` true, so in a burst of merges the older runs are cancelled and the latest
+one, which contains them all, completes. A newer push also cancels a pull request's older run; a
+merge group's run is never cancelled. The secret scan of a push covers the pushed range
+(`before..sha`) and falls back to the whole history when `before` is zero or unknown.
+A red run on `main` is fixed forward first.
 
 The `pr-title` workflow also runs on `merge_group`. A merge group has no PR title, so there it runs
 commitlint on the subject of every commit the queue would land (`git log --format=%s
