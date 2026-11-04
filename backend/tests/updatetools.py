@@ -78,6 +78,10 @@ class UpdateEnv:
         """A new user's class saved by a real Save job: one live, verified saved row."""
         return await self._saved(await self.s.saved_class(token))
 
+    async def soundless_live(self, token: str = TOKEN_A) -> Live:
+        """A new user's soundless class saved by a real Save job (the switch must be on)."""
+        return await self._saved(await self.s.soundless_class(token))
+
     async def running_live(self, token: str = TOKEN_A) -> Live:
         """A new user's running class saved by a real Save job (the flag must be on)."""
         return await self._saved(await self.s.running_class(token))
@@ -94,9 +98,11 @@ class UpdateEnv:
         assert row.state_hash is not None
         return Live(saved, row.id, row.program_id)
 
-    def revision(self, live: Live, content: dict[str, Any] = DRAFT_2) -> UUID:
+    def revision(
+        self, live: Live, content: dict[str, Any] = DRAFT_2, music: dict[str, Any] | None = None
+    ) -> UUID:
         return self.s.plant_revision(
-            live.saved.owner, live.saved.class_id, live.saved.link_id, content
+            live.saved.owner, live.saved.class_id, live.saved.link_id, content, music=music
         )
 
     def job(

@@ -24,13 +24,22 @@ against the authenticated user and failing closed:
   2): its music is a ``mowl_spotify_playlist`` without picked songs; a Swedebeat mix or a
   ``song_list_id`` is ``invalid_input`` (the library would refuse new music anyway, and Save never
   attaches anything);
+- the revision's music is ``{"source": "none"}`` (a soundless class, ADR 0007 amendment of
+  2026-11-03, items 1 and 8) **exactly when** the class's stored ``music_source`` is ``none``
+  (``invalid_input`` otherwise, both ways: Save keys on both, and the two must agree); a running
+  class with a ``none`` revision is ``invalid_input`` (running v1 above);
 - the revision's ``music.link_id`` names a ``mowl_playlist_links`` row of the user of the
   revision's source (``spotify`` for a playlist, ``swedebeat`` for a mix, ADR 0016 section 3)
   (``music_unlinked``: the MOWL account changed since the revision was designed, section 9).
+  A soundless revision names no link: none is read, ``music_unlinked`` cannot happen, and the
+  playlist written is the library's "no music", ``NO_PLAYLIST`` (``PlaylistID: -1``;
+  ``playlist_for``).
 
 The ``running_enabled`` flag is not checked here (the reconcilers rebuild the spec through
 ``revision`` and must still decide a running write when the flag is off): the Save and Update
-kinds check it next to these, ``running_refused``.
+kinds check it next to these, ``running_refused``. Likewise the soundless switch
+(``CLASSBEAT_SOUNDLESS_ENABLED`` and a stored ``soundless_enabled`` of exactly ``on``; no
+coverage check, Save calls no model): ``soundless_refused``, at creation and in ``prepare`` only.
 
 For an Update (``classbeat.saving.update``) also ``saved_target``: the saved row is the user's
 own live row of that class (``invalid_input`` otherwise, section 9: a detached row is never
@@ -44,24 +53,27 @@ Reasons are codes only; nothing of the row is logged.
 import hashlib
 import json
 from dataclasses import dataclass
-from typing import Any, Final
+from typing import Annotated, Any, Final
 from uuid import UUID
 
 from mowl import workout
-from pydantic import ValidationError
+from pydantic import Field, TypeAdapter, ValidationError
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from classbeat.agent.schemas import draft_model
 from classbeat.context import UserContext
+from classbeat.design import music_kind
 from classbeat.design import sport as class_sport
 from classbeat.design.revision import (
     MIX_SOURCE,
     MUSIC_SOURCE,
-    REVISION_MUSIC,
+    NoRevisionMusic,
+    RevisionMusic,
     SpotifyRevisionMusic,
     canonical,
 )
+from classbeat.flags import effective
 from classbeat.operations.attach import SOURCE
 from classbeat.operations.swedebeat import SOURCE as MIX_LINK_SOURCE
 
@@ -70,10 +82,18 @@ HEX_SHA256: Final = r"^[0-9a-f]{64}$"
 LINK_SOURCES: Final = {MUSIC_SOURCE: SOURCE, MIX_SOURCE: MIX_LINK_SOURCE}
 MAX_PLAYLIST_ID: Final = 2**63 - 1
 MAX_PROGRAM_ID: Final = 2**63 - 1
+# The library's "no music" (``workout.save``'s default ``playlist_id``, sent as ``PlaylistID``):
+# what a soundless class is saved and updated with. Never stored: ``saved_workouts.playlist_id``
+# is NULL for it (its CHECK is ``> 0``).
+NO_PLAYLIST: Final = -1
+# What Save reads from ``class_revisions.music``: the two music shapes and the soundless one.
+SAVED_MUSIC: Final = TypeAdapter[RevisionMusic | NoRevisionMusic](
+    Annotated[RevisionMusic | NoRevisionMusic, Field(discriminator="source")]
+)
 
 _REVISION = text(
     "SELECT r.id, r.class_id, r.number, r.kind, r.content, r.content_hash, r.music, "
-    "c.brief ->> 'sport' AS sport FROM class_revisions r "
+    "c.brief ->> 'sport' AS sport, c.music_source FROM class_revisions r "
     "JOIN classes c ON c.owner_id = r.owner_id AND c.id = r.class_id "
     "WHERE r.owner_id = :owner_id AND r.class_id = :class_id AND r.id = :revision_id"
 )
@@ -92,13 +112,24 @@ class Revision:
     number: int
     content_hash: bytes
     spec: dict[str, Any]
-    link_id: UUID
+    link_id: UUID | None  # None only for a soundless revision, which names no link
     link_source: str = SOURCE  # ``mowl_playlist_links.source`` of the link (``LINK_SOURCES``)
     sport: str = class_sport.CYCLING  # the class's stored brief's (``sport_of_brief``)
 
     @property
     def running(self) -> bool:
         return self.sport == class_sport.RUNNING
+
+    @property
+    def soundless(self) -> bool:
+        """A revision whose music is ``none`` (and so, checked, a class whose source is).
+
+        Derived from ``link_id is None`` on purpose: ``revision`` builds the only ``Revision``
+        without a link, and only for ``NoRevisionMusic``; every music shape Save accepts
+        (``SAVED_MUSIC``) carries a ``link_id`` (strict, required). A future music shape without a
+        link must not be added to ``SAVED_MUSIC`` without an explicit kind here, or it would be
+        written as "no music" (``playlist_for``)."""
+        return self.link_id is None
 
     @property
     def content_hash_hex(self) -> str:
@@ -165,13 +196,26 @@ async def revision(
     if spec is None:
         return Refusal("invalid_input")
     try:
-        music = REVISION_MUSIC.validate_json(json.dumps(row.music))
+        music = SAVED_MUSIC.validate_json(json.dumps(row.music))
     except ValidationError:
         return Refusal("music_unlinked")
     if sport == class_sport.RUNNING and not (
         isinstance(music, SpotifyRevisionMusic) and music.song_list_id is None
     ):
         return Refusal("invalid_input")  # running v1: an existing MOWL playlist only
+    soundless = isinstance(music, NoRevisionMusic)
+    if soundless != music_kind.is_none(row.music_source):
+        return Refusal("invalid_input")  # the revision's music and the class's must agree
+    if isinstance(music, NoRevisionMusic):
+        return Revision(
+            class_id=row.class_id,
+            revision_id=row.id,
+            number=row.number,
+            content_hash=stored,
+            spec=spec,
+            link_id=None,
+            sport=sport,
+        )
     return Revision(
         class_id=row.class_id,
         revision_id=row.id,
@@ -190,6 +234,25 @@ async def running_refused(db: AsyncSession, found: Revision) -> bool:
     section 5). Save makes no model call, so coverage is not read (#509). A cycling class never
     reads the flag."""
     return found.running and not await class_sport.running_switch(db)
+
+
+async def soundless_refused(db: AsyncSession, found: Revision) -> bool:
+    """Whether Save or Update must refuse ``feature_off``: the revision is soundless and the
+    soundless switch (``CLASSBEAT_SOUNDLESS_ENABLED`` and a stored ``soundless_enabled`` of
+    exactly ``on``) is off now (ADR 0007 amendment of 2026-11-03, item 2). Coverage is not read:
+    no model runs. A class with music never reads the flag; the reconcilers never call this."""
+    if not found.soundless:
+        return False
+    return not await effective.soundless_switch(db, music_kind.current().enabled)
+
+
+async def playlist_for(db: AsyncSession, ctx: UserContext, found: Revision) -> int | None:
+    """The ``PlaylistID`` a Save or Update of ``found`` writes: ``NO_PLAYLIST`` for a soundless
+    revision (no link row is read), else the user's link row's playlist (``linked_playlist``;
+    None when it is gone: ``music_unlinked``)."""
+    if found.link_id is None:
+        return NO_PLAYLIST
+    return await linked_playlist(db, ctx, found.link_id, found.link_source)
 
 
 async def linked_playlist(

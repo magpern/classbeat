@@ -8,8 +8,8 @@ the model sees no ``music`` key and no music text; the three-condition gate (eve
 leave the effective flag off and ``admit`` refusing, with no job and no credit), the order of
 ``admit``'s checks, and the effective flag ``GET /api/connections`` returns; the worker's
 backstops (``feature_off``, ``model_config``) before any call; the music kind never changing, at
-``admit`` and in the final store, both ways; a Save of a soundless class refused
-until SL3 (the revise is `test_soundless_revise.py`, SL2).
+``admit`` and in the final store, both ways. The revise is ``test_soundless_revise.py`` (SL2);
+Save and Update are ``test_save_soundless.py`` (SL3).
 """
 
 import json
@@ -390,26 +390,3 @@ async def test_a_running_brief_with_no_music_is_refused_at_input(renv: ReviseEnv
     refused = await create(renv, body)
     assert refused.status_code == 422, refused.text
     assert counts(renv) == (0, 0, 0)
-
-
-# --- what SL3 adds -------------------------------------------------------------------
-
-
-async def test_a_soundless_class_is_not_saved_before_sl3(
-    renv: ReviseEnv, fake_mowl: FakeMowlMusic
-) -> None:
-    class_id, job_id = await soundless_class(renv)
-    [rev] = renv.denv.revisions(job_id)
-    save = {
-        "kind": "save_workout",
-        "input": {
-            "class_id": str(class_id),
-            "revision_id": str(rev.id),
-            "content_hash": bytes(rev.content_hash).hex(),
-            "mowl_connection_id": str(renv.browser.connection_id),
-        },
-    }
-    refused = await create(renv, save)
-    assert refused.status_code == 409, refused.text
-    assert refused.json()["detail"]["reason"] == "music_unlinked"  # never PlaylistID -1 yet
-    assert fake_mowl.requests == []
