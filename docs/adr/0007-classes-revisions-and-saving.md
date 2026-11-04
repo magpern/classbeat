@@ -1090,8 +1090,12 @@ fenced transaction. Nothing here changes the queue, the write protocol or any ta
    `saved_workouts` row has this `revision_id`; `detached`: only a detached one; `none`),
    `from_songs` (the draft's `music.song_list_id` is set: designed on approved songs) and, for a
    duplicate, `duplicated_from` `{class_id, number, class_title}` (title `null` when that class is
-   gone or not the user's); the body also says `can_change` (the class has a stored brief and a
-   music source, which Change it needs). At most 200 revisions are read, oldest first (a fixed
+   gone or not the user's); the body also says `can_change`: a revise would be admitted now as far
+   as the class's music goes, that is the class has a stored brief and a music source **and**
+   `design.music_kind.admit_class` admits it. For a soundless class that is false while SL2 (#528)
+   has not merged (`admit_class` answers `feature_off` for every `none` class) and, once SL2 lands,
+   it follows the soundless gate, because `can_change` calls the same function the revise's
+   `admit` calls. At most 200 revisions are read, oldest first (a fixed
    `LIMIT`, the revisions route's bound): design revisions from Swedebeat hand-offs are not chat
    revisions, so the revision limit does not cap them, and the `LIMIT` is what bounds the per-row
    TSS work. Compare reads two contents of at most 64 KB and makes no external call, so it needs no
@@ -1124,8 +1128,16 @@ revision 1 is a copy of the chosen revision. One `user_session` transaction:
    SHA-256 of its canonical content recomputed now; the content validates under the class's sport
    schema (`stored_draft`, then `workout.validate` / `validate_running`), else 500 `internal`. An
    open job on the source does not block it: revisions are immutable and the source is only read.
-2. **Flags:** a running class while `running_enabled` is off, or a class on a Swedebeat mix while
-   `swedebeat_enabled` is off, is 409 `feature_off` (nothing created).
+2. **Flags (fail closed, the stricter rule on purpose):** 409 `feature_off`, nothing created, for
+   a running class while `running_enabled` is off; for a Swedebeat mix while `swedebeat_enabled` is
+   off when **either** the class's current `music_source` **or** the chosen revision's `music` is a
+   mix (the copy takes the class's source, item 5, but its revision 1 still names the mix's link);
+   and for a soundless class (`music_source` `{source: "none"}`, #526) unless the full soundless
+   gate admits it for this user: `design.music_kind.admit_soundless`, the same three conditions a
+   soundless design meets (the switch, then the user's own plan's `design` route covering soundless,
+   answered 409 `soundless_not_evaluated`, then every plan's route, `feature_off`). No model runs
+   for a duplicate, but the copy is a soundless class the user could not have designed otherwise,
+   so it is admitted exactly as a design would be.
 3. **Plan, current plan only** (ADR 0011 amendment): the brief through `quota.gates.check_brief` and
    the copied draft through `check_content` (409 `quota` `length` or `feature`, the usual sentence),
    then one class credit (409 `quota` `classes`, `MeteredLedger.take_class`, ADR 0011). The whole
@@ -1153,8 +1165,11 @@ revision 1 is a copy of the chosen revision. One `user_session` transaction:
    the copy handles it as any revise does (the music step's `music_changed` fact, §3). It is copied
    only as the user's own choice: `{source: "mowl_spotify_playlist", spotify_playlist_id}` (a class
    on the user's playlist), `{source: "mowl_swedebeat_mix", mix_id}`, or a soundless class's
-   `{source: "none"}` (#526; `feature_off` while `soundless_enabled` is off, and until that flag
-   exists in code a `none` class is refused `feature_off`, failing closed). A class on picked songs
+   `{source: "none"}` (#526, gated as item 2 says). A soundless copy keeps `classes.music_source =
+   {source: "none"}` and its revision 1's `music` `{source: "none"}`, so the soundless amendment's
+   item 1 ("the kind never changes", `music_kind.check_stored`) holds for the copy; a revise of the
+   copy goes through `music_kind.admit_class` like any revise (`feature_off` until SL2, #528, then
+   the gate). A class on picked songs
    (the rule keys on the class's `music_source.origin` = `song_pick`, which names the source
    class's `class_playlists` row) gets `music_source` NULL: its working and final playlists stay the
    source class's. Ownership is re-checked at use by the existing paths: a revise attaches through
@@ -1188,7 +1203,8 @@ revision 1 is a copy of the chosen revision. One `user_session` transaction:
    canonical request (`class_id`, `revision_id`, `content_hash`, cleaned `title`) are stored in the
    copy's `provenance.duplicated_from` (`idempotency_key`, `request_hash`; no migration). Under the
    owner lock, before anything else is checked, the user's own duplicate revisions are looked up by
-   that key: the same key and request answer 200 with the class made before (no second credit, no
+   that key. A new copy answers 201 with `{class_id, revision_id}`; the same key and request answer
+   200 with the class made before (no second credit, no
    second class); the same key with another request is 409 `idempotency_mismatch`. A key whose copy
    was deleted since is free again (the user deleted the class it made). The page also disables its
    button while the request is in flight.
@@ -1222,7 +1238,9 @@ and not-ready refusals, flags, every quota refusal creating nothing, N parallel 
 limit of 1 giving one, the copy's provenance and music (no `song_list_id`, `music_source` rules),
 nothing of item 6 copied, the idempotent replay and mismatch, `revise_draft` refused
 `not_changeable` on a copy without a music source with no `class_messages` row and no job created,
-then a revise of the copy (fake model) and a Save of the copy leaving the
+a soundless class with the gate off (`feature_off`, and `soundless_not_evaluated` for an uncovered
+plan, nothing created) and on (the copy and its revision stay `none`, and a revise of the copy is
+answered by `music_kind.admit_class`), then a revise of the copy (fake model) and a Save of the copy leaving the
 source's rows unchanged and vice versa, account export and deletion covering the copy, no request to
 any fake; page tests (Vitest), and Playwright on the fakes with the axe audit of the timeline,
 compare view and the duplicate dialog.
