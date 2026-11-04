@@ -852,3 +852,5 @@ no fix exists or the code path is unreachable, add a dated ignore: `.trivyignore
 with a `# reason` comment above and Trivy's `exp:YYYY-MM-DD` expiry, e.g. `CVE-2025-0001 exp:2026-12-31`)
 or `--ignore-vuln ID` for pip-audit with the same comment. An expired ignore is removed in the next
 PR that touches it. Never ignore without a reason.
+
+- Worktrees made before #520 lack the three `secrets/oauth_*_client_secret` files and `docker compose up` fails there: rerun `scripts/worktree.sh init` (safe to repeat).
