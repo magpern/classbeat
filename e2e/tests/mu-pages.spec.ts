@@ -2,7 +2,7 @@ import { test, expect, type BrowserContext, type Page } from '@playwright/test'
 import { PASSWORD, signInThroughUi, signUpThroughUi, uniqueEmail } from './helpers'
 import { PLAYLISTS, connectMowl, fakeMowl, getJob, jobId } from './design-helpers'
 import { useModelScript } from './model-script'
-import { designRunningAndOpen, storeRunning } from './class-helpers'
+import { designRunningAndOpen, reviseByChat, storeRunning } from './class-helpers'
 import {
   audit,
   grantAdmin,
@@ -116,6 +116,17 @@ test('the signed-in pages: home, classes, new class, designing, ready, class', a
   await expect(page.getByRole('heading', { name: 'MU done-when', level: 1 })).toBeVisible()
   await check('class', page.getByTestId('save-panel').getByRole('button').first())
 
+  // The same class with two versions: the history list (Compare / View / Use this version for each)
+  // is audited by axe here, not only by the Vitest name test (#474, #475).
+  try {
+    await page.setViewportSize({ width: 1440, height: 900 })
+    await reviseByChat(page, 'revise_good', 'Make the first minutes easier.', 2)
+    await expect(page.getByTestId('history-entry')).toHaveCount(2, LONG)
+    await check('class (two versions)', page.getByTestId('save-panel').getByRole('button').first())
+  } finally {
+    useModelScript('good_first_draft')
+  }
+
   // A ready running class: the Running chip, the incline column and the five zones.
   await page.setViewportSize({ width: 1440, height: 900 })
   try {
@@ -184,6 +195,6 @@ test('the admin pages, signed in as an admin with a TOTP code', async () => {
 })
 
 test('every page was audited', () => {
-  // 4 before sign-in, 9 signed-in (two of them running), 5 account tabs, music, Spotify, 6 admin sections.
-  expect(findings.map((f) => f.page)).toHaveLength(26)
+  // 4 before sign-in, 10 signed-in (two of them running, one with two versions), 5 account tabs, music, Spotify, 6 admin sections.
+  expect(findings.map((f) => f.page)).toHaveLength(27)
 })

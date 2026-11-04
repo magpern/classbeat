@@ -1290,9 +1290,11 @@ listed at the end. It follows the soundless amendment above and keeps its rules.
    Analysing it again (after the 30-day cache, an eviction at 20 maps per user, or a new
    `music.MAP_VERSION` in a wheel upgrade) gives a new fingerprint, and the class's corrections go
    inert. The same happens to a Spotify class whose playlist changed. Nothing is deleted. The panel
-   counts the rows as set on earlier music and says: "This music was analysed again or changed, so
-   your earlier timing fixes no longer apply. They are kept: making an earlier version current uses
-   them again." The user can clear them.
+   lists these rows (`stale`, which also holds rows for songs the version does not play) and says:
+   "These timing fixes are for music this version does not play: it was analysed again or changed,
+   or the song is not in this version. They are kept and do not count towards the limit, so making
+   an earlier version current can use them again. Clear them if you no longer need them." (the
+   sentence as shipped in `BeatOnePanel.tsx`). The user can clear them one by one or all at once.
 10. **Save and Update** are unchanged: they write the approved revision's content, which a refit or
     a revise has fitted with the corrections. A changed correction therefore reaches MOWL only
     through a new revision, and Saved shows "out of date" when its content differs. While

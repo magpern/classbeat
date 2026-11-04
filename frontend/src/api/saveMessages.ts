@@ -1,6 +1,6 @@
 import { ApiError } from './client'
 import { classReasonText } from './classMessages'
-import { planRefusalText } from './planMessages'
+import { quotaText } from './planMessages'
 
 // Plain sentences for Save, Update and the undecided write (ADR 0007 sections 5 to 8 and 12).
 // Category and reason codes are never shown.
@@ -37,10 +37,8 @@ const SAVE_REASONS: Record<string, string> = {
 /** The text of a refused Save or Update (a 409 or 404 at creation). */
 export function saveReasonText(error: unknown): string {
   // A plan-limit refusal (409 `quota`: classes, cost, length, feature) says which limit it was.
-  if (error instanceof ApiError && error.reason === 'quota') {
-    const refusal = planRefusalText(error)
-    if (refusal !== null) return refusal
-  }
+  // The version is already made, so a length or feature refusal cannot ask for a shorter length.
+  if (error instanceof ApiError && error.reason === 'quota') return quotaText(error, 'save')
   if (error instanceof ApiError && error.reason !== null && Object.hasOwn(SAVE_REASONS, error.reason)) {
     return SAVE_REASONS[error.reason]!
   }

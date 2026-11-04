@@ -327,7 +327,7 @@ export function NextStep({
         </div>
       ) : (
         <div className="flex flex-wrap gap-3">
-          <Button disabled={busy || !loaded} onClick={press}>
+          <Button disabled={busy || !loaded || (preference === 'off' && handoff === null)} onClick={press}>
             {checked ? 'Check again' : 'I made the mix'}
           </Button>
           <Button variant="secondary" disabled={busy} onClick={later}>

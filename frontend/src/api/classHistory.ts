@@ -1,4 +1,4 @@
-import { get } from './client'
+import { ApiError, get } from './client'
 import { count, flag, isObject, list, object, optionalText, text, type JsonObject } from './decode'
 import { clock } from '../lib/workout'
 
@@ -41,6 +41,8 @@ export interface History {
   /** The class has its own brief and music, which Change it needs (a copy on picked songs has not). */
   canChange: boolean
   revisions: TimelineEntry[]
+  /** Versions that no longer validate: left out of `revisions` and only counted by the server. */
+  unreadable: number
 }
 
 function number(source: JsonObject, key: string): number {
@@ -102,6 +104,7 @@ export async function getHistory(classId: string, signal?: AbortSignal): Promise
     sport: body.sport === 'running' ? 'running' : 'cycling',
     canChange: flag(body, 'can_change'),
     revisions: list(body, 'revisions').map((r) => decodeEntry(object(r, 'revision'))),
+    unreadable: optionalCountOf(body, 'unreadable') ?? 0,
   }
 }
 
@@ -162,6 +165,17 @@ export async function compareRevisions(
     sameSource: flag(music, 'same_source'),
     sameFingerprint: flag(music, 'same_fingerprint'),
   }
+}
+
+/** Why two versions could not be compared, in the page's words (the server's category is never shown). */
+export function compareFailureText(error: unknown): string {
+  if (error instanceof ApiError && error.status === 404) {
+    return 'One of these versions is no longer there.'
+  }
+  if (error instanceof ApiError && error.status === 500) {
+    return 'One of these versions can no longer be read, so the two cannot be compared.'
+  }
+  return 'The two versions could not be compared. Try again.'
 }
 
 /** What asked for a version, in the page's words. */

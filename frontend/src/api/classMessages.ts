@@ -59,7 +59,7 @@ export function classReasonText(error: unknown): string {
 
 /** The text of a refused Make current: a plan-limit refusal is about the version, not the length to choose. */
 export function currentReasonText(error: unknown): string {
-  if (error instanceof ApiError && error.reason === 'quota') return quotaText(error, true)
+  if (error instanceof ApiError && error.reason === 'quota') return quotaText(error, 'version')
   return classReasonText(error)
 }
 

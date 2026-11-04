@@ -53,18 +53,16 @@ function watchCsp(page: Page): string[] {
 }
 
 /** Audit the state on screen at both sizes and in both themes, then put the page back as it was. */
-async function check(page: Page, name: string, primary: ReturnType<Page['locator']>, scope: string): Promise<void> {
-  // axe looks at the Swedebeat part only: the rest of the class page has its own findings (the
-  // revisions list's "Use version N" buttons fail label-content-name-mismatch, reported on the PR).
-  const result = await audit(page, name, primary, scope)
+async function check(page: Page, name: string, primary: ReturnType<Page['locator']>): Promise<void> {
+  // axe looks at the whole class page (the revisions list's names were fixed in #475, and the
+  // two-version class is in the axe walk of mu-pages.spec.ts).
+  const result = await audit(page, name, primary)
   findings.push(result)
   expect.soft(result.problems, name).toEqual([])
   await setTheme(page, 'dark')
   await page.setViewportSize({ width: 1280, height: 720 })
 }
 
-const MATCH = '#swedebeat-match'
-const NEXT = '[data-testid="next-step"]'
 const card = (page: Page) => page.getByRole('region', { name: 'Swedebeat', exact: true })
 const match = (page: Page) => page.getByRole('region', { name: 'Swedebeat match' })
 const nextStep = (page: Page) => page.getByRole('region', { name: 'Next, in the Swedebeat app' })
@@ -127,7 +125,7 @@ test('match, replace, approve, then verify with a wrong-length mix and override'
 
     // One search per distinct song, each with this user's own token.
     expect(catalogueCalls()).toEqual(Array<string>(8).fill(EMAIL_A))
-    await check(page, 'match view: found, unsure and missing', match(page).getByRole('button', { name: 'Approve this selection' }), MATCH)
+    await check(page, 'match view: found, unsure and missing', match(page).getByRole('button', { name: 'Approve this selection' }))
   })
 
   await test.step('replace the two songs, approve the new list, and match again', async () => {
@@ -155,7 +153,7 @@ test('match, replace, approve, then verify with a wrong-length mix and override'
     await page.goto(`/classes/${classId}`)
     await expect(match(page).getByTestId('match-totals')).toHaveText('8 found, 0 unsure, 0 not in Swedebeat.', LONG)
     await expect(match(page).getByRole('button', { name: 'Replace the missing and unsure songs' })).toHaveCount(0)
-    await check(page, 'match view: all found', match(page).getByRole('button', { name: 'Approve this selection' }), MATCH)
+    await check(page, 'match view: all found', match(page).getByRole('button', { name: 'Approve this selection' }))
 
     await match(page).getByRole('button', { name: 'Approve this selection' }).click()
     await expect(match(page).getByText('Selection approved')).toBeVisible()
@@ -166,7 +164,7 @@ test('match, replace, approve, then verify with a wrong-length mix and override'
     await expect(nextStep(page).getByTestId('next-facts')).toContainText('E2E matched ride')
     await expect(nextStep(page).getByRole('button', { name: 'I made the mix' })).toBeVisible()
     await expect(nextStep(page).getByRole('button', { name: 'Not now' })).toBeVisible()
-    await check(page, 'next step: before the first check', nextStep(page).getByRole('button', { name: 'I made the mix' }), NEXT)
+    await check(page, 'next step: before the first check', nextStep(page).getByRole('button', { name: 'I made the mix' }))
   })
 
   await test.step('verify: no new mix yet, then a wrong-length mix the user picks', async () => {
@@ -183,14 +181,14 @@ test('match, replace, approve, then verify with a wrong-length mix and override'
     await expect(nextStep(page).getByRole('button', { name: 'Check again' })).toBeVisible()
     const picker = nextStep(page).getByRole('group', { name: 'Which one did you make?' })
     await expect(picker).toBeVisible()
-    await check(page, 'next step: no new mix found', nextStep(page).getByRole('button', { name: 'Check again' }), NEXT)
+    await check(page, 'next step: no new mix found', nextStep(page).getByRole('button', { name: 'Check again' }))
 
     await picker.getByRole('radio', { name: /E2E Cached Mix/ }).check({ force: true })
     await nextStep(page).getByRole('button', { name: 'Check again' }).click()
     await expect(nextStep(page).getByTestId('verdict')).toContainText('That mix is shorter than expected', LONG)
     await expect(nextStep(page).getByTestId('verdict')).toContainText('may be missing')
     await expect(nextStep(page).getByRole('button', { name: 'This is the right mix' })).toBeEnabled()
-    await check(page, 'next step: a mix that is too short', nextStep(page).getByRole('button', { name: 'This is the right mix' }), NEXT)
+    await check(page, 'next step: a mix that is too short', nextStep(page).getByRole('button', { name: 'This is the right mix' }))
 
     // A cached analysis: no attach, no link and no audio fetch for the user's pick.
     const after = swedebeatMixState()
@@ -202,7 +200,7 @@ test('match, replace, approve, then verify with a wrong-length mix and override'
   await test.step('override: a verdict never blocks, and the class is designed on the mix', async () => {
     await nextStep(page).getByRole('button', { name: 'This is the right mix' }).click()
     await expect(nextStep(page).getByText('Mix verified')).toBeVisible()
-    await check(page, 'next step: verified', nextStep(page).getByRole('button', { name: 'Design the class on this mix' }), NEXT)
+    await check(page, 'next step: verified', nextStep(page).getByRole('button', { name: 'Design the class on this mix' }))
 
     const row = sql(`SELECT state || ',' || mix_id FROM swedebeat_handoffs WHERE class_id = '${classId}' AND superseded_at IS NULL`)
     expect(row).toBe(`verified,${CACHED_MIX_ID}`)

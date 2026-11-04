@@ -66,6 +66,24 @@ describe('the plan refusal sentences', () => {
     )
   })
 
+  it('words a refused Save in terms of the version, never of choosing a length', () => {
+    const body = (extra: Record<string, unknown>) =>
+      new ApiError(409, 'quota', null, { detail: { reason: 'quota', plan: 'free', ...extra } })
+    expect(quotaText(body({ quota: 'length', limit: 30 }), 'save')).toBe(
+      'Your plan allows classes of up to 30 minutes, and this version is longer, so it cannot be saved. Change it to fit, or make an earlier version current, then save again.',
+    )
+    expect(quotaText(body({ quota: 'length' }), 'save')).toBe(
+      'Your plan does not allow a class this long, so this version cannot be saved. Change it to fit, or make an earlier version current, then save again.',
+    )
+    expect(quotaText(body({ quota: 'feature', feature: 'ftp_tests' }), 'save')).toBe(
+      'This version uses FTP tests, which your plan does not include, so it cannot be saved. Change it to fit, or make an earlier version current, then save again.',
+    )
+    expect(quotaText(body({ quota: 'feature' }), 'save')).toContain('uses something your plan does not include, so it cannot be saved')
+    // The class and cost sentences are the same for every target.
+    expect(quotaText(body({ quota: 'cost' }), 'save')).toBe(quotaText(body({ quota: 'cost' })))
+    expect(quotaText(body({ quota: 'length', limit: 30 }), 'version')).toContain('Choose another version.')
+  })
+
   it('words busy with the plan limit', () => {
     const error = new ApiError(429, 'busy', null, { detail: { reason: 'busy', limit: 2 } })
     expect(busyText(error)).toContain('allows 2 designs at a time')

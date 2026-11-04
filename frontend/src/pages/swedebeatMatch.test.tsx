@@ -473,6 +473,27 @@ describe('Next, in the Swedebeat app', () => {
     expect(api.to('POST', `${HANDOFF}/design`)).toHaveLength(0)
   })
 
+  it('disables "I made the mix" while "I use Swedebeat" is off and no step was started (#557)', async () => {
+    const api = step({
+      'GET /api/connections': { ...connections(), swedebeat: { enabled: true, available: true, uses_swedebeat: false } },
+    })
+    renderAt(PAGE)
+    expect(await screen.findByTestId('needs-preference')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'I made the mix' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Not now' })).toBeEnabled()
+    expect(api.to('POST', HANDOFF)).toHaveLength(0)
+  })
+
+  it('still lets a step that was started be checked while the preference is off (#557)', async () => {
+    step({
+      [`GET ${HANDOFF}`]: () => handoffBody({ state: 'checked', verdict: 'not_found', checked_at: '2026-11-02T10:00:00Z' }),
+      'GET /api/connections': { ...connections(), swedebeat: { enabled: true, available: true, uses_swedebeat: false } },
+    })
+    renderAt(PAGE)
+    expect(await screen.findByTestId('needs-preference')).toBeInTheDocument()
+    expect(await screen.findByRole('button', { name: 'Check again' })).toBeEnabled()
+  })
+
   it('says only that it could not check when the connections cannot be read (#525)', async () => {
     const api = step({
       [`GET ${HANDOFF}`]: () => handoffBody({ state: 'verified', verdict: 'ok', mix_id: 'mix-1', checked_at: '2026-11-02T10:00:00Z' }),
