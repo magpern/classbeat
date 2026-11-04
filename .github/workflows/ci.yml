@@ -150,11 +150,14 @@ jobs:
           docker run --rm --user postgres --entrypoint sh classbeat-db-check -c \
             'for f in /queue/* /maint/* /docker-entrypoint-initdb.d/*; do test -r "$f" || { echo "unreadable: $f"; exit 1; }; done'
 
-      # compose.prod.yaml behind swag (issues #341, #492): config parses with dummy values alone and
-      # with compose.prod.loopback.yaml, the production invariants hold (no caddy, no published port
-      # but web on 127.0.0.1 with the overlay, one private trusted proxy, no mailpit, internal
-      # backend network, no model key on web ...), a self-test shows each unsafe mutation refused,
-      # and `nginx -t` plus the required lines accept docs/runbooks/swag-classbeat.subdomain.conf.
+      # compose.prod.yaml behind swag (issues #341, #492, #500): config parses with dummy values alone
+      # and with each overlay; the production invariants hold (no caddy, no published port but web,
+      # one private trusted proxy, no mailpit, internal backend network, no model key on web, the
+      # secret placement ...); the runbook's proxy network keeps swag's address out of Docker's
+      # range; a self-test shows each unsafe mutation refused; and `nginx -t` plus the directive
+      # rules (read as nginx reads them, with a self-test per spelling of a second
+      # X-Forwarded-For) accept docs/runbooks/swag-classbeat.subdomain.conf. The script has more
+      # checks than any count here: its header lists them.
       - name: Production compose and swag config
         run: scripts/check-prod-compose.sh
 
