@@ -31,14 +31,17 @@ def app(app_database_url: str) -> Iterator[Engine]:
 
 
 INSERT = (
-    "INSERT INTO beat_one_corrections (owner_id, class_id, fingerprint, song, beats) "
-    "VALUES (:o, :c, :f, :s, :b)"
+    "INSERT INTO beat_one_corrections (owner_id, class_id, fingerprint, song, beats, bpm) "
+    "VALUES (:o, :c, :f, :s, :b, :bpm)"
 )
 
 
 def put(conn: Connection, owner: uuid.UUID, class_id: uuid.UUID, song: int = 1, beats: int = 1,
-        fingerprint: str = FP) -> None:  # fmt: skip
-    conn.execute(text(INSERT), {"o": owner, "c": class_id, "f": fingerprint, "s": song, "b": beats})
+        fingerprint: str = FP, bpm: float = 128.0) -> None:  # fmt: skip
+    conn.execute(
+        text(INSERT),
+        {"o": owner, "c": class_id, "f": fingerprint, "s": song, "b": beats, "bpm": bpm},
+    )
 
 
 def rows(conn: Connection, owner: uuid.UUID) -> list[tuple[int, int]]:
@@ -83,17 +86,18 @@ def test_a_user_cannot_write_a_correction_for_someone_elses_class(
 
 
 @pytest.mark.parametrize(
-    ("song", "beats", "fingerprint"),
-    [(0, 1, FP), (501, 1, FP), (1, 0, FP), (1, 4, FP), (1, -4, FP), (1, 1, "AB" * 32),
-     (1, 1, "ab" * 31)],
+    ("song", "beats", "fingerprint", "bpm"),
+    [(0, 1, FP, 120.0), (501, 1, FP, 120.0), (1, 0, FP, 120.0), (1, 4, FP, 120.0),
+     (1, -4, FP, 120.0), (1, 1, "AB" * 32, 120.0), (1, 1, "ab" * 31, 120.0), (1, 1, FP, 0.0),
+     (1, 1, FP, 1000.5)],
 )  # fmt: skip
-def test_the_checks_refuse_a_song_beats_or_fingerprint_out_of_range(
-    admin: Connection, song: int, beats: int, fingerprint: str
+def test_the_checks_refuse_a_song_beats_fingerprint_or_bpm_out_of_range(
+    admin: Connection, song: int, beats: int, fingerprint: str, bpm: float
 ) -> None:
     owner = new_user(admin)
     class_id = new_class(admin, owner)
     with pytest.raises(IntegrityError):
-        put(admin, owner, class_id, song=song, beats=beats, fingerprint=fingerprint)
+        put(admin, owner, class_id, song=song, beats=beats, fingerprint=fingerprint, bpm=bpm)
 
 
 def test_one_row_per_song_and_music_of_a_class(admin: Connection) -> None:

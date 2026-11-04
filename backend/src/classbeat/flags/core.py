@@ -14,6 +14,11 @@ The database can tighten what the environment allows, never loosen it:
   can switch Swedebeat off for everyone, never on past the environment (ADR 0015).
 - ``running_enabled``: the same shape and rule as ``swedebeat_enabled``, under
   ``CLASSBEAT_RUNNING_ENABLED`` (off by default): running classes (ADR 0018 section 5).
+- ``soundless_enabled`` (ADR 0007 amendment of 2026-11-03, #527): stored ``off`` or ``on``, under
+  ``CLASSBEAT_SOUNDLESS_ENABLED`` (off by default), but **unlike** the two above a missing,
+  ``null`` or invalid stored value is ``off``: only a stored ``on`` switches it on, so clearing
+  the row turns it off. ``soundless_switch`` is that part; the effective flag also needs every
+  plan's model route to cover soundless (``classbeat.flags.effective.soundless_enabled``).
 - ``trial``: ``{plan, days}``; absent or invalid is off.
 - ``banner``: ``{text, level}``; absent or invalid is none. Its text is plain text: no control
   character (``Cc``), no format character (``Cf``: the bidi embeddings, overrides and isolates,
@@ -43,6 +48,7 @@ _SIGNUP_STORED: Final = ("invite", "closed")
 _SONG_STORED: Final = ("off", "granted", "on")
 _SWEDEBEAT_STORED: Final = ("off", "on")
 _RUNNING_STORED: Final = ("off", "on")
+_SOUNDLESS_STORED: Final = ("off", "on")
 _LEVELS: Final = ("info", "warning")
 # What banner text may not hold (#227, the #303 review's note 5 for the admin's free text): the
 # control characters, the format characters (bidi controls such as U+202E, which reorder what
@@ -122,6 +128,19 @@ def running_setting(environment_on: bool, stored: Any) -> bool:
     return stored == "on"
 
 
+def soundless_switch(environment_on: bool, stored: Any) -> bool:
+    """The switch part of ``soundless_enabled`` (ADR 0007 amendment of 2026-11-03, item 2): the
+    environment's switch is on **and** the stored value is exactly ``on``. Absent (``None``, also
+    the cleared JSON ``null``) is off, not on as for ``running_enabled``; an invalid value is off
+    and logged by key. Coverage is not checked here (``flags.effective``)."""
+    if not environment_on or stored is None:
+        return False
+    if not isinstance(stored, str) or stored not in _SOUNDLESS_STORED:
+        _invalid("soundless_enabled")
+        return False
+    return stored == "on"
+
+
 def trial_setting(stored: Any) -> TrialSetting | None:
     """The stored ``{plan, days}``; ``None`` (off) when absent, malformed or ``days`` is 0."""
     if stored is None:
@@ -168,6 +187,7 @@ KEYS: Final = (
     "song_picking",
     "swedebeat_enabled",
     "running_enabled",
+    "soundless_enabled",
     "trial",
     "banner",
 )
@@ -181,7 +201,7 @@ def validate_for_write(key: str, value: Any, *, trial_days_max: int) -> Any:
     - ``signup_mode``: ``invite`` or ``closed``; ``open`` comes only from the environment
       (``environment_only``).
     - ``song_picking``: ``off``, ``granted`` or ``on``.
-    - ``swedebeat_enabled`` and ``running_enabled``: ``off`` or ``on``.
+    - ``swedebeat_enabled``, ``running_enabled`` and ``soundless_enabled``: ``off`` or ``on``.
     - ``trial``: exactly ``{plan, days}``, a plan code and ``days`` from 0 to ``trial_days_max``
       (``above_environment_bound`` over it). Whether the plan exists and ranks at most
       ``instructor`` is checked against ``plans`` by the caller.
@@ -203,6 +223,10 @@ def validate_for_write(key: str, value: Any, *, trial_days_max: int) -> Any:
         return value
     if key == "running_enabled":
         if not isinstance(value, str) or value not in _RUNNING_STORED:
+            raise FlagRefused("invalid_value")
+        return value
+    if key == "soundless_enabled":
+        if not isinstance(value, str) or value not in _SOUNDLESS_STORED:
             raise FlagRefused("invalid_value")
         return value
     if key == "trial":

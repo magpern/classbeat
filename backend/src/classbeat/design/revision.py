@@ -16,6 +16,10 @@
   duration, listed_duration, unsure_beat_one, fingerprint, link_id}`` (``SwedebeatRevisionMusic``):
   the fingerprint is the map's (``swedebeat_music.fingerprint``), and the link gives Save the MOWL
   playlist under the same checks as a Spotify link. Still no MOWL playlist id and no map.
+  A soundless class (ADR 0007 amendment of 2026-11-03, item 7; #527): exactly
+  ``{source: "none"}`` (``NoRevisionMusic``): no link, no fingerprint, no ``unknown_bpm``. Its
+  provenance has ``map_version`` and ``crossfade_sec`` ``None``. ``REVISION_MUSIC`` (what Save
+  reads for its link) does not take it: Save of a soundless class is SL3 (#529).
   The revision is the user's own and is deleted with its class or account (ADR 0010).
 - **provenance**: ``classbeat.agent.records.provenance``: provider, model, effort, the prompt and
   tool-schema version, classbeat's and mowl-workouts' versions, ``map_version`` and the map's
@@ -43,12 +47,16 @@ from classbeat.agent import DesignResult, Provenance, WorkoutDraft, beat_one, mi
 from classbeat.agent.loop import StageOutcome
 from classbeat.agent.schemas import AnyDraft, RunningDraft
 from classbeat.design.music import MusicStep
+from classbeat.design.music_kind import NoMusicStep
 from classbeat.jobs import FencedSession, JobFailure
 
 MUSIC_SOURCE: Final = "mowl_spotify_playlist"
 MIX_SOURCE: Final = "mowl_swedebeat_mix"
+NO_MUSIC_SOURCE: Final = "none"
 MAX_CONTENT_BYTES: Final = 65536  # the class_revisions.content check of migration 0004
 MAX_BRIEF_BYTES: Final = 4096  # the classes.brief check of migration 0005
+# ADR 0007 amendment "beat-one corrections" item 5: canonical ``songs`` plus ``beat_one``.
+MAX_BEAT_ONE_BYTES: Final = 131072
 
 # The parent, when given, must be a revision of the job's own class (the schema's foreign key
 # checks only the owner), else no row is inserted.
@@ -126,12 +134,12 @@ class RevisionSong(BaseModel):
     end: float = Field(ge=0, le=86400)
     bpm: float = Field(gt=0, le=1000)
     estimate: bool
-    title: str | None = Field(default=None, max_length=200)
+    title: str | None = Field(default=None, max_length=100)
 
 
 # Absent on every revision before the amendment, which therefore validates and dumps as before.
 BeatOneList = Annotated[list[BeatOneCorrection] | None, Field(default=None, max_length=500)]
-SongList = Annotated[list[RevisionSong] | None, Field(default=None, max_length=500)]
+SongList = Annotated[list[RevisionSong] | None, Field(default=None, max_length=200)]
 
 
 class SpotifyRevisionMusic(BaseModel):
@@ -171,6 +179,15 @@ class SwedebeatRevisionMusic(BaseModel):
     songs: SongList = None
 
 
+class NoRevisionMusic(BaseModel):
+    """``class_revisions.music`` of a soundless class's draft (#527): the source and nothing
+    else, so no MOWL object, link or fingerprint is named."""
+
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    source: Literal["none"]
+
+
 RevisionMusic = SpotifyRevisionMusic | SwedebeatRevisionMusic
 
 
@@ -180,10 +197,15 @@ def _beat_one_fields(
     """ADR 0007 amendment "beat-one corrections" item 5: the corrections applied (absent when
     none) and the songs the class plays, from the corrected map it was fitted to."""
     applied = beat_one.as_list(mix_input.corrections_of(step.data))
+    songs = beat_one.songs(music_map, duration_sec)
+    # The new fields only, never the whole ``music`` or ``unknown_bpm``: at most about 103 KB on
+    # any valid map (200 songs, titles of 100 characters; 200 corrections), so this is a defence.
+    if len(canonical({"beat_one": applied, "songs": songs})) > MAX_BEAT_ONE_BYTES:
+        raise JobFailure("invalid_output")
     return music.model_copy(
         update={
             "beat_one": [BeatOneCorrection(**c) for c in applied] or None,
-            "songs": [RevisionSong(**s) for s in beat_one.songs(music_map, duration_sec)],
+            "songs": [RevisionSong(**s) for s in songs],
         }
     )
 
@@ -257,8 +279,8 @@ class DraftRevision:
 def build(
     result: DesignResult,
     outcome: StageOutcome,
-    music_map: dict[str, Any],
-    step: MusicStep,
+    music_map: dict[str, Any] | None,
+    step: MusicStep | NoMusicStep,
     *,
     origin: Literal[
         "design_draft", "revise_draft", "design_with_songs", "revise_songs"
@@ -283,10 +305,16 @@ def build(
     content = draft.model_dump(mode="json", exclude_none=True)
     if len(canonical(content)) > MAX_CONTENT_BYTES:
         raise JobFailure("invalid_output")
-    music: RevisionMusic
-    if running and (step.mix is not None or song_list_id is not None):
+    music: RevisionMusic | NoRevisionMusic
+    if isinstance(step, NoMusicStep):
+        if running or song_list_id is not None or music_map is not None:
+            raise JobFailure("internal")  # soundless: a cycling draft on no music only
+        music = NoRevisionMusic(source=NO_MUSIC_SOURCE)
+    elif music_map is None:
+        raise JobFailure("internal")  # a music step always has its map
+    elif running and (step.mix is not None or song_list_id is not None):
         raise JobFailure("internal")  # running v1: an existing MOWL playlist only (ADR 0018)
-    if step.mix is not None:
+    elif step.mix is not None:
         if song_list_id is not None:
             raise JobFailure("internal")  # a mix is never picked songs
         music = SwedebeatRevisionMusic(
@@ -307,7 +335,9 @@ def build(
             unknown_bpm=[UnknownBpmTrack(index=u.index, title=u.title) for u in step.unknown_bpm],
             song_list_id=song_list_id,
         )
-    music = _beat_one_fields(music, step, music_map, result.duration_sec)
+    if not isinstance(step, NoMusicStep) and not isinstance(music, NoRevisionMusic):
+        assert music_map is not None  # noqa: S101 - checked above
+        music = _beat_one_fields(music, step, music_map, result.duration_sec)  # not soundless
     content_hash = hashlib.sha256(canonical(content)).digest()
     if base_hash is not None and content_hash == base_hash:
         raise JobFailure("invalid_output")
