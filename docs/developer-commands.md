@@ -499,7 +499,8 @@ before the approval, because the second phase is a new run of the model. `e2e/te
 `readyToPick`, `startPick`, `untilState`, `fakePlaylists` and `sql` (a statement as the database superuser in
 the stack's db container, for what a test cannot wait for, such as an approval past its date: constants only).
 
-The specs: `design-draft.spec.ts` (draft, cancel while running, uncertain attach),
+The specs: `return-visit.spec.ts` (#572: a design held on the fake MOWL and a design on a cached mix, the page closed and a new one opened in the same context; the class page and job page show the real state, and a design that finished while away opens as the finished class; the hand-off's long absence is a step of `swedebeat-match.spec.ts`),
+`design-draft.spec.ts` (draft, cancel while running, uncertain attach),
 `spotify-connect.spec.ts` (the Spotify wizard, consent, Disconnect, two users on different Client IDs and
 every error category's page text), `song-pick.spec.ts` (a pick and one Approve to a private playlist of exactly
 the approved songs, a stale tab after a newer pick, an expired list, an account switch while waiting, a partial
