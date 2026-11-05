@@ -12,6 +12,7 @@ import asyncio
 import hashlib
 import json
 import logging
+import re
 import threading
 import uuid
 from typing import Any
@@ -37,6 +38,26 @@ from optools import (
 )
 
 ATTACH = "mowl_attach_spotify_playlist"
+
+
+_RANDOM_ID = re.compile(
+    r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}|[0-9a-f]{8,}", re.IGNORECASE
+)
+
+
+def leaks(text: str, secret: str) -> bool:
+    """Does ``secret`` appear in ``text`` as a value, not inside a random id?
+
+    A uuid or a hex id (a job, user or connection id) can contain a short number such as
+    ``1001`` by chance, so those are removed first. A short secret is then found only as a
+    whole token (not next to a letter or digit): ``external_id=1001`` still counts, ``...b1001989``
+    and the ``-1001-`` group of a uuid do not. A longer secret has no such chance and is found
+    as is.
+    """
+    if len(secret) > 8:  # a token or a playlist id: no chance match, and the token is a uuid
+        return secret in text
+    text = _RANDOM_ID.sub("<id>", text)
+    return re.search(rf"(?<![0-9A-Za-z]){re.escape(secret)}(?![0-9A-Za-z])", text) is not None
 
 
 def hash_for(source_id: str) -> bytes:
@@ -86,7 +107,24 @@ async def test_one_attach_stores_the_link_and_the_next_job_needs_no_write(
     # No token, playlist id or MOWL id in any event or log line.
     text = json.dumps([xenv.events(j) for j in (job_id, second)]) + caplog.text
     for secret in (TOKEN_A, "1001", PLAYLIST):
-        assert secret not in text
+        assert not leaks(text, secret), secret
+
+
+def test_the_leak_check_ignores_random_ids_and_finds_a_logged_value() -> None:
+    # Random ids that contain 1001 (hex tail, uuid group, whole hex id) are not a leak ...
+    for noise in (
+        "job 5c1e0a4f-77d3-4b1e-9a1c-d6cbb1001989 done",
+        "job 5c1e0a4f-1001-4b1e-9a1c-d6cbb1a01989 done",
+        "owner ops-1001ab12cd@example.com",
+        '{"job_id": "1001d6cb-77d3-4b1e-9a1c-0123456789ab"}',
+    ):
+        assert not leaks(noise, "1001"), noise
+    # ... but the value itself, logged in any plain form, is.
+    for leaked in ("external_id=1001", "attached 1001.", '{"id": 1001}', "1001"):
+        assert leaks(leaked, "1001"), leaked
+    assert leaks(f"playlist {PLAYLIST} attached", PLAYLIST)
+    assert leaks(f"auth {TOKEN_A}", TOKEN_A)
+    assert not leaks("playlist attached", PLAYLIST)
 
 
 async def test_the_key_and_hash_name_only_the_write() -> None:
