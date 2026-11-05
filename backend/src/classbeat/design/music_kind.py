@@ -30,8 +30,9 @@ module holds the checks that are not the input's own validation:
   stack that sets it for web (the e2e stack, SL7) can.
 - **The kind never changes** (item 1). ``admit_music`` (in ``admit`` when the job names a class):
   ``none`` on a class whose music is not ``none``, or other music on a class whose music is
-  ``none``, is ``invalid_input``; ``check_stored`` repeats it in the final fenced store after
-  ``revision.adopt_first``, so two queued jobs of different kinds cannot both land.
+  ``none``, is ``invalid_input``; ``check_stored`` repeats it in the final fenced store before
+  ``revision.adopt_first`` (#589; the soundless store with ``before_adopt``, then strictly after
+  it), so two queued jobs of different kinds cannot both land.
 - **A revise of a soundless class** (SL2, #528) is admitted by ``admit_class`` through the same
   gate (``admit_soundless``); in the worker ``still_on`` and ``require_covered`` run before any
   call, as for a design. Its final store repeats ``check_stored``.

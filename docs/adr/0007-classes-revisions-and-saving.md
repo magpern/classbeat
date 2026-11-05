@@ -895,9 +895,13 @@ set, positive. The music shapes need no migration. **The flag does** (item 2).
      source or current revision is not `none`, or any other source on a class whose source is
      `none`, is `invalid_input`, after the generic checks of `jobs.user.create` (idempotency,
      `class_not_found`, `class_busy`, `not_connected`) and before any credit is reserved;
-   - `check_stored` (in the final fenced store, after `adopt_first`): the class's `music_source`
-     must have the kind of the revision just stored, or the transaction rolls back and the job ends
-     `invalid_input`, so two queued jobs of different kinds cannot both land;
+   - `check_stored` (in the final fenced store): the class's `music_source` must have the kind of
+     the revision just stored, or the transaction rolls back and the job ends `invalid_input`, so
+     two queued jobs of different kinds cannot both land. It runs **before** `adopt_first`, which
+     writes `music_source` of a class with no current revision whatever it holds (#589): the music
+     store's one call, and the soundless store's `before_adopt` call, which also accepts a still
+     unset source (the first design, which `adopt_first` then sets to `none`); the soundless store
+     repeats the strict check after `adopt_first` for a class that already had a current revision;
    - the song kinds' and the hand-off's stores refuse to write `music_source` on a `none` class
      (item 9), so nothing turns a soundless class into a music class or back.
    Save and Update key on **both**: the approval refuses `invalid_input` unless the revision's music

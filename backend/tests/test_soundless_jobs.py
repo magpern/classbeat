@@ -462,6 +462,43 @@ async def test_the_design_stores_check_the_music_kind_before_adopt_first(
     )
 
 
+@pytest.mark.parametrize("source", [None, NONE])
+async def test_the_soundless_store_checks_strictly_after_adopt_first(
+    renv: ReviseEnv, fake_mowl: FakeMowlMusic, source: dict[str, str] | None
+) -> None:
+    """#589 (review finding 2 of #621): the ``before_adopt`` check accepts an unset source, and
+    ``adopt_first`` leaves a class that already has a current revision as it is, so a class with
+    a current revision and a NULL ``music_source`` (an older class; ``admit_music`` refuses it at
+    creation, so the superuser sets it past admit) reaches only the strict check after
+    ``adopt_first``: ``invalid_input``, nothing written. The control (``none``) stores."""
+    class_id, _ = await soundless_class(renv)
+    [first] = renv.revisions(class_id)
+    values = design_body(renv, NONE, class_id=str(class_id))["input"]
+    del values["title"]
+    job_id = new_job(
+        renv.denv.ops.admin, renv.owner, class_id, kind=design.KIND, input=json.dumps(values)
+    )
+    renv.sql(
+        "UPDATE classes SET music_source = CAST(:m AS jsonb) WHERE id = :c",
+        m=None if source is None else json.dumps(source),
+        c=class_id,
+    )
+    renv.use("soundless_first_draft")
+    await renv.run(design.KIND)
+    row = renv.denv.ops.row(job_id)
+    after = renv.sql(
+        "SELECT music_source, current_revision_id FROM classes WHERE id = :c", c=class_id
+    ).one()
+    assert (after.music_source, after.current_revision_id) == (source, first.id)
+    if source is not None:
+        assert (row.state, row.error_category) == ("completed", None)
+        assert len(renv.revisions(class_id)) == 2
+        return
+    assert (row.state, row.error_category) == ("failed", "invalid_input")
+    assert renv.revisions(class_id) == [first]
+    assert renv.denv.revisions(job_id) == []
+
+
 async def test_a_running_brief_with_no_music_is_refused_at_input(renv: ReviseEnv) -> None:
     body = design_body(renv)
     body["input"]["brief"] = {"sport": "running", "length_min": 30}
