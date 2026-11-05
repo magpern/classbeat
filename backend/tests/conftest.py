@@ -294,8 +294,11 @@ def freeze_rate_windows(monkeypatch: pytest.MonkeyPatch) -> Callable[[float | No
     falls inside, the last request lands in a fresh window, its count restarts at 1 and the
     expected 429 is a 200. Pinning the window start makes the test independent of the clock.
     Returns a function that (re)pins to an instant (epoch seconds); each limit still aligns the
-    instant to its own window length. The retry-after is clamped to at least 1 when the real
-    clock is past the pinned window."""
+    instant to its own window length. To test "the clock moved on" pin an instant in the past
+    (``freeze_rate_windows(time.time() - windows_back * window_seconds)``, ``windows_back`` whole
+    windows of the limit under test): the database clock is then ``windows_back`` windows ahead of
+    the pinned one, and the counts must not care. The retry-after is clamped to at least 1 when
+    the real clock is past the pinned window."""
 
     def pin(instant: float | None = None) -> float:
         fixed = time.time() if instant is None else instant

@@ -53,6 +53,12 @@ def leaks(text: str, secret: str) -> bool:
     whole token (not next to a letter or digit): ``external_id=1001`` still counts, ``...b1001989``
     and the ``-1001-`` group of a uuid do not. A longer secret has no such chance and is found
     as is.
+
+    The boundary check is on letters and digits only, so a short secret glued to them (``x1001``,
+    ``1001x``) is not a leak, while one next to punctuation or whitespace (``=1001``, ``"1001"``,
+    ``1001,``) is. A real leak of a short secret inside a longer alphanumeric run would therefore
+    go unseen here; the long secrets (tokens, playlist ids) are the ones that matter and are
+    matched exactly.
     """
     if len(secret) > 8:  # a token or a playlist id: no chance match, and the token is a uuid
         return secret in text

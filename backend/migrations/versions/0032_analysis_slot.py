@@ -15,6 +15,11 @@ job starts without it.
 The queue functions read the column, so ``docker/postgres/queue/20-queue.sql`` goes to
 ``classbeat-queue v3`` in the same PR. No index: the claim counts the running jobs through
 ``jobs_running`` (migration 0004).
+
+Downgrade: dropping the column breaks ``queue_claim`` and the other v3 queue functions, which
+read it, so a downgrade must be paired with reinstalling ``classbeat-queue v2`` (the queue SQL of
+the commit before #574); until then the claim fails. The column's values are lost: a job that
+was waiting for a slot comes back as an ordinary queued job and may analyse without the cap.
 """
 
 from collections.abc import Sequence

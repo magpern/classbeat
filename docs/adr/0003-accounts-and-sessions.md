@@ -120,6 +120,11 @@ so the SPA can prompt.
 - **Cookie** `__Host-classbeat_session`:
   - `HttpOnly`, `Secure`, `SameSite=Lax`, `Path=/`, no `Domain`;
   - `Max-Age` is the session's remaining absolute lifetime.
+- **Residual risk (SameSite=Lax):** Lax sends the cookie on a top-level cross-site navigation
+  with a safe method, so a link from another site opens the app signed in. That is accepted:
+  safe methods change nothing (§4), every write needs the `X-CSRF-Token` header and the origin
+  check, and a page that only follows a link cannot read the response. Strict was not chosen
+  because it would show a signed-out page on every link from mail, chat or a search result.
 - **Local development:**
   - Chromium and Firefox accept `Secure` and `__Host-` cookies on `http://127.0.0.1` and
     `http://localhost`, so local development and Playwright (Chromium) need no exception.
@@ -591,8 +596,8 @@ credentials, connect and disconnect, export and delete still need a fresh passwo
 goals are therefore to limit the damage and, in later PRs, to detect it.
 
 **General limit (§9).** Every signed-in `/api` request takes a slot in fixed windows before
-anything else runs (the middleware, before CSRF and before the route; every request counts, a
-refused one too), all in one `INSERT … ON CONFLICT` statement with the rows in bucket-hash order:
+the CSRF check and the route (in the auth middleware, once the session is resolved; the body
+limit and the security headers wrap it from outside; every request counts, a refused one too), all in one `INSERT … ON CONFLICT` statement with the rows in bucket-hash order:
 
 | Bucket | Default (setting) |
 |---|---|

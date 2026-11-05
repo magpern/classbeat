@@ -100,8 +100,10 @@ COVER_COOLDOWN_MAX_SECONDS = 3600
 # here. Every request counts, a refused one too. A bucket's key does not name its count, so
 # changing a setting keeps the running windows.
 #
-# Never limited: the probes (they never touch the database), and signing out, so a user whose
-# buckets a script has used up can still end every session, the script's included.
+# Never limited: the probes (``/api/health`` touches nothing; ``/api/ready`` runs only
+# ``SELECT 1``, no owned data, and is exempt so an orchestrator's probe loop never fills a
+# bucket), and signing out, so a user whose buckets a script has used up can still end every
+# session, the script's included.
 API_EXEMPT_PATHS = frozenset(
     {"/api/health", "/api/ready", "/api/auth/logout", "/api/auth/logout-all"}
 )

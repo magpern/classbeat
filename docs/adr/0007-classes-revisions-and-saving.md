@@ -1069,7 +1069,7 @@ set, positive. The music shapes need no migration. **The flag does** (item 2).
      the read-back form item 8 assumes;
   2. one cycling Update of that same program, still with `PlaylistID: -1`, read back once (and, if
      the owner wants the clearing confirmed, after attaching a playlist to it in the MOWL app);
-  3. a recorded `suite --live` pass on suite version 11 or later that covers the soundless stages,
+  3. a recorded `suite --live` pass on suite version 12 or later that covers the soundless stages,
      then `models enable` for each plan key.
   Until all three, `SOUNDLESS_ENABLED` stays false outside the e2e stack, and the effective flag
   stays off anyway without coverage.

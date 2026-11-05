@@ -28,7 +28,8 @@ visitor -> (Cloudflare, if proxied) -> :443 swag -(proxy, internal)-> web:8000 -
 No classbeat service publishes a port. `proxy` is a Docker network the owner creates once and that
 only swag and web join; swag has a fixed address on it (`PROXY_IP`). `backend` is internal: `db`,
 `migrate` and `db-functions` have no route out and `db` has no port. There is no mailpit (mail goes
-to a real SMTP service, or Proton Mail Bridge, [proton-bridge-smtp.md](proton-bridge-smtp.md)).
+directly to a real SMTP service; Proton Mail Bridge is an alternative,
+[proton-bridge-smtp.md](proton-bridge-smtp.md)).
 
 ## 1. Prerequisites
 
@@ -37,8 +38,9 @@ to a real SMTP service, or Proton Mail Bridge, [proton-bridge-smtp.md](proton-br
 - swag running and serving another site already (its certificate covers `classbeat.pernemark.se`:
   a wildcard, or the name in `SUBDOMAINS`/`EXTRA_DOMAINS`), its config volume at hand (`/config`).
 - Disk for the Postgres volume and the json-file logs (at most 50 MB per container).
-- A mail account for the app (SMTP host, 587 with STARTTLS or 465 with TLS, a login, a sender on a
-  domain you control, SPF and DKIM), or Bridge.
+- A mail account for the app, reached directly over SMTP (the default: SMTP host, 587 with STARTTLS
+  or 465 with TLS, a login, a sender on a domain you control, SPF and DKIM). Proton Mail Bridge is
+  an alternative, not assumed anywhere below unless a step says so.
 - The release you deploy exists, with its assets: <https://github.com/magpern/classbeat/releases> (tag `vX.Y.Z`; the owner or an agent checks `gh run list --workflow release.yml`). No `git`, no clone.
 
 ## 2. What is reachable from the internet
@@ -82,9 +84,9 @@ trusted install of your own; `gh auth login` first if it asks, the repository is
 anything else runs:
 
 ```bash
-gh attestation verify SHA256SUMS -R magpern/classbeat || echo "NOT VERIFIED: SHA256SUMS"
+gh attestation verify SHA256SUMS -R magpern/classbeat --signer-workflow magpern/classbeat/.github/workflows/release.yml || echo "NOT VERIFIED: SHA256SUMS"
 for a in $(awk '{print $2}' SHA256SUMS); do        # the names in the verified list: the other nine assets
-  gh attestation verify "$a" -R magpern/classbeat || echo "NOT VERIFIED: $a"
+  gh attestation verify "$a" -R magpern/classbeat --signer-workflow magpern/classbeat/.github/workflows/release.yml || echo "NOT VERIFIED: $a"
 done
 ```
 
@@ -215,7 +217,7 @@ production files; nothing below needs `-f`.
 ```
 COMPOSE_FILE=compose.prod.yaml
 COMPOSE_PROJECT_NAME=classbeat-prod              # restore.sh refuses the default name `classbeat`
-# with Proton Mail Bridge: COMPOSE_FILE=compose.prod.yaml:compose.bridge.yaml   (proton-bridge-smtp.md)
+# alternative, Proton Mail Bridge instead of direct SMTP: COMPOSE_FILE=compose.prod.yaml:compose.bridge.yaml   (proton-bridge-smtp.md)
 # with a proxy on the host: COMPOSE_FILE=compose.prod.yaml:compose.prod.loopback.yaml   (section 6b)
 # with swag on another host: COMPOSE_FILE=compose.prod.yaml:compose.prod.lan.yaml   (section 6c)
 # both bridge and an overlay: the overlay first, bridge last
@@ -226,7 +228,7 @@ PROXY_IP=172.29.90.10                            # swag's fixed address on the p
 SMTP_HOST=smtp.example.test
 SMTP_SENDER=noreply@classbeat.pernemark.se
 # optional: SMTP_PORT=587  SMTP_TLS=starttls  SMTP_USERNAME=...  ADMIN_EMAILS=you@example.test
-# optional: SMTP_CA_FILE=/run/smtp-ca/bridge.pem   (pinned self-signed SMTP certificate, see proton-bridge-smtp.md)
+# only with Bridge: SMTP_CA_FILE=/run/smtp-ca/bridge.pem   (pinned self-signed SMTP certificate, see proton-bridge-smtp.md)
 # optional: SIGNUP_MODE=invite  CONNECTION_KEK_ID=kek-1  MODEL_PROVIDER=anthropic
 # optional: OAUTH_GOOGLE_CLIENT_ID=...apps.googleusercontent.com  OAUTH_VISIBLE_PROVIDERS=google   (section 5a)
 # optional: OAUTH_GITHUB_CLIENT_ID=...  OAUTH_MICROSOFT_CLIENT_ID=...   (client ids only; never a client secret here)
@@ -394,12 +396,12 @@ sudo iptables -L DOCKER-USER -n -v        # the rule is first; make it persisten
 ```
 
 (with nftables-based Docker, the equivalent rule in the `DOCKER-USER` chain of the `filter` table).
-If you added the rule, check from a third machine on the LAN: `nc -vz 192.168.1.20 8080` must time out, and from the swag
-machine it must connect. `./check-prod-compose.sh` refuses a published address that is not
+If you added the rule, check from a third machine on the LAN: `nc -vz 192.168.1.20 8080` must
+time out, and from the swag machine it must connect. `./check-prod-compose.sh` refuses a published address that is not
 loopback or one private IPv4, more than one published port of web (both overlays together, or a
 second port from an overlay of your own) and any port of another service, and a `PROXY_IP` equal to
-the server's own address. It does not look at any firewall. The hop from swag to web is **plain HTTP across the LAN** (cookies and forwarded headers
-in clear): acceptable on a home network you control, not on a shared one. Everything else
+the server's own address. It does not look at any firewall. The hop from swag to web is
+**plain HTTP across the LAN** (cookies and forwarded headers in clear): acceptable on a home network you control, not on a shared one. Everything else
 (sections 7 to 10) is unchanged.
 
 ## 7. The swag site config
@@ -490,8 +492,8 @@ pull of the same version.
 **Verify the images before `up`** (needs `gh` and the pulled images, section 4):
 
 ```bash
-gh attestation verify "oci://ghcr.io/magpern/classbeat:$V" -R magpern/classbeat
-gh attestation verify "oci://ghcr.io/magpern/classbeat-db:$V" -R magpern/classbeat
+gh attestation verify "oci://ghcr.io/magpern/classbeat:$V" -R magpern/classbeat --signer-workflow magpern/classbeat/.github/workflows/release.yml
+gh attestation verify "oci://ghcr.io/magpern/classbeat-db:$V" -R magpern/classbeat --signer-workflow magpern/classbeat/.github/workflows/release.yml
 ```
 
 Both must verify, and the digest they report must equal the one in `deployed-images.txt` and the

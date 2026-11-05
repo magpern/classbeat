@@ -108,10 +108,12 @@ describe('the Designing page', () => {
     expect(screen.getByText(/You can leave this page/)).toBeInTheDocument()
   })
 
-  it('shows the stage again once the job was claimed after waiting for a slot (#572)', async () => {
+  it('stops saying it waits for a slot once the job was claimed (#572)', async () => {
+    // A queued body, so the page would still print the waiting text if `claimed` did not reset it;
+    // no stage event, so nothing else clears the flag. The tool call marks the end of the fold.
     fakeApi({
       ...SESSION_ROUTES,
-      [`GET ${JOB}`]: jobBody('running'),
+      [`GET ${JOB}`]: jobBody('queued'),
       [`GET ${EVENTS}`]: (() => {
         let opened = 0
         return () =>
@@ -121,13 +123,13 @@ describe('the Designing page', () => {
                 [1, 'queued'],
                 [2, 'requeued', { reason: 'analysis_slot' }],
                 [3, 'claimed', { attempt: 1 }],
-                [4, 'stage_started', { stage: 'music' }],
+                [4, 'tool_called', {}],
               )
       })(),
     })
     renderAt(`/jobs/${JOB_ID}`)
     await waitFor(() => {
-      expect(screen.getByTestId('progress')).toHaveTextContent('Reading your playlist')
+      expect(screen.getByTestId('progress')).toHaveTextContent('The designer has checked its draft 1 time(s).')
     })
     expect(screen.getByTestId('progress')).not.toHaveTextContent('Other mixes')
   })
