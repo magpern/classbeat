@@ -251,6 +251,19 @@ Every state-changing request (`POST`, `PUT`, `PATCH`, `DELETE`) must pass two ch
   linked sign-in methods (provider names) and lets the user remove any of them in the same
   step (no recent auth or step-up needed: the reset is the proof), so an identity someone
   else linked doesn't survive the reset.
+  *(#639, 2026-11-05)* `complete` takes a **keep list**, `keep_methods: [id]` (required; the
+  methods the page showed and the user left unticked), and deletes every other identity of the
+  user, so one linked after `info` was never shown and goes; an id that is not the user's is
+  ignored. It locks the `users` row right after consuming the token (ADR 0019 §6), and every
+  password sign-in, re-authentication, MFA verify and OAuth sign-in, link or re-auth locks that
+  row first and re-checks under it what it proved (the password hash, the session, the
+  identity), so no session or identity made from the old credentials outlives the reset. The
+  lock is an explicit `SELECT ... FOR NO KEY UPDATE` (`auth/userlock.py`): two of them conflict,
+  which orders these flows, but it does not block the `FOR KEY SHARE` of a foreign-key insert
+  that references `users`. `FOR UPDATE` would, and deadlocked the reset and the rotations
+  against the session middleware, which locks a session row and then inserts an `auth_events`
+  row for its user (#632). In the reset the explicit lock takes the same mode as the
+  `UPDATE users` that follows it; it states the ADR 0019 §6 order rather than adding a wait.
 - **Email change:**
   - **Request:** gives the same answer whether or not the new address is in use. Only the mail
     differs: "confirm" for a free address, "an account with this address exists" for a taken

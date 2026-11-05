@@ -114,15 +114,17 @@ export async function resetInfo(token: string): Promise<LinkedMethod[]> {
   })
 }
 
+/** `keepMethods`: the listed methods the user left unticked. The server deletes every other
+ * linked method, so one linked after the page loaded never survives the reset (#639). */
 export async function completeReset(
   token: string,
   password: string,
-  removeMethods: string[],
+  keepMethods: string[],
 ): Promise<void> {
   await post('/api/auth/password/reset/complete', {
     token,
     password,
-    remove_methods: removeMethods,
+    keep_methods: keepMethods,
   })
 }
 

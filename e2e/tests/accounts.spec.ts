@@ -100,7 +100,7 @@ test('sign-up, confirmation, sign-in and password reset by mail', async ({ reque
   const done = await post(request, origin, new Jar(), '/api/auth/password/reset/complete', {
     token: resetToken,
     password: NEW_PASSWORD,
-    remove_methods: [],
+    keep_methods: [],
   })
   expect(done.status()).toBe(200)
   const old = await post(request, origin, new Jar(), '/api/auth/login', { email, password: PASSWORD })

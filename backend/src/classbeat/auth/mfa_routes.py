@@ -36,6 +36,7 @@ from classbeat.auth.sessions import (
     rotate_session,
 )
 from classbeat.auth.totp_keys import TotpUnreadable
+from classbeat.auth.userlock import lock_user
 from classbeat.context import UserContext
 from classbeat.crypto.keks import KeyRing
 from classbeat.db import system_session
@@ -120,6 +121,7 @@ async def _rotate(request: Request, response: Response, info: SessionInfo, **fla
     """Rotate the session. Raises ``SessionGone`` when it was revoked meanwhile."""
     ip = request_ip(request)
     async with system_session(_factory(request)) as db:
+        await lock_user(db, info.user_id)  # first, as every rotation (#639, ADR 0019 section 6)
         issued = await rotate_session(
             db,
             info,

@@ -2,9 +2,10 @@
 
 Reset: the request answers the same for any address and mails a 30-minute link (token in the URL
 fragment, posted to the API). Completing it signs the user out everywhere, deletes their known
-devices and every other outstanding token, and can remove linked sign-in methods in the same
-step: the reset is the proof, so that needs neither recent auth nor step-up. Change: recent
-authentication (and step-up with a confirmed TOTP), revoking every other session.
+devices and every other outstanding token, and deletes every linked sign-in method the user did
+not keep, in the same step: the reset is the proof, so that needs neither recent auth nor
+step-up. Change: recent authentication (and step-up with a confirmed TOTP), revoking every other
+session.
 """
 
 from typing import Annotated
@@ -42,6 +43,7 @@ from classbeat.auth.tokens import (
     issue_token,
     peek_token,
 )
+from classbeat.auth.userlock import lock_user
 from classbeat.config import Settings
 from classbeat.context import UserContext
 from classbeat.db import system_session
@@ -51,7 +53,9 @@ from classbeat.mail import Mailer, send_logged
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
 FIELD_MAX = 1024
-MAX_REMOVALS = 10
+# The keep list names every method the user keeps and there is no cap on linked identities, so
+# this bound is far above any real account (the page lists all of them) yet keeps the body small.
+MAX_METHODS = 100
 PURPOSE = "reset_password"
 
 
@@ -75,9 +79,10 @@ class ResetInfo(BaseModel):
 class ResetCompleteIn(BaseModel):
     token: str = Field(max_length=FIELD_MAX)
     password: str = Field(max_length=FIELD_MAX)
-    remove_methods: list[UUID] = Field(
-        default_factory=lambda: list[UUID](), max_length=MAX_REMOVALS
-    )
+    # The linked methods the page showed (``info``) and the user kept; every other identity of
+    # the user is deleted (#639). Required, so an old page that sends ``remove_methods`` gets
+    # a 422 and keeps its token instead of losing every identity.
+    keep_methods: list[UUID] = Field(max_length=MAX_METHODS)
 
 
 class ChangePasswordIn(BaseModel):
@@ -167,48 +172,31 @@ async def complete_reset(body: ResetCompleteIn, request: Request) -> Done:
     # ADR 0003 section 9: take the per-IP slot first (released on success), and hash only for
     # a live token, so junk requests never occupy the bounded hashing pool.
     attempt = await reserve(request, [Bucket(SIGN_IN_IP, bucket_ip(ip))])
-    wanted = set(body.remove_methods)
     async with system_session(factory(request)) as db:
         live = await peek_token(db, PURPOSE, body.token)
-        owned_now = set()
-        if live is not None and wanted:
-            owned_now = set(
-                (
-                    await db.execute(
-                        select(identities.c.id).where(
-                            identities.c.user_id == live.user_id, identities.c.id.in_(wanted)
-                        )
-                    )
-                ).scalars()
-            )
     if live is None:
         raise refuse(400, "invalid_token")
-    if owned_now != wanted:
-        raise HTTPException(status_code=404)  # before hashing; the token stays unused
     password_hash = await request.app.state.password_hasher.hash(password)
+    keep = set(body.keep_methods)
     async with system_session(factory(request)) as db:
         token = await consume_token(db, PURPOSE, body.token)
         if token is not None:
-            owned = set(
-                (
-                    await db.execute(
-                        select(identities.c.id).where(
-                            identities.c.user_id == token.user_id, identities.c.id.in_(wanted)
-                        )
-                    )
-                ).scalars()
-            )
-            if owned != wanted:
-                # 404 for another user's id, as for an unknown one; rolls back, token unused.
-                raise HTTPException(status_code=404)
+            # #639: the user row lock right after the token (ADR 0019 section 6). A sign-in,
+            # re-auth or link that holds it commits first and is undone below; one that waits
+            # finds the new hash, its session gone or (OAuth) its identity removed.
+            await lock_user(db, token.user_id)
             await db.execute(
                 update(users).where(users.c.id == token.user_id).values(password_hash=password_hash)
             )
-            await db.execute(
-                delete(identities).where(
-                    identities.c.user_id == token.user_id, identities.c.id.in_(wanted)
+            # A keep list, not a remove list: an identity linked after the page's ``info`` was
+            # never shown, cannot be listed, and goes. Ids that are not the user's are ignored.
+            removed = (
+                await db.execute(
+                    delete(identities)
+                    .where(identities.c.user_id == token.user_id, identities.c.id.not_in(keep))
+                    .returning(identities.c.id)
                 )
-            )
+            ).all()
             await revoke_user_sessions(db, token.user_id)
             await forget_devices(db, token.user_id)
             await delete_outstanding_tokens(db, token.user_id)
@@ -217,7 +205,7 @@ async def complete_reset(body: ResetCompleteIn, request: Request) -> Done:
                 "password_reset",
                 user_id=token.user_id,
                 ip=ip,
-                detail={"methods_removed": len(wanted)},
+                detail={"methods_removed": len(removed)},
             )
     if token is None:
         raise refuse(400, "invalid_token")  # a parallel request consumed it

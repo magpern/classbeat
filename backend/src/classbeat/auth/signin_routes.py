@@ -34,6 +34,7 @@ from classbeat.auth.sessions import (
     start_session,
 )
 from classbeat.auth.tables import users
+from classbeat.auth.userlock import lock_user
 from classbeat.context import UserContext
 from classbeat.db import system_session
 from classbeat.emailnorm import normalize_email
@@ -61,6 +62,10 @@ class SignedIn(BaseModel):
 
 class Done(BaseModel):
     status: str = "ok"
+
+
+class _CredentialChanged(Exception):
+    """The password was reset (or the user disabled) between the check and the session."""
 
 
 async def _check_password(
@@ -107,30 +112,47 @@ async def sign_in(body: LoginIn, request: Request, response: Response) -> Signed
                 db, "sign_in_failed", user_id=user.id if user else None, ip=ip, detail=None
             )
         raise HTTPException(status_code=401, detail=INVALID)
-    await attempt.succeed()
     rehash = (
         await hasher.hash(typed)
         if user.password_hash and hasher.needs_rehash(user.password_hash)
         else None
     )
-    async with system_session(factory(request)) as db:
-        await grant_admin_if_listed(db, settings, user.id)  # may revoke every session
-        issued = await start_session(
-            db,
-            settings,
-            user.id,
-            user_agent=user_agent(request),
-            ip=ip,
-            replacing_token=request_session_token(request),
-            mark=request_client_mark(request, ip),
-        )
-        device = await remember_device(db, keys, user.id, device_token)
-        if rehash is not None:
-            await db.execute(
-                update(users).where(users.c.id == user.id).values(password_hash=rehash)
+    try:
+        async with system_session(factory(request)) as db:
+            # #639: lock the user row first (ADR 0019 section 6) and re-check, as committed now,
+            # the hash we verified. A reset (or a disable) that committed since the check stops
+            # this sign-in; one that comes later waits for this commit and revokes the session.
+            locked = await lock_user(db, user.id)
+            if locked is None or locked.disabled or locked.password_hash != user.password_hash:
+                raise _CredentialChanged  # rolls back; nothing was written
+            await grant_admin_if_listed(db, settings, user.id)  # may revoke every session
+            issued = await start_session(
+                db,
+                settings,
+                user.id,
+                user_agent=user_agent(request),
+                ip=ip,
+                replacing_token=request_session_token(request),
+                mark=request_client_mark(request, ip),
             )
-        await record_event(db, "sign_in", user_id=user.id, ip=ip)
-        role = (await db.execute(select(users.c.role).where(users.c.id == user.id))).scalar_one()
+            device = await remember_device(db, keys, user.id, device_token)
+            if rehash is not None:
+                # Under the lock and only over the hash we verified: never over a reset's.
+                await db.execute(
+                    update(users).where(users.c.id == user.id).values(password_hash=rehash)
+                )
+            await record_event(db, "sign_in", user_id=user.id, ip=ip)
+            role = (
+                await db.execute(select(users.c.role).where(users.c.id == user.id))
+            ).scalar_one()
+    except _CredentialChanged:
+        # The same answer as a wrong password; the reserved slots stay taken like a failure's.
+        async with system_session(factory(request)) as db:
+            await record_event(
+                db, "sign_in_failed", user_id=user.id, ip=ip, detail={"why": "changed"}
+            )
+        raise HTTPException(status_code=401, detail=INVALID) from None
+    await attempt.succeed()
     set_session_cookie(response, issued)
     set_device_cookie(response, device)
     return SignedIn(id=user.id, email=user.email, role=role)
@@ -164,6 +186,10 @@ async def reauthenticate(
     await attempt.succeed()
     try:
         async with system_session(factory(request)) as db:
+            # The user row first (#639, ADR 0019 section 6): a reset that commits meanwhile has
+            # deleted the session (SessionGone below); one that comes later waits and revokes
+            # the rotated row. Without it the two can deadlock on the old session row.
+            await lock_user(db, ctx.user_id)
             issued = await rotate_session(
                 db,
                 info,

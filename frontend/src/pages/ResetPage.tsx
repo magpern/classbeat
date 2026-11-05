@@ -107,7 +107,9 @@ function ChoosePassword({ token }: { token: string }) {
   const submit = (event: FormEvent) => {
     event.preventDefault()
     void action.run(async () => {
-      await completeReset(token, password, [...remove])
+      const shown = methods.state === 'ok' ? methods.list : []
+      const keep = shown.filter((method) => !remove.has(method.id)).map((method) => method.id)
+      await completeReset(token, password, keep)
       // A reset revokes every session: update the nav without a reload.
       await refresh()
       setDone(true)
