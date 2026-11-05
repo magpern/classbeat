@@ -371,6 +371,7 @@ async def test_an_expiring_token_is_refreshed_first_and_the_rotation_is_stored(
     )
 
 
+@pytest.mark.usefixtures("frozen_rate_windows")  # #588
 async def test_the_own_rate_limit_comes_before_any_call(spot: Spot, admin: Connection) -> None:
     actor, _ = await rider(spot, admin)
     playlists(spot)
