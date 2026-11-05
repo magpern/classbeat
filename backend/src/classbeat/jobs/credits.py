@@ -33,7 +33,9 @@ class QuotaRefused(Exception):
     ``period_end`` is the first day of the next UTC month and ``plan`` the effective plan's id.
     Two more reasons (#496) refuse what a plan does not include, with no period: ``length`` (the
     brief's ``length_min`` is ``used``, the plan's effective cap in minutes is ``limit``) and
-    ``feature`` (``feature`` names the gate: ``races`` or ``ftp_tests``).
+    ``feature`` (``feature`` names the gate: ``races`` or ``ftp_tests``). ``saves`` (#577): the
+    user's Save and Update jobs reached the cap of the last hour or day (``window``), ``limit`` and
+    ``used`` count those jobs.
     Raised inside the transaction, so nothing it would have created survives."""
 
     def __init__(
@@ -45,6 +47,7 @@ class QuotaRefused(Exception):
         period_end: date | None = None,
         plan: str | None = None,
         feature: str | None = None,
+        window: str | None = None,
     ) -> None:
         super().__init__(reason)
         self.reason = reason
@@ -53,19 +56,23 @@ class QuotaRefused(Exception):
         self.period_end = period_end
         self.plan = plan
         self.feature = feature
+        self.window = window
 
     def detail(self) -> dict[str, int | str]:
         """The 409 ``quota`` body's fields (FE1's contract): ``quota``, and ``limit``, ``used``
-        (classes and length, in classes and minutes: a cost refusal shows no money), ``feature``
-        (feature only), ``period_end`` (ISO date) and ``plan`` when known."""
+        (classes, length and saves, in classes, minutes and jobs: a cost refusal shows no money),
+        ``feature`` (feature only), ``window`` (saves only), ``period_end`` (ISO date) and
+        ``plan`` when known."""
         body: dict[str, int | str] = {"quota": self.reason}
-        if self.reason in ("classes", "length"):
+        if self.reason in ("classes", "length", "saves"):
             if self.limit is not None:
                 body["limit"] = self.limit
             if self.used is not None:
                 body["used"] = self.used
         if self.reason == "feature" and self.feature is not None:
             body["feature"] = self.feature
+        if self.reason == "saves" and self.window is not None:
+            body["window"] = self.window
         if self.period_end is not None:
             body["period_end"] = self.period_end.isoformat()
         if self.plan is not None:

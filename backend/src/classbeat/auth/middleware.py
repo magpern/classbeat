@@ -8,6 +8,11 @@ because this is a middleware no route can forget them.
 - ``X-CSRF-Token`` must match ``HMAC(csrf_key, session.id)`` when the request carries a valid
   session, else the value of the ``__Host-classbeat_csrf`` cookie (double submit).
 
+Section 9, amendment of 2026-11-05 (#577): every signed-in ``/api`` request takes a slot in the
+general limit's buckets (``ratelimit.api_buckets``) before anything else runs, CSRF included, so
+no route can forget it either; above a limit it is 429 ``rate_limited`` with ``Retry-After``.
+Anonymous requests have the limits of their own routes (sign-in, sign-up, mail, OAuth).
+
 Section 10: the access log replaces uvicorn's. It records method, path, status and time, never
 the query string, headers, cookies or body.
 """
@@ -21,8 +26,9 @@ from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 
 from classbeat.auth.cookies import CSRF_COOKIE, SESSION_COOKIE, clear_session_cookie
-from classbeat.auth.deps import resolve_request
+from classbeat.auth.deps import request_ip, resolve_request
 from classbeat.auth.keys import Keys, hmac_digest
+from classbeat.auth.ratelimit import RateLimiter, api_buckets, api_limited
 from classbeat.config import Settings
 
 logger = logging.getLogger("classbeat.access")
@@ -64,11 +70,44 @@ async def check_csrf(request: Request, settings: Settings, keys: Keys) -> str | 
     return None
 
 
+def rate_limited_response(retry_after: int) -> JSONResponse:
+    """The 429 of every limit (``auth.setup``'s handler of ``RateLimited`` answers the same)."""
+    return JSONResponse(
+        {"detail": {"reason": "rate_limited"}},
+        status_code=429,
+        headers={"Retry-After": str(retry_after)},
+    )
+
+
+async def check_api_limit(request: Request) -> int | None:
+    """The general limit (#577): ``Retry-After`` seconds when a signed-in ``/api`` request is over
+    one of its buckets, else ``None``. Anonymous requests and the exempt paths are not counted."""
+    if not api_limited(request.url.path):
+        return None
+    info = (await resolve_request(request)).info
+    if info is None:
+        return None
+    limiter: RateLimiter = request.app.state.limiter
+    attempt = await limiter.begin_together(
+        api_buckets(
+            request.app.state.settings,
+            str(info.user_id),
+            request_ip(request),
+            request.method,
+            request.url.path,
+        )
+    )
+    return None if attempt.allowed else attempt.retry_after
+
+
 class AuthMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
         started = time.perf_counter()
         response: Response | None = None
-        if request.method not in SAFE_METHODS:
+        retry_after = await check_api_limit(request)
+        if retry_after is not None:
+            response = rate_limited_response(retry_after)
+        if response is None and request.method not in SAFE_METHODS:
             reason = await check_csrf(request, request.app.state.settings, request.app.state.keys)
             if reason is not None:
                 response = JSONResponse({"detail": {"reason": reason}}, status_code=403)

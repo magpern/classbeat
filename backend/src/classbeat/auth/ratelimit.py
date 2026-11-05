@@ -7,10 +7,11 @@ success releases what it reserved (``Attempt.succeed``) and never touches a newe
 Bucket keys are an HMAC of ``(action, scope, value, window)``: no email or IP in the clear.
 """
 
+import math
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any, Literal
+from typing import TYPE_CHECKING, Any, Literal
 
 from sqlalchemy import Float, and_, delete, exists, func, literal, select, update
 from sqlalchemy.dialects.postgresql import insert
@@ -20,6 +21,9 @@ from classbeat.auth.clientip import bucket_ip
 from classbeat.auth.keys import Keys, hmac_digest
 from classbeat.auth.tables import rate_limits
 from classbeat.db import system_session
+
+if TYPE_CHECKING:
+    from classbeat.config import Settings
 
 
 @dataclass(frozen=True, slots=True)
@@ -89,6 +93,22 @@ PLAYLIST_COVERS_IP = Limit("playlist-covers", "ip", 30, 600)
 COVER_COOLDOWN_ACTION = "cover-cooldown"
 COVER_COOLDOWN_MIN_SECONDS = 60
 COVER_COOLDOWN_MAX_SECONDS = 3600
+
+# Issue #577 (ADR 0003 section 9, amendment of 2026-11-05): the general limit on signed-in
+# ``/api`` requests (``api_buckets``), so a script with a stolen session is slowed down. The
+# counts come from the settings (``CLASSBEAT_API_*``); the actions, scopes and windows are fixed
+# here. Every request counts, a refused one too. A bucket's key does not name its count, so
+# changing a setting keeps the running windows.
+#
+# Never limited: the probes (they never touch the database), and signing out, so a user whose
+# buckets a script has used up can still end every session, the script's included.
+API_EXEMPT_PATHS = frozenset(
+    {"/api/health", "/api/ready", "/api/auth/logout", "/api/auth/logout-all"}
+)
+# The reads a scraper wants (the user's classes, revisions, messages and history; the jobs and
+# their drafts and streams): a tighter per-minute bucket of their own for safe methods.
+API_READ_PREFIXES = ("/api/classes", "/api/jobs")
+API_SAFE_METHODS = frozenset({"GET", "HEAD", "OPTIONS"})
 
 OnSuccess = Literal["decrement", "delete"]
 
@@ -220,6 +240,53 @@ class RateLimiter:
                 attempt.retry_after = max(attempt.retry_after, retry_after)
         return attempt
 
+    async def begin_together(self, buckets: Sequence[Bucket]) -> Attempt:
+        """``begin`` in one statement and one transaction: a slot in every bucket, refused if
+        any is over its limit (the slots stay taken). For the general limit, which runs on every
+        signed-in request (``api_buckets``). The rows are written in bucket-hash order, so two
+        requests that share a bucket (the client address) lock their rows in the same order."""
+        rows: dict[bytes, Bucket] = {}
+        for bucket in buckets:
+            rows.setdefault(self.bucket_hash(bucket.limit, bucket.value), bucket)
+        attempt = Attempt(allowed=True, retry_after=0, _factory=self._factory)
+        if not rows:
+            return attempt
+        ordered = sorted(rows)
+        statement = (
+            insert(rate_limits)
+            .values(
+                [
+                    {
+                        "bucket_hash": bucket_hash,
+                        "window_start": _window_start(rows[bucket_hash].limit.window_seconds),
+                        "count": 1,
+                    }
+                    for bucket_hash in ordered
+                ]
+            )
+            .on_conflict_do_update(
+                index_elements=[rate_limits.c.bucket_hash, rate_limits.c.window_start],
+                set_={"count": rate_limits.c.count + 1},
+            )
+            .returning(
+                rate_limits.c.bucket_hash,
+                rate_limits.c.count.label("hits"),
+                rate_limits.c.window_start,
+                func.clock_timestamp().label("now"),
+            )
+        )
+        async with system_session(self._factory) as session:
+            found = (await session.execute(statement)).all()
+        for row in found:
+            bucket = rows[bytes(row.bucket_hash)]
+            attempt.slots.append(Slot(bytes(row.bucket_hash), row.window_start, bucket.on_success))
+            if row.hits > bucket.limit.max_count:
+                ends = row.window_start.timestamp() + bucket.limit.window_seconds
+                retry_after = max(math.ceil(ends - row.now.timestamp()), 1)
+                attempt.allowed = False
+                attempt.retry_after = max(attempt.retry_after, retry_after)
+        return attempt
+
     def cooldown_hash(self, value: str) -> bytes:
         return hmac_digest(self._keys.rate_limit, COVER_COOLDOWN_ACTION, value)
 
@@ -326,3 +393,39 @@ def swedebeat_mixes_buckets(user_id: str, ip: str) -> list[Bucket]:
 def playlist_covers_buckets(user_id: str, ip: str) -> list[Bucket]:
     """The picker's cover read (ADR 0013 section 9 amendment, #537): per user and per IP."""
     return [Bucket(PLAYLIST_COVERS_USER, user_id), Bucket(PLAYLIST_COVERS_IP, bucket_ip(ip))]
+
+
+def _api_read(method: str, path: str) -> bool:
+    return method in API_SAFE_METHODS and any(
+        path == prefix or path.startswith(prefix + "/") for prefix in API_READ_PREFIXES
+    )
+
+
+def api_limited(path: str) -> bool:
+    """Whether the general limit applies to a signed-in request for ``path`` (#577)."""
+    return (path == "/api" or path.startswith("/api/")) and path not in API_EXEMPT_PATHS
+
+
+def api_buckets(
+    settings: "Settings", user_id: str, ip: str, method: str, path: str
+) -> list[Bucket]:
+    """The general limit's buckets of one signed-in ``/api`` request (#577): per user and minute
+    and per user and hour (every request), per user and minute for writes (every method but
+    ``GET``, ``HEAD`` and ``OPTIONS``) or for the class and job reads, and per client address and
+    minute (signed-in requests of every user)."""
+    buckets = [
+        Bucket(Limit("api", "account", settings.api_requests_per_minute, 60), user_id),
+        Bucket(Limit("api", "account", settings.api_requests_per_hour, 3600), user_id),
+    ]
+    if method not in API_SAFE_METHODS:
+        buckets.append(
+            Bucket(Limit("api-write", "account", settings.api_writes_per_minute, 60), user_id)
+        )
+    elif _api_read(method, path):
+        buckets.append(
+            Bucket(Limit("api-read", "account", settings.api_reads_per_minute, 60), user_id)
+        )
+    buckets.append(
+        Bucket(Limit("api", "ip", settings.api_ip_requests_per_minute, 60), bucket_ip(ip))
+    )
+    return buckets

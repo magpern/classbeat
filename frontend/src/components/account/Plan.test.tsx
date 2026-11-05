@@ -23,6 +23,15 @@ describe('the plan refusal sentences', () => {
     )
   })
 
+  it('words the Save and Update cap (#577) with its window, without a body limit too', () => {
+    expect(quotaText(quota({ quota: 'saves', limit: 1, used: 1, window: 'hour' }), 'save')).toBe(
+      'You have saved or updated 1 class in MOWL in the last hour, which is as many as classbeat allows. Try again in an hour.',
+    )
+    expect(quotaText(quota({ quota: 'saves', window: 'day' }), 'save')).toBe(
+      'You have saved to MOWL as many times as classbeat allows in the last 24 hours. Try again tomorrow.',
+    )
+  })
+
   it('words a cost quota without any dollar figure', () => {
     const text = quotaText(quota({ quota: 'cost', limit: 5, used: 5 }))
     expect(text).toContain('for October')

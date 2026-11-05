@@ -108,6 +108,15 @@ export function quotaText(error: ApiError, target: 'new' | 'version' | 'save' = 
       ? 'Your plan does not include part of this class. Take it out and try again.'
       : `Your plan does not include ${name}. Take them out and try again.`
   }
+  if (detail.quota === 'saves') {
+    // #577: Save and Update to MOWL together, per hour and per 24 hours (rolling).
+    const limit = whole(detail.limit)
+    const window = detail.window === 'day' ? 'the last 24 hours' : 'the last hour'
+    const later = detail.window === 'day' ? 'Try again tomorrow.' : 'Try again in an hour.'
+    return limit === null
+      ? `You have saved to MOWL as many times as classbeat allows in ${window}. ${later}`
+      : `You have saved or updated ${String(limit)} ${limit === 1 ? 'class' : 'classes'} in MOWL in ${window}, which is as many as classbeat allows. ${later}`
+  }
   const month = periodMonth(detail.period_end) ?? 'this month'
   const day = dayText(detail.period_end)
   const more = day === null ? 'More at the start of next month.' : `More from ${day}.`

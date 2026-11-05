@@ -5,7 +5,9 @@ Input ``{class_id, revision_id, content_hash, mowl_connection_id}`` (``SaveWorko
 and a hash only, never a body, a program or playlist id or a name. ``consumes_credit = False``:
 no ledger call, no model call, no ``agent_runs``.
 
-**``admit``** (the jobs API's create transaction, under the owner lock): the approval checks of
+**``admit``** (the jobs API's create transaction, under the owner lock): first the caps on Save
+and Update per user and hour or day (#577, ``classbeat.saving.caps``: 409 ``quota`` ``saves``),
+then the approval checks of
 ``classbeat.saving.approval``, ``running_enabled`` for a running class (``feature_off``, ADR 0018
 section 5: off, a running class is not saved, whenever it was designed), the soundless switch for
 a soundless revision (``feature_off``, ADR 0007 amendment of 2026-11-03, item 2), then the
@@ -70,6 +72,7 @@ from classbeat.jobs.kinds import Admitted, Refused
 from classbeat.operations import CallResult, OperationRequest, UncertainAnswer, orphans, perform
 from classbeat.quota.gates import check_stored_draft
 from classbeat.saving import approval, operation
+from classbeat.saving.caps import check_write_caps
 
 logger = logging.getLogger(__name__)
 
@@ -136,6 +139,8 @@ async def admit(db: AsyncSession, ctx: UserContext, parsed: BaseModel) -> Admitt
     """Section 5.1, inside the create transaction; nothing is stored on a refusal."""
     if not isinstance(parsed, SaveWorkoutInput):
         return Refused("invalid_input")
+    # #577: first, so a script at the hour's or day's cap learns nothing else (409 ``quota``).
+    await check_write_caps(db, ctx)
     found = await approval.revision(db, ctx, parsed.the_class, parsed.revision_id, parsed.digest)
     if isinstance(found, approval.Refusal):
         return Refused(found.reason)

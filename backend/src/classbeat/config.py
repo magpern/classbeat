@@ -291,6 +291,19 @@ class Settings(BaseSettings):
     # Issue #496: the environment's upper bound on every plan's ``max_class_minutes`` (the
     # brief's own range, 10 to 180); a plan's effective cap is the smaller of the row and this.
     class_minutes_max: int = Field(default=180, ge=10, le=180)
+    # Issue #577: Save and Update (``save_workout`` and ``update_workout`` jobs together) per user
+    # in the last hour and the last 24 hours. Neither takes a credit or a model call, so without
+    # these a script with a stolen session could keep writing programs to the user's MOWL.
+    saves_per_hour: int = Field(default=30, ge=1, le=1_000)
+    saves_per_day: int = Field(default=100, ge=1, le=10_000)
+    # Issue #577: the general limit on signed-in ``/api`` requests (ADR 0003 section 9, amendment
+    # of 2026-11-05), fixed windows per user (all requests, per minute and per hour; writes and
+    # the class and job reads per minute) and per client address (signed-in requests, per minute).
+    api_requests_per_minute: int = Field(default=300, ge=1, le=100_000)
+    api_requests_per_hour: int = Field(default=3_000, ge=1, le=1_000_000)
+    api_writes_per_minute: int = Field(default=60, ge=1, le=100_000)
+    api_reads_per_minute: int = Field(default=120, ge=1, le=100_000)
+    api_ip_requests_per_minute: int = Field(default=1_200, ge=1, le=1_000_000)
     chat_max_requests: int = Field(default=50, ge=1, le=200)
     chat_context_requests: int = Field(default=10, ge=1, le=30)
     # ADR 0007 section 8: how long a new MOWL workout may take to appear in My Workouts. Unset
