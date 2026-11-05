@@ -21,7 +21,7 @@ for it). The table's checks refuse a method, route or status of another shape.
 
 The table is owned (ADR 0002): the row is written in the user's own session with a bare context
 (``deps.security_log_context``). A failed write (any error) is logged by class (and SQLSTATE) and
-never changes the response. A session writes at most one 429 row a minute; every other request is
+never changes the response. A user gets at most one 429 row a minute; every other request is
 within the general limit. The hourly purge drops rows older than ``CLASSBEAT_SECURITY_LOG_DAYS``.
 """
 
@@ -56,13 +56,14 @@ _TEMPLATES = "security_log_templates"
 _COUNTED = "security_log_counted"
 
 # A 429 row carries its minute, so the partial unique index ``security_log_one_429`` keeps at most
-# one per session and minute: past the limit a script adds no rows (T124). Every other request
+# one per user and minute, whatever the number of sessions (the first limited session's row is
+# kept): past the limit a script adds no rows (T124). Every other request
 # already counts against the general limit (``api_requests_per_hour`` per user).
 _INSERT = text(
     "INSERT INTO security_log (owner_id, session_id, ip_hash, method, route, status, "
     "limited_minute) VALUES (:owner_id, :session_id, :ip_hash, :method, :route, :status, "
     "CASE WHEN :status = 429 THEN floor(extract(epoch FROM now()) / 60)::bigint END) "
-    "ON CONFLICT (owner_id, session_id, limited_minute) WHERE limited_minute IS NOT NULL "
+    "ON CONFLICT (owner_id, limited_minute) WHERE limited_minute IS NOT NULL "
     "DO NOTHING"
 )
 _PURGE = text(

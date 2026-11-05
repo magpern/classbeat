@@ -101,7 +101,7 @@ async def check_api_limit(request: Request) -> int | None:
 
     A request the limiter counted (allowed or not) is marked for the security log here and only
     here (``securitylog.mark_counted``): the log writes a row for exactly those requests, so its
-    rows never exceed the limiter's budget (plus one 429 row per session and minute) and a path
+    rows never exceed the limiter's budget (plus one 429 row per user and minute) and a path
     the limiter exempts is never logged (#632, ADR 0003 amendment "the security log")."""
     if not api_limited(request.url.path):
         return None

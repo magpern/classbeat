@@ -445,17 +445,24 @@ def test_0034_security_log_up_and_down(
         for values in refused:
             with admin.connect() as connection, pytest.raises(IntegrityError):
                 insert(connection, owner, **values)
-        # One 429 row per session and minute (the partial unique index); another minute, another
-        # session or a non-429 row is not affected.
+        # One 429 row per user and minute (the partial unique index), whatever the session;
+        # another minute, another user or a non-429 row is not affected.
         session = uuid.uuid4()
         with admin.begin() as connection:
+            other = connection.execute(
+                text(
+                    "INSERT INTO users (email, email_normalized, email_verified_at) "
+                    "VALUES ('b@example.com', 'b@example.com', now()) RETURNING id"
+                )
+            ).scalar_one()
             insert(connection, owner, status=429, session=session, minute=7)
             insert(connection, owner, status=429, session=session, minute=8)
-            insert(connection, owner, status=429, minute=7)
+            insert(connection, other, status=429, minute=7)
             insert(connection, owner, session=session)
             insert(connection, owner, session=session)
-        with admin.connect() as connection, pytest.raises(IntegrityError):
-            insert(connection, owner, status=429, session=session, minute=7)
+        for duplicate in (session, uuid.uuid4()):  # same session or another one of the user's
+            with admin.connect() as connection, pytest.raises(IntegrityError):
+                insert(connection, owner, status=429, session=duplicate, minute=7)
         command.downgrade(config, "0033_session_client_mark")
         assert columns() == []
         command.upgrade(config, "head")

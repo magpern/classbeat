@@ -740,7 +740,7 @@ auth middleware once the response's status is known (`classbeat.auth.securitylog
 | `route` | the **route template** the request matches among the app's own (`/api/classes/{class_id}`), or `unmatched` |
 | `status` | the response status, the middleware's own refusals (429, 403) included |
 | `at` | the database's `now()` |
-| `limited_minute` | a 429 row's minute (epoch minutes), else null; unique per session (below) |
+| `limited_minute` | a 429 row's minute (epoch minutes), else null; unique per user (below) |
 
 - **What is never stored:** the address, the `User-Agent`, a cookie or token, the raw path, the
   query string, the body. `Entry` (the row before it is written) has no field for them; the route
@@ -776,14 +776,15 @@ a separate change, outside this amendment). Without
   allowed (above), so those rows are at most `api_requests_per_hour × 24 ×
   CLASSBEAT_SECURITY_LOG_DAYS` per user (3000 × 24 × 7 = 504,000 at the defaults). Requests past
   the limit would be unbounded, so a 429 row carries its minute and a partial unique index on
-  `(owner_id, session_id, limited_minute)` with `ON CONFLICT DO NOTHING` keeps at most one 429 row
-  per session and minute: at most `1440 × CLASSBEAT_SECURITY_LOG_DAYS` (10,080) per session, and
-  per user that times the number of the user's sessions that hit the limit within the retention.
-  Sessions are not capped in number; each needs a full sign-in (password or provider, and the
-  second factor when enabled), which a stolen cookie alone cannot do, and a holder of the
-  credentials already has the account. That residual is accepted: 1,000 such sessions would add
-  about 10 million small rows over a week, purged on schedule. The abuse view loses only the count
-  of 429s within a minute, not the fact.
+  `(owner_id, limited_minute)` with `ON CONFLICT DO NOTHING` keeps at most **one 429 row per user
+  and minute**, across all of the user's sessions: at most `1440 × CLASSBEAT_SECURITY_LOG_DAYS`
+  (10,080 at the defaults) per user. Keying it per session would not bound it: sessions are not
+  capped and a successful sign-in costs nothing against the limits (#641 review: 80 sign-ins, 80
+  rows in one minute). So a user's rows are at most 504,000 + 10,080 a week.
+  **Trade-off:** within one minute only the first limited session's row is kept (its
+  `session_id` and network); other sessions limited in the same minute leave no 429 row, and the
+  abuse view loses the count of 429s within a minute. Their allowed requests are still logged
+  with their own session ids.
 - **Failure:** a failed write (a driver error, a pool timeout, anything) is logged by class (and
   SQLSTATE for a driver error) only and never changes the response: the route has already run and
   committed (the log is best effort; a request that deleted its own account fails the foreign key
@@ -792,7 +793,8 @@ a separate change, outside this amendment). Without
   `CLASSBEAT_SECURITY_LOG_DAYS` (default 7, 1 to 30), per user in that user's session, like the
   Spotify connect flows. The account's deletion removes the rest (cascade).
 - **Export and deletion (ADR 0014, guard 12):** exported as `security_log` (method, route, status,
-  time and the row id); `ip_hash` (a keyed hash) and `session_id` (internal) are omitted. Retention
+  time and the row id); `ip_hash` (a keyed hash), `session_id` and `limited_minute` (internal)
+  are omitted. Retention
   registry (guard 10): no content; deleted with the account.
 
 **Alternatives.**
@@ -807,7 +809,9 @@ a separate change, outside this amendment). Without
 - *Write the row in the rate-limit statement:* rejected; the status is not known yet.
 
 **Consequences.**
-- Migration 0034 adds `security_log`; every signed-in API request costs one more short insert.
+- Migration 0034 adds `security_log`; every request the general limit counts costs one more
+  short insert, in its own transaction after the response is built, so it adds that insert's
+  latency to the request (not measured separately; the listing's query-count test counts it).
 - The first logged request of a web process builds the OpenAPI schema once (cached on the app;
   if building it fails, the error is logged and the next request tries again, never caching an
   empty list).

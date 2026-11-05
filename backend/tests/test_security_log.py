@@ -272,6 +272,25 @@ def test_the_routes_are_not_cached_when_the_schema_fails(
     assert app.calls == 2  # cached once it worked
 
 
+def test_the_template_respects_the_method() -> None:
+    """Starlette picks the first route that answers the method: ``GET /api/x/special`` is served
+    by ``/api/x/{x_id}`` when ``/api/x/special`` has only POST; a method no route answers (405)
+    falls back to the first path match."""
+
+    class App:
+        state = SimpleNamespace()
+
+        @staticmethod
+        def openapi() -> dict[str, Any]:
+            return {"paths": {"/api/x/special": {"post": {}}, "/api/x/{x_id}": {"get": {}}}}
+
+    app = App()
+    assert securitylog.match_template(app, "POST", "/api/x/special") == "/api/x/special"
+    assert securitylog.match_template(app, "GET", "/api/x/special") == "/api/x/{x_id}"
+    assert securitylog.match_template(app, "DELETE", "/api/x/special") == "/api/x/special"
+    assert securitylog.match_template(app, "DELETE", "/api/x/3") == "/api/x/{x_id}"
+
+
 # --- requests ----------------------------------------------------------------------------------
 
 
@@ -465,6 +484,42 @@ async def test_a_failed_write_never_changes_the_answer_and_logs_no_values(
     assert not any(user_id in message or PATH_ID in message for message in messages)
 
 
+async def test_many_sessions_of_one_user_get_one_429_row_a_minute(
+    clean_auth: None, app_database_url: str, admin: Engine, caplog: pytest.LogCaptureFixture
+) -> None:
+    """#641 review: sessions are not capped and signing in is free against the limits, so the 429
+    bound is per user. Twelve sessions of one user, all past the limit in the same minute, leave
+    one 429 row (two only across a minute boundary), with the first limited session's id."""
+    caplog.set_level(logging.WARNING, logger="classbeat.auth.securitylog")
+    async with running_env(
+        app_database_url, trusted_proxies="127.0.0.1", api_requests_per_minute=2
+    ) as env:
+        await user_with_password(env)
+        sessions: list[Client] = []
+        for _ in range(12):
+            client = Client(env)
+            assert (await client.sign_in("user@example.com")).status_code == 200
+            sessions.append(client)
+        limited = 0
+        for client in sessions:
+            for _ in range(3):
+                response = await client.get("/api/auth/sessions")
+                limited += response.status_code == 429
+        assert limited >= 12  # every session was refused at least once
+        with admin.connect() as connection:
+            found = connection.execute(
+                text(
+                    "SELECT session_id, limited_minute FROM security_log WHERE status = 429 "
+                    "ORDER BY at, id"
+                )
+            ).all()
+            ids = set(connection.execute(text("SELECT id FROM sessions")).scalars())
+        assert 1 <= len(found) <= 2
+        assert len({row.limited_minute for row in found}) == len(found)
+        assert {row.session_id for row in found} <= ids
+        assert not [r for r in caplog.records if "write failed" in r.getMessage()]
+
+
 @pytest.mark.parametrize(
     "error",
     [sa_exc.TimeoutError("QueuePool limit reached; canary-9931"), RuntimeError("canary-9931")],
@@ -518,21 +573,22 @@ async def test_the_purge_keeps_the_configured_days(
     async with running_env(app_database_url, security_log_days=2) as env:
         owner = await env.user()
         with admin.begin() as connection:
-            for days in (3, 1):
+            # One hour either side of the two-day boundary: a day more or less in the purge fails.
+            for hours in (49, 47):
                 connection.execute(
                     text(
                         "INSERT INTO security_log (owner_id, session_id, ip_hash, method, route, "
                         "status, at) VALUES (:o, gen_random_uuid(), :h, 'GET', '/api/x', 200, "
-                        "now() - make_interval(days => :d))"
+                        "now() - make_interval(hours => :h_ago))"
                     ),
-                    {"o": owner, "h": bytes(32), "d": days},
+                    {"o": owner, "h": bytes(32), "h_ago": hours},
                 )
         counts = await auth.purge_expired(env.factory, env.settings)
         assert counts["security_log"] == 1
         [kept] = rows(admin)
         with admin.connect() as connection:
             age = connection.execute(text("SELECT now() - at FROM security_log")).scalar_one()
-        assert age.days == 1
+        assert (age.days, age.seconds // 3600) == (1, 23)  # the 47-hour row
         assert kept.owner_id == owner
 
 

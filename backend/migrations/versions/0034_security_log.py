@@ -14,7 +14,8 @@ not look like a method, a template or a status.
 
 Bounded in count, not only in age: every other request is within the general limit (3000 an hour
 per user, a refused one included), and a 429 row carries its minute (``limited_minute``, epoch
-minutes) under a partial unique index, so a session writes at most one 429 row a minute.
+minutes) under a partial unique index on ``(owner_id, limited_minute)``, so a user gets at most
+one 429 row a minute however many sessions they hold (the first limited session's row is kept).
 
 Owner RLS (ADR 0002); gone with the account (``ON DELETE CASCADE``) and purged after
 ``CLASSBEAT_SECURITY_LOG_DAYS`` (7 by default) by the worker's hourly purge, in each user's own
@@ -65,10 +66,11 @@ def upgrade() -> None:
     op.execute(SECURITY_LOG)
     enable_owner_rls("security_log")
     op.execute("CREATE INDEX security_log_owner_at ON public.security_log (owner_id, at)")
-    # At most one 429 row per session and minute: a script hammering past the limit adds no rows.
+    # At most one 429 row per user and minute, across all their sessions: a script hammering past
+    # the limit, from any number of sessions, adds no rows.
     op.execute(
         "CREATE UNIQUE INDEX security_log_one_429 ON public.security_log "
-        "(owner_id, session_id, limited_minute) WHERE limited_minute IS NOT NULL"
+        "(owner_id, limited_minute) WHERE limited_minute IS NOT NULL"
     )
 
 
