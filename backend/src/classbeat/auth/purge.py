@@ -6,6 +6,7 @@ from typing import Any
 from sqlalchemy import and_, delete, func, or_, text, update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from classbeat.auth import securitylog
 from classbeat.auth.deps import purge_contexts
 from classbeat.auth.tables import (
     auth_events,
@@ -50,7 +51,8 @@ async def purge_expired(
     - ``invites``: used or expired more than 30 days ago;
     - ``known_devices``: unused for 90 days;
     - ``auth_events``: older than 30 days;
-    - ``spotify_oauth_flows``: expired or used (an owned table: per user, in their own session).
+    - ``spotify_oauth_flows``: expired or used (an owned table: per user, in their own session);
+    - ``security_log``: older than ``security_log_days`` (7; owned, per user likewise; #632).
     """
     idle = timedelta(days=settings.session_idle_days)
     now = func.now()
@@ -91,6 +93,9 @@ async def purge_expired(
         contexts = await purge_contexts(db)
     counts["spotify_oauth_flows"] = await _purge_spotify_flows(factory, contexts)
     counts["swedebeat_handoffs"] = await _purge_handoffs(factory, contexts)
+    counts["security_log"] = await _purge_security_log(
+        factory, contexts, settings.security_log_days
+    )
     return counts
 
 
@@ -113,4 +118,16 @@ async def _purge_handoffs(
     for ctx in contexts:
         async with user_session(factory, ctx) as db:
             removed += await purge_owner(db, ctx.user_id)
+    return removed
+
+
+async def _purge_security_log(
+    factory: async_sessionmaker[AsyncSession], contexts: list[UserContext], days: int
+) -> int:
+    """Security log rows older than ``days`` (ADR 0003 amendment "security log", #632), in each
+    user's own session."""
+    removed = 0
+    for ctx in contexts:
+        async with user_session(factory, ctx) as db:
+            removed += await securitylog.purge_owner(db, ctx.user_id, days)
     return removed

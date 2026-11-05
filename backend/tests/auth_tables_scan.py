@@ -111,6 +111,7 @@ SUBMODULES = frozenset(
         "ratelimit",
         "reset_routes",
         "routes",
+        "securitylog",
         "sessions",
         "setup",
         "signin_routes",

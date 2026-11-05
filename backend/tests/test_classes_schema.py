@@ -611,6 +611,9 @@ def test_deleting_the_class_then_the_user_leaves_nothing_in_the_registered_table
     )
     # Migration 0028 (#525): the user's preferences.
     insert(admin, "user_preferences", owner_id=owner, uses_swedebeat=True)
+    # Migration 0034 (#632): a security log row.
+    insert(admin, "security_log", owner_id=owner, session_id=uuid.uuid4(), ip_hash=bytes(32),
+           method="GET", route="/api/classes/{class_id}", status=200)  # fmt: skip
     # M4 (migration 0006). The pool operation rows and the Spotify deletion paths are planted and
     # deleted in test_spotify_forget.py.
     insert(admin, "class_playlists", owner_id=owner, class_id=class_id, revision_id=rev,

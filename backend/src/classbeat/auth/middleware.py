@@ -14,7 +14,8 @@ no route can forget it either; above a limit it is 429 ``rate_limited`` with ``R
 Anonymous requests have the limits of their own routes (sign-in, sign-up, mail, OAuth).
 
 Section 10: the access log replaces uvicorn's. It records method, path, status and time, never
-the query string, headers, cookies or body.
+the query string, headers, cookies or body. A signed-in ``/api`` request also gets a row in the
+security log (``securitylog``; ADR 0003 amendment "security log", #632) once its status is known.
 
 The session lookup, the limit and the CSRF check run here, outside the app's exception handlers,
 so a database error in them gets the same redacted 500 here (``database_error_response``) instead
@@ -34,6 +35,7 @@ from classbeat.auth.cookies import CSRF_COOKIE, SESSION_COOKIE, clear_session_co
 from classbeat.auth.deps import request_ip, resolve_request
 from classbeat.auth.keys import Keys, hmac_digest
 from classbeat.auth.ratelimit import RateLimiter, api_buckets, api_limited
+from classbeat.auth.securitylog import entry_for, record
 from classbeat.config import Settings
 from classbeat.log import describe_database_error
 
@@ -129,6 +131,11 @@ class AuthMiddleware(BaseHTTPMiddleware):
             clear_session_cookie(response)
         if request.url.path.startswith("/api/") or request.url.path == "/api":
             response.headers["Cache-Control"] = "no-store"
+        # The security log (#632): a row per signed-in /api request, its own refusals here
+        # (429, 403) included; a request whose session was never resolved writes none.
+        entry = entry_for(request, response.status_code)
+        if entry is not None:
+            await record(request.app.state.session_factory, entry)
         logger.info(
             "request",
             extra={

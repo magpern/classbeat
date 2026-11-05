@@ -352,6 +352,18 @@ def test_purge_contexts_is_reached_only_by_the_purge() -> None:
     assert users == ["classbeat/auth/deps.py", "classbeat/auth/purge.py"]
 
 
+def test_security_log_context_is_reached_only_by_the_security_log() -> None:
+    """``auth.security_log_context`` builds a bare context for a resolved session's user, to write
+    that request's ``security_log`` row (an owned table; #632). Only its definition and the
+    security log may name it; it is not exported from ``classbeat.auth``."""
+    users = sorted(
+        path.relative_to(SRC).as_posix()
+        for path in (SRC / "classbeat").rglob("*.py")
+        if "security_log_context" in path.read_text("utf-8")
+    )
+    assert users == ["classbeat/auth/deps.py", "classbeat/auth/securitylog.py"]
+
+
 # ``classbeat.jobs.issuer.owner_context`` builds a bare context for any UUID (#109 item 6). Only the
 # runner (the account-disabled failure and the shutdown hand-back) and the credit settle use it.
 OWNER_CONTEXT_USERS = {

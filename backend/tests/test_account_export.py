@@ -20,6 +20,7 @@ URL = "/api/account/export"
 # Names of columns that hold a secret, a hash or an internal handle: none may appear as a key.
 FORBIDDEN_KEYS = {
     "approval_hash",
+    "ip_hash",
     "code_hash",
     "content_hash",
     "dek_nonce",
