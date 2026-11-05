@@ -53,13 +53,18 @@ deployed"), so nothing has to migrate from a clone.
    needed. The downloaded `check-prod-compose.sh` that validates the compose file comes from the
    same place, so it cannot vouch for itself; it catches honest mistakes and local edits, as it
    always did (it is not a security boundary, AGENTS.md). The images are pulled by version
-   (tags are mutable): the runbook records each pulled image's digest
-   (`docker image inspect`) next to the install so a later pull can be compared, and may optionally
-   run `gh attestation verify oci://ghcr.io/magpern/classbeat:X.Y.Z -R magpern/classbeat`. The
-   existing `provenance: mode=max` is buildx's registry attestation, not a GitHub artifact
-   attestation, so that command is **unverified** against it and may find nothing; it is optional.
-   A verifiable anchor (attesting the assets and images and verifying them before `up`) is the
-   follow-up issue #583, not built here.
+   (tags are mutable): the runbook records each pulled image's digest (`docker image inspect`) next
+   to the install so a later pull can be compared.
+   **Amendment (#583):** the release workflow now attests every asset (`SHA256SUMS` included) and
+   both images' digests with `actions/attest` (GitHub artifact attestations; the images' are not
+   pushed to the registry), in a job of their own that has `id-token` and `attestations` but no
+   secret (the image job, which holds the Swedebeat key, gets neither), and a failed attestation
+   publishes no release. Each image digest is in the release notes. The runbook verifies assets by file
+   and images by `oci://` with `gh attestation verify -R magpern/classbeat` before the first `up`.
+   A verifier cannot vouch for itself: `check-prod-compose.sh` does not verify its own attestation;
+   `gh` does, first, and `gh` is a trusted install. The existing `provenance: mode=max` stays as the
+   buildx registry attestation. Still **unverified** until a real tag runs: the commands' exact output
+   and whether `gh` needs a registry login for the private image.
 4. **The checks run from the released script.** `check-prod-compose.sh` detects its place, with
    one rule: next to a `compose.prod.yaml` with no `docs/` (the install folder) it is the
    pre-deploy check; in a checkout it is the CI check it was. `--install` exists only to force
@@ -167,7 +172,7 @@ or a scoped review if a conflict is resolved by hand) before it is enqueued.
 
 - A server needs Docker, a folder with the release's files and `.env`, and a GHCR token; no git.
 - Integrity is no better than the clone it replaces (Decision 3): `SHA256SUMS` catches truncation
-  only. Attesting the assets and images is #583.
+  only; with `gh`, the attestations (#583, Decision 3) catch tampering of the assets and images.
 - A new moving part: the db image must exist for the compose file to run, so a release whose
   `db-image` job failed publishes no assets (the release job needs both image jobs).
 - The first deploy after this change pulls the db image; the data volume is untouched (same
