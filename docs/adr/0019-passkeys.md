@@ -1,7 +1,7 @@
 # ADR 0019: Passkeys with cross-device sign-in (#311)
 
-Status: Proposed (2026-11-03, issue #311; backlog after M6. A fresh Opus Reviewer reviews it in its
-PR. Acceptance covers the design and the issue split; the owner answers the questions at the end.)
+Status: Accepted (2026-11-05, issue #311). Proposed 2026-11-03; the owner answered the six
+questions at the end on 2026-11-05 (see "Owner answers").
 
 **Revision 2026-11-05** (the owner said to start #311). Folds in the non-blocking points A to E of
 #483's last Opus review (posted on #311) and the facts that changed on `main` since:
@@ -150,7 +150,9 @@ tests.
   No public-suffix list is shipped, so a public suffix such as `github.io` passes this check;
   browsers refuse such an RP ID themselves, so the residual is a confusing operator error, not a
   weaker passkey.
-- **Recommended value for the beta: `classbeat.pernemark.se`** (the exact host, the default). A
+- **RP ID decided (owner, 2026-11-05): production is `classbeat.eu`**, a beta host may use
+  `dev.classbeat.eu` instead of `classbeat.pernemark.se`; each environment sets its own exact host.
+  The earlier recommendation read: **`classbeat.pernemark.se`** (the exact host, the default). A
   parent such as `pernemark.se` would let any other page on that domain ask for the same passkeys.
   The RP ID is baked into every passkey: changing the domain later makes all existing passkeys
   useless (users fall back to email or a provider and register again), so the owner names the
@@ -702,6 +704,21 @@ wording, so W1 waits for a yes (a no means the Architect revisits §2, python-fi
 licence family). Question 4 decides whether W9 exists (and so whether W6 depends on it). Questions
 2 and 6 block only switching the flag on in production, never a merge. Questions 3 and 5 have
 defaults the issues build to; a different answer is a later amendment.
+
+## Owner answers (2026-11-05)
+
+1. Licence: **yes**, `webauthn` (py_webauthn, BSD-3-Clause) is accepted; W1 may add it.
+2. RP ID: production is **`classbeat.eu`** (exact host, never the parent). A beta or dev host uses
+   its own exact host (`dev.classbeat.eu`), never `classbeat.pernemark.se` for a new setup. The
+   Architect picks the value per environment; the owner applies it in the server's env file.
+3. Admin MFA: **no**; TOTP stays the admin factor, admin security is unchanged.
+4. Shared computers: **yes**; W9 (24-hour absolute session, no known-device cookie for a
+   `cross-platform` assertion) exists, and W6 depends on it.
+5. Passkey-only accounts: **not now** (it complicates recovery).
+6. Switching on: `CLASSBEAT_PASSKEYS` stays an environment flag, default off, on in the e2e stack;
+   the owner enables it per environment with `CLASSBEAT_WEBAUTHN_RP_ID` set (start-up refuses
+   the flag without it). The owner delegated these choices to the Architect; applying them to a
+   server stays an owner action (deploying needs the owner's authorization).
 
 ## The issues
 
