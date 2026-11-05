@@ -31,6 +31,12 @@ const CHANGE_SEC = 10
 
 export const timing = { pollMs: 2000 }
 
+/** The local date and time of an ISO instant; the text as given if it does not parse. */
+function whenText(iso: string): string {
+  const at = new Date(iso)
+  return Number.isNaN(at.getTime()) ? iso : at.toLocaleString()
+}
+
 function verdictText(handoff: Handoff): { tone: 'ok' | 'warn'; text: string } | null {
   switch (handoff.verdict) {
     case 'ok':
@@ -286,6 +292,12 @@ export function NextStep({
         <li>Create the mix.</li>
         <li>Let it sync, then come back here.</li>
       </ol>
+      {handoff !== null && handoff.state !== 'verified' && !expired ? (
+        <p className="m-0 text-muted" data-testid="handoff-expiry">
+          You can leave and come back. This step stays open until {whenText(handoff.expiresAt)}; after that you start it
+          again.
+        </p>
+      ) : null}
       {expired ? (
         <Notice>This step has expired. Press the button to start it again.</Notice>
       ) : null}

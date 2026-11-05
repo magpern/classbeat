@@ -517,6 +517,21 @@ describe('Next, in the Swedebeat app', () => {
     expect(await screen.findByRole('button', { name: 'I made the mix' })).toBeInTheDocument()
   })
 
+  it('shows until when a live step stays open and not for a verified one (#572)', async () => {
+    step({ [`GET ${HANDOFF}`]: () => handoffBody() })
+    renderAt(PAGE)
+    const note = await screen.findByTestId('handoff-expiry')
+    expect(note).toHaveTextContent('You can leave and come back. This step stays open until')
+    expect(note).toHaveTextContent(new Date('2026-11-09T10:00:00Z').toLocaleString())
+  })
+
+  it('does not show the expiry once the mix is verified (#572)', async () => {
+    step({ [`GET ${HANDOFF}`]: () => handoffBody({ state: 'verified', verdict: 'ok', mix_id: 'mix-1', checked_at: '2026-11-02T10:00:00Z' }) })
+    renderAt(PAGE)
+    expect(await screen.findByText('Mix verified')).toBeInTheDocument()
+    expect(screen.queryByTestId('handoff-expiry')).toBeNull()
+  })
+
   it('offers a new step when the old one expired', async () => {
     const api = step({
       [`GET ${HANDOFF}`]: () => reason(410, 'handoff_expired'),

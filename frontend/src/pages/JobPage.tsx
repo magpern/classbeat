@@ -3,7 +3,16 @@ import { planRefusalText } from '../api/planMessages'
 import { isSongKind } from '../api/songs'
 import { SongEnded } from '../components/songs/SongEnded'
 import { SongsForApproval } from '../components/songs/SongsForApproval'
-import { designSteps, failureText, retryLabel, stageLabel } from '../api/jobMessages'
+import {
+  MIX_STAGE_LABEL,
+  WAITING_FOR_SLOT,
+  WAITING_TO_START,
+  YOU_CAN_LEAVE,
+  designSteps,
+  failureText,
+  retryLabel,
+  stageLabel,
+} from '../api/jobMessages'
 import {
   cancelJob,
   createDesignJob,
@@ -151,8 +160,11 @@ function Designing({
   const picking = isSongKind(job.kind) && job.approvedAt === null
   // The class name comes from the form this browser remembered; without it the title says "your class".
   const name = recallInput(job.id)?.title ?? recallPick(job.id)?.title ?? 'your class'
-  const steps = designSteps(job.kind, job.approvedAt !== null, recallInput(job.id)?.music.source === 'none')
+  const source = recallInput(job.id)?.music.source
+  const steps = designSteps(job.kind, job.approvedAt !== null, source === 'none')
   const current = progress.stage ?? job.stage
+  // Only this browser remembers the form; elsewhere the stage keeps its general words.
+  const mixStage = source === 'mowl_swedebeat_mix' && current === 'music' && job.kind === 'design_draft'
   const step = stepNumber(steps, current)
   return (
     <Panel className="mx-auto flex w-full max-w-2xl flex-col gap-5" role="region" aria-labelledby="designing-title">
@@ -173,8 +185,12 @@ function Designing({
           <p className="m-0">Stopping. This takes a moment.</p>
         ) : progress.retry !== null ? (
           <p className="m-0">{retryLabel(progress.retry)}</p>
+        ) : progress.waitingForSlot && job.state === 'queued' ? (
+          <p className="m-0">{WAITING_FOR_SLOT}</p>
         ) : waiting ? (
-          <p className="m-0">Waiting for a free slot.</p>
+          <p className="m-0">{WAITING_TO_START}</p>
+        ) : mixStage ? (
+          <p className="m-0">{MIX_STAGE_LABEL}</p>
         ) : (
           <p className="m-0">{stageLabel(current)}</p>
         )}
@@ -183,9 +199,7 @@ function Designing({
           <p className="m-0 text-muted">The designer has checked its draft {progress.toolCalls} time(s).</p>
         ) : null}
       </div>
-      <p className="m-0 text-muted">
-        You can close this page. Your class carries on and this address shows it.
-      </p>
+      <p className="m-0 text-muted">{YOU_CAN_LEAVE}</p>
       {action.error ? <Notice kind="error">{action.error}</Notice> : null}
       <p className="m-0">
         <Button variant="secondary" disabled={action.busy || stopping} onClick={stop}>
