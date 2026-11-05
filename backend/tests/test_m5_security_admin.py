@@ -77,15 +77,19 @@ FIXED_VALUES = {
 async def env(
     app_database_url: str, maint_database_url: str, monkeypatch: pytest.MonkeyPatch
 ) -> AsyncIterator[Env]:
-    """The app with maint, the admin rate limit off and the refusal-row limiter raised: this
-    file sends far more than 60 requests and 20 refusals a minute, and every one must leave its
-    row (the limits themselves are tested in ``test_admin_routes_guard.py``)."""
+    """The app with maint, the admin rate limit off, the general limit (#577) raised and the
+    refusal-row limiter raised: this file sends far more than 60 requests and 20 refusals a
+    minute, and every one must leave its row (the limits themselves are tested in
+    ``test_admin_routes_guard.py`` and ``test_api_ratelimit.py``)."""
     url = make_url(maint_database_url)
     monkeypatch.setattr(auth, "admin_buckets", lambda _user_id: [])
     async with running_env(
         app_database_url,
         maint_database_url=url.set(password=None).render_as_string(hide_password=False),
         database_maint_password=url.password,
+        api_requests_per_minute=100_000,
+        api_requests_per_hour=1_000_000,
+        api_writes_per_minute=100_000,
     ) as env:
         env.app.state.admin_db.limiter = RefusalLimiter(per_admin=100_000, total=100_000)
         yield env
