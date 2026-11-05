@@ -158,6 +158,10 @@ class Case(BaseModel):
             raise ValueError("a soundless case is a cycling class")
         if e.duration != "asked" or e.music_sync is not None or e.patterns is not None:
             raise ValueError("a soundless case is judged on the asked length, with no music checks")
+        if e.changes_on_music_min != Expect().changes_on_music_min or e.allow_issues:
+            raise ValueError("a soundless case has no quality report: no music or issue allowance")
+        if self.revise is not None and self.revise.outcome != "draft":
+            raise ValueError("a soundless revise case ends with a draft (it has no songs to ask)")
         if self.revise is not None and isinstance(self.revise.base, RunningDraft):
             raise ValueError("a soundless case's base draft is a cycling draft")
         return self
