@@ -21,6 +21,11 @@ PR. Acceptance covers the design and the issue split; the owner answers the ques
   `Permissions-Policy` header (Context, §11); the general per-user API limit of #626 exists (§10);
   the session anomaly signal of #632 is in development and shapes how the routes hook in (§13);
   T121 to T123 are taken on `main`, T113 to T120 stay claimed here.
+- **Review of #638 (FAIL on `af710df`), fixed:** the sign-in start buckets are reserved in order and
+  stop at the first refusal, since `RateLimiter.begin` takes a slot in every bucket (§10); the
+  sign-in and re-auth finishes lock `users` first and do the counter update, the grant check and
+  `start_session`/`rotate_session` in that one transaction (§5, §6, §8); the library gets counter 0
+  and the same three algorithms as the options (§2, §7).
 
 Related: [ADR 0002](0002-tenant-isolation.md) (system tables, guard 8),
 [ADR 0003](0003-accounts-and-sessions.md) (sessions, CSRF, recent authentication, step-up, admin
@@ -99,8 +104,20 @@ regular releases.
 `cbor2>=6.1.2` (MIT), `pyasn1>=0.6.2` (BSD-2-Clause), `pyasn1-modules>=0.4.2` (BSD-2-Clause) and
 `pyOpenSSL>=26.3.0` (Apache-2.0); the 2.x line used `asn1crypto` instead. W1 pins `webauthn==3.0.1`
 (or a later release at least two weeks old at the time), records the resolved set from `uv.lock`
-in its PR, and confirms the function and option names this ADR uses against that version's API
-(3.0 is a new major; the names here are the 2.x ones, which a major may rename).
+in its PR. The 3.0.1 wheel was checked in #638's review: `generate_registration_options`,
+`generate_authentication_options`, `verify_registration_response` and
+`verify_authentication_response` keep the keyword names this ADR uses (`expected_rp_id`,
+`expected_origin`, `require_user_verification`, `credential_current_sign_count`), the package has no
+network code, and `pem_root_certs_bytes_by_fmt` defaults to none. **Algorithms:** verification is
+given the same `supported_pub_key_algs` as the options (ES256, EdDSA, RS256; §4), never the
+library's longer default, so a credential with another algorithm is refused at registration and at
+sign-in.
+**Counter:** both verify calls pass `credential_current_sign_count=0`; the counter rule is ours
+alone (§7). py_webauthn 3.0.1 refuses a rollback itself, with the same `InvalidAuthenticationResponse`
+it raises for every other failure, so passing the stored count would leave the `counter` category,
+the `passkey_counter_regressed` event and the mail reachable only by matching message text. With 0,
+the library's check can never fire (`new <= 0` with a stored 0 only when both are 0, which it
+allows), and our conditional `UPDATE` decides.
 
 **Licence.** The written allowed set (MIT, ISC, Apache-2.0, OFL) is in
 `docs/developer-commands.md` ("Pin exact versions of every package added; licences must be …"),
@@ -204,14 +221,26 @@ Origin check as for the password form.
      authenticator), and lets the SPA call `PublicKeyCredential.signalUnknownCredential` where the
      browser has it, so a passkey of a deleted account or a removed passkey stops being offered.
   3. `userHandle` must be present and equal the credential's user's handle.
-  4. `verify_authentication_response` with the stored public key and counter, the RP ID, the
-     origin and UV required. The backup-eligible flag must equal the stored one (it never changes).
-  5. The counter rule (§7) in one conditional `UPDATE`, which also sets `last_used_at` and the
-     backup state.
-  6. A disabled user gets the generic failure, like a wrong password.
-  7. `start_session` as for a password sign-in: a new rotated session with `reauth_at = now()`,
-     the `ADMIN_EMAILS` grant check, the known-device cookie (except as in owner question 4), and an
-     `auth_events` row `sign_in` with detail `{method: "passkey"}`.
+  4. `verify_authentication_response` with the stored public key, `credential_current_sign_count=0`
+     (§2), the RP ID, the origin, UV required and the three algorithms, holding no lock and outside
+     any transaction. The backup-eligible flag must equal the stored one (it never changes).
+  5. **One write transaction** (the lock order of §6), in this order:
+     1. `SELECT … FROM users WHERE id = :cred_user FOR UPDATE` (the credential's user from step 2).
+     2. The counter rule (§7): the conditional `UPDATE … WHERE id = :id AND user_id = :cred_user AND
+        <counter rule> RETURNING id`, which also sets `last_used_at` and the backup state. No row
+        means the credential is gone (removed, or deleted by a reset that committed first: the
+        generic failure, nothing written) or the counter regressed (the credential still exists:
+        the `passkey_counter_regressed` event is written and the transaction commits with no
+        session).
+     3. A disabled user gets the generic failure, like a wrong password.
+     4. The `ADMIN_EMAILS` grant check and `start_session` as for a password sign-in: a new rotated
+        session with `reauth_at = now()`, and an `auth_events` row `sign_in` with detail
+        `{method: "passkey"}`.
+
+     The known-device cookie (except as in owner question 4) is set on the response after the
+     commit. So a reset either commits first (the credential is gone or the session is never made)
+     or waits for the lock and then revokes the new session with the rest; no session made from a
+     passkey outlives a reset that deletes it.
 - Every failure except `passkey_unknown` and `feature_off` answers 400 `passkey_failed` with no
   detail; the reason goes to `auth_events` (`sign_in_failed`, `{method: "passkey", reason}`) as a
   category only (§10).
@@ -257,15 +286,22 @@ A new system table `webauthn_challenges`, modelled on `oauth_flows` (ADR 0003 §
   waiting for the `users` row could deadlock with a reset holding the `users` row and deleting the
   sessions, whose cascade deletes that challenge row. The rules:
   1. A challenge take is always its own committed transaction, never combined with a later write.
-  2. Every transaction that inserts or deletes a `webauthn_credentials` row, or revokes a user's
-     sessions on the reset or `mfa-reset` path, takes `SELECT … FROM users WHERE id = … FOR UPDATE`
-     as its **first** lock (after consuming a reset token, which locks only the token row and is
-     never taken in the other order). Sign-in's counter update is one statement on one credential
-     row and needs no user lock.
+  2. Every transaction that writes a `webauthn_credentials` row (insert, delete, the counter
+     update), creates or rotates a session from a passkey, or revokes a user's sessions on the reset
+     or `mfa-reset` path, takes `SELECT … FROM users WHERE id = … FOR UPDATE` as its **first** lock
+     (after consuming a reset token, which locks only the token row and is never taken in the other
+     order). That names the register finish (§4), the **sign-in finish** (§5, step 5), the
+     **re-auth finish** (§8), the remove route (§7), the reset (§9) and `mfa-reset`. There is no
+     exemption: a finish that updated the counter first and then inserted a session (whose foreign
+     key takes `FOR KEY SHARE` on `users`) or ran the grant check (`UPDATE users`) would take the
+     locks in the reset's opposite order, and one that committed the counter update separately would
+     let a reset slip in between and leave a session made from a deleted passkey.
   3. Verification (CPU-bound signature checks) never runs while a lock is held.
-  W2 and W5 test it: with a `users` row lock held by the test, a register finish and a reset each
-  wait and then complete (no deadlock error), and a register finish racing a reset ends with either
-  the passkey deleted by the reset or no passkey stored.
+  Tests: with a `users` row lock held by the test, a register finish, a sign-in finish, a re-auth
+  finish and a reset each wait and then complete (no deadlock error); a register finish racing a
+  reset ends with either the passkey deleted by the reset or no passkey stored (W2, W5); a sign-in
+  or re-auth finish racing a reset that drops its passkey ends with no session that outlives the
+  reset and no deadlock error (W3, W4, W5).
 - The challenge in `clientDataJSON` must equal the row's (py_webauthn checks it). An assertion made
   for one browser's challenge cannot be finished in another browser, because the row is found only
   through that browser's cookie. That is what stops login CSRF and a transplanted assertion (T114).
@@ -299,14 +335,17 @@ the same as for an unknown one. Guard 8 covers the table.
 
 Plus `users.webauthn_user_handle` (`bytea`, unique, nullable until the first registration).
 
-**Signature counter.** The update is one statement:
+**Signature counter.** The rule is ours, not the library's (§2: the verify calls get
+`credential_current_sign_count=0`). The update is one statement, run inside the finish's write
+transaction after the user row lock (§5, §6):
 `UPDATE … SET sign_count = :new, last_used_at = now(), backup_state = :bs WHERE id = :id AND
 (sign_count < :new OR (sign_count = 0 AND :new = 0)) RETURNING id`.
 - Both zero (most synced passkeys): accepted; replay protection comes from the single-use challenge.
 - Otherwise the new value must be greater. An equal or lower one updates nothing. A replayed
   assertion never gets here (it fails at the single-use challenge first), so only a holder of the
   private key can cause this: a cloned authenticator, or two genuine parallel sign-ins arriving out
-  of order. The conditional update also makes the second of those lose cleanly; the sign-in is refused, `auth_events` gets
+  of order. The conditional update also makes the second of those lose cleanly. When it returns no
+  row and the credential still exists, the sign-in (or re-auth) is refused, `auth_events` gets
   `passkey_counter_regressed` with the passkey's id, and the user is mailed (at most once a day per
   passkey). The passkey stays, so a false alarm never locks anyone out; the mail tells the user to
   remove it if they did not sign in.
@@ -345,7 +384,10 @@ binding.
   `allowCredentials` is the user's own credentials (a hint only), UV required, purpose `reauth`
   bound to the session; the finish looks the credential up **with the session's user** (§7), so a
   stolen session cookie plus the attacker's own passkey on their own account gets nothing (T120);
-  success sets `reauth_at`, rotates the session through `sessions.rotate_session` (ADR 0003 §3; never
+  verification as in §5 (counter 0 to the library, the three algorithms, no lock held), then one
+  write transaction that locks `users` first, runs the counter rule on `credential_id = :id AND
+  user_id = :session_user`, and rotates; a session revoked meanwhile (`SessionGone`) rolls it all
+  back and fails (§6). Success sets `reauth_at`, rotates the session through `sessions.rotate_session` (ADR 0003 §3; never
   a hand-written update, so #632's client mark is stored and `location_changed_at` cleared exactly as
   for a password re-auth, §13) and writes `reauth` `{method: "passkey"}`. The re-auth prompt offers it
   beside the password and the providers.
@@ -408,9 +450,18 @@ Rate limits use the existing `rate_limits` buckets (ADR 0003 §9):
 
 **Sign-in start (review point C).** Each start writes a challenge row that lives 5 minutes, and
 autofill starts one on every sign-in page load, so the start limits double as the bound on the
-table. They are **limiter buckets** (`RateLimiter.begin`: one atomic `INSERT … ON CONFLICT DO
-UPDATE … RETURNING count` per bucket, ADR 0003 §9), not a `count(*)` of live rows, so parallel
-starts cannot overshoot. A window is 5 minutes, as long as a row lives, so at most two windows'
+table. They are **limiter buckets** (one atomic `INSERT … ON CONFLICT DO UPDATE … RETURNING count`
+per bucket, ADR 0003 §9), not a `count(*)` of live rows, so parallel starts cannot overshoot.
+**Reserved in order, stopping at the first refusal (review of #638):** the address bucket first,
+then (IPv6 only) the /48 bucket, then the global bucket, each only if the one before allowed the
+start. `RateLimiter.begin` on `main` takes a slot in **every** bucket it is given even after a
+refusal (a refused attempt counts everywhere), so one address sending starts at full speed would
+fill the /48 and global buckets with nothing but 429s and lock everyone else out. W3 therefore makes
+three separate `begin` calls (or adds a short-circuiting variant, `begin_in_order`, to
+`ratelimit.py`) so a start refused by a narrower bucket takes no slot in a wider one. A refused
+start still counts in its own bucket. So the global count over a window is at most 60 per IPv4
+address and 300 per IPv6 /48 (at most five /64s' worth of allowed starts reach it), which is what
+the residual below rests on. A window is 5 minutes, as long as a row lives, so at most two windows'
 worth of rows are ever live: 120 per address, 600 per /48, 40 000 in all (a few MB). The /48 bucket
 is a new key helper next to `bucket_ip` (IPv4 has no /48 bucket); it exists because an IPv6 /48,
 65 536 /64s, is a cheap allocation. The global bucket is one hot row; at beta volume that is
@@ -423,7 +474,9 @@ fine, and W3 measures it in its test of parallel starts.
   are unaffected.
 - **Residual (T119).** About 334 IPv4 addresses (20 000 / 60), or 67 IPv6 /48s, starting
   ceremonies at full rate can make passkey sign-in starts answer `passkey_busy` for everyone, in
-  windows of up to 5 minutes for as long as they keep at it. Passwords and providers keep working
+  windows of up to 5 minutes for as long as they keep at it. (These numbers hold only because of the
+  ordered, short-circuiting reservation above; with `begin` over all three buckets one address
+  would be enough.) Passwords and providers keep working
   and nothing is locked. Accepted for the beta; the owner runbook (W8) names it and what to look
   for (429s and `passkey_busy` in the access log).
 
@@ -528,7 +581,7 @@ everything else in ADR 0003 stands. W8 adds a one-line pointer to ADR 0019 in ea
 | §3 | One absolute limit (30 days) for every session; a known-device cookie on every successful sign-in | Only if owner question 4 is answered yes (W9): a sign-in with a `cross-platform` assertion gets a 24-hour absolute expiry and no known-device cookie |
 | §10 | The never-logged cookie list (session, device, CSRF, OAuth) | Adds the three `__Host-classbeat_passkey_*` flow cookies (§10) |
 | §1 | The account tables | Adds the system tables `webauthn_credentials`, `webauthn_challenges` and the column `users.webauthn_user_handle` (§6, §7) |
-| §6, the guarded actions (review point A) | `reauth_at` within 10 minutes is needed to link or unlink an identity, set the password, enroll TOTP, connect or disconnect, delete the account | Adds: add a passkey (start and finish), rename a passkey, remove a passkey; with confirmed TOTP each also needs the step-up, like the rest of that list (§4, §7) |
+| §6, the guarded actions (review point A) | `reauth_at` within 10 minutes is needed to link or unlink an identity, set or change the password, change the email, enroll TOTP for the first time, connect or disconnect MOWL, Spotify or Swedebeat, delete the account | Adds: add a passkey (start and finish), rename a passkey, remove a passkey; with confirmed TOTP each also needs the step-up, like the rest of that list (§4, §7) |
 | §9, the rate-limit table (review point A) | Password, TOTP, sign-up, mail and OAuth rows; sign-in limits count failures only | Adds five rows: passkey sign-in start (every request counts, per address, per IPv6 /48 and global), passkey sign-in failures, register, passkey re-auth failures (the password re-auth buckets) and rename/remove (§10) |
 | §5, reset contract | `remove_methods: [id]` for identities | Passkeys use `keep_passkeys: [id]`: every passkey not listed is deleted under the user row lock (§9) |
 
@@ -622,7 +675,7 @@ ADR (T112 is the SMTP pin; T121 to T123 were taken on `main` meanwhile and are n
 | T116 | A cloned authenticator | Counter must increase unless it is 0 on both sides; a regression refuses the sign-in, is recorded and mailed; the backup-eligible flag may not change. Residual: synced passkeys at 0 get no clone detection (accepted) (§7) |
 | T117 | Credential material or library error text in logs, errors, events or exports | Request and response bodies under `/api/auth/` not logged; library exceptions mapped to categories; events hold row ids and categories only; the export leaves out the public key and counter; redaction test with planted values (§10) |
 | T118 | A session left on a shared or gym computer after a cross-device sign-in; the fake-QR attack | No custom QR flow (the browser's hybrid transport checks proximity); shorter session and no known-device cookie on a cross-platform sign-in (owner question 4); "sign out" shown after it (§5) |
-| T119 | Lock-out by removing the last method; account enumeration through passkey sign-in | ADR 0003's last-method rule unchanged (a password or an identity always remains; passkeys never count), under the user row lock; username-less start with empty `allowCredentials`; one generic failure. Residual: `passkey_unknown` versus `passkey_failed` tells a caller whether a credential id is registered; accepted, because ids are random and the caller must hold the authenticator. Sign-in start is bounded by atomic limiter buckets per address, per IPv6 /48 and globally; residual: about 334 IPv4 addresses or 67 IPv6 /48s can make passkey sign-in start answer 503 `passkey_busy` for everyone in 5-minute windows while they keep at it, never password or provider sign-in (accepted for the beta, runbook) (§5, §7, §10) |
+| T119 | Lock-out by removing the last method; account enumeration through passkey sign-in | ADR 0003's last-method rule unchanged (a password or an identity always remains; passkeys never count), under the user row lock; username-less start with empty `allowCredentials`; one generic failure. Residual: `passkey_unknown` versus `passkey_failed` tells a caller whether a credential id is registered; accepted, because ids are random and the caller must hold the authenticator. Sign-in start is bounded by atomic limiter buckets per address, per IPv6 /48 and globally, reserved in that order and stopping at the first refusal, so a refused start never counts in a wider bucket; residual: about 334 IPv4 addresses or 67 IPv6 /48s can make passkey sign-in start answer 503 `passkey_busy` for everyone in 5-minute windows while they keep at it, never password or provider sign-in (accepted for the beta, runbook) (§5, §7, §10) |
 | T120 | A stolen session cookie plus the attacker's own passkey (on the attacker's account) used to pass re-authentication, or to register under the victim | Re-auth looks the credential up with the session's user (`credential_id` and `user_id = flow user`), so a foreign credential fails without touching its row; registration stores only for the flow's user and still needs recent authentication and the step-up; `allowCredentials` is never relied on; test "another user's valid passkey refused for re-auth" (§7, §8) |
 
 ## Owner questions (defaults the issues build to)
@@ -665,10 +718,10 @@ start #311 on 2026-11-05. #311 stays open as the tracker; each row becomes one i
 |---|---|---|---|---|---|
 | W1 | `feat(auth): passkey tables, settings and dependency` | migration (next free number after #632's 0033): `webauthn_credentials`, `webauthn_challenges`, `users.webauthn_user_handle`; `classbeat.auth.tables`, guard 8, `coverage`, export `INCLUDE`/`EXCLUDE`/`NOT_EXPORTED`, purge; `CLASSBEAT_PASSKEYS`, `CLASSBEAT_WEBAUTHN_RP_ID` and the start-up check; `webauthn==3.0.1` pinned and its API names confirmed (§2); the licence wording in `docs/developer-commands.md`; the IPv6 /48 bucket helper | guard 8, guard 12 and the export schema test pass with the new tables; the delete test plants a passkey and a challenge; start-up refuses an IP, a port, a trailing dot and an unrelated host; the options' RP ID and the expected origin do not change with a forged `Host` or `X-Forwarded-Host`; the purge drops expired challenges only; pip-audit clean; the resolved dependency set listed in the PR | Opus / Opus | this ADR accepted; owner question 1 |
 | W2 | `feat(auth): register, list, rename and remove passkeys` | the challenge store and per-purpose cookies (§6), the user-handle update, register start/finish in the three steps of §4 with the lock order of §6, list, rename, remove (list and remove with the flag off, §1), mails and events, the register, rename and remove rate limits of §10 | the registration refusals of §11 (origin, RP ID, replayed and expired challenge, another browser's cookie, another session's flow, UV unset, duplicate credential id, an 11th passkey, finish after the session was revoked); two parallel first starts give one user handle; recent auth and step-up checked at start and finish; 404 for foreign and unknown ids; an identity unlink still refused with passkeys present and a passkey removal always allowed; the flag-off answers of §7; the lock-order test of §6 | Opus / Opus | W1; #632 merged (else a scoped re-review after it lands) |
-| W3 | `feat(auth): username-less passkey sign-in` | sign-in start/finish, the counter update, `passkey_unknown`, the session through `start_session` as built by #632, the sign-in start buckets and 503 `passkey_busy` (§10), failure buckets, the redaction test | the sign-in refusals of §11 (origin, RP ID, replayed, expired and foreign-browser challenge, missing or foreign user handle, UV, signature, backup-eligible flag); counter cases (0/0 accepted, rollback, equal non-zero, non-zero to 0 refused, recorded, mailed once a day, passkey kept); a disabled user's generic failure; an admin's role still needs TOTP; the start buckets' 429 and 503 with a password sign-in still succeeding; the redaction test with every planted value; no network (netguard) | Opus / Opus | W2, #632 |
-| W4 | `feat(auth): re-authenticate with a passkey` | reauth start/finish bound to the session, the credential looked up with the session's user (§7), rotation through `rotate_session` (§8, §13), events | sets `reauth_at`, never `stepup_at` or `mfa_at`; another session's flow refused; **another user's valid passkey refused, its counter and `last_used_at` unchanged**; after a #632 move a passkey re-auth restores the guarded actions and clears `location_changed_at` | Opus / Opus | W3 |
-| W5 | `feat(auth): passkeys in reset and mfa-reset` | `info` returns `passkeys`, `complete` takes `keep_passkeys` and deletes the rest under the user lock (§9); `admin mfa-reset` deletes them; both whatever the flag says; mail and event text | an attacker's passkey removed on reset with the flag on and off; a passkey registered after `info` deleted by `complete`; a foreign or unknown id in `keep_passkeys` ignored and the reset completes; an empty list removes all; mfa-reset leaves none; the reset-versus-register race test of §6; events hold counts only | Opus / Opus | W2 |
+| W3 | `feat(auth): username-less passkey sign-in` | sign-in start/finish, the counter update, `passkey_unknown`, the session through `start_session` as built by #632, the sign-in start buckets and 503 `passkey_busy` (§10), failure buckets, the redaction test | the sign-in refusals of §11 (origin, RP ID, replayed, expired and foreign-browser challenge, missing or foreign user handle, UV, signature, backup-eligible flag); counter cases (0/0 accepted, rollback, equal non-zero, non-zero to 0 refused, recorded, mailed once a day, passkey kept); a disabled user's generic failure; an admin's role still needs TOTP; the start buckets' 429 and 503 with a password sign-in still succeeding; 1 000 starts from one address leave the global count at 60 and the /48 count only counts starts its /64 bucket allowed; the sign-in finish's single write transaction (users lock, counter, grant, `start_session`) and its race test against a reset (no surviving session, no deadlock); the counter cases decided by our `UPDATE` with the library given 0; the redaction test with every planted value; no network (netguard) | Opus / Opus | W2, #632 |
+| W4 | `feat(auth): re-authenticate with a passkey` | reauth start/finish bound to the session, the credential looked up with the session's user (§7), rotation through `rotate_session` (§8, §13), events | sets `reauth_at`, never `stepup_at` or `mfa_at`; another session's flow refused; **another user's valid passkey refused, its counter and `last_used_at` unchanged**; the re-auth finish's write transaction locks `users` first, and a re-auth racing a reset that drops its passkey leaves no rotated session and no deadlock; after a #632 move a passkey re-auth restores the guarded actions and clears `location_changed_at` | Opus / Opus | W3 |
+| W5 | `feat(auth): passkeys in reset and mfa-reset` | `info` returns `passkeys`, `complete` takes `keep_passkeys` and deletes the rest under the user lock (§9); `admin mfa-reset` deletes them; both whatever the flag says; mail and event text | an attacker's passkey removed on reset with the flag on and off; a passkey registered after `info` deleted by `complete`; a foreign or unknown id in `keep_passkeys` ignored and the reset completes; an empty list removes all; mfa-reset leaves none; the reset-versus-register, reset-versus-sign-in and reset-versus-re-auth race tests of §6; events hold counts only | Opus / Opus | W2 |
 | W6 | `feat(web): passkey UI on the account, sign-in and re-auth pages` | `webauthn.ts`, the Passkeys card (with the flag-off text of §1), sign-in button and autofill (restarted only while visible), the `passkey_busy` and 429 messages, re-auth option, the reset page's keep list, `signalUnknownCredential`/`signalCurrentUserDetails` where present; owner question 4's notice if W9 exists | component tests with a mocked `navigator.credentials`; hidden without `PublicKeyCredential`; the reset page sends every unticked passkey in `keep_passkeys`; axe clean; works under the CSP | Sonnet / Sonnet | W2, W3, W4, W5; W9 only if owner question 4 is yes |
 | W7 | `test(e2e): passkeys with a virtual authenticator` | the `web-passkeys` service on `localhost` (§11), its secrets per §11 and the CI secret check, the specs of §11 | the specs pass in CI against `web-passkeys`; the other specs and their base URL unchanged; the `database_maint_password` step still passes with the list §11 names | Sonnet / Sonnet (+ one final Opus review if a secret mount changes) | W6 |
-| W8 | `docs: passkeys in AGENTS.md, threat model and runbook` | AGENTS.md settings and routes, T113 to T120, the ADR 0003 pointers of §12, the `Permissions-Policy` check in `scripts/check-prod-compose.sh` (§11), an owner runbook (RP ID choice, switching on and off, what users see, the `passkey_busy` residual, the owner's real-phone check, hybrid documented) | rows describe what is on `main`; the check refuses a swag sample that gives either publickey feature `()` and accepts today's; runbook names no secret | Sonnet / Sonnet | W7 |
+| W8 | `docs: passkeys in developer commands, threat model and runbook` | settings, routes and per-feature behaviour in `docs/developer-commands.md` (where AGENTS.md "Developer commands" sends them), T113 to T120 replacing the reservation line in the threat model, the ADR 0003 pointers of §12, the `Permissions-Policy` check in `scripts/check-prod-compose.sh` (§11), an owner runbook (RP ID choice, switching on and off, what users see, the `passkey_busy` residual, the owner's real-phone check, hybrid documented) | rows describe what is on `main`; the check refuses a swag sample that gives either publickey feature `()` and accepts today's; runbook names no secret | Sonnet / Sonnet | W7 |
 | W9 | `feat(auth): owner question 4, shorter cross-device session` (only if the answer is yes; may fold into W3) | per-session absolute expiry on a cross-platform assertion, no known-device cookie | the session expires at 24 hours; no device cookie set; a later rotation keeps the shorter expiry | Opus / Opus | W3 |
