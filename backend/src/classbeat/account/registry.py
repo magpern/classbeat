@@ -65,6 +65,10 @@ SECTIONS: tuple[Section, ...] = (
     _section("quota_periods", "period, id"),
     # Issue #525: the user's own preferences ("I use Swedebeat"); at most one row.
     _section("user_preferences"),
+    # Issue #632: the user's own requests of the last days (method, route template, status,
+    # time). The network's keyed hash is never exported (bytea); the session id and the 429 row's
+    # minute are internal.
+    _section("security_log", "at, id", "ip_hash session_id limited_minute"),
 )
 
 NOT_EXPORTED: Mapping[str, str] = MappingProxyType(

@@ -556,7 +556,9 @@ async def test_listing_200_classes_of_25_revisions_takes_a_fixed_number_of_queri
     )
     large = await measure()
     assert large == small
-    assert large <= 10  # session lookups plus the listing, whatever the data
+    # Session lookups, the listing and the security log's row (#632: its set_config and insert),
+    # whatever the data.
+    assert large <= 11
     listed = (await mine.browser.get("/api/classes")).json()["classes"]
     assert len(listed) == 200
     assert sorted(c["revision_count"] for c in listed)[-1] == 25

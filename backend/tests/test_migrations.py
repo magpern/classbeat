@@ -1,3 +1,4 @@
+import uuid
 from pathlib import Path
 from typing import Any
 
@@ -33,7 +34,7 @@ def applied_revisions(database_url: str) -> list[str]:
 
 def test_the_revisions_form_one_line() -> None:
     script = ScriptDirectory.from_config(alembic_config())
-    assert script.get_heads() == ["0033_session_client_mark"]
+    assert script.get_heads() == ["0034_security_log"]
     assert script.get_base() == "0001_baseline"
 
 
@@ -54,7 +55,7 @@ def test_upgrade_head_then_downgrade_base(
     config = alembic_config()
     try:
         command.upgrade(config, "head")
-        assert applied_revisions(database_url) == ["0033_session_client_mark"]
+        assert applied_revisions(database_url) == ["0034_security_log"]
         command.downgrade(config, "base")
         assert applied_revisions(database_url) == []
     finally:
@@ -159,6 +160,8 @@ JOBS = [
     "user_preferences",
     # ADR 0007 amendment "beat-one corrections" (0029).
     "beat_one_corrections",
+    # Issue #632 (0034_security_log).
+    "security_log",
 ]
 
 
@@ -362,5 +365,110 @@ def test_0033_session_client_mark_up_and_down(
         command.upgrade(config, "head")
         assert len(columns()) == 4
     finally:
+        admin.dispose()
+        command.downgrade(config, "base")
+
+
+def test_0034_security_log_up_and_down(
+    owner_database_url: str, database_url: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """#632: ``security_log`` exists at head with exactly its columns, owner RLS, and checks that
+    refuse a raw path, a query string, an unknown method, a bad status or a short hash; the
+    downgrade drops it."""
+    monkeypatch.setenv("CLASSBEAT_MIGRATIONS_DATABASE_URL", owner_database_url)
+    config = alembic_config()
+    admin = create_engine(database_url)
+
+    def columns() -> list[tuple[str, str, str]]:
+        with admin.connect() as connection:
+            rows = connection.execute(
+                text(
+                    "SELECT column_name, data_type, is_nullable FROM information_schema.columns "
+                    "WHERE table_name = 'security_log' ORDER BY ordinal_position"
+                )
+            ).all()
+        return [tuple(row) for row in rows]
+
+    def insert(connection: Any, owner: Any, **values: Any) -> None:
+        row = {
+            "ip_hash": bytes(32),
+            "method": "GET",
+            "route": "/api/classes/{class_id}",
+            "status": 200,
+            "session": uuid.uuid4(),
+            "minute": None,
+            **values,
+        }
+        connection.execute(
+            text(
+                "INSERT INTO security_log (owner_id, session_id, ip_hash, method, route, status, "
+                "limited_minute) VALUES (:o, :session, :ip_hash, :method, :route, :status, "
+                ":minute)"
+            ),
+            {"o": owner, **row},
+        )
+
+    try:
+        command.upgrade(config, "head")
+        assert columns() == [
+            ("id", "uuid", "NO"),
+            ("owner_id", "uuid", "NO"),
+            ("session_id", "uuid", "NO"),
+            ("ip_hash", "bytea", "NO"),
+            ("method", "text", "NO"),
+            ("route", "text", "NO"),
+            ("status", "smallint", "NO"),
+            ("at", "timestamp with time zone", "NO"),
+            ("limited_minute", "bigint", "YES"),
+        ]
+        with admin.begin() as connection:
+            owner = connection.execute(
+                text(
+                    "INSERT INTO users (email, email_normalized, email_verified_at) "
+                    "VALUES ('a@example.com', 'a@example.com', now()) RETURNING id"
+                )
+            ).scalar_one()
+            insert(connection, owner)
+            insert(connection, owner, route="unmatched", method="OTHER", status=429)
+        refused = [
+            {"route": "/api/classes/3f2b?token=abc"},
+            {"route": "/api/classes/a%20b"},
+            {"route": "/api/Classes"},
+            {"route": "api/classes"},
+            {"route": "/api/" + "a" * 200},
+            {"method": "PROPFIND"},
+            {"status": 99},
+            {"status": 600},
+            {"ip_hash": bytes(16)},
+            {"minute": 1, "status": 200},  # only a 429 row carries its minute
+        ]
+        for values in refused:
+            with admin.connect() as connection, pytest.raises(IntegrityError):
+                insert(connection, owner, **values)
+        # One 429 row per user and minute (the partial unique index), whatever the session;
+        # another minute, another user or a non-429 row is not affected.
+        session = uuid.uuid4()
+        with admin.begin() as connection:
+            other = connection.execute(
+                text(
+                    "INSERT INTO users (email, email_normalized, email_verified_at) "
+                    "VALUES ('b@example.com', 'b@example.com', now()) RETURNING id"
+                )
+            ).scalar_one()
+            insert(connection, owner, status=429, session=session, minute=7)
+            insert(connection, owner, status=429, session=session, minute=8)
+            insert(connection, other, status=429, minute=7)
+            insert(connection, owner, session=session)
+            insert(connection, owner, session=session)
+        for duplicate in (session, uuid.uuid4()):  # same session or another one of the user's
+            with admin.connect() as connection, pytest.raises(IntegrityError):
+                insert(connection, owner, status=429, session=duplicate, minute=7)
+        command.downgrade(config, "0033_session_client_mark")
+        assert columns() == []
+        command.upgrade(config, "head")
+        assert len(columns()) == 9
+    finally:
+        with admin.begin() as connection:
+            connection.execute(text("DELETE FROM users"))
         admin.dispose()
         command.downgrade(config, "base")

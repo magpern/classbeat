@@ -90,6 +90,12 @@ class Person:
         self.sql("INSERT INTO swedebeat_analyses (owner_id) VALUES (:u)", u=u)
         self.sql("INSERT INTO user_preferences (owner_id, uses_swedebeat) VALUES (:u, true)", u=u)
         self.sql(
+            "INSERT INTO security_log (owner_id, session_id, ip_hash, method, route, status) "
+            "VALUES (:u, gen_random_uuid(), :hash, 'GET', '/api/classes/{class_id}', 200)",
+            u=u,
+            hash=bytes(32),
+        )
+        self.sql(
             "INSERT INTO beat_one_corrections (owner_id, class_id, fingerprint, song, beats, bpm) "
             "VALUES (:u, :c, :f, 3, -1, 124.5)",
             u=u,

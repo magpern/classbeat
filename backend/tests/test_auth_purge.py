@@ -2,6 +2,8 @@
 
 import asyncio
 
+from sqlalchemy import text
+
 from authtools import Env
 from classbeat import auth
 from classbeat.worker.loop import run_worker
@@ -46,6 +48,20 @@ async def seed(env: Env) -> None:
         "INSERT INTO auth_events (kind, at) VALUES ('old', now() - interval '31 days')",
         "INSERT INTO auth_events (kind, at) VALUES ('new', now() - interval '29 days')",
     ]
+    # The security log (#632) is owned: planted as the user, older and younger than 7 days.
+    for age in (8, 6):
+        async with env.db() as db:
+            await db.execute(
+                text("SELECT set_config('app.user_id', (SELECT id::text FROM users), true)")
+            )
+            await db.execute(
+                text(
+                    "INSERT INTO security_log (owner_id, session_id, ip_hash, method, route, "
+                    "status, at) SELECT id, gen_random_uuid(), :h, 'GET', '/api/x', 200, "
+                    "now() - make_interval(days => :age) FROM users"
+                ),
+                {"h": bytes(32), "age": age},
+            )
     for statement in sql:
         await env.run(statement)
     assert user is not None
@@ -74,6 +90,7 @@ async def test_purge_deletes_what_is_expired_or_used_and_keeps_the_rest(env: Env
         "sessions_ip_cleared": 1,
         "spotify_oauth_flows": 0,  # planted in test_spotify_forget.py
         "swedebeat_handoffs": 0,
+        "security_log": 1,
     }
     assert await env.scalar("SELECT count(*) FROM sessions") == 1
     assert await env.scalar("SELECT ip FROM sessions") is None  # cleared after 30 days

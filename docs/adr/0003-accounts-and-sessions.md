@@ -513,7 +513,8 @@ sign-in only for the admin role (§7).
   `scripts/worktree.sh init`).
 - **Derived keys:** HKDF-SHA256 (fixed salt `classbeat-v1`) derives separate 32-byte keys with
   the info strings `csrf`, `rate-limit`, `device`, `recovery-codes`, `totp-v1`, `totp-pending`,
-  and `session-client` (amendment of 2026-11-05, #632).
+  `session-client` (amendment of 2026-11-05, #632) and `security-log` (amendment "the security
+  log", #632).
 - **TOTP secrets:** encrypted with AES-256-GCM (`cryptography`), a random 96-bit nonce per
   encryption stored alongside, AAD `user_id|totp`, and `key_id = "app-v1"`.
   - M2's envelope encryption (§7 of the roadmap) re-encrypts them under its scheme, and
@@ -731,3 +732,106 @@ not noticed, and a later PR adds the security log and the admin abuse view (#632
 - A user whose phone changes network often re-authenticates for the guarded actions more often;
   those already need a re-authentication within 10 minutes, so the cost is small.
 - Tests: `backend/tests/test_session_anomaly.py`.
+
+## Amendment 2026-11-05: the security log (#632)
+
+**Context.** The access log (§10) records method, path, status and time and names no user, so it
+cannot show what one account or one session did; `auth_events` records sign-ins and moves, not
+ordinary requests. Noticing a stolen session (amendment above) and the admin abuse view (#632,
+next PR) need a short record of who called what, from roughly where, with what result, without
+turning the log into a store of addresses, browsers or request contents.
+
+**Decision.** A table `security_log` gets one row per **signed-in `/api` request**, written by the
+auth middleware once the response's status is known (`classbeat.auth.securitylog`):
+
+| Column | Holds |
+|---|---|
+| `owner_id` | the user whose session the request resolved (owned table, ADR 0002) |
+| `session_id` | that session's id; no foreign key, so the row outlives a rotation or sign-out until the purge |
+| `ip_hash` | `HMAC(security-log key, bucket_ip(client address))` (§8, §9): IPv4 as it is, IPv6 by its /64; 32 bytes |
+| `method` | `GET`, `HEAD`, `POST`, `PUT`, `PATCH`, `DELETE`, `OPTIONS`, else `OTHER` |
+| `route` | the **route template** the request matches among the app's own (`/api/classes/{class_id}`), or `unmatched` |
+| `status` | the response status, the middleware's own refusals (429, 403) included |
+| `at` | the database's `now()` |
+| `limited_minute` | a 429 row's minute (epoch minutes), else null; unique per user (below) |
+
+- **What is never stored:** the address, the `User-Agent`, a cookie or token, the raw path, the
+  query string, the body. `Entry` (the row before it is written) has no field for them; the route
+  is matched against the templates of the app's OpenAPI paths with Starlette's `compile_path`, so
+  it is always one of a fixed set, never text taken from the request; the table's checks refuse a
+  method, route (lower-case words and `{name}` placeholders, at most 200 characters, no `?`, `%`,
+  `=` or space) or status of another shape, and a hash that is not 32 bytes. Tests plant each in
+  requests and search the whole table for them (`backend/tests/test_security_log.py`).
+- **Which requests: exactly those the general limit counted** (an allowlist shared with the
+  limiter, not a copy of its path rules). `check_api_limit` marks a request
+  (`securitylog.mark_counted`) right after the limiter's `begin_together`, allowed or refused, and
+  `entry_for` admits only marked requests; an AST guard checks that nothing else marks one. So a
+  signed-in request on a limited `/api` path is logged, its 429 and its Origin or CSRF 403
+  included; the limiter's exempt paths (`API_EXEMPT_PATHS`: `/api/health`, `/api/ready`,
+  `/api/auth/logout`, `/api/auth/logout-all`) are **never** logged, whatever the method or the
+  answer, nor are anonymous requests, sign-in (it starts without a session) and pages outside
+  `/api`. Sign-out is therefore not in the security log; `auth_events` has no sign-out kind today
+either, so a sign-out shows only as the end of that session's rows (adding a `sign_out` event is
+a separate change, outside this amendment). Without
+  this, a refused sign-out (bad CSRF token) keeps the session and is not limited, so one cookie
+  could append rows without bound (#641 review). A refused request still gets its route, because
+  the template is matched, not read from the router. Nothing is looked up only for the log.
+- **Key:** a new HKDF info string `security-log` (§8), its own key, so log hashes cannot be
+  compared with `sessions.seen_ip_hash` (the `session-client` key) or the rate-limit buckets. With
+  the key, an IPv4 hash can be reversed by trying every address; the key lives only in the web
+  process (`app_secret_key`), and the abuse view needs only equality.
+- **Owned, with RLS (ADR 0002 §2):** `owner_id` `NOT NULL` referencing `users` `ON DELETE
+  CASCADE`, `UNIQUE (owner_id, id)`, `owner_isolation`. The middleware writes the row in the
+  user's own session with a bare context (`deps.security_log_context`, reachable only from the
+  security log). The admin view will read it through `classbeat_maint` with its own column grant
+  and audit row (ADR 0011 §5); this PR grants maint nothing.
+- **Bounded in count, not only in age:** every row but a 429 is a request the general limit
+  allowed (above), so those rows are at most `api_requests_per_hour × 24 ×
+  CLASSBEAT_SECURITY_LOG_DAYS` per user (3000 × 24 × 7 = 504,000 at the defaults). Requests past
+  the limit would be unbounded, so a 429 row carries its minute and a partial unique index on
+  `(owner_id, limited_minute)` with `ON CONFLICT DO NOTHING` keeps at most **one 429 row per user
+  and minute**, across all of the user's sessions: at most `1440 × CLASSBEAT_SECURITY_LOG_DAYS`
+  (10,080 at the defaults) per user. Keying it per session would not bound it: sessions are not
+  capped and a successful sign-in costs nothing against the limits (#641 review: 80 sign-ins, 80
+  rows in one minute). So a user's rows are at most 504,000 + 10,080 a week.
+  **Trade-off:** within one minute only the first limited session's row is kept (its
+  `session_id` and network); other sessions limited in the same minute leave no 429 row, and the
+  abuse view loses the count of 429s within a minute. Their allowed requests are still logged
+  with their own session ids.
+- **Failure:** a failed write (a driver error, a pool timeout, anything) is logged by class (and
+  SQLSTATE for a driver error) only and never changes the response: the route has already run and
+  committed (the log is best effort; a request that deleted its own account fails the foreign key
+  silently).
+- **Retention:** the worker's hourly purge (§1) deletes rows older than
+  `CLASSBEAT_SECURITY_LOG_DAYS` (default 7, 1 to 30), per user in that user's session, like the
+  Spotify connect flows. The account's deletion removes the rest (cascade).
+- **Export and deletion (ADR 0014, guard 12):** exported as `security_log` (method, route, status,
+  time and the row id); `ip_hash` (a keyed hash), `session_id` and `limited_minute` (internal)
+  are omitted. Retention
+  registry (guard 10): no content; deleted with the account.
+
+**Alternatives.**
+- *Add the user to the access log:* rejected; the access log goes to the operator's log pipeline
+  with its own retention, outside the database's deletion paths and the export.
+- *A system table like `auth_events`:* rejected; the rows are per-user data written only once a
+  user is known, which ADR 0002 makes owned.
+- *Store the bucket or the address in the clear:* rejected; the abuse view needs only "same network
+  or not", and the address in the clear stays in `auth_events` (30 days).
+- *Log the raw path with ids redacted:* rejected; redaction is a blocklist. A matched template is
+  an allowlist.
+- *Write the row in the rate-limit statement:* rejected; the status is not known yet.
+
+**Consequences.**
+- Migration 0034 adds `security_log`; every request the general limit counts costs one more
+  short insert, in its own transaction after the response is built, so it adds that insert's
+  latency to the request (not measured separately; the listing's query-count test counts it).
+- The first logged request of a web process builds the OpenAPI schema once (cached on the app;
+  if building it fails, the error is logged and the next request tries again, never caching an
+  empty list).
+- Rotating `app_secret_key` changes the `security-log` key: rows before and after no longer
+  compare equal for the same network until the purge drops the old ones.
+- Routes added with `include_in_schema=False` under `/api` would log as `unmatched`; a test walks
+  `app.routes` (included routers too) and fails on such a route, and checks that every `/api`
+  template has the allowed shape and is matched back to itself.
+- Threat model T124. Tests: `backend/tests/test_security_log.py`, the migration test in
+  `backend/tests/test_migrations.py`, the purge in `backend/tests/test_auth_purge.py`.

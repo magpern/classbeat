@@ -310,6 +310,10 @@ class Settings(BaseSettings):
     api_writes_per_minute: int = Field(default=60, ge=1, le=100_000)
     api_reads_per_minute: int = Field(default=120, ge=1, le=100_000)
     api_ip_requests_per_minute: int = Field(default=1_200, ge=1, le=1_000_000)
+    # Issue #632: how many days the hourly purge keeps ``security_log`` rows (one per signed-in
+    # ``/api`` request; ADR 0003 amendment "security log"). Short by design, at most the 30 days
+    # of ``auth_events``.
+    security_log_days: int = Field(default=7, ge=1, le=30)
     chat_max_requests: int = Field(default=50, ge=1, le=200)
     chat_context_requests: int = Field(default=10, ge=1, le=30)
     # ADR 0007 section 8: how long a new MOWL workout may take to appear in My Workouts. Unset

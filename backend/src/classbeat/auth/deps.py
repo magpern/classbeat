@@ -97,6 +97,20 @@ async def purge_contexts(db: AsyncSession) -> list[UserContext]:
     return [UserContext(user_id=user_id, role="user", issuer=issuer_token()) for user_id in ids]
 
 
+def security_log_context(user_id: UUID) -> UserContext:
+    """For the security log only (``classbeat.auth.securitylog``; #632): a bare context (role
+    ``user``, no connections) of the user whose session the request resolved, to write that
+    request's row in the user's own session, since the table is owned and row security is forced.
+    Nothing else may name it (``tests/test_user_context_guard.py``)."""
+    return UserContext(user_id=user_id, role="user", issuer=issuer_token())
+
+
+def cached_session(request: Request) -> SessionInfo | None:
+    """The session this request already resolved, or ``None``; never resolves (no database)."""
+    cached: Resolution | None = getattr(request.state, _RESOLUTION, None)
+    return None if cached is None else cached.info
+
+
 def _refuse(status: int, reason: str) -> NoReturn:
     raise HTTPException(status_code=status, detail={"reason": reason})
 
