@@ -10,9 +10,9 @@
 #
 # Published ports keep the sender's address (Docker NATs them), so web sees swag's own address,
 # which compose.prod.yaml already trusts as PROXY_IP (one private address, never a range).
-# NOTHING here stops another machine on the LAN from connecting to the port: the boundary is the
-# host firewall, which must drop everything but PROXY_IP to WEB_HOST_PORT (runbook section 6c;
-# Docker's published ports bypass ufw, so the rule goes in the DOCKER-USER chain). The hop from
+# NOTHING here stops another machine on the LAN from connecting to the port. Whether to restrict
+# it (for example a host firewall that only lets PROXY_IP reach WEB_HOST_PORT; runbook section 6c
+# has an optional example) is the operator's choice; classbeat never changes the host. The hop from
 # swag to web is plain HTTP across the LAN. scripts/check-prod-compose.sh checks that exactly one
 # port is published, on one private address (never 0.0.0.0, IPv6 or loopback here), and that
 # web does not join the proxy network. Needs Docker Compose 2.24.4 or later (`!override`).
