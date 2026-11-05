@@ -10,15 +10,21 @@ settings and pin the windows (#588), so a window boundary inside a test changes 
 """
 
 import asyncio
+import itertools
+import logging
 import time
 from collections.abc import AsyncIterator, Callable
+from contextlib import asynccontextmanager
 from typing import Any
 
 import httpx
 import pytest
+from sqlalchemy.dialects import postgresql
+from sqlalchemy.exc import OperationalError
 
 from authtools import ORIGIN, Env, running_env, session_cookie
-from classbeat.auth import ratelimit
+from classbeat.auth import deps, ratelimit
+from classbeat.auth.keys import Keys
 from classbeat.auth.middleware import csrf_token_for_session
 from classbeat.config import Settings
 
@@ -295,3 +301,82 @@ async def test_the_table_holds_no_user_id_or_address_in_the_clear(
     )
     assert rows == 0
     assert await env.scalar("SELECT count(*) FROM rate_limits") == 3  # minute, hour, address
+
+
+PLANTED = "planted-row-value@example.com"
+
+
+def _database_error() -> OperationalError:
+    return OperationalError(f"INSERT {PLANTED}", {"value": PLANTED}, Exception(f"lost {PLANTED}"))
+
+
+@pytest.mark.parametrize("where", ["limit", "session"])
+async def test_a_database_error_in_the_middleware_is_the_redacted_500(
+    limited: Callable[..., Any],
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+    where: str,
+) -> None:
+    """#626 review: the session lookup and the general limit run in the middleware, outside the
+    app's ``DBAPIError`` handler. Their database errors get the same 500 and the same log line
+    (class and SQLSTATE only), never the message or the parameters, and the route never runs."""
+    env: Env = await limited()
+    browser = await signed(env)
+
+    async def broken(*_: object, **__: object) -> Any:
+        raise _database_error()
+
+    if where == "limit":
+        monkeypatch.setattr(env.app.state.limiter, "begin_together", broken)
+    else:
+        monkeypatch.setattr(deps, "resolve_session", broken)
+    caplog.set_level(logging.DEBUG)
+    for response in (await browser.get(SESSION), await browser.post(WRITE)):
+        assert response.status_code == 500
+        assert response.json() == {"detail": "Internal Server Error"}
+        assert PLANTED not in response.text
+    assert env.app.state.write_calls == []
+    assert PLANTED not in caplog.text
+    assert "database error: OperationalError (SQLSTATE unknown)" in caplog.text
+
+
+class _Recorder:
+    """Stands in for the database: keeps each statement and returns no rows."""
+
+    def __init__(self) -> None:
+        self.statements: list[Any] = []
+
+    async def execute(self, statement: Any) -> Any:
+        self.statements.append(statement)
+        return self
+
+    def all(self) -> list[Any]:
+        return []
+
+
+def test_the_general_limit_writes_its_rows_in_bucket_hash_order(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """#626 review: the deadlock-freedom of ``begin_together`` rests on every request locking its
+    rows in one global order (bucket hash). Checked on the statement itself, for every order the
+    buckets can come in, so it does not depend on two requests happening to collide."""
+    recorder = _Recorder()
+
+    @asynccontextmanager
+    async def fake_session(_: object) -> AsyncIterator[_Recorder]:
+        yield recorder
+
+    monkeypatch.setattr(ratelimit, "system_session", fake_session)
+    keys = Keys.from_secret(b"k" * 32)
+    limiter = ratelimit.RateLimiter(None, keys)  # type: ignore[arg-type]
+    settings = Settings.model_construct(**{k: f.default for k, f in Settings.model_fields.items()})
+    buckets = ratelimit.api_buckets(settings, "u1", "203.0.113.9", "POST", "/api/jobs")
+    assert len(buckets) == 4
+    orders: set[tuple[bytes, ...]] = set()
+    for permutation in itertools.permutations(buckets):
+        asyncio.run(limiter.begin_together(list(permutation)))
+        params = recorder.statements[-1].compile(dialect=postgresql.dialect()).params
+        hashes = tuple(params[f"bucket_hash_m{i}"] for i in range(len(buckets)))
+        assert list(hashes) == sorted(hashes)
+        orders.add(hashes)
+    assert len(orders) == 1  # the same order whatever order the buckets came in

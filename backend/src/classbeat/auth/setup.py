@@ -15,7 +15,11 @@ from classbeat.auth.email_routes import router as email_router
 from classbeat.auth.identity_routes import router as identity_router
 from classbeat.auth.keys import Keys
 from classbeat.auth.mfa_routes import router as mfa_router
-from classbeat.auth.middleware import AuthMiddleware, rate_limited_response
+from classbeat.auth.middleware import (
+    AuthMiddleware,
+    database_error_response,
+    rate_limited_response,
+)
 from classbeat.auth.notices import register_security_notifier
 from classbeat.auth.notifier import MailNotifier
 from classbeat.auth.oauth_client import OAuthRuntime
@@ -29,7 +33,6 @@ from classbeat.auth.routes import router
 from classbeat.auth.signin_routes import router as signin_router
 from classbeat.auth.signup_routes import router as signup_router
 from classbeat.config import Settings
-from classbeat.log import describe_database_error
 from classbeat.mail import Mailer
 
 logger = logging.getLogger(__name__)
@@ -59,9 +62,11 @@ def install(app: FastAPI) -> None:
 
     @app.exception_handler(DBAPIError)
     async def database_error(_: Request, exc: Exception) -> JSONResponse:
-        # Class and SQLSTATE only: the message carries row values (emails, hashes).
-        text = describe_database_error(exc) if isinstance(exc, DBAPIError) else "database error"
-        logger.error("database error: %s", text)
+        # Class and SQLSTATE only: the message carries row values (emails, hashes). The auth
+        # middleware's checks run outside this handler and use the same response.
+        if isinstance(exc, DBAPIError):
+            return database_error_response(exc)
+        logger.error("database error")
         return JSONResponse({"detail": "Internal Server Error"}, status_code=500)
 
     @app.exception_handler(RequestValidationError)

@@ -27,6 +27,7 @@ const DEVICES = [
     expires_at: '2026-11-29T08:00:00Z',
     user_agent: 'Safari on iPhone',
     ip: '198.51.100.7',
+    location_changed_at: null,
     current: false,
   },
 ]
@@ -145,6 +146,19 @@ describe('signed-in devices', () => {
       expect(screen.getByTestId('devices')).not.toHaveTextContent('Safari on iPhone')
     })
     expect(api.to('DELETE', '/api/auth/sessions/d2')[0]?.headers.get('X-CSRF-Token')).toBe('csrf-session')
+  })
+
+  it('marks a session seen from a new location and still offers to sign it out', async () => {
+    const moved = [DEVICES[0], { ...DEVICES[1], location_changed_at: '2026-10-30T09:00:00Z' }]
+    fakeApi({ ...base, 'GET /api/auth/sessions': moved })
+    renderAt('/account#security')
+    const list = await screen.findByTestId('devices')
+    const items = within(list).getAllByRole('listitem')
+    expect(items[0]).not.toHaveTextContent('New location')
+    expect(items[1]).toHaveTextContent('New location')
+    expect(within(items[1]!).getByTestId('device-moved')).toHaveTextContent('Used from a new network or browser at')
+    expect(within(items[1]!).getByTestId('device-moved')).not.toHaveTextContent('198.51.100.7')
+    expect(within(items[1]!).getByRole('button', { name: 'Sign out this device' })).toBeInTheDocument()
   })
 })
 

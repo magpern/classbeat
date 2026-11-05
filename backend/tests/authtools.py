@@ -12,6 +12,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from classbeat import auth
+from classbeat.auth.anomaly import ClientMark
 from classbeat.config import Settings
 from classbeat.db import system_session
 from classbeat.web import create_app
@@ -53,11 +54,18 @@ class Env:
             return await auth.create_user(db, email, **kwargs)  # pyright: ignore[reportArgumentType]
 
     async def login(
-        self, user_id: UUID, *, mfa: bool = False, ip: str = "203.0.113.5"
+        self,
+        user_id: UUID,
+        *,
+        mfa: bool = False,
+        ip: str = "203.0.113.5",
+        mark: ClientMark | None = None,
     ) -> auth.IssuedSession:
+        """A session as a sign-in creates it. Without ``mark`` it has no client mark and takes
+        the one of its first request (#632), so the address here need not match the client's."""
         async with self.db() as db:
             return await auth.start_session(
-                db, self.settings, user_id, user_agent="pytest", ip=ip, mfa=mfa
+                db, self.settings, user_id, user_agent="pytest", ip=ip, mfa=mfa, mark=mark
             )
 
     async def scalar(self, sql: str, **params: object) -> object:

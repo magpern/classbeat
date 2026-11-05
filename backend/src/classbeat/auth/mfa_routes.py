@@ -18,6 +18,7 @@ from classbeat.auth import mfa, totp
 from classbeat.auth.cookies import set_session_cookie
 from classbeat.auth.deps import (
     current_session,
+    request_client_mark,
     request_ip,
     require_recent_auth,
     require_stepup,
@@ -117,12 +118,14 @@ async def _reserve(request: Request, info: SessionInfo):
 
 async def _rotate(request: Request, response: Response, info: SessionInfo, **flags: bool) -> None:
     """Rotate the session. Raises ``SessionGone`` when it was revoked meanwhile."""
+    ip = request_ip(request)
     async with system_session(_factory(request)) as db:
         issued = await rotate_session(
             db,
             info,
             user_agent=request.headers.get("user-agent"),
-            ip=request_ip(request),
+            ip=ip,
+            mark=request_client_mark(request, ip),
             **flags,
         )
     set_session_cookie(response, issued)

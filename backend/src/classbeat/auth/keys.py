@@ -4,8 +4,9 @@ One secret file, ``app_secret_key``, feeds HKDF-SHA256 (fixed salt ``classbeat-v
 gets its own 32-byte key through its own info string, so a key for one purpose is useless for
 another. Rotating ``app_secret_key`` invalidates CSRF tokens, rate-limit buckets, known devices
 (the ``device`` key: the cookies stop matching, so every sign-in looks like a new device and
-mails the user once more) and recovery codes; TOTP secrets then need re-enrolling until M2's
-envelope encryption takes them over.
+mails the user once more), recovery codes and session client marks (the ``session-client`` key:
+every session's next request counts as one move, ADR 0003 amendment of 2026-11-05); TOTP
+secrets then need re-enrolling until M2's envelope encryption takes them over.
 """
 
 import hashlib
@@ -36,7 +37,7 @@ def derive_key(secret: bytes, info: str) -> bytes:
 
 @dataclass(frozen=True, slots=True, repr=False)
 class Keys:
-    """The six derived keys. ``repr`` never shows key material."""
+    """The seven derived keys. ``repr`` never shows key material."""
 
     csrf: bytes
     rate_limit: bytes
@@ -44,6 +45,7 @@ class Keys:
     recovery_codes: bytes
     totp: bytes
     totp_pending: bytes
+    session_client: bytes  # the coarse network of a session's client mark (#632)
 
     def __repr__(self) -> str:
         return "Keys(...)"
@@ -59,6 +61,7 @@ class Keys:
             recovery_codes=derive_key(secret, "recovery-codes"),
             totp=derive_key(secret, "totp-v1"),
             totp_pending=derive_key(secret, "totp-pending"),
+            session_client=derive_key(secret, "session-client"),
         )
 
     @classmethod

@@ -3,16 +3,23 @@
 The cookie holds a random token; the database holds only its SHA-256. Every function takes the
 caller's ``AsyncSession`` (a ``system_session``), so a sign-in can create its session in the
 same transaction as its other writes. All times are the database's ``now()``.
+
+Each session also keeps its client mark (``anomaly.ClientMark``; ADR 0003 amendment of
+2026-11-05, #632): set at sign-in and on every rotation, compared on every request that resolves
+it with a mark. A different mark is recorded, clears the recent authentication, MFA and step-up
+times and flags the session as seen from a new location; it never signs the session out.
 """
 
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-from typing import Literal
+from typing import Any, Literal
 from uuid import UUID
 
-from sqlalchemy import delete, func, insert, select, update
+from sqlalchemy import delete, func, insert, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from classbeat.auth.anomaly import EVENT_INTERVAL, EVENT_KIND, ClientMark
+from classbeat.auth.events import record_event
 from classbeat.auth.keys import new_token, token_hash
 from classbeat.auth.tables import mfa_totp, sessions, users
 from classbeat.config import Settings
@@ -102,9 +109,16 @@ def _truncate(user_agent: str | None) -> str | None:
 
 
 async def resolve_session(
-    factory: async_sessionmaker[AsyncSession], settings: Settings, token: str | None
+    factory: async_sessionmaker[AsyncSession],
+    settings: Settings,
+    token: str | None,
+    mark: ClientMark | None = None,
+    *,
+    ip: str | None = None,
 ) -> Resolution:
-    """ADR 0003 section 2, steps 2 to 4."""
+    """ADR 0003 section 2, steps 2 to 4, and with ``mark`` (the request's client mark; ``ip`` its
+    address, for the event) the comparison of the amendment of 2026-11-05 (#632). Without a mark
+    (the SSE stream's periodic check) nothing is compared."""
     if not token:
         return Resolution("anonymous")
     async with system_session(factory) as db:
@@ -119,6 +133,9 @@ async def resolve_session(
                     sessions.c.reauth_at,
                     sessions.c.mfa_at,
                     sessions.c.stepup_at,
+                    sessions.c.seen_ip_hash,
+                    sessions.c.seen_agent,
+                    sessions.c.location_changed_at,
                     users.c.email,
                     users.c.role,
                     users.c.disabled_at,
@@ -146,6 +163,7 @@ async def resolve_session(
             .where(sessions.c.id == row.id, sessions.c.last_seen_at < func.now() - TOUCH_INTERVAL)
             .values(last_seen_at=func.now())
         )
+        moved = mark is not None and await _compare_mark(db, row, mark, ip)
     return Resolution(
         "ok",
         SessionInfo(
@@ -156,13 +174,81 @@ async def resolve_session(
             created_at=row.created_at,
             last_seen_at=row.last_seen_at,
             expires_at=row.expires_at,
-            reauth_at=row.reauth_at,
-            mfa_at=row.mfa_at,
-            stepup_at=row.stepup_at,
+            # A move clears them for this request too, even when a parallel request's update
+            # won the race and this one changed nothing.
+            reauth_at=None if moved else row.reauth_at,
+            mfa_at=None if moved else row.mfa_at,
+            stepup_at=None if moved else row.stepup_at,
             now=row.now,
             totp_enabled=row.totp_enabled,
         ),
     )
+
+
+def _differs(stored_hash: bytes | None, stored_agent: str | None, mark: ClientMark) -> bool:
+    return (stored_hash is not None and bytes(stored_hash) != mark.ip_hash) or (
+        stored_agent is not None and stored_agent != mark.agent
+    )
+
+
+async def _compare_mark(db: AsyncSession, row: Any, mark: ClientMark, ip: str | None) -> bool:
+    """Compare the request's mark with the session's (#632). Returns whether it moved.
+
+    No stored mark (a session from before migration 0033): adopt this one silently. A different
+    one: store it, clear ``reauth_at``, ``mfa_at`` and ``stepup_at``, set ``location_changed_at``,
+    and, only for the request whose update changed the row and at most once per session and
+    ``EVENT_INTERVAL``, write a ``session_location_changed`` event. Never a sign-out.
+    """
+    if row.seen_ip_hash is None or row.seen_agent is None:
+        await db.execute(
+            update(sessions)
+            .where(
+                sessions.c.id == row.id,
+                or_(sessions.c.seen_ip_hash.is_(None), sessions.c.seen_agent.is_(None)),
+            )
+            .values(seen_ip_hash=mark.ip_hash, seen_agent=mark.agent)
+        )
+        return False
+    if not _differs(row.seen_ip_hash, row.seen_agent, mark):
+        return False
+    changed = (
+        await db.execute(
+            update(sessions)
+            .where(
+                sessions.c.id == row.id,
+                or_(
+                    sessions.c.seen_ip_hash.is_distinct_from(mark.ip_hash),
+                    sessions.c.seen_agent.is_distinct_from(mark.agent),
+                ),
+            )
+            .values(
+                seen_ip_hash=mark.ip_hash,
+                seen_agent=mark.agent,
+                location_changed_at=func.now(),
+                reauth_at=None,
+                mfa_at=None,
+                stepup_at=None,
+            )
+            .returning(sessions.c.id)
+        )
+    ).first()
+    quiet = row.location_changed_at is not None and row.now - row.location_changed_at < (
+        EVENT_INTERVAL
+    )
+    if changed is not None and not quiet:
+        await record_event(
+            db,
+            EVENT_KIND,
+            user_id=row.user_id,
+            ip=ip,
+            detail={
+                "session_id": str(row.id),
+                "ip_changed": bytes(row.seen_ip_hash) != mark.ip_hash,
+                "agent_changed": row.seen_agent != mark.agent,
+                "agent": mark.agent,
+            },
+        )
+    return True
 
 
 async def start_session(
@@ -174,12 +260,15 @@ async def start_session(
     ip: str | None,
     replacing_token: str | None = None,
     mfa: bool = False,
+    mark: ClientMark | None,
 ) -> IssuedSession:
     """Sign-in: a new token in a new row, with the browser's old session (if any) deleted.
 
     The sign-in itself is a fresh authentication, so ``reauth_at`` is now. When the old session
     was this user's, the new row keeps its ``expires_at`` (rotation never extends a session past
-    its absolute limit) and its ``mfa_at`` and ``stepup_at``; otherwise it starts clean.
+    its absolute limit) and its ``mfa_at`` and ``stepup_at``; otherwise it starts clean. ``mark``
+    is the signing-in request's client mark (#632); every route passes it
+    (``tests/test_session_anomaly.py`` checks), ``None`` only in tests.
     """
     inherited = None
     if replacing_token:
@@ -231,6 +320,8 @@ async def start_session(
                 stepup_at=inherited.stepup_at if same_user and inherited else None,
                 user_agent=_truncate(user_agent),
                 ip=ip,
+                seen_ip_hash=mark.ip_hash if mark else None,
+                seen_agent=mark.agent if mark else None,
             )
             .returning(sessions.c.id, sessions.c.expires_at, _remaining())
         )
@@ -251,10 +342,14 @@ async def rotate_session(
     stepup: bool = False,
     user_agent: str | None = None,
     ip: str | None = None,
+    mark: ClientMark | None,
 ) -> IssuedSession:
     """After MFA verification or re-authentication: a new token in a new row, the old row
     deleted, ``expires_at`` unchanged, ``mfa_at``, ``reauth_at`` and ``stepup_at`` carried over
-    unless this rotation sets them. No grace period: the old token is dead at once."""
+    unless this rotation sets them. No grace period: the old token is dead at once.
+
+    The rotating request proved the user again, so the new row takes its client ``mark`` and no
+    longer counts as seen from a new location (#632). Without a mark the old one is kept."""
     old = (
         await db.execute(
             delete(sessions)
@@ -267,11 +362,15 @@ async def rotate_session(
                 sessions.c.stepup_at,
                 sessions.c.user_agent,
                 sessions.c.ip,
+                sessions.c.seen_ip_hash,
+                sessions.c.seen_agent,
+                sessions.c.location_changed_at,
             )
         )
     ).first()
     if old is None:
         raise SessionGone
+    proved = reauth or mfa or stepup
     token = new_token()
     row = (
         await db.execute(
@@ -286,6 +385,9 @@ async def rotate_session(
                 stepup_at=func.now() if stepup else old.stepup_at,
                 user_agent=_truncate(user_agent) or old.user_agent,
                 ip=ip or old.ip,
+                seen_ip_hash=mark.ip_hash if mark else old.seen_ip_hash,
+                seen_agent=mark.agent if mark else old.seen_agent,
+                location_changed_at=None if proved and mark else old.location_changed_at,
             )
             .returning(sessions.c.id, sessions.c.expires_at, _remaining())
         )
@@ -330,6 +432,7 @@ class SessionSummary:
     expires_at: datetime
     user_agent: str | None
     ip: str | None
+    location_changed_at: datetime | None  # seen from a new network or browser since (#632)
 
 
 async def list_sessions(
@@ -350,6 +453,7 @@ async def list_sessions(
             sessions.c.expires_at,
             sessions.c.user_agent,
             sessions.c.ip,
+            sessions.c.location_changed_at,
         )
         .where(
             sessions.c.user_id == user_id,

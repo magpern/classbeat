@@ -42,7 +42,15 @@ from classbeat.auth.tables import (
 INCLUDE: dict[str, tuple[str, ...]] = {
     "users": ("id", "email", "role", "email_verified_at", "created_at", "disabled_at"),
     "identities": ("provider", "subject", "email_at_link", "created_at"),
-    "sessions": ("created_at", "last_seen_at", "expires_at", "user_agent", "ip"),
+    "sessions": (
+        "created_at",
+        "last_seen_at",
+        "expires_at",
+        "user_agent",
+        "ip",
+        "seen_agent",
+        "location_changed_at",
+    ),
     "known_devices": ("created_at", "last_used_at"),
     "mfa_totp": ("confirmed_at",),
     "mfa_recovery_codes": ("used_at",),  # only to count the unused ones
@@ -61,6 +69,7 @@ EXCLUDE: dict[str, dict[str, str]] = {
         "reauth_at": "internal security timing",
         "mfa_at": "internal security timing",
         "stepup_at": "internal security timing",
+        "seen_ip_hash": "a keyed hash of the network, for comparison only (#632)",
     },
     "known_devices": {
         "id": "internal",
@@ -181,6 +190,8 @@ async def account_export(db: AsyncSession, user_id: UUID) -> dict[str, Any]:
                 "expires_at": _iso(row.expires_at),
                 "user_agent": row.user_agent,
                 "ip": row.ip,
+                "browser_family": row.seen_agent,
+                "location_changed_at": _iso(row.location_changed_at),
             }
             for row in signed_in
         ],

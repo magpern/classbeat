@@ -106,6 +106,11 @@ sessions = Table(
     _ts("stepup_at"),
     Column("user_agent", Text),
     Column("ip", Text),
+    # The client mark (ADR 0003 amendment of 2026-11-05, #632, migration 0033): the HMAC of the
+    # coarse network and the browser family last seen, and when they last changed.
+    Column("seen_ip_hash", LargeBinary),
+    Column("seen_agent", Text),
+    _ts("location_changed_at"),
     Index("sessions_user_id_idx", "user_id"),
     Index("sessions_expires_at_idx", "expires_at"),
 )
