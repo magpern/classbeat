@@ -262,8 +262,8 @@ Every state-changing request (`POST`, `PUT`, `PATCH`, `DELETE`) must pass two ch
   which orders these flows, but it does not block the `FOR KEY SHARE` of a foreign-key insert
   that references `users`. `FOR UPDATE` would, and deadlocked the reset and the rotations
   against the session middleware, which locks a session row and then inserts an `auth_events`
-  row for its user (#632). The explicit lock in the reset is not redundant with its
-  `UPDATE users`: it is the one that orders the reset against these flows.
+  row for its user (#632). In the reset the explicit lock takes the same mode as the
+  `UPDATE users` that follows it; it states the ADR 0019 §6 order rather than adding a wait.
 - **Email change:**
   - **Request:** gives the same answer whether or not the new address is in use. Only the mail
     differs: "confirm" for a free address, "an account with this address exists" for a taken
