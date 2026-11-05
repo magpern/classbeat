@@ -652,7 +652,7 @@ def test_deleting_the_class_then_the_user_leaves_nothing_in_the_registered_table
 def test_the_queue_functions_are_unchanged(admin: Connection, app_database_url: str) -> None:
     from classbeat.db.queue_check import QUEUE_VERSION
 
-    assert QUEUE_VERSION == "classbeat-queue v2"
+    assert QUEUE_VERSION == "classbeat-queue v3"
     assert check_queue(admin) == []
 
 

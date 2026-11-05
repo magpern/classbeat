@@ -157,7 +157,8 @@ class LeaseLost(Exception):
 
 
 class RunStopped(Exception):
-    """A checkpoint stopped the run: ``reason`` is ``cancelled``, ``lost`` or ``shutdown``."""
+    """A checkpoint stopped the run: ``reason`` is ``cancelled``, ``lost`` or ``shutdown``, or
+    ``analysis_slot`` (``JobRun.require_analysis_slot``, #574)."""
 
     def __init__(self, reason: str) -> None:
         super().__init__(reason)

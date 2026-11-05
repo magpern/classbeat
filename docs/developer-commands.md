@@ -251,8 +251,18 @@ and maintenance, so at most 50), `CLASSBEAT_WORKER_POLL_SECONDS` (2; the claim p
 `LISTEN jobs_queued`), `CLASSBEAT_WORKER_MAINTENANCE_SECONDS` (30; reap, expire, settle),
 `CLASSBEAT_WORKER_SHUTDOWN_WAIT_SECONDS` (25, inside compose's `stop_grace_period: 30s`),
 `CLASSBEAT_APPROVAL_TTL_HOURS` (168), `CLASSBEAT_JOB_BUSY_REQUEUE_LIMIT` (5 `operation_busy`
-requeues per phase without an attempt) and `CLASSBEAT_JOBS_PER_USER` (2 queued or running jobs;
-the jobs API answers 429 above it).
+requeues per phase without an attempt), `CLASSBEAT_JOBS_PER_USER` (2 queued or running jobs;
+the jobs API answers 429 above it) and `CLASSBEAT_MIX_ANALYSIS_CONCURRENCY` (1, 1 to 16; #574: running
+jobs that may analyse a Swedebeat mix, across every worker). A run that must analyse (a cache miss in
+`swedebeat_music.open_swedebeat_mix`, before the daily slot is taken) and holds no slot stops
+(`JobRun.require_analysis_slot`) and its job goes back to `queued` with `jobs.analysis_slot` (migration
+0032), the attempt not counted, and a `requeued` event `{"reason": "analysis_slot"}` (what #572 shows as
+"waiting for a free slot"). `queue_claim(worker, lease, kinds, analysis_slots)` (queue v3) claims such a job
+only while fewer running jobs hold a slot than the cap, counted under one advisory lock in READ COMMITTED,
+and claims other jobs past it, so analyses never fill every worker slot; the transaction that stores the
+analysis (or finds it cached) frees the slot and wakes the workers. A slot job whose lease expired keeps
+its slot until the reaper requeues it. Tests: `tests/test_queue_functions.py` (the claim, the race) and
+`tests/test_analysis_slots.py` (the requeue, the release, two workers).
 Song picking (`design_with_songs`, `classbeat.songs`, ADR 0008 section 2): `CLASSBEAT_SPOTIFY_POOL_SYNC_WAIT_SECONDS`
 (120, at most 600) is how long a pick waits for MOWL's track list of the pool playlist to show exactly
 the candidates just written; after it the pick fails `pool_not_synced` (retried once per phase). Worker and agent code write job data only through

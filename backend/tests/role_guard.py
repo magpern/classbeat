@@ -24,7 +24,7 @@ QUEUE_TABLE_PRIVILEGES = {
 }
 # The SECURITY DEFINER functions classbeat_app may execute (regprocedure, as rendered).
 QUEUE_SIGNATURES = {
-    "queue_claim(text,integer,text[])",
+    "queue_claim(text,integer,text[],integer)",
     "queue_reap(integer)",
     "queue_expire(integer)",
     "queue_unsettled(integer)",

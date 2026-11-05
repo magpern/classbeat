@@ -1,4 +1,5 @@
 from pathlib import Path
+from typing import Any
 
 import pytest
 from alembic import command
@@ -32,7 +33,7 @@ def applied_revisions(database_url: str) -> list[str]:
 
 def test_the_revisions_form_one_line() -> None:
     script = ScriptDirectory.from_config(alembic_config())
-    assert script.get_heads() == ["0031_oauth_sign_up_purpose"]
+    assert script.get_heads() == ["0032_analysis_slot"]
     assert script.get_base() == "0001_baseline"
 
 
@@ -53,7 +54,7 @@ def test_upgrade_head_then_downgrade_base(
     config = alembic_config()
     try:
         command.upgrade(config, "head")
-        assert applied_revisions(database_url) == ["0031_oauth_sign_up_purpose"]
+        assert applied_revisions(database_url) == ["0032_analysis_slot"]
         command.downgrade(config, "base")
         assert applied_revisions(database_url) == []
     finally:
@@ -291,5 +292,37 @@ def test_0031_oauth_sign_up_purpose_up_and_down(
     finally:
         with admin.begin() as connection:
             connection.execute(text("DELETE FROM oauth_flows"))
+        admin.dispose()
+        command.downgrade(config, "base")
+
+
+def test_0032_analysis_slot_up_and_down(
+    owner_database_url: str, database_url: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """#574: ``jobs.analysis_slot`` exists at head, false by default and never NULL; the
+    downgrade drops it."""
+    monkeypatch.setenv("CLASSBEAT_MIGRATIONS_DATABASE_URL", owner_database_url)
+    config = alembic_config()
+    admin = create_engine(database_url)
+
+    def column() -> Any:
+        with admin.connect() as connection:
+            return connection.execute(
+                text(
+                    "SELECT data_type, is_nullable, column_default FROM information_schema.columns "
+                    "WHERE table_name = 'jobs' AND column_name = 'analysis_slot'"
+                )
+            ).first()
+
+    try:
+        command.upgrade(config, "head")
+        found = column()
+        assert found is not None
+        assert tuple(found) == ("boolean", "NO", "false")
+        command.downgrade(config, "0031_oauth_sign_up_purpose")
+        assert column() is None
+        command.upgrade(config, "head")
+        assert column() is not None
+    finally:
         admin.dispose()
         command.downgrade(config, "base")

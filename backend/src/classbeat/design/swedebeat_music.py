@@ -14,9 +14,12 @@ kinds' ``admit`` and their run check the flag before calling it. After ``design.
    connection** (``mowl_connection_id``: the table has no foreign key to it, so this is compared
    here), names the link's MOWL playlist and has the library's current map version. **A hit makes
    no request at all.**
-3. **A miss.** One of the user's daily analysis slots (``mixlimit.reserve``, ``analysis_limit``
-   past 10 in 24 hours; A4), then the user's fresh listing must hold the mix (``invalid_input``
-   otherwise) and gives
+3. **A miss.** A run without one of the worker's mix-analysis slots (#574,
+   ``JobRun.require_analysis_slot``) stops here and its job is requeued with one, the attempt
+   not counted; ``queue_claim`` then claims it only while a slot is free
+   (``CLASSBEAT_MIX_ANALYSIS_CONCURRENCY``). Then one of the user's daily analysis slots
+   (``mixlimit.reserve``, ``analysis_limit`` past 10 in 24 hours; A4), then the user's fresh
+   listing must hold the mix (``invalid_input`` otherwise) and gives
    its listed length; the attach (``operations.swedebeat``, which stores the link) and the wait for
    MOWL to index it; the temporary link from MOWL (``GET v1/swedebeat/playlist/{id}/
    TemporaryLinks``, one read through the library's call); the fetch (``mixfetch``: one
@@ -24,7 +27,8 @@ kinds' ``admit`` and their run check the flag before calling it. After ``design.
    analysis in a limited child process (``mixanalysis``); the directory is removed on every way
    out. The link lives in this function's local variable only.
 4. **Storing.** One fenced transaction (the connection and the link held again) upserts the row,
-   drops what is past 30 days and all but the newest 20 of the user.
+   drops what is past 30 days and all but the newest 20 of the user, and frees the job's
+   analysis slot.
 
 Errors are ``JobFailure`` categories: ``media_host_not_allowed`` (an empty production list ends
 every uncached mix so, with no media request), ``media_refused``, ``analysis_failed`` (undecodable
@@ -186,6 +190,8 @@ async def _store(
     payload = json.dumps(analysis.music_map, separators=(",", ":"), allow_nan=False)
     async with fs_run.fenced() as fs:
         await _store_row(fs, fs_run, opened, analysis, connection_id, payload)
+        await fs_run.release_analysis_slot(fs)  # #574: the slot is free once this commits
+    fs_run.slot_released()
 
 
 async def _store_row(
@@ -266,11 +272,18 @@ async def open_swedebeat_mix(
         raise JobFailure("not_connected")
     hit = await _cached(run, opened, mix_id, connection_id)
     if hit is not None:
+        if run.analysis_slot:  # requeued for a slot, then another job stored the analysis
+            async with run.fenced() as fs:
+                await run.release_analysis_slot(fs)
+            run.slot_released()
         logger.info(
             "swedebeat mix from cache",
             extra={"job_id": str(run.lease.job_id), "songs": len(hit.music_map["songs"])},
         )
         return hit, opened
+    # #574: a miss analyses only in a job holding one of the mix-analysis slots; without one the
+    # job is requeued with it here, before the daily slot is taken or anything is called.
+    run.require_analysis_slot()
     async with run.fenced() as fs:
         await mixlimit.reserve(fs)
     await run.checkpoint()

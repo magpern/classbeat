@@ -187,7 +187,7 @@ BEGIN
               AND p.proname IN ('queue_claim', 'queue_reap', 'queue_expire', 'queue_unsettled',
                                 'queue_stats')
               AND p.oid::regprocedure::text NOT IN (
-                'queue_claim(text,integer,text[])', 'queue_reap(integer)',
+                'queue_claim(text,integer,text[],integer)', 'queue_reap(integer)',
                 'queue_expire(integer)', 'queue_unsettled(integer)', 'queue_stats()') LOOP
     EXECUTE format('DROP ROUTINE public.%s', r.signature);
   END LOOP;
@@ -298,8 +298,14 @@ END $$;
 
 -- Claim the next queued job of one of p_kinds whose attempts are not spent. A row whose update
 -- fails is skipped (and stays locked until this transaction ends), so it cannot stall the queue.
+-- A job with analysis_slot (it must analyse a mix, issue #574) is claimed only while fewer than
+-- p_analysis_slots running jobs have it; over the cap it stays queued and other jobs are claimed
+-- past it. The count runs under one transaction-level advisory lock, taken only for such a job,
+-- and in READ COMMITTED (refused otherwise), so it sees every such claim committed before the
+-- lock was granted: concurrent claimers never claim more than the cap between them. Only this
+-- function moves a job to running, and nothing sets analysis_slot on a running job.
 CREATE OR REPLACE FUNCTION public.queue_claim(p_worker text, p_lease_seconds integer,
-                                              p_kinds text[])
+                                              p_kinds text[], p_analysis_slots integer)
   RETURNS TABLE (job_id uuid, owner_id uuid, lease_version bigint)
   LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, pg_temp
 AS $$
@@ -311,6 +317,8 @@ DECLARE
   v_version bigint;
   v_seq bigint;
   v_attempt integer;
+  v_slot boolean;
+  v_full boolean;  -- NULL until a job with analysis_slot is met and the slots are counted
 BEGIN
   IF p_worker IS NULL OR p_worker !~ '^[A-Za-z0-9._:-]{1,100}$' THEN
     RAISE EXCEPTION 'invalid worker id' USING ERRCODE = '22023';
@@ -318,19 +326,36 @@ BEGIN
   IF p_lease_seconds IS NULL OR p_lease_seconds < 30 OR p_lease_seconds > 600 THEN
     RAISE EXCEPTION 'p_lease_seconds must be 30 to 600' USING ERRCODE = '22023';
   END IF;
+  IF p_analysis_slots IS NULL OR p_analysis_slots < 1 OR p_analysis_slots > 16 THEN
+    RAISE EXCEPTION 'p_analysis_slots must be 1 to 16' USING ERRCODE = '22023';
+  END IF;
+  IF current_setting('transaction_isolation') <> 'read committed' THEN
+    RAISE EXCEPTION 'queue_claim runs in READ COMMITTED only' USING ERRCODE = '25001';
+  END IF;
   IF p_kinds IS NULL OR cardinality(p_kinds) = 0 THEN
     RETURN;
   END IF;
   FOR i IN 1..10 LOOP
-    SELECT j.id, j.owner_id INTO v_id, v_owner
+    SELECT j.id, j.owner_id, j.analysis_slot INTO v_id, v_owner, v_slot
       FROM public.jobs j
      WHERE j.state = 'queued' AND j.available_at <= now() AND j.attempt < j.max_attempts
        AND j.kind = ANY (p_kinds) AND j.id <> ALL (v_skipped)
+       AND NOT (j.analysis_slot AND coalesce(v_full, false))
      ORDER BY j.available_at, j.created_at
      LIMIT 1
        FOR UPDATE SKIP LOCKED;
     IF NOT FOUND THEN
       RETURN;
+    END IF;
+    IF v_slot THEN
+      IF v_full IS NULL THEN
+        PERFORM pg_advisory_xact_lock(hashtextextended('classbeat.jobs.analysis_slots', 0));
+        v_full := (SELECT count(*) FROM public.jobs r
+                    WHERE r.state = 'running' AND r.analysis_slot) >= p_analysis_slots;
+      END IF;
+      IF v_full THEN
+        CONTINUE;  -- it stays queued; the next pass looks only at jobs without analysis_slot
+      END IF;
     END IF;
     BEGIN
       UPDATE public.jobs j
@@ -511,7 +536,8 @@ DECLARE
   f text;
   g record;
 BEGIN
-  FOREACH f IN ARRAY ARRAY['public.queue_claim(text,integer,text[])', 'public.queue_reap(integer)',
+  FOREACH f IN ARRAY ARRAY['public.queue_claim(text,integer,text[],integer)',
+                           'public.queue_reap(integer)',
                            'public.queue_expire(integer)', 'public.queue_unsettled(integer)',
                            'public.queue_stats()'] LOOP
     EXECUTE format('ALTER FUNCTION %s OWNER TO classbeat_queue', f);
@@ -528,6 +554,6 @@ BEGIN
     END LOOP;
     EXECUTE format('GRANT EXECUTE ON FUNCTION %s TO classbeat_queue', f);
     EXECUTE format('GRANT EXECUTE ON FUNCTION %s TO classbeat_app', f);
-    EXECUTE format('COMMENT ON FUNCTION %s IS %L', f, 'classbeat-queue v2');
+    EXECUTE format('COMMENT ON FUNCTION %s IS %L', f, 'classbeat-queue v3');
   END LOOP;
 END $$;

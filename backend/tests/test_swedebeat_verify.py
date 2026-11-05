@@ -39,7 +39,7 @@ from mowlfake import FakeMowl
 from optools import TOKEN_A, OpsEnv
 from preftools import use_swedebeat
 
-pytestmark = pytest.mark.usefixtures("jenv", "mowl_api")
+pytestmark = pytest.mark.usefixtures("jenv", "mowl_api", "analysis_slot_by_default")
 
 
 def _song(seconds: int, n: int = 1) -> Song:

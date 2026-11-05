@@ -2,9 +2,11 @@
 
 Up to ``worker_concurrency`` runs as asyncio tasks. When a slot is free the loop calls
 ``queue_claim``, woken by ``LISTEN jobs_queued`` (``classbeat.worker.listen``) or a poll every
-``worker_poll_seconds``; it claims nothing until the queue check of a connection has passed
-(``queue_verified``). Every ``worker_maintenance_seconds`` it runs the reaper, the expiry sweep
-and the credit settle; the hourly auth purge stays.
+``worker_poll_seconds``; a job that must analyse a mix is claimed only while fewer than
+``mix_analysis_concurrency`` running jobs hold an analysis slot (#574). It claims nothing until
+the queue check of a connection has passed (``queue_verified``). Every
+``worker_maintenance_seconds`` it runs the reaper, the expiry sweep and the credit settle; the
+hourly auth purge stays.
 
 **Shutdown** (SIGTERM; compose gives 30 s): stop claiming; every run stops at its next
 checkpoint (no new model turn or external call) and hands its lease back; runs still busy after
@@ -198,7 +200,13 @@ class Worker:
             and not self.stop.is_set()
             and len(self.running) < self.settings.worker_concurrency
         ):
-            row = await queue.claim(self.factory, self.id, self.settings.job_lease_seconds, kinds)
+            row = await queue.claim(
+                self.factory,
+                self.id,
+                self.settings.job_lease_seconds,
+                kinds,
+                self.settings.mix_analysis_concurrency,
+            )
             if row is None:
                 break
             claimed += 1
