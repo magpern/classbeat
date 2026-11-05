@@ -14,7 +14,7 @@ Factory = async_sessionmaker[AsyncSession]
 
 _CLAIM = text(
     "SELECT job_id, owner_id, lease_version "
-    "FROM public.queue_claim(:worker, :lease, CAST(:kinds AS text[]))"
+    "FROM public.queue_claim(:worker, :lease, CAST(:kinds AS text[]), :slots)"
 )
 _REAP = text("SELECT public.queue_reap(:n)")
 _EXPIRE = text("SELECT public.queue_expire(:n)")
@@ -22,16 +22,24 @@ _UNSETTLED = text("SELECT job_id, owner_id, lease_version FROM public.queue_unse
 
 
 async def claim(
-    factory: Factory, worker: str, lease_seconds: int, kinds: Sequence[str]
+    factory: Factory,
+    worker: str,
+    lease_seconds: int,
+    kinds: Sequence[str],
+    analysis_slots: int = 1,
 ) -> Claimed | None:
+    """The next job of ``kinds``; a job with ``analysis_slot`` only while fewer than
+    ``analysis_slots`` running jobs have one (``CLASSBEAT_MIX_ANALYSIS_CONCURRENCY``, #574)."""
     if not kinds:
         return None
+    params = {
+        "worker": worker,
+        "lease": lease_seconds,
+        "kinds": list(kinds),
+        "slots": analysis_slots,
+    }
     async with system_session(factory) as db:
-        row = (
-            await db.execute(
-                _CLAIM, {"worker": worker, "lease": lease_seconds, "kinds": list(kinds)}
-            )
-        ).first()
+        row = (await db.execute(_CLAIM, params)).first()
     return None if row is None else Claimed(row.job_id, row.owner_id, row.lease_version)
 
 

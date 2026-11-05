@@ -22,7 +22,7 @@ from jobtools import engine_for
 from queue_guard import check_queue
 from role_guard import check_roles
 
-CLAIM_SIG = "public.queue_claim(text,integer,text[])"
+CLAIM_SIG = "public.queue_claim(text,integer,text[],integer)"
 
 
 @pytest.fixture
@@ -241,7 +241,7 @@ async def test_objects_in_public_cannot_shadow_built_ins_and_are_refused(
             # engine, without the startup check, calls them).
             with engine_for(app_database_url) as app, app.begin() as tx:
                 [row] = tx.execute(
-                    text("SELECT * FROM public.queue_claim('w1', 60, ARRAY['test_kind'])")
+                    text("SELECT * FROM public.queue_claim('w1', 60, ARRAY['test_kind'], 1)")
                 ).all()
                 assert row.job_id == job_id
             admin.execute(

@@ -48,7 +48,7 @@ from optools import TOKEN_A, TOKEN_B, OpsEnv
 from preftools import use_swedebeat
 from savetools import FakeMowlPrograms
 
-pytestmark = pytest.mark.usefixtures("jenv", "mowl_api")
+pytestmark = pytest.mark.usefixtures("jenv", "mowl_api", "analysis_slot_by_default")
 
 MIX_NAME = "Planted Mix Name q9z"  # searched for in everything the model is sent
 MIX_ID = "planted-mix-id-77"

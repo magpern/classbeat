@@ -31,11 +31,13 @@ from sqlalchemy.ext.asyncio import AsyncEngine
 from classbeat.db.queue_digests import GUARD_TRIGGER_DIGESTS, QUEUE_DIGESTS
 
 QUEUE_ROLE = "classbeat_queue"
-QUEUE_VERSION = "classbeat-queue v2"
+QUEUE_VERSION = "classbeat-queue v3"
 SEARCH_PATH = "search_path=pg_catalog, pg_temp"
 # name -> identity arguments, as pg_get_function_identity_arguments renders them.
 QUEUE_FUNCTIONS: dict[str, str] = {
-    "queue_claim": "p_worker text, p_lease_seconds integer, p_kinds text[]",
+    "queue_claim": (
+        "p_worker text, p_lease_seconds integer, p_kinds text[], p_analysis_slots integer"
+    ),
     "queue_reap": "p_limit integer",
     "queue_expire": "p_limit integer",
     "queue_unsettled": "p_limit integer",

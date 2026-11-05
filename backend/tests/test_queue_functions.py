@@ -12,7 +12,7 @@ from sqlalchemy.exc import DBAPIError
 
 from jobtools import digest, engine_for, events, job, new_class, new_job, new_user
 
-CLAIM = "SELECT * FROM public.queue_claim(:w, :lease, CAST(:kinds AS text[]))"
+CLAIM = "SELECT * FROM public.queue_claim(:w, :lease, CAST(:kinds AS text[]), :slots)"
 
 
 @pytest.fixture
@@ -36,9 +36,13 @@ def call(app: Engine, sql: str, **params: Any) -> list[Any]:
 
 
 def claim(
-    app: Engine, worker: str = "w1", lease: int = 60, kinds: tuple[str, ...] = ("test_kind",)
+    app: Engine,
+    worker: str = "w1",
+    lease: int = 60,
+    kinds: tuple[str, ...] = ("test_kind",),
+    slots: int = 1,
 ):
-    return call(app, CLAIM, w=worker, lease=lease, kinds=list(kinds))
+    return call(app, CLAIM, w=worker, lease=lease, kinds=list(kinds), slots=slots)
 
 
 def expire_lease(admin: Connection, job_id: uuid.UUID) -> None:
@@ -98,6 +102,28 @@ def test_the_claim_refuses_bad_arguments(
 ) -> None:
     with pytest.raises(DBAPIError, match=r"invalid worker id|p_lease_seconds"):
         claim(app, worker=worker, lease=lease)
+
+
+@pytest.mark.parametrize("slots", [0, 17, None])
+def test_the_claim_refuses_a_bad_analysis_cap(
+    admin: Connection, app: Engine, slots: int | None
+) -> None:
+    new_job(admin, new_user(admin))
+    with pytest.raises(DBAPIError, match="p_analysis_slots must be 1 to 16"):
+        call(app, CLAIM, w="w1", lease=60, kinds=["test_kind"], slots=slots)
+
+
+def test_the_claim_refuses_a_snapshot_isolation(admin: Connection, app: Engine) -> None:
+    """#574: the slot count must see every claim committed before the lock was granted."""
+    job_id = new_job(admin, new_user(admin))
+    for level in ("REPEATABLE READ", "SERIALIZABLE"):
+        with app.connect() as connection:
+            connection.execute(text(f"SET TRANSACTION ISOLATION LEVEL {level}"))
+            with pytest.raises(DBAPIError, match="READ COMMITTED only"):
+                connection.execute(
+                    text(CLAIM), {"w": "w1", "lease": 60, "kinds": ["test_kind"], "slots": 1}
+                )
+    assert job(admin, job_id).state == "queued"
 
 
 @pytest.mark.parametrize("function", ["queue_reap", "queue_expire", "queue_unsettled"])
@@ -288,3 +314,103 @@ def test_the_one_open_job_per_class_rule_holds_for_claimed_jobs(
     claim(app)
     with pytest.raises(DBAPIError, match="jobs_one_open_per_class"):
         new_job(admin, owner, class_id)
+
+
+# Issue #574: the separate cap on running jobs that analyse a mix (``jobs.analysis_slot``).
+
+
+def slot_job(admin: Connection, owner: uuid.UUID, **columns: Any) -> uuid.UUID:
+    return new_job(admin, owner, analysis_slot=True, **columns)
+
+
+def running_slots(admin: Connection) -> int:
+    return admin.execute(
+        text("SELECT count(*) FROM jobs WHERE state = 'running' AND analysis_slot")
+    ).scalar_one()
+
+
+def finish(admin: Connection, job_id: uuid.UUID) -> None:
+    admin.execute(
+        text(
+            "UPDATE jobs SET state = 'completed', finished_at = now(), leased_by = NULL, "
+            "lease_expires_at = NULL, heartbeat_at = NULL WHERE id = :id"
+        ),
+        {"id": job_id},
+    )
+
+
+def test_a_job_over_the_analysis_cap_stays_queued_and_others_are_claimed_past_it(
+    admin: Connection, app: Engine
+) -> None:
+    a, b, c = new_user(admin), new_user(admin), new_user(admin)
+    first = slot_job(admin, a)
+    second = slot_job(admin, b)  # older than the design job: it waits, the design job does not
+    design = new_job(admin, c)
+    assert [r.job_id for r in claim(app)] == [first]
+    assert [r.job_id for r in claim(app)] == [design]  # past the waiting analysis
+    assert claim(app) == []
+    assert job(admin, second).state == "queued"
+    assert events(admin, second) == []  # nothing written to a job left waiting
+    finish(admin, first)
+    assert [r.job_id for r in claim(app)] == [second]  # a free slot: the oldest waiting one
+    assert running_slots(admin) == 1
+
+
+def test_the_cap_counts_running_slot_jobs_of_every_user_and_worker(
+    admin: Connection, app: Engine
+) -> None:
+    jobs = [slot_job(admin, new_user(admin)) for _ in range(3)]
+    claimed = [r.job_id for r in claim(app, worker="w1", slots=2)]
+    claimed += [r.job_id for r in claim(app, worker="w2", slots=2)]
+    assert claimed == jobs[:2]
+    assert claim(app, worker="w3", slots=2) == []
+    assert [r.job_id for r in claim(app, worker="w3", slots=3)] == [jobs[2]]  # its own cap
+
+
+def test_an_expired_slot_job_holds_its_slot_until_the_reaper_requeues_it(
+    admin: Connection, app: Engine
+) -> None:
+    owner = new_user(admin)
+    held, waiting = slot_job(admin, owner), slot_job(admin, new_user(admin))
+    assert [r.job_id for r in claim(app)] == [held]
+    expire_lease(admin, held)
+    assert claim(app) == []  # the old holder may still be analysing
+    assert call(app, "SELECT public.queue_reap(10)")[0][0] == 1
+    reaped = job(admin, held)
+    assert (reaped.state, reaped.analysis_slot) == ("queued", True)
+    assert [r.job_id for r in claim(app)] == [waiting]
+
+
+def test_jobs_without_a_slot_ignore_the_cap(admin: Connection, app: Engine) -> None:
+    slot_job(admin, new_user(admin))
+    claim(app)
+    plain = {new_job(admin, new_user(admin)) for _ in range(5)}
+    claimed = {claim(app)[0].job_id for _ in range(5)}
+    assert claimed == plain
+    assert running_slots(admin) == 1
+
+
+def test_concurrent_claimers_never_run_more_analyses_than_the_cap(
+    admin: Connection, app: Engine
+) -> None:
+    """Sixteen claimers race over 8 analyses and 8 design jobs with a cap of 2: every design job
+    is claimed, exactly 2 analyses run, and the other 6 stay queued with no event."""
+    users = [new_user(admin) for _ in range(16)]
+    slots = {slot_job(admin, users[i]) for i in range(8)}
+    plain = {new_job(admin, users[8 + i]) for i in range(8)}
+    claimed: list[uuid.UUID] = []
+    lock = threading.Lock()
+
+    def drain() -> None:
+        while rows := claim(app, slots=2):
+            with lock:
+                claimed.append(rows[0].job_id)
+
+    _race(16, drain)
+    assert len(claimed) == len(set(claimed))
+    assert plain <= set(claimed)
+    assert len(set(claimed) & slots) == 2
+    assert running_slots(admin) == 2
+    for job_id in slots - set(claimed):
+        assert job(admin, job_id).state == "queued"
+        assert events(admin, job_id) == []

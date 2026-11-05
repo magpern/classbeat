@@ -230,7 +230,7 @@ async def test_the_planted_trigger_would_run_as_the_queue_role_and_the_worker_re
         assert "zz_evil" in connection
         with engine_for(app_database_url) as app, app.begin() as tx:
             [row] = tx.execute(
-                text("SELECT * FROM public.queue_claim('w1', 60, ARRAY['test_kind'])")
+                text("SELECT * FROM public.queue_claim('w1', 60, ARRAY['test_kind'], 1)")
             ).all()
             assert row.job_id == job_id
         leased_by = admin.execute(
