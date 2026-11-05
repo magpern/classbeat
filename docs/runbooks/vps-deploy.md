@@ -44,8 +44,9 @@ to a real SMTP service, or Proton Mail Bridge, [proton-bridge-smtp.md](proton-br
 ## 2. What is reachable from the internet
 
 Only swag: the router forwards `443/tcp` (and `80/tcp` if swag answers HTTP challenges or redirects)
-to swag and nothing else. Ports Docker publishes bypass the host's `ufw`, so the router (or the
-upstream firewall) is the real boundary: never forward 5432, 8000 or a classbeat port. With the
+to swag and nothing else. Host and network hardening is the operator's choice; classbeat does not
+require or configure any firewall. Ports Docker publishes bypass the host's `ufw`, so if you rely on
+the router (or an upstream firewall), never forward 5432, 8000 or a classbeat port. With the
 loopback overlay (section 6b) web listens on `127.0.0.1` only. `docker ps` must show no classbeat
 container with a host mapping other than that (section 9).
 
@@ -357,11 +358,11 @@ and change `PROXY_IP` in the same file to the LAN address of the machine swag ru
 (for example `192.168.1.10`; it replaces the Docker-network address of section 6a).
 
 In the swag sample set `set $upstream_classbeat 192.168.1.20;` and port `8080` in both `proxy_pass`
-lines. **The firewall is the boundary here, not the compose file:** nothing but swag may reach the
-port. Docker's published ports bypass `ufw` and `firewalld`, so the rule goes in the `DOCKER-USER`
-chain (it sees the packet after the port translation; match the original destination, this server's
-address **and** the port, so the rule does not drop other forwarded traffic of this host to a port 8080
-that is not web's):
+lines. **Restricting who can reach that port is the operator's choice; classbeat does not require
+it and never changes the host's firewall.** Without a restriction, any machine on the LAN can reach
+web under its own address. If you want one, an optional example: Docker's published ports bypass
+`ufw` and `firewalld`, so the rule goes in the `DOCKER-USER` chain (it sees the packet after the port
+translation; match the original destination, this server's address **and** the port):
 
 ```bash
 sudo iptables -I DOCKER-USER -p tcp -m conntrack --ctorigdst 192.168.1.20 --ctorigdstport 8080 \
@@ -370,11 +371,11 @@ sudo iptables -L DOCKER-USER -n -v        # the rule is first; make it persisten
 ```
 
 (with nftables-based Docker, the equivalent rule in the `DOCKER-USER` chain of the `filter` table).
-Check from a third machine on the LAN: `nc -vz 192.168.1.20 8080` must time out, and from the swag
+If you added the rule, check from a third machine on the LAN: `nc -vz 192.168.1.20 8080` must time out, and from the swag
 machine it must connect. `./check-prod-compose.sh` refuses a published address that is not
 loopback or one private IPv4, more than one published port of web (both overlays together, or a
 second port from an overlay of your own) and any port of another service, and a `PROXY_IP` equal to
-the server's own address. It cannot see the firewall: the rule above is yours to check. The hop from swag to web is **plain HTTP across the LAN** (cookies and forwarded headers
+the server's own address. It does not look at any firewall. The hop from swag to web is **plain HTTP across the LAN** (cookies and forwarded headers
 in clear): acceptable on a home network you control, not on a shared one. Everything else
 (sections 7 to 10) is unchanged.
 

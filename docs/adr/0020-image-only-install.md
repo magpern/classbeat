@@ -87,9 +87,11 @@ deployed"), so nothing has to migrate from a clone.
      (host network, macvlan). Swag in a bridge container on host Y reaches web from Y's address
      (SNAT), so every process and container on Y becomes a trusted proxy that can name any client
      address; the runbook says to give swag its own address or accept that.
-   - The boundary is the host firewall. Docker's rules bypass `ufw`, and in `DOCKER-USER` the
-     packet already has the container's destination port, so the rule must match the original
-     port (`-m conntrack --ctorigdstport 8080 --ctdir ORIGINAL`) and drop everything but `PROXY_IP`.
+   - Restricting the port is the operator's choice (owner, 2026-11-05: installation security is
+     the operator's; nothing in classbeat requires or configures a host firewall). The runbook
+     gives an optional example: Docker's rules bypass `ufw`, and in `DOCKER-USER` the packet
+     already has the container's destination port, so a rule must match the original port
+     (`-m conntrack --ctorigdstport 8080 --ctdir ORIGINAL`) and drop everything but `PROXY_IP`.
    - That a published port keeps the sender's address (so web sees swag, not the Docker gateway)
      holds for the iptables DNAT path and is **to be confirmed on the server** with the existing
      413 / logged-address test of the runbook's checklist, as 6b was on Docker 29.
@@ -97,8 +99,8 @@ deployed"), so nothing has to migrate from a clone.
      or IPv6 bind, a trusted proxy other than `PROXY_IP`, `PROXY_IP` equal to the server's own
      address, and `proxy` still attached.
    Consequence: swag to web is plain HTTP across the LAN (cookies and forwarded headers in clear),
-   acceptable on a private home network the owner controls, not elsewhere. If the firewall rule is
-   missing, the impact is limited to other LAN hosts reaching web under their own address.
+   acceptable on a private home network the owner controls, not elsewhere. Without a firewall
+   rule, the impact is limited to other LAN hosts reaching web under their own address.
 7. **Install, update and rollback** (the runbook has them in full):
    - *Install:* create `/opt/classbeat`; download the assets of `vX.Y.Z` with
      `curl --proto '=https' -fsSL` and check `SHA256SUMS` (Decision 3 says what that proves);
