@@ -191,6 +191,23 @@ async def test_an_old_page_sending_remove_methods_is_refused_and_keeps_everythin
     assert (await complete(Browser(menv), token)).status_code == 200  # token not consumed
 
 
+async def test_a_keep_list_over_the_cap_is_refused_before_hashing_and_keeps_the_token(
+    menv: Env, smtp: SmtpFake
+) -> None:
+    """``MAX_METHODS`` (100) bounds the body: 101 ids is a 422, with no hashing and nothing used."""
+    user_id = await user_with_password(menv)
+    await link_identity(menv, user_id)
+    await ask(Browser(menv))
+    token = smtp.messages[0].token()
+    calls = spy_on_hashing(menv)
+    many = [f"00000000-0000-0000-0000-{n:012d}" for n in range(101)]
+    over = await complete(Browser(menv), token, keep=many)
+    assert over.status_code == 422
+    assert calls == []
+    assert await menv.scalar("SELECT count(*) FROM identities") == 1
+    assert (await complete(Browser(menv), token, keep=many[:100])).status_code == 200
+
+
 async def ids(env: Env) -> list[object]:
     async with env.db() as db:
         return list((await db.execute(text("SELECT id FROM identities ORDER BY id"))).scalars())

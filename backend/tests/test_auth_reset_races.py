@@ -18,8 +18,10 @@ import httpx
 import pytest
 from sqlalchemy import text
 
-from authtools import ORIGIN, Env
+from authtools import ORIGIN, Env, running_env
 from classbeat.auth import reset_routes, signin_routes, totp
+from classbeat.auth import sessions as sessions_module
+from classbeat.auth.anomaly import EVENT_KIND
 from flows import PASSWORD, Browser, reason, signed_in, user_with_password
 from mfatools import admin_with_totp, step_of
 from oauthtools import location, sign_in_with, start
@@ -43,7 +45,8 @@ async def waiting_for_a_lock(env: Env) -> int:
     return int(
         await env.scalar(  # type: ignore[arg-type]
             "SELECT count(*) FROM pg_stat_activity WHERE wait_event_type = 'Lock' "
-            "AND datname = current_database()"
+            "AND datname = current_database() AND pid <> pg_backend_pid() "
+            "AND backend_type = 'client backend'"
         )
     )
 
@@ -67,7 +70,9 @@ async def against_a_held_lock(
     task = None
     try:
         async with env.db() as db:
-            await db.execute(text("SELECT id FROM users WHERE id = :u FOR UPDATE"), {"u": user_id})
+            await db.execute(
+                text("SELECT id FROM users WHERE id = :u FOR NO KEY UPDATE"), {"u": user_id}
+            )
             task = asyncio.ensure_future(request)
             await until_it_waits(env, task)
             for statement in reset:
@@ -278,3 +283,109 @@ async def test_an_oauth_sign_in_with_an_identity_the_reset_removes_gets_no_sessi
     assert location(response) == "/signin?oauth=invalid"
     assert await sessions_of(oenv, user_id) == 0
     assert not browser.signed_in
+
+
+# --- the session middleware's location event does not deadlock with the lock (#639 review) ---
+
+HOME, MOBILE = "198.51.100.7", "203.0.113.40"
+
+
+@pytest.fixture
+async def penv(clean_auth: None, app_database_url: str, smtp: SmtpFake) -> AsyncIterator[Env]:
+    """Mail to the SMTP fake, behind a trusted loopback proxy (so ``X-Forwarded-For`` counts)."""
+    async with running_env(
+        app_database_url,
+        trusted_proxies="127.0.0.1",
+        smtp_host="127.0.0.1",
+        smtp_port=smtp.port,
+        smtp_tls="none",
+    ) as running:
+        yield running
+
+
+class At(Browser):
+    """A browser at a client address: a request from another network is a location change."""
+
+    def __init__(self, env: Env, ip: str = HOME) -> None:
+        super().__init__(env)
+        self.at = ip
+
+    def _cookie_header(self) -> dict[str, str]:
+        return {**super()._cookie_header(), "X-Forwarded-For": self.at}
+
+    def elsewhere(self, env: Env) -> "At":
+        twin = At(env, MOBILE)
+        twin.cookies = dict(self.cookies)
+        return twin
+
+
+def park_location_event(monkeypatch: pytest.MonkeyPatch):
+    """Park the middleware between its session ``UPDATE`` (the row stays locked) and its
+    ``auth_events`` insert, whose foreign key takes ``FOR KEY SHARE`` on the user row."""
+    inside, release = asyncio.Event(), asyncio.Event()
+    original = sessions_module.record_event
+
+    async def wrapper(db: Any, kind: str, **kwargs: Any) -> None:
+        if kind == EVENT_KIND:
+            inside.set()
+            await release.wait()
+        await original(db, kind, **kwargs)
+
+    monkeypatch.setattr(sessions_module, "record_event", wrapper)
+    return inside, release
+
+
+async def against_a_location_event(
+    env: Env,
+    monkeypatch: pytest.MonkeyPatch,
+    moved: At,
+    other: Callable[[Env], Awaitable[httpx.Response]],
+) -> tuple[httpx.Response, httpx.Response]:
+    """``moved`` requests from a new network and parks holding its session row; ``other`` runs
+    until it waits for that row while holding the user lock; then the event insert goes on."""
+    inside, release = park_location_event(monkeypatch)
+    async with own_client(env) as a, own_client(env) as b:
+        moved.env = a
+        moving = asyncio.ensure_future(moved.get("/api/auth/session"))
+        await inside.wait()
+        acting = asyncio.ensure_future(other(b))
+        try:
+            await until_it_waits(env, acting)
+        finally:
+            release.set()
+        got = await asyncio.gather(moving, acting)
+    return got[0], got[1]
+
+
+async def test_a_reset_and_a_location_event_on_one_of_its_sessions_both_succeed(
+    penv: Env, smtp: SmtpFake, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    user_id = await user_with_password(penv)
+    home = At(penv)
+    assert (await home.sign_in(EMAIL, PASSWORD)).status_code == 200
+    token = await reset_token(penv, smtp)
+    moved, reset = await against_a_location_event(
+        penv, monkeypatch, home.elsewhere(penv), lambda env: complete(env, token)
+    )
+    assert (moved.status_code, reset.status_code) == (200, 200)  # no deadlock, no 500
+    assert await sessions_of(penv, user_id) == 0
+    assert await penv.scalar("SELECT count(*) FROM auth_events WHERE kind = :k", k=EVENT_KIND) == 1
+
+
+async def test_a_reauth_and_a_location_event_on_its_session_both_succeed(
+    penv: Env, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    user_id = await user_with_password(penv)
+    home = At(penv)
+    assert (await home.sign_in(EMAIL, PASSWORD)).status_code == 200
+    moved_twin = home.elsewhere(penv)
+
+    async def reauth(env: Env) -> httpx.Response:
+        home.env = env
+        return await home.post("/api/auth/reauth", {"password": PASSWORD})
+
+    moved, reauthed = await against_a_location_event(penv, monkeypatch, moved_twin, reauth)
+    assert moved.status_code == 200
+    assert reauthed.status_code == 200  # no deadlock: it waited, then rotated the session
+    assert await penv.scalar("SELECT count(*) FROM auth_events WHERE kind = :k", k=EVENT_KIND) == 1
+    assert await sessions_of(penv, user_id) == 1
