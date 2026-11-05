@@ -11,6 +11,7 @@ import {
   openStream,
   sse,
 } from '../test/jobFixtures'
+import { rememberInput } from '../lib/submittedInput'
 import { renderAt } from '../test/render'
 
 const JOB = `/api/jobs/${JOB_ID}`
@@ -79,8 +80,95 @@ describe('the Designing page', () => {
     renderAt(`/jobs/${JOB_ID}`)
     await screen.findByRole('button', { name: 'Stop designing' })
     expect(document.body.textContent).not.toMatch(/\b(jobs?|stages?|credits?|revisions?|tokens?)\b/i)
-    expect(screen.getByText(/You can close this page/)).toBeInTheDocument()
+    expect(screen.getByText(/You can leave this page/)).toBeInTheDocument()
     expect(document.querySelector('svg[class~="motion-safe:animate-pulse"]')).not.toBeNull()
+  })
+
+  it('says a design waits for a mix-analysis slot after a requeue, and drops it when a worker claims the job (#572)', async () => {
+    fakeApi({
+      ...SESSION_ROUTES,
+      [`GET ${JOB}`]: jobBody('queued'),
+      [`GET ${EVENTS}`]: (() => {
+        let opened = 0
+        return () =>
+          ++opened > 1
+            ? openStream()
+            : sse(
+                [1, 'queued'],
+                [2, 'claimed', { attempt: 1 }],
+                [3, 'stage_started', { stage: 'music' }],
+                [4, 'requeued', { reason: 'analysis_slot' }],
+              )
+      })(),
+    })
+    renderAt(`/jobs/${JOB_ID}`)
+    await waitFor(() => {
+      expect(screen.getByTestId('progress')).toHaveTextContent('Waiting for a free slot. Other mixes are being analysed')
+    })
+    expect(screen.getByText(/You can leave this page/)).toBeInTheDocument()
+  })
+
+  it('shows the stage again once the job was claimed after waiting for a slot (#572)', async () => {
+    fakeApi({
+      ...SESSION_ROUTES,
+      [`GET ${JOB}`]: jobBody('running'),
+      [`GET ${EVENTS}`]: (() => {
+        let opened = 0
+        return () =>
+          ++opened > 1
+            ? openStream()
+            : sse(
+                [1, 'queued'],
+                [2, 'requeued', { reason: 'analysis_slot' }],
+                [3, 'claimed', { attempt: 1 }],
+                [4, 'stage_started', { stage: 'music' }],
+              )
+      })(),
+    })
+    renderAt(`/jobs/${JOB_ID}`)
+    await waitFor(() => {
+      expect(screen.getByTestId('progress')).toHaveTextContent('Reading your playlist')
+    })
+    expect(screen.getByTestId('progress')).not.toHaveTextContent('Other mixes')
+  })
+
+  it('ignores a requeue that has no slot reason (#572)', async () => {
+    fakeApi({
+      ...SESSION_ROUTES,
+      [`GET ${JOB}`]: jobBody('queued'),
+      [`GET ${EVENTS}`]: (() => {
+        let opened = 0
+        return () =>
+          ++opened > 1 ? openStream() : sse([1, 'queued'], [2, 'stage_started', { stage: 'music' }], [3, 'requeued'])
+      })(),
+    })
+    renderAt(`/jobs/${JOB_ID}`)
+    await waitFor(() => {
+      expect(screen.getByTestId('progress')).toHaveTextContent('Reading your playlist')
+    })
+    expect(screen.getByTestId('progress')).not.toHaveTextContent('Other mixes')
+  })
+
+  it('words the music stage of a Swedebeat design as fetching and analysing the mix, with no number (#572)', async () => {
+    rememberInput(JOB_ID, {
+      class_id: CLASS_ID,
+      brief: { sport: 'cycling', title: 'Hills' },
+      music: { source: 'mowl_swedebeat_mix', mix_id: 'mix-1' },
+      mowl_connection_id: 'c',
+    } as never)
+    fakeApi({
+      ...SESSION_ROUTES,
+      [`GET ${JOB}`]: jobBody('running'),
+      [`GET ${EVENTS}`]: (() => {
+        let opened = 0
+        return () => (++opened > 1 ? openStream() : sse([1, 'queued'], [2, 'stage_started', { stage: 'music' }]))
+      })(),
+    })
+    renderAt(`/jobs/${JOB_ID}`)
+    await waitFor(() => {
+      expect(screen.getByTestId('progress')).toHaveTextContent('Fetching and analysing your mix')
+    })
+    expect(screen.getByTestId('progress').textContent).not.toMatch(/\d/)
   })
 
   it('shows a scheduled retry in plain words and the designing stage', async () => {

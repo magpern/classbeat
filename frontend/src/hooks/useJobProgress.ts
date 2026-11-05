@@ -13,6 +13,11 @@ export interface Progress {
   /** State of the newest external operation event (the playlist attach). */
   operation: string | null
   cancelRequested: boolean
+  /**
+   * The job went back to the queue because every mix-analysis slot was taken (`requeued` with the
+   * reason `analysis_slot`, #572). Cleared when a worker claims it again.
+   */
+  waitingForSlot: boolean
 }
 
 const INITIAL: Progress = {
@@ -22,6 +27,7 @@ const INITIAL: Progress = {
   retry: null,
   operation: null,
   cancelRequested: false,
+  waitingForSlot: false,
 }
 
 export function foldEvent(progress: Progress, event: JobEvent): Progress {
@@ -31,6 +37,7 @@ export function foldEvent(progress: Progress, event: JobEvent): Progress {
       return {
         ...progress,
         retry: null,
+        waitingForSlot: false,
         attempt: typeof payload.attempt === 'number' ? payload.attempt : progress.attempt,
       }
     case 'stage_started':
@@ -44,6 +51,8 @@ export function foldEvent(progress: Progress, event: JobEvent): Progress {
       return { ...progress, retry: typeof payload.category === 'string' ? payload.category : '' }
     case 'external_operation':
       return { ...progress, operation: typeof payload.state === 'string' ? payload.state : null }
+    case 'requeued':
+      return { ...progress, waitingForSlot: payload.reason === 'analysis_slot' }
     case 'cancel_requested':
       return { ...progress, cancelRequested: true }
     default:

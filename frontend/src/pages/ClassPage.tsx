@@ -230,7 +230,7 @@ function ClassBody({
           {summary.openJob.state === 'waiting_for_approval'
             ? 'Songs are waiting for your approval. '
             : summary.openJob.kind === 'design_draft'
-              ? 'This class is being designed. '
+              ? 'This class is being designed. This can take a few minutes, and you can leave this page. '
               : summary.openJob.kind === 'refit_draft'
                 ? 'Your timing fixes are being applied. '
                 : 'The songs of this class are being worked on. '}

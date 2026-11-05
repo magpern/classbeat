@@ -264,6 +264,22 @@ export function stageLabel(stage: string | null): string {
   return stage !== null && Object.hasOwn(STAGES, stage) ? STAGES[stage]! : 'Getting started'
 }
 
+/**
+ * The stage line while a Swedebeat mix is read. The `music` stage of such a design fetches and
+ * analyses the mix, which can take minutes; no figure is promised (#572).
+ */
+export const MIX_STAGE_LABEL = 'Fetching and analysing your mix'
+
+/** Said while a design waits for a mix-analysis slot (`requeued` with the reason `analysis_slot`). */
+export const WAITING_FOR_SLOT = 'Waiting for a free slot. Other mixes are being analysed ahead of yours.'
+
+/** Said while a design is queued before any worker has started it. */
+export const WAITING_TO_START = 'Waiting for a free slot.'
+
+/** The plain sentence under the progress line: leaving is safe. */
+export const YOU_CAN_LEAVE =
+  'You can leave this page. Your class carries on, and you can come back to this address or find the class in My classes.'
+
 const RETRIES: Record<string, string> = {
   upstream_unavailable: 'MOWL did not answer. Trying again shortly.',
   rate_limited: 'MOWL asked classbeat to slow down. Trying again shortly.',
