@@ -740,6 +740,7 @@ auth middleware once the response's status is known (`classbeat.auth.securitylog
 | `route` | the **route template** the request matches among the app's own (`/api/classes/{class_id}`), or `unmatched` |
 | `status` | the response status, the middleware's own refusals (429, 403) included |
 | `at` | the database's `now()` |
+| `limited_minute` | a 429 row's minute (epoch minutes), else null; unique per session (below) |
 
 - **What is never stored:** the address, the `User-Agent`, a cookie or token, the raw path, the
   query string, the body. `Entry` (the row before it is written) has no field for them; the route
@@ -763,8 +764,17 @@ auth middleware once the response's status is known (`classbeat.auth.securitylog
   user's own session with a bare context (`deps.security_log_context`, reachable only from the
   security log). The admin view will read it through `classbeat_maint` with its own column grant
   and audit row (ADR 0011 §5); this PR grants maint nothing.
-- **Failure:** a failed write is logged by class and SQLSTATE only and never changes the response
-  (the log is best effort; a request that deleted its own account fails the foreign key silently).
+- **Bounded in count, not only in age:** every request other than a 429 already takes a slot of
+  the general limit (3000 an hour per user, refused requests included), so those rows are at most
+  `api_requests_per_hour × 24 × CLASSBEAT_SECURITY_LOG_DAYS` per user (504,000 at the defaults).
+  Requests past the limit are the unbounded ones, so a 429 row carries its minute and a partial
+  unique index on `(owner_id, session_id, limited_minute)` with `ON CONFLICT DO NOTHING` keeps at
+  most one 429 row per session and minute; more sessions need more sign-ins, which have their own
+  limits (§9). The abuse view loses only the count of 429s within a minute, not the fact.
+- **Failure:** a failed write (a driver error, a pool timeout, anything) is logged by class (and
+  SQLSTATE for a driver error) only and never changes the response: the route has already run and
+  committed (the log is best effort; a request that deleted its own account fails the foreign key
+  silently).
 - **Retention:** the worker's hourly purge (§1) deletes rows older than
   `CLASSBEAT_SECURITY_LOG_DAYS` (default 7, 1 to 30), per user in that user's session, like the
   Spotify connect flows. The account's deletion removes the rest (cascade).
@@ -785,10 +795,13 @@ auth middleware once the response's status is known (`classbeat.auth.securitylog
 
 **Consequences.**
 - Migration 0034 adds `security_log`; every signed-in API request costs one more short insert.
-- The first logged request of a web process builds the OpenAPI schema once (cached on the app).
+- The first logged request of a web process builds the OpenAPI schema once (cached on the app;
+  if building it fails, the error is logged and the next request tries again, never caching an
+  empty list).
 - Rotating `app_secret_key` changes the `security-log` key: rows before and after no longer
   compare equal for the same network until the purge drops the old ones.
-- Routes added with `include_in_schema=False` under `/api` would log as `unmatched`; a test checks
-  that every `/api` template has the allowed shape and is matched back to itself.
+- Routes added with `include_in_schema=False` under `/api` would log as `unmatched`; a test walks
+  `app.routes` (included routers too) and fails on such a route, and checks that every `/api`
+  template has the allowed shape and is matched back to itself.
 - Threat model T124. Tests: `backend/tests/test_security_log.py`, the migration test in
   `backend/tests/test_migrations.py`, the purge in `backend/tests/test_auth_purge.py`.

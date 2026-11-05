@@ -1,3 +1,4 @@
+import uuid
 from pathlib import Path
 from typing import Any
 
@@ -394,12 +395,15 @@ def test_0034_security_log_up_and_down(
             "method": "GET",
             "route": "/api/classes/{class_id}",
             "status": 200,
+            "session": uuid.uuid4(),
+            "minute": None,
             **values,
         }
         connection.execute(
             text(
-                "INSERT INTO security_log (owner_id, session_id, ip_hash, method, route, status) "
-                "VALUES (:o, gen_random_uuid(), :ip_hash, :method, :route, :status)"
+                "INSERT INTO security_log (owner_id, session_id, ip_hash, method, route, status, "
+                "limited_minute) VALUES (:o, :session, :ip_hash, :method, :route, :status, "
+                ":minute)"
             ),
             {"o": owner, **row},
         )
@@ -415,6 +419,7 @@ def test_0034_security_log_up_and_down(
             ("route", "text", "NO"),
             ("status", "smallint", "NO"),
             ("at", "timestamp with time zone", "NO"),
+            ("limited_minute", "bigint", "YES"),
         ]
         with admin.begin() as connection:
             owner = connection.execute(
@@ -435,14 +440,26 @@ def test_0034_security_log_up_and_down(
             {"status": 99},
             {"status": 600},
             {"ip_hash": bytes(16)},
+            {"minute": 1, "status": 200},  # only a 429 row carries its minute
         ]
         for values in refused:
             with admin.connect() as connection, pytest.raises(IntegrityError):
                 insert(connection, owner, **values)
+        # One 429 row per session and minute (the partial unique index); another minute, another
+        # session or a non-429 row is not affected.
+        session = uuid.uuid4()
+        with admin.begin() as connection:
+            insert(connection, owner, status=429, session=session, minute=7)
+            insert(connection, owner, status=429, session=session, minute=8)
+            insert(connection, owner, status=429, minute=7)
+            insert(connection, owner, session=session)
+            insert(connection, owner, session=session)
+        with admin.connect() as connection, pytest.raises(IntegrityError):
+            insert(connection, owner, status=429, session=session, minute=7)
         command.downgrade(config, "0033_session_client_mark")
         assert columns() == []
         command.upgrade(config, "head")
-        assert len(columns()) == 8
+        assert len(columns()) == 9
     finally:
         with admin.begin() as connection:
             connection.execute(text("DELETE FROM users"))

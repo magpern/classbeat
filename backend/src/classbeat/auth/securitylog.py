@@ -18,8 +18,9 @@ no field for them and ``entry_for`` reads nothing else from the request
 for it). The table's checks refuse a method, route or status of another shape.
 
 The table is owned (ADR 0002): the row is written in the user's own session with a bare context
-(``deps.security_log_context``). A failed write is logged by class and SQLSTATE and never changes
-the response. The hourly purge drops rows older than ``CLASSBEAT_SECURITY_LOG_DAYS`` (7).
+(``deps.security_log_context``). A failed write (any error) is logged by class (and SQLSTATE) and
+never changes the response. A session writes at most one 429 row a minute; every other request is
+within the general limit. The hourly purge drops rows older than ``CLASSBEAT_SECURITY_LOG_DAYS``.
 """
 
 import logging
@@ -51,9 +52,15 @@ ROUTE_MAX = 200
 _FOREIGN_KEY_VIOLATION = "23503"
 _TEMPLATES = "security_log_templates"
 
+# A 429 row carries its minute, so the partial unique index ``security_log_one_429`` keeps at most
+# one per session and minute: past the limit a script adds no rows (T124). Every other request
+# already counts against the general limit (``api_requests_per_hour`` per user).
 _INSERT = text(
-    "INSERT INTO security_log (owner_id, session_id, ip_hash, method, route, status) "
-    "VALUES (:owner_id, :session_id, :ip_hash, :method, :route, :status)"
+    "INSERT INTO security_log (owner_id, session_id, ip_hash, method, route, status, "
+    "limited_minute) VALUES (:owner_id, :session_id, :ip_hash, :method, :route, :status, "
+    "CASE WHEN :status = 429 THEN floor(extract(epoch FROM now()) / 60)::bigint END) "
+    "ON CONFLICT (owner_id, session_id, limited_minute) WHERE limited_minute IS NOT NULL "
+    "DO NOTHING"
 )
 _PURGE = text(
     "DELETE FROM security_log WHERE owner_id = :owner_id "
@@ -89,9 +96,10 @@ def _templates(app: Any) -> list[tuple[re.Pattern[str], str, frozenset[str]]]:
         cached = []
         try:
             paths = app.openapi().get("paths", {})
-        except Exception as exc:
-            logger.warning("security log routes unavailable: %s", type(exc).__name__)
-            paths = {}
+        except Exception as exc:  # never fail a request over the log
+            # Not cached: the next request tries again rather than logging ``unmatched`` forever.
+            logger.error("security log routes unavailable: %s", type(exc).__name__)
+            return []
         for template, operations in paths.items():
             if len(template) <= ROUTE_MAX and ROUTE.fullmatch(template):
                 regex = compile_path(template)[0]
@@ -139,8 +147,9 @@ def entry_for(request: Request, status: int) -> Entry | None:
 
 
 async def record(factory: async_sessionmaker[AsyncSession], entry: Entry) -> None:
-    """Write ``entry`` in its user's own session. A database error is logged, never raised: the
-    log must not change the answer (a user deleted by this very request fails the foreign key)."""
+    """Write ``entry`` in its user's own session. Any error (a driver error, a pool timeout, …) is
+    logged by class, never raised: the log must not change the answer of a request that has
+    already run (a user deleted by this very request fails the foreign key)."""
     try:
         async with user_session(factory, security_log_context(entry.user_id)) as db:
             await db.execute(
@@ -158,6 +167,9 @@ async def record(factory: async_sessionmaker[AsyncSession], entry: Entry) -> Non
         if getattr(exc.orig, "sqlstate", None) == _FOREIGN_KEY_VIOLATION:
             return  # the account is gone (deleted by this request): nothing to log it under
         logger.warning("security log write failed: %s", describe_database_error(exc))
+    except Exception as exc:  # a pool timeout or anything else: never a 500
+        # The route has already committed; the class name only (a message may hold values).
+        logger.warning("security log write failed: %s", type(exc).__name__)
 
 
 async def purge_owner(db: AsyncSession, owner_id: UUID, days: int) -> int:

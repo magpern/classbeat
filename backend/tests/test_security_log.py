@@ -10,14 +10,16 @@ import ast
 import dataclasses
 import logging
 import re
-from collections.abc import AsyncIterator, Iterator
+from collections.abc import AsyncIterator, Iterable, Iterator
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Annotated, Any
 from uuid import UUID
 
 import pytest
 from fastapi import Depends, Request
 from sqlalchemy import create_engine, text
+from sqlalchemy import exc as sa_exc
 from sqlalchemy.engine import Engine
 
 from authtools import ORIGIN, Env, running_env
@@ -197,6 +199,78 @@ def test_every_api_route_has_a_template_the_log_accepts_and_finds() -> None:
     )  # a path never holds a query; nothing of the client's text is returned
 
 
+def _served_routes(routes: Iterable[Any]) -> Iterator[tuple[str, frozenset[str], bool]]:
+    """``(template, methods, in schema)`` of every endpoint the app serves, included routers'
+    routes with their prefixes, whether or not they are in the OpenAPI schema."""
+    for route in routes:
+        contexts = getattr(route, "effective_route_contexts", None)
+        if contexts is not None:
+            for context in contexts():
+                original = context.original_route
+                yield (
+                    context.path_format,
+                    frozenset(getattr(original, "methods", None) or ()),
+                    bool(getattr(original, "include_in_schema", True)),
+                )
+        elif isinstance(getattr(route, "path_format", None), str):
+            yield (
+                route.path_format,
+                frozenset(getattr(route, "methods", None) or ()),
+                bool(getattr(route, "include_in_schema", True)),
+            )
+
+
+# FastAPI's own documentation pages (development only): not ``APIRoute``s, logged as unmatched.
+DOCS_ROUTES = frozenset({"/api/openapi.json", "/api/docs"})
+
+
+def test_no_api_route_is_hidden_from_the_log() -> None:
+    """Every ``/api`` endpoint in ``app.routes`` (``include_in_schema=False`` ones too) is matched
+    to its own template, so a hidden route cannot silently log as ``unmatched``."""
+    from authtools import make_settings
+    from classbeat.web import create_app
+
+    app = create_app(make_settings("postgresql+psycopg://u:p@127.0.0.1:1/x"))
+    served = [route for route in _served_routes(app.routes) if route[0].startswith("/api")]
+    assert len(served) > 50
+    for template, methods, in_schema in served:
+        if template in DOCS_ROUTES:
+            continue
+        assert in_schema, f"{template} is hidden from the schema and so from the security log"
+        sample = re.sub(r"\{[a-z_0-9]+\}", "v1", template)
+        for method in methods - {"HEAD"}:
+            found = securitylog.match_template(app, method, sample)
+            assert found == template or "{" not in found, (method, template, found)
+
+
+def test_the_routes_are_not_cached_when_the_schema_fails(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """A failing ``openapi()`` is logged by class and tried again on the next request; an empty
+    list is never cached (it would log every request as ``unmatched`` for the process's life)."""
+
+    class App:
+        def __init__(self) -> None:
+            self.state = SimpleNamespace()
+            self.calls = 0
+
+        def openapi(self) -> dict[str, Any]:
+            self.calls += 1
+            if self.calls == 1:
+                raise RuntimeError("schema-canary-4410")
+            return {"paths": {"/api/x/{x_id}": {"get": {}}}}
+
+    app = App()
+    with caplog.at_level(logging.ERROR, logger="classbeat.auth.securitylog"):
+        assert securitylog.match_template(app, "GET", "/api/x/1") == "unmatched"
+    assert [r.getMessage() for r in caplog.records] == [
+        "security log routes unavailable: RuntimeError"
+    ]
+    assert securitylog.match_template(app, "GET", "/api/x/1") == "/api/x/{x_id}"
+    assert securitylog.match_template(app, "GET", "/api/x/2") == "/api/x/{x_id}"
+    assert app.calls == 2  # cached once it worked
+
+
 # --- requests ----------------------------------------------------------------------------------
 
 
@@ -258,11 +332,22 @@ async def test_a_rate_limited_request_is_logged_as_429(
         app_database_url, trusted_proxies="127.0.0.1", api_requests_per_minute=3
     ) as env:
         client = await signed_in(env)
-        statuses = [(await client.get("/api/auth/sessions")).status_code for _ in range(5)]
-        assert 429 in statuses
+        statuses = [(await client.get("/api/auth/sessions")).status_code for _ in range(25)]
+        assert statuses.count(429) >= 20
         assert ("GET", "/api/auth/sessions", 429) in {
             (row.method, row.route, row.status) for row in rows(admin)
         }
+        # T124: past the limit a session adds at most one row a minute, however many requests
+        # (two only if the run straddles a minute boundary).
+        with admin.connect() as connection:
+            limited, minutes = connection.execute(
+                text(
+                    "SELECT count(*), count(DISTINCT limited_minute) FROM security_log "
+                    "WHERE status = 429"
+                )
+            ).one()
+        assert limited == minutes
+        assert 1 <= limited <= 2
 
 
 async def test_a_failed_write_never_changes_the_answer_and_logs_no_values(
@@ -282,6 +367,38 @@ async def test_a_failed_write_never_changes_the_answer_and_logs_no_values(
     assert messages == ["security log write failed: IntegrityError (SQLSTATE 23502)"]
     user_id = str(await env.scalar("SELECT id FROM users"))
     assert not any(user_id in message or PATH_ID in message for message in messages)
+
+
+@pytest.mark.parametrize(
+    "error",
+    [sa_exc.TimeoutError("QueuePool limit reached; canary-9931"), RuntimeError("canary-9931")],
+    ids=["pool-timeout", "other"],
+)
+async def test_a_non_driver_error_never_changes_the_answer(
+    env: Env,
+    admin: Engine,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+    error: Exception,
+) -> None:
+    """B1 (#641 review): a pool timeout (not a ``DBAPIError``) after the route committed must not
+    turn a succeeded request into a 500; it is logged by class only."""
+    client = await signed_in(env)
+
+    def unavailable(*args: object, **kwargs: object) -> Any:
+        raise error
+
+    monkeypatch.setattr(securitylog, "user_session", unavailable)
+    with caplog.at_level(logging.WARNING, logger="classbeat.auth.securitylog"):
+        response = await client.post(f"/api/test/items/{PATH_ID}", {"note": BODY})
+    assert response.status_code == 200
+    assert response.json() == {"ok": True}
+    assert rows(admin) == []
+    messages = [record.getMessage() for record in caplog.records]
+    # The browser fetches its CSRF token first: one failed write per request, each the same.
+    assert messages
+    assert set(messages) == {f"security log write failed: {type(error).__name__}"}
+    assert not any("canary" in message for message in messages)
 
 
 async def test_a_user_sees_only_their_own_rows(env: Env, admin: Engine) -> None:
