@@ -343,7 +343,8 @@ def test_0033_session_client_mark_up_and_down(
                 text(
                     "SELECT column_name, data_type, is_nullable FROM information_schema.columns "
                     "WHERE table_name = 'sessions' AND column_name IN "
-                    "('seen_ip_hash', 'seen_agent', 'location_changed_at') ORDER BY column_name"
+                    "('seen_ip_hash', 'seen_agent', 'location_changed_at', 'location_event_at') "
+                    "ORDER BY column_name"
                 )
             ).all()
         return [tuple(row) for row in rows]
@@ -352,13 +353,14 @@ def test_0033_session_client_mark_up_and_down(
         command.upgrade(config, "head")
         assert columns() == [
             ("location_changed_at", "timestamp with time zone", "YES"),
+            ("location_event_at", "timestamp with time zone", "YES"),
             ("seen_agent", "text", "YES"),
             ("seen_ip_hash", "bytea", "YES"),
         ]
         command.downgrade(config, "0032_analysis_slot")
         assert columns() == []
         command.upgrade(config, "head")
-        assert len(columns()) == 3
+        assert len(columns()) == 4
     finally:
         admin.dispose()
         command.downgrade(config, "base")

@@ -59,7 +59,7 @@ Every table has an `id uuid` primary key (server default) unless a key is named.
 |---|---|---|
 | `users` | `email`, `email_normalized` (unique), `email_verified_at` (not null), `password_hash` (nullable), `role` (`user`/`admin`), `disabled_at`, `created_at` | argon2id hash |
 | `identities` | `user_id`, `provider`, `subject`, `email_at_link`, `created_at`; `UNIQUE (provider, subject)` | none |
-| `sessions` | `user_id`, `token_hash` (unique), `created_at`, `last_seen_at`, `expires_at` (absolute), `reauth_at`, `mfa_at`, `stepup_at`, `user_agent` (truncated), `ip`; `seen_ip_hash`, `seen_agent`, `location_changed_at` (amendment of 2026-11-05, #632) | SHA-256 of the token; `seen_ip_hash` an HMAC (`session-client` key, §8) |
+| `sessions` | `user_id`, `token_hash` (unique), `created_at`, `last_seen_at`, `expires_at` (absolute), `reauth_at`, `mfa_at`, `stepup_at`, `user_agent` (truncated), `ip`; `seen_ip_hash`, `seen_agent`, `location_changed_at`, `location_event_at` (amendment of 2026-11-05, #632) | SHA-256 of the token; `seen_ip_hash` an HMAC (`session-client` key, §8) |
 | `known_devices` | `user_id`, `device_hash` (unique), `created_at`, `last_used_at` | HMAC (`device` key, §8) |
 | `pending_signups` | `token_hash` (unique; null until the email is entered), `email`, `email_normalized` (both null until then; not unique: each row has its own token and the first confirmation wins), `password_hash` (nullable), `provider`, `subject`, `browser_hash` (all three set together or null), `invite_id` → `invites`, `expires_at` | SHA-256; argon2id |
 | `auth_tokens` | `purpose` (`reset_password`, `change_email`), `token_hash` (unique), `user_id`, `new_email`, `email_at_issue`, `expires_at`, `used_at` | SHA-256 |
@@ -641,7 +641,9 @@ was last seen from.
   `ios`, `android`, `chromeos`, `linux`, `other`; no versions, so a browser update is not a move).
 - **When it is set:** at sign-in (`start_session`) and on every rotation (re-authentication, MFA,
   step-up), from the request that did it. A session without a mark (created before migration
-  0033) takes the mark of its next request silently.
+  0033) takes the mark of its next request silently. If that first request is a thief's, the
+  session takes the thief's mark and the victim's next request is the recorded move: the theft is
+  still noticed, one request later. This holds only for sessions that existed at the deploy.
 
 Every request that resolves a session with a cookie (`deps.resolve_request`) compares the request's
 mark with the stored one, in the transaction that touches `last_seen_at`. When either part differs:
@@ -649,17 +651,28 @@ mark with the stored one, in the transaction that touches `last_seen_at`. When e
    stores the new mark, sets `location_changed_at = now()` and clears `reauth_at`, `stepup_at` and
    `mfa_at`. The request itself already runs without them, even when a parallel request's update
    won the race.
-2. Only the request whose update changed the row writes an `auth_events` row
-   `session_location_changed` (`ip` the request's address; `detail`: the session id,
-   `ip_changed`, `agent_changed` and the new `agent` family), at most one per session and minute,
-   so two networks that alternate cannot fill the table.
+2. The same `UPDATE` decides the event: it stamps `location_event_at = now()` only when the last
+   event is unset or at least a minute old (`CASE … RETURNING`, on the locked row), and only the
+   request whose update stamped it writes an `auth_events` row `session_location_changed`
+   (`detail`: the session id, `ip_changed`, `agent_changed` and the new `agent` family). So there
+   is **at most one event per session and minute, whatever the concurrency**: of parallel moves,
+   with the same or different new marks, exactly one writes it. The minute runs from the last
+   event, not the last move, so moves that keep coming less than a minute apart (a script and its
+   victim alternating) still write one event a minute, and the table cannot fill. Every move,
+   recorded or not, stores the mark and clears the times. A rotation carries `location_event_at`
+   over.
+   - **What is stored where:** `auth_events.ip` holds the full client address, as for every auth
+     event (§1, purged after 30 days). `detail` holds no address and no raw `User-Agent`, only the
+     coarse family, and no log line names either.
 3. **Nothing else happens.** The session stays signed in and every action that did not need
    recent authentication keeps working. Linking, credentials, connect and disconnect, export and
    delete (§6) need a fresh re-authentication (and the step-up where TOTP is on), so a recent
    authentication made on the old network cannot be used from the new one. For an admin the admin
    role also needs TOTP again (§7), because clearing `mfa_at` drops it to `mfa_required`.
 4. **The user sees it:** `GET /api/auth/sessions` returns `location_changed_at`, and the account
-   page marks that session "New location" with the time. A re-authentication, MFA verification or
+   page marks that session "New location" with the time. With a stolen cookie the flagged session
+   is often the user's own ("This device"), so the page points to "Sign out everywhere" and a
+   password change for it; a re-authentication also rotates the token, which ends a stolen copy. A re-authentication, MFA verification or
    step-up rotates the session, stores the new mark and clears `location_changed_at`.
 
 The SSE stream's periodic check (`session_probe`) resolves without a request and compares nothing.
@@ -682,8 +695,9 @@ not noticed, and a later PR adds the security log and the admin abuse view (#632
   equality, and the session list never shows an address.
 
 **Consequences.**
-- Migration 0033 adds the three columns; the data export includes `seen_agent` and
-  `location_changed_at` and excludes `seen_ip_hash` (a keyed hash).
+- Migration 0033 adds the four columns; the data export includes `seen_agent` and
+  `location_changed_at` and excludes `seen_ip_hash` (a keyed hash) and `location_event_at`
+  (internal timing).
 - Rotating `app_secret_key` (§8) changes the `session-client` key, so every session's next request
   counts as one move (one event, recent authentication cleared), and nothing more.
 - A user whose phone changes network often re-authenticates for the guarded actions more often;

@@ -111,6 +111,7 @@ sessions = Table(
     Column("seen_ip_hash", LargeBinary),
     Column("seen_agent", Text),
     _ts("location_changed_at"),
+    _ts("location_event_at"),  # the last session_location_changed event (one per minute)
     Index("sessions_user_id_idx", "user_id"),
     Index("sessions_expires_at_idx", "expires_at"),
 )

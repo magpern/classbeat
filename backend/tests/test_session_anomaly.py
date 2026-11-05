@@ -242,10 +242,37 @@ async def test_alternating_networks_clear_every_time_but_write_one_event_a_minut
     for ip in (MOBILE, HOME, MOBILE):
         assert await client.move(ip=ip).guarded() == 403
     assert len(await events(env)) == 1
-    # A minute later the next move is recorded again.
-    await env.run("UPDATE sessions SET location_changed_at = now() - interval '61 seconds'")
+    # A minute after the event the next move is recorded again.
+    await env.run("UPDATE sessions SET location_event_at = now() - interval '61 seconds'")
     assert await client.move(ip=HOME).guarded() == 403
     assert len(await events(env)) == 2
+
+
+async def test_moves_that_keep_coming_still_write_one_event_a_minute(env: Env) -> None:
+    """The interval runs from the last event, not the last move: a script and its victim that
+    alternate every few seconds for minutes are recorded once a minute, not once in all."""
+
+    async def age(seconds: int) -> None:
+        # Time passes for the event only; the moves themselves keep coming (the last move is
+        # always seconds ago, as with real alternation).
+        await env.run(
+            "UPDATE sessions SET location_event_at = location_event_at - make_interval(secs => :s)",
+            s=seconds,
+        )
+
+    client = await sign_in(env)
+    networks = [MOBILE, HOME] * 6
+    for minute in range(3):
+        for second, ip in enumerate(networks):
+            assert await client.move(ip=ip).guarded() == 403
+            if second < len(networks) - 1:
+                await age(5)  # twelve moves five seconds apart: one minute
+        assert len(await events(env)) == minute + 1
+        await age(5)
+        recent = await env.scalar(
+            "SELECT now() - location_changed_at < interval '1 second' FROM sessions"
+        )
+        assert recent is True  # the last move was just now, yet the next minute records again
 
 
 async def test_re_authenticating_on_the_new_network_clears_the_flag(env: Env) -> None:
@@ -259,6 +286,10 @@ async def test_re_authenticating_on_the_new_network_clears_the_flag(env: Env) ->
     assert bytes(row.seen_ip_hash) == client_mark(env.app.state.keys, MOBILE, None).ip_hash
     [listed] = (await client.get("/api/auth/sessions")).json()
     assert listed["location_changed_at"] is None
+    assert len(await events(env)) == 1
+    # The rotation carries the event interval on: a move right after it is not a second event
+    # within the minute (it still clears the times and sets the flag).
+    assert await client.move(ip=HOME).guarded() == 403
     assert len(await events(env)) == 1
 
 
@@ -289,6 +320,17 @@ async def test_parallel_requests_from_the_new_network_record_one_event(env: Env)
     assert (await client.user())["email"] == "user@example.com"
 
 
+async def test_parallel_requests_from_different_networks_record_one_event(env: Env) -> None:
+    """Each parallel request brings another new mark, so every conditional update changes the
+    row; the event is still written only by the one that stamps ``location_event_at``."""
+    client = await sign_in(env)
+    twins = [client.copy().move(ip=f"192.0.2.{10 + i}") for i in range(8)]
+    for _ in range(3):
+        answers = await asyncio.gather(*(twin.guarded() for twin in twins))
+        assert answers == [403] * 8
+    assert len(await events(env)) == 1
+
+
 async def test_a_request_that_lost_the_race_still_runs_without_recent_auth_and_writes_nothing(
     env: Env,
 ) -> None:
@@ -309,10 +351,35 @@ async def test_a_request_that_lost_the_race_still_runs_without_recent_auth_and_w
     )
     assert await client.move(ip=MOBILE).guarded() == 403  # the winner
     assert len(await events(env)) == 1
-    mark = client_mark(env.app.state.keys, MOBILE, CHROME_WINDOWS)
+    keys = env.app.state.keys
+    # The loser with the same mark changes nothing; the loser with yet another mark changes the
+    # row (its mark is stored) but the event interval was taken by the winner.
+    for ip in (MOBILE, "192.0.2.99"):
+        async with env.db() as db:
+            moved = await sessions_module._compare_mark(
+                db, stale, client_mark(keys, ip, CHROME_WINDOWS), ip
+            )
+        assert moved is True
+        assert len(await events(env)) == 1
+    stored = (await session_row(env)).seen_ip_hash
+    assert bytes(stored) == client_mark(keys, "192.0.2.99", None).ip_hash
+
+
+async def test_a_rotation_stores_the_rotating_requests_mark(env: Env) -> None:
+    """Called directly with a mark unlike the stored one (a request path always stored its mark
+    first, so only this shows that the rotation itself uses it)."""
+    client = await sign_in(env)
+    token = client.cookies[auth.SESSION_COOKIE]
+    info = (await auth.resolve_session(env.factory, env.settings, token)).info
+    assert info is not None
+    await env.run("UPDATE sessions SET location_changed_at = now()")
+    elsewhere = client_mark(env.app.state.keys, MOBILE, FIREFOX_LINUX)
     async with env.db() as db:
-        assert await sessions_module._compare_mark(db, stale, mark, MOBILE) is True
-    assert len(await events(env)) == 1
+        await auth.rotate_session(db, info, reauth=True, mark=elsewhere)
+    row = await session_row(env)
+    assert bytes(row.seen_ip_hash) == elsewhere.ip_hash
+    assert row.seen_agent == "firefox/linux"
+    assert row.location_changed_at is None
 
 
 async def test_a_session_without_a_mark_takes_its_first_requests_silently(env: Env) -> None:

@@ -70,6 +70,7 @@ EXCLUDE: dict[str, dict[str, str]] = {
         "mfa_at": "internal security timing",
         "stepup_at": "internal security timing",
         "seen_ip_hash": "a keyed hash of the network, for comparison only (#632)",
+        "location_event_at": "internal timing of the event interval (#632)",
     },
     "known_devices": {
         "id": "internal",

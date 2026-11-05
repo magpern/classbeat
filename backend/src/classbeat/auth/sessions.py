@@ -15,7 +15,7 @@ from datetime import datetime, timedelta
 from typing import Any, Literal
 from uuid import UUID
 
-from sqlalchemy import delete, func, insert, or_, select, update
+from sqlalchemy import case, delete, func, insert, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from classbeat.auth.anomaly import EVENT_INTERVAL, EVENT_KIND, ClientMark
@@ -135,7 +135,6 @@ async def resolve_session(
                     sessions.c.stepup_at,
                     sessions.c.seen_ip_hash,
                     sessions.c.seen_agent,
-                    sessions.c.location_changed_at,
                     users.c.email,
                     users.c.role,
                     users.c.disabled_at,
@@ -196,8 +195,12 @@ async def _compare_mark(db: AsyncSession, row: Any, mark: ClientMark, ip: str | 
 
     No stored mark (a session from before migration 0033): adopt this one silently. A different
     one: store it, clear ``reauth_at``, ``mfa_at`` and ``stepup_at``, set ``location_changed_at``,
-    and, only for the request whose update changed the row and at most once per session and
-    ``EVENT_INTERVAL``, write a ``session_location_changed`` event. Never a sign-out.
+    and write a ``session_location_changed`` event when ``location_event_at`` (the last event) is
+    unset or at least ``EVENT_INTERVAL`` old. That choice is made inside the conditional update,
+    on the locked row: of parallel moves (with the same or different marks) only one sets
+    ``location_event_at`` and writes the event, and moves that keep coming less than a minute
+    apart still write one event a minute (the interval runs from the last event, not the last
+    move). Never a sign-out.
     """
     if row.seen_ip_hash is None or row.seen_agent is None:
         await db.execute(
@@ -211,6 +214,10 @@ async def _compare_mark(db: AsyncSession, row: Any, mark: ClientMark, ip: str | 
         return False
     if not _differs(row.seen_ip_hash, row.seen_agent, mark):
         return False
+    due = or_(
+        sessions.c.location_event_at.is_(None),
+        sessions.c.location_event_at <= func.now() - EVENT_INTERVAL,
+    )
     changed = (
         await db.execute(
             update(sessions)
@@ -225,17 +232,17 @@ async def _compare_mark(db: AsyncSession, row: Any, mark: ClientMark, ip: str | 
                 seen_ip_hash=mark.ip_hash,
                 seen_agent=mark.agent,
                 location_changed_at=func.now(),
+                location_event_at=case((due, func.now()), else_=sessions.c.location_event_at),
                 reauth_at=None,
                 mfa_at=None,
                 stepup_at=None,
             )
-            .returning(sessions.c.id)
+            # RETURNING sees the new row: the event is this transaction's when it stamped its
+            # own ``now()`` (a parallel winner's update holds an earlier transaction's time).
+            .returning((sessions.c.location_event_at == func.now()).label("recorded"))
         )
     ).first()
-    quiet = row.location_changed_at is not None and row.now - row.location_changed_at < (
-        EVENT_INTERVAL
-    )
-    if changed is not None and not quiet:
+    if changed is not None and changed.recorded:
         await record_event(
             db,
             EVENT_KIND,
@@ -365,6 +372,7 @@ async def rotate_session(
                 sessions.c.seen_ip_hash,
                 sessions.c.seen_agent,
                 sessions.c.location_changed_at,
+                sessions.c.location_event_at,
             )
         )
     ).first()
@@ -388,6 +396,7 @@ async def rotate_session(
                 seen_ip_hash=mark.ip_hash if mark else old.seen_ip_hash,
                 seen_agent=mark.agent if mark else old.seen_agent,
                 location_changed_at=None if proved and mark else old.location_changed_at,
+                location_event_at=old.location_event_at,  # the event interval runs on
             )
             .returning(sessions.c.id, sessions.c.expires_at, _remaining())
         )

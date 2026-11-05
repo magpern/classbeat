@@ -159,6 +159,20 @@ describe('signed-in devices', () => {
     expect(within(items[1]!).getByTestId('device-moved')).toHaveTextContent('Used from a new network or browser at')
     expect(within(items[1]!).getByTestId('device-moved')).not.toHaveTextContent('198.51.100.7')
     expect(within(items[1]!).getByRole('button', { name: 'Sign out this device' })).toBeInTheDocument()
+    expect(within(items[1]!).getByTestId('device-moved')).toHaveTextContent('sign this device out')
+  })
+
+  it('points the current device, which has no sign-out button, to Sign out everywhere', async () => {
+    const moved = [{ ...DEVICES[0], location_changed_at: '2026-10-31T09:00:00Z' }, DEVICES[1]]
+    fakeApi({ ...base, 'GET /api/auth/sessions': moved })
+    renderAt('/account#security')
+    const list = await screen.findByTestId('devices')
+    const current = within(list).getAllByRole('listitem')[0]!
+    expect(current).toHaveTextContent('This device')
+    expect(current).toHaveTextContent('New location')
+    expect(within(current).getByTestId('device-moved')).toHaveTextContent('use Sign out everywhere below')
+    expect(within(current).queryByRole('button', { name: 'Sign out this device' })).toBeNull()
+    expect(screen.getByRole('button', { name: 'Sign out everywhere' })).toBeInTheDocument()
   })
 })
 

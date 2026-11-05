@@ -61,8 +61,10 @@ export function Devices({ busy, onSignOutEverywhere }: { busy: boolean; onSignOu
                 <span className="block text-muted">Last used {when(device.lastSeenAt)}</span>
                 {device.locationChangedAt ? (
                   <span className="block text-muted" data-testid="device-moved">
-                    Used from a new network or browser at {when(device.locationChangedAt)}. If that was not
-                    you, sign this device out and change your password.
+                    Used from a new network or browser at {when(device.locationChangedAt)}.{' '}
+                    {device.current
+                      ? 'If that was not you, someone may hold a copy of this session: use Sign out everywhere below and change your password.'
+                      : 'If that was not you, sign this device out and change your password.'}
                   </span>
                 ) : null}
               </span>
