@@ -253,8 +253,9 @@ and maintenance, so at most 50), `CLASSBEAT_WORKER_POLL_SECONDS` (2; the claim p
 `CLASSBEAT_APPROVAL_TTL_HOURS` (168), `CLASSBEAT_JOB_BUSY_REQUEUE_LIMIT` (5 `operation_busy`
 requeues per phase without an attempt), `CLASSBEAT_JOBS_PER_USER` (2 queued or running jobs;
 the jobs API answers 429 above it) and `CLASSBEAT_MIX_ANALYSIS_CONCURRENCY` (1, 1 to 16; #574: running
-jobs that may analyse a Swedebeat mix, across every worker). Keep it below `CLASSBEAT_WORKER_CONCURRENCY` summed over all workers, or analyses can take every
-worker slot and delay design jobs. A run that must analyse (a cache miss in
+jobs that may analyse a Swedebeat mix, across every worker). Keep it below
+`CLASSBEAT_WORKER_CONCURRENCY` summed over all workers, or analyses can take every worker slot
+and delay design jobs. A run that must analyse (a cache miss in
 `swedebeat_music.open_swedebeat_mix`, before the daily slot is taken) and holds no slot stops
 (`JobRun.require_analysis_slot`) and its job goes back to `queued` with `jobs.analysis_slot` (migration
 0032), the attempt not counted, and a `requeued` event `{"reason": "analysis_slot"}` (what #572 shows as

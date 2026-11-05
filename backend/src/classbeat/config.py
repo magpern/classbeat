@@ -267,7 +267,9 @@ class Settings(BaseSettings):
     worker_concurrency: int = Field(default=2, ge=1, le=16)
     # Running jobs that may analyse a Swedebeat mix at once, across every worker (#574): a job
     # that must analyse waits queued for one of these slots, so analyses never fill every worker
-    # slot. queue_claim enforces it; each worker passes its own value.
+    # slot. queue_claim enforces it; each worker passes its own value. Keep it below
+    # worker_concurrency summed over all workers: at or above it, analyses can take every slot
+    # and delay design jobs, which is what the cap is for.
     mix_analysis_concurrency: int = Field(default=1, ge=1, le=16)
     # Reap, expire and settle (ADR 0005 section 3: every 30 s).
     worker_maintenance_seconds: float = Field(default=30.0, gt=0)

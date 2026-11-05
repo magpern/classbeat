@@ -2,7 +2,7 @@
 
 [ADR 0007](../adr/0007-classes-revisions-and-saving.md) (amendment of 2026-11-03, "soundless classes", items 2 and 6),
 [ADR 0012](../adr/0012-eval-suite-and-model-providers.md) (section 5 and its amendment of 2026-11-03).
-Suite version 11 holds soundless cases: the `soundless` category (`soundless_45`, `soundless_30_sprints`,
+Suite version 12 holds soundless cases: the `soundless` category (`soundless_45`, `soundless_30_sprints`,
 `soundless_revise_sprints`) and `soundless_adversarial` in `adversarial`, all in the `design` stage group. CI
 replays them against `FakeProvider` (`backend/tests/test_evals_soundless.py`, and `test_evals_smoke.py` for the
 four smoke files `smoke/soundless_*.json`) and never calls a model. **No live eval has been run or recorded
@@ -11,7 +11,7 @@ for soundless yet.**
 ## What the gate needs before real users get soundless
 
 A soundless design or revise runs only on a `design` route that **covers soundless**: its result was
-recorded by `suite --live --record` on suite version **11 or later** (`models.routes.SOUNDLESS_SUITE_VERSION`),
+recorded by `suite --live --record` on suite version **12 or later** (`models.routes.SOUNDLESS_SUITE_VERSION`),
 on the current manifest digest, with the current code's prompt versions of all eight stages (the six `design`
 group ones, `soundless_design` and `soundless_revise` among them, and the two song ones), and no newer
 result for that model failed. A result recorded on version 10 or earlier never covers soundless, however
@@ -55,7 +55,7 @@ Run from the stack's checkout, in the worker container (it has the key file and 
 
    ```bash
    docker compose exec worker python -m classbeat.evals suite --live --provider anthropic \
-     --model claude-opus-5-5 --effort medium --repeat 3 --out /tmp/suite-v11.json
+     --model claude-opus-5-5 --effort medium --repeat 3 --out /tmp/suite-v12.json
    ```
 
    It prints the plan and the cost ceiling (101 cases, 83 in the `design` group and 18 in `songs`, times 3)
