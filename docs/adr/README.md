@@ -26,3 +26,4 @@ Reviewer reviews each in its PR (AGENTS.md, "Decisions and ADRs").
 | [0018](0018-mowl-running-classes.md) | MOWL running classes next to cycling (M8, #373) | Accepted |
 | [0019](0019-passkeys.md) | Passkeys with cross-device sign-in (#311) | Proposed |
 | [0020](0020-image-only-install.md) | Image-only install: db image, release assets, install checks (#519) | Proposed |
+| [0021](0021-use-part-of-a-song.md) | Use part of a song: trim an intro or outro, start mid-track (#580); blocked, no source can play part of a song | Proposed |
