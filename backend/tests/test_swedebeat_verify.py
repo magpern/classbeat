@@ -1078,3 +1078,43 @@ async def test_the_snapshot_refuses_a_class_that_turned_soundless_while_listing(
     started = await _start(browser, class_id)
     assert (started.status_code, started.json()["detail"]["reason"]) == (422, "invalid_input")
     assert _handoff_state(henv, class_id) == []
+
+
+@pytest.mark.parametrize("turns", [True, False])
+async def test_the_override_refuses_a_class_that_turned_soundless_while_listing(
+    browsers: Any, henv: HandEnv, mowl_api: FakeMowl, monkeypatch: pytest.MonkeyPatch, turns: bool
+) -> None:
+    """``override``'s second transaction, after the mix listing, checks soundless again (#589), as
+    ``open_from`` does: a class soundless by then is 422 ``invalid_input`` and its row stays
+    ``checked``. The control (``turns`` false) is the same override verifying the row."""
+    browser = await rider(browsers, henv)
+    mowl_api.add_mix("Already", token=TOKEN_A, mix_id="already-mix", listed_seconds=30)
+    class_id = plant(henv, browser.user_id, [40, 40, 40])
+    assert (await _start(browser, class_id)).status_code == 200
+    mowl_api.add_mix(
+        "Short", token=TOKEN_A, mix_id="race-mix", listed_seconds=30, audio_seconds=30, link="beats"
+    )
+    assert (await _check(browser, class_id)).status_code == 201
+    await henv.run_verify()
+    view = (await browser.get(f"/api/classes/{class_id}/swedebeat-handoff")).json()
+    assert view["verdict"] == "too_short"
+    before, attaches = _handoff_state(henv, class_id), list(mowl_api.attaches)
+
+    async def _listed(*_args: object, **_kwargs: object) -> tuple[list[str], None]:
+        if turns:
+            _set_source(henv, class_id, NO_MUSIC)  # between the two transactions
+        return ["race-mix"], None
+
+    monkeypatch.setattr(handoff_api, "list_mix_ids", _listed)
+    answer = await browser.post(
+        f"/api/classes/{class_id}/swedebeat-handoff/override", {"mix_id": "race-mix"}
+    )
+    assert mowl_api.attaches == attaches
+    if not turns:
+        assert answer.status_code == 200, answer.text
+        assert answer.json()["state"] == "verified"
+        return
+    assert (answer.status_code, answer.json()["detail"]["reason"]) == (422, "invalid_input")
+    assert _handoff_state(henv, class_id) == before
+    assert [state for state, _, _ in before] == ["checked"]
+    assert _source(henv, class_id) == NO_MUSIC
