@@ -4,6 +4,8 @@ per IP per 10 minutes, every request counts, and a refusal comes before the conn
 and before any MOWL call. Against the fake MOWL; never the network."""
 
 import asyncio
+import time
+from collections.abc import Callable
 from typing import Any
 
 import pytest
@@ -13,7 +15,7 @@ from designtools import DesignEnv, FakeMowlMusic
 from jobapi import Browser
 from optools import TOKEN_A, TOKEN_B
 
-pytestmark = pytest.mark.usefixtures("jenv")
+pytestmark = pytest.mark.usefixtures("jenv", "frozen_rate_windows")  # #588
 
 URL = "/api/music/mowl-playlists"
 USER_LIMIT = ratelimit.MOWL_PLAYLISTS_USER.max_count
@@ -38,6 +40,27 @@ async def test_a_request_over_the_user_limit_answers_429_before_any_mowl_call(
     assert refused.json() == {"detail": {"reason": "rate_limited"}}
     assert 0 < int(refused.headers["Retry-After"]) <= 600
     assert len(fake_mowl.reads) == USER_LIMIT  # the refused one never reached MOWL
+
+
+@pytest.mark.parametrize("windows_back", [0, 1, 2])
+async def test_the_refusal_does_not_depend_on_the_clock_window(
+    browsers: Any,
+    denv: DesignEnv,
+    fake_mowl: FakeMowlMusic,
+    freeze_rate_windows: Callable[[float | None], float],
+    windows_back: int,
+) -> None:
+    """#588: the window is pinned, so the database clock sitting in another window (the situation
+    of a boundary crossed mid-test: 0, 1 or 2 windows after the pinned one) changes nothing."""
+    freeze_rate_windows(time.time() - windows_back * 600)
+    browser: Browser = await browsers(mowl=False)
+    await denv.ops.connect(browser.user_id, TOKEN_A)
+    for _ in range(USER_LIMIT):
+        assert (await browser.get(URL)).status_code == 200
+    refused = await browser.get(URL)
+    assert refused.status_code == 429
+    assert 0 < int(refused.headers["Retry-After"]) <= 600
+    assert len(fake_mowl.reads) == USER_LIMIT
 
 
 async def test_parallel_requests_cannot_overshoot_the_limit(

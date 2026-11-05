@@ -11,16 +11,19 @@ import os
 import secrets
 import socket
 import sys
-from collections.abc import AsyncIterator, Iterator
+import time
+from collections.abc import AsyncIterator, Callable, Iterator
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 import pytest
-from sqlalchemy import create_engine, text
+from sqlalchemy import Float, create_engine, func, literal, text
 from sqlalchemy.engine import make_url
 
 import netguard
 from authtools import TEST_KEK, Env
+from classbeat.auth import ratelimit
 from classbeat.config import MODEL_SDK_REFUSED_ENVIRONMENT, MODEL_SDK_REFUSED_PREFIXES
 from smtpfake import SmtpFake
 
@@ -279,3 +282,34 @@ async def menv(clean_auth: None, app_database_url: str, smtp: "SmtpFake") -> Asy
         app_database_url, smtp_host="127.0.0.1", smtp_port=smtp.port, smtp_tls="none"
     ) as running:
         yield running
+
+
+@pytest.fixture
+def freeze_rate_windows(monkeypatch: pytest.MonkeyPatch) -> Callable[[float | None], float]:
+    """Pin every rate-limit window to the instant given (default: now) (#588).
+
+    The limiter keys a fixed window off Postgres ``clock_timestamp()``
+    (``ratelimit._window_start``).
+    A test that sends limit + 1 requests takes a while; when a window boundary
+    falls inside, the last request lands in a fresh window, its count restarts at 1 and the
+    expected 429 is a 200. Pinning the window start makes the test independent of the clock.
+    Returns a function that (re)pins to an instant (epoch seconds); each limit still aligns the
+    instant to its own window length. The retry-after is clamped to at least 1 when the real
+    clock is past the pinned window."""
+
+    def pin(instant: float | None = None) -> float:
+        fixed = time.time() if instant is None else instant
+
+        def frozen_window(window: int) -> Any:
+            return func.to_timestamp(literal(fixed // window * window, Float))
+
+        monkeypatch.setattr(ratelimit, "_window_start", frozen_window)
+        return fixed
+
+    return pin
+
+
+@pytest.fixture
+def frozen_rate_windows(freeze_rate_windows: Callable[[float | None], float]) -> float:
+    """The default pin, for ``pytest.mark.usefixtures("frozen_rate_windows")``."""
+    return freeze_rate_windows(None)

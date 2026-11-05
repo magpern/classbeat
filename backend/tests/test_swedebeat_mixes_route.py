@@ -20,7 +20,7 @@ from mowlfake import FakeMowl
 from optools import TOKEN_A, TOKEN_B
 from preftools import use_swedebeat
 
-pytestmark = [pytest.mark.usefixtures("jenv", "mowl_api")]
+pytestmark = [pytest.mark.usefixtures("jenv", "mowl_api", "frozen_rate_windows")]  # #588
 
 URL = "/api/music/swedebeat-mixes"
 USER_LIMIT = ratelimit.SWEDEBEAT_MIXES_USER.max_count
