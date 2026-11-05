@@ -15,7 +15,7 @@ from classbeat.auth.email_routes import router as email_router
 from classbeat.auth.identity_routes import router as identity_router
 from classbeat.auth.keys import Keys
 from classbeat.auth.mfa_routes import router as mfa_router
-from classbeat.auth.middleware import AuthMiddleware
+from classbeat.auth.middleware import AuthMiddleware, rate_limited_response
 from classbeat.auth.notices import register_security_notifier
 from classbeat.auth.notifier import MailNotifier
 from classbeat.auth.oauth_client import OAuthRuntime
@@ -55,12 +55,7 @@ def install(app: FastAPI) -> None:
 
     @app.exception_handler(RateLimited)
     async def rate_limited(_: Request, exc: Exception) -> JSONResponse:
-        retry_after = exc.retry_after if isinstance(exc, RateLimited) else 60
-        return JSONResponse(
-            {"detail": {"reason": "rate_limited"}},
-            status_code=429,
-            headers={"Retry-After": str(retry_after)},
-        )
+        return rate_limited_response(exc.retry_after if isinstance(exc, RateLimited) else 60)
 
     @app.exception_handler(DBAPIError)
     async def database_error(_: Request, exc: Exception) -> JSONResponse:

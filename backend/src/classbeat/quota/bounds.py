@@ -3,7 +3,9 @@
 **Bounds** (stricter wins): ``CLASSBEAT_CLASSES_PER_MONTH_MAX`` and
 ``CLASSBEAT_MONTHLY_COST_MICROS_MAX`` bound a plan's money limits, ``CLASSBEAT_JOBS_PER_USER``
 its concurrent jobs, ``CLASSBEAT_REVISIONS_PER_CLASS`` its revisions per class and
-``CLASSBEAT_CLASS_MINUTES_MAX`` its longest class (#496). The feature gates have no bound. The
+``CLASSBEAT_CLASS_MINUTES_MAX`` its longest class (#496). ``CLASSBEAT_SAVES_PER_HOUR`` and
+``CLASSBEAT_SAVES_PER_DAY`` cap Save and Update per user (#577, ``classbeat.saving.caps``); no
+plan has a value of its own for them yet. The feature gates have no bound. The
 effective value of each limit is the smaller of the plan row and the bound; ``effective`` is the
 one place that takes it, for the ledger, the policies, ``GET /api/account/plan`` and the admin
 user page alike.
@@ -34,6 +36,8 @@ DEFAULT_COST_MAX: Final = 300_000_000
 DEFAULT_JOBS: Final = 2
 DEFAULT_REVISIONS: Final = 25
 DEFAULT_CLASS_MINUTES: Final = 180
+DEFAULT_SAVES_PER_HOUR: Final = 30
+DEFAULT_SAVES_PER_DAY: Final = 100
 
 _PERIOD = text("SELECT CAST(date_trunc('month', now() AT TIME ZONE 'UTC') AS date) AS period")
 _COST = text(
@@ -50,6 +54,9 @@ class Bounds:
     jobs_per_user: int = DEFAULT_JOBS
     revisions_per_class: int = DEFAULT_REVISIONS
     class_minutes_max: int = DEFAULT_CLASS_MINUTES
+    # Issue #577: Save and Update per user and hour or day (``classbeat.saving.caps``).
+    saves_per_hour: int = DEFAULT_SAVES_PER_HOUR
+    saves_per_day: int = DEFAULT_SAVES_PER_DAY
 
     @classmethod
     def from_settings(cls, settings: Settings) -> "Bounds":
@@ -59,6 +66,8 @@ class Bounds:
             jobs_per_user=settings.jobs_per_user,
             revisions_per_class=settings.revisions_per_class,
             class_minutes_max=settings.class_minutes_max,
+            saves_per_hour=settings.saves_per_hour,
+            saves_per_day=settings.saves_per_day,
         )
 
 

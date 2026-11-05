@@ -8,7 +8,8 @@
   ``class_not_found``; 429 ``busy`` (the per-user limit); 400 for the header; 422 for the body;
   ``quota`` (ADR 0011 section 9, FE1's contract) is ``{reason: "quota", quota: "classes" |
   "cost", limit, used, period_end, plan}`` (``limit`` and ``used`` for ``classes`` only, a cost
-  refusal shows no money; ``period_end`` the ISO date the next period starts) and ``busy``
+  refusal shows no money; ``period_end`` the ISO date the next period starts; Save and Update add
+  ``saves`` with ``limit``, ``used`` and ``window``, #577) and ``busy``
   carries the plan's ``limit`` (also on approve);
   413 ``too_large`` for a body over ``BODY_MAX_BYTES`` (also on approve; the app-wide
   ``bodylimit.BodyLimit`` is equal and answers first, as ``body_too_large``). A kind with ``admit``

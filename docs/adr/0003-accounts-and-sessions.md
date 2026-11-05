@@ -580,3 +580,42 @@ in-process SMTP fake in unit tests.
 - **Threat model:** T1, T3, T4 and T33 cite this ADR; T34 to T39 are new.
 - **Later:** M2's encryption takes over the TOTP secrets (§8) and its connect flows reuse
   `require_recent_auth`; M6 revisits the per-account denial-of-service risk (§9).
+
+## Amendment 2026-11-05: a stolen session (#577)
+
+**What a stolen session can do.** A valid session cookie (stolen, or used by malware or a
+malicious browser extension) is as good as the user for every action that does not need recent
+authentication or the step-up (§6): the server cannot tell a script from the browser, and with the
+session a script can read the CSRF token like the page does (§4 is no barrier here). Linking,
+credentials, connect and disconnect, export and delete still need a fresh password or TOTP. The
+goals are therefore to limit the damage and, in later PRs, to detect it.
+
+**General limit (§9).** Every signed-in `/api` request takes a slot in fixed windows before
+anything else runs (the middleware, before CSRF and before the route; every request counts, a
+refused one too), all in one `INSERT … ON CONFLICT` statement with the rows in bucket-hash order:
+
+| Bucket | Default (setting) |
+|---|---|
+| Per user, every request | 300 / minute (`CLASSBEAT_API_REQUESTS_PER_MINUTE`), 3000 / hour (`CLASSBEAT_API_REQUESTS_PER_HOUR`) |
+| Per user, writes (every method but `GET`, `HEAD`, `OPTIONS`) | 60 / minute (`CLASSBEAT_API_WRITES_PER_MINUTE`) |
+| Per user, the class and job reads (`/api/classes…`, `/api/jobs…`) | 120 / minute (`CLASSBEAT_API_READS_PER_MINUTE`) |
+| Per client address, signed-in requests of every user | 1200 / minute (`CLASSBEAT_API_IP_REQUESTS_PER_MINUTE`) |
+
+Above any of them the answer is 429 `rate_limited` with `Retry-After`. The route limits of §9 and
+the other ADRs still apply on top. Anonymous requests have only those route limits. The probes
+(`/api/health`, `/api/ready`) and sign-out (`/api/auth/logout`, `/api/auth/logout-all`) are never
+limited, so a user can always end every session, a script's included.
+
+**Save and Update caps.** Neither takes a credit or a model call, so writes to the user's MOWL
+account were bounded only by the per-user job limit. Both kinds' `admit` now count the user's
+`save_workout` and `update_workout` jobs created in the last hour and the last 24 hours
+(`CLASSBEAT_SAVES_PER_HOUR`, 30; `CLASSBEAT_SAVES_PER_DAY`, 100), under the owner lock, and refuse
+with 409 `quota` `saves` (`limit`, `used`, `window`). No plan has its own value yet; a plan column
+that tightens them is a later change.
+
+**Residual risk.** The user's buckets are shared with whoever holds the session: a script can use
+them up and slow the user down for up to an hour (sign-out stays open). The buckets are per user,
+not per session, because a script holding several sessions would multiply a per-session budget.
+Sessions are not yet bound to
+an address or client, the access log does not show which user made a request, and there is no
+abuse view; issue #577 lists those as the next PRs.
