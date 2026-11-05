@@ -46,7 +46,9 @@ needs `n >= 25`; the running profiles of 2026-11-03 used `moderate` for a cell o
 drawn from at least 5 independent sets of classes (the cycling HIIT precedent of ADR 0017 is 15), and
 `weak` for everything else. Classes whose timelines are identical count once.
 
-Medians and quartiles are never bounds, and length (`total_minutes`) is never a rule. Numbers come
+The interval, sprint, climb, work/rest and intensity-factor metrics (ADR 0017 section 7a) exist in code but no profile has a bound for them yet; the next cycling refresh adds them. `work_rest_ratio` is undefined for a draft with no rest, so a rule on it never fires there.
+
+Medians and quartiles are never bounds (the `median_interval_s` metric is a draft's own median interval length, not the median of a cell), and length (`total_minutes`) is never a rule. Numbers come
 from the generator, never typed by hand; a bound that fires on most good drafts is fixed by a new
 version, not tuned silently. `brief_overrides` come from `BriefOverride` and `rationale_id` must
 exist in `RATIONALES`. A new rule id, metric, override or sentence is a **code** change (enums,

@@ -74,7 +74,9 @@ def _tss_spec(k: int) -> dict[str, Any]:
 
 @cache
 def _tss_rate(k: int) -> float:
-    return G.METRICS["tss_per_minute"](_tss_spec(k))
+    rate = G.METRICS["tss_per_minute"](_tss_spec(k))
+    assert rate is not None
+    return rate
 
 
 @cache

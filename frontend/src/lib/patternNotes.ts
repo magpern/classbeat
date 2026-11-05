@@ -23,6 +23,18 @@ export const RULE_COPY: Record<string, string> = {
   tss_rate_high: 'Most classes of this kind put a bit less training load into each minute.',
   hard_too_early: 'Most classes of this kind hold the hard efforts back in the first quarter.',
   standing_long: 'Most classes of this kind keep standing to a limited share of the ride.',
+  longest_interval_short: 'Most classes of this kind hold at least one longer interval.',
+  longest_interval_long: 'Most classes of this kind keep every interval shorter than this.',
+  median_interval_short: 'Most classes of this kind use longer intervals than this.',
+  median_interval_long: 'Most classes of this kind use shorter intervals than this.',
+  sprints_few: 'Most classes of this kind put a few more sprints into the ride.',
+  sprints_many: 'Most classes of this kind put fewer sprints into the ride.',
+  climb_share_low: 'Most classes of this kind spend more of the ride on seated climbs.',
+  climb_share_high: 'Most classes of this kind spend less of the ride on seated climbs.',
+  work_rest_low: 'Most classes of this kind work harder for each minute of rest.',
+  work_rest_high: 'Most classes of this kind rest longer for each minute of hard work.',
+  intensity_factor_low: 'Most classes of this kind have a higher overall intensity than this.',
+  intensity_factor_high: 'Most classes of this kind have a lower overall intensity than this.',
 }
 
 /** At most this many notes are shown (the backend caps the same). */
@@ -35,6 +47,8 @@ export const EXPLAINED_REASON = 'Your brief asks for this, so it is only a note.
 function amount(metric: string, value: number): string {
   if (metric.endsWith('_s')) return clock(value)
   if (metric.endsWith('_share') || metric.includes('_share_')) return `${String(Math.round(value * 100))}%`
+  if (metric === 'sprint_count') return String(Math.round(value))
+  if (metric === 'intensity_factor' || metric === 'work_rest_ratio') return value.toFixed(2)
   if (metric === 'tss_per_minute') return value.toFixed(1)
   return value.toFixed(1)
 }

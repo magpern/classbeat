@@ -66,7 +66,13 @@
             "intervals",
             "standing_time_share",
             "zone_step_over_one_share",
-            "no_games_or_cue_cards"
+            "no_games_or_cue_cards",
+            "longest_interval_s",
+            "median_interval_s",
+            "sprint_count",
+            "climb_time_share",
+            "work_rest_ratio",
+            "intensity_factor"
           ],
           "title": "Metric",
           "type": "string"
@@ -91,7 +97,19 @@
             "warmup_ramp_run",
             "hard_share_enough_run",
             "hard_share_not_all_run",
-            "top_zone_present_run"
+            "top_zone_present_run",
+            "longest_interval_enough",
+            "longest_interval_bounded",
+            "median_interval_enough",
+            "median_interval_bounded",
+            "sprints_present",
+            "sprints_bounded",
+            "climb_present",
+            "climb_bounded",
+            "work_rest_enough",
+            "work_rest_bounded",
+            "intensity_enough",
+            "intensity_bounded"
           ],
           "title": "Rationale Id",
           "type": "string"
@@ -112,7 +130,19 @@
             "tss_rate_low",
             "tss_rate_high",
             "hard_too_early",
-            "standing_long"
+            "standing_long",
+            "longest_interval_short",
+            "longest_interval_long",
+            "median_interval_short",
+            "median_interval_long",
+            "sprints_few",
+            "sprints_many",
+            "climb_share_low",
+            "climb_share_high",
+            "work_rest_low",
+            "work_rest_high",
+            "intensity_factor_low",
+            "intensity_factor_high"
           ],
           "title": "Rule",
           "type": "string"
