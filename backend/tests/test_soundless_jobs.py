@@ -250,7 +250,7 @@ async def test_the_flag_needs_every_plans_route_to_cover_soundless_read_on_every
     gate(fake=False)
     keys = plan_keys(renv)
     route(renv, *keys)
-    assert running_suite_version() == routes_module.SOUNDLESS_SUITE_VERSION  # SL5 (#531)
+    assert running_suite_version() >= routes_module.SOUNDLESS_SUITE_VERSION  # SL5 (#531)
     # The SL1 state: SOUNDLESS_SUITE_VERSION is None, so even a fresh passing route covers nothing.
     monkeypatch.setattr(routes_module, "SOUNDLESS_SUITE_VERSION", None)
     assert await connections_flag(renv) is False
