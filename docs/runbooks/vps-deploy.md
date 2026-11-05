@@ -74,10 +74,33 @@ hold no secret.
 
 **What `sha256sum -c` proves, and what it does not.** `SHA256SUMS` comes from the same release over
 the same connection as the files, so it catches a truncated or corrupted download and **nothing
-else**; it is not protection against tampering. You trust GitHub's TLS and the people with write
-access to the repository and its releases: no worse than the `git clone` of a tag this replaced, and
-no better. The downloaded `check-prod-compose.sh` comes from the same place, so it cannot vouch for
-itself. Attesting the assets and images so a server can verify them is follow-up #583. Keep them next to
+else**; it is not protection against tampering.
+
+**Verify the attestation (tamper check).** The release workflow attests every asset, `SHA256SUMS`
+included (GitHub artifact attestation, signed by that workflow run). With the GitHub CLI (`gh`, a
+trusted install of your own; `gh auth login` first if it asks, the repository is public), before
+anything else runs:
+
+```bash
+gh attestation verify SHA256SUMS -R magpern/classbeat || echo "NOT VERIFIED: SHA256SUMS"
+for a in $(awk '{print $2}' SHA256SUMS); do        # the names in the verified list: the other nine assets
+  gh attestation verify "$a" -R magpern/classbeat || echo "NOT VERIFIED: $a"
+done
+```
+
+Each file must print a verified result; any `NOT VERIFIED` means stop and do not run it. What this
+proves: the file is byte for byte what the release workflow of `magpern/classbeat` attested for a tag.
+What it does not: `gh` itself and your network path to GitHub's attestation service are trusted, and a
+verifier cannot vouch for itself, so `check-prod-compose.sh` does not verify its own attestation (it is
+verified here, by `gh`, before it runs). Releases made before the attestation step existed (and
+the first one after it, until the owner has seen it work) have no attestation: use `sha256sum -c`
+and the trust below. **Unverified:** no release has run with the attestation step yet (agents cannot
+push tags), so the exact output of these commands is not confirmed; the first release must be checked
+by hand, and this section corrected if it differs.
+
+Without `gh`, the trust is GitHub's TLS plus the people with write access to the repository and its
+releases: no worse than the `git clone` of a tag this replaced, and no better.
+Keep them next to
 `.env` and `secrets/` in `/opt/classbeat`: the compose files use `./secrets/<name>`, and
 `check-prod-compose.sh` finds `.env` and `secrets/` beside itself. `swag-classbeat.subdomain.conf`
 goes to swag (section 7), not into the stack. A developer in a checkout of the repository finds the
@@ -461,10 +484,22 @@ docker compose ps
 ```
 
 Tags are mutable, so `deployed-images.txt` records the digest each pull resolved to; compare it
-with a later pull of the same version. Optionally, `gh attestation verify
-oci://ghcr.io/magpern/classbeat:X.Y.Z -R magpern/classbeat` checks an attestation by GitHub; the
-release's `provenance: mode=max` is buildx's registry attestation, not that, so the command may find
-nothing until #583 is built (unverified).
+with the digests in the release notes (the release records each image's digest there) and with a later
+pull of the same version.
+
+**Verify the images before `up`** (needs `gh` and the pulled images, section 4):
+
+```bash
+gh attestation verify "oci://ghcr.io/magpern/classbeat:$V" -R magpern/classbeat
+gh attestation verify "oci://ghcr.io/magpern/classbeat-db:$V" -R magpern/classbeat
+```
+
+Both must verify, and the digest they report must equal the one in `deployed-images.txt` and the
+release notes. The release workflow attests each image's digest as GitHub artifact attestations (the
+`provenance: mode=max` of the build is buildx's own registry attestation, a different thing). If
+either fails, do not `up`. **Unverified:** like the assets, this has not run against a real release
+yet; whether `gh` needs the `docker login` of section 4 to resolve the private image is also
+unconfirmed.
 
 The first check lints the files you downloaded with dummy values (a local edit that publishes a
 port or adds a mount is refused), renders your real `.env` and checks the real `PROXY_IP`, where web is
@@ -567,6 +602,7 @@ for f in compose.prod.yaml compose.prod.loopback.yaml compose.prod.lan.yaml chec
   curl --proto '=https' --tlsv1.2 -fsSLo "staging-$NEW/$f" "https://github.com/magpern/classbeat/releases/download/v$NEW/$f"
 done
 ( cd "staging-$NEW" && sha256sum -c SHA256SUMS --quiet )          # truncation only, see section 3
+# The tamper check of section 3 (gh attestation verify, per file) also runs in staging-$NEW before step 2.
 # 2. Keep the files you run now (the rollback files), then replace them.
 mkdir -p "previous-$OLD" && cp compose.prod*.yaml check-prod-compose.sh backup.sh restore.sh validate-backup.sh \
   swag-classbeat.subdomain.conf prod.env.example SHA256SUMS "previous-$OLD/"
