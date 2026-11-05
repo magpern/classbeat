@@ -53,7 +53,9 @@ from classbeat.mail import Mailer, send_logged
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
 FIELD_MAX = 1024
-MAX_METHODS = 10
+# The keep list names every method the user keeps and there is no cap on linked identities, so
+# this bound is far above any real account (the page lists all of them) yet keeps the body small.
+MAX_METHODS = 100
 PURPOSE = "reset_password"
 
 
