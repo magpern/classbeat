@@ -33,7 +33,7 @@ def applied_revisions(database_url: str) -> list[str]:
 
 def test_the_revisions_form_one_line() -> None:
     script = ScriptDirectory.from_config(alembic_config())
-    assert script.get_heads() == ["0032_analysis_slot"]
+    assert script.get_heads() == ["0033_session_client_mark"]
     assert script.get_base() == "0001_baseline"
 
 
@@ -54,7 +54,7 @@ def test_upgrade_head_then_downgrade_base(
     config = alembic_config()
     try:
         command.upgrade(config, "head")
-        assert applied_revisions(database_url) == ["0032_analysis_slot"]
+        assert applied_revisions(database_url) == ["0033_session_client_mark"]
         command.downgrade(config, "base")
         assert applied_revisions(database_url) == []
     finally:
@@ -323,6 +323,44 @@ def test_0032_analysis_slot_up_and_down(
         assert column() is None
         command.upgrade(config, "head")
         assert column() is not None
+    finally:
+        admin.dispose()
+        command.downgrade(config, "base")
+
+
+def test_0033_session_client_mark_up_and_down(
+    owner_database_url: str, database_url: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """#632: the session's client mark columns exist at head, nullable (an existing session has no
+    mark); the downgrade drops them."""
+    monkeypatch.setenv("CLASSBEAT_MIGRATIONS_DATABASE_URL", owner_database_url)
+    config = alembic_config()
+    admin = create_engine(database_url)
+
+    def columns() -> list[tuple[str, str, str]]:
+        with admin.connect() as connection:
+            rows = connection.execute(
+                text(
+                    "SELECT column_name, data_type, is_nullable FROM information_schema.columns "
+                    "WHERE table_name = 'sessions' AND column_name IN "
+                    "('seen_ip_hash', 'seen_agent', 'location_changed_at', 'location_event_at') "
+                    "ORDER BY column_name"
+                )
+            ).all()
+        return [tuple(row) for row in rows]
+
+    try:
+        command.upgrade(config, "head")
+        assert columns() == [
+            ("location_changed_at", "timestamp with time zone", "YES"),
+            ("location_event_at", "timestamp with time zone", "YES"),
+            ("seen_agent", "text", "YES"),
+            ("seen_ip_hash", "bytea", "YES"),
+        ]
+        command.downgrade(config, "0032_analysis_slot")
+        assert columns() == []
+        command.upgrade(config, "head")
+        assert len(columns()) == 4
     finally:
         admin.dispose()
         command.downgrade(config, "base")

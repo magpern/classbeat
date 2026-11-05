@@ -133,7 +133,7 @@ async def test_rotation_changes_the_session_token(env: Env, write_route: None) -
     async with env.db() as db:
         info = (await auth.resolve_session(env.factory, env.settings, issued.token)).info
         assert info is not None
-        rotated = await auth.rotate_session(db, info, reauth=True)
+        rotated = await auth.rotate_session(db, info, reauth=True, mark=None)
     new = auth_token(env, rotated.id)
     assert new != old
     headers = {"Origin": ORIGIN, **session_cookie(rotated.token), "X-CSRF-Token": old}

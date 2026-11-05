@@ -13,6 +13,8 @@ function when(iso: string): string {
  * Signed-in devices (ADR 0003 section 3, ADR 0013 section 5): the user's own sessions with the
  * browser they came from and when they were last used (never the IP address), sign out one of
  * the others, or everywhere (`onSignOutEverywhere`, the same `POST /api/auth/logout-all`).
+ * A session seen from a new network or browser is marked "New location" (#632) until it signs in
+ * again there; it is never signed out for that.
  */
 export function Devices({ busy, onSignOutEverywhere }: { busy: boolean; onSignOutEverywhere: () => void }) {
   const [devices, setDevices] = useState<DeviceSession[] | null>(null)
@@ -57,7 +59,16 @@ export function Devices({ busy, onSignOutEverywhere }: { busy: boolean; onSignOu
               <span className="min-w-0 flex-1 break-words">
                 {device.userAgent ?? 'Unknown browser'}
                 <span className="block text-muted">Last used {when(device.lastSeenAt)}</span>
+                {device.locationChangedAt ? (
+                  <span className="block text-muted" data-testid="device-moved">
+                    Used from a new network or browser at {when(device.locationChangedAt)}.{' '}
+                    {device.current
+                      ? 'If that was not you, someone may hold a copy of this session: use Sign out everywhere below and change your password.'
+                      : 'If that was not you, sign this device out and change your password.'}
+                  </span>
+                ) : null}
               </span>
+              {device.locationChangedAt ? <Chip tone="warn">New location</Chip> : null}
               {device.current ? (
                 <Chip tone="ok">This device</Chip>
               ) : (

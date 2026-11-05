@@ -14,6 +14,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from classbeat import connections
+from classbeat.auth.anomaly import ClientMark, client_mark
 from classbeat.auth.clientip import client_ip
 from classbeat.auth.cookies import DEVICE_COOKIE, SESSION_COOKIE
 from classbeat.auth.sessions import Resolution, SessionInfo, resolve_session
@@ -26,7 +27,8 @@ _CONTEXT = "auth_context"
 
 
 async def resolve_request(request: Request) -> Resolution:
-    """Resolve the request's session cookie once per request (the CSRF check shares it)."""
+    """Resolve the request's session cookie once per request (the CSRF check shares it), with the
+    request's client mark, so a session seen from a new network or browser is noticed (#632)."""
     cached: Resolution | None = getattr(request.state, _RESOLUTION, None)
     if cached is not None:
         return cached
@@ -34,8 +36,13 @@ async def resolve_request(request: Request) -> Resolution:
     if not token:
         resolution = Resolution("anonymous")  # no database access without a cookie
     else:
+        ip = request_ip(request)
         resolution = await resolve_session(
-            request.app.state.session_factory, request.app.state.settings, token
+            request.app.state.session_factory,
+            request.app.state.settings,
+            token,
+            request_client_mark(request, ip),
+            ip=ip,
         )
     if resolution.outcome == "refused":
         request.state.clear_session_cookie = True
@@ -144,6 +151,15 @@ def request_ip(request: Request) -> str:
     peer = request.client.host if request.client else None
     return client_ip(
         peer, request.headers.getlist("x-forwarded-for"), settings.trusted_proxy_networks
+    )
+
+
+def request_client_mark(request: Request, ip: str | None = None) -> ClientMark:
+    """The request's client mark (#632): its coarse network and browser family."""
+    return client_mark(
+        request.app.state.keys,
+        request_ip(request) if ip is None else ip,
+        request.headers.get("user-agent"),
     )
 
 

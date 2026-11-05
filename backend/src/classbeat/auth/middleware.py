@@ -15,6 +15,10 @@ Anonymous requests have the limits of their own routes (sign-in, sign-up, mail, 
 
 Section 10: the access log replaces uvicorn's. It records method, path, status and time, never
 the query string, headers, cookies or body.
+
+The session lookup, the limit and the CSRF check run here, outside the app's exception handlers,
+so a database error in them gets the same redacted 500 here (``database_error_response``) instead
+of reaching the server's traceback log with row values in its message (#632, #626 review).
 """
 
 import hmac
@@ -23,6 +27,7 @@ import time
 
 from fastapi import Request, Response
 from fastapi.responses import JSONResponse
+from sqlalchemy.exc import DBAPIError
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 
 from classbeat.auth.cookies import CSRF_COOKIE, SESSION_COOKIE, clear_session_cookie
@@ -30,8 +35,10 @@ from classbeat.auth.deps import request_ip, resolve_request
 from classbeat.auth.keys import Keys, hmac_digest
 from classbeat.auth.ratelimit import RateLimiter, api_buckets, api_limited
 from classbeat.config import Settings
+from classbeat.log import describe_database_error
 
 logger = logging.getLogger("classbeat.access")
+errors = logging.getLogger("classbeat.auth.setup")
 
 SAFE_METHODS = frozenset({"GET", "HEAD", "OPTIONS"})
 
@@ -79,6 +86,13 @@ def rate_limited_response(retry_after: int) -> JSONResponse:
     )
 
 
+def database_error_response(exc: DBAPIError) -> JSONResponse:
+    """The 500 of a database error, logged by class and SQLSTATE only: the message carries row
+    values (emails, hashes). ``auth.setup``'s handler of ``DBAPIError`` answers the same."""
+    errors.error("database error: %s", describe_database_error(exc))
+    return JSONResponse({"detail": "Internal Server Error"}, status_code=500)
+
+
 async def check_api_limit(request: Request) -> int | None:
     """The general limit (#577): ``Retry-After`` seconds when a signed-in ``/api`` request is over
     one of its buckets, else ``None``. Anonymous requests and the exempt paths are not counted."""
@@ -103,14 +117,10 @@ async def check_api_limit(request: Request) -> int | None:
 class AuthMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
         started = time.perf_counter()
-        response: Response | None = None
-        retry_after = await check_api_limit(request)
-        if retry_after is not None:
-            response = rate_limited_response(retry_after)
-        if response is None and request.method not in SAFE_METHODS:
-            reason = await check_csrf(request, request.app.state.settings, request.app.state.keys)
-            if reason is not None:
-                response = JSONResponse({"detail": {"reason": reason}}, status_code=403)
+        try:
+            response = await self._checks(request)
+        except DBAPIError as exc:
+            response = database_error_response(exc)
         if response is None:
             response = await call_next(request)
         if getattr(request.state, "clear_session_cookie", False) and not any(
@@ -129,3 +139,15 @@ class AuthMiddleware(BaseHTTPMiddleware):
             },
         )
         return response
+
+    @staticmethod
+    async def _checks(request: Request) -> Response | None:
+        """The general limit, then Origin and CSRF: the refusal, or ``None`` to go on."""
+        retry_after = await check_api_limit(request)
+        if retry_after is not None:
+            return rate_limited_response(retry_after)
+        if request.method not in SAFE_METHODS:
+            reason = await check_csrf(request, request.app.state.settings, request.app.state.keys)
+            if reason is not None:
+                return JSONResponse({"detail": {"reason": reason}}, status_code=403)
+        return None

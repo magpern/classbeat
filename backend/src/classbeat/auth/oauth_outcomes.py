@@ -20,6 +20,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from classbeat.auth import mails
 from classbeat.auth.accounts import create_user, find_user, grant_admin_if_listed, use_invite
+from classbeat.auth.anomaly import client_mark
 from classbeat.auth.devices import remember_device
 from classbeat.auth.events import record_event
 from classbeat.auth.keys import Keys, token_hash
@@ -160,7 +161,14 @@ async def _reauth(db: AsyncSession, req: Request) -> Outcome:
             )
             return _fail("reauth_stale", why)
     try:
-        issued = await rotate_session(db, info, reauth=True, user_agent=req.user_agent, ip=req.ip)
+        issued = await rotate_session(
+            db,
+            info,
+            reauth=True,
+            user_agent=req.user_agent,
+            ip=req.ip,
+            mark=client_mark(req.keys, req.ip, req.user_agent),
+        )
     except SessionGone:
         return _fail("session_mismatch", "session_gone")
     await record_event(
@@ -217,6 +225,7 @@ async def _session_for(db: AsyncSession, req: Request, user_id: UUID) -> Outcome
         user_agent=req.user_agent,
         ip=req.ip,
         replacing_token=req.session_token,
+        mark=client_mark(req.keys, req.ip, req.user_agent),
     )
     device = await remember_device(db, req.keys, user_id, req.device_token)
     await record_event(

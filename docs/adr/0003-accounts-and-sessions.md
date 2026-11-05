@@ -69,7 +69,7 @@ Every table has an `id uuid` primary key (server default) unless a key is named.
 |---|---|---|
 | `users` | `email`, `email_normalized` (unique), `email_verified_at` (not null), `password_hash` (nullable), `role` (`user`/`admin`), `disabled_at`, `created_at` | argon2id hash |
 | `identities` | `user_id`, `provider`, `subject`, `email_at_link`, `created_at`; `UNIQUE (provider, subject)` | none |
-| `sessions` | `user_id`, `token_hash` (unique), `created_at`, `last_seen_at`, `expires_at` (absolute), `reauth_at`, `mfa_at`, `stepup_at`, `user_agent` (truncated), `ip` | SHA-256 of the token |
+| `sessions` | `user_id`, `token_hash` (unique), `created_at`, `last_seen_at`, `expires_at` (absolute), `reauth_at`, `mfa_at`, `stepup_at`, `user_agent` (truncated), `ip`; `seen_ip_hash`, `seen_agent`, `location_changed_at`, `location_event_at` (amendment of 2026-11-05, #632) | SHA-256 of the token; `seen_ip_hash` an HMAC (`session-client` key, §8) |
 | `known_devices` | `user_id`, `device_hash` (unique), `created_at`, `last_used_at` | HMAC (`device` key, §8) |
 | `pending_signups` | `token_hash` (unique; null until the email is entered), `email`, `email_normalized` (both null until then; not unique: each row has its own token and the first confirmation wins), `password_hash` (nullable), `provider`, `subject`, `browser_hash` (all three set together or null), `invite_id` → `invites`, `expires_at` | SHA-256; argon2id |
 | `auth_tokens` | `purpose` (`reset_password`, `change_email`), `token_hash` (unique), `user_id`, `new_email`, `email_at_issue`, `expires_at`, `used_at` | SHA-256 |
@@ -499,7 +499,8 @@ sign-in only for the admin role (§7).
 - **The secret:** one secret file, `app_secret_key` (at least 32 random bytes, created by
   `scripts/worktree.sh init`).
 - **Derived keys:** HKDF-SHA256 (fixed salt `classbeat-v1`) derives separate 32-byte keys with
-  the info strings `csrf`, `rate-limit`, `device`, `recovery-codes`, `totp-v1`, `totp-pending`.
+  the info strings `csrf`, `rate-limit`, `device`, `recovery-codes`, `totp-v1`, `totp-pending`,
+  and `session-client` (amendment of 2026-11-05, #632).
 - **TOTP secrets:** encrypted with AES-256-GCM (`cryptography`), a random 96-bit nonce per
   encryption stored alongside, AAD `user_id|totp`, and `key_id = "app-v1"`.
   - M2's envelope encryption (§7 of the roadmap) re-encrypts them under its scheme, and
@@ -634,3 +635,86 @@ not per session, because a script holding several sessions would multiply a per-
 Sessions are not yet bound to
 an address or client, the access log does not show which user made a request, and there is no
 abuse view; issue #577 lists those as the next PRs.
+
+## Amendment 2026-11-05: noticing a session used from a new network (#632)
+
+**Context.** A stolen session cookie works from any network and any client until it expires: the
+`ip` and `user_agent` stored at creation were never compared afterwards (#577, gap 3). The server
+cannot tell a script from the browser, but it can notice that a session moved, and that is the
+moment a theft shows. Logging the session out on a move is not an option: a phone moves between
+wifi and mobile data many times a day, and a mobile carrier can change the address of a running
+connection.
+
+**Decision.** Every session carries a **client mark**: the coarse network and the browser family it
+was last seen from.
+- **Coarse network:** the client address (§9, `client_ip`) bucketed like the rate limits
+  (`bucket_ip`: an IPv4 address as it is, IPv6 by its /64 prefix), stored only as
+  `seen_ip_hash = HMAC(session-client key, bucket)`. The address in the clear stays where it was
+  (`sessions.ip` at creation, `auth_events.ip`).
+- **Browser family:** `seen_agent`, a coarse word pair `<browser>/<os>` read from the
+  `User-Agent` (`chrome`, `edge`, `firefox`, `safari`, `opera`, `other` on `windows`, `macos`,
+  `ios`, `android`, `chromeos`, `linux`, `other`; no versions, so a browser update is not a move).
+- **When it is set:** at sign-in (`start_session`) and on every rotation (re-authentication, MFA,
+  step-up), from the request that did it. A session without a mark (created before migration
+  0033) takes the mark of its next request silently. If that first request is a thief's, the
+  session takes the thief's mark and the victim's next request is the recorded move: the theft is
+  still noticed, one request later. This holds only for sessions that existed at the deploy.
+
+Every request that resolves a session with a cookie (`deps.resolve_request`) compares the request's
+mark with the stored one, in the transaction that touches `last_seen_at`. When either part differs:
+1. One conditional `UPDATE … WHERE id = … AND (seen_ip_hash, seen_agent) IS DISTINCT FROM (…)`
+   stores the new mark, sets `location_changed_at = now()` and clears `reauth_at`, `stepup_at` and
+   `mfa_at`. The request itself already runs without them, even when a parallel request's update
+   won the race.
+2. The same `UPDATE` decides the event: it stamps `location_event_at = now()` only when the last
+   event is unset or at least a minute old (`CASE … RETURNING`, on the locked row), and only the
+   request whose update stamped it writes an `auth_events` row `session_location_changed`
+   (`detail`: the session id, `ip_changed`, `agent_changed` and the new `agent` family). So there
+   is **at most one event per session and minute, whatever the concurrency**: of parallel moves,
+   with the same or different new marks, exactly one writes it. The minute runs from the last
+   event, not the last move, so moves that keep coming less than a minute apart (a script and its
+   victim alternating) still write one event a minute, and the table cannot fill. Every move,
+   recorded or not, stores the mark and clears the times. A rotation carries `location_event_at`
+   over.
+   - **What is stored where:** `auth_events.ip` holds the full client address, as for every auth
+     event (§1, purged after 30 days). `detail` holds no address and no raw `User-Agent`, only the
+     coarse family, and no log line names either.
+3. **Nothing else happens.** The session stays signed in and every action that did not need
+   recent authentication keeps working. Linking, credentials, connect and disconnect, export and
+   delete (§6) need a fresh re-authentication (and the step-up where TOTP is on), so a recent
+   authentication made on the old network cannot be used from the new one. For an admin the admin
+   role also needs TOTP again (§7), because clearing `mfa_at` drops it to `mfa_required`.
+4. **The user sees it:** `GET /api/auth/sessions` returns `location_changed_at`, and the account
+   page marks that session "New location" with the time. With a stolen cookie the flagged session
+   is often the user's own ("This device"), so the page points to "Sign out everywhere" and a
+   password change for it; a re-authentication also rotates the token, which ends a stolen copy. A re-authentication, MFA verification or
+   step-up rotates the session, stores the new mark and clears `location_changed_at`.
+
+The SSE stream's periodic check (`session_probe`) resolves without a request and compares nothing.
+A notice mail is not sent yet; it waits for outgoing mail beyond the security notices (#352).
+
+**What a stolen session can still do (stated plainly).** A session is as good as the user for
+every action that does not need recent authentication or the step-up, from any network: reading
+the user's classes and messages, starting designs, saving to MOWL. The limits are the general
+limit and the Save and Update caps (amendment above) and the plan quotas. The detection is this
+signal (an `auth_events` row, and "New location" in the user's session list); a script that sends
+the victim's exact `User-Agent` from the victim's own network (malware on the victim's machine) is
+not noticed, and a later PR adds the security log and the admin abuse view (#632).
+
+**Alternatives.**
+- *Log out on a move:* rejected, it breaks every phone (above).
+- *Bind to the full address or the full `User-Agent`:* rejected, CGNAT and browser updates would
+  flag normal use all day. The family and the /64 keep the signal coarse.
+- *Device fingerprinting or a bot-detection service:* rejected in #577 (privacy, cost).
+- *Store the bucket in the clear to show the address:* rejected; the comparison needs only
+  equality, and the session list never shows an address.
+
+**Consequences.**
+- Migration 0033 adds the four columns; the data export includes `seen_agent` and
+  `location_changed_at` and excludes `seen_ip_hash` (a keyed hash) and `location_event_at`
+  (internal timing).
+- Rotating `app_secret_key` (§8) changes the `session-client` key, so every session's next request
+  counts as one move (one event, recent authentication cleared), and nothing more.
+- A user whose phone changes network often re-authenticates for the guarded actions more often;
+  those already need a re-authentication within 10 minutes, so the cost is small.
+- Tests: `backend/tests/test_session_anomaly.py`.

@@ -62,6 +62,9 @@ class SessionItem(BaseModel):
     expires_at: datetime
     user_agent: str | None
     ip: str | None
+    # Seen from a new network or browser since then (ADR 0003 amendment of 2026-11-05, #632);
+    # cleared by a re-authentication, MFA or step-up in that session.
+    location_changed_at: datetime | None
     current: bool
 
 
@@ -117,6 +120,7 @@ async def list_own_sessions(
             expires_at=row.expires_at,
             user_agent=row.user_agent,
             ip=row.ip,
+            location_changed_at=row.location_changed_at,
             current=info is not None and row.id == info.id,
         )
         for row in rows

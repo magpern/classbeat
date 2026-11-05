@@ -288,6 +288,8 @@ export interface DeviceSession {
   createdAt: string
   lastSeenAt: string
   userAgent: string | null
+  /** Seen from a new network or browser since then (ADR 0003 amendment of 2026-11-05, #632). */
+  locationChangedAt: string | null
   current: boolean
 }
 
@@ -302,6 +304,7 @@ export async function listDevices(signal?: AbortSignal): Promise<DeviceSession[]
       createdAt: text(row, 'created_at'),
       lastSeenAt: text(row, 'last_seen_at'),
       userAgent: optionalText(row, 'user_agent'),
+      locationChangedAt: optionalText(row, 'location_changed_at'),
       current: flag(row, 'current'),
     }
   })

@@ -16,6 +16,7 @@ from classbeat.auth.accounts import grant_admin_if_listed
 from classbeat.auth.cookies import clear_session_cookie, set_device_cookie, set_session_cookie
 from classbeat.auth.deps import (
     current_session,
+    request_client_mark,
     request_device_token,
     request_ip,
     request_session_token,
@@ -121,6 +122,7 @@ async def sign_in(body: LoginIn, request: Request, response: Response) -> Signed
             user_agent=user_agent(request),
             ip=ip,
             replacing_token=request_session_token(request),
+            mark=request_client_mark(request, ip),
         )
         device = await remember_device(db, keys, user.id, device_token)
         if rehash is not None:
@@ -163,7 +165,12 @@ async def reauthenticate(
     try:
         async with system_session(factory(request)) as db:
             issued = await rotate_session(
-                db, info, reauth=True, user_agent=user_agent(request), ip=ip
+                db,
+                info,
+                reauth=True,
+                user_agent=user_agent(request),
+                ip=ip,
+                mark=request_client_mark(request, ip),
             )
             await record_event(db, "reauth", user_id=ctx.user_id, ip=ip)
     except SessionGone:
