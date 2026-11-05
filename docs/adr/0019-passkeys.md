@@ -423,9 +423,8 @@ binding.
   removed meanwhile) is ignored, never an error, so the answer names nothing about other users and
   a stale page still completes; the event records `passkeys_removed` as a count. The failure mode of
   a client bug is an empty list: every passkey goes and the user, who has just set a password,
-  registers again. Identities keep their existing `remove_methods` contract (ADR 0003 §5); the same
-  window exists for an identity linked between `info` and `complete`, which is outside this ADR
-  (named for the Architect in the #311 PR).
+  registers again. Identities use the same rule since #639: `keep_methods: [id]` (ADR 0003 §5),
+  deleted under the same lock.
 - `python -m classbeat admin mfa-reset <email>` also deletes the user's passkeys, whatever the flag
   says (they are the account's authenticators, untrusted after a compromise); its mail and event
   say so.
@@ -583,7 +582,7 @@ everything else in ADR 0003 stands. W8 adds a one-line pointer to ADR 0019 in ea
 | §1 | The account tables | Adds the system tables `webauthn_credentials`, `webauthn_challenges` and the column `users.webauthn_user_handle` (§6, §7) |
 | §6, the guarded actions (review point A) | `reauth_at` within 10 minutes is needed to link or unlink an identity, set or change the password, change the email, enroll TOTP for the first time, connect or disconnect MOWL, Spotify or Swedebeat, delete the account | Adds: add a passkey (start and finish), rename a passkey, remove a passkey; with confirmed TOTP each also needs the step-up, like the rest of that list (§4, §7) |
 | §9, the rate-limit table (review point A) | Password, TOTP, sign-up, mail and OAuth rows; sign-in limits count failures only | Adds five rows: passkey sign-in start (every request counts, per address, per IPv6 /48 and global), passkey sign-in failures, register, passkey re-auth failures (the password re-auth buckets) and rename/remove (§10) |
-| §5, reset contract | `remove_methods: [id]` for identities | Passkeys use `keep_passkeys: [id]`: every passkey not listed is deleted under the user row lock (§9) |
+| §5, reset contract | `keep_methods: [id]` for identities (#639) | Passkeys use `keep_passkeys: [id]`: every passkey not listed is deleted under the user row lock (§9) |
 
 ### 13. Interplay with the session anomaly signal (#632)
 

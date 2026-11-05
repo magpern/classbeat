@@ -251,6 +251,13 @@ Every state-changing request (`POST`, `PUT`, `PATCH`, `DELETE`) must pass two ch
   linked sign-in methods (provider names) and lets the user remove any of them in the same
   step (no recent auth or step-up needed: the reset is the proof), so an identity someone
   else linked doesn't survive the reset.
+  *(#639, 2026-11-05)* `complete` takes a **keep list**, `keep_methods: [id]` (required; the
+  methods the page showed and the user left unticked), and deletes every other identity of the
+  user, so one linked after `info` was never shown and goes; an id that is not the user's is
+  ignored. It locks the `users` row right after consuming the token (ADR 0019 §6), and every
+  password sign-in, re-authentication, MFA verify and OAuth sign-in, link or re-auth locks that
+  row first and re-checks under it what it proved (the password hash, the session, the
+  identity), so no session or identity made from the old credentials outlives the reset.
 - **Email change:**
   - **Request:** gives the same answer whether or not the new address is in use. Only the mail
     differs: "confirm" for a free address, "an account with this address exists" for a taken

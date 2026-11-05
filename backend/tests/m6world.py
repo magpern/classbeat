@@ -478,12 +478,12 @@ async def full_flows(world: World, admin: Connection, known: Known) -> dict[str,
     ).status_code == 400
     done = await anonymous.post(
         "/api/auth/password/reset/complete",
-        {"token": mail_token, "password": RESET_PHRASE, "remove_methods": []},
+        {"token": mail_token, "password": RESET_PHRASE, "keep_methods": []},
     )
     assert done.status_code == 200, done.text
     again = await anonymous.post(  # the link works once
         "/api/auth/password/reset/complete",
-        {"token": mail_token, "password": RESET_PHRASE, "remove_methods": []},
+        {"token": mail_token, "password": RESET_PHRASE, "keep_methods": []},
     )
     assert again.status_code == 400, again.text
     assert (await WebBrowser(env).sign_in(CHANGER, RESET_PHRASE)).status_code == 200

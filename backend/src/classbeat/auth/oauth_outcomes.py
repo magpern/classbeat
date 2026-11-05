@@ -34,6 +34,7 @@ from classbeat.auth.sessions import (
     start_session,
 )
 from classbeat.auth.tables import identities, invites, pending_signups
+from classbeat.auth.userlock import lock_user, session_alive
 from classbeat.config import Settings
 from classbeat.flags import effective as flags
 from classbeat.mail import MailMessage
@@ -105,6 +106,12 @@ async def _link(db: AsyncSession, req: Request) -> Outcome:
     if info is None:
         return _fail("session_mismatch", "not_the_flows_user")
     ident, user_id = req.identity, info.user_id
+    # #639: the user row first (ADR 0019 section 6), then the linking session re-checked as
+    # committed now. A reset that committed since the callback resolved the session has deleted
+    # it, so nothing is linked; a reset that comes later waits and its keep list removes this one.
+    locked = await lock_user(db, user_id)
+    if locked is None or locked.disabled or not await session_alive(db, user_id, info.id):
+        return _fail("session_mismatch", "session_gone")
     if await add_identity(
         db,
         user_id,
@@ -145,6 +152,8 @@ async def _reauth(db: AsyncSession, req: Request) -> Outcome:
     info = _own_session(req)
     if info is None:
         return _fail("session_mismatch", "not_the_flows_user")
+    await lock_user(db, info.user_id)  # first (#639, ADR 0019 section 6); the session and
+    # identity checks below then see a reset that committed meanwhile.
     owner = await identity_owner(db, req.flow.provider, req.identity.subject)
     if owner is None or owner[0] != info.user_id:
         return _fail("identity_mismatch", "not_linked_to_this_user")
@@ -194,7 +203,13 @@ async def _sign_in(db: AsyncSession, req: Request) -> Outcome:
     provider, ident, settings = req.flow.provider, req.identity, req.settings
     owner = await identity_owner(db, provider, ident.subject)
     if owner is not None:
-        user_id, disabled = owner
+        # #639: lock the owner's row first (ADR 0019 section 6) and look the identity up again
+        # as committed now: a reset that removed it since the first look leaves no session.
+        await lock_user(db, owner[0])
+        again = await identity_owner(db, provider, ident.subject)
+        if again is None or again[0] != owner[0]:
+            return _fail("invalid", "identity_gone")  # the generic failure
+        user_id, disabled = again
         if disabled:
             await record_event(db, "sign_in_failed", user_id=user_id, ip=req.ip)
             return _fail("invalid", "user_disabled")  # the generic failure

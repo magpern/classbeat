@@ -140,7 +140,7 @@ describe('reset page', () => {
     expect(api.to('POST', '/api/auth/password/reset/complete')[0]?.body).toEqual({
       token: 'reset-token',
       password: 'a brand new passphrase',
-      remove_methods: ['m1'],
+      keep_methods: ['m2'],
     })
     expect(api.to('POST', '/api/auth/login')).toHaveLength(0)
   })
