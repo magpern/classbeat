@@ -27,6 +27,7 @@ from classbeat import auth
 from classbeat.auth import securitylog
 from classbeat.auth.deps import require_user
 from classbeat.auth.keys import Keys, hmac_digest
+from classbeat.auth.ratelimit import API_EXEMPT_PATHS
 from classbeat.context import UserContext
 from classbeat.db import user_session
 from ctx import make_context
@@ -325,9 +326,102 @@ async def test_refusals_and_unknown_routes_are_logged_with_their_status(
     assert PATH_ID not in dump(admin)
 
 
-async def test_a_rate_limited_request_is_logged_as_429(
-    clean_auth: None, app_database_url: str, admin: Engine
+BAD_CSRF = "0" * 64
+
+
+async def test_no_exempt_path_ever_writes_a_row(env: Env, admin: Engine) -> None:
+    """The limiter's exempt paths (iterated, so a new one is covered) write no row, whatever the
+    method or the refusal: a bad-CSRF POST to sign-out keeps the session and could otherwise
+    append rows without limit (#641 review). A limited path, refused the same way, does log."""
+    client = await signed_in(env)
+    assert API_EXEMPT_PATHS
+    before = rows(admin)
+    for path in sorted(API_EXEMPT_PATHS):
+        for _ in range(3):
+            response = await client.post(path, csrf=BAD_CSRF)
+            assert response.status_code in {403, 405}, (path, response.status_code)
+            await client.get(path)
+            await client.request("DELETE", path, csrf=BAD_CSRF)
+    assert client.signed_in  # nothing above signed the session out
+    assert rows(admin) == before
+    assert not {row.route for row in rows(admin)} & API_EXEMPT_PATHS
+    # Control: the same refusal on a limited path is logged.
+    refused = await client.post(ITEM.replace("{item_id}", PATH_ID), csrf=BAD_CSRF)
+    assert refused.status_code == 403
+    assert ("POST", ITEM, 403) in {(row.method, row.route, row.status) for row in rows(admin)}
+    # A real sign-out is exempt too.
+    assert (await client.post("/api/auth/logout")).status_code in {200, 204}
+    assert not {row.route for row in rows(admin)} & API_EXEMPT_PATHS
+
+
+async def test_the_log_writes_a_row_for_exactly_the_requests_the_limiter_counts(
+    env: Env, admin: Engine, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    """The log shares the limiter's decision: across limited, exempt, unknown and refused
+    requests, the rows equal the limiter's counted requests (no 429 here)."""
+    client = await signed_in(env)
+    limiter = env.app.state.limiter
+    calls = 0
+    original = limiter.begin_together
+
+    async def counting(buckets: Any) -> Any:
+        nonlocal calls
+        calls += 1
+        return await original(buckets)
+
+    monkeypatch.setattr(limiter, "begin_together", counting)
+    before = len(rows(admin))
+    item = ITEM.replace("{item_id}", PATH_ID)
+    await client.get(item)
+    await client.post(item, {"note": BODY})  # its CSRF read counts too
+    await client.post(item, csrf=BAD_CSRF)
+    await client.get("/api/no/such/path")
+    for path in sorted(API_EXEMPT_PATHS - {"/api/auth/logout", "/api/auth/logout-all"}):
+        await client.get(path)
+    await client.post("/api/auth/logout", csrf=BAD_CSRF)
+    assert calls >= 5
+    assert len(rows(admin)) - before == calls
+
+
+def test_only_the_general_limit_marks_a_request_for_the_log() -> None:
+    """Guard: ``mark_counted`` is called once in all of ``src``, in ``check_api_limit`` right after
+    the limiter's ``begin_together``; ``entry_for`` admits only through ``counted``; nothing
+    else touches the mark. A copy of the exempt paths in the log cannot drift from the limiter."""
+    src = SRC.parent.parent
+    calls: list[tuple[str, str]] = []
+    for path in sorted(src.rglob("*.py")):
+        tree = ast.parse(path.read_text("utf-8"))
+        for function in ast.walk(tree):
+            if not isinstance(function, ast.FunctionDef | ast.AsyncFunctionDef):
+                continue
+            for node in ast.walk(function):
+                if isinstance(node, ast.Call):
+                    func = node.func
+                    name = func.id if isinstance(func, ast.Name) else getattr(func, "attr", "")
+                    if name in {"mark_counted", "counted"}:
+                        calls.append((f"{path.relative_to(src)}:{function.name}", name))
+        if path != SRC:
+            assert "security_log_counted" not in path.read_text("utf-8"), path
+    assert sorted(calls) == [
+        ("auth/middleware.py:check_api_limit", "mark_counted"),
+        ("auth/securitylog.py:entry_for", "counted"),
+    ]
+    middleware = SRC.parent / "middleware.py"
+    [check] = [
+        node
+        for node in ast.walk(ast.parse(middleware.read_text("utf-8")))
+        if isinstance(node, ast.AsyncFunctionDef) and node.name == "check_api_limit"
+    ]
+    lines = [ast.unparse(statement) for statement in check.body[1:]]  # after the docstring
+    assert lines[0].startswith("if not api_limited(request.url.path):")
+    begin = next(i for i, line in enumerate(lines) if "limiter.begin_together(" in line)
+    assert lines[begin + 1] == "mark_counted(request)"
+
+
+async def test_a_rate_limited_request_is_logged_as_429(
+    clean_auth: None, app_database_url: str, admin: Engine, caplog: pytest.LogCaptureFixture
+) -> None:
+    caplog.set_level(logging.WARNING, logger="classbeat.auth.securitylog")
     async with running_env(
         app_database_url, trusted_proxies="127.0.0.1", api_requests_per_minute=3
     ) as env:
@@ -348,6 +442,8 @@ async def test_a_rate_limited_request_is_logged_as_429(
             ).one()
         assert limited == minutes
         assert 1 <= limited <= 2
+        # The duplicates were skipped, not refused and logged (``ON CONFLICT DO NOTHING``).
+        assert not [r for r in caplog.records if "write failed" in r.getMessage()]
 
 
 async def test_a_failed_write_never_changes_the_answer_and_logs_no_values(

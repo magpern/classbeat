@@ -749,12 +749,20 @@ auth middleware once the response's status is known (`classbeat.auth.securitylog
   method, route (lower-case words and `{name}` placeholders, at most 200 characters, no `?`, `%`,
   `=` or space) or status of another shape, and a hash that is not 32 bytes. Tests plant each in
   requests and search the whole table for them (`backend/tests/test_security_log.py`).
-- **Which requests:** those whose session the middleware or the route already resolved (every
-  signed-in `/api` request except the unlimited probes, which resolve no session, and sign-in
-  itself, which starts without one); nothing is looked up only for the log. Anonymous requests and
-  pages outside `/api` write nothing. A request refused before routing (the general limit's 429,
-  Origin or CSRF 403) still gets its route, because the template is matched, not read from the
-  router.
+- **Which requests: exactly those the general limit counted** (an allowlist shared with the
+  limiter, not a copy of its path rules). `check_api_limit` marks a request
+  (`securitylog.mark_counted`) right after the limiter's `begin_together`, allowed or refused, and
+  `entry_for` admits only marked requests; an AST guard checks that nothing else marks one. So a
+  signed-in request on a limited `/api` path is logged, its 429 and its Origin or CSRF 403
+  included; the limiter's exempt paths (`API_EXEMPT_PATHS`: `/api/health`, `/api/ready`,
+  `/api/auth/logout`, `/api/auth/logout-all`) are **never** logged, whatever the method or the
+  answer, nor are anonymous requests, sign-in (it starts without a session) and pages outside
+  `/api`. Sign-out is therefore not in the security log; `auth_events` has no sign-out kind today
+either, so a sign-out shows only as the end of that session's rows (adding a `sign_out` event is
+a separate change, outside this amendment). Without
+  this, a refused sign-out (bad CSRF token) keeps the session and is not limited, so one cookie
+  could append rows without bound (#641 review). A refused request still gets its route, because
+  the template is matched, not read from the router. Nothing is looked up only for the log.
 - **Key:** a new HKDF info string `security-log` (§8), its own key, so log hashes cannot be
   compared with `sessions.seen_ip_hash` (the `session-client` key) or the rate-limit buckets. With
   the key, an IPv4 hash can be reversed by trying every address; the key lives only in the web
@@ -764,13 +772,18 @@ auth middleware once the response's status is known (`classbeat.auth.securitylog
   user's own session with a bare context (`deps.security_log_context`, reachable only from the
   security log). The admin view will read it through `classbeat_maint` with its own column grant
   and audit row (ADR 0011 §5); this PR grants maint nothing.
-- **Bounded in count, not only in age:** every request other than a 429 already takes a slot of
-  the general limit (3000 an hour per user, refused requests included), so those rows are at most
-  `api_requests_per_hour × 24 × CLASSBEAT_SECURITY_LOG_DAYS` per user (504,000 at the defaults).
-  Requests past the limit are the unbounded ones, so a 429 row carries its minute and a partial
-  unique index on `(owner_id, session_id, limited_minute)` with `ON CONFLICT DO NOTHING` keeps at
-  most one 429 row per session and minute; more sessions need more sign-ins, which have their own
-  limits (§9). The abuse view loses only the count of 429s within a minute, not the fact.
+- **Bounded in count, not only in age:** every row but a 429 is a request the general limit
+  allowed (above), so those rows are at most `api_requests_per_hour × 24 ×
+  CLASSBEAT_SECURITY_LOG_DAYS` per user (3000 × 24 × 7 = 504,000 at the defaults). Requests past
+  the limit would be unbounded, so a 429 row carries its minute and a partial unique index on
+  `(owner_id, session_id, limited_minute)` with `ON CONFLICT DO NOTHING` keeps at most one 429 row
+  per session and minute: at most `1440 × CLASSBEAT_SECURITY_LOG_DAYS` (10,080) per session, and
+  per user that times the number of the user's sessions that hit the limit within the retention.
+  Sessions are not capped in number; each needs a full sign-in (password or provider, and the
+  second factor when enabled), which a stolen cookie alone cannot do, and a holder of the
+  credentials already has the account. That residual is accepted: 1,000 such sessions would add
+  about 10 million small rows over a week, purged on schedule. The abuse view loses only the count
+  of 429s within a minute, not the fact.
 - **Failure:** a failed write (a driver error, a pool timeout, anything) is logged by class (and
   SQLSTATE for a driver error) only and never changes the response: the route has already run and
   committed (the log is best effort; a request that deleted its own account fails the foreign key

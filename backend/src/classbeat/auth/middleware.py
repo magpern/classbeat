@@ -35,7 +35,7 @@ from classbeat.auth.cookies import CSRF_COOKIE, SESSION_COOKIE, clear_session_co
 from classbeat.auth.deps import request_ip, resolve_request
 from classbeat.auth.keys import Keys, hmac_digest
 from classbeat.auth.ratelimit import RateLimiter, api_buckets, api_limited
-from classbeat.auth.securitylog import entry_for, record
+from classbeat.auth.securitylog import entry_for, mark_counted, record
 from classbeat.config import Settings
 from classbeat.log import describe_database_error
 
@@ -97,7 +97,12 @@ def database_error_response(exc: DBAPIError) -> JSONResponse:
 
 async def check_api_limit(request: Request) -> int | None:
     """The general limit (#577): ``Retry-After`` seconds when a signed-in ``/api`` request is over
-    one of its buckets, else ``None``. Anonymous requests and the exempt paths are not counted."""
+    one of its buckets, else ``None``. Anonymous requests and the exempt paths are not counted.
+
+    A request the limiter counted (allowed or not) is marked for the security log here and only
+    here (``securitylog.mark_counted``): the log writes a row for exactly those requests, so its
+    rows never exceed the limiter's budget (plus one 429 row per session and minute) and a path
+    the limiter exempts is never logged (#632, ADR 0003 amendment "the security log")."""
     if not api_limited(request.url.path):
         return None
     info = (await resolve_request(request)).info
@@ -113,6 +118,7 @@ async def check_api_limit(request: Request) -> int | None:
             request.url.path,
         )
     )
+    mark_counted(request)
     return None if attempt.allowed else attempt.retry_after
 
 
@@ -131,8 +137,8 @@ class AuthMiddleware(BaseHTTPMiddleware):
             clear_session_cookie(response)
         if request.url.path.startswith("/api/") or request.url.path == "/api":
             response.headers["Cache-Control"] = "no-store"
-        # The security log (#632): a row per signed-in /api request, its own refusals here
-        # (429, 403) included; a request whose session was never resolved writes none.
+        # The security log (#632): a row per request the general limit counted, its own refusals
+        # here (429, 403) included; an exempt, anonymous or non-API request writes none.
         entry = entry_for(request, response.status_code)
         if entry is not None:
             await record(request.app.state.session_factory, entry)

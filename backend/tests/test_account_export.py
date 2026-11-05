@@ -216,3 +216,23 @@ async def test_the_export_holds_my_beat_one_corrections_without_the_fingerprint(
     ]
     assert "fingerprint" not in rows[0]
     assert str(other.found.class_id) not in json.dumps(rows)
+
+
+async def test_the_security_log_is_exported_without_its_hash_session_or_minute(
+    songenv: SongEnv,
+) -> None:
+    """#632: a 429 row's ``limited_minute``, the ``ip_hash`` and the ``session_id`` stay out."""
+    mine = await person(songenv)
+    songenv.sql(
+        "INSERT INTO security_log (owner_id, session_id, ip_hash, method, route, status, "
+        "limited_minute) VALUES (:u, gen_random_uuid(), :h, 'GET', '/api/classes', 429, 29000001)",
+        u=mine.user_id,
+        h=bytes(range(32)),
+    )
+    answer = await export(mine)
+    entries = answer.json()["security_log"]
+    assert any(entry["status"] == 429 for entry in entries)
+    for entry in entries:
+        assert not {"ip_hash", "session_id", "limited_minute"} & set(entry), entry
+    assert "29000001" not in answer.text
+    assert bytes(range(32)).hex() not in answer.text

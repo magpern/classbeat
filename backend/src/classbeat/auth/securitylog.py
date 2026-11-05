@@ -1,7 +1,9 @@
 """The privacy-safe security log (ADR 0003 amendment "security log" of 2026-11-05, #632).
 
-One ``security_log`` row per signed-in ``/api`` request, written by ``AuthMiddleware`` once the
-response is known, separate from the access log (which names no user). A row holds only:
+One ``security_log`` row per signed-in ``/api`` request that the general limit counted (its
+``mark_counted``), written by ``AuthMiddleware`` once the response is known, separate from the
+access log (which names no user). The limit's exempt paths (probes, sign-out) are never logged.
+A row holds only:
 
 - the user (``owner_id``) and the session's id, from the session the request already resolved
   (nothing is looked up for the log: a request whose session was not resolved is not logged);
@@ -51,6 +53,7 @@ ROUTE = re.compile(r"(/([a-z0-9_.-]+|\{[a-z_][a-z0-9_]*\}))+")
 ROUTE_MAX = 200
 _FOREIGN_KEY_VIOLATION = "23503"
 _TEMPLATES = "security_log_templates"
+_COUNTED = "security_log_counted"
 
 # A 429 row carries its minute, so the partial unique index ``security_log_one_429`` keeps at most
 # one per session and minute: past the limit a script adds no rows (T124). Every other request
@@ -128,10 +131,23 @@ def match_template(app: Any, method: str, path: str) -> str:
     return fallback
 
 
+def mark_counted(request: Request) -> None:
+    """Called by the general limit (``middleware.check_api_limit``) once it has counted the request
+    against its buckets, allowed or refused. Nothing else marks a request."""
+    setattr(request.state, _COUNTED, True)
+
+
+def counted(request: Request) -> bool:
+    """Whether the general limit counted this request: the log's only admission test."""
+    return getattr(request.state, _COUNTED, False) is True
+
+
 def entry_for(request: Request, status: int) -> Entry | None:
-    """The row of a finished request, or ``None`` when it is not a signed-in ``/api`` request."""
-    path = request.url.path
-    if not (path == "/api" or path.startswith("/api/")):
+    """The row of a finished request, or ``None`` unless the general limit counted it (a signed-in
+    ``/api`` request on a limited path). The log shares the limiter's decision instead of a copy of
+    its path rules, so its rows stay within the limiter's budget and an exempt path (the probes,
+    sign-out) is never logged."""
+    if not counted(request):
         return None
     info = cached_session(request)
     if info is None:
