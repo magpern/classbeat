@@ -2,6 +2,16 @@
 
 Status: Accepted
 
+**Pending amendment: passkeys (#311, [ADR 0019](0019-passkeys.md), Proposed, revised
+2026-11-05).** Once ADR 0019 is Accepted it amends, and only in the ways its §12 table lists:
+§1 (two system tables and `users.webauthn_user_handle`), §3 (a shorter session after a
+cross-device sign-in, only if the owner says yes), §5 (passkeys never count toward the last-method
+rule; the reset lists passkeys and deletes every one not on a keep list), §6 (a passkey
+re-authenticates but is never a step-up; adding, renaming and removing a passkey need recent
+authentication), §7 (`admin mfa-reset` also deletes passkeys; a passkey never replaces admin TOTP),
+§9 (five passkey rate-limit rows) and §10 (three never-logged flow cookies). Until then, and until
+the code is on `main`, this ADR describes what runs; the per-section pointers come with the code.
+
 ## Context
 
 M1 adds accounts (roadmap §3, P0): email and password, Google, GitHub and Microsoft sign-in,

@@ -24,6 +24,6 @@ Reviewer reviews each in its PR (AGENTS.md, "Decisions and ADRs").
 | [0016](0016-swedebeat-music.md) | Swedebeat music: "My Swedebeat mix" and Spotify-to-Swedebeat matching (S2) | Proposed |
 | [0017](0017-class-pattern-soft-rules.md) | Class patterns as soft rules: profiles, warnings, evals (#388) | Proposed |
 | [0018](0018-mowl-running-classes.md) | MOWL running classes next to cycling (M8, #373) | Accepted |
-| [0019](0019-passkeys.md) | Passkeys with cross-device sign-in (#311) | Proposed |
+| [0019](0019-passkeys.md) | Passkeys with cross-device sign-in (#311; revised 2026-11-05, amends ADR 0003) | Proposed |
 | [0020](0020-image-only-install.md) | Image-only install: db image, release assets, install checks (#519) | Proposed |
 | [0021](0021-use-part-of-a-song.md) | Use part of a song: trim an intro or outro, start mid-track (#580); blocked, no source can play part of a song | Proposed |
