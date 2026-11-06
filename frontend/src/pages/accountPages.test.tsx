@@ -85,6 +85,7 @@ describe('sign-in page', () => {
       purpose: 'sign_up',
       invite_code: 'inv-1',
       return_to: null,
+      locale: 'en',
     })
     expect(screen.queryByText('Enter your invite code first.')).toBeNull()
   })
@@ -168,6 +169,7 @@ describe('sign-in page', () => {
       purpose: 'sign_in',
       invite_code: null,
       return_to: null,
+      locale: 'en',
     })
   })
 

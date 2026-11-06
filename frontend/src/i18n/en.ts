@@ -4,8 +4,12 @@
 // No markup in a string: links and emphasis are slots of `Trans`.
 
 export const en = {
-  'format.soonUnknown': 'a few minutes from now',
-  'usage.underOneCent': 'under {amount}',
+  "language.label": "Language",
+  "language.follow": "Follow this browser",
+  "language.help":
+    'The language of this site. "Follow this browser" uses your browser\'s language on each device; email is sent in English until more languages are available.',
+  "format.soonUnknown": "a few minutes from now",
+  "usage.underOneCent": "under {amount}",
   // Server sentences by code (ADR 0023 section 6): the text equals the backend's English; the
   // page words a code from here and shows the server's text for a code it does not have.
   'sentence.spotify.invalid_grant': 'Spotify no longer accepts the connection. Reconnect Spotify.',
@@ -37,11 +41,18 @@ export const en = {
   'sentence.job.handoff_expired': 'That check expired. Start again from the Swedebeat step; nothing was fetched.',
   'sentence.swedebeat.wait': { one: 'Swedebeat asks to slow down; trying again in about {count} minute.', other: 'Swedebeat asks to slow down; trying again in about {count} minutes.' },
   'sentence.swedebeat.stopped': 'Swedebeat asks to slow down. This match has stopped.',
-} as const satisfies Record<string, Message>
+} as const satisfies Record<string, Message>;
 
-export type Plural = { one?: string; other: string; zero?: string; two?: string; few?: string; many?: string }
-export type Message = string | Plural
+export type Plural = {
+  one?: string;
+  other: string;
+  zero?: string;
+  two?: string;
+  few?: string;
+  many?: string;
+};
+export type Message = string | Plural;
 
-export type CatalogueKey = keyof typeof en
+export type CatalogueKey = keyof typeof en;
 /** What a non-English catalogue may hold: some of the keys, never others. */
-export type Catalogue = Partial<Record<CatalogueKey, Message>>
+export type Catalogue = Partial<Record<CatalogueKey, Message>>;

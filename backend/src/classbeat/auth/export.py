@@ -5,7 +5,7 @@ calls ``account_export`` with the session it holds. Every statement filters on t
 Only what the user could see about themselves is returned:
 
 - the profile (id, email, role, when it was created and verified, whether it has a password, the
-  mail preferences);
+  mail preferences, the language);
 - the linked sign-in providers (provider, the provider's subject, the address at linking);
 - the signed-in devices (when, user agent and address, never a token or its hash), the known
   devices (dates only);
@@ -50,6 +50,7 @@ INCLUDE: dict[str, tuple[str, ...]] = {
         "disabled_at",
         "mail_unsubscribed_all",
         "mail_opted_out",
+        "locale",
     ),
     "identities": ("provider", "subject", "email_at_link", "created_at"),
     "sessions": (
@@ -186,6 +187,7 @@ async def account_export(db: AsyncSession, user_id: UUID) -> dict[str, Any]:
             "has_password": bool(profile.has_password),
             "mail_unsubscribed_all": profile.mail_unsubscribed_all,
             "mail_opted_out": sorted(profile.mail_opted_out),
+            "locale": profile.locale,
         },
         "sign_in_methods": [
             {

@@ -1,3 +1,4 @@
+import { resolveBrowserLocale } from '../i18n/locales'
 import { clearSubmittedInputs } from '../lib/submittedInput'
 import { del, fetchSessionJson, get, post } from './client'
 import {
@@ -19,6 +20,8 @@ export interface SessionUser {
   email: string
   /** `admin` only while the session has passed TOTP within 12 hours. */
   role: string
+  /** The saved language, or null to follow the browser (ADR 0023). */
+  locale: string | null
 }
 
 export interface SessionDetails {
@@ -34,17 +37,25 @@ export interface SessionState {
   authenticated: boolean
   user: SessionUser | null
   session: SessionDetails | null
+  /** The languages the server offers, signed in or not. */
+  locales: string[]
 }
 
 export async function getSession(signal?: AbortSignal): Promise<SessionState> {
   const body = await fetchSessionJson(signal)
   const authenticated = flag(body, 'authenticated')
-  if (!authenticated) return { authenticated, user: null, session: null }
+  const locales = body.locales === undefined ? [] : strings(body, 'locales')
+  if (!authenticated) return { authenticated, user: null, session: null, locales }
   const user = object(body.user, 'user')
   const session = object(body.session, 'session')
   return {
     authenticated,
-    user: { id: text(user, 'id'), email: text(user, 'email'), role: text(user, 'role') },
+    user: {
+      id: text(user, 'id'),
+      email: text(user, 'email'),
+      role: text(user, 'role'),
+      locale: optionalText(user, 'locale'),
+    },
     session: {
       expiresAt: text(session, 'expires_at'),
       recentAuth: flag(session, 'recent_auth'),
@@ -52,6 +63,7 @@ export async function getSession(signal?: AbortSignal): Promise<SessionState> {
       stepup: flag(session, 'stepup'),
       adminPendingMfa: flag(session, 'admin_pending_mfa'),
     },
+    locales,
   }
 }
 
@@ -64,6 +76,7 @@ export async function signUp(input: {
     email: input.email,
     password: input.password,
     invite_code: input.inviteCode === '' ? null : input.inviteCode,
+    locale: resolveBrowserLocale(),
   })
 }
 
@@ -199,6 +212,7 @@ export async function startOAuth(
       purpose,
       invite_code: extra.inviteCode ? extra.inviteCode : null,
       return_to: extra.returnTo ?? null,
+      locale: resolveBrowserLocale(),
     }),
     'oauth start',
   )
@@ -221,7 +235,7 @@ export async function getPendingSignup(signal?: AbortSignal): Promise<PendingSig
 }
 
 export async function submitPendingEmail(email: string): Promise<void> {
-  await post('/api/auth/oauth/pending/email', { email })
+  await post('/api/auth/oauth/pending/email', { email, locale: resolveBrowserLocale() })
 }
 
 // --- two-factor ------------------------------------------------------------------------

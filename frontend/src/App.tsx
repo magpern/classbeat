@@ -1,4 +1,5 @@
 import { lazy, Suspense } from 'react'
+import { AccountLocale } from './auth/AccountLocale'
 import { GuardProvider } from './auth/GuardProvider'
 import { SessionProvider, useSession } from './auth/SessionContext'
 import { Banner } from './components/Banner'
@@ -106,6 +107,7 @@ export function App() {
   return (
     <RouterProvider>
       <SessionProvider>
+        <AccountLocale />
         <GuardProvider>
           <Banner />
           <AppShell>

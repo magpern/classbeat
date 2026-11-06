@@ -16,6 +16,7 @@ import { Usage } from '../components/account/Usage'
 import { Notice, Section, useAction } from '../components/forms'
 import { RequireAuth } from '../components/RequireAuth'
 import { Button } from '../components/ui/button'
+import { LanguageSetting } from '../components/account/LanguageSetting'
 import { EmailPreferences } from '../components/account/EmailPreferences'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs'
 import { useQuery, useRouter } from '../router/Router'
@@ -206,6 +207,9 @@ function Account() {
           </Section>
         </TabsContent>
         <TabsContent value="appearance" className="flex flex-col gap-4">
+          <Section title="Language">
+            <LanguageSetting />
+          </Section>
           <Section title="Theme">
             <p className="text-muted">Dark is the default. Same as device follows your phone or computer.</p>
             <ThemeSwitch />

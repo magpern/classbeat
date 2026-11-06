@@ -20,6 +20,7 @@ describe('sign-up', () => {
       email: 'ann@example.test',
       password: 'correct horse battery',
       invite_code: 'abc',
+      locale: 'en',
     })
   })
 
@@ -95,6 +96,7 @@ describe('provider email page', () => {
     expect(screen.queryByRole('button', { name: 'Send confirmation link' })).toBeNull()
     expect(api.to('POST', '/api/auth/oauth/pending/email')[0]?.body).toEqual({
       email: 'ann@example.test',
+      locale: 'en',
     })
   })
 

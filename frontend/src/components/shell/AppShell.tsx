@@ -7,6 +7,7 @@ import { cn } from '../../lib/cn'
 import { Link, useRouter } from '../../router/Router'
 import { ApiStatus } from '../ApiStatus'
 import { useAction } from '../forms'
+import { LanguagePicker } from '../LanguagePicker'
 import { Logo } from '../Logo'
 import { AvatarMenu } from './AvatarMenu'
 import { ClassesThisMonth } from './ClassesThisMonth'
@@ -104,13 +105,14 @@ function BrandLink({ compact }: { compact?: boolean }) {
   )
 }
 
-function SignedOutHeader({ ready }: { ready: boolean }) {
+function SignedOutHeader({ ready, offered }: { ready: boolean; offered: readonly string[] }) {
   return (
     <header className="border-b border-line bg-surface">
       <div className="mx-auto flex max-w-5xl flex-wrap items-center gap-x-4 gap-y-2 px-4 py-2">
         <BrandLink />
         {ready ? (
           <nav aria-label="Account" className="ml-auto flex items-center gap-2">
+            <LanguagePicker offered={offered} />
             <Link
               to="/signin"
               className="inline-flex min-h-11 items-center rounded-full px-4 font-medium text-text no-underline hover:bg-raised"
@@ -170,7 +172,12 @@ export function AppShell({ children }: { children: ReactNode }) {
   if (status !== 'ready' || session === null || !session.authenticated) {
     return (
       <Frame
-        top={<SignedOutHeader ready={status === 'ready' && session !== null} />}
+        top={
+          <SignedOutHeader
+            ready={status === 'ready' && session !== null}
+            offered={session?.locales ?? []}
+          />
+        }
         mainClass="app-main"
         alert={null}
       >

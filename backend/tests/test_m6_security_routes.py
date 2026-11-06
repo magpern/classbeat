@@ -119,6 +119,7 @@ CLASSIFIED: dict[tuple[str, str], str] = {
     ("POST", "/api/account/trial"): "session",
     ("GET", "/api/mail/preferences"): "session",
     ("PUT", "/api/mail/preferences"): "session",
+    ("PUT", "/api/account/locale"): "session",
     # Anonymous by design (ADR 0003, ME4): the signed unsubscribe token in the request is the
     # only authority, it can only turn optional mail off, and the two paths are the exact-match
     # CSRF/Origin exemption, limited per IP before the token is checked (test_mail_prefs.py).
