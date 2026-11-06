@@ -3,6 +3,7 @@ import { ApiError } from "../api/client";
 import { confirmUnsubscribe } from "../api/mailPrefs";
 import { AuthCard as Card } from "../components/auth/AuthCard";
 import { errorMessage } from "../api/messages";
+import { useT } from "../i18n/I18n";
 import { Notice, useAction } from "../components/forms";
 import { stripFragment } from "../router/Router";
 
@@ -22,6 +23,7 @@ function readTokens(): Tokens {
  * fragment (never in a server log) and are removed from the address bar on mount.
  */
 export function UnsubscribePage() {
+  const t = useT();
   const [tokens] = useState(() => {
     const read = readTokens();
     stripFragment();
@@ -32,24 +34,18 @@ export function UnsubscribePage() {
 
   if (tokens.category === null && tokens.all === null) {
     return (
-      <Card title="Unsubscribe">
-        <Notice kind="error">This page needs the link from the mail.</Notice>
+      <Card title={t("unsub.title")}>
+        <Notice kind="error">{t("unsub.needsLink")}</Notice>
       </Card>
     );
   }
   if (done !== null) {
     return (
-      <Card title="You are unsubscribed">
+      <Card title={t("unsub.doneTitle")}>
         <Notice kind="success">
-          {done === "all"
-            ? "classbeat will no longer send you optional email."
-            : "classbeat will no longer send you this kind of email."}
+          {done === "all" ? t("unsub.doneAll") : t("unsub.doneCategory")}
         </Notice>
-        <p>
-          Sign-in, password reset and confirmation links are always sent. You
-          can change which optional mail you get, including security notices,
-          under Email on your account page.
-        </p>
+        <p>{t("unsub.doneNote")}</p>
       </Card>
     );
   }
@@ -62,13 +58,13 @@ export function UnsubscribePage() {
       },
       (error) =>
         error instanceof ApiError && error.reason === "link_invalid"
-          ? "This link is no longer valid. Use the link in a newer mail, or the Email section of your account."
+          ? t("unsub.linkInvalid")
           : errorMessage(error),
     );
   };
   return (
-    <Card title="Unsubscribe">
-      <p>Choose what to stop. Nothing changes until you press a button.</p>
+    <Card title={t("unsub.title")}>
+      <p>{t("unsub.intro")}</p>
       {action.error ? <Notice kind="error">{action.error}</Notice> : null}
       <p className="flex flex-wrap gap-2">
         {tokens.category !== null ? (
@@ -80,7 +76,7 @@ export function UnsubscribePage() {
               if (tokens.category !== null) choose("category", tokens.category);
             }}
           >
-            Stop this kind of email
+            {t("unsub.stopCategory")}
           </button>
         ) : null}
         {tokens.all !== null ? (
@@ -92,7 +88,7 @@ export function UnsubscribePage() {
               if (tokens.all !== null) choose("all", tokens.all);
             }}
           >
-            Stop all optional email
+            {t("unsub.stopAll")}
           </button>
         ) : null}
       </p>

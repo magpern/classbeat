@@ -33,7 +33,7 @@ describe('hard-coded text in .tsx', () => {
   // The allowlist is files not yet moved to the catalogue (ML5a to ML5d). It only shrinks: a file
   // that is clean again must leave the list, and the ceiling is lowered with it. Raising the ceiling
   // or adding a file is the change this guard exists to stop.
-  const CEILING = 46
+  const CEILING = 20
 
   it('finds the sources it is meant to scan', () => {
     expect(tsx.length).toBeGreaterThan(80)

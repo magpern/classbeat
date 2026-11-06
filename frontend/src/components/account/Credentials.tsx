@@ -1,9 +1,11 @@
 import { useState, type FormEvent } from 'react'
 import { changePassword, requestEmailChange } from '../../api/auth'
 import { useGuard } from '../../auth/prompts'
+import { Trans, useT } from '../../i18n/I18n'
 import { Field, Notice, Section, useAction } from '../forms'
 
 export function ChangeEmail({ current }: { current: string }) {
+  const t = useT()
   const guard = useGuard()
   const [email, setEmail] = useState('')
   const [sentTo, setSentTo] = useState<string | null>(null)
@@ -20,20 +22,19 @@ export function ChangeEmail({ current }: { current: string }) {
   }
 
   return (
-    <Section title="Email address">
+    <Section title={t('cred.email.title')}>
       <p>
-        Your address is <strong>{current}</strong>.
+        <Trans id="cred.email.current" slots={{ email: <strong>{current}</strong> }} />
       </p>
       {sentTo ? (
         <Notice kind="success">
-          If {sentTo} can be used, a confirmation link is on its way there. Open it while signed
-          in to finish. Your address changes only then.
+          {t('cred.email.sent', { email: sentTo })}
         </Notice>
       ) : null}
       {action.error ? <Notice kind="error">{action.error}</Notice> : null}
       <form onSubmit={submit}>
         <Field
-          label="New email address"
+          label={t('cred.email.newLabel')}
           type="email"
           autoComplete="email"
           value={email}
@@ -43,7 +44,7 @@ export function ChangeEmail({ current }: { current: string }) {
           required
         />
         <button className="button" type="submit" disabled={action.busy}>
-          Change email
+          {t('cred.email.change')}
         </button>
       </form>
     </Section>
@@ -51,6 +52,7 @@ export function ChangeEmail({ current }: { current: string }) {
 }
 
 export function ChangePassword() {
+  const t = useT()
   const guard = useGuard()
   const [password, setPassword] = useState('')
   const [repeat, setRepeat] = useState('')
@@ -75,18 +77,16 @@ export function ChangePassword() {
   }
 
   return (
-    <Section title="Password">
-      {saved ? (
-        <Notice kind="success">Password saved. Your other devices were signed out.</Notice>
-      ) : null}
-      {mismatch ? <Notice kind="error">The two passwords differ.</Notice> : null}
+    <Section title={t('cred.password.title')}>
+      {saved ? <Notice kind="success">{t('cred.password.saved')}</Notice> : null}
+      {mismatch ? <Notice kind="error">{t('cred.password.mismatch')}</Notice> : null}
       {action.error ? <Notice kind="error">{action.error}</Notice> : null}
       <form onSubmit={submit}>
         <Field
-          label="New password"
+          label={t('cred.password.newLabel')}
           type="password"
           autoComplete="new-password"
-          hint="12 to 128 characters."
+          hint={t('cred.password.hint')}
           value={password}
           onChange={(e) => {
             setPassword(e.target.value)
@@ -94,7 +94,7 @@ export function ChangePassword() {
           required
         />
         <Field
-          label="Repeat the new password"
+          label={t('cred.password.repeatLabel')}
           type="password"
           autoComplete="new-password"
           value={repeat}
@@ -104,7 +104,7 @@ export function ChangePassword() {
           required
         />
         <button className="button" type="submit" disabled={action.busy}>
-          Save password
+          {t('cred.password.save')}
         </button>
       </form>
     </Section>

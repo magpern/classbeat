@@ -1,12 +1,10 @@
 import { useId, useState } from 'react'
 import { giveSpotifyConsent, revokeSpotifyConsent, type SpotifyStatus } from '../../api/spotify'
 import { useGuard } from '../../auth/prompts'
+import { useT } from '../../i18n/I18n'
 import { Notice, useAction } from '../forms'
 import { Button } from '../ui/button'
 import { Switch } from '../ui/switch'
-
-export const REVOKE_TEXT =
-  'Revoking makes classbeat forget the working playlist and stop using it. The playlist stays in your Spotify, private, with its last songs; delete it there if you do not want it. Picking songs needs your consent again, and the next pick creates a new working playlist.'
 
 /**
  * The working-playlist consent (ADR 0009 section 9) as a switch. The exact sentence the server
@@ -16,6 +14,7 @@ export const REVOKE_TEXT =
  * then sends `DELETE`. `onChanged` reloads the status.
  */
 export function ConsentSwitch({ status, onChanged }: { status: SpotifyStatus; onChanged: () => Promise<void> }) {
+  const t = useT()
   const guard = useGuard()
   const action = useAction()
   const id = useId()
@@ -45,28 +44,28 @@ export function ConsentSwitch({ status, onChanged }: { status: SpotifyStatus; on
           checked={status.poolConsent}
           disabled={action.busy || confirming}
           onCheckedChange={(on) => {
-            if (on) run(giveSpotifyConsent, 'Thanks. classbeat may use the working playlist.')
+            if (on) run(giveSpotifyConsent, t('consent.given'))
             else setConfirming(true)
           }}
         />
         <label htmlFor={id} className="font-medium">
-          Allow the working playlist
+          {t('consent.label')}
         </label>
       </div>
       <p data-testid="spotify-consent-state" className="m-0 text-muted">
-        {status.poolConsent ? 'You have allowed the working playlist.' : 'You have not allowed it yet.'}
+        {status.poolConsent ? t('consent.stateOn') : t('consent.stateOff')}
       </p>
       {confirming ? (
-        <div className="notice" role="group" aria-label="Confirm revoke">
-          <p>{REVOKE_TEXT}</p>
+        <div className="notice" role="group" aria-label={t('consent.confirmRevoke')}>
+          <p>{t('consent.revokeText')}</p>
           <div className="flex flex-wrap gap-2">
             <Button
               disabled={action.busy}
               onClick={() => {
-                run(revokeSpotifyConsent, 'Your consent is withdrawn. The playlist stays in your Spotify.')
+                run(revokeSpotifyConsent, t('consent.withdrawn'))
               }}
             >
-              Yes, revoke my consent
+              {t('consent.yesRevoke')}
             </Button>
             <Button
               variant="secondary"
@@ -74,7 +73,7 @@ export function ConsentSwitch({ status, onChanged }: { status: SpotifyStatus; on
                 setConfirming(false)
               }}
             >
-              Keep my consent
+              {t('consent.keep')}
             </Button>
           </div>
         </div>

@@ -4,14 +4,16 @@ import {
   setMailPreferences,
   type MailPreferences,
 } from "../../api/mailPrefs";
+import type { CatalogueKey } from "../../i18n/en";
+import { useT } from "../../i18n/I18n";
 import { Notice, useAction } from "../forms";
 import { Switch } from "../ui/switch";
 
 const KINDS = [
-  { id: "welcome", label: "Welcome mail" },
-  { id: "account_activity", label: "Account activity notices" },
-  { id: "class_ready", label: "A class is ready" },
-] as const;
+  { id: "welcome", label: "mailprefs.kind.welcome" },
+  { id: "account_activity", label: "mailprefs.kind.account_activity" },
+  { id: "class_ready", label: "mailprefs.kind.class_ready" },
+] as const satisfies readonly { id: string; label: CatalogueKey }[];
 
 /**
  * The Email section: one switch per optional kind and one for all of them. Sign-in, password
@@ -19,6 +21,7 @@ const KINDS = [
  * new sign-in method) are the "Account activity" kind and can be switched off.
  */
 export function EmailPreferences() {
+  const t = useT();
   const [prefs, setPrefs] = useState<MailPreferences | null>(null);
   const action = useAction();
   const baseId = useId();
@@ -44,7 +47,7 @@ export function EmailPreferences() {
     return action.error ? (
       <Notice kind="error">{action.error}</Notice>
     ) : (
-      <p>Loading</p>
+      <p>{t("common.loading")}</p>
     );
   }
   const current = prefs;
@@ -55,13 +58,7 @@ export function EmailPreferences() {
 
   return (
     <div className="flex flex-col gap-3">
-      <p className="m-0 text-muted">
-        Choose which optional mail classbeat sends. Sign-in, password reset and
-        confirmation links are always sent. Account activity notices include
-        security notices, such as failed two-factor attempts and a new sign-in
-        method; if you switch them off, classbeat will not warn you about those
-        by email.
-      </p>
+      <p className="m-0 text-muted">{t("mailprefs.intro")}</p>
       {action.error ? <Notice kind="error">{action.error}</Notice> : null}
       <div className="flex items-center gap-3">
         <Switch
@@ -73,7 +70,7 @@ export function EmailPreferences() {
           }}
         />
         <label htmlFor={`${baseId}-all`} className="font-medium">
-          Optional email
+          {t("mailprefs.all")}
         </label>
       </div>
       {KINDS.map((kind) => (
@@ -88,7 +85,7 @@ export function EmailPreferences() {
               toggle(kind.id, on);
             }}
           />
-          <label htmlFor={`${baseId}-${kind.id}`}>{kind.label}</label>
+          <label htmlFor={`${baseId}-${kind.id}`}>{t(kind.label)}</label>
         </div>
       ))}
     </div>

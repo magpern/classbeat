@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { exportMyData } from '../../api/auth'
 import { useGuard } from '../../auth/prompts'
+import { useT } from '../../i18n/I18n'
 import { Notice, useAction } from '../forms'
 import { Button } from '../ui/button'
 
@@ -22,6 +23,7 @@ function saveAsFile(name: string, data: unknown): void {
  * authentication, and a step-up with two-factor on), saved as `classbeat-export-<date>.json`.
  */
 export function ExportData() {
+  const t = useT()
   const guard = useGuard()
   const action = useAction()
   const [done, setDone] = useState(false)
@@ -41,15 +43,12 @@ export function ExportData() {
 
   return (
     <div className="flex flex-col gap-2">
-      <p className="text-muted">
-        One file with your account, classes and revisions, song lists, jobs, usage and sign-in
-        history. Your connections show only their status: never a token, password or key.
-      </p>
+      <p className="text-muted">{t('export.text')}</p>
       {action.error ? <Notice kind="error">{action.error}</Notice> : null}
-      {done ? <Notice kind="success">Your data was saved to a file.</Notice> : null}
+      {done ? <Notice kind="success">{t('export.done')}</Notice> : null}
       <div>
         <Button variant="secondary" disabled={action.busy} onClick={download}>
-          Download my data
+          {t('export.button')}
         </Button>
       </div>
     </div>

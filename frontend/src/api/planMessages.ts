@@ -1,25 +1,17 @@
 import { ApiError } from './client'
 import { isObject, type JsonObject } from './decode'
+import type { CatalogueKey } from '../i18n/en'
+import { t } from '../i18n/t'
 import { errorMessage } from './messages'
 
 // Plain sentences for the plan refusals (ADR 0011 section 9): 409 `quota` with its kind, limit,
 // used count, period end and plan; 429 `busy` with the plan's limit; and the redeem and trial
 // refusals. Numbers come from the server's body and are checked; nothing from it is markup.
 
-const MONTHS = [
-  'January',
-  'February',
-  'March',
-  'April',
-  'May',
-  'June',
-  'July',
-  'August',
-  'September',
-  'October',
-  'November',
-  'December',
-]
+/** The catalogue's name of a month (0 is January). */
+function monthName(index: number): string {
+  return t(`month.long.${String(index + 1)}` as CatalogueKey)
+}
 
 function parse(iso: unknown): Date | null {
   if (typeof iso !== 'string') return null
@@ -30,13 +22,15 @@ function parse(iso: unknown): Date | null {
 /** "1 November": the day a period ends (the start of the next UTC month). */
 export function dayText(iso: unknown): string | null {
   const date = parse(iso)
-  return date === null ? null : `${String(date.getUTCDate())} ${MONTHS[date.getUTCMonth()]!}`
+  return date === null
+    ? null
+    : t('plan.dayMonth', { day: date.getUTCDate(), month: monthName(date.getUTCMonth()) })
 }
 
 /** "October": the UTC month of a period that ends at `periodEnd`. */
 export function periodMonth(periodEnd: unknown): string | null {
   const date = parse(periodEnd)
-  return date === null ? null : MONTHS[new Date(date.getTime() - 1).getUTCMonth()]!
+  return date === null ? null : monthName(new Date(date.getTime() - 1).getUTCMonth())
 }
 
 function detailOf(error: ApiError): JsonObject {
@@ -49,18 +43,11 @@ function whole(value: unknown): number | null {
   return typeof value === 'number' && Number.isInteger(value) && value >= 0 ? value : null
 }
 
-function classes(n: number): string {
-  return `${String(n)} ${n === 1 ? 'class' : 'classes'}`
+const FEATURES: Record<string, CatalogueKey> = {
+  games: 'plan.feature.games',
+  races: 'plan.feature.races',
+  ftp_tests: 'plan.feature.ftp_tests',
 }
-
-const FEATURES: Record<string, string> = {
-  games: 'games',
-  races: 'races',
-  ftp_tests: 'FTP tests',
-}
-
-/** What to do about a plan refusal of Save or Update: the version itself has to change. */
-const SAVE_WAYS = 'Change it to fit, or make an earlier version current, then save again.'
 
 /**
  * The sentence for a 409 `quota`. The kind is the body's `quota` field, defaulting to `classes`;
@@ -72,79 +59,65 @@ const SAVE_WAYS = 'Change it to fit, or make an earlier version current, then sa
  */
 export function quotaText(error: ApiError, target: 'new' | 'version' | 'save' = 'new'): string {
   const detail = detailOf(error)
-  const forVersion = target === 'version'
+  // What to do about a plan refusal of Save or Update: the version itself has to change.
+  const ways = t('plan.saveWays')
   if (detail.quota === 'length') {
     const limit = whole(detail.limit)
-    if (target === 'save') {
-      return limit === null
-        ? `Your plan does not allow a class this long, so this version cannot be saved. ${SAVE_WAYS}`
-        : `Your plan allows classes of up to ${String(limit)} minutes, and this version is longer, so it cannot be saved. ${SAVE_WAYS}`
+    const params = { limit: limit ?? 0, ways }
+    if (target === 'save') return t(limit === null ? 'plan.quota.length.save' : 'plan.quota.length.saveLimit', params)
+    if (target === 'version') {
+      return t(limit === null ? 'plan.quota.length.version' : 'plan.quota.length.versionLimit', params)
     }
-    if (forVersion) {
-      return limit === null
-        ? 'That version is longer than your plan allows. Choose another version.'
-        : `Your plan allows classes of up to ${String(limit)} minutes, and that version is longer. Choose another version.`
-    }
-    return limit === null
-      ? 'Your plan does not allow a class this long. Choose a shorter length.'
-      : `Your plan allows classes of up to ${String(limit)} minutes. Choose a shorter length.`
+    return t(limit === null ? 'plan.quota.length.new' : 'plan.quota.length.newLimit', params)
   }
   if (detail.quota === 'feature') {
-    const name =
+    const key =
       typeof detail.feature === 'string' && Object.hasOwn(FEATURES, detail.feature)
         ? FEATURES[detail.feature]
         : undefined
-    if (target === 'save') {
-      return name === undefined
-        ? `This version uses something your plan does not include, so it cannot be saved. ${SAVE_WAYS}`
-        : `This version uses ${name}, which your plan does not include, so it cannot be saved. ${SAVE_WAYS}`
+    const params = { name: key === undefined ? '' : t(key), ways }
+    const named = key !== undefined
+    if (target === 'save') return t(named ? 'plan.quota.feature.saveNamed' : 'plan.quota.feature.save', params)
+    if (target === 'version') {
+      return t(named ? 'plan.quota.feature.versionNamed' : 'plan.quota.feature.version', params)
     }
-    if (forVersion) {
-      return name === undefined
-        ? 'That version uses something your plan does not include. Choose another version.'
-        : `That version uses ${name}, which your plan does not include. Choose another version.`
-    }
-    return name === undefined
-      ? 'Your plan does not include part of this class. Take it out and try again.'
-      : `Your plan does not include ${name}. Take them out and try again.`
+    return t(named ? 'plan.quota.feature.newNamed' : 'plan.quota.feature.new', params)
   }
   if (detail.quota === 'saves') {
     // #577: Save and Update to MOWL together, per hour and per 24 hours (rolling).
     const limit = whole(detail.limit)
-    const window = detail.window === 'day' ? 'the last 24 hours' : 'the last hour'
-    const later = detail.window === 'day' ? 'Try again tomorrow.' : 'Try again in an hour.'
+    const when = detail.window === 'day' ? 'day' : 'hour'
+    const window = t(`plan.quota.saves.window.${when}`)
+    const later = t(`plan.quota.saves.later.${when}`)
     return limit === null
-      ? `You have saved to MOWL as many times as classbeat allows in ${window}. ${later}`
-      : `You have saved or updated ${String(limit)} ${limit === 1 ? 'class' : 'classes'} in MOWL in ${window}, which is as many as classbeat allows. ${later}`
+      ? t('plan.quota.saves', { window, later })
+      : t('plan.quota.savesLimit', { classes: t('plan.classes', { count: limit }), window, later })
   }
-  const month = periodMonth(detail.period_end) ?? 'this month'
+  const month = periodMonth(detail.period_end) ?? t('plan.thisMonth')
   const day = dayText(detail.period_end)
-  const more = day === null ? 'More at the start of next month.' : `More from ${day}.`
-  if (detail.quota === 'cost') {
-    return `You have used what your plan allows for ${month}, so no more classes can be designed for now. ${more}`
-  }
+  const more = day === null ? t('plan.quota.moreNextMonth') : t('plan.quota.moreFrom', { day })
+  if (detail.quota === 'cost') return t('plan.quota.cost', { month, more })
   const limit = whole(detail.limit)
-  if (limit === null) return `You have used your classes for ${month}. ${more}`
+  if (limit === null) return t('plan.quota.classesNoLimit', { month, more })
   const used = whole(detail.used)
+  const classes = t('plan.classes', { count: limit })
   return used !== null && used !== limit
-    ? `You have used ${String(used)} of your ${classes(limit)} for ${month}. ${more}`
-    : `You have used your ${classes(limit)} for ${month}. ${more}`
+    ? t('plan.quota.classesUsed', { used, classes, month, more })
+    : t('plan.quota.classesAll', { classes, month, more })
 }
 
 /** The sentence for a 429 `busy`, with the plan's limit when the server sent it. */
 export function busyText(error: ApiError): string {
   const limit = whole(detailOf(error).limit)
-  if (limit === null || limit < 1) {
-    return 'You already have designs running. Wait for one to finish, then try again.'
-  }
-  return `Your plan allows ${String(limit)} ${limit === 1 ? 'design' : 'designs'} at a time, and that many are running. Wait for one to finish, then try again.`
+  if (limit === null || limit < 1) return t('plan.busy.generic')
+  return t('plan.busy.limit', { designs: t('plan.designs', { count: limit }) })
 }
 
-const ACCOUNT_REASONS: Record<string, string> = {
-  code_invalid: 'That code is not valid. Check it and try again. It may have expired or been used up.',
-  already_redeemed: 'You have already used that code.',
-  trial_used: 'You have already had your trial.',
-  trial_off: 'Trials are not available right now.',
+const ACCOUNT_REASONS: Record<string, CatalogueKey> = {
+  code_invalid: 'plan.reason.code_invalid',
+  already_redeemed: 'plan.reason.already_redeemed',
+  trial_used: 'plan.reason.trial_used',
+  trial_off: 'plan.reason.trial_off',
 }
 
 /** The sentence for a plan refusal, or null when the error is not one of them. */
@@ -153,7 +126,7 @@ export function planRefusalText(error: unknown): string | null {
   if (error.reason === 'quota') return quotaText(error)
   if (error.reason === 'busy') return busyText(error)
   if (error.reason !== null && Object.hasOwn(ACCOUNT_REASONS, error.reason)) {
-    return ACCOUNT_REASONS[error.reason]!
+    return t(ACCOUNT_REASONS[error.reason]!)
   }
   return null
 }
@@ -163,13 +136,13 @@ export function accountPlanError(error: unknown): string {
   return planRefusalText(error) ?? errorMessage(error)
 }
 
-const SOURCES: Record<string, string> = {
-  grant: 'granted to you',
-  code: 'from a code',
-  trial: 'your trial',
-  subscription: 'a subscription',
+const SOURCES: Record<string, CatalogueKey> = {
+  grant: 'plan.source.grant',
+  code: 'plan.source.code',
+  trial: 'plan.source.trial',
+  subscription: 'plan.source.subscription',
 }
 
 export function sourceText(source: string | null): string | null {
-  return source !== null && Object.hasOwn(SOURCES, source) ? SOURCES[source]! : null
+  return source !== null && Object.hasOwn(SOURCES, source) ? t(SOURCES[source]!) : null
 }

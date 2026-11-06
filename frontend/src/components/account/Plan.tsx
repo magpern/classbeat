@@ -1,14 +1,22 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react'
 import { getPlan, redeemCode, startTrial, type Plan as PlanData } from '../../api/plan'
 import { accountPlanError, dayText, periodMonth, sourceText } from '../../api/planMessages'
+import type { CatalogueKey } from '../../i18n/en'
+import { Trans, useT } from '../../i18n/I18n'
+import { t as translate } from '../../i18n/t'
 import { Field, Notice, Section, useAction } from '../forms'
 import { Progress } from '../ui/progress'
 
 /** "3 of 30 classes in October": the figure the account page shows. */
 export function classesLine(plan: PlanData): string {
-  const month = periodMonth(plan.periodEnd) ?? 'this month'
+  const month = periodMonth(plan.periodEnd) ?? translate('plan.thisMonth')
   const limit = plan.limits.classesPerMonth
-  return `${String(plan.classesHeld)} of ${String(limit)} ${limit === 1 ? 'class' : 'classes'} in ${month}`
+  return translate('plan.classesLine', { count: limit, held: plan.classesHeld, month })
+}
+
+function planLineKey(source: string | null, end: string | null): CatalogueKey {
+  if (source !== null) return end !== null ? 'plan.lineSourceEnd' : 'plan.lineSource'
+  return end !== null ? 'plan.lineEnd' : 'plan.line'
 }
 
 /**
@@ -16,6 +24,7 @@ export function classesLine(plan: PlanData): string {
  * the cost share as a bar (never a dollar figure), a redeem form and, when offered, a trial.
  */
 export function Plan() {
+  const t = useT()
   const [plan, setPlan] = useState<PlanData | null>(null)
   const [failed, setFailed] = useState(false)
   const [round, setRound] = useState(0)
@@ -56,7 +65,7 @@ export function Plan() {
       .then((ok) => {
         if (ok === true) {
           setCode('')
-          setDone('The code is redeemed.')
+          setDone(t('plan.redeemed'))
           refresh()
         }
       })
@@ -71,7 +80,7 @@ export function Plan() {
       }, accountPlanError)
       .then((ok) => {
         if (ok === true) {
-          setDone('Your trial has started.')
+          setDone(t('plan.trialStarted'))
           refresh()
         }
       })
@@ -79,16 +88,16 @@ export function Plan() {
 
   if (plan === null) {
     return (
-      <Section title="Plan and usage">
+      <Section title={t('plan.title')}>
         {failed ? (
           <>
-            <Notice kind="error">Your plan could not be loaded.</Notice>
+            <Notice kind="error">{t('plan.loadFailed')}</Notice>
             <button type="button" className="button" onClick={refresh}>
-              Try again
+              {t('common.tryAgain')}
             </button>
           </>
         ) : (
-          <p>Loading</p>
+          <p>{t('common.loading')}</p>
         )}
       </Section>
     )
@@ -97,24 +106,26 @@ export function Plan() {
   const end = dayText(plan.endsAt)
   const percent = Math.round(plan.costShare * 100)
   return (
-    <Section title="Plan and usage">
+    <Section title={t('plan.title')}>
       <p data-testid="plan-name">
-        Your plan: <strong>{plan.name}</strong>
-        {source !== null ? ` (${source})` : ''}
-        {end !== null ? `, until ${end}` : ''}
+        <Trans
+          id={planLineKey(source, end)}
+          params={{ source: source ?? '', end: end ?? '' }}
+          slots={{ name: <strong>{plan.name}</strong> }}
+        />
       </p>
       <p data-testid="plan-classes">{classesLine(plan)}</p>
       <div>
-        <Progress value={percent} aria-label="Share of this month's budget used" data-testid="plan-cost-bar" />
+        <Progress value={percent} aria-label={t('plan.budgetLabel')} data-testid="plan-cost-bar" />
         <p className="muted">
-          {percent}% of this month&rsquo;s budget used. It starts over on {dayText(plan.periodEnd) ?? 'the 1st'}.
+          {t('plan.budgetText', { percent, day: dayText(plan.periodEnd) ?? t('plan.firstFallback') })}
         </p>
       </div>
       {done !== null ? <Notice kind="success">{done}</Notice> : null}
       {action.error ? <Notice kind="error">{action.error}</Notice> : null}
       <form onSubmit={redeem}>
         <Field
-          label="Redeem a code"
+          label={t('plan.redeemLabel')}
           value={code}
           maxLength={64}
           autoComplete="off"
@@ -124,13 +135,13 @@ export function Plan() {
           }}
         />
         <button className="button" type="submit" disabled={action.busy || code.trim() === ''}>
-          Redeem
+          {t('plan.redeem')}
         </button>
       </form>
       {plan.trial !== null ? (
         <p>
           <button type="button" className="button button--secondary" disabled={action.busy} onClick={trial}>
-            Start your {String(plan.trial.days)}-day trial
+            {t('plan.trial', { days: plan.trial.days })}
           </button>
         </p>
       ) : null}
