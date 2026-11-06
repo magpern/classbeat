@@ -359,13 +359,15 @@ describe('account page', () => {
     })
   })
 
-  it('the re-authentication prompt says Google confirms only a sign-in of the last 5 minutes', async () => {
+  const GOOGLE_AND_MICROSOFT = [
+    { id: 'i2', provider: 'google', email_at_link: null, created_at: '2026-01-01T00:00:00Z' },
+    { id: 'i3', provider: 'microsoft', email_at_link: null, created_at: '2026-01-01T00:00:00Z' },
+  ]
+
+  const openReauthPrompt = async (hasPassword: boolean) => {
     fakeApi({
       ...base,
-      'GET /api/auth/identities': {
-        ...IDENTITIES,
-        identities: [{ id: 'i2', provider: 'google', email_at_link: null, created_at: '2026-01-01T00:00:00Z' }],
-      },
+      'GET /api/auth/identities': { ...IDENTITIES, has_password: hasPassword, identities: GOOGLE_AND_MICROSOFT },
       'POST /api/auth/password/change': reason(403, 'reauth_required'),
     })
     renderAt('/account#security')
@@ -374,10 +376,38 @@ describe('account page', () => {
     type('Repeat the new password', 'a brand new passphrase')
     fireEvent.click(screen.getByRole('button', { name: 'Save password' }))
     const dialog = await screen.findByRole('dialog')
-    await within(dialog).findByRole('button', { name: 'Confirm with Google' })
+    await within(dialog).findByRole('button', { name: 'Confirm with Microsoft' })
+    return dialog
+  }
+
+  it('with a password, the re-authentication prompt offers no Google (#687)', async () => {
+    const dialog = await openReauthPrompt(true)
+    expect(within(dialog).getByRole('button', { name: 'Confirm with password' })).toBeInTheDocument()
+    expect(within(dialog).queryByRole('button', { name: 'Confirm with Google' })).toBeNull()
     expect(dialog).toHaveTextContent(
-      'Google can confirm it only if you signed in there in the last 5 minutes. Your password always works.',
+      'Microsoft can confirm it only if you signed in there in the last 5 minutes. Your password always works.',
     )
+    expect(dialog).not.toHaveTextContent(/Google/)
+  })
+
+  it('without a password, the prompt offers Google with no 5-minute caveat (#687)', async () => {
+    const dialog = await openReauthPrompt(false)
+    expect(within(dialog).getByRole('button', { name: 'Confirm with Google' })).toBeInTheDocument()
+    expect(within(dialog).queryByRole('button', { name: 'Confirm with password' })).toBeNull()
+    expect(dialog).toHaveTextContent('Microsoft can confirm it only if you signed in there in the last 5 minutes.')
+    expect(dialog).not.toHaveTextContent(/Google can confirm/)
+  })
+
+  it('says to use the password when Google was refused for an account with one (#687)', async () => {
+    fakeApi({
+      'GET /api/auth/session': SIGNED_IN,
+      'GET /api/auth/identities': IDENTITIES,
+      'GET /api/auth/mfa': MFA_OFF,
+    })
+    renderAt('/account?oauth=reauth_use_password')
+    const alert = await screen.findByRole('alert')
+    expect(alert).toHaveTextContent(/Google cannot confirm it is you\. Confirm with your password\./)
+    expect(alert).toHaveTextContent(/Nothing was changed/)
   })
 
   it('does not treat inherited object keys as outcome codes', async () => {

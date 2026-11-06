@@ -75,6 +75,19 @@ async def sign_up_with(
     return await sign_in_with(browser, fake, provider, purpose="sign_up", **kwargs)
 
 
+async def drop_password(env: Env, email: str = "me@example.com") -> None:
+    """Make the account a provider-only one (no password), as a Google sign-up leaves it."""
+    await env.run("UPDATE users SET password_hash = NULL WHERE email = :email", email=email)
+
+
+async def add_password(env: Env, email: str = "me@example.com") -> None:
+    """Give the account a password (its value is never used here)."""
+    hashed = await env.app.state.password_hasher.hash("another long passphrase")
+    await env.run(
+        "UPDATE users SET password_hash = :hash WHERE email = :email", hash=hashed, email=email
+    )
+
+
 def location(response: httpx.Response) -> str:
     assert response.status_code == 303, response.text
     return response.headers["location"]

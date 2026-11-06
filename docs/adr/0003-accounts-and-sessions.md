@@ -335,7 +335,9 @@ is no Starlette session middleware.
     requires `auth_time` within the last 5 minutes. A missing or older `auth_time` fails
     closed. Google omits `auth_time` unless asked, so it also gets `claims={"id_token":{"auth_time":
     {"essential":true}}}`; Microsoft's app registration adds it as an optional claim.
-  - **Amendment (2026-11-03, #522): Google re-authentication without `auth_time`.** On the
+  - **Amendment (2026-11-03, #522): Google re-authentication without `auth_time`.** (For
+    Google, the rule and the consequence below are replaced by the 2026-11-06 amendment, #687,
+    after the owner's live check; they still hold for Microsoft.) On the
     owner's dev stack every Google re-authentication failed with `reauth_failed` `{"why":
     "auth_time"}`: Google answered the `max_age=0` and `claims` request with an ID token whose
     `auth_time` was missing or older than 5 minutes, so it did not make the user sign in again.
@@ -397,10 +399,67 @@ is no Starlette session middleware.
     if it still fails with `auth_time_missing`, Google re-authentication cannot work for us and
     the Architect decides whether to hide the Google button in the prompt or build option (c).
     Report only the `why` words, never a token or claim value.
+  - **Amendment (2026-11-06, #687, owner decision): Google re-authentication by account kind.**
+    The owner's live check above ended as predicted: activating TOTP on a Google-linked account,
+    "Confirm with Google" always ended `reauth_stale` (Google ignores `max_age=0` and the
+    `claims` request, and returns an ID token without a fresh `auth_time` from a live Google
+    session). The owner chose between hiding Google, building an email code (option (c) of #522)
+    and keeping the dead end, and decided ("not Fort Knox", the owner's words) on a split by
+    account kind:
+    - **An account with a password** never re-authenticates through Google. The prompt does not
+      offer it; `POST /api/auth/oauth/google/start` with `purpose=reauth` answers 403
+      `reauth_use_password` and creates no flow; and the callback refuses it again under the user
+      lock (`reauth_use_password`, `why` `has_password`, a `reauth_failed` event), whatever
+      `auth_time` Google sends, so a password set between the start and the callback, or a start
+      that slipped past the first check, gains nothing. Such an account confirms with its password
+      (or Microsoft or GitHub as before).
+    - **An account without a password** (signed up with Google, or had its password removed by a
+      reset) is re-authenticated by Google's answer **without a fresh `auth_time`**, limited to
+      Google and to this proof of the same account: the flow is a `reauth` flow of this session's
+      user, single use (taken before the code exchange), with `state`, PKCE and the nonce
+      verified, the ID token checked as for any sign-in (`iss`, `aud`, `exp`, `iat`), its `sub`
+      the Google identity linked to this user, `email_verified` true (else `invalid`, `why`
+      `email_unverified`), and the callback no more than **5 minutes** after the start by the
+      database clock (else `reauth_expired`, `why` `flow_old`; the flow itself lives 10 minutes).
+      An `auth_time` that is present must not lie more than 60 s in the future (`reauth_stale`,
+      `auth_time_future`). A present but old `auth_time` is accepted.
+    - **Unchanged:** Microsoft keeps the `auth_time` rule of the #522 amendment (present, at most
+      5 minutes old, fail closed) for every account, with or without a password and with or
+      without Google linked; GitHub stays an accepted live-session proof; `REAUTH_STALE` keeps its
+      path and texts for Microsoft. Google's authorization request keeps `max_age=0` and the
+      `claims` request (harmless, and a fresh `auth_time` would still be accepted). The numbers
+      (300 s, 60 s skew) are not widened anywhere.
+
+    **Rationale.** Google cannot prove a fresh sign-in to us, so the choice was between Google
+    re-authentication that works on Google's terms and none at all. For an account with a
+    password nothing is lost: the password is a stronger proof and is always offered. For a
+    Google-only account the alternative was the reset detour of the #522 consequence (sign out
+    everywhere, set a password), which the owner judged too heavy for the beta. The checks that
+    remain bind Google's answer to this browser, this session and this account; what they cannot
+    show is that a person typed a Google password just now.
+
+    **Residual risk (accepted by the owner).** Someone holding a Google-only user's classbeat
+    session **in a browser that also has the user's live Google session** (the walk-up case: an
+    unlocked device) can pass recent authentication through Google without any credential, and so
+    activate TOTP, and with it do every action of §6 that recent authentication guards for an
+    account without confirmed TOTP: link or unlink an identity, set a password, change the email,
+    connect or disconnect MOWL, Spotify or Swedebeat, delete the account. A stolen classbeat cookie
+    used in another browser does not get there: the attacker would need the victim's Google
+    session too. Once TOTP is confirmed, every one of those actions also needs a TOTP step-up, which
+    Google never gives; but while TOTP is unconfirmed the walk-up attacker could enrol **their
+    own** TOTP and then hold the step-up themselves (and possibly lock the owner out), so that
+    step-up protects only a TOTP the owner set up. Accounts with a password are not exposed to
+    this: Google never counts for them.
+
+    **Messages.** The prompt offers "Confirm with Google" only to an account without a password,
+    with no 5-minute sentence for Google (Microsoft keeps its sentence). `reauth_use_password`
+    says the account has a password and to confirm with it; `reauth_expired` says the
+    confirmation took longer than 5 minutes and nothing was changed.
   - **GitHub:** it can't force a re-login, so a GitHub re-authentication only proves a live
     GitHub session (an accepted risk).
-  - **Order and fallback:** users with a password are offered it first. A user whose provider
-    re-authentication keeps failing can set a password through a reset and re-authenticate with it.
+  - **Order and fallback:** users with a password are offered it first (and, since #687, never
+    Google). A user whose provider re-authentication keeps failing can set a password through a
+    reset and re-authenticate with it.
 - **Enabling a provider:** a provider is on only when both its client id setting and its
   `oauth_<provider>_client_secret` secret file exist. Client secrets are never logged.
 - **Which enabled providers the screens offer:** `CLASSBEAT_OAUTH_VISIBLE_PROVIDERS` (default
@@ -457,7 +516,7 @@ client can't submit someone else's `subject`.
 
 Re-authentication is one of the following, and each rotates the session:
 - the password (`POST /api/auth/reauth`);
-- an OAuth `reauth` flow (§5);
+- an OAuth `reauth` flow (§5; Google only for an account without a password, #687);
 - for admins, a TOTP code (which also sets `stepup_at`, so one code serves both).
 
 **Step-up** means a TOTP or recovery code within 5 minutes (`stepup_at`). For a user whose

@@ -194,6 +194,8 @@ export const en = {
   "error.reason.no_pending_signup":
     "No sign-in is waiting for an address. Start the provider sign-in again.",
   "error.reason.provider_disabled": "That sign-in method is not available.",
+  "error.reason.reauth_use_password":
+    "Your account has a password, so confirm with your password.",
   "error.reason.forbidden": "Your account is not allowed to do that.",
   "error.reason.busy": "The server is busy. Try again in a few seconds.",
   "error.tooMany": "Too many attempts. Wait a little and try again.",
@@ -220,6 +222,10 @@ export const en = {
     "That provider account is already linked to a different classbeat account.",
   "oauth.identity_mismatch":
     "That is not the provider account linked to your classbeat account.",
+  "oauth.reauth_use_password":
+    "Your account has a password, so Google cannot confirm it is you. Confirm with your password. Nothing was changed.",
+  "oauth.reauth_expired":
+    "The confirmation took longer than 5 minutes, so nothing was changed. Try again.",
   "oauth.reauth_stale":
     "The provider did not confirm that you signed in again in the last 5 minutes, so nothing was changed.",
   "oauth.reauth_stale_password":
