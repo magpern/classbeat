@@ -1,5 +1,33 @@
 # classbeat roadmap: a class designer for Intelligent Cycling (MOWL) as a web app
 
+## Amendment 16 (2026-11-06, owner decisions: multilingual support; ADR 0023)
+
+The owner answered the questions of [docs/plans/multilingual.md](plans/multilingual.md) on 2026-11-06;
+the plan is at revision 2. [ADR 0023](adr/0023-multilingual.md) records the design and is Accepted when
+its PR (issue #662) merges. The ML row of Amendment 15 is replaced by:
+
+| # | Milestone | Done when |
+|---|---|---|
+| ML | Multilingual support (ADR 0023, #657): ML0 plan and ADR (#662), ML1 translation runtime and locale formatting (#663), ML2 language preference (#664), ML3 hard-coded string guard and catalogue checks (#665), ML4 job and Spotify sentences as codes (#666), ML5a to ML5d string extraction (#667 to #670), ML6 Swedish and Danish mail (#671, needs ME1 to ME4), ML7 Swedish and Danish app catalogues (#672), ML8 done-when suite (#673) | English, Swedish or Danish can be chosen logged out and on the account and follows the account to a new browser; every instructor-facing screen and every mail kind is served from the catalogues in all three languages; dates, numbers and money follow the language; CI fails on a missing key, a broken placeholder or a new hard-coded string; generated classes are unchanged (English) |
+
+- **Languages:** English (source and fallback), Swedish and Danish, all in ML. `CLASSBEAT_LOCALES`
+  (default all three) is an operator switch, not a review gate.
+- **Translation without human review** (owner): translations, legal and consent sentences included,
+  are drafted by an Opus 5.5 translator (the PR's Developer) and checked by an independent Opus 5.5
+  Reviewer under the normal review gate. No human proofreads and the owner does not sign off. This
+  widens §"Roles" for translation PRs only: their Developer is Opus 5.5 although they are not
+  security-critical. A Sonnet PR that adds Swedish and Danish strings for its own English change gets
+  an Opus 5.5 review of those strings.
+- **Generated classes stay English**: brief, prompts, model routes and eval suites are unchanged; a
+  class language is a possible later milestone (ADR 0023 §7).
+- **Admin area English only.**
+- **Order against the planned UI redesign:** ML0 to ML4 and ML6 before it (the redesign then writes
+  against the catalogue); ML5b to ML5d, ML7 and ML8 after it.
+- Review classes: ML0 docs with an Opus Reviewer (first review of a new design); ML2 Sonnet Developer,
+  Opus Reviewer; ML6 and ML7 Opus 5.5 Developer and Reviewer; the rest Sonnet and Sonnet. Amendments
+  13 and 14 apply otherwise.
+- No live access is needed or authorized.
+
 ## Amendment 15 (2026-11-05, owner decision: account emails; ADR 0022)
 
 The owner approved the plan [docs/plans/account-emails.md](plans/account-emails.md) (revision 3) on
