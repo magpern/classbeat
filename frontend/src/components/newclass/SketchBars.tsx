@@ -1,3 +1,4 @@
+import { useT } from '../../i18n/I18n'
 import { MAX_LEVEL } from '../../lib/sketch'
 
 /**
@@ -5,12 +6,13 @@ import { MAX_LEVEL } from '../../lib/sketch'
  * zone colour, number or name, because the sketch does not know the zones (see lib/sketch.ts).
  */
 export function SketchBars({ profile }: { profile: [number, number][] }) {
+  const t = useT()
   const total = profile.reduce((sum, [, sec]) => sum + sec, 0)
   let at = 0
   return (
     <svg
       role="img"
-      aria-label={total > 0 ? 'A rough sketch of your class' : 'No sketch yet'}
+      aria-label={total > 0 ? t('newclass.sketch') : t('newclass.sketch.none')}
       viewBox="0 0 200 56"
       preserveAspectRatio="none"
       className="block h-14 w-full rounded-md bg-stage"

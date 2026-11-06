@@ -1,3 +1,4 @@
+import { Trans, useT } from '../../i18n/I18n'
 import { Link } from '../../router/Router'
 import { ChipButton } from '../ui/chip'
 
@@ -41,13 +42,14 @@ export function MusicChoice({
   value: Music
   onChange: (music: Music) => void
 }) {
+  const t = useT()
   if (songs.kind === 'off' && swedebeat.kind === 'off' && !soundless) return null
   const ready = songs.kind === 'ready'
   const swedebeatReady = swedebeat.kind === 'ready'
   return (
     <div className="flex flex-col gap-2" role="group" aria-labelledby="music-label">
       <span id="music-label" className="text-[0.9375rem] font-medium text-text">
-        Music
+        {t('music.label')}
       </span>
       <div className="flex flex-wrap gap-2">
         <ChipButton
@@ -56,7 +58,7 @@ export function MusicChoice({
             onChange('playlist')
           }}
         >
-          Use my playlist
+          {t('music.playlist')}
         </ChipButton>
         {songs.kind !== 'off' ? (
           <ChipButton
@@ -66,7 +68,7 @@ export function MusicChoice({
               onChange('pick')
             }}
           >
-            Pick songs for me
+            {t('music.pick')}
           </ChipButton>
         ) : null}
         {swedebeat.kind !== 'off' ? (
@@ -77,7 +79,7 @@ export function MusicChoice({
               onChange('swedebeat_mix')
             }}
           >
-            Use my Swedebeat mix
+            {t('music.swedebeat')}
           </ChipButton>
         ) : null}
         {soundless ? (
@@ -87,19 +89,24 @@ export function MusicChoice({
               onChange('none')
             }}
           >
-            No music
+            {t('music.none')}
           </ChipButton>
         ) : null}
       </div>
       {songs.kind === 'needs_spotify' ? (
         <p className="m-0 text-[0.9375rem] text-muted">
-          Picking songs needs Spotify. <Link to="/account/spotify">Connect Spotify</Link> first.
+          <Trans
+            id="music.needsSpotify"
+            slots={{ link: <Link to="/account/spotify">{t('music.connectSpotify')}</Link> }}
+          />
         </p>
       ) : null}
       {songs.kind === 'needs_consent' ? (
         <p className="m-0 text-[0.9375rem] text-muted">
-          Allow the working playlist in your Spotify settings first.{' '}
-          <Link to="/account/spotify">Open the Spotify settings</Link>
+          <Trans
+            id="music.needsConsent"
+            slots={{ link: <Link to="/account/spotify">{t('music.openSettings')}</Link> }}
+          />
         </p>
       ) : null}
       {swedebeat.kind === 'failed' ? (
@@ -109,21 +116,17 @@ export function MusicChoice({
       ) : null}
       {ready && value === 'pick' ? (
         <p className="m-0 text-[0.9375rem] text-muted">
-          Claude suggests songs, checks them against MOWL’s BPM and length, and shows you the list.
-          Candidates go into a private working playlist in your Spotify; the playlist for your class
-          is created only after you approve the songs.
+          {t('music.pickHint')}
         </p>
       ) : null}
       {soundless && value === 'none' ? (
         <p className="m-0 text-[0.9375rem] text-muted">
-          classbeat designs the class without a playlist or songs: you get the intervals, efforts
-          and cues, and you play your own music. It is saved to MOWL without music.
+          {t('music.noneHint')}
         </p>
       ) : null}
       {swedebeatReady && value === 'swedebeat_mix' ? (
         <p className="m-0 text-[0.9375rem] text-muted">
-          classbeat designs the class to your mix’s songs and beats. You do not need a Swedebeat
-          sign-in in classbeat for this; MOWL lists the mixes in your Intelligent Cycling account.
+          {t('music.swedebeatHint')}
         </p>
       ) : null}
     </div>

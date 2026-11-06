@@ -16,6 +16,7 @@ import {
   type WriteOutcome,
 } from '../../api/saveMessages'
 import { createSaveJob, createUpdateJob, SAVE_KIND, UPDATE_KIND } from '../../api/saving'
+import { useT } from '../../i18n/I18n'
 import { useJobProgress } from '../../hooks/useJobProgress'
 import { contentHash } from '../../lib/canonical'
 import { newIdempotencyKey } from '../../lib/submittedInput'
@@ -51,6 +52,7 @@ function WriteRun({
   /** The task cannot be read any more (404): the page drops it and reads the class again. */
   onLost: () => void
 }) {
+  useT() // re-render on a locale change: the stage labels use the global t
   const { job, progress, problem, setJob } = useJobProgress(jobId)
   const action = useAction()
   const over = job !== null && isTerminal(job.state)

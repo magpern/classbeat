@@ -1,13 +1,15 @@
 import { useId } from 'react'
+import { useT } from '../../i18n/I18n'
 import { EFFORTS, type Effort } from '../../lib/sketch'
 
 /** Easy, Moderate and Hard as three cards, by their words only (no zone numbers: the backend defines none). */
 export function EffortCards({ value, onChange }: { value: Effort; onChange: (effort: Effort) => void }) {
+  const t = useT()
   const group = useId()
   return (
     <div className="flex flex-col gap-2">
       <span id={`${group}-label`} className="text-[0.9375rem] font-medium text-text">
-        Effort
+        {t('newclass.effort')}
       </span>
       <div role="radiogroup" aria-labelledby={`${group}-label`} className="grid grid-cols-1 gap-3 sm:grid-cols-3">
         {EFFORTS.map((e) => (
@@ -27,7 +29,7 @@ export function EffortCards({ value, onChange }: { value: Effort; onChange: (eff
               className="sr-only"
             />
             <span id={`${group}-${e.value}`} className="font-display text-lg font-bold text-text">
-              {e.label}
+              {t(e.labelKey)}
             </span>
           </label>
         ))}
