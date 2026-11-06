@@ -9,8 +9,8 @@ own go-ahead.
 ## What lives where
 
 - In the repository: `profiles/schema.json`, `profiles/index.json`, one file per profile
-  (`profiles/<sport>/<class_type>_<label>.json`; today six under `cycling/`, plain and interval at 30,
-  45 and 60 minutes, and two under `running/`, interval at 30 and 45 minutes), the closed enums (`design/rules/enums.py`), the sentences (`RATIONALES` in
+  (`profiles/<sport>/<class_type>_<label>.json`; today eight under `cycling/`, plain and interval at 30,
+  45, 55 and 60 minutes (the 55 minute pair is provisional, section 7b), and two under `running/`, interval at 30 and 45 minutes), the closed enums (`design/rules/enums.py`), the sentences (`RATIONALES` in
   `design/rules/rationales.py`) and the loader (`design/rules/profile.py`).
 - **Not** in the repository: the collection and aggregation scripts, the raw snapshot, the programs
   read and the commands used (ADR 0017 section 6.3). They stay in the owner's private notes. The
@@ -29,6 +29,7 @@ Per profile: `n` (classes in the cell), `evidence` (`strong`, `moderate` or `wea
 | `low` set, `high` null | 5th percentile | `p5` | `n >= 25` (`MIN_N_PERCENTILE`) |
 | `high` set, `low` null | 95th percentile | `p95` | `n >= 25` |
 | either | observed range widened 10 % | `range_10` | `n < 25`; forces `severity: info` |
+| either | Tukey fences of a reported p25 to p75 | `tukey_iqr` | provisional (ADR 0017 section 7b); forces `severity: info` and `evidence: moderate` |
 
 Metrics are the `Metric` catalogue in `enums.py`, measured on a timeline the way
 `design/rules/engine.py` measures a draft. A cell is classified by its structure and timeline length,
@@ -47,14 +48,18 @@ drawn from at least 5 independent sets of classes (the cycling HIIT precedent of
 `weak` for everything else. Classes whose timelines are identical count once.
 
 The interval, sprint, climb, work/rest and intensity-factor metrics (ADR 0017 section 7a) exist
-in code but no profile has a bound for them yet; the next cycling refresh adds them.
+in code but no profile has a bound for them yet; the next cycling refresh adds them. The only
+bounds not from p5/p95/range are the provisional `tss_rate_*` pair of the 55 minute cycling
+profiles (`tukey_iqr`, ADR 0017 section 7b); replace them with `p5`/`p95` and a version bump when
+corpus data supplies them. The `tukey_iqr` numbers are derived from the report by hand, not by
+the generator, and a provisional profile never wins selection over a strong one in the window.
 `work_rest_ratio` is undefined for a draft with no rest, so a rule on it never fires there.
 
 Never ship `sprints_few` or `sprints_many`: `sprint_count` counts intervals carrying `acc`, which
 a designed draft never has, so it is always 0 and meaningful only for a workout read back from
 MOWL. A guard test fails if a profile has one; lift it only when drafts can carry sprints.
 
-Medians and quartiles are never bounds (the `median_interval_s` metric is a draft's own median
+Medians and quartiles are never bounds (except as the provisional fences of section 7b; the `median_interval_s` metric is a draft's own median
 interval length, not the median of a cell), and length (`total_minutes`) is never a rule. Numbers come
 from the generator, never typed by hand; a bound that fires on most good drafts is fixed by a new
 version, not tuned silently. `brief_overrides` come from `BriefOverride` and `rationale_id` must

@@ -1,0 +1,18 @@
+{
+ "name": "cp_easy_spin_55",
+ "about": "An easy 55 minute class asked: the brief wins over the provisional low load note.",
+ "brief": {
+  "length_min": 55,
+  "intensity": "easy",
+  "class_type": "plain"
+ },
+ "music": {
+  "tracks": 17
+ },
+ "expect": {
+  "patterns": {
+   "mode": "deviates",
+   "max_zone": 3
+  }
+ }
+}

@@ -13,7 +13,7 @@ SOURCE: Final = "professional studio library"
 Sport = Literal["cycling", "running"]
 ClassType = Literal["plain", "interval", "hiit", "journey", "ftp_test"]
 Evidence = Literal["strong", "moderate", "weak"]
-Basis = Literal["p5", "p95", "range_10"]
+Basis = Literal["p5", "p95", "range_10", "tukey_iqr"]
 Severity = Literal["info", "warn"]
 Metric = Literal[
     "warmup_s_before_first_zone3",

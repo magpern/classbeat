@@ -61,19 +61,25 @@ def fitted(case: Case, draft: dict[str, Any]) -> dict[str, Any]:
 def test_the_category_is_in_the_manifest_for_the_design_group_only() -> None:
     assert CATEGORY_GROUPS[CATEGORY] == frozenset({"design"})
     assert SUITE.manifest.cases_of(CATEGORY, "songs") == []
-    assert (len(CASES), len(CYCLING), len(RUNNING)) == (12, 10, 2)
+    assert (len(CASES), len(CYCLING), len(RUNNING)) == (14, 12, 2)
     assert SUITE.manifest.rules.pass_share == 0.9  # the ordinary category rule, nothing special
     assert CATEGORY not in SUITE.manifest.rules.every_run_categories
 
 
 def test_a_follows_case_for_every_shipped_profile_and_every_kind_of_ask() -> None:
     profiles = default_registry().profiles.values()
-    shipped = {p.id for p in profiles if p.sport == "cycling"}
+    shipped = {p.id for p in profiles if p.sport == "cycling" and p.evidence == "strong"}
     chosen = {p.id for c in FOLLOWING if (p := select_profile_for_brief(c.brief))}
     assert chosen == shipped
+    # The provisional 55 minute profiles are info only, so a follows case could never fail:
+    # each has a deviates case instead (as for running).
+    provisional = {p.id for p in profiles if p.evidence == "moderate" and p.sport == "cycling"}
+    assert provisional == {"cycling.plain.55", "cycling.interval.55"}
+    picked = [select_profile_for_brief(c.brief) for c in DEVIATING]
+    assert {p.id for p in picked if p is not None} >= provisional
     assert {p.sport for p in profiles} == {"cycling", "running"}
     selected = [select_profile_for(c.brief) for c in CYCLING]
-    assert {p.id for p in selected if p is not None} <= shipped
+    assert {p.id for p in selected if p is not None} <= shipped | provisional
     assert {c.name for c in FOLLOWING} == set(FOLLOWS)
     asked = {
         field
