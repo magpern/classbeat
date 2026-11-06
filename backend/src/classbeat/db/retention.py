@@ -109,6 +109,12 @@ RETENTION: Mapping[str, Retention] = MappingProxyType(
         # method, the route template and the status; no content, nothing provider-derived. Gone
         # with the account; rows older than ``CLASSBEAT_SECURITY_LOG_DAYS`` go in the hourly purge.
         "security_log": _entry("", "ip_hash method route", "account"),
+        # ADR 0022 section 4 (ME5, migration 0037): a "class ready" mail the worker hands to the
+        # web process. The class id only (``params``), no address, title or token; nothing
+        # provider-derived. Gone with its job (and so its class) and the account; taking a row
+        # deletes it, and ``mail_handoff_take`` drops rows older than a day (also with SMTP unset,
+        # the web process's hourly purge-only call).
+        "mail_handoff": _entry("", "kind params", "class", "account"),
         # ADR 0007 amendment "beat-one corrections" (#535): a song number, a whole-beat shift and
         # the song's BPM per class and music fingerprint (a hash of the user's own music); no title,
         # no id.

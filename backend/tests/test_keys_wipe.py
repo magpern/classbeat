@@ -52,6 +52,7 @@ def wipe_settings(app_database_url: str, owner_database_url: str, smtp: SmtpFake
 async def stop_app(env: Env) -> None:
     """Web and worker are stopped before a wipe: close the app role's pooled connections."""
     await env.app.state.event_hub.stop()  # web's LISTEN connection goes with it
+    await env.app.state.mail_handoff.stop()  # and the "class ready" consumer's (ME5)
     await env.app.state.engine.dispose()
 
 

@@ -27,8 +27,9 @@ kinds' ``admit`` and their run check the flag before calling it. After ``design.
    analysis in a limited child process (``mixanalysis``); the directory is removed on every way
    out. The link lives in this function's local variable only.
 4. **Storing.** One fenced transaction (the connection and the link held again) upserts the row,
-   drops what is past 30 days and all but the newest 20 of the user, and frees the job's
-   analysis slot.
+   drops what is past 30 days and all but the newest 20 of the user, frees the job's analysis
+   slot and marks the job as one that ran a fresh analysis (``jobs.fresh_analysis``, for the
+   "class ready" mail of ME5: ``classbeat.jobs.mail_handoff``).
 
 Errors are ``JobFailure`` categories: ``media_host_not_allowed`` (an empty production list ends
 every uncached mix so, with no media request), ``media_refused``, ``analysis_failed`` (undecodable
@@ -64,7 +65,7 @@ from classbeat.design.mixanalysis import (
 from classbeat.design.mixfetch import fetch_mix_audio, private_directory
 from classbeat.design.music import MixFacts, MusicStep
 from classbeat.egress import mowl_media_async_client
-from classbeat.jobs import FencedSession, JobFailure, JobRun
+from classbeat.jobs import FencedSession, JobFailure, JobRun, mail_handoff
 from classbeat.jobs.fence import CALL_LEASE_MARGIN_SECONDS
 from classbeat.operations.swedebeat import (
     SOURCE,
@@ -191,6 +192,7 @@ async def _store(
     async with fs_run.fenced() as fs:
         await _store_row(fs, fs_run, opened, analysis, connection_id, payload)
         await fs_run.release_analysis_slot(fs)  # #574: the slot is free once this commits
+        await mail_handoff.note_fresh_analysis(fs)  # ME5: the job ran a fresh analysis
     fs_run.slot_released()
 
 

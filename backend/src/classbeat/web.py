@@ -44,6 +44,7 @@ from classbeat.db import create_engine, create_session_factory, verify_database_
 from classbeat.design import configure_limits, mixadmit, music_kind, sport
 from classbeat.design.mixes import router as mixes_router
 from classbeat.design.routes import router as music_router  # registers design_draft (J3)
+from classbeat.emails.handoff import HandoffConsumer
 from classbeat.flags.routes import router as settings_router
 from classbeat.headers import SecurityHeaders, unhandled_error_handler
 from classbeat.jobs.events_routes import StreamLimiter
@@ -175,9 +176,18 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             app.state.stream_limiter = StreamLimiter()
             app.state.event_hub = EventHub(engine)
             app.state.event_hub.start()  # LISTEN job_events (ADR 0005 section 6)
+            # The worker's "class ready" hand-off (ADR 0022 section 4, ME5): LISTEN mail_handoff
+            # and a poll when SMTP is configured, else an hourly purge of rows past a day.
+            app.state.mail_handoff = HandoffConsumer(
+                engine, app.state.session_factory, app.state.mailer, settings
+            )
+            app.state.mail_handoff.start()
             yield
         finally:
             mixadmit.configure(None)
+            consumer = getattr(app.state, "mail_handoff", None)
+            if consumer is not None:
+                await consumer.stop()
             await app.state.mowl_qr.close()  # every MOWL QR wait ends with the process (ADR 0024)
             hub = getattr(app.state, "event_hub", None)
             if hub is not None:

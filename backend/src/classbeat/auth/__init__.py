@@ -52,6 +52,7 @@ if TYPE_CHECKING:
     from classbeat.auth.deps import (
         current_context,
         current_session,
+        mail_handoff_context,
         operator_contexts,
         request_device_token,
         request_ip,
@@ -84,7 +85,7 @@ if TYPE_CHECKING:
         wipe_mail,
         wipe_user,
     )
-    from classbeat.auth.owners import owner_active
+    from classbeat.auth.owners import active_email, owner_active
     from classbeat.auth.passwords import (
         PasswordHashBusy,
         PasswordHasher,
@@ -167,6 +168,7 @@ _EXPORTS: dict[str, str] = {
     "current_context": "deps",
     "current_session": "deps",
     "operator_contexts": "deps",
+    "mail_handoff_context": "deps",
     "request_device_token": "deps",
     "request_ip": "deps",
     "request_session_token": "deps",
@@ -201,6 +203,7 @@ _EXPORTS: dict[str, str] = {
     "playlist_covers_buckets": "ratelimit",
     "swedebeat_mixes_buckets": "ratelimit",
     "owner_active": "owners",
+    "active_email": "owners",
     "WipeEvent": "operator",
     "mark_wipe_mailed": "operator",
     "pending_wipe_mails": "operator",
@@ -296,6 +299,7 @@ __all__ = [
     "WipeEvent",
     "account_emails",
     "account_export",
+    "active_email",
     "admin_buckets",
     "admin_mail_test_buckets",
     "attach_state",
@@ -331,6 +335,7 @@ __all__ = [
     "issue_unsubscribe_token",
     "list_invites",
     "list_sessions",
+    "mail_handoff_context",
     "mail_prefs_for_email",
     "make_reset_link_sender",
     "mark_wipe_mailed",

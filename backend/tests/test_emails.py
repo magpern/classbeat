@@ -50,7 +50,7 @@ def parse(html: str) -> Links:
 
 
 def test_the_registry_holds_the_existing_kinds_and_the_new_notices() -> None:
-    assert len(REGISTRY) == 16
+    assert len(REGISTRY) == 17
     assert {k.id for k in KINDS if k.category is Category.WELCOME} == {"welcome"}
     assert {k.id for k in KINDS if k.category is Category.ACCOUNT_ACTIVITY} == {
         "totp_enrolled",
@@ -72,6 +72,14 @@ def test_the_registry_holds_the_existing_kinds_and_the_new_notices() -> None:
         "connections_wiped",
         "email_changed",
     }
+    # ME5 (#656): the one "class ready" kind, optional, switchable by the admin and the user.
+    [ready] = [k for k in KINDS if k.category is Category.CLASS_READY]
+    assert (ready.id, ready.essential, ready.user_can_opt_out, ready.admin_can_disable) == (
+        "class_ready",
+        False,
+        True,
+        True,
+    )
 
 
 @pytest.mark.parametrize("kind", KINDS, ids=ids)
@@ -146,6 +154,7 @@ SUBJECTS = {
     "account_deleted": "Your classbeat account was deleted",
     "identity_unlinked": "A sign-in method was removed from your classbeat account",
     "totp_removed": "Two-factor authentication was turned off on your classbeat account",
+    "class_ready": "Your classbeat class is ready",  # ME5, new
 }
 
 

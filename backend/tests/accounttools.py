@@ -88,6 +88,13 @@ class Person:
             u=u,
         )
         self.sql("INSERT INTO swedebeat_analyses (owner_id) VALUES (:u)", u=u)
+        # ME5 (#656): a "class ready" mail on its way, for one of the user's jobs.
+        self.sql(
+            "INSERT INTO mail_handoff (owner_id, kind, job_id, params) "
+            "SELECT owner_id, 'class_ready', id, jsonb_build_object('class_id', class_id::text) "
+            "FROM jobs WHERE owner_id = :u ORDER BY created_at LIMIT 1",
+            u=u,
+        )
         self.sql("INSERT INTO user_preferences (owner_id, uses_swedebeat) VALUES (:u, true)", u=u)
         self.sql(
             "INSERT INTO security_log (owner_id, session_id, ip_hash, method, route, status) "

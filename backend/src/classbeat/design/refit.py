@@ -59,7 +59,7 @@ from classbeat.design.kind import (
     current_runtime,
     music_step,
 )
-from classbeat.jobs import KINDS, Complete, FencedSession, JobFailure, JobKind, JobRun
+from classbeat.jobs import KINDS, Complete, FencedSession, JobFailure, JobKind, JobRun, mail_handoff
 from classbeat.jobs.inputs import JobInput
 from classbeat.jobs.kinds import Admitted, Refused
 
@@ -241,6 +241,7 @@ async def run(job_run: JobRun) -> Complete:
                 "base": base_id,
             }
             await fs.db.execute(_CAS, params)  # no row: kept, but not current
+            await mail_handoff.enqueue_class_ready(fs)  # ME5: only after a fresh mix analysis
             return revision_id
 
         complete = Complete(store, release=step.close)

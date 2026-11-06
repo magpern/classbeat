@@ -51,7 +51,7 @@ SECTIONS: tuple[Section, ...] = (
     _section(
         "jobs",
         omit="idempotency_key request_hash leased_by lease_version lease_expires_at "
-        "heartbeat_at approval_hash next_seq analysis_slot",
+        "heartbeat_at approval_hash next_seq analysis_slot fresh_analysis",
     ),
     _section("job_events", "job_id, seq", "lease_version"),
     _section(
@@ -82,6 +82,9 @@ NOT_EXPORTED: Mapping[str, str] = MappingProxyType(
         "deleted when used or expired, nothing the user wrote",
         "swedebeat_analyses": "the times new mix analyses started, for the daily limit (ADR 0016 "
         "section 7): no content, gone after two days, nothing the user wrote",
+        "mail_handoff": "a 'class ready' mail on its way from the worker to the web process (ADR "
+        "0022 section 4): the class id only, taken within seconds and gone after a day at most, "
+        "nothing the user wrote",
         "swedebeat_handoffs": "exported as a count only (``swedebeat_handoffs`` in the file, "
         "ADR 0016 section 7): the snapshot of mix ids and the verdict are the step's bookkeeping",
     }

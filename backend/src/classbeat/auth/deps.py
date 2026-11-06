@@ -105,6 +105,14 @@ def security_log_context(user_id: UUID) -> UserContext:
     return UserContext(user_id=user_id, role="user", issuer=issuer_token())
 
 
+def mail_handoff_context(user_id: UUID) -> UserContext:
+    """For the "class ready" mail only (``classbeat.emails.handoff``; ME5, #656): a bare context
+    (role ``user``, no connections) of the owner of a hand-off row the web process took, to check
+    in the owner's own session that the class is still theirs (``classes`` is owned and row
+    security is forced). Nothing else may name it (``tests/test_user_context_guard.py``)."""
+    return UserContext(user_id=user_id, role="user", issuer=issuer_token())
+
+
 def cached_session(request: Request) -> SessionInfo | None:
     """The session this request already resolved, or ``None``; never resolves (no database)."""
     cached: Resolution | None = getattr(request.state, _RESOLUTION, None)

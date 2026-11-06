@@ -1118,3 +1118,89 @@ async def test_the_override_refuses_a_class_that_turned_soundless_while_listing(
     assert _handoff_state(henv, class_id) == before
     assert [state for state, _, _ in before] == ["checked"]
     assert _source(henv, class_id) == NO_MUSIC
+
+
+# --- ME5 (#656): the "class ready" hand-off of the verify job ----------------------------------
+
+
+def _handoffs(henv: HandEnv) -> list[tuple[UUID, str]]:
+    return [
+        (row.job_id, row.params["class_id"])
+        for row in henv.sql("SELECT job_id, params FROM mail_handoff ORDER BY created_at")
+    ]
+
+
+async def _short_class(browsers: Any, henv: HandEnv, mowl_api: FakeMowl) -> tuple[Browser, UUID]:
+    """A class whose new mix is too short, so it can be checked again."""
+    browser = await rider(browsers, henv)
+    mowl_api.add_mix("Older", token=TOKEN_A, mix_id="older-mix", listed_seconds=30)
+    class_id = plant(henv, browser.user_id, [40, 40, 40])
+    started = await _start(browser, class_id)
+    assert started.status_code == 200, started.text
+    mowl_api.add_mix(
+        "Short",
+        token=TOKEN_A,
+        mix_id="short-mix",
+        listed_seconds=30,
+        audio_seconds=30,
+        link="beats",
+    )
+    return browser, class_id
+
+
+async def test_a_verify_that_analysed_a_new_mix_hands_off_one_row_and_check_again_none(
+    browsers: Any, henv: HandEnv, mowl_api: FakeMowl
+) -> None:
+    browser, class_id = await _short_class(browsers, henv, mowl_api)
+    assert (await _check(browser, class_id)).status_code == 201
+    first = await henv.run_verify()
+    assert henv.ops.row(first).state == "completed"
+    assert henv.ops.row(first).fresh_analysis is True
+    assert _handoffs(henv) == [(first, str(class_id))]
+    # "Check again" on the analysed mix: a new job, the mix cached, no second row.
+    assert (await _check(browser, class_id, "short-mix")).status_code == 201
+    again = await henv.run_verify()
+    assert henv.ops.row(again).state == "completed"
+    assert henv.ops.row(again).fresh_analysis is False
+    assert len(mowl_api.media.requests) == 1
+    assert _handoffs(henv) == [(first, str(class_id))]
+
+
+async def test_a_verify_with_no_new_mix_hands_off_nothing(
+    browsers: Any, henv: HandEnv, mowl_api: FakeMowl
+) -> None:
+    browser = await rider(browsers, henv)
+    mowl_api.add_mix("Only", token=TOKEN_A, mix_id="only-mix", listed_seconds=30)
+    class_id = plant(henv, browser.user_id, [30])
+    assert (await _start(browser, class_id)).status_code == 200
+    assert (await _check(browser, class_id)).status_code == 201
+    job_id = await henv.run_verify()
+    assert henv.ops.row(job_id).state == "completed"
+    assert _handoffs(henv) == []
+
+
+async def test_a_retried_verify_attempt_commits_no_row(
+    browsers: Any, henv: HandEnv, mowl_api: FakeMowl, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The attempt that analysed fails after storing the map: it ends in a retry and commits no
+    row. The job's finishing attempt (cache) then adds its one row, never a second."""
+    browser, class_id = await _short_class(browsers, henv, mowl_api)
+    real = verify_kind.judge
+    failed: list[int] = []
+
+    def once(*args: Any) -> Any:
+        if not failed:
+            failed.append(1)
+            raise JobFailure("upstream_unavailable")
+        return real(*args)
+
+    monkeypatch.setattr(verify_kind, "judge", once)
+    assert (await _check(browser, class_id)).status_code == 201
+    job_id = await henv.run_verify()
+    assert henv.ops.row(job_id).state == "queued"
+    assert _handoffs(henv) == []
+    henv.sql("UPDATE jobs SET available_at = now() WHERE id = :j", j=job_id)
+    assert await henv.run_verify() == job_id
+    assert henv.ops.row(job_id).state == "completed"
+    assert len(mowl_api.media.requests) == 1  # the retry used the cache
+    assert _handoffs(henv) == [(job_id, str(class_id))]

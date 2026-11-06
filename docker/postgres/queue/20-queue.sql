@@ -29,8 +29,9 @@ BEGIN
   IF NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = 'classbeat_app') THEN
     RAISE EXCEPTION 'classbeat_app does not exist; run docker/postgres/init/10-roles.sql first';
   END IF;
-  IF pg_catalog.to_regclass('public.jobs') IS NULL THEN
-    RAISE EXCEPTION 'public.jobs does not exist; run the migrations first';
+  IF pg_catalog.to_regclass('public.jobs') IS NULL
+     OR pg_catalog.to_regclass('public.mail_handoff') IS NULL THEN
+    RAISE EXCEPTION 'public.jobs or public.mail_handoff does not exist; run the migrations first';
   END IF;
   IF NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = 'classbeat_queue') THEN
     CREATE ROLE classbeat_queue NOLOGIN;
@@ -62,7 +63,7 @@ BEGIN
   END LOOP;
 END $$;
 
--- classbeat_queue owns the five functions and nothing else, and has no default privileges of its
+-- classbeat_queue owns the six functions and nothing else, and has no default privileges of its
 -- own. Anything else is not repaired automatically (dropping or reassigning it could lose data):
 -- the script stops and names it.
 DO $$
@@ -81,7 +82,8 @@ BEGIN
                         JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
                        WHERE p.oid = r.objid AND n.nspname = 'public'
                          AND p.proname IN ('queue_claim', 'queue_reap', 'queue_expire',
-                                           'queue_unsettled', 'queue_stats')) THEN
+                                           'queue_unsettled', 'queue_stats',
+                                           'mail_handoff_take')) THEN
       RAISE EXCEPTION 'classbeat_queue owns % (catalog %, object %); it may own only the queue '
         'functions: drop or reassign it by hand', coalesce(r.what, '?'), r.catalog, r.objid;
     END IF;
@@ -175,8 +177,11 @@ GRANT USAGE ON SCHEMA public TO classbeat_queue;
 GRANT SELECT, UPDATE ON TABLE public.jobs TO classbeat_queue;
 GRANT SELECT, INSERT ON TABLE public.job_events TO classbeat_queue;
 GRANT SELECT ON TABLE public.external_operations TO classbeat_queue;
+-- ADR 0022 section 4 (ME5): mail_handoff_take reads and deletes hand-off rows. UPDATE only because
+-- SELECT ... FOR UPDATE SKIP LOCKED requires it; no function updates the table.
+GRANT SELECT, UPDATE, DELETE ON TABLE public.mail_handoff TO classbeat_queue;
 
--- Any other function under one of the five names (an overload) goes: each must exist once.
+-- Any other function under one of the six names (an overload) goes: each must exist once.
 DO $$
 DECLARE
   r record;
@@ -185,10 +190,11 @@ BEGIN
              FROM pg_catalog.pg_proc p JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
             WHERE n.nspname = 'public'
               AND p.proname IN ('queue_claim', 'queue_reap', 'queue_expire', 'queue_unsettled',
-                                'queue_stats')
+                                'queue_stats', 'mail_handoff_take')
               AND p.oid::regprocedure::text NOT IN (
                 'queue_claim(text,integer,text[],integer)', 'queue_reap(integer)',
-                'queue_expire(integer)', 'queue_unsettled(integer)', 'queue_stats()') LOOP
+                'queue_expire(integer)', 'queue_unsettled(integer)', 'queue_stats()',
+                'mail_handoff_take(integer)') LOOP
     EXECUTE format('DROP ROUTINE public.%s', r.signature);
   END LOOP;
 END $$;
@@ -207,7 +213,7 @@ BEGIN
            || pg_catalog.oidvectortypes(p.proargtypes) || ')' AS what
       FROM pg_catalog.pg_proc p JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
      WHERE NOT (n.nspname = 'public' AND p.proname IN ('queue_claim', 'queue_reap',
-                  'queue_expire', 'queue_unsettled', 'queue_stats'))
+                  'queue_expire', 'queue_unsettled', 'queue_stats', 'mail_handoff_take'))
        AND (p.oid >= 16384 OR n.nspname = 'public'
             OR (n.nspname NOT IN ('pg_catalog', 'information_schema', 'pg_toast')
                 AND n.nspname !~ '^pg_(toast_)?temp_[0-9]+$'))
@@ -529,6 +535,38 @@ BEGIN
            (SELECT count(*) FROM public.external_operations e WHERE e.state = 'uncertain');
 END $$;
 
+-- The web process takes "class ready" hand-off rows (ADR 0022 section 4, ME5): first every row older
+-- than a day is dropped (sent or not: a late mail is no use), then up to p_limit of the rest are
+-- deleted and returned, oldest first. FOR UPDATE SKIP LOCKED: two web processes never take the same
+-- row, and a row another transaction holds is left for it. Taking a row discards it (fire and
+-- forget, one attempt). p_limit 0 is the purge alone (SMTP not configured). Rows of every user, so
+-- it runs as classbeat_queue (row security is forced on the table); it returns no address.
+CREATE OR REPLACE FUNCTION public.mail_handoff_take(p_limit integer)
+  RETURNS TABLE (id uuid, owner_id uuid, kind text, params jsonb)
+  LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, pg_temp
+AS $$
+#variable_conflict use_column
+BEGIN
+  IF p_limit IS NULL OR p_limit < 0 OR p_limit > 100 THEN
+    RAISE EXCEPTION 'p_limit must be 0 to 100' USING ERRCODE = '22023';
+  END IF;
+  DELETE FROM public.mail_handoff h
+   WHERE h.id IN (SELECT o.id FROM public.mail_handoff o
+                   WHERE o.created_at <= now() - interval '1 day'
+                     FOR UPDATE SKIP LOCKED);
+  IF p_limit = 0 THEN
+    RETURN;
+  END IF;
+  RETURN QUERY
+    DELETE FROM public.mail_handoff h
+     WHERE h.id IN (SELECT t.id FROM public.mail_handoff t
+                     WHERE t.created_at > now() - interval '1 day'
+                     ORDER BY t.created_at, t.id
+                     LIMIT p_limit
+                       FOR UPDATE SKIP LOCKED)
+    RETURNING h.id, h.owner_id, h.kind, h.params;
+END $$;
+
 -- Owner, ACL and version of each function. Every grantee but the owner is revoked first, so the
 -- ACL ends exactly {classbeat_queue=X/classbeat_queue, classbeat_app=X/classbeat_queue}.
 DO $$
@@ -539,7 +577,7 @@ BEGIN
   FOREACH f IN ARRAY ARRAY['public.queue_claim(text,integer,text[],integer)',
                            'public.queue_reap(integer)',
                            'public.queue_expire(integer)', 'public.queue_unsettled(integer)',
-                           'public.queue_stats()'] LOOP
+                           'public.queue_stats()', 'public.mail_handoff_take(integer)'] LOOP
     EXECUTE format('ALTER FUNCTION %s OWNER TO classbeat_queue', f);
     EXECUTE format('REVOKE ALL ON FUNCTION %s FROM PUBLIC', f);
     FOR g IN SELECT DISTINCT
@@ -554,6 +592,6 @@ BEGIN
     END LOOP;
     EXECUTE format('GRANT EXECUTE ON FUNCTION %s TO classbeat_queue', f);
     EXECUTE format('GRANT EXECUTE ON FUNCTION %s TO classbeat_app', f);
-    EXECUTE format('COMMENT ON FUNCTION %s IS %L', f, 'classbeat-queue v3');
+    EXECUTE format('COMMENT ON FUNCTION %s IS %L', f, 'classbeat-queue v4');
   END LOOP;
 END $$;

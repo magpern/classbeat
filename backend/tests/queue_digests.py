@@ -23,7 +23,14 @@ from pathlib import Path
 from sqlalchemy import create_engine, text
 
 TARGET = Path(__file__).resolve().parent.parent / "src" / "classbeat" / "db" / "queue_digests.py"
-NAMES = ("queue_claim", "queue_reap", "queue_expire", "queue_unsettled", "queue_stats")
+NAMES = (
+    "queue_claim",
+    "queue_reap",
+    "queue_expire",
+    "queue_unsettled",
+    "queue_stats",
+    "mail_handoff_take",
+)
 # The three M5 guard trigger functions (ADR 0011 section 1), made by migrations 0007 and 0010 as
 # the owner:
 # the only other user code the queue check admits, pinned the same way (and in 20-queue.sql).

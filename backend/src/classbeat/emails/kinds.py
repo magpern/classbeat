@@ -6,6 +6,7 @@ Triggers and subjects are the ones the plain-text mails had; the catalogue holds
 from collections.abc import Callable, Mapping
 from datetime import datetime
 from typing import Any
+from uuid import UUID
 
 from classbeat.emails.blocks import Bullets, Button, Content, EventTime, Heading, Note, Paragraph
 from classbeat.emails.layout import Ctx
@@ -244,6 +245,22 @@ def totp_removed(c: Ctx, p: Params) -> Content:
             Note(c.t(S.TOTPOFF_WARN) + " " + c.t(S.CONTACT_LEAD), contact=True),
         ),
         c.t(S.REASON_SECURITY),
+    )
+
+
+def class_ready(c: Ctx, p: Params) -> Content:
+    """A job that ran a fresh mix analysis finished (ME5, ADR 0022 section 4). ``class_id`` is the
+    only parameter; parsed as a UUID, so the link is always ``/classes/<uuid>``."""
+    class_id = UUID(str(p["class_id"]))
+    return Content(
+        c.t(S.SUBJECT_CLASS_READY),
+        c.t(S.READY_PRE),
+        (
+            Heading(c.t(S.READY_HEADING)),
+            Paragraph(c.t(S.READY_BODY)),
+            Button(c.t(S.READY_BUTTON), c.url(f"/classes/{class_id}")),
+        ),
+        c.t(S.READY_REASON),
     )
 
 
