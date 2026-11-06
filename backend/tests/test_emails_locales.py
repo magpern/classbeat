@@ -188,7 +188,7 @@ def test_a_translated_mail_carries_the_same_links_as_the_english_one(kind: Kind,
 
 
 @pytest.mark.parametrize("code", TRANSLATED)
-async def test_the_header_names_the_language_of_the_mail(code: str) -> None:
+async def test_the_header_names_the_language_of_the_mail(code: str, three_languages: None) -> None:
     async with SmtpFake() as smtp:
         s = Settings(
             smtp_host="127.0.0.1",
