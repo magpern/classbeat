@@ -34,17 +34,18 @@ def _copy(tmp_path: Path) -> Path:
 
 
 CYCLING = [f"cycling.{t}.{n}" for t in ("interval", "plain") for n in (30, 45, 60)]
+PROVISIONAL = [f"cycling.{t}.55" for t in ("interval", "plain")]
 RUNNING = ["running.interval.30", "running.interval.45"]
 
 
 def test_shipped_profiles_load() -> None:
     reg = load_registry()
-    assert sorted(reg.profiles) == sorted(CYCLING + RUNNING)
+    assert sorted(reg.profiles) == sorted(CYCLING + PROVISIONAL + RUNNING)
     assert reg.rules_version == 1
     for p in reg.profiles.values():
         assert p.n >= 1
         assert p.source == E.SOURCE
-        assert p.snapshot in ("2026-11-01", "2026-11-03")
+        assert p.snapshot in ("2026-11-01", "2026-11-03", "2026-11-05")
         assert 0 < len(p.rules) <= P.MAX_RULES
     for pid in CYCLING:
         p = reg.profiles[pid]
@@ -53,6 +54,45 @@ def test_shipped_profiles_load() -> None:
     # plain classes stay in zones 1 to 4; interval classes have top-zone rules
     assert "zone_ceiling_exceeded" in {r.rule for r in reg.profiles["cycling.plain.45"].rules}
     assert "top_zone_share_high" in {r.rule for r in reg.profiles["cycling.interval.45"].rules}
+
+
+def test_the_55_minute_cycling_profiles_are_provisional_info_only_load_notes() -> None:
+    """#388, ADR 0017 section 7b: Tukey fences of a reported TSS p25 to p75, per minute of the
+    timeline (which is up to 5 minutes shorter than the label), for plain and interval alike
+    because the source has no class-type split. Only the two load rules; no median is a bound."""
+    reg = load_registry()
+    for pid in PROVISIONAL:
+        p = reg.profiles[pid]
+        assert (p.sport, p.label_minutes, p.evidence, p.snapshot) == (
+            "cycling", 55, "moderate", "2026-11-05",
+        )  # fmt: skip
+        assert {(r.basis, r.severity) for r in p.rules} == {("tukey_iqr", "info")}
+        assert {r.rule: r.metric for r in p.rules} == {
+            "tss_rate_low": "tss_per_minute",
+            "tss_rate_high": "tss_per_minute",
+        }
+        assert not {r.rule for r in p.rules} & {"sprints_few", "sprints_many"}
+    plain, interval = (reg.profiles[i] for i in PROVISIONAL)
+    assert [r.model_dump() for r in plain.rules] == [r.model_dump() for r in interval.rules]
+    low, high = plain.rules
+    # TSS 68.2 (p25 66, p75 72), 55 minute cell: fences 57 and 81; timeline 50 to 55 minutes
+    assert (low.low, high.high) == (1.036, 1.62)
+    assert low.low is not None
+    assert high.high is not None
+    assert low.low <= 57 / 55
+    assert high.high >= 81 / 50
+
+
+@pytest.mark.parametrize("severity", ["warn"])
+def test_tukey_basis_forces_info_and_moderate_evidence(severity: str) -> None:
+    d = json.loads((PROFILES / "cycling" / "plain_55.json").read_text())
+    d["rules"][0]["severity"] = severity
+    with pytest.raises(ProfileError, match="forces severity info"):
+        _parse(d)
+    d = json.loads((PROFILES / "cycling" / "plain_55.json").read_text())
+    d["evidence"] = "strong"
+    with pytest.raises(ProfileError, match="provisional"):
+        _parse(d)
 
 
 def test_running_profiles_are_moderate_info_only_ranges() -> None:
@@ -75,7 +115,7 @@ def test_only_reviewed_cells_ship() -> None:
     reg = load_registry()
     cells = {(p.sport, p.class_type, p.label_minutes) for p in reg.profiles.values()}
     assert {c for c in cells if c[0] == "cycling"} == {
-        ("cycling", t, n) for t in ("plain", "interval") for n in (30, 45, 60)
+        ("cycling", t, n) for t in ("plain", "interval") for n in (30, 45, 55, 60)
     }
     # running: plain, 55-minute and test cells are weak (n under 15) and ship nothing
     assert {c for c in cells if c[0] == "running"} == {
@@ -282,7 +322,11 @@ def test_enums_and_rationales_are_consistent() -> None:
         ("interval", 48.1, None),
         ("plain", 33, "cycling.plain.30"),
         ("plain", 37, None),
-        ("plain", 57, "cycling.plain.60"),
+        ("plain", 57, "cycling.plain.55"),  # nearest label: 55 (2 away) beats 60 (3 away)
+        ("plain", 58, "cycling.plain.60"),
+        ("plain", 52, "cycling.plain.55"),
+        ("interval", 55, "cycling.interval.55"),
+        ("plain", 51.9, None),
         ("plain", 63, "cycling.plain.60"),
         ("plain", 64, None),
         ("plain", 75, None),  # 75 ships nothing

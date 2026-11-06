@@ -117,11 +117,38 @@ def easy_spin_draft(case: Case) -> dict[str, Any]:
     return _draft(case, segments)
 
 
+def hard_push_draft(case: Case) -> dict[str, Any]:
+    """A class kept hard from a short warm-up: zone 4 and 5 blocks to the cool-down, so its load
+    rate sits above the provisional upper bound of the 55 minute cells."""
+    total = case.brief.length_min * 60
+    segments = [seg("Warm-up", "warmup", iv(60, 3, [80, 90]), iv(60, 4, [85, 95]))]
+    segments += _cycles([(240, 4), (120, 5), (60, 3)], 6)
+    rest = total - 120 - 6 * 420 - 150
+    segments.append(
+        seg("Push", "main", iv(rest - 300, 4, [85, 95]), iv(60, 5, [90, 100]), iv(240, 4, [85, 95]))
+    )
+    segments.append(_cooldown(150))
+    return _draft(case, segments)
+
+
+def easy_long_draft(case: Case) -> dict[str, Any]:
+    """An easy class of 50 minutes or more: zones 1 to 3 in short blocks (no zone held long)."""
+    total = case.brief.length_min * 60
+    cycles = (total - 450) // 480
+    segments = [_warmup(300)]
+    segments += _cycles([(300, 2), (120, 3), (60, 1)], cycles)
+    segments.append(seg("Steady", "main", iv(total - 450 - cycles * 480, 2, [80, 90])))
+    segments.append(_cooldown(150))
+    return _draft(case, segments)
+
+
 DEVIATES = {
     "cp_hard_start_30": hard_start_draft,
     "cp_short_warmup_45": short_warmup_draft,
     "cp_ten_sprints_30": ten_sprints_draft,
     "cp_easy_spin_45": easy_spin_draft,
+    "cp_easy_spin_55": easy_long_draft,
+    "cp_hard_push_55": hard_push_draft,
 }
 
 
@@ -132,6 +159,8 @@ CORRECTED_TO = {
     "cp_short_warmup_45": "cp_plain_45",
     "cp_ten_sprints_30": "cp_plain_30",
     "cp_easy_spin_45": "cp_plain_45",
+    "cp_easy_spin_55": "cp_plain_45",
+    "cp_hard_push_55": "cp_plain_45",
 }
 
 

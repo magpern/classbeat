@@ -74,6 +74,10 @@ class ProfileRule(_Strict):
             raise ValueError("basis p95 is a high bound")
         if self.basis == "range_10" and self.severity != "info":
             raise ValueError("basis range_10 forces severity info")
+        if self.basis == "tukey_iqr" and self.severity != "info":
+            raise ValueError(
+                "basis tukey_iqr (provisional, ADR 0017 section 7b) forces severity info"
+            )
         if len(set(self.brief_overrides)) != len(self.brief_overrides):
             raise ValueError("brief_overrides must be unique")
         return self
@@ -108,6 +112,8 @@ class Profile(_Strict):
             raise ValueError("weak evidence ships no rule")
         if self.evidence == "moderate" and any(r.severity != "info" for r in self.rules):
             raise ValueError("moderate evidence ships info rules only")
+        if self.evidence != "moderate" and any(r.basis == "tukey_iqr" for r in self.rules):
+            raise ValueError("basis tukey_iqr is provisional: evidence moderate only")
         if self.n < MIN_N_PERCENTILE and any(r.basis in ("p5", "p95") for r in self.rules):
             raise ValueError(f"a percentile basis needs n >= {MIN_N_PERCENTILE}")
         for r in self.rules:

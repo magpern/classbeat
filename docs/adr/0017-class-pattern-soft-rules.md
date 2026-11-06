@@ -345,6 +345,45 @@ intervals follows the length and the beat-fitted music, and the number of segmen
 instructor names the parts, so a note on them would ask the designer to fight the brief. A later
 issue can wire them with data that says otherwise.
 
+### 7b. A provisional load note for 55 minute cycling classes (#388, 2026-11-06)
+
+The owner will supply no more corpus data (2026-11-05) and agreed to use the values already
+reported: for cycling classes sold as 45 and 55 minutes (n 59 and 113, all categories, no class-type
+split), the **median and p25 to p75 of TSS** and the **median alone** of every other metric. §2 allows
+bounds only from p5/p95 (n >= 25) or an observed range; neither exists. This section adds one
+narrow, labelled exception:
+
+- **Basis `tukey_iqr`** (schema enum addition; `schema` stays 1): the Tukey fences of the reported
+  quartiles, `p25 - 1.5 x IQR` and `p75 + 1.5 x IQR`. It is **provisional**: it forces `severity:
+  info` and `evidence: moderate`, and is to be replaced by `p5`/`p95` bounds (a new profile version)
+  if corpus data ever supplies them. The loader refuses it with `warn` or on a strong profile.
+- **Only where a p25 to p75 is reported.** That is TSS alone. The intensity factor, interval
+  lengths, work to rest, climb share and every other metric were reported as a median only, and a
+  median or a quartile is never a bound, so none of them gets a rule. No new rule id is needed:
+  the two existing `tss_rate_low` and `tss_rate_high` (metric `tss_per_minute`, sentences
+  `load_enough`, `load_bounded`) carry the fences, so the dismissal cap (28 of 32 ids) is untouched.
+  `sprints_*` stay unshipped (§7a).
+- **From TSS to a rate.** The metric is TSS per minute of the timeline, and the corpus cell "55" holds
+  timelines of more than 50 and up to 55 minutes (the timeline rounded up to 5 minutes). So the low
+  bound divides the lower fence by 55 and the high bound divides the upper fence by 50 (rounded
+  outward to 3 decimals): the widest rate the cell allows, so the note errs on the quiet side.
+  TSS 68.2 (66 to 72) gives fences 57 and 81 and the bounds 1.036 and 1.62.
+- **Keys.** The source has no class-type split and the 45 and 55 cells mix plain and interval
+  classes. The keys stay `(sport, class_type, label)`; there is no generic class type, and
+  `select_profile` and the derived type (§2) are unchanged. The 55 cell is therefore shipped
+  twice with identical rules, as `cycling.plain.55` and `cycling.interval.55`, so both derived
+  types reach it. The 45 minute cell is **not** shipped: `cycling.plain.45` and
+  `cycling.interval.45` already exist with percentile bounds, including the same two TSS rules,
+  which a provisional note must not replace; `hiit`, `journey` and `ftp_test` stay without a profile
+  rather than receive the all-classes numbers.
+- **Side effect.** Selection takes the nearest label within 3 minutes, so a 57 minute class now
+  selects the 55 minute profile (two away) instead of the 60 minute one (three away). 52 to 56
+  minutes, which had no profile, now get the two info notes.
+- **Evals.** An `info`-only profile can never fail a `follows` case, so, as for running, each 55
+  minute profile has a `deviates` case (`cp_easy_spin_55`, `cp_hard_push_55`): the brief asks for
+  an easy or a hard class, the note fires and is explained by the brief.
+- Suite version 14.
+
 ### 8. The issues
 
 Review class: **Opus** = the model's input and output boundary, provenance, migrations with RLS;
