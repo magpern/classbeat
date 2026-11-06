@@ -215,6 +215,9 @@ class Settings(BaseSettings):
     connection_kek_id: str = "kek-1"
     # Who may create an account (section 5): ``invite`` (default), ``closed`` or ``open``.
     signup_mode: Literal["invite", "closed", "open"] = "invite"
+    # The languages the operator enables, comma-separated bare codes (ADR 0023 section 1). ``en`` is
+    # always on; a language is offered when it is enabled and in the supported manifest.
+    locales: str = "en,sv,da"
 
     # Mail (section 5). Unset ``smtp_host``: no mail is sent (a warning is logged instead).
     smtp_host: str | None = None
@@ -607,6 +610,13 @@ class Settings(BaseSettings):
     def admin_email_set(self) -> frozenset[str]:
         """``admin_emails`` in the normalized form of ADR 0003 section 1 (ASCII lower case)."""
         return frozenset(normalize_email(e) for e in self.admin_emails.split(",") if e.strip())
+
+    @property
+    def enabled_locales(self) -> frozenset[str]:
+        """``locales`` as a set of two-letter codes, with ``en`` always in; anything else in the
+        list is dropped (the operator's typo never becomes a code)."""
+        codes = {c.strip().lower() for c in self.locales.split(",")}
+        return frozenset({c for c in codes if re.fullmatch(r"[a-z]{2}", c)} | {"en"})
 
     @property
     def trusted_proxy_networks(self) -> tuple[ipaddress.IPv4Network | ipaddress.IPv6Network, ...]:

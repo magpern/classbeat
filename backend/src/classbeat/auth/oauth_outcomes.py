@@ -267,13 +267,14 @@ async def create_provider_account(
     email: str,
     provider: str,
     subject: str,
+    locale: str | None = None,
 ) -> UUID:
     """One savepoint: consume the invite, create the user (verified) and the identity.
     Raises ``Refused`` with ``invite_invalid`` or ``account_exists``; nothing is left behind."""
     try:
         async with db.begin_nested():
             await consume_invite(db, invite_id)
-            user_id = await create_user(db, email)
+            user_id = await create_user(db, email, locale=locale)
             await db.execute(
                 insert(identities).values(
                     user_id=user_id, provider=provider, subject=subject, email_at_link=email
@@ -297,6 +298,7 @@ async def _create_account(db: AsyncSession, req: Request, email: str) -> Outcome
             email=email,
             provider=req.flow.provider,
             subject=req.identity.subject,
+            locale=req.flow.locale,
         )
     except Refused as exc:
         return _fail(exc.code)
@@ -324,6 +326,7 @@ async def _hand_off(db: AsyncSession, req: Request) -> Outcome:
             subject=req.identity.subject,
             browser_hash=token_hash(browser),
             invite_id=req.flow.invite_id,
+            locale=req.flow.locale,
             expires_at=func.now() + HANDOFF_LIFETIME,
         )
     )

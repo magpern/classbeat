@@ -52,6 +52,7 @@ class SessionInfo:
     stepup_at: datetime | None
     now: datetime
     totp_enabled: bool = False  # a confirmed TOTP exists: step-up applies (section 6)
+    locale: str | None = None  # users.locale: the account's language, None follows the browser
 
     @property
     def role(self) -> Literal["user", "admin"]:
@@ -138,6 +139,7 @@ async def resolve_session(
                     users.c.email,
                     users.c.role,
                     users.c.disabled_at,
+                    users.c.locale,
                     func.now().label("now"),
                     select(mfa_totp.c.id)
                     .where(
@@ -180,6 +182,7 @@ async def resolve_session(
             stepup_at=None if moved else row.stepup_at,
             now=row.now,
             totp_enabled=row.totp_enabled,
+            locale=row.locale,
         ),
     )
 

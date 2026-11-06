@@ -10,6 +10,7 @@ them (``oauth_handoff``); in any other browser the row and its token stay untouc
 """
 
 from datetime import timedelta
+from typing import Any
 from uuid import UUID
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Request, Response
@@ -18,6 +19,7 @@ from sqlalchemy import delete, func, insert, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from classbeat.auth import locale as account_locale
 from classbeat.auth import mails
 from classbeat.auth.accounts import create_user, find_user, use_invite
 from classbeat.auth.clientip import bucket_ip
@@ -45,6 +47,9 @@ class SignUpIn(BaseModel):
     email: EmailAddress
     password: str = Field(max_length=FIELD_MAX)
     invite_code: str | None = Field(default=None, max_length=FIELD_MAX)
+    # The app's resolved language (ADR 0023 section 2). Any value is accepted here: one that is not
+    # an offered code is ignored, never refused and never echoed.
+    locale: Any = None
 
 
 class ConfirmIn(BaseModel):
@@ -104,6 +109,7 @@ async def sign_up(body: SignUpIn, request: Request, background: BackgroundTasks)
         if invite_id is None:
             raise refuse(400, "invalid_invite")  # its own error (section 5)
     password_hash = await request.app.state.password_hasher.hash(password)  # both branches
+    locale = account_locale.for_new_account(request, body.locale)
     message: MailMessage
     async with system_session(factory(request)) as db:
         if await find_user(db, body.email) is not None:
@@ -117,6 +123,7 @@ async def sign_up(body: SignUpIn, request: Request, background: BackgroundTasks)
                     email_normalized=normalized,
                     password_hash=password_hash,
                     invite_id=invite_id,
+                    locale=locale,
                     expires_at=func.now() + CONFIRMATION_LIFETIME,
                 )
             )
@@ -200,6 +207,7 @@ async def _create_account(db: AsyncSession, digest: bytes, ip: str) -> str:
                 pending_signups.c.email_normalized,
                 pending_signups.c.password_hash,
                 pending_signups.c.invite_id,
+                pending_signups.c.locale,
             )
         )
     ).first()
@@ -210,7 +218,9 @@ async def _create_account(db: AsyncSession, digest: bytes, ip: str) -> str:
     created = None
     try:
         async with db.begin_nested():
-            created = await create_user(db, pending.email, password_hash=pending.password_hash)
+            created = await create_user(
+                db, pending.email, password_hash=pending.password_hash, locale=pending.locale
+            )
     except IntegrityError:
         pass  # never logged or chained: its DETAIL can hold the address
     if created is None:
