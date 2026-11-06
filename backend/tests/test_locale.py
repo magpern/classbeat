@@ -64,8 +64,8 @@ def test_accept_language_picks_the_best_offered_exact_match(
 
 
 def test_a_huge_accept_language_is_bounded() -> None:
-    header = ",".join(["xx"] * 1000) + ",sv"
-    assert len(header) > 2000
+    header = ",".join(["xx"] * 3000) + ",sv"
+    assert len(header) > 8 * 1024
     started = time.perf_counter()
     for _ in range(200):
         assert locales.parse_accept_language(header, OFFERED) is None
@@ -262,3 +262,22 @@ async def test_a_hand_off_sign_up_carries_the_language_to_the_account(
     done = await browser.post("/api/auth/signup/confirm", {"token": token})
     assert done.status_code == 200, done.text
     assert await oenv.scalar("SELECT locale FROM users") == "da"
+
+
+async def test_the_hand_off_email_step_replaces_the_row_language_with_the_one_it_names(
+    oenv: Env, fake: FakeProviders, smtp: SmtpFake
+) -> None:
+    browser = Browser(oenv)
+    started = await start(
+        browser, "microsoft", "sign_up", invite_code=await make_invite(oenv), locale="da"
+    )
+    await browser.get(fake.complete(started.json()["authorization_url"]))
+    assert await oenv.scalar("SELECT locale FROM pending_signups") == "da"
+    await browser.post(
+        "/api/auth/oauth/pending/email", {"email": "swap@example.com", "locale": "sv"}
+    )
+    assert await oenv.scalar("SELECT locale FROM pending_signups") == "sv"
+    token = smtp.to("swap@example.com")[-1].token()
+    done = await browser.post("/api/auth/signup/confirm", {"token": token})
+    assert done.status_code == 200, done.text
+    assert await oenv.scalar("SELECT locale FROM users") == "sv"

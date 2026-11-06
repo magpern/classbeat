@@ -32,6 +32,13 @@ export const TEXT_ATTRIBUTES: ReadonlySet<string> = new Set([
   'text',
 ])
 
+/** Props whose name ends in one of these words also show text (`confirmLabel`, `emptyTitle`). */
+const TEXT_ATTRIBUTE_SUFFIX = /(?:Label|Title|Text|Hint|Description|Placeholder|Caption|Heading)$/
+
+export function isTextAttribute(name: string): boolean {
+  return TEXT_ATTRIBUTES.has(name) || TEXT_ATTRIBUTE_SUFFIX.test(name)
+}
+
 /** Names that stay as written in every language; text made of these alone is not a finding. */
 export const BRAND_NAMES: readonly string[] = [
   'Intelligent Cycling',
@@ -56,7 +63,8 @@ export function isExempt(path: string): boolean {
 export type Finding = { line: number; text: string }
 
 const ENTITY = /&(?:#\d+|#x[0-9a-f]+|[a-z][a-z0-9]*);/gi
-const BRANDS = new RegExp(BRAND_NAMES.map((name) => name.replace(/\s+/g, '\\s+')).join('|'), 'g')
+// Word boundaries: a brand inside a longer word ("Googled") is not the brand, so its letters count.
+const BRANDS = new RegExp(`\\b(?:${BRAND_NAMES.map((name) => name.replace(/\s+/g, '\\s+')).join('|')})\\b`, 'g')
 
 /** True when `text` still holds a letter once entities and brand names are taken out. */
 export function hasWords(text: string): boolean {
@@ -106,7 +114,7 @@ export function scanSource(source: string, fileName = 'file.tsx'): Finding[] {
         pieces(node.expression, list)
         check(list)
       }
-    } else if (ts.isJsxAttribute(node) && TEXT_ATTRIBUTES.has(node.name.getText(file))) {
+    } else if (ts.isJsxAttribute(node) && isTextAttribute(node.name.getText(file))) {
       const value = node.initializer
       const list: ts.Node[] = []
       if (value !== undefined) {

@@ -18,9 +18,9 @@ its PR (issue #662) merges. The ML row of Amendment 15 is replaced by:
   current Opus generation (Opus 5.5 when this was written). No human proofreads and the owner does not
   sign off.
 - **Dedicated translation PRs**: Swedish and Danish content is authored only in ML6, ML7 and later
-  catch-up translation PRs. This widens AGENTS.md "Roles" for those PRs only: their Developer is
-  Sonnet (staffing change below) and their Reviewer Opus-class, although they are not security-critical. They run in Claude Code; the Codex and Cursor
-  entry points (Amendments 10 and 11) have no Opus-class Reviewer and do no translation work. Feature PRs
+  catch-up translation PRs. This departs from AGENTS.md "Roles" for those PRs only: their Reviewer is
+  Opus-class although they are not security-critical (their Developer is Sonnet, the staffing change below). They run in Claude Code; the Codex and Cursor
+  entry points (Amendments 10 and 11) have a Reviewer but no Opus-class model and do no translation work. Feature PRs
   add English keys only and list them on the untranslated list (ADR 0023 §8); CI fails on an unlisted
   missing key, and the Orchestrator opens a catch-up translation PR when the list is not empty, at the
   latest before a release.

@@ -95,8 +95,10 @@ def sentence_of(category: str, retry_after: int | None = None) -> Sentence:
     minutes = max(1, -(-seconds // 60))
     hours = max(1, -(-seconds // 3600))
     shown = text.format(minutes=_plural(minutes, "minute"), hours=_plural(hours, "hour"))
-    params = {"count": minutes} if category == "rate_limited" else {}
-    if category == "quota_exhausted":
+    params: dict[str, int] = {}
+    if category == "rate_limited":
+        params = {"count": minutes}
+    elif category == "quota_exhausted":
         params = {"count": hours}
     return Sentence(f"spotify.{category}", shown, params)
 

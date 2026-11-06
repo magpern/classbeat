@@ -121,7 +121,7 @@ listed key that is already translated or no longer exists. A catch-up translatio
 the Orchestrator opens one when it is not empty, at the latest before a release. ML6 and ML7 merge
 with empty lists.
 
-**9. Security.** The locale is an allowlisted code everywhere (`Literal` in API models, format
+**9. Security.** The locale is an allowlisted code everywhere (`Any` plus the offered-set allowlist in API models, so an unknown value is ignored and never echoed in a 422; format
 `CHECK ^[a-z]{2}$` on columns, unknown values dropped, never echoed) and never builds a path, import
 specifier, SQL, header name or prompt. `Accept-Language` parsing is bounded (256 bytes, 8 entries).
 `users.locale` is in the GDPR export; `pending_signups` and `oauth_flows` stay unexported short-lived

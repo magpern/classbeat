@@ -50,6 +50,22 @@ describe('hard-coded text in .tsx', () => {
     expect(found('<img alt="" title="Close" />')).toEqual(['Close'])
   })
 
+  it('catches props that end in a text word, not props that merely contain one', () => {
+    const found = (code: string) => scanSource(`const a = ${code}`).map((f) => f.text)
+    expect(found('<Dialog confirmLabel="Delete it" emptyTitle="Nothing here" submitText="Go" />')).toEqual([
+      'Delete it',
+      'Nothing here',
+      'Go',
+    ])
+    expect(found('<Row labelId="x" titleCase="y" textAlign="center" />')).toEqual([])
+  })
+
+  it('counts a brand inside a longer word as text', () => {
+    expect(hasWords('Googled')).toBe(true)
+    expect(hasWords('Spotify')).toBe(false)
+    expect(hasWords('Spotify and Google')).toBe(true)
+  })
+
   it('lets through what is not a sentence', () => {
     const found = (code: string) => scanSource(`const a = ${code}`)
     expect(found('<p>{t("a.b")}</p>')).toEqual([])

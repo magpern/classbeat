@@ -28,6 +28,7 @@ export function readStoredLocale(): Locale | null {
 }
 
 export function storeLocale(locale: Locale): void {
+  if (!isLocale(locale)) return
   try {
     window.localStorage.setItem(LOCALE_STORAGE_KEY, locale)
   } catch {

@@ -85,7 +85,8 @@ export function decimal(value: number, digits: number): string {
 
 /** A number without trailing zeros and no grouping (it replaces `String(value)` for display). */
 export function plain(value: number): string {
-  return numberFormat({ maximumFractionDigits: 20, useGrouping: false }).format(value)
+  // `+ 0` turns -0 into 0, as `String(-0)` did.
+  return numberFormat({ maximumFractionDigits: 20, useGrouping: false }).format(value + 0)
 }
 
 /** Dollars and cents, always USD (no grouping, as before). */
