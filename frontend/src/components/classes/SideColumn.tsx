@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import type { ClassMessage, ClassSummary, RevisionSummary } from '../../api/classes'
+import { useT } from '../../i18n/I18n'
 import { ChangeSongs } from '../songs/ChangeSongs'
 import { ChatPanel } from './ChatPanel'
 import { HistoryPanel } from './HistoryPanel'
@@ -28,9 +29,10 @@ export function SideColumn({
   reload: () => void
 }) {
   // Whether the class's history says Change it works (true until it says otherwise).
+  const t = useT()
   const [canChange, setCanChange] = useState(true)
   return (
-    <aside aria-label="Save, change and versions" className="flex min-w-0 flex-col gap-5">
+    <aside aria-label={t('class.side.label')} className="flex min-w-0 flex-col gap-5">
       <div>
         <ChangeSongs summary={summary} />
       </div>

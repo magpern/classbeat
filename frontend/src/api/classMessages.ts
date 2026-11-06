@@ -2,42 +2,35 @@ import { ApiError } from './client'
 import { errorMessage } from './messages'
 import { planRefusalText, quotaText } from './planMessages'
 import type { ChangeSummary } from './classes'
+import { t } from '../i18n/t'
 import { clock } from '../lib/workout'
 
 // Plain sentences for the class page: the 409 reasons of the class API and of `POST /api/jobs`
 // for `revise_draft` (ADR 0007 sections 2, 3 and 12), the change summary in words, and labels.
 
-const REASONS: Record<string, string> = {
-  stale_base:
-    'This class was changed in another tab or window, so your request was not sent. The page has been reloaded. Read the current version and ask again.',
-  hash_mismatch:
-    'That version is not the one this page showed: it was changed elsewhere. The page has been reloaded.',
-  class_busy:
-    'This class is busy with another task, perhaps from another tab. The page has been reloaded. Wait for it to finish, then try again.',
-  revision_limit:
-    'This class has reached the most changes one class can have. Keep the version you like, or design a new class.',
-  not_changeable:
-    'This class has no music of its own, so it cannot be changed by chat. You can still view, use and save its versions.',
-  chat_full:
-    'This conversation is full. Keep the version you like, or design a new class.',
-  not_found: 'This class, or that version, no longer exists. The page has been reloaded.',
-  not_connected: 'MOWL is not connected. Connect it on your account page, then ask again.',
-  invalid_input: 'That request could not be used. Check it and try again.',
-  call_may_be_running:
-    'classbeat may still be writing this class to MOWL, and deleting it now would remove the only record of that write. Wait a few minutes, then try to delete it again.',
-  music_unlinked:
-    'The music of this version is not in your connected MOWL account. Change it and save the new version.',
-  // #509: a running class's change, while running is not checked for the user's plan.
-  running_not_evaluated:
-    'Running classes cannot be changed on your plan right now, so your request was not sent and nothing was charged. Try again later.',
-  // ADR 0007 amendment "beat-one corrections".
-  no_beat_data:
-    'This version has no beat data to correct. Ask for a change by chat first, then try again.',
-  correction_limit:
-    'This class has as many timing fixes as it can hold. Reset some, then try again.',
-  nothing_pending: 'The current version already uses these timing fixes.',
-  refit_limit:
-    'This class has had its timing fixed as often as it can. Design a new class to start again.',
+const REASON_CODES = [
+  'stale_base',
+  'hash_mismatch',
+  'class_busy',
+  'revision_limit',
+  'not_changeable',
+  'chat_full',
+  'not_found',
+  'not_connected',
+  'invalid_input',
+  'call_may_be_running',
+  'music_unlinked',
+  'running_not_evaluated',
+  'no_beat_data',
+  'correction_limit',
+  'nothing_pending',
+  'refit_limit',
+] as const
+
+type ReasonCode = (typeof REASON_CODES)[number]
+
+function isReasonCode(reason: string): reason is ReasonCode {
+  return (REASON_CODES as readonly string[]).includes(reason)
 }
 
 /** A 409 or 404 means what the page shows is out of date: it shows the reason and reloads. */
@@ -48,11 +41,11 @@ export function isStale(error: unknown): boolean {
 export function classReasonText(error: unknown): string {
   const refusal = planRefusalText(error)
   if (refusal !== null) return refusal
-  if (error instanceof ApiError && error.reason !== null && Object.hasOwn(REASONS, error.reason)) {
-    return REASONS[error.reason]!
+  if (error instanceof ApiError && error.reason !== null && isReasonCode(error.reason)) {
+    return t(`class.reason.${error.reason}`)
   }
   if (error instanceof ApiError && error.status === 409) {
-    return 'This class changed meanwhile. The page has been reloaded.'
+    return t('class.reason.changedMeanwhile')
   }
   return errorMessage(error)
 }
@@ -63,10 +56,26 @@ export function currentReasonText(error: unknown): string {
   return classReasonText(error)
 }
 
+/** The name of a segment kind; a kind this page does not know is shown as it came. */
+export function kindLabel(kind: string): string {
+  switch (kind) {
+    case 'warmup':
+      return t('class.kind.warmup')
+    case 'main':
+      return t('class.kind.main')
+    case 'recovery':
+      return t('class.kind.recovery')
+    case 'cooldown':
+      return t('class.kind.cooldown')
+    default:
+      return kind
+  }
+}
+
 export function originLabel(origin: string): string {
-  if (origin === 'design_draft') return 'First design'
-  if (origin === 'revise_draft') return 'Changed on request'
-  return 'Version'
+  if (origin === 'design_draft') return t('class.origin.design_draft')
+  if (origin === 'revise_draft') return t('class.origin.revise_draft')
+  return t('class.origin.other')
 }
 
 /** The backend's change summary in the page's own words; it is data, not text (ADR 0007 section 3). */
@@ -74,28 +83,29 @@ export function describeChange(change: ChangeSummary): string[] {
   const lines: string[] = []
   const { segmentsAdded: sa, segmentsRemoved: sr } = change
   if ((sa ?? 0) > 0 || (sr ?? 0) > 0) {
-    lines.push(`Segments: ${String(sa ?? 0)} added, ${String(sr ?? 0)} removed.`)
+    lines.push(t('class.change.segments', { added: sa ?? 0, removed: sr ?? 0 }))
   }
   const { intervalsAdded: ia, intervalsRemoved: ir, intervalsChanged: ic } = change
   if ((ia ?? 0) > 0 || (ir ?? 0) > 0 || (ic ?? 0) > 0) {
-    lines.push(
-      `Intervals: ${String(ia ?? 0)} added, ${String(ir ?? 0)} removed, ${String(ic ?? 0)} changed.`,
-    )
+    lines.push(t('class.change.intervals', { added: ia ?? 0, removed: ir ?? 0, changed: ic ?? 0 }))
   }
   if (change.durationBefore !== null && change.durationAfter !== null) {
     lines.push(
       change.durationBefore === change.durationAfter
-        ? `Length unchanged at ${clock(change.durationAfter)}.`
-        : `Length: ${clock(change.durationBefore)} to ${clock(change.durationAfter)}.`,
+        ? t('class.change.lengthSame', { length: clock(change.durationAfter) })
+        : t('class.change.length', {
+            from: clock(change.durationBefore),
+            to: clock(change.durationAfter),
+          }),
     )
   }
   if (change.tssBefore !== null && change.tssAfter !== null) {
     lines.push(
       change.tssBefore === change.tssAfter
-        ? `TSS unchanged at ${String(change.tssAfter)}.`
-        : `TSS: ${String(change.tssBefore)} to ${String(change.tssAfter)}.`,
+        ? t('class.change.tssSame', { tss: change.tssAfter })
+        : t('class.change.tss', { from: change.tssBefore, to: change.tssAfter }),
     )
   }
-  if (change.textChanged) lines.push('Names, description or cues changed.')
+  if (change.textChanged) lines.push(t('class.change.text'))
   return lines
 }

@@ -10,6 +10,8 @@ import { useClassList } from '../hooks/useClassList'
 import { matchesFilter, type ClassFilter } from '../lib/classCards'
 import { DuplicateClass } from '../components/classes/DuplicateClass'
 import { Link } from '../router/Router'
+import { useT } from '../i18n/I18n'
+import type { CatalogueKey } from '../i18n/en'
 
 export function ClassesPage() {
   return (
@@ -19,13 +21,14 @@ export function ClassesPage() {
   )
 }
 
-const FILTERS: readonly { value: ClassFilter; label: string }[] = [
-  { value: 'all', label: 'All' },
-  { value: 'saved', label: 'Saved to MOWL' },
-  { value: 'drafts', label: 'Drafts' },
+const FILTERS: readonly { value: ClassFilter; label: CatalogueKey }[] = [
+  { value: 'all', label: 'class.list.filterAll' },
+  { value: 'saved', label: 'class.list.filterSaved' },
+  { value: 'drafts', label: 'class.list.filterDrafts' },
 ]
 
 function Classes() {
+  const t = useT()
   const { listing, retry } = useClassList()
   const [filter, setFilter] = useState<ClassFilter>('all')
   const [query, setQuery] = useState('')
@@ -40,32 +43,32 @@ function Classes() {
   return (
     <div className="flex flex-col gap-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="m-0 font-display text-3xl font-extrabold">My classes</h1>
+        <h1 className="m-0 font-display text-3xl font-extrabold">{t('class.list.title')}</h1>
         <Button asChild>
-          <Link to="/classes/new">Design a class</Link>
+          <Link to="/classes/new">{t('class.list.design')}</Link>
         </Button>
       </div>
-      {listing.status === 'loading' ? <p className="m-0 text-muted">Loading your classes</p> : null}
+      {listing.status === 'loading' ? <p className="m-0 text-muted">{t('class.list.loading')}</p> : null}
       {listing.status === 'failed' ? (
         <>
-          <Notice kind="error">Your classes could not be loaded.</Notice>
+          <Notice kind="error">{t('class.list.failed')}</Notice>
           <p className="m-0">
             <Button variant="secondary" onClick={retry}>
-              Try again
+              {t('class.tryAgain')}
             </Button>
           </p>
         </>
       ) : null}
       {listing.status === 'ready' && listing.classes.length === 0 ? (
         <Card role="region" aria-labelledby="none-title">
-          <CardTitle id="none-title">No classes yet</CardTitle>
-          <CardContent>Describe a class and classbeat designs it from your playlist.</CardContent>
+          <CardTitle id="none-title">{t('class.list.none')}</CardTitle>
+          <CardContent>{t('class.list.noneText')}</CardContent>
         </Card>
       ) : null}
       {listing.status === 'ready' && listing.classes.length > 0 ? (
         <>
           <div className="flex flex-wrap items-center gap-3">
-            <div role="group" aria-label="Show" className="flex flex-wrap gap-2">
+            <div role="group" aria-label={t('class.list.show')} className="flex flex-wrap gap-2">
               {FILTERS.map((f) => (
                 <ChipButton
                   key={f.value}
@@ -74,13 +77,13 @@ function Classes() {
                     setFilter(f.value)
                   }}
                 >
-                  {f.label}
+                  {t(f.label)}
                 </ChipButton>
               ))}
             </div>
             <div className="relative ml-auto min-w-48 flex-1 sm:max-w-xs">
               <label htmlFor={searchId} className="sr-only">
-                Search your classes
+                {t('class.list.search')}
               </label>
               <Search
                 aria-hidden="true"
@@ -92,7 +95,7 @@ function Classes() {
                 id={searchId}
                 type="search"
                 value={query}
-                placeholder="Search your classes"
+                placeholder={t('class.list.search')}
                 onChange={(e) => {
                   setQuery(e.target.value)
                 }}
@@ -101,7 +104,7 @@ function Classes() {
             </div>
           </div>
           {shown.length === 0 ? (
-            <p className="m-0 text-muted">No class matches. Change the filter or the search.</p>
+            <p className="m-0 text-muted">{t('class.list.noMatch')}</p>
           ) : (
             <ul className="m-0 grid list-none grid-cols-1 gap-4 p-0 sm:grid-cols-2 xl:grid-cols-3">
               {shown.map((c) => (

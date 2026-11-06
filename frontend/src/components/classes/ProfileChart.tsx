@@ -1,6 +1,7 @@
 import { Flame, Zap } from 'lucide-react'
 import { useId, useState, type KeyboardEvent } from 'react'
 import type { Song } from '../../api/songs'
+import { useT } from '../../i18n/I18n'
 import { cadenceText, flatten, heightShare, inclineText, zoneCount, zoneName, type Bar } from '../../lib/profile'
 import { clock, totalSeconds } from '../../lib/workout'
 import { isRunningDraft, type DraftSegment } from '../../api/jobs'
@@ -30,6 +31,7 @@ export function ProfileChart({
   title: string
   songs: Song[] | null
 }) {
+  const t = useT()
   const id = useId()
   const bars = flatten(segments)
   // A running class (intervals with an incline and no cadence): five zones, an incline instead of
@@ -41,7 +43,12 @@ export function ProfileChart({
   if (total <= 0) return null
   const scale = PLOT_W / total
   const hardest = Math.max(...bars.map((b) => b.zone))
-  const summary = `Effort over time for ${title}: ${String(segments.length)} segments, ${clock(total)} in total. The hardest zone is ${String(hardest)}.${running ? ' The incline of each interval is shown when you select it.' : ''}`
+  const summary = t(running ? 'class.chart.summaryRunning' : 'class.chart.summary', {
+    title,
+    segments: segments.length,
+    total: clock(total),
+    zone: hardest,
+  })
   const move = (event: KeyboardEvent) => {
     const last = bars.length - 1
     let next: number | null
@@ -55,14 +62,14 @@ export function ProfileChart({
     setSelected(next)
   }
   const ticks: number[] = []
-  for (let t = TICK; t < total; t += TICK) ticks.push(t)
+  for (let at = TICK; at < total; at += TICK) ticks.push(at)
   const chosen: Bar | undefined = selected === null ? undefined : bars[selected]
   return (
     <figure className="m-0 flex flex-col gap-3">
       <div
         tabIndex={0}
         role="group"
-        aria-label={`${title}: use the left and right arrow keys to look at each interval`}
+        aria-label={t('class.chart.keys', { title })}
         onKeyDown={move}
         className="rounded-lg bg-stage p-3 text-stage-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
         data-testid="profile"
@@ -85,7 +92,7 @@ export function ProfileChart({
               <g key={z}>
                 <line x1={LEFT} x2={W} y1={y} y2={y} style={{ stroke: 'var(--cb-stage-grid)' }} strokeWidth={1} />
                 <text x={2} y={y + 4} fontSize={13} style={{ fill: 'var(--cb-stage-muted)' }}>
-                  {`Z${String(z)}`}
+                  {t('class.zone.short', { zone: z })}
                 </text>
               </g>
             )
@@ -140,23 +147,23 @@ export function ProfileChart({
             )
           })}
           <line x1={LEFT} x2={W} y1={AXIS_Y} y2={AXIS_Y} style={{ stroke: 'var(--cb-stage-muted)' }} strokeWidth={1} />
-          {ticks.map((t) => (
-            <g key={t}>
+          {ticks.map((tick) => (
+            <g key={tick}>
               <line
-                x1={LEFT + t * scale}
-                x2={LEFT + t * scale}
+                x1={LEFT + tick * scale}
+                x2={LEFT + tick * scale}
                 y1={AXIS_Y}
                 y2={AXIS_Y + 4}
                 style={{ stroke: 'var(--cb-stage-muted)' }}
               />
               <text
-                x={LEFT + t * scale}
+                x={LEFT + tick * scale}
                 y={AXIS_Y + 20}
                 fontSize={13}
                 textAnchor="middle"
                 style={{ fill: 'var(--cb-stage-muted)' }}
               >
-                {`${String(t / 60)} min`}
+                {t('class.chart.minutes', { minutes: tick / 60 })}
               </text>
             </g>
           ))}
@@ -166,15 +173,15 @@ export function ProfileChart({
       <figcaption className="m-0 rounded-md bg-raised px-3 py-2 text-[0.9375rem] text-text" data-testid="profile-detail" aria-live="polite">
         {chosen === undefined ? (
           <span className="text-muted">
-            Select a bar, or focus the chart and use the arrow keys, to see an interval.
+            {t('class.chart.select')}
           </span>
         ) : (
           <>
             <strong>
-              Zone {String(chosen.zone)} {zoneName(chosen.zone)}
+              {t('class.chart.zoneName', { zone: chosen.zone, name: zoneName(chosen.zone) })}
             </strong>
             {', '}
-            {clock(chosen.start)} to {clock(chosen.start + chosen.sec)}
+            {t('class.chart.range', { from: clock(chosen.start), to: clock(chosen.start + chosen.sec) })}
             {', '}
             {running ? (
               inclineText(chosen.gradient).toLowerCase()
@@ -182,7 +189,7 @@ export function ProfileChart({
               <>
                 {cadenceText(chosen.rpm)}
                 {', '}
-                {chosen.standing ? 'standing' : 'seated'}
+                {chosen.standing ? t('class.position.standingLower') : t('class.position.seatedLower')}
               </>
             )}
             {chosen.cue ? <>{': '}{chosen.cue}</> : null}
