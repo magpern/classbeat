@@ -196,7 +196,7 @@ async def complete_reset(
                     .values(password_hash=password_hash)
                     .returning(users.c.email)
                 )
-            ).scalar_one()
+            ).scalar_one_or_none()  # None: the account was deleted meanwhile
             # A keep list, not a remove list: an identity linked after the page's ``info`` was
             # never shown, cannot be listed, and goes. Ids that are not the user's are ignored.
             removed = (
@@ -248,9 +248,10 @@ async def change_password(
                 .values(password_hash=password_hash)
                 .returning(users.c.email)
             )
-        ).scalar_one()
+        ).scalar_one_or_none()  # None: the account was deleted meanwhile
         await revoke_user_sessions(db, ctx.user_id, except_id=info.id)
         await delete_outstanding_tokens(db, ctx.user_id)
         await record_event(db, "password_changed", user_id=ctx.user_id, ip=request_ip(request))
-    queue(background, request, happened("password_changed", email))
+    if email is not None:
+        queue(background, request, happened("password_changed", email))
     return Done()

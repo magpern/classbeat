@@ -212,7 +212,7 @@ def account_deleted(c: Ctx, p: Params) -> Content:
             EventTime(c.t(S.DELETED_WHEN), _when(p)),
             Note(c.t(S.DELETED_WARN) + " " + c.t(S.CONTACT_LEAD), contact=True),
         ),
-        c.t(S.REASON_SECURITY),
+        c.t(S.DELETED_REASON),
     )
 
 

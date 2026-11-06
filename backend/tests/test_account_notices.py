@@ -1,6 +1,7 @@
 """Account notices (ADR 0022 section 4, ME3): one mail per committed change, after the commit,
 through the one send path, and nothing in it that is a token, a password or account detail."""
 
+import asyncio
 import json
 import logging
 from typing import Any
@@ -95,7 +96,7 @@ async def test_a_completed_reset_mails_once_and_a_bad_token_not_at_all(
     assert_clean(mail, token)
 
 
-async def test_the_admin_switch_and_the_user_preference_gate_a_notice(
+async def test_the_admin_switch_gates_a_notice(
     menv: Env, smtp: SmtpFake, superuser: Connection
 ) -> None:
     browser = await signed_in(menv)
@@ -208,6 +209,70 @@ async def test_turning_totp_off_mails_once(menv: Env, smtp: SmtpFake) -> None:
     [mail] = smtp.to("me@example.com")
     assert mail.subject == TOTP_OFF
     assert_clean(mail)
+
+
+async def test_two_parallel_totp_removals_mail_once(menv: Env, smtp: SmtpFake) -> None:
+    user = await menv.user("me@example.com")
+    await menv.run(
+        "INSERT INTO mfa_totp (user_id, secret_ciphertext, nonce, key_id, confirmed_at) "
+        "VALUES (:u, 'x', 'y', 'app-v1', now())",
+        u=user,
+    )
+    issued = await menv.login(user, mfa=True)
+    await menv.run("UPDATE sessions SET stepup_at = now()")
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=menv.app), base_url=ORIGIN
+    ) as client:
+        actor = Actor(menv, issued.token, client)
+        answers = await asyncio.gather(
+            actor.call("DELETE", "/api/auth/mfa/totp"), actor.call("DELETE", "/api/auth/mfa/totp")
+        )
+    assert 204 in {a.status_code for a in answers}
+    assert len(smtp.to("me@example.com")) == 1  # one mail per change
+
+
+# ---- the preference half of the gate, on the real send path ---------------------------------
+
+
+def with_prefs(address: str, prefs: MailPrefs) -> notices.Notice:
+    base = notices.happened("account_deleted", address)
+    return notices.Notice(base.kind_id, address, base.params, prefs)
+
+
+async def deliver(menv: Env, notice: notices.Notice) -> None:
+    await notices.send_notice(menv.app, notice)
+
+
+async def test_account_deleted_is_sent_with_the_passed_prefs_when_the_lookup_finds_no_user(
+    menv: Env, smtp: SmtpFake, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    async def gone(_recipient: str) -> None:
+        return None  # the row is deleted: a lookup by address finds nobody (ME4)
+
+    monkeypatch.setattr(live, "_default_prefs", gone)
+    address = "old@example.com"
+    await deliver(menv, notices.happened("account_deleted", address))
+    assert smtp.to(address) == []  # no prefs and no user: dropped, which is why they are passed
+    await deliver(menv, with_prefs(address, MailPrefs()))
+    [mail] = smtp.to(address)
+    assert "deleted" in mail.subject.lower()
+    assert_clean(mail)
+
+
+async def test_passed_prefs_that_opt_out_drop_the_deleted_mail(
+    menv: Env, smtp: SmtpFake, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    async def gone(_recipient: str) -> None:
+        return None
+
+    monkeypatch.setattr(live, "_default_prefs", gone)
+    address = "old@example.com"
+    for prefs in (
+        MailPrefs(unsubscribed_all=True),
+        MailPrefs(opted_out=frozenset({"account_activity"})),
+    ):
+        await deliver(menv, with_prefs(address, prefs))
+    assert smtp.to(address) == []
 
 
 # ---- the notice object ------------------------------------------------------------------------

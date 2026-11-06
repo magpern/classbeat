@@ -8,6 +8,6 @@ When it happened: 6 November 2026, 12:30 UTC
 If this wasn't you, tell us right away. Contact us at support@classbeat.eu
 
 --
-You got this security notice because this is the email address of a classbeat account. These notices are sent for your protection.
+You got this because your classbeat account was deleted. This is the only mail about it.
 classbeat: https://classbeat.example.test
 Questions? Write to support@classbeat.eu

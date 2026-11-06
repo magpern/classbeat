@@ -105,6 +105,7 @@ class S(Enum):
     DELETED_BODY = auto()
     DELETED_WHEN = auto()
     DELETED_WARN = auto()
+    DELETED_REASON = auto()
     UNLINKED_HEADING = auto()
     UNLINKED_PRE = auto()
     UNLINKED_BODY = auto()
@@ -256,6 +257,9 @@ CATALOGUE: dict[S, str] = {
     ),
     S.DELETED_WHEN: "When it happened",
     S.DELETED_WARN: "If this wasn't you, tell us right away.",
+    S.DELETED_REASON: (
+        "You got this because your classbeat account was deleted. This is the only mail about it."
+    ),
     S.UNLINKED_HEADING: "A sign-in method was removed",
     S.UNLINKED_PRE: "{provider} can no longer be used to sign in to your classbeat account.",
     S.UNLINKED_BODY: ("{provider} was removed from your classbeat account as a way to sign in."),
