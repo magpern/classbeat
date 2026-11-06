@@ -35,6 +35,8 @@ from classbeat.classes.history import router as history_router
 from classbeat.classes.routes import music_router as class_music_router
 from classbeat.classes.routes import router as classes_router
 from classbeat.config import Settings, check_web_has_no_model_key
+from classbeat.connections.mowl_qr import QrWaits
+from classbeat.connections.mowl_qr_routes import router as mowl_qr_router
 from classbeat.connections.routes import router as connections_router
 from classbeat.connections.swedebeat_routes import router as swedebeat_router
 from classbeat.crypto.keks import load_keyring
@@ -186,6 +188,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             consumer = getattr(app.state, "mail_handoff", None)
             if consumer is not None:
                 await consumer.stop()
+            await app.state.mowl_qr.close()  # every MOWL QR wait ends with the process (ADR 0024)
             hub = getattr(app.state, "event_hub", None)
             if hub is not None:
                 await hub.stop()
@@ -205,6 +208,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         openapi_url="/api/openapi.json" if docs_enabled else None,
     )
     app.state.settings = settings
+    # The MOWL QR waits of this process (ADR 0024 section 4): in memory, one per user.
+    app.state.mowl_qr = QrWaits()
     # The revise kinds' admit reads them (ADR 0007 section 4): the plan's revisions per class
     # under the setting, and the money bounds of the cost cap (ADR 0011 sections 3 and 4).
     configure_limits(settings, PlanRevisionPolicy(settings.revisions_per_class))
@@ -231,6 +236,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     admin_routes.install(app)  # every /api/admin route of the admin area (ADR 0011 section 6)
     app.include_router(spotify_router)
     app.include_router(connections_router)
+    app.include_router(mowl_qr_router)
     app.include_router(swedebeat_router)
     app.include_router(job_events_router)
     app.include_router(jobs_router)

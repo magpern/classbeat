@@ -28,6 +28,8 @@ const REMOTE_URL = /(?:https?:)?\/\/(?!localhost\b|127\.0\.0\.1\b)[a-z0-9.-]+\.[
 // each exact quoted string in that one file.
 const COVER_ART = './components/songs/CoverArt.tsx'
 const SPOTIFY_LOGO = './components/songs/SpotifyAttribution.tsx'
+// ADR 0024: the MOWL QR code, served from our own origin (the API refuses any other path).
+const MOWL_QR = './components/account/MowlQr.tsx'
 const COVER_HOSTS = [
   'https://i.scdn.co',
   'https://mosaic.scdn.co',
@@ -97,13 +99,15 @@ describe('no third-party hosts', () => {
     expect(naming).toEqual([])
   })
 
-  it('only CoverArt and the Spotify logo render an image element', () => {
+  it('only CoverArt, the Spotify logo and the MOWL QR code render an image element', () => {
     // src/test/ holds test fixtures (hostile text such as an <img> in a description), not app code.
     const withImg = Object.entries(scripts)
       .filter(([path]) => !path.startsWith('./test/'))
       .filter(([, source]) => /<img\b|createElement\(\s*['"]img['"]|new Image\(/.test(source))
       .map(([path]) => path)
-    expect(withImg.sort()).toEqual([COVER_ART, SPOTIFY_LOGO].sort())
+    expect(withImg.sort()).toEqual([COVER_ART, MOWL_QR, SPOTIFY_LOGO].sort())
+    // The QR image's one source is the ticket's path, which the API checks is ours.
+    expect((scripts[MOWL_QR] ?? '').match(/src=\{[^}]+\}/g)).toEqual(['src={ticket.image}'])
     // The logo's images come from the two bundled brand files and nothing else.
     const logo = scripts[SPOTIFY_LOGO] ?? ''
     expect(logo.match(/src=\{(\w+)\}/g)).toEqual(['src={whiteLogo}', 'src={blackLogo}'])

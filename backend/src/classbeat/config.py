@@ -376,6 +376,10 @@ class Settings(BaseSettings):
     # only (off by default). The admin flag ``soundless_enabled`` must also be stored ``on`` and
     # every plan's model route must cover soundless (``classbeat.flags.effective``).
     soundless_enabled: bool = False
+    # ADR 0024 (#647): connect MOWL by scanning a QR code with the MOWL phone app. The
+    # environment's switch, off by default until the owner's live scan; the password form stays
+    # either way.
+    mowl_qr_enabled: bool = False
     swedebeat_app_file: Path = Path("/app/swedebeat_app.json")
 
     @classmethod
