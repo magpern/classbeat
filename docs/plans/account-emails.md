@@ -1,5 +1,8 @@
 # Plan: milestone ME "Account emails" — revision 3
 
+Revision note (2026-11-05): the ADR is numbered 0022 and the roadmap amendment 15, because ADR 0018
+and Amendment 12 were already taken by M8 (running classes).
+
 Revision 3 follows the owner's re-review (2026-11-05): fire-and-forget delivery everywhere, a
 minimal worker→web hand-off instead of an outbox, admin toggles per email type, user
 preferences with unsubscribe, and one central registry of email kinds.
@@ -51,9 +54,9 @@ account found it is not sent. A test pins that essential kinds make no preferenc
 
 Order: ME0 → ME1 → ME2, ME3, ME4 (any order) → ME5 (also needs A4 #380).
 
-### ME0 `docs: plan account emails (ADR 0018, Amendment 12)` — Architect, Opus reviewer
-- `docs/roadmap.md` Amendment 12 and ME/MH rows; `docs/status.md` rows.
-- `docs/adr/0018-account-emails.md`, short: registry and categories, rendering and catalogue,
+### ME0 `docs: plan account emails (ADR 0022, Amendment 15)` — Architect, Opus reviewer
+- `docs/roadmap.md` Amendment 15 and ME/MH rows; `docs/status.md` rows.
+- `docs/adr/0022-account-emails.md`, short: registry and categories, rendering and catalogue,
   branding, fire-and-forget delivery (web: `BackgroundTasks` after the commit; worker: hand-off
   table), preferences and unsubscribe token, admin switches. ADR 0016's B2 row gets a note that
   its verify job enqueues "class ready".
@@ -111,7 +114,7 @@ Order: ME0 → ME1 → ME2, ME3, ME4 (any order) → ME5 (also needs A4 #380).
 ### ME3 `feat(auth): new account notices` — Sonnet dev, Opus reviewer
 - Password changed (signed-in change and completed reset), welcome (after sign-up confirmation;
   on Google/GitHub/Microsoft account creation it names the provider and replaces the "sign-in
-  method added" notice for that case — the one intended trigger change, in ADR 0018), account
+  method added" notice for that case — the one intended trigger change, in ADR 0022), account
   deleted (address and preferences read before the cascade and **passed into the background task
   as `prefs`**, so the send path never reloads the deleted user), sign-in method removed,
   two-factor turned off.
@@ -165,7 +168,7 @@ Depends on ME1 and A4 (#380).
   themselves; essential kinds can't be switched off.
 - Users can opt out per category or of all optional mail, signed in or from the mail's link.
 - "Class ready" arrives once per qualifying job on the fakes.
-- No test sends real mail (SmtpFake, Mailpit, netguard). ADR 0018 accepted.
+- No test sends real mail (SmtpFake, Mailpit, netguard). ADR 0022 accepted.
 
 ## Verification
 - Per PR: `cd backend && uv run ruff check && uv run pyright && uv run pytest` (throwaway Postgres
