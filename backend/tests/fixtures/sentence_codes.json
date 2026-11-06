@@ -1,0 +1,181 @@
+[
+  {
+    "code": "spotify.invalid_grant",
+    "params": {},
+    "english": "Spotify no longer accepts the connection. Reconnect Spotify."
+  },
+  {
+    "code": "spotify.app_misconfigured",
+    "params": {},
+    "english": "Spotify does not recognise this app setup. Check the Client ID and the redirect URI in your Spotify app."
+  },
+  {
+    "code": "spotify.not_allowlisted",
+    "params": {},
+    "english": "Spotify refused this account. In your Spotify app's User Management add this account's name and email (Development Mode allows 5 people), and make sure the app's owner has Spotify Premium."
+  },
+  {
+    "code": "spotify.forbidden",
+    "params": {},
+    "english": "Spotify refused this request for your account or playlist."
+  },
+  {
+    "code": "spotify.rate_limited",
+    "params": {
+      "count": 1
+    },
+    "english": "Spotify asks to slow down; trying again in about 1 minute."
+  },
+  {
+    "code": "spotify.quota_exhausted",
+    "params": {
+      "count": 1
+    },
+    "english": "Your Spotify app has used up its allowance for now. Try again in about 1 hour."
+  },
+  {
+    "code": "spotify.upstream_unavailable",
+    "params": {},
+    "english": "Spotify is not answering."
+  },
+  {
+    "code": "spotify.not_found",
+    "params": {},
+    "english": "Spotify could not find that playlist."
+  },
+  {
+    "code": "spotify.scope_mismatch",
+    "params": {},
+    "english": "Spotify did not give the access classbeat needs. Connect again and allow it."
+  },
+  {
+    "code": "spotify.invalid_response",
+    "params": {},
+    "english": "Spotify did not give the access classbeat needs. Connect again and allow it."
+  },
+  {
+    "code": "spotify.account_changed",
+    "params": {},
+    "english": "This is a different Spotify account than before. Confirm to switch (classbeat forgets the working playlist)."
+  },
+  {
+    "code": "spotify.access_denied",
+    "params": {},
+    "english": "Spotify was not connected."
+  },
+  {
+    "code": "spotify.unknown",
+    "params": {},
+    "english": "Something went wrong with Spotify. Try again later."
+  },
+  {
+    "code": "spotify.rate_limited",
+    "params": {
+      "count": 3
+    },
+    "english": "Spotify asks to slow down; trying again in about 3 minutes."
+  },
+  {
+    "code": "spotify.quota_exhausted",
+    "params": {
+      "count": 2
+    },
+    "english": "Your Spotify app has used up its allowance for now. Try again in about 2 hours."
+  },
+  {
+    "code": "spotify.quota_exhausted",
+    "params": {
+      "count": 3
+    },
+    "english": "Your Spotify app has used up its allowance for now. Try again in about 3 hours."
+  },
+  {
+    "code": "job.consent_missing",
+    "params": {},
+    "english": "Allow the working playlist in your Spotify settings first."
+  },
+  {
+    "code": "job.pool_unusable",
+    "params": {},
+    "english": "Your working playlist was changed: make it private again or set it up again."
+  },
+  {
+    "code": "job.pool_missing",
+    "params": {},
+    "english": "Your working playlist was gone from Spotify; trying again by itself."
+  },
+  {
+    "code": "job.pool_not_synced",
+    "params": {},
+    "english": "MOWL has not caught up with the working playlist; try again in a minute."
+  },
+  {
+    "code": "job.playlist_mismatch",
+    "params": {},
+    "english": "Spotify's playlist did not match the approved songs; nothing was designed. Create it again."
+  },
+  {
+    "code": "job.pool_too_small",
+    "params": {},
+    "english": "Not enough usable songs were found; try a wider style or era."
+  },
+  {
+    "code": "job.account_changed",
+    "params": {},
+    "english": "Your Spotify account is not the one these songs were chosen for. Ask for new songs."
+  },
+  {
+    "code": "job.pool_busy",
+    "params": {},
+    "english": "Another song pick is still running."
+  },
+  {
+    "code": "job.media_host_not_allowed",
+    "params": {},
+    "english": "The mix was added to your MOWL account, but it could not be analysed: analysing a new Swedebeat mix is not available on this server yet. Mixes analysed before still work."
+  },
+  {
+    "code": "job.media_refused",
+    "params": {},
+    "english": "The audio of this mix could not be fetched. Nothing was designed."
+  },
+  {
+    "code": "job.analysis_failed",
+    "params": {},
+    "english": "The audio of this mix could not be analysed. Try another mix."
+  },
+  {
+    "code": "job.feature_off",
+    "params": {},
+    "english": "This feature is switched off on this server right now. Nothing was designed."
+  },
+  {
+    "code": "job.analysis_limit",
+    "params": {},
+    "english": "You have analysed 10 new Swedebeat mixes in the last 24 hours. Mixes analysed before still work; try a new one tomorrow."
+  },
+  {
+    "code": "job.handoff_expired",
+    "params": {},
+    "english": "That check expired. Start again from the Swedebeat step; nothing was fetched."
+  },
+  {
+    "code": "swedebeat.wait",
+    "params": {
+      "count": 1
+    },
+    "english": "Swedebeat asks to slow down; trying again in about 1 minute."
+  },
+  {
+    "code": "swedebeat.wait",
+    "params": {
+      "count": 3
+    },
+    "english": "Swedebeat asks to slow down; trying again in about 3 minutes."
+  },
+  {
+    "code": "swedebeat.stopped",
+    "params": {},
+    "english": "Swedebeat asks to slow down. This match has stopped."
+  }
+]

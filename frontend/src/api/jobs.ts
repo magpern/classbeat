@@ -1,4 +1,5 @@
 import { get, post } from './client'
+import { decodeSentence, type SentenceRef } from './sentences'
 import { count, flag, isObject, list, object, optionalText, text, type JsonObject } from './decode'
 
 // Jobs (ADR 0005 section 2, backend/src/classbeat/jobs/routes.py) and the design_draft kind
@@ -37,6 +38,8 @@ export interface Job {
   errorCategory: string | null
   /** The server's own plain sentence for the failure or wait (`error_message`); null when it has none. */
   errorMessage: string | null
+  /** The same sentence as a catalogue code and its numbers; null when the server sent none. */
+  sentence: SentenceRef | null
   /** The song list this job waits on (ADR 0008 section 5); null for other jobs. */
   approvalRevisionId: string | null
   /** When the wait for approval ends. */
@@ -61,6 +64,7 @@ export function decodeJob(value: unknown): Job {
     cancelRequested: flag(item, 'cancel_requested'),
     errorCategory: optionalText(item, 'error_category'),
     errorMessage: optionalText(item, 'error_message'),
+    sentence: decodeSentence(item, 'sentence', 'sentence_params'),
     approvalRevisionId: optionalText(item, 'approval_revision_id'),
     expiresAt: optionalText(item, 'expires_at'),
     approvedAt: optionalText(item, 'approved_at'),

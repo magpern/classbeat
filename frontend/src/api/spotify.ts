@@ -1,4 +1,5 @@
 import { ApiError, del, get, post, request } from './client'
+import { decodeSentence, type SentenceRef } from './sentences'
 import { flag, object, optionalCount, optionalText, text } from './decode'
 
 // The Spotify connection (ADR 0009 section 2, backend/src/classbeat/spotify/routes.py). The
@@ -13,6 +14,8 @@ export interface SpotifyStatus {
   lastError: string | null
   /** The backend's plain sentence for `lastError`. */
   lastErrorMessage: string | null
+  /** `lastErrorMessage` as a catalogue code and its numbers. */
+  lastErrorSentence: SentenceRef | null
   /** classbeat's fixed callback URL, built from settings, to register in the Spotify app. */
   callbackUrl: string
   poolConsent: boolean
@@ -27,6 +30,7 @@ function decodeStatus(value: unknown): SpotifyStatus {
     status: text(item, 'status'),
     lastError: optionalText(item, 'last_error'),
     lastErrorMessage: optionalText(item, 'last_error_message'),
+    lastErrorSentence: decodeSentence(item, 'last_error_sentence', 'last_error_sentence_params'),
     callbackUrl: text(item, 'callback_url'),
     poolConsent: flag(item, 'pool_consent'),
     consentVersion: optionalCount(item, 'consent_version'),

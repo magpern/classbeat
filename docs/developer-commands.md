@@ -406,6 +406,14 @@ npm run build        # typecheck, then Vite writes frontend/dist
   and no markup. `locales.json`, the import map, the catalogue files and `locale-init.js` must list the same locales.
   Outside `format.ts` and the admin area, `toLocaleString`, `toLocaleDateString`, `toLocaleTimeString` and `toFixed`
   fail. The e2e Playwright config pins the browser locale to `en`.
+- Server sentences as codes (ML4, ADR 0023 section 6): `jobs/sentences.py` and `spotify/errors.py` build a
+  `classbeat.sentence.Sentence` (`code`, English `text`, whole-number `params`, `count` picks the plural). `GET/POST /api/jobs`
+  answers carry `sentence` and `sentence_params` next to `error_message`; `GET /api/spotify` carries `last_error_sentence`
+  and `last_error_sentence_params` next to `last_error_message`. Codes are `spotify.<category>`, `job.<category>`,
+  `swedebeat.wait` and `swedebeat.stopped`; the page words `sentence.<code>` from `en.ts` (`src/api/sentences.ts`) and shows
+  `error_message` for a code it has no key for. A new code needs its `en.ts` entry and a regenerated
+  `backend/tests/fixtures/sentence_codes.json` (`sentence_cases.as_json()`); the backend and `src/i18n/sentences.test.ts`
+  both check it. `design/rules/rationales.py` stays English.
 - Fonts are bundled (`@fontsource-variable/inter`, `@fontsource/archivo` 700 and 800, SIL OFL) and served from
   our origin; nothing is requested from a third-party host at runtime (`src/no-third-party-hosts.test.ts`
   guards the sources), with **one allowed exception**: album and playlist covers from Spotify's image hosts

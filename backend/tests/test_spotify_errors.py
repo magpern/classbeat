@@ -13,7 +13,7 @@ from mowl.errors import MowlError
 
 from classbeat.connections import ConnectionFailure
 from classbeat.spotify import CATEGORIES, SENTENCES, sentence, spotify_call
-from classbeat.spotify.errors import QUOTA_THRESHOLD_SECONDS, classify_use
+from classbeat.spotify.errors import QUOTA_THRESHOLD_SECONDS, classify_use, sentence_of
 from spotifycore import FakeSpotify
 from spotifyfake import CLIENT_A, USER_A, USER_B
 from spotifytools import STATUS, Spot
@@ -224,6 +224,7 @@ async def _use(
     # The status shows the category and its sentence, never a provider message.
     if failed.value.category not in ("rate_limited", "quota_exhausted"):
         assert status["last_error_message"] in (None, sentence(failed.value.category))
+        assert status["last_error_sentence"] in (None, sentence_of(failed.value.category).code)
     return failed.value
 
 
