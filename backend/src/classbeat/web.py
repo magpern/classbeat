@@ -99,6 +99,12 @@ async def ready(request: Request, response: Response) -> ReadyResponse:
     return ReadyResponse(status="ready")
 
 
+EMAIL_ASSET_HEADERS = {
+    "Cross-Origin-Resource-Policy": "cross-origin",
+    "Cache-Control": "public, max-age=604800",
+}
+
+
 def _add_single_page_app(app: FastAPI, static_dir: Path) -> None:
     """Serve ``static_dir``; any other GET outside ``/api`` gets ``index.html``."""
     root = static_dir.resolve()
@@ -110,6 +116,10 @@ def _add_single_page_app(app: FastAPI, static_dir: Path) -> None:
         try:
             candidate = (root / path).resolve()
             if candidate.is_relative_to(root) and candidate.is_file():
+                if path.startswith("email/"):
+                    # The logo in mail is loaded cross-origin by mail clients (ADR 0022
+                    # section 3); only /email/* is opened up, and it may be cached for a week.
+                    return FileResponse(candidate, headers=EMAIL_ASSET_HEADERS)
                 return FileResponse(candidate)
         except (OSError, ValueError):  # for example an embedded NUL in the path
             pass

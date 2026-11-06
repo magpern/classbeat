@@ -1,0 +1,17 @@
+You already have an account
+===========================
+
+Someone asked to create a classbeat account with this address, which already has one.
+
+Sign in:
+https://classbeat.example.test/signin
+
+Forgot your password?:
+https://classbeat.example.test/reset
+
+If this wasn't you, ignore this mail.
+
+--
+You got this because someone used this email address on classbeat.
+classbeat: https://classbeat.example.test
+Questions? Write to support@classbeat.eu

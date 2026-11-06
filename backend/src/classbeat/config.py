@@ -64,6 +64,8 @@ PLAIN_SMTP_HOSTS = frozenset({"localhost", "mailpit"})
 MIN_APP_SECRET_BYTES = 32
 # ADR 0004 section 2: the id of the current KEK (the ``connection_kek`` secret file).
 CONNECTION_KEK_ID = re.compile(r"kek-[a-z0-9-]{1,28}")
+# A bare address (no display name, no angle brackets, no whitespace or control characters).
+SUPPORT_ADDRESS = re.compile(r"[A-Za-z0-9._%+-]{1,64}@[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)+")
 
 
 def swedebeat_app_keys(value: SecretStr) -> dict[str, str] | None:
@@ -218,6 +220,10 @@ class Settings(BaseSettings):
     smtp_host: str | None = None
     smtp_port: int = 587
     smtp_sender: str = "classbeat@localhost"
+    # The bare address that replaces "the operator" in mail: the footer's ``mailto:`` and the
+    # ``Reply-To`` (ADR 0022 section 3). An owner-confirmable default: the mailbox must exist
+    # before deploy. The admin setting (ME2) overrides it.
+    mail_support_address: str = "support@classbeat.eu"
     smtp_tls: Literal["starttls", "tls", "none"] = "starttls"
     smtp_username: str | None = None
     # From the file ``smtp_password`` (never the environment).
@@ -468,6 +474,13 @@ class Settings(BaseSettings):
     def _check_connection_kek_id(cls, value: str) -> str:
         if CONNECTION_KEK_ID.fullmatch(value) is None:
             raise ValueError("connection_kek_id must match ^kek-[a-z0-9-]{1,28}$")
+        return value
+
+    @field_validator("mail_support_address")
+    @classmethod
+    def _check_mail_support_address(cls, value: str) -> str:
+        if SUPPORT_ADDRESS.fullmatch(value) is None:
+            raise ValueError("mail_support_address must be a bare email address")
         return value
 
     @field_validator("public_base_url")

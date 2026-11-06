@@ -120,7 +120,13 @@ and retired ones are `connection_kek_<id>`; `smtp_password` (optional) is the SM
 `none` only for loopback or the compose `mailpit`; compose points them at mailpit;
 `CLASSBEAT_SMTP_CA_FILE` (optional, not with `none`) is a readable PEM certificate file the server's
 certificate must match instead of the system store, for Proton Mail Bridge; verification and the hostname
-check stay on, see `docs/runbooks/proton-bridge-smtp.md`); the matching
+check stay on, see `docs/runbooks/proton-bridge-smtp.md`); `CLASSBEAT_MAIL_SUPPORT_ADDRESS` (compose.prod: `MAIL_SUPPORT_ADDRESS`; bare
+address, default `support@classbeat.eu`, ADR 0022) is the support `mailto:` and `Reply-To` of every
+mail; the mailbox must exist before deploy. Mail layout: `classbeat/emails/`; golden files in
+`backend/tests/mail_golden/` are regenerated with `uv run python tests/mailgolden.py` (from
+`backend/`) after an intended change; the logo `frontend/public/email/logo.png` is rendered from
+`scripts/email-logo.svg` by `scripts/render-email-logo.sh`, and `/email/*` is served with
+`Cross-Origin-Resource-Policy: cross-origin` and a one-week cache; the matching
 `CLASSBEAT_DATABASE_PASSWORD` and `CLASSBEAT_DATABASE_OWNER_PASSWORD` variables are ignored.
 The admin area (ADR 0011 section 5): `CLASSBEAT_MAINT_DATABASE_URL` (compose sets it on web) and the
 `database_maint_password` secret file (web and `db-functions` only, which creates the role

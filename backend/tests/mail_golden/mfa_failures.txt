@@ -1,0 +1,16 @@
+Failed two-factor attempts
+==========================
+
+There were five failed two-factor attempts on your classbeat account within an hour.
+
+When we noticed: 6 November 2026, 12:30 UTC
+
+Review your account:
+https://classbeat.example.test/account
+
+If this wasn't you, change your password. Contact us at support@classbeat.eu
+
+--
+You got this security notice because this is the email address of a classbeat account. These notices are sent for your protection.
+classbeat: https://classbeat.example.test
+Questions? Write to support@classbeat.eu

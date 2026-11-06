@@ -1,0 +1,14 @@
+Confirm your account
+====================
+
+Someone asked to create a classbeat account with this address. To finish, open the link below (valid for 24 hours) and type the password you chose.
+
+Confirm account:
+https://classbeat.example.test/signup/confirm#token=SAMPLE
+
+If this wasn't you, ignore this mail. No account is created.
+
+--
+You got this because someone used this email address on classbeat.
+classbeat: https://classbeat.example.test
+Questions? Write to support@classbeat.eu

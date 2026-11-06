@@ -184,5 +184,7 @@ async def confirm_provider_signup(
         raise _refuse(status, exc.code) from None
     clear_pending_cookie(response)
     background.add_task(
-        send_logged, mailer(request), mails.identity_linked_notice(pending.email, pending.provider)
+        send_logged,
+        mailer(request),
+        mails.identity_linked_notice(settings, pending.email, pending.provider),
     )
