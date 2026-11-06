@@ -205,6 +205,9 @@ test('Google re-authentication: refused with a password, accepted without auth_t
   })
   expect(refused.status()).toBe(403)
   expect(await refused.json()).toEqual({ detail: { reason: 'reauth_use_password' } })
+  // Close the prompt: going to the same URL again only changes the hash, so it would stay open.
+  await dialog.getByRole('button', { name: 'Cancel' }).click()
+  await expect(dialog).toHaveCount(0)
 
   // A Google-only account (no password): Google's answer counts without any auth_time.
   sql(`UPDATE users SET password_hash = NULL WHERE email = '${email}'`)
