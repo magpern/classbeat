@@ -76,6 +76,32 @@ describe("the logged-out language picker", () => {
   });
 });
 
+describe("the language after sign-out", () => {
+  it("keeps the account language as this browser's choice (pinned: ADR 0023 order users.locale, then cb-locale)", async () => {
+    let signedInNow = true;
+    fakeApi({
+      "GET /api/auth/session": () => (signedInNow ? signedIn("sv") : ANON),
+      "POST /api/auth/logout": () => {
+        signedInNow = false;
+        return { status: "ok" };
+      },
+      "GET /api/classes": { classes: [] },
+    });
+    renderAt("/classes");
+    await waitFor(() => {
+      expect(window.localStorage.getItem("cb-locale")).toBe("sv");
+    });
+    await userEvent.click(
+      await screen.findByRole("button", { name: "ann@example.test" }),
+    );
+    await userEvent.click(
+      await screen.findByRole("menuitem", { name: "Sign out" }),
+    );
+    await screen.findByRole("combobox", { name: "Language" });
+    expect(window.localStorage.getItem("cb-locale")).toBe("sv");
+  });
+});
+
 describe("the Account language", () => {
   async function openAppearance() {
     renderAt("/account");
@@ -129,6 +155,18 @@ describe("the Account language", () => {
     await waitFor(() => {
       expect(window.localStorage.getItem("cb-locale")).toBeNull();
     });
+  });
+
+  it("hides the Language section when fewer than two languages are offered", async () => {
+    fakeApi({
+      "GET /api/auth/session": { ...signedIn(null), locales: ["en"] },
+    });
+    renderAt("/account");
+    await userEvent.click(
+      await screen.findByRole("tab", { name: "Appearance" }),
+    );
+    await screen.findByText("Theme");
+    expect(screen.queryByText("Language")).toBeNull();
   });
 
   it("shows a refused choice as an error", async () => {

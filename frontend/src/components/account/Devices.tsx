@@ -60,7 +60,9 @@ export function Devices({ busy, onSignOutEverywhere }: { busy: boolean; onSignOu
             <li key={device.id} className="flex flex-wrap items-center gap-2">
               <span className="min-w-0 flex-1 break-words">
                 {device.userAgent ?? t('devices.unknownBrowser')}
-                <span className="block text-muted">{t('devices.lastUsed', { when: when(device.lastSeenAt) })}</span>
+                <span className="block text-muted">
+                  {t('devices.lastUsed', { when: when(device.lastSeenAt) })}
+                </span>
                 {device.locationChangedAt ? (
                   <span className="block text-muted" data-testid="device-moved">
                     {t(device.current ? 'devices.movedCurrent' : 'devices.movedOther', {

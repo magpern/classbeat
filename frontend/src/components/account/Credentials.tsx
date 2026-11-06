@@ -26,11 +26,7 @@ export function ChangeEmail({ current }: { current: string }) {
       <p>
         <Trans id="cred.email.current" slots={{ email: <strong>{current}</strong> }} />
       </p>
-      {sentTo ? (
-        <Notice kind="success">
-          {t('cred.email.sent', { email: sentTo })}
-        </Notice>
-      ) : null}
+      {sentTo ? <Notice kind="success">{t('cred.email.sent', { email: sentTo })}</Notice> : null}
       {action.error ? <Notice kind="error">{action.error}</Notice> : null}
       <form onSubmit={submit}>
         <Field

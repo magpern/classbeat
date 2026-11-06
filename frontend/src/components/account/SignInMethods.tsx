@@ -58,7 +58,9 @@ export function SignInMethods() {
       <ul className="rows">
         <li>
           <span>{t('signin.password')}</span>
-          <span className="muted">{state.hasPassword ? t('signin.passwordSet') : t('signin.passwordNotSet')}</span>
+          <span className="muted">
+            {state.hasPassword ? t('signin.passwordSet') : t('signin.passwordNotSet')}
+          </span>
         </li>
         {state.identities.map((item) => (
           <li key={item.id}>

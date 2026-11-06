@@ -7,20 +7,13 @@ import {
   type Operation,
 } from '../../api/jobs'
 import { FORGET_WARNING } from '../account/mowlWarning'
+import { Trans, useT } from '../../i18n/I18n'
 import { Link } from '../../router/Router'
 import { Button } from '../ui/button'
 import { CheckNeeded } from './CheckNeeded'
 import { Notice, useAction } from '../forms'
 
 type Outcome = 'found' | 'absent' | 'still_unsure' | 'decided'
-
-const OUTCOMES: Record<Outcome, string> = {
-  found: 'The playlist is in your MOWL music. You can design the class again now.',
-  absent: 'The playlist is not in your MOWL music. You can design the class again now.',
-  still_unsure: 'classbeat still cannot tell whether the playlist was added.',
-  decided:
-    'Understood. The next design adds the playlist to your MOWL music again, which may leave two copies there.',
-}
 
 function outcomeOf(operation: Operation): Outcome {
   if (operation.state === 'succeeded') return 'found'
@@ -66,6 +59,7 @@ export function UncertainAttach({
   /** Only these operations of the job are handled here (a song job also has Spotify writes). */
   accept?: (operation: Operation) => boolean
 }) {
+  const t = useT()
   const [listing, setListing] = useState<Listing>({ status: 'loading' })
   const [outcome, setOutcome] = useState<Outcome | null>(null)
   const [confirming, setConfirming] = useState(false)
@@ -129,9 +123,9 @@ export function UncertainAttach({
   // The user's two actions answer 409 when the row is final or no longer undecided: look again.
   const describe = (error: unknown): string => {
     if (error instanceof ApiError && error.status === 409) {
-      return 'That was already settled. The list below is up to date.'
+      return t('class.attach.settled')
     }
-    return 'That did not work. Try again.'
+    return t('error.generic')
   }
 
   const decide = (kind: 'check' | 'anyway', operation: Operation) => {
@@ -156,20 +150,16 @@ export function UncertainAttach({
   const first = listing.status === 'ready' ? listing.operations[0] : undefined
   return (
     <CheckNeeded data-testid="uncertain-attach">
-      <h2 className="m-0 font-display text-xl font-bold">classbeat could not tell whether your playlist was added</h2>
-      <p>
-        To read your music, classbeat asked MOWL to add the playlist you chose to your MOWL music.
-        MOWL did not answer clearly, so the playlist may or may not be there now. classbeat does
-        not try again on its own, so you do not end up with two copies by accident.
-      </p>
+      <h2 className="m-0 font-display text-xl font-bold">{t('class.attach.title')}</h2>
+      <p>{t('class.attach.intro')}</p>
       {outcome ? (
-        <Notice kind={outcome === 'still_unsure' ? 'info' : 'success'}>{OUTCOMES[outcome]}</Notice>
+        <Notice kind={outcome === 'still_unsure' ? 'info' : 'success'}>{t(`class.attach.${outcome}`)}</Notice>
       ) : null}
       {action.error ? <Notice kind="error">{action.error}</Notice> : null}
-      {listing.status === 'loading' ? <p>Loading</p> : null}
+      {listing.status === 'loading' ? <p>{t('common.loading')}</p> : null}
       {listing.status === 'error' ? (
         <>
-          <Notice kind="error">What is left to decide could not be loaded.</Notice>
+          <Notice kind="error">{t('class.attach.loadFailed')}</Notice>
           <p>
             <Button
               
@@ -177,7 +167,7 @@ export function UncertainAttach({
                 void load()
               }}
             >
-              Try again
+              {t('class.tryAgain')}
             </Button>
           </p>
         </>
@@ -185,17 +175,17 @@ export function UncertainAttach({
       {listing.status === 'ready' && first === undefined && outcome === null ? (
         <div className="notice" role="status" data-testid="no-undecided">
           <p>
-            classbeat has no step left for you to decide here, so it cannot offer Check again or
-            Do it anyway. If you want to be sure the playlist is not added twice, look in your
-            MOWL music. To clear classbeat's record of it, disconnect MOWL and connect it again on{' '}
-            <Link to="/account">your account page</Link>, then start a new design from the form.
+            <Trans
+              id="class.attach.none"
+              slots={{ account: <Link to="/account">{t('class.attach.accountPage')}</Link> }}
+            />
           </p>
           <p>{FORGET_WARNING}</p>
         </div>
       ) : null}
       {listing.status === 'ready' && listing.scope === 'account' && first !== undefined ? (
         <p className="muted" data-testid="account-scope">
-          This step comes from an earlier design of yours.
+          {t('class.attach.earlier')}
         </p>
       ) : null}
       {first !== undefined && !confirming ? (
@@ -207,7 +197,7 @@ export function UncertainAttach({
               decide('check', first)
             }}
           >
-            Check again
+            {t('class.checkAgain')}
           </Button>
           <Button
             variant="secondary"
@@ -216,16 +206,13 @@ export function UncertainAttach({
               setConfirming(true)
             }}
           >
-            Do it anyway
+            {t('class.doItAnyway')}
           </Button>
         </p>
       ) : null}
       {first !== undefined && confirming ? (
-        <div className="notice" role="group" aria-label="Confirm" tabIndex={-1} ref={confirmRef}>
-          <p>
-            Do it anyway means you decide the playlist was not added. The next design adds it to
-            your MOWL music again. If it was added after all, you will have two copies of it there.
-          </p>
+        <div className="notice" role="group" aria-label={t('class.confirm')} tabIndex={-1} ref={confirmRef}>
+          <p>{t('class.attach.warning')}</p>
           <Button
             
             disabled={action.busy}
@@ -233,7 +220,7 @@ export function UncertainAttach({
               decide('anyway', first)
             }}
           >
-            Yes, add it again
+            {t('class.attach.addAgain')}
           </Button>
           <Button
             variant="secondary"
@@ -242,7 +229,7 @@ export function UncertainAttach({
               setConfirming(false)
             }}
           >
-            Cancel
+            {t('class.cancel')}
           </Button>
         </div>
       ) : null}

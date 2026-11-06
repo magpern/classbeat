@@ -42,9 +42,7 @@ export function UnsubscribePage() {
   if (done !== null) {
     return (
       <Card title={t("unsub.doneTitle")}>
-        <Notice kind="success">
-          {done === "all" ? t("unsub.doneAll") : t("unsub.doneCategory")}
-        </Notice>
+        <Notice kind="success">{done === "all" ? t("unsub.doneAll") : t("unsub.doneCategory")}</Notice>
         <p>{t("unsub.doneNote")}</p>
       </Card>
     );

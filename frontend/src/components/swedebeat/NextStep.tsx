@@ -285,7 +285,10 @@ export function NextStep({
       <p className="m-0 text-muted" data-testid="next-facts">
         {playlist !== null ? (
           <>
-            <Trans id="swnext.playlist" slots={{ name: <strong className="text-text">{playlist}</strong> }} />{' '}
+            <Trans
+              id="swnext.playlist"
+              slots={{ name: <strong className="text-text">{playlist}</strong> }}
+            />{' '}
           </>
         ) : null}
         {t('swnext.facts', { count: match.songs.length, length: minutes(expectedSec) })}
@@ -303,7 +306,12 @@ export function NextStep({
       ) : null}
       {expired ? <Notice>{t('swnext.expired')}</Notice> : null}
       {loaded && verdict !== null ? (
-        <p className="notice" data-kind={verdict.tone === 'ok' ? 'success' : 'info'} role="status" data-testid="verdict">
+        <p
+          className="notice"
+          data-kind={verdict.tone === 'ok' ? 'success' : 'info'}
+          role="status"
+          data-testid="verdict"
+        >
           {verdict.text}
         </p>
       ) : null}
@@ -329,7 +337,13 @@ export function NextStep({
       {reconnect ? <ReconnectPrompt /> : null}
       {action.error ? <Notice kind="error">{action.error}</Notice> : null}
       {needsPicker ? (
-        <MixPicker mixes={mixes} failed={mixesFailed} candidates={handoff.candidates} value={picked} onChange={setPicked} />
+        <MixPicker
+          mixes={mixes}
+          failed={mixesFailed}
+          candidates={handoff.candidates}
+          value={picked}
+          onChange={setPicked}
+        />
       ) : null}
       {verified ? (
         <div className="flex flex-wrap items-center gap-3">
@@ -384,7 +398,11 @@ function MixPicker({
       {ordered.map((mix) => {
         const id = `${name}-${mix.mixId}`
         return (
-          <label key={mix.mixId} htmlFor={id} className="flex min-h-11 cursor-pointer items-center gap-3 text-text">
+          <label
+            key={mix.mixId}
+            htmlFor={id}
+            className="flex min-h-11 cursor-pointer items-center gap-3 text-text"
+          >
             <input
               id={id}
               type="radio"

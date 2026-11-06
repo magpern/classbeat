@@ -106,9 +106,7 @@ export function MatchCard({
         },
         (error) => {
           if (needsReconnect(error)) setReconnect(true)
-          return isNotConnected(error)
-            ? t('swmatch.notConnected')
-            : swedebeatError(error)
+          return isNotConnected(error) ? t('swmatch.notConnected') : swedebeatError(error)
         },
       )
       .finally(() => {
@@ -160,14 +158,8 @@ export function MatchCard({
           </li>
         ))}
       </ol>
-      {match.missing > 0 ? (
-        <Notice>
-          {t('swmatch.missing', { count: match.missing })}
-        </Notice>
-      ) : null}
-      {match.unsure > 0 ? (
-        <Notice>{t('swmatch.checkUnsure')}</Notice>
-      ) : null}
+      {match.missing > 0 ? <Notice>{t('swmatch.missing', { count: match.missing })}</Notice> : null}
+      {match.unsure > 0 ? <Notice>{t('swmatch.checkUnsure')}</Notice> : null}
       {summary.openJob !== null ? <p className="m-0 text-muted">{t('swmatch.waitJob')}</p> : null}
       {reconnect ? <ReconnectPrompt /> : null}
       {approve.error ? <Notice kind="error">{approve.error}</Notice> : null}

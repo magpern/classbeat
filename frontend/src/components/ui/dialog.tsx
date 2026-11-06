@@ -91,7 +91,8 @@ export function DialogContent({
         }}
         onPointerDownOutside={(event) => {
           onPointerDownOutside?.(event)
-          if (event.target instanceof Element && event.target.closest('[role="dialog"]')) event.preventDefault()
+          if (event.target instanceof Element && event.target.closest('[role="dialog"]'))
+            event.preventDefault()
         }}
         {...props}
       >

@@ -81,9 +81,7 @@ export function SpotifySummary() {
       <ul className="rows">
         <li>
           <span>{t('mowl.status')}</span>
-          <span data-testid="spotify-summary-status">
-            {t(statusKey(status.status))}
-          </span>
+          <span data-testid="spotify-summary-status">{t(statusKey(status.status))}</span>
         </li>
       </ul>
       {status.status === 'connected' ? <ConsentSwitch status={status} onChanged={reload} /> : null}
@@ -184,9 +182,7 @@ export function SpotifyConnection() {
         <ul className="rows">
           <li>
             <span>{t('mowl.status')}</span>
-            <span data-testid="spotify-status">
-              {t(statusKey(status.status))}
-            </span>
+            <span data-testid="spotify-status">{t(statusKey(status.status))}</span>
           </li>
           {lastError !== null ? (
             <li>
@@ -206,7 +202,9 @@ export function SpotifyConnection() {
               <li>
                 {t('spot.step2')}
                 <div className="field">
-                  <code data-testid="spotify-callback-url" className="break-all">{status.callbackUrl}</code>{' '}
+                  <code data-testid="spotify-callback-url" className="break-all">
+                    {status.callbackUrl}
+                  </code>{' '}
                   <button
                     className="button button--secondary"
                     type="button"
@@ -217,9 +215,7 @@ export function SpotifyConnection() {
                     {t('spot.copyUrl')}
                   </button>
                   {copy === 'copied' ? <span role="status">{t('spot.copied')}</span> : null}
-                  {copy === 'failed' ? (
-                    <span role="status">{t('spot.copyFailed')}</span>
-                  ) : null}
+                  {copy === 'failed' ? <span role="status">{t('spot.copyFailed')}</span> : null}
                 </div>
               </li>
               <li>{t('spot.step3')}</li>
@@ -227,11 +223,7 @@ export function SpotifyConnection() {
               <li>{t('spot.step5')}</li>
             </ol>
             {changing || confirmSwitch ? (
-              <p className="muted">
-                {confirmSwitch
-                  ? t('spot.confirmHint')
-                  : t('spot.changeText')}
-              </p>
+              <p className="muted">{confirmSwitch ? t('spot.confirmHint') : t('spot.changeText')}</p>
             ) : null}
             <Field
               label={t('spot.clientId')}
@@ -317,10 +309,7 @@ export function SpotifyConnection() {
                   type="button"
                   disabled={action.busy}
                   onClick={() => {
-                    run(
-                      () => guard(() => disconnectSpotify()),
-                      t('spot.disconnected'),
-                    )
+                    run(() => guard(() => disconnectSpotify()), t('spot.disconnected'))
                   }}
                 >
                   {t('spot.disconnectYes')}

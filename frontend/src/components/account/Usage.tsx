@@ -96,8 +96,15 @@ export function Usage() {
       </dl>
       <p className="muted">
         {reused > 0
-          ? t('usage.tokensExplainedReused', { input: integer(total.inputTokens), output: integer(total.outputTokens), reused: integer(reused) })
-          : t('usage.tokensExplained', { input: integer(total.inputTokens), output: integer(total.outputTokens) })}
+          ? t('usage.tokensExplainedReused', {
+              input: integer(total.inputTokens),
+              output: integer(total.outputTokens),
+              reused: integer(reused),
+            })
+          : t('usage.tokensExplained', {
+              input: integer(total.inputTokens),
+              output: integer(total.outputTokens),
+            })}
       </p>
       {usage.byKindModel.length > 0 ? (
         <table className="usage-table">
@@ -116,9 +123,7 @@ export function Usage() {
                 <td>{Object.hasOwn(KINDS, row.jobKind) ? t(KINDS[row.jobKind]!) : row.jobKind}</td>
                 <td>{row.model}</td>
                 <td>
-                  {integer(
-                    row.inputTokens + row.outputTokens + row.cacheReadTokens + row.cacheWriteTokens,
-                  )}
+                  {integer(row.inputTokens + row.outputTokens + row.cacheReadTokens + row.cacheWriteTokens)}
                 </td>
                 <td>{dollars(row.costMicros)}</td>
               </tr>

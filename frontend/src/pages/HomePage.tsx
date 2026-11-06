@@ -19,7 +19,9 @@ export function HomePage() {
   const name = (session?.user?.email ?? '').split('@')[0] ?? ''
   return (
     <div className="flex flex-col gap-6">
-      <h1 className="m-0 font-display text-3xl font-extrabold">{name === '' ? t('home.welcome') : t('home.welcomeName', { name })}</h1>
+      <h1 className="m-0 font-display text-3xl font-extrabold">
+        {name === '' ? t('home.welcome') : t('home.welcomeName', { name })}
+      </h1>
       <Card aria-labelledby="design-title" role="region">
         <CardTitle id="design-title">{t('home.design.title')}</CardTitle>
         <CardContent>

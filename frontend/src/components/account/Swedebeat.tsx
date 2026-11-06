@@ -175,9 +175,7 @@ export function Swedebeat() {
             </label>
           </div>
           <p className="m-0 text-muted" data-testid="swedebeat-preference-state">
-            {access.usesSwedebeat
-              ? t('swed.useOn')
-              : t('swed.useOff')}
+            {access.usesSwedebeat ? t('swed.useOn') : t('swed.useOff')}
           </p>
         </div>
       ) : null}
@@ -205,9 +203,7 @@ export function Swedebeat() {
           {account.lastError ? (
             <li>
               <span>{t('mowl.lastProblem')}</span>
-              <span className="muted">
-                {t(lookup(LAST_ERRORS, account.lastError) ?? 'swed.last.other')}
-              </span>
+              <span className="muted">{t(lookup(LAST_ERRORS, account.lastError) ?? 'swed.last.other')}</span>
             </li>
           ) : null}
         </ul>
@@ -244,11 +240,7 @@ export function Swedebeat() {
             </p>
           ) : null}
           <button className="button" type="submit" disabled={action.busy}>
-            {taken
-              ? t('swed.anyway')
-              : account
-                ? t('swed.connectAgain')
-                : t('swed.connect')}
+            {taken ? t('swed.anyway') : account ? t('swed.connectAgain') : t('swed.connect')}
           </button>
           {taken ? (
             <button

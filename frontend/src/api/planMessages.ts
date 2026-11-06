@@ -64,7 +64,8 @@ export function quotaText(error: ApiError, target: 'new' | 'version' | 'save' = 
   if (detail.quota === 'length') {
     const limit = whole(detail.limit)
     const params = { limit: limit ?? 0, ways }
-    if (target === 'save') return t(limit === null ? 'plan.quota.length.save' : 'plan.quota.length.saveLimit', params)
+    if (target === 'save')
+      return t(limit === null ? 'plan.quota.length.save' : 'plan.quota.length.saveLimit', params)
     if (target === 'version') {
       return t(limit === null ? 'plan.quota.length.version' : 'plan.quota.length.versionLimit', params)
     }
@@ -77,7 +78,8 @@ export function quotaText(error: ApiError, target: 'new' | 'version' | 'save' = 
         : undefined
     const params = { name: key === undefined ? '' : t(key), ways }
     const named = key !== undefined
-    if (target === 'save') return t(named ? 'plan.quota.feature.saveNamed' : 'plan.quota.feature.save', params)
+    if (target === 'save')
+      return t(named ? 'plan.quota.feature.saveNamed' : 'plan.quota.feature.save', params)
     if (target === 'version') {
       return t(named ? 'plan.quota.feature.versionNamed' : 'plan.quota.feature.version', params)
     }

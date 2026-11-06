@@ -6,7 +6,7 @@ import { retryLabel, stageLabel } from '../../api/jobMessages'
 import { cancelJob, isTerminal, type Job } from '../../api/jobs'
 import {
   needsAccount,
-  OUTCOME_TEXT,
+  outcomeText,
   refusalChangesPage,
   saveFailureText,
   savedText,
@@ -52,7 +52,7 @@ function WriteRun({
   /** The task cannot be read any more (404): the page drops it and reads the class again. */
   onLost: () => void
 }) {
-  useT() // re-render on a locale change: the stage labels use the global t
+  const t = useT()
   const { job, progress, problem, setJob } = useJobProgress(jobId)
   const action = useAction()
   const over = job !== null && isTerminal(job.state)
@@ -77,16 +77,16 @@ function WriteRun({
   const stopping = job?.cancelRequested === true || progress.cancelRequested
   return (
     <div className="chat__run" role="status" aria-live="polite" data-testid="save-progress">
-      {problem === 'failed' ? <p>The connection to the server dropped. Trying again.</p> : null}
+      {problem === 'failed' ? <p>{t('class.runDropped')}</p> : null}
       {stopping ? (
-        <p>Stopping. This takes a moment.</p>
+        <p>{t('class.runStopping')}</p>
       ) : progress.retry !== null ? (
         <p>{retryLabel(progress.retry)}</p>
       ) : job === null || (job.state === 'queued' && progress.stage === null) ? (
-        <p>Waiting for a free slot.</p>
+        <p>{t('class.runWaiting')}</p>
       ) : (
         <p>
-          {kind === 'save' ? 'Saving to MOWL: ' : 'Updating in MOWL: '}
+          {kind === 'save' ? t('class.save.runSave') : t('class.save.runUpdate')}{' '}
           {stageLabel(progress.stage ?? job.stage)}…
         </p>
       )}
@@ -100,7 +100,7 @@ function WriteRun({
           })
         }}
       >
-        Stop
+        {t('class.save.stop')}
       </Button>
     </div>
   )
@@ -115,17 +115,16 @@ function Outcome({
   soundless: boolean
   onUpdateAnyway: () => void
 }) {
+  const t = useT()
   const { job, kind } = done
   if (job.state === 'completed') {
     if (kind === 'save') return <Notice kind="success">{savedText(soundless)}</Notice>
-    if (done.verified === 'checking') return <Notice>Updated. Checking what MOWL kept…</Notice>
+    if (done.verified === 'checking') return <Notice>{t('class.save.checking')}</Notice>
     return <Notice kind={done.verified ? 'success' : 'info'}>{updatedText(done.verified)}</Notice>
   }
   if (job.state === 'failed' && job.errorCategory === 'uncertain_write') {
     return (
-      <Notice kind="error">
-        classbeat could not tell whether MOWL took it. Read the box below, then decide.
-      </Notice>
+      <Notice kind="error">{t('class.save.uncertain')}</Notice>
     )
   }
   if (job.state === 'failed') {
@@ -133,19 +132,19 @@ function Outcome({
       <div className="flex flex-col gap-3">
         <Notice kind="error">
           {saveFailureText(job.errorCategory)}{' '}
-          {needsAccount(job.errorCategory) ? <Link to="/account">Go to your account</Link> : null}
+          {needsAccount(job.errorCategory) ? <Link to="/account">{t('class.goToAccount')}</Link> : null}
         </Notice>
         {kind === 'update' && job.errorCategory === 'program_changed' ? (
           <p>
             <Button variant="secondary" onClick={onUpdateAnyway}>
-              Update anyway (replaces your changes in MOWL)
+              {t('class.save.updateAnyway')}
             </Button>
           </p>
         ) : null}
       </div>
     )
   }
-  return <Notice>This was stopped before anything was written, or classbeat lists it below.</Notice>
+  return <Notice>{t('class.save.stopped')}</Notice>
 }
 
 /**
@@ -175,6 +174,7 @@ export function SavePanel({
   const [overwriteNext, setOverwriteNext] = useState(false)
   const [again, setAgain] = useState<WriteKind | null>(null)
   const [version, setVersion] = useState(0)
+  const t = useT()
   const action = useAction()
   const attempt = useRef<{ fingerprint: string; key: string } | null>(null)
   const confirmRef = useRef<HTMLDivElement>(null)
@@ -249,7 +249,7 @@ export function SavePanel({
   }
 
   const decided = (kind: WriteKind, outcome: WriteOutcome) => {
-    setDecision(OUTCOME_TEXT[kind][outcome])
+    setDecision(outcomeText(kind, outcome))
     if (outcome === 'still_unsure') return
     setAgain(kind)
     setOverwriteNext(kind === 'update' && outcome === 'decided')
@@ -258,11 +258,14 @@ export function SavePanel({
 
   const stateLine = !hasSaved
     ? detached
-      ? 'This class was saved earlier to a previous MOWL connection. That workout is no longer linked, so it cannot be updated. Save adds a new one to your current MOWL account.'
-      : 'Not saved to MOWL yet.'
+      ? t('class.save.detachedLine')
+      : t('class.save.notSaved')
     : upToDate
-      ? `Saved to MOWL as version ${String(saved.latestRevisionNumber ?? '?')}. It is up to date.`
-      : `Saved to MOWL as version ${String(saved.latestRevisionNumber ?? '?')}. The current version (${String(number ?? '?')}) has changes that are not saved yet.`
+      ? t('class.save.upToDate', { saved: String(saved.latestRevisionNumber ?? '?') })
+      : t('class.save.behind', {
+          saved: String(saved.latestRevisionNumber ?? '?'),
+          current: String(number ?? '?'),
+        })
 
   const canWrite = current !== null && !busy && !action.busy
   const showUpdate = hasSaved && !upToDate
@@ -272,15 +275,13 @@ export function SavePanel({
     <>
       <Card className="flex flex-col gap-3" role="region" aria-labelledby="save-title" data-testid="save-panel">
         <h2 id="save-title" className="m-0 font-display text-xl font-bold">
-          Save to MOWL
+          {t('class.save.title')}
         </h2>
         <p data-testid="saved-state">{stateLine}</p>
         {hasSaved && detached ? (
-          <p className="muted">
-            Another workout was saved earlier to a previous MOWL connection and is not linked any more.
-          </p>
+          <p className="muted">{t('class.save.detachedOther')}</p>
         ) : null}
-        {current === null ? <p className="muted">There is no version to save yet.</p> : null}
+        {current === null ? <p className="muted">{t('class.save.noVersion')}</p> : null}
         {decision ? <Notice kind="info">{decision}</Notice> : null}
         {finished ? (
           <Outcome
@@ -293,10 +294,7 @@ export function SavePanel({
         ) : null}
         {action.error ? <Notice kind="error">{action.error}</Notice> : null}
         {lost ? (
-          <Notice>
-            classbeat can no longer read that task, so it cannot tell how it ended. The line above
-            shows what MOWL holds for this class now; check it before you try again.
-          </Notice>
+          <Notice>{t('class.save.lost')}</Notice>
         ) : null}
         {run ? (
           <WriteRun
@@ -328,7 +326,7 @@ export function SavePanel({
             }}
           />
         ) : null}
-        {busy && !writing ? <p className="muted">Wait for the running task to finish first.</p> : null}
+        {busy && !writing ? <p className="muted">{t('class.waitRunning')}</p> : null}
         {mode === null ? (
           <p className="m-0 flex flex-wrap gap-3">
             <Button
@@ -338,7 +336,11 @@ export function SavePanel({
                 setMode('save')
               }}
             >
-              {again === 'save' ? 'Save again' : hasSaved ? 'Save as a new workout' : 'Save to MOWL'}
+              {again === 'save'
+                ? t('class.save.again')
+                : hasSaved
+                  ? t('class.save.asNew')
+                  : t('class.save.title')}
             </Button>
             {showUpdate ? (
               <Button
@@ -348,22 +350,22 @@ export function SavePanel({
                   setMode(updateOverwrites ? 'overwrite' : 'update')
                 }}
               >
-                {again === 'update' ? 'Update again' : 'Update saved workout'}
+                {again === 'update' ? t('class.save.updateAgain') : t('class.save.update')}
               </Button>
             ) : null}
           </p>
         ) : (
-          <div className="notice" role="group" aria-label="Confirm" tabIndex={-1} ref={confirmRef}>
+          <div className="notice" role="group" aria-label={t('class.confirm')} tabIndex={-1} ref={confirmRef}>
             {mode === 'save' ? (
               <>
                 <p>
-                  classbeat will add version {number ?? '?'} of this class to your MOWL account as a
-                  new workout{summary.soundless ? ' without music' : ''}. It is private: only you can
-                  see it.
-                  {hasSaved ? ' A new workout will be added; the one you saved earlier stays as it is.' : ''}
+                  {t(summary.soundless ? 'class.save.confirmSaveSoundless' : 'class.save.confirmSave', {
+                    number: String(number ?? '?'),
+                  })}
+                  {hasSaved ? ` ${t('class.save.confirmSaveMore')}` : ''}
                 </p>
                 <ConfirmButtons
-                  label="Save to MOWL"
+                  label={t('class.save.title')}
                   busy={action.busy}
                   onConfirm={() => {
                     start('save', false)
@@ -377,14 +379,15 @@ export function SavePanel({
             {mode === 'update' ? (
               <>
                 <p>
-                  classbeat will first read the workout in your MOWL account. If you changed it in
-                  MOWL after classbeat saved it, classbeat stops and writes nothing. Otherwise it
-                  replaces the workout with version {number ?? '?'}
-                  {summary.soundless ? ', without music' : ''}. It stays private, in your MOWL
-                  account.
+                  {t(
+                    summary.soundless
+                      ? 'class.save.confirmUpdateSoundless'
+                      : 'class.save.confirmUpdate',
+                    { number: String(number ?? '?') },
+                  )}
                 </p>
                 <ConfirmButtons
-                  label="Update workout"
+                  label={t('class.save.updateButton')}
                   busy={action.busy}
                   onConfirm={() => {
                     start('update', false)
@@ -398,13 +401,11 @@ export function SavePanel({
             {mode === 'overwrite' ? (
               <>
                 <p>
-                  <strong>Update anyway?</strong> This replaces the workout in your MOWL account with
-                  version {number ?? '?'}, including any changes you made to it in MOWL, or whatever
-                  a write that did not finish left there. It cannot be undone. The workout stays
-                  private.
+                  <strong>{t('class.save.overwriteTitle')}</strong>{' '}
+                  {t('class.save.overwriteText', { number: String(number ?? '?') })}
                 </p>
                 <ConfirmButtons
-                  label="Yes, replace it"
+                  label={t('class.save.replace')}
                   busy={action.busy}
                   onConfirm={() => {
                     start('update', true)
@@ -419,7 +420,7 @@ export function SavePanel({
         )}
         {hasSaved && !upToDate && savedId === null ? (
           <p className="muted" data-testid="update-unavailable">
-            Updating the saved workout is not available yet. Save adds a new workout instead.
+            {t('class.save.updateUnavailable')}
           </p>
         ) : null}
       </Card>
@@ -444,13 +445,14 @@ function ConfirmButtons({
   onConfirm: () => void
   onCancel: () => void
 }) {
+  const t = useT()
   return (
     <>
       <Button  disabled={busy} onClick={onConfirm}>
         {label}
       </Button>
       <Button variant="secondary" disabled={busy} onClick={onCancel}>
-        Cancel
+        {t('class.cancel')}
       </Button>
     </>
   )

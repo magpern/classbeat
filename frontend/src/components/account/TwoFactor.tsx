@@ -21,10 +21,7 @@ function RecoveryCodes({ codes }: { codes: string[] }) {
   return (
     <div className="codes">
       <p>
-        <Trans
-          id="mfa.recoveryText"
-          slots={{ title: <strong>{t('mfa.recoveryTitle')}</strong> }}
-        />
+        <Trans id="mfa.recoveryText" slots={{ title: <strong>{t('mfa.recoveryTitle')}</strong> }} />
       </p>
       <ul aria-label={t('mfa.recoveryList')}>
         {codes.map((code) => (

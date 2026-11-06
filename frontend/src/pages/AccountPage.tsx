@@ -19,6 +19,7 @@ import { Notice, Section, useAction } from '../components/forms'
 import { RequireAuth } from '../components/RequireAuth'
 import { Button } from '../components/ui/button'
 import { LanguageSetting } from '../components/account/LanguageSetting'
+import { offeredLanguages } from '../components/LanguagePicker'
 import { EmailPreferences } from '../components/account/EmailPreferences'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs'
 import { useQuery, useRouter } from '../router/Router'
@@ -138,7 +139,9 @@ function Account() {
           {initial(email)}
         </span>
         <div className="flex min-w-0 flex-1 flex-col gap-1">
-          <h1 className="m-0 text-sm font-medium tracking-wide text-muted uppercase">{t('account.heading')}</h1>
+          <h1 className="m-0 text-sm font-medium tracking-wide text-muted uppercase">
+            {t('account.heading')}
+          </h1>
           <p className="m-0 font-display text-2xl font-bold break-words">{name}</p>
           <p className="m-0 break-words text-muted" data-testid="account-email">
             {email}
@@ -170,7 +173,9 @@ function Account() {
         <TabsContent value="plan" className="flex flex-col gap-4">
           <Plan />
           <details className="rounded-lg border border-line bg-surface p-4">
-            <summary className="min-h-11 cursor-pointer content-center font-medium">{t('account.usageDetails')}</summary>
+            <summary className="min-h-11 cursor-pointer content-center font-medium">
+              {t('account.usageDetails')}
+            </summary>
             <Usage />
           </details>
         </TabsContent>
@@ -210,9 +215,11 @@ function Account() {
           </Section>
         </TabsContent>
         <TabsContent value="appearance" className="flex flex-col gap-4">
-          <Section title={t('account.language')}>
-            <LanguageSetting />
-          </Section>
+          {offeredLanguages(session?.locales ?? []).length > 1 ? (
+            <Section title={t('account.language')}>
+              <LanguageSetting />
+            </Section>
+          ) : null}
           <Section title={t('account.theme')}>
             <p className="text-muted">{t('account.themeHelp')}</p>
             <ThemeSwitch />

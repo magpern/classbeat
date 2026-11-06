@@ -100,10 +100,13 @@ export function Connections() {
     setEmail(sent.email)
   }
 
-  const scanned = useCallback((connection: Connection) => {
-    setMowl(connection)
-    setNote(t('mowl.connected'))
-  }, [t])
+  const scanned = useCallback(
+    (connection: Connection) => {
+      setMowl(connection)
+      setNote(t('mowl.connected'))
+    },
+    [t],
+  )
 
   const disconnect = () => {
     setNote(null)
