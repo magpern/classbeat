@@ -13,14 +13,14 @@ its PR (issue #662) merges. The ML row of Amendment 15 is replaced by:
 - **Languages:** English (source and fallback), Swedish and Danish, all in ML. `CLASSBEAT_LOCALES`
   (default all three) is an operator switch, not a review gate.
 - **Translation without human review** (owner): translations, legal and consent sentences included,
-  are drafted by an **Opus-class** translator (the PR's Developer) and checked by an independent
+  are drafted by a **Sonnet** translator (the PR's Developer; staffing change below) and checked by an independent
   Opus-class Reviewer, the PR's one Reviewer under the unchanged review gate. "Opus-class" is the
   current Opus generation (Opus 5.5 when this was written). No human proofreads and the owner does not
   sign off.
 - **Dedicated translation PRs**: Swedish and Danish content is authored only in ML6, ML7 and later
   catch-up translation PRs. This widens AGENTS.md "Roles" for those PRs only: their Developer is
-  Opus-class although they are not security-critical. They run in Claude Code; the Codex and Cursor
-  entry points (Amendments 10 and 11) have no Opus-class model and do no translation work. Feature PRs
+  Sonnet (staffing change below) and their Reviewer Opus-class, although they are not security-critical. They run in Claude Code; the Codex and Cursor
+  entry points (Amendments 10 and 11) have no Opus-class Reviewer and do no translation work. Feature PRs
   add English keys only and list them on the untranslated list (ADR 0023 §8); CI fails on an unlisted
   missing key, and the Orchestrator opens a catch-up translation PR when the list is not empty, at the
   latest before a release.
@@ -31,9 +31,16 @@ its PR (issue #662) merges. The ML row of Amendment 15 is replaced by:
   and ML6 come first. ML5b to ML5d, ML7 and ML8 follow the redesign if and when it is planned (it then
   writes against the catalogue from day one), otherwise straight after ML5a; nothing waits on it.
 - Review classes: ML0 docs with an Opus Reviewer (first review of a new design); ML2 Sonnet Developer,
-  Opus Reviewer; ML6, ML7 and catch-up translation PRs Opus-class Developer and Reviewer; the rest Sonnet and Sonnet. Amendments
+  Opus Reviewer; ML6, ML7 and catch-up translation PRs Sonnet Developer and Opus-class Reviewer; ML8 (#673, tests) and the rest Sonnet and Sonnet. Amendments
   13 and 14 apply otherwise.
 - No live access is needed or authorized.
+- **Staffing change (2026-11-06, owner decision, given in session):** translation PRs (ML6 #671, ML7
+  #672 and later catch-up translation PRs) have a **Sonnet Developer (translator)** and an **Opus
+  Reviewer** (independent of the Developer, the PR's one Reviewer), instead of an Opus-class Developer
+  and Reviewer. This replaces the Opus-class Developer wherever this amendment, ADR 0023 and the plan
+  say so. Unchanged: Claude Code only, no human proofreading, no owner sign-off, the glossary, legal and
+  consent sentences agent-translated and agent-reviewed. ML8 (#673) is a test PR and stays Sonnet and
+  Sonnet.
 
 ## Amendment 15 (2026-11-05, owner decision: account emails; ADR 0022)
 
