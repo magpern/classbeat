@@ -15,7 +15,7 @@ import { t as translate } from '../../i18n/t'
 import { useLayout } from '../../hooks/useLayout'
 import { Field, Notice, Section, useAction } from '../forms'
 import { MowlQr } from './MowlQr'
-import { FORGET_WARNING } from './mowlWarning'
+import { forgetWarning } from './mowlWarning'
 
 // Plain words for the ADR 0004 section 5 categories. The raw code is never shown.
 const CONNECT_ERRORS: Record<string, CatalogueKey> = {
@@ -147,7 +147,7 @@ export function Connections() {
       ) : null}
       {needsForm && mowl ? (
         <p className="notice" data-kind="info" data-testid="reconnect-warning">
-          {t('mowl.reconnectWarning', { warning: FORGET_WARNING })}
+          {t('mowl.reconnectWarning', { warning: forgetWarning() })}
         </p>
       ) : null}
       {needsForm && qrEnabled && layout !== 'phone' ? <MowlQr onConnected={scanned} /> : null}
@@ -184,7 +184,7 @@ export function Connections() {
           <p className="muted">{t('mowl.disconnectText')}</p>
           {confirmingDisconnect ? (
             <div className="notice" role="group" aria-label={t('mowl.confirmDisconnect')}>
-              <p>{FORGET_WARNING}</p>
+              <p>{forgetWarning()}</p>
               <button className="button" type="button" disabled={action.busy} onClick={disconnect}>
                 {t('mowl.yesDisconnect')}
               </button>

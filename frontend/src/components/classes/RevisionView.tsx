@@ -3,7 +3,7 @@ import { isRunningDraft } from '../../api/jobs'
 import { kindLabel, originLabel } from '../../api/classMessages'
 import type { Song } from '../../api/songs'
 import { useT } from '../../i18n/I18n'
-import { TSS_APPROXIMATE_NOTE } from '../../lib/classCards'
+import { tssApproximateNote } from '../../lib/classCards'
 import { cadenceText, flatten, inclineText, zoneName } from '../../lib/profile'
 import { clock, segmentSeconds, totalSeconds, tss } from '../../lib/workout'
 import { Card } from '../ui/card'
@@ -69,7 +69,7 @@ export function RevisionView({
           </span>
           {revision.tssApproximate ? (
             <small className="block text-[0.75rem] font-normal text-muted" data-testid="tss-note">
-              ({TSS_APPROXIMATE_NOTE})
+              ({tssApproximateNote()})
             </small>
           ) : null}
         </Tile>}

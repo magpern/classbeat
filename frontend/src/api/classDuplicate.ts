@@ -1,16 +1,18 @@
-import { ApiError, post } from "./client";
-import { object, text } from "./decode";
-import { errorMessage } from "./messages";
-import { planRefusalText } from "./planMessages";
+import { ApiError, post } from './client'
+import { object, text } from './decode'
+import { errorMessage } from './messages'
+import { planRefusalText } from './planMessages'
+import type { CatalogueKey } from '../i18n/en'
+import { t } from '../i18n/t'
 
 // Duplicate a class (ADR 0007 amendment of 2026-11-03, part D; backend classbeat/classes/duplicate.py).
 // The browser names a version by id and the hash of its content; the server copies it.
 
-export const TITLE_MAX = 100;
+export const TITLE_MAX = 100
 
 export interface Duplicated {
-  classId: string;
-  revisionId: string;
+  classId: string
+  revisionId: string
 }
 
 export async function duplicateClass(
@@ -29,51 +31,42 @@ export async function duplicateClass(
         content_hash: contentHash,
         title,
       },
-      { "Idempotency-Key": idempotencyKey },
+      { 'Idempotency-Key': idempotencyKey },
     ),
-    "duplicated",
-  );
+    'duplicated',
+  )
   return {
-    classId: text(body, "class_id"),
-    revisionId: text(body, "revision_id"),
-  };
+    classId: text(body, 'class_id'),
+    revisionId: text(body, 'revision_id'),
+  }
 }
 
-/** The name the dialog proposes: the title with " (copy)", cut to the server's limit. */
+/** The name the dialog proposes: the title with " (copy)" (in the active language), cut to the server's limit. */
 export function copyTitle(title: string): string {
-  const suffix = " (copy)";
-  return `${title.slice(0, TITLE_MAX - suffix.length).trimEnd()}${suffix}`;
+  const key = 'class.duplicate.copyOf'
+  // The room the wording takes, so the title is cut to what is left whatever the language says.
+  const room = TITLE_MAX - t(key, { title: '' }).length
+  return t(key, { title: title.slice(0, room).trimEnd() })
 }
 
-const REASONS: Record<string, string> = {
-  not_ready:
-    "This class has no finished design yet, so there is nothing to copy. Try again when it is ready.",
-  feature_off:
-    "Classes like this one cannot be made right now, so it cannot be copied.",
-  soundless_not_evaluated:
-    "Classes without music are not available on your plan yet, so this one cannot be copied.",
-  not_changeable:
-    "This class has no music of its own, so it cannot be changed by chat. You can still view, use and save its versions.",
-  hash_mismatch:
-    "That version is not the one this page showed: it was changed elsewhere. Reload the page and try again.",
-  not_found: "This class, or that version, no longer exists.",
-  invalid_input:
-    "That name cannot be used. Give the copy a name of 1 to 100 characters.",
-  idempotency_mismatch:
-    "This copy was already asked for with other details. Close this and try again.",
-  internal: "This version can no longer be read, so it cannot be copied.",
-};
+const REASONS: Record<string, CatalogueKey> = {
+  not_ready: 'class.duplicate.reason.not_ready',
+  feature_off: 'class.duplicate.reason.feature_off',
+  soundless_not_evaluated: 'class.duplicate.reason.soundless_not_evaluated',
+  not_changeable: 'class.duplicate.reason.not_changeable',
+  hash_mismatch: 'class.duplicate.reason.hash_mismatch',
+  not_found: 'class.duplicate.reason.not_found',
+  invalid_input: 'class.duplicate.reason.invalid_input',
+  idempotency_mismatch: 'class.duplicate.reason.idempotency_mismatch',
+  internal: 'class.duplicate.reason.internal',
+}
 
 /** The refusals of a duplicate in plain sentences; the plan's (`quota`) as everywhere else. */
 export function duplicateReasonText(error: unknown): string {
-  const plan = planRefusalText(error);
-  if (plan !== null) return plan;
-  if (
-    error instanceof ApiError &&
-    error.reason !== null &&
-    Object.hasOwn(REASONS, error.reason)
-  ) {
-    return REASONS[error.reason]!;
+  const plan = planRefusalText(error)
+  if (plan !== null) return plan
+  if (error instanceof ApiError && error.reason !== null && Object.hasOwn(REASONS, error.reason)) {
+    return t(REASONS[error.reason]!)
   }
-  return errorMessage(error);
+  return errorMessage(error)
 }

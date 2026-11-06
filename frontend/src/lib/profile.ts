@@ -1,24 +1,32 @@
 import type { DraftInterval, DraftSegment } from '../api/jobs'
+import type { CatalogueKey } from '../i18n/en'
+import { t } from '../i18n/t'
 
 // The numbers behind the class profile (ADR 0013 section 7), worked out from the stored segments.
 
-/** MOWL's seven zones and their names (ADR 0013 section 2, `mowl.workout.ZONE_NAMES`). */
-export const ZONE_NAMES = [
-  'Recovery',
-  'Endurance',
-  'Tempo',
-  'Threshold',
-  'VO2max',
-  'Anaerobic',
-  'Neuromuscular',
-] as const
+/** The catalogue keys of MOWL's seven zone names (ADR 0013 section 2, `mowl.workout.ZONE_NAMES`). */
+const ZONE_NAME_KEYS: readonly CatalogueKey[] = [
+  'class.zoneName.recovery',
+  'class.zoneName.endurance',
+  'class.zoneName.tempo',
+  'class.zoneName.threshold',
+  'class.zoneName.vo2max',
+  'class.zoneName.anaerobic',
+  'class.zoneName.neuromuscular',
+]
+
+/** The seven zone names in the active language, looked up when called so a change of language shows at once. */
+export function zoneNames(): string[] {
+  return ZONE_NAME_KEYS.map((key) => t(key))
+}
 
 export function clampZone(zone: number): number {
   return Math.min(Math.max(Math.round(zone), 1), 7)
 }
 
 export function zoneName(zone: number): string {
-  return ZONE_NAMES[clampZone(zone) - 1] ?? ''
+  const key = ZONE_NAME_KEYS[clampZone(zone) - 1]
+  return key === undefined ? '' : t(key)
 }
 
 export interface Bar extends DraftInterval {
@@ -56,12 +64,12 @@ export function zoneSeconds(bars: Bar[]): number[] {
 
 export function cadenceText(rpm: [number, number] | 'beat' | null): string {
   if (rpm === null) return ''
-  return rpm === 'beat' ? 'on the beat' : `${String(rpm[0])} to ${String(rpm[1])} rpm`
+  return rpm === 'beat' ? t('class.cadence.beat') : t('class.cadence.range', { low: rpm[0], high: rpm[1] })
 }
 
 /** A running interval's treadmill incline (ADR 0018 section 2): 0 is flat, 1 the raised incline. */
 export function inclineText(gradient: number | null | undefined): string {
-  return gradient === 1 ? 'Incline' : 'Flat'
+  return t(gradient === 1 ? 'class.incline.raised' : 'class.incline.flat')
 }
 
 /** How many zones a sport has: MOWL's running classes use 1 to 5, cycling 1 to 7. */

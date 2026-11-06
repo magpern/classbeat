@@ -1,5 +1,5 @@
 import { useT } from '../../i18n/I18n'
-import { ZONE_NAMES, type Bar, zoneCount, zoneSeconds } from '../../lib/profile'
+import { zoneNames, type Bar, zoneCount, zoneSeconds } from '../../lib/profile'
 import { clock } from '../../lib/workout'
 
 /** "Time in each zone": one row per zone with its name, a bar scaled to the largest zone and the time. */
@@ -13,7 +13,7 @@ export function ZoneTime({ bars, running = false }: { bars: Bar[]; running?: boo
         {t('class.zoneTime.title')}
       </h3>
       <ul className="m-0 flex list-none flex-col gap-1 p-0">
-        {ZONE_NAMES.slice(0, zoneCount(running)).map((name, i) => (
+        {zoneNames().slice(0, zoneCount(running)).map((name, i) => (
           <li key={name} className="grid grid-cols-[9rem_1fr_3.5rem] items-center gap-3 text-[0.9375rem]">
             <span>{t('class.zone.line', { zone: i + 1, name })}</span>
             <span aria-hidden="true" className="h-3 rounded-full bg-raised">

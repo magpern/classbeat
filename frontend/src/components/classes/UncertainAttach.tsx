@@ -6,7 +6,7 @@ import {
   listUncertainOperations,
   type Operation,
 } from '../../api/jobs'
-import { FORGET_WARNING } from '../account/mowlWarning'
+import { forgetWarning } from '../account/mowlWarning'
 import { Trans, useT } from '../../i18n/I18n'
 import { Link } from '../../router/Router'
 import { Button } from '../ui/button'
@@ -180,7 +180,7 @@ export function UncertainAttach({
               slots={{ account: <Link to="/account">{t('class.attach.accountPage')}</Link> }}
             />
           </p>
-          <p>{FORGET_WARNING}</p>
+          <p>{forgetWarning()}</p>
         </div>
       ) : null}
       {listing.status === 'ready' && listing.scope === 'account' && first !== undefined ? (
