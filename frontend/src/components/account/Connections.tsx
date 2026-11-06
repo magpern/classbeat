@@ -12,7 +12,7 @@ import { date as formatDate } from '../../i18n/format'
 import { useLayout } from '../../hooks/useLayout'
 import { Field, Notice, Section, useAction } from '../forms'
 import { MowlQr } from './MowlQr'
-import { FORGET_WARNING } from './mowlWarning'
+import { forgetWarning } from './mowlWarning'
 
 // Plain words for the ADR 0004 section 5 categories. The raw code is never shown.
 const CONNECT_ERRORS: Record<string, string> = {
@@ -140,7 +140,7 @@ export function Connections() {
       ) : null}
       {needsForm && mowl ? (
         <p className="notice" data-kind="info" data-testid="reconnect-warning">
-          Connecting again replaces the stored sign-in. {FORGET_WARNING}
+          Connecting again replaces the stored sign-in. {forgetWarning()}
         </p>
       ) : null}
       {needsForm && qrEnabled && layout !== 'phone' ? <MowlQr onConnected={scanned} /> : null}
@@ -183,7 +183,7 @@ export function Connections() {
           </p>
           {confirmingDisconnect ? (
             <div className="notice" role="group" aria-label="Confirm disconnect">
-              <p>{FORGET_WARNING}</p>
+              <p>{forgetWarning()}</p>
               <button className="button" type="button" disabled={action.busy} onClick={disconnect}>
                 Yes, disconnect MOWL
               </button>

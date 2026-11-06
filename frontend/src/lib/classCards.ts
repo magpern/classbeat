@@ -1,4 +1,5 @@
 import type { ClassSummary } from '../api/classes'
+import { t } from '../i18n/t'
 
 // What a class card shows, worked out from the class list (never from model text).
 
@@ -22,26 +23,30 @@ export function profileTss(profile: [number, number][]): number {
   return Math.round((sum / 36) * 10) / 10
 }
 
-export const TSS_APPROXIMATE_NOTE = 'approximate: zone 7 has no exact TSS weight'
+/** Why a TSS with a zone 7 interval is approximate (ADR 0012 section 7). */
+export const tssApproximateNote = (): string => t('class.tss.approximate')
 
 export function lengthLabel(seconds: number): string {
   const minutes = Math.round(seconds / 60)
-  return minutes >= 60 ? `${String(Math.floor(minutes / 60))} h ${String(minutes % 60)} min` : `${String(minutes)} min`
+  return minutes >= 60
+    ? t('class.length.hoursMinutes', { hours: Math.floor(minutes / 60), minutes: minutes % 60 })
+    : t('class.length.minutes', { minutes })
 }
 
 export type StatusTone = 'neutral' | 'ok' | 'warn'
 
 export function classStatus(c: ClassSummary): { label: string; tone: StatusTone } {
-  if (c.openJob?.kind === 'design_draft') return { label: 'Being designed', tone: 'warn' }
-  if (c.openJob?.kind === 'revise_draft') return { label: 'Being changed', tone: 'warn' }
-  if (c.openJob !== null) return { label: 'Busy', tone: 'warn' }
-  if (c.currentRevisionNumber === null) return { label: 'No version yet', tone: 'neutral' }
+  if (c.openJob?.kind === 'design_draft') return { label: t('class.status.designing'), tone: 'warn' }
+  if (c.openJob?.kind === 'revise_draft') return { label: t('class.status.changing'), tone: 'warn' }
+  if (c.openJob !== null) return { label: t('class.status.busy'), tone: 'warn' }
+  if (c.currentRevisionNumber === null) return { label: t('class.status.noVersion'), tone: 'neutral' }
+  const number = c.currentRevisionNumber
   if (c.saved.count > 0) {
     return c.saved.latestUpToDate === false
-      ? { label: `Version ${String(c.currentRevisionNumber)} has changes not in MOWL yet`, tone: 'warn' }
-      : { label: `Version ${String(c.currentRevisionNumber)} saved to MOWL`, tone: 'ok' }
+      ? { label: t('class.status.unsavedChanges', { number }), tone: 'warn' }
+      : { label: t('class.status.saved', { number }), tone: 'ok' }
   }
-  return { label: `Version ${String(c.currentRevisionNumber)}, not saved to MOWL`, tone: 'neutral' }
+  return { label: t('class.status.notSaved', { number }), tone: 'neutral' }
 }
 
 export type ClassFilter = 'all' | 'saved' | 'drafts'

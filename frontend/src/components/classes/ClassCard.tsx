@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react'
 import type { ClassSummary } from '../../api/classes'
-import { Trans } from '../../i18n/I18n'
+import { Trans, useT } from '../../i18n/I18n'
 import { classStatus, lengthLabel, profileSeconds, profileTss } from '../../lib/classCards'
 import { Link } from '../../router/Router'
 import { Card } from '../ui/card'
@@ -10,6 +10,7 @@ import { TssValue } from './TssValue'
 
 /** One class: mini profile on the stage, title, length, TSS and a status chip. Titles are text. */
 export function ClassCard({ cls, actions }: { cls: ClassSummary; actions?: ReactNode }) {
+  useT() // renders again when the language changes: the status and length are looked up on each render
   const status = classStatus(cls)
   const seconds = profileSeconds(cls.profile)
   return (
