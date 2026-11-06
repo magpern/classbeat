@@ -18,23 +18,22 @@ these routes read them and design and test the mails.
   address is never in the audit row, which holds the kind id.
 """
 
-from dataclasses import replace
 from typing import Annotated, Literal
 
 from fastapi import Path, Query, Request
 from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel, ConfigDict
 
+from classbeat import auth
 from classbeat.admin.audit import Target
 from classbeat.admin.db import AdminDb, AdminRefused, admin_session
 from classbeat.admin.routes import AdminActor, admin_db, admin_router
 from classbeat.admin.settings import FlagOut, mail_flags
-from classbeat.auth.ratelimit import admin_mail_test_buckets
 from classbeat.config import Settings
 from classbeat.emails import live
 from classbeat.emails.dispatch import build
 from classbeat.emails.registry import REGISTRY, Kind
-from classbeat.mail import Mailer, MailError
+from classbeat.mail import Mailer, MailError, MailMessage
 
 router = admin_router()
 
@@ -145,7 +144,9 @@ async def preview_mail(
 async def test_mail(request: Request, actor: AdminActor, kind_id: KindPath) -> JSONResponse:
     settings: Settings = request.app.state.settings
     mailer: Mailer = request.app.state.mailer
-    attempt = await request.app.state.limiter.begin(admin_mail_test_buckets(str(actor.user_id)))
+    attempt = await request.app.state.limiter.begin(
+        auth.admin_mail_test_buckets(str(actor.user_id))
+    )
     async with admin_session(
         _db(request),
         actor,
@@ -164,7 +165,17 @@ async def test_mail(request: Request, actor: AdminActor, kind_id: KindPath) -> J
     # failure is an `admin.request` refusal row (the handler writes it), the `mail.test` row stays.
     message = build(settings, kind, actor.email, kind.sample, branding=config.branding)
     try:
-        await mailer.send(replace(message, subject=TEST_SUBJECT_PREFIX + message.subject))
+        await mailer.send(
+            MailMessage(
+                to=message.to,
+                subject=TEST_SUBJECT_PREFIX + message.subject,
+                body=message.body,
+                html=message.html,
+                locale=message.locale,
+                sender_name=message.sender_name,
+                reply_to=message.reply_to,
+            )
+        )
     except MailError:
         raise AdminRefused("send_failed", 502) from None
     return JSONResponse(TestedOut().model_dump(), headers={"Cache-Control": "no-store"})
