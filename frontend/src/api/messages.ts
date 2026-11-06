@@ -22,6 +22,7 @@ const REASONS: Record<string, string> = {
   not_authenticated: 'You are signed out. Sign in and try again.',
   no_pending_signup: 'No sign-in is waiting for an address. Start the provider sign-in again.',
   provider_disabled: 'That sign-in method is not available.',
+  reauth_use_password: 'Your account has a password, so confirm with your password.',
   forbidden: 'Your account is not allowed to do that.',
   busy: 'The server is busy. Try again in a few seconds.',
 }
@@ -45,6 +46,10 @@ const OAUTH_OUTCOMES: Record<string, string> = {
   identity_taken: 'That provider account is already linked to a different classbeat account.',
   identity_mismatch: 'That is not the provider account linked to your classbeat account.',
   reauth_stale: REAUTH_STALE,
+  // #687: Google re-authenticates only an account without a password.
+  reauth_use_password:
+    'Your account has a password, so Google cannot confirm it is you. Confirm with your password. Nothing was changed.',
+  reauth_expired: 'The confirmation took longer than 5 minutes, so nothing was changed. Try again.',
 }
 
 /**

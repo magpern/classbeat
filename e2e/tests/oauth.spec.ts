@@ -171,7 +171,7 @@ function ageReauth(email: string): void {
   sql(`UPDATE sessions SET reauth_at = now() - interval '11 minutes' WHERE user_id = (SELECT id FROM users WHERE email = '${email}')`)
 }
 
-test('Google re-authentication: no auth_time fails closed with a sentence, a fresh one passes (#522)', async ({ page }) => {
+test('Google re-authentication: refused with a password, accepted without auth_time for a Google-only account (#687)', async ({ page }) => {
   const email = uniqueEmail('reauth')
   const who: Persona = { sub: `g-${email}`, email, emailVerified: true }
   await playProvider(page, 'accounts.google.com', who)
@@ -190,27 +190,29 @@ test('Google re-authentication: no auth_time fails closed with a sentence, a fre
     await page.getByLabel('New password', { exact: true }).fill('another long passphrase')
     await page.getByLabel('Repeat the new password').fill('another long passphrase')
     await page.getByRole('button', { name: 'Save password' }).click()
-    const dialog = page.getByRole('dialog')
-    await expect(dialog).toContainText('Google can confirm it only if you signed in there in the last 5 minutes.')
-    await dialog.getByRole('button', { name: 'Confirm with Google' }).click()
+    return page.getByRole('dialog')
   }
 
-  // Google leaves auth_time out (a fresh iat and this flow's nonce, state and PKCE notwithstanding).
+  // With a password the prompt offers the password only, and the server refuses a Google start.
+  ageReauth(email)
+  let dialog = await changePassword()
+  await expect(dialog.getByRole('button', { name: 'Confirm with password' })).toBeVisible()
+  await expect(dialog.getByRole('button', { name: 'Confirm with Google' })).toHaveCount(0)
+  const csrf = (await (await page.request.get('/api/auth/session')).json()) as { csrf_token: string }
+  const refused = await page.request.post('/api/auth/oauth/google/start', {
+    data: { purpose: 'reauth' },
+    headers: { 'X-CSRF-Token': csrf.csrf_token, Origin: new URL(page.url()).origin },
+  })
+  expect(refused.status()).toBe(403)
+  expect(await refused.json()).toEqual({ detail: { reason: 'reauth_use_password' } })
+
+  // A Google-only account (no password): Google's answer counts without any auth_time.
+  sql(`UPDATE users SET password_hash = NULL WHERE email = '${email}'`)
   ageReauth(email)
   who.authTime = null
-  await changePassword()
-  await expect(page).toHaveURL(/\/account\?oauth=reauth_stale/)
-  const alert = page.getByRole('alert').filter({ hasText: 'did not confirm' })
-  await expect(alert).toContainText('signed in again in the last 5 minutes, so nothing was changed')
-  await expect(alert).toContainText('Use your password instead.')
-
-  // A sign-in at Google an hour ago is not fresh either.
-  who.authTime = 3600
-  await changePassword()
-  await expect(page).toHaveURL(/\/account\?oauth=reauth_stale/)
-
-  // A sign-in at Google just now passes.
-  who.authTime = 5
-  await changePassword()
+  dialog = await changePassword()
+  await expect(dialog.getByRole('button', { name: 'Confirm with password' })).toHaveCount(0)
+  await expect(dialog).not.toContainText('Google can confirm it only if')
+  await dialog.getByRole('button', { name: 'Confirm with Google' }).click()
   await expect(page.getByText('Thanks, you are confirmed. Repeat the change you were making.')).toBeVisible()
 })

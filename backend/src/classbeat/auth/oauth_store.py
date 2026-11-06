@@ -57,6 +57,9 @@ class Flow:
     user_id: UUID | None
     invite_id: UUID | None
     return_to: str | None
+    # Seconds since the start, by the database clock (#687: a Google-only re-authentication must
+    # finish within 5 minutes of its start). None only where a test builds a Flow by hand.
+    age: float | None = None
 
     def state_matches(self, state: str) -> bool:
         return hmac.compare_digest(self.state_hash, token_hash(state))
@@ -113,10 +116,22 @@ async def take_flow(db: AsyncSession, cookie: str) -> Flow | None:
                 oauth_flows.c.user_id,
                 oauth_flows.c.invite_id,
                 oauth_flows.c.return_to,
+                func.extract("epoch", func.now() - oauth_flows.c.created_at),
             )
         )
     ).first()
-    return None if row is None else Flow(*row)
+    if row is None:
+        return None
+    *fields, age = row
+    return Flow(*fields, age=float(age))
+
+
+async def has_password(db: AsyncSession, user_id: UUID) -> bool:
+    """Whether the user has a password (never the hash itself)."""
+    found = await db.execute(
+        select(users.c.password_hash.is_not(None)).where(users.c.id == user_id)
+    )
+    return bool(found.scalar_one_or_none())
 
 
 @dataclass(frozen=True, slots=True)

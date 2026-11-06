@@ -331,13 +331,17 @@ OAuth sign-in (ADR 0003 section 5): `CLASSBEAT_OAUTH_<PROVIDER>_CLIENT_ID` and t
 `oauth_<provider>_client_secret` secret file switch on `google`, `github` or `microsoft`; a provider
 with only one of them is off. Microsoft setup: add the `auth_time` optional claim (ID token) to
 the app registration, or re-authentication with Microsoft always fails closed (ADR 0003 section 5);
-Google needs no registration change (the app asks for `auth_time` itself). An OIDC re-authentication
-counts only with an `auth_time` of the last 5 minutes (60 s skew); a fresh `iat` never does, and Google
-gets no `prompt=login` (ADR 0003 §5 amendment of 2026-11-03, #522: Google may send no `auth_time`, and
-then its re-authentication fails closed and the page offers the password). Every callback that does
-not end `ok` logs one WARNING `oauth callback refused: provider=… purpose=… outcome=… why=…` (never a
-code, state, nonce, token or email); a failed re-authentication's `auth_events` row has `why`
-`auth_time_missing`, `auth_time_old` or `auth_time_future`.
+Google needs no registration change. A Microsoft re-authentication counts only with an `auth_time`
+of the last 5 minutes (60 s skew); a fresh `iat` never does (ADR 0003 §5 amendment of 2026-11-03,
+#522). Google re-authentication (amendment of 2026-11-06, #687; Google ignores `max_age=0` and sends
+no fresh `auth_time`): an account **with** a password cannot use it (start 403 `reauth_use_password`,
+callback outcome `reauth_use_password`; the prompt hides the button), an account **without** one is
+re-authenticated without `auth_time` when the flow is this session's, its subject is the linked one,
+the email is verified and the callback comes within 5 minutes of the start (`oauth_outcomes._freshness`;
+outcomes `reauth_expired`, `invalid`). Every callback that does not end `ok` logs one WARNING
+`oauth callback refused: provider=… purpose=… outcome=… why=…` (never a code, state, nonce, token or
+email); a failed re-authentication's `auth_events` row has `why` `auth_time_missing`,
+`auth_time_old`, `auth_time_future`, `has_password`, `flow_old` or `email_unverified`.
 `CLASSBEAT_OAUTH_VISIBLE_PROVIDERS` (default `google`; a comma-separated list of `google`, `github`,
 `microsoft`) is which of the enabled providers the sign-in and sign-up screens offer; the others stay
 enabled and work, only their buttons are hidden. A name that is none of the three (a typo) is logged
