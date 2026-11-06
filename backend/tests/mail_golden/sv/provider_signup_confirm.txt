@@ -1,0 +1,14 @@
+Bekräfta ditt konto
+===================
+
+Någon loggade in med Google och bad om att skapa ett classbeat-konto med den här adressen. För att slutföra öppnar du länken nedan i samma webbläsare (giltig i 24 timmar).
+
+Bekräfta konto:
+https://classbeat.example.test/signup/confirm#token=SAMPLE
+
+Om det inte var du kan du bortse från det här mejlet. Inget konto skapas.
+
+--
+Du får det här för att någon har använt den här e-postadressen på classbeat.
+classbeat: https://classbeat.example.test
+Frågor? Skriv till support@classbeat.eu

@@ -14,7 +14,7 @@ from uuid import UUID
 from classbeat.auth import UNSUBSCRIBE_ALL, Keys, issue_unsubscribe_token
 from classbeat.config import Settings
 from classbeat.emails.blocks import Content
-from classbeat.emails.catalogue import mail_locale
+from classbeat.emails.catalogue import known, mail_locale
 from classbeat.emails.layout import Branding, Ctx, render_html, render_text
 from classbeat.emails.registry import REGISTRY, Kind
 from classbeat.mail import Mailer, MailMessage, send_logged
@@ -30,6 +30,7 @@ class MailPrefs:
     unsubscribed_all: bool = False
     opted_out: frozenset[str] = frozenset()
     user_id: UUID | None = None  # the account, for the signed unsubscribe link
+    locale: str | None = None  # users.locale; None sends English (no browser at send time)
 
 
 PrefsLookup = Callable[[str], Awaitable[MailPrefs | None]]
@@ -79,10 +80,14 @@ def build(
     *,
     branding: Branding | None = None,
     unsubscribe: UnsubscribeLinks | None = None,
+    locale: str | None = None,
 ) -> MailMessage:
-    """Render one mail: the same blocks to a text part and an HTML part."""
+    """Render one mail: the same blocks to a text part and an HTML part.
+
+    ``locale`` is the language the caller decided (a request, a flow, a stored code through
+    ``send``); without it the mail is English."""
     brand = branding or branding_for(settings)
-    ctx = Ctx(settings.public_base_url, brand, mail_locale())
+    ctx = Ctx(settings.public_base_url, brand, known(locale))
     content: Content = kind.builder(ctx, params)
     optional = not kind.essential
     page = unsubscribe.page if unsubscribe else None
@@ -99,9 +104,14 @@ def build(
 
 
 def render(
-    settings: Settings, kind_id: str, recipient: str, params: Mapping[str, Any]
+    settings: Settings,
+    kind_id: str,
+    recipient: str,
+    params: Mapping[str, Any],
+    *,
+    locale: str | None = None,
 ) -> MailMessage:
-    return build(settings, REGISTRY[kind_id], recipient, params)
+    return build(settings, REGISTRY[kind_id], recipient, params, locale=locale)
 
 
 async def send(
@@ -116,6 +126,7 @@ async def send(
     disabled: frozenset[str] = frozenset(),
     branding: Branding | None = None,
     keys: Keys | None = None,
+    locale: str | None = None,
 ) -> bool:
     """Send one mail through the gate; ``True`` if an attempt was made.
 
@@ -135,7 +146,12 @@ async def send(
     links = None
     if not kind.essential and prefs is not None and prefs.user_id is not None and keys is not None:
         links = unsubscribe_links(settings, keys, prefs.user_id, kind.category.value)
+    if locale is None and prefs is not None:
+        locale = mail_locale(prefs.locale, settings)
     await send_logged(
-        mailer, build(settings, kind, recipient, params, branding=branding, unsubscribe=links)
+        mailer,
+        build(
+            settings, kind, recipient, params, branding=branding, unsubscribe=links, locale=locale
+        ),
     )
     return True

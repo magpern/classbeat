@@ -1,0 +1,17 @@
+En inloggningsmetod har lagts till
+==================================
+
+Github har kopplats till ditt classbeat-konto som ett sätt att logga in.
+
+När det hände: 6 november 2026 kl. 12:30 UTC
+
+Granska ditt konto:
+https://classbeat.example.test/account
+
+Om det inte var du, logga in, ta bort den från din kontosida och byt lösenord. Kontakta oss på support@classbeat.eu
+
+--
+Du får den här säkerhetsaviseringen för att det här är e-postadressen till ett classbeat-konto. Sådana aviseringar skickas för att skydda dig.
+classbeat: https://classbeat.example.test
+Frågor? Skriv till support@classbeat.eu
+Avsluta prenumerationen på de här mejlen: https://classbeat.example.test/unsubscribe#token=SAMPLE&all=SAMPLE

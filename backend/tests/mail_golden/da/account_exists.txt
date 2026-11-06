@@ -1,0 +1,17 @@
+Du har allerede en konto
+========================
+
+Nogen har bedt om at oprette en classbeat-konto med denne adresse, som allerede har en.
+
+Log ind:
+https://classbeat.example.test/signin
+
+Har du glemt din adgangskode?:
+https://classbeat.example.test/reset
+
+Hvis det ikke var dig, kan du se bort fra denne mail.
+
+--
+Du får denne mail, fordi nogen har brugt denne e-mailadresse på classbeat.
+classbeat: https://classbeat.example.test
+Spørgsmål? Skriv til support@classbeat.eu

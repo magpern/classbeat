@@ -33,6 +33,7 @@ class Notice:
     recipient: str
     params: Mapping[str, Any] = field(default_factory=lambda: {})
     prefs: MailPrefs | None = None
+    locale: str | None = None  # the language when the route knows it (else the stored one)
 
 
 def happened(kind_id: str, recipient: str, **params: Any) -> Notice:
@@ -50,7 +51,7 @@ async def read_prefs(db: AsyncSession, user_id: UUID) -> MailPrefs:
     found = await get_mail_prefs(db, user_id)
     if found is None:
         return MailPrefs()
-    return MailPrefs(found.unsubscribed_all, found.opted_out)
+    return MailPrefs(found.unsubscribed_all, found.opted_out, None, found.locale)
 
 
 async def send_notice(request_app: Any, notice: Notice) -> None:
@@ -66,6 +67,7 @@ async def send_notice(request_app: Any, notice: Notice) -> None:
             notice.recipient,
             notice.params,
             prefs=notice.prefs,
+            locale=notice.locale,
         )
     except Exception as exc:
         logger.warning("mail not sent (%s): %s", notice.kind_id, type(exc).__name__)

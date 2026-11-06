@@ -110,10 +110,11 @@ async def sign_up(body: SignUpIn, request: Request, background: BackgroundTasks)
             raise refuse(400, "invalid_invite")  # its own error (section 5)
     password_hash = await request.app.state.password_hasher.hash(password)  # both branches
     locale = account_locale.for_new_account(request, body.locale)
+    mail_locale = account_locale.for_request(request, body.locale)
     message: MailMessage
     async with system_session(factory(request)) as db:
         if await find_user(db, body.email) is not None:
-            message = mails.account_exists(settings, body.email)  # nothing is stored
+            message = mails.account_exists(settings, body.email, mail_locale)  # nothing is stored
         else:
             token = new_token()
             await db.execute(
@@ -127,7 +128,7 @@ async def sign_up(body: SignUpIn, request: Request, background: BackgroundTasks)
                     expires_at=func.now() + CONFIRMATION_LIFETIME,
                 )
             )
-            message = mails.signup_confirmation(settings, body.email, token)
+            message = mails.signup_confirmation(settings, body.email, token, mail_locale)
     background.add_task(send_logged, mailer(request), message)
     return Accepted()
 

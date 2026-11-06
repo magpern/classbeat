@@ -21,13 +21,21 @@ class MailPreferences:
     user_id: UUID
     unsubscribed_all: bool
     opted_out: frozenset[str]
+    locale: str | None = None  # users.locale; the language of the account's mail
 
 
-_COLUMNS = (users.c.id, users.c.mail_unsubscribed_all, users.c.mail_opted_out)
+_COLUMNS = (
+    users.c.id,
+    users.c.mail_unsubscribed_all,
+    users.c.mail_opted_out,
+    users.c.locale,
+)
 
 
-def _prefs(user_id: UUID, all_off: bool, opted_out: list[str]) -> MailPreferences:
-    return MailPreferences(user_id, all_off, frozenset(opted_out))
+def _prefs(
+    user_id: UUID, all_off: bool, opted_out: list[str], locale: str | None
+) -> MailPreferences:
+    return MailPreferences(user_id, all_off, frozenset(opted_out), locale)
 
 
 async def get_mail_prefs(db: AsyncSession, user_id: UUID) -> MailPreferences | None:

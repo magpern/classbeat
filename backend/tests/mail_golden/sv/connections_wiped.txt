@@ -1,0 +1,24 @@
+Dina anslutningar har tagits bort
+=================================
+
+Som en säkerhetsåtgärd efter en säkerhetsincident har classbeat tagit bort de sparade inloggningarna för ditt konto.
+
+Borttagna anslutningar: Intelligent Cycling (MOWL), Spotify, Swedebeat. Anslut dem igen från din kontosida.
+
+Det här behöver du göra:
+
+- Intelligent Cycling (MOWL): avsluta dina andra sessioner eller byt lösenord där. MOWL-token kan inte återkallas och kan vara giltiga tills de går ut.
+- Spotify: ta bort classbeats åtkomst (din egen utvecklarapp) i inställningarna för ditt Spotify-konto.
+- Swedebeat: byt ditt Swedebeat-lösenord.
+
+Tvåfaktorsautentiseringen har tagits bort och du har loggats ut överallt. Välj ett nytt lösenord med länken nedan (giltig i 30 minuter) och ställ sedan in tvåfaktorsautentisering igen.
+
+Välj ett nytt lösenord:
+https://classbeat.example.test/reset#token=SAMPLE
+
+Om du har frågor kan du kontakta oss på support@classbeat.eu
+
+--
+Du får den här säkerhetsaviseringen för att det här är e-postadressen till ett classbeat-konto. Sådana aviseringar skickas för att skydda dig.
+classbeat: https://classbeat.example.test
+Frågor? Skriv till support@classbeat.eu

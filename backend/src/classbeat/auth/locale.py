@@ -9,11 +9,12 @@ statement lives here because guard 8 keeps the account tables in this package. T
 from uuid import UUID
 
 from fastapi import Request
-from sqlalchemy import update
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from classbeat import locales
 from classbeat.auth.tables import users
+from classbeat.config import Settings
 
 
 def for_request(request: Request, field: object) -> str:
@@ -23,18 +24,31 @@ def for_request(request: Request, field: object) -> str:
     )
 
 
-def for_new_account(request: Request, field: object, row_locale: str | None = None) -> str | None:
-    """The language a new account (or its pending row) stores: the body's field if offered, else
-    the language already on the pending row (if still offered), else the header, else ``en``.
-    ``None`` while only one language is offered, so those accounts are not pinned to it."""
+def chosen(request: Request, field: object, row_locale: str | None = None) -> str:
+    """The language a new account or its mail uses: the body's field if offered, else the language
+    already on the pending row (if still offered), else the header, else ``en``. Never ``None``;
+    ``for_new_account`` is the storable form."""
     settings = request.app.state.settings
-    chosen = locales.offered_value(settings, field) or locales.offered_value(settings, row_locale)
-    if chosen is None:
-        chosen = for_request(request, None)
-    return locales.storable_locale(settings, chosen)
+    found = locales.offered_value(settings, field) or locales.offered_value(settings, row_locale)
+    return found if found is not None else for_request(request, None)
+
+
+def for_new_account(request: Request, field: object, row_locale: str | None = None) -> str | None:
+    """What a new account (or its pending row) stores: ``chosen``, or ``None`` while only one
+    language is offered, so those accounts are not pinned to it."""
+    return locales.storable_locale(request.app.state.settings, chosen(request, field, row_locale))
 
 
 async def set_user_locale(db: AsyncSession, user_id: UUID, locale: str | None) -> bool:
     """Set the user's own language (the caller checked it); ``False`` when the user is gone."""
     result = await db.execute(update(users).where(users.c.id == user_id).values(locale=locale))
     return bool(result.rowcount)  # pyright: ignore[reportAttributeAccessIssue]
+
+
+async def mail_locale_of(db: AsyncSession, settings: Settings, user_id: UUID) -> str:
+    """The language of the mail an account route owes its user: their stored ``users.locale``
+    when the operator still offers it, else ``en`` (no browser at send time, ADR 0023 section 2)."""
+    stored = (
+        await db.execute(select(users.c.locale).where(users.c.id == user_id))
+    ).scalar_one_or_none()
+    return locales.offered_value(settings, stored) or locales.DEFAULT_LOCALE
