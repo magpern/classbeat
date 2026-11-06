@@ -354,7 +354,12 @@ async def test_session_endpoint_reports_the_user(env: Env) -> None:
     issued = await env.login(user_id)
     body = (await env.client.get("/api/auth/session", headers=session_cookie(issued.token))).json()
     assert body["authenticated"] is True
-    assert body["user"] == {"id": str(user_id), "email": "Me@Example.com", "role": "user"}
+    assert body["user"] == {
+        "id": str(user_id),
+        "email": "Me@Example.com",
+        "role": "user",
+        "locale": None,
+    }
     assert body["session"]["recent_auth"] is True
     assert datetime.fromisoformat(
         body["session"]["expires_at"]

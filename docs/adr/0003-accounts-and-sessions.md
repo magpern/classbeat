@@ -446,8 +446,10 @@ is no Starlette session middleware.
     connect or disconnect MOWL, Spotify or Swedebeat, delete the account. A stolen classbeat cookie
     used in another browser does not get there: the attacker would need the victim's Google
     session too. Once TOTP is confirmed, every one of those actions also needs a TOTP step-up, which
-    Google never gives. Accounts with a password are not exposed to this: Google never counts for
-    them.
+    Google never gives; but while TOTP is unconfirmed the walk-up attacker could enrol **their
+    own** TOTP and then hold the step-up themselves (and possibly lock the owner out), so that
+    step-up protects only a TOTP the owner set up. Accounts with a password are not exposed to
+    this: Google never counts for them.
 
     **Messages.** The prompt offers "Confirm with Google" only to an account without a password,
     with no 5-minute sentence for Google (Microsoft keeps its sentence). `reauth_use_password`

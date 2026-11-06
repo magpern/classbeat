@@ -1,6 +1,16 @@
-import { createContext, Fragment, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
+import {
+  createContext,
+  Fragment,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+  type ReactNode,
+} from 'react'
 import type { CatalogueKey } from './en'
 import {
+  clearStoredLocale,
   DEFAULT_LOCALE,
   resolveBrowserLocale,
   setActiveLocale,
@@ -12,7 +22,8 @@ import { loadCatalogue, translate, type Params, type TFunction } from './t'
 interface I18n {
   locale: Locale
   t: TFunction
-  setLocale: (locale: Locale) => void
+  /** A language, or `null` to follow the browser again (forgets the saved choice). */
+  setLocale: (locale: Locale | null) => void
 }
 
 const fallback: I18n = {
@@ -44,16 +55,23 @@ export function I18nProvider({ children, initial }: { children: ReactNode; initi
     }
   }, [wanted])
 
+  const setLocale = useCallback((locale: Locale | null) => {
+    if (locale === null) {
+      clearStoredLocale()
+      setWanted(resolveBrowserLocale())
+    } else {
+      storeLocale(locale)
+      setWanted(locale)
+    }
+  }, [])
+
   const value = useMemo<I18n>(
     () => ({
       locale: ready,
       t: (key, params) => translate(ready, key, params),
-      setLocale: (locale) => {
-        storeLocale(locale)
-        setWanted(locale)
-      },
+      setLocale,
     }),
-    [ready],
+    [ready, setLocale],
   )
   return <Context value={value}>{children}</Context>
 }
@@ -62,7 +80,7 @@ export function useT(): TFunction {
   return useContext(Context).t
 }
 
-export function useLocale(): { locale: Locale; setLocale: (locale: Locale) => void } {
+export function useLocale(): { locale: Locale; setLocale: (locale: Locale | null) => void } {
   const { locale, setLocale } = useContext(Context)
   return { locale, setLocale }
 }

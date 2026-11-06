@@ -38,9 +38,16 @@ class UserRow:
 
 
 async def create_user(
-    db: AsyncSession, email: str, *, password_hash: str | None = None, role: str = "user"
+    db: AsyncSession,
+    email: str,
+    *,
+    password_hash: str | None = None,
+    role: str = "user",
+    locale: str | None = None,
 ) -> UUID:
-    """Create a user whose email is already proven (ADR 0003 section 1: no unverified state)."""
+    """Create a user whose email is already proven (ADR 0003 section 1: no unverified state).
+    ``locale`` is the sign-up language, already checked by the caller; the CLI and the admin area
+    leave it ``None`` (follow the browser, ADR 0023 section 2)."""
     return (
         await db.execute(
             insert(users)
@@ -50,6 +57,7 @@ async def create_user(
                 email_verified_at=func.now(),
                 password_hash=password_hash,
                 role=role,
+                locale=locale,
             )
             .returning(users.c.id)
         )

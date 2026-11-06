@@ -324,6 +324,8 @@ Security log (#632, ADR 0003 amendment "the security log"): `AuthMiddleware` wri
 
 Sign-out events (#646, ADR 0003 amendment of 2026-11-06): `POST /api/auth/logout` writes one `auth_events` `sign_out` row (`detail` `{"session_id"}`) and `POST /api/auth/logout-all` one `sign_out_all` row (`detail` `{"sessions": <count>}`), both with the user and the request address, in the revoke's transaction and only when the revoke deleted a session (a repeat with a dead cookie or a lost race writes none). The insert runs in a savepoint: a failed write is logged (`sign-out event write failed: <class> (SQLSTATE …)`) and the session is still revoked. Both routes take the user row lock first (no deadlock with an account deletion). Exported as `security_events`, removed with the account. Tests: `backend/tests/test_auth_sign_out_events.py`.
 
+Language preference (ADR 0023 sections 1, 2 and 9, ML2): `CLASSBEAT_LOCALES` (default `en,sv,da`; `en` is always on) enables a subset of the manifest `frontend/src/i18n/locales.json` (the image carries it as `/app/locales.json`); a language is *offered* when it is both. `users.locale`, `pending_signups.locale` and `oauth_flows.locale` hold a two-letter code or `NULL` (follow the browser; mail stays English). A new account keeps the sign-up language (body `locale` if offered, else a bounded `Accept-Language` (first 256 bytes, 8 entries, exact match), else `en`) across the email, verified-provider and provider hand-off paths; CLI and admin accounts get `NULL`, and `NULL` is stored while only one language is offered. `PUT /api/account/locale` `{locale: code|null}` (session, CSRF; 400 `locale_not_offered`, the value is never echoed) sets it. `GET /api/auth/session` returns `user.locale` and the offered `locales` (anonymous too); the export profile holds `locale`. Unknown or wrong-typed `locale` fields on sign-up, OAuth start and the pending email are ignored, never refused. Mail locale is ML6.
+
 Flags (ADR 0011 section 7, FL1): `classbeat.flags` reads the `app_settings` rows per request and joins them with the environment, stricter wins: the stored `signup_mode` (`invite` or `closed`) can tighten `CLASSBEAT_SIGNUP_MODE` and never open it; `song_picking` (`off`, `granted` (default), `on`) is `off` while `CLASSBEAT_SONG_PICKING` is off, and `granted` admits only users whose effective features include `song_picking`; `trial` and `banner` (text of at most 280 characters, level `info` or `warning`) are validated. An invalid stored value falls back to the key's stricter default and is logged by key only. `GET /api/settings/public` (no sign-in) returns `{banner, signup_mode}` and nothing else.
 Progress (ADR 0005 section 6): `GET /api/jobs/{id}/events` streams a job's events as SSE (`Last-Event-ID`,
 5 open streams per user and web process); each web process keeps one `LISTEN job_events` connection.
@@ -394,6 +396,16 @@ npm run build        # typecheck, then Vite writes frontend/dist
   locale, never a path built from a locale). Dates, numbers, money and durations come from `src/i18n/format.ts`
   (no `toLocale*` or `toFixed` for shown text). `public/locale-init.js` sets `<html lang>` before first paint and
   its list must equal the manifest (`src/i18n/i18n.test.tsx`). `src/i18n/testing/xx.ts` is a test-only catalogue.
+  The guards (ML3, `src/i18n/guard.test.ts`, helpers in `src/i18n/testing/`): a non-test `.tsx` outside `src/i18n/`
+  and `pages/admin/` may not hold JSX text, a string in a JSX expression or a text attribute (`aria-label`,
+  `placeholder`, `title`, `alt`, `label`, `hint` ...) with letters, brand names aside: write a key in `en.ts` and use
+  `t()` or `Trans`. Files not yet moved are in `src/i18n/hardcoded-allowlist.json`, which only shrinks: remove a file
+  when it is clean and lower `CEILING` in the test; adding one fails. Every `src/i18n/<code>.ts` (default export) must
+  have all of English's keys except those in `src/i18n/untranslated.json` (a flat list of keys; a listed key must exist
+  in English and be missing from the catalogue), the same bare `{name}` placeholders, the locale's plural categories
+  and no markup. `locales.json`, the import map, the catalogue files and `locale-init.js` must list the same locales.
+  Outside `format.ts` and the admin area, `toLocaleString`, `toLocaleDateString`, `toLocaleTimeString` and `toFixed`
+  fail. The e2e Playwright config pins the browser locale to `en`.
 - Fonts are bundled (`@fontsource-variable/inter`, `@fontsource/archivo` 700 and 800, SIL OFL) and served from
   our origin; nothing is requested from a third-party host at runtime (`src/no-third-party-hosts.test.ts`
   guards the sources), with **one allowed exception**: album and playlist covers from Spotify's image hosts

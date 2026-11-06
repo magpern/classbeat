@@ -31,7 +31,7 @@ from classbeat.auth.oauth_outcomes import (
     _freshness,
     _stale_auth_time,
 )
-from classbeat.auth.oauth_store import Flow
+from classbeat.auth.oauth_store import Flow, create_flow, take_flow
 from flows import Browser, age_reauth, reason, signed_in
 from oauthtools import add_password, drop_password, location, sign_in_with, start
 from oidcfake import DROP, FakeProviders
@@ -146,6 +146,33 @@ def test_the_rule_by_provider_and_password() -> None:
         )
         assert rule("microsoft", password, age=10, auth_time=int(now)) is None
         assert rule("github", password, age=10, auth_time=None) is None  # an accepted risk
+
+
+async def test_take_flow_returns_the_age_since_the_start_and_the_locale_in_their_fields(
+    oenv: Env,
+) -> None:
+    """``take_flow`` reads its columns by position and takes the age off the end: a column added
+    after it, or the two swapped, would put the locale into ``age`` (or the reverse)."""
+    async with oenv.db() as db:
+        new = await create_flow(
+            db,
+            provider="google",
+            purpose="reauth",
+            oidc=True,
+            user_id=None,
+            invite_id=None,
+            return_to="/account",
+            locale="sv",
+        )
+    await oenv.run("UPDATE oauth_flows SET created_at = now() - interval '100 seconds'")
+    async with oenv.db() as db:
+        flow = await take_flow(db, new.cookie)
+    assert flow is not None
+    assert (flow.provider, flow.purpose, flow.return_to) == ("google", "reauth", "/account")
+    assert (flow.nonce, flow.verifier) == (new.nonce, new.verifier)
+    assert flow.locale == "sv"
+    assert isinstance(flow.age, float)
+    assert 99 <= flow.age < 160
 
 
 # ---- Google and an account with a password: refused (#687) -------------------------------------
