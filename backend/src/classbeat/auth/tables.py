@@ -9,6 +9,7 @@ from typing import Any
 
 from sqlalchemy import (
     BigInteger,
+    Boolean,
     CheckConstraint,
     Column,
     DateTime,
@@ -22,7 +23,7 @@ from sqlalchemy import (
     UniqueConstraint,
     text,
 )
-from sqlalchemy.dialects.postgresql import JSONB, UUID
+from sqlalchemy.dialects.postgresql import ARRAY, JSONB, UUID
 
 metadata = MetaData()
 
@@ -63,7 +64,15 @@ users = Table(
     Column("role", Text, nullable=False, server_default="user"),
     _ts("disabled_at"),
     _ts("created_at", nullable=False, default_now=True),
+    # ADR 0022 section 5 (ME4, #655): the user's optional-mail preferences. Essential mail ignores
+    # both; the check keeps ``mail_opted_out`` to the categories a user may switch off.
+    Column("mail_unsubscribed_all", Boolean, nullable=False, server_default=text("false")),
+    Column("mail_opted_out", ARRAY(Text), nullable=False, server_default=text("'{}'::text[]")),
     CheckConstraint("role IN ('user', 'admin')", name="users_role_check"),
+    CheckConstraint(
+        "mail_opted_out <@ ARRAY['welcome', 'account_activity', 'class_ready']::text[]",
+        name="users_mail_opted_out_check",
+    ),
 )
 
 identities = Table(

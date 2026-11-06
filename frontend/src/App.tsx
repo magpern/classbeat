@@ -9,6 +9,7 @@ import { AccountPage } from './pages/AccountPage'
 import { ClassPage } from './pages/ClassPage'
 import { ClassesPage } from './pages/ClassesPage'
 import { EmailChangePage } from './pages/EmailChangePage'
+import { UnsubscribePage } from './pages/UnsubscribePage'
 import { JobPage } from './pages/JobPage'
 import { HomePage } from './pages/HomePage'
 import { LandingPage } from './pages/LandingPage'
@@ -77,6 +78,8 @@ function Routes() {
       return <ResetPage />
     case '/email-change':
       return <EmailChangePage />
+    case '/unsubscribe':
+      return <UnsubscribePage />
     case '/classes':
       return <ClassesPage />
     case '/classes/new':

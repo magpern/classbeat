@@ -523,8 +523,8 @@ sign-in only for the admin role (§7).
   `scripts/worktree.sh init`).
 - **Derived keys:** HKDF-SHA256 (fixed salt `classbeat-v1`) derives separate 32-byte keys with
   the info strings `csrf`, `rate-limit`, `device`, `recovery-codes`, `totp-v1`, `totp-pending`,
-  `session-client` (amendment of 2026-11-05, #632) and `security-log` (amendment "the security
-  log", #632).
+  `session-client` (amendment of 2026-11-05, #632), `security-log` (amendment "the security
+  log", #632) and `mail-unsubscribe` (amendment of 2026-11-06, #655).
 - **TOTP secrets:** encrypted with AES-256-GCM (`cryptography`), a random 96-bit nonce per
   encryption stored alongside, AAD `user_id|totp`, and `key_id = "app-v1"`.
   - M2's envelope encryption (§7 of the roadmap) re-encrypts them under its scheme, and
@@ -886,3 +886,29 @@ that ended on purpose from one that expired or was revoked by a reset.
 `backend/tests/test_auth_sign_out_events.py` (one event each, none on a repeat or a lost race,
 the savepoint against a real database error, export and deletion, no deadlock with an account
 deletion).
+
+## Amendment 2026-11-06: email preferences and the signed unsubscribe link (#655)
+
+- **Columns:** `users.mail_unsubscribed_all boolean` and `users.mail_opted_out text[]`, the latter
+  limited by a CHECK to the optional categories (`welcome`, `account_activity`, `class_ready`).
+  Essential mail (sign-in, reset, security, recovery) has no switch and is always sent. Both are in
+  the GDPR export (guard 12).
+- **Key (§8):** the ninth derived key, HKDF info `mail-unsubscribe`.
+- **Token:** `b64url("v1|user_id|scope|expiry") + "." + b64url(HMAC-SHA256)`, constant-time
+  compare, 90-day expiry, scope one of the optional categories or `all`. A token can only turn mail
+  off; it never reads, turns on or changes anything else, and an essential scope is refused at
+  issue and at verification.
+- **Links in a mail:** the page link `/unsubscribe#token=<category>&all=<all>` (fragment, so never
+  in a server log) and the one-click `POST /api/mail/unsubscribe?token=<category>`
+  (`List-Unsubscribe` and `List-Unsubscribe-Post: List-Unsubscribe=One-Click`, RFC 8058). There is
+  no GET route: opening a link never changes state. The page sends the token only when the person
+  presses a button, to `POST /api/mail/unsubscribe/confirm`.
+- **CSRF (§4):** exactly `/api/mail/unsubscribe` and `/api/mail/unsubscribe/confirm` skip the
+  Origin and CSRF checks, because a mail client posts without a cookie or Origin; the token is the
+  credential. No prefix match.
+- **Rate limit (§9):** `unsubscribe`, per IP, 60 per hour, checked before the token is verified.
+- **Answers:** a good token for a deleted account answers like a live one (200); every other bad
+  token gets the same 400 `link_invalid`, so the answer does not tell tamper from expiry from an
+  unknown user.
+- **Logging (§10):** `/api/mail/unsubscribe` is a secret-input path (its query is never logged);
+  the SWAG access log already omits query strings.

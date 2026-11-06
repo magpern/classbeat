@@ -9,7 +9,9 @@ that caused the mail.
 from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass
 from typing import Any
+from uuid import UUID
 
+from classbeat.auth import UNSUBSCRIBE_ALL, Keys, issue_unsubscribe_token
 from classbeat.config import Settings
 from classbeat.emails.blocks import Content
 from classbeat.emails.catalogue import mail_locale
@@ -23,13 +25,45 @@ DEFAULT_SENDER_NAME = "classbeat"
 
 @dataclass(frozen=True, slots=True)
 class MailPrefs:
-    """A user's mail preferences (the columns arrive with ME4)."""
+    """A user's mail preferences (``users.mail_unsubscribed_all`` and ``mail_opted_out``, ME4)."""
 
     unsubscribed_all: bool = False
     opted_out: frozenset[str] = frozenset()
+    user_id: UUID | None = None  # the account, for the signed unsubscribe link
 
 
 PrefsLookup = Callable[[str], Awaitable[MailPrefs | None]]
+
+
+@dataclass(frozen=True, slots=True)
+class UnsubscribeLinks:
+    """The page link (fragment: the category token and the all-optional token) and the RFC 8058
+    one-click URL (query: the category token)."""
+
+    page: str
+    one_click: str
+
+
+def unsubscribe_links(
+    settings: Settings, keys: Keys, user_id: UUID, category: str
+) -> UnsubscribeLinks:
+    base = settings.public_base_url.rstrip("/")
+    each, everything = (
+        issue_unsubscribe_token(keys, user_id, category),
+        issue_unsubscribe_token(keys, user_id, UNSUBSCRIBE_ALL),
+    )
+    return UnsubscribeLinks(
+        f"{base}/unsubscribe#token={each}&all={everything}",
+        f"{base}/api/mail/unsubscribe?token={each}",
+    )
+
+
+def sample_unsubscribe_links(settings: Settings) -> UnsubscribeLinks:
+    """Placeholders for the previews and golden files: the shape, no signature."""
+    base = settings.public_base_url.rstrip("/")
+    return UnsubscribeLinks(
+        f"{base}/unsubscribe#token=SAMPLE&all=SAMPLE", f"{base}/api/mail/unsubscribe?token=SAMPLE"
+    )
 
 
 def branding_for(settings: Settings) -> Branding:
@@ -44,21 +78,23 @@ def build(
     params: Mapping[str, Any],
     *,
     branding: Branding | None = None,
-    unsubscribe_url: str | None = None,
+    unsubscribe: UnsubscribeLinks | None = None,
 ) -> MailMessage:
     """Render one mail: the same blocks to a text part and an HTML part."""
     brand = branding or branding_for(settings)
     ctx = Ctx(settings.public_base_url, brand, mail_locale())
     content: Content = kind.builder(ctx, params)
     optional = not kind.essential
+    page = unsubscribe.page if unsubscribe else None
     return MailMessage(
         recipient,
         content.subject,
-        render_text(ctx, content, optional=optional, unsubscribe_url=unsubscribe_url),
-        render_html(ctx, content, optional=optional, unsubscribe_url=unsubscribe_url),
+        render_text(ctx, content, optional=optional, unsubscribe_url=page),
+        render_html(ctx, content, optional=optional, unsubscribe_url=page),
         ctx.locale,
         brand.sender_name,
         brand.support_address,
+        unsubscribe.one_click if unsubscribe and optional else None,
     )
 
 
@@ -79,12 +115,13 @@ async def send(
     lookup: PrefsLookup | None = None,
     disabled: frozenset[str] = frozenset(),
     branding: Branding | None = None,
+    keys: Keys | None = None,
 ) -> bool:
     """Send one mail through the gate; ``True`` if an attempt was made.
 
     ``disabled`` is the admin's switched-off kinds (ME2); an essential kind ignores it. An optional
     kind uses ``prefs`` or looks them up by recipient with ``lookup``; with no account found it is
-    not sent.
+    not sent. With ``keys`` and a known account the mail carries the signed unsubscribe links.
     """
     kind = REGISTRY[kind_id]
     if not kind.essential:
@@ -95,5 +132,10 @@ async def send(
                 prefs = await lookup(recipient)
             if prefs is None or prefs.unsubscribed_all or kind.category in prefs.opted_out:
                 return False
-    await send_logged(mailer, build(settings, kind, recipient, params, branding=branding))
+    links = None
+    if not kind.essential and prefs is not None and prefs.user_id is not None and keys is not None:
+        links = unsubscribe_links(settings, keys, prefs.user_id, kind.category.value)
+    await send_logged(
+        mailer, build(settings, kind, recipient, params, branding=branding, unsubscribe=links)
+    )
     return True

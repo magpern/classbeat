@@ -16,6 +16,7 @@ import { Usage } from '../components/account/Usage'
 import { Notice, Section, useAction } from '../components/forms'
 import { RequireAuth } from '../components/RequireAuth'
 import { Button } from '../components/ui/button'
+import { EmailPreferences } from '../components/account/EmailPreferences'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs'
 import { useQuery, useRouter } from '../router/Router'
 import { ThemeSwitch } from '../theme/ThemeSwitch'
@@ -181,6 +182,9 @@ function Account() {
           />
         </TabsContent>
         <TabsContent value="data" className="flex flex-col gap-4">
+          <Section title="Email">
+            <EmailPreferences />
+          </Section>
           <Section title="Download my data">
             <ExportData />
           </Section>

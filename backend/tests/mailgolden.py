@@ -9,6 +9,7 @@ from pathlib import Path
 
 from classbeat.config import Settings
 from classbeat.emails import REGISTRY, Kind, build
+from classbeat.emails.dispatch import sample_unsubscribe_links
 from classbeat.mail import MailMessage
 
 GOLDEN = Path(__file__).parent / "mail_golden"
@@ -20,7 +21,10 @@ def golden_settings() -> Settings:
 
 
 def sample_message(kind: Kind) -> MailMessage:
-    message = build(golden_settings(), kind, RECIPIENT, kind.sample)
+    settings = golden_settings()
+    message = build(
+        settings, kind, RECIPIENT, kind.sample, unsubscribe=sample_unsubscribe_links(settings)
+    )
     assert message.html is not None
     return message
 

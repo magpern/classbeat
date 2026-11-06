@@ -34,7 +34,7 @@ def applied_revisions(database_url: str) -> list[str]:
 
 def test_the_revisions_form_one_line() -> None:
     script = ScriptDirectory.from_config(alembic_config())
-    assert script.get_heads() == ["0035_mail_settings"]
+    assert script.get_heads() == ["0036_mail_preferences"]
     assert script.get_base() == "0001_baseline"
 
 
@@ -55,7 +55,7 @@ def test_upgrade_head_then_downgrade_base(
     config = alembic_config()
     try:
         command.upgrade(config, "head")
-        assert applied_revisions(database_url) == ["0035_mail_settings"]
+        assert applied_revisions(database_url) == ["0036_mail_preferences"]
         command.downgrade(config, "base")
         assert applied_revisions(database_url) == []
     finally:
@@ -516,5 +516,51 @@ def test_0035_mail_settings_up_and_down(
     finally:
         with admin.begin() as connection:
             connection.execute(text("DELETE FROM app_settings"))
+        admin.dispose()
+        command.downgrade(config, "base")
+
+
+def test_0036_mail_preferences_up_and_down(
+    owner_database_url: str, database_url: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """#655: existing users get the defaults (mail on), the check refuses an essential or unknown
+    category, and the downgrade drops both columns."""
+    monkeypatch.setenv("CLASSBEAT_MIGRATIONS_DATABASE_URL", owner_database_url)
+    config = alembic_config()
+    admin = create_engine(database_url)
+
+    def columns() -> set[str]:
+        with admin.connect() as connection:
+            rows = connection.execute(
+                text(
+                    "SELECT column_name FROM information_schema.columns WHERE table_name = 'users'"
+                )
+            ).all()
+        return {row[0] for row in rows}
+
+    try:
+        command.upgrade(config, "0035_mail_settings")
+        with admin.begin() as connection:
+            connection.execute(
+                text(
+                    "INSERT INTO users (email, email_normalized, email_verified_at) "
+                    "VALUES ('old@example.test', 'old@example.test', now())"
+                )
+            )
+        command.upgrade(config, "head")
+        with admin.connect() as connection:
+            row = connection.execute(
+                text("SELECT mail_unsubscribed_all, mail_opted_out FROM users")
+            ).one()
+        assert row[0] is False
+        assert row[1] == []
+        for bad in ("security", "nonsense"):
+            with pytest.raises(IntegrityError), admin.begin() as connection:
+                connection.execute(text("UPDATE users SET mail_opted_out = ARRAY[:c]"), {"c": bad})
+        command.downgrade(config, "0035_mail_settings")
+        assert not columns() & {"mail_unsubscribed_all", "mail_opted_out"}
+    finally:
+        with admin.begin() as connection:
+            connection.execute(text("DELETE FROM users"))
         admin.dispose()
         command.downgrade(config, "base")

@@ -72,3 +72,9 @@ _ALL = (
 )
 
 REGISTRY: dict[str, Kind] = {k.id: k for k in _ALL}
+
+
+def switchable_categories() -> tuple[str, ...]:
+    """The categories a user can switch off (ME4): every one but essential, whether or not a kind
+    of it exists yet, so a choice made now still holds when ME5 and the class mails arrive."""
+    return tuple(c.value for c in Category if c is not Category.ESSENTIAL)

@@ -105,8 +105,8 @@ def test_every_catalogue_string_is_used_by_some_kind() -> None:
             sample_message(kind)
     finally:
         Ctx.t = original  # pyright: ignore[reportAttributeAccessIssue]
-    # Footer strings are used by every mail; the unsubscribe line arrives with ME4.
-    assert set(S) - used <= {S.FOOTER_UNSUBSCRIBE}
+    # The sample message carries the unsubscribe line (ME4), so every string is used.
+    assert not set(S) - used
 
 
 def test_the_locale_is_english() -> None:
