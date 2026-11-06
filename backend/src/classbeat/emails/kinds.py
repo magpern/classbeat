@@ -175,6 +175,78 @@ def identity_linked(c: Ctx, p: Params) -> Content:
     )
 
 
+def welcome(c: Ctx, p: Params) -> Content:
+    """After sign-up confirmation. On OAuth account creation ``provider`` is set and the mail
+    names it; that case replaces the old "sign-in method added" notice (ADR 0022 section 7)."""
+    provider = p.get("provider")
+    blocks: list[Any] = [Heading(c.t(S.WELCOME_HEADING)), Paragraph(c.t(S.WELCOME_BODY))]
+    if provider:
+        blocks.append(Paragraph(c.t(S.WELCOME_PROVIDER, provider=str(provider).title())))
+    blocks.append(Button(c.t(S.WELCOME_BUTTON), c.url("/")))
+    return Content(c.t(S.SUBJECT_WELCOME), c.t(S.WELCOME_PRE), tuple(blocks), c.t(S.WELCOME_REASON))
+
+
+def password_changed(c: Ctx, p: Params) -> Content:
+    return Content(
+        c.t(S.SUBJECT_PASSWORD_CHANGED),
+        c.t(S.PWCHANGED_PRE),
+        (
+            Heading(c.t(S.PWCHANGED_HEADING)),
+            Paragraph(c.t(S.PWCHANGED_BODY)),
+            EventTime(c.t(S.PWCHANGED_WHEN), _when(p)),
+            Button(c.t(S.ACCOUNT_BUTTON), c.url("/account")),
+            Note(c.t(S.PWCHANGED_WARN) + " " + c.t(S.CONTACT_LEAD), contact=True),
+        ),
+        c.t(S.REASON_SECURITY),
+    )
+
+
+def account_deleted(c: Ctx, p: Params) -> Content:
+    """No link to the account: it is gone."""
+    return Content(
+        c.t(S.SUBJECT_ACCOUNT_DELETED),
+        c.t(S.DELETED_PRE),
+        (
+            Heading(c.t(S.DELETED_HEADING)),
+            Paragraph(c.t(S.DELETED_BODY)),
+            EventTime(c.t(S.DELETED_WHEN), _when(p)),
+            Note(c.t(S.DELETED_WARN) + " " + c.t(S.CONTACT_LEAD), contact=True),
+        ),
+        c.t(S.REASON_SECURITY),
+    )
+
+
+def identity_unlinked(c: Ctx, p: Params) -> Content:
+    provider = str(p["provider"]).title()
+    return Content(
+        c.t(S.SUBJECT_IDENTITY_UNLINKED),
+        c.t(S.UNLINKED_PRE, provider=provider),
+        (
+            Heading(c.t(S.UNLINKED_HEADING)),
+            Paragraph(c.t(S.UNLINKED_BODY, provider=provider)),
+            EventTime(c.t(S.UNLINKED_WHEN), _when(p)),
+            Button(c.t(S.ACCOUNT_BUTTON), c.url("/account")),
+            Note(c.t(S.UNLINKED_WARN) + " " + c.t(S.CONTACT_LEAD), contact=True),
+        ),
+        c.t(S.REASON_SECURITY),
+    )
+
+
+def totp_removed(c: Ctx, p: Params) -> Content:
+    return Content(
+        c.t(S.SUBJECT_TOTP_REMOVED),
+        c.t(S.TOTPOFF_PRE),
+        (
+            Heading(c.t(S.TOTPOFF_HEADING)),
+            Paragraph(c.t(S.TOTPOFF_BODY)),
+            EventTime(c.t(S.TOTPOFF_WHEN), _when(p)),
+            Button(c.t(S.ACCOUNT_BUTTON), c.url("/account")),
+            Note(c.t(S.TOTPOFF_WARN) + " " + c.t(S.CONTACT_LEAD), contact=True),
+        ),
+        c.t(S.REASON_SECURITY),
+    )
+
+
 def connections_wiped(c: Ctx, p: Params) -> Content:
     """After ``keys wipe`` (ADR 0004 section 2): which providers were affected, that classbeat
     removed them, what to do, and the reset link if the TOTP was reset. No token, id or account

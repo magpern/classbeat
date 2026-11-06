@@ -48,6 +48,7 @@ from classbeat.config import Settings
 from classbeat.context import UserContext
 from classbeat.db import system_session
 from classbeat.emailnorm import normalize_email
+from classbeat.emails.notices import happened, queue
 from classbeat.mail import Mailer, send_logged
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
@@ -163,7 +164,9 @@ async def reset_info(body: TokenIn, request: Request) -> ResetInfo:
 
 
 @router.post("/password/reset/complete")
-async def complete_reset(body: ResetCompleteIn, request: Request) -> Done:
+async def complete_reset(
+    body: ResetCompleteIn, request: Request, background: BackgroundTasks
+) -> Done:
     try:
         password = normalize_password(body.password)
     except PasswordRuleError:
@@ -178,6 +181,7 @@ async def complete_reset(body: ResetCompleteIn, request: Request) -> Done:
         raise refuse(400, "invalid_token")
     password_hash = await request.app.state.password_hasher.hash(password)
     keep = set(body.keep_methods)
+    email: str | None = None
     async with system_session(factory(request)) as db:
         token = await consume_token(db, PURPOSE, body.token)
         if token is not None:
@@ -185,9 +189,14 @@ async def complete_reset(body: ResetCompleteIn, request: Request) -> Done:
             # re-auth or link that holds it commits first and is undone below; one that waits
             # finds the new hash, its session gone or (OAuth) its identity removed.
             await lock_user(db, token.user_id)
-            await db.execute(
-                update(users).where(users.c.id == token.user_id).values(password_hash=password_hash)
-            )
+            email = (
+                await db.execute(
+                    update(users)
+                    .where(users.c.id == token.user_id)
+                    .values(password_hash=password_hash)
+                    .returning(users.c.email)
+                )
+            ).scalar_one()
             # A keep list, not a remove list: an identity linked after the page's ``info`` was
             # never shown, cannot be listed, and goes. Ids that are not the user's are ignored.
             removed = (
@@ -207,9 +216,10 @@ async def complete_reset(body: ResetCompleteIn, request: Request) -> Done:
                 ip=ip,
                 detail={"methods_removed": len(removed)},
             )
-    if token is None:
+    if token is None or email is None:
         raise refuse(400, "invalid_token")  # a parallel request consumed it
     await attempt.succeed()
+    queue(background, request, happened("password_changed", email))
     return Done()
 
 
@@ -217,6 +227,7 @@ async def complete_reset(body: ResetCompleteIn, request: Request) -> Done:
 async def change_password(
     body: ChangePasswordIn,
     request: Request,
+    background: BackgroundTasks,
     ctx: Annotated[UserContext, Depends(require_recent_auth)],
     info: Annotated[SessionInfo | None, Depends(current_session)],
 ) -> Done:
@@ -230,10 +241,16 @@ async def change_password(
     await reserve(request, [Bucket(PASSWORD_CHANGE, str(ctx.user_id))])
     password_hash = await request.app.state.password_hasher.hash(password)
     async with system_session(factory(request)) as db:
-        await db.execute(
-            update(users).where(users.c.id == ctx.user_id).values(password_hash=password_hash)
-        )
+        email = (
+            await db.execute(
+                update(users)
+                .where(users.c.id == ctx.user_id)
+                .values(password_hash=password_hash)
+                .returning(users.c.email)
+            )
+        ).scalar_one()
         await revoke_user_sessions(db, ctx.user_id, except_id=info.id)
         await delete_outstanding_tokens(db, ctx.user_id)
         await record_event(db, "password_changed", user_id=ctx.user_id, ip=request_ip(request))
+    queue(background, request, happened("password_changed", email))
     return Done()
