@@ -230,9 +230,7 @@ async def test_every_kind_can_be_previewed_in_both_parts_with_its_own_policy(
             response = await actor.get(f"{MAIL}/{kind_id}/preview?part={part}")
             assert response.status_code == 200, (kind_id, part)
             policy = response.headers["content-security-policy"]
-            assert "frame-ancestors 'self'" in policy
-            assert "sandbox" in policy
-            assert "script-src" not in policy
+            assert policy == preview_policy_of(env)
             assert response.headers["x-content-type-options"] == "nosniff"
             assert response.headers["cache-control"] == "no-store"
             expected = "text/html" if part == "html" else "text/plain"
@@ -289,17 +287,15 @@ async def test_a_test_mail_goes_to_the_admins_own_address_only_and_is_audited(
     env: Env, make_actor: Any, smtp: SmtpFake, superuser: Connection
 ) -> None:
     actor = await stepped_admin(env, make_actor)
-    response = await actor.call("POST", f"{MAIL}/{ESSENTIAL}/test", {"to": "other@example.com"})
-    assert response.status_code in (200, 422)
-    assert smtp.to("other@example.com") == []
-    if response.status_code == 200:
-        (message,) = smtp.messages
-        assert message.to == "a@example.com"
-        assert message.subject.startswith("[Test] ")
+    response = await actor.call("POST", f"{MAIL}/{ESSENTIAL}/test", None)
+    assert response.status_code == 200
+    (message,) = smtp.messages
+    assert message.to == "a@example.com"
+    assert message.subject.startswith("[Test] ")
     rows = [r for r in audit_rows(superuser, actor.user_id) if r.action == "mail.test"]
-    for row in rows:
-        assert row.params == {"kind": ESSENTIAL}
-        assert "example.com" not in json.dumps(dict(row._mapping), default=str)
+    assert len(rows) == 1
+    assert rows[0].params == {"kind": ESSENTIAL}
+    assert "example.com" not in json.dumps(dict(rows[0]._mapping), default=str)
 
 
 async def test_test_sends_are_limited_to_ten_an_hour(
@@ -340,6 +336,15 @@ async def test_a_refused_smtp_send_is_502(
 # --- the CSP exemption (ADR 0022 section 6) ---------------------------------------------------
 
 
+def preview_policy_of(env: Env) -> str:
+    """ADR 0022 section 6, written out so a widened directive fails."""
+    base = env.settings.public_base_url
+    return (
+        f"default-src 'none'; style-src 'unsafe-inline'; img-src {base}/email/; "
+        "frame-ancestors 'self'; sandbox"
+    )
+
+
 def default_policy(env: Env) -> str:
     from classbeat.headers import content_security_policy
 
@@ -358,9 +363,8 @@ async def test_a_successful_preview_keeps_its_own_policy(env: Env, make_actor: A
     actor = await stepped_admin(env, make_actor)
     response = await actor.get(f"{MAIL}/{OPTIONAL}/preview")
     policy = response.headers["content-security-policy"]
+    assert policy == preview_policy_of(env)
     assert policy != default_policy(env)
-    assert "frame-ancestors 'self'" in policy
-    assert "frame-ancestors 'none'" not in policy
     assert response.headers["referrer-policy"]
 
 

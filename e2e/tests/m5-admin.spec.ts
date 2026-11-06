@@ -163,10 +163,17 @@ test('the admin Mail page shows a preview of a mail in its frame', async ({ brow
   await page.goto('/admin/mail')
   await expect(page.getByRole('heading', { name: 'Mail', exact: true })).toBeVisible()
   const frame = page.locator('iframe[title="Mail preview"]')
+  // A frame the browser blocks (frame-src or frame-ancestors) is replaced by chrome-error://, which
+  // has text too: so check the frame's own URL, on the configured base URL, not its content.
+  const origin = new URL(baseURL!).origin
+  const previewUrl = (part: string) => (u: URL) =>
+    u.origin === origin && /^\/api\/admin\/mail\/[a-z_]+\/preview$/.test(u.pathname) && u.search === `?part=${part}`
   await expect(frame).toHaveAttribute('src', /^\/api\/admin\/mail\/[a-z_]+\/preview\?part=html$/)
+  await expect.poll(() => page.frame({ url: previewUrl('html') }) !== null).toBe(true)
   await expect(page.frameLocator('iframe[title="Mail preview"]').locator('body')).toHaveText(/\S/)
   await page.getByRole('button', { name: 'Text' }).click()
   await expect(frame).toHaveAttribute('src', /part=text$/)
+  await expect.poll(() => page.frame({ url: previewUrl('text') }) !== null).toBe(true)
   await expect(page.frameLocator('iframe[title="Mail preview"]').locator('body')).toHaveText(/\S/)
   await admin.context.close()
 })

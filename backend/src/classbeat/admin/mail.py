@@ -40,7 +40,6 @@ router = admin_router()
 
 MAIL = "/mail"
 KindPath = Annotated[str, Path(pattern=r"^[a-z][a-z_]{0,39}$")]
-PREVIEW_PERMISSIONS = "default-src 'none'; style-src 'unsafe-inline'; img-src {base}/email/; "
 TEST_SUBJECT_PREFIX = "[Test] "
 
 
@@ -161,9 +160,11 @@ async def test_mail(request: Request, actor: AdminActor, kind_id: KindPath) -> J
         if not mailer.configured:
             raise AdminRefused("mail_not_configured", 409)
         config = await live.load(session, settings)
-        message = build(settings, kind, actor.email, kind.sample, branding=config.branding)
-        try:
-            await mailer.send(replace(message, subject=TEST_SUBJECT_PREFIX + message.subject))
-        except MailError:
-            raise AdminRefused("send_failed", 502) from None
+    # Sent after the audited transaction closed, so it is not held open for the SMTP timeout. A
+    # failure is an `admin.request` refusal row (the handler writes it), the `mail.test` row stays.
+    message = build(settings, kind, actor.email, kind.sample, branding=config.branding)
+    try:
+        await mailer.send(replace(message, subject=TEST_SUBJECT_PREFIX + message.subject))
+    except MailError:
+        raise AdminRefused("send_failed", 502) from None
     return JSONResponse(TestedOut().model_dump(), headers={"Cache-Control": "no-store"})
