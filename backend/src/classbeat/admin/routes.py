@@ -228,7 +228,16 @@ def install(app: Any) -> None:
     the body limit. Call it after ``auth.install``: it wraps the validation handler installed
     there."""
     # The feature modules import this one.
-    from classbeat.admin import audit_routes, codes, jobs, models, settings, usage, users
+    from classbeat.admin import (
+        audit_routes,
+        codes,
+        jobs,
+        mail,
+        models,
+        settings,
+        usage,
+        users,
+    )
 
     app.include_router(router)
     # Each feature module's own ``admin_router()``.
@@ -240,6 +249,7 @@ def install(app: Any) -> None:
         codes.router,
         settings.router,
         models.router,
+        mail.router,
     ):
         app.include_router(feature)
 

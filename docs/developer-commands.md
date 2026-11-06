@@ -390,7 +390,10 @@ npm run build        # typecheck, then Vite writes frontend/dist
   (`classbeat.headers`, never a `<meta>`): `'self'` for everything, `img-src 'self'` plus the path-scoped cover
   sources of `classbeat.covers.IMG_SOURCES` (`https://i.scdn.co/image/`, `https://mosaic.scdn.co/300/` and
   `/640/`, `https://image-cdn-ak.spotifycdn.com/image/`, `https://image-cdn-fa.spotifycdn.com/image/`), no
-  inline script or style, no `data:`, `object-src`/`base-uri`/`frame-ancestors 'none'`; plus
+  inline script or style, no `data:`, `object-src`/`base-uri`/`frame-ancestors 'none'`, and
+  `frame-src <public_base_url>/api/admin/mail/` (path-scoped, for the admin Mail preview iframe; that route
+  alone sends its own stricter policy with `sandbox` and `frame-ancestors 'self'`, and `SecurityHeaders` keeps
+  it on a 2xx answer only; 401/403/404/500 get the default CSP; ADR 0022 §6); plus
   `Referrer-Policy: no-referrer`. New UI must work under it: no inline `<script>` or `<style>`, no `data:`
   images (the TOTP QR code is drawn as inline SVG for this reason), no other host.
 - Pin exact versions of every package added; licences must be MIT, ISC, Apache-2.0 or OFL.

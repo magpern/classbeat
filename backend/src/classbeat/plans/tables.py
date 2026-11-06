@@ -40,6 +40,10 @@ SETTING_KEYS = (
     "soundless_enabled",
     "trial",
     "banner",
+    "mail_sender_name",
+    "mail_support_email",
+    "mail_footer",
+    "mail_kinds_disabled",
 )
 AUDIT_OUTCOMES = ("ok", "refused", "error")
 FREE = "free"

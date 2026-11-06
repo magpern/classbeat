@@ -70,6 +70,7 @@ FIXED_VALUES = {
     "plan_id": "pro",
     "route_key": "pro",
     "stage_group": "design",
+    "kind_id": "totp_enrolled",
 }
 
 

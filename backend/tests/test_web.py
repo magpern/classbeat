@@ -240,7 +240,7 @@ CSP_EXPECTED = {
     "connect-src": ["'self'"],
     "media-src": ["'none'"],
     "object-src": ["'none'"],
-    "frame-src": ["'none'"],
+    "frame-src": ["http://127.0.0.1:8000/api/admin/mail/"],
     "worker-src": ["'none'"],
     "manifest-src": ["'self'"],
     "base-uri": ["'none'"],

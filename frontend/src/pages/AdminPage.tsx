@@ -3,6 +3,7 @@ import { AdminLayout } from './admin/AdminLayout'
 import { Audit } from './admin/Audit'
 import { Codes } from './admin/Codes'
 import { Jobs } from './admin/Jobs'
+import { Mail } from './admin/Mail'
 import { Settings } from './admin/Settings'
 import { Usage } from './admin/Usage'
 import { UserDetail } from './admin/UserDetail'
@@ -26,6 +27,7 @@ export function AdminPage() {
   else if (path === '/admin/jobs') page = <Jobs />
   else if (path === '/admin/audit') page = <Audit />
   else if (path === '/admin/settings') page = <Settings />
+  else if (path === '/admin/mail') page = <Mail />
   else {
     page = (
       <p>

@@ -66,6 +66,9 @@ ADMIN_USER = Limit("admin", "account", 60, 60)
 # a success too, so the route can't be used to try codes faster than this.
 REDEEM_USER = Limit("redeem", "account", 10, 3600)
 REDEEM_IP = Limit("redeem", "ip", 30, 3600)
+# ADR 0022 section 6 (#653): the Mail page's "Send test to me", per admin and hour. Every request
+# counts, a refused one too, so the page cannot be used to send mail faster than this.
+ADMIN_MAIL_TEST = Limit("admin-mail-test", "account", 10, 3600)
 # ADR 0014 section 2: the data export reads every owned table, so it is limited per user and
 # hour (every request counts) and per IP.
 EXPORT_USER = Limit("export", "account", 5, 3600)
@@ -370,6 +373,11 @@ def spotify_start_buckets(user_id: str, ip: str) -> list[Bucket]:
 def admin_buckets(user_id: str) -> list[Bucket]:
     """An admin area request (ADR 0011 section 6): 60 per admin and minute."""
     return [Bucket(ADMIN_USER, user_id)]
+
+
+def admin_mail_test_buckets(user_id: str) -> list[Bucket]:
+    """A test send from the admin Mail page (ADR 0022 section 6): 10 per admin and hour."""
+    return [Bucket(ADMIN_MAIL_TEST, user_id)]
 
 
 def redeem_buckets(user_id: str, ip: str) -> list[Bucket]:
