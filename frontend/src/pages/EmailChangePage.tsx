@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { confirmEmailChange } from '../api/auth'
 import { useSession } from '../auth/SessionContext'
+import { useT } from '../i18n/I18n'
 import { Notice, useAction } from '../components/forms'
 import { AuthCard as Card } from '../components/auth/AuthCard'
 import { Link, useMailToken } from '../router/Router'
@@ -10,6 +11,7 @@ import { Link, useMailToken } from '../router/Router'
  * account that asked; the link alone changes nothing and signs nobody in.
  */
 export function EmailChangePage() {
+  const t = useT()
   const token = useMailToken()
   const { status, session, refresh } = useSession()
   const [changed, setChanged] = useState<string | null>(null)
@@ -17,18 +19,18 @@ export function EmailChangePage() {
 
   if (token === null) {
     return (
-      <Card title="Confirm your new email">
-        <Notice kind="error">This page needs the link from the confirmation mail.</Notice>
+      <Card title={t('emailChange.title')}>
+        <Notice kind="error">{t('emailChange.noLink')}</Notice>
       </Card>
     )
   }
   if (changed !== null) {
     return (
-      <Card title="Email changed">
-        <Notice kind="success">Your account now uses {changed}. Other devices were signed out.</Notice>
+      <Card title={t('emailChange.changedTitle')}>
+        <Notice kind="success">{t('emailChange.changed', { email: changed })}</Notice>
         <p>
           <Link className="button" to="/account">
-            Back to your account
+            {t('emailChange.back')}
           </Link>
         </p>
       </Card>
@@ -36,20 +38,20 @@ export function EmailChangePage() {
   }
   if (status === 'loading') {
     return (
-      <Card title="Confirm your new email">
-        <p>Loading</p>
+      <Card title={t('emailChange.title')}>
+        <p>{t('common.loading')}</p>
       </Card>
     )
   }
   if (!session?.authenticated) {
     return (
-      <Card title="Confirm your new email">
+      <Card title={t('emailChange.title')}>
         <Notice kind="info">
-          Sign in to the account that asked for the change, then open the link in the mail again.
+          {t('emailChange.signInFirst')}
         </Notice>
         <p>
           <Link className="button" to="/signin">
-            Sign in
+            {t('auth.signIn')}
           </Link>
         </p>
       </Card>
@@ -63,11 +65,11 @@ export function EmailChangePage() {
     })
   }
   return (
-    <Card title="Confirm your new email">
-      <p>You are signed in as {session.user?.email}. Confirm that this account should use the new address.</p>
+    <Card title={t('emailChange.title')}>
+      <p>{t('emailChange.confirmIntro', { email: session.user?.email ?? '' })}</p>
       {action.error ? <Notice kind="error">{action.error}</Notice> : null}
       <button className="button" type="button" disabled={action.busy} onClick={confirm}>
-        Confirm new email
+        {t('emailChange.confirm')}
       </button>
     </Card>
   )

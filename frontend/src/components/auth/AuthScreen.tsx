@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { getOAuthProviders, startOAuth } from '../../api/auth'
 import { providerName } from '../../api/messages'
+import { useT } from '../../i18n/I18n'
 import { goToProvider } from '../../lib/navigation'
 import { Link } from '../../router/Router'
 import { Field, Notice, useAction } from '../forms'
@@ -21,18 +22,18 @@ interface Props {
 
 const COPY = {
   signin: {
-    title: 'Sign in',
-    submit: 'Sign in',
+    title: 'auth.signIn',
+    submit: 'auth.signIn',
     autoComplete: 'current-password',
-    swap: { to: '/signup', text: 'New here? Create an account' },
+    swap: { to: '/signup', text: 'auth.newHere' },
   },
   signup: {
-    title: 'Create an account',
-    submit: 'Create account',
+    title: 'auth.createAccount',
+    submit: 'auth.createAccountSubmit',
     autoComplete: 'new-password',
-    swap: { to: '/signin', text: 'Already have an account? Sign in' },
+    swap: { to: '/signin', text: 'auth.haveAccountSignIn' },
   },
-} as const
+} as const satisfies Record<AuthMode, unknown>
 
 /**
  * One screen for Sign in and Sign up: the visible providers on top, an OR divider, email and
@@ -40,9 +41,8 @@ const COPY = {
  * server lists (`oauth_visible_providers`); none listed means no buttons and no divider.
  * Sign up carries the beta invite code once, for both ways of creating the account.
  */
-const INVITE_FIRST = 'Enter your invite code first.'
-
 export function AuthScreen({ mode, returnTo, notice, noticeLink, onSubmit }: Props) {
+  const t = useT()
   const copy = COPY[mode]
   const [providers, setProviders] = useState<string[]>([])
   const [email, setEmail] = useState('')
@@ -87,9 +87,9 @@ export function AuthScreen({ mode, returnTo, notice, noticeLink, onSubmit }: Pro
   }
 
   return (
-    <AuthCard title={copy.title}>
+    <AuthCard title={t(copy.title)}>
       {mode === 'signup' ? (
-        <p className="auth__lead">classbeat is invite-only for now. Enter the invite code you were given.</p>
+        <p className="auth__lead">{t('auth.inviteLead')}</p>
       ) : null}
       {notice ? <Notice kind="error">{notice}</Notice> : null}
       {notice && noticeLink ? (
@@ -97,12 +97,12 @@ export function AuthScreen({ mode, returnTo, notice, noticeLink, onSubmit }: Pro
           <Link to={noticeLink.to}>{noticeLink.text}</Link>
         </p>
       ) : null}
-      {inviteMissing ? <Notice kind="error">{INVITE_FIRST}</Notice> : null}
+      {inviteMissing ? <Notice kind="error">{t('auth.inviteFirst')}</Notice> : null}
       {action.error ? <Notice kind="error">{action.error}</Notice> : null}
       {mode === 'signup' ? (
         <Field
           ref={inviteRef}
-          label="Invite code"
+          label={t('auth.inviteCode')}
           autoComplete="off"
           value={invite}
           required
@@ -126,18 +126,18 @@ export function AuthScreen({ mode, returnTo, notice, noticeLink, onSubmit }: Pro
                   start(provider)
                 }}
               >
-                Continue with {providerName(provider)}
+                {t('auth.continueWith', { provider: providerName(provider) })}
               </button>
             ))}
           </div>
           <p className="auth__divider">
-            <span>OR</span>
+            <span>{t('auth.or')}</span>
           </p>
         </>
       ) : null}
       <form onSubmit={submit}>
         <Field
-          label="Email"
+          label={t('common.email')}
           type="email"
           autoComplete={mode === 'signin' ? 'username' : 'email'}
           value={email}
@@ -147,10 +147,10 @@ export function AuthScreen({ mode, returnTo, notice, noticeLink, onSubmit }: Pro
           required
         />
         <Field
-          label="Password"
+          label={t('common.password')}
           type="password"
           autoComplete={copy.autoComplete}
-          hint={mode === 'signup' ? '12 to 128 characters. You will type it again when you confirm.' : undefined}
+          hint={mode === 'signup' ? t('auth.passwordHint') : undefined}
           value={password}
           onChange={(e) => {
             setPassword(e.target.value)
@@ -158,16 +158,15 @@ export function AuthScreen({ mode, returnTo, notice, noticeLink, onSubmit }: Pro
           required
         />
         <button className="button button--block" type="submit" disabled={action.busy}>
-          {copy.submit}
+          {t(copy.submit)}
         </button>
       </form>
       <p className="auth__legal">
-        By continuing you agree to take part in the invite-only beta. classbeat is not made by or
-        affiliated with MOWL, Spotify or Swedebeat.
+        {t('auth.legal')}
       </p>
       <p className="card__links">
-        <Link to={copy.swap.to}>{copy.swap.text}</Link>
-        {mode === 'signin' ? <Link to="/reset">Forgot your password?</Link> : null}
+        <Link to={copy.swap.to}>{t(copy.swap.text)}</Link>
+        {mode === 'signin' ? <Link to="/reset">{t('auth.forgot')}</Link> : null}
       </p>
     </AuthCard>
   )

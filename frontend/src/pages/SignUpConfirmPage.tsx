@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from 'react'
 import { confirmSignUp } from '../api/auth'
+import { useT } from '../i18n/I18n'
 import { Field, Notice, useAction } from '../components/forms'
 import { AuthCard as Card } from '../components/auth/AuthCard'
 import { Link, useMailToken } from '../router/Router'
@@ -10,6 +11,7 @@ import { Link, useMailToken } from '../router/Router'
  * in (ADR 0003 section 4): the user signs in afterwards.
  */
 export function SignUpConfirmPage() {
+  const t = useT()
   const token = useMailToken()
   const [password, setPassword] = useState('')
   const [done, setDone] = useState(false)
@@ -17,13 +19,12 @@ export function SignUpConfirmPage() {
 
   if (token === null) {
     return (
-      <Card title="Confirm your account">
+      <Card title={t('confirm.title')}>
         <Notice kind="error">
-          This page needs the link from the confirmation mail. Open the link again, or sign up
-          again to get a new one.
+          {t('confirm.noLink')}
         </Notice>
         <p className="card__links">
-          <Link to="/signup">Create an account</Link>
+          <Link to="/signup">{t('auth.createAccount')}</Link>
         </p>
       </Card>
     )
@@ -31,11 +32,11 @@ export function SignUpConfirmPage() {
 
   if (done) {
     return (
-      <Card title="Account created">
-        <Notice kind="success">Your account is ready. Sign in to continue.</Notice>
+      <Card title={t('confirm.doneTitle')}>
+        <Notice kind="success">{t('confirm.done')}</Notice>
         <p>
           <Link className="button" to="/signin">
-            Sign in
+            {t('auth.signIn')}
           </Link>
         </p>
       </Card>
@@ -52,15 +53,14 @@ export function SignUpConfirmPage() {
   }
 
   return (
-    <Card title="Confirm your account">
+    <Card title={t('confirm.title')}>
       <p>
-        Type the password you chose when you signed up. If you signed up with a provider such as
-        Microsoft, leave it empty.
+        {t('confirm.intro')}
       </p>
       {action.error ? <Notice kind="error">{action.error}</Notice> : null}
       <form onSubmit={submit}>
         <Field
-          label="Password"
+          label={t('common.password')}
           type="password"
           autoComplete="current-password"
           value={password}
@@ -69,11 +69,11 @@ export function SignUpConfirmPage() {
           }}
         />
         <button className="button" type="submit" disabled={action.busy}>
-          Confirm account
+          {t('confirm.submit')}
         </button>
       </form>
       <p className="card__links">
-        <Link to="/signin">Sign in</Link>
+        <Link to="/signin">{t('auth.signIn')}</Link>
       </p>
     </Card>
   )

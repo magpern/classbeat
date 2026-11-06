@@ -10,6 +10,7 @@ import {
 import { ApiError } from '../api/client'
 import { providerName } from '../api/messages'
 import { Field, Notice, useAction } from '../components/forms'
+import { useLocale, useT } from '../i18n/I18n'
 import { goToProvider } from '../lib/navigation'
 import { PromptCancelled, GuardContext, reauthReturnTo, type Guard } from './prompts'
 import { useSession } from './SessionContext'
@@ -136,6 +137,8 @@ interface PromptProps {
 }
 
 function ReauthPrompt({ onDone }: PromptProps) {
+  const t = useT()
+  const { locale } = useLocale()
   const { session } = useSession()
   const [state, setState] = useState<IdentitiesState | null>(null)
   const [password, setPassword] = useState('')
@@ -180,13 +183,13 @@ function ReauthPrompt({ onDone }: PromptProps) {
   const oidc = linked.filter((provider) => provider === 'google' || provider === 'microsoft')
   return (
     <>
-      <h2 id="prompt-title">Confirm it is you</h2>
-      <p>This change needs a recent sign-in. Confirm your identity to continue.</p>
+      <h2 id="prompt-title">{t('guard.reauthTitle')}</h2>
+      <p>{t('guard.reauthIntro')}</p>
       {action.error ? <Notice kind="error">{action.error}</Notice> : null}
       {state?.hasPassword ? (
         <form onSubmit={submitPassword}>
           <Field
-            label="Password"
+            label={t('common.password')}
             type="password"
             autoComplete="current-password"
             value={password}
@@ -196,14 +199,14 @@ function ReauthPrompt({ onDone }: PromptProps) {
             required
           />
           <button className="button" type="submit" disabled={action.busy}>
-            Confirm with password
+            {t('guard.confirmPassword')}
           </button>
         </form>
       ) : null}
       {isAdmin ? (
         <form onSubmit={submitCode}>
           <Field
-            label="Authenticator or recovery code"
+            label={t('guard.code')}
             autoComplete="one-time-code"
             value={code}
             onChange={(e) => {
@@ -212,7 +215,7 @@ function ReauthPrompt({ onDone }: PromptProps) {
             required
           />
           <button className="button" type="submit" disabled={action.busy}>
-            Confirm with code
+            {t('guard.confirmCode')}
           </button>
         </form>
       ) : null}
@@ -226,13 +229,14 @@ function ReauthPrompt({ onDone }: PromptProps) {
             viaProvider(provider)
           }}
         >
-          Confirm with {providerName(provider)}
+          {t('guard.confirmProvider', { provider: providerName(provider) })}
         </button>
       ))}
       {oidc.length > 0 ? (
         <p className="text-sm text-muted">
-          {oidc.map(providerName).join(' and ')} can confirm it only if you signed in there in the last 5
-          minutes.{state?.hasPassword ? ' Your password always works.' : ''}
+          {t(state?.hasPassword ? 'guard.oidcPassword' : 'guard.oidc', {
+            providers: new Intl.ListFormat(locale, { type: 'conjunction' }).format(oidc.map(providerName)),
+          })}
         </p>
       ) : null}
       <button
@@ -242,13 +246,14 @@ function ReauthPrompt({ onDone }: PromptProps) {
           onDone(false)
         }}
       >
-        Cancel
+        {t('common.cancel')}
       </button>
     </>
   )
 }
 
 function StepUpPrompt({ onDone }: PromptProps) {
+  const t = useT()
   const [code, setCode] = useState('')
   const action = useAction()
   const submit = (event: FormEvent) => {
@@ -260,12 +265,12 @@ function StepUpPrompt({ onDone }: PromptProps) {
   }
   return (
     <>
-      <h2 id="prompt-title">Enter a two-factor code</h2>
-      <p>This change needs a code from your authenticator app, or one of your recovery codes.</p>
+      <h2 id="prompt-title">{t('guard.stepUpTitle')}</h2>
+      <p>{t('guard.stepUpIntro')}</p>
       {action.error ? <Notice kind="error">{action.error}</Notice> : null}
       <form onSubmit={submit}>
         <Field
-          label="Authenticator or recovery code"
+          label={t('guard.code')}
           autoComplete="one-time-code"
           inputMode="text"
           value={code}
@@ -275,7 +280,7 @@ function StepUpPrompt({ onDone }: PromptProps) {
           required
         />
         <button className="button" type="submit" disabled={action.busy}>
-          Continue
+          {t('common.continue')}
         </button>
       </form>
       <button
@@ -285,7 +290,7 @@ function StepUpPrompt({ onDone }: PromptProps) {
           onDone(false)
         }}
       >
-        Cancel
+        {t('common.cancel')}
       </button>
     </>
   )

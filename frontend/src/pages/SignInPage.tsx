@@ -2,10 +2,12 @@ import { useEffect } from 'react'
 import { login } from '../api/auth'
 import { oauthOutcomeMessage } from '../api/messages'
 import { useSession } from '../auth/SessionContext'
+import { useT } from '../i18n/I18n'
 import { AuthScreen } from '../components/auth/AuthScreen'
 import { safeReturnTo, useQuery, useRouter } from '../router/Router'
 
 export function SignInPage() {
+  const t = useT()
   const { navigate } = useRouter()
   const { refresh } = useSession()
   const query = useQuery()
@@ -25,7 +27,7 @@ export function SignInPage() {
         outcome && outcome !== 'email_needed' ? oauthOutcomeMessage(outcome, undefined, query.get('provider')) : null
       }
       // A new provider account has no classbeat account: sign-up is where an invite creates one (#617).
-      noticeLink={outcome === 'no_account' ? { to: '/signup', text: 'Create an account' } : null}
+      noticeLink={outcome === 'no_account' ? { to: '/signup', text: t('auth.createAccount') } : null}
       onSubmit={async ({ email, password }) => {
         const { role } = await login(email, password)
         await refresh()

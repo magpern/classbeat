@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { getPlan, type Plan } from '../../api/plan'
+import { useT } from '../../i18n/I18n'
 import { classesLine } from '../account/Plan'
 import { Progress } from '../ui/progress'
 
@@ -13,6 +14,7 @@ function share(plan: Plan): number {
  * the plan, worded by `classesLine` of the account page. A plan that cannot be read hides it.
  */
 export function ClassesThisMonth({ compact = false }: { compact?: boolean }) {
+  const t = useT()
   const [plan, setPlan] = useState<Plan | null>(null)
   useEffect(() => {
     const abort = new AbortController()
@@ -28,7 +30,7 @@ export function ClassesThisMonth({ compact = false }: { compact?: boolean }) {
   }, [])
   if (plan === null) return null
   const limit = plan.limits.classesPerMonth
-  const label = `Classes this month: ${classesLine(plan)}`
+  const label = t('shell.classesThisMonthLine', { line: classesLine(plan) })
   if (compact) {
     // The icon rail: the number, and the bar carries the full words once (a screen reader reads
     // the meter a single time).
@@ -46,10 +48,10 @@ export function ClassesThisMonth({ compact = false }: { compact?: boolean }) {
   return (
     <div className="flex flex-col gap-2 rounded-md bg-raised px-3 py-2 text-[0.8125rem]">
       <p className="m-0 text-muted">
-        Classes this month
+        {t('shell.classesThisMonth')}
         <strong className="ml-1 block text-text tabular-nums">{classesLine(plan)}</strong>
       </p>
-      <Progress value={share(plan)} aria-label="Classes this month" className="h-1.5" />
+      <Progress value={share(plan)} aria-label={t('shell.classesThisMonth')} className="h-1.5" />
     </div>
   )
 }
