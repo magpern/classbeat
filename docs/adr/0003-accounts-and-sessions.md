@@ -891,8 +891,11 @@ deletion).
 
 - **Columns:** `users.mail_unsubscribed_all boolean` and `users.mail_opted_out text[]`, the latter
   limited by a CHECK to the optional categories (`welcome`, `account_activity`, `class_ready`).
-  Essential mail (sign-in, reset, security, recovery) has no switch and is always sent. Both are in
-  the GDPR export (guard 12).
+  Essential mail (sign-in, reset and confirmation links, plan ME4) has no switch and is always
+  sent. The security notices (`totp_enrolled`, `mfa_failures`, `identity_linked`) are the optional
+  category `account_activity` (ADR 0022): the user, the "all optional mail" switch and the
+  unsubscribe link can turn them off, and the copy says so. Both columns are in the GDPR export
+  (guard 12).
 - **Key (§8):** the ninth derived key, HKDF info `mail-unsubscribe`.
 - **Token:** `b64url("v1|user_id|scope|expiry") + "." + b64url(HMAC-SHA256)`, constant-time
   compare, 90-day expiry, scope one of the optional categories or `all`. A token can only turn mail
@@ -907,6 +910,8 @@ deletion).
   Origin and CSRF checks, because a mail client posts without a cookie or Origin; the token is the
   credential. No prefix match.
 - **Rate limit (§9):** `unsubscribe`, per IP, 60 per hour, checked before the token is verified.
+  A request FastAPI refuses with 422 before the route runs (a token past 512 characters, a body
+  that is not JSON) is not counted; it cannot carry a valid token.
 - **Answers:** a good token for a deleted account answers like a live one (200); every other bad
   token gets the same 400 `link_invalid`, so the answer does not tell tamper from expiry from an
   unknown user.

@@ -74,7 +74,7 @@ if TYPE_CHECKING:
         hmac_digest,
         token_hash,
     )
-    from classbeat.auth.mailprefs import MailPreferences, mail_prefs_for_email
+    from classbeat.auth.mailprefs import MailPreferences, get_mail_prefs, mail_prefs_for_email
     from classbeat.auth.notices import SecurityNotifier, register_security_notifier
     from classbeat.auth.operator import (
         WipeEvent,
@@ -181,6 +181,7 @@ _EXPORTS: dict[str, str] = {
     "register_reset_link_sender": "hooks",
     "send_reset_link": "hooks",
     "MailPreferences": "mailprefs",
+    "get_mail_prefs": "mailprefs",
     "mail_prefs_for_email": "mailprefs",
     "UNSUBSCRIBE_ALL": "unsubscribe_token",
     "issue_unsubscribe_token": "unsubscribe_token",
@@ -319,6 +320,7 @@ __all__ = [
     "forget_devices",
     "get_account",
     "get_invite",
+    "get_mail_prefs",
     "grant_admin",
     "grant_admin_if_listed",
     "hmac_digest",

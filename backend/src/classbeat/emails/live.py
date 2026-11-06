@@ -6,18 +6,21 @@ address, footer) and the kinds the admin switched off. A missing, ``null`` or in
 environment's value or nothing disabled, and only an ``admin_can_disable`` kind counts as
 disabled, so a stale row never silences a mail that must go out.
 
-``send_optional`` is the path of a caller that has only the address: the admin switch and the live
-branding apply, the user's preferences are read by address (``auth.mailprefs``; an address with no
-account is not mailed), and the mail carries that user's signed unsubscribe links (ME4, #655).
+``send_optional`` is the path of the background notices: the admin switch and the live branding
+apply, and the user's preferences are read by the account's id when the caller has it (so a notice
+still finds its account after an address change) or else by address (``auth.mailprefs``). With no
+account found the mail is not sent; otherwise it carries that user's signed unsubscribe links (ME4,
+#655).
 """
 
 from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any
+from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from classbeat.auth import Keys, mail_prefs_for_email
+from classbeat.auth import Keys, get_mail_prefs, mail_prefs_for_email
 from classbeat.config import Settings
 from classbeat.db import system_session
 from classbeat.emailnorm import normalize_email
@@ -54,10 +57,13 @@ async def load(db: AsyncSession, settings: Settings) -> MailConfig:
     return config_from(settings, await effective.stored_all(db))
 
 
-def _lookup(factory: async_sessionmaker[AsyncSession]) -> PrefsLookup:
+def _lookup(factory: async_sessionmaker[AsyncSession], user_id: UUID | None) -> PrefsLookup:
     async def lookup(recipient: str) -> MailPrefs | None:
         async with system_session(factory) as db:
-            row = await mail_prefs_for_email(db, normalize_email(recipient))
+            if user_id is not None:
+                row = await get_mail_prefs(db, user_id)
+            else:
+                row = await mail_prefs_for_email(db, normalize_email(recipient))
         if row is None:
             return None
         return MailPrefs(row.unsubscribed_all, row.opted_out, row.user_id)
@@ -72,8 +78,11 @@ async def send_optional(
     kind_id: str,
     recipient: str,
     params: Mapping[str, Any],
+    *,
+    user_id: UUID | None = None,
 ) -> bool:
-    """Send one mail through the gate with the live settings; ``True`` if an attempt was made."""
+    """Send one mail through the gate with the live settings; ``True`` if an attempt was made.
+    ``user_id`` is the recipient's account, when the caller knows it."""
     async with system_session(factory) as db:
         config = await load(db, settings)
     return await send(
@@ -82,7 +91,7 @@ async def send_optional(
         kind_id,
         recipient,
         params,
-        lookup=_lookup(factory),
+        lookup=_lookup(factory, user_id),
         disabled=config.disabled,
         branding=config.branding,
         keys=Keys.from_settings(settings) if settings.app_secret_key is not None else None,

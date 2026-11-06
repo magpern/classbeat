@@ -220,6 +220,19 @@ async def test_the_token_is_not_logged(env: Env, caplog: pytest.LogCaptureFixtur
     assert token.partition(".")[2] not in caplog.text
 
 
+async def test_an_over_length_token_is_refused_without_echoing_it(env: Env) -> None:
+    """``/api/mail/unsubscribe`` is in ``SECRET_INPUT_PATHS``: FastAPI's own 422 for a token past
+    ``TOKEN_MAX`` drops ``input``, for the one-click query and the confirm body alike."""
+    token = "A" * (ut.TOKEN_MAX + 1)
+    for response in (
+        await env.client.post(f"{ONE_CLICK}?token={token}"),
+        await env.client.post(CONFIRM, json={"token": token}),
+    ):
+        assert response.status_code == 422
+        assert token not in response.text
+        assert all("input" not in error for error in response.json()["detail"])
+
+
 # --- the account's own choice -----------------------------------------------------------------
 
 
@@ -374,3 +387,24 @@ async def test_essential_mail_is_still_sent_and_has_no_unsubscribe(
 async def test_an_address_with_no_account_gets_no_optional_mail(menv: Env, smtp: SmtpFake) -> None:
     await notify(menv, uuid4(), "nobody@example.com")
     assert smtp.to("nobody@example.com") == []
+
+
+async def test_a_notice_finds_its_account_by_id_after_an_address_change(
+    menv: Env, smtp: SmtpFake
+) -> None:
+    """The notifier has the user id: a background notice for the old address still finds the
+    account (and its preferences and links), where a lookup by address would find none."""
+    user = await menv.user("before@example.com")
+    await menv.run(
+        "UPDATE users SET email = 'after@example.com', email_normalized = 'after@example.com' "
+        "WHERE id = :i",
+        i=user,
+    )
+    await notify(menv, user, "before@example.com")
+    (mail,) = smtp.to("before@example.com")
+    _, one_click = links_of(mail)
+    token = one_click.partition("token=")[2]
+    assert ut.verify_unsubscribe_token(menv.app.state.keys, token) == (user, "account_activity")
+    await menv.run("UPDATE users SET mail_unsubscribed_all = true WHERE id = :i", i=user)
+    await notify(menv, user, "before@example.com")
+    assert len(smtp.to("before@example.com")) == 1

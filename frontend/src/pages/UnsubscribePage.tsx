@@ -1,19 +1,19 @@
-import { useState } from 'react'
-import { ApiError } from '../api/client'
-import { confirmUnsubscribe } from '../api/mailPrefs'
-import { AuthCard as Card } from '../components/auth/AuthCard'
-import { errorMessage } from '../api/messages'
-import { Notice, useAction } from '../components/forms'
-import { stripFragment } from '../router/Router'
+import { useState } from "react";
+import { ApiError } from "../api/client";
+import { confirmUnsubscribe } from "../api/mailPrefs";
+import { AuthCard as Card } from "../components/auth/AuthCard";
+import { errorMessage } from "../api/messages";
+import { Notice, useAction } from "../components/forms";
+import { stripFragment } from "../router/Router";
 
 interface Tokens {
-  category: string | null
-  all: string | null
+  category: string | null;
+  all: string | null;
 }
 
 function readTokens(): Tokens {
-  const params = new URLSearchParams(window.location.hash.replace(/^#/, ''))
-  return { category: params.get('token'), all: params.get('all') }
+  const params = new URLSearchParams(window.location.hash.replace(/^#/, ""));
+  return { category: params.get("token"), all: params.get("all") };
 }
 
 /**
@@ -23,45 +23,49 @@ function readTokens(): Tokens {
  */
 export function UnsubscribePage() {
   const [tokens] = useState(() => {
-    const read = readTokens()
-    stripFragment()
-    return read
-  })
-  const [done, setDone] = useState<'category' | 'all' | null>(null)
-  const action = useAction()
+    const read = readTokens();
+    stripFragment();
+    return read;
+  });
+  const [done, setDone] = useState<"category" | "all" | null>(null);
+  const action = useAction();
 
   if (tokens.category === null && tokens.all === null) {
     return (
       <Card title="Unsubscribe">
         <Notice kind="error">This page needs the link from the mail.</Notice>
       </Card>
-    )
+    );
   }
   if (done !== null) {
     return (
       <Card title="You are unsubscribed">
         <Notice kind="success">
-          {done === 'all'
-            ? 'classbeat will no longer send you optional email.'
-            : 'classbeat will no longer send you this kind of email.'}
+          {done === "all"
+            ? "classbeat will no longer send you optional email."
+            : "classbeat will no longer send you this kind of email."}
         </Notice>
-        <p>Mail about your account, such as sign-in and security notices, is still sent.</p>
+        <p>
+          Sign-in, password reset and confirmation links are always sent. You
+          can change which optional mail you get, including security notices,
+          under Email on your account page.
+        </p>
       </Card>
-    )
+    );
   }
 
-  const choose = (kind: 'category' | 'all', token: string) => {
+  const choose = (kind: "category" | "all", token: string) => {
     void action.run(
       async () => {
-        await confirmUnsubscribe(token)
-        setDone(kind)
+        await confirmUnsubscribe(token);
+        setDone(kind);
       },
       (error) =>
-        error instanceof ApiError && error.reason === 'link_invalid'
-          ? 'This link is no longer valid. Use the link in a newer mail, or the Email section of your account.'
+        error instanceof ApiError && error.reason === "link_invalid"
+          ? "This link is no longer valid. Use the link in a newer mail, or the Email section of your account."
           : errorMessage(error),
-    )
-  }
+    );
+  };
   return (
     <Card title="Unsubscribe">
       <p>Choose what to stop. Nothing changes until you press a button.</p>
@@ -73,7 +77,7 @@ export function UnsubscribePage() {
             type="button"
             disabled={action.busy}
             onClick={() => {
-              if (tokens.category !== null) choose('category', tokens.category)
+              if (tokens.category !== null) choose("category", tokens.category);
             }}
           >
             Stop this kind of email
@@ -85,7 +89,7 @@ export function UnsubscribePage() {
             type="button"
             disabled={action.busy}
             onClick={() => {
-              if (tokens.all !== null) choose('all', tokens.all)
+              if (tokens.all !== null) choose("all", tokens.all);
             }}
           >
             Stop all optional email
@@ -93,5 +97,5 @@ export function UnsubscribePage() {
         ) : null}
       </p>
     </Card>
-  )
+  );
 }
