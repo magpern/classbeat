@@ -1,5 +1,31 @@
 # classbeat roadmap: a class designer for Intelligent Cycling (MOWL) as a web app
 
+## Amendment 15 (2026-11-05, owner decision: account emails; ADR 0022)
+
+The owner approved the plan [docs/plans/account-emails.md](plans/account-emails.md) (revision 3) on
+2026-11-05. [ADR 0022](adr/0022-account-emails.md) records the design and is Accepted when its PR
+(#651) merges. (The plan and issues call it "ADR 0018" and "Amendment 12"; both numbers were
+already taken by M8, so the next free numbers are used.) The milestones below are added to the
+milestone table.
+
+| # | Milestone | Done when |
+|---|---|---|
+| ME | Account emails (ADR 0022, #649): ME0 plan and ADR (#651), ME1 branded multipart layout and email registry (#652), ME2 admin branding, switches, preview and test send (#653), ME3 new account notices (#654), ME4 email preferences and unsubscribe (#655), ME5 "class ready" mail via a worker hand-off (#656, needs ME1, ME4 and A4 #380) | Every mail is multipart, golden-tested and readable with images off; existing triggers and subjects unchanged except the OAuth-creation welcome; admin can set branding, switch optional kinds off, preview and test-send, essential kinds cannot be switched off; users can opt out per category or of all optional mail; "class ready" is sent once per qualifying job on the fakes; no test sends real mail |
+| MH | Help and contact (#650): **placeholder only**, not planned | Planned later by the Architect |
+| ML | Multilingual support (#657): a later milestone, not planned; ME keeps all strings in a catalogue so it can follow | Planned later by the owner and Architect |
+
+- **Delivery is fire and forget** (ADR 0022 §4): one SMTP attempt, failures logged by error class,
+  no retries, outbox or tracking.
+- **One intended trigger change:** on Google, GitHub or Microsoft account creation the welcome mail
+  replaces the "sign-in method added" notice (ADR 0022 §7). All other triggers and subjects stay.
+- **Default support address:** `CLASSBEAT_MAIL_SUPPORT_ADDRESS` defaults to `support@classbeat.eu`,
+  an owner-confirmable default (ADR 0022 §3).
+- Review classes: ME1 to ME4 have a Sonnet Developer and an Opus Reviewer (new design; ME4 signs a
+  token); ME5 has an Opus Developer (fenced job write) and an Opus Reviewer; ME0 is docs, with an
+  Opus Reviewer for the first review of a new design. Amendments 13 and 14 apply otherwise.
+- No live access is authorized. Agents never mail real people; the owner uses "Send test to me"
+  after deploy.
+
 ## Amendment 14 (2026-11-04, owner decision: token cost of the agent process)
 
 Where it differs, this amendment wins over Amendments 2, 4 and 13 and AGENTS.md. Every other
