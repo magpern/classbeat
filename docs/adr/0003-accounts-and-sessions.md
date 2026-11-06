@@ -583,7 +583,8 @@ invited; the M6 security review revisits it.
   `X-CSRF-Token` headers; query strings on `/oauth/*` (our own access log replaces uvicorn's);
   request bodies on `/api/auth/*`.
 - **`auth_events`** record the kind (`sign_in`, `sign_in_failed`, `mfa_failed`,
-  `admin_granted`, …), never a password, token or code. A log-redaction test plants each kind
+  `admin_granted`, `sign_out`, `sign_out_all` (amendment of 2026-11-06, #646), …), never a
+  password, token or code. A log-redaction test plants each kind
   of secret and greps the captured logs (T7).
 
 ### 11. Tests and fakes
@@ -780,9 +781,8 @@ auth middleware once the response's status is known (`classbeat.auth.securitylog
   included; the limiter's exempt paths (`API_EXEMPT_PATHS`: `/api/health`, `/api/ready`,
   `/api/auth/logout`, `/api/auth/logout-all`) are **never** logged, whatever the method or the
   answer, nor are anonymous requests, sign-in (it starts without a session) and pages outside
-  `/api`. Sign-out is therefore not in the security log; `auth_events` has no sign-out kind today
-either, so a sign-out shows only as the end of that session's rows (adding a `sign_out` event is
-a separate change, outside this amendment). Without
+  `/api`. Sign-out is therefore not in the security log; it is recorded in `auth_events` instead
+(`sign_out`, `sign_out_all`: amendment of 2026-11-06, #646). Without
   this, a refused sign-out (bad CSRF token) keeps the session and is not limited, so one cookie
   could append rows without bound (#641 review). A refused request still gets its route, because
   the template is matched, not read from the router. Nothing is looked up only for the log.
@@ -845,3 +845,44 @@ a separate change, outside this amendment). Without
   template has the allowed shape and is matched back to itself.
 - Threat model T124. Tests: `backend/tests/test_security_log.py`, the migration test in
   `backend/tests/test_migrations.py`, the purge in `backend/tests/test_auth_purge.py`.
+
+## Amendment 2026-11-06: sign-out events (#646)
+
+**Context.** Sign-out (`POST /api/auth/logout`) and sign-out everywhere (`POST
+/api/auth/logout-all`) wrote no `auth_events` row, and the security log never logs them (amendment
+above), so the security timeline and the planned admin abuse view (#632) could not tell a session
+that ended on purpose from one that expired or was revoked by a reset.
+
+**Decision.**
+
+- Two kinds. `sign_out`: this session ended, `detail` `{"session_id": "<id>"}` (the id the
+  location event and the security log already carry). `sign_out_all`: every session of the user
+  ended, `detail` `{"sessions": <count>}`. Both have the user and the request's address (`ip`),
+  like `sign_in` and `password_changed`; no `User-Agent`, token or anything else. `kind` is free
+  text (no `CHECK`, no registry), so no migration.
+- **Exactly one row per sign-out that ended something**, written in the revoke's transaction after
+  the delete and only when it deleted a session: a repeated call (the cookie is dead, so the
+  request is anonymous or a 401), a session a parallel sign-out or reset already ended, and a
+  sign-out everywhere that found nothing left write none. So the rows are bounded by the sessions
+  created (at most one `sign_out` per session), although the sign-out paths are exempt from the
+  rate limits.
+- **A failed write never keeps the session.** Other `auth_events` rows are atomic with their
+  change: a failed insert fails the request. Here that would leave the session alive, so the
+  insert runs in a savepoint: if it fails, only the savepoint rolls back, the failure is logged by
+  class and SQLSTATE (`sign-out event write failed: …`), and the revoke commits. A failure of the
+  transaction itself (a lost connection) fails the request with nothing revoked, as before.
+- **Lock order.** Sign-out now takes the user row lock first (`lock_user`, as sign-out everywhere
+  already did; ADR 0019 section 6). The event's foreign key takes `FOR KEY SHARE` on the user row
+  after the session row is locked; an account deletion locks the user row and then the sessions
+  (cascade), so without the lock the two deadlock. With it the deletion waits for the sign-out, or
+  the sign-out finds nothing to end.
+- **Export and deletion:** the rows are the user's `auth_events` (exported as `security_events`,
+  removed with the account by the cascade of migration 0015, purged after 30 days). There is no
+  user-facing list of `auth_events` yet; the export is the user's view of them.
+- Revoking one of the user's other sessions from the session list (`DELETE
+  /api/auth/sessions/{id}`) writes no event; it is outside #646.
+
+**Consequences.** One more row per sign-out and one more row lock per sign-out. Tests:
+`backend/tests/test_auth_sign_out_events.py` (one event each, none on a repeat or a lost race,
+the savepoint against a real database error, export and deletion, no deadlock with an account
+deletion).

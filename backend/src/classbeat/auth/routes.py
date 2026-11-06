@@ -2,8 +2,13 @@
 
 Sign-in itself arrives with #37 to #39. Every query here filters on the ``user_id`` of the
 request's own session, and another user's session id answers 404, the same as an unknown one.
+
+Sign-out and sign-out-everywhere write one ``auth_events`` row (``sign_out``, ``sign_out_all``;
+ADR 0003 amendment of 2026-11-06, #646) in the revoke's own transaction, and only when the revoke
+deleted a session: a repeated call, or a session a parallel request already ended, writes none.
 """
 
+import logging
 import secrets
 from datetime import datetime
 from typing import Annotated
@@ -11,10 +16,12 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel
+from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from classbeat.auth.cookies import CSRF_COOKIE, clear_session_cookie, set_csrf_cookie
-from classbeat.auth.deps import current_session, require_user
+from classbeat.auth.deps import current_session, request_ip, require_user
+from classbeat.auth.events import record_event
 from classbeat.auth.middleware import csrf_token_for_session
 from classbeat.auth.sessions import (
     SessionInfo,
@@ -25,6 +32,9 @@ from classbeat.auth.sessions import (
 from classbeat.auth.userlock import lock_user
 from classbeat.context import UserContext
 from classbeat.db import system_session
+from classbeat.log import describe_database_error
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
@@ -71,6 +81,25 @@ class SessionItem(BaseModel):
 
 def _factory(request: Request) -> async_sessionmaker[AsyncSession]:
     return request.app.state.session_factory
+
+
+async def _record_sign_out(
+    db: AsyncSession, kind: str, user_id: UUID, ip: str, detail: dict[str, object]
+) -> None:
+    """Write the sign-out event after the revoke, in a savepoint of the same transaction.
+
+    Other ``auth_events`` rows are written atomically with their change (a failed insert fails
+    the request). Here that would keep the session alive, so a failed insert rolls back only the
+    savepoint, is logged by class (and SQLSTATE) and the revoke still commits. A failure of the
+    transaction itself (a lost connection) fails the whole request: then nothing was revoked.
+    """
+    try:
+        async with db.begin_nested():
+            await record_event(db, kind, user_id=user_id, ip=ip, detail=detail)
+    except DBAPIError as exc:
+        logger.warning("sign-out event write failed: %s", describe_database_error(exc))
+    except Exception as exc:  # the class only: a message may hold values
+        logger.warning("sign-out event write failed: %s", type(exc).__name__)
 
 
 @router.get("/session")
@@ -155,11 +184,20 @@ async def logout(
     response: Response,
     info: Annotated[SessionInfo | None, Depends(current_session)],
 ) -> None:
-    """Delete this session and clear the cookie. Anonymous: nothing to do."""
+    """Delete this session and clear the cookie. Anonymous: nothing to do.
+
+    The user row lock comes first, as on every revoke path (ADR 0019 section 6): the event's
+    foreign key takes ``FOR KEY SHARE`` on the user row after the session row is locked, which
+    would deadlock with an account deletion (user row, then the sessions by cascade) that came in
+    between. Under the lock the deletion waits for the sign-out, or the sign-out finds nothing."""
     if info is None:
         return
     async with system_session(_factory(request)) as db:
-        await revoke_session(db, info.user_id, info.id)
+        await lock_user(db, info.user_id)
+        if await revoke_session(db, info.user_id, info.id):
+            await _record_sign_out(
+                db, "sign_out", info.user_id, request_ip(request), {"session_id": str(info.id)}
+            )
     clear_session_cookie(response)
 
 
@@ -171,8 +209,13 @@ async def logout_all(
 ) -> None:
     """Sign out everywhere, this browser included. The user row lock comes first (ADR 0019
     section 6, #643): a sign-in or rotation committing meanwhile is waited for, so the delete
-    sees its session instead of letting it survive."""
+    sees its session instead of letting it survive. One ``sign_out_all`` event with the number of
+    sessions ended, none when there were none left to end."""
     async with system_session(_factory(request)) as db:
         await lock_user(db, ctx.user_id)
-        await revoke_user_sessions(db, ctx.user_id)
+        ended = await revoke_user_sessions(db, ctx.user_id)
+        if ended:
+            await _record_sign_out(
+                db, "sign_out_all", ctx.user_id, request_ip(request), {"sessions": ended}
+            )
     clear_session_cookie(response)
