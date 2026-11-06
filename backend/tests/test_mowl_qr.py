@@ -259,7 +259,8 @@ async def test_a_scan_hands_the_token_once_to_the_starting_session_only(
         assert broker.connects[0]["password"] == MQTT_PASSWORD
         assert waits.get(uuid4(), session, wait.id) is None  # another user
         assert waits.get(user, uuid4(), wait.id) is None  # another session of the same user
-        assert waits.get(user, session, "x" + wait.id[1:]) is None
+        other_id = ("y" if wait.id[0] == "x" else "x") + wait.id[1:]  # always a different id
+        assert waits.get(user, session, other_id) is None
         assert waits.get(user, session, wait.id) is wait
         broker.scan()
         await until(lambda: wait.state == "scanned")
