@@ -57,6 +57,11 @@ def is_offered(settings: "Settings", value: object) -> bool:
     return isinstance(value, str) and value in offered_locales(settings)
 
 
+def offered_value(settings: "Settings", value: object) -> str | None:
+    """``value`` itself when it is an offered code, else ``None`` (typed as ``str``)."""
+    return value if isinstance(value, str) and value in offered_locales(settings) else None
+
+
 def parse_accept_language(header: str | None, offered: tuple[str, ...]) -> str | None:
     """The offered language the header ranks first, or ``None``.
 

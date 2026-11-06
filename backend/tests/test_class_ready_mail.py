@@ -440,3 +440,50 @@ async def test_a_failing_send_does_not_stop_the_other_rows(
     assert await consumer.drain(jenv.factory, mailer, settings) == 1
     assert len(smtp_fake.messages) == 1
     assert rows(jenv) == []  # fire and forget: the failed row is not retried
+
+
+async def test_a_stop_ends_a_drain_that_has_full_batches_waiting(
+    jenv: JobsEnv, smtp_fake: SmtpFake, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    owner, _ = plant(jenv)
+    for _ in range(consumer.BATCH):  # one more than a batch in all
+        plant(jenv, owner)
+    stop = asyncio.Event()
+
+    async def send_and_stop(*args: Any) -> bool:
+        stop.set()  # the stop arrives while the first batch is being sent
+        return True
+
+    monkeypatch.setattr(consumer, "send_taken", send_and_stop)
+    mailer, settings = mailer_for(jenv, smtp_fake)
+    assert await consumer.drain(jenv.factory, mailer, settings, stop) == consumer.BATCH
+    assert len(rows(jenv)) == 1  # the second batch was left for the next start
+
+
+async def test_a_cancelled_drain_logs_how_many_taken_rows_were_lost(
+    jenv: JobsEnv,
+    smtp_fake: SmtpFake,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    owner, _ = plant(jenv)
+    plant(jenv, owner)
+    plant(jenv, owner)
+    entered = asyncio.Event()
+
+    async def hang(*args: Any) -> bool:
+        entered.set()
+        await asyncio.Event().wait()
+        return False
+
+    monkeypatch.setattr(consumer, "send_taken", hang)
+    mailer, settings = mailer_for(jenv, smtp_fake)
+    task = asyncio.create_task(consumer.drain(jenv.factory, mailer, settings))
+    await asyncio.wait_for(entered.wait(), timeout=10)
+    with caplog.at_level("WARNING", logger=consumer.logger.name):
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+    [record] = [r for r in caplog.records if "lost at shutdown" in r.getMessage()]
+    assert record.__dict__["count"] == 3  # the one being sent and the two waiting
+    assert rows(jenv) == []

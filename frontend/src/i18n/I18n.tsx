@@ -12,6 +12,7 @@ import type { CatalogueKey } from './en'
 import {
   clearStoredLocale,
   DEFAULT_LOCALE,
+  isLocale,
   resolveBrowserLocale,
   setActiveLocale,
   storeLocale,
@@ -59,7 +60,7 @@ export function I18nProvider({ children, initial }: { children: ReactNode; initi
     if (locale === null) {
       clearStoredLocale()
       setWanted(resolveBrowserLocale())
-    } else {
+    } else if (isLocale(locale)) {
       storeLocale(locale)
       setWanted(locale)
     }

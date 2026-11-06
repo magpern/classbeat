@@ -51,6 +51,14 @@ def test_every_category_has_its_plain_sentence() -> None:
     assert "Spotify" in sentence("not_found")
 
 
+def test_only_the_waiting_categories_carry_a_count() -> None:
+    assert sentence_of("rate_limited", 90).params == {"count": 2}
+    assert sentence_of("quota_exhausted", 2 * 3600 + 1).params == {"count": 3}
+    assert sentence_of("rate_limited").params == {"count": 1}  # no hint: a minute
+    for category in set(CATEGORIES) - {"rate_limited", "quota_exhausted"}:
+        assert sentence_of(category, 90).params == {}, category
+
+
 def _mowl_error(status: int, message: str, retry_after: str | None = None) -> MowlError:
     headers = Message()
     if retry_after is not None:

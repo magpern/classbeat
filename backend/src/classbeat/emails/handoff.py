@@ -105,9 +105,16 @@ async def drain(
     sent = 0
     while stop is None or not stop.is_set():
         rows = await take(factory, BATCH)
-        for row in rows:
+        for index, row in enumerate(rows):
             try:
                 sent += await send_taken(factory, mailer, settings, row)
+            except asyncio.CancelledError:
+                # Shutdown gave up waiting: the rows not yet sent are already deleted (fire and
+                # forget), so say how many were lost. A count only, never a row's content.
+                logger.warning(
+                    "class ready mails lost at shutdown", extra={"count": len(rows) - index}
+                )
+                raise
             except Exception as exc:  # one row never stops the others; the row is gone
                 logger.warning("class ready mail not sent: %s", type(exc).__name__)
         if len(rows) < BATCH:

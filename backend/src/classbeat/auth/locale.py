@@ -28,11 +28,8 @@ def for_new_account(request: Request, field: object, row_locale: str | None = No
     the language already on the pending row (if still offered), else the header, else ``en``.
     ``None`` while only one language is offered, so those accounts are not pinned to it."""
     settings = request.app.state.settings
-    if locales.is_offered(settings, field) and isinstance(field, str):
-        chosen = field
-    elif row_locale is not None and locales.is_offered(settings, row_locale):
-        chosen = row_locale
-    else:
+    chosen = locales.offered_value(settings, field) or locales.offered_value(settings, row_locale)
+    if chosen is None:
         chosen = for_request(request, None)
     return locales.storable_locale(settings, chosen)
 

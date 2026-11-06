@@ -2,7 +2,7 @@ import { render, screen, act } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import initScript from '../../public/locale-init.js?raw'
 import { CATALOGUE_LOADERS } from './catalogues'
-import { I18nProvider, Trans, useT } from './I18n'
+import { I18nProvider, Trans, useLocale, useT } from './I18n'
 import manifest from './locales.json'
 import {
   DEFAULT_LOCALE,
@@ -13,6 +13,7 @@ import {
   LOCALES,
   resolveBrowserLocale,
   setActiveLocale,
+  storeLocale,
 } from './locales'
 import { loadCatalogue, plural, resetCatalogues, t, translate } from './t'
 
@@ -50,7 +51,15 @@ describe('the manifest', () => {
 
   it('only accepts its own codes', () => {
     expect(isLocale('en')).toBe(true)
-    for (const bad of ['sv', 'xx', 'EN', '../en', '', null, 3]) expect(isLocale(bad)).toBe(false)
+    for (const bad of ['sv', 'xx', 'EN', '../en', '', 'constructor', null, 3]) expect(isLocale(bad)).toBe(false)
+  })
+
+  it('saves only its own codes', () => {
+    storeLocale('sv')
+    storeLocale('../x')
+    expect(window.localStorage.getItem(LOCALE_STORAGE_KEY)).toBeNull()
+    storeLocale('en')
+    expect(window.localStorage.getItem(LOCALE_STORAGE_KEY)).toBe('en')
   })
 })
 
@@ -140,6 +149,10 @@ describe('t, fallback and plurals', () => {
     expect(await loadCatalogue('sv', loaders)).toBe(false)
     expect(await loadCatalogue('__proto__', loaders)).toBe(false)
     expect(await loadCatalogue('../x', loaders)).toBe(false)
+    // Names every object inherits: the loader map must not answer for them.
+    expect(await loadCatalogue('constructor', loaders)).toBe(false)
+    expect(await loadCatalogue('toString', loaders)).toBe(false)
+    expect(await loadCatalogue('hasOwnProperty', loaders)).toBe(false)
   })
 
   it('treats a failed load as English', async () => {
@@ -182,6 +195,24 @@ describe('React helpers', () => {
       await Promise.resolve()
     })
     expect(screen.getByText('a few minutes from now')).toBeInTheDocument()
+    expect(document.documentElement).toHaveAttribute('lang', 'en')
+  })
+
+  it('the provider ignores a language outside the manifest', async () => {
+    function Pick() {
+      const { setLocale } = useLocale()
+      return <button onClick={() => setLocale('../x')}>pick</button>
+    }
+    render(
+      <I18nProvider initial="en">
+        <Pick />
+      </I18nProvider>,
+    )
+    await act(async () => {
+      screen.getByText('pick').click()
+      await Promise.resolve()
+    })
+    expect(window.localStorage.getItem(LOCALE_STORAGE_KEY)).toBeNull()
     expect(document.documentElement).toHaveAttribute('lang', 'en')
   })
 

@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import {
   date,
   dateTime,
@@ -43,6 +43,23 @@ describe('format (English)', () => {
     expect(month('2026-01')).toBe('January 2026')
   })
 
+  it('a month does not move with the time zone', async () => {
+    // 2026-10-01T00:00Z is still 30 September in Los Angeles: without `timeZone: 'UTC'` this reads September.
+    // A fresh module, because formatters are cached with the zone they were made in.
+    const before = process.env.TZ
+    process.env.TZ = 'America/Los_Angeles'
+    vi.resetModules()
+    try {
+      expect(new Date(Date.UTC(2026, 9, 1)).getMonth()).toBe(8)
+      const fresh = await import('./format')
+      expect(fresh.month('2026-10')).toBe('October 2026')
+    } finally {
+      if (before === undefined) delete process.env.TZ
+      else process.env.TZ = before
+      vi.resetModules()
+    }
+  })
+
   it('numbers match the old toFixed and en-US grouping', () => {
     expect(integer(1234567)).toBe('1,234,567')
     for (const value of [0, 1, 1.5, 12.34, 999999.99]) {
@@ -51,11 +68,16 @@ describe('format (English)', () => {
     }
     expect(plain(3)).toBe('3')
     expect(plain(3.25)).toBe('3.25')
+    expect(plain(-0)).toBe('0')
+    expect(plain(-2.5)).toBe('-2.5')
   })
 
   it('money is USD', () => {
     expect(usd(1.5)).toBe('$1.50')
     expect(usd(1234.5)).toBe('$1234.50')
+    // Intl rounds the decimal value half-up; toFixed rounded the binary value (1.005 gave 1.00, 2.675 gave 2.67).
+    expect(usd(1.005)).toBe('$1.01')
+    expect(usd(2.675)).toBe('$2.68')
     expect(usdMicros(0)).toBe('$0.00')
     expect(usdMicros(-5)).toBe('$0.00')
     expect(usdMicros(9_999)).toBe('under $0.01')
