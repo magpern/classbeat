@@ -215,6 +215,18 @@ class SettingSetParams(Params):
     days: Annotated[int, Field(ge=0, le=1_000_000)] | None = None
     level: Literal["info", "warning"] | None = None
     text_length: Annotated[int, Field(ge=0, le=100_000)] | None = None
+    # ``mail_kinds_disabled`` (#653): the kind ids switched off, never text. The mail branding keys
+    # log their length only (``text_length``), as the banner does.
+    kinds: list[Annotated[str, StringConstraints(pattern=r"^[a-z][a-z_]{0,39}$")]] | None = Field(
+        default=None, max_length=100
+    )
+
+
+class MailTestParams(Params):
+    """A test send from the Mail page (#653): the kind id; the recipient is the admin's own
+    address and is never logged."""
+
+    kind: Annotated[str, StringConstraints(pattern=r"^[a-z][a-z_]{0,39}$")]
 
 
 PlanPrice = Literal["monthly_price_cents", "intro_price_cents", "intro_price_until", "currency"]
@@ -287,6 +299,11 @@ ACTIONS["setting.read"] = NoParams
 ACTIONS["setting.set"] = SettingSetParams
 ACTIONS["setting.clear"] = NoParams
 ACTIONS["plan.update"] = PlanUpdateParams
+# The Mail page (#653, classbeat.admin.mail): the branding and switches are read and written with
+# ``setting.read``/``setting.set``-style rows of their own; a preview and a test send log the kind.
+ACTIONS["mail.read"] = NoParams
+ACTIONS["mail.preview"] = MailTestParams
+ACTIONS["mail.test"] = MailTestParams
 # Model routes per route key (AD5 #223, classbeat.admin.models).
 ACTIONS["model.read"] = NoParams
 ACTIONS["model.route_set"] = ModelRouteParams

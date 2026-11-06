@@ -23,7 +23,7 @@ from fastapi import HTTPException
 from authtools import ORIGIN, Env, running_env
 from classbeat import bodylimit
 from classbeat.bodylimit import BodyLimit
-from classbeat.headers import CONTENT_SECURITY_POLICY, REFERRER_POLICY
+from classbeat.headers import CONTENT_SECURITY_POLICY, REFERRER_POLICY, content_security_policy
 from classbeat.web import create_app
 from test_m6_security_routes import CLASSIFIED, _settings, fill, table_of  # pyright: ignore[reportPrivateUsage]
 
@@ -287,7 +287,8 @@ def padded(size: int) -> bytes:
 def check_refused_response(response: httpx.Response) -> None:
     assert response.status_code == 413
     assert response.content == FIXED
-    assert response.headers["content-security-policy"] == CONTENT_SECURITY_POLICY
+    # The app's policy carries the path-scoped frame-src of its public base URL (ADR 0022 §6).
+    assert response.headers["content-security-policy"] == content_security_policy(ORIGIN)
     assert response.headers["referrer-policy"] == REFERRER_POLICY
     assert response.headers["cache-control"] == "no-store"
 

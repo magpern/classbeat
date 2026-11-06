@@ -216,3 +216,57 @@ def test_swedebeat_writes_are_off_or_on_only() -> None:
             core.validate_for_write("swedebeat_enabled", bad, trial_days_max=30)
         assert refused.value.reason == "invalid_value"
     assert "swedebeat_enabled" in core.KEYS
+
+
+# --- the mail settings (ME2 #653) -----------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("stored", "expected"),
+    [("Studio", "Studio"), (None, None), ("", None), ("x" * 61, None), ("a\nb", None), (5, None)],
+)
+def test_mail_sender_name_is_short_plain_text(stored: Any, expected: Any) -> None:
+    assert core.mail_sender_name_setting(stored) == expected
+
+
+@pytest.mark.parametrize(
+    ("stored", "expected"),
+    [
+        ("help@example.com", "help@example.com"),
+        ("nope", None),
+        ("a@b.c, d@e.f", None),
+        (None, None),
+    ],
+)
+def test_mail_support_email_is_a_bare_address(stored: Any, expected: Any) -> None:
+    assert core.mail_support_email_setting(stored) == expected
+
+
+def test_mail_footer_has_a_length_limit() -> None:
+    assert core.mail_footer_setting("y" * 280) == "y" * 280
+    assert core.mail_footer_setting("y" * 281) is None
+
+
+def test_stored_kinds_keep_only_those_an_admin_may_disable() -> None:
+    can = frozenset({"a"})
+    assert core.mail_kinds_disabled_setting(["a", "b", "zz"], can) == frozenset({"a"})
+    assert core.mail_kinds_disabled_setting("a", can) == frozenset()
+    assert core.mail_kinds_disabled_setting(None, can) == frozenset()
+
+
+def test_kind_writes_refuse_essential_and_unknown_ids() -> None:
+    kinds = {"a": True, "e": False}
+
+    def reason(value: Any) -> str:
+        with pytest.raises(core.FlagRefused) as caught:
+            core.validate_for_write(
+                "mail_kinds_disabled", value, trial_days_max=14, mail_kinds=kinds
+            )
+        return caught.value.reason
+
+    assert reason(["e"]) == "essential_kind"
+    assert reason(["zz"]) == "unknown_kind"
+    assert reason("a") == "invalid_value"
+    assert reason(["a", "a"]) == "invalid_value"
+    ok = core.validate_for_write("mail_kinds_disabled", ["a"], trial_days_max=14, mail_kinds=kinds)
+    assert ok == ["a"]

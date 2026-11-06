@@ -46,6 +46,11 @@ read only.
   Prices are read and returned here only: no route outside ``/api/admin`` reads them (billing is
   off, ADR 0011 section 8).
 
+The mail settings (``mail_sender_name``, ``mail_support_email``, ``mail_footer`` and
+``mail_kinds_disabled``, #653) use the same two routes and are shown by
+``classbeat.admin.mail``, not in ``GET /settings``; their audit ``params`` are the key with the
+text's length, or the kind ids.
+
 The audit ``params`` of a write hold the key and what the value means (the mode, a plan and days,
 a banner's level and length, a plan's numbers, gates and currency code), never free text: a
 currency that is not three capital letters is left out.
@@ -69,6 +74,8 @@ from classbeat.admin.routes import AdminActor, admin_db, admin_router
 from classbeat.config import Settings
 from classbeat.db import system_session
 from classbeat.design.music_kind import fake_covers
+from classbeat.emails.dispatch import DEFAULT_SENDER_NAME
+from classbeat.emails.live import config_from, kind_switches
 from classbeat.flags import core
 from classbeat.flags.core import FlagRefused
 from classbeat.models.routes import Variant, every_plan_covers
@@ -289,7 +296,7 @@ def _stored_valid(key: str, value: Any) -> bool:
     if value is None:
         return True
     try:
-        core.validate_for_write(key, value, trial_days_max=10**9)
+        core.validate_for_write(key, value, trial_days_max=10**9, mail_kinds=kind_switches())
     except FlagRefused:
         return False
     return True
@@ -385,7 +392,46 @@ async def _view(session: AsyncSession, settings: Settings) -> SettingsOut:
     )
 
 
+def _mail_flag(key: str, settings: Settings, row: Any, emails: dict[UUID, str]) -> FlagOut:
+    """A mail setting as the Mail page shows it: what the send path uses and the environment's
+    value (``classbeat.emails.live``)."""
+    stored = None if row is None else row.value
+    config = config_from(settings, {key: stored})
+    environment: Any
+    effective: Any
+    if key == "mail_sender_name":
+        environment, effective = DEFAULT_SENDER_NAME, config.branding.sender_name
+    elif key == "mail_support_email":
+        environment, effective = settings.mail_support_address, config.branding.support_address
+    elif key == "mail_footer":
+        environment, effective = None, config.branding.footer
+    else:  # mail_kinds_disabled
+        environment, effective = [], sorted(config.disabled)
+    return FlagOut(
+        key=key,
+        source="database" if effective != environment else "environment",
+        effective=effective,
+        environment=environment,
+        stored=stored,
+        stored_valid=_stored_valid(key, stored),
+        updated_at=None if row is None else row.updated_at,
+        updated_by=None if row is None else _person(row.updated_by, emails),
+    )
+
+
+async def mail_flags(session: AsyncSession, settings: Settings) -> list[FlagOut]:
+    """The four mail settings with their effective values, for ``GET /api/admin/mail``."""
+    rows = {r.key: r for r in (await session.execute(_ALL_SETTINGS)).all()}
+    emails = await auth.account_emails(
+        session, [r.updated_by for r in rows.values() if r.updated_by is not None]
+    )
+    return [_mail_flag(k, settings, rows.get(k), emails) for k in core.MAIL_KEYS]
+
+
 async def _flag_view(session: AsyncSession, settings: Settings, key: str) -> FlagOut:
+    if key in core.MAIL_KEYS:
+        (mail,) = [f for f in await mail_flags(session, settings) if f.key == key]
+        return mail
     (view,) = [f for f in (await _view(session, settings)).flags if f.key == key]
     return view
 
@@ -402,6 +448,10 @@ def _set_params(key: str, value: Any) -> dict[str, Any]:
         return {"key": key, "value": value}
     if key == "trial":
         return {"key": key, "plan": value["plan"], "days": value["days"]}
+    if key == "mail_kinds_disabled":
+        return {"key": key, "kinds": list(value)}
+    if key in core.MAIL_KEYS:
+        return {"key": key, "text_length": len(value)}  # the text stays in app_settings
     return {"key": key, "level": value["level"], "text_length": len(value["text"])}
 
 
@@ -423,7 +473,9 @@ async def set_flag(request: Request, actor: AdminActor, key: KeyPath, body: Sett
     canonical: Any = None
     refusal: str | None = None
     try:
-        canonical = core.validate_for_write(key, body.value, trial_days_max=settings.trial_days_max)
+        canonical = core.validate_for_write(
+            key, body.value, trial_days_max=settings.trial_days_max, mail_kinds=kind_switches()
+        )
         if _stored_bytes(canonical) > MAX_VALUE_BYTES:
             refusal = "invalid_value"
     except FlagRefused as exc:
@@ -511,7 +563,7 @@ async def clear_flag(request: Request, actor: AdminActor, key: KeyPath) -> FlagO
         write=True,
         target=Target(kind="setting", id=key),
     ) as session:
-        if key not in core.KEYS:
+        if key not in (*core.KEYS, *core.MAIL_KEYS):
             raise AdminRefused("unknown_key", 422)
         if (await session.execute(_CLEAR, {"k": key, "by": actor.user_id})).first() is None:
             raise AdminRefused("not_found", 404)

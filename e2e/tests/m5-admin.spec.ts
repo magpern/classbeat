@@ -152,3 +152,21 @@ test('a lapsed admin is asked for a code and the admin area opens after it', asy
 
   for (const u of [admin, plain]) await u.context.close()
 })
+
+// ME2 (#653, ADR 0022 section 6): the admin Mail page frames the preview under the real CSP (the
+// path-scoped frame-src and the preview route's own policy). Only the browser can show that both
+// sides agree. The frame must be same-origin with the configured base URL.
+test('the admin Mail page shows a preview of a mail in its frame', async ({ browser, baseURL }) => {
+  const admin = await newUser(browser, baseURL, 'me2-admin', false, true)
+  await enrollTotp(admin.page)
+  const page = admin.page
+  await page.goto('/admin/mail')
+  await expect(page.getByRole('heading', { name: 'Mail', exact: true })).toBeVisible()
+  const frame = page.locator('iframe[title="Mail preview"]')
+  await expect(frame).toHaveAttribute('src', /^\/api\/admin\/mail\/[a-z_]+\/preview\?part=html$/)
+  await expect(page.frameLocator('iframe[title="Mail preview"]').locator('body')).toHaveText(/\S/)
+  await page.getByRole('button', { name: 'Text' }).click()
+  await expect(frame).toHaveAttribute('src', /part=text$/)
+  await expect(page.frameLocator('iframe[title="Mail preview"]').locator('body')).toHaveText(/\S/)
+  await admin.context.close()
+})

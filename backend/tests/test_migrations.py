@@ -34,7 +34,7 @@ def applied_revisions(database_url: str) -> list[str]:
 
 def test_the_revisions_form_one_line() -> None:
     script = ScriptDirectory.from_config(alembic_config())
-    assert script.get_heads() == ["0034_security_log"]
+    assert script.get_heads() == ["0035_mail_settings"]
     assert script.get_base() == "0001_baseline"
 
 
@@ -55,7 +55,7 @@ def test_upgrade_head_then_downgrade_base(
     config = alembic_config()
     try:
         command.upgrade(config, "head")
-        assert applied_revisions(database_url) == ["0034_security_log"]
+        assert applied_revisions(database_url) == ["0035_mail_settings"]
         command.downgrade(config, "base")
         assert applied_revisions(database_url) == []
     finally:
@@ -470,5 +470,51 @@ def test_0034_security_log_up_and_down(
     finally:
         with admin.begin() as connection:
             connection.execute(text("DELETE FROM users"))
+        admin.dispose()
+        command.downgrade(config, "base")
+
+
+def test_0035_mail_settings_up_and_down(
+    owner_database_url: str, database_url: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """#653: ``app_settings`` accepts the four mail keys at head and refuses an unknown key; the
+    downgrade removes the mail rows and puts the old check back."""
+    monkeypatch.setenv("CLASSBEAT_MIGRATIONS_DATABASE_URL", owner_database_url)
+    config = alembic_config()
+    admin = create_engine(database_url)
+
+    def put(key: str) -> None:
+        with admin.begin() as connection:
+            connection.execute(
+                text("INSERT INTO app_settings (key, value) VALUES (:k, '\"x\"'::jsonb)"),
+                {"k": key},
+            )
+
+    def keys() -> list[str]:
+        with admin.connect() as connection:
+            rows = connection.execute(text("SELECT key FROM app_settings ORDER BY key")).all()
+        return [row[0] for row in rows]
+
+    try:
+        command.upgrade(config, "head")
+        for key in (
+            "mail_sender_name",
+            "mail_support_email",
+            "mail_footer",
+            "mail_kinds_disabled",
+            "banner",
+        ):
+            put(key)
+        with pytest.raises(IntegrityError):
+            put("mail_other")
+        command.downgrade(config, "0034_security_log")
+        assert keys() == ["banner"]
+        with pytest.raises(IntegrityError):
+            put("mail_footer")
+        command.upgrade(config, "head")
+        put("mail_footer")
+    finally:
+        with admin.begin() as connection:
+            connection.execute(text("DELETE FROM app_settings"))
         admin.dispose()
         command.downgrade(config, "base")

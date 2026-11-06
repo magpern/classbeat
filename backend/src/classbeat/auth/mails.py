@@ -40,14 +40,6 @@ def email_changed_notice(settings: Settings, to: str) -> MailMessage:
     return emails.render(settings, "email_changed", to, {"when": _now()})
 
 
-def totp_enrolled_notice(settings: Settings, to: str) -> MailMessage:
-    return emails.render(settings, "totp_enrolled", to, {"when": _now()})
-
-
-def mfa_failures_notice(settings: Settings, to: str) -> MailMessage:
-    return emails.render(settings, "mfa_failures", to, {"when": _now()})
-
-
 def provider_signup_confirmation(
     settings: Settings, to: str, provider: str, token: str
 ) -> MailMessage:

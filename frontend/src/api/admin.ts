@@ -394,6 +394,11 @@ const ADMIN_REASONS: Record<string, string> = {
   price_incomplete:
     'An introduction price needs its end date (and the date needs the price), and any price needs a currency.',
   nothing_to_change: 'Nothing was changed.',
+  // Mail (#653).
+  essential_kind: 'That mail is always sent and cannot be switched off.',
+  unknown_kind: 'There is no such mail.',
+  mail_not_configured: 'The server has no mail server set up, so nothing can be sent.',
+  send_failed: 'The mail server did not accept the message. Try again later.',
 }
 
 /** The text for an admin API error. */
