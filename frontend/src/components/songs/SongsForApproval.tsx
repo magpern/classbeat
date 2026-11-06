@@ -10,6 +10,8 @@ import {
   type PickInput,
   type SongList,
 } from '../../api/songs'
+import { useT } from '../../i18n/I18n'
+import { t as translate } from '../../i18n/t'
 import {
   currentConnectionIds,
   digest,
@@ -28,9 +30,6 @@ import { Card, CardTitle } from '../ui/card'
 import { CoverMosaic } from './CoverArt'
 import { SongRows } from './SongRows'
 import { SpotifyAttribution } from './SpotifyAttribution'
-
-export const PRIVACY_TEXT =
-  'When you approve, classbeat creates a private playlist with these songs in your own Spotify account. A private playlist does not appear on your profile or in search, but anyone with its link can open it.'
 
 type Load =
   | { status: 'loading' }
@@ -116,14 +115,11 @@ function useNewPick(job: Job, list: SongList) {
 /** The waiting songs were stopped, but the class could not be read for the new pick. */
 class StoppedError extends Error {}
 
-export const STOPPED_TEXT =
-  'These songs were stopped, but classbeat could not read the class, so nothing new was started. Press Ask for changes again to try once more.'
-
 function describeStart(error: unknown): string {
-  if (error instanceof StoppedError) return STOPPED_TEXT
+  if (error instanceof StoppedError) return translate('songs.approval.stopped')
   if (isNotConnected(error)) return startError(new ApiError(409, 'not_connected', null, undefined))
   if (error instanceof ApiError && error.reason === 'invalid_input') {
-    return 'These songs can no longer be changed, so nothing was started. Pick songs again.'
+    return translate('songs.approval.cannotChange')
   }
   return startError(error)
 }
@@ -136,20 +132,21 @@ export function SongsForApproval({
   /** The approval was accepted: the job is queued again and runs its second part. */
   onApproved: (job: Job) => void
 }) {
+  const t = useT()
   const { load, reload } = useSongList(job)
   if (load.status === 'loading') {
     return (
       <Card>
-        <p className="m-0">Loading the songs</p>
+        <p className="m-0">{t('songs.approval.loading')}</p>
       </Card>
     )
   }
   if (load.status === 'failed') {
     return (
       <Card>
-        <CardTitle>The songs could not be loaded</CardTitle>
-        <Notice kind="error">The songs could not be loaded. Nothing was approved.</Notice>
-        <Button onClick={reload}>Try again</Button>
+        <CardTitle>{t('songs.approval.loadFailedTitle')}</CardTitle>
+        <Notice kind="error">{t('songs.approval.loadFailed')}</Notice>
+        <Button onClick={reload}>{t('common.tryAgain')}</Button>
       </Card>
     )
   }
@@ -167,6 +164,7 @@ function Approval({
   onApproved: (job: Job) => void
   reload: () => void
 }) {
+  const t = useT()
   const [refusal, setRefusal] = useState<Refusal | null>(null)
   const [problem, setProblem] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
@@ -210,16 +208,16 @@ function Approval({
   if (list.status === 'approved') {
     return (
       <Card>
-        <CardTitle>You approved these songs</CardTitle>
-        <p className="m-0">classbeat is making your playlist and finishing the class.</p>
-        <Button onClick={reload}>Refresh</Button>
+        <CardTitle>{t('songs.approval.approvedTitle')}</CardTitle>
+        <p className="m-0">{t('songs.approval.approvedText')}</p>
+        <Button onClick={reload}>{t('songs.approval.refresh')}</Button>
       </Card>
     )
   }
   if (list.status === 'superseded') {
     return (
-      <Ended title="A newer list replaced these songs" classId={job.classId}>
-        A newer list of songs has replaced these, so they cannot be approved any more.
+      <Ended title={t('songs.approval.supersededTitle')} classId={job.classId}>
+        {t('songs.approval.supersededText')}
       </Ended>
     )
   }
@@ -227,14 +225,12 @@ function Approval({
     const expired = list.status === 'expired'
     return (
       <Ended
-        title={expired ? 'These songs expired' : 'These songs were stopped'}
+        title={expired ? t('songs.approval.expiredTitle') : t('songs.approval.stoppedTitle')}
         classId={job.classId}
         error={pick.action.error}
         extra={isPick ? <PickAgain pick={pick} /> : null}
       >
-        {expired
-          ? 'These songs expired before they were approved. Nothing was written to your Spotify.'
-          : 'These songs were stopped. Nothing was written to your Spotify.'}
+        {expired ? t('songs.approval.expiredText') : t('songs.approval.stoppedText')}
       </Ended>
     )
   }
@@ -246,13 +242,16 @@ function Approval({
       <header className="flex flex-col items-start gap-4 rounded-lg border border-line bg-surface p-4 sm:flex-row sm:items-end sm:p-6">
         <CoverMosaic songs={list.songs} className="size-40 shrink-0 sm:size-48" />
         <div className="flex min-w-0 flex-col gap-2">
-          <p className="m-0 text-[0.8125rem] font-medium uppercase tracking-wide text-muted">Playlist for approval</p>
+          <p className="m-0 text-[0.8125rem] font-medium uppercase tracking-wide text-muted">{t('songs.approval.eyebrow')}</p>
           <h1 id="songs-title" className="m-0 break-words font-display text-3xl font-extrabold text-text sm:text-4xl">
-            Songs for your class
+            {t('songs.approval.heading')}
           </h1>
           <p className="m-0 text-text">
-            {list.songs.length} songs, {minutes(list.totalSec)} in total. You asked for{' '}
-            {minutes(list.targetSec)}.
+            {t('songs.approval.summary', {
+              count: list.songs.length,
+              total: minutes(list.totalSec),
+              target: minutes(list.targetSec),
+            })}
           </p>
           <SpotifyAttribution />
         </div>
@@ -260,8 +259,7 @@ function Approval({
       {list.note !== '' ? <p className="m-0 text-muted">{list.note}</p> : null}
       {list.omittedNoBpm > 0 ? (
         <Notice>
-          {list.omittedNoBpm} song{list.omittedNoBpm === 1 ? ' was' : 's were'} left out because MOWL
-          has no BPM for {list.omittedNoBpm === 1 ? 'it' : 'them'}.
+          {t('songs.approval.omittedNoBpm', { count: list.omittedNoBpm })}
         </Notice>
       ) : null}
       <SongRows
@@ -270,18 +268,17 @@ function Approval({
         onToggle={isPick && !final ? toggle : undefined}
         disabled={busy || pick.action.busy}
       />
-      <p className="m-0 text-[0.9375rem] text-muted">{PRIVACY_TEXT}</p>
+      <p className="m-0 text-[0.9375rem] text-muted">{t('songs.approval.privacy')}</p>
       {list.expiresAt !== null ? (
         <p className="m-0 text-[0.9375rem] text-muted" data-testid="expiry">
-          Approve by {whenText(list.expiresAt)}. After that these songs expire and nothing is
-          written to your Spotify.
+          {t('songs.approval.expiry', { when: whenText(list.expiresAt) })}
         </p>
       ) : null}
       {problem !== null ? <Notice kind="error">{problem}</Notice> : null}
       {pick.action.error ? <Notice kind="error">{pick.action.error}</Notice> : null}
       {refusal?.account === true ? (
         <p className="m-0">
-          <Link to="/account">Go to your account</Link>
+          <Link to="/account">{t('job.goToAccount')}</Link>
         </p>
       ) : null}
       {final ? (
@@ -290,13 +287,13 @@ function Approval({
         <>
           <div className="flex flex-wrap gap-3">
             <Button disabled={busy || pick.action.busy} onClick={approve}>
-              Approve songs
+              {t('songs.approval.approve')}
             </Button>
           </div>
           {isPick ? (
             <div className="flex flex-col gap-2">
               <label htmlFor="change-note" className="text-[0.9375rem] font-medium text-text">
-                What should be different? (optional)
+                {t('songs.approval.noteLabel')}
               </label>
               <textarea
                 id="change-note"
@@ -308,7 +305,7 @@ function Approval({
                 }}
               />
               <p className="m-0 text-[0.9375rem] text-muted">
-                Mark the songs to replace, then ask for changes. The other songs stay.
+                {t('songs.approval.markHint')}
               </p>
               <div>
                 <Button
@@ -318,7 +315,7 @@ function Approval({
                     pick.start(replace, note)
                   }}
                 >
-                  Ask for changes
+                  {t('songs.approval.askChanges')}
                 </Button>
               </div>
             </div>
@@ -331,7 +328,7 @@ function Approval({
                   pick.start(null, '')
                 }}
               >
-                Stop and change the request
+                {t('songs.approval.stopAndChange')}
               </Button>
             </div>
           )}
@@ -352,20 +349,22 @@ function FinalActions({
   pick: ReturnType<typeof useNewPick> | null
   reload: () => void
 }) {
+  const t = useT()
   return (
     <div className="flex flex-wrap gap-3">
       {refusal.newSongs === true && pick !== null ? <PickAgain pick={pick} /> : null}
       <Button variant="secondary" onClick={reload}>
-        Reload the page
+        {t('songs.approval.reload')}
       </Button>
       <Button asChild variant="ghost">
-        <Link to={`/classes/${classId}`}>Open the class</Link>
+        <Link to={`/classes/${classId}`}>{t('songs.approval.openClass')}</Link>
       </Button>
     </div>
   )
 }
 
 function PickAgain({ pick }: { pick: ReturnType<typeof useNewPick> }) {
+  const t = useT()
   return (
     <Button
       disabled={pick.action.busy}
@@ -373,7 +372,7 @@ function PickAgain({ pick }: { pick: ReturnType<typeof useNewPick> }) {
         pick.start(null, '')
       }}
     >
-      Pick songs again
+      {t('songs.ended.pickAgain')}
     </Button>
   )
 }
@@ -391,6 +390,7 @@ function Ended({
   extra?: ReactNode
   error?: string | null
 }) {
+  const t = useT()
   return (
     <Card>
       <CardTitle>{title}</CardTitle>
@@ -400,7 +400,7 @@ function Ended({
         <div className="flex flex-wrap gap-3">
           {extra}
           <Button asChild variant="ghost">
-            <Link to={`/classes/${classId}`}>Open the class</Link>
+            <Link to={`/classes/${classId}`}>{t('songs.approval.openClass')}</Link>
           </Button>
         </div>
       </div>

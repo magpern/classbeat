@@ -1,3 +1,4 @@
+import { useT } from '../../i18n/I18n'
 import { Button } from '../ui/button'
 import { Card, CardTitle } from '../ui/card'
 import { SketchBars } from './SketchBars'
@@ -15,13 +16,14 @@ export function SideCard({
   /** Classes left this month from the plan API; null hides the line. */
   classesLeft: number | null
 }) {
+  const t = useT()
   return (
     <Card className="flex flex-col gap-4" role="region" aria-labelledby="so-far-title">
       <CardTitle id="so-far-title" className="mb-0">
-        Your class so far
+        {t('newclass.side.title')}
       </CardTitle>
       <SketchBars profile={profile} />
-      <p className="m-0 text-[0.8125rem] text-muted">A rough sketch of your numbers. Claude designs the real class.</p>
+      <p className="m-0 text-[0.8125rem] text-muted">{t('newclass.side.sketchNote')}</p>
       <dl className="m-0 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-[0.9375rem]">
         {summary.map((row) => (
           <div key={row.label} className="contents">
@@ -33,12 +35,12 @@ export function SideCard({
       {classesLeft === null ? null : (
         <p className="m-0 text-[0.8125rem] text-muted">
           {classesLeft > 0
-            ? `Uses 1 of your ${String(classesLeft)} classes left this month`
-            : 'You have no classes left this month.'}
+            ? t('newclass.side.classesLeft', { count: classesLeft })
+            : t('newclass.side.noClassesLeft')}
         </p>
       )}
       <Button type="submit" disabled={busy} className="w-full">
-        Design my class
+        {t('newclass.side.submit')}
       </Button>
     </Card>
   )

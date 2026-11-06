@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import type { ClassSummary } from '../../api/classes'
 import { startError } from '../../api/songMessages'
 import { createReviseSongsJob, getSongList, type SongList } from '../../api/songs'
+import { useT } from '../../i18n/I18n'
 import { currentConnectionIds, digest, isNotConnected } from '../../lib/songs'
 import { actionKey, dropActionKey } from '../../lib/submittedInput'
 import { useRouter } from '../../router/Router'
@@ -20,6 +21,7 @@ export const CHANGE_SONGS_ID = 'change-songs'
  * version. The new list comes back for approval like the first one.
  */
 export function ChangeSongs({ summary }: { summary: ClassSummary }) {
+  const t = useT()
   const revisionId = summary.songs.revisionId
   const [list, setList] = useState<SongList | null>(null)
   const [failed, setFailed] = useState(false)
@@ -62,15 +64,15 @@ export function ChangeSongs({ summary }: { summary: ClassSummary }) {
   const submit = (all: boolean) => {
     const text = request.trim()
     if (text === '') {
-      setProblem('Write what you want different about the songs.')
+      setProblem(t('songs.change.writeRequest'))
       return
     }
     if (text.length > MAX_REQUEST) {
-      setProblem(`The request is up to ${String(MAX_REQUEST)} characters.`)
+      setProblem(t('songs.change.tooLong', { max: MAX_REQUEST }))
       return
     }
     if (!all && marks.size === 0) {
-      setProblem('Mark the songs to replace, or replace all of them.')
+      setProblem(t('songs.change.markSongs'))
       return
     }
     setProblem(null)
@@ -99,7 +101,7 @@ export function ChangeSongs({ summary }: { summary: ClassSummary }) {
         },
         (error) =>
           isNotConnected(error)
-            ? 'Spotify or MOWL is not connected. Connect it on your account page first.'
+            ? t('songs.change.notConnected')
             : startError(error),
       )
       .finally(() => {
@@ -115,19 +117,18 @@ export function ChangeSongs({ summary }: { summary: ClassSummary }) {
       aria-labelledby="change-songs-title"
       role="region"
     >
-      <CardTitle id="change-songs-title">Change songs</CardTitle>
-      {busy ? <p className="m-0 text-muted">Wait for the running task to finish first.</p> : null}
-      {failed ? <Notice kind="error">The songs could not be loaded. Reload the page.</Notice> : null}
-      {list === null && !failed ? <p className="m-0 text-muted">Loading the songs</p> : null}
+      <CardTitle id="change-songs-title">{t('songs.change.title')}</CardTitle>
+      {busy ? <p className="m-0 text-muted">{t('songs.change.wait')}</p> : null}
+      {failed ? <Notice kind="error">{t('songs.change.loadFailed')}</Notice> : null}
+      {list === null && !failed ? <p className="m-0 text-muted">{t('songs.change.loading')}</p> : null}
       {list !== null ? (
         <>
           <p className="m-0 text-muted">
-            Mark the songs you want replaced. The other songs stay, and you approve the new list
-            before anything is written to your Spotify.
+            {t('songs.change.intro')}
           </p>
           <SongRows songs={list.songs} marks={marks} onToggle={toggle} disabled={busy || action.busy} />
           <label htmlFor="songs-request" className="text-[0.9375rem] font-medium text-text">
-            What should be different?
+            {t('songs.change.different')}
           </label>
           <textarea
             id="songs-request"
@@ -147,7 +148,7 @@ export function ChangeSongs({ summary }: { summary: ClassSummary }) {
                 submit(false)
               }}
             >
-              Change the marked songs
+              {t('songs.change.marked')}
             </Button>
             <Button
               variant="secondary"
@@ -156,7 +157,7 @@ export function ChangeSongs({ summary }: { summary: ClassSummary }) {
                 submit(true)
               }}
             >
-              Change all songs
+              {t('songs.change.all')}
             </Button>
           </div>
         </>

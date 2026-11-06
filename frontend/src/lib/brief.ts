@@ -29,6 +29,3 @@ export function briefBytes(brief: Brief | RunningBrief): number {
   return new TextEncoder().encode(jsonb(cleaned)).length
 }
 
-export const BRIEF_TOO_LONG =
-  'The style and description are too long for one class (the limit is 4096 bytes in all, and ' +
-  'accented or non-Latin letters count for more than one). Shorten them and try again.'

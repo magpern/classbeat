@@ -1,4 +1,5 @@
 import type { Song } from '../../api/songs'
+import { useT } from '../../i18n/I18n'
 import { minutes, roleLabel } from '../../lib/songs'
 import { Chip, ChipButton } from '../ui/chip'
 import { CoverArt } from './CoverArt'
@@ -20,8 +21,9 @@ export function SongRows({
   onToggle?: (position: number) => void
   disabled?: boolean
 }) {
+  const t = useT()
   return (
-    <ol className="m-0 flex list-none flex-col gap-2 p-0" role="list" aria-label="Songs">
+    <ol className="m-0 flex list-none flex-col gap-2 p-0" role="list" aria-label={t('songs.list.label')}>
       {songs.map((song) => {
         const marked = marks?.has(song.position) === true
         return (
@@ -42,27 +44,27 @@ export function SongRows({
                   href={song.openSpotify}
                   target="_blank"
                   rel="noopener noreferrer"
-                  aria-label={`OPEN SPOTIFY, ${song.title}`}
+                  aria-label={t('songs.list.openSpotifyLabel', { title: song.title })}
                   className="text-[0.75rem] font-medium uppercase tracking-wide"
                 >
-                  OPEN SPOTIFY
+                  {t('songs.list.openSpotify')}
                 </a>
               ) : null}
             </div>
             <Chip>{roleLabel(song.role)}</Chip>
-            <span className="text-[0.9375rem] text-muted">{Math.round(song.bpm)} BPM</span>
+            <span className="text-[0.9375rem] text-muted">{t('songs.list.bpm', { bpm: Math.round(song.bpm) })}</span>
             <span className="text-[0.9375rem] text-muted">{minutes(song.lengthSec)}</span>
-            {song.isNew ? <Chip tone="ok">New</Chip> : null}
+            {song.isNew ? <Chip tone="ok">{t('songs.list.new')}</Chip> : null}
             {marks !== undefined && onToggle !== undefined ? (
               <ChipButton
                 pressed={marked}
                 disabled={disabled}
-                aria-label={`Replace ${song.title}`}
+                aria-label={t('songs.list.replaceLabel', { title: song.title })}
                 onClick={() => {
                   onToggle(song.position)
                 }}
               >
-                Replace
+                {t('songs.list.replace')}
               </ChipButton>
             ) : null}
           </li>

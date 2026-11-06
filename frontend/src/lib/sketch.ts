@@ -6,13 +6,14 @@
 // use, so the page shows no zone number, zone name or zone colour for them.
 
 import type { Brief } from '../api/jobs'
+import type { CatalogueKey } from '../i18n/en'
 
 export type Effort = Brief['intensity']
 
-export const EFFORTS: readonly { value: Effort; label: string; steady: number }[] = [
-  { value: 'easy', label: 'Easy', steady: 2 },
-  { value: 'moderate', label: 'Moderate', steady: 3 },
-  { value: 'hard', label: 'Hard', steady: 4 },
+export const EFFORTS: readonly { value: Effort; labelKey: CatalogueKey; steady: number }[] = [
+  { value: 'easy', labelKey: 'newclass.effort.easy', steady: 2 },
+  { value: 'moderate', labelKey: 'newclass.effort.moderate', steady: 3 },
+  { value: 'hard', labelKey: 'newclass.effort.hard', steady: 4 },
 ]
 
 export const MAX_LEVEL = 5

@@ -6,12 +6,12 @@ import { getConnections } from '../../api/connections'
 import {
   retryLabel,
   reviseFailureText,
+  songsOnlyChange,
+  songsOnlyOwnPlaylist,
+  songsOnlyPickPending,
+  musicOnlyRunning,
+  musicOnlySoundless,
   stageLabel,
-  USE_CHANGE_SONGS,
-  USE_FINISH_SONGS,
-  USE_NEW_CLASS_FOR_MUSIC_SOUNDLESS,
-  USE_NEW_CLASS_FOR_SONGS,
-  USE_OTHER_MUSIC_RUNNING,
 } from '../../api/jobMessages'
 import { cancelJob, createReviseJob, getJob, isTerminal, type Job } from '../../api/jobs'
 import { useT } from '../../i18n/I18n'
@@ -135,14 +135,14 @@ function Unanswered({
       <div className="chat__outcome" role="status" data-testid="use-change-songs">
         <p>
           {songs === 'change'
-            ? USE_CHANGE_SONGS
+            ? songsOnlyChange()
             : songs === 'soundless'
-              ? USE_NEW_CLASS_FOR_MUSIC_SOUNDLESS
+              ? musicOnlySoundless()
               : songs === 'running'
-                ? USE_OTHER_MUSIC_RUNNING
+                ? musicOnlyRunning()
                 : songs === 'own'
-                  ? USE_NEW_CLASS_FOR_SONGS
-                  : USE_FINISH_SONGS}
+                  ? songsOnlyOwnPlaylist()
+                  : songsOnlyPickPending()}
         </p>
         {canChangeSongs ? (
           <Button
