@@ -264,6 +264,16 @@ Every state-changing request (`POST`, `PUT`, `PATCH`, `DELETE`) must pass two ch
   against the session middleware, which locks a session row and then inserts an `auth_events`
   row for its user (#632). In the reset the explicit lock takes the same mode as the
   `UPDATE users` that follows it; it states the ADR 0019 §6 order rather than adding a wait.
+  *(#643, 2026-11-06)* The other paths that revoke every session of a user take the same
+  lock first, before they delete the TOTP or any session: **sign out everywhere**
+  (`POST /api/auth/logout-all`), **`admin mfa-reset`** (`accounts.reset_mfa`) and the **TOTP
+  reset of `keys wipe`** (`operator.wipe_user`, ADR 0004 §2). Without it their `DELETE FROM
+  sessions` did not see a session that a sign-in or rotation was inserting at that moment, and
+  that session survived the revoke; with it the revoke waits for that commit and deletes the new
+  session too (`test_auth_revoke_races.py`), and an MFA verify that waits for it finds its
+  session gone.
+  Password change, email change, admin disable and role changes already wait, because their
+  `UPDATE users` (or `get_account(lock=True)`) conflicts with the lock.
 - **Email change:**
   - **Request:** gives the same answer whether or not the new address is in use. Only the mail
     differs: "confirm" for a free address, "an account with this address exists" for a taken

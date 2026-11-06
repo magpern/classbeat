@@ -190,7 +190,7 @@ Finish, in three steps (the lock order of §6):
 2. `verify_registration_response` with the RP ID, the origin and UV required (UP and UV flags set),
    outside any transaction and holding no lock.
 3. The insert runs in one transaction whose **first** statement is `SELECT … FROM users WHERE id =
-   :flow_user FOR UPDATE`; it then re-checks that the starting session row still exists, belongs to
+   :flow_user FOR NO KEY UPDATE`; it then re-checks that the starting session row still exists, belongs to
    the user and is unexpired, and that the user has fewer than 10 passkeys. A reset revokes the
    sessions and deletes passkeys under the same lock (§9), so a finish in flight during a reset
    either commits before the reset takes the lock (and the reset's keep list, which cannot name it,
@@ -227,7 +227,8 @@ Origin check as for the password form.
      (§2), the RP ID, the origin, UV required and the three algorithms, holding no lock and outside
      any transaction. The backup-eligible flag must equal the stored one (it never changes).
   5. **One write transaction** (the lock order of §6), in this order:
-     1. `SELECT … FROM users WHERE id = :cred_user FOR UPDATE` (the credential's user from step 2).
+     1. `SELECT … FROM users WHERE id = :cred_user FOR NO KEY UPDATE` (the credential's user from
+        step 2).
      2. The counter rule (§7): the conditional `UPDATE … WHERE id = :id AND user_id = :cred_user AND
         <counter rule> RETURNING id`, which also sets `last_used_at` and the backup state. No row
         means the credential is gone (removed, or deleted by a reset that committed first: the
@@ -289,11 +290,19 @@ A new system table `webauthn_challenges`, modelled on `oauth_flows` (ADR 0003 §
   sessions, whose cascade deletes that challenge row. The rules:
   1. A challenge take is always its own committed transaction, never combined with a later write.
   2. Every transaction that writes a `webauthn_credentials` row (insert, delete, the counter
-     update), creates or rotates a session from a passkey, or revokes a user's sessions on the reset
-     or `mfa-reset` path, takes `SELECT … FROM users WHERE id = … FOR UPDATE` as its **first** lock
-     (after consuming a reset token, which locks only the token row and is never taken in the other
+     update), creates or rotates a session from a passkey, or revokes a user's sessions on the reset,
+     `mfa-reset`, sign-out-everywhere or `keys wipe` TOTP-reset path, takes `SELECT … FROM users
+     WHERE id = … FOR NO KEY UPDATE` (`auth/userlock.py`, `lock_user`) as its **first** lock (after
+     consuming a reset token, which locks only the token row and is never taken in the other
      order). That names the register finish (§4), the **sign-in finish** (§5, step 5), the
-     **re-auth finish** (§8), the remove route (§7), the reset (§9) and `mfa-reset`. There is no
+     **re-auth finish** (§8), the remove route (§7), the reset (§9), `mfa-reset`,
+     `POST /api/auth/logout-all` and the TOTP reset of `keys wipe` (ADR 0004 §2); the last three
+     take it before they delete the TOTP or any session (#643). *(#639, #643, 2026-11-06)* The mode
+     is `FOR NO KEY UPDATE`, not `FOR UPDATE`: two of them conflict, which is all this order needs,
+     but neither blocks the `FOR KEY SHARE` of a foreign-key insert that references `users`.
+     `FOR UPDATE` deadlocked against the session middleware, which locks a session row and then
+     inserts an `auth_events` row for its user (#632), while a reset or rotation held the user row
+     and waited for that session row (ADR 0003 §5). There is no
      exemption: a finish that updated the counter first and then inserted a session (whose foreign
      key takes `FOR KEY SHARE` on `users`) or ran the grant check (`UPDATE users`) would take the
      locks in the reset's opposite order, and one that committed the counter update separately would

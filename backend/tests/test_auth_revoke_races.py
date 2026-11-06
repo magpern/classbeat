@@ -1,3 +1,4 @@
+# ruff: noqa: F811 - penv is imported from test_auth_reset_races and named as a parameter
 """Sign out everywhere and the two MFA resets racing a sign-in (#643, ADR 0019 section 6).
 
 ``POST /api/auth/logout-all``, ``admin mfa-reset`` (``accounts.reset_mfa``) and the TOTP reset of
@@ -17,7 +18,6 @@ That is what ``FOR UPDATE`` instead of ``FOR NO KEY UPDATE`` would break (#639 r
 
 import asyncio
 from collections.abc import Awaitable, Callable
-from typing import Any, TypeVar
 from uuid import UUID
 
 import httpx
@@ -40,7 +40,6 @@ from test_auth_reset_races import (  # noqa: F401  (penv is a fixture the tests 
 )
 
 EMAIL = "user@example.com"
-T = TypeVar("T")
 
 
 async def enroll(browser: Browser) -> None:
@@ -73,7 +72,7 @@ async def wipe_totp(env: Env, user_id: UUID) -> None:
     assert event.totp_reset
 
 
-async def a_sign_in_parked_against(
+async def a_sign_in_parked_against[T](
     env: Env, monkeypatch: pytest.MonkeyPatch, revoke: Callable[[Env], Awaitable[T]]
 ) -> T:
     """A password sign-in parks after its session row is inserted (uncommitted, under the user
@@ -140,7 +139,7 @@ async def test_a_sign_in_inside_its_transaction_makes_the_keys_wipe_totp_reset_w
 # --- the session middleware's location event does not deadlock with the lock ------------------
 
 
-async def beside_a_location_event(
+async def beside_a_location_event[T](
     env: Env, monkeypatch: pytest.MonkeyPatch, moved: At, act: Callable[[Env], Awaitable[T]]
 ) -> tuple[httpx.Response, T]:
     """``moved`` requests from a new network and parks holding its session row, before the
