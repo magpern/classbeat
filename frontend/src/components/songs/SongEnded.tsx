@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { ApiError } from '../../api/client'
 import { getClass } from '../../api/classes'
+import { useT } from '../../i18n/I18n'
 import { failureText } from '../../api/jobMessages'
 import { listUncertainOperations, type Job, type Operation } from '../../api/jobs'
 import { startError } from '../../api/songMessages'
@@ -116,6 +117,7 @@ function usePickAgain(job: Job) {
 
 /** What a song job that ended without a class shows: failed, stopped or expired. */
 export function SongEnded({ job }: { job: Job }) {
+  const t = useT()
   const uncertain = job.state === 'failed' && job.errorCategory === 'uncertain_write'
   const [operations, setOperations] = useState<Operation[] | null>(null)
   const [loadFailed, setLoadFailed] = useState(false)
@@ -156,15 +158,11 @@ export function SongEnded({ job }: { job: Job }) {
   let detail: string
   let account = false
   if (job.state === 'cancelled') {
-    title = 'You stopped this'
-    detail = approved
-      ? 'You stopped the job after approving the songs. The class was not finished.'
-      : 'Nothing was written to your Spotify.'
+    title = t('songs.ended.stoppedTitle')
+    detail = approved ? t('songs.ended.stoppedApproved') : t('songs.ended.stoppedNothing')
   } else if (job.state === 'expired') {
-    title = approved ? 'This job expired' : 'These songs expired'
-    detail = approved
-      ? 'The job took too long and was ended.'
-      : 'Nobody approved the songs in time. Nothing was written to your Spotify.'
+    title = approved ? t('songs.ended.expiredApproved') : t('songs.ended.expiredSongs')
+    detail = approved ? t('songs.ended.expiredApprovedDetail') : t('songs.ended.expiredSongsDetail')
   } else {
     const text = failureText(job.errorCategory, job.kind)
     title = text.title
@@ -181,9 +179,9 @@ export function SongEnded({ job }: { job: Job }) {
       {uncertain ? (
         <div className="flex flex-col gap-4">
           {loadFailed ? (
-            <Notice kind="error">What is left to decide could not be loaded. Reload the page.</Notice>
+            <Notice kind="error">{t('songs.ended.loadFailed')}</Notice>
           ) : operations === null ? (
-            <p className="m-0">Checking what happened</p>
+            <p className="m-0">{t('songs.ended.checking')}</p>
           ) : null}
           {playlistOps.length > 0 ? (
             <UncertainPlaylist operations={playlistOps} onResolved={onPlaylistResolved} />
@@ -192,7 +190,7 @@ export function SongEnded({ job }: { job: Job }) {
             <UncertainAttach jobId={job.id} accept={isOtherWrite} onResolved={onOtherResolved} />
           ) : null}
           {operations !== null && operations.length === 0 ? (
-            <Notice>Nothing is left to decide. You can create the playlist again.</Notice>
+            <Notice>{t('songs.ended.nothingLeft')}</Notice>
           ) : null}
         </div>
       ) : (
@@ -206,13 +204,13 @@ export function SongEnded({ job }: { job: Job }) {
         {account ? (
           <Button asChild>
             <Link to={job.errorCategory === 'invalid_grant' ? '/account/spotify' : '/account'}>
-              {job.errorCategory === 'invalid_grant' ? 'Reconnect Spotify' : 'Go to your account'}
+              {job.errorCategory === 'invalid_grant' ? t('songs.ended.reconnect') : t('job.goToAccount')}
             </Link>
           </Button>
         ) : null}
         {canResume ? (
           <Button variant={account ? 'secondary' : 'primary'} disabled={resume.action.busy} onClick={resume.create}>
-            Create the playlist again
+            {t('songs.ended.createAgain')}
           </Button>
         ) : null}
         {!approved && isPick ? (
@@ -221,12 +219,12 @@ export function SongEnded({ job }: { job: Job }) {
             disabled={pick.action.busy}
             onClick={pick.again}
           >
-            {pick.remembered ? 'Pick songs again' : 'Start a new class'}
+            {pick.remembered ? t('songs.ended.pickAgain') : t('songs.ended.startNew')}
           </Button>
         ) : null}
         {!isPick ? (
           <Button asChild variant="secondary">
-            <Link to={`/classes/${job.classId}`}>Back to the class</Link>
+            <Link to={`/classes/${job.classId}`}>{t('songs.ended.backToClass')}</Link>
           </Button>
         ) : null}
       </div>

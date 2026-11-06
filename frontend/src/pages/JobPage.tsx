@@ -2,18 +2,19 @@ import { useCallback, useEffect, useState } from 'react'
 import { planRefusalText } from '../api/planMessages'
 import { sentenceText } from '../api/sentences'
 import { useT } from '../i18n/I18n'
+import { t as translate } from '../i18n/t'
 import { isSongKind } from '../api/songs'
 import { SongEnded } from '../components/songs/SongEnded'
 import { SongsForApproval } from '../components/songs/SongsForApproval'
 import {
-  MIX_STAGE_LABEL,
-  WAITING_FOR_SLOT,
-  WAITING_TO_START,
-  YOU_CAN_LEAVE,
   designSteps,
   failureText,
+  mixStageLabel,
   retryLabel,
   stageLabel,
+  waitingForSlot,
+  waitingToStart,
+  youCanLeave,
 } from '../api/jobMessages'
 import {
   cancelJob,
@@ -45,24 +46,25 @@ export function JobPage({ jobId }: { jobId: string }) {
 }
 
 function JobView({ jobId }: { jobId: string }) {
+  const t = useT()
   const { job, progress, problem, setJob, follow } = useJobProgress(jobId)
   if (problem === 'not_found') {
     return (
-      <Card title="Class not found">
-        <p>This design does not exist, or it is not yours.</p>
+      <Card title={t('job.notFound.title')}>
+        <p>{t('job.notFound.text')}</p>
         <p>
-          <Link to="/classes/new">Design a class</Link>
+          <Link to="/classes/new">{t('job.notFound.designLink')}</Link>
         </p>
       </Card>
     )
   }
   if (problem === 'signed_out') {
     return (
-      <Card title="You are signed out">
-        <p>Sign in again to see this design. It carries on meanwhile.</p>
+      <Card title={t('job.signedOut.title')}>
+        <p>{t('job.signedOut.text')}</p>
         <p>
           <Link className="button" to={`/signin?return_to=${encodeURIComponent(`/jobs/${jobId}`)}`}>
-            Sign in
+            {t('job.signedOut.signIn')}
           </Link>
         </p>
       </Card>
@@ -70,11 +72,11 @@ function JobView({ jobId }: { jobId: string }) {
   }
   if (job === null) {
     return (
-      <Card title="One moment">
+      <Card title={t('job.moment.title')}>
         {problem === 'failed' ? (
-          <Notice kind="error">The server could not be reached. Trying again.</Notice>
+          <Notice kind="error">{t('job.moment.unreachable')}</Notice>
         ) : (
-          <p>Loading</p>
+          <p>{t('job.moment.loading')}</p>
         )}
       </Card>
     )
@@ -82,7 +84,7 @@ function JobView({ jobId }: { jobId: string }) {
   return (
     <div className="stack">
       {problem === 'failed' ? (
-        <Notice kind="error">The connection to the server dropped. Trying again.</Notice>
+        <Notice kind="error">{t('job.dropped')}</Notice>
       ) : null}
       <JobBody
         job={job}
@@ -108,6 +110,7 @@ function JobBody({
   onJob: (job: Job) => void
   onApproved: (job: Job) => void
 }) {
+  const t = useT()
   const song = isSongKind(job.kind)
   if (song && job.state === 'waiting_for_approval') {
     return <SongsForApproval job={job} onApproved={onApproved} />
@@ -124,13 +127,13 @@ function JobBody({
     case 'failed':
       return <Failed job={job} />
     case 'cancelled':
-      return <Ended job={job} title="You stopped this design" detail="Nothing was saved." />
+      return <Ended job={job} title={t('job.cancelled.title')} detail={t('job.cancelled.detail')} />
     case 'expired':
-      return <Ended job={job} title="This design expired" detail="Start a new one." />
+      return <Ended job={job} title={t('job.expired.title')} detail={t('job.expired.detail')} />
     default:
       return (
-        <Card title="Waiting for you">
-          <p>This design is waiting for an answer from you.</p>
+        <Card title={t('job.waitingForYou.title')}>
+          <p>{t('job.waitingForYou.text')}</p>
         </Card>
       )
   }
@@ -138,8 +141,8 @@ function JobBody({
 
 function cancelError(error: unknown): string {
   // 409: the design ended on its own meanwhile; the page switches to the result by itself.
-  if (error instanceof ApiError && error.status === 409) return 'This design has just finished.'
-  return 'That did not work. Try again.'
+  if (error instanceof ApiError && error.status === 409) return translate('job.cancelError.finished')
+  return translate('common.didNotWork')
 }
 
 function Designing({
@@ -151,6 +154,7 @@ function Designing({
   progress: Progress
   onJob: (job: Job) => void
 }) {
+  const t = useT()
   const action = useAction()
   const stopping = job.cancelRequested || progress.cancelRequested
   const stop = () => {
@@ -161,7 +165,7 @@ function Designing({
   const waiting = job.state === 'queued' && progress.stage === null
   const picking = isSongKind(job.kind) && job.approvedAt === null
   // The class name comes from the form this browser remembered; without it the title says "your class".
-  const name = recallInput(job.id)?.title ?? recallPick(job.id)?.title ?? 'your class'
+  const name = recallInput(job.id)?.title ?? recallPick(job.id)?.title ?? t('job.yourClass')
   const source = recallInput(job.id)?.music.source
   const steps = designSteps(job.kind, job.approvedAt !== null, source === 'none')
   const current = progress.stage ?? job.stage
@@ -172,11 +176,11 @@ function Designing({
     <Panel className="mx-auto flex w-full max-w-2xl flex-col gap-5" role="region" aria-labelledby="designing-title">
       <div className="flex flex-col gap-1">
         <h1 id="designing-title" className="m-0 font-display text-3xl font-extrabold">
-          {picking ? `Finding songs for ${name}…` : `Designing ${name}…`}
+          {picking ? t('job.findingSongs', { name }) : t('job.designing', { name })}
         </h1>
         {step !== null ? (
           <p className="m-0 text-muted tabular-nums">
-            Step {String(step)} of {String(steps.length)}
+            {t('job.stepOf', { step, total: steps.length })}
           </p>
         ) : null}
       </div>
@@ -184,28 +188,28 @@ function Designing({
       <DesigningSteps steps={steps} current={current} />
       <div role="status" aria-live="polite" data-testid="progress" className="flex flex-col gap-1">
         {stopping ? (
-          <p className="m-0">Stopping. This takes a moment.</p>
+          <p className="m-0">{t('job.stopping')}</p>
         ) : progress.retry !== null ? (
           <p className="m-0">{retryLabel(progress.retry)}</p>
         ) : progress.waitingForSlot && job.state === 'queued' ? (
-          <p className="m-0">{WAITING_FOR_SLOT}</p>
+          <p className="m-0">{waitingForSlot()}</p>
         ) : waiting ? (
-          <p className="m-0">{WAITING_TO_START}</p>
+          <p className="m-0">{waitingToStart()}</p>
         ) : mixStage ? (
-          <p className="m-0">{MIX_STAGE_LABEL}</p>
+          <p className="m-0">{mixStageLabel()}</p>
         ) : (
           <p className="m-0">{stageLabel(current)}</p>
         )}
-        {progress.operation === 'pending' ? <p className="m-0">Adding your playlist to your MOWL music.</p> : null}
+        {progress.operation === 'pending' ? <p className="m-0">{t('job.addingPlaylist')}</p> : null}
         {progress.toolCalls > 0 ? (
-          <p className="m-0 text-muted">The designer has checked its draft {progress.toolCalls} time(s).</p>
+          <p className="m-0 text-muted">{t('job.toolCalls', { count: progress.toolCalls })}</p>
         ) : null}
       </div>
-      <p className="m-0 text-muted">{YOU_CAN_LEAVE}</p>
+      <p className="m-0 text-muted">{youCanLeave()}</p>
       {action.error ? <Notice kind="error">{action.error}</Notice> : null}
       <p className="m-0">
         <Button variant="secondary" disabled={action.busy || stopping} onClick={stop}>
-          Stop designing
+          {t('job.stop')}
         </Button>
       </p>
     </Panel>
@@ -213,6 +217,7 @@ function Designing({
 }
 
 function Completed({ job }: { job: Job }) {
+  const t = useT()
   const [draft, setDraft] = useState<DraftSummary | null>(null)
   const [state, setState] = useState<'loading' | 'none' | 'failed' | 'ready'>('loading')
   const [attempt, setAttempt] = useState(0)
@@ -241,12 +246,12 @@ function Completed({ job }: { job: Job }) {
 
   return (
     <div className="stack">
-      <h1>Your class is ready</h1>
-      {state === 'loading' ? <p>Loading the draft</p> : null}
-      {state === 'none' ? <Notice>This design finished without a draft.</Notice> : null}
+      <h1>{t('job.ready.title')}</h1>
+      {state === 'loading' ? <p>{t('job.ready.loadingDraft')}</p> : null}
+      {state === 'none' ? <Notice>{t('job.ready.noDraft')}</Notice> : null}
       {state === 'failed' ? (
         <Notice kind="error">
-          The draft could not be loaded.{' '}
+          {t('job.ready.draftFailed')}{' '}
           <button
             type="button"
             className="button button--link"
@@ -255,17 +260,17 @@ function Completed({ job }: { job: Job }) {
               setAttempt((n) => n + 1)
             }}
           >
-            Try again
+            {t('common.tryAgain')}
           </button>
         </Notice>
       ) : null}
       {state === 'ready' && draft !== null ? <DraftSummaryView draft={draft} /> : null}
       <p>
         <Link className="button" to={`/classes/${job.classId}`}>
-          Open the class
+          {t('job.ready.openClass')}
         </Link>
         <Link className="button button--secondary" to="/classes/new">
-          Design another class
+          {t('job.ready.designAnother')}
         </Link>
       </p>
     </div>
@@ -313,7 +318,7 @@ function useDesignAgain(job: Job) {
  */
 function againError(error: unknown): string {
   if (error instanceof ApiError && error.reason === 'not_connected') {
-    return 'MOWL is not connected, or was connected again since this design started. Connect it on your account page if needed, then start a new design.'
+    return translate('job.again.notConnected')
   }
   return againMessage(error)
 }
@@ -322,12 +327,12 @@ function againMessage(error: unknown): string {
   const refusal = planRefusalText(error)
   if (refusal !== null) return refusal
   if (error instanceof ApiError && error.reason === 'class_busy') {
-    return 'This class already has a design running, perhaps from another tab. Wait for it to finish, then try again.'
+    return translate('job.again.classBusy')
   }
   if (error instanceof ApiError && error.status === 429) {
-    return 'You already have designs running. Wait for one to finish.'
+    return translate('job.again.tooMany')
   }
-  return 'That did not work. Try again.'
+  return translate('common.didNotWork')
 }
 
 function Failed({ job }: { job: Job }) {
@@ -338,7 +343,7 @@ function Failed({ job }: { job: Job }) {
   // No button either: "Try again" would start a new design, not retry the match.
   if (job.kind === 'swedebeat_match' && job.errorMessage !== null) {
     const detail = sentenceText(t, job.sentence, job.errorMessage) ?? job.errorMessage
-    return <Ended job={job} title="The Swedebeat match stopped" detail={detail} retry={false} />
+    return <Ended job={job} title={t('job.matchStopped')} detail={detail} retry={false} />
   }
   const kept = recallInput(job.id)
   const feature =
@@ -354,6 +359,7 @@ function Failed({ job }: { job: Job }) {
 }
 
 function FailedUncertain({ job }: { job: Job }) {
+  const t = useT()
   const [resolved, setResolved] = useState(false)
   const onResolved = useCallback(() => {
     setResolved(true)
@@ -366,7 +372,7 @@ function FailedUncertain({ job }: { job: Job }) {
       {resolved ? (
         <p>
           <button type="button" className="button" disabled={action.busy} onClick={again}>
-            {remembered ? 'Design again' : 'Start a new design'}
+            {remembered ? t('job.again.design') : t('job.again.startNew')}
           </button>
         </p>
       ) : null}
@@ -387,6 +393,7 @@ function Ended({
   account?: boolean
   retry?: boolean
 }) {
+  const t = useT()
   const { again, action, remembered } = useDesignAgain(job)
   return (
     <Panel className="mx-auto flex w-full max-w-2xl flex-col gap-4" role="region" aria-labelledby="ended-title">
@@ -398,12 +405,16 @@ function Ended({
       <p className="m-0 flex flex-wrap gap-3">
         {account ? (
           <Button asChild>
-            <Link to="/account">Go to your account</Link>
+            <Link to="/account">{t('job.goToAccount')}</Link>
           </Button>
         ) : null}
         {retry ? (
           <Button variant={account ? 'secondary' : 'primary'} disabled={action.busy} onClick={again}>
-            {remembered ? (job.state === 'failed' ? 'Try again' : 'Design again') : 'Start a new design'}
+            {remembered
+              ? job.state === 'failed'
+                ? t('job.again.tryAgain')
+                : t('job.again.design')
+              : t('job.again.startNew')}
           </Button>
         ) : null}
       </p>

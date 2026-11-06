@@ -1,5 +1,6 @@
 import { Minus, Plus } from 'lucide-react'
 import { useId } from 'react'
+import { useT } from '../../i18n/I18n'
 
 const BUTTON =
   'inline-flex size-11 shrink-0 cursor-pointer items-center justify-center rounded-full border border-line bg-raised text-text hover:bg-line disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand'
@@ -10,20 +11,23 @@ const BUTTON =
  */
 export function Stepper({
   label,
-  noun,
+  fewer,
+  more,
   value,
   min,
   max,
   onChange,
 }: {
   label: string
-  /** For the button names: "Fewer climbs", "More climbs". */
-  noun: string
+  /** The button names, already worded: "Fewer climbs", "More climbs". */
+  fewer: string
+  more: string
   value: string
   min: number
   max: number
   onChange: (value: string) => void
 }) {
+  const t = useT()
   const id = useId()
   const n = value.trim() === '' ? Number.NaN : Number(value)
   const valid = Number.isInteger(n)
@@ -40,7 +44,7 @@ export function Stepper({
         <button
           type="button"
           className={BUTTON}
-          aria-label={`Fewer ${noun}`}
+          aria-label={fewer}
           disabled={valid && n <= min}
           onClick={() => {
             step(-1)
@@ -63,7 +67,7 @@ export function Stepper({
         <button
           type="button"
           className={BUTTON}
-          aria-label={`More ${noun}`}
+          aria-label={more}
           disabled={valid && n >= max}
           onClick={() => {
             step(1)
@@ -72,7 +76,7 @@ export function Stepper({
           <Plus aria-hidden="true" size={18} />
         </button>
         <span className="text-[0.8125rem] text-muted">
-          {String(min)} to {String(max)}
+          {t('newclass.stepper.range', { min, max })}
         </span>
       </div>
     </div>
