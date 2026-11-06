@@ -66,7 +66,7 @@ def _lookup(factory: async_sessionmaker[AsyncSession], user_id: UUID | None) -> 
                 row = await mail_prefs_for_email(db, normalize_email(recipient))
         if row is None:
             return None
-        return MailPrefs(row.unsubscribed_all, row.opted_out, row.user_id)
+        return MailPrefs(row.unsubscribed_all, row.opted_out, row.user_id, row.locale)
 
     return lookup
 
@@ -81,6 +81,7 @@ async def send_optional(
     *,
     prefs: MailPrefs | None = None,
     user_id: UUID | None = None,
+    locale: str | None = None,
 ) -> bool:
     """Send one mail through the gate with the live settings; ``True`` if an attempt was made.
 
@@ -96,6 +97,7 @@ async def send_optional(
         recipient,
         params,
         prefs=prefs,
+        locale=locale,
         lookup=_lookup(factory, user_id),
         disabled=config.disabled,
         branding=config.branding,

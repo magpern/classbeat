@@ -1,8 +1,8 @@
 """The English catalogue: every string of every mail, subjects included (ADR 0022 section 2).
 
 Ids are an ``Enum`` so a typo is an error, not a missing string. Placeholders are ``str.format``
-names. Nothing here is markup: the layout escapes. Multilingual mail (milestone ML) adds a
-catalogue per locale next to this one and changes ``mail_locale`` only.
+names. Nothing here is markup: the layout escapes. ``sv.py`` and ``da.py`` (milestone ML, #671) sit
+next to this one with the same ids; ``catalogue.py`` picks one by locale.
 """
 
 from datetime import UTC, datetime
@@ -321,6 +321,24 @@ CATALOGUE: dict[S, str] = {
 }
 
 
+MONTHS = (
+    "January",
+    "February",
+    "March",
+    "April",
+    "May",
+    "June",
+    "July",
+    "August",
+    "September",
+    "October",
+    "November",
+    "December",
+)
+
+
 def format_when(when: datetime) -> str:
-    """A time for a notice, always in UTC and always saying so."""
-    return when.astimezone(UTC).strftime("%d %B %Y, %H:%M UTC").lstrip("0")
+    """A time for a notice, always in UTC and always saying so. Built by hand from the catalogue's
+    month names: ``strftime("%B")`` follows the process-wide C locale (ADR 0023 section 5)."""
+    utc = when.astimezone(UTC)
+    return f"{utc.day} {MONTHS[utc.month - 1]} {utc.year}, {utc:%H:%M} UTC"

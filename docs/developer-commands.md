@@ -123,8 +123,12 @@ certificate must match instead of the system store, for Proton Mail Bridge; veri
 check stay on, see `docs/runbooks/proton-bridge-smtp.md`); `CLASSBEAT_MAIL_SUPPORT_ADDRESS` (compose.prod: `MAIL_SUPPORT_ADDRESS`; bare
 address, default `support@classbeat.eu`, ADR 0022) is the support `mailto:` and `Reply-To` of every
 mail; the mailbox must exist before deploy. Mail layout: `classbeat/emails/`; golden files in
-`backend/tests/mail_golden/` are regenerated with `uv run python tests/mailgolden.py` (from
-`backend/`) after an intended change; the logo `frontend/public/email/logo.png` is rendered from
+`backend/tests/mail_golden/` (English) and `backend/tests/mail_golden/<locale>/` (Swedish, Danish; ML6) are
+regenerated with `uv run python tests/mailgolden.py` (from `backend/`) after an intended change; the
+catalogues are `classbeat/emails/locales/<code>.py` and a string one of them still lacks is listed in
+`locales/untranslated.py` (empty at merge; a missing string sends English, ADR 0023 section 5);
+the language of a mail is chosen by the caller (`locale=` on `emails.build`/`render`/`send`) or, for an
+optional kind, read from `users.locale` through the prefs lookup (`emails.catalogue.mail_locale`); the logo `frontend/public/email/logo.png` is rendered from
 `scripts/email-logo.svg` by `scripts/render-email-logo.sh`, and `/email/*` is served with
 `Cross-Origin-Resource-Policy: cross-origin` and a one-week cache; the matching
 `CLASSBEAT_DATABASE_PASSWORD` and `CLASSBEAT_DATABASE_OWNER_PASSWORD` variables are ignored.

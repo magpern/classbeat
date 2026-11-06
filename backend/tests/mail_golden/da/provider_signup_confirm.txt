@@ -1,0 +1,14 @@
+Bekræft din konto
+=================
+
+Nogen loggede ind med Google og bad om at oprette en classbeat-konto med denne adresse. For at gøre det færdigt skal du åbne linket nedenfor i den samme browser (gyldigt i 24 timer).
+
+Bekræft konto:
+https://classbeat.example.test/signup/confirm#token=SAMPLE
+
+Hvis det ikke var dig, kan du se bort fra denne mail. Der oprettes ingen konto.
+
+--
+Du får denne mail, fordi nogen har brugt denne e-mailadresse på classbeat.
+classbeat: https://classbeat.example.test
+Spørgsmål? Skriv til support@classbeat.eu

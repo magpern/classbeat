@@ -6,6 +6,7 @@ Every string is escaped here and nowhere else; every link passes ``check_link``.
 """
 
 from dataclasses import dataclass
+from datetime import datetime
 from html import escape
 from typing import assert_never
 
@@ -20,8 +21,8 @@ from classbeat.emails.blocks import (
     Note,
     Paragraph,
 )
-from classbeat.emails.catalogue import translator
-from classbeat.emails.locales.en import S, format_when
+from classbeat.emails.catalogue import format_when, translator
+from classbeat.emails.locales.en import S
 from classbeat.emails.urls import check_link
 
 
@@ -50,6 +51,9 @@ class Ctx:
 
     def t(self, string_id: S, **params: object) -> str:
         return translator(self.locale)(string_id, **params)
+
+    def when(self, when: datetime) -> str:
+        return format_when(self.locale, when)
 
 
 def _e(value: str) -> str:
@@ -81,7 +85,7 @@ def render_text(
             case Bullets(items):
                 out += [*(f"- {item}" for item in items), ""]
             case EventTime(label, when):
-                out += [f"{label}: {format_when(when)}", ""]
+                out += [f"{label}: {ctx.when(when)}", ""]
     out += ["--", content.reason, f"{ctx.t(S.FOOTER_SITE)}: {_link(ctx, ctx.base_url)}"]
     out.append(f"{ctx.t(S.FOOTER_SUPPORT)} {ctx.branding.support_address}")
     if ctx.branding.footer:
@@ -135,7 +139,7 @@ def _html_block(ctx: Ctx, block: Block) -> str:
         case EventTime(label, when):
             return (
                 f'<p style="margin:0 0 16px 0;font-size:14px;line-height:21px;'
-                f'color:{theme.MUTED};">{_e(label)}: <strong>{_e(format_when(when))}'
+                f'color:{theme.MUTED};">{_e(label)}: <strong>{_e(ctx.when(when))}'
                 "</strong></p>"
             )
         case _:

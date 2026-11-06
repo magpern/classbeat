@@ -15,6 +15,7 @@ from uuid import UUID
 from sqlalchemy import delete, func, select, text, update
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncSession
 
+from classbeat.auth import locale as account_locale
 from classbeat.auth import mails
 from classbeat.auth.devices import forget_devices
 from classbeat.auth.events import record_event
@@ -105,7 +106,8 @@ async def wipe_mail(settings: Settings, db: AsyncSession, event: WipeEvent) -> M
             )
         )
         token = await issue_token(db, RESET_PURPOSE, event.user_id, RESET_LIFETIME)
-    return mails.connections_wiped_notice(settings, event.email, event.providers, token)
+    language = await account_locale.mail_locale_of(db, settings, event.user_id)
+    return mails.connections_wiped_notice(settings, event.email, event.providers, token, language)
 
 
 async def mark_wipe_mailed(db: AsyncSession, event_id: UUID) -> None:

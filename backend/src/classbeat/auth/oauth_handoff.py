@@ -107,12 +107,15 @@ async def submit_email(
             pass  # already filled in: same answer, nothing changes
         elif await find_user(db, body.email) is not None:
             # The row keeps no email or token and simply expires at its 15 minutes.
-            message = mails.account_exists(settings, body.email)
+            message = mails.account_exists(
+                settings, body.email, account_locale.for_request(request, body.locale)
+            )
         else:
             token = new_token()
             # The request's language (the row's when the request names none) goes in the same
             # update, and ``confirm_provider_signup`` copies it to the new account.
             locale = account_locale.for_new_account(request, body.locale, row.locale)
+            mail_locale = account_locale.chosen(request, body.locale, row.locale)
             filled = await db.execute(
                 update(pending_signups)
                 .where(pending_signups.c.id == row.id, pending_signups.c.email.is_(None))
@@ -127,7 +130,7 @@ async def submit_email(
             )
             if filled.first() is not None:
                 message = mails.provider_signup_confirmation(
-                    settings, body.email, row.provider, token
+                    settings, body.email, row.provider, token, mail_locale
                 )
     if message is not None:
         background.add_task(send_logged, mailer(request), message)
@@ -196,4 +199,8 @@ async def confirm_provider_signup(
         raise _refuse(status, exc.code) from None
     clear_pending_cookie(response)
     # An account was created, not a method added: the welcome names the provider (ADR 0022 s.7).
-    queue(background, request, Notice("welcome", pending.email, {"provider": pending.provider}))
+    queue(
+        background,
+        request,
+        Notice("welcome", pending.email, {"provider": pending.provider}, locale=pending.locale),
+    )

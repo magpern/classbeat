@@ -16,6 +16,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import delete, select, update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from classbeat.auth import locale as account_locale
 from classbeat.auth import mails
 from classbeat.auth.accounts import find_user
 from classbeat.auth.clientip import bucket_ip
@@ -97,7 +98,8 @@ class Done(BaseModel):
 async def reset_mail(settings: Settings, db: AsyncSession, user_id: UUID, email: str):
     """Issue a reset token for the user and build the mail."""
     token = await issue_token(db, PURPOSE, user_id, RESET_LIFETIME)
-    return mails.password_reset(settings, email, token)
+    language = await account_locale.mail_locale_of(db, settings, user_id)
+    return mails.password_reset(settings, email, token, language)
 
 
 def make_reset_link_sender(

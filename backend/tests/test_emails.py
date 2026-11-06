@@ -127,8 +127,8 @@ def test_every_catalogue_string_is_used_by_some_kind() -> None:
     assert not set(S) - used
 
 
-def test_the_locale_is_english() -> None:
-    assert mail_locale(None) == mail_locale(object()) == "en"
+def test_the_locale_is_english_without_an_offered_stored_code() -> None:
+    assert mail_locale(None) == mail_locale(object()) == mail_locale("sv") == "en"
 
 
 def test_a_time_is_shown_in_utc() -> None:
