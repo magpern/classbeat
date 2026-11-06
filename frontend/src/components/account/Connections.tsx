@@ -3,13 +3,15 @@ import { ApiError } from '../../api/client'
 import {
   connectMowl,
   disconnectMowl,
-  getConnections,
+  getConnectionsView,
   type Connection,
 } from '../../api/connections'
 import { errorMessage } from '../../api/messages'
 import { useGuard } from '../../auth/prompts'
 import { date as formatDate } from '../../i18n/format'
+import { useLayout } from '../../hooks/useLayout'
 import { Field, Notice, Section, useAction } from '../forms'
+import { MowlQr } from './MowlQr'
 import { FORGET_WARNING } from './mowlWarning'
 
 // Plain words for the ADR 0004 section 5 categories. The raw code is never shown.
@@ -47,6 +49,9 @@ function since(iso: string): string {
 export function Connections() {
   const guard = useGuard()
   const [mowl, setMowl] = useState<Connection | null | undefined>(undefined)
+  // ADR 0024: the QR panel, when the server offers it and the layout is wider than a phone's.
+  const [qrEnabled, setQrEnabled] = useState(false)
+  const layout = useLayout()
   const [loadFailed, setLoadFailed] = useState(false)
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -55,15 +60,17 @@ export function Connections() {
   const action = useAction()
 
   const load = useCallback(async () => {
-    const all = await getConnections()
-    setMowl(all.find((item) => item.provider === 'mowl') ?? null)
+    const view = await getConnectionsView()
+    setMowl(view.connections.find((item) => item.provider === 'mowl') ?? null)
   }, [])
 
   useEffect(() => {
     let current = true
-    getConnections().then(
-      (all) => {
-        if (current) setMowl(all.find((item) => item.provider === 'mowl') ?? null)
+    getConnectionsView().then(
+      (view) => {
+        if (!current) return
+        setMowl(view.connections.find((item) => item.provider === 'mowl') ?? null)
+        setQrEnabled(view.mowlQrEnabled)
       },
       () => {
         if (current) setLoadFailed(true)
@@ -88,6 +95,11 @@ export function Connections() {
       })
     setEmail(sent.email)
   }
+
+  const scanned = useCallback((connection: Connection) => {
+    setMowl(connection)
+    setNote('MOWL is connected.')
+  }, [])
 
   const disconnect = () => {
     setNote(null)
@@ -126,13 +138,14 @@ export function Connections() {
           ) : null}
         </ul>
       ) : null}
+      {needsForm && mowl ? (
+        <p className="notice" data-kind="info" data-testid="reconnect-warning">
+          Connecting again replaces the stored sign-in. {FORGET_WARNING}
+        </p>
+      ) : null}
+      {needsForm && qrEnabled && layout !== 'phone' ? <MowlQr onConnected={scanned} /> : null}
       {needsForm ? (
         <form onSubmit={connect}>
-          {mowl ? (
-            <p className="notice" data-kind="info" data-testid="reconnect-warning">
-              Connecting again replaces the stored sign-in. {FORGET_WARNING}
-            </p>
-          ) : null}
           <p>
             Sign in with your Intelligent Cycling (MOWL) account. classbeat uses your password once
             to get a sign-in token and does not keep it.

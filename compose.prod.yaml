@@ -20,6 +20,7 @@
 #   SMTP_HOST, SMTP_SENDER                                                                required
 #   SMTP_PORT, SMTP_TLS, SMTP_USERNAME, ADMIN_EMAILS, SIGNUP_MODE, CONNECTION_KEK_ID,
 #   MODEL_PROVIDER, DEEPSEEK_ENABLED, SWEDEBEAT_ENABLED, RUNNING_ENABLED, SMTP_CA_FILE    optional
+#   MOWL_QR_ENABLED (ADR 0024, default false)                                             optional
 #   OAUTH_GOOGLE_CLIENT_ID, OAUTH_GITHUB_CLIENT_ID, OAUTH_MICROSOFT_CLIENT_ID (not secret),
 #   OAUTH_VISIBLE_PROVIDERS (default google)                                              optional
 # Secrets are files under ./secrets (mounted as Docker secrets, never environment variables), group
@@ -172,6 +173,8 @@ services:
       CLASSBEAT_RUNNING_ENABLED: ${RUNNING_ENABLED:-false}
       # ADR 0007 (soundless classes): off unless the owner switches them on, after the live checks.
       CLASSBEAT_SOUNDLESS_ENABLED: ${SOUNDLESS_ENABLED:-false}
+      # ADR 0024 (#647): connect MOWL by QR code, web only; off until the owner's live scan.
+      CLASSBEAT_MOWL_QR_ENABLED: ${MOWL_QR_ENABLED:-false}
       # Opt-in (docs/runbooks/proton-bridge-smtp.md): a mounted PEM that the SMTP certificate must
       # match instead of the system store. Web only; unset keeps full system-store verification.
       CLASSBEAT_SMTP_CA_FILE: ${SMTP_CA_FILE:-}

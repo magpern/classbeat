@@ -12,15 +12,17 @@ Revision 2 (2026-11-06) applied the owner's answers to revision 1's questions:
 
 1. Languages: **English** (source and fallback), **Swedish (`sv`)** and **Danish (`da`)**, all three
    in this milestone.
-2. **No human proofreading.** Translations are drafted and reviewed by Opus-class agents in separate
-   contexts: a translator (the PR's Developer), then an independent Reviewer of the translations (the
-   Reviewer role of AGENTS.md). CI completeness and placeholder checks are the quality gate.
-3. Translator and translation reviewer: Opus 5.5 today. AGENTS.md names model classes, not versions,
-   so this plan says **Opus-class**: the current Opus generation (Opus 5.5 at the time of writing).
+2. **No human proofreading.** Translations are drafted by a Sonnet translator (the PR's Developer) and
+   reviewed by an independent Opus-class Reviewer of the translations (the Reviewer role of AGENTS.md),
+   in separate contexts. CI completeness and placeholder checks are the quality gate.
+3. Translator: Sonnet; translation reviewer: Opus-class. Owner decision, 2026-11-06 (given in session,
+   after the first revision of this plan): translation PRs have a Sonnet Developer instead of an
+   Opus-class one; the Reviewer stays Opus-class. AGENTS.md names model classes, not versions, so this
+   plan says **Opus-class**: the current Opus generation (Opus 5.5 at the time of writing).
 4. **Generated classes stay English.** Brief, prompts and eval suites are unchanged in ML. A class
    language is a possible later milestone; nothing here blocks it (section 6).
 5. The admin area is English only.
-6. Legal and consent sentences: drafted by an Opus-class translator and checked by an independent
+6. Legal and consent sentences: drafted by a Sonnet translator and checked by an independent
    Opus-class Reviewer; no owner sign-off.
 
 ## Context
@@ -212,17 +214,18 @@ A small in-house typed catalogue, no library:
   `conversion`, so `{x.attr}`, `{x[0]}`, `{n:>999999999}` and `{n!r}` all fail; frontend: only
   `{name}`); no markup in any string; plural forms present for each language's `Intl.PluralRules`
   categories.
-- **Translation by agents, reviewed by agents** (owner, 2026-11-06): a translation PR's Developer is an
-  **Opus-class translator**; its Reviewer is an **independent Opus-class** context, the PR's one
+- **Translation by agents, reviewed by agents** (owner, 2026-11-06): a translation PR's Developer is a
+  **Sonnet translator** (owner, 2026-11-06, staffing change: not Opus-class); its Reviewer is an **independent Opus-class** context, the PR's one
   Reviewer under the unchanged review gate, that checks every changed string against the English for meaning,
   register (informal "du", as Swedish and Danish apps use), terminology from the glossary
   `docs/i18n/glossary.md` (zone, cooldown, FTP test, cadence, intervals, the MOWL app's own words where
   public), placeholders, and that security, consent and legal sentences keep their exact meaning.
   No human proofreads; there is no sign-off step beyond the agent `PASS`.
 - **Swedish and Danish text is written only in dedicated translation PRs**: ML6 (mail), ML7 (app) and
-  later **catch-up translation PRs**, each with an Opus-class Developer (translator) and an
+  later **catch-up translation PRs**, each with a Sonnet Developer (translator) and an
   independent Opus-class Reviewer. These PRs run in **Claude Code**: the Codex and Cursor entry points
-  have no Opus-class model (Amendments 10 and 11), so they never author or review `sv`/`da` content.
+  have no Opus-class model for the Reviewer (Amendments 10 and 11), so they never author or review
+  `sv`/`da` content.
 - **Feature PRs add English keys only**, whatever their Developer. To keep `sv`/`da` from falling
   behind silently, each catalogue has an **untranslated list** (`frontend/src/i18n/untranslated.json`,
   `emails/locales/untranslated.py`): keys present in English and allowed to be missing in `sv`/`da`,
@@ -323,7 +326,8 @@ model's English; the page keeps `patternNotes.ts` keyed by rule id.
 
 - **Translations are not reviewed by any human** (owner decision, 2026-11-06). Wrong, unnatural or
   misleading Swedish and Danish text can reach users; the only checks are an independent Opus-class
-  Reviewer and CI's structural checks. The owner accepted this; `CLASSBEAT_LOCALES` can switch a
+  Reviewer (the translator is Sonnet, which makes that review the main quality gate) and CI's
+  structural checks. The owner accepted this; `CLASSBEAT_LOCALES` can switch a
   language off.
 - **Legal and consent sentences** (the beta line in `AuthScreen.tsx`, Spotify pool consent, account
   deletion and export confirmations) are legal texts **without human or legal review** in Swedish and
@@ -334,7 +338,7 @@ model's English; the page keeps `patternNotes.ts` keyed by rule id.
 - **Drift**: between a feature PR and the next catch-up translation PR, new keys show English to
   Swedish and Danish users. The untranslated list makes the gap visible and CI-checked; the
   Orchestrator keeps it short.
-- **Codex and Cursor sessions cannot do translation PRs** (no Opus-class model); translation work
+- **Codex and Cursor sessions cannot do translation PRs** (no Opus-class Reviewer); translation work
   waits for a Claude Code session.
 - **Mixed-language screens**: a Swedish or Danish UI shows English class text (section 6), and English
   song and playlist names.
@@ -360,8 +364,8 @@ goes before a planned redesign only if the auth and landing screens are not part
 | ML4 (#666) | `feat(api): job and Spotify sentences as codes` | Sonnet | Sonnet | ML1 |
 | ML5a, ML5c, ML5d (#667, #669, #670) | `refactor(i18n): move <area> strings to the catalogue` | Sonnet | Sonnet | ML3 (c, d: after a planned redesign, if any) |
 | ML5b (#668) | `refactor(i18n): move new class, job and songs strings to the catalogue` | Sonnet | Sonnet | ML3, ML4 (after a planned redesign, if any) |
-| ML6 (#671) | `feat(mail): Swedish and Danish account mail` | Opus-class (translator) | Opus-class | ME1 to ME4, ML2 |
-| ML7 (#672) | `feat(i18n): Swedish and Danish app catalogues` | Opus-class (translator) | Opus-class | ML4, ML5a to ML5d, ML6 |
+| ML6 (#671) | `feat(mail): Swedish and Danish account mail` | Sonnet (translator) | Opus-class | ME1 to ME4, ML2 |
+| ML7 (#672) | `feat(i18n): Swedish and Danish app catalogues` | Sonnet (translator) | Opus-class | ML4, ML5a to ML5d, ML6 |
 | ML8 (#673) | `test(i18n): ML done-when suite` | Sonnet | Sonnet | ML6, ML7 |
 
 ### ML1 translation runtime and locale formatting
