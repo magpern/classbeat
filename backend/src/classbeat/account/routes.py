@@ -17,7 +17,7 @@ import json
 from datetime import UTC, datetime
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Request, Response
+from fastapi import APIRouter, BackgroundTasks, Depends, Request, Response
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -25,6 +25,7 @@ from classbeat import auth, quota
 from classbeat.account import erase
 from classbeat.account.export import build_export
 from classbeat.context import UserContext
+from classbeat.emails.notices import Notice, queue
 
 router = APIRouter(prefix="/api/account", tags=["account"])
 
@@ -69,14 +70,20 @@ async def post_export(
 async def post_delete(
     request: Request,
     body: DeleteIn,
+    background: BackgroundTasks,
     ctx: Annotated[UserContext, Depends(auth.require_recent_auth)],
 ) -> Response:
     factory = request.app.state.session_factory
     if not await erase.confirmed(factory, ctx, body.confirm_email):
         return _refusal("confirmation_mismatch", 400)
+    target = await erase.mail_target(factory, ctx)  # before the cascade
     await erase.end_jobs(factory, ctx, ledger(request))
     if not await erase.delete_row(factory, ctx):
         return _refusal("not_found", 404)
+    if target is not None:
+        address, prefs = target
+        notice = Notice("account_deleted", address, {"when": datetime.now(UTC)}, prefs)
+        queue(background, request, notice)
     out = Response(status_code=204)
     auth.clear_session_cookie(out)
     return out

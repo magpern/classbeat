@@ -1,0 +1,13 @@
+Your account was deleted
+========================
+
+Your classbeat account and the data stored with it were deleted. Nothing more is kept under this address.
+
+When it happened: 6 November 2026, 12:30 UTC
+
+If this wasn't you, tell us right away. Contact us at support@classbeat.eu
+
+--
+You got this because your classbeat account was deleted. This is the only mail about it.
+classbeat: https://classbeat.example.test
+Questions? Write to support@classbeat.eu

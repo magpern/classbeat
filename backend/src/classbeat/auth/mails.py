@@ -47,10 +47,6 @@ def provider_signup_confirmation(
     return emails.render(settings, "provider_signup_confirm", to, params)
 
 
-def identity_linked_notice(settings: Settings, to: str, provider: str) -> MailMessage:
-    return emails.render(settings, "identity_linked", to, {"provider": provider, "when": _now()})
-
-
 def connections_wiped_notice(
     settings: Settings, to: str, providers: tuple[str, ...], reset_token: str | None
 ) -> MailMessage:

@@ -18,7 +18,6 @@ from sqlalchemy import delete, func, insert, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from classbeat.auth import mails
 from classbeat.auth.accounts import create_user, find_user, grant_admin_if_listed, use_invite
 from classbeat.auth.anomaly import client_mark
 from classbeat.auth.devices import remember_device
@@ -36,8 +35,8 @@ from classbeat.auth.sessions import (
 from classbeat.auth.tables import identities, invites, pending_signups
 from classbeat.auth.userlock import lock_user, session_alive
 from classbeat.config import Settings
+from classbeat.emails.notices import Notice, happened
 from classbeat.flags import effective as flags
-from classbeat.mail import MailMessage
 
 REAUTH_MAX_AGE = 300  # seconds: auth_time must be within the last 5 minutes
 AUTH_TIME_SKEW = 60
@@ -69,7 +68,7 @@ class Outcome:
     issued: IssuedSession | None = None
     device_token: str | None = None
     new_pending_token: str | None = None
-    mail: MailMessage | None = None
+    notice: Notice | None = None
     next: str = ""  # "signed_in", "linked", "reauthed" or "email_needed"
     # Why a non-ok outcome happened, for the operator's log line (#522): a fixed word, never a
     # code, state, nonce, token or email.
@@ -126,8 +125,8 @@ async def _link(db: AsyncSession, req: Request) -> Outcome:
             ip=req.ip,
             detail={"provider": req.flow.provider},
         )
-        mail = mails.identity_linked_notice(req.settings, info.email, req.flow.provider)
-        return Outcome("ok", mail=mail, next="linked")
+        notice = happened("identity_linked", info.email, provider=req.flow.provider)
+        return Outcome("ok", notice=notice, next="linked")
     owner = await identity_owner(db, req.flow.provider, ident.subject)
     if owner is not None and owner[0] == user_id:
         return Outcome("ok", next="linked")  # already linked to this very account
@@ -303,7 +302,8 @@ async def _create_account(db: AsyncSession, req: Request, email: str) -> Outcome
         return _fail(exc.code)
     await record_event(db, "signup_confirmed", user_id=user_id, ip=req.ip)
     outcome = await _session_for(db, req, user_id)
-    outcome.mail = mails.identity_linked_notice(req.settings, email, req.flow.provider)
+    # An account was created, not a method added: the welcome names the provider (ADR 0022 s.7).
+    outcome.notice = Notice("welcome", email, {"provider": req.flow.provider})
     return outcome
 
 

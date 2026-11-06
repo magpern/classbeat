@@ -109,8 +109,9 @@ async def test_new_google_user_with_a_verified_email_signs_up_and_in(
     assert await oenv.scalar("SELECT used_by IS NOT NULL FROM invites") is True
     assert await oenv.scalar("SELECT count(*) FROM oauth_flows") == 0
     await asyncio.sleep(0.3)
-    [mail] = smtp.to("g@example.com")  # every new link mails the account address
-    assert "Google" in mail.text
+    [mail] = smtp.to("g@example.com")  # the welcome replaces "sign-in method added" here
+    assert mail.subject == "Welcome to classbeat"
+    assert "You can sign in with Google." in mail.text
     assert (await browser.get("/api/auth/session")).json()["user"]["email"] == "g@example.com"
 
 

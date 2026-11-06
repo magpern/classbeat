@@ -144,6 +144,9 @@ async def test_the_email_form_ignores_provider_subject_and_invite_from_the_clien
     # The invite of the row was consumed, the one the client sent was not.
     assert await oenv.scalar("SELECT count(*) FROM invites WHERE used_at IS NOT NULL") == 1
     assert await oenv.scalar("SELECT used_at IS NULL FROM invites WHERE used_by IS NULL") is True
+    await asyncio.sleep(0.3)
+    [welcome] = [m for m in smtp.to("new@example.com") if m.subject == "Welcome to classbeat"]
+    assert "You can sign in with Microsoft." in welcome.text
 
 
 async def test_without_a_pending_row_the_email_form_does_nothing(
@@ -254,6 +257,8 @@ async def test_parallel_confirmations_create_one_account(
     )
     assert sorted(r.status_code for r in results) == [200, 400, 400, 400]
     assert await oenv.scalar("SELECT count(*) FROM users") == 1
+    await asyncio.sleep(0.3)
+    assert [m.subject for m in smtp.to("new@example.com")].count("Welcome to classbeat") == 1
 
 
 async def test_a_provider_token_is_not_a_password_sign_up(

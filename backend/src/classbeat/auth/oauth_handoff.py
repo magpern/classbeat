@@ -26,6 +26,7 @@ from classbeat.auth.ratelimit import SIGNUP_ADDRESS, SIGNUP_IP, Bucket, password
 from classbeat.auth.tables import pending_signups
 from classbeat.db import system_session
 from classbeat.emailnorm import normalize_email
+from classbeat.emails.notices import Notice, queue
 from classbeat.mail import MailMessage, send_logged
 
 router = APIRouter(prefix="/api/auth/oauth", tags=["auth"])
@@ -183,8 +184,5 @@ async def confirm_provider_signup(
         status = 400 if exc.code == "invalid_token" else 409
         raise _refuse(status, exc.code) from None
     clear_pending_cookie(response)
-    background.add_task(
-        send_logged,
-        mailer(request),
-        mails.identity_linked_notice(settings, pending.email, pending.provider),
-    )
+    # An account was created, not a method added: the welcome names the provider (ADR 0022 s.7).
+    queue(background, request, Notice("welcome", pending.email, {"provider": pending.provider}))

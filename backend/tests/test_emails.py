@@ -49,8 +49,18 @@ def parse(html: str) -> Links:
 # --- registry and catalogue -------------------------------------------------------------------
 
 
-def test_the_registry_holds_the_eleven_existing_kinds() -> None:
-    assert len(REGISTRY) == 11
+def test_the_registry_holds_the_existing_kinds_and_the_new_notices() -> None:
+    assert len(REGISTRY) == 16
+    assert {k.id for k in KINDS if k.category is Category.WELCOME} == {"welcome"}
+    assert {k.id for k in KINDS if k.category is Category.ACCOUNT_ACTIVITY} == {
+        "totp_enrolled",
+        "mfa_failures",
+        "identity_linked",
+        "password_changed",
+        "account_deleted",
+        "identity_unlinked",
+        "totp_removed",
+    }
     essential = {k.id for k in KINDS if k.essential}
     assert essential == {
         "signup_confirm",
@@ -117,7 +127,7 @@ def test_a_time_is_shown_in_utc() -> None:
     assert format_when(datetime(2026, 11, 6, 12, 30, tzinfo=UTC)) == "6 November 2026, 12:30 UTC"
 
 
-# --- the subjects and bodies of the 11 builders ----------------------------------------------
+# --- the subjects of every builder ----------------------------------------------
 
 SUBJECTS = {
     "signup_confirm": "Confirm your classbeat account",
@@ -131,6 +141,11 @@ SUBJECTS = {
     "mfa_failures": "Failed two-factor attempts on your classbeat account",
     "identity_linked": "A sign-in method was added to your classbeat account",
     "connections_wiped": "Your classbeat connections were removed",
+    "welcome": "Welcome to classbeat",
+    "password_changed": "Your classbeat password was changed",
+    "account_deleted": "Your classbeat account was deleted",
+    "identity_unlinked": "A sign-in method was removed from your classbeat account",
+    "totp_removed": "Two-factor authentication was turned off on your classbeat account",
 }
 
 

@@ -35,7 +35,7 @@ from classbeat.auth.deps import (
     require_user,
 )
 from classbeat.auth.events import record_event
-from classbeat.auth.flowtools import factory, mailer, reserve, user_agent
+from classbeat.auth.flowtools import factory, reserve, user_agent
 from classbeat.auth.oauth_client import OAuthRuntime, ProviderError, authorization_url, identify
 from classbeat.auth.oauth_outcomes import Outcome, apply
 from classbeat.auth.oauth_outcomes import Request as OutcomeRequest
@@ -45,8 +45,8 @@ from classbeat.auth.ratelimit import OAUTH_IP, Bucket
 from classbeat.auth.sessions import SessionInfo
 from classbeat.auth.signup_routes import valid_invite
 from classbeat.db import system_session
+from classbeat.emails.notices import queue
 from classbeat.flags import effective as flags
-from classbeat.mail import send_logged
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["auth"])
@@ -281,6 +281,5 @@ async def callback(
         set_device_cookie(response, outcome.device_token)
     if outcome.new_pending_token is not None:
         set_pending_cookie(response, outcome.new_pending_token)
-    if outcome.mail is not None:
-        background.add_task(send_logged, mailer(request), outcome.mail)
+    queue(background, request, outcome.notice)
     return response
