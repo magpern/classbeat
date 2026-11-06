@@ -339,6 +339,9 @@ The request carries no referrer, no classbeat cookie and no classbeat data. The 
 and browser still reach Spotify's CDN; the M6 privacy notice says so. This is the one place the
 browser contacts a third party, and it changes a guard test, so UI7 has an Opus review.
 
+> Amended by [ADR 0022](0022-account-emails.md): the CSP's `frame-src` becomes `'self'` for the admin
+> mail preview iframe, and that preview route keeps its own CSP.
+
 **Contracts this amends in part** (each carries an "amended by ADR 0013 §9" note):
 
 - **ADR 0009 §10.** "`images` … values from responses are not requested, stored or shown" gains

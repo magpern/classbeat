@@ -4,7 +4,7 @@
 
 The owner approved the plan [docs/plans/account-emails.md](plans/account-emails.md) (revision 3) on
 2026-11-05. [ADR 0022](adr/0022-account-emails.md) records the design and is Accepted when its PR
-(#651) merges. (The plan and issues call it "ADR 0018" and "Amendment 12"; both numbers were
+(#658 for issue #651) merges. (The plan and issues call it "ADR 0018" and "Amendment 12"; both numbers were
 already taken by M8, so the next free numbers are used.) The milestones below are added to the
 milestone table.
 
@@ -14,6 +14,8 @@ milestone table.
 | MH | Help and contact (#650): **placeholder only**, not planned | Planned later by the Architect |
 | ML | Multilingual support (#657): a later milestone, not planned; ME keeps all strings in a catalogue so it can follow | Planned later by the owner and Architect |
 
+- **CSP change** (ADR 0022, amends ADR 0013 §9): app pages get `frame-src 'self'` for the admin mail
+  preview iframe; the preview response keeps its own CSP.
 - **Delivery is fire and forget** (ADR 0022 §4): one SMTP attempt, failures logged by error class,
   no retries, outbox or tracking.
 - **One intended trigger change:** on Google, GitHub or Microsoft account creation the welcome mail

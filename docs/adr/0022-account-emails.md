@@ -1,7 +1,7 @@
 # ADR 0022: Account emails (milestone ME, #649)
 
 Status: Accepted, subject to review (the owner approved the plan on 2026-11-05; this ADR is
-accepted when its PR, #651, merges after a `PASS`). The plan, revision 3, is
+accepted when its PR, #658 (issue #651), merges after a `PASS`). The plan, revision 3, is
 [docs/plans/account-emails.md](../plans/account-emails.md); where the two differ, fix the plan
 or amend this ADR in the PR that changes it.
 
@@ -75,8 +75,17 @@ application failure and never undoes the change that caused it.
 
 The worker never sends mail itself and never holds SMTP settings. The hand-off row carries the
 class id only; RLS by owner; cascade on account deletion; guard 12 entry, not exported. A cached
-mix sends nothing. ADR 0016's B2 verify job enqueues "class ready" the same way. ME5 (#656)
-depends on ME1 (#652) and A4 (#380), and on **ME4 (#655)** for the user preference it checks.
+mix sends nothing. The worker also skips the insert when the admin switch or the user's preference
+already has "class ready" off (the web side checks both again before sending).
+
+The take function is `SECURITY DEFINER` with `SET search_path = pg_catalog, pg_temp` and `EXECUTE`
+for the app role only, and is added to the queue digests. Retention: a purge of rows older than a
+day runs in the web process whether or not SMTP is configured, and `mail_handoff` has a guard 10
+retention entry, so the table cannot grow without SMTP.
+
+ME5 (#656) owns "class ready" for design jobs end to end and exposes one enqueue helper; ADR
+0016's B2 verify job calls that same helper in B2's own PR, not in ME5. ME5 depends on ME1 (#652),
+A4 (#380) and **ME4 (#655)** for the user preference it checks.
 
 **5. Preferences and unsubscribe token.** `users` gets `mail_unsubscribed_all` and
 `mail_opted_out` (categories), in the GDPR export. Optional mails carry a link
@@ -87,12 +96,34 @@ fields under an HKDF key derived from `app_secret_key` with a new info string (A
 `mail-unsubscribe` entry added there by ME4). It can only turn that category or "all" **off**,
 never sign in or turn anything on. GET never changes anything (link scanners); the page POSTs.
 The route is exempt from the Origin check, rate-limited per IP, checks the HMAC in constant time
-and the expiry, and answers the same for an unknown user. Rotating `app_secret_key` invalidates
+and the expiry, and answers the same for an unknown user. The token is in a query string (RFC 8058), so ME4 adds
+the route to ADR 0003 §10's never-logged list and to the log redactor, and notes in the SWAG
+runbook that the reverse proxy logs request lines. Rotating `app_secret_key` invalidates
 outstanding links; the account page still works.
 
 **6. Admin switches.** `mail_kinds_disabled` lists kind ids; only `admin_can_disable` kinds are
 accepted. Preview and "Send test to me" bypass the switch and preferences but use the normal
-renderer and SMTP send. The preview is served as a sandboxed iframe with a strict CSP.
+renderer and SMTP send. The preview is shown in a sandboxed iframe; see the CSP amendment below.
+
+**CSP amendment (amends ADR 0013 §9).** Context: the app's CSP has `frame-src 'none'` and
+`frame-ancestors 'none'`, and `SecurityHeaders` sets the CSP on every response. A same-origin
+preview iframe on the admin page needs two changes. Decision:
+
+- App pages change `frame-src 'none'` to `frame-src 'self'` (same-origin framing only).
+  `frame-ancestors 'none'` stays for every response except the preview.
+- `SecurityHeaders` does not overwrite the CSP of `GET /api/admin/mail/{kind}/preview`. That
+  response keeps its own: `default-src 'none'; style-src 'unsafe-inline'; img-src <base>/email/;
+  frame-ancestors 'self'; sandbox`, plus `X-Content-Type-Options: nosniff` and
+  `Cache-Control: no-store`.
+- ME2 (#653) implements both and tests them: the exemption is for that one route, and every other
+  response keeps `frame-ancestors 'none'`.
+
+Alternatives considered: (1) a `srcdoc` iframe, which still needs `frame-src`; (2) no iframe, a
+text-only or download preview, which cannot show the layout the admin is designing; (3) a separate
+origin for previews, too heavy for one admin page. Residual risk: `frame-src 'self'` lets an
+injected same-origin frame load on any page, but the app has no HTML injection path (ADR 0013) and
+frames stay same-origin; the preview route is admin-only, its sandbox has no `allow-scripts`, and
+all content in it is escaped by the one renderer.
 
 **7. The one intended trigger change.** On Google, GitHub or Microsoft **account creation**, the
 welcome mail (naming the provider) replaces the "sign-in method added" notice, which that flow

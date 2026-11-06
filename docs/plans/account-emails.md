@@ -20,7 +20,8 @@ Owner decisions (2026-11-05):
 - Templates in code; admin edits branding and switches email types on/off; hosted PNG logo;
   support address (mailto + Reply-To) replaces "the operator".
 - New emails: password changed, welcome, account deleted, sign-in method removed, two-factor
-  turned off, and **"class ready"** when a design (later: B2 verify) job that ran a fresh mix
+  turned off, and **"class ready"** when a design job (ME5 owns the producer; B2's verify job later calls the same
+  hand-off helper in its own PR) that ran a fresh mix
   analysis finishes (cached mix: none).
 - **Delivery is fire and forget**: one SMTP attempt, failures logged (error class only), no
   retries, tracking or delivery history. A mail not arriving is not an application failure.
@@ -83,8 +84,10 @@ Order: ME0 → ME1 → ME2, ME3, ME4 (any order) → ME5 (also needs A4 #380).
 - Rewrite the 11 builders on it; **triggers and subjects unchanged**; bodies get a heading, one
   button, "wasn't you?" with the support address; security notices show the event time.
 - Logo: `frontend/public/email/logo.png` (2x, tile + wordmark, `alt="classbeat"`) rendered once
-  from an SVG source by a Playwright script in `scripts/`; `Caddyfile`
-  `Cross-Origin-Resource-Policy: cross-origin` + long cache on `/email/*` only.
+  from an SVG source by a Playwright script in `scripts/`; the web process's static route
+  (`web.py` `_add_single_page_app`; this repository has no Caddyfile and the SWAG config stays
+  untouched) answers `/email/*` only with `Cross-Origin-Resource-Policy: cross-origin` and a long
+  cache.
 - `CLASSBEAT_MAIL_SUPPORT_ADDRESS` setting (default support mailbox, bare address).
 - Tests: `smtpfake` `.text`/`.html`; MIME structure; golden files
   `backend/tests/mail_golden/<kind>.{txt,html}` with a regenerate script; same links in both parts;
@@ -105,6 +108,9 @@ Order: ME0 → ME1 → ME2, ME3, ME4 (any order) → ME5 (also needs A4 #380).
   `POST /api/admin/mail/{kind}/test` (to the admin's own address, 10/hour, audited). Preview and
   test send **bypass the admin switch and user preferences** (a disabled kind can still be
   designed and tested) but use the normal renderer and SMTP send.
+- **Middleware exemption** (ADR 0022 §6, amends ADR 0013 §9): `SecurityHeaders` must not replace
+  the CSP of `GET /api/admin/mail/{kind}/preview`, and app pages get `frame-src 'self'`; a test
+  pins both and that `frame-ancestors 'none'` holds for every other response.
 - Admin page "Mail": Branding cards (sender name, support address, footer), Notification types
   (a switch per optional kind; essential ones shown locked "always sent"), preview in
   `<iframe sandbox src=…>` with HTML/text toggle, "Send test to me".
@@ -136,13 +142,17 @@ Order: ME0 → ME1 → ME2, ME3, ME4 (any order) → ME5 (also needs A4 #380).
   `app_secret_key` (ADR 0003 §8); the server decodes the fields, checks the HMAC in constant time
   and the expiry. It can only turn that category or "all" **off**, never sign in or turn anything on. The page asks
   "Unsubscribe from <category>" / "from all" and POSTs; GET never changes anything (link scanners).
-  The one-click route is exempt from the Origin check, rate-limited per IP, and answers the same
+  The route is added to ADR 0003 §10's never-logged list and to the log redactor, and noted in
+  the SWAG runbook (the proxy logs request lines). The one-click route is exempt from the Origin check, rate-limited per IP, and answers the same
   for an unknown user; an expired or bad token says "sign in to manage your emails".
 - Tests: token tamper/expiry/other-user, opt-out respected per category and for all, essential
   still sent, GET does nothing.
 
 ### ME5 `feat(jobs): "class ready" mail via a worker hand-off` — Opus dev (fenced job write), Opus reviewer
-Depends on ME1 and A4 (#380).
+Depends on ME1, ME4 (the preference it checks) and A4 (#380).
+ME5 owns the whole "class ready" feature for design jobs: the table, the worker insert, the web
+consumer and the mail. It exposes one enqueue helper. B2's verify job (ADR 0016) calls that same
+helper in B2's own PR; B2 is not in ME5's scope.
 - Table `mail_handoff(id, owner_id FK users ON DELETE CASCADE, kind, job_id, params jsonb
   (class id only), created_at)`, unique `(kind, job_id)`, RLS by owner, guard 12 entries (not
   exported; cascade).
@@ -151,6 +161,9 @@ Depends on ME1 and A4 (#380).
   attempt adds nothing extra. It skips the insert when the admin switch or the user's preference
   already has "class ready" off (cheap reads in the same transaction); the web side still checks
   both again just before sending.
+- Retention: a purge of rows older than a day runs in the web process whether or not SMTP is
+  configured, and `mail_handoff` has a guard 10 retention entry, so the table cannot grow
+  without SMTP.
 - The web process takes rows with one `SECURITY DEFINER` function
   (`SET search_path = pg_catalog, pg_temp`, `EXECUTE` for the app role only, added to the queue
   digests): `DELETE … WHERE id IN (SELECT … FOR UPDATE SKIP LOCKED LIMIT n) RETURNING …`, which
