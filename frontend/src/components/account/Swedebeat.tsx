@@ -10,6 +10,7 @@ import {
 } from '../../api/connections'
 import { errorMessage } from '../../api/messages'
 import { useGuard } from '../../auth/prompts'
+import { date as formatDate } from '../../i18n/format'
 import { Field, Notice, Section, useAction } from '../forms'
 import { Switch } from '../ui/switch'
 
@@ -46,8 +47,7 @@ function connectError(error: unknown): string {
 }
 
 function since(iso: string): string {
-  const date = new Date(iso)
-  return Number.isNaN(date.getTime()) ? iso : date.toLocaleDateString()
+  return formatDate(iso)
 }
 
 /**

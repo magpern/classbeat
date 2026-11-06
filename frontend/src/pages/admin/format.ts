@@ -1,12 +1,10 @@
 // Small display helpers shared by the admin pages. Everything shown is plain text.
+import { shortDate } from '../../i18n/format'
 
 /** `2026-10-31T12:00:00Z` as a day in the admin's locale; the raw value when it does not parse. */
 export function dayOf(value: string | null): string {
   if (value === null) return ''
-  const when = new Date(value)
-  return Number.isNaN(when.getTime())
-    ? value
-    : when.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })
+  return shortDate(value)
 }
 
 export function sourceLabel(source: string | null): string {

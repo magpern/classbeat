@@ -14,10 +14,10 @@ import { Button } from '../ui/button'
 import { Chip, ChipButton } from '../ui/chip'
 import { RevisionsPanel } from './RevisionsPanel'
 import { TssValue } from './TssValue'
+import { dateTime } from '../../i18n/format'
 
 function when(iso: string): string {
-  const date = new Date(iso)
-  return Number.isNaN(date.getTime()) ? '' : date.toLocaleString()
+  return dateTime(iso, '')
 }
 
 type Compared = { key: string; lines: string[]; title: string } | { key: string; failed: string }

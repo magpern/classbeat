@@ -3,6 +3,7 @@ import { getClass } from '../api/classes'
 import { getConnections } from '../api/connections'
 import type { Brief } from '../api/jobs'
 import { isClassBusy } from '../api/songMessages'
+import { dateTime } from '../i18n/format'
 
 // Helpers of the song pages: times as the page shows them, the brief a follow-up job needs, the
 // user's current connection ids, and the wait after `class_busy`.
@@ -21,8 +22,7 @@ export function roleLabel(role: string): string {
 
 /** A date and time for the expiry; a value that is not a time is shown as given. */
 export function whenText(iso: string): string {
-  const at = new Date(iso)
-  return Number.isNaN(at.getTime()) ? iso : at.toLocaleString()
+  return dateTime(iso)
 }
 
 export const MAX_BRIEF_TEXT = 2000

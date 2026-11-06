@@ -25,6 +25,7 @@ import { Button } from '../ui/button'
 import { Card, CardTitle } from '../ui/card'
 import { Chip } from '../ui/chip'
 import { ReconnectPrompt } from './ReconnectPrompt'
+import { dateTime } from '../../i18n/format'
 
 /** Swedebeat joins songs with about this much overlap (ADR 0016 section 7). */
 const CHANGE_SEC = 10
@@ -33,8 +34,7 @@ export const timing = { pollMs: 2000 }
 
 /** The local date and time of an ISO instant; the text as given if it does not parse. */
 function whenText(iso: string): string {
-  const at = new Date(iso)
-  return Number.isNaN(at.getTime()) ? iso : at.toLocaleString()
+  return dateTime(iso)
 }
 
 function verdictText(handoff: Handoff): { tone: 'ok' | 'warn'; text: string } | null {

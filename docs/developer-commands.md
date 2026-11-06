@@ -385,6 +385,11 @@ npm run build        # typecheck, then Vite writes frontend/dist
   merged with `cn()` from `src/lib/cn.ts`. Icons are `lucide-react`. New UI uses these, not new hand-written CSS.
 - Theme: `src/theme/theme.ts` and `ThemeSwitch` (Dark default, Light, Same as device) keep the choice in
   `localStorage` (try/catch, the page works without it); `public/theme-init.js` applies it before first paint.
+- Languages (ADR 0023, ML1): `src/i18n/` holds `locales.json` (the manifest, `["en"]`), `en.ts` (source catalogue),
+  `t()`/`plural()`/`useT()`/`Trans` and `catalogues.ts` (the static import map: one dynamic import per non-English
+  locale, never a path built from a locale). Dates, numbers, money and durations come from `src/i18n/format.ts`
+  (no `toLocale*` or `toFixed` for shown text). `public/locale-init.js` sets `<html lang>` before first paint and
+  its list must equal the manifest (`src/i18n/i18n.test.tsx`). `src/i18n/testing/xx.ts` is a test-only catalogue.
 - Fonts are bundled (`@fontsource-variable/inter`, `@fontsource/archivo` 700 and 800, SIL OFL) and served from
   our origin; nothing is requested from a third-party host at runtime (`src/no-third-party-hosts.test.ts`
   guards the sources), with **one allowed exception**: album and playlist covers from Spotify's image hosts

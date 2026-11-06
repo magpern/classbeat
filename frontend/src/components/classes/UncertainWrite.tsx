@@ -13,6 +13,7 @@ import { SAVE_OPERATION, UPDATE_OPERATION } from '../../api/saving'
 import { Button } from '../ui/button'
 import { CheckNeeded } from './CheckNeeded'
 import { Notice, useAction } from '../forms'
+import { time } from '../../i18n/format'
 
 function kindOf(operation: Operation): WriteKind | null {
   if (operation.kind === SAVE_OPERATION) return 'save'
@@ -57,8 +58,7 @@ function useNow(until: string | null): number {
 }
 
 function clockText(iso: string): string {
-  const at = new Date(iso)
-  return Number.isNaN(at.getTime()) ? 'a few minutes from now' : at.toLocaleTimeString()
+  return time(iso)
 }
 
 function Panel({

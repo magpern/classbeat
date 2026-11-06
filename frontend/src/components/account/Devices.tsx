@@ -3,10 +3,10 @@ import { listDevices, signOutDevice, type DeviceSession } from '../../api/auth'
 import { Notice, Section, useAction } from '../forms'
 import { Button } from '../ui/button'
 import { Chip } from '../ui/chip'
+import { dateTime } from '../../i18n/format'
 
 function when(iso: string): string {
-  const date = new Date(iso)
-  return Number.isNaN(date.getTime()) ? iso : date.toLocaleString()
+  return dateTime(iso)
 }
 
 /**
