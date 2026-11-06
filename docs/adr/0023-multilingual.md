@@ -22,9 +22,9 @@ already reason codes the frontend words; two modules still send English sentence
 (`emails/locales/en.py`, `emails/catalogue.py` with `mail_locale(user) -> "en"`). No language
 preference is stored anywhere and nothing reads `Accept-Language`.
 
-Owner decisions (2026-11-06): English, Swedish and Danish in this milestone; translations drafted and
-reviewed by Opus-class agents (Opus 5.5 today; AGENTS.md names model classes, so "Opus-class" means
-the current Opus generation) in separate contexts, with no human proofreading; generated classes stay
+Owner decisions (2026-11-06): English, Swedish and Danish in this milestone; translations drafted by a
+Sonnet translator and reviewed by an independent Opus-class agent (Opus 5.5 today; AGENTS.md names
+model classes, so "Opus-class" means the current Opus generation) in separate contexts, with no human proofreading; generated classes stay
 English; the admin area stays English; legal and consent sentences are translated the same way, with
 no owner sign-off.
 
@@ -103,11 +103,16 @@ format spec and no conversion (`string.Formatter().parse` must give an identifie
 plural categories present.
 
 **Swedish and Danish content is authored only in dedicated translation PRs**: ML6 (mail), ML7 (app)
-and later catch-up translation PRs. Each has an **Opus-class translator** as Developer and an
+and later catch-up translation PRs. Each has a **Sonnet translator** as Developer and an
 **independent Opus-class Reviewer**, the PR's one Reviewer under the unchanged review gate, who checks
 meaning, register, the glossary (`docs/i18n/glossary.md`), placeholders and that security, consent and
 legal sentences keep their English meaning. They run in Claude Code: Codex and Cursor have no
 Opus-class model, so they never author or review `sv`/`da` content. No human proofreads.
+
+*Staffing change (owner decision, 2026-11-06, given in session after this ADR's first draft):* the
+translator was first planned as Opus-class; the owner decided the Developer of translation PRs is
+Sonnet. The Reviewer stays Opus-class and independent of the Developer, so the Opus review is the
+quality gate for Swedish and Danish text. The ML8 test PR (#673) stays Sonnet and Sonnet.
 
 **Feature PRs add English keys only**, whatever their Developer, and list each new or changed key on
 the untranslated list (`frontend/src/i18n/untranslated.json`, `emails/locales/untranslated.py`), where
@@ -155,7 +160,7 @@ No right-to-left languages, no URL prefix, no runtime machine translation, no pe
   so next to the option.
 - Between a feature PR and the next catch-up translation PR, new strings show English in Swedish and
   Danish; the untranslated list keeps the gap visible and CI-checked.
-- Translation PRs need a Claude Code session (Opus-class); Codex and Cursor sessions do none.
+- Translation PRs need a Claude Code session (Sonnet translator, Opus-class Reviewer); Codex and Cursor sessions do none.
 - **Swedish and Danish text, legal and consent sentences included, is reviewed by no human** (owner
   decision, 2026-11-06); the English text remains the reference. An operator can switch a language off.
 - A Swedish or Danish UI shows English class text and English third-party names.
