@@ -1,7 +1,7 @@
 /* Sets <html lang> before first paint (ADR 0023 section 2). Only a locale in this list, which equals
    src/i18n/locales.json (a test pins it), is ever used: cb-locale, then navigator.languages, then en. */
 (function () {
-  var locales = ['en']
+  var locales = ['en', 'sv', 'da']
   var lang = 'en'
   function pick(tag) {
     var code = String(tag).split(/[-_]/)[0].toLowerCase()
