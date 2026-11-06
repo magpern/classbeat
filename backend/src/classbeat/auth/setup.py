@@ -14,6 +14,7 @@ from classbeat.auth.admin_routes import router as admin_router
 from classbeat.auth.email_routes import router as email_router
 from classbeat.auth.identity_routes import router as identity_router
 from classbeat.auth.keys import Keys
+from classbeat.auth.locale_routes import router as locale_router
 from classbeat.auth.mail_routes import router as mail_router
 from classbeat.auth.mfa_routes import router as mfa_router
 from classbeat.auth.middleware import (
@@ -57,6 +58,7 @@ def install(app: FastAPI) -> None:
         app.include_router(flow)
     app.include_router(mfa_router)
     app.include_router(mail_router)
+    app.include_router(locale_router)
     # OAuth: the callback is not under /api and must precede the SPA catch-all (web.create_app
     # installs auth first). "pending" routes before the "{provider}" ones.
     for oauth in (handoff_router, oauth_router, identity_router):

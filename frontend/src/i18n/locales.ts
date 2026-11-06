@@ -35,6 +35,14 @@ export function storeLocale(locale: Locale): void {
   }
 }
 
+export function clearStoredLocale(): void {
+  try {
+    window.localStorage.removeItem(LOCALE_STORAGE_KEY)
+  } catch {
+    /* storage blocked: nothing to clear */
+  }
+}
+
 /** The first browser language the manifest has, else English. */
 export function fromLanguages(languages: readonly string[]): Locale {
   for (const tag of languages) {

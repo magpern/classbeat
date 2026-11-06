@@ -1,11 +1,12 @@
 import { lazy, Suspense } from 'react'
+import { AccountLocale } from './auth/AccountLocale'
 import { GuardProvider } from './auth/GuardProvider'
 import { SessionProvider, useSession } from './auth/SessionContext'
 import { Banner } from './components/Banner'
 import { Card } from './components/forms'
-import { useT } from './i18n/I18n'
 import { RequireAuth } from './components/RequireAuth'
 import { AppShell } from './components/shell/AppShell'
+import { useT } from './i18n/I18n'
 import { AccountPage } from './pages/AccountPage'
 import { ClassPage } from './pages/ClassPage'
 import { ClassesPage } from './pages/ClassesPage'
@@ -109,6 +110,7 @@ export function App() {
   return (
     <RouterProvider>
       <SessionProvider>
+        <AccountLocale />
         <GuardProvider>
           <Banner />
           <AppShell>

@@ -54,7 +54,7 @@ export function AvatarMenu({
           }}
         >
           <Settings aria-hidden="true" size={18} strokeWidth={2} className="mr-2" />
-          {t('shell.menu.account')}
+          {t('shell.nav.account')}
         </DropdownMenuItem>
         {isAdmin ? (
           <DropdownMenuItem
@@ -63,7 +63,7 @@ export function AvatarMenu({
             }}
           >
             <ShieldCheck aria-hidden="true" size={18} strokeWidth={2} className="mr-2" />
-            {t('shell.menu.admin')}
+            {t('shell.admin')}
           </DropdownMenuItem>
         ) : null}
         <DropdownMenuItem disabled={busy} onSelect={onSignOut}>

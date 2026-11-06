@@ -4,209 +4,246 @@
 // No markup in a string: links and emphasis are slots of `Trans`.
 
 export const en = {
-  'format.soonUnknown': 'a few minutes from now',
-  'usage.underOneCent': 'under {amount}',
+  "language.label": "Language",
+  "language.follow": "Follow this browser",
+  "language.help":
+    'The language of this site. "Follow this browser" uses your browser\'s language on each device; email is sent in English until more languages are available.',
+  "format.soonUnknown": "a few minutes from now",
+  "usage.underOneCent": "under {amount}",
 
   // Words the screens of this area share.
-  'common.loading': 'Loading',
-  'common.cancel': 'Cancel',
-  'common.continue': 'Continue',
-  'common.email': 'Email',
-  'common.password': 'Password',
+  "common.loading": "Loading",
+  "common.cancel": "Cancel",
+  "common.continue": "Continue",
+  "common.email": "Email",
+  "common.password": "Password",
 
   // Landing page.
-  'landing.badge': 'Private beta',
-  'landing.title':
-    'Describe your indoor-cycling class, and classbeat picks the songs and times the efforts to the music.',
-  'landing.signUp': 'Sign up with an invite code',
-  'landing.haveAccount': 'I already have an account',
-  'landing.example.title': 'An example class',
-  'landing.example.note': 'A made-up 30 minute ride. The songs and artists below are placeholders.',
-  'landing.example.songs': 'Songs of the example class',
-  'landing.example.songMeta': '{artist} · {part}',
-  'landing.example.songStats': '{bpm} BPM · {length}',
-  'landing.example.part.warmUp': 'Warm-up',
-  'landing.example.part.firstClimb': 'First climb',
-  'landing.example.part.sprints': 'Sprints',
-  'landing.example.part.secondClimb': 'Second climb',
-  'landing.example.part.coolDown': 'Cool-down',
-  'landing.how.title': 'How it works',
-  'landing.how.describe.title': 'Describe',
-  'landing.how.describe.text': 'Tell classbeat the length, the effort and the playlist you want to use.',
-  'landing.how.approve.title': 'Approve songs',
-  'landing.how.approve.text': 'Look through the songs it picked and swap the ones that do not fit.',
-  'landing.how.save.title': 'Save to MOWL',
-  'landing.how.save.text': 'Your finished class goes straight to your MOWL account, ready to ride.',
+  "landing.badge": "Private beta",
+  "landing.title":
+    "Describe your indoor-cycling class, and classbeat picks the songs and times the efforts to the music.",
+  "landing.signUp": "Sign up with an invite code",
+  "landing.haveAccount": "I already have an account",
+  "landing.example.title": "An example class",
+  "landing.example.note":
+    "A made-up 30 minute ride. The songs and artists below are placeholders.",
+  "landing.example.songs": "Songs of the example class",
+  "landing.example.songMeta": "{artist} · {part}",
+  "landing.example.songStats": "{bpm} BPM · {length}",
+  "landing.example.part.warmUp": "Warm-up",
+  "landing.example.part.firstClimb": "First climb",
+  "landing.example.part.sprints": "Sprints",
+  "landing.example.part.secondClimb": "Second climb",
+  "landing.example.part.coolDown": "Cool-down",
+  "landing.how.title": "How it works",
+  "landing.how.describe.title": "Describe",
+  "landing.how.describe.text":
+    "Tell classbeat the length, the effort and the playlist you want to use.",
+  "landing.how.approve.title": "Approve songs",
+  "landing.how.approve.text":
+    "Look through the songs it picked and swap the ones that do not fit.",
+  "landing.how.save.title": "Save to MOWL",
+  "landing.how.save.text":
+    "Your finished class goes straight to your MOWL account, ready to ride.",
 
   // Sign in, sign up and the pages behind the mail links.
-  'auth.signIn': 'Sign in',
-  'auth.createAccount': 'Create an account',
-  'auth.createAccountSubmit': 'Create account',
-  'auth.newHere': 'New here? Create an account',
-  'auth.haveAccountSignIn': 'Already have an account? Sign in',
-  'auth.inviteLead': 'classbeat is invite-only for now. Enter the invite code you were given.',
-  'auth.inviteFirst': 'Enter your invite code first.',
-  'auth.inviteCode': 'Invite code',
-  'auth.continueWith': 'Continue with {provider}',
-  'auth.or': 'OR',
-  'auth.passwordHint': '12 to 128 characters. You will type it again when you confirm.',
-  'auth.legal':
-    'By continuing you agree to take part in the invite-only beta. classbeat is not made by or affiliated with MOWL, Spotify or Swedebeat.',
-  'auth.forgot': 'Forgot your password?',
-  'auth.checkInbox': 'Check your inbox',
-  'auth.backToSignIn': 'Back to sign in',
-  'signup.sent':
-    'If this address can be used, we sent a link to it. Open the link and type your password again to finish. The link works for 24 hours.',
-  'confirm.title': 'Confirm your account',
-  'confirm.noLink':
-    'This page needs the link from the confirmation mail. Open the link again, or sign up again to get a new one.',
-  'confirm.doneTitle': 'Account created',
-  'confirm.done': 'Your account is ready. Sign in to continue.',
-  'confirm.intro':
-    'Type the password you chose when you signed up. If you signed up with a provider such as Microsoft, leave it empty.',
-  'confirm.submit': 'Confirm account',
-  'emailChange.title': 'Confirm your new email',
-  'emailChange.noLink': 'This page needs the link from the confirmation mail.',
-  'emailChange.changedTitle': 'Email changed',
-  'emailChange.changed': 'Your account now uses {email}. Other devices were signed out.',
-  'emailChange.back': 'Back to your account',
-  'emailChange.signInFirst': 'Sign in to the account that asked for the change, then open the link in the mail again.',
-  'emailChange.confirmIntro': 'You are signed in as {email}. Confirm that this account should use the new address.',
-  'emailChange.confirm': 'Confirm new email',
-  'providerEmail.loadingTitle': 'Almost there',
-  'providerEmail.sent':
-    'If we can use {email}, a confirmation link is on its way. Open it in this same browser to finish. The link works for 24 hours.',
-  'providerEmail.mistyped':
-    'Mistyped the address? Nothing more can be sent from this page, because a second try would not send anything. Start the provider sign-in again to get a fresh chance.',
-  'providerEmail.again': 'Start the provider sign-in again',
-  'providerEmail.nothingTitle': 'Nothing to finish here',
-  'providerEmail.nothing':
-    'No provider sign-in is waiting for an address in this browser. It may have expired (after 15 minutes) or already been finished.',
-  'providerEmail.yourProvider': 'your provider',
-  'providerEmail.title': 'Confirm your email address',
-  'providerEmail.intro':
-    '{provider} did not confirm an email address for you. Enter the address to use for classbeat; we will mail you a link to confirm it.',
-  'providerEmail.submit': 'Send confirmation link',
-  'reset.sent':
-    'If an account uses that address, a link to choose a new password is on its way. It works for 30 minutes.',
-  'reset.title': 'Reset your password',
-  'reset.intro': 'Enter your email address and we will mail you a link.',
-  'reset.send': 'Send reset link',
-  'reset.changedTitle': 'Password changed',
-  'reset.changed': 'Your password is changed and you are signed out everywhere. Sign in with the new one.',
-  'reset.chooseTitle': 'Choose a new password',
-  'reset.checking': 'Checking your link',
-  'reset.newLink': 'Get a new link',
-  'reset.newPassword': 'New password',
-  'reset.passwordHint': '12 to 128 characters.',
-  'reset.linked': 'Linked sign-in methods',
-  'reset.linkedHint':
-    'These can also sign in to your account. Remove any you do not recognise or no longer use.',
-  'reset.remove': 'Remove {provider}',
-  'reset.submit': 'Change password',
+  "auth.signIn": "Sign in",
+  "auth.createAccount": "Create an account",
+  "auth.createAccountSubmit": "Create account",
+  "auth.newHere": "New here? Create an account",
+  "auth.haveAccountSignIn": "Already have an account? Sign in",
+  "auth.inviteLead":
+    "classbeat is invite-only for now. Enter the invite code you were given.",
+  "auth.inviteFirst": "Enter your invite code first.",
+  "auth.inviteCode": "Invite code",
+  "auth.continueWith": "Continue with {provider}",
+  "auth.or": "OR",
+  "auth.passwordHint":
+    "12 to 128 characters. You will type it again when you confirm.",
+  "auth.legal":
+    "By continuing you agree to take part in the invite-only beta. classbeat is not made by or affiliated with MOWL, Spotify or Swedebeat.",
+  "auth.forgot": "Forgot your password?",
+  "auth.checkInbox": "Check your inbox",
+  "auth.backToSignIn": "Back to sign in",
+  "signup.sent":
+    "If this address can be used, we sent a link to it. Open the link and type your password again to finish. The link works for 24 hours.",
+  "confirm.title": "Confirm your account",
+  "confirm.noLink":
+    "This page needs the link from the confirmation mail. Open the link again, or sign up again to get a new one.",
+  "confirm.doneTitle": "Account created",
+  "confirm.done": "Your account is ready. Sign in to continue.",
+  "confirm.intro":
+    "Type the password you chose when you signed up. If you signed up with a provider such as Microsoft, leave it empty.",
+  "confirm.submit": "Confirm account",
+  "emailChange.title": "Confirm your new email",
+  "emailChange.noLink": "This page needs the link from the confirmation mail.",
+  "emailChange.changedTitle": "Email changed",
+  "emailChange.changed":
+    "Your account now uses {email}. Other devices were signed out.",
+  "emailChange.back": "Back to your account",
+  "emailChange.signInFirst":
+    "Sign in to the account that asked for the change, then open the link in the mail again.",
+  "emailChange.confirmIntro":
+    "You are signed in as {email}. Confirm that this account should use the new address.",
+  "emailChange.confirm": "Confirm new email",
+  "providerEmail.loadingTitle": "Almost there",
+  "providerEmail.sent":
+    "If we can use {email}, a confirmation link is on its way. Open it in this same browser to finish. The link works for 24 hours.",
+  "providerEmail.mistyped":
+    "Mistyped the address? Nothing more can be sent from this page, because a second try would not send anything. Start the provider sign-in again to get a fresh chance.",
+  "providerEmail.again": "Start the provider sign-in again",
+  "providerEmail.nothingTitle": "Nothing to finish here",
+  "providerEmail.nothing":
+    "No provider sign-in is waiting for an address in this browser. It may have expired (after 15 minutes) or already been finished.",
+  "providerEmail.yourProvider": "your provider",
+  "providerEmail.title": "Confirm your email address",
+  "providerEmail.intro":
+    "{provider} did not confirm an email address for you. Enter the address to use for classbeat; we will mail you a link to confirm it.",
+  "providerEmail.submit": "Send confirmation link",
+  "reset.sent":
+    "If an account uses that address, a link to choose a new password is on its way. It works for 30 minutes.",
+  "reset.title": "Reset your password",
+  "reset.intro": "Enter your email address and we will mail you a link.",
+  "reset.send": "Send reset link",
+  "reset.changedTitle": "Password changed",
+  "reset.changed":
+    "Your password is changed and you are signed out everywhere. Sign in with the new one.",
+  "reset.chooseTitle": "Choose a new password",
+  "reset.checking": "Checking your link",
+  "reset.newLink": "Get a new link",
+  "reset.newPassword": "New password",
+  "reset.passwordHint": "12 to 128 characters.",
+  "reset.linked": "Linked sign-in methods",
+  "reset.linkedHint":
+    "These can also sign in to your account. Remove any you do not recognise or no longer use.",
+  "reset.remove": "Remove {provider}",
+  "reset.submit": "Change password",
 
   // The confirm-it-is-you prompts of the guard.
-  'guard.reauthTitle': 'Confirm it is you',
-  'guard.reauthIntro': 'This change needs a recent sign-in. Confirm your identity to continue.',
-  'guard.code': 'Authenticator or recovery code',
-  'guard.confirmPassword': 'Confirm with password',
-  'guard.confirmCode': 'Confirm with code',
-  'guard.confirmProvider': 'Confirm with {provider}',
-  'guard.oidc': '{providers} can confirm it only if you signed in there in the last 5 minutes.',
-  'guard.oidcPassword':
-    '{providers} can confirm it only if you signed in there in the last 5 minutes. Your password always works.',
-  'guard.stepUpTitle': 'Enter a two-factor code',
-  'guard.stepUpIntro': 'This change needs a code from your authenticator app, or one of your recovery codes.',
+  "guard.reauthTitle": "Confirm it is you",
+  "guard.reauthIntro":
+    "This change needs a recent sign-in. Confirm your identity to continue.",
+  "guard.code": "Authenticator or recovery code",
+  "guard.confirmPassword": "Confirm with password",
+  "guard.confirmCode": "Confirm with code",
+  "guard.confirmProvider": "Confirm with {provider}",
+  "guard.oidc":
+    "{providers} can confirm it only if you signed in there in the last 5 minutes.",
+  "guard.oidcPassword":
+    "{providers} can confirm it only if you signed in there in the last 5 minutes. Your password always works.",
+  "guard.stepUpTitle": "Enter a two-factor code",
+  "guard.stepUpIntro":
+    "This change needs a code from your authenticator app, or one of your recovery codes.",
 
   // The frame around every page.
-  'shell.nav.main': 'Main',
-  'shell.nav.home': 'Home',
-  'shell.nav.classes': 'My classes',
-  'shell.nav.new': 'New class',
-  'shell.nav.music': 'Music',
-  'shell.nav.account': 'Account',
-  'shell.brandHome': 'classbeat home',
-  'shell.signUp': 'Sign up',
-  'shell.backHome': 'Back to home',
-  'shell.close': 'Close',
-  'shell.menu.account': 'Account',
-  'shell.menu.admin': 'Admin',
-  'shell.menu.signOut': 'Sign out',
-  'shell.classesThisMonth': 'Classes this month',
-  'shell.classesThisMonthLine': 'Classes this month: {line}',
-  'shell.api.checking': 'API: checking…',
-  'shell.api.ok': 'API: ok',
-  'shell.api.unreachable': 'API: unreachable',
-  'shell.admin': 'Admin',
-  'shell.notAdmin': 'Your account is not an admin account.',
-  'shell.notFound': 'Page not found',
-  'shell.backToStart': 'Back to the start',
-  'shell.requireAuth.loadingTitle': 'One moment',
-  'shell.requireAuth.errorTitle': 'Cannot reach the server',
-  'shell.requireAuth.errorTryAgain': 'Try again in a moment.',
-  'shell.requireAuth.title': 'Sign in first',
-  'shell.requireAuth.text': 'This page is for signed-in users.',
+  "shell.nav.main": "Main",
+  "shell.nav.home": "Home",
+  "shell.nav.classes": "My classes",
+  "shell.nav.new": "New class",
+  "shell.nav.music": "Music",
+  "shell.nav.account": "Account",
+  "shell.brandHome": "classbeat home",
+  "shell.signUp": "Sign up",
+  "shell.backHome": "Back to home",
+  "shell.close": "Close",
+  "shell.menu.signOut": "Sign out",
+  "shell.classesThisMonth": "Classes this month",
+  "shell.classesThisMonthLine": "Classes this month: {line}",
+  "shell.api.checking": "API: checking…",
+  "shell.api.ok": "API: ok",
+  "shell.api.unreachable": "API: unreachable",
+  "shell.admin": "Admin",
+  "shell.notAdmin": "Your account is not an admin account.",
+  "shell.notFound": "Page not found",
+  "shell.backToStart": "Back to the start",
+  "shell.requireAuth.loadingTitle": "One moment",
+  "shell.requireAuth.errorTitle": "Cannot reach the server",
+  "shell.requireAuth.errorTryAgain": "Try again in a moment.",
+  "shell.requireAuth.title": "Sign in first",
+  "shell.requireAuth.text": "This page is for signed-in users.",
 
   // Plain-language texts for the reason codes of the auth API (api/messages.ts).
-  'error.reason.confirmation_mismatch': 'That is not the email of this account. Nothing was deleted.',
-  'error.reason.invalid_invite': 'That invite code is not valid, or it has already been used.',
-  'error.reason.invite_invalid': 'The invite for this sign-up is no longer valid. Ask for a new one.',
-  'error.reason.signups_closed': 'Sign-ups are closed right now.',
-  'error.reason.password_rule': 'Choose a password of 12 to 128 characters.',
-  'error.reason.invalid_credentials': 'The email or password is not right.',
-  'error.reason.wrong_password': 'That is not the password you chose when you signed up.',
-  'error.reason.invalid_token': 'This link is not valid any more. It may have expired or been used already.',
-  'error.reason.wrong_browser':
-    'Finish on the device and browser where you started the sign-in. This link will not work here.',
-  'error.reason.account_exists': 'An account with this address already exists. Sign in to it instead.',
-  'error.reason.email_taken': 'That address is already used by another account.',
-  'error.reason.last_sign_in_method': 'This is your only way to sign in, so it cannot be removed.',
-  'error.reason.invalid_code': 'That code is not right. Check the app and try again.',
-  'error.reason.totp_changed': 'Your two-factor setup changed meanwhile. Start again.',
-  'error.reason.totp_not_enabled': 'Two-factor authentication is not set up.',
-  'error.reason.not_authenticated': 'You are signed out. Sign in and try again.',
-  'error.reason.no_pending_signup': 'No sign-in is waiting for an address. Start the provider sign-in again.',
-  'error.reason.provider_disabled': 'That sign-in method is not available.',
-  'error.reason.forbidden': 'Your account is not allowed to do that.',
-  'error.reason.busy': 'The server is busy. Try again in a few seconds.',
-  'error.tooMany': 'Too many attempts. Wait a little and try again.',
-  'error.tooManyWait': 'Too many attempts. Try again in {wait}.',
+  "error.reason.confirmation_mismatch":
+    "That is not the email of this account. Nothing was deleted.",
+  "error.reason.invalid_invite":
+    "That invite code is not valid, or it has already been used.",
+  "error.reason.invite_invalid":
+    "The invite for this sign-up is no longer valid. Ask for a new one.",
+  "error.reason.signups_closed": "Sign-ups are closed right now.",
+  "error.reason.password_rule": "Choose a password of 12 to 128 characters.",
+  "error.reason.invalid_credentials": "The email or password is not right.",
+  "error.reason.wrong_password":
+    "That is not the password you chose when you signed up.",
+  "error.reason.invalid_token":
+    "This link is not valid any more. It may have expired or been used already.",
+  "error.reason.wrong_browser":
+    "Finish on the device and browser where you started the sign-in. This link will not work here.",
+  "error.reason.account_exists":
+    "An account with this address already exists. Sign in to it instead.",
+  "error.reason.email_taken":
+    "That address is already used by another account.",
+  "error.reason.last_sign_in_method":
+    "This is your only way to sign in, so it cannot be removed.",
+  "error.reason.invalid_code":
+    "That code is not right. Check the app and try again.",
+  "error.reason.totp_changed":
+    "Your two-factor setup changed meanwhile. Start again.",
+  "error.reason.totp_not_enabled": "Two-factor authentication is not set up.",
+  "error.reason.not_authenticated":
+    "You are signed out. Sign in and try again.",
+  "error.reason.no_pending_signup":
+    "No sign-in is waiting for an address. Start the provider sign-in again.",
+  "error.reason.provider_disabled": "That sign-in method is not available.",
+  "error.reason.forbidden": "Your account is not allowed to do that.",
+  "error.reason.busy": "The server is busy. Try again in a few seconds.",
+  "error.tooMany": "Too many attempts. Wait a little and try again.",
+  "error.tooManyWait": "Too many attempts. Try again in {wait}.",
   // Both forms read the same in English today; the other languages need the split.
-  'error.waitMinutes': { one: '{count} minutes', other: '{count} minutes' },
-  'error.waitSeconds': { one: '{count} seconds', other: '{count} seconds' },
-  'error.fields': 'Check the fields and try again.',
-  'error.server': 'Something went wrong on the server. Try again in a moment.',
-  'error.network': 'The server could not be reached. Check your connection.',
-  'error.generic': 'That did not work. Try again.',
+  "error.waitMinutes": { one: "{count} minutes", other: "{count} minutes" },
+  "error.waitSeconds": { one: "{count} seconds", other: "{count} seconds" },
+  "error.fields": "Check the fields and try again.",
+  "error.server": "Something went wrong on the server. Try again in a moment.",
+  "error.network": "The server could not be reached. Check your connection.",
+  "error.generic": "That did not work. Try again.",
 
   // Outcome codes the OAuth callback puts in ?oauth= of /signin, /signup and /account.
-  'oauth.invalid': 'The sign-in could not be completed. Try again.',
-  'oauth.denied': 'The sign-in was cancelled at the provider.',
-  'oauth.session_mismatch': 'You were signed out or switched account while signing in. Sign in again.',
-  'oauth.account_exists':
-    'An account with that email already exists. Sign in to it with your password, then link the provider from your account page.',
-  'oauth.invite_required':
-    'You need an invite to create an account. Enter your invite code below and try again.',
-  'oauth.invite_invalid': 'That invite is no longer valid. Ask for a new one.',
-  'oauth.identity_taken': 'That provider account is already linked to a different classbeat account.',
-  'oauth.identity_mismatch': 'That is not the provider account linked to your classbeat account.',
-  'oauth.reauth_stale':
-    'The provider did not confirm that you signed in again in the last 5 minutes, so nothing was changed.',
-  'oauth.reauth_stale_password':
-    'The provider did not confirm that you signed in again in the last 5 minutes, so nothing was changed. Use your password instead.',
-  'oauth.reauth_stale_set_password':
+  "oauth.invalid": "The sign-in could not be completed. Try again.",
+  "oauth.denied": "The sign-in was cancelled at the provider.",
+  "oauth.session_mismatch":
+    "You were signed out or switched account while signing in. Sign in again.",
+  "oauth.account_exists":
+    "An account with that email already exists. Sign in to it with your password, then link the provider from your account page.",
+  "oauth.invite_required":
+    "You need an invite to create an account. Enter your invite code below and try again.",
+  "oauth.invite_invalid": "That invite is no longer valid. Ask for a new one.",
+  "oauth.identity_taken":
+    "That provider account is already linked to a different classbeat account.",
+  "oauth.identity_mismatch":
+    "That is not the provider account linked to your classbeat account.",
+  "oauth.reauth_stale":
+    "The provider did not confirm that you signed in again in the last 5 minutes, so nothing was changed.",
+  "oauth.reauth_stale_password":
+    "The provider did not confirm that you signed in again in the last 5 minutes, so nothing was changed. Use your password instead.",
+  "oauth.reauth_stale_set_password":
     'The provider did not confirm that you signed in again in the last 5 minutes, so nothing was changed. To set a password, sign out and choose "Forgot your password?" on the sign-in page; then confirm with it.',
-  'oauth.reauth_stale_both':
+  "oauth.reauth_stale_both":
     'The provider did not confirm that you signed in again in the last 5 minutes, so nothing was changed. Use your password instead, if you have one. To set a password, sign out and choose "Forgot your password?" on the sign-in page; then confirm with it.',
-  'oauth.no_account':
-    'No classbeat account is linked to this {account}. Create an account to join the invite-only beta.',
-  'oauth.providerAccount': '{provider} account',
-  'oauth.providerAccountOther': 'provider account',
-} as const satisfies Record<string, Message>
+  "oauth.no_account":
+    "No classbeat account is linked to this {account}. Create an account to join the invite-only beta.",
+  "oauth.providerAccount": "{provider} account",
+  "oauth.providerAccountOther": "provider account",
+} as const satisfies Record<string, Message>;
 
-export type Plural = { one?: string; other: string; zero?: string; two?: string; few?: string; many?: string }
-export type Message = string | Plural
+export type Plural = {
+  one?: string;
+  other: string;
+  zero?: string;
+  two?: string;
+  few?: string;
+  many?: string;
+};
+export type Message = string | Plural;
 
-export type CatalogueKey = keyof typeof en
+export type CatalogueKey = keyof typeof en;
 /** What a non-English catalogue may hold: some of the keys, never others. */
-export type Catalogue = Partial<Record<CatalogueKey, Message>>
+export type Catalogue = Partial<Record<CatalogueKey, Message>>;

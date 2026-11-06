@@ -32,6 +32,7 @@ from classbeat.auth.sessions import (
 from classbeat.auth.userlock import lock_user
 from classbeat.context import UserContext
 from classbeat.db import system_session
+from classbeat.locales import offered_locales
 from classbeat.log import describe_database_error
 
 logger = logging.getLogger(__name__)
@@ -45,6 +46,7 @@ class UserOut(BaseModel):
     id: UUID
     email: str
     role: str
+    locale: str | None = None  # the account's language; null follows the browser (ADR 0023)
 
 
 class SessionOut(BaseModel):
@@ -64,6 +66,8 @@ class SessionState(BaseModel):
     csrf_token: str
     user: UserOut | None = None
     session: SessionOut | None = None
+    # The languages on offer (enabled and supported), for the pickers; same for everyone.
+    locales: list[str] = []
 
 
 class SessionItem(BaseModel):
@@ -117,7 +121,7 @@ async def get_session(
         return SessionState(
             authenticated=True,
             csrf_token=csrf_token_for_session(request.app.state.keys, info.id),
-            user=UserOut(id=info.user_id, email=info.email, role=info.role),
+            user=UserOut(id=info.user_id, email=info.email, role=info.role, locale=info.locale),
             session=SessionOut(
                 id=info.id,
                 expires_at=info.expires_at,
@@ -126,12 +130,17 @@ async def get_session(
                 stepup=info.recent_stepup,
                 admin_pending_mfa=info.admin_pending_mfa,
             ),
+            locales=list(offered_locales(request.app.state.settings)),
         )
     value = request.cookies.get(CSRF_COOKIE, "")
     if not value or len(value) > CSRF_VALUE_MAX:
         value = secrets.token_urlsafe(32)
         set_csrf_cookie(response, value)
-    return SessionState(authenticated=False, csrf_token=value)
+    return SessionState(
+        authenticated=False,
+        csrf_token=value,
+        locales=list(offered_locales(request.app.state.settings)),
+    )
 
 
 @router.get("/sessions")
