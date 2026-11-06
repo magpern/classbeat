@@ -4,7 +4,7 @@ The worker writes a ``mail_handoff`` row in the transaction that finishes a job 
 mix analysis (``classbeat.jobs.mail_handoff``) and notifies ``mail_handoff``. ``HandoffConsumer``
 runs in the web process:
 
-- **SMTP configured**: woken by ``LISTEN mail_handoff`` (``classbeat.worker.listen``, its own
+- **SMTP configured**: woken by ``LISTEN mail_handoff`` (``classbeat.db.listen``, its own
   connection) and by a poll every 30 s, it takes rows with ``mail_handoff_take`` (``SECURITY
   DEFINER``, ``classbeat-queue v4``): ``DELETE ... FOR UPDATE SKIP LOCKED RETURNING``, so two web
   processes never take the same row, and taking a row discards it (fire and forget: one attempt,
@@ -34,10 +34,10 @@ from classbeat import auth
 from classbeat.classes.ready import still_owned
 from classbeat.config import Settings
 from classbeat.db import system_session
+from classbeat.db.listen import listen
 from classbeat.emails import live
 from classbeat.jobs.mail_handoff import CHANNEL, KIND
 from classbeat.mail import Mailer
-from classbeat.worker.listen import listen
 
 logger = logging.getLogger(__name__)
 
@@ -46,6 +46,7 @@ Factory = async_sessionmaker[AsyncSession]
 BATCH: Final = 20
 POLL_SECONDS: Final = 30.0
 PURGE_SECONDS: Final = 3600.0
+STOP_SECONDS: Final = 20.0  # one send's SMTP timeout (15 s) fits
 
 _TAKE = text("SELECT id, owner_id, kind, params FROM public.mail_handoff_take(:limit)")
 
@@ -96,10 +97,13 @@ async def send_taken(factory: Factory, mailer: Mailer, settings: Settings, row: 
     )
 
 
-async def drain(factory: Factory, mailer: Mailer, settings: Settings) -> int:
-    """Take and send until the table holds no row younger than a day; returns the mails tried."""
+async def drain(
+    factory: Factory, mailer: Mailer, settings: Settings, stop: asyncio.Event | None = None
+) -> int:
+    """Take and send until the table holds no row younger than a day, or ``stop`` is set (the rows
+    already taken are still sent: taking discarded them); returns the mails tried."""
     sent = 0
-    while True:
+    while stop is None or not stop.is_set():
         rows = await take(factory, BATCH)
         for row in rows:
             try:
@@ -107,7 +111,8 @@ async def drain(factory: Factory, mailer: Mailer, settings: Settings) -> int:
             except Exception as exc:  # one row never stops the others; the row is gone
                 logger.warning("class ready mail not sent: %s", type(exc).__name__)
         if len(rows) < BATCH:
-            return sent
+            break
+    return sent
 
 
 class HandoffConsumer:
@@ -138,13 +143,19 @@ class HandoffConsumer:
             self._task = asyncio.create_task(self._run())
 
     async def stop(self) -> None:
+        """Let a take or a send in progress finish (a cancelled query could leave its connection
+        open past the engine's dispose), then end; cancelled only if it does not end in time."""
         self._stop.set()
         self._wake.set()
-        if self._task is not None:
-            self._task.cancel()
+        task, self._task = self._task, None
+        if task is None:
+            return
+        try:
+            await asyncio.wait_for(asyncio.shield(task), timeout=STOP_SECONDS)
+        except TimeoutError:
+            task.cancel()
             with contextlib.suppress(asyncio.CancelledError):
-                await self._task
-            self._task = None
+                await task
 
     async def _sleep(self, seconds: float) -> None:
         with contextlib.suppress(TimeoutError):
@@ -159,7 +170,7 @@ class HandoffConsumer:
         try:
             while not self._stop.is_set():
                 try:
-                    count = await drain(self._factory, self._mailer, self._settings)
+                    count = await drain(self._factory, self._mailer, self._settings, self._stop)
                     if count:
                         logger.info("class ready mails tried", extra={"count": count})
                 except Exception as exc:  # the database blinked: the next wake or poll retries

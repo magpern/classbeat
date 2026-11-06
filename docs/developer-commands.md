@@ -132,7 +132,7 @@ mail; the mailbox must exist before deploy. Mail layout: `classbeat/emails/`; go
 mix analysis (`jobs.fresh_analysis`, migration 0037) writes one `mail_handoff` row in its finishing
 transaction (`classbeat.jobs.mail_handoff`; none when the admin or the user switched `class_ready` off);
 the web process takes it with `mail_handoff_take` (queue v4) on `LISTEN mail_handoff` or a 30 s poll and
-sends it through the one send path (`classbeat.emails.handoff`); with SMTP unset it only purges rows
+sends it through the one send path (`classbeat.emails.handoff`, listener in `classbeat.db.listen`); with SMTP unset it only purges rows
 older than a day, hourly. Tests: `tests/test_class_ready_mail.py`.
 The admin area (ADR 0011 section 5): `CLASSBEAT_MAINT_DATABASE_URL` (compose sets it on web) and the
 `database_maint_password` secret file (web and `db-functions` only, which creates the role
