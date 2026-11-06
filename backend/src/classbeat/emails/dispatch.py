@@ -146,7 +146,12 @@ async def send(
     links = None
     if not kind.essential and prefs is not None and prefs.user_id is not None and keys is not None:
         links = unsubscribe_links(settings, keys, prefs.user_id, kind.category.value)
-    if locale is None and prefs is not None:
+    # A language handed in (an OAuth flow or hand-off row, a request) can be older than the
+    # operator's setting: it is checked against the offered languages here, not only against the
+    # catalogues. An essential kind still reads no user.
+    if locale is not None:
+        locale = mail_locale(locale, settings)
+    elif prefs is not None:
         locale = mail_locale(prefs.locale, settings)
     await send_logged(
         mailer,

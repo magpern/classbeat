@@ -188,7 +188,7 @@ def test_a_translated_mail_carries_the_same_links_as_the_english_one(kind: Kind,
 
 
 @pytest.mark.parametrize("code", TRANSLATED)
-async def test_the_header_names_the_language_of_the_mail(code: str) -> None:
+async def test_the_header_names_the_language_of_the_mail(code: str, three_languages: None) -> None:
     async with SmtpFake() as smtp:
         s = Settings(
             smtp_host="127.0.0.1",
@@ -346,10 +346,6 @@ async def test_the_provider_confirmation_follows_the_row_language(
     await browser.post("/api/auth/oauth/pending/email", {"email": "hand@example.com"})
     [mail] = smtp.to("hand@example.com")
     assert decoded(mail) == subject_of("provider_signup_confirm", "da")
-    # A language named in the email step replaces the row's.
-    await browser.post(
-        "/api/auth/oauth/pending/email", {"email": "other@example.com", "locale": "sv"}
-    )
 
 
 ESSENTIAL = [k.id for k in KINDS if k.essential]
@@ -538,6 +534,41 @@ async def test_the_welcome_after_a_hand_off_carries_the_row_language(
     [welcome] = [n for n in seen if n.kind_id == "welcome"]
     assert welcome.locale == "da"
     assert decoded(smtp.to("fresh@example.com")[-1]) == subject_of("welcome", "da")
+
+
+async def test_a_flow_language_turned_off_before_the_callback_sends_the_welcome_in_english(
+    oenv: Env,
+    fake: FakeProviders,
+    smtp: SmtpFake,
+    three_languages: None,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    browser = Browser(oenv)
+    started = await start(
+        browser, "google", "sign_up", invite_code=await make_invite(oenv), locale="sv"
+    )
+    assert await oenv.scalar("SELECT locale FROM oauth_flows") == "sv"
+    monkeypatch.setattr(oenv.settings, "locales", "da")  # the operator turns Swedish off
+    assert location(await browser.get(fake.complete(started.json()["authorization_url"])))
+    [mail] = [m for m in smtp.messages if decoded(m) == subject_of("welcome", "en")]
+    assert mail.message["Content-Language"] == "en"
+    assert not [m for m in smtp.messages if decoded(m) == subject_of("welcome", "sv")]
+
+
+async def test_a_row_language_turned_off_before_the_confirmation_sends_the_welcome_in_english(
+    oenv: Env,
+    fake: FakeProviders,
+    smtp: SmtpFake,
+    three_languages: None,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    browser = await pending_row(oenv, fake, "da")
+    await post_email(oenv, browser, "fresh@example.com", None)
+    token = smtp.to("fresh@example.com")[-1].token()
+    monkeypatch.setattr(oenv.settings, "locales", "sv")  # the operator turns Danish off
+    done = await browser.post("/api/auth/signup/confirm", {"token": token})
+    assert done.status_code == 200, done.text
+    assert decoded(smtp.to("fresh@example.com")[-1]) == subject_of("welcome", "en")
 
 
 # --- account routes: the user's stored language ------------------------------------------------
