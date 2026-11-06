@@ -50,7 +50,13 @@ def _welcome(kind_id: str, builder: Builder, sample: Mapping[str, Any]) -> Kind:
     return Kind(kind_id, Category.WELCOME, False, True, True, True, builder, sample)
 
 
+def _class_ready(kind_id: str, builder: Builder, sample: Mapping[str, Any]) -> Kind:
+    return Kind(kind_id, Category.CLASS_READY, False, True, True, True, builder, sample)
+
+
 _TOKEN = {"token": "SAMPLE"}
+# A fixed class id for the "class ready" preview and golden files.
+SAMPLE_CLASS_ID = "00000000-0000-4000-8000-000000000000"
 _WHEN = {"when": SAMPLE_WHEN}
 
 _ALL = (
@@ -78,6 +84,8 @@ _ALL = (
     _activity("account_deleted", kinds.account_deleted, _WHEN),
     _activity("identity_unlinked", kinds.identity_unlinked, {"provider": "github", **_WHEN}),
     _activity("totp_removed", kinds.totp_removed, _WHEN),
+    # ME5 (#656): sent by the web process from the worker's hand-off row (``emails.handoff``).
+    _class_ready("class_ready", kinds.class_ready, {"class_id": SAMPLE_CLASS_ID}),
 )
 
 REGISTRY: dict[str, Kind] = {k.id: k for k in _ALL}

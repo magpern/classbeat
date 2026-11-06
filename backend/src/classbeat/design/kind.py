@@ -64,7 +64,7 @@ from classbeat.design import corrections, mixadmit, music_kind, revision, sport
 from classbeat.design.music import MusicStep, load_music
 from classbeat.design.sport_rules import rules_for
 from classbeat.design.swedebeat_music import swedebeat_step
-from classbeat.jobs import KINDS, Complete, FencedSession, JobFailure, JobKind, JobRun
+from classbeat.jobs import KINDS, Complete, FencedSession, JobFailure, JobKind, JobRun, mail_handoff
 from classbeat.jobs.inputs import ModelJobInput, jsonb_size
 from classbeat.jobs.kinds import Admitted, Refused
 from classbeat.models.jobs import GroupModel, ModelSource
@@ -316,6 +316,7 @@ async def run(job_run: JobRun) -> Complete:
                 await adopt_verified_mix(
                     fs, revision_id, given.music.mix_id, handoff_id=given.handoff_id
                 )
+            await mail_handoff.enqueue_class_ready(fs)  # ME5: only after a fresh mix analysis
             return revision_id
 
         # The runner releases the step once the attempt is over, whether ``store`` ran or not

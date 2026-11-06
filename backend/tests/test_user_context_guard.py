@@ -364,6 +364,22 @@ def test_security_log_context_is_reached_only_by_the_security_log() -> None:
     assert users == ["classbeat/auth/deps.py", "classbeat/auth/securitylog.py"]
 
 
+def test_mail_handoff_context_is_reached_only_by_the_class_ready_mail() -> None:
+    """``auth.mail_handoff_context`` builds a bare context for the owner of a "class ready"
+    hand-off row the web process took, to check that the class is still theirs (ME5, #656).
+    Only its definition, the auth package's export and the hand-off consumer may name it."""
+    users = sorted(
+        path.relative_to(SRC).as_posix()
+        for path in (SRC / "classbeat").rglob("*.py")
+        if "mail_handoff_context" in path.read_text("utf-8")
+    )
+    assert users == [
+        "classbeat/auth/__init__.py",
+        "classbeat/auth/deps.py",
+        "classbeat/emails/handoff.py",
+    ]
+
+
 # ``classbeat.jobs.issuer.owner_context`` builds a bare context for any UUID (#109 item 6). Only the
 # runner (the account-disabled failure and the shutdown hand-back) and the credit settle use it.
 OWNER_CONTEXT_USERS = {

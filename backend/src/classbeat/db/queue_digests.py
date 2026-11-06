@@ -10,6 +10,7 @@ QUEUE_DIGESTS: dict[str, str] = {
     "queue_expire": "224841070d8492c469cc188d3ced1998",
     "queue_unsettled": "d10ba360a070524788e466b18e35460a",
     "queue_stats": "e55e920eddc871afbb4d5b0780770158",
+    "mail_handoff_take": "9606336b906eab39452b21ede7aa1134",
 }
 # The M5 guard trigger functions (migrations 0007 to 0010), from the migrated database. The same
 # digests are written into the queue check of docker/postgres/queue/20-queue.sql.

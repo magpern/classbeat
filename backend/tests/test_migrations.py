@@ -34,7 +34,7 @@ def applied_revisions(database_url: str) -> list[str]:
 
 def test_the_revisions_form_one_line() -> None:
     script = ScriptDirectory.from_config(alembic_config())
-    assert script.get_heads() == ["0036_mail_preferences"]
+    assert script.get_heads() == ["0037_mail_handoff"]
     assert script.get_base() == "0001_baseline"
 
 
@@ -55,7 +55,7 @@ def test_upgrade_head_then_downgrade_base(
     config = alembic_config()
     try:
         command.upgrade(config, "head")
-        assert applied_revisions(database_url) == ["0036_mail_preferences"]
+        assert applied_revisions(database_url) == ["0037_mail_handoff"]
         command.downgrade(config, "base")
         assert applied_revisions(database_url) == []
     finally:
@@ -162,6 +162,8 @@ JOBS = [
     "beat_one_corrections",
     # Issue #632 (0034_security_log).
     "security_log",
+    # ADR 0022 section 4, ME5 #656 (0037_mail_handoff).
+    "mail_handoff",
 ]
 
 
@@ -559,6 +561,75 @@ def test_0036_mail_preferences_up_and_down(
                 connection.execute(text("UPDATE users SET mail_opted_out = ARRAY[:c]"), {"c": bad})
         command.downgrade(config, "0035_mail_settings")
         assert not columns() & {"mail_unsubscribed_all", "mail_opted_out"}
+    finally:
+        with admin.begin() as connection:
+            connection.execute(text("DELETE FROM users"))
+        admin.dispose()
+        command.downgrade(config, "base")
+
+
+def test_0037_mail_handoff_up_and_down(
+    owner_database_url: str, database_url: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """#656: ``jobs.fresh_analysis`` defaults to false; ``mail_handoff`` takes one ``class_ready``
+    row per job whose params hold the class id only, and goes with its job; the downgrade drops
+    both."""
+    from jobtools import new_job, new_user
+
+    monkeypatch.setenv("CLASSBEAT_MIGRATIONS_DATABASE_URL", owner_database_url)
+    config = alembic_config()
+    admin = create_engine(database_url)
+    put = text(
+        "INSERT INTO mail_handoff (owner_id, kind, job_id, params) "
+        "VALUES (:o, :k, :j, CAST(:p AS jsonb))"
+    )
+
+    def has(table: str, column: str) -> bool:
+        with admin.connect() as connection:
+            return bool(
+                connection.execute(
+                    text(
+                        "SELECT count(*) FROM information_schema.columns "
+                        "WHERE table_name = :t AND column_name = :c"
+                    ),
+                    {"t": table, "c": column},
+                ).scalar_one()
+            )
+
+    try:
+        command.upgrade(config, "head")
+        with admin.begin() as connection:
+            owner = new_user(connection)
+            job = new_job(connection, owner)
+            fresh = connection.execute(
+                text("SELECT fresh_analysis FROM jobs WHERE id = :j"), {"j": job}
+            ).scalar_one()
+            assert fresh is False
+            good = {"o": owner, "k": "class_ready", "j": job, "p": '{"class_id": "x"}'}
+            connection.execute(put, good)
+        with pytest.raises(IntegrityError), admin.begin() as connection:
+            connection.execute(put, good)  # one row per job and kind
+        bad_rows = [
+            {**good, "k": "welcome"},
+            {**good, "p": '{"class_id": "x", "email": "a@b.test"}'},
+            {**good, "p": "{}"},
+            {**good, "p": '{"class_id": 1}'},
+            {**good, "p": '["class_id"]'},
+        ]
+        with admin.begin() as connection:
+            connection.execute(text("DELETE FROM jobs WHERE id = :j"), {"j": job})
+            left = connection.execute(text("SELECT count(*) FROM mail_handoff")).scalar_one()
+            assert left == 0  # gone with its job
+            job = new_job(connection, owner)
+        for bad in bad_rows:
+            with pytest.raises(IntegrityError), admin.begin() as connection:
+                connection.execute(put, {**bad, "j": job})
+        command.downgrade(config, "0036_mail_preferences")
+        assert not has("mail_handoff", "id")
+        assert not has("jobs", "fresh_analysis")
+        command.upgrade(config, "head")
+        assert has("mail_handoff", "params")
+        assert has("jobs", "fresh_analysis")
     finally:
         with admin.begin() as connection:
             connection.execute(text("DELETE FROM users"))

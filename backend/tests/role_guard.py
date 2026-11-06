@@ -21,6 +21,9 @@ QUEUE_TABLE_PRIVILEGES = {
     "jobs": {"SELECT", "UPDATE"},
     "job_events": {"SELECT", "INSERT"},
     "external_operations": {"SELECT"},
+    # ADR 0022 section 4 (ME5): ``mail_handoff_take`` reads and deletes hand-off rows (UPDATE
+    # only for its ``FOR UPDATE SKIP LOCKED``).
+    "mail_handoff": {"SELECT", "UPDATE", "DELETE"},
 }
 # The SECURITY DEFINER functions classbeat_app may execute (regprocedure, as rendered).
 QUEUE_SIGNATURES = {
@@ -29,6 +32,7 @@ QUEUE_SIGNATURES = {
     "queue_expire(integer)",
     "queue_unsettled(integer)",
     "queue_stats()",
+    "mail_handoff_take(integer)",
 }
 # The M5 guard trigger functions (migration 0007, ADR 0011 section 1): SECURITY INVOKER, owned by
 # classbeat_owner, executable by nobody else (firing a trigger needs no EXECUTE).

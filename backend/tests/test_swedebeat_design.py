@@ -28,7 +28,7 @@ from agentfake import CONFIG, FactoryModels, from_dict
 from authtools import Env, running_env
 from classbeat import design, saving
 from classbeat.agent.providers.fake import FakeProvider
-from classbeat.design import mixadmit, mixfetch, mixlimit
+from classbeat.design import corrections, mixadmit, mixfetch, mixlimit
 from classbeat.design import swedebeat_music as sbm
 from classbeat.design.revise import KIND as REVISE_KIND
 from classbeat.egress import (
@@ -37,8 +37,10 @@ from classbeat.egress import (
     build_allowlist_opener,
     mowl_media_test_client,
 )
-from classbeat.jobs import KindRegistry, queue
+from classbeat.emails import handoff
+from classbeat.jobs import JobFailure, KindRegistry, queue
 from classbeat.jobs.runner import Execution, RunConfig, execute
+from classbeat.mail import Mailer
 from designtools import BRIEF
 from jobapi import Browser, new_key
 from jobtools import new_job
@@ -47,6 +49,7 @@ from mowlfake import FakeMowl
 from optools import TOKEN_A, TOKEN_B, OpsEnv
 from preftools import use_swedebeat
 from savetools import FakeMowlPrograms
+from smtpfake import SmtpFake
 
 pytestmark = pytest.mark.usefixtures("jenv", "mowl_api", "analysis_slot_by_default")
 
@@ -341,14 +344,82 @@ async def test_a_second_design_on_the_mix_uses_the_cache_and_costs_no_analysis(
 ) -> None:
     browser = await rider(browsers, menv)
     add_mix(mowl_api)
+    jobs: list[UUID] = []
     for _ in range(2):
         created = await create(browser, design_body(browser))
         assert created.status_code == 201, created.text
         await menv.run_next()
-        assert menv.ops.row(UUID(created.json()["id"])).state == "completed"
+        jobs.append(UUID(created.json()["id"]))
+        assert menv.ops.row(jobs[-1]).state == "completed"
     assert len(menv.media.requests) == 1
     assert menv.analyses(browser.user_id) == 1
     assert len(mowl_api.attaches) == 1
+    # ME5 (#656): the fresh analysis hands off one "class ready" mail; the cached mix none.
+    assert handoffs(menv) == [(jobs[0], str(menv.ops.row(jobs[0]).class_id))]
+
+
+def handoffs(menv: MixEnv) -> list[tuple[UUID, str]]:
+    return [
+        (row.job_id, row.params["class_id"])
+        for row in menv.ops.sql("SELECT job_id, params FROM mail_handoff ORDER BY created_at")
+    ]
+
+
+async def test_a_fresh_analysis_sends_one_class_ready_mail(
+    browsers: Any, menv: MixEnv, mowl_api: FakeMowl
+) -> None:
+    """ME5 (#656): the design job that analysed the mix hands off one row in its finishing
+    transaction; the web side takes it and sends one mail through the SMTP fake."""
+    browser = await rider(browsers, menv)
+    add_mix(mowl_api)
+    created = await create(browser, design_body(browser))
+    job_id = UUID(created.json()["id"])
+    await menv.run_next()
+    class_id = menv.ops.row(job_id).class_id
+    assert handoffs(menv) == [(job_id, str(class_id))]
+    settings = menv.ops.app.settings
+    async with SmtpFake() as fake:
+        mailer = Mailer(
+            settings.model_copy(
+                update={"smtp_host": "127.0.0.1", "smtp_port": fake.port, "smtp_tls": "none"}
+            )
+        )
+        assert await handoff.drain(menv.ops.factory, mailer, settings) == 1
+    [mail] = fake.messages
+    assert mail.subject == "Your classbeat class is ready"
+    assert f"/classes/{class_id}" in mail.text
+    assert MIX_NAME not in mail.text + mail.html  # the row and the mail name no mix
+    assert handoffs(menv) == []
+
+
+async def test_a_retried_design_attempt_hands_off_one_row_from_its_finishing_attempt(
+    browsers: Any, menv: MixEnv, mowl_api: FakeMowl, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """ME5 (#656): attempt 1 analyses the mix (stored, the job marked) and then fails: no row.
+    Attempt 2 finds the analysis cached and finishes the job: its one row."""
+    browser = await rider(browsers, menv)
+    add_mix(mowl_api)
+    real = corrections.attach
+    failures: list[int] = []
+
+    async def once(run: Any, step: Any) -> Any:
+        if not failures:
+            failures.append(1)
+            raise JobFailure("upstream_unavailable")
+        return await real(run, step)
+
+    monkeypatch.setattr(corrections, "attach", once)
+    created = await create(browser, design_body(browser))
+    job_id = UUID(created.json()["id"])
+    await menv.run_next()
+    assert menv.ops.row(job_id).state == "queued"  # retried
+    assert menv.ops.row(job_id).fresh_analysis is True
+    assert handoffs(menv) == []
+    menv.ops.sql("UPDATE jobs SET available_at = now() WHERE id = :j", j=job_id)
+    await menv.run_next()
+    assert menv.ops.row(job_id).state == "completed"
+    assert len(menv.media.requests) == 1  # attempt 2 used the cache
+    assert handoffs(menv) == [(job_id, str(menv.ops.row(job_id).class_id))]
 
 
 async def test_the_empty_production_list_says_the_mix_was_added_to_mowl_but_not_analysed(
@@ -626,6 +697,7 @@ async def test_a_class_on_a_mix_is_revised_on_its_cached_map(
     assert new.music == base.music  # the same mix, map and link
     assert len(menv.media.requests) == 1  # the cache: no second fetch
     assert MIX_NAME not in menv.sent()
+    assert [job for job, _ in handoffs(menv)] == [job_id]  # ME5: the cached revise adds none
 
 
 @pytest.mark.parametrize("off", ["database", "worker"])

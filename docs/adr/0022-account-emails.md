@@ -90,6 +90,17 @@ verify job to call it only when it ran a fresh mix analysis, with a test (fresh 
 cached or retried: none). ME5 depends on ME1 (#652), A4 (#380) and **ME4 (#655)** for the user
 preference it checks.
 
+As built by ME5 (#656; these refine the text above, they change no guarantee): the unique key is
+`(owner_id, kind, job_id)` (owner-inclusive, as every owned table's must be; a job has one owner,
+so it is the same key) and `(owner_id, job_id)` references `jobs` with `ON DELETE CASCADE`, so a
+row goes with its job, its class and the account. "Ran a fresh analysis" is `jobs.fresh_analysis`,
+set in the fenced transaction that stores the analysis, so the attempt that finishes the job sees it
+even when a retry found the map cached; an attempt that ends any other way commits no row, and a
+"Check again" on an analysed mix (a new job, cached) adds none. `classbeat_queue` gets `SELECT`,
+`UPDATE` and `DELETE` on `mail_handoff`: `UPDATE` only because `SELECT ... FOR UPDATE SKIP LOCKED`
+requires it; the function's pinned body never updates. The web side reads the recipient's address
+by the owner's id when it sends (never stored in the row), and skips a disabled account.
+
 **5. Preferences and unsubscribe token.** `users` gets `mail_unsubscribed_all` and
 `mail_opted_out` (categories), in the GDPR export. Optional mails carry a link
 `<base>/unsubscribe#token=…` and `List-Unsubscribe` / `List-Unsubscribe-Post: List-Unsubscribe=One-Click`

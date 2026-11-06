@@ -26,6 +26,7 @@ class S(Enum):
     SUBJECT_ACCOUNT_DELETED = auto()
     SUBJECT_IDENTITY_UNLINKED = auto()
     SUBJECT_TOTP_REMOVED = auto()
+    SUBJECT_CLASS_READY = auto()
     # Footer.
     FOOTER_SITE = auto()
     FOOTER_SUPPORT = auto()
@@ -131,6 +132,12 @@ class S(Enum):
     PROVIDER_MOWL = auto()
     PROVIDER_SPOTIFY = auto()
     PROVIDER_SWEDEBEAT = auto()
+    # Class ready (ME5).
+    READY_HEADING = auto()
+    READY_PRE = auto()
+    READY_BODY = auto()
+    READY_BUTTON = auto()
+    READY_REASON = auto()
 
 
 CATALOGUE: dict[S, str] = {
@@ -300,6 +307,17 @@ CATALOGUE: dict[S, str] = {
     S.PROVIDER_MOWL: "Intelligent Cycling (MOWL)",
     S.PROVIDER_SPOTIFY: "Spotify",
     S.PROVIDER_SWEDEBEAT: "Swedebeat",
+    S.SUBJECT_CLASS_READY: "Your classbeat class is ready",
+    S.READY_HEADING: "Your class is ready",
+    S.READY_PRE: "classbeat has analysed your music, and your class is ready.",
+    S.READY_BODY: (
+        "classbeat has finished analysing the music of your class. Open the class to see the "
+        "result."
+    ),
+    S.READY_BUTTON: "Open your class",
+    S.READY_REASON: (
+        "You got this because classbeat finished a class you asked for, after analysing its music."
+    ),
 }
 
 
