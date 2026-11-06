@@ -14,7 +14,7 @@ milestone table.
 | MH | Help and contact (#650): **placeholder only**, not planned | Planned later by the Architect |
 | ML | Multilingual support (#657): a later milestone, not planned; ME keeps all strings in a catalogue so it can follow | Planned later by the owner and Architect |
 
-- **CSP change** (ADR 0022, amends ADR 0013 §9): app pages get `frame-src 'self'` for the admin mail
+- **CSP change** (ADR 0022, amends ADR 0013 §9): app pages get a path-scoped `frame-src` for the admin mail
   preview iframe; the preview response keeps its own CSP.
 - **Delivery is fire and forget** (ADR 0022 §4): one SMTP attempt, failures logged by error class,
   no retries, outbox or tracking.

@@ -20,8 +20,8 @@ Owner decisions (2026-11-05):
 - Templates in code; admin edits branding and switches email types on/off; hosted PNG logo;
   support address (mailto + Reply-To) replaces "the operator".
 - New emails: password changed, welcome, account deleted, sign-in method removed, two-factor
-  turned off, and **"class ready"** when a design job (ME5 owns the producer; B2's verify job later calls the same
-  hand-off helper in its own PR) that ran a fresh mix
+  turned off, and **"class ready"** when a design job or the B2 verify job (ME5 owns both
+  producers) that ran a fresh mix
   analysis finishes (cached mix: none).
 - **Delivery is fire and forget**: one SMTP attempt, failures logged (error class only), no
   retries, tracking or delivery history. A mail not arriving is not an application failure.
@@ -60,7 +60,7 @@ Order: ME0 → ME1 → ME2, ME3, ME4 (any order) → ME5 (also needs A4 #380).
 - `docs/adr/0022-account-emails.md`, short: registry and categories, rendering and catalogue,
   branding, fire-and-forget delivery (web: `BackgroundTasks` after the commit; worker: hand-off
   table), preferences and unsubscribe token, admin switches. ADR 0016's B2 row gets a note that
-  its verify job enqueues "class ready".
+  ME5 adds the "class ready" enqueue to its verify job.
 
 ### ME1 `feat(mail): branded multipart mail layout and email registry` — Sonnet dev, Opus reviewer
 - Keep `classbeat/mail.py` in place (callers unchanged). `MailMessage` gains `html` and `locale`;
@@ -109,8 +109,10 @@ Order: ME0 → ME1 → ME2, ME3, ME4 (any order) → ME5 (also needs A4 #380).
   test send **bypass the admin switch and user preferences** (a disabled kind can still be
   designed and tested) but use the normal renderer and SMTP send.
 - **Middleware exemption** (ADR 0022 §6, amends ADR 0013 §9): `SecurityHeaders` must not replace
-  the CSP of `GET /api/admin/mail/{kind}/preview`, and app pages get `frame-src 'self'`; a test
-  pins both and that `frame-ancestors 'none'` holds for every other response.
+  the CSP of a response from the exact route `GET /api/admin/mail/{kind}/preview` that already carries
+  its own; a 401, 403, 404 or 500 there still gets the default CSP. App pages get the path-scoped
+  `frame-src <public_base_url>/api/admin/mail/`. Tests pin all four error cases, the preview's
+  own CSP, and that `frame-ancestors 'none'` holds for every other response.
 - Admin page "Mail": Branding cards (sender name, support address, footer), Notification types
   (a switch per optional kind; essential ones shown locked "always sent"), preview in
   `<iframe sandbox src=…>` with HTML/text toggle, "Send test to me".
@@ -150,9 +152,10 @@ Order: ME0 → ME1 → ME2, ME3, ME4 (any order) → ME5 (also needs A4 #380).
 
 ### ME5 `feat(jobs): "class ready" mail via a worker hand-off` — Opus dev (fenced job write), Opus reviewer
 Depends on ME1, ME4 (the preference it checks) and A4 (#380).
-ME5 owns the whole "class ready" feature for design jobs: the table, the worker insert, the web
-consumer and the mail. It exposes one enqueue helper. B2's verify job (ADR 0016) calls that same
-helper in B2's own PR; B2 is not in ME5's scope.
+ME5 owns the whole "class ready" feature for both producers: the table, the worker insert, the web
+consumer and the mail. It exposes one enqueue helper, used by design jobs and by the already merged
+`swedebeat_verify_mix` verify job (ADR 0016 B2, #384), which ME5 edits to enqueue only when it ran a
+fresh mix analysis.
 - Table `mail_handoff(id, owner_id FK users ON DELETE CASCADE, kind, job_id, params jsonb
   (class id only), created_at)`, unique `(kind, job_id)`, RLS by owner, guard 12 entries (not
   exported; cascade).
@@ -161,9 +164,9 @@ helper in B2's own PR; B2 is not in ME5's scope.
   attempt adds nothing extra. It skips the insert when the admin switch or the user's preference
   already has "class ready" off (cheap reads in the same transaction); the web side still checks
   both again just before sending.
-- Retention: a purge of rows older than a day runs in the web process whether or not SMTP is
-  configured, and `mail_handoff` has a guard 10 retention entry, so the table cannot grow
-  without SMTP.
+- Retention: the purge of rows older than a day is the `SECURITY DEFINER` take function itself
+  (RLS is forced, so no plain app-role `DELETE`); with SMTP not configured an hourly web task calls
+  it purge-only (limit 0). `mail_handoff` also has a guard 10 retention entry.
 - The web process takes rows with one `SECURITY DEFINER` function
   (`SET search_path = pg_catalog, pg_temp`, `EXECUTE` for the app role only, added to the queue
   digests): `DELETE … WHERE id IN (SELECT … FOR UPDATE SKIP LOCKED LIMIT n) RETURNING …`, which
@@ -172,7 +175,9 @@ helper in B2's own PR; B2 is not in ME5's scope.
   `LISTEN mail_handoff` and a 30 s poll, only when SMTP is configured. Account deletion's cascade
   removes untaken rows.
 - Tests: fresh analysis → one mail; cached mix → none; retried attempt → one row; two web
-  consumers never send the same row; disabled by admin or user → none; class deleted → none.
+  consumers never send the same row; disabled by admin or user → none; class deleted → none;
+  the verify job: fresh mix analysis → one row, cached mix or retried attempt → none; rows older
+  than a day are purged with SMTP unset.
 
 ## Done when (milestone ME)
 - Every mail is multipart with the branded layout, golden-tested; existing triggers and subjects

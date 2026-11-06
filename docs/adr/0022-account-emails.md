@@ -80,12 +80,15 @@ already has "class ready" off (the web side checks both again before sending).
 
 The take function is `SECURITY DEFINER` with `SET search_path = pg_catalog, pg_temp` and `EXECUTE`
 for the app role only, and is added to the queue digests. Retention: a purge of rows older than a
-day runs in the web process whether or not SMTP is configured, and `mail_handoff` has a guard 10
-retention entry, so the table cannot grow without SMTP.
+day is done by that same function, not by a plain app-role `DELETE` (RLS is forced on the table).
+With SMTP not configured, an hourly task in the web process calls it in a purge-only mode (limit 0).
+`mail_handoff` also has a guard 10 retention entry, so the table cannot grow without SMTP.
 
-ME5 (#656) owns "class ready" for design jobs end to end and exposes one enqueue helper; ADR
-0016's B2 verify job calls that same helper in B2's own PR, not in ME5. ME5 depends on ME1 (#652),
-A4 (#380) and **ME4 (#655)** for the user preference it checks.
+ME5 (#656) owns "class ready" end to end for both producers: design jobs and the already merged
+`swedebeat_verify_mix` verify job of ADR 0016 B2 (#384). ME5 adds one enqueue helper and edits that
+verify job to call it only when it ran a fresh mix analysis, with a test (fresh analysis: one row;
+cached or retried: none). ME5 depends on ME1 (#652), A4 (#380) and **ME4 (#655)** for the user
+preference it checks.
 
 **5. Preferences and unsubscribe token.** `users` gets `mail_unsubscribed_all` and
 `mail_opted_out` (categories), in the GDPR export. Optional mails carry a link
@@ -109,20 +112,24 @@ renderer and SMTP send. The preview is shown in a sandboxed iframe; see the CSP 
 `frame-ancestors 'none'`, and `SecurityHeaders` sets the CSP on every response. A same-origin
 preview iframe on the admin page needs two changes. Decision:
 
-- App pages change `frame-src 'none'` to `frame-src 'self'` (same-origin framing only).
+- App pages change `frame-src 'none'` to the path-scoped `frame-src <public_base_url>/api/admin/mail/`
+  (a CSP host source with a path ending in `/` matches that prefix, the way ADR 0013 §9 scopes
+  `img-src`; `'self'` cannot carry a path). Only that prefix can be framed.
   `frame-ancestors 'none'` stays for every response except the preview.
-- `SecurityHeaders` does not overwrite the CSP of `GET /api/admin/mail/{kind}/preview`. That
-  response keeps its own: `default-src 'none'; style-src 'unsafe-inline'; img-src <base>/email/;
+- `SecurityHeaders` does not overwrite the CSP of a response from the exact route
+  `GET /api/admin/mail/{kind}/preview` that already carries its own CSP. A 401, 403, 404 or 500
+  from that route still gets the default CSP. The preview response keeps its own: `default-src 'none'; style-src 'unsafe-inline'; img-src <base>/email/;
   frame-ancestors 'self'; sandbox`, plus `X-Content-Type-Options: nosniff` and
   `Cache-Control: no-store`.
-- ME2 (#653) implements both and tests them: the exemption is for that one route, and every other
+- ME2 (#653) implements both and tests them, including the four error cases above; every other
   response keeps `frame-ancestors 'none'`.
 
-Alternatives considered: (1) a `srcdoc` iframe, which still needs `frame-src`; (2) no iframe, a
-text-only or download preview, which cannot show the layout the admin is designing; (3) a separate
-origin for previews, too heavy for one admin page. Residual risk: `frame-src 'self'` lets an
-injected same-origin frame load on any page, but the app has no HTML injection path (ADR 0013) and
-frames stay same-origin; the preview route is admin-only, its sandbox has no `allow-scripts`, and
+Alternatives considered: (1) plain `frame-src 'self'`, simpler but lets any page frame any
+same-origin URL; rejected for the path-scoped source above; (2) a `srcdoc` iframe, which still
+needs `frame-src`; (3) no iframe, a text-only or download preview, which cannot show the layout the
+admin is designing; (4) a separate origin for previews, too heavy for one admin page. Residual
+risk: the CSP ignores paths after a redirect (the host is still checked), and the app has no HTML
+injection path (ADR 0013); the preview route is admin-only, its sandbox has no `allow-scripts`, and
 all content in it is escaped by the one renderer.
 
 **7. The one intended trigger change.** On Google, GitHub or Microsoft **account creation**, the
