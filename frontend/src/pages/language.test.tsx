@@ -15,8 +15,9 @@ function renderAt(url: string) {
   )
 }
 
-// The manifest lists only English until the catalogues ship; these tests need three languages.
-vi.mock('../i18n/locales.json', () => ({ default: ['en', 'sv', 'da'] }))
+// These tests are about choosing and saving a language, not about its words: no catalogue loads,
+// so the page stays English whichever language is chosen (the catalogues have their own tests).
+vi.mock('../i18n/catalogues', () => ({ CATALOGUE_LOADERS: {} }))
 
 const OFFERED = ['en', 'sv', 'da']
 const ANON = {

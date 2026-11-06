@@ -143,7 +143,10 @@ def test_every_month_has_a_name() -> None:
 
 
 def test_the_stored_language_is_used_only_when_offered(monkeypatch: pytest.MonkeyPatch) -> None:
-    assert mail_locale("sv") == "en"  # the manifest offers only English until ML7
+    assert mail_locale("sv") == "sv"  # the manifest offers en, sv and da
+    assert mail_locale("fr") == "en"
+    monkeypatch.setattr(locales, "SUPPORTED_LOCALES", ("en",))
+    assert mail_locale("sv") == "en"  # a locale the manifest does not offer falls back
     monkeypatch.setattr(locales, "SUPPORTED_LOCALES", ("en", "sv", "da"))
     assert mail_locale("sv") == "sv"
     assert mail_locale("da") == "da"
