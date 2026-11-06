@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { planRefusalText } from '../api/planMessages'
+import { sentenceText } from '../api/sentences'
+import { useT } from '../i18n/I18n'
 import { isSongKind } from '../api/songs'
 import { SongEnded } from '../components/songs/SongEnded'
 import { SongsForApproval } from '../components/songs/SongsForApproval'
@@ -329,12 +331,14 @@ function againMessage(error: unknown): string {
 }
 
 function Failed({ job }: { job: Job }) {
+  const t = useT()
   if (job.errorCategory === 'uncertain_write') return <FailedUncertain job={job} />
   // A failed Swedebeat match: the server's sentence says what stopped it. The generic MOWL text for
   // the category ("wait a few minutes and try again") would promise a retry that does not happen.
   // No button either: "Try again" would start a new design, not retry the match.
   if (job.kind === 'swedebeat_match' && job.errorMessage !== null) {
-    return <Ended job={job} title="The Swedebeat match stopped" detail={job.errorMessage} retry={false} />
+    const detail = sentenceText(t, job.sentence, job.errorMessage) ?? job.errorMessage
+    return <Ended job={job} title="The Swedebeat match stopped" detail={detail} retry={false} />
   }
   const kept = recallInput(job.id)
   const feature =

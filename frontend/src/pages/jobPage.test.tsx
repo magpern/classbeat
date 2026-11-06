@@ -299,6 +299,25 @@ describe('a failed design', () => {
     expect(document.body).not.toHaveTextContent('rate_limited')
   })
 
+  it('words a known sentence code from the catalogue and shows the server text for an unknown one', async () => {
+    const body = (sentence: string) =>
+      jobBody('failed', {
+        kind: 'swedebeat_match',
+        error_category: 'rate_limited',
+        error_message: 'The server text.',
+        sentence,
+        sentence_params: {},
+      })
+    fakeApi({ ...SESSION_ROUTES, [`GET ${JOB}`]: body('swedebeat.stopped') })
+    const first = renderAt(`/jobs/${JOB_ID}`)
+    expect(await screen.findByText('Swedebeat asks to slow down. This match has stopped.')).toBeInTheDocument()
+    expect(document.body).not.toHaveTextContent('The server text.')
+    first.unmount()
+    fakeApi({ ...SESSION_ROUTES, [`GET ${JOB}`]: body('swedebeat.from_the_future') })
+    renderAt(`/jobs/${JOB_ID}`)
+    expect(await screen.findByText('The server text.')).toBeInTheDocument()
+  })
+
   it('offers no "Try again" or new-design button for a rate-limited Swedebeat match', async () => {
     // Even with a remembered design form for this job id, the button would start a new design.
     window.sessionStorage.setItem(
