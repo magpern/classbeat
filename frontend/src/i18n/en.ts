@@ -6,7 +6,7 @@
 export const en = {
   'language.label': 'Language',
   'language.follow': 'Follow this browser',
-  'language.help': 'The language of this site. "Follow this browser" uses your browser\'s language on each device; email is sent in English until more languages are available.',
+  'language.help': 'The language of this site and of your email. "Follow this browser" uses your browser\'s language on each device, and your email is then in English.',
   'format.soonUnknown': 'a few minutes from now',
   'usage.underOneCent': 'under {amount}',
 

@@ -34,8 +34,8 @@ afterEach(() => {
 })
 
 describe('the manifest', () => {
-  it('is English only until ML7', () => {
-    expect(manifest).toEqual(['en'])
+  it('lists English, Swedish and Danish', () => {
+    expect(manifest).toEqual(['en', 'sv', 'da'])
     expect([...LOCALES]).toEqual(manifest)
   })
 
@@ -50,14 +50,17 @@ describe('the manifest', () => {
   })
 
   it('only accepts its own codes', () => {
-    expect(isLocale('en')).toBe(true)
-    for (const bad of ['sv', 'xx', 'EN', '../en', '', 'constructor', null, 3]) expect(isLocale(bad)).toBe(false)
+    for (const good of ['en', 'sv', 'da']) expect(isLocale(good)).toBe(true)
+    for (const bad of ['fr', 'sv-SE', 'xx', 'EN', '../en', '', 'constructor', null, 3])
+      expect(isLocale(bad)).toBe(false)
   })
 
   it('saves only its own codes', () => {
-    storeLocale('sv')
+    storeLocale('fr')
     storeLocale('../x')
     expect(window.localStorage.getItem(LOCALE_STORAGE_KEY)).toBeNull()
+    storeLocale('sv')
+    expect(window.localStorage.getItem(LOCALE_STORAGE_KEY)).toBe('sv')
     storeLocale('en')
     expect(window.localStorage.getItem(LOCALE_STORAGE_KEY)).toBe('en')
   })
@@ -70,17 +73,19 @@ describe('browser resolution', () => {
   })
 
   it('ignores a browser that prefers a language the manifest lacks', () => {
-    languages(['sv-SE', 'da', 'en-GB'])
-    expect(fromLanguages(['sv-SE', 'da'])).toBe('en')
+    languages(['fr-FR', 'de', 'en-GB'])
+    expect(fromLanguages(['fr-FR', 'de'])).toBe('en')
     expect(resolveBrowserLocale()).toBe('en')
   })
 
   it('takes the first manifest language', () => {
     expect(fromLanguages(['fr', 'en-GB', 'sv'])).toBe('en')
+    expect(fromLanguages(['fr', 'sv-SE', 'en'])).toBe('sv')
+    expect(fromLanguages(['da-DK'])).toBe('da')
   })
 
   it('ignores a saved value outside the manifest', () => {
-    window.localStorage.setItem(LOCALE_STORAGE_KEY, 'sv')
+    window.localStorage.setItem(LOCALE_STORAGE_KEY, 'fr')
     languages(['en-US'])
     expect(resolveBrowserLocale()).toBe('en')
   })
@@ -99,15 +104,21 @@ describe('locale-init.js (runs before first paint)', () => {
     window.eval(initScript)
   }
 
-  it('gives a browser preferring sv lang="en" while the manifest is en only', () => {
+  it('gives a browser preferring sv lang="sv", and an unsupported one lang="en"', () => {
     languages(['sv-SE', 'sv'])
-    document.documentElement.setAttribute('lang', 'sv')
+    run()
+    expect(document.documentElement).toHaveAttribute('lang', 'sv')
+    languages(['fr-FR'])
+    document.documentElement.setAttribute('lang', 'fr')
     run()
     expect(document.documentElement).toHaveAttribute('lang', 'en')
   })
 
-  it('ignores a saved sv', () => {
-    window.localStorage.setItem(LOCALE_STORAGE_KEY, 'sv')
+  it('uses a saved da and ignores a saved fr', () => {
+    window.localStorage.setItem(LOCALE_STORAGE_KEY, 'da')
+    run()
+    expect(document.documentElement).toHaveAttribute('lang', 'da')
+    window.localStorage.setItem(LOCALE_STORAGE_KEY, 'fr')
     run()
     expect(document.documentElement).toHaveAttribute('lang', 'en')
   })
@@ -146,7 +157,7 @@ describe('t, fallback and plurals', () => {
   })
 
   it('loads nothing for a locale the map does not name, or a hostile one', async () => {
-    expect(await loadCatalogue('sv', loaders)).toBe(false)
+    expect(await loadCatalogue('fr', loaders)).toBe(false)
     expect(await loadCatalogue('__proto__', loaders)).toBe(false)
     expect(await loadCatalogue('../x', loaders)).toBe(false)
     // Names every object inherits: the loader map must not answer for them.
