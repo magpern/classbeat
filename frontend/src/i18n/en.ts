@@ -397,7 +397,7 @@ export const en = {
   // The class card, my classes and the class page.
   'class.card.tss': 'TSS {value}',
   // The screen-reader label of the small class profile (MiniProfile). One form: English says "intervals" for every count.
-  'class.profile.label': 'Class profile, {length}, {count} intervals',
+  'class.profile.label': { one: 'Class profile, {length}, {count} interval', other: 'Class profile, {length}, {count} intervals' },
   'class.profile.empty': 'No class profile yet',
   'class.list.title': 'My classes',
   'class.list.design': 'Design a class',
@@ -1182,8 +1182,8 @@ export const en = {
   'plan.quota.feature.saveNamed': 'This version uses {name}, which your plan does not include, so it cannot be saved. {ways}',
   'plan.quota.feature.version': 'That version uses something your plan does not include. Choose another version.',
   'plan.quota.feature.versionNamed': 'That version uses {name}, which your plan does not include. Choose another version.',
-  'plan.quota.feature.new': 'Your plan does not include part of this class. Take it out and try again.',
-  'plan.quota.feature.newNamed': 'Your plan does not include {name}. Take them out and try again.',
+  'plan.quota.feature.new': 'Your plan does not include part of this class. Take that part out and try again.',
+  'plan.quota.feature.newNamed': 'Your plan does not include {name}. Take that out and try again.',
   'plan.quota.saves.window.day': 'the last 24 hours',
   'plan.quota.saves.window.hour': 'the last hour',
   'plan.quota.saves.later.day': 'Try again tomorrow.',
