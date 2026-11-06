@@ -304,6 +304,47 @@ What holds for running, as built:
   classes use incline above the base setting. The incline aggregates are in the P9 PR description.
 - **Not wired:** no brief can select a running profile until R1 adds a sport to the brief.
 
+### 7a. Interval, sprint, climb, work/rest and intensity metrics (#644)
+
+Six metrics and twelve rule ids (a low and a high one each) were added as code, so that the next
+cycling refresh can ship bounds for them: `longest_interval_s`, `median_interval_s`,
+`sprint_count`, `climb_time_share`, `work_rest_ratio` and `intensity_factor`. **No profile ships a
+bound for them** and no shipped profile changed; the profile `schema` stays 1 (enum additions only,
+`schema.json` regenerated), as in §7. Rules on them are `info` or `warn` like any other, never
+blockers.
+
+They are measured as `mowl corpus-analyze` measures them (mowl-workouts `docs/corpus-stats.md`), so
+a bound made from that corpus is compared with the same quantity:
+
+| Metric | Corpus key | Draft measure |
+|---|---|---|
+| `longest_interval_s`, `median_interval_s` | `interval_sec_max`, `interval_sec_median` | longest and median `sec` over every interval, warm-up and cool-down included |
+| `sprint_count` | `acc_count` | intervals with `acc`; **always 0 for a designed draft**, see below |
+| `climb_time_share` | `climb_pct` | share of the timeline seated, zone 3 or above, top cadence 1 to 80 rpm |
+| `work_rest_ratio` | `work_rest_ratio` | zone 4+ seconds over zone 1 to 2 seconds of the segments that are not warm-up or cool-down |
+| `intensity_factor` | `intensity_factor` | `sqrt(TSS / (hours x 100))` |
+
+Differences, all from measuring a draft instead of a stored program: shares are fractions, not
+percent; the corpus reads the TSS MOWL stored while a draft uses the library estimate
+`workout.tss` (within 1 % of the server's, except for a draft with a zone 7 interval, whose TSS
+weight is a guess); an interval with no cadence number is never a climb (`design.check` fits or
+drops `"beat"` before the rules run, so this is rare); and `work_rest_ratio` is undefined when the
+body has no zone 1 to 2 time, where the corpus leaves the class out too, so the engine measures
+`None` and the rule does not fire.
+
+**`sprint_count` gap.** The metric counts intervals carrying `acc`, but the draft schemas
+(`agent/schemas.py`, strict, no `acc`) cannot carry it and `to_spec` never writes it, so it is 0 for
+every designed or soundless class. It is meaningful only for a workout read back from MOWL. A low
+bound (`sprints_few`) would fire on every designed class with a note the model cannot satisfy, and
+`sprints_many` could never fire. So **no profile may ship a `sprints_few` or `sprints_many` bound**
+until drafts can carry sprints (a draft schema change, a later issue); a guard test fails if one
+does, and `test_a_real_draft_has_no_sprints_to_count` pins the limitation.
+
+`segments` and `intervals` stay in the `Metric` enum with **no rule id**, on purpose: the number of
+intervals follows the length and the beat-fitted music, and the number of segments follows how the
+instructor names the parts, so a note on them would ask the designer to fight the brief. A later
+issue can wire them with data that says otherwise.
+
 ### 8. The issues
 
 Review class: **Opus** = the model's input and output boundary, provenance, migrations with RLS;

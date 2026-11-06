@@ -895,9 +895,9 @@ async def test_a_soundless_job_needs_a_covering_route_and_a_soundless_suite_vers
         async with system_session(factory) as db:
             return await routes_module.covers(db, key, variant)
 
-    assert routes_module.SOUNDLESS_SUITE_VERSION == 12 == running_suite_version()
+    assert routes_module.SOUNDLESS_SUITE_VERSION == 12 <= running_suite_version()
     assert await covers() is False  # no route: the bootstrap choice
-    add_result(admin, age_minutes=1)  # recorded on the running suite, version 12
+    add_result(admin, age_minutes=1)  # recorded on the running suite, which covers soundless
     await enable(factory, s, "anthropic", OPUS, "medium")
     assert await covers("running") is True
     assert await covers() is True

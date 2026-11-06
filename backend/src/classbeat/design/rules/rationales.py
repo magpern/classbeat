@@ -23,6 +23,18 @@ RATIONALES: Final[dict[str, str]] = {
     "load_bounded": "Most classes of this kind put a bit less training load into each minute.",
     "hard_not_early": "Most classes of this kind hold the hard efforts back in the first quarter.",
     "standing_bounded": "Most classes of this kind keep standing to a limited share of the ride.",
+    "longest_interval_enough": "Most classes of this kind hold at least one longer interval.",
+    "longest_interval_bounded": "Most classes of this kind keep every interval shorter than this.",
+    "median_interval_enough": "Most classes of this kind use longer intervals than this.",
+    "median_interval_bounded": "Most classes of this kind use shorter intervals than this.",
+    "sprints_present": "Most classes of this kind put a few more sprints into the ride.",
+    "sprints_bounded": "Most classes of this kind put fewer sprints into the ride.",
+    "climb_present": "Most classes of this kind spend more of the ride on seated climbs.",
+    "climb_bounded": "Most classes of this kind spend less of the ride on seated climbs.",
+    "work_rest_enough": "Most classes of this kind work harder for each minute of rest.",
+    "work_rest_bounded": "Most classes of this kind rest longer for each minute of hard work.",
+    "intensity_enough": "Most classes of this kind have a higher overall intensity than this.",
+    "intensity_bounded": "Most classes of this kind have a lower overall intensity than this.",
     # Running wording (ADR 0017 section 7): the same expectations, said of a run.
     "warmup_ramp_run": "Most classes of this kind run a few minutes before the first hard effort.",
     "hard_share_enough_run": (

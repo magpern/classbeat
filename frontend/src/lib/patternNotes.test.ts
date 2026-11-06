@@ -67,4 +67,22 @@ describe('valueText', () => {
       'This one: 4.3. Usual: up to 3.9',
     )
   })
+
+  it('states counts, ratios and the intensity factor without losing the decimals that matter', () => {
+    expect(valueText({ metric: 'sprint_count', value: 1, bounds: [3, null] })).toBe(
+      'This one: 1. Usual: 3 or more',
+    )
+    expect(valueText({ metric: 'intensity_factor', value: 0.85, bounds: [null, 0.81] })).toBe(
+      'This one: 0.85. Usual: up to 0.81',
+    )
+    expect(valueText({ metric: 'work_rest_ratio', value: 0.35, bounds: [0.5, null] })).toBe(
+      'This one: 0.35. Usual: 0.50 or more',
+    )
+    expect(valueText({ metric: 'longest_interval_s', value: 330, bounds: [null, 300] })).toBe(
+      'This one: 5:30. Usual: up to 5:00',
+    )
+    expect(valueText({ metric: 'climb_time_share', value: 0.24, bounds: [null, 0.1] })).toBe(
+      'This one: 24%. Usual: up to 10%',
+    )
+  })
 })
