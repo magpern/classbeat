@@ -79,10 +79,14 @@ async def send_optional(
     recipient: str,
     params: Mapping[str, Any],
     *,
+    prefs: MailPrefs | None = None,
     user_id: UUID | None = None,
 ) -> bool:
     """Send one mail through the gate with the live settings; ``True`` if an attempt was made.
-    ``user_id`` is the recipient's account, when the caller knows it."""
+
+    ``prefs`` are the recipient's preferences when the caller holds them (account deleted: read
+    before the cascade). Without them the gate looks them up by ``user_id`` (the recipient's
+    account, when the caller knows it) or else by recipient."""
     async with system_session(factory) as db:
         config = await load(db, settings)
     return await send(
@@ -91,6 +95,7 @@ async def send_optional(
         kind_id,
         recipient,
         params,
+        prefs=prefs,
         lookup=_lookup(factory, user_id),
         disabled=config.disabled,
         branding=config.branding,

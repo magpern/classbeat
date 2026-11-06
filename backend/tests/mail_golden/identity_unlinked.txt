@@ -1,0 +1,17 @@
+A sign-in method was removed
+============================
+
+Github was removed from your classbeat account as a way to sign in.
+
+When it happened: 6 November 2026, 12:30 UTC
+
+Review your account:
+https://classbeat.example.test/account
+
+If this wasn't you, change your password and tell us right away. Contact us at support@classbeat.eu
+
+--
+You got this security notice because this is the email address of a classbeat account. These notices are sent for your protection.
+classbeat: https://classbeat.example.test
+Questions? Write to support@classbeat.eu
+Unsubscribe from these emails: https://classbeat.example.test/unsubscribe#token=SAMPLE&all=SAMPLE

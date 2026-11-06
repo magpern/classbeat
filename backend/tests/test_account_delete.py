@@ -28,6 +28,25 @@ async def erase_account(who: Person, typed: str | None = None) -> Any:
     return await who.rider.browser.post(URL, body)
 
 
+async def test_one_deleted_notice_is_queued_with_the_address_and_prefs_read_before_the_cascade(
+    songenv: SongEnv, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from classbeat.account import routes
+    from classbeat.emails.dispatch import MailPrefs
+
+    queued: list[Any] = []
+    monkeypatch.setattr(routes, "queue", lambda _bg, _request, notice: queued.append(notice))
+    mine = await person(songenv)
+    wrong = await erase_account(mine, "someone-else@example.com")
+    assert wrong.status_code >= 400
+    assert queued == []  # nothing was deleted, nothing is owed
+    assert (await erase_account(mine)).status_code == 204
+    [notice] = queued
+    assert (notice.kind_id, notice.recipient) == ("account_deleted", mine.email)
+    assert notice.prefs == MailPrefs()  # passed along: the row is gone when the mail is sent
+    assert set(notice.params) == {"when"}  # no account detail beyond the time
+
+
 async def test_every_table_with_a_user_reference_has_a_row_before_and_none_after(
     songenv: SongEnv,
 ) -> None:

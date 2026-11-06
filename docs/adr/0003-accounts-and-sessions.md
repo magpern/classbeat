@@ -892,7 +892,8 @@ deletion).
 - **Columns:** `users.mail_unsubscribed_all boolean` and `users.mail_opted_out text[]`, the latter
   limited by a CHECK to the optional categories (`welcome`, `account_activity`, `class_ready`).
   Essential mail (sign-in, reset and confirmation links, plan ME4) has no switch and is always
-  sent. The security notices (`totp_enrolled`, `mfa_failures`, `identity_linked`) are the optional
+  sent. The security notices (`totp_enrolled`, `mfa_failures`, `identity_linked` and ME3's
+  `password_changed`, `identity_unlinked`, `totp_removed`, `account_deleted`) are the optional
   category `account_activity` (ADR 0022): the user, the "all optional mail" switch and the
   unsubscribe link can turn them off, and the copy says so. Both columns are in the GDPR export
   (guard 12).

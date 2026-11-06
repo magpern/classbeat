@@ -40,6 +40,7 @@ from classbeat.auth.userlock import lock_user
 from classbeat.context import UserContext
 from classbeat.crypto.keks import KeyRing
 from classbeat.db import system_session
+from classbeat.emails.notices import happened, queue
 
 router = APIRouter(prefix="/api/auth", tags=["mfa"])
 
@@ -248,16 +249,22 @@ async def confirm_enrollment(
 
 @router.delete("/mfa/totp", status_code=204)
 async def remove_totp(
-    request: Request, ctx: Annotated[UserContext, Depends(require_stepup)], info: Info
+    request: Request,
+    background: BackgroundTasks,
+    ctx: Annotated[UserContext, Depends(require_stepup)],
+    info: Info,
 ) -> None:
     """Removing TOTP needs step-up: a password-only re-auth is not enough."""
     session = _session(info)
     _need_totp(session)
     async with system_session(_factory(request)) as db:
-        await mfa.remove_totp(db, ctx.user_id)
+        removed = await mfa.remove_totp(db, ctx.user_id)
         await clear_mfa(db, session.id)
         await revoke_user_sessions(db, ctx.user_id, except_id=session.id)
         await record_event(db, "totp_removed", user_id=ctx.user_id, ip=request_ip(request))
+    # A parallel request that removed it first already mailed: one mail per change.
+    if removed:
+        queue(background, request, happened("totp_removed", session.email))
 
 
 @router.post("/mfa/recovery-codes")

@@ -105,7 +105,8 @@ async def test_a_reset_token_works_once_and_not_after_it_expires(menv: Env, smtp
     assert (reused.status_code, reason(reused)) == (400, "invalid_token")
     await ask(Browser(menv))
     await menv.run("UPDATE auth_tokens SET expires_at = now() - interval '1 second'")
-    expired = await complete(Browser(menv), smtp.messages[1].token(), "yet another passphrase")
+    resets = [m for m in smtp.messages if "#token=" in m.text]  # not the "password changed" notice
+    expired = await complete(Browser(menv), resets[1].token(), "yet another passphrase")
     assert (expired.status_code, reason(expired)) == (400, "invalid_token")
     assert (await complete(Browser(menv), "garbage")).status_code == 400
 

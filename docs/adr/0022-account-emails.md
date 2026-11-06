@@ -136,6 +136,19 @@ all content in it is escaped by the one renderer.
 welcome mail (naming the provider) replaces the "sign-in method added" notice, which that flow
 sends today. Every other existing trigger and subject is unchanged.
 
+ME3 (#654) implements it. Both creation paths (the provider callback and the e-mail hand-off
+confirmation) queue `welcome` with the provider and no longer send `identity_linked`; an explicit
+link from the account page still sends `identity_linked`, now through the gated path. The six
+notices (`welcome`, `password_changed`, `account_deleted`, `identity_unlinked`, `totp_removed`,
+and the rewritten `identity_linked`) are queued as background tasks after the commit
+(`emails/notices.py`), one mail per committed change and none for a no-op or refused request; a
+send failure is logged by error class only. `account_deleted` takes the address and preferences
+before the cascade and passes them as `prefs`. A password reset that also removes linked sign-in
+methods sends only `password_changed` (the page that lists them shows what was removed). Preferences
+are read in one function, `notices.read_prefs`, from ME4's columns (`mail_unsubscribed_all`,
+`mail_opted_out`; #655); it leaves out the user id, so the deletion notice carries no unsubscribe
+link (the account is gone, and the link would change nothing).
+
 ## Alternatives
 
 - **An outbox with retries and delivery history**: rejected by the owner; more tables, a worker

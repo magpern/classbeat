@@ -46,6 +46,10 @@ def _activity(kind_id: str, builder: Builder, sample: Mapping[str, Any]) -> Kind
     return Kind(kind_id, Category.ACCOUNT_ACTIVITY, False, True, True, True, builder, sample)
 
 
+def _welcome(kind_id: str, builder: Builder, sample: Mapping[str, Any]) -> Kind:
+    return Kind(kind_id, Category.WELCOME, False, True, True, True, builder, sample)
+
+
 _TOKEN = {"token": "SAMPLE"}
 _WHEN = {"when": SAMPLE_WHEN}
 
@@ -69,6 +73,11 @@ _ALL = (
     _activity("totp_enrolled", kinds.totp_enrolled, _WHEN),
     _activity("mfa_failures", kinds.mfa_failures, _WHEN),
     _activity("identity_linked", kinds.identity_linked, {"provider": "github", **_WHEN}),
+    _welcome("welcome", kinds.welcome, {"provider": "google"}),
+    _activity("password_changed", kinds.password_changed, _WHEN),
+    _activity("account_deleted", kinds.account_deleted, _WHEN),
+    _activity("identity_unlinked", kinds.identity_unlinked, {"provider": "github", **_WHEN}),
+    _activity("totp_removed", kinds.totp_removed, _WHEN),
 )
 
 REGISTRY: dict[str, Kind] = {k.id: k for k in _ALL}

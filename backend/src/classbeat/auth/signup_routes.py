@@ -31,6 +31,7 @@ from classbeat.auth.ratelimit import SIGN_IN_IP, SIGNUP_ADDRESS, SIGNUP_IP, Buck
 from classbeat.auth.tables import invites, pending_signups
 from classbeat.db import system_session
 from classbeat.emailnorm import normalize_email
+from classbeat.emails.notices import Notice, queue
 from classbeat.flags import effective as flags
 from classbeat.mail import MailMessage, send_logged
 
@@ -178,14 +179,16 @@ async def confirm_sign_up(
     await attempt.succeed()
     try:
         async with system_session(factory(request)) as db:
-            await _create_account(db, digest, ip)
+            email = await _create_account(db, digest, ip)
     except _Refused as exc:
         raise refuse(exc.status, exc.reason) from None
+    queue(background, request, Notice("welcome", email))  # committed: one welcome
     return Created()
 
 
-async def _create_account(db: AsyncSession, digest: bytes, ip: str) -> None:
-    """One transaction: consume the pending row, consume the invite, create the user."""
+async def _create_account(db: AsyncSession, digest: bytes, ip: str) -> str:
+    """One transaction: consume the pending row, consume the invite, create the user. Returns
+    the new account's address."""
     pending = (
         await db.execute(
             delete(pending_signups)
@@ -222,3 +225,4 @@ async def _create_account(db: AsyncSession, digest: bytes, ip: str) -> None:
         )
     )
     await record_event(db, "signup_confirmed", user_id=created, ip=ip)
+    return pending.email

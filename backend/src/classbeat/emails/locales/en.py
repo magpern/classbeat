@@ -21,6 +21,11 @@ class S(Enum):
     SUBJECT_MFA_FAILURES = auto()
     SUBJECT_IDENTITY_LINKED = auto()
     SUBJECT_CONNECTIONS_WIPED = auto()
+    SUBJECT_WELCOME = auto()
+    SUBJECT_PASSWORD_CHANGED = auto()
+    SUBJECT_ACCOUNT_DELETED = auto()
+    SUBJECT_IDENTITY_UNLINKED = auto()
+    SUBJECT_TOTP_REMOVED = auto()
     # Footer.
     FOOTER_SITE = auto()
     FOOTER_SUPPORT = auto()
@@ -83,6 +88,34 @@ class S(Enum):
     LINKED_BODY = auto()
     LINKED_WHEN = auto()
     LINKED_WARN = auto()
+    # New account notices (ME3).
+    WELCOME_HEADING = auto()
+    WELCOME_PRE = auto()
+    WELCOME_BODY = auto()
+    WELCOME_PROVIDER = auto()
+    WELCOME_BUTTON = auto()
+    WELCOME_REASON = auto()
+    PWCHANGED_HEADING = auto()
+    PWCHANGED_PRE = auto()
+    PWCHANGED_BODY = auto()
+    PWCHANGED_WHEN = auto()
+    PWCHANGED_WARN = auto()
+    DELETED_HEADING = auto()
+    DELETED_PRE = auto()
+    DELETED_BODY = auto()
+    DELETED_WHEN = auto()
+    DELETED_WARN = auto()
+    DELETED_REASON = auto()
+    UNLINKED_HEADING = auto()
+    UNLINKED_PRE = auto()
+    UNLINKED_BODY = auto()
+    UNLINKED_WHEN = auto()
+    UNLINKED_WARN = auto()
+    TOTPOFF_HEADING = auto()
+    TOTPOFF_PRE = auto()
+    TOTPOFF_BODY = auto()
+    TOTPOFF_WHEN = auto()
+    TOTPOFF_WARN = auto()
     # Connections wiped (incident).
     WIPED_HEADING = auto()
     WIPED_PRE = auto()
@@ -111,6 +144,11 @@ CATALOGUE: dict[S, str] = {
     S.SUBJECT_MFA_FAILURES: "Failed two-factor attempts on your classbeat account",
     S.SUBJECT_IDENTITY_LINKED: "A sign-in method was added to your classbeat account",
     S.SUBJECT_CONNECTIONS_WIPED: "Your classbeat connections were removed",
+    S.SUBJECT_WELCOME: "Welcome to classbeat",
+    S.SUBJECT_PASSWORD_CHANGED: "Your classbeat password was changed",
+    S.SUBJECT_ACCOUNT_DELETED: "Your classbeat account was deleted",
+    S.SUBJECT_IDENTITY_UNLINKED: "A sign-in method was removed from your classbeat account",
+    S.SUBJECT_TOTP_REMOVED: "Two-factor authentication was turned off on your classbeat account",
     S.FOOTER_SITE: "classbeat",
     S.FOOTER_SUPPORT: "Questions? Write to",
     S.FOOTER_UNSUBSCRIBE: "Unsubscribe from these emails",
@@ -192,6 +230,49 @@ CATALOGUE: dict[S, str] = {
     S.LINKED_WARN: (
         "If this wasn't you, sign in, remove it from your account page and change your password."
     ),
+    S.WELCOME_HEADING: "Welcome to classbeat",
+    S.WELCOME_PRE: "Your classbeat account is ready.",
+    S.WELCOME_BODY: (
+        "Describe a class and classbeat picks the songs, designs it and saves it to your "
+        "Intelligent Cycling account."
+    ),
+    S.WELCOME_PROVIDER: "You can sign in with {provider}.",
+    S.WELCOME_BUTTON: "Open classbeat",
+    S.WELCOME_REASON: (
+        "You got this because a classbeat account was just created with this address."
+    ),
+    S.PWCHANGED_HEADING: "Your password was changed",
+    S.PWCHANGED_PRE: "The password of your classbeat account was changed.",
+    S.PWCHANGED_BODY: (
+        "The password of your classbeat account was changed, and your other sessions were "
+        "signed out."
+    ),
+    S.PWCHANGED_WHEN: "When it happened",
+    S.PWCHANGED_WARN: "If this wasn't you, reset your password right away.",
+    S.DELETED_HEADING: "Your account was deleted",
+    S.DELETED_PRE: "Your classbeat account and its data were deleted.",
+    S.DELETED_BODY: (
+        "Your classbeat account and the data stored with it were deleted. Nothing more is kept "
+        "under this address."
+    ),
+    S.DELETED_WHEN: "When it happened",
+    S.DELETED_WARN: "If this wasn't you, tell us right away.",
+    S.DELETED_REASON: (
+        "You got this because your classbeat account was deleted. This is the only mail about it."
+    ),
+    S.UNLINKED_HEADING: "A sign-in method was removed",
+    S.UNLINKED_PRE: "{provider} can no longer be used to sign in to your classbeat account.",
+    S.UNLINKED_BODY: ("{provider} was removed from your classbeat account as a way to sign in."),
+    S.UNLINKED_WHEN: "When it happened",
+    S.UNLINKED_WARN: "If this wasn't you, change your password and tell us right away.",
+    S.TOTPOFF_HEADING: "Two-factor authentication was turned off",
+    S.TOTPOFF_PRE: "Two-factor authentication was turned off on your classbeat account.",
+    S.TOTPOFF_BODY: (
+        "Two-factor authentication was turned off on your classbeat account, and your other "
+        "sessions were signed out."
+    ),
+    S.TOTPOFF_WHEN: "When it happened",
+    S.TOTPOFF_WARN: "If this wasn't you, change your password and tell us right away.",
     S.WIPED_HEADING: "Your connections were removed",
     S.WIPED_PRE: "As a precaution, classbeat removed the stored sign-ins of your account.",
     S.WIPED_BODY: (
