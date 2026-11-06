@@ -53,10 +53,11 @@ everywhere; a change here changes both places in the same PR. ADR 0023 has the d
 | authenticator app | autentiseringsapp | godkendelsesapp | |
 | recovery code | återställningskod | gendannelseskode | |
 | provider | leverantör | udbyder | Sign-in provider. |
-| email | e-post | mail | Mail catalogues use "e-postadress" / "mailadresse" for the address. |
+| email | e-post (mail: "mejl") | mail | The address is "e-postadress" (sv) and "e-mailadresse" (da), as in the ML6 mails. |
 | connect, disconnect | ansluta, koppla från | tilslutte, afbryde | |
 | consent | samtycke | samtykke | |
 | trial | provperiod | prøveperiode | |
+| security notice | säkerhetsavisering | sikkerhedsbesked (pl. sikkerhedsbeskeder) | As in the ML6 mails. |
 | a precaution | försiktighetsåtgärd | forholdsregel | Same word as in the ML6 mails. |
 | race (Spotify/MOWL term) | race | race | Loan word. |
 | beat | beat (invariant plural) | beat (invariant plural) | Loan word. |
@@ -70,11 +71,13 @@ everywhere; a change here changes both places in the same PR. ADR 0023 has the d
   until then it is a known quirk, not a translation error.
 - **`class.revisions.segments`** is `{count} segment` (sv) and `{count} segmenter` (da): the
   Swedish noun is invariant, the Danish one is not, and the key is not a plural in English.
+- **"first quarter"** (`class.rule.hard_too_early`) is the first 25% of the class: "passets första fjärdedel" / "holdets første fjerdedel", never "kvart" / "kvarter" (a quarter of an hour).
+- **"approve" vs "consent".** Approving songs is godkännande / godkendelse; samtycke / samtykke is only consent (Spotify working playlist, legal).
+- **"times the efforts to the music"**: sv "tidsätter ansträngningarna", da "afstemmer indsatserne".
+- **Danish "login"** is neuter: "det gemte login".
 - **Rate limits** read "sakta ner" (sv) and "sætte tempoet ned" (da).
 - **`job.toolCalls`** uses "gång(er)" (sv) and "gang(e)" (da) because the English key does not
   pluralise.
-- **`language.help`** still says mail stays English until more languages exist, as the English key
-  does (ML6 changed that); fix it in English first, then here.
 - **`plan.quota.feature.new`** has an English singular/plural mismatch ("Take it out" / "Take them
   out"); the translations follow the English faithfully.
 - **Danish gender.** "konto" is common gender: "en konto", "kontoen".

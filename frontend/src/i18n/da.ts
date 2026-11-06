@@ -4,7 +4,7 @@ const da: Catalogue = {
   'language.label': 'Sprog',
   'language.follow': 'Følg denne browser',
   'language.help':
-    'Sprogget på dette websted. »Følg denne browser« bruger browserens sprog på hver enhed; mails sendes på engelsk, indtil der er flere sprog.',
+    'Sproget på dette websted og i dine mails. »Følg denne browser« bruger browserens sprog på hver enhed, og dine mails er så på engelsk.',
   'format.soonUnknown': 'om nogle få minutter',
   'usage.underOneCent': 'under {amount}',
 
@@ -18,7 +18,7 @@ const da: Catalogue = {
   // Landing page.
   'landing.badge': 'Privat beta',
   'landing.title':
-    'Beskriv dit indendørscykelhold, så vælger classbeat sangene og tidsætter anstrengelserne efter musikken.',
+    'Beskriv dit indendørscykelhold, så vælger classbeat sangene og afstemmer indsatserne efter musikken.',
   'landing.signUp': 'Opret dig med en invitationskode',
   'landing.haveAccount': 'Jeg har allerede en konto',
   'landing.example.title': 'Et eksempelhold',
@@ -67,7 +67,7 @@ const da: Catalogue = {
   'confirm.intro':
     'Skriv den adgangskode, du valgte, da du oprettede dig. Hvis du oprettede dig med en udbyder som Microsoft, skal du lade feltet stå tomt.',
   'confirm.submit': 'Bekræft konto',
-  'emailChange.title': 'Bekræft din nye mailadresse',
+  'emailChange.title': 'Bekræft din nye e-mailadresse',
   'emailChange.noLink': 'Denne side kræver linket fra bekræftelsesmailen.',
   'emailChange.changedTitle': 'Mailadressen er ændret',
   'emailChange.changed': 'Din konto bruger nu {email}. Andre enheder er blevet logget ud.',
@@ -76,7 +76,7 @@ const da: Catalogue = {
     'Log ind på den konto, der bad om ændringen, og åbn derefter linket i mailen igen.',
   'emailChange.confirmIntro':
     'Du er logget ind som {email}. Bekræft, at denne konto skal bruge den nye adresse.',
-  'emailChange.confirm': 'Bekræft ny mailadresse',
+  'emailChange.confirm': 'Bekræft ny e-mailadresse',
   'providerEmail.loadingTitle': 'Næsten færdig',
   'providerEmail.sent':
     'Hvis vi kan bruge {email}, er et bekræftelseslink på vej. Åbn det i samme browser for at gøre det færdigt. Linket virker i 24 timer.',
@@ -87,14 +87,14 @@ const da: Catalogue = {
   'providerEmail.nothing':
     'Intet login hos en udbyder venter på en adresse i denne browser. Det kan være udløbet (efter 15 minutter) eller allerede være gjort færdigt.',
   'providerEmail.yourProvider': 'din udbyder',
-  'providerEmail.title': 'Bekræft din mailadresse',
+  'providerEmail.title': 'Bekræft din e-mailadresse',
   'providerEmail.intro':
-    '{provider} bekræftede ikke en mailadresse for dig. Skriv den adresse, du vil bruge til classbeat; vi sender dig et link til at bekræfte den.',
+    '{provider} bekræftede ikke en e-mailadresse for dig. Skriv den adresse, du vil bruge til classbeat; vi sender dig et link til at bekræfte den.',
   'providerEmail.submit': 'Send bekræftelseslink',
   'reset.sent':
     'Hvis en konto bruger den adresse, er et link til at vælge en ny adgangskode på vej. Det virker i 30 minutter.',
   'reset.title': 'Nulstil din adgangskode',
-  'reset.intro': 'Skriv din mailadresse, så sender vi dig et link.',
+  'reset.intro': 'Skriv din e-mailadresse, så sender vi dig et link.',
   'reset.send': 'Send nulstillingslink',
   'reset.changedTitle': 'Adgangskoden er ændret',
   'reset.changed': 'Din adgangskode er ændret, og du er logget ud overalt. Log ind med den nye.',
@@ -149,10 +149,11 @@ const da: Catalogue = {
   'shell.requireAuth.errorTitle': 'Serveren kan ikke nås',
   'shell.requireAuth.errorTryAgain': 'Prøv igen om lidt.',
   'shell.requireAuth.title': 'Log ind først',
-  'shell.requireAuth.text': 'Denne side er for loggede brugere.',
+  'shell.requireAuth.text': 'Denne side er for brugere, der er logget ind.',
 
   // Plain-language texts for the reason codes of the auth API (api/messages.ts).
-  'error.reason.confirmation_mismatch': 'Det er ikke mailadressen til denne konto. Intet er blevet slettet.',
+  'error.reason.confirmation_mismatch':
+    'Det er ikke e-mailadressen til denne konto. Intet er blevet slettet.',
   'error.reason.invalid_invite': 'Den invitationskode er ikke gyldig, eller den er allerede brugt.',
   'error.reason.invite_invalid': 'Invitationen til denne oprettelse er ikke gyldig længere. Bed om en ny.',
   'error.reason.signups_closed': 'Oprettelse af konti er lukket lige nu.',
@@ -190,7 +191,7 @@ const da: Catalogue = {
   'oauth.denied': 'Login blev annulleret hos udbyderen.',
   'oauth.session_mismatch': 'Du blev logget ud eller skiftede konto under login. Log ind igen.',
   'oauth.account_exists':
-    'Der findes allerede en konto med den mailadresse. Log ind på den med din adgangskode, og tilknyt derefter udbyderen fra din kontoside.',
+    'Der findes allerede en konto med den e-mailadresse. Log ind på den med din adgangskode, og tilknyt derefter udbyderen fra din kontoside.',
   'oauth.invite_required':
     'Du skal have en invitation for at oprette en konto. Skriv din invitationskode nedenfor, og prøv igen.',
   'oauth.invite_invalid': 'Den invitation er ikke gyldig længere. Bed om en ny.',
@@ -218,7 +219,7 @@ const da: Catalogue = {
   'sentence.spotify.app_misconfigured':
     'Spotify genkender ikke denne appopsætning. Tjek Client ID og omdirigerings-URI’en i din Spotify-app.',
   'sentence.spotify.not_allowlisted':
-    'Spotify afviste denne konto. Tilføj kontoens navn og mailadresse under User Management i din Spotify-app (udviklertilstand tillader 5 personer), og sørg for, at appens ejer har Spotify Premium.',
+    'Spotify afviste denne konto. Tilføj kontoens navn og e-mailadresse under User Management i din Spotify-app (udviklertilstand tillader 5 personer), og sørg for, at appens ejer har Spotify Premium.',
   'sentence.spotify.forbidden': 'Spotify afviste anmodningen for din konto eller playliste.',
   'sentence.spotify.rate_limited': {
     one: 'Spotify beder os sætte tempoet ned; prøver igen om cirka {count} minut.',
@@ -375,9 +376,9 @@ const da: Catalogue = {
   'class.saveFailure.not_connected':
     'MOWL er ikke tilsluttet. Tilslut det på din kontoside, og prøv så igen.',
   'class.saveFailure.needs_reconnect':
-    'MOWL accepterer ikke længere den gemte login. Tilslut det igen på din kontoside, og prøv så igen.',
+    'MOWL accepterer ikke længere det gemte login. Tilslut det igen på din kontoside, og prøv så igen.',
   'class.saveFailure.key_unavailable':
-    'Den gemte MOWL-login kunne ikke læses. Tilslut MOWL igen på din kontoside.',
+    'Det gemte MOWL-login kunne ikke læses. Tilslut MOWL igen på din kontoside.',
   'class.saveFailure.invalid_input':
     'Denne version kunne ikke skrives til MOWL. Genindlæs siden, og prøv igen.',
   'class.saveFailure.operation_busy':
@@ -445,7 +446,7 @@ const da: Catalogue = {
   'class.rule.tss_rate_high':
     'De fleste hold af denne slags lægger lidt mindre træningsbelastning i hvert minut.',
   'class.rule.hard_too_early':
-    'De fleste hold af denne slags holder de hårde indsatser tilbage i det første kvarter.',
+    'De fleste hold af denne slags holder de hårde indsatser tilbage i holdets første fjerdedel.',
   'class.rule.standing_long': 'De fleste hold af denne slags begrænser andelen af stående cykling.',
   'class.rule.longest_interval_short': 'De fleste hold af denne slags har mindst ét længere interval.',
   'class.rule.longest_interval_long': 'De fleste hold af denne slags har alle intervaller kortere end dette.',
@@ -514,7 +515,7 @@ const da: Catalogue = {
   'class.page.changeSongs': 'Skift sange',
   'class.page.moreActions': 'Flere handlinger',
   'class.page.deleteClass': 'Slet hold',
-  'class.page.job.waiting': 'Sangene venter på dit samtykke.',
+  'class.page.job.waiting': 'Sangene venter på din godkendelse.',
   'class.page.job.design':
     'Dette hold bliver designet. Det kan tage et par minutter, og du kan forlade siden.',
   'class.page.job.refit': 'Dine tidsrettelser bliver anvendt.',
@@ -540,7 +541,7 @@ const da: Catalogue = {
   'class.delete.warning':
     'Det her sletter holdet, alle dets versioner og din samtale fra classbeat. Det kan ikke fortrydes.',
   'class.delete.kept': {
-    one: 'Det {count} træningspas, som classbeat gemte i din MOWL-konto, bliver der; slet det i MOWL.',
+    one: 'Det træningspas, som classbeat gemte i din MOWL-konto, bliver der; slet det i MOWL.',
     other: 'De {count} træningspas, som classbeat gemte i din MOWL-konto, bliver der; slet dem i MOWL.',
   },
   'class.delete.keptNone':
@@ -678,7 +679,7 @@ const da: Catalogue = {
   'class.beat.song': 'Sang {song}',
   'class.beat.title': 'Beat 1',
   'class.beat.intro':
-    'Lyt til holdet. Hvis ændringerne i en sang kommer et beat for tidligt, så flyt dens beat 1 senere; hvis de kommer for sent, så flyt det tidligere. Et takt har fire beat, så ét trin er en fjerdedel takt.',
+    'Lyt til holdet. Hvis ændringerne i en sang kommer et beat for tidligt, så flyt dens beat 1 senere; hvis de kommer for sent, så flyt det tidligere. En takt har fire beat, så ét trin er en fjerdedel af en takt.',
   'class.beat.from': 'Fra {start}, {bpm} BPM',
   'class.beat.bpmChanged': 'Tempoet på denne sang blev ændret, siden du satte dens beat 1: lyt igen.',
   'class.beat.estimate': 'Beat 1 er et skøn her: lyt til den første ændring i denne sang.',
@@ -885,7 +886,7 @@ const da: Catalogue = {
   'newclass.ftp': 'FTP-test',
   'newclass.ftp.none': 'Ingen',
   'newclass.ftp.minutes': '{count} minutter',
-  'newclass.notes': 'Andet?',
+  'newclass.notes': 'Noget andet?',
   'newclass.notes.hint': 'Fortæl classbeat, hvordan holdet skal føles.',
   'newclass.notes.hintNoGames':
     'Fortæl classbeat, hvordan holdet skal føles. Spil er ikke en del af din plan.',
@@ -905,16 +906,16 @@ const da: Catalogue = {
   'newclass.mix.label': 'Swedebeat-mix',
   'newclass.mix.analysed': 'Analyseret før',
   'newclass.mix.hint':
-    'classbeat føjer dette mix til din MOWL-musik, så det kan analysere lyden og læse sangene. Den første analyse kan tage omkring et minut.',
+    'classbeat føjer dette mix til din MOWL-musik, så classbeat kan analysere lyden og læse sangene. Den første analyse kan tage omkring et minut.',
   'newclass.playlist.label': 'Playliste',
   'newclass.playlist.hint':
-    'classbeat føjer denne playliste til din MOWL-musik, så den kan læse sangene. Den forbliver privat for dig.',
+    'classbeat føjer denne playliste til din MOWL-musik, så classbeat kan læse sangene. Den forbliver privat for dig.',
   'newclass.style.suggestions': 'Stilforslag',
   'newclass.style.label': 'Stil',
   'newclass.style.hint': 'For eksempel: bakker, intervaller, udholdenhed.',
-  'newclass.style.80s': '80erne',
-  'newclass.style.90s': '90erne',
-  'newclass.style.2000s': '00erne',
+  'newclass.style.80s': '80’erne',
+  'newclass.style.90s': '90’erne',
+  'newclass.style.2000s': '00’erne',
   'newclass.style.pop': 'Pop',
   'newclass.style.rock': 'Rock',
   'newclass.style.dance': 'Dance',
@@ -1084,7 +1085,7 @@ const da: Catalogue = {
     'Din Spotify-konto er ikke den, som sangene blev valgt til. Bed om nye sange.',
   'songs.approve.not_waiting': 'Disse sange kan ikke godkendes mere. De er allerede godkendt eller stoppet.',
   'songs.approve.busy': 'Du har allerede designs i gang. Vent, til et er færdigt, og godkend derefter.',
-  'songs.approve.quota': 'Du har brugt op af det, din plan tillader for nu.',
+  'songs.approve.quota': 'Du har brugt det, din plan tillader for nu.',
   'songs.approve.not_found': 'Sangene blev ikke fundet, eller også er de ikke dine.',
   'songs.approve.invalid_input':
     'Godkendelsen blev ikke accepteret. Genindlæs siden for at se de aktuelle sange.',
@@ -1107,7 +1108,7 @@ const da: Catalogue = {
   'songs.start.account_changed':
     'Din Spotify-konto er ikke den, som sangene blev valgt til. Vælg sange igen.',
   'songs.start.write_unresolved':
-    'Et tidligere trin hos Spotify er stadig uafgjort. Afgør det først (Tjek igen eller Gør det alligevel), og prøv så igen.',
+    'Et tidligere trin hos Spotify er stadig uafklaret. Afgør det først (Tjek igen eller Gør det alligevel), og prøv så igen.',
   'songs.start.idempotency_mismatch': 'Det virkede ikke. Tjek formularen, og prøv igen.',
   'songs.start.default': 'Det virkede ikke. Prøv igen.',
   'songs.failure.invalid_grant.title': 'Spotify accepterer ikke længere forbindelsen',
@@ -1295,7 +1296,7 @@ const da: Catalogue = {
   'home.welcome': 'Velkommen tilbage',
   'home.welcomeName': 'Velkommen tilbage, {name}',
   'home.design.title': 'Design et nyt hold',
-  'home.design.text': 'Beskriv det, så vælger classbeat sangene og timer anstrengelserne efter musikken.',
+  'home.design.text': 'Beskriv det, så vælger classbeat sangene og afstemmer indsatserne efter musikken.',
   'home.design.presets': 'Start fra en forudindstilling',
   'home.design.button': 'Design et hold',
   'home.recent': 'Seneste hold',
@@ -1324,7 +1325,7 @@ const da: Catalogue = {
   'unsub.doneAll': 'classbeat sender ikke længere valgfri mail til dig.',
   'unsub.doneCategory': 'classbeat sender ikke længere denne slags mail til dig.',
   'unsub.doneNote':
-    'Links til login, nulstilling af adgangskode og bekræftelse sendes altid. Du kan ændre, hvilken valgfri mail du får, herunder sikkerhedsmeddelelser, under Mail på din kontoside.',
+    'Links til login, nulstilling af adgangskode og bekræftelse sendes altid. Du kan ændre, hvilken valgfri mail du får, herunder sikkerhedsbeskeder, under Mail på din kontoside.',
   'unsub.linkInvalid':
     'Dette link er ikke længere gyldigt. Brug linket i en nyere mail eller afsnittet Mail i din konto.',
   'unsub.intro': 'Vælg, hvad der skal stoppes. Intet ændres, før du trykker på en knap.',
@@ -1469,7 +1470,7 @@ const da: Catalogue = {
   'usage.lowerThanBill': 'Tallet kan være lidt lavere end udbyderens faktura.',
 
   // Account: MOWL connection card.
-  'mowl.err.invalid_credentials': 'MOWL accepterede ikke den mailadresse og adgangskode.',
+  'mowl.err.invalid_credentials': 'MOWL accepterede ikke den e-mailadresse og adgangskode.',
   'mowl.err.upstream_unavailable': 'MOWL kunne ikke nås. Prøv igen om nogle minutter.',
   'mowl.err.unknown': 'MOWL svarede på en måde, classbeat ikke havde forventet. Prøv igen senere.',
   'mowl.last.needs_reconnect': 'MOWL accepterer ikke længere det gemte login. Tilslut igen.',
@@ -1517,7 +1518,7 @@ const da: Catalogue = {
   'cred.email.current': 'Din adresse er {email}.',
   'cred.email.sent':
     'Hvis {email} kan bruges, er et bekræftelseslink på vej dertil. Åbn det, mens du er logget ind, for at gøre det færdigt. Din adresse ændres først da.',
-  'cred.email.newLabel': 'Ny mailadresse',
+  'cred.email.newLabel': 'Ny e-mailadresse',
   'cred.email.change': 'Skift mail',
   'cred.password.title': 'Adgangskode',
   'cred.password.saved': 'Adgangskoden er gemt. Dine andre enheder blev logget ud.',
@@ -1529,8 +1530,8 @@ const da: Catalogue = {
   'delete.button': 'Slet min konto',
   'delete.title': 'Slet din konto?',
   'delete.text':
-    'Dette sletter din konto, dine hold og sanglister, din plan og dit forbrug, dine forbindelser og din login-historik. Job, der kører, stoppes først. Det kan ikke fortrydes; download dine data først, hvis du vil have en kopi. Træningspas, der er gemt i MOWL, og playlister i din Spotify bliver dér. Skriv din mailadresse for at bekræfte.',
-  'delete.emailLabel': 'Din mailadresse',
+    'Dette sletter din konto, dine hold og sanglister, din plan og dit forbrug, dine forbindelser og din login-historik. Job, der kører, stoppes først. Det kan ikke fortrydes; download dine data først, hvis du vil have en kopi. Træningspas, der er gemt i MOWL, og playlister i din Spotify bliver dér. Skriv din e-mailadresse for at bekræfte.',
+  'delete.emailLabel': 'Din e-mailadresse',
   'delete.confirm': 'Slet for altid',
   'delete.keep': 'Behold min konto',
   'devices.title': 'Enheder, der er logget ind',
@@ -1549,7 +1550,7 @@ const da: Catalogue = {
   'mailprefs.kind.account_activity': 'Meddelelser om kontoaktivitet',
   'mailprefs.kind.class_ready': 'Et hold er klar',
   'mailprefs.intro':
-    'Vælg, hvilke valgfrie mails classbeat sender. Links til login, nulstilling af adgangskode og bekræftelse sendes altid. Meddelelser om kontoaktivitet omfatter sikkerhedsmeddelelser, for eksempel mislykkede tofaktorforsøg og en ny loginmetode; hvis du slår dem fra, advarer classbeat dig ikke om dem på mail.',
+    'Vælg, hvilke valgfrie mails classbeat sender. Links til login, nulstilling af adgangskode og bekræftelse sendes altid. Meddelelser om kontoaktivitet omfatter sikkerhedsbeskeder, for eksempel mislykkede tofaktorforsøg og en ny loginmetode; hvis du slår dem fra, advarer classbeat dig ikke om dem på mail.',
   'mailprefs.all': 'Valgfri mail',
   'export.text':
     'Én fil med din konto, dine hold og versioner, sanglister, job, forbrug og login-historik. Dine forbindelser viser kun deres status: aldrig et token, en adgangskode eller en nøgle.',
@@ -1614,7 +1615,7 @@ const da: Catalogue = {
     'Det ligner ikke et Spotify Client ID. Det består af 32 bogstaver og cifre (0-9 og a-f) og vises på din apps indstillingsside i Spotify Developer Dashboard.',
   'spot.featureOff': 'Valg af sange er ikke tilgængeligt lige nu.',
   'spot.disconnectText':
-    'Når du afbryder forbindelsen, slettes det, classbeat har for Spotify: det gemte login, indstillingen for arbejdsplaylisten og dit samtykke til den, ethvert playlistetrin, der blev ladt uafgjort, og linket mellem hvert hold og den playliste, classbeat lavede til det (selve holdene bliver). Playlister, der allerede er i din Spotify, bliver dér, og classbeat rører dem ikke igen. Spotify giver ikke classbeat mulighed for at afslutte forbindelsen hos sig: fjern classbeats adgang under Apps i dine Spotify-kontoindstillinger.',
+    'Når du afbryder forbindelsen, slettes det, classbeat har for Spotify: det gemte login, indstillingen for arbejdsplaylisten og dit samtykke til den, ethvert playlistetrin, der blev ladt uafklaret, og linket mellem hvert hold og den playliste, classbeat lavede til det (selve holdene bliver). Playlister, der allerede er i din Spotify, bliver dér, og classbeat rører dem ikke igen. Spotify giver ikke classbeat mulighed for at afslutte forbindelsen hos sig: fjern classbeats adgang under Apps i dine Spotify-kontoindstillinger.',
   'spot.changeText':
     'classbeat bliver ved med at bruge den nuværende forbindelse, indtil det nye Client ID har virket. Derefter erstatter det det gemte login og glemmer indstillingen for arbejdsplaylisten, så du bliver spurgt om dit samtykke igen; playlisten bliver i din Spotify. Dine hold beholder deres playlister. Hvis den nye app logger en anden Spotify-konto ind, skal du bekræfte skiftet, og classbeat sletter så det, som Afbryd sletter.',
   'spot.title': 'Spotify',
@@ -1651,7 +1652,7 @@ const da: Catalogue = {
   'spot.disconnectYes': 'Ja, afbryd Spotify',
   'spot.disconnect': 'Afbryd Spotify',
   'spot.workingTitle': 'Arbejdsplayliste',
-  'swed.err.invalid_credentials': 'Swedebeat accepterede ikke den mailadresse og adgangskode.',
+  'swed.err.invalid_credentials': 'Swedebeat accepterede ikke den e-mailadresse og adgangskode.',
   'swed.err.upstream_unavailable': 'Swedebeat kunne ikke nås. Prøv igen om nogle minutter.',
   'swed.err.app_key_unavailable': 'Login hos Swedebeat er ikke tilgængeligt på denne server.',
   'swed.err.feature_off': 'Swedebeat er ikke slået til lige nu.',

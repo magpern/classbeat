@@ -4,7 +4,7 @@ const sv: Catalogue = {
   'language.label': 'Språk',
   'language.follow': 'Följ den här webbläsaren',
   'language.help':
-    'Språket på den här webbplatsen. ”Följ den här webbläsaren” använder webbläsarens språk på varje enhet; mejl skickas på engelska tills fler språk finns.',
+    'Språket på den här webbplatsen och i dina mejl. ”Följ den här webbläsaren” använder webbläsarens språk på varje enhet, och dina mejl är då på engelska.',
   'format.soonUnknown': 'om några minuter',
   'usage.underOneCent': 'under {amount}',
 
@@ -53,7 +53,7 @@ const sv: Catalogue = {
   'auth.or': 'ELLER',
   'auth.passwordHint': '12 till 128 tecken. Du skriver det igen när du bekräftar.',
   'auth.legal':
-    'Genom att fortsätta godkänner du att delta i betan, som bara är för inbjudna. classbeat är inte gjort av eller kopplat till MOWL, Spotify eller Swedebeat.',
+    'Genom att fortsätta går du med på att delta i betan, som bara är för inbjudna. classbeat är inte gjort av eller kopplat till MOWL, Spotify eller Swedebeat.',
   'auth.forgot': 'Har du glömt ditt lösenord?',
   'auth.checkInbox': 'Kolla din inkorg',
   'auth.backToSignIn': 'Tillbaka till inloggningen',
@@ -452,7 +452,7 @@ const sv: Catalogue = {
   'class.rule.tss_rate_high':
     'De flesta pass av det här slaget lägger lite mindre träningsbelastning på varje minut.',
   'class.rule.hard_too_early':
-    'De flesta pass av det här slaget håller tillbaka de hårda insatserna under första kvarten.',
+    'De flesta pass av det här slaget håller tillbaka de hårda insatserna under passets första fjärdedel.',
   'class.rule.standing_long': 'De flesta pass av det här slaget begränsar andelen stående cykling.',
   'class.rule.longest_interval_short': 'De flesta pass av det här slaget har minst ett längre intervall.',
   'class.rule.longest_interval_long':
@@ -551,7 +551,7 @@ const sv: Catalogue = {
   'class.delete.warning':
     'Det här raderar passet, alla dess versioner och din konversation från classbeat. Det går inte att ångra.',
   'class.delete.kept': {
-    one: 'Det {count} träningspass som classbeat sparade i ditt MOWL-konto blir kvar där; radera det i MOWL.',
+    one: 'Det träningspass som classbeat sparade i ditt MOWL-konto blir kvar där; radera det i MOWL.',
     other:
       'De {count} träningspass som classbeat sparade i ditt MOWL-konto blir kvar där; radera dem i MOWL.',
   },
@@ -921,10 +921,10 @@ const sv: Catalogue = {
   'newclass.mix.label': 'Swedebeat-mix',
   'newclass.mix.analysed': 'Analyserad tidigare',
   'newclass.mix.hint':
-    'classbeat lägger till den här mixen i din MOWL-musik så att den kan analysera ljudet och läsa låtarna. Den första analysen kan ta ungefär en minut.',
+    'classbeat lägger till den här mixen i din MOWL-musik så att classbeat kan analysera ljudet och läsa låtarna. Den första analysen kan ta ungefär en minut.',
   'newclass.playlist.label': 'Spellista',
   'newclass.playlist.hint':
-    'classbeat lägger till den här spellistan i din MOWL-musik så att den kan läsa låtarna. Den förblir privat för dig.',
+    'classbeat lägger till den här spellistan i din MOWL-musik så att classbeat kan läsa låtarna. Spellistan förblir privat för dig.',
   'newclass.style.suggestions': 'Stilförslag',
   'newclass.style.label': 'Stil',
   'newclass.style.hint': 'Till exempel: backar, intervaller, uthållighet.',
@@ -1311,7 +1311,8 @@ const sv: Catalogue = {
   'home.welcome': 'Välkommen tillbaka',
   'home.welcomeName': 'Välkommen tillbaka, {name}',
   'home.design.title': 'Utforma ett nytt pass',
-  'home.design.text': 'Beskriv det, så väljer classbeat låtarna och timar ansträngningarna efter musiken.',
+  'home.design.text':
+    'Beskriv det, så väljer classbeat låtarna och tidsätter ansträngningarna efter musiken.',
   'home.design.presets': 'Börja från en förinställning',
   'home.design.button': 'Utforma ett pass',
   'home.recent': 'Senaste pass',
@@ -1335,14 +1336,14 @@ const sv: Catalogue = {
   'dialog.close': 'Stäng',
   'spotifyPage.back': 'Tillbaka till ditt konto',
   'unsub.title': 'Avsluta prenumeration',
-  'unsub.needsLink': 'Den här sidan behöver länken från e-postmeddelandet.',
+  'unsub.needsLink': 'Den här sidan behöver länken från mejlet.',
   'unsub.doneTitle': 'Du är avregistrerad',
   'unsub.doneAll': 'classbeat skickar inte längre valfri e-post till dig.',
   'unsub.doneCategory': 'classbeat skickar inte längre den här typen av e-post till dig.',
   'unsub.doneNote':
     'Länkar för inloggning, återställning av lösenord och bekräftelse skickas alltid. Du kan ändra vilken valfri e-post du får, inklusive säkerhetsaviseringar, under E-post på din kontosida.',
   'unsub.linkInvalid':
-    'Länken är inte längre giltig. Använd länken i ett nyare e-postmeddelande, eller avsnittet E-post i ditt konto.',
+    'Länken är inte längre giltig. Använd länken i ett nyare mejl, eller avsnittet E-post i ditt konto.',
   'unsub.intro': 'Välj vad som ska stoppas. Inget ändras förrän du trycker på en knapp.',
   'unsub.stopCategory': 'Stoppa den här typen av e-post',
   'unsub.stopAll': 'Stoppa all valfri e-post',
@@ -1566,7 +1567,7 @@ const sv: Catalogue = {
   'mailprefs.kind.account_activity': 'Aviseringar om kontoaktivitet',
   'mailprefs.kind.class_ready': 'Ett pass är klart',
   'mailprefs.intro':
-    'Välj vilka valfria e-postmeddelanden classbeat skickar. Länkar för inloggning, återställning av lösenord och bekräftelse skickas alltid. Aviseringar om kontoaktivitet omfattar säkerhetsaviseringar, till exempel misslyckade tvåfaktorsförsök och en ny inloggningsmetod; om du stänger av dem varnar classbeat dig inte om sådant via e-post.',
+    'Välj vilka valfria mejl classbeat skickar. Länkar för inloggning, återställning av lösenord och bekräftelse skickas alltid. Aviseringar om kontoaktivitet omfattar säkerhetsaviseringar, till exempel misslyckade tvåfaktorsförsök och en ny inloggningsmetod; om du stänger av dem varnar classbeat dig inte om sådant via e-post.',
   'mailprefs.all': 'Valfri e-post',
   'export.text':
     'En fil med ditt konto, dina pass och versioner, låtlistor, jobb, användning och inloggningshistorik. Dina anslutningar visar bara sin status: aldrig en token, ett lösenord eller en nyckel.',
@@ -1619,9 +1620,9 @@ const sv: Catalogue = {
   'mfa.confirmRemove': 'Bekräfta borttagning av tvåfaktorsautentisering',
   'mfa.removeWarning':
     'Utan tvåfaktorsautentisering räcker ett stulet lösenord för att ändra det här kontot. Dina återställningskoder slutar också fungera.',
-  'mfa.yesRemove': 'Ja, ta bort tvåfaktorsautentisering',
-  'mfa.keep': 'Behåll tvåfaktorsautentisering',
-  'mfa.remove': 'Ta bort tvåfaktorsautentisering',
+  'mfa.yesRemove': 'Ja, ta bort tvåfaktor',
+  'mfa.keep': 'Behåll tvåfaktor',
+  'mfa.remove': 'Ta bort tvåfaktor',
   'mfa.offText':
     'Lägger till en kod från din telefon vid känsliga ändringar på den här sidan. Administratörer måste konfigurera det.',
 

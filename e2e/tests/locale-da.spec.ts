@@ -26,7 +26,7 @@ const w: Words = {
   signInFirst: 'Log ind først',
 }
 
-test('the pages before sign-in are in da6 and have a valid lang', async ({ page }) => {
+test('the pages before sign-in are in Danish and have a valid lang', async ({ page }) => {
   await page.goto('/')
   await expect(page.getByRole('link', { name: w.landingSignUp })).toBeVisible()
   await expectValidLang(page, w.code)
@@ -40,7 +40,7 @@ test('the pages before sign-in are in da6 and have a valid lang', async ({ page 
   await auditPage(page, 'sign up', page.getByRole('button', { name: w.createAccount }))
 })
 
-test('sign up, mail, sign in, home and sign out in da6', async ({ page }) => {
+test('sign up, mail, sign in, home and sign out in Danish', async ({ page }) => {
   const email = await signUpAndIn(page, w)
   await page.goto('/')
   await expect(page.getByRole('link', { name: w.design })).toBeVisible()
