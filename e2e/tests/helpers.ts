@@ -13,11 +13,15 @@ export function uniqueEmail(tag: string): string {
 
 /** A fresh single-use invite code from the operator CLI (ADR 0003 section 7). */
 export function createInvite(): string {
-  return execFileSync('docker', ['compose', 'exec', '-T', 'web', 'python', '-m', 'classbeat', 'invite', 'create'], {
-    cwd: new URL('../..', import.meta.url),
-    encoding: 'utf8',
-    stdio: ['ignore', 'pipe', 'ignore'],
-  }).trim()
+  return execFileSync(
+    'docker',
+    ['compose', 'exec', '-T', 'web', 'python', '-m', 'classbeat', 'invite', 'create'],
+    {
+      cwd: new URL('../..', import.meta.url),
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+    },
+  ).trim()
 }
 
 /** The link in the newest mail with this subject to this address (waits for it to arrive). */
@@ -66,7 +70,7 @@ export async function signInThroughUi(page: Page, email: string, password = PASS
 // Sign-ups, mails and sign-in failures are rate limited per client IP (ADR 0003 section 9).
 // The e2e stack trusts the proxy range of the docker network (compose.e2e.yaml), so each test
 // presents its own address in X-Forwarded-For and the tests never share a limit.
-function randomClientIp(): string {
+export function randomClientIp(): string {
   const octet = () => 1 + Math.floor(Math.random() * 254)
   return `203.0.${octet()}.${octet()}`
 }
