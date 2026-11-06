@@ -14,6 +14,7 @@ import {
   USE_OTHER_MUSIC_RUNNING,
 } from '../../api/jobMessages'
 import { cancelJob, createReviseJob, getJob, isTerminal, type Job } from '../../api/jobs'
+import { useT } from '../../i18n/I18n'
 import { useJobProgress } from '../../hooks/useJobProgress'
 import { newIdempotencyKey } from '../../lib/submittedInput'
 import { Link } from '../../router/Router'
@@ -34,6 +35,7 @@ function length(value: string): number {
 
 /** The live progress of the class's running change, from the job's events. */
 function ReviseRun({ jobId, onFinished }: { jobId: string; onFinished: () => void }) {
+  const t = useT()
   const { job, progress, problem, setJob } = useJobProgress(jobId)
   const action = useAction()
   const over = job !== null && isTerminal(job.state)
@@ -45,7 +47,7 @@ function ReviseRun({ jobId, onFinished }: { jobId: string; onFinished: () => voi
     }
   }, [over, onFinished])
 
-  if (problem === 'not_found') return <Notice>This change is no longer there.</Notice>
+  if (problem === 'not_found') return <Notice>{t('class.chat.noLonger')}</Notice>
   const stopping = job?.cancelRequested === true || progress.cancelRequested
   const stop = () => {
     void action.run(async () => {
@@ -54,17 +56,17 @@ function ReviseRun({ jobId, onFinished }: { jobId: string; onFinished: () => voi
   }
   return (
     <div className="chat__run" role="status" aria-live="polite" data-testid="revise-progress">
-      {problem === 'failed' ? <p>The connection to the server dropped. Trying again.</p> : null}
+      {problem === 'failed' ? <p>{t('class.runDropped')}</p> : null}
       {stopping ? (
-        <p>Stopping. This takes a moment.</p>
+        <p>{t('class.runStopping')}</p>
       ) : progress.retry !== null ? (
         <p>{retryLabel(progress.retry)}</p>
       ) : job === null || (job.state === 'queued' && progress.stage === null) ? (
-        <p>Waiting for a free slot.</p>
+        <p>{t('class.runWaiting')}</p>
       ) : (
         <p>{stageLabel(progress.stage ?? job.stage)}…</p>
       )}
-      {progress.operation === 'pending' ? <p>Adding your playlist to your MOWL music.</p> : null}
+      {progress.operation === 'pending' ? <p>{t('class.chat.addingPlaylist')}</p> : null}
       {action.error ? <Notice kind="error">{action.error}</Notice> : null}
       <button
         type="button"
@@ -72,7 +74,7 @@ function ReviseRun({ jobId, onFinished }: { jobId: string; onFinished: () => voi
         disabled={action.busy || stopping || over}
         onClick={stop}
       >
-        Stop changing
+        {t('class.chat.stop')}
       </button>
     </div>
   )
@@ -89,6 +91,7 @@ function Unanswered({
   /** Where the class's songs stand: Change songs is there, a playlist of the user's own, or a pick not done. */
   songs: SongsWay
 }) {
+  const t = useT()
   const canChangeSongs = songs === 'change'
   const [job, setJob] = useState<Job | null>(null)
   const [failed, setFailed] = useState(false)
@@ -111,9 +114,9 @@ function Unanswered({
   }, [latest, jobId])
 
   if (!latest || jobId === null || failed) {
-    return <p className="chat__outcome muted">This request did not finish. Nothing changed.</p>
+    return <p className="chat__outcome muted">{t('class.chat.unfinished')}</p>
   }
-  if (job === null) return <p className="chat__outcome muted">Checking what happened</p>
+  if (job === null) return <p className="chat__outcome muted">{t('class.chat.checking')}</p>
   if (job.state === 'failed' && job.errorCategory === 'uncertain_write') {
     return (
       <div className="chat__outcome">
@@ -123,7 +126,7 @@ function Unanswered({
             setResolved(true)
           }}
         />
-        {resolved ? <p>You can ask for the change again now.</p> : null}
+        {resolved ? <p>{t('class.chat.askAgain')}</p> : null}
       </div>
     )
   }
@@ -150,7 +153,7 @@ function Unanswered({
               panel?.focus()
             }}
           >
-            Change songs
+            {t('class.chat.changeSongs')}
           </Button>
         ) : null}
       </div>
@@ -165,15 +168,15 @@ function Unanswered({
         job.errorCategory === 'needs_reconnect' ||
         job.errorCategory === 'key_unavailable' ||
         job.errorCategory === 'decrypt_failed' ? (
-          <Link to="/account">Go to your account</Link>
+          <Link to="/account">{t('class.goToAccount')}</Link>
         ) : null}
       </p>
     )
   }
   if (job.state === 'cancelled' || job.state === 'expired') {
-    return <p className="chat__outcome muted">This change was stopped. Nothing changed.</p>
+    return <p className="chat__outcome muted">{t('class.chat.stopped')}</p>
   }
-  return <p className="chat__outcome muted">This request did not finish. Nothing changed.</p>
+  return <p className="chat__outcome muted">{t('class.chat.unfinished')}</p>
 }
 
 function History({
@@ -189,6 +192,7 @@ function History({
   onView: (revisionId: string) => void
   songs: SongsWay
 }) {
+  const t = useT()
   const answered = new Set(
     messages.filter((m) => m.role === 'assistant' && m.jobId !== null).map((m) => m.jobId),
   )
@@ -197,15 +201,15 @@ function History({
   )
   const latestUnanswered = unanswered.at(-1)?.seq
   if (messages.length === 0) {
-    return <p className="muted">Nothing asked yet. Say what to change, and classbeat changes this class.</p>
+    return <p className="muted">{t('class.chat.empty')}</p>
   }
   return (
-    <ol className="chat__history" aria-label="Your requests">
+    <ol className="chat__history" aria-label={t('class.chat.requests')}>
       {messages.map((m) => {
         if (m.role === 'user') {
           return (
             <li key={m.seq} className="chat__message chat__message--user">
-              <p className="chat__who">You asked</p>
+              <p className="chat__who">{t('class.chat.youAsked')}</p>
               <p className="chat__text">{m.body}</p>
               {m.jobId !== null && !answered.has(m.jobId) && m.jobId !== openJobId ? (
                 <Unanswered
@@ -222,8 +226,9 @@ function History({
         return (
           <li key={m.seq} className="chat__message chat__message--answer">
             <p className="chat__who">
-              classbeat changed it
-              {number === undefined ? '' : `, version ${String(number)}`}
+              {number === undefined
+                ? t('class.chat.changed')
+                : t('class.chat.changedVersion', { number })}
             </p>
             {lines.length > 0 ? (
               <ul className="chat__change">
@@ -233,11 +238,11 @@ function History({
               </ul>
             ) : null}
             {m.change?.musicChanged === true && songs !== 'soundless' ? (
-              <p className="chat__text">The music changed: the playlist in MOWL is not the one before.</p>
+              <p className="chat__text">{t('class.chat.musicChanged')}</p>
             ) : null}
             {m.body ? (
               <p className="chat__text">
-                <span className="muted">Note from the designer: </span>
+                <span className="muted">{t('class.chat.designerNote')} </span>
                 {m.body}
               </p>
             ) : null}
@@ -249,7 +254,7 @@ function History({
                   onView(m.resultRevisionId!)
                 }}
               >
-                View version {number}
+                {t('class.chat.viewVersion', { number })}
               </button>
             ) : null}
           </li>
@@ -281,6 +286,7 @@ export function ChatPanel({
   onReload: () => void
   onView: (revisionId: string) => void
 }) {
+  const t = useT()
   const [request, setRequest] = useState('')
   const [problem, setProblem] = useState<string | null>(null)
   const action = useAction()
@@ -295,9 +301,9 @@ export function ChatPanel({
     event.preventDefault()
     const text = request.trim()
     let invalid: string | null = null
-    if (text === '') invalid = 'Write what you want changed.'
+    if (text === '') invalid = t('class.chat.writeSomething')
     else if (length(text) > MAX_REQUEST_CHARS) {
-      invalid = `A request is up to ${String(MAX_REQUEST_CHARS)} characters; this one has ${String(length(text))}.`
+      invalid = t('class.chat.tooLong', { max: MAX_REQUEST_CHARS, count: length(text) })
     }
     setProblem(invalid)
     const base = summary.currentRevisionId
@@ -341,17 +347,17 @@ export function ChatPanel({
 
   const blocked =
     summary.currentRevisionId === null
-      ? 'There is no version to change yet.'
+      ? t('class.chat.noVersion')
       : !canChange
-        ? 'Change it is not available for this class right now. You can still view, compare, use and save its versions.'
+        ? t('class.chat.unavailable')
         : running !== null && !revising
-          ? 'This class is busy with another task. You can ask for a change when it is done.'
+          ? t('class.chat.busy')
           : null
 
   return (
     <section className="panel chat" aria-labelledby="chat-title">
       <h2 id="chat-title" className="panel__title">
-        Change it
+        {t('class.chat.title')}
       </h2>
       <History
         messages={messages}
@@ -374,11 +380,11 @@ export function ChatPanel({
         <ReviseRun key={running.id} jobId={running.id} onFinished={onReload} />
       ) : null}
       {blocked !== null ? <Notice>{blocked}</Notice> : null}
-      <form onSubmit={submit} noValidate aria-label="Ask for a change">
+      <form onSubmit={submit} noValidate aria-label={t('class.chat.form')}>
         {problem ? <Notice kind="error">{problem}</Notice> : null}
         {action.error ? <Notice kind="error">{action.error}</Notice> : null}
         <div className="field">
-          <label htmlFor="change-request">What should change?</label>
+          <label htmlFor="change-request">{t('class.chat.label')}</label>
           <textarea
             id="change-request"
             rows={3}
@@ -390,8 +396,7 @@ export function ChatPanel({
             aria-describedby="change-request-hint"
           />
           <p id="change-request-hint" className="field__hint">
-            For example: make the second climb longer, or add a sprint before the cool-down. Up to{' '}
-            {MAX_REQUEST_CHARS} characters.
+            {t('class.chat.hint', { max: MAX_REQUEST_CHARS })}
           </p>
         </div>
         <button
@@ -399,7 +404,7 @@ export function ChatPanel({
           className="button"
           disabled={action.busy || blocked !== null || revising}
         >
-          Change it
+          {t('class.chat.title')}
         </button>
       </form>
     </section>

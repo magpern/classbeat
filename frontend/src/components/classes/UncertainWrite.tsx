@@ -2,10 +2,10 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { ApiError } from '../../api/client'
 import { checkAgain, doItAnyway, listUncertainOperations, type Operation } from '../../api/jobs'
 import {
-  DUPLICATE_WARNING,
-  OUTCOME_TEXT,
-  OVERWRITE_WARNING,
-  UNCERTAIN_TEXT,
+  duplicateWarning,
+  outcomeText,
+  overwriteWarning,
+  uncertainText,
   type WriteKind,
   type WriteOutcome,
 } from '../../api/saveMessages'
@@ -14,6 +14,7 @@ import { Button } from '../ui/button'
 import { CheckNeeded } from './CheckNeeded'
 import { Notice, useAction } from '../forms'
 import { time } from '../../i18n/format'
+import { useT } from '../../i18n/I18n'
 
 function kindOf(operation: Operation): WriteKind | null {
   if (operation.kind === SAVE_OPERATION) return 'save'
@@ -72,6 +73,7 @@ function Panel({
   onDecided: (kind: WriteKind, outcome: WriteOutcome) => void
   onChanged: () => void
 }) {
+  const t = useT()
   const [outcome, setOutcome] = useState<WriteOutcome | null>(null)
   const [confirming, setConfirming] = useState(false)
   const action = useAction()
@@ -85,12 +87,12 @@ function Panel({
 
   const describe = (error: unknown): string => {
     if (error instanceof ApiError && error.reason === 'call_may_be_running') {
-      return 'classbeat may still be writing to MOWL, so this cannot be decided yet. Wait a few minutes.'
+      return t('class.write.running')
     }
     if (error instanceof ApiError && error.status === 409) {
-      return 'That was already settled. The list has been updated.'
+      return t('class.write.settled')
     }
-    return 'That did not work. Try again.'
+    return t('error.generic')
   }
 
   const decide = (which: 'check' | 'anyway') => {
@@ -114,21 +116,18 @@ function Panel({
   return (
     <div className="flex flex-col gap-3" data-testid="uncertain-write" data-kind={kind}>
       <h3>
-        {kind === 'save'
-          ? 'classbeat could not tell whether your workout was saved'
-          : 'classbeat could not tell whether your workout was updated'}
+        {t(kind === 'save' ? 'class.write.title.save' : 'class.write.title.update')}
       </h3>
-      {UNCERTAIN_TEXT[kind].map((line) => (
+      {uncertainText(kind).map((line) => (
         <p key={line}>{line}</p>
       ))}
       {waiting && operation.actionableAt !== null ? (
         <Notice>
-          classbeat may still be sending this to MOWL, so Check again and Do it anyway wait until{' '}
-          {clockText(operation.actionableAt)}.
+          {t('class.write.waiting', { time: clockText(operation.actionableAt) })}
         </Notice>
       ) : null}
       {outcome ? (
-        <Notice kind={outcome === 'still_unsure' ? 'info' : 'success'}>{OUTCOME_TEXT[kind][outcome]}</Notice>
+        <Notice kind={outcome === 'still_unsure' ? 'info' : 'success'}>{outcomeText(kind, outcome)}</Notice>
       ) : null}
       {action.error ? <Notice kind="error">{action.error}</Notice> : null}
       {!confirming ? (
@@ -140,7 +139,7 @@ function Panel({
               decide('check')
             }}
           >
-            Check again
+            {t('class.checkAgain')}
           </Button>
           <Button
             variant="secondary"
@@ -149,12 +148,12 @@ function Panel({
               setConfirming(true)
             }}
           >
-            Do it anyway
+            {t('class.doItAnyway')}
           </Button>
         </p>
       ) : (
-        <div className="notice" role="group" aria-label="Confirm" tabIndex={-1} ref={confirmRef}>
-          <p>{kind === 'save' ? DUPLICATE_WARNING : OVERWRITE_WARNING}</p>
+        <div className="notice" role="group" aria-label={t('class.confirm')} tabIndex={-1} ref={confirmRef}>
+          <p>{kind === 'save' ? duplicateWarning() : overwriteWarning()}</p>
           <Button
             
             disabled={action.busy || waiting}
@@ -162,7 +161,7 @@ function Panel({
               decide('anyway')
             }}
           >
-            {kind === 'save' ? 'Yes, it was not saved' : 'Yes, it was not updated'}
+            {kind === 'save' ? t('class.write.notSaved') : t('class.write.notUpdated')}
           </Button>
           <Button
             variant="secondary"
@@ -171,7 +170,7 @@ function Panel({
               setConfirming(false)
             }}
           >
-            Cancel
+            {t('class.cancel')}
           </Button>
         </div>
       )}
@@ -197,6 +196,7 @@ export function UncertainWrite({
   onDecided: (kind: WriteKind, outcome: WriteOutcome) => void
   onChanged: () => void
 }) {
+  const t = useT()
   const [operations, setOperations] = useState<Operation[] | null>(null)
   const [failed, setFailed] = useState(false)
   const [round, setRound] = useState(0)
@@ -223,13 +223,13 @@ export function UncertainWrite({
   }, [classId, version, round])
 
   if (failed && operations === null) {
-    return <Notice kind="error">What is left to decide for this class could not be loaded.</Notice>
+    return <Notice kind="error">{t('class.write.loadFailed')}</Notice>
   }
   if (operations === null || operations.length === 0) return null
   return (
     <CheckNeeded aria-labelledby="undecided-title" data-testid="undecided">
       <h2 id="undecided-title" className="m-0 font-display text-xl font-bold">
-        Not sure what reached MOWL
+        {t('class.write.heading')}
       </h2>
       {operations.map((operation) => (
         <Panel

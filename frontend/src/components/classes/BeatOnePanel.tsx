@@ -12,6 +12,8 @@ import {
 } from '../../api/classes'
 import { getConnections } from '../../api/connections'
 import { createRefitJob } from '../../api/jobs'
+import { useT } from '../../i18n/I18n'
+import { t as translate, type TFunction } from '../../i18n/t'
 import { newIdempotencyKey } from '../../lib/submittedInput'
 import { clock } from '../../lib/workout'
 import { Button } from '../ui/button'
@@ -25,13 +27,12 @@ import { Notice, useAction } from '../forms'
 const MAX_BEATS = 3
 
 export function beatsInWords(beats: number): string {
-  if (beats === 0) return 'as analysed'
-  const n = Math.abs(beats)
-  return `${String(n)} beat${n === 1 ? '' : 's'} ${beats > 0 ? 'later' : 'earlier'}`
+  if (beats === 0) return translate('class.beat.asAnalysed')
+  return translate(beats > 0 ? 'class.beat.later' : 'class.beat.earlier', { count: Math.abs(beats) })
 }
 
-function songName(song: BeatOneSong): string {
-  return song.title !== null && song.title !== '' ? song.title : `Song ${String(song.song)}`
+function songName(t: TFunction, song: BeatOneSong): string {
+  return song.title !== null && song.title !== '' ? song.title : t('class.beat.song', { song: song.song })
 }
 
 export function BeatOnePanel({
@@ -43,6 +44,7 @@ export function BeatOnePanel({
   busy: boolean
   onReload: () => void
 }) {
+  const t = useT()
   const [view, setView] = useState<BeatOne>(summary.beatOne)
   // A reload of the same version (a refusal that reloads the page, say) brings a new block: the
   // panel keeps its key, so it takes the server's view here, during render (no effect).
@@ -131,15 +133,14 @@ export function BeatOnePanel({
       data-testid="beat-one"
     >
       <h2 id="beat-one-title" className="panel__title m-0">
-        Beat 1
+        {t('class.beat.title')}
       </h2>
       <p className="m-0">
-        Listen to the class. If the changes in a song land a beat early, move its beat 1 later; if
-        they land late, move it earlier. A bar has four beats, so one step is a quarter of a bar.
+        {t('class.beat.intro')}
       </p>
       <ol className="m-0 flex list-none flex-col gap-3 p-0">
         {view.songs.map((song) => {
-          const name = songName(song)
+          const name = songName(t, song)
           return (
             <li
               key={song.song}
@@ -149,52 +150,52 @@ export function BeatOnePanel({
               <div className="min-w-0 grow basis-48">
                 <p className="m-0 font-medium">{name}</p>
                 <p className="m-0 text-muted text-[0.875rem]">
-                  From {clock(song.start)}, {String(Math.round(song.bpm))} BPM
+                  {t('class.beat.from', { start: clock(song.start), bpm: Math.round(song.bpm) })}
                 </p>
                 {song.bpmChanged ? (
                   <p className="m-0 text-muted text-[0.875rem]">
-                    The tempo of this song changed since you set its beat 1: listen again.
+                    {t('class.beat.bpmChanged')}
                   </p>
                 ) : null}
                 {song.estimate && song.beats === 0 ? (
                   <p className="m-0 text-muted text-[0.875rem]">
-                    Beat 1 is an estimate here: listen to the first change in this song.
+                    {t('class.beat.estimate')}
                   </p>
                 ) : null}
               </div>
-              <div className="flex min-w-0 flex-wrap items-center gap-2" role="group" aria-label={`Beat 1 of ${name}`}>
+              <div className="flex min-w-0 flex-wrap items-center gap-2" role="group" aria-label={t('class.beat.group', { name })}>
                 <Button
                   variant="secondary"
-                  aria-label={`Move beat 1 of ${name} earlier`}
+                  aria-label={t('class.beat.moveEarlier', { name })}
                   disabled={change.busy || song.beats <= -MAX_BEATS}
                   onClick={() => {
                     setTo(song, song.beats - 1)
                   }}
                 >
-                  Earlier
+                  {t('class.beat.earlierButton')}
                 </Button>
                 <output aria-live="polite" className="min-w-24 text-center">
                   {beatsInWords(song.beats)}
                 </output>
                 <Button
                   variant="secondary"
-                  aria-label={`Move beat 1 of ${name} later`}
+                  aria-label={t('class.beat.moveLater', { name })}
                   disabled={change.busy || song.beats >= MAX_BEATS}
                   onClick={() => {
                     setTo(song, song.beats + 1)
                   }}
                 >
-                  Later
+                  {t('class.beat.laterButton')}
                 </Button>
                 <Button
                   variant="ghost"
-                  aria-label={`Reset beat 1 of ${name}`}
+                  aria-label={t('class.beat.reset', { name })}
                   disabled={change.busy || song.beats === 0}
                   onClick={() => {
                     setTo(song, 0)
                   }}
                 >
-                  Reset
+                  {t('class.beat.resetButton')}
                 </Button>
               </div>
             </li>
@@ -205,33 +206,30 @@ export function BeatOnePanel({
       {view.stale.length > 0 ? (
         <div className="flex flex-col gap-2" data-testid="beat-one-stale">
           <p className="m-0 text-muted">
-            These timing fixes are for music this version does not play: it was analysed again or
-            changed, or the song is not in this version. They are kept and do not count towards the
-            limit, so making an earlier version current can use them again. Clear them if you no
-            longer need them.
+            {t('class.beat.stale')}
           </p>
           <ul className="m-0 flex list-none flex-col gap-2 p-0">
             {view.stale.map((row) => (
               <li key={row.id} className="flex flex-wrap items-center gap-2">
                 <span>
-                  Song {String(row.song)}: {beatsInWords(row.beats)}
+                  {t('class.beat.staleRow', { song: row.song, beats: beatsInWords(row.beats) })}
                 </span>
                 <Button
                   variant="ghost"
-                  aria-label={`Clear the earlier timing fix of song ${String(row.song)}`}
+                  aria-label={t('class.beat.clearAria', { song: row.song })}
                   disabled={change.busy}
                   onClick={() => {
                     clearRow(row.id)
                   }}
                 >
-                  Clear
+                  {t('class.beat.clear')}
                 </Button>
               </li>
             ))}
           </ul>
           <p className="m-0">
             <Button variant="secondary" disabled={change.busy} onClick={clearAll}>
-              Clear all timing fixes
+              {t('class.beat.clearAll')}
             </Button>
           </p>
         </div>
@@ -239,15 +237,14 @@ export function BeatOnePanel({
       {view.pending ? (
         <div className="notice" data-kind="info" role="status" data-testid="beat-one-pending">
           <p>
-            This version does not use your timing fixes yet. Apply them to make a new version with
-            the changes moved onto the corrected beats; save or update it in MOWL after that.
+            {t('class.beat.pending')}
           </p>
           <p>
             <Button disabled={change.busy || apply.busy || busy} onClick={applyFixes}>
-              Apply timing fixes
+              {t('class.beat.apply')}
             </Button>
           </p>
-          {busy ? <p className="muted">Wait for the running task to finish first.</p> : null}
+          {busy ? <p className="muted">{t('class.waitRunning')}</p> : null}
         </div>
       ) : null}
       {apply.error ? <Notice kind="error">{apply.error}</Notice> : null}

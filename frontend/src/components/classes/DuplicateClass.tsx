@@ -1,6 +1,7 @@
 import { useId, useState, type FormEvent } from 'react'
 import { getRevision } from '../../api/classes'
 import { TITLE_MAX, copyTitle, duplicateClass, duplicateReasonText } from '../../api/classDuplicate'
+import { useT } from '../../i18n/I18n'
 import { contentHash } from '../../lib/canonical'
 import { newIdempotencyKey } from '../../lib/submittedInput'
 import { useRouter } from '../../router/Router'
@@ -18,7 +19,7 @@ export function DuplicateClass({
   title,
   revisionId,
   versionNumber,
-  label = 'Duplicate',
+  label,
 }: {
   classId: string
   title: string
@@ -27,6 +28,7 @@ export function DuplicateClass({
   versionNumber: number | null
   label?: string
 }) {
+  const t = useT()
   const { navigate } = useRouter()
   const [open, setOpen] = useState(false)
   const [name, setName] = useState(copyTitle(title))
@@ -35,6 +37,7 @@ export function DuplicateClass({
   // One key per opening of the dialog, so a double submit or a retry is the same request.
   const [key, setKey] = useState(newIdempotencyKey)
   const nameId = useId()
+  const shown = label ?? t('class.duplicate.label')
   if (revisionId === null) return null
 
   const submit = (event: FormEvent) => {
@@ -73,20 +76,20 @@ export function DuplicateClass({
       }}
     >
       <DialogTrigger asChild>
-        <Button variant="secondary" aria-label={`${label} ${title}`}>
-          {label}
+        <Button variant="secondary" aria-label={t('class.duplicate.trigger', { label: shown, title })}>
+          {shown}
         </Button>
       </DialogTrigger>
       <DialogContent>
-        <DialogTitle>Duplicate this class</DialogTitle>
+        <DialogTitle>{t('class.duplicate.title')}</DialogTitle>
         <DialogDescription>
-          {versionNumber !== null ? `Version ${String(versionNumber)} becomes` : 'This version becomes'} version 1 of a
-          new class. It is not saved to MOWL and has no approved songs or conversation yet. It counts as one class this
-          month.
+          {versionNumber !== null
+            ? t('class.duplicate.descriptionVersion', { number: versionNumber })
+            : t('class.duplicate.descriptionThis')}
         </DialogDescription>
-        <form onSubmit={submit} className="flex flex-col gap-3" aria-label="Duplicate this class">
+        <form onSubmit={submit} className="flex flex-col gap-3" aria-label={t('class.duplicate.title')}>
           <div className="field">
-            <label htmlFor={nameId}>Name of the copy</label>
+            <label htmlFor={nameId}>{t('class.duplicate.name')}</label>
             <input
               id={nameId}
               value={name}
@@ -104,7 +107,7 @@ export function DuplicateClass({
           ) : null}
           <p className="m-0">
             <Button type="submit" disabled={sending || name.trim() === ''}>
-              {sending ? 'Duplicating…' : 'Duplicate'}
+              {sending ? t('class.duplicate.sending') : t('class.duplicate.label')}
             </Button>
           </p>
         </form>

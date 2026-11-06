@@ -1,5 +1,6 @@
 import { TriangleAlert } from 'lucide-react'
 import type { ReactNode } from 'react'
+import { useT } from '../../i18n/I18n'
 import { cn } from '../../lib/cn'
 import { Card } from '../ui/card'
 import { Chip } from '../ui/chip'
@@ -20,11 +21,12 @@ export function CheckNeeded({
   'aria-labelledby'?: string
   'data-kind'?: string
 }) {
+  const t = useT()
   return (
     <Card className={cn('flex flex-col gap-3 border-warn', className)} {...props}>
       <Chip tone="warn" className="self-start">
         <TriangleAlert aria-hidden="true" size={14} />
-        Check needed
+        {t('class.checkNeeded')}
       </Chip>
       {children}
     </Card>

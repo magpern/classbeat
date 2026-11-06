@@ -1,6 +1,7 @@
 import { ApiError } from './client'
 import { classReasonText } from './classMessages'
 import { quotaText } from './planMessages'
+import { t } from '../i18n/t'
 
 // Plain sentences for Save, Update and the undecided write (ADR 0007 sections 5 to 8 and 12).
 // Category and reason codes are never shown.
@@ -16,22 +17,22 @@ export function needsAccount(category: string | null): boolean {
   return category !== null && ACCOUNT_CATEGORIES.includes(category)
 }
 
-const SAVE_REASONS: Record<string, string> = {
-  write_unresolved:
-    'An earlier save or update of this class to MOWL is still undecided. Decide it first with Check again or Do it anyway in the box below, then try again.',
-  call_may_be_running:
-    'classbeat may still be writing this class to MOWL. Wait a few minutes, then try again.',
-  hash_mismatch:
-    'That version is not the one this page showed: it was changed elsewhere. The page has been reloaded.',
-  class_busy:
-    'This class is busy with another task, perhaps from another tab. The page has been reloaded. Wait for it to finish, then try again.',
-  not_connected: 'MOWL is not connected. Connect it on your account page, then try again.',
-  music_unlinked:
-    'The music of this version is not in your connected MOWL account. Change it and save the new version.',
-  invalid_input:
-    'That could not be saved. The page has been reloaded; check the class and try again.',
-  busy: 'You already have tasks running. Wait for one to finish, then try again.',
-  idempotency_mismatch: 'That request was already sent with other contents. Reload the page and try again.',
+const SAVE_REASON_CODES = [
+  'write_unresolved',
+  'call_may_be_running',
+  'hash_mismatch',
+  'class_busy',
+  'not_connected',
+  'music_unlinked',
+  'invalid_input',
+  'busy',
+  'idempotency_mismatch',
+] as const
+
+type SaveReasonCode = (typeof SAVE_REASON_CODES)[number]
+
+function isSaveReason(reason: string): reason is SaveReasonCode {
+  return (SAVE_REASON_CODES as readonly string[]).includes(reason)
 }
 
 /** The text of a refused Save or Update (a 409 or 404 at creation). */
@@ -39,8 +40,8 @@ export function saveReasonText(error: unknown): string {
   // A plan-limit refusal (409 `quota`: classes, cost, length, feature) says which limit it was.
   // The version is already made, so a length or feature refusal cannot ask for a shorter length.
   if (error instanceof ApiError && error.reason === 'quota') return quotaText(error, 'save')
-  if (error instanceof ApiError && error.reason !== null && Object.hasOwn(SAVE_REASONS, error.reason)) {
-    return SAVE_REASONS[error.reason]!
+  if (error instanceof ApiError && error.reason !== null && isSaveReason(error.reason)) {
+    return t(`class.saveReason.${error.reason}`)
   }
   return classReasonText(error)
 }
@@ -54,68 +55,62 @@ export function refusalChangesPage(error: unknown): boolean {
   )
 }
 
-const FAILURES: Record<string, string> = {
-  upstream_unavailable: 'MOWL could not be reached. Nothing was written. Try again in a few minutes.',
-  rate_limited: 'MOWL asked classbeat to slow down. Nothing was written. Wait a few minutes and try again.',
-  lease_lost:
-    'The work was interrupted too many times. If classbeat could not tell whether anything reached MOWL, it is listed below for you to decide. Otherwise nothing was written; try again.',
-  not_connected: 'MOWL is not connected. Connect it on your account page, then try again.',
-  needs_reconnect: 'MOWL no longer accepts the stored sign-in. Connect it again on your account page, then try again.',
-  key_unavailable: 'The stored MOWL sign-in could not be read. Connect MOWL again on your account page.',
-  decrypt_failed: 'The stored MOWL sign-in could not be read. Connect MOWL again on your account page.',
-  invalid_input: 'This version could not be written to MOWL. Reload the page and try again.',
-  operation_busy: 'Another task of yours was still using MOWL. Nothing was written. Try again in a moment.',
-  music_unlinked:
-    'The music of this version is not in your connected MOWL account. Change it and save the new version.',
-  program_changed: 'This workout was changed in MOWL after classbeat saved it. Nothing was written.',
-  program_missing: 'This workout is no longer in your MOWL account. Nothing was written.',
-  program_other_sport:
-    'This workout in MOWL is for a different sport than this class, so classbeat did not replace it. Nothing was written.',
-  internal: 'Something went wrong on our side. Try again later.',
-  outbound_blocked: 'Something went wrong on our side. Try again later.',
+const FAILURE_CODES = [
+  'upstream_unavailable',
+  'rate_limited',
+  'lease_lost',
+  'not_connected',
+  'needs_reconnect',
+  'key_unavailable',
+  'invalid_input',
+  'operation_busy',
+  'music_unlinked',
+  'program_changed',
+  'program_missing',
+  'program_other_sport',
+  'internal',
+] as const
+
+type FailureCode = (typeof FAILURE_CODES)[number]
+
+// Two categories share the sentence of another: the reader gets the same advice either way.
+const FAILURE_ALIASES: Readonly<Record<string, FailureCode>> = {
+  decrypt_failed: 'key_unavailable',
+  outbound_blocked: 'internal',
+}
+
+function failureCode(category: string): FailureCode | null {
+  if ((FAILURE_CODES as readonly string[]).includes(category)) return category as FailureCode
+  return Object.hasOwn(FAILURE_ALIASES, category) ? FAILURE_ALIASES[category]! : null
 }
 
 /** The sentence for a failed Save or Update job. */
 export function saveFailureText(category: string | null): string {
-  return category !== null && Object.hasOwn(FAILURES, category)
-    ? FAILURES[category]!
-    : 'The job did not finish. Check the box below for anything undecided, then try again.'
+  const code = category === null ? null : failureCode(category)
+  return code !== null ? t(`class.saveFailure.${code}`) : t('class.saveFailure.default')
 }
 
 export type WriteKind = 'save' | 'update'
 
 /** What may or may not have happened, in plain words, per kind of write. */
-export const UNCERTAIN_TEXT: Record<WriteKind, string[]> = {
-  save: [
-    'classbeat asked MOWL to add this class as a new workout and did not get a clear answer.',
-    'The workout may be in your MOWL account, whole or only partly, or it may not be there at all. classbeat does not try again on its own, so you do not end up with two copies by accident.',
-  ],
-  update: [
-    'classbeat asked MOWL to update the workout it saved earlier and did not get a clear answer.',
-    'Your MOWL copy may be unchanged, updated, or only partly updated. MOWL may also have made a new, empty workout with the same name in My Workouts; if you find one, it is your own private workout and you can delete it in MOWL. classbeat does not try again on its own.',
-  ],
+export function uncertainText(kind: WriteKind): string[] {
+  return kind === 'save'
+    ? [t('class.uncertain.save.1'), t('class.uncertain.save.2')]
+    : [t('class.uncertain.update.1'), t('class.uncertain.update.2')]
 }
 
-export const DUPLICATE_WARNING =
-  'Do it anyway means you decide the workout was not saved. If it was saved after all, this may add a second workout to your MOWL account; you can delete extras in the MOWL app.'
-export const OVERWRITE_WARNING =
-  'Do it anyway means you decide the update did not happen. Your MOWL copy may be partly updated; the next update replaces it with this version.'
+export function duplicateWarning(): string {
+  return t('class.warning.duplicate')
+}
+
+export function overwriteWarning(): string {
+  return t('class.warning.overwrite')
+}
 
 export type WriteOutcome = 'found' | 'nothing' | 'still_unsure' | 'decided'
 
-export const OUTCOME_TEXT: Record<WriteKind, Record<WriteOutcome, string>> = {
-  save: {
-    found: 'classbeat found the workout in your MOWL account and recorded it as saved.',
-    nothing: 'classbeat checked and the workout was not saved. You can save it again now.',
-    still_unsure: 'classbeat still cannot tell whether the workout was saved.',
-    decided: 'Understood. You can save it again now; if it was saved after all, you will have two copies in MOWL.',
-  },
-  update: {
-    found: 'classbeat found your MOWL workout updated and recorded it.',
-    nothing: 'classbeat checked and your MOWL workout is unchanged. You can update it again now.',
-    still_unsure: 'classbeat still cannot tell whether the workout was updated.',
-    decided: 'Understood. The next update replaces your MOWL copy with this version.',
-  },
+export function outcomeText(kind: WriteKind, outcome: WriteOutcome): string {
+  return t(`class.outcome.${kind}.${outcome}`)
 }
 
 /**
@@ -123,9 +118,7 @@ export const OUTCOME_TEXT: Record<WriteKind, Record<WriteOutcome, string>> = {
  * was saved without music.
  */
 export function savedText(soundless: boolean): string {
-  return soundless
-    ? 'Saved without music. The workout is in your MOWL account, private.'
-    : 'Saved. The workout is in your MOWL account, private.'
+  return soundless ? t('class.savedSoundless') : t('class.saved')
 }
 
 /**
@@ -134,7 +127,5 @@ export function savedText(soundless: boolean): string {
  * Update MOWL took without that read-back matching says so and never claims a match.
  */
 export function updatedText(verified: boolean): string {
-  return verified
-    ? 'Updated. Your MOWL workout now matches this version.'
-    : 'The update went through, but classbeat could not confirm MOWL now matches (it may still have a playlist you added in the app). Check the workout in the MOWL app.'
+  return verified ? t('class.updated') : t('class.updatedUnverified')
 }

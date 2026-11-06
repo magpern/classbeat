@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react'
 import type { ClassSummary } from '../../api/classes'
+import { Trans } from '../../i18n/I18n'
 import { classStatus, lengthLabel, profileSeconds, profileTss } from '../../lib/classCards'
 import { Link } from '../../router/Router'
 import { Card } from '../ui/card'
@@ -26,7 +27,12 @@ export function ClassCard({ cls, actions }: { cls: ClassSummary; actions?: React
         <p className="m-0 flex gap-4 text-[0.9375rem] text-muted tabular-nums">
           <span>{lengthLabel(seconds)}</span>
           <span>
-            TSS <TssValue value={profileTss(cls.profile)} approximate={cls.tssApproximate} />
+            <Trans
+              id="class.card.tss"
+              slots={{
+                value: <TssValue value={profileTss(cls.profile)} approximate={cls.tssApproximate} />,
+              }}
+            />
           </span>
         </p>
       ) : null}

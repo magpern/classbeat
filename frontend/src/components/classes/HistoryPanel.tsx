@@ -15,6 +15,7 @@ import { Chip, ChipButton } from '../ui/chip'
 import { RevisionsPanel } from './RevisionsPanel'
 import { TssValue } from './TssValue'
 import { dateTime } from '../../i18n/format'
+import { Trans, useT } from '../../i18n/I18n'
 
 function when(iso: string): string {
   return dateTime(iso, '')
@@ -47,6 +48,7 @@ export function HistoryPanel({
   onCanChange?: (can: boolean) => void
   busy: boolean
 }) {
+  const t = useT()
   // Read again whenever the versions or the current one change (a change, a pick).
   const key = revisions.map((r) => `${r.id}:${r.isCurrent ? '1' : '0'}`).join(',')
   const [loaded, setLoaded] = useState<{ key: string; history: History } | null>(null)
@@ -112,7 +114,7 @@ export function HistoryPanel({
       <>
         {readFailed ? (
           <p className="muted m-0" role="status" data-testid="history-unavailable">
-            The version history could not be read, so only the plain list is shown.
+            {t('class.history.unavailable')}
           </p>
         ) : null}
         <RevisionsPanel revisions={revisions} viewingId={viewingId} onView={onView} onUse={onUse} busy={busy} />
@@ -132,7 +134,7 @@ export function HistoryPanel({
   const compare = () => {
     if (older === null || newer === null) return
     const wanted = pairKey
-    const title = `Version ${String(older.number)} to version ${String(newer.number)}`
+    const title = t('class.history.compareTitle', { older: older.number, newer: newer.number })
     compareRevisions(classId, older.id, newer.id).then(
       (found) => {
         setCompared({ key: wanted, title, lines: describeComparison(found) })
@@ -147,23 +149,20 @@ export function HistoryPanel({
   return (
     <section className="panel" aria-labelledby="revisions-title">
       <h2 id="revisions-title" className="panel__title">
-        Versions
+        {t('class.versions')}
       </h2>
-      <p className="muted m-0">Pick two versions to compare them.</p>
+      <p className="muted m-0">{t('class.history.pick')}</p>
       {history.canChange || history.revisions.length === 0 ? null : (
         <p className="m-0" data-testid="cannot-change">
-          Change it is not available for this class right now: it has no music of its own, or its kind of class is
-          switched off. You can still view, compare, use and save its versions.
+          {t('class.history.cannotChange')}
         </p>
       )}
       {history.unreadable > 0 ? (
         <p className="m-0" data-testid="unreadable-versions">
-          {history.unreadable === 1
-            ? '1 earlier version can no longer be read and is not listed.'
-            : `${String(history.unreadable)} earlier versions can no longer be read and are not listed.`}
+          {t('class.history.unreadable', { count: history.unreadable })}
         </p>
       ) : null}
-      <ol className="rows revisions" aria-label="Version history">
+      <ol className="rows revisions" aria-label={t('class.history.list')}>
         {ordered.map((r) => {
           const summary = revisions.find((s) => s.id === r.id)
           const tss = r.tss
@@ -171,53 +170,59 @@ export function HistoryPanel({
             <li key={r.id} aria-current={r.id === viewingId ? 'true' : undefined} data-testid="history-entry">
               <span className="flex min-w-0 flex-col gap-1">
                 <span className="flex flex-wrap items-center gap-2">
-                  <strong>Version {r.number}</strong>
-                  {r.isCurrent ? <Chip tone="ok">Current</Chip> : null}
-                  {r.saved === 'live' ? <Chip>Saved in MOWL</Chip> : null}
-                  {r.saved === 'detached' ? <Chip>Saved to an earlier MOWL connection</Chip> : null}
-                  {r.fromSongs ? <Chip>Approved songs</Chip> : null}
+                  <strong>{t('class.version', { number: r.number })}</strong>
+                  {r.isCurrent ? <Chip tone="ok">{t('class.current')}</Chip> : null}
+                  {r.saved === 'live' ? <Chip>{t('class.history.savedMowl')}</Chip> : null}
+                  {r.saved === 'detached' ? <Chip>{t('class.history.savedEarlier')}</Chip> : null}
+                  {r.fromSongs ? <Chip>{t('class.history.fromSongs')}</Chip> : null}
                 </span>
                 <span className="break-words">{askedFor(r)}</span>
                 <span className="muted">
                   {clock(r.totalSec)}
                   {tss !== null ? (
                     <>
-                      , TSS <TssValue value={tss} approximate={r.tssApproximate} />
+                      ,{' '}
+                      <Trans
+                        id="class.history.tss"
+                        slots={{ value: <TssValue value={tss} approximate={r.tssApproximate} /> }}
+                      />
                     </>
                   ) : null}
-                  {r.parentNumber !== null ? `, from version ${String(r.parentNumber)}` : ''}
+                  {r.parentNumber !== null ? `, ${t('class.fromVersion', { number: r.parentNumber })}` : ''}
                   {when(r.createdAt) ? `, ${when(r.createdAt)}` : ''}
                 </span>
               </span>
               <span className="flex flex-wrap gap-2">
                 <ChipButton
                   pressed={chosen.includes(r.id)}
-                  aria-label={`Compare version ${String(r.number)}`}
+                  aria-label={t('class.history.compareAria', { number: r.number })}
                   onClick={() => {
                     toggle(r.id)
                   }}
                 >
-                  Compare
+                  {t('class.history.compare')}
                 </ChipButton>
                 <Button
                   variant="secondary"
-                  aria-label={`${r.id === viewingId ? 'Viewing' : 'View'} version ${String(r.number)}`}
+                  aria-label={t(r.id === viewingId ? 'class.viewingVersionAria' : 'class.viewVersionAria', {
+                    number: r.number,
+                  })}
                   disabled={r.id === viewingId}
                   onClick={() => {
                     onView(r.id)
                   }}
                 >
-                  {r.id === viewingId ? 'Viewing' : 'View'}
+                  {r.id === viewingId ? t('class.viewing') : t('class.view')}
                 </Button>
                 {r.isCurrent || summary === undefined ? null : (
                   <Button
-                    aria-label={`Use this version ${String(r.number)}`}
+                    aria-label={t('class.useVersionAria', { number: r.number })}
                     disabled={busy}
                     onClick={() => {
                       onUse(summary)
                     }}
                   >
-                    Use this version
+                    {t('class.useThisVersion')}
                   </Button>
                 )}
               </span>
@@ -228,7 +233,7 @@ export function HistoryPanel({
       {older !== null && newer !== null ? (
         <p className="m-0">
           <Button variant="secondary" onClick={compare}>
-            Compare versions {older.number} and {newer.number}
+            {t('class.history.compareButton', { older: older.number, newer: newer.number })}
           </Button>
         </p>
       ) : null}
