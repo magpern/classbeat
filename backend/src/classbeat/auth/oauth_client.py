@@ -127,7 +127,10 @@ def authorization_url(
             extra["prompt"] = "login"
         elif provider.name == GOOGLE:
             # No prompt=login: Google does not document it, and nothing in its answer would show
-            # it was honoured. Freshness rests on auth_time alone (#522, ADR 0003 section 5).
+            # it was honoured (#522). max_age=0 and the claims request stay as a request only:
+            # Google ignores them, so a Google re-authentication of an account without a password
+            # does not depend on auth_time, and one with a password is refused (#687, ADR 0003
+            # section 5).
             extra["claims"] = AUTH_TIME_CLAIMS
     url, _ = _client(provider, redirect_uri, None).create_authorization_url(
         provider.authorize_url, state=state, code_verifier=verifier, **extra

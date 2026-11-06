@@ -24,6 +24,7 @@ from classbeat.auth.devices import remember_device
 from classbeat.auth.events import record_event
 from classbeat.auth.keys import Keys, token_hash
 from classbeat.auth.oauth_client import ProviderIdentity
+from classbeat.auth.oauth_providers import GOOGLE
 from classbeat.auth.oauth_store import Flow, add_identity, identity_owner
 from classbeat.auth.sessions import (
     IssuedSession,
@@ -147,27 +148,67 @@ def _stale_auth_time(auth_time: int | None, now: float) -> str | None:
     return None
 
 
+def _google_only(req: Request) -> tuple[str, str] | None:
+    """Google re-authentication of an account without a password (#687, ADR 0003 section 5, the
+    2026-11-06 amendment). Google ignores ``max_age=0`` and the ``auth_time`` claims request, so
+    its answer is accepted without a fresh ``auth_time``, but only as the answer to this flow: the
+    caller has already checked state, PKCE, nonce, the session and that the subject is this user's
+    linked Google identity. On top of that the flow must have started at most 5 minutes ago (it is
+    single use, taken before the exchange) and Google must vouch for the email. An ``auth_time``
+    that is present must not lie in the future."""
+    age = req.flow.age
+    if age is None or age > REAUTH_MAX_AGE:
+        return "reauth_expired", "flow_old"
+    if not req.identity.email_verified:
+        return "invalid", "email_unverified"
+    auth_time = req.identity.auth_time
+    now = time.time() if req.now is None else req.now
+    if auth_time is not None and auth_time - now > AUTH_TIME_SKEW:
+        return "reauth_stale", "auth_time_future"
+    return None
+
+
+def _freshness(req: Request, *, has_password: bool) -> tuple[str, str] | None:
+    """``(outcome, why)`` when the provider's answer does not count as a re-authentication.
+
+    - Google: never for an account with a password (it confirms with the password, #687); for an
+      account without one, ``_google_only``.
+    - Microsoft: ``auth_time`` within 5 minutes, fail closed (#522), unchanged.
+    - GitHub: a live GitHub session (an accepted risk, section 5)."""
+    provider = req.flow.provider
+    if provider == "github":
+        return None
+    if provider == GOOGLE:
+        if has_password:
+            return "reauth_use_password", "has_password"
+        return _google_only(req)
+    now = time.time() if req.now is None else req.now
+    why = _stale_auth_time(req.identity.auth_time, now)
+    return None if why is None else ("reauth_stale", why)
+
+
 async def _reauth(db: AsyncSession, req: Request) -> Outcome:
     info = _own_session(req)
     if info is None:
         return _fail("session_mismatch", "not_the_flows_user")
-    await lock_user(db, info.user_id)  # first (#639, ADR 0019 section 6); the session and
-    # identity checks below then see a reset that committed meanwhile.
+    locked = await lock_user(db, info.user_id)  # first (#639, ADR 0019 section 6); the session
+    # and identity checks below then see a reset that committed meanwhile.
+    if locked is None:
+        return _fail("session_mismatch", "session_gone")
     owner = await identity_owner(db, req.flow.provider, req.identity.subject)
     if owner is None or owner[0] != info.user_id:
         return _fail("identity_mismatch", "not_linked_to_this_user")
-    if req.flow.provider != "github":
-        now = time.time() if req.now is None else req.now
-        why = _stale_auth_time(req.identity.auth_time, now)
-        if why is not None:
-            await record_event(
-                db,
-                "reauth_failed",
-                user_id=info.user_id,
-                ip=req.ip,
-                detail={"why": why, "provider": req.flow.provider},
-            )
-            return _fail("reauth_stale", why)
+    refusal = _freshness(req, has_password=locked.password_hash is not None)
+    if refusal is not None:
+        code, why = refusal
+        await record_event(
+            db,
+            "reauth_failed",
+            user_id=info.user_id,
+            ip=req.ip,
+            detail={"why": why, "provider": req.flow.provider},
+        )
+        return _fail(code, why)
     try:
         issued = await rotate_session(
             db,

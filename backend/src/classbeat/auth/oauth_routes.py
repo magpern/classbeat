@@ -40,8 +40,8 @@ from classbeat.auth.flowtools import factory, reserve, user_agent
 from classbeat.auth.oauth_client import OAuthRuntime, ProviderError, authorization_url, identify
 from classbeat.auth.oauth_outcomes import Outcome, apply
 from classbeat.auth.oauth_outcomes import Request as OutcomeRequest
-from classbeat.auth.oauth_providers import visible_providers
-from classbeat.auth.oauth_store import Flow, create_flow, safe_return_to, take_flow
+from classbeat.auth.oauth_providers import GOOGLE, visible_providers
+from classbeat.auth.oauth_store import Flow, create_flow, has_password, safe_return_to, take_flow
 from classbeat.auth.ratelimit import OAUTH_IP, Bucket
 from classbeat.auth.sessions import SessionInfo
 from classbeat.auth.signup_routes import valid_invite
@@ -133,6 +133,13 @@ async def start(
     elif body.purpose == "reauth":
         ctx = await require_user(await current_context(request, info))
         user_id = ctx.user_id
+        if provider == GOOGLE:
+            # #687: Google's answer carries no fresh auth_time, so it re-authenticates only an
+            # account without a password; one with a password confirms with it. The callback
+            # checks this again under the user lock (``oauth_outcomes._freshness``).
+            async with system_session(factory(request)) as db:
+                if await has_password(db, user_id):
+                    raise HTTPException(status_code=403, detail={"reason": "reauth_use_password"})
     invite_id: UUID | None = None
     settings = request.app.state.settings
     if body.purpose == "sign_up" and body.invite_code:

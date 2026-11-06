@@ -1,23 +1,39 @@
-"""OAuth re-authentication freshness and the refused-callback log line (#522, ADR 0003 section 5
-and its 2026-11-03 amendment).
+"""OAuth re-authentication freshness and the refused-callback log line (#522, #687, ADR 0003
+section 5 and its 2026-11-03 and 2026-11-06 amendments).
 
 Google ignores ``max_age=0`` and may leave ``auth_time`` out; a fresh ``iat`` then only shows the
-token was minted now, not that the user signed in again. Re-authentication therefore needs a
-present ``auth_time`` within 5 minutes for every OIDC provider. Every refused callback logs one
-WARNING line with provider, purpose, outcome and why, and never a code, state, nonce, token or
-email."""
+token was minted now, not that the user signed in again. So (owner decision, #687):
+
+- an account **with** a password cannot re-authenticate through Google at all (the start and the
+  callback refuse it); it confirms with the password;
+- an account **without** one is re-authenticated by Google's answer to a fresh, single-use flow of
+  this session (state, PKCE, nonce, its linked Google subject, a verified email, started at most 5
+  minutes ago), without a fresh ``auth_time``;
+- every other OIDC provider still needs a present ``auth_time`` within 5 minutes (fail closed).
+
+Every refused callback logs one WARNING line with provider, purpose, outcome and why, and never a
+code, state, nonce, token or email."""
 
 import logging
 import time
+from typing import Any, cast
 from urllib.parse import parse_qs, urlencode, urlsplit
 
 import pytest
 
 from authtools import Env
 from classbeat import auth
-from classbeat.auth.oauth_outcomes import AUTH_TIME_SKEW, REAUTH_MAX_AGE, _stale_auth_time
-from flows import Browser, age_reauth, signed_in
-from oauthtools import location, sign_in_with, start
+from classbeat.auth.oauth_client import ProviderIdentity
+from classbeat.auth.oauth_outcomes import (
+    AUTH_TIME_SKEW,
+    REAUTH_MAX_AGE,
+    Request,
+    _freshness,
+    _stale_auth_time,
+)
+from classbeat.auth.oauth_store import Flow, create_flow, take_flow
+from flows import Browser, age_reauth, reason, signed_in
+from oauthtools import add_password, drop_password, location, sign_in_with, start
 from oidcfake import DROP, FakeProviders
 
 STALE = "/account?oauth=reauth_stale"
@@ -42,10 +58,16 @@ def refused_records(caplog: pytest.LogCaptureFixture) -> list[logging.LogRecord]
     return [r for r in caplog.records if r.name == LOGGER and "callback refused" in r.getMessage()]
 
 
-async def linked(env: Env, fake: FakeProviders, provider: str = "google") -> Browser:
+async def linked(
+    env: Env, fake: FakeProviders, provider: str = "google", *, password: bool = False
+) -> Browser:
+    """``me@example.com`` with ``provider`` linked and an old ``reauth_at``. Without ``password``
+    the account has no password afterwards (a provider-only account, as a Google sign-up)."""
     browser = await signed_in(env, "me@example.com")
     response = await sign_in_with(browser, fake, provider, purpose="link")
     assert location(response) == "/account?oauth=linked"
+    if not password:
+        await drop_password(env)
     await age_reauth(env)
     return browser
 
@@ -77,7 +99,133 @@ def test_the_freshness_rule_at_its_bounds() -> None:
     assert (REAUTH_MAX_AGE, AUTH_TIME_SKEW) == (300, 60)  # the ADR's numbers, never widened
 
 
-# ---- Google without auth_time -------------------------------------------------------------------
+def _req(
+    provider: str, *, age: float | None, auth_time: int | None, verified: bool = True, now: float
+) -> Request:
+    flow = Flow(provider, "reauth", b"", "nonce", "verifier", None, None, None, age=age)
+    identity = ProviderIdentity("sub-1", "me@example.com", verified, auth_time)
+    fields: dict[str, Any] = {"flow": flow, "identity": identity, "now": now}
+    return cast(Request, type("R", (), fields)())
+
+
+def test_the_rule_by_provider_and_password() -> None:
+    """``_freshness`` alone (#687): the Google exception needs Google, no password, a flow of at
+    most 5 minutes (a missing age fails closed) and a verified email; nothing else changed."""
+    now = 1_800_000_000.0
+
+    def rule(provider: str, password: bool, **kw: Any) -> tuple[str, str] | None:
+        return _freshness(_req(provider, now=now, **kw), has_password=password)
+
+    assert rule("google", False, age=10, auth_time=None) is None
+    assert rule("google", False, age=REAUTH_MAX_AGE, auth_time=int(now) - 3600) is None
+    assert rule("google", False, age=REAUTH_MAX_AGE + 1, auth_time=None) == (
+        "reauth_expired",
+        "flow_old",
+    )
+    assert rule("google", False, age=None, auth_time=int(now)) == ("reauth_expired", "flow_old")
+    assert rule("google", False, age=10, auth_time=None, verified=False) == (
+        "invalid",
+        "email_unverified",
+    )
+    assert rule("google", False, age=10, auth_time=int(now) + AUTH_TIME_SKEW + 1) == (
+        "reauth_stale",
+        "auth_time_future",
+    )
+    assert rule("google", True, age=10, auth_time=int(now)) == (
+        "reauth_use_password",
+        "has_password",
+    )
+    for password in (True, False):
+        assert rule("microsoft", password, age=10, auth_time=None) == (
+            "reauth_stale",
+            "auth_time_missing",
+        )
+        assert rule("microsoft", password, age=10, auth_time=int(now) - 3600) == (
+            "reauth_stale",
+            "auth_time_old",
+        )
+        assert rule("microsoft", password, age=10, auth_time=int(now)) is None
+        assert rule("github", password, age=10, auth_time=None) is None  # an accepted risk
+
+
+async def test_take_flow_returns_the_age_since_the_start_and_the_locale_in_their_fields(
+    oenv: Env,
+) -> None:
+    """``take_flow`` reads its columns by position and takes the age off the end: a column added
+    after it, or the two swapped, would put the locale into ``age`` (or the reverse)."""
+    async with oenv.db() as db:
+        new = await create_flow(
+            db,
+            provider="google",
+            purpose="reauth",
+            oidc=True,
+            user_id=None,
+            invite_id=None,
+            return_to="/account",
+            locale="sv",
+        )
+    await oenv.run("UPDATE oauth_flows SET created_at = now() - interval '100 seconds'")
+    async with oenv.db() as db:
+        flow = await take_flow(db, new.cookie)
+    assert flow is not None
+    assert (flow.provider, flow.purpose, flow.return_to) == ("google", "reauth", "/account")
+    assert (flow.nonce, flow.verifier) == (new.nonce, new.verifier)
+    assert flow.locale == "sv"
+    assert isinstance(flow.age, float)
+    assert 99 <= flow.age < 160
+
+
+# ---- Google and an account with a password: refused (#687) -------------------------------------
+
+
+async def test_google_reauth_cannot_start_for_an_account_with_a_password(
+    oenv: Env, fake: FakeProviders
+) -> None:
+    browser = await linked(oenv, fake, password=True)
+    flows = await oenv.scalar("SELECT count(*) FROM oauth_flows")
+    response = await start(browser, "google", "reauth")
+    assert (response.status_code, reason(response)) == (403, "reauth_use_password")
+    assert "authorization_url" not in response.text
+    assert await oenv.scalar("SELECT count(*) FROM oauth_flows") == flows  # no flow was created
+
+
+@pytest.mark.parametrize(
+    "auth_time", [DROP, 0], ids=["no auth_time", "a sign-in at Google just now"]
+)
+async def test_google_reauth_is_refused_at_the_callback_for_an_account_with_a_password(
+    oenv: Env, fake: FakeProviders, logs: pytest.LogCaptureFixture, auth_time: object
+) -> None:
+    """The server, not only the start, enforces it: a password set between the start and the
+    callback (or a start that slipped past) still ends in a refusal, even with a fresh
+    auth_time, because the rule is "password accounts use the password"."""
+    browser = await linked(oenv, fake)
+    old = browser.cookies[auth.SESSION_COOKIE]
+    started = await start(browser, "google", "reauth")
+    assert started.status_code == 200
+    await add_password(oenv)
+    claim = DROP if auth_time is DROP else int(time.time())
+    callback = fake.complete(started.json()["authorization_url"], auth_time=claim)
+    assert location(await browser.get(callback)) == "/account?oauth=reauth_use_password"
+    await still_not_recent(oenv, browser, old)
+    assert await last_reauth_failure(oenv) == {"why": "has_password", "provider": "google"}
+    assert await oenv.scalar("SELECT count(*) FROM auth_events WHERE kind = 'reauth'") == 0
+    assert refused(logs) == [
+        "oauth callback refused: provider=google purpose=reauth outcome=reauth_use_password "
+        "why=has_password"
+    ]
+
+
+async def test_other_providers_still_reauthenticate_an_account_with_a_password(
+    oenv: Env, fake: FakeProviders
+) -> None:
+    browser = await linked(oenv, fake, "microsoft", password=True)
+    response = await sign_in_with(
+        browser, fake, "microsoft", purpose="reauth", auth_time=int(time.time()) - 10
+    )
+    assert location(response) == "/account?oauth=reauthed"
+
+
+# ---- Google and an account without a password: no auth_time needed (#687) ------------------------
 
 
 async def test_google_reauth_still_asks_for_auth_time_and_sends_no_prompt_login(
@@ -93,69 +241,144 @@ async def test_google_reauth_still_asks_for_auth_time_and_sends_no_prompt_login(
 
 
 @pytest.mark.parametrize(
-    "iat_age", [0, 5, 3600], ids=["fresh iat", "iat 5 s old", "iat an hour old"]
+    "auth_time",
+    [DROP, -3600, -(REAUTH_MAX_AGE + 1), -10],
+    ids=["no auth_time", "an hour old", "just too old", "fresh"],
 )
-async def test_google_without_auth_time_fails_closed_whatever_the_iat(
-    oenv: Env, fake: FakeProviders, logs: pytest.LogCaptureFixture, iat_age: int
+async def test_google_reauthenticates_an_account_without_a_password_whatever_the_auth_time(
+    oenv: Env, fake: FakeProviders, logs: pytest.LogCaptureFixture, auth_time: object
 ) -> None:
-    """A fresh iat, a valid nonce, state and PKCE of this very flow are not proof of a new
-    sign-in: Google mints such a token silently from any live Google session."""
     browser = await linked(oenv, fake)
     old = browser.cookies[auth.SESSION_COOKIE]
-    response = await sign_in_with(
-        browser, fake, "google", purpose="reauth", auth_time=DROP, iat=int(time.time()) - iat_age
+    claim = DROP if auth_time is DROP else int(time.time()) + int(str(auth_time))
+    response = await sign_in_with(browser, fake, "google", purpose="reauth", auth_time=claim)
+    assert location(response) == "/account?oauth=reauthed"
+    assert browser.cookies[auth.SESSION_COOKIE] != old
+    assert (await browser.get("/api/auth/session")).json()["session"]["recent_auth"] is True
+    assert await oenv.scalar(
+        "SELECT detail FROM auth_events WHERE kind = 'reauth' ORDER BY at DESC LIMIT 1"
+    ) == {"provider": "google"}
+    assert refused(logs) == []  # an ok outcome logs no warning
+
+
+async def test_google_reauth_of_a_flow_older_than_5_minutes_is_refused(
+    oenv: Env, fake: FakeProviders, logs: pytest.LogCaptureFixture
+) -> None:
+    """The flow lives 10 minutes, but Google's answer counts only within 5 of the start."""
+    browser = await linked(oenv, fake)
+    old = browser.cookies[auth.SESSION_COOKIE]
+    started = await start(browser, "google", "reauth")
+    await oenv.run(
+        "UPDATE oauth_flows SET created_at = now() - make_interval(secs => :age)",
+        age=REAUTH_MAX_AGE + 5,
     )
-    assert location(response) == STALE
+    callback = fake.complete(started.json()["authorization_url"], auth_time=DROP)
+    assert location(await browser.get(callback)) == "/account?oauth=reauth_expired"
     await still_not_recent(oenv, browser, old)
-    assert await last_reauth_failure(oenv) == {"why": "auth_time_missing", "provider": "google"}
+    assert await last_reauth_failure(oenv) == {"why": "flow_old", "provider": "google"}
     assert refused(logs) == [
-        "oauth callback refused: provider=google purpose=reauth outcome=reauth_stale "
-        "why=auth_time_missing"
+        "oauth callback refused: provider=google purpose=reauth outcome=reauth_expired why=flow_old"
     ]
 
 
-async def test_google_with_a_fresh_auth_time_reauthenticates(
+async def test_google_reauth_just_inside_5_minutes_passes(oenv: Env, fake: FakeProviders) -> None:
+    browser = await linked(oenv, fake)
+    started = await start(browser, "google", "reauth")
+    await oenv.run(
+        "UPDATE oauth_flows SET created_at = now() - make_interval(secs => :age)",
+        age=REAUTH_MAX_AGE - 30,
+    )
+    callback = fake.complete(started.json()["authorization_url"], auth_time=DROP)
+    assert location(await browser.get(callback)) == "/account?oauth=reauthed"
+
+
+async def test_google_reauth_without_a_verified_email_is_refused(
     oenv: Env, fake: FakeProviders, logs: pytest.LogCaptureFixture
 ) -> None:
     browser = await linked(oenv, fake)
     old = browser.cookies[auth.SESSION_COOKIE]
     response = await sign_in_with(
-        browser, fake, "google", purpose="reauth", auth_time=int(time.time()) - 10
+        browser, fake, "google", purpose="reauth", auth_time=DROP, email_verified=False
     )
-    assert location(response) == "/account?oauth=reauthed"
-    assert browser.cookies[auth.SESSION_COOKIE] != old
-    assert (await browser.get("/api/auth/session")).json()["session"]["recent_auth"] is True
-    assert refused(logs) == []  # an ok outcome logs no warning
+    assert location(response) == "/account?oauth=invalid"
+    await still_not_recent(oenv, browser, old)
+    assert await last_reauth_failure(oenv) == {"why": "email_unverified", "provider": "google"}
+    assert refused(logs) == [
+        "oauth callback refused: provider=google purpose=reauth outcome=invalid "
+        "why=email_unverified"
+    ]
 
 
+async def test_google_reauth_with_an_auth_time_in_the_future_is_refused(
+    oenv: Env, fake: FakeProviders
+) -> None:
+    browser = await linked(oenv, fake)
+    old = browser.cookies[auth.SESSION_COOKIE]
+    response = await sign_in_with(
+        browser,
+        fake,
+        "google",
+        purpose="reauth",
+        auth_time=int(time.time()) + AUTH_TIME_SKEW + 30,
+    )
+    assert location(response) == STALE
+    await still_not_recent(oenv, browser, old)
+    assert await last_reauth_failure(oenv) == {"why": "auth_time_future", "provider": "google"}
+
+
+# ---- every other OIDC provider: auth_time within 5 minutes, fail closed (#522) -----------------
+
+
+@pytest.mark.parametrize("password", [True, False], ids=["with a password", "without one"])
 @pytest.mark.parametrize(
-    ("provider", "auth_time", "why"),
+    ("auth_time", "why"),
     [
-        ("google", -(REAUTH_MAX_AGE + 1), "auth_time_old"),
-        ("google", -3600, "auth_time_old"),
-        ("google", AUTH_TIME_SKEW + 30, "auth_time_future"),
-        ("microsoft", -3600, "auth_time_old"),
-        ("microsoft", None, "auth_time_missing"),
+        (-(REAUTH_MAX_AGE + 1), "auth_time_old"),
+        (-3600, "auth_time_old"),
+        (AUTH_TIME_SKEW + 30, "auth_time_future"),
+        (None, "auth_time_missing"),
     ],
 )
-async def test_an_auth_time_present_but_not_fresh_fails_closed(
+async def test_microsoft_without_a_fresh_auth_time_fails_closed(
     oenv: Env,
     fake: FakeProviders,
     logs: pytest.LogCaptureFixture,
-    provider: str,
     auth_time: int | None,
     why: str,
+    password: bool,
 ) -> None:
-    browser = await linked(oenv, fake, provider)
+    """The Google rule of #687 is Google's alone: an account without a password gets no
+    exception for Microsoft."""
+    browser = await linked(oenv, fake, "microsoft", password=password)
     old = browser.cookies[auth.SESSION_COOKIE]
     claim = DROP if auth_time is None else int(time.time()) + auth_time
-    response = await sign_in_with(browser, fake, provider, purpose="reauth", auth_time=claim)
+    response = await sign_in_with(browser, fake, "microsoft", purpose="reauth", auth_time=claim)
     assert location(response) == STALE
     await still_not_recent(oenv, browser, old)
-    assert await last_reauth_failure(oenv) == {"why": why, "provider": provider}
+    assert await last_reauth_failure(oenv) == {"why": why, "provider": "microsoft"}
     assert refused(logs) == [
-        f"oauth callback refused: provider={provider} purpose=reauth outcome=reauth_stale why={why}"
+        f"oauth callback refused: provider=microsoft purpose=reauth outcome=reauth_stale why={why}"
     ]
+
+
+async def test_microsoft_without_auth_time_fails_even_for_an_account_that_also_has_google(
+    oenv: Env, fake: FakeProviders
+) -> None:
+    browser = await signed_in(oenv, "me@example.com")
+    for provider in ("google", "microsoft"):
+        response = await sign_in_with(browser, fake, provider, purpose="link")
+        assert location(response) == "/account?oauth=linked"
+    await drop_password(oenv)
+    await age_reauth(oenv)
+    google = await sign_in_with(browser, fake, "google", purpose="reauth", auth_time=DROP)
+    assert location(google) == "/account?oauth=reauthed"  # the Google rule applies to Google
+    await age_reauth(oenv)
+    response = await sign_in_with(browser, fake, "microsoft", purpose="reauth", auth_time=DROP)
+    assert location(response) == STALE
+    assert await last_reauth_failure(oenv) == {
+        "why": "auth_time_missing",
+        "provider": "microsoft",
+    }
 
 
 # ---- binding to this flow and this session ------------------------------------------------------
@@ -370,8 +593,8 @@ async def test_every_refused_callback_logs_one_line(
 async def test_the_log_line_holds_no_code_state_nonce_token_or_email(
     oenv: Env, fake: FakeProviders, logs: pytest.LogCaptureFixture
 ) -> None:
-    browser = await linked(oenv, fake)
-    started = await start(browser, "google", "reauth")
+    browser = await linked(oenv, fake, "microsoft")
+    started = await start(browser, "microsoft", "reauth")
     url = started.json()["authorization_url"]
     query = parse_qs(urlsplit(url).query)
     callback = fake.complete(url, auth_time=DROP, email="planted-mail@example.com")
