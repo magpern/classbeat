@@ -1,4 +1,5 @@
 import { useId } from 'react'
+import { useT } from '../../i18n/I18n'
 import type { SwedebeatMix } from '../../api/swedebeatMixes'
 import { lengthLabel } from '../../lib/classCards'
 import { Chip } from '../ui/chip'
@@ -17,19 +18,19 @@ export function MixTiles({
   value: string
   onChange: (mixId: string) => void
 }) {
+  const t = useT()
   const group = useId()
   if (mixes.length === 0) {
     return (
       <p className="m-0 text-[0.9375rem] text-muted">
-        MOWL lists no Swedebeat mixes for your account yet. Create a mix in the Swedebeat app, let it
-        sync to Intelligent Cycling, then reload this page.
+        {t('newclass.mix.none')}
       </p>
     )
   }
   return (
     <div className="flex flex-col gap-2">
       <span id={`${group}-label`} className="text-[0.9375rem] font-medium text-text">
-        Swedebeat mix
+        {t('newclass.mix.label')}
       </span>
       <div
         role="radiogroup"
@@ -38,7 +39,7 @@ export function MixTiles({
         className="grid grid-cols-2 gap-3 sm:grid-cols-3"
       >
         {mixes.map((mix) => {
-          const name = mix.name || 'Untitled mix'
+          const name = mix.name || t('newclass.untitledMix')
           const length =
             mix.durationSeconds === null ? null : lengthLabel(mix.durationSeconds)
           return (
@@ -68,7 +69,7 @@ export function MixTiles({
               </span>
               {mix.analysed ? (
                 <Chip tone="ok" className="w-fit">
-                  Analysed before
+                  {t('newclass.mix.analysed')}
                 </Chip>
               ) : null}
             </label>
@@ -76,8 +77,7 @@ export function MixTiles({
         })}
       </div>
       <p id={`${group}-hint`} className="m-0 text-[0.8125rem] text-muted">
-        classbeat adds this mix to your MOWL music so it can analyse the audio and read the songs. The
-        first analysis can take about a minute.
+        {t('newclass.mix.hint')}
       </p>
     </div>
   )

@@ -1,5 +1,8 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { ApiError } from '../api/client'
+import { Trans, useT } from '../i18n/I18n'
+import type { CatalogueKey } from '../i18n/en'
+import type { TFunction } from '../i18n/t'
 import { getConnectionsView, type Connection } from '../api/connections'
 import { getSwedebeatMixes, swedebeatMixListError, type SwedebeatMix } from '../api/swedebeatMixes'
 import {
@@ -35,7 +38,7 @@ import { ChipButton } from '../components/ui/chip'
 import { EFFORTS, sketchProfile } from '../lib/sketch'
 import { RequireAuth } from '../components/RequireAuth'
 import { planRefusalText } from '../api/planMessages'
-import { BRIEF_TOO_LONG, briefBytes, MAX_BRIEF_BYTES } from '../lib/brief'
+import { briefBytes, MAX_BRIEF_BYTES } from '../lib/brief'
 import { newIdempotencyKey, rememberInput, rememberPick } from '../lib/submittedInput'
 import { readPreset } from '../lib/presets'
 import { Link, useQuery, useRouter } from '../router/Router'
@@ -43,7 +46,7 @@ import { Link, useQuery, useRouter } from '../router/Router'
 type Source =
   | { status: 'loading' }
   | { status: 'no_mowl'; reconnect: boolean }
-  | { status: 'playlists_failed'; message: string }
+  | { status: 'playlists_failed'; message: CatalogueKey }
   | {
       status: 'ready'
       connection: Connection
@@ -55,30 +58,29 @@ type Source =
       soundlessEnabled: boolean
     }
 
-const PLAYLIST_ERRORS: Record<string, string> = {
-  upstream_unavailable: 'MOWL could not be reached. Try again in a few minutes.',
-  key_unavailable: 'MOWL could not be reached. Try again in a few minutes.',
-  rate_limited: 'MOWL asked classbeat to slow down. Try again in a few minutes.',
+const PLAYLIST_ERRORS: Record<string, CatalogueKey> = {
+  upstream_unavailable: 'newclass.playlistError.unavailable',
+  key_unavailable: 'newclass.playlistError.unavailable',
+  rate_limited: 'newclass.playlistError.rateLimited',
 }
 
-function playlistError(error: unknown): string {
+function playlistError(error: unknown): CatalogueKey {
   if (error instanceof ApiError && error.reason !== null && error.status !== 409) {
     const known = Object.hasOwn(PLAYLIST_ERRORS, error.reason) ? PLAYLIST_ERRORS[error.reason] : undefined
     if (known !== undefined) return known
   }
-  return 'Your playlists could not be loaded from MOWL. Try again in a few minutes.'
+  return 'newclass.playlistError.default'
 }
 
-const CREATE_ERRORS: Record<string, string> = {
-  not_connected: 'MOWL is not connected. Connect it on your account page first.',
-  class_busy: 'This class already has a design running.',
-  idempotency_mismatch: 'That did not work. Check the form and try again.',
-  feature_off: 'Running classes are not available right now. Switch to Cycling, or try again later.',
-  soundless_not_evaluated: 'Classes with no music are not ready for your plan yet. Choose a playlist, or try again later.',
+const CREATE_ERRORS: Record<string, CatalogueKey> = {
+  not_connected: 'newclass.createError.not_connected',
+  class_busy: 'newclass.createError.class_busy',
+  idempotency_mismatch: 'newclass.createError.idempotency_mismatch',
+  feature_off: 'newclass.createError.feature_off',
+  soundless_not_evaluated: 'newclass.createError.soundless_not_evaluated',
   // #509: the designer for the user's plan has not been checked for running classes yet.
-  running_not_evaluated:
-    'Running classes are not available on your plan yet. Nothing was charged. Switch to Cycling, or try again later.',
-  invalid_input: `The class was not accepted. Check the fields; the style and description together may be over ${String(MAX_BRIEF_BYTES)} bytes.`,
+  running_not_evaluated: 'newclass.createError.running_not_evaluated',
+  invalid_input: 'newclass.createError.invalid_input',
 }
 
 /** Whether "Pick songs for me" is offered, and what it still needs (ADR 0008 section 9). */
@@ -101,16 +103,14 @@ async function songsAvailability(
   return { kind: 'ready', spotifyConnectionId: spotify.id }
 }
 
-const SOUNDLESS_FEATURE_OFF = 'Classes with no music are not available right now. Choose a playlist, or try again later.'
-
 /** `noMusic`: the form asked for "No music", so a `feature_off` is the soundless switch, not running's. */
-function createError(error: unknown, noMusic = false): string {
+function createError(t: TFunction, error: unknown, noMusic = false): string {
   const refusal = planRefusalText(error)
   if (refusal !== null) return refusal
-  if (noMusic && error instanceof ApiError && error.reason === 'feature_off') return SOUNDLESS_FEATURE_OFF
+  if (noMusic && error instanceof ApiError && error.reason === 'feature_off') return t('newclass.createError.soundlessOff')
   if (error instanceof ApiError && error.reason !== null) {
     const known = Object.hasOwn(CREATE_ERRORS, error.reason) ? CREATE_ERRORS[error.reason] : undefined
-    if (known !== undefined) return known
+    if (known !== undefined) return t(known, { bytes: MAX_BRIEF_BYTES })
   }
   return errorMessage(error)
 }
@@ -124,6 +124,7 @@ export function NewClassPage() {
 }
 
 function NewClass() {
+  const t = useT()
   const [source, setSource] = useState<Source>({ status: 'loading' })
   const [reload, setReload] = useState(0)
 
@@ -172,20 +173,25 @@ function NewClass() {
 
   return (
     <div className="mx-auto flex w-full max-w-5xl flex-col gap-5">
-      <h1 className="m-0 font-display text-3xl font-extrabold">Design a class</h1>
-      {source.status === 'loading' ? <p className="m-0 text-muted">Loading your MOWL music</p> : null}
+      <h1 className="m-0 font-display text-3xl font-extrabold">{t('newclass.title')}</h1>
+      {source.status === 'loading' ? <p className="m-0 text-muted">{t('newclass.loading')}</p> : null}
       {source.status === 'no_mowl' ? (
         <Notice>
-          {source.reconnect
-            ? 'MOWL no longer accepts the stored sign-in. '
-            : 'classbeat reads your music from MOWL. '}
-          <Link to="/account">{source.reconnect ? 'Connect MOWL again' : 'Connect MOWL on your account page'}</Link>
-          , then come back here.
+          <Trans
+            id={source.reconnect ? 'newclass.noMowl.reconnect' : 'newclass.noMowl.connect'}
+            slots={{
+              link: (
+                <Link to="/account">
+                  {t(source.reconnect ? 'newclass.noMowl.reconnectLink' : 'newclass.noMowl.connectLink')}
+                </Link>
+              ),
+            }}
+          />
         </Notice>
       ) : null}
       {source.status === 'playlists_failed' ? (
         <>
-          <Notice kind="error">{source.message}</Notice>
+          <Notice kind="error">{t(source.message)}</Notice>
           <p className="m-0">
             <Button
               variant="secondary"
@@ -194,7 +200,7 @@ function NewClass() {
                 setReload((n) => n + 1)
               }}
             >
-              Try again
+              {t('common.tryAgain')}
             </Button>
           </p>
         </>
@@ -216,15 +222,18 @@ function NewClass() {
 
 const LENGTHS = [30, 45, 60, 90] as const
 
-function lengthSentence(max: number): string {
-  return `Your plan allows classes of up to ${String(max)} minutes.`
+function lengthSentence(t: TFunction, max: number): string {
+  return t('newclass.planMaxLength', { count: max })
 }
 
 /** The parts of a class the plan leaves out, as one sentence, or null when it leaves out none. */
-function leftOut(names: string[]): string | null {
+function leftOut(t: TFunction, names: string[]): string | null {
   if (names.length === 0) return null
-  const list = names.length === 1 ? names[0]! : `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]!}`
-  return `Your plan does not include ${list}.`
+  const list =
+    names.length === 1
+      ? names[0]!
+      : t('newclass.list.and', { head: names.slice(0, -1).join(', '), last: names[names.length - 1]! })
+  return t('newclass.planLeavesOut', { list })
 }
 
 function whole(value: string): number {
@@ -254,6 +263,7 @@ function ClassForm({
   /** The effective `soundless_enabled` flag: without it the form has no "No music". */
   soundlessEnabled: boolean
 }) {
+  const t = useT()
   const { navigate } = useRouter()
   const preset = readPreset(useQuery())
   const action = useAction()
@@ -303,7 +313,10 @@ function ClassForm({
   const racesOn = allowed?.gates.races ?? true
   const ftpOn = allowed?.gates.ftpTests ?? true
   const gamesOn = allowed?.gates.games ?? true
-  const leftOutText = leftOut([...(racesOn ? [] : ['races']), ...(ftpOn ? [] : ['FTP tests'])])
+  const leftOutText = leftOut(t, [
+    ...(racesOn ? [] : [t('newclass.planLeavesOut.races')]),
+    ...(ftpOn ? [] : [t('newclass.planLeavesOut.ftpTests')]),
+  ])
   const attempt = useRef<{ fingerprint: string; key: string } | null>(null)
 
   const submit = (event: FormEvent) => {
@@ -316,16 +329,16 @@ function ClassForm({
     }
     const name = title.trim()
     let invalid: string | null = null
-    if (name === '' || name.length > 100) invalid = 'Give the class a name of up to 100 characters.'
-    else if (!noMusic && (running || music === 'playlist') && playlist === '') invalid = 'Choose a playlist.'
-    else if (!running && !noMusic && music === 'swedebeat_mix' && mixId === '') invalid = 'Choose a Swedebeat mix.'
-    else if (!inRange(brief.length_min, 10, 180)) invalid = 'The length is 10 to 180 minutes.'
-    else if (allowed !== null && brief.length_min > allowed.maxMinutes) invalid = lengthSentence(allowed.maxMinutes)
-    else if (!inRange(brief.climbs, 0, 10)) invalid = 'Climbs are 0 to 10.'
-    else if (!inRange(brief.sprints, 0, 20)) invalid = 'Sprints are 0 to 20.'
-    else if (!inRange(brief.races, 0, 5)) invalid = 'Races are 0 to 5.'
-    else if (style.length > 60) invalid = 'The style is up to 60 characters.'
-    else if (notes.length > 2000) invalid = 'The description is up to 2000 characters.'
+    if (name === '' || name.length > 100) invalid = t('newclass.invalid.name')
+    else if (!noMusic && (running || music === 'playlist') && playlist === '') invalid = t('newclass.invalid.playlist')
+    else if (!running && !noMusic && music === 'swedebeat_mix' && mixId === '') invalid = t('newclass.invalid.mix')
+    else if (!inRange(brief.length_min, 10, 180)) invalid = t('newclass.invalid.length')
+    else if (allowed !== null && brief.length_min > allowed.maxMinutes) invalid = lengthSentence(t, allowed.maxMinutes)
+    else if (!inRange(brief.climbs, 0, 10)) invalid = t('newclass.invalid.climbs')
+    else if (!inRange(brief.sprints, 0, 20)) invalid = t('newclass.invalid.sprints')
+    else if (!inRange(brief.races, 0, 5)) invalid = t('newclass.invalid.races')
+    else if (style.length > 60) invalid = t('newclass.invalid.style')
+    else if (notes.length > 2000) invalid = t('newclass.invalid.notes')
     // A running brief names its sport and has none of the bike-only knobs (the backend refuses them).
     const fullBrief: Brief | RunningBrief | null =
       invalid !== null
@@ -341,7 +354,7 @@ function ClassForm({
             }
     // The limit is in bytes (the brief is stored as jsonb), not characters.
     if (invalid === null && fullBrief !== null && briefBytes(fullBrief) > MAX_BRIEF_BYTES) {
-      invalid = BRIEF_TOO_LONG
+      invalid = t('newclass.invalid.briefTooLong')
     }
     setProblem(invalid)
     if (invalid !== null || fullBrief === null) return
@@ -385,7 +398,7 @@ function ClassForm({
       const job = await createDesignJob(input, key)
       rememberInput(job.id, input)
       navigate(`/jobs/${job.id}`)
-    }, (error) => createError(error, noMusic))
+    }, (error) => createError(t, error, noMusic))
   }
 
   const lengthNumber = whole(length)
@@ -395,28 +408,31 @@ function ClassForm({
   const picking = !running && !noMusic && music === 'pick' && songs.kind === 'ready'
   const onSwedebeatMix = !running && !noMusic && music === 'swedebeat_mix' && swedebeat.kind === 'ready'
   const summary = [
-    { label: 'Length', value: Number.isInteger(lengthNumber) ? `${String(lengthNumber)} min` : 'Not set' },
-    { label: 'Effort', value: effort?.label ?? '' },
+    {
+      label: t('newclass.summary.length'),
+      value: Number.isInteger(lengthNumber) ? t('newclass.minutes', { count: lengthNumber }) : t('newclass.notSet'),
+    },
+    { label: t('newclass.effort'), value: effort === undefined ? '' : t(effort.labelKey) },
     ...(running
-      ? [{ label: 'Sport', value: 'Running' }]
+      ? [{ label: t('newclass.sport'), value: t('newclass.sport.running') }]
       : [
-          { label: 'Climbs', value: climbs },
-          { label: 'Sprints', value: sprints },
-          { label: 'Races', value: racesOn ? races : '0' },
+          { label: t('newclass.climbs'), value: climbs },
+          { label: t('newclass.sprints'), value: sprints },
+          { label: t('newclass.races'), value: racesOn ? races : '0' },
         ]),
     {
-      label: 'Music',
+      label: t('newclass.summary.music'),
       value: noMusic
-        ? 'No music'
+        ? t('newclass.summary.noMusic')
         : picking
-        ? 'Songs picked for you'
+        ? t('newclass.summary.songsPicked')
         : onSwedebeatMix
           ? chosenMix
-            ? chosenMix.name || 'Untitled mix'
-            : 'No mix chosen yet'
+            ? chosenMix.name || t('newclass.untitledMix')
+            : t('newclass.summary.noMix')
           : chosenPlaylist
-            ? chosenPlaylist.name || 'Untitled playlist'
-            : 'No playlist chosen yet',
+            ? chosenPlaylist.name || t('newclass.untitledPlaylist')
+            : t('newclass.summary.noPlaylist'),
     },
   ]
   const profile = sketchProfile({
@@ -434,10 +450,9 @@ function ClassForm({
   ) {
     return (
       <Card>
-        <CardTitle>No playlists found</CardTitle>
+        <CardTitle>{t('newclass.noPlaylists.title')}</CardTitle>
         <p className="m-0 text-muted">
-          MOWL lists no Spotify playlists for your account. Add one in the Intelligent Cycling app,
-          then reload this page.
+          {t('newclass.noPlaylists.body')}
         </p>
       </Card>
     )
@@ -448,17 +463,17 @@ function ClassForm({
       className="grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_20rem]"
       onSubmit={submit}
       noValidate
-      aria-label="New class"
+      aria-label={t('newclass.formLabel')}
     >
       <div className="flex min-w-0 flex-col gap-5">
         {problem ? <Notice kind="error">{problem}</Notice> : null}
         {action.error ? <Notice kind="error">{action.error}</Notice> : null}
         <Card className={section}>
-          <CardTitle className="mb-0">The basics</CardTitle>
+          <CardTitle className="mb-0">{t('newclass.basics')}</CardTitle>
           {runningEnabled ? (
             <div className="flex flex-col gap-2">
               <span id="sport-label" className="text-[0.9375rem] font-medium text-text">
-                Sport
+                {t('newclass.sport')}
               </span>
               <div role="group" aria-labelledby="sport-label" className="flex flex-wrap gap-2">
                 <ChipButton
@@ -467,7 +482,7 @@ function ClassForm({
                     setSport('cycling')
                   }}
                 >
-                  Cycling
+                  {t('newclass.sport.cycling')}
                 </ChipButton>
                 <ChipButton
                   pressed={running}
@@ -476,19 +491,18 @@ function ClassForm({
                     setMusic('playlist')
                   }}
                 >
-                  Running
+                  {t('newclass.sport.running')}
                 </ChipButton>
               </div>
               {running ? (
                 <p className="m-0 text-[0.9375rem] text-muted">
-                  A running class is designed to a playlist already in your MOWL account. Each
-                  interval has an effort zone from 1 to 5 and a flat or incline setting.
+                  {t('newclass.sport.runningHint')}
                 </p>
               ) : null}
             </div>
           ) : null}
           <TextInput
-            label="Class name"
+            label={t('newclass.className')}
             value={title}
             maxLength={100}
             onChange={(e) => {
@@ -497,8 +511,8 @@ function ClassForm({
             required
           />
           <div className="flex flex-col gap-2">
-            <span className="text-[0.9375rem] font-medium text-text">Class length</span>
-            <div role="group" aria-label="Common lengths" className="flex flex-wrap gap-2">
+            <span className="text-[0.9375rem] font-medium text-text">{t('newclass.classLength')}</span>
+            <div role="group" aria-label={t('newclass.commonLengths')} className="flex flex-wrap gap-2">
               {LENGTHS.map((m) => (
                 <ChipButton
                   key={m}
@@ -509,7 +523,7 @@ function ClassForm({
                     setLength(String(m))
                   }}
                 >
-                  {String(m)} min
+                  {t('newclass.minutes', { count: m })}
                 </ChipButton>
               ))}
               <ChipButton
@@ -518,17 +532,17 @@ function ClassForm({
                   lengthInput.current?.focus()
                 }}
               >
-                Other length
+                {t('newclass.otherLength')}
               </ChipButton>
             </div>
             <TextInput
               ref={lengthInput}
-              label="Length in minutes"
+              label={t('newclass.lengthMinutes')}
               type="number"
               inputMode="numeric"
               min={10}
               max={allowed === null ? 180 : Math.min(180, allowed.maxMinutes)}
-              hint={allowed === null ? undefined : lengthSentence(allowed.maxMinutes)}
+              hint={allowed === null ? undefined : lengthSentence(t, allowed.maxMinutes)}
               value={length}
               onChange={(e) => {
                 setLength(e.target.value)
@@ -537,7 +551,7 @@ function ClassForm({
           </div>
         </Card>
         <Card className={section}>
-          <CardTitle className="mb-0">Music</CardTitle>
+          <CardTitle className="mb-0">{t('newclass.music')}</CardTitle>
           {running ? null : (
             <MusicChoice
               songs={songs}
@@ -552,29 +566,53 @@ function ClassForm({
           <StylePicker value={style} onChange={setStyle} />
         </Card>
         <Card className={section}>
-          <CardTitle className="mb-0">{running ? 'The run' : 'The ride'}</CardTitle>
+          <CardTitle className="mb-0">{running ? t('newclass.theRun') : t('newclass.theRide')}</CardTitle>
           <EffortCards value={intensity} onChange={setIntensity} />
           {running ? null : (
             <>
               <div className="grid gap-4 sm:grid-cols-3">
-                <Stepper label="Climbs" noun="climbs" value={climbs} min={0} max={10} onChange={setClimbs} />
-                <Stepper label="Sprints" noun="sprints" value={sprints} min={0} max={20} onChange={setSprints} />
+                <Stepper
+                  label={t('newclass.climbs')}
+                  fewer={t('newclass.climbs.fewer')}
+                  more={t('newclass.climbs.more')}
+                  value={climbs}
+                  min={0}
+                  max={10}
+                  onChange={setClimbs}
+                />
+                <Stepper
+                  label={t('newclass.sprints')}
+                  fewer={t('newclass.sprints.fewer')}
+                  more={t('newclass.sprints.more')}
+                  value={sprints}
+                  min={0}
+                  max={20}
+                  onChange={setSprints}
+                />
                 {racesOn ? (
-                  <Stepper label="Races" noun="races" value={races} min={0} max={5} onChange={setRaces} />
+                  <Stepper
+                    label={t('newclass.races')}
+                    fewer={t('newclass.races.fewer')}
+                    more={t('newclass.races.more')}
+                    value={races}
+                    min={0}
+                    max={5}
+                    onChange={setRaces}
+                  />
                 ) : null}
               </div>
               {ftpOn ? (
                 <SelectInput
-                  label="FTP test"
+                  label={t('newclass.ftp')}
                   value={ftp}
                   onChange={(e) => {
                     setFtp(e.target.value)
                   }}
                 >
-                  <option value="">None</option>
-                  <option value="3">3 minutes</option>
-                  <option value="5">5 minutes</option>
-                  <option value="20">20 minutes</option>
+                  <option value="">{t('newclass.ftp.none')}</option>
+                  <option value="3">{t('newclass.ftp.minutes', { count: 3 })}</option>
+                  <option value="5">{t('newclass.ftp.minutes', { count: 5 })}</option>
+                  <option value="20">{t('newclass.ftp.minutes', { count: 20 })}</option>
                 </SelectInput>
               ) : null}
               {leftOutText === null ? null : <p className="m-0 text-[0.875rem] text-muted">{leftOutText}</p>}
@@ -583,14 +621,10 @@ function ClassForm({
         </Card>
         <Card className={section}>
           <TextArea
-            label="Anything else?"
+            label={t('newclass.notes')}
             value={notes}
             maxLength={2000}
-            hint={
-              gamesOn
-                ? 'Tell classbeat what the class should feel like.'
-                : 'Tell classbeat what the class should feel like. Games are not part of your plan.'
-            }
+            hint={gamesOn ? t('newclass.notes.hint') : t('newclass.notes.hintNoGames')}
             onChange={(e) => {
               setNotes(e.target.value)
             }}
