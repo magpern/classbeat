@@ -64,7 +64,10 @@ export type Finding = { line: number; text: string }
 
 const ENTITY = /&(?:#\d+|#x[0-9a-f]+|[a-z][a-z0-9]*);/gi
 // Word boundaries: a brand inside a longer word ("Googled") is not the brand, so its letters count.
-const BRANDS = new RegExp(`\\b(?:${BRAND_NAMES.map((name) => name.replace(/\s+/g, '\\s+')).join('|')})\\b`, 'g')
+const BRANDS = new RegExp(
+  `\\b(?:${BRAND_NAMES.map((name) => name.replace(/\s+/g, '\\s+')).join('|')})\\b`,
+  'g',
+)
 
 /** True when `text` still holds a letter once entities and brand names are taken out. */
 export function hasWords(text: string): boolean {
