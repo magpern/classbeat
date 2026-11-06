@@ -6,6 +6,7 @@ import { Banner } from './components/Banner'
 import { Card } from './components/forms'
 import { RequireAuth } from './components/RequireAuth'
 import { AppShell } from './components/shell/AppShell'
+import { useT } from './i18n/I18n'
 import { AccountPage } from './pages/AccountPage'
 import { ClassPage } from './pages/ClassPage'
 import { ClassesPage } from './pages/ClassesPage'
@@ -31,23 +32,24 @@ import { Link, RouterProvider, useRouter } from './router/Router'
 const AdminPage = lazy(() => import('./pages/AdminPage'))
 
 function Admin() {
+  const t = useT()
   const { session } = useSession()
   return (
     <RequireAuth>
       {session?.user?.role === 'admin' || session?.session?.adminPendingMfa === true ? (
         <Suspense
           fallback={
-            <Card title="Admin">
-              <p>Loading</p>
+            <Card title={t('shell.admin')}>
+              <p>{t('common.loading')}</p>
             </Card>
           }
         >
           <AdminPage />
         </Suspense>
       ) : (
-        <Card title="Admin">
+        <Card title={t('shell.admin')}>
           <p role="alert" className="notice" data-kind="error">
-            Your account is not an admin account.
+            {t('shell.notAdmin')}
           </p>
         </Card>
       )}
@@ -56,6 +58,7 @@ function Admin() {
 }
 
 function Routes() {
+  const t = useT()
   const { pathname } = useRouter()
   const { session } = useSession()
   const path = pathname.replace(/\/+$/, '') || '/'
@@ -94,9 +97,9 @@ function Routes() {
     default:
       return (
         <section className="card">
-          <h1 className="card__title">Page not found</h1>
+          <h1 className="card__title">{t('shell.notFound')}</h1>
           <p>
-            <Link to="/">Back to the start</Link>
+            <Link to="/">{t('shell.backToStart')}</Link>
           </p>
         </section>
       )

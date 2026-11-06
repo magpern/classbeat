@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { getPendingSignup, submitPendingEmail, type PendingSignup } from '../api/auth'
 import { providerName } from '../api/messages'
+import { useT } from '../i18n/I18n'
 import { Field, Notice, useAction } from '../components/forms'
 import { AuthCard as Card } from '../components/auth/AuthCard'
 import { Link } from '../router/Router'
@@ -10,6 +11,7 @@ import { Link } from '../router/Router'
  * 5). Only an address is sent; the provider identity stays on the server, tied to this browser.
  */
 export function ProviderEmailPage() {
+  const t = useT()
   const [pending, setPending] = useState<PendingSignup | null>(null)
   const [email, setEmail] = useState('')
   const [sentTo, setSentTo] = useState<string | null>(null)
@@ -35,25 +37,23 @@ export function ProviderEmailPage() {
 
   if (pending === null) {
     return (
-      <Card title="Almost there">
-        <p>Loading</p>
+      <Card title={t('providerEmail.loadingTitle')}>
+        <p>{t('common.loading')}</p>
       </Card>
     )
   }
 
   if (sentTo !== null) {
     return (
-      <Card title="Check your inbox">
+      <Card title={t('auth.checkInbox')}>
         <Notice kind="success">
-          If we can use {sentTo}, a confirmation link is on its way. Open it in this same browser
-          to finish. The link works for 24 hours.
+          {t('providerEmail.sent', { email: sentTo })}
         </Notice>
         <p>
-          Mistyped the address? Nothing more can be sent from this page, because a second try
-          would not send anything. Start the provider sign-in again to get a fresh chance.
+          {t('providerEmail.mistyped')}
         </p>
         <p className="card__links">
-          <Link to="/signin">Start the provider sign-in again</Link>
+          <Link to="/signin">{t('providerEmail.again')}</Link>
         </p>
       </Card>
     )
@@ -61,29 +61,27 @@ export function ProviderEmailPage() {
 
   if (!pending.pending || !pending.awaitingEmail) {
     return (
-      <Card title="Nothing to finish here">
+      <Card title={t('providerEmail.nothingTitle')}>
         <Notice kind="info">
-          No provider sign-in is waiting for an address in this browser. It may have expired
-          (after 15 minutes) or already been finished.
+          {t('providerEmail.nothing')}
         </Notice>
         <p className="card__links">
-          <Link to="/signin">Back to sign in</Link>
+          <Link to="/signin">{t('auth.backToSignIn')}</Link>
         </p>
       </Card>
     )
   }
 
-  const name = pending.provider === null ? 'your provider' : providerName(pending.provider)
+  const name = pending.provider === null ? t('providerEmail.yourProvider') : providerName(pending.provider)
   return (
-    <Card title="Confirm your email address">
+    <Card title={t('providerEmail.title')}>
       <p>
-        {name} did not confirm an email address for you. Enter the address to use for classbeat;
-        we will mail you a link to confirm it.
+        {t('providerEmail.intro', { provider: name })}
       </p>
       {action.error ? <Notice kind="error">{action.error}</Notice> : null}
       <form onSubmit={submit}>
         <Field
-          label="Email"
+          label={t('common.email')}
           type="email"
           autoComplete="email"
           value={email}
@@ -93,7 +91,7 @@ export function ProviderEmailPage() {
           required
         />
         <button className="button" type="submit" disabled={action.busy}>
-          Send confirmation link
+          {t('providerEmail.submit')}
         </button>
       </form>
     </Card>

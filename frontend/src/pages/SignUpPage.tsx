@@ -2,11 +2,13 @@ import { useState } from 'react'
 import { signUp } from '../api/auth'
 import { oauthOutcomeMessage } from '../api/messages'
 import { Notice } from '../components/forms'
+import { useT } from '../i18n/I18n'
 import { AuthCard as Card } from '../components/auth/AuthCard'
 import { AuthScreen } from '../components/auth/AuthScreen'
 import { Link, safeReturnTo, useQuery } from '../router/Router'
 
 export function SignUpPage() {
+  const t = useT()
   const [sent, setSent] = useState(false)
   const query = useQuery()
   // A provider sign-up that failed comes back here (#617), e.g. an invite used up meanwhile.
@@ -14,13 +16,12 @@ export function SignUpPage() {
 
   if (sent) {
     return (
-      <Card title="Check your inbox">
+      <Card title={t('auth.checkInbox')}>
         <Notice kind="success">
-          If this address can be used, we sent a link to it. Open the link and type your password
-          again to finish. The link works for 24 hours.
+          {t('signup.sent')}
         </Notice>
         <p className="card__links">
-          <Link to="/signin">Back to sign in</Link>
+          <Link to="/signin">{t('auth.backToSignIn')}</Link>
         </p>
       </Card>
     )
