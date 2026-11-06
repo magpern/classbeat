@@ -32,6 +32,8 @@ export default defineConfig({
   reporter: [['list'], ['html', { open: 'never' }]],
   use: {
     baseURL,
+    // The specs read English text (ADR 0023): pin the browser language so a runner's own never decides.
+    locale: 'en',
     trace: 'retain-on-failure',
   },
   projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
