@@ -27,13 +27,21 @@ class MailNotifier:
         self._settings = settings
         self._factory = factory
 
-    async def _notice(self, kind_id: str, email: str) -> None:
+    async def _notice(self, kind_id: str, user_id: UUID, email: str) -> None:
+        # Preferences by the account's id: an address changed before this background send still
+        # finds its account (ME4).
         await live.send_optional(
-            self._factory, self._mailer, self._settings, kind_id, email, {"when": datetime.now(UTC)}
+            self._factory,
+            self._mailer,
+            self._settings,
+            kind_id,
+            email,
+            {"when": datetime.now(UTC)},
+            user_id=user_id,
         )
 
     async def totp_enrolled(self, user_id: UUID, email: str) -> None:
-        await self._notice("totp_enrolled", email)
+        await self._notice("totp_enrolled", user_id, email)
 
     async def mfa_failures(self, user_id: UUID, email: str) -> None:
-        await self._notice("mfa_failures", email)
+        await self._notice("mfa_failures", user_id, email)

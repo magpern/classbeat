@@ -49,6 +49,9 @@ MAIL_PAIR = Limit("mail", "pair", 3, 3600)
 MAIL_ACCOUNT = Limit("mail", "account", 10, 3600)
 MAIL_IP = Limit("mail", "ip", 10, 3600)
 OAUTH_IP = Limit("oauth", "ip", 30, 15 * 60)
+# The unsubscribe POST (ME4 #655): anonymous (the token is the credential) and exempt from the
+# Origin check, so only the network is counted; a mail client's one-click and the page share it.
+UNSUBSCRIBE_IP = Limit("unsubscribe", "ip", 60, 3600)
 PASSWORD_CHANGE = Limit("password-change", "account", 10, 3600)
 # ADR 0004 section 4: provider connects (MOWL sign-in with a password) count requests, per
 # classbeat user, per IP and per normalized provider email, so the route can't be used to test

@@ -4,7 +4,9 @@ through the one send path, and nothing in it that is a token, a password or acco
 import asyncio
 import json
 import logging
+import re
 from typing import Any
+from uuid import uuid4
 
 import httpx
 import pytest
@@ -47,10 +49,17 @@ def plain(smtp: SmtpFake, subject: str) -> list[Any]:
     return [m for m in smtp.messages if m.subject == subject]
 
 
+# ME4: an optional mail's own signed unsubscribe link (it can only turn mail off) is the one token
+# link allowed; anything else that carries a token is a leak.
+_UNSUBSCRIBE_LINK = re.compile(r"/unsubscribe#token=[\w.-]+(?:&(?:amp;)?all=[\w.-]+)?")
+
+
 def assert_clean(mail: Any, *secrets: str) -> None:
-    """No token link, no password, no secret in either part of the mail."""
-    for body in (mail.text, mail.html):
+    """No token link but the unsubscribe one, no password, no secret in either part."""
+    for raw in (mail.text, mail.html):
+        body = _UNSUBSCRIBE_LINK.sub("/unsubscribe", raw)
         assert "#token=" not in body
+        assert "token=" not in body
         assert PASSWORD not in body
         assert NEW not in body
         for secret in secrets:
@@ -244,12 +253,9 @@ async def deliver(menv: Env, notice: notices.Notice) -> None:
 
 
 async def test_account_deleted_is_sent_with_the_passed_prefs_when_the_lookup_finds_no_user(
-    menv: Env, smtp: SmtpFake, monkeypatch: pytest.MonkeyPatch
+    menv: Env, smtp: SmtpFake
 ) -> None:
-    async def gone(_recipient: str) -> None:
-        return None  # the row is deleted: a lookup by address finds nobody (ME4)
-
-    monkeypatch.setattr(live, "_default_prefs", gone)
+    # No account has this address: the real lookup (ME4) finds nobody, as after the deletion.
     address = "old@example.com"
     await deliver(menv, notices.happened("account_deleted", address))
     assert smtp.to(address) == []  # no prefs and no user: dropped, which is why they are passed
@@ -257,16 +263,13 @@ async def test_account_deleted_is_sent_with_the_passed_prefs_when_the_lookup_fin
     [mail] = smtp.to(address)
     assert "deleted" in mail.subject.lower()
     assert_clean(mail)
+    # The account is gone: no unsubscribe link (read_prefs carries no user id).
+    assert mail.message["List-Unsubscribe"] is None
+    assert "/unsubscribe" not in mail.text
 
 
-async def test_passed_prefs_that_opt_out_drop_the_deleted_mail(
-    menv: Env, smtp: SmtpFake, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    async def gone(_recipient: str) -> None:
-        return None
-
-    monkeypatch.setattr(live, "_default_prefs", gone)
-    address = "old@example.com"
+async def test_passed_prefs_that_opt_out_drop_the_deleted_mail(menv: Env, smtp: SmtpFake) -> None:
+    address = "old@example.com"  # no account: only the passed prefs decide
     for prefs in (
         MailPrefs(unsubscribed_all=True),
         MailPrefs(opted_out=frozenset({"account_activity"})),
@@ -283,5 +286,35 @@ async def test_a_notice_carries_prefs_only_when_given_and_the_defaults_come_from
 ) -> None:
     async with menv.db() as db:
         assert await notices.read_prefs(db, await menv.user("x@example.com")) == MailPrefs()
+        assert await notices.read_prefs(db, uuid4()) == MailPrefs()
     assert notices.happened("totp_removed", "a@example.com").prefs is None
     assert "when" in notices.happened("totp_removed", "a@example.com").params
+
+
+async def test_read_prefs_reads_the_me4_columns_without_a_user_id(menv: Env) -> None:
+    """The deleted-account notice is decided by the stored choice (ME4), and carries no
+    unsubscribe link (no ``user_id``) for an account that is about to be gone."""
+    user = await menv.user("prefs@example.com")
+    await menv.run(
+        "UPDATE users SET mail_unsubscribed_all = true, "
+        "mail_opted_out = ARRAY['welcome','account_activity'] WHERE id = :i",
+        i=user,
+    )
+    async with menv.db() as db:
+        prefs = await notices.read_prefs(db, user)
+    assert prefs == MailPrefs(True, frozenset({"welcome", "account_activity"}))
+    assert prefs.user_id is None
+
+
+async def test_deleting_an_opted_out_account_sends_no_deleted_mail(
+    menv: Env, smtp: SmtpFake
+) -> None:
+    user = await menv.user("quiet@example.com")
+    await menv.run(
+        "UPDATE users SET mail_opted_out = ARRAY['account_activity'] WHERE id = :i", i=user
+    )
+    async with menv.db() as db:
+        prefs = await notices.read_prefs(db, user)
+    await menv.run("DELETE FROM users WHERE id = :i", i=user)
+    await deliver(menv, with_prefs("quiet@example.com", prefs))
+    assert smtp.to("quiet@example.com") == []

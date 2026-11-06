@@ -31,7 +31,7 @@ from classbeat.admin.routes import AdminActor, admin_db, admin_router
 from classbeat.admin.settings import FlagOut, mail_flags
 from classbeat.config import Settings
 from classbeat.emails import live
-from classbeat.emails.dispatch import build
+from classbeat.emails.dispatch import build, sample_unsubscribe_links
 from classbeat.emails.registry import REGISTRY, Kind
 from classbeat.mail import Mailer, MailError, MailMessage
 
@@ -127,7 +127,14 @@ async def preview_mail(
     ) as session:
         kind = _kind(kind_id)
         config = await live.load(session, settings)
-    message = build(settings, kind, actor.email, kind.sample, branding=config.branding)
+    message = build(
+        settings,
+        kind,
+        actor.email,
+        kind.sample,
+        branding=config.branding,
+        unsubscribe=sample_unsubscribe_links(settings),
+    )
     html = part == "html"
     return Response(
         message.html if html else message.body,
@@ -163,7 +170,14 @@ async def test_mail(request: Request, actor: AdminActor, kind_id: KindPath) -> J
         config = await live.load(session, settings)
     # Sent after the audited transaction closed, so it is not held open for the SMTP timeout. A
     # failure is an `admin.request` refusal row (the handler writes it), the `mail.test` row stays.
-    message = build(settings, kind, actor.email, kind.sample, branding=config.branding)
+    message = build(
+        settings,
+        kind,
+        actor.email,
+        kind.sample,
+        branding=config.branding,
+        unsubscribe=sample_unsubscribe_links(settings),
+    )
     try:
         await mailer.send(
             MailMessage(

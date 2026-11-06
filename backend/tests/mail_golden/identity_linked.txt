@@ -14,3 +14,4 @@ If this wasn't you, sign in, remove it from your account page and change your pa
 You got this security notice because this is the email address of a classbeat account. These notices are sent for your protection.
 classbeat: https://classbeat.example.test
 Questions? Write to support@classbeat.eu
+Unsubscribe from these emails: https://classbeat.example.test/unsubscribe#token=SAMPLE&all=SAMPLE

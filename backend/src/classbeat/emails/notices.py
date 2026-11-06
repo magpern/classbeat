@@ -17,6 +17,7 @@ from uuid import UUID
 from fastapi import BackgroundTasks, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from classbeat.auth import get_mail_prefs
 from classbeat.emails import live
 from classbeat.emails.dispatch import MailPrefs
 
@@ -40,10 +41,16 @@ def happened(kind_id: str, recipient: str, **params: Any) -> Notice:
 
 
 async def read_prefs(db: AsyncSession, user_id: UUID) -> MailPrefs:
-    """The user's mail preferences, read while the row still exists (account deleted).
+    """The user's mail preferences (``users.mail_unsubscribed_all``, ``mail_opted_out``; ME4),
+    read while the row still exists (account deleted). A user that is already gone has the
+    defaults.
 
-    ME4 (#655) adds the columns and reads them here; until then everyone has the defaults."""
-    return MailPrefs()
+    The result carries no ``user_id``, so the mail carries no unsubscribe link: the account is
+    about to be deleted, and a link to switch off its mail would do nothing."""
+    found = await get_mail_prefs(db, user_id)
+    if found is None:
+        return MailPrefs()
+    return MailPrefs(found.unsubscribed_all, found.opted_out)
 
 
 async def send_notice(request_app: Any, notice: Notice) -> None:

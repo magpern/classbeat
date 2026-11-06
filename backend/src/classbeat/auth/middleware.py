@@ -43,6 +43,11 @@ logger = logging.getLogger("classbeat.access")
 errors = logging.getLogger("classbeat.auth.setup")
 
 SAFE_METHODS = frozenset({"GET", "HEAD", "OPTIONS"})
+# The unsubscribe POSTs (ME4 #655, ADR 0003 section 4 amendment): a mail client's one-click sends
+# no Origin and no CSRF token, and the signed token in the request, not a cookie, is the
+# credential, so there is nothing for a forged request to ride on. Exact paths; both are limited per
+# IP in the route. Anything else under ``/api/mail`` keeps the checks.
+CSRF_EXEMPT_PATHS = frozenset({"/api/mail/unsubscribe", "/api/mail/unsubscribe/confirm"})
 
 
 def csrf_token_for_session(keys: Keys, session_id: object) -> str:
@@ -159,7 +164,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
         retry_after = await check_api_limit(request)
         if retry_after is not None:
             return rate_limited_response(retry_after)
-        if request.method not in SAFE_METHODS:
+        if request.method not in SAFE_METHODS and request.url.path not in CSRF_EXEMPT_PATHS:
             reason = await check_csrf(request, request.app.state.settings, request.app.state.keys)
             if reason is not None:
                 return JSONResponse({"detail": {"reason": reason}}, status_code=403)

@@ -264,11 +264,11 @@ async def test_the_notifier_respects_the_switch(env: Env, make_actor: Any, smtp:
 
     actor = await stepped_admin(env, make_actor)
     notifier = MailNotifier(env.app.state.mailer, env.settings, env.factory)
-    await notifier.totp_enrolled(actor.user_id, "n@example.com")
-    assert len(smtp.to("n@example.com")) == 1
+    await notifier.totp_enrolled(actor.user_id, "a@example.com")
+    assert len(smtp.to("a@example.com")) == 1
     await put(actor, "mail_kinds_disabled", [OPTIONAL])
-    await notifier.totp_enrolled(actor.user_id, "n@example.com")
-    assert len(smtp.to("n@example.com")) == 1
+    await notifier.totp_enrolled(actor.user_id, "a@example.com")
+    assert len(smtp.to("a@example.com")) == 1
 
 
 async def test_an_unknown_kind_is_404_and_audited_as_refused(

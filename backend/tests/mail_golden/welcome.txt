@@ -12,3 +12,4 @@ https://classbeat.example.test/
 You got this because a classbeat account was just created with this address.
 classbeat: https://classbeat.example.test
 Questions? Write to support@classbeat.eu
+Unsubscribe from these emails: https://classbeat.example.test/unsubscribe#token=SAMPLE&all=SAMPLE

@@ -145,8 +145,9 @@ and the rewritten `identity_linked`) are queued as background tasks after the co
 send failure is logged by error class only. `account_deleted` takes the address and preferences
 before the cascade and passes them as `prefs`. A password reset that also removes linked sign-in
 methods sends only `password_changed` (the page that lists them shows what was removed). Preferences
-are read in one function, `notices.read_prefs`, which returns the defaults until ME4 (#655) adds the
-columns.
+are read in one function, `notices.read_prefs`, from ME4's columns (`mail_unsubscribed_all`,
+`mail_opted_out`; #655); it leaves out the user id, so the deletion notice carries no unsubscribe
+link (the account is gone, and the link would change nothing).
 
 ## Alternatives
 

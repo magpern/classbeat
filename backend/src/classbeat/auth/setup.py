@@ -14,6 +14,7 @@ from classbeat.auth.admin_routes import router as admin_router
 from classbeat.auth.email_routes import router as email_router
 from classbeat.auth.identity_routes import router as identity_router
 from classbeat.auth.keys import Keys
+from classbeat.auth.mail_routes import router as mail_router
 from classbeat.auth.mfa_routes import router as mfa_router
 from classbeat.auth.middleware import (
     AuthMiddleware,
@@ -40,7 +41,13 @@ logger = logging.getLogger(__name__)
 # Routes whose request bodies can hold a password or token, and the jobs API (its bodies are the
 # user's own text; its routes validate them themselves, this is the backstop, #115 item 2), and
 # redeem, whose body is a code (ADR 0011 section 2).
-SECRET_INPUT_PATHS = ("/api/auth/", "/api/connections", "/api/jobs", "/api/account/redeem")
+SECRET_INPUT_PATHS = (
+    "/api/auth/",
+    "/api/connections",
+    "/api/jobs",
+    "/api/account/redeem",
+    "/api/mail/unsubscribe",
+)
 
 
 def install(app: FastAPI) -> None:
@@ -49,6 +56,7 @@ def install(app: FastAPI) -> None:
     for flow in (signup_router, signin_router, reset_router, email_router):
         app.include_router(flow)
     app.include_router(mfa_router)
+    app.include_router(mail_router)
     # OAuth: the callback is not under /api and must precede the SPA catch-all (web.create_app
     # installs auth first). "pending" routes before the "{provider}" ones.
     for oauth in (handoff_router, oauth_router, identity_router):

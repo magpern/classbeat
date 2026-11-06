@@ -74,6 +74,7 @@ if TYPE_CHECKING:
         hmac_digest,
         token_hash,
     )
+    from classbeat.auth.mailprefs import MailPreferences, get_mail_prefs, mail_prefs_for_email
     from classbeat.auth.notices import SecurityNotifier, register_security_notifier
     from classbeat.auth.operator import (
         WipeEvent,
@@ -128,6 +129,7 @@ if TYPE_CHECKING:
         rewrap_v2_secrets,
         totp_rows_by_key,
     )
+    from classbeat.auth.unsubscribe_token import UNSUBSCRIBE_ALL, issue_unsubscribe_token
 
 # Exported name -> its module in this package. ``tests/test_egress_runtime.py`` checks it matches
 # the ``TYPE_CHECKING`` imports above and ``__all__``.
@@ -178,6 +180,11 @@ _EXPORTS: dict[str, str] = {
     "EmailAddress": "flowtools",
     "register_reset_link_sender": "hooks",
     "send_reset_link": "hooks",
+    "MailPreferences": "mailprefs",
+    "get_mail_prefs": "mailprefs",
+    "mail_prefs_for_email": "mailprefs",
+    "UNSUBSCRIBE_ALL": "unsubscribe_token",
+    "issue_unsubscribe_token": "unsubscribe_token",
     "Keys": "keys",
     "decrypt_totp_secret": "keys",
     "derive_key": "keys",
@@ -263,6 +270,7 @@ __all__ = [
     "CSRF_COOKIE",
     "DEVICE_COOKIE",
     "SESSION_COOKIE",
+    "UNSUBSCRIBE_ALL",
     "AccountError",
     "AccountRow",
     "Attempt",
@@ -271,6 +279,7 @@ __all__ = [
     "InviteRow",
     "IssuedSession",
     "Keys",
+    "MailPreferences",
     "PasswordHashBusy",
     "PasswordHasher",
     "PasswordRuleError",
@@ -311,13 +320,16 @@ __all__ = [
     "forget_devices",
     "get_account",
     "get_invite",
+    "get_mail_prefs",
     "grant_admin",
     "grant_admin_if_listed",
     "hmac_digest",
     "install",
     "is_known_device",
+    "issue_unsubscribe_token",
     "list_invites",
     "list_sessions",
+    "mail_prefs_for_email",
     "make_reset_link_sender",
     "mark_wipe_mailed",
     "mfa_buckets",

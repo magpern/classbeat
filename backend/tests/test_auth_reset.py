@@ -368,13 +368,13 @@ async def test_a_successful_complete_releases_its_ip_slot(menv: Env, smtp: SmtpF
 async def test_the_security_notifier_mails_totp_and_mfa_failure_notices(
     menv: Env, smtp: SmtpFake
 ) -> None:
-    import uuid
-
     from classbeat.auth import notices
 
+    # Both are optional kinds: only an address with an account is mailed (ME4).
+    user = await menv.user("user@example.com")
     # Registered at start-up by the web app.
-    await notices.notify_totp_enrolled(uuid.uuid4(), "user@example.com")
-    await notices.notify_mfa_failures(uuid.uuid4(), "user@example.com")
+    await notices.notify_totp_enrolled(user, "user@example.com")
+    await notices.notify_mfa_failures(user, "user@example.com")
     subjects = [m.subject for m in smtp.to("user@example.com")]
     assert any("Two-factor" in s for s in subjects)
     assert any("Failed two-factor" in s for s in subjects)
