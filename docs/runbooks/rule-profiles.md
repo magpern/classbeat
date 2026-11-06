@@ -51,7 +51,8 @@ The interval, sprint, climb, work/rest and intensity-factor metrics (ADR 0017 se
 in code but no profile has a bound for them yet; the next cycling refresh adds them. The only
 bounds not from p5/p95/range are the provisional `tss_rate_*` pair of the 55 minute cycling
 profiles (`tukey_iqr`, ADR 0017 section 7b); replace them with `p5`/`p95` and a version bump when
-corpus data supplies them.
+corpus data supplies them. The `tukey_iqr` numbers are derived from the report by hand, not by
+the generator, and a provisional profile never wins selection over a strong one in the window.
 `work_rest_ratio` is undefined for a draft with no rest, so a rule on it never fires there.
 
 Never ship `sprints_few` or `sprints_many`: `sprint_count` counts intervals carrying `acc`, which

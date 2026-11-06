@@ -142,7 +142,7 @@ A profile file contains **numbers and ids only**:
   or intensity `hard` -> `interval`; otherwise `plain`. The new-class form may expose it later;
   the derivation alone is enough to ship (§8, P3);
 - the **duration** picks the profile whose `label_minutes` is nearest to `brief.length_min`, only
-  within 3 minutes (so 30, 45, 60 and the 75 that ships no rules); anything else, and any
+  within 3 minutes (so 30, 45, 55, 60 and the 75 that ships no rules; a provisional 55 never replaces a strong profile in the window, §7b); anything else, and any
   `(class_type, label)` with no file, returns `None`.
 
 `None` means: no rules, no section in the prompt, no hits, no note in the UI. A missing profile
@@ -376,9 +376,17 @@ narrow, labelled exception:
   `cycling.interval.45` already exist with percentile bounds, including the same two TSS rules,
   which a provisional note must not replace; `hiit`, `journey` and `ftp_test` stay without a profile
   rather than receive the all-classes numbers.
-- **Side effect.** Selection takes the nearest label within 3 minutes, so a 57 minute class now
-  selects the 55 minute profile (two away) instead of the 60 minute one (three away). 52 to 56
-  minutes, which had no profile, now get the two info notes.
+- **Selection: a strong profile always wins.** A provisional profile (one with a `tukey_iqr` rule)
+  is chosen only when no other profile is within the 3 minute window; otherwise the nearest
+  non-provisional profile wins, and among equals the nearest label. So 57 minutes selects the
+  strong 60 (three away) and not the 55 (two away), and 52 to 56 minutes, which had no profile,
+  select the 55 with its two info notes. The reason: a provisional note must never replace
+  the percentile rules a class already had, and 57 minutes had them before this section.
+- **Numbers by hand.** The `tukey_iqr` numbers are derived from the reported quartiles by hand, not by
+  the private generator (§6); they are the one exception to "never typed by hand" above.
+- **TSS source.** The corpus TSS is MOWL's stored TSS field over the class's total minutes; the
+  engine's `tss_per_minute` is `workout.tss(spec)` over the timeline minutes. The two can differ a
+  little, which is another reason the note is info-only and the bounds are widened outward.
 - **Evals.** An `info`-only profile can never fail a `follows` case, so, as for running, each 55
   minute profile has a `deviates` case (`cp_easy_spin_55`, `cp_hard_push_55`): the brief asks for
   an easy or a hard class, the note fires and is explained by the brief.

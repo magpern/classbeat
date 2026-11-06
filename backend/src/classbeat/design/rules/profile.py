@@ -222,8 +222,10 @@ def select_profile(
     """The profile for an explicit class type and length, or ``None`` (never an error).
 
     The label nearest to ``length_min`` wins, within 3 minutes only, among the profiles of
-    ``sport``; any ``(sport, class_type, label)`` without a file, an unknown sport and any
-    non-finite or non-positive length gives ``None``. A sport never borrows another's profile.
+    ``sport``, but a non-provisional profile in the window beats a provisional one (a
+    provisional note never replaces a strong profile). Any ``(sport, class_type, label)``
+    without a file, an unknown sport and any non-finite or non-positive length gives ``None``.
+    A sport never borrows another's profile.
     """
     if sport not in SPORTS or not math.isfinite(length_min) or length_min <= 0:
         return None
@@ -231,10 +233,22 @@ def select_profile(
     labels = reg.labels(sport, class_type)
     if not labels:
         return None
-    nearest = min(labels, key=lambda lab: abs(lab - length_min))
-    if abs(nearest - length_min) > SELECT_WITHIN_MINUTES:
+    near = [lab for lab in labels if abs(lab - length_min) <= SELECT_WITHIN_MINUTES]
+    if not near:
         return None
-    return reg.get(f"{sport}.{class_type}.{nearest}")
+    found = (reg.get(f"{sport}.{class_type}.{lab}") for lab in sorted(near))
+    candidates = [p for p in found if p is not None]
+    if not candidates:
+        return None
+    # A provisional note (ADR 0017 section 7b) never replaces a strong profile in the window.
+    strong = [p for p in candidates if not is_provisional(p)]
+    pool = strong or candidates
+    return min(pool, key=lambda p: abs(p.label_minutes - length_min))
+
+
+def is_provisional(profile: Profile) -> bool:
+    """True for a profile that carries a ``tukey_iqr`` (provisional, info-only) rule."""
+    return any(r.basis == "tukey_iqr" for r in profile.rules)
 
 
 def schema_json() -> dict[str, Any]:

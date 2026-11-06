@@ -4,6 +4,7 @@ import ast
 import json
 import re
 import shutil
+import types
 from pathlib import Path
 from typing import Any
 
@@ -322,9 +323,13 @@ def test_enums_and_rationales_are_consistent() -> None:
         ("interval", 48.1, None),
         ("plain", 33, "cycling.plain.30"),
         ("plain", 37, None),
-        ("plain", 57, "cycling.plain.55"),  # nearest label: 55 (2 away) beats 60 (3 away)
+        ("plain", 57, "cycling.plain.60"),  # strong 60 (3 away) beats provisional 55 (2 away)
+        ("interval", 57, "cycling.interval.60"),
         ("plain", 58, "cycling.plain.60"),
+        ("plain", 56, "cycling.plain.55"),  # 60 is 4 away: only the provisional note
+        ("interval", 56, "cycling.interval.55"),
         ("plain", 52, "cycling.plain.55"),
+        ("plain", 55, "cycling.plain.55"),
         ("interval", 55, "cycling.interval.55"),
         ("plain", 51.9, None),
         ("plain", 63, "cycling.plain.60"),
@@ -347,6 +352,33 @@ def test_select_profile_within_three_minutes(
 ) -> None:
     got = select_profile(class_type, length)
     assert (got.id if got else None) == expected
+
+
+def test_strong_profile_in_window_beats_nearer_provisional_one() -> None:
+    class Fake:
+        def __init__(self, provisional: dict[int, bool]) -> None:
+            self.p = provisional
+
+        def labels(self, sport: str, class_type: str) -> list[int]:
+            return sorted(self.p)
+
+        def get(self, pid: str) -> P.Profile:
+            lab = int(pid.rsplit(".", 1)[1])
+            basis = "tukey_iqr" if self.p[lab] else "p5"
+            rule = types.SimpleNamespace(basis=basis)
+            return types.SimpleNamespace(  # type: ignore[return-value]
+                id=pid, label_minutes=lab, rules=[rule]
+            )
+
+    reg: Any = Fake({55: True, 60: False})
+    assert select_profile("plain", 57, registry=reg).id == "cycling.plain.60"  # type: ignore[union-attr]
+    assert select_profile("plain", 56, registry=reg).id == "cycling.plain.55"  # type: ignore[union-attr]
+    # Two strong profiles: the nearest still wins.
+    reg = Fake({55: False, 60: False})
+    assert select_profile("plain", 57, registry=reg).id == "cycling.plain.55"  # type: ignore[union-attr]
+    # Two provisional ones: the nearest wins too.
+    reg = Fake({55: True, 60: True})
+    assert select_profile("plain", 57, registry=reg).id == "cycling.plain.55"  # type: ignore[union-attr]
 
 
 @pytest.mark.parametrize(
