@@ -27,3 +27,4 @@ Reviewer reviews each in its PR (AGENTS.md, "Decisions and ADRs").
 | [0019](0019-passkeys.md) | Passkeys with cross-device sign-in (#311; revised 2026-11-05, amends ADR 0003) | Proposed |
 | [0020](0020-image-only-install.md) | Image-only install: db image, release assets, install checks (#519) | Proposed |
 | [0021](0021-use-part-of-a-song.md) | Use part of a song: trim an intro or outro, start mid-track (#580); blocked, no source can play part of a song | Proposed |
+| [0022](0022-account-emails.md) | Account emails: registry, branded multipart mail, fire-and-forget delivery, preferences (ME, #649) | Accepted, subject to review |
