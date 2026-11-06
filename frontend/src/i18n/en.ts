@@ -396,6 +396,9 @@ export const en = {
 
   // The class card, my classes and the class page.
   'class.card.tss': 'TSS {value}',
+  // The screen-reader label of the small class profile (MiniProfile). One form: English says "intervals" for every count.
+  'class.profile.label': 'Class profile, {length}, {count} intervals',
+  'class.profile.empty': 'No class profile yet',
   'class.list.title': 'My classes',
   'class.list.design': 'Design a class',
   'class.list.loading': 'Loading your classes',
@@ -541,7 +544,8 @@ export const en = {
 
   // Versions and their history.
   'class.revisions.none': 'There is no version yet.',
-  'class.revisions.segments': { one: '{count} segments', other: '{count} segments' },
+  // One form on purpose: the English wording is "{count} segments" for every count, so no plural is needed.
+  'class.revisions.segments': '{count} segments',
   'class.history.unavailable': 'The version history could not be read, so only the plain list is shown.',
   'class.history.pick': 'Pick two versions to compare them.',
   'class.history.cannotChange':
