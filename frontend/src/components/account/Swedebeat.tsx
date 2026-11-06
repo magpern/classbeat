@@ -10,38 +10,37 @@ import {
 } from '../../api/connections'
 import { errorMessage } from '../../api/messages'
 import { useGuard } from '../../auth/prompts'
+import type { CatalogueKey } from '../../i18n/en'
 import { date as formatDate } from '../../i18n/format'
+import { useT } from '../../i18n/I18n'
+import { t as translate } from '../../i18n/t'
 import { Field, Notice, Section, useAction } from '../forms'
 import { Switch } from '../ui/switch'
 
 // Plain words for the connect failures (ADR 0015 section 7). The raw code is never shown.
-const CONNECT_ERRORS: Record<string, string> = {
-  invalid_credentials: 'Swedebeat did not accept that email and password.',
-  upstream_unavailable: 'Swedebeat could not be reached. Try again in a few minutes.',
-  app_key_unavailable: 'Swedebeat sign-in is not available on this server.',
-  feature_off: 'Swedebeat is not switched on right now.',
-  unknown: 'Swedebeat answered in a way classbeat did not expect. Try again later.',
+const CONNECT_ERRORS: Record<string, CatalogueKey> = {
+  invalid_credentials: 'swed.err.invalid_credentials',
+  upstream_unavailable: 'swed.err.upstream_unavailable',
+  app_key_unavailable: 'swed.err.app_key_unavailable',
+  feature_off: 'swed.err.feature_off',
+  unknown: 'swed.err.unknown',
 }
 
-const LAST_ERRORS: Record<string, string> = {
-  needs_reconnect: 'Swedebeat no longer accepts the stored sign-in. Connect again.',
-  decrypt_failed: 'The stored sign-in could not be read. Connect again.',
-  rate_limited: 'Swedebeat asked classbeat to slow down.',
-  upstream_unavailable: 'Swedebeat could not be reached the last time.',
+const LAST_ERRORS: Record<string, CatalogueKey> = {
+  needs_reconnect: 'swed.last.needs_reconnect',
+  decrypt_failed: 'swed.last.decrypt_failed',
+  rate_limited: 'swed.last.rate_limited',
+  upstream_unavailable: 'swed.last.upstream_unavailable',
 }
 
-const DEVICE_IN_USE =
-  'Your Swedebeat account is signed in on another device, probably the Swedebeat app on your phone. ' +
-  'If you sign in here anyway, that device is signed out of Swedebeat.'
-
-function lookup(table: Record<string, string>, key: string): string | undefined {
+function lookup(table: Record<string, CatalogueKey>, key: string): CatalogueKey | undefined {
   return Object.hasOwn(table, key) ? table[key] : undefined
 }
 
 function connectError(error: unknown): string {
   if (error instanceof ApiError && error.status !== 429 && error.reason !== null) {
     const known = lookup(CONNECT_ERRORS, error.reason)
-    if (known !== undefined) return known
+    if (known !== undefined) return translate(known)
   }
   return errorMessage(error)
 }
@@ -61,6 +60,7 @@ function since(iso: string): string {
  * asked before it is signed out.
  */
 export function Swedebeat() {
+  const t = useT()
   const guard = useGuard()
   const [view, setView] = useState<{ access: SwedebeatAccess; account: Connection | null } | null>(null)
   const [loadFailed, setLoadFailed] = useState(false)
@@ -109,11 +109,11 @@ export function Swedebeat() {
         const made = await guard(() => connectSwedebeat(sent.email, sent.password, sent.force))
         setTaken(false)
         setView((was) => (was === null ? was : { ...was, account: made }))
-        setNote('Swedebeat is connected.')
+        setNote(t('swed.connected'))
       }, (error) => {
         if (error instanceof ApiError && error.reason === 'device_in_use') {
           setTaken(true)
-          return DEVICE_IN_USE
+          return t('swed.deviceInUse')
         }
         setTaken(false)
         return connectError(error)
@@ -130,7 +130,7 @@ export function Swedebeat() {
     void action.run(async () => {
       await guard(() => disconnectSwedebeat())
       await load()
-      setNote('Swedebeat is disconnected. classbeat no longer holds its sign-in.')
+      setNote(t('swed.disconnected'))
     })
   }
 
@@ -146,8 +146,8 @@ export function Swedebeat() {
   // Nothing about Swedebeat shows until it is known whether this user may see it.
   if (view === null) {
     return loadFailed ? (
-      <Section title="Swedebeat">
-        <Notice kind="error">The connections could not be loaded.</Notice>
+      <Section title={t('swed.title')}>
+        <Notice kind="error">{t('swed.loadFailed')}</Notice>
       </Section>
     ) : null
   }
@@ -158,7 +158,7 @@ export function Swedebeat() {
   const on = access.enabled && access.usesSwedebeat
   const needsForm = on && access.available && (account === null || account.status === 'needs_reconnect')
   return (
-    <Section title="Swedebeat">
+    <Section title={t('swed.title')}>
       {note ? <Notice kind="success">{note}</Notice> : null}
       {action.error ? <Notice kind="error">{action.error}</Notice> : null}
       {access.enabled ? (
@@ -171,55 +171,48 @@ export function Swedebeat() {
               onCheckedChange={choose}
             />
             <label htmlFor={switchId} className="font-medium">
-              I use Swedebeat
+              {t('swed.use')}
             </label>
           </div>
           <p className="m-0 text-muted" data-testid="swedebeat-preference-state">
-            {access.usesSwedebeat
-              ? 'classbeat offers your Swedebeat mixes when you design a class.'
-              : 'Turn this on if you teach with Swedebeat music. Until then classbeat shows nothing about Swedebeat.'}
+            {access.usesSwedebeat ? t('swed.useOn') : t('swed.useOff')}
           </p>
         </div>
       ) : null}
       {on && !access.available && account === null ? (
-        <p className="text-muted">Swedebeat sign-in is not available on this server.</p>
+        <p className="text-muted">{t('swed.notAvailable')}</p>
       ) : null}
       {account ? (
         <ul className="rows">
           <li>
-            <span>Status</span>
+            <span>{t('mowl.status')}</span>
             <span data-testid="swedebeat-status">
-              {account.status === 'connected' ? 'Connected' : 'Needs to be connected again'}
+              {account.status === 'connected' ? t('mowl.statusConnected') : t('mowl.statusAgain')}
             </span>
           </li>
           {account.account ? (
             <li>
-              <span>Swedebeat account</span>
+              <span>{t('swed.account')}</span>
               <span data-testid="swedebeat-account">{account.account}</span>
             </li>
           ) : null}
           <li>
-            <span>Connected since</span>
+            <span>{t('mowl.since')}</span>
             <span className="muted">{since(account.connectedAt)}</span>
           </li>
           {account.lastError ? (
             <li>
-              <span>Last problem</span>
-              <span className="muted">
-                {lookup(LAST_ERRORS, account.lastError) ?? 'The last use of this connection failed.'}
-              </span>
+              <span>{t('mowl.lastProblem')}</span>
+              <span className="muted">{t(lookup(LAST_ERRORS, account.lastError) ?? 'swed.last.other')}</span>
             </li>
           ) : null}
         </ul>
       ) : null}
       {needsForm ? (
         <form onSubmit={connect}>
-          <p>
-            Swedebeat is optional. Sign in with your Swedebeat account. classbeat uses your password
-            once to get a sign-in token and does not keep it.
-          </p>
+          <p>{t('swed.intro')}</p>
           <Field
-            label="Swedebeat email"
+            label={t('swed.email')}
             type="email"
             autoComplete="username"
             value={email}
@@ -232,7 +225,7 @@ export function Swedebeat() {
             required
           />
           <Field
-            label="Swedebeat password"
+            label={t('swed.password')}
             type="password"
             autoComplete="current-password"
             value={password}
@@ -243,15 +236,11 @@ export function Swedebeat() {
           />
           {taken ? (
             <p className="notice" data-kind="info" data-testid="swedebeat-device-warning">
-              Enter your password again to sign in here anyway.
+              {t('swed.again')}
             </p>
           ) : null}
           <button className="button" type="submit" disabled={action.busy}>
-            {taken
-              ? 'Sign in here anyway'
-              : account
-                ? 'Connect Swedebeat again'
-                : 'Connect Swedebeat'}
+            {taken ? t('swed.anyway') : account ? t('swed.connectAgain') : t('swed.connect')}
           </button>
           {taken ? (
             <button
@@ -262,22 +251,19 @@ export function Swedebeat() {
                 action.clear()
               }}
             >
-              Keep the other device signed in
+              {t('swed.keepOther')}
             </button>
           ) : null}
         </form>
       ) : null}
       {account ? (
         <>
-          <p className="muted">
-            Disconnecting deletes the sign-in classbeat holds. It does not sign you out of the
-            Swedebeat app.
-          </p>
+          <p className="muted">{t('swed.disconnectNote')}</p>
           {confirmingDisconnect ? (
-            <div className="notice" role="group" aria-label="Confirm disconnect Swedebeat">
-              <p>classbeat will forget your Swedebeat sign-in. You can connect again at any time.</p>
+            <div className="notice" role="group" aria-label={t('swed.confirmLabel')}>
+              <p>{t('swed.confirmText')}</p>
               <button className="button" type="button" disabled={action.busy} onClick={disconnect}>
-                Yes, disconnect Swedebeat
+                {t('swed.disconnectYes')}
               </button>
               <button
                 className="button button--secondary"
@@ -286,7 +272,7 @@ export function Swedebeat() {
                   setConfirmingDisconnect(false)
                 }}
               >
-                Keep it connected
+                {t('mowl.keep')}
               </button>
             </div>
           ) : (
@@ -298,7 +284,7 @@ export function Swedebeat() {
                 setConfirmingDisconnect(true)
               }}
             >
-              Disconnect Swedebeat
+              {t('swed.disconnect')}
             </button>
           )}
         </>

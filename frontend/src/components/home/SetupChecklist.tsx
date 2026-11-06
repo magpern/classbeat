@@ -2,6 +2,7 @@ import { Check, Circle } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { getConnections } from '../../api/connections'
 import { getSpotifyStatus } from '../../api/spotify'
+import { useT } from '../../i18n/I18n'
 import { Link } from '../../router/Router'
 import { Card, CardTitle } from '../ui/card'
 
@@ -21,6 +22,7 @@ type State = { status: 'loading' } | { status: 'ready'; steps: Step[] } | { stat
  * guessing.
  */
 export function SetupChecklist() {
+  const t = useT()
   const [state, setState] = useState<State>({ status: 'loading' })
   useEffect(() => {
     const abort = new AbortController()
@@ -31,22 +33,22 @@ export function SetupChecklist() {
         if (abort.signal.aborted) return
         const mowl = connections.find((c) => c.provider === 'mowl')
         const steps: Step[] = [
-          { key: 'account', label: 'Create your account', done: true },
+          { key: 'account', label: t('setup.account'), done: true },
           {
             key: 'mowl',
-            label: mowl?.status === 'needs_reconnect' ? 'Connect MOWL again' : 'Connect MOWL',
+            label: mowl?.status === 'needs_reconnect' ? t('setup.mowlAgain') : t('setup.mowl'),
             done: mowl?.status === 'connected',
             to: '/account',
-            action: 'Connect',
+            action: t('setup.action'),
           },
         ]
         if (spotify !== null) {
           steps.push({
             key: 'spotify',
-            label: spotify.status === 'needs_reconnect' ? 'Connect Spotify again (optional)' : 'Connect Spotify (optional)',
+            label: spotify.status === 'needs_reconnect' ? t('setup.spotifyAgain') : t('setup.spotify'),
             done: spotify.status === 'connected',
             to: '/account/spotify',
-            action: 'Connect',
+            action: t('setup.action'),
           })
         }
         setState(steps.every((s) => s.done) ? { status: 'hidden' } : { status: 'ready', steps })
@@ -57,12 +59,12 @@ export function SetupChecklist() {
     return () => {
       abort.abort()
     }
-  }, [])
+  }, [t])
 
   if (state.status !== 'ready') return null
   return (
     <Card aria-labelledby="setup-title" role="region">
-      <CardTitle id="setup-title">Get set up</CardTitle>
+      <CardTitle id="setup-title">{t('setup.title')}</CardTitle>
       <ul className="m-0 flex list-none flex-col gap-2 p-0">
         {state.steps.map((step) => (
           <li key={step.key} className="flex min-h-11 items-center gap-3">
@@ -73,7 +75,7 @@ export function SetupChecklist() {
             )}
             <span className={step.done ? 'text-muted' : 'text-text'}>
               {step.label}
-              <span className="sr-only">{step.done ? ', done' : ', not done yet'}</span>
+              <span className="sr-only">{step.done ? t('setup.done') : t('setup.notDone')}</span>
             </span>
             {!step.done && step.to !== undefined ? (
               <Link

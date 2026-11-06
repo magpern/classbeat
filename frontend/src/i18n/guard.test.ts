@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { readdirSync, readFileSync } from 'node:fs'
 import { join, relative, sep } from 'node:path'
-import allowlist from './hardcoded-allowlist.json'
+import listedFiles from './hardcoded-allowlist.json'
 import untranslated from './untranslated.json'
 import manifest from './locales.json'
 import initScript from '../../public/locale-init.js?raw'
@@ -12,6 +12,9 @@ import { checkCatalogue, checkManifest, checkPlural, checkText } from './testing
 import { hasWords, isExempt, scanBareFormatting, scanSource } from './testing/scan'
 
 // ADR 0023 section 8 (ML3): no new hard-coded text, complete and consistent catalogues, one manifest.
+
+// Typed on purpose: an empty JSON array would otherwise be `never[]`.
+const allowlist: string[] = listedFiles
 
 const srcDir = join(import.meta.dirname, '..')
 
@@ -33,7 +36,7 @@ describe('hard-coded text in .tsx', () => {
   // The allowlist is files not yet moved to the catalogue (ML5a to ML5d). It only shrinks: a file
   // that is clean again must leave the list, and the ceiling is lowered with it. Raising the ceiling
   // or adding a file is the change this guard exists to stop.
-  const CEILING = 26
+  const CEILING = 0
 
   it('finds the sources it is meant to scan', () => {
     expect(tsx.length).toBeGreaterThan(80)

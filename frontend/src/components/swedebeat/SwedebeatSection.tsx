@@ -3,6 +3,7 @@ import type { ClassSummary } from '../../api/classes'
 import { getConnections, getConnectionsView, type Connection } from '../../api/connections'
 import { createMatchJob, getSwedebeatMatch, swedebeatError, needsReconnect, type SwedebeatMatch } from '../../api/swedebeatMatch'
 import { isFeatureOff } from '../../api/spotify'
+import { useT } from '../../i18n/I18n'
 import { actionKey, dropActionKey } from '../../lib/submittedInput'
 import { Link, useRouter } from '../../router/Router'
 import { Notice, useAction } from '../forms'
@@ -74,6 +75,7 @@ function useStartChoice(): { uses: boolean; connection: Connection | null } | un
 }
 
 function StartMatch({ summary }: { summary: ClassSummary }) {
+  const t = useT()
   const choice = useStartChoice()
   const connection = choice?.connection
   const action = useAction()
@@ -104,21 +106,18 @@ function StartMatch({ summary }: { summary: ClassSummary }) {
 
   return (
     <Card role="region" aria-labelledby="swedebeat-start-title" className="flex flex-col gap-3">
-      <CardTitle id="swedebeat-start-title">Swedebeat</CardTitle>
-      <p className="m-0 text-muted">
-        See which of these songs Swedebeat has, so you can build the mix there. Only titles and artists are
-        looked up, and nothing is written to your Swedebeat account.
-      </p>
+      <CardTitle id="swedebeat-start-title">{t('swed.title')}</CardTitle>
+      <p className="m-0 text-muted">{t('swstart.blurb')}</p>
       {connection === null ? (
         <p className="m-0">
-          <Link to="/account#connections">Connect Swedebeat on your account page first</Link>
+          <Link to="/account#connections">{t('swstart.connectFirst')}</Link>
         </p>
       ) : null}
       {connection?.status === 'needs_reconnect' || reconnect ? <ReconnectPrompt /> : null}
       {action.error ? <Notice kind="error">{action.error}</Notice> : null}
       <div>
         <Button disabled={!ready || action.busy || summary.openJob !== null} onClick={start}>
-          Match with Swedebeat
+          {t('swstart.match')}
         </Button>
       </div>
     </Card>
@@ -136,6 +135,7 @@ function MatchSection({
   pointer: { revisionId: string; approved: boolean }
   onReload: () => void
 }) {
+  const t = useT()
   const [loaded, setLoaded] = useState<Loaded | null>(null)
   const connection = useSwedebeatConnection()
   useEffect(() => {
@@ -156,10 +156,10 @@ function MatchSection({
 
   if (loaded === 'off') return null
   if (loaded === 'failed') {
-    return <Notice kind="error">The Swedebeat match could not be loaded. Reload the page.</Notice>
+    return <Notice kind="error">{t('swstart.loadFailed')}</Notice>
   }
   if (loaded === null || loaded.id !== pointer.revisionId) {
-    return <p className="m-0 text-muted">Loading the Swedebeat match</p>
+    return <p className="m-0 text-muted">{t('swstart.loading')}</p>
   }
   return (
     <>
