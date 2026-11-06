@@ -263,6 +263,10 @@ check_common() {
     || fail "soundless classes must be off by default" || return 1
   q '.services.worker.environment.CLASSBEAT_SOUNDLESS_ENABLED == "false"' \
     || fail "soundless classes must be off by default on the worker too" || return 1
+  q '.services.web.environment.CLASSBEAT_MOWL_QR_ENABLED == "false"' \
+    || fail "the MOWL QR sign-in must be off by default" || return 1
+  q '.services.worker.environment | has("CLASSBEAT_MOWL_QR_ENABLED") | not' \
+    || fail "the MOWL QR sign-in belongs to web only" || return 1
   q '[.services.worker.secrets[].source] | index("database_maint_password") == null' \
     || fail "worker must not mount the maint password" || return 1
   q '[.services | to_entries[] | select(.value.secrets // [] | map(.source) | index("postgres_password")) | .key] | sort == ["db","db-functions"]' \
@@ -364,7 +368,7 @@ check_keys() {
       "worker": (app + flags + ["CLASSBEAT_MODEL_PROVIDER"]),
       "web": (app + flags + ["CLASSBEAT_MAINT_DATABASE_URL","CLASSBEAT_OAUTH_GITHUB_CLIENT_ID",
         "CLASSBEAT_OAUTH_GOOGLE_CLIENT_ID","CLASSBEAT_OAUTH_MICROSOFT_CLIENT_ID","CLASSBEAT_OAUTH_VISIBLE_PROVIDERS",
-        "CLASSBEAT_SMTP_CA_FILE","CLASSBEAT_TRUSTED_PROXIES"])
+        "CLASSBEAT_MOWL_QR_ENABLED","CLASSBEAT_SMTP_CA_FILE","CLASSBEAT_TRUSTED_PROXIES"])
     };
     .services | to_entries[] | .key as $n | (.value.environment // {}) as $e
     | if ($e | type) != "object" then "services.\($n).environment (not a mapping)"

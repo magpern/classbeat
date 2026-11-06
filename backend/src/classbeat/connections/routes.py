@@ -102,6 +102,9 @@ class ConnectionsOut(BaseModel):
     # environment's switch, a stored ``on`` and every plan's route covering soundless), so the
     # form offers "No music" only when a soundless design would be admitted.
     soundless_enabled: bool = False
+    # ADR 0024 (#647): whether the desktop page may offer "Scan with the MOWL app"
+    # (``CLASSBEAT_MOWL_QR_ENABLED``). Nothing here says anything about the user's own account.
+    mowl_qr_enabled: bool = False
 
 
 def failure_response(failure: ConnectionFailure) -> JSONResponse:
@@ -150,6 +153,7 @@ async def get_connections(
         ),
         running_enabled=running,
         soundless_enabled=soundless,
+        mowl_qr_enabled=request.app.state.settings.mowl_qr_enabled,
     )
 
 

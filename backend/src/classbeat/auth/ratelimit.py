@@ -88,6 +88,10 @@ SWEDEBEAT_MIXES_IP = Limit("swedebeat-mixes", "ip", 60, 600)
 # be triggered cross-site, so it has buckets of its own; every request counts.
 PLAYLIST_COVERS_USER = Limit("playlist-covers", "account", 10, 600)
 PLAYLIST_COVERS_IP = Limit("playlist-covers", "ip", 30, 600)
+# ADR 0024 section 5 (#647): a MOWL QR ticket (one anonymous MOWL call, one image fetch and one
+# broker connection of up to 15 minutes). Every start counts, a refused one too; none is released.
+MOWL_QR_USER = Limit("mowl-qr", "account", 10, 15 * 60)
+MOWL_QR_IP = Limit("mowl-qr", "ip", 30, 15 * 60)
 # The cover read's cooldown after a Spotify 429: a dedicated bucket hash per user (not a fixed
 # window). Each 429 inserts a row whose ``window_start`` is the instant that cooldown ends; the
 # check asks whether any row's end is still in the future, so the latest end counts and a later,
@@ -363,6 +367,11 @@ def connect_buckets(provider: str, user_id: str, ip: str, email_normalized: str)
         Bucket(CONNECT_IP, bucket_ip(ip)),
         Bucket(CONNECT_PROVIDER_EMAIL, f"{provider}|{email_normalized}"),
     ]
+
+
+def mowl_qr_buckets(user_id: str, ip: str) -> list[Bucket]:
+    """A MOWL QR ticket start (ADR 0024 section 5): per user and per IP."""
+    return [Bucket(MOWL_QR_USER, user_id), Bucket(MOWL_QR_IP, bucket_ip(ip))]
 
 
 def spotify_start_buckets(user_id: str, ip: str) -> list[Bucket]:

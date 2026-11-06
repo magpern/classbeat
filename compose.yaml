@@ -114,6 +114,9 @@ services:
       # stack cannot switch soundless on: web gets no CLASSBEAT_MODEL_PROVIDER here, so its `fake`
       # never counts as covering soundless, and no recorded route covers it before SL5.
       CLASSBEAT_SOUNDLESS_ENABLED: ${SOUNDLESS_ENABLED:-false}
+      # ADR 0024 (#647): "Scan with the MOWL app" on the account page, web only, off by default
+      # until the owner's live scan. The password form works either way.
+      CLASSBEAT_MOWL_QR_ENABLED: ${MOWL_QR_ENABLED:-false}
       # OAuth sign-in (ADR 0003 section 5), web only, as in compose.prod.yaml: a provider is on only
       # when its client id here and its secret file secrets/oauth_<provider>_client_secret both hold
       # a value (init creates the files empty, so every provider is off until set).

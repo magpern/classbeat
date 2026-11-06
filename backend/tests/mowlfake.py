@@ -13,6 +13,10 @@ lists,
 attaches or fetches them. The same mix id can belong to two tokens (``add_mix(mix_id=...)``): each
 token has its own playlist for it.
 
+QR sign-in (ADR 0024, #647): ``GET v1/qr/create/authentication`` answers ``qr_ticket`` (the
+ticket ``mowlqrfake.ticket_data`` builds unless a test sets another), or ``status["qr"]``; the
+``authorization`` header each such call carried is kept in ``qr_authorizations``.
+
 A3 additions: ``links_answer`` (``"empty"``: ``TemporaryLinks`` lists no link; ``"garbled"``: an
 entry without one).
 
@@ -84,6 +88,8 @@ class FakeMowl:
     list_calls: int = 0
     polls: dict[int, int] = field(default_factory=lambda: dict[int, int]())
     _next_playlist: int = 9000
+    qr_ticket: Any = None  # None: ``mowlqrfake.ticket_data()``
+    qr_authorizations: list[str | None] = field(default_factory=lambda: list[str | None]())
 
     def add_mix(
         self,
@@ -227,6 +233,13 @@ class FakeMowl:
                 return code, {"Error": "no"}
             if (answered := self._swedebeat(method, path, form, authorization or "")) is not None:
                 return answered
+        if path == "/v1/qr/create/authentication" and method == "GET":
+            from mowlqrfake import ticket_data
+
+            self.qr_authorizations.append(authorization)
+            if (code := self.status.get("qr", 200)) != 200:
+                return code, {"Error": "no"}
+            return 200, {"Data": self.qr_ticket or ticket_data(), "Error": None}
         if path == AUTHENTICATE:
             self.passwords_seen.append(form.get("Password", ""))
             if (code := self.status.get("authenticate", 200)) != 200:

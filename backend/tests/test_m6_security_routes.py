@@ -94,6 +94,11 @@ CLASSIFIED: dict[tuple[str, str], str] = {
     ("GET", "/api/connections"): "session",
     ("POST", "/api/connections/mowl"): "session",
     ("DELETE", "/api/connections/mowl"): "session",
+    # ADR 0024 (#647): the QR sign-in; every wait is the starting session's own.
+    ("POST", "/api/connections/mowl/qr"): "session",
+    ("GET", "/api/connections/mowl/qr/{ticket_id}"): "session",
+    ("GET", "/api/connections/mowl/qr/{ticket_id}/image"): "session",
+    ("DELETE", "/api/connections/mowl/qr/{ticket_id}"): "session",
     ("POST", "/api/connections/swedebeat"): "session",
     ("DELETE", "/api/connections/swedebeat"): "session",
     ("PUT", "/api/connections/swedebeat/preference"): "session",
