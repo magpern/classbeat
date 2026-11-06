@@ -189,15 +189,21 @@ def _median_interval_s(spec: Spec) -> float:
 
 
 def _sprint_count(spec: Spec) -> float:
-    """Acceleration intervals (``acc``), the corpus's ``acc_count`` (CycleID 4)."""
+    """Acceleration intervals (``acc``), the corpus's ``acc_count`` (CycleID 4).
+
+    Difference: a draft has no ``acc`` (the agent schema cannot carry it), so this is always 0 for
+    a designed class and meaningful only for a workout read back from MOWL. No profile may ship a
+    ``sprints_*`` bound until drafts can carry sprints (ADR 0017 section 7a).
+    """
     return float(sum(1 for i in _intervals(spec) if i.acc))
 
 
 def _climb_time_share(spec: Spec) -> float:
     """Share of the timeline that is seated, zone 3 or above, at a top cadence of 1 to 80 rpm.
 
-    The corpus's ``climb_pct`` as a fraction (a heuristic: MOWL has no climb flag). Difference: a
-    music-fitted interval (``rpm: "beat"``) has no cadence number in the draft and never counts.
+    The corpus's ``climb_pct`` as a fraction (a heuristic: MOWL has no climb flag). Difference: an
+    interval with no cadence number never counts. ``"beat"`` is rare here: ``design.check`` fits
+    it to the music or drops it before the rules run.
     """
     tl = _intervals(spec)
     climb = sum(
@@ -223,7 +229,9 @@ def _intensity_factor(spec: Spec) -> float:
     """``sqrt(TSS / (hours * 100))``, the corpus's ``intensity_factor``.
 
     Difference: the corpus reads the TSS MOWL stored for the program; a draft has none, so this
-    uses the library estimate ``workout.tss`` (the server's own model, within 1 % of it).
+    uses the library estimate ``workout.tss`` (the server's own model, within 1 % of it unless
+    the draft has a zone 7 interval, whose TSS weight is a guess: ``tss_approximate``, ADR 0012
+    section 7).
     """
     total = _total(_timeline(spec))
     if not total:

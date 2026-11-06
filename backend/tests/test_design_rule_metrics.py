@@ -146,6 +146,17 @@ def test_shipped_profiles_use_none_of_the_new_rules() -> None:
     assert not used & set(RATIONALE)
 
 
+def test_no_profile_ships_a_sprint_bound_until_drafts_can_carry_sprints() -> None:
+    """A draft has no ``acc`` flag, so ``sprint_count`` is 0 for every designed class and a low
+    bound would fire on all of them, with a note the model cannot act on (ADR 0017 section 7a)."""
+    used = {r.rule for p in load_registry().profiles.values() for r in p.rules}
+    assert not used & {"sprints_few", "sprints_many"}, (
+        "sprint_count is always 0 for a designed draft (no `acc`); do not ship a sprints_few or "
+        "sprints_many bound until drafts can carry sprints: "
+        "docs/adr/0017-class-pattern-soft-rules.md section 7a"
+    )
+
+
 def test_the_new_wording_follows_the_sport_rule() -> None:
     for rid, sport in (
         ("sprints_present", "cycling"),
@@ -224,6 +235,31 @@ def test_sprints_are_the_acceleration_intervals() -> None:
     )
     assert measure("sprint_count", spec) == 3  # every segment counts, as in the corpus
     assert measure("sprint_count", simple(("main", 60, 3), ("cooldown", 60, 1))) == 0
+
+
+def test_a_real_draft_has_no_sprints_to_count() -> None:
+    """The limitation, pinned: the agent schema has no ``acc``, so a designed class measures 0
+    however many short hard bursts it holds (ADR 0017 section 7a)."""
+    from classbeat.agent.schemas import WorkoutDraft
+
+    def interval(sec: int, zone: int, rpm: list[int]) -> dict[str, Any]:
+        return {"sec": sec, "zone": zone, "rpm": rpm, "standing": zone >= 5}
+
+    draft = WorkoutDraft.model_validate(
+        {
+            "name": "Bursts",
+            "segments": [
+                {"name": "Warm", "kind": "warmup", "intervals": [interval(300, 1, [80, 90])]},
+                {
+                    "name": "Bursts",
+                    "kind": "main",
+                    "intervals": [interval(30, 6, [100, 110]), interval(90, 2, [80, 90])] * 4,
+                },
+                {"name": "Cool", "kind": "cooldown", "intervals": [interval(300, 1, [70, 80])]},
+            ],
+        }
+    )
+    assert measure("sprint_count", draft.to_spec()) == 0
 
 
 @pytest.mark.parametrize("side", ["low", "high"])
