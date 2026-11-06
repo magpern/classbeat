@@ -22,6 +22,7 @@ from classbeat.auth.sessions import (
     revoke_session,
     revoke_user_sessions,
 )
+from classbeat.auth.userlock import lock_user
 from classbeat.context import UserContext
 from classbeat.db import system_session
 
@@ -168,7 +169,10 @@ async def logout_all(
     response: Response,
     ctx: Annotated[UserContext, Depends(require_user)],
 ) -> None:
-    """Sign out everywhere, this browser included."""
+    """Sign out everywhere, this browser included. The user row lock comes first (ADR 0019
+    section 6, #643): a sign-in or rotation committing meanwhile is waited for, so the delete
+    sees its session instead of letting it survive."""
     async with system_session(_factory(request)) as db:
+        await lock_user(db, ctx.user_id)
         await revoke_user_sessions(db, ctx.user_id)
     clear_session_cookie(response)
