@@ -19,6 +19,7 @@ from classbeat.auth.devices import forget_devices
 from classbeat.auth.events import record_event
 from classbeat.auth.sessions import revoke_user_sessions
 from classbeat.auth.tables import invites, mfa_recovery_codes, mfa_totp, users
+from classbeat.auth.userlock import lock_user
 from classbeat.config import Settings
 from classbeat.emailnorm import normalize_email
 
@@ -262,8 +263,13 @@ async def grant_admin_if_listed(db: AsyncSession, settings: Settings, user_id: U
 
 async def reset_mfa(db: AsyncSession, email: str) -> UserRow:
     """Lost authenticator: remove the user's TOTP and recovery codes, revoke every session and
-    forget their known devices. The caller then sends the password-reset link (``hooks``)."""
+    forget their known devices. The caller then sends the password-reset link (``hooks``).
+
+    The user row lock comes before every delete (ADR 0019 section 6, #643): a sign-in or an MFA
+    verify that is creating or rotating a session commits first and loses that session here,
+    or waits and then finds its session or TOTP gone."""
     user = await _require_user(db, email)
+    await lock_user(db, user.id)
     await db.execute(delete(mfa_totp).where(mfa_totp.c.user_id == user.id))
     await db.execute(delete(mfa_recovery_codes).where(mfa_recovery_codes.c.user_id == user.id))
     await revoke_user_sessions(db, user.id)

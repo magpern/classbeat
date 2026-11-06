@@ -21,6 +21,7 @@ from classbeat.auth.events import record_event
 from classbeat.auth.sessions import revoke_user_sessions
 from classbeat.auth.tables import auth_events, auth_tokens, mfa_recovery_codes, mfa_totp, users
 from classbeat.auth.tokens import RESET_LIFETIME, issue_token
+from classbeat.auth.userlock import lock_user
 from classbeat.config import Settings
 from classbeat.mail import MailMessage
 
@@ -41,7 +42,12 @@ class WipeEvent:
 
 async def wipe_user(db: AsyncSession, user_id: UUID, providers: list[str]) -> WipeEvent | None:
     """Record the wipe of ``providers`` and reset the user's TOTP if there is one. ``None`` (and
-    nothing written) when the user had neither."""
+    nothing written) when the user had neither.
+
+    The user row lock comes before the TOTP is read or deleted (ADR 0019 section 6, #643), the
+    way ``reset_mfa`` takes it: a sign-in or MFA verify in flight commits first and loses its
+    session to the revoke below, or waits and then finds the TOTP gone."""
+    await lock_user(db, user_id)
     has_totp = (
         await db.execute(select(mfa_totp.c.id).where(mfa_totp.c.user_id == user_id))
     ).first() is not None
