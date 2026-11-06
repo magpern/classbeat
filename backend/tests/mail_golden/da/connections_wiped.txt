@@ -1,7 +1,7 @@
 Dine forbindelser er blevet fjernet
 ===================================
 
-Som en sikkerhedsforanstaltning efter en sikkerhedshændelse har classbeat fjernet de gemte logins til din konto.
+Som en forholdsregel efter en sikkerhedshændelse har classbeat fjernet de gemte logins til din konto.
 
 Fjernede forbindelser: Intelligent Cycling (MOWL), Spotify, Swedebeat. Opret forbindelse til dem igen fra din kontoside.
 

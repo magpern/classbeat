@@ -108,7 +108,7 @@ async def submit_email(
         elif await find_user(db, body.email) is not None:
             # The row keeps no email or token and simply expires at its 15 minutes.
             message = mails.account_exists(
-                settings, body.email, account_locale.chosen(request, body.locale, row.locale)
+                settings, body.email, account_locale.for_request(request, body.locale)
             )
         else:
             token = new_token()
@@ -199,4 +199,8 @@ async def confirm_provider_signup(
         raise _refuse(status, exc.code) from None
     clear_pending_cookie(response)
     # An account was created, not a method added: the welcome names the provider (ADR 0022 s.7).
-    queue(background, request, Notice("welcome", pending.email, {"provider": pending.provider}))
+    queue(
+        background,
+        request,
+        Notice("welcome", pending.email, {"provider": pending.provider}, locale=pending.locale),
+    )

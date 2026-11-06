@@ -15,6 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from classbeat import locales
 from classbeat.auth.tables import users
 from classbeat.config import Settings
+from classbeat.emails.catalogue import mail_locale
 
 
 def for_request(request: Request, field: object) -> str:
@@ -51,4 +52,4 @@ async def mail_locale_of(db: AsyncSession, settings: Settings, user_id: UUID) ->
     stored = (
         await db.execute(select(users.c.locale).where(users.c.id == user_id))
     ).scalar_one_or_none()
-    return locales.offered_value(settings, stored) or locales.DEFAULT_LOCALE
+    return mail_locale(stored, settings)

@@ -1,7 +1,7 @@
 Dina anslutningar har tagits bort
 =================================
 
-Som en säkerhetsåtgärd efter en säkerhetsincident har classbeat tagit bort de sparade inloggningarna för ditt konto.
+Som en försiktighetsåtgärd efter en säkerhetsincident har classbeat tagit bort de sparade inloggningarna för ditt konto.
 
 Borttagna anslutningar: Intelligent Cycling (MOWL), Spotify, Swedebeat. Anslut dem igen från din kontosida.
 

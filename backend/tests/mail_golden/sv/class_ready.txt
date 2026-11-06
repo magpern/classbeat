@@ -7,7 +7,7 @@ classbeat har analyserat musiken i ditt pass. Öppna passet för att se resultat
 https://classbeat.example.test/classes/00000000-0000-4000-8000-000000000000
 
 --
-Du får det här för att classbeat har gjort klart ett pass som du bad om, efter att ha analyserat musiken.
+Du får det här mejlet eftersom classbeat har gjort klart ett pass som du bad om, efter att ha analyserat musiken.
 classbeat: https://classbeat.example.test
 Frågor? Skriv till support@classbeat.eu
 Avsluta prenumerationen på de här mejlen: https://classbeat.example.test/unsubscribe#token=SAMPLE&all=SAMPLE

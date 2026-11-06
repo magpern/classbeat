@@ -8,7 +8,7 @@ När det hände: 6 november 2026 kl. 12:30 UTC
 Om det inte var du, säg till oss direkt. Kontakta oss på support@classbeat.eu
 
 --
-Du får det här för att ditt classbeat-konto har raderats. Det här är det enda mejlet om det.
+Du får det här mejlet eftersom ditt classbeat-konto har raderats. Det här är det enda mejlet om det.
 classbeat: https://classbeat.example.test
 Frågor? Skriv till support@classbeat.eu
 Avsluta prenumerationen på de här mejlen: https://classbeat.example.test/unsubscribe#token=SAMPLE&all=SAMPLE

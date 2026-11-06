@@ -9,6 +9,6 @@ https://classbeat.example.test/signup/confirm#token=SAMPLE
 Om det inte var du kan du bortse från det här mejlet. Inget konto skapas.
 
 --
-Du får det här för att någon har använt den här e-postadressen på classbeat.
+Du får det här mejlet eftersom någon har använt den här e-postadressen på classbeat.
 classbeat: https://classbeat.example.test
 Frågor? Skriv till support@classbeat.eu

@@ -29,7 +29,7 @@ CATALOGUE: dict[S, str] = {
     S.FOOTER_UNSUBSCRIBE: "Avsluta prenumerationen på de här mejlen",
     S.CONTACT_LEAD: "Kontakta oss på",
     S.REASON_REQUEST: (
-        "Du får det här för att någon har använt den här e-postadressen på classbeat."
+        "Du får det här mejlet eftersom någon har använt den här e-postadressen på classbeat."
     ),
     S.REASON_SECURITY: (
         "Du får den här säkerhetsaviseringen för att det här är e-postadressen till ett "
@@ -117,7 +117,7 @@ CATALOGUE: dict[S, str] = {
     S.WELCOME_PROVIDER: "Du kan logga in med {provider}.",
     S.WELCOME_BUTTON: "Öppna classbeat",
     S.WELCOME_REASON: (
-        "Du får det här för att ett classbeat-konto just har skapats med den här adressen."
+        "Du får det här mejlet eftersom ett classbeat-konto just har skapats med den här adressen."
     ),
     S.PWCHANGED_HEADING: "Ditt lösenord har ändrats",
     S.PWCHANGED_PRE: "Lösenordet för ditt classbeat-konto har ändrats.",
@@ -135,8 +135,8 @@ CATALOGUE: dict[S, str] = {
     S.DELETED_WHEN: "När det hände",
     S.DELETED_WARN: "Om det inte var du, säg till oss direkt.",
     S.DELETED_REASON: (
-        "Du får det här för att ditt classbeat-konto har raderats. Det här är det enda mejlet om "
-        "det."
+        "Du får det här mejlet eftersom ditt classbeat-konto har raderats. Det här är det enda "
+        "mejlet om det."
     ),
     S.UNLINKED_HEADING: "En inloggningsmetod har tagits bort",
     S.UNLINKED_PRE: "Du kan inte längre logga in på ditt classbeat-konto med {provider}.",
@@ -155,10 +155,11 @@ CATALOGUE: dict[S, str] = {
     S.TOTPOFF_WARN: "Om det inte var du, byt lösenord och säg till oss direkt.",
     S.WIPED_HEADING: "Dina anslutningar har tagits bort",
     S.WIPED_PRE: (
-        "Som en säkerhetsåtgärd har classbeat tagit bort de sparade inloggningarna för ditt konto."
+        "Som en försiktighetsåtgärd har classbeat tagit bort de sparade inloggningarna för ditt "
+        "konto."
     ),
     S.WIPED_BODY: (
-        "Som en säkerhetsåtgärd efter en säkerhetsincident har classbeat tagit bort de sparade "
+        "Som en försiktighetsåtgärd efter en säkerhetsincident har classbeat tagit bort de sparade "
         "inloggningarna för ditt konto."
     ),
     S.WIPED_REMOVED: "Borttagna anslutningar: {names}. Anslut dem igen från din kontosida.",
@@ -190,8 +191,8 @@ CATALOGUE: dict[S, str] = {
     ),
     S.READY_BUTTON: "Öppna ditt pass",
     S.READY_REASON: (
-        "Du får det här för att classbeat har gjort klart ett pass som du bad om, efter att ha "
-        "analyserat musiken."
+        "Du får det här mejlet eftersom classbeat har gjort klart ett pass som du bad om, efter "
+        "att ha analyserat musiken."
     ),
 }
 

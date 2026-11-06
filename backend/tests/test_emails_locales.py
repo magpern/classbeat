@@ -59,19 +59,42 @@ def test_a_listed_string_is_not_translated_and_exists(code: str) -> None:
     assert set(S) >= UNTRANSLATED
 
 
+def placeholders(text: str) -> list[tuple[str, str | None, str | None]]:
+    """Every replacement field, unnamed ones (``{}``, ``{!r}``, ``{:>9}``) included."""
+    return [(f, spec, conv) for _, f, spec, conv in string.Formatter().parse(text) if f is not None]
+
+
+def not_bare(text: str) -> list[str]:
+    """What is wrong with the fields of ``text``: only a bare identifier is allowed."""
+    wrong: list[str] = []
+    for name, spec, conversion in placeholders(text):
+        if not re.fullmatch(r"[a-z_]+", name):
+            wrong.append(f"name {name!r}")  # unnamed, attribute access or index
+        if spec:
+            wrong.append(f"format spec {spec!r}")
+        if conversion is not None:
+            wrong.append(f"conversion {conversion!r}")
+    return wrong
+
+
 @pytest.mark.parametrize("code", TRANSLATED)
 def test_the_placeholders_are_the_english_ones_and_bare(code: str) -> None:
-    def parse(text: str) -> list[tuple[str, str | None, str | None]]:
-        return [(f, spec, conv) for _, f, spec, conv in string.Formatter().parse(text) if f]
-
     for string_id, text in LOCALES[code].items():
-        found = parse(text)
-        expected = parse(en.CATALOGUE[string_id])
-        assert sorted(f for f, _, _ in found) == sorted(f for f, _, _ in expected)
-        for name, spec, conversion in found:
-            assert re.fullmatch(r"[a-z_]+", name), (code, string_id)
-            assert not spec, (code, string_id)
-            assert conversion is None, (code, string_id)
+        found = sorted(f for f, _, _ in placeholders(text))
+        assert found == sorted(f for f, _, _ in placeholders(en.CATALOGUE[string_id])), string_id
+        assert not not_bare(text), (code, string_id)
+
+
+@pytest.mark.parametrize(
+    "text",
+    ["a {} b", "a {!r} b", "a {:>999999999} b", "{provider!s}", "{provider:>9}", "{p.x}", "{p[0]}"],
+)
+def test_the_placeholder_check_catches_unnamed_and_formatted_fields(text: str) -> None:
+    assert not_bare(text)
+
+
+def test_the_placeholder_check_accepts_bare_identifiers() -> None:
+    assert not not_bare("x {provider} y {names} {{literal}}")
 
 
 @pytest.mark.parametrize("code", TRANSLATED)
@@ -329,19 +352,259 @@ async def test_the_provider_confirmation_follows_the_row_language(
     )
 
 
-async def test_the_essential_path_still_reads_no_user(
+ESSENTIAL = [k.id for k in KINDS if k.essential]
+
+
+@pytest.mark.parametrize("kind_id", ESSENTIAL)
+async def test_an_essential_kind_never_looks_up_a_user(
+    kind_id: str, monkeypatch: pytest.MonkeyPatch, three_languages: None
+) -> None:
+    """No prefs and no locale given: the send path still reads no user (ADR 0022 section 1)."""
+    from classbeat.emails import dispatch
+
+    sent: list[Any] = []
+
+    async def capture(mailer: object, message: Any) -> None:
+        sent.append(message)
+
+    async def lookup(recipient: str) -> MailPrefs | None:
+        raise AssertionError("an essential kind must not look up a user")
+
+    monkeypatch.setattr(dispatch, "send_logged", capture)
+    assert await send(
+        object(),  # type: ignore[arg-type]
+        golden_settings(),
+        kind_id,
+        "x@example.test",
+        REGISTRY[kind_id].sample,
+        lookup=lookup,
+    )
+    assert [m.locale for m in sent] == ["en"]
+
+
+async def test_an_essential_kind_with_a_given_locale_reads_no_user_either(
     menv: Env, smtp: SmtpFake, three_languages: None
 ) -> None:
-    """A kind with the locale given sends without a prefs lookup (ADR 0022 section 1)."""
     calls: list[str] = []
 
     async def lookup(recipient: str) -> MailPrefs | None:
         calls.append(recipient)
         return None
 
-    s = menv.settings
     assert await send(
-        menv.app.state.mailer, s, "account_exists", "x@example.com", {}, lookup=lookup, locale="sv"
+        menv.app.state.mailer,
+        menv.settings,
+        "account_exists",
+        "x@example.com",
+        {},
+        lookup=lookup,
+        locale="sv",
     )
     assert calls == []
     assert decoded(smtp.to("x@example.com")[-1]) == subject_of("account_exists", "sv")
+
+
+# --- the pre-account provider paths ------------------------------------------------------------
+
+
+async def pending_row(
+    oenv: Env, fake: FakeProviders, locale: str, browser: Browser | None = None
+) -> Browser:
+    """A browser holding a hand-off row (the provider gave no verified address) in ``locale``."""
+    browser = browser or Browser(oenv)
+    started = await start(
+        browser, "microsoft", "sign_up", invite_code=await make_invite(oenv), locale=locale
+    )
+    assert location(await browser.get(fake.complete(started.json()["authorization_url"])))
+    assert await oenv.scalar("SELECT locale FROM pending_signups") == locale
+    return browser
+
+
+async def post_email(
+    oenv: Env, browser: Browser, email: str, body_locale: str | None, header: str | None = None
+) -> None:
+    from authtools import ORIGIN
+
+    headers = {"Origin": ORIGIN, "X-CSRF-Token": await browser.csrf(), **browser._cookie_header()}
+    if header:
+        headers["Accept-Language"] = header
+    body: dict[str, Any] = {"email": email}
+    if body_locale:
+        body["locale"] = body_locale
+    oenv.client.cookies.clear()
+    response = await oenv.client.post("/api/auth/oauth/pending/email", json=body, headers=headers)
+    assert response.status_code == 202, response.text
+
+
+@pytest.mark.parametrize(
+    ("body_locale", "header", "expected"),
+    [
+        ("sv", None, "sv"),  # the request's field, not the row's language
+        ("sv", "da", "sv"),
+        (None, "sv", "sv"),  # the request's header, not the row's language (plan section 2)
+        (None, None, "en"),  # nothing in the request: English, not the row's language
+    ],
+)
+async def test_account_exists_on_the_hand_off_step_follows_the_request_not_the_row(
+    oenv: Env,
+    fake: FakeProviders,
+    smtp: SmtpFake,
+    three_languages: None,
+    body_locale: str | None,
+    header: str | None,
+    expected: str,
+) -> None:
+    await oenv.user("taken@example.com")
+    browser = await pending_row(oenv, fake, "da")
+    await post_email(oenv, browser, "taken@example.com", body_locale, header)
+    [mail] = smtp.to("taken@example.com")
+    assert decoded(mail) == subject_of("account_exists", expected)
+    assert mail.message["Content-Language"] == expected
+
+
+@pytest.mark.parametrize(
+    ("body_locale", "header", "expected"),
+    [
+        ("sv", None, "sv"),  # the request's field comes before the row's language
+        ("sv", "da", "sv"),
+        (None, None, "da"),  # no field: the row's language
+        (None, "sv", "da"),  # the row's language comes before the header (ML2)
+    ],
+)
+async def test_the_provider_confirmation_prefers_the_request_then_the_row(
+    oenv: Env,
+    fake: FakeProviders,
+    smtp: SmtpFake,
+    three_languages: None,
+    body_locale: str | None,
+    header: str | None,
+    expected: str,
+) -> None:
+    browser = await pending_row(oenv, fake, "da")  # one unfilled row: this POST sends the mail
+    await post_email(oenv, browser, "fresh@example.com", body_locale, header)
+    [mail] = smtp.to("fresh@example.com")
+    assert decoded(mail) == subject_of("provider_signup_confirm", expected)
+    assert mail.message["Content-Language"] == expected
+
+
+def record_notices(monkeypatch: pytest.MonkeyPatch) -> list[Any]:
+    """Run every background notice as usual and keep the ``Notice`` it was built from."""
+    from classbeat.emails import notices
+
+    seen: list[Any] = []
+    original = notices.send_notice
+
+    async def recording(request_app: Any, notice: Any) -> None:
+        seen.append(notice)
+        await original(request_app, notice)
+
+    monkeypatch.setattr(notices, "send_notice", recording)
+    return seen
+
+
+async def test_the_welcome_at_a_verified_provider_sign_up_carries_the_flow_language(
+    oenv: Env,
+    fake: FakeProviders,
+    smtp: SmtpFake,
+    three_languages: None,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    seen = record_notices(monkeypatch)
+    browser = Browser(oenv)
+    started = await start(
+        browser, "google", "sign_up", invite_code=await make_invite(oenv), locale="sv"
+    )
+    assert await oenv.scalar("SELECT locale FROM oauth_flows") == "sv"
+    assert location(await browser.get(fake.complete(started.json()["authorization_url"])))
+    [welcome] = [n for n in seen if n.kind_id == "welcome"]
+    assert welcome.locale == "sv"  # from oauth_flows.locale, not a second lookup
+    [mail] = [m for m in smtp.messages if decoded(m) == subject_of("welcome", "sv")]
+    assert mail.message["Content-Language"] == "sv"
+
+
+async def test_the_welcome_after_a_hand_off_carries_the_row_language(
+    oenv: Env,
+    fake: FakeProviders,
+    smtp: SmtpFake,
+    three_languages: None,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    seen = record_notices(monkeypatch)
+    browser = await pending_row(oenv, fake, "da")
+    await post_email(oenv, browser, "fresh@example.com", None)
+    token = smtp.to("fresh@example.com")[-1].token()
+    done = await browser.post("/api/auth/signup/confirm", {"token": token})
+    assert done.status_code == 200, done.text
+    [welcome] = [n for n in seen if n.kind_id == "welcome"]
+    assert welcome.locale == "da"
+    assert decoded(smtp.to("fresh@example.com")[-1]) == subject_of("welcome", "da")
+
+
+# --- account routes: the user's stored language ------------------------------------------------
+
+
+async def test_the_email_change_mails_follow_the_stored_language(
+    menv: Env, smtp: SmtpFake, three_languages: None
+) -> None:
+    from flows import signed_in
+
+    browser = await signed_in(menv)
+    await menv.user("taken@example.com")
+    await menv.run("UPDATE users SET locale = 'da' WHERE email = 'user@example.com'")
+    new = "new.address@example.com"
+    assert (await browser.post("/api/auth/email/change", {"new_email": new})).status_code == 202
+    await browser.post("/api/auth/email/change", {"new_email": "taken@example.com"})
+    assert decoded(smtp.to(new)[-1]) == subject_of("email_change_confirm", "da")
+    assert decoded(smtp.to("taken@example.com")[-1]) == subject_of("email_change_taken", "da")
+    done = await browser.post("/api/auth/email/confirm", {"token": smtp.to(new)[-1].token()})
+    assert done.status_code == 200, done.text
+    [notice] = smtp.to("user@example.com")
+    assert decoded(notice) == subject_of("email_changed", "da")
+
+
+async def test_the_keys_wipe_mail_follows_the_stored_language(
+    menv: Env, three_languages: None
+) -> None:
+    from uuid import uuid4
+
+    from classbeat.auth.operator import WipeEvent, wipe_mail
+
+    user_id = await menv.user("wiped@example.com")
+    await menv.run("UPDATE users SET locale = 'sv' WHERE id = :u", u=user_id)
+    event = WipeEvent(uuid4(), user_id, "wiped@example.com", ("spotify",), False)
+    async with menv.db() as db:
+        message = await wipe_mail(menv.settings, db, event)
+    assert message.locale == "sv"
+    assert message.subject == subject_of("connections_wiped", "sv")
+
+
+async def test_the_account_deleted_mail_follows_the_language_read_before_the_cascade(
+    menv: Env, smtp: SmtpFake, three_languages: None
+) -> None:
+    from classbeat.emails.notices import read_prefs
+
+    user_id = await menv.user("gone@example.com")
+    await menv.run("UPDATE users SET locale = 'da' WHERE id = :u", u=user_id)
+    async with menv.db() as db:
+        prefs = await read_prefs(db, user_id)
+    assert prefs.locale == "da"
+    assert prefs.user_id is None  # no unsubscribe link for an account that is going
+    assert await send(
+        menv.app.state.mailer,
+        menv.settings,
+        "account_deleted",
+        "gone@example.com",
+        REGISTRY["account_deleted"].sample,
+        prefs=prefs,
+    )
+    assert decoded(smtp.to("gone@example.com")[-1]) == subject_of("account_deleted", "da")
+
+
+async def test_an_account_without_a_language_gets_an_english_deleted_mail(
+    menv: Env, three_languages: None
+) -> None:
+    from classbeat.emails.notices import read_prefs
+
+    user_id = await menv.user("plain@example.com")
+    async with menv.db() as db:
+        assert (await read_prefs(db, user_id)).locale is None

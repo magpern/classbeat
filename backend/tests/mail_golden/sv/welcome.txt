@@ -9,7 +9,7 @@ Du kan logga in med Google.
 https://classbeat.example.test/
 
 --
-Du får det här för att ett classbeat-konto just har skapats med den här adressen.
+Du får det här mejlet eftersom ett classbeat-konto just har skapats med den här adressen.
 classbeat: https://classbeat.example.test
 Frågor? Skriv till support@classbeat.eu
 Avsluta prenumerationen på de här mejlen: https://classbeat.example.test/unsubscribe#token=SAMPLE&all=SAMPLE

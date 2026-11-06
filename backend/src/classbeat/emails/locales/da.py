@@ -163,11 +163,9 @@ CATALOGUE: dict[S, str] = {
         "Hvis det ikke var dig, skal du skifte din adgangskode og give os besked med det samme."
     ),
     S.WIPED_HEADING: "Dine forbindelser er blevet fjernet",
-    S.WIPED_PRE: (
-        "Som en sikkerhedsforanstaltning har classbeat fjernet de gemte logins til din konto."
-    ),
+    S.WIPED_PRE: ("Som en forholdsregel har classbeat fjernet de gemte logins til din konto."),
     S.WIPED_BODY: (
-        "Som en sikkerhedsforanstaltning efter en sikkerhedshændelse har classbeat fjernet de "
+        "Som en forholdsregel efter en sikkerhedshændelse har classbeat fjernet de "
         "gemte logins til din konto."
     ),
     S.WIPED_REMOVED: (
