@@ -8,11 +8,13 @@ to. The confirmation link creates the account only in the browser that holds the
 
 import hmac
 from datetime import timedelta
+from typing import Any
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Request, Response
 from pydantic import BaseModel
 from sqlalchemy import delete, func, select, update
 
+from classbeat.auth import locale as account_locale
 from classbeat.auth import mails
 from classbeat.auth.accounts import find_user
 from classbeat.auth.clientip import bucket_ip
@@ -41,10 +43,12 @@ class PendingState(BaseModel):
 
 
 class PendingEmailIn(BaseModel):
-    """Only an address. Any other field a client sends (provider, subject, invite) is ignored:
-    pydantic drops unknown keys and nothing reads them."""
+    """An address and, optionally, the app's language (ADR 0023 section 2; any value is accepted,
+    one that is not an offered code is ignored). Any other field a client sends (provider,
+    subject, invite) is ignored: pydantic drops unknown keys and nothing reads them."""
 
     email: EmailAddress
+    locale: Any = None
 
 
 class Accepted(BaseModel):
@@ -62,6 +66,7 @@ def _browser_row(cookie: str | None):
         pending_signups.c.id,
         pending_signups.c.provider,
         pending_signups.c.email,
+        pending_signups.c.locale,
     ).where(
         pending_signups.c.browser_hash == token_hash(cookie),
         pending_signups.c.provider.is_not(None),
@@ -105,6 +110,9 @@ async def submit_email(
             message = mails.account_exists(settings, body.email)
         else:
             token = new_token()
+            # The request's language (the row's when the request names none) goes in the same
+            # update, and ``confirm_provider_signup`` copies it to the new account.
+            locale = account_locale.for_new_account(request, body.locale, row.locale)
             filled = await db.execute(
                 update(pending_signups)
                 .where(pending_signups.c.id == row.id, pending_signups.c.email.is_(None))
@@ -112,6 +120,7 @@ async def submit_email(
                     email=body.email,
                     email_normalized=normalized,
                     token_hash=token_hash(token),
+                    locale=locale,
                     expires_at=func.now() + CONFIRMATION_LIFETIME,
                 )
                 .returning(pending_signups.c.id)
@@ -161,6 +170,7 @@ async def confirm_provider_signup(
                         pending_signups.c.provider,
                         pending_signups.c.subject,
                         pending_signups.c.invite_id,
+                        pending_signups.c.locale,
                     )
                 )
             ).first()
@@ -173,6 +183,7 @@ async def confirm_provider_signup(
                 email=pending.email,
                 provider=pending.provider,
                 subject=pending.subject,
+                locale=pending.locale,
             )
             await db.execute(
                 delete(pending_signups).where(

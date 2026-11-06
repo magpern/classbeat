@@ -27,6 +27,7 @@ from sqlalchemy.dialects.postgresql import ARRAY, JSONB, UUID
 
 metadata = MetaData()
 
+LOCALE_CHECK = "locale ~ '^[a-z]{2}$'"
 _ID = "gen_random_uuid()"
 _NOW = "now()"
 
@@ -68,11 +69,14 @@ users = Table(
     # both; the check keeps ``mail_opted_out`` to the categories a user may switch off.
     Column("mail_unsubscribed_all", Boolean, nullable=False, server_default=text("false")),
     Column("mail_opted_out", ARRAY(Text), nullable=False, server_default=text("'{}'::text[]")),
+    # ADR 0023 (ML2, #664): the account's language; NULL follows the browser (English mail).
+    Column("locale", Text),
     CheckConstraint("role IN ('user', 'admin')", name="users_role_check"),
     CheckConstraint(
         "mail_opted_out <@ ARRAY['welcome', 'account_activity', 'class_ready']::text[]",
         name="users_mail_opted_out_check",
     ),
+    CheckConstraint(LOCALE_CHECK, name="users_locale_check"),
 )
 
 identities = Table(
@@ -148,8 +152,10 @@ pending_signups = Table(
     Column("subject", Text),
     Column("browser_hash", LargeBinary),
     Column("invite_id", UUID(as_uuid=True), ForeignKey("invites.id", ondelete="CASCADE")),
+    Column("locale", Text),  # the sign-up language, copied to users.locale (ADR 0023)
     _ts("created_at", nullable=False, default_now=True),
     _ts("expires_at", nullable=False),
+    CheckConstraint(LOCALE_CHECK, name="pending_signups_locale_check"),
     CheckConstraint(
         "(provider IS NULL) = (subject IS NULL) AND (provider IS NULL) = (browser_hash IS NULL)",
         name="pending_signups_provider_together",
@@ -189,8 +195,10 @@ oauth_flows = Table(
     _user_fk(nullable=True),
     Column("invite_id", UUID(as_uuid=True), ForeignKey("invites.id", ondelete="CASCADE")),
     Column("return_to", Text),
+    Column("locale", Text),  # the start request's language, copied at the callback (ADR 0023)
     _ts("created_at", nullable=False, default_now=True),
     _ts("expires_at", nullable=False),
+    CheckConstraint(LOCALE_CHECK, name="oauth_flows_locale_check"),
     CheckConstraint("provider IN ('google', 'github', 'microsoft')", name="oauth_flows_provider"),
     CheckConstraint(
         "purpose IN ('sign_in', 'sign_up', 'link', 'reauth')", name="oauth_flows_purpose"

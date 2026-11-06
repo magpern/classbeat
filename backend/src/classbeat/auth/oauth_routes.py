@@ -8,13 +8,14 @@ before the SPA catch-all; its query string (code, state) is never logged.
 """
 
 import logging
-from typing import Annotated, Literal
+from typing import Annotated, Any, Literal
 from uuid import UUID
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, Response
 from fastapi.responses import RedirectResponse
 from pydantic import BaseModel, Field
 
+from classbeat.auth import locale as account_locale
 from classbeat.auth.clientip import bucket_ip
 from classbeat.auth.cookies import (
     OAUTH_COOKIE,
@@ -82,6 +83,9 @@ class StartIn(BaseModel):
     purpose: Literal["sign_in", "sign_up", "link", "reauth"] = "sign_in"
     invite_code: str | None = Field(default=None, max_length=FIELD_MAX)
     return_to: str | None = Field(default=None, max_length=FIELD_MAX)
+    # The app's resolved language (ADR 0023 section 2): kept on the flow for the callback, which is
+    # a redirect with no body. Any value is accepted; one that is not offered is ignored.
+    locale: Any = None
 
 
 class StartOut(BaseModel):
@@ -147,6 +151,7 @@ async def start(
             user_id=user_id,
             invite_id=invite_id,
             return_to=safe_return_to(body.return_to),
+            locale=account_locale.for_new_account(request, body.locale),
         )
     set_oauth_cookie(response, flow.cookie)
     return StartOut(
