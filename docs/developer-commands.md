@@ -390,6 +390,16 @@ npm run build        # typecheck, then Vite writes frontend/dist
   locale, never a path built from a locale). Dates, numbers, money and durations come from `src/i18n/format.ts`
   (no `toLocale*` or `toFixed` for shown text). `public/locale-init.js` sets `<html lang>` before first paint and
   its list must equal the manifest (`src/i18n/i18n.test.tsx`). `src/i18n/testing/xx.ts` is a test-only catalogue.
+  The guards (ML3, `src/i18n/guard.test.ts`, helpers in `src/i18n/testing/`): a non-test `.tsx` outside `src/i18n/`
+  and `pages/admin/` may not hold JSX text, a string in a JSX expression or a text attribute (`aria-label`,
+  `placeholder`, `title`, `alt`, `label`, `hint` ...) with letters, brand names aside: write a key in `en.ts` and use
+  `t()` or `Trans`. Files not yet moved are in `src/i18n/hardcoded-allowlist.json`, which only shrinks: remove a file
+  when it is clean and lower `CEILING` in the test; adding one fails. Every `src/i18n/<code>.ts` (default export) must
+  have all of English's keys except those in `src/i18n/untranslated.json` (a flat list of keys; a listed key must exist
+  in English and be missing from the catalogue), the same bare `{name}` placeholders, the locale's plural categories
+  and no markup. `locales.json`, the import map, the catalogue files and `locale-init.js` must list the same locales.
+  Outside `format.ts` and the admin area, `toLocaleString`, `toLocaleDateString`, `toLocaleTimeString` and `toFixed`
+  fail. The e2e Playwright config pins the browser locale to `en`.
 - Fonts are bundled (`@fontsource-variable/inter`, `@fontsource/archivo` 700 and 800, SIL OFL) and served from
   our origin; nothing is requested from a third-party host at runtime (`src/no-third-party-hosts.test.ts`
   guards the sources), with **one allowed exception**: album and playlist covers from Spotify's image hosts
