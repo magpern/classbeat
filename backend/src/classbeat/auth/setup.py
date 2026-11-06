@@ -108,7 +108,7 @@ def attach_state(
     # is process-global (``auth.notices``): the last app created in a process wins, and
     # ``detach_state`` clears it. Fine for one app per process; tests that build several apps
     # must not rely on which mailer a notice goes through.
-    register_security_notifier(MailNotifier(app.state.mailer))
+    register_security_notifier(MailNotifier(app.state.mailer, settings))
 
 
 def detach_state(app: FastAPI) -> None:

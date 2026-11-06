@@ -126,7 +126,7 @@ async def _link(db: AsyncSession, req: Request) -> Outcome:
             ip=req.ip,
             detail={"provider": req.flow.provider},
         )
-        mail = mails.identity_linked_notice(info.email, req.flow.provider)
+        mail = mails.identity_linked_notice(req.settings, info.email, req.flow.provider)
         return Outcome("ok", mail=mail, next="linked")
     owner = await identity_owner(db, req.flow.provider, ident.subject)
     if owner is not None and owner[0] == user_id:
@@ -303,7 +303,7 @@ async def _create_account(db: AsyncSession, req: Request, email: str) -> Outcome
         return _fail(exc.code)
     await record_event(db, "signup_confirmed", user_id=user_id, ip=req.ip)
     outcome = await _session_for(db, req, user_id)
-    outcome.mail = mails.identity_linked_notice(email, req.flow.provider)
+    outcome.mail = mails.identity_linked_notice(req.settings, email, req.flow.provider)
     return outcome
 
 

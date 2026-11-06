@@ -144,5 +144,9 @@ async def confirm_email_change(
         if exc.reason == "invalid_token":
             await reserve(request, [Bucket(SIGN_IN_IP, bucket_ip(request_ip(request)))])
         raise refuse(exc.status, exc.reason) from None
-    background.add_task(send_logged, mailer(request), mails.email_changed_notice(old_email))
+    background.add_task(
+        send_logged,
+        mailer(request),
+        mails.email_changed_notice(request.app.state.settings, old_email),
+    )
     return Changed(email=new_email)

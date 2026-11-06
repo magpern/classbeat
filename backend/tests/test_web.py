@@ -152,6 +152,24 @@ async def test_serves_static_files_and_the_spa_fallback(
             assert page.headers["content-type"].startswith("text/html"), path
 
 
+async def test_only_email_assets_are_cross_origin_and_cached(
+    unreachable_database_url: str, static_dir: Path
+) -> None:
+    """The mail logo is loaded by mail clients from another origin (ADR 0022 section 3)."""
+    (static_dir / "email").mkdir()
+    (static_dir / "email" / "logo.png").write_bytes(b"\x89PNG")
+    async with make_client(unreachable_database_url, static_dir=static_dir) as client:
+        logo = await client.get("/email/logo.png")
+        assert logo.status_code == 200
+        assert logo.content == b"\x89PNG"
+        assert logo.headers["cross-origin-resource-policy"] == "cross-origin"
+        assert logo.headers["cache-control"] == "public, max-age=604800"
+        for path in ("/assets/app.js", "/index.html", "/classes/1", "/email/missing.png"):
+            other = await client.get(path)
+            assert "cross-origin-resource-policy" not in other.headers, path
+            assert "max-age" not in other.headers.get("cache-control", ""), path
+
+
 async def test_api_paths_are_never_answered_by_the_spa_fallback(
     unreachable_database_url: str, static_dir: Path
 ) -> None:

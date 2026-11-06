@@ -25,9 +25,25 @@ class Received:
     def subject(self) -> str:
         return str(self.message["Subject"])
 
+    def _part(self, subtype: str) -> Message | None:
+        for part in self.message.walk():
+            if part.get_content_type() == f"text/{subtype}":
+                return part
+        return None
+
     @property
     def text(self) -> str:
-        payload = self.message.get_payload(decode=True)
+        part = self._part("plain")
+        assert part is not None, "the mail has no text part"
+        payload = part.get_payload(decode=True)
+        assert isinstance(payload, bytes)
+        return payload.decode()
+
+    @property
+    def html(self) -> str:
+        part = self._part("html")
+        assert part is not None, "the mail has no HTML part"
+        payload = part.get_payload(decode=True)
         assert isinstance(payload, bytes)
         return payload.decode()
 

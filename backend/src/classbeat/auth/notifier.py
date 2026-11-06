@@ -7,15 +7,17 @@ only, so a mail error here simply propagates.
 from uuid import UUID
 
 from classbeat.auth import mails
+from classbeat.config import Settings
 from classbeat.mail import Mailer
 
 
 class MailNotifier:
-    def __init__(self, mailer: Mailer) -> None:
+    def __init__(self, mailer: Mailer, settings: Settings) -> None:
         self._mailer = mailer
+        self._settings = settings
 
     async def totp_enrolled(self, user_id: UUID, email: str) -> None:
-        await self._mailer.send(mails.totp_enrolled_notice(email))
+        await self._mailer.send(mails.totp_enrolled_notice(self._settings, email))
 
     async def mfa_failures(self, user_id: UUID, email: str) -> None:
-        await self._mailer.send(mails.mfa_failures_notice(email))
+        await self._mailer.send(mails.mfa_failures_notice(self._settings, email))

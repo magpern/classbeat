@@ -1,0 +1,16 @@
+A sign-in method was added
+==========================
+
+Github was linked to your classbeat account as a way to sign in.
+
+When it happened: 6 November 2026, 12:30 UTC
+
+Review your account:
+https://classbeat.example.test/account
+
+If this wasn't you, sign in, remove it from your account page and change your password. Contact us at support@classbeat.eu
+
+--
+You got this security notice because this is the email address of a classbeat account. These notices are sent for your protection.
+classbeat: https://classbeat.example.test
+Questions? Write to support@classbeat.eu
