@@ -372,8 +372,10 @@ async def test_the_job_view_carries_the_category_and_its_plain_sentence(
     got = (await rider.browser.get(f"/api/jobs/{failed}")).json()
     assert got["error_category"] == "pool_too_small"
     assert got["error_message"] == SONG_SENTENCES["pool_too_small"]
+    assert (got["sentence"], got["sentence_params"]) == ("job.pool_too_small", {})
     queued = new_job(admin, rider.user_id)
     assert (await rider.browser.get(f"/api/jobs/{queued}")).json()["error_message"] is None
+    assert (await rider.browser.get(f"/api/jobs/{queued}")).json()["sentence"] is None
 
 
 @pytest.mark.parametrize("tamper", ["title", "hash"])

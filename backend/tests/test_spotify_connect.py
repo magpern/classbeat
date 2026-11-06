@@ -102,6 +102,8 @@ async def test_happy_path_connects_and_stores_ciphertext_only(
         "client_id": CLIENT_A,
         "last_error": None,
         "last_error_message": None,
+        "last_error_sentence": None,
+        "last_error_sentence_params": {},
         "callback_url": CALLBACK_URL,
         "pool_consent": False,
         "consent_version": None,

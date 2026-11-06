@@ -1,41 +1,36 @@
+import type { CatalogueKey } from '../i18n/en'
+import { t } from '../i18n/t'
+
 // What the page says for each Spotify error category (ADR 0009 section 8). Only the category
 // comes from the server or the callback's query; a provider message is never shown.
 
-const UNKNOWN = 'Something went wrong with Spotify. Try again later.'
-const SCOPE = 'Spotify did not give the access classbeat needs. Connect again and allow it.'
-
-const SENTENCES: Record<string, string> = {
-  invalid_grant: 'Spotify no longer accepts the connection. Reconnect Spotify.',
-  app_misconfigured:
-    'Spotify does not recognise this app setup. Check the Client ID and the redirect URI in your Spotify app.',
-  not_allowlisted:
-    "Spotify refused this account. In your Spotify app's User Management add this account's name and email (Development Mode allows 5 people), and make sure the app's owner has Spotify Premium.",
-  forbidden: 'Spotify refused this request for your account or playlist.',
-  upstream_unavailable: 'Spotify is not answering.',
-  not_found: 'Spotify could not find that playlist.',
-  scope_mismatch: SCOPE,
-  invalid_response: SCOPE,
-  account_changed:
-    'This is a different Spotify account than before. Confirm to switch (classbeat forgets the working playlist).',
-  access_denied: 'Spotify was not connected.',
-}
-
-function plural(n: number, unit: string): string {
-  return n === 1 ? `1 ${unit}` : `${String(n)} ${unit}s`
+// The sentences are the catalogue's `sentence.spotify.<category>` entries, the same codes the
+// backend sends (ADR 0023 section 6); a category with no entry is `sentence.spotify.unknown`.
+const KEYS: Record<string, CatalogueKey> = {
+  invalid_grant: 'sentence.spotify.invalid_grant',
+  app_misconfigured: 'sentence.spotify.app_misconfigured',
+  not_allowlisted: 'sentence.spotify.not_allowlisted',
+  forbidden: 'sentence.spotify.forbidden',
+  rate_limited: 'sentence.spotify.rate_limited',
+  quota_exhausted: 'sentence.spotify.quota_exhausted',
+  upstream_unavailable: 'sentence.spotify.upstream_unavailable',
+  not_found: 'sentence.spotify.not_found',
+  scope_mismatch: 'sentence.spotify.scope_mismatch',
+  invalid_response: 'sentence.spotify.invalid_response',
+  account_changed: 'sentence.spotify.account_changed',
+  access_denied: 'sentence.spotify.access_denied',
 }
 
 /** `retryAfter` is whole seconds from the callback's query; anything else counts as 60. */
 export function spotifySentence(category: string, retryAfter: number | null = null): string {
   const seconds = retryAfter !== null && retryAfter > 0 ? retryAfter : 60
   if (category === 'rate_limited') {
-    const minutes = Math.max(1, Math.ceil(seconds / 60))
-    return `Spotify asks to slow down; trying again in about ${plural(minutes, 'minute')}.`
+    return t(KEYS.rate_limited!, { count: Math.max(1, Math.ceil(seconds / 60)) })
   }
   if (category === 'quota_exhausted') {
-    const hours = Math.max(1, Math.ceil(seconds / 3600))
-    return `Your Spotify app has used up its allowance for now. Try again in about ${plural(hours, 'hour')}.`
+    return t(KEYS.quota_exhausted!, { count: Math.max(1, Math.ceil(seconds / 3600)) })
   }
-  return Object.hasOwn(SENTENCES, category) ? (SENTENCES[category] ?? UNKNOWN) : UNKNOWN
+  return t(Object.hasOwn(KEYS, category) ? KEYS[category]! : 'sentence.spotify.unknown')
 }
 
 /** Reads `?retry_after=` as a positive whole number of seconds, else null. */

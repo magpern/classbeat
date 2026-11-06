@@ -7,8 +7,10 @@ import {
   startSpotify,
   type SpotifyStatus,
 } from '../../api/spotify'
+import { sentenceText } from '../../api/sentences'
 import { parseRetryAfter, spotifySentence } from '../../api/spotifyMessages'
 import { useGuard } from '../../auth/prompts'
+import { useT } from '../../i18n/I18n'
 import { goToProvider } from '../../lib/navigation'
 import { Link, useQuery } from '../../router/Router'
 import { Field, Notice, Section, useAction } from '../forms'
@@ -100,6 +102,7 @@ export function SpotifySummary() {
 
 /** The Spotify wizard, the connection card and the consent step (the page /account/spotify). */
 export function SpotifyConnection() {
+  const t = useT()
   const guard = useGuard()
   const query = useQuery()
   const result = query.get('result')
@@ -167,7 +170,8 @@ export function SpotifyConnection() {
   const lastError =
     status.lastError === null
       ? null
-      : (status.lastErrorMessage ?? spotifySentence(status.lastError))
+      : (sentenceText(t, status.lastErrorSentence, status.lastErrorMessage) ??
+        spotifySentence(status.lastError))
 
   return (
     <div className="stack">
