@@ -1,0 +1,104 @@
+import { createContext, Fragment, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
+import type { CatalogueKey } from './en'
+import {
+  DEFAULT_LOCALE,
+  resolveBrowserLocale,
+  setActiveLocale,
+  storeLocale,
+  type Locale,
+} from './locales'
+import { loadCatalogue, translate, type Params, type TFunction } from './t'
+
+interface I18n {
+  locale: Locale
+  t: TFunction
+  setLocale: (locale: Locale) => void
+}
+
+const fallback: I18n = {
+  locale: DEFAULT_LOCALE,
+  t: (key, params) => translate(DEFAULT_LOCALE, key, params),
+  setLocale: () => undefined,
+}
+
+const Context = createContext<I18n>(fallback)
+
+/**
+ * Provides the locale and `t`. It starts in `initial` (the browser's choice), loads that catalogue
+ * and re-renders once it is there; until then, and for any missing key, the text is English.
+ */
+export function I18nProvider({ children, initial }: { children: ReactNode; initial?: Locale }) {
+  const [wanted, setWanted] = useState<Locale>(() => initial ?? resolveBrowserLocale())
+  const [ready, setReady] = useState<Locale>(DEFAULT_LOCALE)
+
+  useEffect(() => {
+    let current = true
+    void loadCatalogue(wanted).then((ok) => {
+      if (!current || !ok) return
+      setActiveLocale(wanted)
+      document.documentElement.setAttribute('lang', wanted)
+      setReady(wanted)
+    })
+    return () => {
+      current = false
+    }
+  }, [wanted])
+
+  const value = useMemo<I18n>(
+    () => ({
+      locale: ready,
+      t: (key, params) => translate(ready, key, params),
+      setLocale: (locale) => {
+        storeLocale(locale)
+        setWanted(locale)
+      },
+    }),
+    [ready],
+  )
+  return <Context value={value}>{children}</Context>
+}
+
+export function useT(): TFunction {
+  return useContext(Context).t
+}
+
+export function useLocale(): { locale: Locale; setLocale: (locale: Locale) => void } {
+  const { locale, setLocale } = useContext(Context)
+  return { locale, setLocale }
+}
+
+/**
+ * A sentence with named slots for links and emphasis: the catalogue text holds `{name}` and no
+ * markup; each slot is a React node. A slot the text does not name is dropped; a name with no slot
+ * stays as written.
+ */
+export function Trans({
+  id,
+  params,
+  slots,
+}: {
+  id: CatalogueKey
+  params?: Params
+  slots: Readonly<Record<string, ReactNode>>
+}) {
+  const t = useT()
+  const marker = '\u0000'
+  const text = t(id, {
+    ...params,
+    ...Object.fromEntries(
+      Object.keys(slots).map((name) => [name, `${marker}${name}${marker}`] as const),
+    ),
+  })
+  const parts = text.split(marker)
+  return (
+    <>
+      {parts.map((part, index) =>
+        index % 2 === 1 && Object.hasOwn(slots, part) ? (
+          <Fragment key={index}>{slots[part]}</Fragment>
+        ) : (
+          <Fragment key={index}>{part}</Fragment>
+        ),
+      )}
+    </>
+  )
+}

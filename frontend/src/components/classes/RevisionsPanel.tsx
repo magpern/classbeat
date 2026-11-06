@@ -1,10 +1,10 @@
 import type { RevisionSummary } from '../../api/classes'
 import { originLabel } from '../../api/classMessages'
 import { clock } from '../../lib/workout'
+import { dateTime } from '../../i18n/format'
 
 function when(iso: string): string {
-  const date = new Date(iso)
-  return Number.isNaN(date.getTime()) ? '' : date.toLocaleString()
+  return dateTime(iso, '')
 }
 
 /** The versions of the class, newest first; the current one is marked, one is open for viewing. */

@@ -1,6 +1,7 @@
 import { ApiError, get } from './client'
 import { count, flag, isObject, list, object, optionalText, text, type JsonObject } from './decode'
 import { clock } from '../lib/workout'
+import { decimal, plain } from '../i18n/format'
 
 // The class history (ADR 0007 amendment of 2026-11-03, part H; backend classbeat/classes/history.py):
 // the timeline of a class's versions and the comparison of two. Server text (a chat request, a
@@ -198,7 +199,7 @@ function plural(n: number, one: string, many: string): string {
 }
 
 function tssText(value: number): string {
-  return Number.isInteger(value) ? String(value) : value.toFixed(1)
+  return Number.isInteger(value) ? plain(value) : decimal(value, 1)
 }
 
 /** The comparison in plain sentences, from the older version to the newer one. */

@@ -1,5 +1,6 @@
 import type { RuleHit } from '../api/classes'
 import { clock } from './workout'
+import { decimal } from '../i18n/format'
 
 /**
  * The words of the pattern notes (ADR 0017 section 4), keyed by rule id. The sentences mirror the
@@ -48,9 +49,8 @@ function amount(metric: string, value: number): string {
   if (metric.endsWith('_s')) return clock(value)
   if (metric.endsWith('_share') || metric.includes('_share_')) return `${String(Math.round(value * 100))}%`
   if (metric === 'sprint_count') return String(Math.round(value))
-  if (metric === 'intensity_factor' || metric === 'work_rest_ratio') return value.toFixed(2)
-  if (metric === 'tss_per_minute') return value.toFixed(1)
-  return value.toFixed(1)
+  if (metric === 'intensity_factor' || metric === 'work_rest_ratio') return decimal(value, 2)
+  return decimal(value, 1)
 }
 
 /** "Here 4:00, usual 6:10 or more" / "up to 17:24" / "between a and b". */

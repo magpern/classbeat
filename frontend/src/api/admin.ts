@@ -11,6 +11,7 @@ import {
   type JsonObject,
 } from './decode'
 import { errorMessage } from './messages'
+import { usd } from '../i18n/format'
 
 // The admin area's API (ADR 0011 section 6): Users (backend/src/classbeat/admin/users.py, #218)
 // and Codes (backend/src/classbeat/admin/codes.py, #220). Every route is behind the admin gate;
@@ -411,5 +412,5 @@ export function adminError(error: unknown): string {
 
 /** Micro-dollars as dollars and cents (the admin sees costs; users never do). */
 export function dollars(micros: number): string {
-  return `$${(micros / 1_000_000).toFixed(2)}`
+  return usd(micros / 1_000_000)
 }

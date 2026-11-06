@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { getUsage, type Usage as UsageData } from '../../api/usage'
+import { integer, month as formatMonth, usdMicros } from '../../i18n/format'
 import { Notice, Section } from '../forms'
 
 // What the figure leaves out, as the backend's `notes` codes (ADR 0007 section 10).
@@ -22,18 +23,7 @@ const KINDS: Record<string, string> = {
 }
 
 export function dollars(micros: number): string {
-  if (micros <= 0) return '$0.00'
-  if (micros < 10_000) return 'under $0.01'
-  return `$${(micros / 1_000_000).toFixed(2)}`
-}
-
-const number = new Intl.NumberFormat('en-US')
-
-function monthName(month: string): string {
-  const match = /^(\d{4})-(\d{2})$/.exec(month)
-  if (match === null) return month
-  const date = new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, 1))
-  return date.toLocaleString('en-US', { month: 'long', year: 'numeric', timeZone: 'UTC' })
+  return usdMicros(micros)
 }
 
 /**
@@ -87,11 +77,11 @@ export function Usage() {
   const tokens = total.inputTokens + total.outputTokens + total.cacheReadTokens + total.cacheWriteTokens
   return (
     <Section title="Usage">
-      <p>Your use in {monthName(usage.month)} (UTC months).</p>
+      <p>Your use in {formatMonth(usage.month)} (UTC months).</p>
       <dl className="facts" data-testid="usage-facts">
         <div>
           <dt>Tokens</dt>
-          <dd>{number.format(tokens)}</dd>
+          <dd>{integer(tokens)}</dd>
         </div>
         <div>
           <dt>Estimated cost</dt>
@@ -99,18 +89,18 @@ export function Usage() {
         </div>
         <div>
           <dt>Classes designed</dt>
-          <dd>{number.format(usage.classesDesigned)}</dd>
+          <dd>{integer(usage.classesDesigned)}</dd>
         </div>
         <div>
           <dt>Revisions</dt>
-          <dd>{number.format(usage.revisions)}</dd>
+          <dd>{integer(usage.revisions)}</dd>
         </div>
       </dl>
       <p className="muted">
-        Tokens are the pieces of text the designer reads and writes: {number.format(total.inputTokens)}{' '}
-        in, {number.format(total.outputTokens)} out
+        Tokens are the pieces of text the designer reads and writes: {integer(total.inputTokens)}{' '}
+        in, {integer(total.outputTokens)} out
         {total.cacheReadTokens + total.cacheWriteTokens > 0
-          ? `, and ${number.format(total.cacheReadTokens + total.cacheWriteTokens)} reused from earlier requests`
+          ? `, and ${integer(total.cacheReadTokens + total.cacheWriteTokens)} reused from earlier requests`
           : ''}
         . Saving to MOWL uses none.
       </p>
@@ -131,7 +121,7 @@ export function Usage() {
                 <td>{Object.hasOwn(KINDS, row.jobKind) ? KINDS[row.jobKind] : row.jobKind}</td>
                 <td>{row.model}</td>
                 <td>
-                  {number.format(
+                  {integer(
                     row.inputTokens + row.outputTokens + row.cacheReadTokens + row.cacheWriteTokens,
                   )}
                 </td>
