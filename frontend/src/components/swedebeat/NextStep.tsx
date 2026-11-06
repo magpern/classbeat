@@ -17,6 +17,8 @@ import {
   type SwedebeatMatch,
 } from '../../api/swedebeatMatch'
 import { getSwedebeatMixes, type SwedebeatMix } from '../../api/swedebeatMixes'
+import { Trans, useT } from '../../i18n/I18n'
+import type { TFunction } from '../../i18n/t'
 import { minutes } from '../../lib/songs'
 import { actionKey, dropActionKey } from '../../lib/submittedInput'
 import { Link, useRouter } from '../../router/Router'
@@ -37,26 +39,28 @@ function whenText(iso: string): string {
   return dateTime(iso)
 }
 
-function verdictText(handoff: Handoff): { tone: 'ok' | 'warn'; text: string } | null {
+function verdictText(handoff: Handoff, t: TFunction): { tone: 'ok' | 'warn'; text: string } | null {
   switch (handoff.verdict) {
     case 'ok':
-      return { tone: 'ok', text: 'That is your mix. Its length matches your selection.' }
+      return { tone: 'ok', text: t('swnext.ok') }
     case 'too_short': {
-      const where =
-        handoff.missingPositions.length > 0
-          ? ` Songs ${handoff.missingPositions.join(', ')} may be missing.`
-          : ''
-      return { tone: 'warn', text: `That mix is shorter than expected.${where}` }
+      return {
+        tone: 'warn',
+        text:
+          handoff.missingPositions.length > 0
+            ? t('swnext.tooShortWhere', { positions: handoff.missingPositions.join(', ') })
+            : t('swnext.tooShort'),
+      }
     }
     case 'too_long':
       return {
         tone: 'warn',
-        text: 'That mix is longer than expected. A song may have been added or repeated.',
+        text: t('swnext.tooLong'),
       }
     case 'not_found':
       return {
         tone: 'warn',
-        text: 'Swedebeat has not shown a new mix yet. Finish it in the app, let it sync, then check again.',
+        text: t('swnext.notFound'),
       }
     case null:
       return null
@@ -77,6 +81,7 @@ export function NextStep({
   match: SwedebeatMatch
   onReload: () => void
 }) {
+  const t = useT()
   const classId = summary.id
   const [handoff, setHandoff] = useState<Handoff | null>(null)
   const [loaded, setLoaded] = useState(false)
@@ -173,7 +178,7 @@ export function NextStep({
             if (job.errorCategory === 'needs_reconnect') setReconnect(true)
             setJobProblem(failureText(job.errorCategory, job.kind).title)
           } else if (job.state !== 'completed') {
-            setJobProblem('The check was stopped. Check again.')
+            setJobProblem(t('swnext.stopped'))
           }
           break
         }
@@ -183,6 +188,7 @@ export function NextStep({
         if (alive.current) setWaiting(false)
       }
     },
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- `t` follows the language, not the poll
     [classId],
   )
 
@@ -251,10 +257,8 @@ export function NextStep({
   if (dismissed) {
     return (
       <Card role="region" aria-labelledby={titleId}>
-        <CardTitle id={titleId}>Next, in the Swedebeat app</CardTitle>
-        <p className="m-0 text-muted">
-          Not now. Your selection stays approved; come back to this class when you are ready.
-        </p>
+        <CardTitle id={titleId}>{t('swnext.title')}</CardTitle>
+        <p className="m-0 text-muted">{t('swnext.notNow')}</p>
         <p className="m-0">
           <Button
             variant="secondary"
@@ -262,14 +266,14 @@ export function NextStep({
               setDismissed(false)
             }}
           >
-            Show the steps again
+            {t('swnext.showAgain')}
           </Button>
         </p>
       </Card>
     )
   }
 
-  const verdict = handoff === null ? null : verdictText(handoff)
+  const verdict = handoff === null ? null : verdictText(handoff, t)
   const expectedSec = Math.max(match.swedebeatSec - CHANGE_SEC * Math.max(match.songs.length - 1, 0), 0)
   const busy = action.busy || waiting
   const verified = handoff?.state === 'verified'
@@ -277,77 +281,90 @@ export function NextStep({
 
   return (
     <Card role="region" aria-labelledby={titleId} className="flex flex-col gap-3" data-testid="next-step">
-      <CardTitle id={titleId}>Next, in the Swedebeat app</CardTitle>
+      <CardTitle id={titleId}>{t('swnext.title')}</CardTitle>
       <p className="m-0 text-muted" data-testid="next-facts">
         {playlist !== null ? (
           <>
-            Playlist: <strong className="text-text">{playlist}</strong>.{' '}
+            <Trans
+              id="swnext.playlist"
+              slots={{ name: <strong className="text-text">{playlist}</strong> }}
+            />{' '}
           </>
         ) : null}
-        {match.songs.length} songs, about {minutes(expectedSec)} long as a mix.
+        {t('swnext.facts', { count: match.songs.length, length: minutes(expectedSec) })}
       </p>
       <ol className="m-0 flex list-decimal flex-col gap-1 pl-6 text-text">
-        <li>Open the Swedebeat app.</li>
-        <li>{playlist !== null ? `Match the playlist “${playlist}”.` : 'Match your playlist.'}</li>
-        <li>Create the mix.</li>
-        <li>Let it sync, then come back here.</li>
+        <li>{t('swnext.step1')}</li>
+        <li>{playlist !== null ? t('swnext.step2Named', { name: playlist }) : t('swnext.step2')}</li>
+        <li>{t('swnext.step3')}</li>
+        <li>{t('swnext.step4')}</li>
       </ol>
       {handoff !== null && handoff.state !== 'verified' && !expired ? (
         <p className="m-0 text-muted" data-testid="handoff-expiry">
-          You can leave and come back. This step stays open until {whenText(handoff.expiresAt)}; after that you start it
-          again.
+          {t('swnext.expiry', { when: whenText(handoff.expiresAt) })}
         </p>
       ) : null}
-      {expired ? (
-        <Notice>This step has expired. Press the button to start it again.</Notice>
-      ) : null}
+      {expired ? <Notice>{t('swnext.expired')}</Notice> : null}
       {loaded && verdict !== null ? (
-        <p className="notice" data-kind={verdict.tone === 'ok' ? 'success' : 'info'} role="status" data-testid="verdict">
+        <p
+          className="notice"
+          data-kind={verdict.tone === 'ok' ? 'success' : 'info'}
+          role="status"
+          data-testid="verdict"
+        >
           {verdict.text}
         </p>
       ) : null}
       {waiting ? (
         <p className="m-0 text-muted" role="status">
-          Checking your mixes in MOWL
+          {t('swnext.checking')}
         </p>
       ) : null}
       {preference === 'off' ? (
         <p className="m-0 text-muted" data-testid="needs-preference">
-          “I use Swedebeat” is off. Turn it on on <Link to="/account#connections">your account page</Link> to
-          start this step or design the class on the mix. A step you already started can still be checked.
+          <Trans
+            id="swnext.prefOff"
+            slots={{ link: <Link to="/account#connections">{t('swnext.accountPage')}</Link> }}
+          />
         </p>
       ) : null}
       {preference === 'unknown' ? (
         <p className="m-0 text-muted" data-testid="preference-unknown">
-          classbeat could not check your Swedebeat setting. Reload the page to design the class on this mix.
+          {t('swnext.prefUnknown')}
         </p>
       ) : null}
       {jobProblem !== null ? <Notice kind="error">{jobProblem}</Notice> : null}
       {reconnect ? <ReconnectPrompt /> : null}
       {action.error ? <Notice kind="error">{action.error}</Notice> : null}
       {needsPicker ? (
-        <MixPicker mixes={mixes} failed={mixesFailed} candidates={handoff.candidates} value={picked} onChange={setPicked} />
+        <MixPicker
+          mixes={mixes}
+          failed={mixesFailed}
+          candidates={handoff.candidates}
+          value={picked}
+          onChange={setPicked}
+        />
       ) : null}
       {verified ? (
         <div className="flex flex-wrap items-center gap-3">
-          <Chip tone="ok">Mix verified</Chip>
+          <Chip tone="ok">{t('swnext.verified')}</Chip>
           {preference === 'on' ? (
             <Button disabled={busy || summary.openJob !== null} onClick={design}>
-              Design the class on this mix
+              {t('swnext.design')}
             </Button>
           ) : null}
         </div>
       ) : (
         <div className="flex flex-wrap gap-3">
           <Button disabled={busy || !loaded || (preference === 'off' && handoff === null)} onClick={press}>
-            {checked ? 'Check again' : 'I made the mix'}
+            {checked ? t('swnext.checkAgain') : t('swnext.made')}
           </Button>
           <Button variant="secondary" disabled={busy} onClick={later}>
-            Not now
+            {t('swnext.later')}
           </Button>
           {handoff !== null && (handoff.verdict === 'too_short' || handoff.verdict === 'too_long') ? (
             <Button variant="secondary" disabled={busy || chosen === null} onClick={confirm}>
-              This is the right mix
+              {t('swnext.right')}
             </Button>
           ) : null}
         </div>
@@ -369,18 +386,23 @@ function MixPicker({
   value: string | null
   onChange: (id: string) => void
 }) {
+  const t = useT()
   const name = useId()
-  if (failed) return <Notice kind="error">Your Swedebeat mixes could not be loaded from MOWL. Check again later.</Notice>
-  if (mixes === null) return <p className="m-0 text-muted">Loading your mixes</p>
+  if (failed) return <Notice kind="error">{t('swnext.mixesFailed')}</Notice>
+  if (mixes === null) return <p className="m-0 text-muted">{t('swnext.mixesLoading')}</p>
   if (mixes.length === 0) return null
   const ordered = [...mixes].sort((a, b) => Number(candidates.includes(b.mixId)) - Number(candidates.includes(a.mixId)))
   return (
     <fieldset className="m-0 flex flex-col gap-2 rounded-md border border-line p-3">
-      <legend className="px-1 text-[0.9375rem] font-medium text-text">Which one did you make?</legend>
+      <legend className="px-1 text-[0.9375rem] font-medium text-text">{t('swnext.which')}</legend>
       {ordered.map((mix) => {
         const id = `${name}-${mix.mixId}`
         return (
-          <label key={mix.mixId} htmlFor={id} className="flex min-h-11 cursor-pointer items-center gap-3 text-text">
+          <label
+            key={mix.mixId}
+            htmlFor={id}
+            className="flex min-h-11 cursor-pointer items-center gap-3 text-text"
+          >
             <input
               id={id}
               type="radio"
@@ -394,7 +416,7 @@ function MixPicker({
               {mix.name}
               {mix.durationSeconds !== null ? ` (${minutes(mix.durationSeconds)})` : ''}
             </span>
-            {candidates.includes(mix.mixId) ? <Chip tone="ok">New</Chip> : null}
+            {candidates.includes(mix.mixId) ? <Chip tone="ok">{t('swnext.new')}</Chip> : null}
           </label>
         )
       })}

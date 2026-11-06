@@ -3,6 +3,7 @@ import { getConnections } from '../api/connections'
 import { getMowlPlaylists, type Playlist } from '../api/jobs'
 import { getClassPlaylists, type MadePlaylist } from '../api/music'
 import { getSpotifyStatus } from '../api/spotify'
+import { Trans, useT } from '../i18n/I18n'
 import { RequireAuth } from '../components/RequireAuth'
 import { CoverMosaic, initials } from '../components/songs/CoverArt'
 import { SpotifyAttribution } from '../components/songs/SpotifyAttribution'
@@ -52,37 +53,34 @@ export function MusicPage() {
 }
 
 function Music() {
+  const t = useT()
   const connect = useLoad(spotifyNeedsConnect)
   const made = useLoad(getClassPlaylists)
   const mowl = useLoad(getMowlPlaylists)
   return (
     <div className="mx-auto flex w-full max-w-5xl flex-col gap-6">
-      <h1 className="m-0 font-display text-3xl font-extrabold">Music</h1>
+      <h1 className="m-0 font-display text-3xl font-extrabold">{t('music.page.title')}</h1>
       {connect.status === 'ready' && connect.items ? (
         <Card role="region" aria-labelledby="connect-title" className="flex flex-col gap-3">
           <CardTitle id="connect-title" className="mb-0">
-            Connect Spotify
+            {t('music.page.connectTitle')}
           </CardTitle>
-          <CardContent>
-            Connect Spotify to let classbeat pick songs for you and make your class playlists.
-          </CardContent>
+          <CardContent>{t('music.page.connectText')}</CardContent>
           <div>
             <Button asChild>
-              <Link to="/account/spotify">Connect Spotify</Link>
+              <Link to="/account/spotify">{t('music.page.connectButton')}</Link>
             </Button>
           </div>
         </Card>
       ) : null}
       <section aria-labelledby="made-title" className="flex flex-col gap-3">
         <h2 id="made-title" className="m-0 font-display text-xl font-bold">
-          Playlists classbeat made
+          {t('music.page.madeTitle')}
         </h2>
-        {made.status === 'loading' ? <p className="m-0 text-muted">Loading your playlists</p> : null}
-        {made.status === 'failed' ? <p className="m-0 text-muted">Your playlists could not be loaded.</p> : null}
+        {made.status === 'loading' ? <p className="m-0 text-muted">{t('music.page.madeLoading')}</p> : null}
+        {made.status === 'failed' ? <p className="m-0 text-muted">{t('music.page.madeFailed')}</p> : null}
         {made.status === 'ready' && made.items.length === 0 ? (
-          <p className="m-0 text-muted">
-            No playlists yet. When you approve songs for a class, its playlist shows up here.
-          </p>
+          <p className="m-0 text-muted">{t('music.page.madeEmpty')}</p>
         ) : null}
         {made.status === 'ready' && made.items.length > 0 ? (
           <>
@@ -99,17 +97,19 @@ function Music() {
       </section>
       <section aria-labelledby="mowl-title" className="flex flex-col gap-3">
         <h2 id="mowl-title" className="m-0 font-display text-xl font-bold">
-          Your playlists in MOWL
+          {t('music.page.mowlTitle')}
         </h2>
-        {mowl.status === 'loading' ? <p className="m-0 text-muted">Loading your MOWL music</p> : null}
+        {mowl.status === 'loading' ? <p className="m-0 text-muted">{t('music.page.mowlLoading')}</p> : null}
         {mowl.status === 'failed' ? (
           <p className="m-0 text-muted">
-            Your MOWL playlists could not be loaded. Connect MOWL on <Link to="/account">your account page</Link>, or try
-            again in a few minutes.
+            <Trans
+              id="music.page.mowlFailed"
+              slots={{ link: <Link to="/account">{t('music.page.mowlFailedLink')}</Link> }}
+            />
           </p>
         ) : null}
         {mowl.status === 'ready' && mowl.items.length === 0 ? (
-          <p className="m-0 text-muted">MOWL lists no Spotify playlists for your account.</p>
+          <p className="m-0 text-muted">{t('music.page.mowlEmpty')}</p>
         ) : null}
         {mowl.status === 'ready' && mowl.items.length > 0 ? (
           <>
@@ -123,10 +123,11 @@ function Music() {
 }
 
 function MowlTiles({ playlists }: { playlists: Playlist[] }) {
+  const t = useT()
   return (
     <ul className="m-0 grid list-none grid-cols-2 gap-3 p-0 sm:grid-cols-3 lg:grid-cols-5">
       {playlists.map((p) => {
-        const name = p.name || 'Untitled playlist'
+        const name = p.name || t('music.page.untitled')
         return (
           <li key={p.spotifyPlaylistId} className="flex flex-col gap-2 rounded-md border border-line bg-surface p-3">
             <span
@@ -144,18 +145,22 @@ function MowlTiles({ playlists }: { playlists: Playlist[] }) {
 }
 
 function MadeCard({ playlist }: { playlist: MadePlaylist }) {
+  const t = useT()
   return (
     <Card className="flex flex-col gap-3 p-4">
       <CoverMosaic songs={playlist.songs} className="size-40 self-center" />
       <h3 className="m-0 break-words font-display text-lg font-bold">{playlist.name}</h3>
       <p className="m-0 text-[0.9375rem] text-muted">
-        For <Link to={`/classes/${playlist.classId}`}>{playlist.classTitle}</Link>
+        <Trans
+          id="music.page.forClass"
+          slots={{ link: <Link to={`/classes/${playlist.classId}`}>{playlist.classTitle}</Link> }}
+        />
       </p>
       {playlist.note !== null ? <p className="m-0 text-[0.8125rem] text-muted">{playlist.note}</p> : null}
       {playlist.link !== null ? (
         <Button asChild variant="secondary" className="self-start">
           <a href={playlist.link} target="_blank" rel="noopener noreferrer">
-            OPEN SPOTIFY
+            {t('music.page.openSpotify')}
           </a>
         </Button>
       ) : null}

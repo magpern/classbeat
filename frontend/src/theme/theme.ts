@@ -1,11 +1,13 @@
+import type { CatalogueKey } from '../i18n/en'
+
 export type ThemeChoice = 'dark' | 'light' | 'system'
 
 export const THEME_STORAGE_KEY = 'cb-theme'
 export const DEFAULT_THEME: ThemeChoice = 'dark'
-export const THEME_CHOICES: readonly { value: ThemeChoice; label: string }[] = [
-  { value: 'dark', label: 'Dark' },
-  { value: 'light', label: 'Light' },
-  { value: 'system', label: 'Same as device' },
+export const THEME_CHOICES: readonly { value: ThemeChoice; label: CatalogueKey }[] = [
+  { value: 'dark', label: 'theme.dark' },
+  { value: 'light', label: 'theme.light' },
+  { value: 'system', label: 'theme.system' },
 ]
 
 export function isThemeChoice(value: unknown): value is ThemeChoice {

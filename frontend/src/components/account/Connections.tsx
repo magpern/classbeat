@@ -9,36 +9,39 @@ import {
 import { errorMessage } from '../../api/messages'
 import { useGuard } from '../../auth/prompts'
 import { date as formatDate } from '../../i18n/format'
+import type { CatalogueKey } from '../../i18n/en'
+import { useT } from '../../i18n/I18n'
+import { t as translate } from '../../i18n/t'
 import { useLayout } from '../../hooks/useLayout'
 import { Field, Notice, Section, useAction } from '../forms'
 import { MowlQr } from './MowlQr'
 import { FORGET_WARNING } from './mowlWarning'
 
 // Plain words for the ADR 0004 section 5 categories. The raw code is never shown.
-const CONNECT_ERRORS: Record<string, string> = {
-  invalid_credentials: 'MOWL did not accept that email and password.',
-  upstream_unavailable: 'MOWL could not be reached. Try again in a few minutes.',
-  unknown: 'MOWL answered in a way classbeat did not expect. Try again later.',
+const CONNECT_ERRORS: Record<string, CatalogueKey> = {
+  invalid_credentials: 'mowl.err.invalid_credentials',
+  upstream_unavailable: 'mowl.err.upstream_unavailable',
+  unknown: 'mowl.err.unknown',
 }
 
-const LAST_ERRORS: Record<string, string> = {
-  needs_reconnect: 'MOWL no longer accepts the stored sign-in. Connect again.',
-  decrypt_failed: 'The stored sign-in could not be read. Connect again.',
-  rate_limited: 'MOWL asked classbeat to slow down.',
-  upstream_unavailable: 'MOWL could not be reached the last time.',
+const LAST_ERRORS: Record<string, CatalogueKey> = {
+  needs_reconnect: 'mowl.last.needs_reconnect',
+  decrypt_failed: 'mowl.last.decrypt_failed',
+  rate_limited: 'mowl.last.rate_limited',
+  upstream_unavailable: 'mowl.last.upstream_unavailable',
 }
 
 function connectError(error: unknown): string {
   if (error instanceof ApiError && error.status !== 429 && error.reason !== null) {
     const known = Object.hasOwn(CONNECT_ERRORS, error.reason) ? CONNECT_ERRORS[error.reason] : undefined
-    if (known !== undefined) return known
+    if (known !== undefined) return translate(known)
   }
   return errorMessage(error)
 }
 
 function lastErrorText(category: string): string {
   const known = Object.hasOwn(LAST_ERRORS, category) ? LAST_ERRORS[category] : undefined
-  return known ?? 'The last use of this connection failed.'
+  return translate(known ?? 'mowl.last.other')
 }
 
 function since(iso: string): string {
@@ -47,6 +50,7 @@ function since(iso: string): string {
 
 /** MOWL (Intelligent Cycling): connect with email and password, see the status, disconnect. */
 export function Connections() {
+  const t = useT()
   const guard = useGuard()
   const [mowl, setMowl] = useState<Connection | null | undefined>(undefined)
   // ADR 0024: the QR panel, when the server offers it and the layout is wider than a phone's.
@@ -88,7 +92,7 @@ export function Connections() {
     void action
       .run(async () => {
         setMowl(await guard(() => connectMowl(sent.email, sent.password)))
-        setNote('MOWL is connected.')
+        setNote(t('mowl.connected'))
       }, connectError)
       .finally(() => {
         setPassword('') // the password is not kept on the page after the attempt
@@ -96,10 +100,13 @@ export function Connections() {
     setEmail(sent.email)
   }
 
-  const scanned = useCallback((connection: Connection) => {
-    setMowl(connection)
-    setNote('MOWL is connected.')
-  }, [])
+  const scanned = useCallback(
+    (connection: Connection) => {
+      setMowl(connection)
+      setNote(t('mowl.connected'))
+    },
+    [t],
+  )
 
   const disconnect = () => {
     setNote(null)
@@ -107,32 +114,32 @@ export function Connections() {
     void action.run(async () => {
       await guard(() => disconnectMowl())
       await load()
-      setNote('MOWL is disconnected. classbeat no longer uses its sign-in.')
+      setNote(t('mowl.disconnected'))
     })
   }
 
   const needsForm = mowl === null || mowl?.status === 'needs_reconnect'
   return (
-    <Section title="MOWL (Intelligent Cycling)">
+    <Section title={t('mowl.title')}>
       {note ? <Notice kind="success">{note}</Notice> : null}
       {action.error ? <Notice kind="error">{action.error}</Notice> : null}
-      {loadFailed ? <Notice kind="error">The connections could not be loaded.</Notice> : null}
-      {mowl === undefined && !loadFailed ? <p>Loading</p> : null}
+      {loadFailed ? <Notice kind="error">{t('mowl.loadFailed')}</Notice> : null}
+      {mowl === undefined && !loadFailed ? <p>{t('common.loading')}</p> : null}
       {mowl ? (
         <ul className="rows">
           <li>
-            <span>Status</span>
+            <span>{t('mowl.status')}</span>
             <span data-testid="mowl-status">
-              {mowl.status === 'connected' ? 'Connected' : 'Needs to be connected again'}
+              {mowl.status === 'connected' ? t('mowl.statusConnected') : t('mowl.statusAgain')}
             </span>
           </li>
           <li>
-            <span>Connected since</span>
+            <span>{t('mowl.since')}</span>
             <span className="muted">{since(mowl.connectedAt)}</span>
           </li>
           {mowl.lastError ? (
             <li>
-              <span>Last problem</span>
+              <span>{t('mowl.lastProblem')}</span>
               <span className="muted">{lastErrorText(mowl.lastError)}</span>
             </li>
           ) : null}
@@ -140,18 +147,15 @@ export function Connections() {
       ) : null}
       {needsForm && mowl ? (
         <p className="notice" data-kind="info" data-testid="reconnect-warning">
-          Connecting again replaces the stored sign-in. {FORGET_WARNING}
+          {t('mowl.reconnectWarning', { warning: FORGET_WARNING })}
         </p>
       ) : null}
       {needsForm && qrEnabled && layout !== 'phone' ? <MowlQr onConnected={scanned} /> : null}
       {needsForm ? (
         <form onSubmit={connect}>
-          <p>
-            Sign in with your Intelligent Cycling (MOWL) account. classbeat uses your password once
-            to get a sign-in token and does not keep it.
-          </p>
+          <p>{t('mowl.signInText')}</p>
           <Field
-            label="MOWL email"
+            label={t('mowl.emailLabel')}
             type="email"
             autoComplete="username"
             value={email}
@@ -161,7 +165,7 @@ export function Connections() {
             required
           />
           <Field
-            label="MOWL password"
+            label={t('mowl.passwordLabel')}
             type="password"
             autoComplete="current-password"
             value={password}
@@ -171,21 +175,18 @@ export function Connections() {
             required
           />
           <button className="button" type="submit" disabled={action.busy}>
-            {mowl ? 'Connect MOWL again' : 'Connect MOWL'}
+            {mowl ? t('mowl.connectAgainButton') : t('mowl.connectButton')}
           </button>
         </form>
       ) : null}
       {mowl ? (
         <>
-          <p className="muted">
-            Disconnecting deletes the token classbeat holds. MOWL has no way for classbeat to end
-            the sign-in on its side; change your MOWL password to end it there.
-          </p>
+          <p className="muted">{t('mowl.disconnectText')}</p>
           {confirmingDisconnect ? (
-            <div className="notice" role="group" aria-label="Confirm disconnect">
+            <div className="notice" role="group" aria-label={t('mowl.confirmDisconnect')}>
               <p>{FORGET_WARNING}</p>
               <button className="button" type="button" disabled={action.busy} onClick={disconnect}>
-                Yes, disconnect MOWL
+                {t('mowl.yesDisconnect')}
               </button>
               <button
                 className="button button--secondary"
@@ -194,7 +195,7 @@ export function Connections() {
                   setConfirmingDisconnect(false)
                 }}
               >
-                Keep it connected
+                {t('mowl.keep')}
               </button>
             </div>
           ) : (
@@ -206,7 +207,7 @@ export function Connections() {
                 setConfirmingDisconnect(true)
               }}
             >
-              Disconnect MOWL
+              {t('mowl.disconnect')}
             </button>
           )}
         </>
