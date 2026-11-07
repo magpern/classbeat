@@ -38,7 +38,7 @@ one builds it twice, what is missing, and the point at which each step is allowe
 | Worker concurrency | exists: `CLASSBEAT_WORKER_CONCURRENCY`, default 2 (1 to 16) running jobs per worker process; the worker's pool is `2n + 2` connections | `config.py`, `worker/loop.py` |
 | Global cap on concurrent mix analyses | exists (#574, merged in #630): `CLASSBEAT_MIX_ANALYSIS_CONCURRENCY`, default 1 (1 to 16). A job that must analyse and holds no slot is requeued with `analysis_slot` (attempt not counted) and `queue_claim` claims it only while fewer than the cap running jobs hold one. The count runs under one advisory lock **in the database, across all workers**; other jobs are claimed past a full cap. Kept below the summed `worker_concurrency` so analyses cannot take every slot | `docker/postgres/queue/20-queue.sql`, `jobs/queue.py`, `tests/test_analysis_slots.py`, `test_queue_functions.py` |
 | Per-user daily limit on new analyses | exists (ADR 0016 §7, A4, **not** #577 or #626): 10 per user in 24 hours, taken before the listing, attach and fetch, so a failed fetch counts; a cache hit costs none | `design/mixlimit.py` |
-| Per-user concurrent jobs | exists: `CLASSBEAT_JOBS_PER_USER`, default 2 (ADR 0005 §2, ADR 0011) | `config.py` |
+| Per-user concurrent jobs | exists: `CLASSBEAT_JOBS_PER_USER`, default 2 (ADR 0005 §2, ADR 0011). Checked when a job is created or approved (`jobs/http.py` through `quota/policies.py`), not in the queue SQL, so it holds unchanged with N workers | `config.py`, `jobs/http.py`, `quota/policies.py` |
 | General API and Save/Update rate limits | exist (#577, merged in #626): per-user and per-IP request windows, saves per hour and per day. They bound the web tier and MOWL writes; they do not bound analysis | `config.py` |
 | Plan quotas | exist (ADR 0011): classes per month, monthly cost, class length. They count design jobs and model cost; an analysis takes no credit of its own. I found no analysis-specific plan quota | `quota/`, `plans/` |
 | Per-user analysis cache | exists: `swedebeat_mix_maps`, one row per `(owner_id, mix_id)`, 30 days, newest 20 per user, valid only for the same MOWL connection, the same MOWL playlist and the current `music.MAP_VERSION`. A hit makes no request at all | `design/swedebeat_music.py` |
@@ -74,8 +74,10 @@ one builds it twice, what is missing, and the point at which each step is allowe
 - **Secrets the worker container mounts** (`compose.prod.yaml`): `database_password`,
   `app_secret_key`, `connection_kek`, `anthropic_api_key`, `openai_api_key`, `deepseek_api_key`.
   The analysis path itself needs the database, `connection_kek` (it opens the user's MOWL token to
-  list, attach and ask for the temporary link) and egress to MOWL and the media host
-  (`MOWL_MEDIA_HOSTS`, empty in production until the owner confirms the host). The analysis child
+  list, attach and ask for the temporary link) and egress to MOWL and to the one confirmed media host
+  (`MOWL_MEDIA_HOSTS` in `egress.py`, a literal, confirmed in the owner's live check of 2026-11-03
+  and added in #524). Production therefore does fetch and analyse audio for an uncached mix today:
+  that load, and that outbound access, is what a stage 3 host must account for. The analysis child
   gets none of it: a minimal environment, no socket, no files outside its directory. But the
   process around it holds the KEK ring and so can decrypt every user's MOWL, Spotify and Swedebeat
   tokens. Any host that runs this worker holds that power.
@@ -134,13 +136,13 @@ the database. To record before use:
   (jobs finish once, a killed worker's job is reaped, the cap holds), because none exists.
 
 **Trigger to leave stage 1 for stage 2:** the p95 queue wait of jobs that need an analysis slot is
-above about one minute at peak, with idle CPU on the box (the cap, not the box, is the limit: raise
+above about one minute at peak (the window and the minimum number of samples for a p95, for example the busiest hour of the week, are fixed by the stage 1 measurement issue, so the trigger can be checked), with idle CPU on the box (the cap, not the box, is the limit: raise
 the cap or add a worker). Stage 1's CPU ceiling covers a box that is already full.
 
 ### 3. A separate CPU-optimised analysis host
 
 A second server runs a worker container against the same Postgres over a private network or
-WireGuard. **Trigger:** the p95 queue wait is still above about one minute at peak with the box's
+WireGuard. **Trigger:** the p95 queue wait is still above about one minute at peak (as defined for stage 2) with the box's
 CPU saturated by the workers of stage 2, or analysis CPU measurably starves the web tier despite
 the ceiling. **Preconditions, none met today** (this stage needs its own ADR and its own security
 review, Opus, before any code):
@@ -160,7 +162,7 @@ review, Opus, before any code):
   none.
 - **Secrets on a second host:** how the files are put there with mode 0640 and the secrets group,
   rotated and revoked, and that its logs and backups follow the same rules (the web/worker split
-  of ADR 0006 §9 widens to three hosts).
+  of ADR 0006 §9 widens to three processes on two hosts).
 - **Audio on the host:** a temp directory in memory or on an encrypted disk; the swept, 0700 root
   stays. The outbound allowlist (`install_worker_allowlist`) still applies in the process.
 - **Operations:** patching, monitoring and an owner-authorized deploy for a second server (a paid
