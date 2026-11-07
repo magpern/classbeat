@@ -4,7 +4,8 @@ ADR 0019 section 6: every transaction that creates or rotates a session, links a
 revokes a user's sessions on the reset, sign-out-everywhere, ``admin mfa-reset``, ``keys wipe``
 TOTP-reset (#643) or TOTP-removal (#675) path takes ``SELECT ... FROM users WHERE id = ... FOR NO
 KEY UPDATE`` as its first lock (a reset consumes its token first, which locks only the token row).
-The admin disable and delete take the same mode through ``admin_accounts.get_account`` (#675).
+The admin disable and every account delete take the same mode through ``admin_accounts``
+(``get_account``, ``delete_account``; #675), which cannot read ``password_hash``.
 
 Why an explicit lock, not the locks the statements take anyway: inserting a session or an
 identity takes only ``FOR KEY SHARE`` on ``users``, which does not conflict with the reset's

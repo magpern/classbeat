@@ -27,13 +27,22 @@ from sqlalchemy.engine import make_url
 from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 
 from authtools import Env, running_env
+from classbeat.auth import admin_accounts
 from classbeat.auth.anomaly import EVENT_KIND
 from flows import PASSWORD, user_with_password
 from smtpfake import SmtpFake
-from test_auth_reset_races import POLLS, At, own_client, park_location_event, sessions_of
+from test_auth_reset_races import (
+    POLLS,
+    At,
+    own_client,
+    park_location_event,
+    parked,
+    sessions_of,
+)
 
 USERS = "/api/admin/users"
 EMAIL = "user@example.com"
+PARK_TIMEOUT = 30  # seconds: fail, not hang, if the parked call is never reached
 
 
 @pytest.fixture
@@ -115,7 +124,7 @@ async def beside_a_location_event(
     async with own_client(env) as a:
         moved.env = a
         moving = asyncio.ensure_future(moved.get("/api/auth/session"))
-        await inside.wait()
+        await asyncio.wait_for(inside.wait(), PARK_TIMEOUT)
         acting = asyncio.ensure_future(act())
         try:
             await until_it_waits(probe, acting)
@@ -169,8 +178,8 @@ async def test_admin_delete_and_a_location_event_both_succeed(
 async def test_the_users_own_delete_and_a_location_event_both_succeed(
     env: Env, probe: AsyncEngine, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """``POST /api/account/delete`` goes through the same ``delete_account`` (no user lock: its
-    ``DELETE FROM users`` alone deadlocked the same way before the sessions went first)."""
+    """``POST /api/account/delete`` goes through the same ``delete_account``: before the sessions
+    went first, its ``DELETE FROM users`` deadlocked the same way."""
     user_id, first, second = await two_sessions(env)
     moved, deleted = await beside_a_location_event(
         env,
@@ -181,4 +190,29 @@ async def test_the_users_own_delete_and_a_location_event_both_succeed(
     )
     assert (moved.status_code, deleted.status_code) == (200, 204), deleted.text  # no deadlock
     assert await sessions_of(env, user_id) == 0
+    assert await env.scalar("SELECT count(*) FROM users WHERE id = :u", u=user_id) == 0
+
+
+async def test_the_users_own_delete_and_a_sign_out_both_succeed(
+    env: Env, probe: AsyncEngine, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The delete parks after its sessions are deleted (uncommitted); a sign-out from the other
+    browser must wait for a lock, then both finish. ``delete_account`` takes the user row lock
+    before the sessions: without it the sign-out takes that lock, waits for its deleted session
+    row, and the delete's ``DELETE FROM users`` then waits for the sign-out, a deadlock (#675)."""
+    user_id, first, second = await two_sessions(env)
+    inside, release = parked(monkeypatch, admin_accounts, "revoke_user_sessions")
+    async with own_client(env) as a:
+        first.env = a
+        deleting = asyncio.ensure_future(
+            second.post("/api/account/delete", {"confirm_email": EMAIL})
+        )
+        await asyncio.wait_for(inside.wait(), PARK_TIMEOUT)
+        signing_out = asyncio.ensure_future(first.post("/api/auth/logout"))
+        try:
+            await until_it_waits(probe, signing_out)
+        finally:
+            release.set()
+        deleted, signed_out = await asyncio.gather(deleting, signing_out)
+    assert (deleted.status_code, signed_out.status_code) == (204, 204), signed_out.text
     assert await env.scalar("SELECT count(*) FROM users WHERE id = :u", u=user_id) == 0
