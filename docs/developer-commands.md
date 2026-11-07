@@ -505,6 +505,57 @@ npm run build        # typecheck, then Vite writes frontend/dist
   area) and fails above 250 kB (1000 bytes per kB, as Vite reports); `src/bundleSize.test.ts` tests the rules.
 - CI runs the same commands in the `frontend` job, then `check:bundle`.
 
+### Adding a language
+
+How to add a language (a two-letter code, here `nb`). The route prefix, `hreflang` and the sitemap follow the
+manifest by themselves (ADR 0027, [ADR 0023](adr/0023-multilingual.md)); the work is the content and the
+few lists below. The list comes from a trial run (issue #756): a throwaway `nb` was added in a scratch worktree
+by copying the Danish files, following the failing tests, and then discarded. Translation PRs are separate from
+the code PR that wires the language in (ADR 0023: Sonnet translator, independent Opus-class Reviewer, glossary
+`docs/i18n/glossary.md`).
+
+**Steps, in order.** "Caught by" is the test that fails if the step is left out; "nothing" means no test fails,
+so check it by hand.
+
+| # | Step | Caught by |
+|---|---|---|
+| 1 | Add the code to `frontend/src/i18n/locales.json` (the manifest; the backend reads the same file as `SUPPORTED_LOCALES`). | `guard.test.ts` ("equals the import map, the catalogue files and locale-init.js"), `i18n.test.tsx` (manifest, loader and `locale-init.js` lists) |
+| 2 | Add `nb: () => import('./nb')` to `frontend/src/i18n/catalogues.ts` (one static loader, never a built path). | `guard.test.ts` manifest check, `i18n.test.tsx` ("one static loader per non-English locale"), `tsc` (unresolved import) |
+| 3 | Add the code to the list in `frontend/public/locale-init.js`. | `i18n.test.tsx` ("is the list in public/locale-init.js"), `guard.test.ts` manifest check |
+| 4 | Write the app catalogue `frontend/src/i18n/nb.ts` (default export, every key of `en.ts`; keys it lacks go in `untranslated.json`) and the two spread-in files `help.nb.ts` and `legal.nb.ts`. | `guard.test.ts` ("nb is complete and consistent": missing keys, placeholder names, markup, plural categories from `Intl.PluralRules`; leaving out the `legal` or `help` spread fails it with `legal.link.privacy is missing` and so on) |
+| 5 | Add the language's own name to `NAMES` in `frontend/src/components/LanguagePicker.tsx` (`nb: 'Norsk bokmål'`). | nothing: without it the picker shows the bare code `nb` and every test passes. Check the picker by hand. |
+| 6 | Mail: write `backend/src/classbeat/emails/locales/nb.py` (`CATALOGUE`, `MONTHS`, `format_when`; model it on `da.py`), and register it in `backend/src/classbeat/emails/catalogue.py` (`LOCALES` and `_FORMAT_WHEN`). | `test_emails_locales.py::test_every_manifest_code_has_a_catalogue` (step 1 alone fails it) |
+| 7 | Mail tests: add `nb` to `TRANSLATED` in `backend/tests/test_emails_locales.py` and to the literal manifest tuples there (the `three_languages` fixture and `mail_locale` tests). | nothing for `TRANSLATED`: without it the completeness, placeholder, link and golden tests silently skip `nb`. A stale `three_languages` tuple fails `test_the_header_names_the_language_of_the_mail[nb]` (`Content-Language` is `en`). |
+| 8 | Regenerate the mail golden files: from `backend/`, `uv run python tests/mailgolden.py`, creating `backend/tests/mail_golden/nb/` (34 files today); read the diff. | `test_emails_locales.py::test_the_mail_matches_its_golden_files[nb-*]` (18 failures with `nb` in `TRANSLATED` and no files) |
+| 9 | Decide whether it is on by default: `CLASSBEAT_LOCALES` is a subset switch, and the default in `backend/src/classbeat/config.py` (`locales`), `compose.prod.yaml` (`LOCALES`), `docs/runbooks/prod.env.example` and the "Language preference" paragraph in this file lists the offered languages. Without the change `nb` is supported but not offered until an operator sets `LOCALES`. | `test_web_language.py` and `test_locale.py` pin `("en", "sv", "da")`: changing the default fails the two sitemap and head-tag tests there until the lists are extended |
+| 10 | Extend the hard-coded language lists in the other tests: `test_web_language.py` (public-page alternates, sitemap), `test_locale.py` (`OFFERED`), `test_mail_links.py`, `frontend/src/pages/language.test.tsx` (`OFFERED` and the picker's option names), `frontend/src/router/languageUrls.test.tsx` (`OFFERED`), `frontend/src/pages/helpPage.test.tsx` and `legalPages.test.tsx` (one row per language). | `i18n.test.tsx` ("lists English, Swedish and Danish") fails at once; the others are fixtures, so a stale list keeps passing and only leaves `nb` untested. Add a row. |
+| 11 | e2e (CI only, not run in the trial): add `nb` to `CODES` and `WORDS` in `e2e/tests/lang-url-helpers.ts` (the `lang-*` specs loop over them), to the `Words` code type in `locale-helpers.ts`, add a `locale-nb.spec.ts` after `locale-da.spec.ts`, and a row in `cookie-notice.spec.ts`, `legal-pages.spec.ts` (privacy, terms, help) and `locale-done-when.spec.ts`. | nothing locally: these are CI specs and list their languages by hand |
+| 12 | Docs: the manifest line in the "Languages" bullet and the "Language preference" paragraph in this file, `docs/status.md`, and the languages named in ADR 0023 if the owner accepted a new one. | nothing |
+
+**Not needed (checked).** Model prompts, briefs, prompt versions and eval suites: generated classes stay English
+(ADR 0023 section 7). The admin area stays English. No SQL migration: `users.locale`, `pending_signups.locale` and
+`oauth_flows.locale` hold any two-letter code the manifest lists. No API model, OAuth or sign-up change: they check
+the code against the offered set. `format.ts` takes the locale as the `Intl` tag.
+
+**Automatic once the manifest lists the code (ADR 0027).** The `/nb/...` routes and the redirect of unprefixed
+URLs, the language picker entry and `switchLanguage`, `<html lang>`, the canonical link and `hreflang`
+alternates (and `x-default`) of the public pages, `noindex` on the rest, `/sitemap.xml`, the 404 for an unknown
+prefix such as `/fr/...`, the prefix in new mail links (`Ctx.url`, the unsubscribe page link), the
+`Accept-Language` match, the stored account language and the allowlist checks. Head tags and the sitemap list only
+*offered* languages, so they stay out of search results until step 9 or `LOCALES` enables the code.
+
+**Human work.** The agents translate and review (ADR 0023); nobody proofreads the Swedish and Danish text, so for a
+new language the owner decides whether the privacy notice, the terms and the consent sentences (`legal.nb.ts`)
+need a native speaker before the language is offered. Also the owner's:
+turning the language on in production (`LOCALES`; deploying needs the owner's authorization) and adding the
+language's glossary entries to `docs/i18n/glossary.md`.
+
+**Check before pushing.** From `frontend/`: `npx vitest run src/i18n src/pages src/router src/components`,
+`npm run typecheck`, `npm run lint`. From `backend/`: `uv run pytest tests/test_emails_locales.py tests/test_emails.py
+tests/test_mail_links.py tests/test_web_language.py tests/test_locale.py` (no database needed; about 50 tests in them
+skip without Postgres and CI runs them), `uv run ruff check`, `uv run ruff format --check`, `uv run pyright`.
+Design: [ADR 0027](adr/0027-language-prefixed-urls.md), [ADR 0023](adr/0023-multilingual.md).
+
 ### Stack and worktrees
 
 Docker Desktop (or Docker Engine with Compose v2) runs the whole stack: `db` (Postgres 17),
