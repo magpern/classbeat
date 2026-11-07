@@ -6,7 +6,7 @@ An authenticator app was enrolled (or replaced) on your classbeat account.
 When it happened: 6 November 2026, 12:30 UTC
 
 Review your account:
-https://classbeat.example.test/account
+https://classbeat.example.test/en/account
 
 If this wasn't you, reset your password. Contact us at support@classbeat.eu
 
@@ -14,4 +14,4 @@ If this wasn't you, reset your password. Contact us at support@classbeat.eu
 You got this security notice because this is the email address of a classbeat account. These notices are sent for your protection.
 classbeat: https://classbeat.example.test
 Questions? Write to support@classbeat.eu
-Unsubscribe from these emails: https://classbeat.example.test/unsubscribe#token=SAMPLE&all=SAMPLE
+Unsubscribe from these emails: https://classbeat.example.test/en/unsubscribe#token=SAMPLE&all=SAMPLE

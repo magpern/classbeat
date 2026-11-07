@@ -342,8 +342,8 @@ async def test_a_mail_is_multipart_alternative_text_then_html_with_the_headers()
     assert message["Date"]
     assert re.fullmatch(r"<.+@example\.test>", str(message["Message-ID"]))
     assert message["Subject"] == "Reset your classbeat password"
-    assert f"{BASE}/reset#token=tok-1" in mail.text
-    assert f'href="{BASE}/reset#token=tok-1"' in mail.html
+    assert f"{BASE}/en/reset#token=tok-1" in mail.text
+    assert f'href="{BASE}/en/reset#token=tok-1"' in mail.html
     assert mail.token() == "tok-1"
 
 

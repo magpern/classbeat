@@ -4,7 +4,7 @@ Den här adressen används redan
 Någon har bett om att flytta ett classbeat-konto till den här adressen, som redan tillhör ett konto.
 
 Logga in:
-https://classbeat.example.test/signin
+https://classbeat.example.test/sv/signin
 
 Om det inte var du kan du bortse från det här mejlet.
 

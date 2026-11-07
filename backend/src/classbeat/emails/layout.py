@@ -44,7 +44,11 @@ class Ctx:
     locale: str = "en"
 
     def url(self, path: str, token: str | None = None) -> str:
-        link = f"{self.base_url}{path}" + (f"#token={token}" if token else "")
+        """A link to an app page in the recipient's language: ``{base}/{locale}{path}`` (ADR 0027
+        section 7; ``/`` is ``/{locale}``, no trailing slash). Only app pages: the one-click
+        unsubscribe API URL and ``/email/...`` assets are built elsewhere and never prefixed."""
+        prefixed = f"/{self.locale}" + ("" if path == "/" else path)
+        link = f"{self.base_url}{prefixed}" + (f"#token={token}" if token else "")
         return check_link(
             link, base_url=self.base_url, support_address=self.branding.support_address
         )

@@ -4,10 +4,10 @@ You already have an account
 Someone asked to create a classbeat account with this address, which already has one.
 
 Sign in:
-https://classbeat.example.test/signin
+https://classbeat.example.test/en/signin
 
 Forgot your password?:
-https://classbeat.example.test/reset
+https://classbeat.example.test/en/reset
 
 If this wasn't you, ignore this mail.
 

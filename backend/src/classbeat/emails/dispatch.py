@@ -14,6 +14,7 @@ from uuid import UUID
 from classbeat.auth import UNSUBSCRIBE_ALL, Keys, issue_unsubscribe_token
 from classbeat.config import Settings
 from classbeat.emails.blocks import Content
+from classbeat.emails.catalogue import DEFAULT as DEFAULT_LOCALE
 from classbeat.emails.catalogue import known, mail_locale
 from classbeat.emails.layout import Branding, Ctx, render_html, render_text
 from classbeat.emails.registry import REGISTRY, Kind
@@ -46,24 +47,27 @@ class UnsubscribeLinks:
 
 
 def unsubscribe_links(
-    settings: Settings, keys: Keys, user_id: UUID, category: str
+    settings: Settings, keys: Keys, user_id: UUID, category: str, locale: str = DEFAULT_LOCALE
 ) -> UnsubscribeLinks:
+    """The page link is in the recipient's language (``/{locale}/unsubscribe``, ADR 0027 section
+    7); the one-click URL is an API route a mail client POSTs to and is never prefixed."""
     base = settings.public_base_url.rstrip("/")
     each, everything = (
         issue_unsubscribe_token(keys, user_id, category),
         issue_unsubscribe_token(keys, user_id, UNSUBSCRIBE_ALL),
     )
     return UnsubscribeLinks(
-        f"{base}/unsubscribe#token={each}&all={everything}",
+        f"{base}/{known(locale)}/unsubscribe#token={each}&all={everything}",
         f"{base}/api/mail/unsubscribe?token={each}",
     )
 
 
-def sample_unsubscribe_links(settings: Settings) -> UnsubscribeLinks:
+def sample_unsubscribe_links(settings: Settings, locale: str = DEFAULT_LOCALE) -> UnsubscribeLinks:
     """Placeholders for the previews and golden files: the shape, no signature."""
     base = settings.public_base_url.rstrip("/")
     return UnsubscribeLinks(
-        f"{base}/unsubscribe#token=SAMPLE&all=SAMPLE", f"{base}/api/mail/unsubscribe?token=SAMPLE"
+        f"{base}/{known(locale)}/unsubscribe#token=SAMPLE&all=SAMPLE",
+        f"{base}/api/mail/unsubscribe?token=SAMPLE",
     )
 
 
@@ -143,9 +147,6 @@ async def send(
                 prefs = await lookup(recipient)
             if prefs is None or prefs.unsubscribed_all or kind.category in prefs.opted_out:
                 return False
-    links = None
-    if not kind.essential and prefs is not None and prefs.user_id is not None and keys is not None:
-        links = unsubscribe_links(settings, keys, prefs.user_id, kind.category.value)
     # A language handed in (an OAuth flow or hand-off row, a request) can be older than the
     # operator's setting: it is checked against the offered languages here, not only against the
     # catalogues. An essential kind still reads no user.
@@ -153,6 +154,9 @@ async def send(
         locale = mail_locale(locale, settings)
     elif prefs is not None:
         locale = mail_locale(prefs.locale, settings)
+    links = None
+    if not kind.essential and prefs is not None and prefs.user_id is not None and keys is not None:
+        links = unsubscribe_links(settings, keys, prefs.user_id, kind.category.value, known(locale))
     await send_logged(
         mailer,
         build(
