@@ -166,11 +166,11 @@ body {
   max-width: min(20rem, calc(100vw - 2 * var(--cb-space-4)));
   padding: var(--cb-space-3);
   border: 1px solid var(--cb-line);
-  border-radius: 0.75rem;
+  border-radius: var(--cb-radius-md);
   background: var(--cb-raised);
   color: var(--cb-text);
   font-size: var(--cb-text-label);
-  box-shadow: 0 4px 16px rgb(0 0 0 / 0.3);
+  box-shadow: 0 4px 16px var(--cb-scrim);
 }
 
 .cookie-notice__text {
@@ -182,7 +182,7 @@ body {
   min-width: 2.75rem;
   padding: 0 var(--cb-space-4);
   border: 0;
-  border-radius: 999px;
+  border-radius: var(--cb-radius-full);
   background: var(--cb-brand);
   color: var(--cb-on-brand);
   font: inherit;
