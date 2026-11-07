@@ -674,3 +674,7 @@ Nothing is open.
   target is under 250 kB gzip of JavaScript for the first load.
 - The threat model gains an entry for the cover-art host in UI7: a malicious image URL, the CDN
   seeing the viewer's IP address, and the mitigations from §9.
+
+> Amended by [ADR 0027](0027-language-prefixed-urls.md): the router matches on the path without its
+> language prefix (`/<lang>/...`), `Link` and `navigate` add the prefix, and an unprefixed URL is
+> replaced once, in the client, by the prefixed one. The CSP is unchanged (the server adds no inline script).
