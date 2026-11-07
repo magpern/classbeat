@@ -34,7 +34,7 @@ def applied_revisions(database_url: str) -> list[str]:
 
 def test_the_revisions_form_one_line() -> None:
     script = ScriptDirectory.from_config(alembic_config())
-    assert script.get_heads() == ["0039_analysis_metrics"]
+    assert script.get_heads() == ["0040_security_log_at_index"]
     assert script.get_base() == "0001_baseline"
 
 
@@ -55,7 +55,7 @@ def test_upgrade_head_then_downgrade_base(
     config = alembic_config()
     try:
         command.upgrade(config, "head")
-        assert applied_revisions(database_url) == ["0039_analysis_metrics"]
+        assert applied_revisions(database_url) == ["0040_security_log_at_index"]
         command.downgrade(config, "base")
         assert applied_revisions(database_url) == []
     finally:

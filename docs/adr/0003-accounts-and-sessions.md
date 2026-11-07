@@ -909,8 +909,10 @@ auth middleware once the response's status is known (`classbeat.auth.securitylog
   address, hash, session id, token, route or User-Agent. **Limits:** "quota hits" are the 429s the
   log keeps (one per user and minute); a 409 `quota` is not distinguishable in the log. The
   rate-limit buckets (`rate_limits`) are keyed by hashes of an address or account, not by user, so
-  they are not read. The aggregates scan the window of one table under maint's 30 s statement
-  timeout; an index on `at` is tracked as a follow-up issue (#750).
+  they are not read. The aggregates read the window of one table under maint's 30 s statement
+  timeout; migration 0040 adds `security_log (at)` (#750), so the window is a range scan (the
+  existing `(owner_id, at)` cannot serve a query with no `owner_id`; the per-user purge keeps
+  using it). Cost: one more index entry per logged request.
   **A "network" is a keyed pseudonym, not always coarse:** `bucket_ip` keeps an IPv4 address whole
   and cuts only IPv6 to /64, so for IPv4 `ip_hash` is a keyed pseudonym of the full address (the
   key is the `security-log` key, held by the web process only). That is why the hash is only ever
