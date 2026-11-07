@@ -4,11 +4,9 @@ import asyncio
 import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from pathlib import Path
 from typing import Literal
 
-from fastapi import APIRouter, FastAPI, HTTPException, Request, Response
-from fastapi.responses import FileResponse, HTMLResponse
+from fastapi import APIRouter, FastAPI, Request, Response
 from pydantic import BaseModel
 from sqlalchemy import text
 
@@ -20,7 +18,6 @@ from classbeat import (
     quota,
     saving,
     songs,
-    spa,
     swedebeat_handoff,
     swedebeat_match,
 )
@@ -57,6 +54,7 @@ from classbeat.operations.routes import router as operations_router
 from classbeat.plans.routes import router as plans_router
 from classbeat.playlists.runtime import playlists_runtime
 from classbeat.quota import PlanRevisionPolicy
+from classbeat.spa_routes import add_single_page_app
 from classbeat.spotify.routes import api as spotify_router
 from classbeat.spotify.routes import callback as spotify_callback_router
 from classbeat.usage.routes import router as usage_router
@@ -101,64 +99,6 @@ async def ready(request: Request, response: Response) -> ReadyResponse:
         response.status_code = 503
         return ReadyResponse(status="unavailable")
     return ReadyResponse(status="ready")
-
-
-EMAIL_ASSET_HEADERS = {
-    "Cross-Origin-Resource-Policy": "cross-origin",
-    "Cache-Control": "public, max-age=604800",
-}
-
-
-SEO_HEADERS = {"Cache-Control": "public, max-age=3600"}
-
-
-def _add_single_page_app(app: FastAPI, static_dir: Path, settings: Settings) -> None:
-    """Serve ``static_dir``; any other GET outside ``/api`` gets ``index.html``.
-
-    ``index.html`` is read once; a language-prefixed or unprefixed page is answered with the
-    variant ``classbeat.spa`` built from it (ADR 0027 section 6), a two-letter first segment
-    outside the manifest with a 404 (section 5). ``/sitemap.xml`` and ``/robots.txt`` come first.
-    """
-    root = static_dir.resolve()
-    try:
-        index_html: str | None = (root / "index.html").read_text(encoding="utf-8")
-    except OSError:
-        index_html = None
-    pages = None if index_html is None else spa.build_pages(index_html, settings)
-    sitemap_xml, robots_txt = spa.sitemap(settings), spa.robots(settings)
-
-    @app.get("/sitemap.xml", include_in_schema=False)
-    async def sitemap_route() -> Response:
-        return Response(sitemap_xml, media_type="application/xml", headers=SEO_HEADERS)
-
-    @app.get("/robots.txt", include_in_schema=False)
-    async def robots_route() -> Response:
-        return Response(robots_txt, media_type="text/plain", headers=SEO_HEADERS)
-
-    @app.get("/{path:path}", include_in_schema=False)
-    async def single_page_app(path: str) -> Response:
-        if path == "api" or path.startswith("api/"):
-            raise HTTPException(status_code=404)
-        try:
-            candidate = (root / path).resolve()
-            if (
-                path != "index.html"  # the page itself goes through the head injection below
-                and candidate.is_relative_to(root)
-                and candidate.is_file()
-            ):
-                if path.startswith("email/"):
-                    # The logo in mail is loaded cross-origin by mail clients (ADR 0022
-                    # section 3); only /email/* is opened up, and it may be cached for a week.
-                    return FileResponse(candidate, headers=EMAIL_ASSET_HEADERS)
-                return FileResponse(candidate)
-        except (OSError, ValueError):  # for example an embedded NUL in the path
-            pass
-        if pages is None:
-            raise HTTPException(status_code=404)
-        unknown = spa.is_unknown_language(path.partition("/")[0])
-        return HTMLResponse(
-            pages.select(path), status_code=404 if unknown else 200, headers=spa.NO_CACHE
-        )
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -284,7 +224,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     if settings.static_dir is not None:
         if settings.static_dir.is_dir():
-            _add_single_page_app(app, settings.static_dir, settings)
+            add_single_page_app(app, settings.static_dir, settings)
         else:
             logger.warning("static_dir does not exist; not serving static files")
     # Outside the auth middleware, inside SecurityHeaders: a body over the cap is refused before any

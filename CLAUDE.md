@@ -45,7 +45,7 @@ catalogues, `backend/tests/mail_golden/**`, lockfiles, SQL migrations). **Tests*
 rule 2 (table-driven tests are long on purpose), though a new test file should still have one
 subject. This replaces the 500-line cap for classbeat only; `mowl-workouts` keeps its own.
 Security-critical modules (for example `egress.py`) are split only in a PR that gets the Opus
-review the area requires.
+review the area requires; in any other PR rule 2 does not apply to them, so leave the file whole.
 
 ## Commits
 

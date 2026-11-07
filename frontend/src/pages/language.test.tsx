@@ -159,6 +159,24 @@ describe('the Account language', () => {
     })
   })
 
+  it('follows the browser only among the offered languages', async () => {
+    // The browser prefers Danish, which this server does not offer: the URL must not get /da.
+    vi.spyOn(window.navigator, 'languages', 'get').mockReturnValue(['da-DK', 'sv-SE'])
+    window.localStorage.setItem('cb-locale', 'en')
+    fakeApi({
+      'GET /api/auth/session': { ...signedIn('en'), locales: ['en', 'sv'] },
+      'PUT /api/account/locale': { locale: null },
+    })
+    const select = await openAppearance()
+    fireEvent.change(select, { target: { value: '' } })
+    await waitFor(() => {
+      expect(window.localStorage.getItem('cb-locale')).toBeNull()
+    })
+    await waitFor(() => {
+      expect(window.location.pathname).toBe('/sv/account')
+    })
+  })
+
   it('hides the Language section when fewer than two languages are offered', async () => {
     fakeApi({
       'GET /api/auth/session': { ...signedIn(null), locales: ['en'] },

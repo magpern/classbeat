@@ -371,3 +371,91 @@ describe('deep link, sign-in and back', () => {
     expect(window.location.search).toBe('?x=1')
   })
 })
+
+describe('sign-in with return_to and the account language', () => {
+  async function signInAt(returnTo: string, saved: string | null, locales = OFFERED) {
+    let signed = false
+    fakeApi({
+      'GET /api/auth/session': () => (signed ? signedIn(saved, locales) : { ...ANON, locales }),
+      'GET /api/auth/oauth/providers': { providers: [] },
+      'POST /api/auth/login': () => {
+        signed = true
+        return { id: 'u1', email: 'ann@example.test', role: 'user' }
+      },
+      'GET /api/auth/identities': IDENTITIES,
+      'GET /api/auth/mfa': MFA_OFF,
+      'GET /api/classes': { classes: [] },
+    })
+    open(`/en/signin?return_to=${encodeURIComponent(returnTo)}`)
+    fireEvent.change(await screen.findByLabelText('Email'), { target: { value: 'ann@example.test' } })
+    fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'correct horse battery' } })
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Sign in' })).toBeEnabled()
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Sign in' }))
+    await waitFor(() => {
+      expect(window.location.pathname).not.toBe('/en/signin')
+    })
+  }
+
+  it.each(['/admin', '/admin/users?x=1#y', '/da/admin', '/sv/admin?x=1'])(
+    'keeps an admin return_to (%s) unprefixed, whatever the account language',
+    async (returnTo) => {
+      await signInAt(returnTo, 'da')
+      expect(window.location.pathname).toMatch(/^\/admin(\/|$)/)
+      expect(window.location.pathname).not.toMatch(/^\/(en|sv|da)\b/)
+    },
+  )
+
+  it.each(['/sv/classes?x=1#y', '/da/classes?x=1#y', '/classes?x=1#y'])(
+    'puts one prefix, the account language, on %s',
+    async (returnTo) => {
+      await signInAt(returnTo, 'da')
+      expect(where()).toBe('/da/classes?x=1#y')
+    },
+  )
+
+  it.each(['//evil.example/x', '/\\evil.example', 'https://evil.example/', '/sv//evil.example'])(
+    'does not leave the origin for return_to %s',
+    async (returnTo) => {
+      const origin = window.location.origin
+      await signInAt(returnTo, 'da')
+      expect(window.location.origin).toBe(origin)
+      expect(window.location.pathname).toMatch(/^\/(da|sv)\//)
+    },
+  )
+
+  it('lands in an offered language when the saved account language is not offered', async () => {
+    await signInAt('/classes', 'da', ['en', 'sv'])
+    expect(where()).toBe('/en/classes')
+  })
+})
+
+describe('a saved account language the server does not offer', () => {
+  it('is skipped for an unprefixed URL: the best offered language, never an unknown prefix', async () => {
+    setLanguages(['sv-SE'])
+    fakeApi({ 'GET /api/auth/session': signedIn('da', ['en', 'sv']), 'GET /api/classes': { classes: [] } })
+    open('/classes')
+    await waitFor(() => {
+      expect(where()).toBe('/sv/classes')
+    })
+  })
+
+  it('is skipped for an unknown saved code too', async () => {
+    fakeApi({ 'GET /api/auth/session': signedIn('xx'), 'GET /api/classes': { classes: [] } })
+    open('/classes')
+    await waitFor(() => {
+      expect(where()).toBe('/en/classes')
+    })
+  })
+})
+
+describe('the header logo', () => {
+  it('links to the home page of the current language', async () => {
+    fakeApi({ 'GET /api/auth/session': ANON })
+    open('/sv/privacy')
+    await waitFor(() => {
+      expect(document.querySelector('header a[href="/sv"]')).not.toBeNull()
+    })
+  })
+})
