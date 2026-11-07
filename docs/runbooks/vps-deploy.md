@@ -303,18 +303,28 @@ means `false`); the compose default stays off until the owner flips it in a sepa
 Everything below is the owner's; agents do not touch the Cloudflare dashboard.
 
 1. **Widget.** Cloudflare dashboard, Turnstile, add a widget for the host name of the real site,
-   the value of `CLASSBEAT_DOMAIN` (today `classbeat.pernemark.se`), plus any other host the site
-   is served on; no `localhost`. Mode **Managed**, pre-clearance **off**. The widget covers
+   exactly the value of `CLASSBEAT_DOMAIN` (today `classbeat.pernemark.se`); no `localhost`. Only
+   the `CLASSBEAT_DOMAIN` host passes the check, so a second host on the widget is of no use. Mode **Managed**, pre-clearance **off**. The widget covers
    subdomains of a listed host, so `pernemark.se` as a hostname would also cover this one; list the
    exact host anyway. **When the domain changes, add the new host to the widget first**, then change
-   `CLASSBEAT_DOMAIN`, then remove the old host. The app refuses a token whose `hostname` is not the
-   host of `CLASSBEAT_PUBLIC_BASE_URL`, so a forgotten host shows up as "security check did not pass".
+   `CLASSBEAT_DOMAIN`, then remove the old host. Two different symptoms: a host **missing from the
+   widget** fails inside the widget (Cloudflare error `110200`; the page reports that the check
+   failed or did not load, and no token is sent); "Security check did not pass" (400) means a token
+   whose `hostname` is not the host of `CLASSBEAT_PUBLIC_BASE_URL`.
 2. **Keys.** The site key is public and goes in `.env`: `TURNSTILE_SITE_KEY=0x4AAAAAAF3ZKJe4og1j7PsA`
    (the owner's key for this widget). The secret key goes in `secrets/turnstile_secret_key`, owner
-   the deploy user, group 10010, mode 0640, written with `umask 027` and never in `.env`, a command
-   argument or chat. Never use Cloudflare's dummy test keys in production: web refuses to start.
-3. **Enable.** Set `TURNSTILE_ENABLED=true` in `.env` and `docker compose up -d web`. Web refuses
-   to start when it is enabled and the site key is missing or the secret file is empty.
+   the deploy user, group 10010, mode 0640, and never in `.env`, a command argument or chat:
+   `( umask 027; read -rs S && printf '%s' "$S" > secrets/turnstile_secret_key; unset S )`, then
+   `ls -ln secrets/turnstile_secret_key` (mode `-rw-r-----`, group 10010). Rotating only the secret
+   later needs `docker compose up -d --force-recreate web`: a changed file alone does not recreate
+   the container. Never use Cloudflare's dummy test keys in production: web refuses to start.
+3. **Enable.** Only on a release that includes the widget (PR #731, the Turnstile widget): any
+   earlier release has the backend check but no widget, so enabling it makes every sign-in, sign-up,
+   provider-email and reset request fail with `captcha_failed`. Then set `TURNSTILE_ENABLED=true` in
+   `.env` and `docker compose up -d web`. Web refuses to start when it is enabled and the site key
+   is missing or the secret file is empty. While Turnstile is off in production (the default), web
+   logs an `ERROR` at start and a `WARNING` for every protected request; that is expected until
+   this step.
 4. **Live check** (report only pass or fail and the `why` word): sign in, sign up with an invite,
    request a password reset and finish a provider-email step; repeat in Swedish and Danish and in
    dark and light; the browser console shows no CSP violation and no error `110200` (domain or

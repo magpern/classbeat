@@ -74,7 +74,7 @@ export const legalSv: Catalogue = {
   'privacy.processors.li6':
     'Din webbläsare hämtar albumomslag direkt från Spotifys bildservrar, som därför ser din IP-adress och webbläsare. Vi skickar ingen referrer, ingen classbeat-cookie och inga classbeat-uppgifter med den förfrågan.',
   'privacy.processors.li7':
-    'På sidorna för inloggning, registrering, återställning av lösenord och e-post kontrollerar Cloudflare Turnstile att det är en person, inte ett program, som använder formuläret. Din webbläsare hämtar den från Cloudflare, som ser din IP-adress och signaler från webbläsare och enhet; vår server skickar till Cloudflare kontrollens resultatkod och din IP-adress, aldrig din e-postadress eller ditt lösenord. Cloudflare kan också använda signalerna för att förbättra sitt skydd mot robotar. Företaget finns i USA.',
+    'På sidorna för inloggning, registrering och återställning av lösenord, och på sidan som frågar efter din e-postadress efter inloggning med Google, GitHub eller Microsoft, kontrollerar Cloudflare Turnstile att det är en person, inte ett program, som använder formuläret. Din webbläsare hämtar den från Cloudflare, som ser din IP-adress och signaler från webbläsare och enhet; vår server skickar kontrollens resultatkod och din IP-adress till Cloudflare, aldrig din e-postadress eller ditt lösenord. Cloudflare kan också använda signalerna för att förbättra sitt skydd mot bottar. Företaget finns i USA, så det är en överföring till ett tredjeland.',
   'privacy.processors.p2': 'Vi säljer inte dina uppgifter och använder dem inte för reklam.',
 
   'privacy.cookies.title': 'Cookies och lagring i webbläsaren',

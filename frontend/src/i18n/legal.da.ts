@@ -74,7 +74,7 @@ export const legalDa: Catalogue = {
   'privacy.processors.li6':
     'Din browser henter albumcovers direkte fra Spotifys billedservere, som derfor ser din IP-adresse og browser. Vi sender ingen referrer, ingen classbeat-cookie og ingen classbeat-data med den forespørgsel.',
   'privacy.processors.li7':
-    'På siderne til login, tilmelding, nulstilling af adgangskode og e-mail tjekker Cloudflare Turnstile, at det er et menneske, ikke et program, der bruger formularen. Din browser henter det fra Cloudflare, som ser din IP-adresse og signaler fra browser og enhed; vores server sender Cloudflare tjekkets resultatkode og din IP-adresse, aldrig din e-mail eller adgangskode. Cloudflare kan også bruge signalerne til at forbedre sin beskyttelse mod bots. Virksomheden er baseret i USA.',
+    'På siderne til login, tilmelding og nulstilling af adgangskode, og på siden der spørger efter din e-mailadresse efter login med Google, GitHub eller Microsoft, tjekker Cloudflare Turnstile, at det er et menneske, ikke et program, der bruger formularen. Din browser henter det fra Cloudflare, som ser din IP-adresse og signaler fra browser og enhed; vores server sender Cloudflare tjekkets resultatkode og din IP-adresse, aldrig din e-mail eller adgangskode. Cloudflare kan også bruge signalerne til at forbedre sin beskyttelse mod bots. Virksomheden er baseret i USA, så det er en overførsel til et tredjeland.',
   'privacy.processors.p2': 'Vi sælger ikke dine oplysninger og bruger dem ikke til reklamer.',
 
   'privacy.cookies.title': 'Cookies og lagring i browseren',

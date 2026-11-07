@@ -75,7 +75,7 @@ export const legalEn = {
   'privacy.processors.li6':
     "Your browser fetches album covers directly from Spotify's image servers, which therefore see your IP address and browser. We send no referrer, no classbeat cookie and no classbeat data with that request.",
   'privacy.processors.li7':
-    "On the sign-in, sign-up, password reset and email pages, Cloudflare Turnstile checks that a person, not a program, is using the form. Your browser loads it from Cloudflare, which sees your IP address, browser and device signals; our server sends Cloudflare the check's result token and your IP address, never your email or password. Cloudflare may also use the signals to improve its bot detection. It is based in the US.",
+    "On the sign-in, sign-up and password reset pages, and on the page that asks for your email after a Google, GitHub or Microsoft sign-in, Cloudflare Turnstile checks that a person, not a program, is using the form. Your browser loads it from Cloudflare, which sees your IP address, browser and device signals; our server sends Cloudflare the check's result token and your IP address, never your email or password. Cloudflare may also use the signals to improve its bot detection. It is based in the US, so this is a transfer to a third country.",
   'privacy.processors.p2': 'We do not sell your data and we do not use it for advertising.',
 
   'privacy.cookies.title': 'Cookies and browser storage',
