@@ -8,8 +8,10 @@ import asyncio
 from typing import Any
 
 import pytest
+from webauthn.helpers.cose import COSEAlgorithmIdentifier
 
 from authtools import Env
+from classbeat.auth import passkey_webauthn
 from passkeytools import (
     EMAIL,
     FINISH,
@@ -384,3 +386,44 @@ async def test_register_counts_every_request_ten_a_user_and_hour(penv: Env) -> N
     assert limited.headers["retry-after"]
     finished = await finish(client, {"id": "x"})
     assert finished.status_code == 429  # start and finish share the buckets
+
+
+async def test_a_credential_with_another_algorithm_is_refused(penv: Env) -> None:
+    """#782 review N1: ES512 (-36) is not one of the three offered (ES256, EdDSA, RS256); the
+    verification is given the same list, never the library's longer default."""
+    client = await signed_in(penv)
+    response = await register(client, SoftAuthenticator(alg="es512"))
+    assert (response.status_code, reason(response)) == (400, "passkey_failed")
+    assert await count(penv, CREDENTIALS) == 0
+
+
+async def test_the_es512_credential_is_otherwise_valid(
+    penv: Env, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The control of the test above: with ES512 added to the list the same credential is stored,
+    so that refusal is the algorithm's and nothing else's."""
+    monkeypatch.setattr(
+        passkey_webauthn,
+        "ALGORITHMS",
+        [*passkey_webauthn.ALGORITHMS, COSEAlgorithmIdentifier.ECDSA_SHA_512],
+    )
+    client = await signed_in(penv)
+    response = await register(client, SoftAuthenticator(alg="es512"))
+    assert response.status_code == 201, response.text
+
+
+@pytest.mark.parametrize("purpose", ["reauth", "sign_in"])
+async def test_a_flow_of_another_purpose_under_the_register_cookie_is_refused(
+    penv: Env, purpose: str
+) -> None:
+    """#782 review N2: the row behind the register cookie's hash is of another purpose (same
+    challenge, user and session for ``reauth``; no binding for ``sign_in``)."""
+    client = await signed_in(penv)
+    begun = await start(client)
+    unbind = ", user_id = NULL, session_id = NULL" if purpose == "sign_in" else ""
+    await penv.run(f"UPDATE webauthn_challenges SET purpose = :p{unbind}", p=purpose)  # noqa: S608
+    response = await finish(client, SoftAuthenticator().create(begun.json()))
+    assert (response.status_code, reason(response)) == (400, "passkey_failed")
+    assert cleared(response, REGISTER_COOKIE)
+    assert await count(penv, CREDENTIALS) == 0
+    assert await count(penv, CHALLENGES) == 0  # taken: the browser starts again

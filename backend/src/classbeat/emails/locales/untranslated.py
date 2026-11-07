@@ -22,5 +22,11 @@ UNTRANSLATED: frozenset[S] = frozenset(
         S.PASSKEY_REMOVED_BODY,
         S.PASSKEY_REMOVED_WARN,
         S.PASSKEY_WHEN,
+        # ADR 0019 W3 (#773): a passkey sign-in refused for its counter.
+        S.SUBJECT_PASSKEY_COUNTER,
+        S.PASSKEY_COUNTER_HEADING,
+        S.PASSKEY_COUNTER_PRE,
+        S.PASSKEY_COUNTER_BODY,
+        S.PASSKEY_COUNTER_WARN,
     }
 )

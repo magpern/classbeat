@@ -1,4 +1,5 @@
-"""The lock order of ADR 0019 section 6 for the register finish and the remove (#772).
+"""The lock order of ADR 0019 section 6 for the register start and finish, the remove (#772) and
+the sign-in finish (#773).
 
 Deterministic, not timed (as ``test_auth_reset_races``): the test holds the ``users`` row lock,
 lets the request run until Postgres reports it waiting for a lock, then either releases the lock
@@ -7,10 +8,24 @@ user row first, so they never deadlock: the finish either completes or finds its
 stores nothing.
 """
 
+import contextlib
+from typing import Any
+
 import pytest
+from sqlalchemy import text
 
 from authtools import Env
+from classbeat.auth import passkey_signin_session
+from passkeysignin import (
+    SESSIONS,
+    Holder,
+    anonymous,
+    finish_signin,
+    start_signin,
+    with_passkey,
+)
 from passkeytools import (
+    Client,
     count,
     finish,
     plant,
@@ -26,6 +41,7 @@ from webauthnfake import SoftAuthenticator
 pytestmark = pytest.mark.usefixtures("frozen_rate_windows")
 
 CREDENTIALS = "SELECT count(*) FROM webauthn_credentials"
+CHALLENGES = "SELECT count(*) FROM webauthn_challenges"
 REVOKE = "DELETE FROM sessions WHERE user_id = :u"  # what a reset does under the same lock
 
 
@@ -55,3 +71,99 @@ async def test_a_remove_waits_for_the_user_row_lock_then_completes(penv: Env) ->
     response = await against_a_held_lock(penv, user, removal)
     assert response.status_code == 204
     assert await count(penv, CREDENTIALS) == 0
+
+
+# --- the register start (#782 review N3) -------------------------------------------------------
+
+
+async def test_a_register_start_replacing_a_flow_waits_for_the_user_row_lock(penv: Env) -> None:
+    """With a previous register cookie the start deletes that flow's row; it takes the user row
+    first, so it waits here instead of deadlocking with a reset (whose session delete cascades
+    to the same challenge row)."""
+    client = await signed_in(penv)
+    assert (await start(client)).status_code == 200
+    response = await against_a_held_lock(penv, await user_id_of(penv), start(client))
+    assert response.status_code == 200, response.text
+    assert await count(penv, CHALLENGES) == 1
+
+
+async def test_a_register_start_racing_a_reset_stores_no_flow(penv: Env) -> None:
+    client = await signed_in(penv)
+    assert (await start(client)).status_code == 200
+    user = await user_id_of(penv)
+    response = await against_a_held_lock(penv, user, start(client), REVOKE)
+    assert (response.status_code, reason(response)) == (401, "not_authenticated")
+    assert await count(penv, CHALLENGES) == 0
+
+
+# --- the sign-in finish (#773) -----------------------------------------------------------------
+
+
+async def signin_ready(env: Env) -> tuple[Holder, Client, dict[str, Any]]:
+    """A user with a passkey, and an anonymous browser holding a started flow and its assertion."""
+    holder = await with_passkey(env)
+    client = anonymous(env)
+    begun = await start_signin(client)
+    return holder, client, holder.device.get(begun.json(), holder.handle)
+
+
+async def test_a_signin_finish_waits_for_the_user_row_lock_then_completes(penv: Env) -> None:
+    holder, client, assertion = await signin_ready(penv)
+    response = await against_a_held_lock(penv, holder.user_id, finish_signin(client, assertion))
+    assert response.status_code == 200, response.text
+    assert await count(penv, SESSIONS) == 1
+
+
+async def test_a_signin_finish_racing_a_reset_that_drops_its_passkey_makes_no_session(
+    penv: Env,
+) -> None:
+    holder, client, assertion = await signin_ready(penv)
+    reset = ("DELETE FROM webauthn_credentials WHERE user_id = :u", REVOKE)
+    response = await against_a_held_lock(
+        penv, holder.user_id, finish_signin(client, assertion), *reset
+    )
+    assert (response.status_code, reason(response)) == (400, "passkey_failed")
+    assert await count(penv, SESSIONS) == 0
+    assert (
+        await count(
+            penv,
+            "SELECT count(*) FROM auth_events WHERE kind = 'sign_in' "
+            "AND detail->>'method' = 'passkey'",
+        )
+        == 0
+    )
+
+
+async def test_a_reset_after_a_signin_finish_revokes_its_session(penv: Env) -> None:
+    holder, client, assertion = await signin_ready(penv)
+    assert (await finish_signin(client, assertion)).status_code == 200
+    async with penv.db() as db:  # the reset: the user row first, then what it deletes
+        await db.execute(
+            text("SELECT id FROM users WHERE id = :u FOR NO KEY UPDATE"), {"u": holder.user_id}
+        )
+        await db.execute(
+            text("DELETE FROM webauthn_credentials WHERE user_id = :u"), {"u": holder.user_id}
+        )
+        await db.execute(text(REVOKE), {"u": holder.user_id})
+    assert await count(penv, SESSIONS) == 0
+    assert (await client.get("/api/auth/session")).json()["authenticated"] is False
+
+
+async def test_the_counter_grant_and_session_are_one_transaction(
+    penv: Env, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A failure in ``start_session`` rolls back the counter update made before it."""
+    holder, client, _ = await signin_ready(penv)
+    holder.device.sign_count = 3
+    begun = await start_signin(client)
+    assertion = holder.device.get(begun.json(), holder.handle)
+
+    async def broken(*args: Any, **kwargs: Any) -> Any:
+        raise RuntimeError("start_session failed")
+
+    monkeypatch.setattr(passkey_signin_session, "start_session", broken)
+    with contextlib.suppress(RuntimeError):  # the test transport re-raises server errors
+        await finish_signin(client, assertion)
+    assert await count(penv, "SELECT sign_count FROM webauthn_credentials") == 0
+    assert await penv.scalar("SELECT last_used_at FROM webauthn_credentials") is None
+    assert await count(penv, SESSIONS) == 0

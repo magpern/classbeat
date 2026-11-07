@@ -99,6 +99,9 @@ CLASSIFIED: dict[tuple[str, str], str] = {
     ("GET", "/api/auth/passkeys"): "session",
     ("POST", "/api/auth/passkeys/register/start"): "session",
     ("POST", "/api/auth/passkeys/register/finish"): "session",
+    # ADR 0019 (#773): username-less sign-in, anonymous like the password form.
+    ("POST", "/api/auth/passkeys/signin/start"): "public",
+    ("POST", "/api/auth/passkeys/signin/finish"): "public",
     ("PATCH", "/api/auth/passkeys/{passkey_id}"): "owned",
     ("DELETE", "/api/auth/passkeys/{passkey_id}"): "owned",
     ("GET", "/api/connections"): "session",
