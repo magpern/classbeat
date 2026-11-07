@@ -71,6 +71,13 @@ exactly (``MQTT_ALLOWLIST``, checked by ``check_mqtt`` before the connect), with
 context and **no fallback** to plain MQTT on 1883 or any other port; it takes no argument, so
 neither a caller nor a MOWL answer can choose the host, the port or switch TLS off.
 
+**The Turnstile client** (ADR 0025 section 9, #721; web process only, it refuses inside the
+worker): ``turnstile_async_client()`` sends the siteverify request of the four anonymous auth forms
+to ``challenges.cloudflare.com`` (``TURNSTILE_ALLOWLIST``, on no urllib list). Built like the
+media client: no redirect, no default header, ``trust_env=False``, a total deadline
+(``TURNSTILE_TOTAL_SECONDS``), **no argument** (a transport comes only from tests, through
+``turnstile_test_client``, which the guard refuses in ``classbeat``).
+
 All paths verify TLS with a context from ``tls_client_context()``, which never writes a TLS key
 log (``SSLKEYLOGFILE`` is ignored, threat model T49).
 
@@ -1035,6 +1042,57 @@ def mowl_qr_image_test_client(
     production list and a fake transport (no network). Same builder, so the same redirect,
     header and deadline behaviour."""
     return _media_client(MOWL_QR_IMAGE_ALLOWLIST, total_seconds, inner)
+
+
+# --- Cloudflare Turnstile (ADR 0025 section 9, #721) -------------------------------------------
+#
+# The siteverify call of the web process (sign-in, sign-up, the provider-email step and the reset
+# request). It carries our Turnstile secret, the visitor's token and address and an idempotency key
+# to Cloudflare, and nothing else. A literal, code-only list on no urllib list.
+
+TURNSTILE_HOST: Final = "challenges.cloudflare.com"
+TURNSTILE_ALLOWLIST = Allowlist(frozenset({TURNSTILE_HOST}))
+# One verification's total time, both attempts and every body included (ADR 0025 section 4).
+TURNSTILE_TOTAL_SECONDS: Final = 5.0
+TURNSTILE_CONNECT_SECONDS: Final = 3.0
+
+
+def turnstile_network_transport() -> httpx.AsyncHTTPTransport:
+    """The network transport of the Turnstile client: the system trust store (as the urllib
+    path), no TLS key log, no proxy from the environment."""
+    return httpx.AsyncHTTPTransport(trust_env=False, verify=tls_client_context())
+
+
+def _turnstile_client(inner: httpx.AsyncBaseTransport, total_seconds: float) -> httpx.AsyncClient:
+    client = httpx.AsyncClient(
+        transport=AllowlistTransport(TURNSTILE_ALLOWLIST, inner, total_seconds=total_seconds),
+        trust_env=False,
+        timeout=httpx.Timeout(total_seconds, connect=min(TURNSTILE_CONNECT_SECONDS, total_seconds)),
+        follow_redirects=False,
+    )
+    client.headers.clear()
+    return client
+
+
+def turnstile_async_client() -> httpx.AsyncClient:
+    """The dedicated client of the Turnstile siteverify call (ADR 0025 section 9), **in the web
+    process only**: inside the worker it refuses with ``OutboundBlocked`` before anything is
+    built. **It takes no argument**: its list is always ``TURNSTILE_ALLOWLIST``
+    (``challenges.cloudflare.com`` alone, https on 443, on no urllib list), its deadline
+    ``TURNSTILE_TOTAL_SECONDS`` (connect ``TURNSTILE_CONNECT_SECONDS``). It follows **no redirect
+    at all**, sends **no default header** (only what the call site sets) and has
+    ``trust_env=False``. One client per verification (``async with``)."""
+    refuse_in_worker(TURNSTILE_HOST)
+    return _turnstile_client(turnstile_network_transport(), TURNSTILE_TOTAL_SECONDS)
+
+
+def turnstile_test_client(
+    inner: httpx.AsyncBaseTransport, *, total_seconds: float = TURNSTILE_TOTAL_SECONDS
+) -> httpx.AsyncClient:
+    """**Tests only** (the guard refuses it in ``classbeat``): the Turnstile client with the
+    production list and a fake transport (an ``httpx.MockTransport``, no network). Same builder,
+    so the same redirect, header and deadline behaviour."""
+    return _turnstile_client(inner, total_seconds)
 
 
 # MOWL's MQTT broker (ADR 0024 section 4). **TLS on 8883 only**, the one non-HTTP rule of the

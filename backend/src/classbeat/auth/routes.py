@@ -29,6 +29,7 @@ from classbeat.auth.activity import (
     decode_cursor,
     list_activity,
 )
+from classbeat.auth.captcha import captcha_config
 from classbeat.auth.cookies import CSRF_COOKIE, clear_session_cookie, set_csrf_cookie
 from classbeat.auth.deps import current_session, request_ip, require_user
 from classbeat.auth.events import record_event
@@ -71,6 +72,14 @@ class SessionOut(BaseModel):
     admin_pending_mfa: bool
 
 
+class CaptchaOut(BaseModel):
+    """Turnstile for the sign-in, sign-up, reset and provider-email pages (ADR 0025 section 7):
+    the public site key, or ``fake`` for the e2e stack's local stand-in."""
+
+    site_key: str | None = None
+    fake: bool = False
+
+
 class SessionState(BaseModel):
     authenticated: bool
     csrf_token: str
@@ -78,6 +87,8 @@ class SessionState(BaseModel):
     session: SessionOut | None = None
     # The languages on offer (enabled and supported), for the pickers; same for everyone.
     locales: list[str] = []
+    # null while Turnstile is off; the same for everyone (no account is named).
+    captcha: CaptchaOut | None = None
 
 
 class SessionItem(BaseModel):
@@ -130,6 +141,11 @@ async def _record_sign_out(
         logger.warning("sign-out event write failed: %s", type(exc).__name__)
 
 
+def _captcha(request: Request) -> CaptchaOut | None:
+    config = captcha_config(request.app.state.settings)
+    return None if config is None else CaptchaOut.model_validate(config)
+
+
 @router.get("/session")
 async def get_session(
     request: Request,
@@ -155,6 +171,7 @@ async def get_session(
                 admin_pending_mfa=info.admin_pending_mfa,
             ),
             locales=list(offered_locales(request.app.state.settings)),
+            captcha=_captcha(request),
         )
     value = request.cookies.get(CSRF_COOKIE, "")
     if not value or len(value) > CSRF_VALUE_MAX:
@@ -164,6 +181,7 @@ async def get_session(
         authenticated=False,
         csrf_token=value,
         locales=list(offered_locales(request.app.state.settings)),
+        captcha=_captcha(request),
     )
 
 

@@ -190,8 +190,14 @@ services:
       CLASSBEAT_OAUTH_GITHUB_CLIENT_ID: ${OAUTH_GITHUB_CLIENT_ID:-}
       CLASSBEAT_OAUTH_MICROSOFT_CLIENT_ID: ${OAUTH_MICROSOFT_CLIENT_ID:-}
       CLASSBEAT_OAUTH_VISIBLE_PROVIDERS: ${OAUTH_VISIBLE_PROVIDERS:-google}
+      # ADR 0025: Cloudflare Turnstile on sign-in, sign-up and reset, web only. Off by default
+      # until the owner has created the widget and passed the live check; on, it needs the public
+      # site key here and the secret in secrets/turnstile_secret_key. The fake is never set here.
+      CLASSBEAT_TURNSTILE_ENABLED: ${TURNSTILE_ENABLED:-false}
+      CLASSBEAT_TURNSTILE_SITE_KEY: ${TURNSTILE_SITE_KEY:-}
     # swedebeat_app: Swedebeat's app key if the image does not hold it (ADR 0015 section 4).
     # oauth_*_client_secret: web only; each file must exist, empty while that provider is off.
+    # turnstile_secret_key: web only; the file must exist, empty while Turnstile is off.
     secrets:
       - database_password
       - app_secret_key
@@ -202,6 +208,7 @@ services:
       - oauth_google_client_secret
       - oauth_github_client_secret
       - oauth_microsoft_client_secret
+      - turnstile_secret_key
     # No `ports`: reachable only from swag over `proxy` (as classbeat-web, so the name cannot
     # collide with another stack's `web` there).
     expose:
@@ -293,6 +300,8 @@ secrets:
     file: ./secrets/oauth_github_client_secret
   oauth_microsoft_client_secret:
     file: ./secrets/oauth_microsoft_client_secret
+  turnstile_secret_key:
+    file: ./secrets/turnstile_secret_key
 
 volumes:
   db-data:

@@ -11,6 +11,7 @@ from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from classbeat.auth.admin_routes import router as admin_router
+from classbeat.auth.captcha import build_verifier
 from classbeat.auth.email_routes import router as email_router
 from classbeat.auth.identity_routes import router as identity_router
 from classbeat.auth.keys import Keys
@@ -111,6 +112,14 @@ def attach_state(
     app.state.password_hasher = PasswordHasher(settings.password_hash_workers)
     app.state.mailer = Mailer(settings)
     app.state.oauth = OAuthRuntime(enabled_providers(settings))
+    # Turnstile on the anonymous auth forms (ADR 0025): None while it is off. Off in prod is the
+    # owner's emergency degrade (section 5), so it is said once at start, loudly.
+    app.state.captcha = build_verifier(settings)
+    if settings.environment == "prod" and not settings.turnstile_enabled:
+        logger.error(
+            "Turnstile is off (CLASSBEAT_TURNSTILE_ENABLED is false): sign-in, sign-up and reset "
+            "requests are not checked for automation"
+        )
     # httpx logs each request URL at INFO; the OAuth ones are not worth a log line.
     for noisy in ("httpx", "httpcore"):
         logging.getLogger(noisy).setLevel(logging.WARNING)

@@ -5,7 +5,7 @@ user all cost one argon2 verification, so the timing matches. Failures (and only
 against the limits: the attempt reserves its slots first and releases them on success.
 """
 
-from typing import Annotated
+from typing import Annotated, Any
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
@@ -13,6 +13,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select, update
 
 from classbeat.auth.accounts import grant_admin_if_listed
+from classbeat.auth.captcha import require_captcha
 from classbeat.auth.cookies import clear_session_cookie, set_device_cookie, set_session_cookie
 from classbeat.auth.deps import (
     current_session,
@@ -48,6 +49,9 @@ INVALID = {"reason": "invalid_credentials"}
 class LoginIn(BaseModel):
     email: str = Field(max_length=FIELD_MAX)
     password: str = Field(max_length=FIELD_MAX)
+    # The Turnstile token (ADR 0025 section 2): no length limit or type here, so a missing,
+    # overlong or odd one is the same captcha_failed as a wrong one, never a 422.
+    captcha_token: Any = None
 
 
 class ReauthIn(BaseModel):
@@ -84,6 +88,8 @@ async def _check_password(
 
 @router.post("/login")
 async def sign_in(body: LoginIn, request: Request, response: Response) -> SignedIn:
+    # ADR 0025 section 2: before the account lookup, the known-device check, the buckets and argon2.
+    await require_captcha(request, "signin", body.captcha_token)
     settings, keys = request.app.state.settings, request.app.state.keys
     hasher: PasswordHasher = request.app.state.password_hasher
     ip, normalized = request_ip(request), normalize_email(body.email)

@@ -166,7 +166,8 @@ cd /opt/classbeat
   head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n' > secrets/app_secret_key      # >= 32 bytes
   head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n' > secrets/connection_kek      # exactly 64 hex characters
   for n in smtp_password anthropic_api_key openai_api_key deepseek_api_key swedebeat_app \
-    oauth_google_client_secret oauth_github_client_secret oauth_microsoft_client_secret; do
+    oauth_google_client_secret oauth_github_client_secret oauth_microsoft_client_secret \
+    turnstile_secret_key; do
     [ -e "secrets/$n" ] || install -m 640 /dev/null "secrets/$n"   # empty placeholder; fill in below
   done )
 ls -ln secrets/          # every file: <your uid> 10010, -rw-r-----
@@ -196,9 +197,13 @@ Fill in these files by hand (writing into an existing file keeps its group and m
   `secrets/oauth_microsoft_client_secret`: the OAuth client secrets, mounted into `web` only. The
   loop above creates them **empty** (that provider is off) and never empties one that exists; the
   files must exist, or `up` fails with a missing-file error. To switch Google on, section 5a.
+- `secrets/turnstile_secret_key`: leave **empty** (the loop above made it) while Turnstile is off
+  (`TURNSTILE_ENABLED` unset or `false`, the default). It is mounted into `web` only, so the file
+  must exist or `up` fails. Web refuses to start with `TURNSTILE_ENABLED=true` and an empty file,
+  and in prod with one of Cloudflare's test keys ([ADR 0025](../adr/0025-turnstile.md) section 7).
 
 A file that holds only blanks counts as empty. If an optional file (`smtp_password`, the three
-`oauth_*_client_secret`, `swedebeat_app`) cannot be read, `web` starts without it and logs
+`oauth_*_client_secret`, `swedebeat_app`, `turnstile_secret_key`) cannot be read, `web` starts without it and logs
 `secret file <name> is not readable; treated as not set` (that feature is off); any other unreadable
 secret stops the service that needs it. Either way, fix the group and mode as above. For
 `swedebeat_app` that means the runtime override silently does not apply: web falls back to the key
@@ -637,7 +642,7 @@ mv -f "staging-$NEW"/* . && rmdir "staging-$NEW"
 chmod +x check-prod-compose.sh backup.sh restore.sh validate-backup.sh   # a download has no exec bit
 diff -u previous-$OLD/swag-classbeat.subdomain.conf swag-classbeat.subdomain.conf   # swag's copy changed?
 diff -u previous-$OLD/prod.env.example prod.env.example                              # new settings to put in .env?
-( umask 027; touch secrets/swedebeat_app \
+( umask 027; touch secrets/swedebeat_app secrets/turnstile_secret_key \
   secrets/oauth_google_client_secret secrets/oauth_github_client_secret secrets/oauth_microsoft_client_secret )
 sed -i "s/^CLASSBEAT_VERSION=.*/CLASSBEAT_VERSION=$NEW/" .env
 ./check-prod-compose.sh                           # files, .env, secrets/: group 10010, mode 640 or stricter
@@ -654,9 +659,10 @@ Postgres restarts for a few seconds; the data volume is kept.
 the worker has 30 s to hand its leases back (ADR 0005). Read the release notes for owner-facing
 steps, and copy the swag sample to swag if the first `diff` shows a change. A stack older than the
 Swedebeat connection (#366) has no `secrets/swedebeat_app`, and one older than #507 has no
-`secrets/oauth_*_client_secret`; without them `up` fails with a missing-file error for that secret,
-which the `touch` line above fixes (an empty OAuth file keeps that provider off; `touch` never empties
-a file). A file it creates gets group 10010 from the folder and mode 640 from `umask 027`. A stack
+`secrets/oauth_*_client_secret`, and one older than #724 has no `secrets/turnstile_secret_key`;
+without them `up` fails with a missing-file error for that secret, which the `touch` line above fixes
+(an empty OAuth file keeps that provider off, an empty Turnstile file keeps Turnstile off; `touch`
+never empties a file). A file it creates gets group 10010 from the folder and mode 640 from `umask 027`. A stack
 set up before #511 has files of mode 600 and the deploy user's group, which the containers cannot
 read: run the one-time commands of section 5 (`groupadd`, `chgrp` and `chmod 2700` on the folder,
 then `sudo chgrp 10010 secrets/* && chmod 640 secrets/*`) before `up`; the check names them.

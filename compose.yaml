@@ -126,6 +126,8 @@ services:
       CLASSBEAT_OAUTH_VISIBLE_PROVIDERS: ${OAUTH_VISIBLE_PROVIDERS:-google}
     # swedebeat_app (ADR 0015 section 4) is web's only: Swedebeat's app key as a runtime
     # override of the key a release image holds. Empty from init (empty is no key).
+    # turnstile_secret_key (ADR 0025 section 7) is web's only too; empty from init. Turnstile stays
+    # off in this stack (no CLASSBEAT_TURNSTILE_* here).
     secrets:
       - database_password
       - app_secret_key
@@ -135,6 +137,7 @@ services:
       - oauth_google_client_secret
       - oauth_github_client_secret
       - oauth_microsoft_client_secret
+      - turnstile_secret_key
     ports:
       - "127.0.0.1:${WEB_PORT:-8000}:8000"
     healthcheck:
@@ -236,6 +239,9 @@ secrets:
     file: ./secrets/oauth_github_client_secret
   oauth_microsoft_client_secret:
     file: ./secrets/oauth_microsoft_client_secret
+  # Cloudflare Turnstile's secret (ADR 0025 section 7): web only; empty from init, never a real key.
+  turnstile_secret_key:
+    file: ./secrets/turnstile_secret_key
 
 volumes:
   db-data:
