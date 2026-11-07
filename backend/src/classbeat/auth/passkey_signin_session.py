@@ -4,10 +4,10 @@
 order:
 
 1. ``lock_user`` on the credential's user, the first lock (section 6, rule 2).
-2. The counter rule (``advance_counter``). No row back: if the credential is gone (removed, or a
-   reset that committed first deleted it) nothing is written; if it still exists the counter
-   regressed, so ``passkey_counter_regressed`` is recorded, the user is mailed at most once a day
-   per passkey, the transaction commits with no session and the passkey stays.
+2. The counter rule (``passkey_counter.advance_or_refuse``). No row back: if the credential is
+   gone (removed, or a reset that committed first deleted it) nothing is written; if it still
+   exists the counter regressed, so ``passkey_counter_regressed`` is recorded, the user is mailed
+   at most once a day per passkey, the transaction commits with no session and the passkey stays.
 3. A disabled user gets the generic failure, like a wrong password.
 4. The ``ADMIN_EMAILS`` grant and ``start_session`` as for a password sign-in (#632's client mark,
    ``reauth_at`` now, never ``mfa_at``: an admin still needs TOTP in the new session), the known
@@ -30,19 +30,13 @@ from classbeat.auth.devices import remember_device
 from classbeat.auth.events import record_event
 from classbeat.auth.flowtools import factory, user_agent
 from classbeat.auth.passkey_assertion import Asserted
-from classbeat.auth.passkey_signin_store import (
-    SignInCredential,
-    advance_counter,
-    credential_exists,
-    regression_mailed_recently,
-)
+from classbeat.auth.passkey_counter import METHOD, advance_or_refuse, record_passkey_failure
+from classbeat.auth.passkey_signin_store import SignInCredential
 from classbeat.auth.sessions import IssuedSession, start_session
 from classbeat.auth.tables import users
 from classbeat.auth.userlock import lock_user
 from classbeat.db import system_session
-from classbeat.emails.notices import Notice, happened
-
-METHOD = "passkey"
+from classbeat.emails.notices import Notice
 
 
 @dataclass(frozen=True, slots=True)
@@ -68,10 +62,7 @@ async def record_failure(
     db: AsyncSession, user_id: UUID | None, ip: str, reason: str, passkey: str | None = None
 ) -> None:
     """``sign_in_failed`` with the category only (section 10): never a label, id or key."""
-    detail = {"method": METHOD, "reason": reason}
-    if passkey is not None:
-        detail["passkey"] = passkey
-    await record_event(db, "sign_in_failed", user_id=user_id, ip=ip, detail=detail)
+    await record_passkey_failure(db, "sign_in_failed", user_id, ip, reason, passkey)
 
 
 async def complete(
@@ -82,22 +73,16 @@ async def complete(
         locked = await lock_user(db, user_id)
         if locked is None:
             return Outcome(reason="gone")  # the account was deleted meanwhile; nothing written
-        if not await advance_counter(
-            db, found.id, user_id, asserted.sign_count, asserted.backup_state
-        ):
-            if not await credential_exists(db, found.id, user_id):
-                return Outcome(reason="gone")  # removed, or a reset committed first
-            mail = not await regression_mailed_recently(db, found.id, user_id)
-            await record_event(
-                db,
-                "passkey_counter_regressed",
-                user_id=user_id,
-                ip=ip,
-                detail={"passkey": passkey, "mailed": mail},
-            )
-            await record_failure(db, user_id, ip, "counter", passkey)
-            notice = happened("passkey_counter_regressed", found.email, user_id, label=found.label)
-            return Outcome(reason="counter", notice=notice if mail else None)
+        counted = await advance_or_refuse(
+            db,
+            passkey_id=found.id,
+            user_id=user_id,
+            asserted=asserted,
+            ip=ip,
+            failed="sign_in_failed",
+        )
+        if counted.reason is not None:
+            return Outcome(reason=counted.reason, notice=counted.notice)
         if locked.disabled:
             await record_failure(db, user_id, ip, "disabled", passkey)
             return Outcome(reason="disabled")  # the same answer as any other failure

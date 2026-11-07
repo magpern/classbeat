@@ -7,7 +7,9 @@ that names the credential's user too.
 The counter rule is one conditional ``UPDATE`` (section 7), run by the caller after
 ``lock_user``: the new count must be greater than the stored one, or both are 0. No row back
 means the credential is gone (removed, or deleted by a reset that committed first) or the counter
-regressed; ``credential_exists`` tells the two apart under the same lock.
+regressed; ``regressed_contact`` tells the two apart under the same lock and reads the address and
+label the counter mail needs there, so an email change committed meanwhile is seen (#783 review
+N3). The re-auth finish (#774) uses the same counter rule (``passkey_counter``).
 """
 
 from dataclasses import dataclass
@@ -31,12 +33,10 @@ class SignInCredential:
     public_key: bytes
     backup_eligible: bool
     user_handle: bytes | None
-    email: str
-    label: str
 
 
 async def find_credential(db: AsyncSession, credential_id: bytes) -> SignInCredential | None:
-    """The credential with this id and its user's handle and address; None when unknown."""
+    """The credential with this id and its user's handle; None when unknown."""
     row = (
         await db.execute(
             select(
@@ -45,8 +45,6 @@ async def find_credential(db: AsyncSession, credential_id: bytes) -> SignInCrede
                 webauthn_credentials.c.public_key,
                 webauthn_credentials.c.backup_eligible,
                 users.c.webauthn_user_handle,
-                users.c.email,
-                webauthn_credentials.c.label,
             )
             .join(users, users.c.id == webauthn_credentials.c.user_id)
             .where(webauthn_credentials.c.credential_id == credential_id)
@@ -55,7 +53,7 @@ async def find_credential(db: AsyncSession, credential_id: bytes) -> SignInCrede
     if row is None:
         return None
     handle = None if row[4] is None else bytes(row[4])
-    return SignInCredential(row[0], row[1], bytes(row[2]), row[3], handle, row[5], row[6])
+    return SignInCredential(row[0], row[1], bytes(row[2]), row[3], handle)
 
 
 async def advance_counter(
@@ -80,13 +78,22 @@ async def advance_counter(
     return found.first() is not None
 
 
-async def credential_exists(db: AsyncSession, passkey_id: UUID, user_id: UUID) -> bool:
-    found = await db.execute(
-        select(webauthn_credentials.c.id).where(
-            webauthn_credentials.c.id == passkey_id, webauthn_credentials.c.user_id == user_id
+async def regressed_contact(
+    db: AsyncSession, passkey_id: UUID, user_id: UUID
+) -> tuple[str, str] | None:
+    """After ``advance_counter`` returned no row, under ``lock_user``: the user's address and the
+    passkey's label when the credential still exists (its counter regressed), None when it is
+    gone."""
+    row = (
+        await db.execute(
+            select(users.c.email, webauthn_credentials.c.label)
+            .join(users, users.c.id == webauthn_credentials.c.user_id)
+            .where(
+                webauthn_credentials.c.id == passkey_id, webauthn_credentials.c.user_id == user_id
+            )
         )
-    )
-    return found.first() is not None
+    ).first()
+    return None if row is None else (row[0], row[1])
 
 
 async def regression_mailed_recently(db: AsyncSession, passkey_id: UUID, user_id: UUID) -> bool:

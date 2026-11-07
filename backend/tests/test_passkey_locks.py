@@ -1,5 +1,5 @@
-"""The lock order of ADR 0019 section 6 for the register start and finish, the remove (#772) and
-the sign-in finish (#773).
+"""The lock order of ADR 0019 section 6 for the register start and finish, the remove (#772), the
+sign-in finish (#773) and the re-auth finish (#774).
 
 Deterministic, not timed (as ``test_auth_reset_races``): the test holds the ``users`` row lock,
 lets the request run until Postgres reports it waiting for a lock, then either releases the lock
@@ -36,6 +36,8 @@ from passkeytools import (
 )
 from passkeytools import penv as penv
 from test_auth_reset_races import against_a_held_lock
+from test_passkey_reauth import REAUTH_START, ready
+from test_passkey_reauth import finish as reauth_finish
 from webauthnfake import SoftAuthenticator
 
 pytestmark = pytest.mark.usefixtures("frozen_rate_windows")
@@ -167,3 +169,53 @@ async def test_the_counter_grant_and_session_are_one_transaction(
     assert await count(penv, "SELECT sign_count FROM webauthn_credentials") == 0
     assert await penv.scalar("SELECT last_used_at FROM webauthn_credentials") is None
     assert await count(penv, SESSIONS) == 0
+
+
+# --- the re-auth finish (#774) -----------------------------------------------------------------
+
+REAUTHED = (
+    "SELECT count(*) FROM auth_events WHERE kind = 'reauth' AND detail->>'method' = 'passkey'"
+)
+
+
+async def reauth_ready(env: Env, sign_count: int = 0) -> tuple[Client, Any, dict[str, Any]]:
+    """A signed-in user with a passkey, a started re-auth flow and its assertion."""
+    client, device = await ready(env)
+    device.sign_count = sign_count
+    begun = await client.post(REAUTH_START)
+    return client, await user_id_of(env), device.get(begun.json(), None)
+
+
+async def test_a_reauth_finish_waits_for_the_user_row_lock_then_completes(penv: Env) -> None:
+    client, user, assertion = await reauth_ready(penv)
+    response = await against_a_held_lock(penv, user, reauth_finish(client, assertion))
+    assert response.status_code == 200, response.text
+    assert await count(penv, REAUTHED) == 1
+
+
+async def test_a_reauth_finish_racing_a_reset_that_drops_its_passkey_rotates_nothing(
+    penv: Env,
+) -> None:
+    client, user, assertion = await reauth_ready(penv)
+    reset = ("DELETE FROM webauthn_credentials WHERE user_id = :u", REVOKE)
+    response = await against_a_held_lock(penv, user, reauth_finish(client, assertion), *reset)
+    assert (response.status_code, reason(response)) == (400, "passkey_failed")
+    assert await count(penv, SESSIONS) == 0  # no rotated session outlives the reset
+    assert await count(penv, REAUTHED) == 0
+    written = (
+        "SELECT count(*) FROM auth_events WHERE kind IN ('passkey_counter_regressed', "
+        "'reauth_failed')"
+    )
+    assert await count(penv, written) == 0  # gone: nothing written
+
+
+async def test_a_reauth_finish_racing_a_reset_that_keeps_the_passkey_rolls_the_counter_back(
+    penv: Env,
+) -> None:
+    client, user, assertion = await reauth_ready(penv, sign_count=3)
+    response = await against_a_held_lock(penv, user, reauth_finish(client, assertion), REVOKE)
+    assert (response.status_code, reason(response)) == (401, "not_authenticated")
+    assert await count(penv, SESSIONS) == 0
+    assert await count(penv, REAUTHED) == 0
+    assert await count(penv, "SELECT sign_count FROM webauthn_credentials") == 0
+    assert await penv.scalar("SELECT last_used_at FROM webauthn_credentials") is None
