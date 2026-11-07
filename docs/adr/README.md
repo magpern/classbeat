@@ -31,3 +31,4 @@ Reviewer reviews each in its PR (AGENTS.md, "Decisions and ADRs").
 | [0023](0023-multilingual.md) | Multilingual support: English, Swedish and Danish UI and mail; agent-translated and agent-reviewed; classes stay English (ML, #657) | Accepted, subject to review |
 | [0024](0024-mowl-qr-connect.md) | Connect MOWL by scanning a QR code: anonymous ticket, image from our origin, TLS-only MQTT on 8883, per-session wait (#647) | Proposed |
 | [0025](0025-turnstile.md) | Cloudflare Turnstile on sign-in, sign-up, the provider-email step and the reset request: order before any account lookup, fail closed, web-only egress (#721) | Proposed |
+| [0026](0026-scaling-music-analysis.md) | Scaling music analysis: cap, measure and cache now; more workers on one box; a separate analysis host; autoscaling only on a measured trigger (#733) | Proposed |
