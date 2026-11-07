@@ -13,11 +13,19 @@ DEVICE_COOKIE = "__Host-classbeat_device"
 CSRF_COOKIE = "__Host-classbeat_csrf"
 OAUTH_COOKIE = "__Host-classbeat_oauth"
 PENDING_COOKIE = "__Host-classbeat_pending"
+# ADR 0019 section 6: one passkey flow cookie per purpose, so a re-auth never cancels a
+# registration. ``SameSite=Strict``: a finish is always a same-site fetch from our own page.
+PASSKEY_COOKIES = {
+    "register": "__Host-classbeat_passkey_register",
+    "sign_in": "__Host-classbeat_passkey_signin",
+    "reauth": "__Host-classbeat_passkey_reauth",
+}
 
 DEVICE_MAX_AGE = 365 * 24 * 3600
 CSRF_MAX_AGE = 30 * 24 * 3600
 OAUTH_MAX_AGE = 10 * 60
 PENDING_MAX_AGE = 24 * 3600
+PASSKEY_MAX_AGE = 5 * 60  # the challenge's lifetime
 
 
 def set_session_cookie(response: Response, issued: IssuedSession) -> None:
@@ -92,3 +100,21 @@ def clear_oauth_cookie(response: Response) -> None:
 
 def clear_pending_cookie(response: Response) -> None:
     response.delete_cookie(PENDING_COOKIE, path="/", secure=True, httponly=True, samesite="lax")
+
+
+def set_passkey_cookie(response: Response, purpose: str, value: str) -> None:
+    response.set_cookie(
+        PASSKEY_COOKIES[purpose],
+        value,
+        max_age=PASSKEY_MAX_AGE,
+        path="/",
+        secure=True,
+        httponly=True,
+        samesite="strict",
+    )
+
+
+def clear_passkey_cookie(response: Response, purpose: str) -> None:
+    response.delete_cookie(
+        PASSKEY_COOKIES[purpose], path="/", secure=True, httponly=True, samesite="strict"
+    )

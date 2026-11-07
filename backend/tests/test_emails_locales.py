@@ -46,8 +46,11 @@ def three_languages(monkeypatch: pytest.MonkeyPatch) -> None:
 # --- the catalogues ----------------------------------------------------------------------------
 
 
-def test_the_untranslated_list_is_empty_at_merge() -> None:
-    assert frozenset() == UNTRANSLATED
+def test_the_untranslated_list_holds_only_the_strings_awaiting_a_catch_up_translation() -> None:
+    """ML6 merged with an empty list; feature PRs since add English only and list it here (ADR 0023
+    section 4), so each addition is pinned and visible in review. A catch-up PR empties it."""
+    passkeys = {s for s in S if s.name.startswith(("PASSKEY_", "SUBJECT_PASSKEY_"))}  # #772
+    assert passkeys == UNTRANSLATED
 
 
 @pytest.mark.parametrize("code", TRANSLATED)
@@ -190,7 +193,10 @@ def test_a_translated_mail_carries_the_same_links_as_the_english_one(kind: Kind,
 
     english, other = sample_message(kind, DEFAULT), sample_message(kind, code)
     assert links(other.body, code) == links(english.body, DEFAULT)
-    assert other.subject != english.subject
+    # A subject still on the untranslated list is English in every catalogue until the catch-up
+    # translation PR (ADR 0023 section 4); every other subject must be translated.
+    if english.subject not in {en.CATALOGUE[s] for s in UNTRANSLATED}:
+        assert other.subject != english.subject
     assert "{" not in other.body
     assert "}" not in other.body
 

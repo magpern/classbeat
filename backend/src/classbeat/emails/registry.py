@@ -11,7 +11,7 @@ from datetime import UTC, datetime
 from enum import StrEnum
 from typing import Any
 
-from classbeat.emails import kinds
+from classbeat.emails import kinds, passkey_kinds
 from classbeat.emails.kinds import Builder
 
 
@@ -84,6 +84,9 @@ _ALL = (
     _activity("account_deleted", kinds.account_deleted, _WHEN),
     _activity("identity_unlinked", kinds.identity_unlinked, {"provider": "github", **_WHEN}),
     _activity("totp_removed", kinds.totp_removed, _WHEN),
+    # ADR 0019 (#772): a passkey added or removed, like a provider linked or unlinked.
+    _activity("passkey_added", passkey_kinds.passkey_added, {"label": "MacBook", **_WHEN}),
+    _activity("passkey_removed", passkey_kinds.passkey_removed, {"label": "MacBook", **_WHEN}),
     # ME5 (#656): sent by the web process from the worker's hand-off row (``emails.handoff``).
     _class_ready("class_ready", kinds.class_ready, {"class_id": SAMPLE_CLASS_ID}),
 )

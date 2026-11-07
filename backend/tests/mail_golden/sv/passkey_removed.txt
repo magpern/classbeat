@@ -1,0 +1,17 @@
+A passkey was removed
+=====================
+
+The passkey named "MacBook" was removed from your classbeat account.
+
+When it happened: 6 november 2026 kl. 12:30 UTC
+
+Granska ditt konto:
+https://classbeat.example.test/sv/account
+
+If this wasn't you, change your password and tell us right away. Kontakta oss på support@classbeat.eu
+
+--
+Du får den här säkerhetsaviseringen för att det här är e-postadressen till ett classbeat-konto. Sådana aviseringar skickas för att skydda dig.
+classbeat: https://classbeat.example.test
+Frågor? Skriv till support@classbeat.eu
+Avsluta prenumerationen på de här mejlen: https://classbeat.example.test/sv/unsubscribe#token=SAMPLE&all=SAMPLE

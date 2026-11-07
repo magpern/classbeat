@@ -94,6 +94,13 @@ CLASSIFIED: dict[tuple[str, str], str] = {
     ("POST", "/api/auth/mfa/stepup"): "session",
     ("GET", "/api/auth/identities"): "session",
     ("DELETE", "/api/auth/identities/{identity_id}"): "owned",
+    # ADR 0019 (#772): passkeys. The flag-off answer (404 feature_off) comes before the session
+    # check for register and rename; a passkey id of another user is 404 like an unknown one.
+    ("GET", "/api/auth/passkeys"): "session",
+    ("POST", "/api/auth/passkeys/register/start"): "session",
+    ("POST", "/api/auth/passkeys/register/finish"): "session",
+    ("PATCH", "/api/auth/passkeys/{passkey_id}"): "owned",
+    ("DELETE", "/api/auth/passkeys/{passkey_id}"): "owned",
     ("GET", "/api/connections"): "session",
     ("POST", "/api/connections/mowl"): "session",
     ("DELETE", "/api/connections/mowl"): "session",
@@ -531,6 +538,7 @@ async def test_routes_that_need_a_session_refuse_an_anonymous_caller(
 OWNED_PATH_PARAMS = (
     "session_id",
     "identity_id",
+    "passkey_id",
     "job_id",
     "operation_id",
     "class_id",
@@ -555,6 +563,7 @@ class Rows:
     session_id: uuid.UUID
     identity_id: uuid.UUID
     row_id: uuid.UUID  # a beat-one correction of the class (ADR 0007 amendment)
+    passkey_id: uuid.UUID  # ADR 0019 (#772)
 
     @property
     def digest(self) -> str:
@@ -571,6 +580,7 @@ class Rows:
             "session_id": self.session_id,
             "identity_id": self.identity_id,
             "row_id": self.row_id,
+            "passkey_id": self.passkey_id,
         }
 
 
@@ -615,9 +625,25 @@ async def plant(env: Env, conn: Connection, user: uuid.UUID) -> Rows:
         ),
         {"o": user, "c": class_id, "f": "ab" * 32},
     ).scalar_one()
+    passkey_id = conn.execute(
+        text(
+            "INSERT INTO webauthn_credentials (user_id, credential_id, public_key, "
+            "backup_eligible, backup_state, label) VALUES (:u, :c, :k, true, true, 'Key') "
+            "RETURNING id"
+        ),
+        {"u": user, "c": uuid.uuid4().bytes, "k": b"\xa1\x01\x02"},
+    ).scalar_one()
     other_session = (await env.login(user)).id
     return Rows(
-        user, class_id, job_id, revision_id, operation_id, other_session, identity_id, row_id
+        user,
+        class_id,
+        job_id,
+        revision_id,
+        operation_id,
+        other_session,
+        identity_id,
+        row_id,
+        passkey_id,
     )
 
 
@@ -722,6 +748,12 @@ OWNED_ROUTES = [
     OwnedRoute("DELETE", "/api/classes/{class_id}/beat-one"),
     OwnedRoute("DELETE", "/api/auth/sessions/{session_id}", control=frozenset({204})),
     OwnedRoute("DELETE", "/api/auth/identities/{identity_id}", control=frozenset({204, 409})),
+    # Passkeys off in this app: rename is 404 feature_off before the id is read; remove answers
+    # whatever the flag says (ADR 0019 section 7).
+    OwnedRoute(
+        "PATCH", "/api/auth/passkeys/{passkey_id}", lambda rows: {"label": "Mine"}, frozenset({404})
+    ),
+    OwnedRoute("DELETE", "/api/auth/passkeys/{passkey_id}", control=frozenset({204})),
 ]
 
 
@@ -762,6 +794,7 @@ def owned_state(conn: Connection, rows: Rows) -> dict[str, Any]:
         "operations": one("SELECT id, state FROM external_operations WHERE owner_id = :u"),
         "sessions": one("SELECT count(*) FROM sessions WHERE user_id = :u"),
         "identities": one("SELECT id FROM identities WHERE user_id = :u"),
+        "passkeys": one("SELECT id, label FROM webauthn_credentials WHERE user_id = :u"),
         "events": one("SELECT count(*) FROM job_events WHERE job_id = :j"),
         "beat_one": one("SELECT id, beats FROM beat_one_corrections WHERE owner_id = :u"),
     }
