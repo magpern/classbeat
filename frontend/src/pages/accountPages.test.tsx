@@ -38,7 +38,7 @@ describe('sign-in page', () => {
     })
     fireEvent.click(screen.getByRole('button', { name: 'Sign in' }))
     expect(await screen.findByRole('heading', { name: 'Your account' })).toBeInTheDocument()
-    expect(window.location.pathname).toBe('/account')
+    expect(window.location.pathname).toBe('/en/account')
     expect(api.to('POST', '/api/auth/login')[0]?.body).toEqual({
       email: 'ann@example.test',
       password: 'correct horse battery',
@@ -111,7 +111,7 @@ describe('sign-in page', () => {
     expect(invite).toHaveFocus()
     expect(api.to('POST', '/api/auth/oauth/google/start')).toHaveLength(0)
     expect(goToProvider).not.toHaveBeenCalled()
-    expect(window.location.pathname).toBe('/signup')
+    expect(window.location.pathname).toBe('/en/signup')
     // Typing a code clears the mark; then the same button starts the sign-up flow.
     type(/Invite code/, 'inv-3')
     expect(screen.queryByText('Enter your invite code first.')).toBeNull()
@@ -134,13 +134,13 @@ describe('sign-in page', () => {
     )
     const links = screen.getAllByRole('link', { name: 'Create an account' })
     expect(links).toHaveLength(1)
-    expect(links[0]).toHaveAttribute('href', '/signup')
+    expect(links[0]).toHaveAttribute('href', '/en/signup')
     expect(screen.queryByText(/invite code/i)).toBeNull()
     expect(screen.queryByText(/below/i)).toBeNull()
     expect(screen.queryByLabelText(/Invite code/)).toBeNull()
     fireEvent.click(links[0] as HTMLElement)
     expect(await screen.findByRole('heading', { name: 'Create an account' })).toBeInTheDocument()
-    expect(window.location.pathname).toBe('/signup')
+    expect(window.location.pathname).toBe('/en/signup')
   })
 
   it('shows no "Create an account" link for other sign-in outcomes', async () => {

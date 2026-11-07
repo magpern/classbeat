@@ -64,6 +64,40 @@ export function resolveBrowserLocale(): Locale {
   }
 }
 
+/**
+ * The language of a URL path (ADR 0027 section 1): its first segment when that is a manifest code,
+ * else null. The path only: a query or fragment never reaches this.
+ */
+export function localeFromPath(pathname: string): Locale | null {
+  const match = /^\/([^/]+)(?:\/|$)/.exec(pathname)
+  const code = match?.[1] ?? null
+  return code !== null && isLocale(code) ? code : null
+}
+
+/**
+ * The language to use when the URL names none (ADR 0027 section 3): the account's, the saved
+ * choice, the browser's, then English; the first one the server offers. An empty `offered` means
+ * the server has not said (session not loaded or failed): any supported language will do.
+ */
+export function bestLocale(offered: readonly string[], account: string | null): Locale {
+  const allowed = (code: Locale) => offered.length === 0 || offered.includes(code)
+  const first = (code: string | null): Locale | null =>
+    code !== null && isLocale(code) && allowed(code) ? code : null
+  const fromAccount = first(account)
+  if (fromAccount !== null) return fromAccount
+  const stored = first(readStoredLocale())
+  if (stored !== null) return stored
+  try {
+    for (const tag of window.navigator.languages) {
+      const found = first(language(tag))
+      if (found !== null) return found
+    }
+  } catch {
+    /* navigator blocked: stay on the default */
+  }
+  return DEFAULT_LOCALE
+}
+
 // The locale the formatters and `t` use. The provider sets it; plain functions (no hook) read it.
 let active: Locale = DEFAULT_LOCALE
 

@@ -75,7 +75,7 @@ describe('the new-class form and running', () => {
     fireEvent.click(screen.getByRole('radio', { name: 'Hard' }))
     fireEvent.click(screen.getByRole('button', { name: 'Design my class' }))
     await waitFor(() => {
-      expect(window.location.pathname).toBe(`/jobs/${JOB_ID}`)
+      expect(window.location.pathname).toBe(`/en/jobs/${JOB_ID}`)
     })
     const [call] = api.to('POST', '/api/jobs')
     expect(call?.body).toEqual({

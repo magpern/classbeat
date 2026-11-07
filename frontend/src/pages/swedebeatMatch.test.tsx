@@ -129,7 +129,7 @@ describe('the Swedebeat part of the class page', () => {
     })
     fireEvent.click(start)
     await waitFor(() => {
-      expect(window.location.pathname).toBe(`/jobs/${NEW_JOB.id}`)
+      expect(window.location.pathname).toBe(`/en/jobs/${NEW_JOB.id}`)
     })
     const [call] = api.to('POST', '/api/jobs')
     expect(call?.body).toEqual({
@@ -164,7 +164,7 @@ describe('the Swedebeat part of the class page', () => {
     fakeApi(routes({ swedebeat_match: null }, {}, 'needs_reconnect'))
     renderAt(PAGE)
     const prompt = await screen.findByTestId('reconnect-prompt')
-    expect(within(prompt).getByRole('link', { name: /Connect again/ })).toHaveAttribute('href', '/account#connections')
+    expect(within(prompt).getByRole('link', { name: /Connect again/ })).toHaveAttribute('href', '/en/account#connections')
     expect(screen.getByRole('button', { name: 'Match with Swedebeat' })).toBeDisabled()
   })
 
@@ -255,7 +255,7 @@ describe('the match page', () => {
     renderAt(PAGE)
     fireEvent.click(await screen.findByRole('button', { name: 'Replace the missing and unsure songs' }))
     await waitFor(() => {
-      expect(window.location.pathname).toBe(`/jobs/${NEW_JOB.id}`)
+      expect(window.location.pathname).toBe(`/en/jobs/${NEW_JOB.id}`)
     })
     expect(api.to('POST', '/api/jobs')[0]?.body).toEqual({
       kind: 'revise_songs',
@@ -456,7 +456,7 @@ describe('Next, in the Swedebeat app', () => {
     renderAt(PAGE)
     await press('Design the class on this mix')
     await waitFor(() => {
-      expect(window.location.pathname).toBe(`/jobs/${NEW_JOB.id}`)
+      expect(window.location.pathname).toBe(`/en/jobs/${NEW_JOB.id}`)
     })
     expect(api.to('POST', `${HANDOFF}/design`)[0]?.body).toEqual({})
   })

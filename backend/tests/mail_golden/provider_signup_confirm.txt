@@ -4,7 +4,7 @@ Confirm your account
 Someone signed in with Google and asked to create a classbeat account with this address. To finish, open the link below in the same browser (valid for 24 hours).
 
 Confirm account:
-https://classbeat.example.test/signup/confirm#token=SAMPLE
+https://classbeat.example.test/en/signup/confirm#token=SAMPLE
 
 If this wasn't you, ignore this mail. No account is created.
 

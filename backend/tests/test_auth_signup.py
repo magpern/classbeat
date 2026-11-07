@@ -31,7 +31,7 @@ async def test_a_new_address_gets_a_pending_row_and_one_confirmation_mail(
     response = await sign_up(Browser(menv), code)
     assert (response.status_code, response.json()) == (202, {"status": "check_your_inbox"})
     [mail] = smtp.to(EMAIL)
-    assert f"{ORIGIN}/signup/confirm#token=" in mail.text
+    assert f"{ORIGIN}/en/signup/confirm#token=" in mail.text
     token = mail.token()
     assert await menv.scalar("SELECT count(*) FROM users") == 0  # no unverified account
     assert await menv.scalar("SELECT count(*) FROM invites WHERE used_at IS NOT NULL") == 0

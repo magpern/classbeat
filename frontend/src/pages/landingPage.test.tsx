@@ -12,8 +12,8 @@ describe('Landing', () => {
     renderAt('/')
     expect(await screen.findByRole('heading', { level: 1, name: /classbeat picks the songs/ })).toBeInTheDocument()
     const cta = screen.getByRole('link', { name: 'Sign up with an invite code' })
-    expect(cta).toHaveAttribute('href', '/signup')
-    expect(screen.getByRole('link', { name: 'I already have an account' })).toHaveAttribute('href', '/signin')
+    expect(cta).toHaveAttribute('href', '/en/signup')
+    expect(screen.getByRole('link', { name: 'I already have an account' })).toHaveAttribute('href', '/en/signin')
   })
 
   it('shows an example class on the stage with its numbered song list', async () => {

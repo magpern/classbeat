@@ -75,7 +75,7 @@ describe('the new-class form and No music', () => {
     expect(screen.getAllByText('No music').length).toBeGreaterThan(1)
     fireEvent.click(screen.getByRole('button', { name: 'Design my class' }))
     await waitFor(() => {
-      expect(window.location.pathname).toBe(`/jobs/${JOB_ID}`)
+      expect(window.location.pathname).toBe(`/en/jobs/${JOB_ID}`)
     })
     const [call] = api.to('POST', '/api/jobs')
     const input = (call?.body as { input: { music: unknown; mowl_connection_id: string } }).input

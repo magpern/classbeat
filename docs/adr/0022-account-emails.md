@@ -59,7 +59,7 @@ styles, system fonts, no remote fonts, tracking pixel or script, readable with i
 footer (settings keys, audited by key and length only). The From **address** is
 `CLASSBEAT_SMTP_SENDER` and is never admin-editable. The logo is a hosted PNG
 (`frontend/public/email/logo.png`) served with `Cross-Origin-Resource-Policy: cross-origin` on
-`/email/*` only. The support address replaces "the operator" as `mailto:` and `Reply-To`.
+`/email/*` only (the app's own answer; behind the SWAG proxy see the CORP amendment below). The support address replaces "the operator" as `mailto:` and `Reply-To`.
 **Default support address:** `CLASSBEAT_MAIL_SUPPORT_ADDRESS` defaults to `support@classbeat.eu`
 (a bare address; the admin setting overrides it). This is an owner-confirmable default: the
 mailbox must exist before deploy, and changing it is a setting, not a code change.
@@ -160,6 +160,36 @@ are read in one function, `notices.read_prefs`, from ME4's columns (`mail_unsubs
 `mail_opted_out`; #655); it leaves out the user id, so the deletion notice carries no unsubscribe
 link (the account is gone, and the link would change nothing).
 
+**CORP amendment (2026-11-07, #679; amends section 3, status unchanged).** Context: section 3 has
+the app answer `/email/*` with `Cross-Origin-Resource-Policy: cross-origin`. That holds when the
+app is reached directly. Behind the SWAG proxy (`docs/runbooks/swag-classbeat.subdomain.conf`) the
+server-wide `add_header Cross-Origin-Resource-Policy "same-origin" always` also covers `/email/*`,
+and `scripts/check-prod-compose.sh` rejects both a location-level `add_header` and a top-level
+`map`, so the proxy cannot give that one path its own value. Decision (Architect, #679): the guard
+is not extended; the promise is narrowed instead.
+
+- Behind the proxy, `/email/*` is served with `same-origin`. A webmail client that loads images
+  straight from our host (no image proxy of its own) therefore refuses the hosted logo; the mail
+  stays readable without images (section 2: readable with images off). A client that fetches
+  through its own image proxy, and clients that do not enforce CORP, still show it. Mail is not
+  "unaffected": the logo may be missing in some clients.
+- The admin Mail preview iframe is sandboxed, so its origin is opaque and counts as cross-origin;
+  the logo in it may be blocked behind the proxy for the same reason. The preview layout and text
+  are unaffected; the CSP amendment in section 6 is not the cause and stays as it is.
+- The direct-access behaviour of section 3 is unchanged: the app still sends `cross-origin` for
+  `/email/*` only.
+- Not planned: an owner-side fix, a dedicated `location /email/` in the SWAG config that proxies to
+  the app and pins its own full header set (a location that sets any `add_header` drops the
+  server-level ones, so it would have to repeat HSTS, `nosniff`, `Permissions-Policy` and COOP).
+  It would need the guard to accept that reviewed form and is not worth a weaker guard for a
+  logo. Revisit if the owner wants the logo in webmail without an image proxy.
+
+Audit behaviour of "Send test to me" (documented, not changed): the `mail.test` row is written by
+the audited transaction and records `ok`; the mail is sent after that transaction closes. A failed
+send is answered 502 `send_failed` and recorded as a separate `admin.request` row with outcome
+`refused` and reason `send_failed`, written by the admin area's handler; the `mail.test` row stays
+`ok` (`admin/mail.py`, `test_a_refused_smtp_send_is_502`).
+
 ## Alternatives
 
 - **An outbox with retries and delivery history**: rejected by the owner; more tables, a worker
@@ -171,6 +201,8 @@ link (the account is gone, and the link would change nothing).
   branding fields give control with little risk.
 - **A stored unsubscribe token**: a table to expire and purge; the signed token needs none.
 - **Per-recipient opt-out of essential mail**: would block sign-in and takeover signals.
+- **Extending the production-compose guard for a reviewed per-path CORP header** (a `map` at http
+  level or a dedicated `/email/` location): not planned, see the CORP amendment in section 3.
 
 ## Consequences
 

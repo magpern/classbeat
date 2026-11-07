@@ -8,7 +8,7 @@ import { Card, Notice } from './forms'
 export function RequireAuth({ children }: { children: ReactNode }) {
   const t = useT()
   const { status, session } = useSession()
-  const { pathname } = useRouter()
+  const { path } = useRouter()
   if (status === 'loading') {
     return (
       <Card title={t('shell.requireAuth.loadingTitle')}>
@@ -28,7 +28,7 @@ export function RequireAuth({ children }: { children: ReactNode }) {
       <Card title={t('shell.requireAuth.title')}>
         <p>{t('shell.requireAuth.text')}</p>
         <p>
-          <Link className="button" to={`/signin?return_to=${encodeURIComponent(pathname)}`}>
+          <Link className="button" to={`/signin?return_to=${encodeURIComponent(path)}`}>
             {t('auth.signIn')}
           </Link>
         </p>

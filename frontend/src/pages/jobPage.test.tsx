@@ -207,7 +207,7 @@ describe('the Designing page', () => {
     })
     renderAt(`/jobs/${JOB_ID}`)
     expect(await screen.findByRole('heading', { name: 'Your class is ready' })).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: 'Open the class' })).toHaveAttribute('href', `/classes/${CLASS_ID}`)
+    expect(screen.getByRole('link', { name: 'Open the class' })).toHaveAttribute('href', `/en/classes/${CLASS_ID}`)
     // Server text is text: markup in names, notes and titles is shown literally, never parsed.
     expect(await screen.findByText('Tuesday climb <b>bold</b>')).toBeInTheDocument()
     expect(screen.getByText('Two hills <img src=x onerror=alert(1)>')).toBeInTheDocument()
@@ -344,7 +344,7 @@ describe('a failed design', () => {
       [`GET ${JOB}`]: jobBody('failed', { error_category: 'needs_reconnect' }),
     })
     renderAt(`/jobs/${JOB_ID}`)
-    expect(await screen.findByRole('link', { name: 'Go to your account' })).toHaveAttribute('href', '/account')
+    expect(await screen.findByRole('link', { name: 'Go to your account' })).toHaveAttribute('href', '/en/account')
   })
 
   it.each(['cancelled', 'expired'])('offers "Design again", not "Try again", for a %s design', async (state) => {
@@ -404,7 +404,7 @@ describe('a failed design', () => {
     renderAt(`/jobs/${JOB_ID}`)
     fireEvent.click(await screen.findByRole('button', { name: 'Try again' }))
     await waitFor(() => {
-      expect(window.location.pathname).toBe(`/jobs/${NEXT}`)
+      expect(window.location.pathname).toBe(`/en/jobs/${NEXT}`)
     })
     const [call] = api.to('POST', '/api/jobs')
     expect(call?.body).toEqual({
@@ -429,7 +429,7 @@ describe('a failed design', () => {
     renderAt(`/jobs/${JOB_ID}`)
     fireEvent.click(await screen.findByRole('button', { name: 'Start a new design' }))
     await waitFor(() => {
-      expect(window.location.pathname).toBe('/classes/new')
+      expect(window.location.pathname).toBe('/en/classes/new')
     })
   })
 })

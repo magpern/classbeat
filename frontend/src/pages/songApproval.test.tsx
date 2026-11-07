@@ -153,7 +153,7 @@ describe('the Songs for approval page', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Approve songs' }))
     fireEvent.click(await screen.findByRole('button', { name: 'Pick songs again' }))
     await waitFor(() => {
-      expect(window.location.pathname).toBe(`/jobs/${NEW_JOB.id}`)
+      expect(window.location.pathname).toBe(`/en/jobs/${NEW_JOB.id}`)
     })
     const [create] = api.to('POST', '/api/jobs')
     expect(create?.body).toMatchObject({
@@ -220,7 +220,7 @@ describe('Ask for changes', () => {
     fireEvent.change(screen.getByLabelText(/What should be different/), { target: { value: 'More rock' } })
     fireEvent.click(ask)
     await waitFor(() => {
-      expect(window.location.pathname).toBe(`/jobs/${NEW_JOB.id}`)
+      expect(window.location.pathname).toBe(`/en/jobs/${NEW_JOB.id}`)
     })
     expect(order).toEqual(['cancel', 'create'])
     const [create] = api.to('POST', '/api/jobs')
@@ -242,7 +242,7 @@ describe('Ask for changes', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Replace Rolling <i>hills</i>' }))
     fireEvent.click(screen.getByRole('button', { name: 'Ask for changes' }))
     await waitFor(() => {
-      expect(window.location.pathname).toBe(`/jobs/${NEW_JOB.id}`)
+      expect(window.location.pathname).toBe(`/en/jobs/${NEW_JOB.id}`)
     })
     const keys = api.to('POST', '/api/jobs').map((c) => c.headers.get('Idempotency-Key'))
     expect(keys).toHaveLength(3)
@@ -267,7 +267,7 @@ describe('Ask for changes', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Replace Rolling <i>hills</i>' }))
     fireEvent.click(screen.getByRole('button', { name: 'Ask for changes' }))
     await waitFor(() => {
-      expect(window.location.pathname).toBe(`/jobs/${NEW_JOB.id}`)
+      expect(window.location.pathname).toBe(`/en/jobs/${NEW_JOB.id}`)
     })
   })
 
@@ -294,7 +294,7 @@ describe('the class page reaches the approval', () => {
       }),
     })
     renderAt(`/classes/${CLASS_ID}`)
-    expect(await screen.findByRole('link', { name: 'Review the songs' })).toHaveAttribute('href', `/jobs/${JOB_ID}`)
+    expect(await screen.findByRole('link', { name: 'Review the songs' })).toHaveAttribute('href', `/en/jobs/${JOB_ID}`)
   })
 })
 
@@ -317,7 +317,7 @@ describe('Ask for changes and the brief', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Replace Rolling <i>hills</i>' }))
     fireEvent.click(screen.getByRole('button', { name: 'Ask for changes' }))
     await waitFor(() => {
-      expect(window.location.pathname).toBe(`/jobs/${NEW_JOB.id}`)
+      expect(window.location.pathname).toBe(`/en/jobs/${NEW_JOB.id}`)
     })
     const input = (api.to('POST', '/api/jobs')[0]?.body as { input: Record<string, unknown> }).input
     expect(input.brief).toEqual(kept)
@@ -335,7 +335,7 @@ describe('Ask for changes and the brief', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Replace Rolling <i>hills</i>' }))
     fireEvent.click(screen.getByRole('button', { name: 'Ask for changes' }))
     await waitFor(() => {
-      expect(window.location.pathname).toBe(`/jobs/${NEW_JOB.id}`)
+      expect(window.location.pathname).toBe(`/en/jobs/${NEW_JOB.id}`)
     })
     const input = (api.to('POST', '/api/jobs')[0]?.body as { input: Record<string, unknown> }).input
     expect(input.brief).toEqual(own)
@@ -355,7 +355,7 @@ describe('Ask for changes and the brief', () => {
     expect(api.to('POST', '/api/jobs')).toHaveLength(0)
     fireEvent.click(screen.getByRole('button', { name: 'Ask for changes' }))
     await waitFor(() => {
-      expect(window.location.pathname).toBe(`/jobs/${NEW_JOB.id}`)
+      expect(window.location.pathname).toBe(`/en/jobs/${NEW_JOB.id}`)
     })
   })
 
@@ -365,7 +365,7 @@ describe('Ask for changes and the brief', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Replace Rolling <i>hills</i>' }))
     fireEvent.click(screen.getByRole('button', { name: 'Ask for changes' }))
     await waitFor(() => {
-      expect(window.location.pathname).toBe(`/jobs/${NEW_JOB.id}`)
+      expect(window.location.pathname).toBe(`/en/jobs/${NEW_JOB.id}`)
     })
     const input = (api.to('POST', '/api/jobs')[0]?.body as { input: { brief: { length_min: number } } }).input
     expect(input.brief.length_min).toBe(10)
@@ -394,7 +394,7 @@ describe('Ask for changes and the brief', () => {
       ask.click()
     })
     await waitFor(() => {
-      expect(window.location.pathname).toBe(`/jobs/${NEW_JOB.id}`)
+      expect(window.location.pathname).toBe(`/en/jobs/${NEW_JOB.id}`)
     })
     expect(api.to('POST', `${JOB}/cancel`)).toHaveLength(1)
     expect(api.to('POST', '/api/jobs')).toHaveLength(1)

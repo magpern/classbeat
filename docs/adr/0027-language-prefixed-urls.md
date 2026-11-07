@@ -59,7 +59,7 @@ changes accordingly:** on a prefixed URL it does nothing (the prefix wins, item 
 language is used only by this redirect and by the picker. `navigator.languages` is the same data as
 `Accept-Language`; the client is the only place that can read `cb-locale`, which is why the redirect is
 not a server 302 (a server 302 on `Accept-Language` alone would override a language the visitor picked).
-The **hash is copied explicitly**, so mail tokens survive (a test pins `/reset#token=x` and
+**After a password sign-in the account's language wins once:** `SignInPage` navigates to `return_to` (or the default page) with the prefix of the account's saved language, as a provider sign-in does through the backend's unprefixed redirect; an account that follows the browser (no saved language) keeps the prefix of the sign-in URL. Otherwise the prefix wins. `return_to` stays language-neutral. The **hash is copied explicitly**, so mail tokens survive (a test pins `/reset#token=x` and
 `/unsubscribe#token=x`). These unprefixed paths are a **permanent contract**: mail already sent uses
 them. A test lists every path any mail kind can emit and asserts it redirects.
 Rejected: a server 302 for the three public pages (loses `cb-locale`; crawlers that run JavaScript see

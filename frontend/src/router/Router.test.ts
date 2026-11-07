@@ -8,6 +8,11 @@ describe('safeReturnTo', () => {
     expect(safeReturnTo('/a%20b')).toBe('/a%20b')
   })
 
+  it('returns a language-neutral path', () => {
+    expect(safeReturnTo('/sv/classes/new')).toBe('/classes/new')
+    expect(safeReturnTo('/sv/classes?x=1#y')).toBe('/classes?x=1#y')
+  })
+
   it.each([
     null,
     '',
@@ -29,6 +34,10 @@ describe('safeReturnTo', () => {
     '/%0d%0aSet-Cookie:x',
     '/%09x',
     '/%E0%A4%A',
+    '/sv/%2F%2Fevil.example',
+    '/sv/%2Fevil.example',
+    '/sv/%5Cevil.example',
+    '/da/%2F%2Fevil.example?x=1',
   ])('refuses %j', (value) => {
     expect(safeReturnTo(value)).toBeNull()
   })
