@@ -9,8 +9,8 @@ set -euo pipefail
 SELF="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/$(basename "${BASH_SOURCE[0]}")"
 SECRETS=(postgres_password database_owner_password database_password database_maint_password
   app_secret_key connection_kek anthropic_api_key openai_api_key deepseek_api_key
-  oauth_google_client_secret oauth_github_client_secret oauth_microsoft_client_secret swedebeat_app
-  turnstile_secret_key)
+  oauth_google_client_secret oauth_github_client_secret oauth_microsoft_client_secret
+  turnstile_secret_key swedebeat_app)
 
 die() { echo "worktree.sh: $*" >&2; exit 1; }
 
