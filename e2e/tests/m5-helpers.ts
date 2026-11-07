@@ -1,7 +1,7 @@
 import { execFileSync } from 'node:child_process'
 import { expect, type Browser, type BrowserContext, type Page } from '@playwright/test'
 import { PLAYLISTS, connectMowl, getJob } from './design-helpers'
-import { PASSWORD, passCaptcha, signInThroughUi, signUpThroughUi, uniqueEmail } from './helpers'
+import { PASSWORD, nextTotp, passCaptcha, signInThroughUi, signUpThroughUi, uniqueEmail } from './helpers'
 
 // Shared by m5-quota.spec.ts and m5-admin.spec.ts (M5 T1, #228): parallel API calls from several
 // browser contexts that hold one user's session, and the account page's plan line. Fakes only.
@@ -160,4 +160,32 @@ export async function cancelJob(page: Page, id: string): Promise<void> {
     headers: { Origin: new URL(page.url()).origin, 'X-CSRF-Token': session.csrf_token },
   })
   expect(answer.status()).toBe(200)
+}
+
+/** The first admin visit: the page offers two-factor set-up (the session still says `user`). */
+export async function enrollTotp(page: Page): Promise<string> {
+  await page.goto('/admin')
+  await expect(page.getByRole('heading', { name: 'Set up two-factor' })).toBeVisible()
+  await page.getByRole('button', { name: 'Set up an authenticator app' }).click()
+  const secret = (await page.locator('code').first().textContent())!.trim()
+  await page.getByLabel('Code from the app').fill(await nextTotp(secret))
+  await page.getByRole('button', { name: 'Turn on two-factor' }).click()
+  await page.getByRole('button', { name: 'I have saved them' }).click()
+  await expect(page.getByRole('heading', { name: 'Admin', exact: true })).toBeVisible()
+  return secret
+}
+
+/** Answer the step-up dialog when an admin write asks for it. */
+export async function stepUp(page: Page, secret: string): Promise<void> {
+  const dialog = page.getByRole('dialog', { name: 'Enter a two-factor code' })
+  // `isVisible` does not wait: give the write's 403 round trip a few seconds to open the dialog.
+  const asked = await dialog.waitFor({ state: 'visible', timeout: 3_000 }).then(
+    () => true,
+    () => false,
+  )
+  if (asked) {
+    await dialog.getByLabel('Authenticator or recovery code').fill(await nextTotp(secret))
+    await dialog.getByRole('button', { name: 'Continue' }).click()
+    await expect(dialog).toBeHidden()
+  }
 }
