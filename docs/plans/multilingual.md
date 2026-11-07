@@ -106,8 +106,8 @@ classbeat is English only, and nothing outside mail is prepared for another lang
 
 - **Generated class content** stays English: brief, prompts, model routes and eval suites unchanged.
 - The admin area, CLI, logs, audit log, API reason codes and developer docs stay English.
-- No right-to-left languages; no language in the URL (`/sv/...`: the app is invite-only and not
-  indexed; revisit for a public landing page in M7); no runtime machine translation or translation
+- No right-to-left languages; no language in the URL **until 2026-11-07, now superseded**: the whole site gets
+  `/en|sv|da/...` URLs ([ADR 0027](../adr/0027-language-prefixed-urls.md), #719); no runtime machine translation or translation
   service (ADR 0001: bundled, own origin); no per-user time zone (mail keeps labelled UTC); no
   translation of third-party content (song titles, artists, playlist and mix names, MOWL's texts).
 - No human proofreading (owner decision).
