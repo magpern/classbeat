@@ -181,7 +181,14 @@ async def test_jobs_stats_prints_counts_only(xenv: OpsEnv, fake_attach: FakeMowl
     assert set(lines) == {
         "jobs_queued", "jobs_running", "jobs_waiting_for_approval", "jobs_completed",
         "jobs_failed", "jobs_cancelled", "jobs_expired", "external_operations_uncertain",
+        # ADR 0026 stage 1 (#735): counts and milliseconds, "-" below 20 samples
+        "claim_wait_slot_samples_7d", "claim_wait_slot_p95_ms_7d", "claim_wait_other_samples_7d",
+        "claim_wait_other_p95_ms_7d", "claim_wait_slot_peak_hour_utc",
+        "claim_wait_slot_peak_samples", "claim_wait_slot_peak_p95_ms", "analysis_samples_7d",
+        "analysis_fetch_p95_ms_7d", "analysis_decode_p95_ms_7d",
     }  # fmt: skip
+    assert lines["claim_wait_other_p95_ms_7d"] == "-"
+    assert lines["claim_wait_other_samples_7d"].isdigit()
 
 
 def _http(code: int) -> HTTPError:

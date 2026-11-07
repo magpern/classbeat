@@ -51,7 +51,8 @@ SECTIONS: tuple[Section, ...] = (
     _section(
         "jobs",
         omit="idempotency_key request_hash leased_by lease_version lease_expires_at "
-        "heartbeat_at approval_hash next_seq analysis_slot fresh_analysis",
+        "heartbeat_at approval_hash next_seq analysis_slot fresh_analysis analysis_fetch_ms "
+        "analysis_decode_ms analysed_at",
     ),
     _section("job_events", "job_id, seq", "lease_version"),
     _section(

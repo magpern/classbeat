@@ -34,7 +34,7 @@ def applied_revisions(database_url: str) -> list[str]:
 
 def test_the_revisions_form_one_line() -> None:
     script = ScriptDirectory.from_config(alembic_config())
-    assert script.get_heads() == ["0038_locale"]
+    assert script.get_heads() == ["0039_analysis_metrics"]
     assert script.get_base() == "0001_baseline"
 
 
@@ -55,7 +55,7 @@ def test_upgrade_head_then_downgrade_base(
     config = alembic_config()
     try:
         command.upgrade(config, "head")
-        assert applied_revisions(database_url) == ["0038_locale"]
+        assert applied_revisions(database_url) == ["0039_analysis_metrics"]
         command.downgrade(config, "base")
         assert applied_revisions(database_url) == []
     finally:
@@ -630,6 +630,63 @@ def test_0037_mail_handoff_up_and_down(
         command.upgrade(config, "head")
         assert has("mail_handoff", "params")
         assert has("jobs", "fresh_analysis")
+    finally:
+        with admin.begin() as connection:
+            connection.execute(text("DELETE FROM users"))
+        admin.dispose()
+        command.downgrade(config, "base")
+
+
+def test_0039_analysis_metrics_up_and_down(
+    owner_database_url: str, database_url: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """#735: the three analysis timing columns of ``jobs`` are empty on a new job, are set
+    together and never negative, and the downgrade drops them."""
+    from jobtools import new_job, new_user
+
+    monkeypatch.setenv("CLASSBEAT_MIGRATIONS_DATABASE_URL", owner_database_url)
+    config = alembic_config()
+    admin = create_engine(database_url)
+    names = ("analysis_fetch_ms", "analysis_decode_ms", "analysed_at")
+    put = text(
+        "UPDATE jobs SET analysis_fetch_ms = :f, analysis_decode_ms = :d, analysed_at = :at "
+        "WHERE id = :j"
+    )
+
+    def columns() -> set[str]:
+        with admin.connect() as connection:
+            rows = connection.execute(
+                text(
+                    "SELECT column_name FROM information_schema.columns "
+                    "WHERE table_name = 'jobs' AND column_name = ANY(:n)"
+                ),
+                {"n": list(names)},
+            ).scalars()
+            return set(rows)
+
+    try:
+        command.upgrade(config, "head")
+        assert columns() == set(names)
+        with admin.begin() as connection:
+            job = new_job(connection, new_user(connection))
+            row = connection.execute(
+                text(f"SELECT {', '.join(names)} FROM jobs WHERE id = :j"),  # noqa: S608
+                {"j": job},
+            ).one()
+            assert tuple(row) == (None, None, None)
+            connection.execute(put, {"f": 1200, "d": 0, "at": "2026-11-07T10:00:00Z", "j": job})
+        for bad in (
+            {"f": -1, "d": 5, "at": "2026-11-07T10:00:00Z"},
+            {"f": 5, "d": -1, "at": "2026-11-07T10:00:00Z"},
+            {"f": 5, "d": 5, "at": None},
+            {"f": None, "d": 5, "at": "2026-11-07T10:00:00Z"},
+        ):
+            with pytest.raises(IntegrityError), admin.begin() as connection:
+                connection.execute(put, {**bad, "j": job})
+        command.downgrade(config, "0038_locale")
+        assert columns() == set()
+        command.upgrade(config, "head")
+        assert columns() == set(names)
     finally:
         with admin.begin() as connection:
             connection.execute(text("DELETE FROM users"))

@@ -310,6 +310,10 @@ END $$;
 -- and in READ COMMITTED (refused otherwise), so it sees every such claim committed before the
 -- lock was granted: concurrent claimers never claim more than the cap between them. Only this
 -- function moves a job to running, and nothing sets analysis_slot on a running job.
+-- The claimed event records the claim's queue wait (wait_ms: from the job's available_at, which
+-- every requeue sets, to this claim) and whether the claim holds an analysis slot, for the stage 1
+-- measurement of ADR 0026 (#735, queue_stats below). started_at is set on the first claim only, so
+-- the event, not the row, carries the wait of every claim.
 CREATE OR REPLACE FUNCTION public.queue_claim(p_worker text, p_lease_seconds integer,
                                               p_kinds text[], p_analysis_slots integer)
   RETURNS TABLE (job_id uuid, owner_id uuid, lease_version bigint)
@@ -324,6 +328,7 @@ DECLARE
   v_seq bigint;
   v_attempt integer;
   v_slot boolean;
+  v_available timestamptz;
   v_full boolean;  -- NULL until a job with analysis_slot is met and the slots are counted
 BEGIN
   IF p_worker IS NULL OR p_worker !~ '^[A-Za-z0-9._:-]{1,100}$' THEN
@@ -342,7 +347,8 @@ BEGIN
     RETURN;
   END IF;
   FOR i IN 1..10 LOOP
-    SELECT j.id, j.owner_id, j.analysis_slot INTO v_id, v_owner, v_slot
+    SELECT j.id, j.owner_id, j.analysis_slot, j.available_at
+      INTO v_id, v_owner, v_slot, v_available
       FROM public.jobs j
      WHERE j.state = 'queued' AND j.available_at <= now() AND j.attempt < j.max_attempts
        AND j.kind = ANY (p_kinds) AND j.id <> ALL (v_skipped)
@@ -372,7 +378,10 @@ BEGIN
        WHERE j.id = v_id
       RETURNING j.lease_version, j.next_seq, j.attempt INTO v_version, v_seq, v_attempt;
       INSERT INTO public.job_events (owner_id, job_id, seq, kind, payload, lease_version)
-      VALUES (v_owner, v_id, v_seq, 'claimed', jsonb_build_object('attempt', v_attempt),
+      VALUES (v_owner, v_id, v_seq, 'claimed',
+              jsonb_build_object('attempt', v_attempt, 'analysis_slot', v_slot,
+                                 'wait_ms', greatest(floor(extract(epoch FROM now() - v_available)
+                                                           * 1000), 0)::bigint),
               v_version);
       PERFORM pg_notify('job_events', v_id::text);
     EXCEPTION WHEN OTHERS THEN
@@ -519,12 +528,22 @@ BEGIN
      LIMIT p_limit;
 END $$;
 
--- Counts only, never ids: jobs per state and uncertain external operations.
+-- Counts only, never ids: jobs per state and uncertain external operations, then the stage 1
+-- measurement of ADR 0026 (#735) over the last 7 days, all users together:
+--   claim_wait_{slot,other}_*  the queue wait of each claim (the claimed event's wait_ms), kept
+--     apart for claims that hold an analysis slot and the rest; samples and the p95 in ms;
+--   claim_wait_slot_peak_*  the same for slot claims at peak: the hour of the day (UTC, 0 to 23)
+--     with the most slot claims over the 7 days, pooled across the days (ties: the earlier hour);
+--   analysis_*  the fetch and the decode of each stored fresh mix analysis (jobs.analysis_*_ms).
+-- A p95 needs at least 20 samples; with fewer it is NULL, so a trigger never fires on too little.
 CREATE OR REPLACE FUNCTION public.queue_stats()
   RETURNS TABLE (metric text, total bigint)
   LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, pg_temp
 AS $$
 #variable_conflict use_column
+DECLARE
+  c_days CONSTANT integer := 7;
+  c_min CONSTANT integer := 20;
 BEGIN
   RETURN QUERY
     SELECT 'jobs_' || s.state, (SELECT count(*) FROM public.jobs j WHERE j.state = s.state)
@@ -533,6 +552,58 @@ BEGIN
     UNION ALL
     SELECT 'external_operations_uncertain',
            (SELECT count(*) FROM public.external_operations e WHERE e.state = 'uncertain');
+  RETURN QUERY
+    WITH c AS (
+      SELECT round((e.payload ->> 'wait_ms')::numeric)::bigint AS wait_ms,
+             (e.payload ->> 'analysis_slot')::boolean AS slot,
+             extract(hour FROM e.created_at AT TIME ZONE 'UTC')::integer AS hour
+        FROM public.job_events e
+       WHERE e.kind = 'claimed' AND e.created_at > now() - make_interval(days => c_days)
+         AND jsonb_typeof(e.payload -> 'wait_ms') = 'number'
+         AND jsonb_typeof(e.payload -> 'analysis_slot') = 'boolean'
+    ), peak AS (
+      SELECT c.hour FROM c WHERE c.slot GROUP BY c.hour ORDER BY count(*) DESC, c.hour LIMIT 1
+    ), a AS (
+      SELECT j.analysis_fetch_ms::bigint AS fetch_ms, j.analysis_decode_ms::bigint AS decode_ms
+        FROM public.jobs j WHERE j.analysed_at > now() - make_interval(days => c_days)
+    ), m(n, metric, total) AS (
+      SELECT 1, 'claim_wait_slot_samples_7d', (SELECT count(*) FROM c WHERE c.slot)
+      UNION ALL
+      SELECT 2, 'claim_wait_slot_p95_ms_7d',
+             (SELECT CASE WHEN count(*) >= c_min
+                          THEN percentile_disc(0.95) WITHIN GROUP (ORDER BY c.wait_ms) END
+                FROM c WHERE c.slot)
+      UNION ALL
+      SELECT 3, 'claim_wait_other_samples_7d', (SELECT count(*) FROM c WHERE NOT c.slot)
+      UNION ALL
+      SELECT 4, 'claim_wait_other_p95_ms_7d',
+             (SELECT CASE WHEN count(*) >= c_min
+                          THEN percentile_disc(0.95) WITHIN GROUP (ORDER BY c.wait_ms) END
+                FROM c WHERE NOT c.slot)
+      UNION ALL
+      SELECT 5, 'claim_wait_slot_peak_hour_utc', (SELECT peak.hour::bigint FROM peak)
+      UNION ALL
+      SELECT 6, 'claim_wait_slot_peak_samples',
+             (SELECT count(*) FROM c WHERE c.slot AND c.hour = (SELECT peak.hour FROM peak))
+      UNION ALL
+      SELECT 7, 'claim_wait_slot_peak_p95_ms',
+             (SELECT CASE WHEN count(*) >= c_min
+                          THEN percentile_disc(0.95) WITHIN GROUP (ORDER BY c.wait_ms) END
+                FROM c WHERE c.slot AND c.hour = (SELECT peak.hour FROM peak))
+      UNION ALL
+      SELECT 8, 'analysis_samples_7d', (SELECT count(*) FROM a)
+      UNION ALL
+      SELECT 9, 'analysis_fetch_p95_ms_7d',
+             (SELECT CASE WHEN count(*) >= c_min
+                          THEN percentile_disc(0.95) WITHIN GROUP (ORDER BY a.fetch_ms) END
+                FROM a)
+      UNION ALL
+      SELECT 10, 'analysis_decode_p95_ms_7d',
+             (SELECT CASE WHEN count(*) >= c_min
+                          THEN percentile_disc(0.95) WITHIN GROUP (ORDER BY a.decode_ms) END
+                FROM a)
+    )
+    SELECT m.metric, m.total FROM m ORDER BY m.n;
 END $$;
 
 -- The web process takes "class ready" hand-off rows (ADR 0022 section 4, ME5): first every row older
@@ -592,6 +663,6 @@ BEGIN
     END LOOP;
     EXECUTE format('GRANT EXECUTE ON FUNCTION %s TO classbeat_queue', f);
     EXECUTE format('GRANT EXECUTE ON FUNCTION %s TO classbeat_app', f);
-    EXECUTE format('COMMENT ON FUNCTION %s IS %L', f, 'classbeat-queue v4');
+    EXECUTE format('COMMENT ON FUNCTION %s IS %L', f, 'classbeat-queue v5');
   END LOOP;
 END $$;
