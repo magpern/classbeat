@@ -1570,6 +1570,7 @@ const da: Catalogue = {
   'mowlqr.expired': 'Koden udløb. Vis en ny for at prøve igen.',
   'mowlqr.cancelled': 'Koden blev stoppet.',
   'mowlqr.gone': 'Koden er ikke længere gyldig. Vis en ny.',
+  'mowlqr.connectedGone': 'Koden blev scannet, men forbindelsen blev ikke fundet. Genindlæs siden for at se dine forbindelser.',
   'mowlqr.title': 'Scan med MOWL-appen',
   'mowlqr.how':
     'Åbn MOWL-appen på din telefon, vælg at scanne en kode, og ret kameraet mod denne. classbeat ser aldrig din MOWL-adgangskode.',

@@ -1587,6 +1587,7 @@ const sv: Catalogue = {
   'mowlqr.expired': 'Koden gick ut. Visa en ny för att försöka igen.',
   'mowlqr.cancelled': 'Koden stoppades.',
   'mowlqr.gone': 'Koden är inte längre giltig. Visa en ny.',
+  'mowlqr.connectedGone': 'Koden skannades, men anslutningen hittades inte. Ladda om sidan för att se dina anslutningar.',
   'mowlqr.title': 'Skanna med MOWL-appen',
   'mowlqr.how':
     'Öppna MOWL-appen i telefonen, välj att skanna en kod och rikta kameran mot den här. classbeat ser aldrig ditt MOWL-lösenord.',

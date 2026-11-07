@@ -1,13 +1,9 @@
-import { useCallback, useEffect, useId, useState } from "react";
-import {
-  getMailPreferences,
-  setMailPreferences,
-  type MailPreferences,
-} from "../../api/mailPrefs";
+import { useCallback, useEffect, useId, useState } from 'react'
+import { getMailPreferences, setMailPreferences, type MailPreferences } from '../../api/mailPrefs'
 import type { CatalogueKey } from '../../i18n/en'
 import { useT } from '../../i18n/I18n'
-import { Notice, useAction } from "../forms";
-import { Switch } from "../ui/switch";
+import { Notice, useAction } from '../forms'
+import { Switch } from '../ui/switch'
 
 const KINDS = [
   { id: 'welcome', label: 'mailprefs.kind.welcome' },
@@ -22,35 +18,35 @@ const KINDS = [
  */
 export function EmailPreferences() {
   const t = useT()
-  const [prefs, setPrefs] = useState<MailPreferences | null>(null);
-  const action = useAction();
-  const baseId = useId();
+  const [prefs, setPrefs] = useState<MailPreferences | null>(null)
+  const action = useAction()
+  const baseId = useId()
 
-  const load = action.run;
+  const load = action.run
   useEffect(() => {
     void load(async () => {
-      setPrefs(await getMailPreferences());
-    });
+      setPrefs(await getMailPreferences())
+    })
     // eslint-disable-next-line react-hooks/exhaustive-deps -- load once on mount
-  }, []);
+  }, [])
 
   const save = useCallback(
     (next: MailPreferences) => {
       void action.run(async () => {
-        setPrefs(await setMailPreferences(next));
-      });
+        setPrefs(await setMailPreferences(next))
+      })
     },
     [action],
-  );
+  )
 
   if (prefs === null) {
     return action.error ? <Notice kind="error">{action.error}</Notice> : <p>{t('common.loading')}</p>
   }
-  const current = prefs;
+  const current = prefs
   const toggle = (id: string, on: boolean) => {
-    const rest = current.optedOut.filter((item) => item !== id);
-    save({ ...current, optedOut: on ? rest : [...rest, id] });
-  };
+    const rest = current.optedOut.filter((item) => item !== id)
+    save({ ...current, optedOut: on ? rest : [...rest, id] })
+  }
 
   return (
     <div className="flex flex-col gap-3">

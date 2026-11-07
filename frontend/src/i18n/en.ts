@@ -1339,6 +1339,7 @@ export const en = {
   'mowlqr.expired': 'The code expired. Show a new one to try again.',
   'mowlqr.cancelled': 'The code was stopped.',
   'mowlqr.gone': 'The code is no longer valid. Show a new one.',
+  'mowlqr.connectedGone': 'The code was scanned, but the connection could not be found. Reload the page to see your connections.',
   'mowlqr.title': 'Scan with the MOWL app',
   'mowlqr.how': 'Open the MOWL app on your phone, choose to scan a code, and point the camera at this one. classbeat never sees your MOWL password.',
   'mowlqr.alt': 'QR code to scan with the MOWL app',

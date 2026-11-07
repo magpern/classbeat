@@ -90,6 +90,7 @@ async def start_qr(
     failure: ConnectionFailure | None = None
     wait: mowl_qr.QrWait | None = None
     try:
+        waits.check_room()  # before any call to MOWL, and before the old wait is touched
         ticket = await mowl_qr.request_ticket()
         image = await mowl_qr.fetch_image(ticket)
         wait = waits.start(ctx.user_id, session_id, ticket, image)

@@ -15,6 +15,7 @@ from sqlalchemy import text
 
 from authtools import Env
 from classbeat import connections
+from classbeat.connections import mowl_qr
 from classbeat.db import user_session
 from ctx import make_context
 from mowlfake import FakeMowl
@@ -224,6 +225,29 @@ async def test_starts_are_rate_limited_per_user(
     assert refused.status_code == 429
     assert int(refused.headers["retry-after"]) > 0
     assert len(mowl_api.qr_authorizations) == 10  # the refused start never called MOWL
+
+
+async def test_a_full_process_refuses_before_asking_mowl_and_keeps_the_waits(
+    qr_env: Env,
+    make_actor: Any,
+    mowl_api: FakeMowl,
+    image_host: FakeImageHost,
+    broker: FakeBroker,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(mowl_qr, "MAX_WAITS", 1)
+    first = await make_actor(await qr_env.user(USER))
+    second = await make_actor(await qr_env.user("other@example.com"))
+    first_id = (await first.post(QR)).json()["ticket_id"]
+    assert len(mowl_api.qr_authorizations) == 1
+    refused = await second.post(QR)
+    assert refused.status_code == 429
+    assert len(mowl_api.qr_authorizations) == 1  # no ticket request for the refused start
+    assert (await poll(first, first_id, "waiting"))["status"] == "waiting"  # not cancelled
+    # A full process refuses the user's own restart too, and keeps the wait they have.
+    assert (await first.post(QR)).status_code == 429
+    assert len(mowl_api.qr_authorizations) == 1
+    assert (await poll(first, first_id, "waiting"))["status"] == "waiting"
 
 
 async def test_a_failed_wait_is_shown_with_its_category(

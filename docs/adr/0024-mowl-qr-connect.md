@@ -98,6 +98,7 @@ never stored. The poll is a `GET` that may write: it only completes what the sam
 CSRF-checked `POST`, its id is a 192-bit random value only that session was given, and what it
 stores is the token MOWL handed to that session's own ticket, so a forged request can at most
 finish the victim's own connect a little earlier. The token, like a password-flow token, has no known expiry (ADR 0004 §6).
+A re-authentication or step-up during a wait changes the session id, so the next poll finds no wait for that session and gets 404 `not_found`; the page shows "no longer valid" and the user shows a new code. That fails safe: nothing is stored for a session other than the one that started the wait.
 
 **7. Switch and page.** `CLASSBEAT_MOWL_QR_ENABLED` (compose `MOWL_QR_ENABLED`, web only, default
 false); off, every QR route answers 404 `feature_off` before any call, and `GET /api/connections`

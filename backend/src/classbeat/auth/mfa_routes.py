@@ -264,7 +264,7 @@ async def remove_totp(
         await record_event(db, "totp_removed", user_id=ctx.user_id, ip=request_ip(request))
     # A parallel request that removed it first already mailed: one mail per change.
     if removed:
-        queue(background, request, happened("totp_removed", session.email))
+        queue(background, request, happened("totp_removed", session.email, ctx.user_id))
 
 
 @router.post("/mfa/recovery-codes")
