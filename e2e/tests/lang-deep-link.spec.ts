@@ -17,15 +17,15 @@ for (const code of CODES) {
     test(`a deep link to a signed-in page returns to it after sign-in (${code})`, async ({ page }) => {
       const email = await accountThenSignedOut(page, w)
 
-      await page.goto(`/${code}/classes/new`)
+      await page.goto(`/${code}/classes`)
       await expect(page.getByRole('heading', { name: w.signInFirst })).toBeVisible()
       await page.getByRole('region', { name: w.signInFirst }).getByRole('link', { name: w.signIn, exact: true }).click()
       // The query carries the neutral path; the URL carries the language.
-      await expect(page).toHaveURL(new RegExp(`/${code}/signin\\?return_to=%2Fclasses%2Fnew$`))
+      await expect(page).toHaveURL(new RegExp(`/${code}/signin\\?return_to=%2Fclasses$`))
 
       await submitSignIn(page, w, email, PASSWORD)
       await expectSignedIn(page, email)
-      expect(where(page)).toBe(`/${code}/classes/new`)
+      expect(where(page)).toBe(`/${code}/classes`)
     })
   })
 }
