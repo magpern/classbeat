@@ -1,4 +1,5 @@
-"""Migration 0002_auth: the M1 system tables, their grants and their ON DELETE rules."""
+"""Migration 0002_auth: the M1 system tables, their grants and their ON DELETE rules; with 0041 the
+passkey tables of ADR 0019 (#771)."""
 
 import pytest
 from sqlalchemy import create_engine, text
@@ -23,8 +24,8 @@ def admin(auth_schema: None, database_url: str):
     engine.dispose()
 
 
-def test_there_are_twelve_auth_tables_all_listed_with_a_reason() -> None:
-    assert len(AUTH) == 12
+def test_there_are_fourteen_auth_tables_all_listed_with_a_reason() -> None:
+    assert len(AUTH) == 14  # the twelve of 0002 and the two passkey tables of 0041
     for name in AUTH:
         assert SYSTEM_TABLES[name].strip(), name
 
@@ -114,12 +115,16 @@ def test_on_delete_rules(admin: Connection) -> None:
     for (table, column), (target, action) in rules.items():
         expected = "n" if (table, column) in set_null else "c"
         assert action == expected, (table, column)
-        assert target in {"users", "invites"}
+        assert target in {"users", "invites", "sessions"}
     assert set_null <= set(rules)
     assert ("pending_signups", "invite_id") in rules
     assert ("oauth_flows", "invite_id") in rules
     assert rules[("connections", "owner_id")] == ("users", "c")  # ADR 0004 section 1
-    assert len(rules) == 13
+    # ADR 0019 (#771): a passkey goes with its user, a challenge with its user or its session.
+    assert rules[("webauthn_credentials", "user_id")] == ("users", "c")
+    assert rules[("webauthn_challenges", "user_id")] == ("users", "c")
+    assert rules[("webauthn_challenges", "session_id")] == ("sessions", "c")
+    assert len(rules) == 16
 
 
 def test_deleting_a_user_cascades_events_too_but_only_nulls_invites(admin: Connection) -> None:
@@ -143,12 +148,17 @@ def test_deleting_a_user_cascades_events_too_but_only_nulls_invites(admin: Conne
         "INSERT INTO auth_events (user_id, kind) VALUES (:u, 'sign_in')",
         "INSERT INTO invites (code_hash, created_by, used_by, expires_at) "
         "VALUES ('i', :u, :u, now())",
+        "INSERT INTO webauthn_credentials (user_id, credential_id, public_key, backup_eligible, "
+        "backup_state, label) VALUES (:u, 'k', 'p', false, false, 'Key')",
+        "INSERT INTO webauthn_challenges (flow_hash, purpose, challenge, user_id, session_id, "
+        "expires_at) SELECT sha256('f'), 'register', sha256('c'), :u, id, now() FROM sessions",
     ):
         admin.execute(text(statement), {"u": user})
     admin.execute(text("DELETE FROM users WHERE id = :u"), {"u": user})
     for table in (
         "sessions", "identities", "known_devices", "auth_tokens", "mfa_totp",
-        "mfa_recovery_codes", "oauth_flows", "auth_events",
+        "mfa_recovery_codes", "oauth_flows", "auth_events", "webauthn_credentials",
+        "webauthn_challenges",
     ):  # fmt: skip
         count = admin.execute(text(f"SELECT count(*) FROM {table}")).scalar_one()  # noqa: S608
         assert count == 0, table

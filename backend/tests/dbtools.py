@@ -62,7 +62,8 @@ QUEUE_SCRIPT = BACKEND_DIR.parent / "docker" / "postgres" / "queue" / "20-queue.
 MAINT_SCRIPT = BACKEND_DIR.parent / "docker" / "postgres" / "maint" / "30-maint.sql"
 AUTH_TABLES = (
     "users, identities, invites, sessions, known_devices, pending_signups, auth_tokens, "
-    "oauth_flows, mfa_totp, mfa_recovery_codes, rate_limits, auth_events"
+    "oauth_flows, mfa_totp, mfa_recovery_codes, rate_limits, auth_events, webauthn_credentials, "
+    "webauthn_challenges"
 )
 
 

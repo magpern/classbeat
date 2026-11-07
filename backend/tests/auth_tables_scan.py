@@ -74,6 +74,8 @@ TABLE_NAMES = (
     "mfa_recovery_codes",
     "rate_limits",
     "auth_events",
+    "webauthn_credentials",
+    "webauthn_challenges",
 )
 SUBMODULES = frozenset(
     {

@@ -500,6 +500,9 @@ npm run build        # typecheck, then Vite writes frontend/dist
   plugin; unmodified and not shipped in the bundle. Second, named by ADR 0013 section 10 and issue #255:
   `@axe-core/playwright` and its `axe-core` (both MPL-2.0), dev dependencies of `e2e/` only, unmodified, never
   built into the image or the bundle.
+  Backend runtime dependencies: MIT, ISC, Apache-2.0, BSD-2-Clause, BSD-3-Clause or PSF; psycopg
+  (LGPL-3.0, used unmodified as a library) is accepted. Named by ADR 0019: `webauthn` (py_webauthn,
+  BSD-3-Clause), pinned exactly, used unmodified. Any other licence needs an owner exception.
 - Bundle budget (ADR 0013 section 11): `npm run check:bundle` (`scripts/bundle-size.ts`, after `npm run build`)
   gzips the scripts `dist/index.html` loads first (entry and static preloads, not lazy chunks like the admin
   area) and fails above 250 kB (1000 bytes per kB, as Vite reports); `src/bundleSize.test.ts` tests the rules.

@@ -65,6 +65,7 @@ async def build_export(
             "generated_at": (now or datetime.now(UTC)).isoformat(),
             "account": account["profile"],
             "sign_in_methods": account["sign_in_methods"],
+            "passkeys": account["passkeys"],
             "two_factor": account["two_factor"],
             "sessions": account["sessions"],
             "known_devices": account["known_devices"],

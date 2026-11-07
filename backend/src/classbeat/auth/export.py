@@ -7,6 +7,8 @@ Only what the user could see about themselves is returned:
 - the profile (id, email, role, when it was created and verified, whether it has a password, the
   mail preferences, the language);
 - the linked sign-in providers (provider, the provider's subject, the address at linking);
+- the passkeys (label, credential id as base64url, transports, whether synced, dates; never the
+  public key or the signature counter; ADR 0019, #771);
 - the signed-in devices (when, user agent and address, never a token or its hash), the known
   devices (dates only);
 - two-factor status (whether it is on, when confirmed, how many recovery codes are unused;
@@ -21,9 +23,11 @@ the other account tables; the test lists every system table of other packages.
 ``tests/test_account_export_schema.py`` reads the live schema and fails when a column or a system
 table is in none of them, so a new column on ``users``, ``sessions`` or
 ``identities`` cannot be silently left out, and a column with a secret cannot be included by
-accident (every ``EXCLUDE`` reason is read in review).
+accident (every ``EXCLUDE`` reason is read in review). ``PUBLIC_BYTES`` names the one binary
+column that is exported (encoded), with its reason; the test refuses any other.
 """
 
+from base64 import urlsafe_b64encode
 from typing import Any
 from uuid import UUID
 
@@ -38,6 +42,7 @@ from classbeat.auth.tables import (
     mfa_totp,
     sessions,
     users,
+    webauthn_credentials,
 )
 
 INCLUDE: dict[str, tuple[str, ...]] = {
@@ -66,11 +71,26 @@ INCLUDE: dict[str, tuple[str, ...]] = {
     "mfa_totp": ("confirmed_at",),
     "mfa_recovery_codes": ("used_at",),  # only to count the unused ones
     "auth_events": ("kind", "ip", "at", "detail"),
+    "webauthn_credentials": (
+        "label",
+        "credential_id",
+        "transports",
+        "backup_eligible",
+        "backup_state",
+        "created_at",
+        "last_used_at",
+    ),
+}
+# Binary columns that are exported, as base64url, with the reason they are no secret.
+PUBLIC_BYTES: dict[tuple[str, str], str] = {
+    ("webauthn_credentials", "credential_id"): "the id the user's authenticator shows for the "
+    "passkey; random, signs nothing, and lets the user match the row to their device",
 }
 EXCLUDE: dict[str, dict[str, str]] = {
     "users": {
         "password_hash": "a secret; only whether there is one is exported (has_password)",
         "email_normalized": "the lookup form of email, derived",
+        "webauthn_user_handle": "an internal handle the user's authenticators hold (ADR 0019)",
     },
     "identities": {"id": "internal", "user_id": "the user's own id"},
     "sessions": {
@@ -104,6 +124,12 @@ EXCLUDE: dict[str, dict[str, str]] = {
         "code_hash": "a secret",
     },
     "auth_events": {"id": "internal", "user_id": "the user's own id"},
+    "webauthn_credentials": {
+        "id": "internal",
+        "user_id": "the user's own id",
+        "public_key": "key material, of no use outside the sign-in check (ADR 0019)",
+        "sign_count": "internal replay guard",
+    },
 }
 # The other account tables. Every system table outside this package is decided in
 # ``tests/test_account_export_schema.py`` (``OTHER_SYSTEM_TABLES``): they hold no per-user data, and
@@ -114,6 +140,7 @@ NOT_EXPORTED: dict[str, str] = {
     "auth_tokens": "single-use reset and email-change tokens (hash only), short-lived",
     "oauth_flows": "in-flight sign-in flows: state hashes and a PKCE verifier, short-lived",
     "rate_limits": "counters keyed by an HMAC of the bucket; no user column",
+    "webauthn_challenges": "in-flight passkey ceremonies: a nonce and a flow hash, five minutes",
 }
 
 
@@ -124,6 +151,10 @@ def _cols(table: Table) -> list[Column[Any]]:
 
 def _iso(value: Any) -> str | None:
     return None if value is None else value.isoformat()
+
+
+def _b64url(value: bytes) -> str:
+    return urlsafe_b64encode(value).rstrip(b"=").decode("ascii")
 
 
 async def account_export(db: AsyncSession, user_id: UUID) -> dict[str, Any]:
@@ -157,6 +188,13 @@ async def account_export(db: AsyncSession, user_id: UUID) -> dict[str, Any]:
             select(*_cols(known_devices))
             .where(known_devices.c.user_id == user_id)
             .order_by(known_devices.c.created_at, known_devices.c.id)
+        )
+    ).all()
+    passkeys = (
+        await db.execute(
+            select(*_cols(webauthn_credentials))
+            .where(webauthn_credentials.c.user_id == user_id)
+            .order_by(webauthn_credentials.c.created_at, webauthn_credentials.c.id)
         )
     ).all()
     confirmed = (
@@ -197,6 +235,18 @@ async def account_export(db: AsyncSession, user_id: UUID) -> dict[str, Any]:
                 "linked_at": _iso(row.created_at),
             }
             for row in linked
+        ],
+        "passkeys": [
+            {
+                "label": row.label,
+                "credential_id": _b64url(row.credential_id),
+                "transports": list(row.transports),
+                "synced": row.backup_state,
+                "backup_eligible": row.backup_eligible,
+                "created_at": _iso(row.created_at),
+                "last_used_at": _iso(row.last_used_at),
+            }
+            for row in passkeys
         ],
         "sessions": [
             {

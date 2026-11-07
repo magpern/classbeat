@@ -34,7 +34,7 @@ def applied_revisions(database_url: str) -> list[str]:
 
 def test_the_revisions_form_one_line() -> None:
     script = ScriptDirectory.from_config(alembic_config())
-    assert script.get_heads() == ["0040_security_log_at_index"]
+    assert script.get_heads() == ["0041_passkeys"]
     assert script.get_base() == "0001_baseline"
 
 
@@ -55,7 +55,7 @@ def test_upgrade_head_then_downgrade_base(
     config = alembic_config()
     try:
         command.upgrade(config, "head")
-        assert applied_revisions(database_url) == ["0040_security_log_at_index"]
+        assert applied_revisions(database_url) == ["0041_passkeys"]
         command.downgrade(config, "base")
         assert applied_revisions(database_url) == []
     finally:
@@ -109,15 +109,15 @@ def test_0002_auth_up_and_down(owner_database_url: str, database_url: str) -> No
         with migrated(owner_database_url, "0001_baseline"):
             assert tables() == {"alembic_version"}
             command.upgrade(alembic_config(), "0002_auth")
-            assert tables() == {"alembic_version", *AUTH}
+            assert tables() == {"alembic_version", *AUTH_0002}
             command.downgrade(alembic_config(), "0001_baseline")
             assert tables() == {"alembic_version"}
             command.upgrade(alembic_config(), "head")
             assert tables() == {"alembic_version", *AUTH, *CONNECTIONS, *JOBS}
             command.downgrade(alembic_config(), "0003_connections")
-            assert tables() == {"alembic_version", *AUTH, *CONNECTIONS}
+            assert tables() == {"alembic_version", *AUTH_0002, *CONNECTIONS}
             command.downgrade(alembic_config(), "0002_auth")
-            assert tables() == {"alembic_version", *AUTH}
+            assert tables() == {"alembic_version", *AUTH_0002}
             command.upgrade(alembic_config(), "head")
             assert tables() == {"alembic_version", *AUTH, *CONNECTIONS, *JOBS}
         assert tables() <= {"alembic_version"}
@@ -126,6 +126,8 @@ def test_0002_auth_up_and_down(owner_database_url: str, database_url: str) -> No
 
 
 AUTH = sorted(metadata.tables)
+PASSKEYS = ["webauthn_credentials", "webauthn_challenges"]  # 0041_passkeys (ADR 0019, #771)
+AUTH_0002 = sorted(set(AUTH) - set(PASSKEYS))
 CONNECTIONS = ["connection_keks", "connections"]
 JOBS = [
     "classes",
@@ -687,6 +689,70 @@ def test_0039_analysis_metrics_up_and_down(
         assert columns() == set()
         command.upgrade(config, "head")
         assert columns() == set(names)
+    finally:
+        with admin.begin() as connection:
+            connection.execute(text("DELETE FROM users"))
+        admin.dispose()
+        command.downgrade(config, "base")
+
+
+def test_0041_passkeys_up_and_down(
+    owner_database_url: str, database_url: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """ADR 0019 (#771): the passkey tables and ``users.webauthn_user_handle`` exist at head as
+    system tables (no RLS) with the app role's DML; the downgrade drops them and the column, even
+    with a passkey and a challenge stored."""
+    from jobtools import new_user
+
+    monkeypatch.setenv("CLASSBEAT_MIGRATIONS_DATABASE_URL", owner_database_url)
+    config = alembic_config()
+    admin = create_engine(database_url)
+
+    def state() -> tuple[set[str], bool]:
+        with admin.connect() as connection:
+            found = connection.execute(
+                text(
+                    "SELECT relname FROM pg_class WHERE relnamespace = 'public'::regnamespace "
+                    "AND relkind = 'r' AND relname = ANY(:n) AND NOT relrowsecurity"
+                ),
+                {"n": PASSKEYS},
+            ).scalars()
+            handle = connection.execute(
+                text(
+                    "SELECT 1 FROM information_schema.columns WHERE table_name = 'users' "
+                    "AND column_name = 'webauthn_user_handle'"
+                )
+            ).first()
+        return set(found), handle is not None
+
+    try:
+        command.upgrade(config, "head")
+        assert state() == (set(PASSKEYS), True)
+        with admin.begin() as connection:
+            for table in PASSKEYS:
+                for privilege in ("SELECT", "INSERT", "UPDATE", "DELETE"):
+                    assert connection.execute(
+                        text("SELECT has_table_privilege('classbeat_app', :t, :p)"),
+                        {"t": f"public.{table}", "p": privilege},
+                    ).scalar_one(), (table, privilege)
+            user = new_user(connection)
+            connection.execute(
+                text(
+                    "INSERT INTO webauthn_credentials (user_id, credential_id, public_key, "
+                    "backup_eligible, backup_state, label) VALUES (:u, 'k', 'p', true, true, 'K')"
+                ),
+                {"u": user},
+            )
+            connection.execute(
+                text(
+                    "INSERT INTO webauthn_challenges (flow_hash, purpose, challenge, expires_at) "
+                    "VALUES (sha256('f'), 'sign_in', sha256('c'), now())"
+                )
+            )
+        command.downgrade(config, "0040_security_log_at_index")
+        assert state() == (set(), False)
+        command.upgrade(config, "head")
+        assert state() == (set(PASSKEYS), True)
     finally:
         with admin.begin() as connection:
             connection.execute(text("DELETE FROM users"))

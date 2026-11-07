@@ -71,12 +71,18 @@ users = Table(
     Column("mail_opted_out", ARRAY(Text), nullable=False, server_default=text("'{}'::text[]")),
     # ADR 0023 (ML2, #664): the account's language; NULL follows the browser (English mail).
     Column("locale", Text),
+    # ADR 0019 section 4 (#771): the WebAuthn user handle, 32 random bytes made at the first
+    # passkey registration (never the uuid or the email); NULL until then.
+    Column("webauthn_user_handle", LargeBinary, unique=True),
     CheckConstraint("role IN ('user', 'admin')", name="users_role_check"),
     CheckConstraint(
         "mail_opted_out <@ ARRAY['welcome', 'account_activity', 'class_ready']::text[]",
         name="users_mail_opted_out_check",
     ),
     CheckConstraint(LOCALE_CHECK, name="users_locale_check"),
+    CheckConstraint(
+        "octet_length(webauthn_user_handle) = 32", name="users_webauthn_user_handle_check"
+    ),
 )
 
 identities = Table(
@@ -261,6 +267,71 @@ auth_events = Table(
     _ts("at", nullable=False, default_now=True),
     Column("detail", JSONB),
     Index("auth_events_at_idx", "at"),
+)
+
+# ADR 0019 sections 6 and 7 (#771): passkeys. System tables like ``identities``: sign-in finds a
+# credential by its id before any user is known. Nothing here is a secret (a public key cannot
+# sign); the challenge is a nonce that lives five minutes and is deleted when used.
+webauthn_credentials = Table(
+    "webauthn_credentials",
+    metadata,
+    _id(),
+    _user_fk(),
+    Column("credential_id", LargeBinary, nullable=False, unique=True),
+    Column("public_key", LargeBinary, nullable=False),  # the COSE key from registration
+    Column("sign_count", BigInteger, nullable=False, server_default="0"),
+    Column("transports", ARRAY(Text), nullable=False, server_default=text("'{}'::text[]")),
+    Column("backup_eligible", Boolean, nullable=False),
+    Column("backup_state", Boolean, nullable=False),
+    Column("label", Text, nullable=False),
+    _ts("created_at", nullable=False, default_now=True),
+    _ts("last_used_at"),
+    CheckConstraint(
+        "octet_length(credential_id) BETWEEN 1 AND 1023", name="webauthn_credentials_id_length"
+    ),
+    CheckConstraint(
+        "octet_length(public_key) BETWEEN 1 AND 2048", name="webauthn_credentials_key_length"
+    ),
+    CheckConstraint(
+        "sign_count BETWEEN 0 AND 4294967295", name="webauthn_credentials_sign_count_range"
+    ),
+    CheckConstraint(
+        "transports <@ ARRAY['usb', 'nfc', 'ble', 'internal', 'hybrid', 'smart-card']::text[]",
+        name="webauthn_credentials_transports_check",
+    ),
+    CheckConstraint(
+        "backup_eligible OR NOT backup_state", name="webauthn_credentials_backup_flags"
+    ),
+    CheckConstraint(
+        "char_length(label) BETWEEN 1 AND 64", name="webauthn_credentials_label_length"
+    ),
+    Index("webauthn_credentials_user_id_idx", "user_id"),
+)
+
+webauthn_challenges = Table(
+    "webauthn_challenges",
+    metadata,
+    _id(),
+    Column("flow_hash", LargeBinary, nullable=False, unique=True),
+    Column("purpose", Text, nullable=False),
+    Column("challenge", LargeBinary, nullable=False),
+    _user_fk(nullable=True),
+    Column("session_id", UUID(as_uuid=True), ForeignKey("sessions.id", ondelete="CASCADE")),
+    _ts("created_at", nullable=False, default_now=True),
+    _ts("expires_at", nullable=False),
+    CheckConstraint(
+        "purpose IN ('register', 'sign_in', 'reauth')", name="webauthn_challenges_purpose"
+    ),
+    CheckConstraint("octet_length(flow_hash) = 32", name="webauthn_challenges_flow_hash_length"),
+    CheckConstraint("octet_length(challenge) = 32", name="webauthn_challenges_challenge_length"),
+    # ``sign_in`` has no user or session yet; ``register`` and ``reauth`` are bound to both.
+    CheckConstraint(
+        "(purpose = 'sign_in') = (user_id IS NULL) AND (user_id IS NULL) = (session_id IS NULL)",
+        name="webauthn_challenges_binding",
+    ),
+    Index("webauthn_challenges_session_id_idx", "session_id"),
+    Index("webauthn_challenges_user_id_idx", "user_id"),
+    Index("webauthn_challenges_expires_at_idx", "expires_at"),
 )
 
 TABLE_NAMES = tuple(metadata.tables)

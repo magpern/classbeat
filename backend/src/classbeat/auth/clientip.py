@@ -56,3 +56,13 @@ def bucket_ip(ip: str) -> str:
     if isinstance(address, ipaddress.IPv6Address):
         return str(ipaddress.ip_network(f"{address}/64", strict=False))
     return str(address)
+
+
+def bucket_ip48(ip: str) -> str | None:
+    """The IPv6 /48 an address belongs to (ADR 0019 section 10: a /48 is 65,536 /64s, a cheap
+    allocation, so passkey sign-in starts get a bucket per /48 too); ``None`` for IPv4 (it has no
+    /48 bucket) and for anything that is not an address."""
+    address = parse_address(ip)
+    if not isinstance(address, ipaddress.IPv6Address):
+        return None
+    return str(ipaddress.ip_network(f"{address}/48", strict=False))

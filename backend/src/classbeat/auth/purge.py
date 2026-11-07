@@ -17,6 +17,7 @@ from classbeat.auth.tables import (
     pending_signups,
     rate_limits,
     sessions,
+    webauthn_challenges,
 )
 from classbeat.config import Settings
 from classbeat.context import UserContext
@@ -46,7 +47,8 @@ async def purge_expired(
 
     - ``sessions``: past their absolute expiry, or idle longer than the idle limit; their ``ip``
       is cleared after 30 days;
-    - ``pending_signups``, ``auth_tokens`` (also used ones), ``oauth_flows``: expired;
+    - ``pending_signups``, ``auth_tokens`` (also used ones), ``oauth_flows``,
+      ``webauthn_challenges`` (ADR 0019 section 6): expired;
     - ``rate_limits``: windows over two hours old;
     - ``invites``: used or expired more than 30 days ago;
     - ``known_devices``: unused for 90 days;
@@ -65,6 +67,9 @@ async def purge_expired(
             or_(auth_tokens.c.expires_at <= now, auth_tokens.c.used_at.is_not(None))
         ),
         "oauth_flows": delete(oauth_flows).where(oauth_flows.c.expires_at <= now),
+        "webauthn_challenges": delete(webauthn_challenges).where(
+            webauthn_challenges.c.expires_at <= now
+        ),
         "rate_limits": delete(rate_limits).where(
             rate_limits.c.window_start < now - RATE_LIMIT_KEEP
         ),

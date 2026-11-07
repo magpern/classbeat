@@ -22,6 +22,11 @@ SYSTEM_TABLES: MappingProxyType[str, str] = MappingProxyType(
         "mfa_recovery_codes": "TOTP recovery codes (HMAC only), read during sign-in",
         "rate_limits": "counters keyed by an HMAC of the bucket, before any user is known",
         "auth_events": "security event log; a user's events go with the user (migration 0015)",
+        # ADR 0019 (#771): passkeys, reached only through classbeat.auth (guard 8).
+        "webauthn_credentials": "passkeys, looked up by credential id at sign-in before a user "
+        "is known",
+        "webauthn_challenges": "in-flight passkey ceremonies, taken by flow hash before a user "
+        "is known",
         "connection_keks": "check values of the KEK ids (ADR 0004), read at startup before "
         "any user; reached only through classbeat.crypto.keks",
         # ADR 0011 section 1 (M5).

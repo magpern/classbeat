@@ -22,6 +22,8 @@ class Person:
         self.user_id: UUID = found.owner
         self.third_email = f"third-{self.user_id.hex[:12]}@example.com"  # not the id as text
         self.ip = f"2001:db8:{self.user_id.hex[:4]}::{self.user_id.hex[4:8]}"  # one per person
+        # Unique across users; exported as base64url (ADR 0019, Consequences).
+        self.passkey_id = hashlib.sha256(f"passkey-{self.user_id}".encode()).digest()[:16]
         self.email: str = self.env.sql(
             "SELECT email FROM users WHERE id = :u", u=self.user_id
         ).scalar_one()
@@ -55,6 +57,14 @@ class Person:
             "VALUES (:u, 'sign_in', :ip, CAST(:detail AS jsonb))",
             "UPDATE sessions SET ip = :ip, user_agent = :agent, stepup_at = now() "
             "WHERE user_id = :u",
+            # ADR 0019 (#771): a passkey, the user handle, and a register ceremony in flight.
+            "UPDATE users SET webauthn_user_handle = :handle WHERE id = :u",
+            "INSERT INTO webauthn_credentials (user_id, credential_id, public_key, transports, "
+            "backup_eligible, backup_state, label, last_used_at) VALUES (:u, :credential, "
+            "'\\xa50102', ARRAY['internal', 'hybrid'], true, true, 'My phone', now())",
+            "INSERT INTO webauthn_challenges (flow_hash, purpose, challenge, user_id, session_id, "
+            "expires_at) SELECT :hash, 'register', :handle, :u, id, now() + interval '5 minutes' "
+            "FROM sessions WHERE user_id = :u LIMIT 1",
         )
         params = {
             "u": u,
@@ -64,6 +74,8 @@ class Person:
             "ip": self.ip,
             "agent": AGENT,
             "detail": json.dumps({"email": self.email}),
+            "handle": hashlib.sha256(f"handle-{u}".encode()).digest(),
+            "credential": self.passkey_id,
         }
         for statement in statements:
             self.sql(statement, **params)
