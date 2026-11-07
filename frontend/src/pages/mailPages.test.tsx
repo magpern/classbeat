@@ -14,6 +14,9 @@ describe('sign-up', () => {
     type('Invite code', 'abc')
     type('Email', 'ann@example.test')
     type('Password', 'correct horse battery')
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Create account' })).toBeEnabled()
+    })
     fireEvent.click(screen.getByRole('button', { name: 'Create account' }))
     expect(await screen.findByText('Check your inbox')).toBeInTheDocument()
     expect(api.to('POST', '/api/auth/signup')[0]?.body).toEqual({
@@ -29,6 +32,9 @@ describe('sign-up', () => {
     renderAt('/signup')
     type('Email', 'ann@example.test')
     type('Password', 'correct horse battery')
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Create account' })).toBeEnabled()
+    })
     fireEvent.click(screen.getByRole('button', { name: 'Create account' }))
     expect(await screen.findByRole('alert')).toHaveTextContent(/invite code is not valid/)
   })
@@ -119,6 +125,9 @@ describe('reset page', () => {
     const api = fakeApi({ 'POST /api/auth/password/reset/request': new Response(null, { status: 202 }) })
     renderAt('/reset')
     type('Email', 'ann@example.test')
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Send reset link' })).toBeEnabled()
+    })
     fireEvent.click(screen.getByRole('button', { name: 'Send reset link' }))
     expect(await screen.findByText('Check your inbox')).toBeInTheDocument()
     expect(api.to('POST', '/api/auth/password/reset/request')[0]?.body).toEqual({

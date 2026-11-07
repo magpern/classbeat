@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useId, useRef, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import type { CaptchaAction, CaptchaConfig } from '../../api/auth'
 import { useSession } from '../../auth/SessionContext'
 import type { CatalogueKey } from '../../i18n/en'
@@ -110,7 +110,8 @@ export interface Captcha {
  * failed submit asks for a new one. The provider buttons never wait for it (ADR 0025 section 1).
  */
 export function useCaptcha(action: CaptchaAction): Captcha {
-  const { session } = useSession()
+  const t = useT()
+  const { session, status } = useSession()
   const config = session?.captcha ?? null
   const [token, setToken] = useState<string | null>(null)
   const [problem, setProblem] = useState<Problem>('waiting')
@@ -127,9 +128,16 @@ export function useCaptcha(action: CaptchaAction): Captcha {
     setRound((value) => value + 1)
   }, [])
 
+  // Until the session is known (loading, or its fetch failed) it is not known whether the check
+  // is on, so the form waits instead of sending a request the server would answer 400 captcha_failed.
+  const unknown = status !== 'ready'
   const on = config !== null
-  const ready = !on || token !== null
-  const element = on ? (
+  const ready = !unknown && (!on || token !== null)
+  const element = unknown ? (
+    <p id={statusId} className="field__hint" role="status">
+      {t('captcha.waiting')}
+    </p>
+  ) : on ? (
     <CaptchaBox
       // A new configuration is a new check: nothing of the old one carries over.
       key={config.kind === 'fake' ? 'fake' : config.siteKey}
@@ -141,7 +149,7 @@ export function useCaptcha(action: CaptchaAction): Captcha {
       report={report}
     />
   ) : null
-  return { token: on ? token : null, ready, reset, describedBy: ready ? undefined : statusId, element }
+  return { token: on && !unknown ? token : null, ready, reset, describedBy: ready ? undefined : statusId, element }
 }
 
 function CaptchaBox({
@@ -226,6 +234,21 @@ function TurnstileWidget({
   const theme = useResolvedTheme()
   const container = useRef<HTMLDivElement>(null)
   const widget = useRef<{ api: TurnstileApi; id: string } | null>(null)
+  const [compact, setCompact] = useState(false)
+
+  // `flexible` needs 300 px: measure on mount and when the window is resized, so the widget
+  // switches between `flexible` and `compact` (a change renders it again).
+  useLayoutEffect(() => {
+    const measure = () => {
+      const width = container.current?.clientWidth ?? 0
+      setCompact(width > 0 && width < FLEXIBLE_MIN_PX)
+    }
+    measure()
+    window.addEventListener('resize', measure)
+    return () => {
+      window.removeEventListener('resize', measure)
+    }
+  }, [])
 
   useEffect(() => {
     let current = true
@@ -240,13 +263,12 @@ function TurnstileWidget({
         if (!current || box === null) return
         rendered = true
         window.clearTimeout(patience)
-        const width = box.clientWidth
         const options: TurnstileOptions = {
           sitekey: siteKey,
           action,
           language: locale,
           theme,
-          size: width > 0 && width < FLEXIBLE_MIN_PX ? 'compact' : 'flexible',
+          size: compact ? 'compact' : 'flexible',
           appearance: 'always',
           execution: 'render',
           'refresh-expired': 'auto',
@@ -289,7 +311,7 @@ function TurnstileWidget({
       widget.current = null
       if (shown !== null) shown.api.remove(shown.id)
     }
-  }, [siteKey, action, locale, theme, report])
+  }, [siteKey, action, locale, theme, compact, report])
 
   useEffect(() => {
     // A failed submit spent the token: the same widget runs again (the first round is the render).

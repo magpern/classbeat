@@ -76,12 +76,58 @@ describe('Turnstile off (captcha: null)', () => {
     })
     renderAt('/reset')
     type('Email', 'ann@example.test')
-    expect(screen.getByRole('button', { name: 'Send reset link' })).toBeEnabled()
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Send reset link' })).toBeEnabled()
+    })
     expect(screen.queryByRole('group', { name: 'Security check' })).toBeNull()
     fireEvent.click(screen.getByRole('button', { name: 'Send reset link' }))
     expect(await screen.findByText('Check your inbox')).toBeInTheDocument()
     expect(api.to('POST', '/api/auth/password/reset/request')[0]?.body).toEqual({ email: 'ann@example.test' })
     expect(scripts()).toEqual([])
+  })
+})
+
+describe('Turnstile while the session is not known', () => {
+  it('keeps the submit disabled with the waiting text until the session has loaded', async () => {
+    const api = fakeApi({
+      'GET /api/auth/session': OFF,
+      'GET /api/auth/oauth/providers': { providers: [] },
+      'POST /api/auth/password/reset/request': ACCEPTED,
+    })
+    renderAt('/reset')
+    const submit = screen.getByRole('button', { name: 'Send reset link' })
+    type('Email', 'ann@example.test')
+    expect(submit).toBeDisabled()
+    const why = document.getElementById(submit.getAttribute('aria-describedby') ?? '')
+    expect(why).toHaveTextContent('Checking that you are a person…')
+    fireEvent.submit(submit.closest('form')!)
+    expect(api.to('POST', '/api/auth/password/reset/request')).toHaveLength(0)
+
+    // The session says the check is off: the form is usable and the waiting text is gone.
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Send reset link' })).toBeEnabled()
+    })
+    expect(screen.getByRole('button', { name: 'Send reset link' })).not.toHaveAttribute('aria-describedby')
+  })
+
+  it('does not treat a failed session fetch as the check being off', async () => {
+    const api = fakeApi({
+      'GET /api/auth/session': () => new Response('boom', { status: 500 }),
+      'GET /api/auth/oauth/providers': { providers: [] },
+      'POST /api/auth/password/reset/request': ACCEPTED,
+    })
+    renderAt('/reset')
+    type('Email', 'ann@example.test')
+    await waitFor(() => {
+      expect(api.to('GET', '/api/auth/session').length).toBeGreaterThan(0)
+    })
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 20))
+    })
+    const submit = screen.getByRole('button', { name: 'Send reset link' })
+    expect(submit).toBeDisabled()
+    fireEvent.submit(submit.closest('form')!)
+    expect(api.to('POST', '/api/auth/password/reset/request')).toHaveLength(0)
   })
 })
 
@@ -179,6 +225,26 @@ describe('the fake stand-in (captcha.fake)', () => {
     expect(api.to(method, url)).toHaveLength(1)
     const body = api.to(method, url)[0]?.body as { captcha_token?: unknown }
     expect(body.captcha_token).toMatch(/^fake-pass-/)
+  })
+
+  it('resets the check after a failed provider-email submit', async () => {
+    const api = fakeApi({
+      'GET /api/auth/session': FAKE,
+      'GET /api/auth/oauth/pending': PENDING,
+      'POST /api/auth/oauth/pending/email': () => reason(400, 'captcha_failed'),
+    })
+    renderAt('/signin/email')
+    const box = await screen.findByRole('checkbox', { name: 'I am a person (test check)' })
+    type('Email', 'ann@example.test')
+    fireEvent.click(box)
+    fireEvent.click(screen.getByRole('button', { name: 'Send confirmation link' }))
+    await waitFor(() => {
+      expect(api.to('POST', '/api/auth/oauth/pending/email')).toHaveLength(1)
+    })
+    await waitFor(() => {
+      expect(screen.getByRole('checkbox', { name: 'I am a person (test check)' })).not.toBeChecked()
+    })
+    expect(screen.getByRole('button', { name: 'Send confirmation link' })).toBeDisabled()
   })
 
   it('leaves the provider buttons usable without a token', async () => {
@@ -347,6 +413,31 @@ describe('Cloudflare Turnstile (captcha.site_key)', () => {
         expect(turnstile.api.render).toHaveBeenCalled()
       })
       expect(turnstile.last().size).toBe('compact')
+    } finally {
+      width.mockRestore()
+    }
+  })
+
+  it('switches between flexible and compact when the window is resized', async () => {
+    const turnstile = stubTurnstile()
+    window.turnstile = turnstile.api
+    let px = 400
+    const width = vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockImplementation(() => px)
+    try {
+      fakeApi({ 'GET /api/auth/session': REAL })
+      renderAt('/reset')
+      await waitFor(() => {
+        expect(turnstile.api.render).toHaveBeenCalled()
+      })
+      expect(turnstile.last().size).toBe('flexible')
+      px = 260
+      act(() => {
+        window.dispatchEvent(new Event('resize'))
+      })
+      await waitFor(() => {
+        expect(turnstile.last().size).toBe('compact')
+      })
+      expect(turnstile.api.remove).toHaveBeenCalledWith('w1')
     } finally {
       width.mockRestore()
     }
