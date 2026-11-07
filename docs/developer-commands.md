@@ -23,7 +23,7 @@ uv run python -m classbeat     # the API on http://127.0.0.1:8000 (--host, --por
 uv run python -m classbeat.worker   # the worker; stops on Ctrl+C or SIGTERM
 uv run python -m classbeat invite create [--expires 7d]    # operator commands (ADR 0003 section 7);
 uv run python -m classbeat admin grant|revoke|mfa-reset EMAIL   # in the stack: docker compose exec web ...
-uv run python -m classbeat jobs stats   # job counts per state, uncertain external operations (no ids)
+uv run python -m classbeat jobs stats   # job counts per state, uncertain operations, queue-wait and analysis p95 (no ids)
 uv run python -m classbeat keys rewrap [--totp]   # after a KEK rotation (ADR 0004 section 2); --totp once
 docker compose --profile maint run --rm maint python -m classbeat keys wipe --confirm|--resend   # KEK compromise only
 uv run alembic upgrade head    # migrations as the owner role, CLASSBEAT_MIGRATIONS_DATABASE_URL
@@ -276,12 +276,68 @@ and delay design jobs. A run that must analyse (a cache miss in
 `swedebeat_music.open_swedebeat_mix`, before the daily slot is taken) and holds no slot stops
 (`JobRun.require_analysis_slot`) and its job goes back to `queued` with `jobs.analysis_slot` (migration
 0032), the attempt not counted, and a `requeued` event `{"reason": "analysis_slot"}` (what #572 shows as
-"waiting for a free slot"). `queue_claim(worker, lease, kinds, analysis_slots)` (queue v3) claims such a job
+"waiting for a free slot"). `queue_claim(worker, lease, kinds, analysis_slots)` (queue v3; v5 adds the wait to its event) claims such a job
 only while fewer running jobs hold a slot than the cap, counted under one advisory lock in READ COMMITTED,
 and claims other jobs past it, so analyses never fill every worker slot; the transaction that stores the
 analysis (or finds it cached) frees the slot and wakes the workers. A slot job whose lease expired keeps
 its slot until the reaper requeues it. Tests: `tests/test_queue_functions.py` (the claim, the race) and
 `tests/test_analysis_slots.py` (the requeue, the release, two workers).
+
+**Measuring analysis load (ADR 0026 stage 1, #735).** Every claim's `claimed` event records its queue
+wait and whether it holds an analysis slot: `{"attempt", "analysis_slot", "wait_ms"}` (queue v5), the
+wait from the job's `available_at` to that claim. Every requeue sets `available_at` (the slot requeue to
+now, a retry or the reaper to the end of its backoff), so a requeued job's next claim measures its own
+wait; `jobs.started_at` keeps the first claim only and is not used. The transaction that stores a fresh
+mix analysis sets `jobs.analysis_fetch_ms`, `analysis_decode_ms` and `analysed_at` (migration 0039,
+`classbeat.jobs.analysis_times`; a cache hit or a failed analysis sets nothing), and the log line
+`swedebeat mix analysed` carries `fetch_ms`, `decode_ms`, `peak_rss_mb` and `load_1m` (the host's
+one-minute load average, the number that shows analysis CPU pressing on the box). `queue_stats()`, and
+so `jobs stats` (`docker compose exec web python -m classbeat jobs stats`), adds, over the **last 7
+days**, all users together, in milliseconds (`-` when there are too few samples):
+
+| Metric | What |
+|---|---|
+| `claim_wait_slot_samples_7d`, `claim_wait_slot_p95_ms_7d` | claims holding an analysis slot (the wait for the cap) |
+| `claim_wait_other_samples_7d`, `claim_wait_other_p95_ms_7d` | every other claim (design jobs, a job's first claim before its slot requeue) |
+| `claim_wait_slot_peak_hour_utc`, `claim_wait_slot_peak_samples`, `claim_wait_slot_peak_p95_ms` | slot claims **at peak** (below) |
+| `analysis_samples_7d`, `analysis_fetch_p95_ms_7d`, `analysis_decode_p95_ms_7d` | stored fresh analyses: the fetch and the decode |
+
+**At peak** is the hour of the day (UTC, 0 to 23) with the most slot claims over the 7 days, pooled
+across the days (the evening classes of a week land in one hour; ties take the earlier hour). A p95
+(`percentile_disc(0.95)`) needs **at least 20 samples**, else it is `-`: the stage 2 trigger of ADR 0026
+("p95 queue wait of jobs that need an analysis slot above about one minute at peak, with idle CPU")
+reads `claim_wait_slot_peak_p95_ms > 60000` with `claim_wait_slot_peak_samples >= 20`, and idle CPU from
+`load_1m` in the analysis log lines against the host's core count. The admin area's Jobs view does not
+show these (it reads as `classbeat_maint`, which has no grant on `queue_stats()`). Tests:
+`tests/test_queue_functions.py` (the wait of each claim, the p95, the peak, the 20-sample floor) and
+`tests/test_swedebeat_fetch.py` (the timings of a fresh analysis, none for a cache hit).
+
+**Two workers (ADR 0026 stage 2, `--scale worker=N`).** `tests/test_two_workers.py` is the drill: a
+second real worker process (`tests/drill_worker.py`) holds the only analysis slot while an in-process
+worker runs every design job and claims none of the waiting analyses; the process is killed with
+`SIGKILL`, its job is reaped under a new token (a write under the old one is refused) and finished by
+the other worker, every job completes once and no more than one analysis ever runs. The operator's
+version on a stack (local, or the owner's server before stage 2):
+
+```bash
+docker compose up -d --scale worker=2 --wait         # two worker containers, one database
+docker compose ps worker                             # two, each with its own host name (the worker id)
+# start two designs on uncached Swedebeat mixes from two accounts (dev: the e2e fakes), then:
+docker compose exec db psql -U postgres -d classbeat -c \
+  "SELECT count(*) FROM jobs WHERE state = 'running' AND analysis_slot"   # never above the cap
+docker kill "$(docker compose ps -q worker | head -1)"   # one container, as a crash: no hand-back
+# within the lease (CLASSBEAT_JOB_LEASE_SECONDS) plus the backoff the other worker reaps and finishes it:
+docker compose exec web python -m classbeat jobs stats
+docker compose up -d --scale worker=1                # back to one
+```
+
+Before scaling in production: set `CLASSBEAT_MIX_ANALYSIS_CONCURRENCY` to the **same** value on every
+worker (each passes its own value to `queue_claim`) and keep it below the summed
+`CLASSBEAT_WORKER_CONCURRENCY`; the database needs `N * (2 * concurrency + 2)` worker connections plus
+an overflow of `N * concurrency`, beside web's, under Postgres's `max_connections` (the image default,
+100, not set in the compose files); each worker has its own `/tmp` (never share a temp volume:
+`sweep_work_root` at start would delete another worker's audio); and `WORKER_MEMORY` (runbook
+vps-deploy.md section 5c) applies **per container**, so N workers need N times it beside web and db.
 Song picking (`design_with_songs`, `classbeat.songs`, ADR 0008 section 2): `CLASSBEAT_SPOTIFY_POOL_SYNC_WAIT_SECONDS`
 (120, at most 600) is how long a pick waits for MOWL's track list of the pool playlist to show exactly
 the candidates just written; after it the pick fails `pool_not_synced` (retried once per phase). Worker and agent code write job data only through

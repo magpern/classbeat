@@ -332,10 +332,10 @@ check_keys() {
              "secrets","tmpfs","user"],
       "migrate": ["cap_drop","command","depends_on","entrypoint","environment","group_add","image","logging",
              "networks","restart","secrets","security_opt"],
-      "web": ["cap_drop","command","depends_on","entrypoint","environment","expose","group_add","healthcheck",
-             "image","logging","networks","ports","read_only","restart","secrets","security_opt","tmpfs"],
-      "worker": ["cap_drop","command","depends_on","entrypoint","environment","group_add","image","logging",
-             "networks","restart","secrets","security_opt","stop_grace_period"]
+      "web": ["cap_drop","command","cpus","depends_on","entrypoint","environment","expose","group_add","healthcheck",
+             "image","logging","mem_limit","networks","ports","read_only","restart","secrets","security_opt","tmpfs"],
+      "worker": ["cap_drop","command","cpus","depends_on","entrypoint","environment","group_add","image","logging",
+             "mem_limit","networks","restart","secrets","security_opt","stop_grace_period"]
     };
     # The keys of $o that are not in $allowed, named with their path; a non-mapping is refused whole.
     def extra($o; $allowed; $where):
@@ -414,6 +414,10 @@ check_keys() {
     || fail "cap_drop is exactly [\"ALL\"]" || return 1
   jq -e --arg g "$secrets_gid" '[.services[] | select(has("group_add")) | .group_add | map(tostring)] | all(. == [$g])' <<<"$J" >/dev/null \
     || fail "group_add is exactly [\"$secrets_gid\"] (no other group, root's included)" || return 1
+  # ADR 0026 stage 1 (#735): web and the worker keep a CPU and a memory ceiling (a positive number
+  # of CPUs; mem_limit as the render gives it, in bytes), so a mix analysis cannot starve the box.
+  q '[.services.web, .services.worker | (.cpus | tonumber? // 0) > 0 and ((.mem_limit // "") | tostring | test("^[1-9][0-9]*$"))] | all' \
+    || fail "web and worker keep a cpus and a mem_limit ceiling (compose.prod.yaml, runbook section 5c)" || return 1
   # The command, entrypoint and tmpfs mounts are the ones the files have: a changed one is a reviewed
   # change to this list (an entrypoint or a tmpfs option can reach what the keys above cannot).
   q 'def known: {
@@ -892,6 +896,12 @@ deny=(
   'networks.egress (external or renamed)|.networks.egress.name = "some-other-network"'
   'networks.egress (external or renamed)|.networks.egress.external = true'
   'networks.backend (external or renamed)|.networks.backend.name = "bridge"'
+  # the CPU and memory ceilings of ADR 0026 stage 1 (#735), and the keys still default-deny
+  'keep a cpus and a mem_limit ceiling|del(.services.worker.mem_limit)'
+  'keep a cpus and a mem_limit ceiling|del(.services.web.cpus)'
+  'keep a cpus and a mem_limit ceiling|.services.worker.cpus = 0'
+  'services.migrate.cpus|.services.migrate.cpus = 1'
+  'services.worker.memswap_limit|.services.worker.memswap_limit = "1"'
 )
 for v in shared loopback lan; do
   case "$v" in shared) base="$shared" ;; loopback) base="$loopback" ;; *) base="$lan" ;; esac

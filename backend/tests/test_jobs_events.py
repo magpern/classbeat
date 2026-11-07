@@ -49,6 +49,7 @@ def test_every_event_kind_has_a_model_and_the_database_accepts_exactly_those(
     [
         ("queued", {}),
         ("claimed", {"attempt": 2}),
+        ("claimed", {"attempt": 1, "analysis_slot": True, "wait_ms": 61_250}),  # v5, #735
         ("stage_started", {"stage": "pick"}),
         ("tool_called", {"tool": "get_music", "ok": True}),
         ("tool_called", {"tool": "get_music", "ok": False, "error": "not_found"}),
@@ -77,6 +78,8 @@ def test_valid_payloads_are_accepted_and_json_ready(kind: str, payload: dict[str
         ("queued", {"token": SECRET}),  # extra field
         ("claimed", {"attempt": 1, "worker": SECRET}),
         ("claimed", {"attempt": 0}),
+        ("claimed", {"attempt": 1, "analysis_slot": False, "wait_ms": -1}),
+        ("claimed", {"attempt": 1, "analysis_slot": False, "wait_ms": SECRET}),
         ("stage_started", {"stage": "Pick the songs"}),  # a text, not a name
         ("stage_started", {"stage": SECRET}),
         ("tool_called", {"tool": "get_music", "ok": False, "error": f"boom {SECRET}"}),

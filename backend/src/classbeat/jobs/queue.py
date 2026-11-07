@@ -62,10 +62,11 @@ async def unsettled(factory: Factory, limit: int = 100) -> list[Claimed]:
 _STATS = text("SELECT metric, total FROM public.queue_stats()")
 
 
-async def stats(factory: Factory) -> list[tuple[str, int]]:
-    """``queue_stats()``: counts per job state and of ``uncertain`` external operations, across
-    all users and without ids (ADR 0005 section 7's admin seam; ``python -m classbeat jobs
-    stats``)."""
+async def stats(factory: Factory) -> list[tuple[str, int | None]]:
+    """``queue_stats()``: counts per job state and of ``uncertain`` external operations, then the
+    queue wait and analysis p95 of the last seven days (ADR 0026 stage 1, #735), across all users
+    and without ids (ADR 0005 section 7's admin seam; ``python -m classbeat jobs stats``). A p95
+    with fewer than 20 samples, and the peak hour with no slot claim, is ``None``."""
     async with system_session(factory) as db:
         rows = (await db.execute(_STATS)).all()
-    return [(str(r.metric), int(r.total)) for r in rows]
+    return [(str(r.metric), None if r.total is None else int(r.total)) for r in rows]

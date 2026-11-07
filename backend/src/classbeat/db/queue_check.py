@@ -32,7 +32,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine
 from classbeat.db.queue_digests import GUARD_TRIGGER_DIGESTS, QUEUE_DIGESTS
 
 QUEUE_ROLE = "classbeat_queue"
-QUEUE_VERSION = "classbeat-queue v4"
+QUEUE_VERSION = "classbeat-queue v5"
 SEARCH_PATH = "search_path=pg_catalog, pg_temp"
 # name -> identity arguments, as pg_get_function_identity_arguments renders them.
 QUEUE_FUNCTIONS: dict[str, str] = {

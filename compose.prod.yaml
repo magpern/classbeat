@@ -158,6 +158,12 @@ services:
   web:
     <<: *app
     read_only: true
+    # ADR 0026 stage 1 (#735): ceilings so one service cannot take the box. Web is one Python
+    # process (it cannot use much more than a core); the memory leaves room for its pool and
+    # requests. Override in .env (WEB_CPUS, WEB_MEMORY); never above the host's CPU count, or the
+    # container does not start. Runbook section 5c.
+    cpus: ${WEB_CPUS:-1.0}
+    mem_limit: ${WEB_MEMORY:-1g}
     tmpfs:
       - /tmp
     environment:
@@ -235,6 +241,13 @@ services:
     command: ["python", "-m", "classbeat.worker"]
     # ADR 0005 section 3: up to 25 s for runs to reach a checkpoint, then the leases go back.
     stop_grace_period: 30s
+    # ADR 0026 stage 1 (#735): a mix analysis (a child of up to 1.5 GiB, a core or more for up to
+    # 180 s) must not starve web and db. Memory: CLASSBEAT_MIX_ANALYSIS_CONCURRENCY x 1.5 GiB plus
+    # about 1 GiB for the worker itself (3g for the default cap of 1). Over the ceiling the kernel
+    # kills the container: compose restarts it and the reaper requeues its jobs. Override in .env
+    # (WORKER_CPUS, WORKER_MEMORY); never above the host's CPU count. Runbook section 5c.
+    cpus: ${WORKER_CPUS:-1.0}
+    mem_limit: ${WORKER_MEMORY:-3g}
     environment:
       <<: *app-env
       # `fake` is refused when the environment is prod; the key is secrets/anthropic_api_key.
