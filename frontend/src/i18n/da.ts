@@ -1,8 +1,10 @@
 import type { Catalogue } from './en'
+import { helpDa } from './help.da'
 import { legalDa } from './legal.da'
 
 const da: Catalogue = {
   ...legalDa,
+  ...helpDa,
   'language.label': 'Sprog',
   'language.follow': 'Følg denne browser',
   'language.help':

@@ -1,9 +1,8 @@
 import { Fragment, type ReactNode } from 'react'
 import { Trans, useT } from '../../i18n/I18n'
 import { Link } from '../../router/Router'
+import { SupportLink, useSupportAddress } from '../../components/SupportLink'
 import { legalKey, type LegalSection } from './structure'
-
-const EMAIL = 'support@classbeat.eu'
 
 /** The facts the repository cannot supply, in one marked box (issue #718): never invented. */
 function ControllerBlock() {
@@ -31,13 +30,13 @@ function ControllerBlock() {
   )
 }
 
-function Text({ id }: { id: ReturnType<typeof legalKey> }) {
+function Text({ id, address }: { id: ReturnType<typeof legalKey>; address: string | null | undefined }) {
   const t = useT()
   return (
     <Trans
       id={id}
       slots={{
-        email: <a href={`mailto:${EMAIL}`}>{EMAIL}</a>,
+        email: <SupportLink address={address} />,
         terms: <Link to="/terms">{t('legal.inline.terms')}</Link>,
         privacy: <Link to="/privacy">{t('legal.inline.privacy')}</Link>,
       }}
@@ -48,6 +47,7 @@ function Text({ id }: { id: ReturnType<typeof legalKey> }) {
 /** A title, a lead and sections of paragraphs and lists, all from the catalogue. */
 export function LegalDoc({ doc, sections }: { doc: 'privacy' | 'terms'; sections: readonly LegalSection[] }) {
   const t = useT()
+  const address = useSupportAddress()
   return (
     <article className="mx-auto flex max-w-3xl flex-col gap-8" aria-labelledby="legal-title">
       <header className="flex flex-col gap-3">
@@ -70,7 +70,7 @@ export function LegalDoc({ doc, sections }: { doc: 'privacy' | 'terms'; sections
             <ul key={`ul-${list[0]}`} className="m-0 flex flex-col gap-2 pl-6">
               {list.map((part) => (
                 <li key={part}>
-                  <Text id={legalKey(doc, section.id, part)} />
+                  <Text id={legalKey(doc, section.id, part)} address={address} />
                 </li>
               ))}
             </ul>,
@@ -85,7 +85,7 @@ export function LegalDoc({ doc, sections }: { doc: 'privacy' | 'terms'; sections
           flush()
           blocks.push(
             <p key={part} className="m-0">
-              <Text id={legalKey(doc, section.id, part)} />
+              <Text id={legalKey(doc, section.id, part)} address={address} />
             </p>,
           )
           if (section.controller === true && index === 0) blocks.push(<ControllerBlock key="controller" />)

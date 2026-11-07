@@ -1,8 +1,10 @@
 import type { Catalogue } from './en'
+import { helpSv } from './help.sv'
 import { legalSv } from './legal.sv'
 
 const sv: Catalogue = {
   ...legalSv,
+  ...helpSv,
   'language.label': 'Språk',
   'language.follow': 'Följ den här webbläsaren',
   'language.help':

@@ -70,7 +70,7 @@ export function fakeApi(routes: Record<string, Handler | object | string>) {
     'GET /api/external-operations': { operations: [] },
     'GET /api/usage': USAGE_NONE,
     'GET /api/account/plan': PLAN_FREE,
-    'GET /api/settings/public': { banner: null, signup_mode: 'invite' },
+    'GET /api/settings/public': { banner: null, signup_mode: 'invite', support_address: 'support@classbeat.eu' },
     'GET /api/music/playlist-covers': { covers: [] },
     'GET /api/mail/preferences': { unsubscribed_all: false, opted_out: [] },
     'GET /api/auth/events': { events: [], next_before: null },
