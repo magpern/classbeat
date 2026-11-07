@@ -518,6 +518,9 @@ jobs:
             [ -f "$f" ] && [ ! -s "$f" ] \
               || { echo "::error::init must create an empty $f"; exit 1; }
           done
+          # ADR 0025 section 7: the Turnstile secret too (empty: Turnstile off, never a real key).
+          [ -f secrets/turnstile_secret_key ] && [ ! -s secrets/turnstile_secret_key ] \
+            || { echo "::error::init must create an empty secrets/turnstile_secret_key"; exit 1; }
 
       - name: Start the stack
         working-directory: .
@@ -624,6 +627,11 @@ jobs:
             || { echo "::error::web does not have the swedebeat_app secret"; exit 1; }
           docker compose exec -T worker sh -c '! test -e /run/secrets/swedebeat_app' \
             || { echo "::error::the worker can read swedebeat_app"; exit 1; }
+          # ADR 0025 section 7: the Turnstile secret is web's only as well.
+          docker compose exec -T web test -e /run/secrets/turnstile_secret_key \
+            || { echo "::error::web does not have the turnstile_secret_key secret"; exit 1; }
+          docker compose exec -T worker sh -c '! test -e /run/secrets/turnstile_secret_key' \
+            || { echo "::error::the worker can read turnstile_secret_key"; exit 1; }
           mapfile -t containers < <(docker compose ps -aq)
           web="$(docker compose ps -q web)"
           for c in "${containers[@]}"; do

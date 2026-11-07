@@ -173,7 +173,8 @@ cp compose.prod.yaml compose.prod.loopback.yaml compose.prod.lan.yaml "$tmp/"
 mkdir "$tmp/secrets"
 oauth_providers=(google github microsoft)
 for n in postgres_password database_owner_password database_password database_maint_password \
-  app_secret_key connection_kek smtp_password anthropic_api_key openai_api_key deepseek_api_key swedebeat_app; do
+  app_secret_key connection_kek smtp_password anthropic_api_key openai_api_key deepseek_api_key swedebeat_app \
+  turnstile_secret_key; do
   # One line without `=` (a dummy, never a real secret): an env_file of it, however spelled, gives
   # the variable "" in the render, which check_keys refuses (#610); an empty file would add nothing.
   printf 'dummy-secret-%s' "$n" > "$tmp/secrets/$n"
@@ -267,6 +268,17 @@ check_common() {
     || fail "the MOWL QR sign-in must be off by default" || return 1
   q '.services.worker.environment | has("CLASSBEAT_MOWL_QR_ENABLED") | not' \
     || fail "the MOWL QR sign-in belongs to web only" || return 1
+  # ADR 0025 (#724): Turnstile's secret on web only, its switch and site key web's only, off by
+  # default until the owner's live check (PR 3 of #721 flips the default), and the fake never in
+  # a production file, whatever service.
+  q '[.services | to_entries[] | select(.value.secrets // [] | map(.source) | index("turnstile_secret_key")) | .key] == ["web"]' \
+    || fail "turnstile_secret_key belongs to web only" || return 1
+  q '.services.web.environment.CLASSBEAT_TURNSTILE_ENABLED == "false"' \
+    || fail "Turnstile must be off by default (until #721's last PR)" || return 1
+  q '[.services | to_entries[] | select(.value.environment // {} | keys | map(select(startswith("CLASSBEAT_TURNSTILE_"))) | length > 0) | .key] == ["web"]' \
+    || fail "the Turnstile settings belong to web only" || return 1
+  q '[.services[] | .environment // {} | has("CLASSBEAT_TURNSTILE_FAKE")] | any | not' \
+    || fail "CLASSBEAT_TURNSTILE_FAKE is never set in a production file" || return 1
   q '.services.web.environment.CLASSBEAT_LOCALES | tostring | length > 0' \
     || fail "the offered languages are set on web" || return 1
   q '.services.worker.environment | has("CLASSBEAT_LOCALES") | not' \
@@ -372,7 +384,8 @@ check_keys() {
       "worker": (app + flags + ["CLASSBEAT_MODEL_PROVIDER"]),
       "web": (app + flags + ["CLASSBEAT_MAINT_DATABASE_URL","CLASSBEAT_OAUTH_GITHUB_CLIENT_ID",
         "CLASSBEAT_OAUTH_GOOGLE_CLIENT_ID","CLASSBEAT_OAUTH_MICROSOFT_CLIENT_ID","CLASSBEAT_OAUTH_VISIBLE_PROVIDERS",
-        "CLASSBEAT_LOCALES","CLASSBEAT_MOWL_QR_ENABLED","CLASSBEAT_SMTP_CA_FILE","CLASSBEAT_TRUSTED_PROXIES"])
+        "CLASSBEAT_LOCALES","CLASSBEAT_MOWL_QR_ENABLED","CLASSBEAT_SMTP_CA_FILE","CLASSBEAT_TRUSTED_PROXIES",
+        "CLASSBEAT_TURNSTILE_ENABLED","CLASSBEAT_TURNSTILE_SITE_KEY"])
     };
     .services | to_entries[] | .key as $n | (.value.environment // {}) as $e
     | if ($e | type) != "object" then "services.\($n).environment (not a mapping)"
@@ -681,7 +694,14 @@ for m in \
   '.services.worker.environment.CLASSBEAT_OAUTH_GOOGLE_CLIENT_ID = "check-google-client-id"' \
   '.services.web.environment.CLASSBEAT_OAUTH_GOOGLE_CLIENT_ID = "a-literal-in-compose"' \
   '.services.web.environment.CLASSBEAT_OAUTH_VISIBLE_PROVIDERS = "google"' \
-  '.services.web.environment.CLASSBEAT_OAUTH_EXTRA = "x"'; do
+  '.services.web.environment.CLASSBEAT_OAUTH_EXTRA = "x"' \
+  '.services.worker.secrets += [{"source":"turnstile_secret_key"}]' \
+  '.services.web.secrets |= map(select(.source != "turnstile_secret_key"))' \
+  '.services.web.environment.CLASSBEAT_TURNSTILE_ENABLED = "true"' \
+  '.services.web.environment.CLASSBEAT_TURNSTILE_FAKE = "true"' \
+  '.services.worker.environment.CLASSBEAT_TURNSTILE_FAKE = "false"' \
+  '.services.worker.environment.CLASSBEAT_TURNSTILE_ENABLED = "false"' \
+  '.services.worker.environment.CLASSBEAT_TURNSTILE_SITE_KEY = ""'; do
   expect_refused shared "$shared" "$m"
 done
 # Secret files (#511): the group, the users, one name per file, no other way into secrets/.
@@ -1388,7 +1408,7 @@ check_secrets_group() {   # check_secrets_group GID "$(getent group GID)" "$(get
 }
 secret_names=()
 mapfile -t secret_names < <(jq -r '.secrets | keys[]' <<<"$shared")
-(( ${#secret_names[@]} >= 14 )) || { fail "compose.prod.yaml names fewer secrets than expected"; exit 1; }
+(( ${#secret_names[@]} >= 15 )) || { fail "compose.prod.yaml names fewer secrets than expected"; exit 1; }
 server_secrets=""
 if [[ -n "${PROD_CHECK_SECRETS_DIR:-}" ]]; then
   server_secrets="$PROD_CHECK_SECRETS_DIR"

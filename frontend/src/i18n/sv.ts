@@ -183,6 +183,8 @@ const sv: Catalogue = {
   'error.reason.reauth_use_password': 'Ditt konto har ett lösenord, så bekräfta med ditt lösenord.',
   'error.reason.forbidden': 'Ditt konto får inte göra det.',
   'error.reason.busy': 'Servern är upptagen. Försök igen om några sekunder.',
+  'error.reason.captcha_failed': 'Säkerhetskontrollen gick inte igenom. Försök igen.',
+  'error.reason.captcha_unavailable': 'Säkerhetskontrollen går inte att nå just nu. Försök igen om en minut.',
   'error.tooMany': 'För många försök. Vänta en stund och försök igen.',
   'error.tooManyWait': 'För många försök. Försök igen om {wait}.',
   // Both forms read the same in English today; the other languages need the split.

@@ -166,6 +166,8 @@ export const en = {
   'error.reason.reauth_use_password': 'Your account has a password, so confirm with your password.',
   'error.reason.forbidden': 'Your account is not allowed to do that.',
   'error.reason.busy': 'The server is busy. Try again in a few seconds.',
+  'error.reason.captcha_failed': 'The security check did not pass. Please try again.',
+  'error.reason.captcha_unavailable': 'The security check is not reachable right now. Try again in a minute.',
   'error.tooMany': 'Too many attempts. Wait a little and try again.',
   'error.tooManyWait': 'Too many attempts. Try again in {wait}.',
   // Both forms read the same in English today; the other languages need the split.
