@@ -172,6 +172,7 @@ export const en = {
   // ADR 0025 section 11: the Turnstile check on the sign-in, sign-up, provider-email and reset forms.
   'captcha.label': 'Security check',
   'captcha.waiting': 'Checking that you are a person…',
+  'captcha.session': 'The page could not check whether a security check is needed. Reload the page to try again.',
   'captcha.expired': 'The security check expired. It is running again.',
   'captcha.error': 'The security check ran into a problem and is trying again. If it keeps failing, reload the page.',
   'captcha.unsupported': 'This browser cannot run the security check. Try another browser.',

@@ -311,13 +311,13 @@ existing `web-out` network; the network-level egress rule stays an M6 item (acce
 2. Put the site key in the server `.env` as `TURNSTILE_SITE_KEY`; write the secret key to
    `secrets/turnstile_secret_key` (`<deploy user>:10010`, mode 0640).
 3. Deploy a release that contains PR 1 and PR 2 **with `TURNSTILE_ENABLED=true` set explicitly** in
-   `.env` (the default is still off), before PR 3 flips the default.
+   `.env` (the default is still off). PR 3 does not flip the default (Amendment 1 (f)).
 4. Live check, reporting only pass or fail and `why` words: sign in, sign up with an invite, request
    a reset, finish a provider-email step; switch to sv and da and to dark and light; the browser
    console shows no CSP violation and no `110200` (domain or referrer, open question 2);
    `docker compose logs web` shows no `captcha refused … why=` line for those attempts. If anything
    fails, remove `TURNSTILE_ENABLED=true` and restart web; agents fix it before PR 3.
-5. Once step 4 passes, PR 3 merges; deploy its release (the explicit setting can then go). *(Amended: PR 3 no longer flips the default, so the explicit setting stays until the separate default-on follow-up PR; see Amendment 1 (f).)*
+5. Once step 4 passes, PR 3 merges; deploy its release. *(Amended: PR 3 no longer flips the default, so the explicit setting stays until the separate default-on follow-up PR has been deployed and only then can go; see Amendment 1 (f).)*
 6. Emergency: `TURNSTILE_ENABLED=false`, `docker compose up -d web`; switch back once Cloudflare
    recovers.
 
@@ -378,3 +378,5 @@ existing `web-out` network; the network-level egress rule stays an M6 item (acce
   default. The owner enables Turnstile himself when testing starts. The default-on change
   (`compose.prod.yaml` and its `check-prod-compose.sh` assertion) becomes a separate tiny follow-up
   PR. This supersedes the "on in prod" parts of §7, §13 and owner step 5.
+  That follow-up PR changes a production security default (a gate on every sign-in form), so
+  its reviewer is Opus (review gate, item 2) even though the diff is tiny.

@@ -126,6 +126,9 @@ describe('Turnstile while the session is not known', () => {
     })
     const submit = screen.getByRole('button', { name: 'Send reset link' })
     expect(submit).toBeDisabled()
+    // It says so, with the way out, instead of "checking" for ever.
+    const why = document.getElementById(submit.getAttribute('aria-describedby') ?? '')
+    expect(why).toHaveTextContent('Reload the page to try again.')
     fireEvent.submit(submit.closest('form')!)
     expect(api.to('POST', '/api/auth/password/reset/request')).toHaveLength(0)
   })
