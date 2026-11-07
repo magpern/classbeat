@@ -8,13 +8,21 @@ agent.
 
 - ``find_accounts``: a page of accounts, optionally by email prefix (on ``email_normalized``),
   ordered by that address and id.
-- ``get_account``: one account, or ``None``; with ``lock=True`` ``FOR UPDATE``, so the role a
-  disable or delete checks cannot change (``admin grant`` from the CLI) before it commits.
+- ``get_account``: one account, or ``None``; with ``lock=True`` ``FOR NO KEY UPDATE``, so the role
+  a disable or delete checks cannot change (``admin grant`` from the CLI) before it commits. Not
+  ``FOR UPDATE`` (#675): that blocks the ``FOR KEY SHARE`` of the session middleware's
+  ``auth_events`` insert, which holds the target's session row the disable then deletes, a
+  deadlock (``auth/userlock.py``, ADR 0019 section 6). ``lock_user`` itself reads
+  ``password_hash``, which ``classbeat_maint`` may not, hence the same mode here.
 - ``disable_account``: sets ``disabled_at`` (an earlier value is kept) and deletes every session
   of the user (ADR 0003 section 3), so their next request is 401.
 - ``enable_account``: clears ``disabled_at``.
-- ``delete_account``: ADR 0003's account deletion (#37): the ``users`` row goes and the foreign
-  keys cascade; the user's own path writes the same statement.
+- ``delete_account``: ADR 0003's account deletion (#37): the sessions go first, then the ``users``
+  row, and the foreign keys cascade; the user's own path calls the same function. Sessions first
+  (#675): ``DELETE FROM users`` locks the row ``FOR UPDATE`` before its cascade reaches the
+  sessions, so a session row held by the middleware (whose ``auth_events`` insert then needs
+  ``FOR KEY SHARE`` on that user) would deadlock it. Deleting the sessions first waits for that
+  request with no conflicting lock on ``users``, and the cascade then finds no session left.
 
 None of these changes ``users.role``: granting and revoking admin stay with the CLI (ADR 0003
 section 7).
@@ -75,7 +83,7 @@ async def find_accounts(
 async def get_account(db: AsyncSession, user_id: UUID, *, lock: bool = False) -> AccountRow | None:
     statement = select(*_COLUMNS).where(users.c.id == user_id)
     if lock:
-        statement = statement.with_for_update()
+        statement = statement.with_for_update(key_share=True)  # NO KEY UPDATE: the docstring
     row = (await db.execute(statement)).one_or_none()
     return None if row is None else _row(row)
 
@@ -98,6 +106,8 @@ async def enable_account(db: AsyncSession, user_id: UUID) -> None:
 
 
 async def delete_account(db: AsyncSession, user_id: UUID) -> bool:
-    """Delete the account; its rows cascade. ``False`` when there was none."""
+    """Delete the account; its rows cascade. ``False`` when there was none. The sessions go
+    first: see the module docstring."""
+    await revoke_user_sessions(db, user_id)
     result = await db.execute(delete(users).where(users.c.id == user_id).returning(users.c.id))
     return result.first() is not None
