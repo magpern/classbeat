@@ -29,33 +29,39 @@ async function summariesTo(request: APIRequestContext, to: string): Promise<Summ
 
 /** The mail with exactly this subject to this address (waits for it to arrive). */
 export async function waitForMail(request: APIRequestContext, to: string, subject: string): Promise<Mail> {
-  for (let attempt = 0; attempt < 40; attempt++) {
-    const found = (await summariesTo(request, to)).find((m) => m.Subject === subject)
-    if (found) {
-      const message = (await (await request.get(`${mailpit}/api/v1/message/${found.ID}`)).json()) as {
-        From: { Name: string; Address: string }
-        ReplyTo: { Address: string }[] | null
-        Subject: string
-        Text: string
-        HTML: string
-      }
-      const headers = (await (await request.get(`${mailpit}/api/v1/message/${found.ID}/headers`)).json()) as Record<
-        string,
-        string[]
-      >
-      return {
-        id: found.ID,
-        subject: message.Subject,
-        from: { name: message.From.Name, address: message.From.Address },
-        replyTo: (message.ReplyTo ?? []).map((a) => a.Address),
-        text: message.Text,
-        html: message.HTML,
-        headers,
-      }
-    }
-    await new Promise((resolve) => setTimeout(resolve, 500))
+  // `expect.poll` reports the last subjects seen when the mail never comes (same 20 s as before).
+  let found: Summary | undefined
+  await expect
+    .poll(
+      async () => {
+        const all = await summariesTo(request, to)
+        found = all.find((m) => m.Subject === subject)
+        return found ? subject : all.map((m) => m.Subject)
+      },
+      { message: `a "${subject}" mail for ${to} arrives in mailpit`, timeout: 20_000, intervals: [500] },
+    )
+    .toBe(subject)
+  const id = found!.ID
+  const message = (await (await request.get(`${mailpit}/api/v1/message/${id}`)).json()) as {
+    From: { Name: string; Address: string }
+    ReplyTo: { Address: string }[] | null
+    Subject: string
+    Text: string
+    HTML: string
   }
-  throw new Error(`no "${subject}" mail for ${to} arrived in mailpit`)
+  const headers = (await (await request.get(`${mailpit}/api/v1/message/${id}/headers`)).json()) as Record<
+    string,
+    string[]
+  >
+  return {
+    id,
+    subject: message.Subject,
+    from: { name: message.From.Name, address: message.From.Address },
+    replyTo: (message.ReplyTo ?? []).map((a) => a.Address),
+    text: message.Text,
+    html: message.HTML,
+    headers,
+  }
 }
 
 /** How many mails with exactly this subject went to this address so far. */
