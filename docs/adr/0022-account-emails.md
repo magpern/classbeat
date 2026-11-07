@@ -1,7 +1,7 @@
 # ADR 0022: Account emails (milestone ME, #649)
 
-Status: Accepted, subject to review (the owner approved the plan on 2026-11-05; this ADR is
-accepted when its PR, #658 (issue #651), merges after a `PASS`). The plan, revision 3, is
+Status: Accepted (the owner approved the plan on 2026-11-05; #658, issue #651, merged after a
+`PASS`; ME1 to ME5 are merged and their e2e specs land with the PR that closes #649, 2026-11-07). The plan, revision 3, is
 [docs/plans/account-emails.md](../plans/account-emails.md); where the two differ, fix the plan
 or amend this ADR in the PR that changes it.
 
