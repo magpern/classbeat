@@ -944,9 +944,11 @@ that ended on purpose from one that expired or was revoked by a reset.
   the sign-out finds nothing to end.
 - **Export and deletion:** the rows are the user's `auth_events` (exported as `security_events`,
   removed with the account by the cascade of migration 0015, purged after 30 days). There is no
-  user-facing list of `auth_events` yet; the export is the user's view of them.
+  user-facing list of `auth_events` yet; the export is the user's view of them. *(Since the
+  amendment of 2026-11-07, #678, the account page lists them.)*
 - Revoking one of the user's other sessions from the session list (`DELETE
-  /api/auth/sessions/{id}`) writes no event; it is outside #646.
+  /api/auth/sessions/{id}`) writes no event; it is outside #646. *(It writes one since the
+  amendment of 2026-11-07, #678.)*
 
 **Consequences.** One more row per sign-out and one more row lock per sign-out. Tests:
 `backend/tests/test_auth_sign_out_events.py` (one event each, none on a repeat or a lost race,
@@ -984,3 +986,62 @@ deletion).
   unknown user.
 - **Logging (§10):** `/api/mail/unsubscribe` is a secret-input path (its query is never logged);
   the SWAG access log already omits query strings.
+
+## Amendment 2026-11-07: the security activity list and signing out one session (#678)
+
+**Context.** The data export was the user's only view of their `auth_events`, and signing out one
+of their sessions from the session list (`DELETE /api/auth/sessions/{id}`) wrote no event, so the
+security timeline could not tell that a session was ended on purpose (#646 review).
+
+**Decision.**
+
+- **Signing out one session writes a `sign_out`** (the existing kind; no new kind, no migration),
+  under the same rules as the amendment of 2026-11-06: one row only when the delete ended a
+  session, in a savepoint of the revoke's transaction (`routes._record_sign_out`), the request's
+  address, and the user row lock first (`lock_user`, ADR 0019 §6 rule 2), for the same deadlock
+  with an account deletion. `detail` is `{"session_id": "<ended>"}` and, when another of the
+  user's sessions ended it, also `"from_session": "<that session's id>"`. Ending the current
+  session from the list is a plain sign-out (the id only). Still at most one `sign_out` per
+  session, so the rows stay bounded by the sessions created.
+- **`GET /api/auth/events`** returns the caller's own rows, newest first (`auth/activity.py`):
+  - only rows whose `user_id` is the request's `UserContext.user_id`; no parameter names a user;
+  - only the kinds in `activity.SHOWN_KINDS`, an allowlist of what a person can recognise and act
+    on (sign-in and its failures, sign-out, sign-out everywhere, re-authentication, sign-up,
+    password change and reset, email change, linked and unlinked sign-in methods, two-factor
+    changes and failures, the operator's two-factor reset, and the new-network notice of #632).
+    Operator rows (`connections_wiped`, the CLI role changes), connection events and any kind added
+    later stay hidden until they are named there and worded in every catalogue;
+  - only `id`, `kind`, `at`, `ip` (the address the row holds, which the export already gives the
+    user), `provider` (only `google`, `github` or `microsoft`, read from `detail` for the kinds that
+    record one) and `other_session` (whether `detail` has `from_session`). Never the rest of
+    `detail`, never a session id;
+  - pages of `limit` rows (default 20, 1 to 100) with a keyset cursor `before` =
+    `<microseconds since the epoch>_<event id hex>` taken from the previous page's `next_before`
+    and ordered by `(at, id)` descending, so equal times never skip or repeat a row. The cursor
+    only bounds the caller's own filter: a forged or foreign one shows nothing but the caller's own
+    older rows (the route is `session` in the route matrix, not `owned_body`). A cursor of another
+    shape is a 422.
+  - Rows are purged after 30 days, so the page says it shows the last 30 days.
+- **The page:** a "Security activity" section on the account page's Sign-in and security tab,
+  with a "Show older" button for the next page, worded in every enabled language. A kind the page
+  has no words for is not shown (it cannot happen while the two allowlists agree; a frontend test
+  holds them equal).
+
+**Alternatives.**
+- *A new kind for signing out another session* (`session_revoked`): rejected; it is a sign-out, and
+  the existing kind keeps the export, the abuse view and the bound unchanged. `from_session` tells
+  the two apart.
+- *Show every kind with a generic label:* rejected; a blocklist would leak operator and future
+  kinds. An allowlist fails closed.
+- *Offset paging:* rejected; new rows shift the pages. *A cursor that names an event id only:*
+  rejected; it would need a lookup that could probe another user's ids.
+- *Hide the address, as the device list does:* not chosen; the address is what lets a person tell
+  an unknown sign-in from their own, and the export already shows it.
+
+**Consequences.** One more row and one more row lock per session signed out from the list. The
+list query filters on `user_id` and `kind` with the 30-day retention; there is no index on
+`auth_events.user_id` yet (the export and the cascade scan the same way), which a later migration
+can add if the table grows. Tests: `backend/tests/test_auth_activity.py` (isolation between two
+users, the kind and field allowlists, paging with equal times, cursor checks, the new event, the
+savepoint and the catch-all branch, no deadlock with an account deletion);
+`frontend/src/components/account/SecurityActivity.test.tsx`. Threat model T4.

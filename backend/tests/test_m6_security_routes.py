@@ -74,6 +74,9 @@ CLASSIFIED: dict[tuple[str, str], str] = {
     ("POST", "/api/auth/email/confirm"): "session",
     ("POST", "/api/auth/mfa/verify"): "session",
     ("GET", "/api/auth/sessions"): "session",
+    # The cursor ``before`` carries a time and an event id but only bounds the caller's own rows
+    # (ADR 0003 amendment of 2026-11-07, #678): not an owned id.
+    ("GET", "/api/auth/events"): "session",
     ("DELETE", "/api/auth/sessions/{session_id}"): "owned",
     ("POST", "/api/auth/logout"): "public",
     ("POST", "/api/auth/logout-all"): "session",
