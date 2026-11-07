@@ -1,15 +1,11 @@
 import { useEffect, useState, type FormEvent } from 'react'
-import {
-  completeReset,
-  requestPasswordReset,
-  resetInfo,
-  type LinkedMethod,
-} from '../api/auth'
+import { completeReset, requestPasswordReset, resetInfo, type LinkedMethod } from '../api/auth'
 import { errorMessage, providerName } from '../api/messages'
 import { useSession } from '../auth/SessionContext'
 import { useT } from '../i18n/I18n'
 import { Field, Notice, useAction } from '../components/forms'
 import { AuthCard as Card } from '../components/auth/AuthCard'
+import { useCaptcha } from '../components/auth/Turnstile'
 import { Link, useMailToken } from '../router/Router'
 
 /** `/reset`: ask for a link. `/reset#token=...`: choose a new password. */
@@ -23,11 +19,20 @@ function RequestReset() {
   const [email, setEmail] = useState('')
   const [sent, setSent] = useState(false)
   const action = useAction()
+  const captcha = useCaptcha('reset')
 
   const submit = (event: FormEvent) => {
     event.preventDefault()
+    if (!captcha.ready) return
+    const captchaToken = captcha.token
     void action.run(async () => {
-      await requestPasswordReset(email.trim())
+      try {
+        await requestPasswordReset(email.trim(), captchaToken)
+      } catch (error) {
+        // The token was sent, so it is spent whatever the answer: the check runs again.
+        if (captchaToken !== null) captcha.reset()
+        throw error
+      }
       setSent(true)
     })
   }
@@ -35,9 +40,7 @@ function RequestReset() {
   if (sent) {
     return (
       <Card title={t('auth.checkInbox')}>
-        <Notice kind="success">
-          {t('reset.sent')}
-        </Notice>
+        <Notice kind="success">{t('reset.sent')}</Notice>
         <p className="card__links">
           <Link to="/signin">{t('auth.backToSignIn')}</Link>
         </p>
@@ -60,7 +63,13 @@ function RequestReset() {
           }}
           required
         />
-        <button className="button" type="submit" disabled={action.busy}>
+        {captcha.element}
+        <button
+          className="button"
+          type="submit"
+          disabled={action.busy || !captcha.ready}
+          aria-describedby={captcha.describedBy}
+        >
           {t('reset.send')}
         </button>
       </form>
@@ -71,7 +80,10 @@ function RequestReset() {
   )
 }
 
-type Methods = { state: 'loading' } | { state: 'bad'; message: string } | { state: 'ok'; list: LinkedMethod[] }
+type Methods =
+  | { state: 'loading' }
+  | { state: 'bad'; message: string }
+  | { state: 'ok'; list: LinkedMethod[] }
 
 function ChoosePassword({ token }: { token: string }) {
   const t = useT()
@@ -121,9 +133,7 @@ function ChoosePassword({ token }: { token: string }) {
   if (done) {
     return (
       <Card title={t('reset.changedTitle')}>
-        <Notice kind="success">
-          {t('reset.changed')}
-        </Notice>
+        <Notice kind="success">{t('reset.changed')}</Notice>
         <p>
           <Link className="button" to="/signin">
             {t('auth.signIn')}
@@ -168,9 +178,7 @@ function ChoosePassword({ token }: { token: string }) {
         {methods.list.length > 0 ? (
           <fieldset className="fieldset">
             <legend>{t('reset.linked')}</legend>
-            <p className="field__hint">
-              {t('reset.linkedHint')}
-            </p>
+            <p className="field__hint">{t('reset.linkedHint')}</p>
             {methods.list.map((method) => (
               <label key={method.id} className="check">
                 <input

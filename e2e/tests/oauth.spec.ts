@@ -1,5 +1,5 @@
 import { type Page } from '@playwright/test'
-import { createInvite, expect, linkFromMail, PASSWORD, signUpThroughUi, test, uniqueEmail } from './helpers'
+import { createInvite, expect, linkFromMail, passCaptcha, PASSWORD, signUpThroughUi, test, uniqueEmail } from './helpers'
 import { audit } from './mu-helpers'
 import { sql } from './song-helpers'
 
@@ -149,6 +149,7 @@ test('Microsoft: an unverified email is handed off to the address page and confi
   await expect(page.getByRole('heading', { name: 'Confirm your email address' })).toBeVisible()
   expect(new URL(page.url()).pathname).toBe('/signin/email')
   await page.getByLabel('Email', { exact: true }).fill(email)
+  await passCaptcha(page)
   await page.getByRole('button', { name: 'Send confirmation link' }).click()
   await expect(page.getByText(/a second try would not send anything/)).toBeVisible()
   await expect(page.getByRole('link', { name: /Start the provider sign-in again/ })).toBeVisible()
@@ -165,6 +166,41 @@ test('Microsoft: an unverified email is handed off to the address page and confi
   await expect(page.getByRole('button', { name: email })).toBeVisible()
 })
 
+test('the provider-email step waits for the check, resets after a refusal and then sends (#726)', async ({ page }) => {
+  const email = uniqueEmail('mscaptcha')
+  await playProvider(page, 'login.microsoftonline.com', { sub: `ms-c-${Date.now()}`, email: null, emailVerified: false })
+  // The first token is replaced by one the fake verifier refuses (ADR 0025 section 8).
+  const sent: string[] = []
+  await page.route('**/api/auth/oauth/pending/email', async (route) => {
+    const body = route.request().postDataJSON() as Record<string, unknown>
+    sent.push(String(body.captcha_token))
+    if (sent.length > 1) return route.continue()
+    return route.continue({ postData: JSON.stringify({ ...body, captcha_token: 'fake-fail' }) })
+  })
+
+  await page.goto('/signup')
+  await page.getByLabel(/Invite code/).fill(createInvite())
+  // The provider buttons never wait for the check.
+  await page.getByRole('button', { name: 'Continue with Microsoft' }).click()
+  await expect(page.getByRole('heading', { name: 'Confirm your email address' })).toBeVisible()
+  await page.getByLabel('Email', { exact: true }).fill(email)
+  const submit = page.getByRole('button', { name: 'Send confirmation link' })
+  await expect(submit).toBeDisabled()
+  await passCaptcha(page)
+  await submit.click()
+  await expect(page.getByRole('alert')).toHaveText('The security check did not pass. Please try again.')
+  await expect(page.getByTestId('captcha-fake')).not.toBeChecked()
+  await expect(submit).toBeDisabled()
+
+  await passCaptcha(page)
+  await submit.click()
+  await expect(page.getByText(/a second try would not send anything/)).toBeVisible()
+  expect(sent).toHaveLength(2)
+  expect(sent[1]).toMatch(/^fake-pass-/)
+  expect(sent[1]).not.toBe(sent[0])
+  await linkFromMail(page.request, email, 'Confirm your classbeat account')
+})
+
 /** Make the user's last sign-in older than the 10-minute window, as the database superuser. */
 function ageReauth(email: string): void {
   if (!/^[\w.+-]+@example\.test$/.test(email)) throw new Error('not a test address')
@@ -179,6 +215,7 @@ test('Google re-authentication: refused with a password, accepted without auth_t
   await page.goto('/signin')
   await page.getByLabel('Email', { exact: true }).fill(email)
   await page.getByLabel('Password', { exact: true }).fill(PASSWORD)
+  await passCaptcha(page)
   await page.getByRole('button', { name: 'Sign in', exact: true }).click()
   await expect(page.getByRole('heading', { name: 'Your account' })).toBeVisible()
   await page.goto('/account#security')

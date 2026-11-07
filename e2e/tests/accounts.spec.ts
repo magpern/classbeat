@@ -1,5 +1,6 @@
 import { execFileSync } from 'node:child_process'
 import { expect, test, type APIRequestContext, type APIResponse } from '@playwright/test'
+import { captchaToken } from './helpers'
 
 // Compose-level check of ADR 0003 section 5: sign-up, confirmation and password reset by mail.
 // The mails are read from mailpit's API; nothing leaves the stack. API only (the pages come
@@ -76,6 +77,7 @@ test('sign-up, confirmation, sign-in and password reset by mail', async ({ reque
     email,
     password: PASSWORD,
     invite_code: code,
+    captcha_token: captchaToken(),
   })
   expect(signUp.status()).toBe(202)
 
@@ -91,10 +93,17 @@ test('sign-up, confirmation, sign-in and password reset by mail', async ({ reque
   })
   expect(confirm.status()).toBe(200)
 
-  const signIn = await post(request, origin, new Jar(), '/api/auth/login', { email, password: PASSWORD })
+  const signIn = await post(request, origin, new Jar(), '/api/auth/login', {
+    email,
+    password: PASSWORD,
+    captcha_token: captchaToken(),
+  })
   expect(signIn.status()).toBe(200)
 
-  const reset = await post(request, origin, new Jar(), '/api/auth/password/reset/request', { email })
+  const reset = await post(request, origin, new Jar(), '/api/auth/password/reset/request', {
+    email,
+    captcha_token: captchaToken(),
+  })
   expect(reset.status()).toBe(202)
   const resetToken = await tokenFromMail(request, email, 'Reset your classbeat password')
   const done = await post(request, origin, new Jar(), '/api/auth/password/reset/complete', {
@@ -103,8 +112,16 @@ test('sign-up, confirmation, sign-in and password reset by mail', async ({ reque
     keep_methods: [],
   })
   expect(done.status()).toBe(200)
-  const old = await post(request, origin, new Jar(), '/api/auth/login', { email, password: PASSWORD })
+  const old = await post(request, origin, new Jar(), '/api/auth/login', {
+    email,
+    password: PASSWORD,
+    captcha_token: captchaToken(),
+  })
   expect(old.status()).toBe(401)
-  const fresh = await post(request, origin, new Jar(), '/api/auth/login', { email, password: NEW_PASSWORD })
+  const fresh = await post(request, origin, new Jar(), '/api/auth/login', {
+    email,
+    password: NEW_PASSWORD,
+    captcha_token: captchaToken(),
+  })
   expect(fresh.status()).toBe(200)
 })

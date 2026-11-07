@@ -6,6 +6,7 @@ import { goToProvider } from '../../lib/navigation'
 import { Link } from '../../router/Router'
 import { Field, Notice, useAction } from '../forms'
 import { AuthCard } from './AuthCard'
+import { useCaptcha } from './Turnstile'
 
 export type AuthMode = 'signin' | 'signup'
 
@@ -17,7 +18,12 @@ interface Props {
   /** A link shown right under the notice (sign-in's "Create an account" for `no_account`). */
   noticeLink?: { to: string; text: string } | null
   /** The email and password path; throws on failure, which is shown in plain language. */
-  onSubmit: (values: { email: string; password: string; invite: string }) => Promise<void>
+  onSubmit: (values: {
+    email: string
+    password: string
+    invite: string
+    captchaToken: string | null
+  }) => Promise<void>
 }
 
 const COPY = {
@@ -52,6 +58,8 @@ export function AuthScreen({ mode, returnTo, notice, noticeLink, onSubmit }: Pro
   const [inviteMissing, setInviteMissing] = useState(false)
   const inviteRef = useRef<HTMLInputElement>(null)
   const action = useAction()
+  // ADR 0025 section 1: the email and password form waits for the check; the provider buttons do not.
+  const captcha = useCaptcha(mode)
 
   useEffect(() => {
     const controller = new AbortController()
@@ -63,7 +71,17 @@ export function AuthScreen({ mode, returnTo, notice, noticeLink, onSubmit }: Pro
 
   const submit = (event: FormEvent) => {
     event.preventDefault()
-    void action.run(() => onSubmit({ email, password, invite }))
+    if (!captcha.ready) return
+    const captchaToken = captcha.token
+    void action.run(async () => {
+      try {
+        await onSubmit({ email, password, invite, captchaToken })
+      } catch (error) {
+        // The token was sent, so it is spent whatever the answer: the check runs again.
+        if (captchaToken !== null) captcha.reset()
+        throw error
+      }
+    })
   }
 
   const start = (provider: string) => {
@@ -155,7 +173,13 @@ export function AuthScreen({ mode, returnTo, notice, noticeLink, onSubmit }: Pro
           }}
           required
         />
-        <button className="button button--block" type="submit" disabled={action.busy}>
+        {captcha.element}
+        <button
+          className="button button--block"
+          type="submit"
+          disabled={action.busy || !captcha.ready}
+          aria-describedby={captcha.describedBy}
+        >
           {t(copy.submit)}
         </button>
       </form>

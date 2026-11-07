@@ -247,6 +247,22 @@ def test_the_dev_stack_leaves_it_off() -> None:
         assert not any(k.startswith("CLASSBEAT_TURNSTILE_") for k in spec.get("environment", {}))
 
 
+@pytest.mark.skipif(not (ROOT / "compose.yaml").is_file(), reason="not a full checkout")
+def test_the_e2e_stack_turns_on_the_fake_on_web_only() -> None:
+    # PR 2 of #721: on together with the widget, so every e2e sign-in goes through the stand-in.
+    services = _compose("compose.e2e.yaml")["services"]
+    web = services["web"]["environment"]
+    assert web["CLASSBEAT_TURNSTILE_ENABLED"] == "true"
+    assert web["CLASSBEAT_TURNSTILE_FAKE"] == "true"
+    assert "CLASSBEAT_ENVIRONMENT" not in web
+    assert "CLASSBEAT_TURNSTILE_SITE_KEY" not in web
+    for service, spec in services.items():
+        if service != "web":
+            assert not any(
+                k.startswith("CLASSBEAT_TURNSTILE_") for k in spec.get("environment", {})
+            )
+
+
 @pytest.mark.skipif(not (ROOT / "scripts").is_dir(), reason="not a full checkout")
 def test_every_placeholder_list_creates_the_file() -> None:
     assert "turnstile_secret_key" in (ROOT / "scripts" / "worktree.sh").read_text("utf-8")

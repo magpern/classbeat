@@ -309,3 +309,23 @@
   border-color: var(--cb-warn);
   background: var(--cb-warn-soft);
 }
+
+/* ADR 0025 section 11: the Turnstile check (or the e2e stand-in) inside the auth forms. */
+.captcha {
+  margin: 0 0 var(--cb-space-4);
+}
+
+.captcha__label {
+  margin: 0 0 var(--cb-space-2);
+  font-size: var(--cb-text-label);
+  font-weight: var(--cb-weight-medium);
+}
+
+.captcha__widget {
+  max-width: 100%;
+  min-height: 65px;
+}
+
+.captcha .field__hint:empty {
+  display: none;
+}

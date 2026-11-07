@@ -186,6 +186,14 @@ const da: Catalogue = {
   'error.reason.busy': 'Serveren er optaget. Prøv igen om nogle sekunder.',
   'error.reason.captcha_failed': 'Sikkerhedstjekket blev ikke godkendt. Prøv igen.',
   'error.reason.captcha_unavailable': 'Sikkerhedstjekket kan ikke nås lige nu. Prøv igen om et minut.',
+  // ADR 0025 section 11: the Turnstile check on the sign-in, sign-up, provider-email and reset forms.
+  'captcha.label': 'Sikkerhedstjek',
+  'captcha.waiting': 'Tjekker, at du er et menneske…',
+  'captcha.expired': 'Sikkerhedstjekket udløb. Det kører igen.',
+  'captcha.error': 'Sikkerhedstjekket løb ind i et problem og prøver igen. Genindlæs siden, hvis det bliver ved.',
+  'captcha.unsupported': 'Denne browser kan ikke køre sikkerhedstjekket. Prøv en anden browser.',
+  'captcha.unloaded': 'Sikkerhedstjekket kunne ikke indlæses. Tillad challenges.cloudflare.com i din browser og eventuelle blokeringer, eller prøv en anden browser.',
+  'captcha.fake': 'Jeg er et menneske (testtjek)',
   'error.tooMany': 'For mange forsøg. Vent lidt, og prøv igen.',
   'error.tooManyWait': 'For mange forsøg. Prøv igen om {wait}.',
   // Both forms read the same in English today; the other languages need the split.

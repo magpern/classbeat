@@ -4,6 +4,7 @@ import { providerName } from '../api/messages'
 import { useT } from '../i18n/I18n'
 import { Field, Notice, useAction } from '../components/forms'
 import { AuthCard as Card } from '../components/auth/AuthCard'
+import { useCaptcha } from '../components/auth/Turnstile'
 import { Link } from '../router/Router'
 
 /**
@@ -16,6 +17,7 @@ export function ProviderEmailPage() {
   const [email, setEmail] = useState('')
   const [sentTo, setSentTo] = useState<string | null>(null)
   const action = useAction()
+  const captcha = useCaptcha('signup_email')
 
   useEffect(() => {
     const controller = new AbortController()
@@ -29,8 +31,16 @@ export function ProviderEmailPage() {
 
   const submit = (event: FormEvent) => {
     event.preventDefault()
+    if (!captcha.ready) return
+    const captchaToken = captcha.token
     void action.run(async () => {
-      await submitPendingEmail(email.trim())
+      try {
+        await submitPendingEmail(email.trim(), captchaToken)
+      } catch (error) {
+        // The token was sent, so it is spent whatever the answer: the check runs again.
+        if (captchaToken !== null) captcha.reset()
+        throw error
+      }
       setSentTo(email.trim())
     })
   }
@@ -46,12 +56,8 @@ export function ProviderEmailPage() {
   if (sentTo !== null) {
     return (
       <Card title={t('auth.checkInbox')}>
-        <Notice kind="success">
-          {t('providerEmail.sent', { email: sentTo })}
-        </Notice>
-        <p>
-          {t('providerEmail.mistyped')}
-        </p>
+        <Notice kind="success">{t('providerEmail.sent', { email: sentTo })}</Notice>
+        <p>{t('providerEmail.mistyped')}</p>
         <p className="card__links">
           <Link to="/signin">{t('providerEmail.again')}</Link>
         </p>
@@ -62,9 +68,7 @@ export function ProviderEmailPage() {
   if (!pending.pending || !pending.awaitingEmail) {
     return (
       <Card title={t('providerEmail.nothingTitle')}>
-        <Notice kind="info">
-          {t('providerEmail.nothing')}
-        </Notice>
+        <Notice kind="info">{t('providerEmail.nothing')}</Notice>
         <p className="card__links">
           <Link to="/signin">{t('auth.backToSignIn')}</Link>
         </p>
@@ -75,9 +79,7 @@ export function ProviderEmailPage() {
   const name = pending.provider === null ? t('providerEmail.yourProvider') : providerName(pending.provider)
   return (
     <Card title={t('providerEmail.title')}>
-      <p>
-        {t('providerEmail.intro', { provider: name })}
-      </p>
+      <p>{t('providerEmail.intro', { provider: name })}</p>
       {action.error ? <Notice kind="error">{action.error}</Notice> : null}
       <form onSubmit={submit}>
         <Field
@@ -90,7 +92,13 @@ export function ProviderEmailPage() {
           }}
           required
         />
-        <button className="button" type="submit" disabled={action.busy}>
+        {captcha.element}
+        <button
+          className="button"
+          type="submit"
+          disabled={action.busy || !captcha.ready}
+          aria-describedby={captcha.describedBy}
+        >
           {t('providerEmail.submit')}
         </button>
       </form>

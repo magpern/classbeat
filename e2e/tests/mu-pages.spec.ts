@@ -1,5 +1,5 @@
 import { test, expect, type BrowserContext, type Page } from '@playwright/test'
-import { PASSWORD, signInThroughUi, signUpThroughUi, uniqueEmail } from './helpers'
+import { PASSWORD, passCaptcha, signInThroughUi, signUpThroughUi, uniqueEmail } from './helpers'
 import { PLAYLISTS, connectMowl, fakeMowl, getJob, jobId } from './design-helpers'
 import { useModelScript } from './model-script'
 import { designRunningAndOpen, reviseByChat, storeRunning } from './class-helpers'
@@ -164,6 +164,7 @@ test('the admin pages, signed in as an admin with a TOTP code', async () => {
   await page.goto('/signin')
   await page.getByLabel('Email', { exact: true }).fill(adminEmail)
   await page.getByLabel('Password', { exact: true }).fill(PASSWORD)
+  await passCaptcha(page)
   await page.getByRole('button', { name: 'Sign in', exact: true }).click()
   await expect(page.getByRole('navigation', { name: 'Main' })).toBeVisible(LONG)
 

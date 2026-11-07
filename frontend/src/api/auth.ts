@@ -3,6 +3,7 @@ import { clearSubmittedInputs } from '../lib/submittedInput'
 import { del, fetchSessionJson, get, post } from './client'
 import {
   count,
+  DecodeError,
   flag,
   list,
   object,
@@ -39,13 +40,39 @@ export interface SessionState {
   session: SessionDetails | null
   /** The languages the server offers, signed in or not. */
   locales: string[]
+  /** Turnstile on the four anonymous auth forms (ADR 0025 section 11), or null while it is off. */
+  captcha: CaptchaConfig | null
+}
+
+/**
+ * `turnstile`: Cloudflare's widget with the public site key. `fake`: the e2e stack's local
+ * stand-in (`CLASSBEAT_TURNSTILE_FAKE`, refused in prod by the server), which loads nothing.
+ */
+export type CaptchaConfig = { kind: 'turnstile'; siteKey: string } | { kind: 'fake' }
+
+/** The routes' `action` (ADR 0025 section 1): a token solved for one form passes no other. */
+export type CaptchaAction = 'signin' | 'signup' | 'signup_email' | 'reset'
+
+function decodeCaptcha(value: unknown): CaptchaConfig | null {
+  if (value === undefined || value === null) return null
+  const captcha = object(value, 'captcha')
+  if (captcha.fake === true) return { kind: 'fake' }
+  const siteKey = text(captcha, 'site_key')
+  if (siteKey === '') throw new DecodeError('site_key')
+  return { kind: 'turnstile', siteKey }
+}
+
+/** The token as the protected routes read it; no field at all while Turnstile is off. */
+function captchaField(token: string | null | undefined): { captcha_token?: string } {
+  return token ? { captcha_token: token } : {}
 }
 
 export async function getSession(signal?: AbortSignal): Promise<SessionState> {
   const body = await fetchSessionJson(signal)
   const authenticated = flag(body, 'authenticated')
   const locales = body.locales === undefined ? [] : strings(body, 'locales')
-  if (!authenticated) return { authenticated, user: null, session: null, locales }
+  const captcha = decodeCaptcha(body.captcha)
+  if (!authenticated) return { authenticated, user: null, session: null, locales, captcha }
   const user = object(body.user, 'user')
   const session = object(body.session, 'session')
   return {
@@ -64,6 +91,7 @@ export async function getSession(signal?: AbortSignal): Promise<SessionState> {
       adminPendingMfa: flag(session, 'admin_pending_mfa'),
     },
     locales,
+    captcha,
   }
 }
 
@@ -71,12 +99,14 @@ export async function signUp(input: {
   email: string
   password: string
   inviteCode: string
+  captchaToken?: string | null
 }): Promise<void> {
   await post('/api/auth/signup', {
     email: input.email,
     password: input.password,
     invite_code: input.inviteCode === '' ? null : input.inviteCode,
     locale: resolveBrowserLocale(),
+    ...captchaField(input.captchaToken),
   })
 }
 
@@ -84,8 +114,15 @@ export async function confirmSignUp(token: string, password: string | null): Pro
   await post('/api/auth/signup/confirm', { token, password })
 }
 
-export async function login(email: string, password: string): Promise<{ role: string }> {
-  const body = object(await post('/api/auth/login', { email, password }), 'login')
+export async function login(
+  email: string,
+  password: string,
+  captchaToken?: string | null,
+): Promise<{ role: string }> {
+  const body = object(
+    await post('/api/auth/login', { email, password, ...captchaField(captchaToken) }),
+    'login',
+  )
   return { role: text(body, 'role') }
 }
 
@@ -110,8 +147,8 @@ export async function reauthWithTotp(code: string): Promise<void> {
 
 // --- password reset and change ---------------------------------------------------------
 
-export async function requestPasswordReset(email: string): Promise<void> {
-  await post('/api/auth/password/reset/request', { email })
+export async function requestPasswordReset(email: string, captchaToken?: string | null): Promise<void> {
+  await post('/api/auth/password/reset/request', { email, ...captchaField(captchaToken) })
 }
 
 export interface LinkedMethod {
@@ -129,11 +166,7 @@ export async function resetInfo(token: string): Promise<LinkedMethod[]> {
 
 /** `keepMethods`: the listed methods the user left unticked. The server deletes every other
  * linked method, so one linked after the page loaded never survives the reset (#639). */
-export async function completeReset(
-  token: string,
-  password: string,
-  keepMethods: string[],
-): Promise<void> {
+export async function completeReset(token: string, password: string, keepMethods: string[]): Promise<void> {
   await post('/api/auth/password/reset/complete', {
     token,
     password,
@@ -234,8 +267,12 @@ export async function getPendingSignup(signal?: AbortSignal): Promise<PendingSig
   }
 }
 
-export async function submitPendingEmail(email: string): Promise<void> {
-  await post('/api/auth/oauth/pending/email', { email, locale: resolveBrowserLocale() })
+export async function submitPendingEmail(email: string, captchaToken?: string | null): Promise<void> {
+  await post('/api/auth/oauth/pending/email', {
+    email,
+    locale: resolveBrowserLocale(),
+    ...captchaField(captchaToken),
+  })
 }
 
 // --- two-factor ------------------------------------------------------------------------

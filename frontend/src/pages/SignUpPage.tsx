@@ -17,9 +17,7 @@ export function SignUpPage() {
   if (sent) {
     return (
       <Card title={t('auth.checkInbox')}>
-        <Notice kind="success">
-          {t('signup.sent')}
-        </Notice>
+        <Notice kind="success">{t('signup.sent')}</Notice>
         <p className="card__links">
           <Link to="/signin">{t('auth.backToSignIn')}</Link>
         </p>
@@ -32,8 +30,8 @@ export function SignUpPage() {
       mode="signup"
       returnTo={safeReturnTo(query.get('return_to'))}
       notice={outcome ? oauthOutcomeMessage(outcome) : null}
-      onSubmit={async ({ email, password, invite }) => {
-        await signUp({ email, password, inviteCode: invite.trim() })
+      onSubmit={async ({ email, password, invite, captchaToken }) => {
+        await signUp({ email, password, inviteCode: invite.trim(), captchaToken })
         setSent(true)
       }}
     />

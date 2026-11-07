@@ -185,6 +185,14 @@ const sv: Catalogue = {
   'error.reason.busy': 'Servern är upptagen. Försök igen om några sekunder.',
   'error.reason.captcha_failed': 'Säkerhetskontrollen gick inte igenom. Försök igen.',
   'error.reason.captcha_unavailable': 'Säkerhetskontrollen går inte att nå just nu. Försök igen om en minut.',
+  // ADR 0025 section 11: the Turnstile check on the sign-in, sign-up, provider-email and reset forms.
+  'captcha.label': 'Säkerhetskontroll',
+  'captcha.waiting': 'Kontrollerar att du är en människa…',
+  'captcha.expired': 'Säkerhetskontrollen gick ut. Den körs igen.',
+  'captcha.error': 'Säkerhetskontrollen fick ett problem och försöker igen. Ladda om sidan om det fortsätter.',
+  'captcha.unsupported': 'Den här webbläsaren kan inte köra säkerhetskontrollen. Prova en annan webbläsare.',
+  'captcha.unloaded': 'Säkerhetskontrollen gick inte att läsa in. Tillåt challenges.cloudflare.com i webbläsaren och eventuella blockerare, eller prova en annan webbläsare.',
+  'captcha.fake': 'Jag är en människa (testkontroll)',
   'error.tooMany': 'För många försök. Vänta en stund och försök igen.',
   'error.tooManyWait': 'För många försök. Försök igen om {wait}.',
   // Both forms read the same in English today; the other languages need the split.

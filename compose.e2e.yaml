@@ -161,6 +161,11 @@ services:
       CLASSBEAT_SONG_PICKING: "true"
       # The fake OIDC provider's, the fake MOWL's and the fake Spotify's CAs (spotify-fake).
       SSL_CERT_FILE: /fake-ca/bundle.pem
+      # ADR 0025 sections 7 and 8: Turnstile is on in the e2e stack with the local fake verifier,
+      # and the page shows the stand-in checkbox instead of loading Cloudflare's script. No key or
+      # secret is needed; CLASSBEAT_ENVIRONMENT stays dev (the server refuses the fake in prod).
+      CLASSBEAT_TURNSTILE_ENABLED: "true"
+      CLASSBEAT_TURNSTILE_FAKE: "true"
       # Each E2E test presents its own client address in X-Forwarded-For (own rate limits).
       CLASSBEAT_TRUSTED_PROXIES: 10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,127.0.0.0/8
     secrets:
