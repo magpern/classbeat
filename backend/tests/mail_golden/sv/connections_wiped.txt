@@ -14,7 +14,7 @@ Det här behöver du göra:
 Tvåfaktorsautentiseringen har tagits bort och du har loggats ut överallt. Välj ett nytt lösenord med länken nedan (giltig i 30 minuter) och ställ sedan in tvåfaktorsautentisering igen.
 
 Välj ett nytt lösenord:
-https://classbeat.example.test/reset#token=SAMPLE
+https://classbeat.example.test/sv/reset#token=SAMPLE
 
 Om du har frågor kan du kontakta oss på support@classbeat.eu
 

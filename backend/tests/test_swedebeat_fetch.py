@@ -207,6 +207,17 @@ async def test_the_fake_mix_is_fetched_analysed_cached_and_its_audio_deleted(
     assert len(peaks) == 1
     assert peaks[0] is not None
     assert 0 < peaks[0] < 1536
+    # ADR 0026 stage 1 (#735): the fetch and decode times, on the job and in the same log line.
+    assert row.analysed_at is not None
+    assert row.analysis_fetch_ms >= 0
+    assert row.analysis_decode_ms > 0  # the child process takes real time
+    (line,) = [
+        json.loads(line)
+        for line in operator_log.getvalue().splitlines()
+        if "swedebeat mix analysed" in line
+    ]
+    assert (line["fetch_ms"], line["decode_ms"]) == (row.analysis_fetch_ms, row.analysis_decode_ms)
+    assert "load_1m" in line
 
 
 # --- the mix-analysis slot (#574) ---------------------------------------------------------------
@@ -239,6 +250,11 @@ async def test_a_miss_without_a_slot_is_requeued_before_the_daily_slot_or_any_re
     row = harness.ops.row(job_id)
     assert (row.state, row.attempt, row.analysis_slot) == ("completed", 1, False)
     assert harness.results[0].cached is False
+    # #735: each claim records its own wait; the second one holds the slot.
+    claims = [p for _, k, p, _ in harness.ops.events(job_id) if k == "claimed"]
+    assert [p["analysis_slot"] for p in claims] == [False, True]
+    assert all(p["wait_ms"] >= 0 for p in claims)
+    assert row.analysed_at is not None
     assert (
         harness.ops.sql(
             "SELECT count(*) FROM swedebeat_analyses WHERE owner_id = :o", o=owner
@@ -282,6 +298,10 @@ async def test_a_cache_hit_makes_no_request_at_all(
     assert harness.results[1].fingerprint == harness.results[0].fingerprint
     assert (list(mowl_api.requests), list(harness.media.requests), mowl_api.link_requests) == seen
     assert leftovers(work) == []
+    # #735: a cache hit records no analysis time.
+    assert (second.analysed_at, second.analysis_fetch_ms, second.analysis_decode_ms) == (
+        None, None, None,
+    )  # fmt: skip
 
 
 async def test_a_cached_map_made_for_another_connection_playlist_age_or_version_is_not_reused(

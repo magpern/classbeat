@@ -3,7 +3,9 @@
 ``keys rewrap`` and ``keys wipe`` (ADR 0004) live in ``classbeat.keys_cli``.
 
 ``jobs stats`` prints the queue's counts (``queue_stats()``, ADR 0005 section 7's admin seam: per
-job state and of ``uncertain`` external operations, no ids).
+job state and of ``uncertain`` external operations, no ids) and the stage 1 measurement of ADR 0026
+(#735): the p95 queue wait of claims with and without an analysis slot, at the peak hour, and of
+the analyses' fetch and decode, over the last seven days; ``-`` where there are too few samples.
 
 ``invite create``, ``admin grant``, ``admin revoke`` and ``admin mfa-reset`` run as the app role
 through the functions of ``classbeat.auth``; they never touch the tables. In the stack:
@@ -68,7 +70,9 @@ def add_subcommands(parser: argparse.ArgumentParser) -> None:
     ):
         admin.add_parser(name, help=text).add_argument("email")
     jobs = sub.add_parser("jobs", help="the job queue").add_subparsers(dest="action", required=True)
-    jobs.add_parser("stats", help="count jobs per state and uncertain external operations")
+    jobs.add_parser(
+        "stats", help="count jobs per state; queue wait and analysis p95 of the last 7 days"
+    )
     add_keys_subcommands(sub)
     add_models_subcommands(sub)
 
@@ -78,7 +82,7 @@ async def _jobs(args: argparse.Namespace, settings: Settings, out: TextIO, err: 
     try:
         await verify_database_role(engine)
         for metric, total in await queue.stats(create_session_factory(engine)):
-            print(f"{metric} {total}", file=out)
+            print(f"{metric} {'-' if total is None else total}", file=out)
         return 0
     finally:
         await engine.dispose()

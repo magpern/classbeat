@@ -304,7 +304,8 @@ Everything below is the owner's; agents do not touch the Cloudflare dashboard.
 
 1. **Widget.** Cloudflare dashboard, Turnstile, add a widget for the host name of the real site,
    exactly the value of `CLASSBEAT_DOMAIN` (today `classbeat.pernemark.se`); no `localhost`. Only
-   the `CLASSBEAT_DOMAIN` host passes the check, so a second host on the widget is of no use. Mode **Managed**, pre-clearance **off**. The widget covers
+   the `CLASSBEAT_DOMAIN` host passes the check, so a second host on the widget is of no use.
+   Mode **Managed**, pre-clearance **off**. The widget covers
    subdomains of a listed host, so `pernemark.se` as a hostname would also cover this one; list the
    exact host anyway. **When the domain changes, add the new host to the widget first**, then change
    `CLASSBEAT_DOMAIN`, then remove the old host. Two different symptoms: a host **missing from the
@@ -340,6 +341,38 @@ Everything below is the owner's; agents do not touch the Cloudflare dashboard.
 The widget loads from `challenges.cloudflare.com`; if swag or Cloudflare rewrites the
 `Content-Security-Policy` header, the check does not load (section 8). The privacy notice and the
 cookie notice already name the check; do not enable it for real users while they are missing.
+
+### 5c. CPU and memory ceilings (ADR 0026 stage 1)
+
+`compose.prod.yaml` gives `web` and `worker` a CPU and a memory ceiling, so a Swedebeat mix analysis
+(a child process of up to 1.5 GiB that keeps a core or more busy for up to 180 s) cannot starve the web
+tier or the database on the one box. `db` has none: it is the one service that must never be killed
+for memory. The defaults, and the `.env` variables that change them:
+
+| Service | CPUs | Memory | Why |
+|---|---|---|---|
+| `worker` | `WORKER_CPUS=1.0` | `WORKER_MEMORY=3g` | `CLASSBEAT_MIX_ANALYSIS_CONCURRENCY` (default 1) x 1.5 GiB for the analysis child, plus about 1 GiB for the worker's own process and its other running job |
+| `web` | `WEB_CPUS=1.0` | `WEB_MEMORY=1g` | one Python process: it cannot use much more than a core; the memory covers its pool and requests (bodies are capped at 64 KiB) |
+
+- **Never set a CPU value above the host's core count** (`nproc`): Docker refuses to start the
+  container. On a 2-core server keep the defaults (the worker gets at most one core, web and db share
+  the rest); on 4 cores or more `WORKER_CPUS=2` lets one analysis and a design job run side by side.
+- **Raise `WORKER_MEMORY` with the cap.** `CLASSBEAT_MIX_ANALYSIS_CONCURRENCY=2` needs `WORKER_MEMORY=4g`.
+  The sum of `WORKER_MEMORY`, `WEB_MEMORY` and what Postgres uses must fit the server's RAM; with two
+  worker containers (`--scale worker=2`, ADR 0026 stage 2) the worker's ceiling counts twice.
+- **What happens at the ceiling.** CPU: the worker is slowed, never killed (the analysis has 180 s of
+  wall clock; a slower decode can end `analysis_failed` and is retried by the user). Memory: the kernel
+  kills the container (`docker inspect --format '{{.State.OOMKilled}}' <container>` says `true`);
+  `restart: unless-stopped` starts it again, and the reaper requeues its jobs when their leases run out.
+  Repeated kills mean the ceiling is too low for the cap: raise `WORKER_MEMORY` or lower the cap.
+- **Swap.** The file sets `mem_limit` only, not `memswap_limit` (the production check refuses any
+  key it does not list). On a host with swap enabled, a container that reaches its ceiling can
+  therefore swap before the kernel kills it, so it gets slow instead of restarting. Check with
+  `free -h`; on a small server prefer no swap, or size `WORKER_MEMORY` knowing it is not a hard cap.
+- `scripts/check-prod-compose.sh` refuses a production file without both ceilings on `web` and `worker`.
+- To see whether the ceilings bite: `docker stats --no-stream`, the `swedebeat mix analysed` log lines
+  (`fetch_ms`, `decode_ms`, `peak_rss_mb`, `load_1m`) and `docker compose exec web python -m classbeat
+  jobs stats` (queue wait and analysis p95; docs/developer-commands.md, "Measuring analysis load").
 
 ## 6. The proxy network and the client address
 

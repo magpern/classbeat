@@ -4,7 +4,7 @@ Bekræft din konto
 Nogen har bedt om at oprette en classbeat-konto med denne adresse. For at gøre det færdigt skal du åbne linket nedenfor (gyldigt i 24 timer) og skrive den adgangskode, du valgte.
 
 Bekræft konto:
-https://classbeat.example.test/signup/confirm#token=SAMPLE
+https://classbeat.example.test/da/signup/confirm#token=SAMPLE
 
 Hvis det ikke var dig, kan du se bort fra denne mail. Der oprettes ingen konto.
 

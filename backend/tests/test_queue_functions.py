@@ -1,5 +1,6 @@
 """The queue's SECURITY DEFINER functions (ADR 0005 section 3), called as classbeat_app."""
 
+import json
 import threading
 import uuid
 from collections.abc import Iterator
@@ -67,7 +68,11 @@ def test_a_claim_leases_the_job_and_writes_its_event(admin: Connection, app: Eng
         {"id": job_id},
     ).scalar_one()
     assert 55 < lease <= 60
-    assert events(admin, job_id) == [(1, "claimed", {"attempt": 1}, 1)]
+    [(seq, kind, payload, version)] = events(admin, job_id)
+    assert (seq, kind, version) == (1, "claimed", 1)
+    assert set(payload) == {"attempt", "analysis_slot", "wait_ms"}
+    assert (payload["attempt"], payload["analysis_slot"]) == (1, False)
+    assert 0 <= payload["wait_ms"] < 60_000
     assert claim(app) == []
 
 
@@ -302,7 +307,148 @@ def test_stats_count_per_state_and_uncertain_operations(admin: Connection, app: 
     stats = dict(call(app, "SELECT metric, total FROM public.queue_stats()"))
     assert (stats["jobs_queued"], stats["jobs_failed"], stats["jobs_running"]) == (1, 1, 0)
     assert stats["external_operations_uncertain"] == 1
-    assert len(stats) == 8
+    assert len(stats) == 18
+    assert (stats["claim_wait_slot_samples_7d"], stats["claim_wait_slot_p95_ms_7d"]) == (0, None)
+    assert stats["claim_wait_slot_peak_hour_utc"] is None
+    assert (stats["analysis_samples_7d"], stats["analysis_fetch_p95_ms_7d"]) == (0, None)
+
+
+def claimed_wait(admin: Connection, job_id: uuid.UUID) -> list[tuple[int, bool]]:
+    return [
+        (p["wait_ms"], p["analysis_slot"]) for _, k, p, _ in events(admin, job_id) if k == "claimed"
+    ]
+
+
+def test_each_claim_records_its_wait_from_available_at_and_whether_it_holds_a_slot(
+    admin: Connection, app: Engine
+) -> None:
+    """#735: the claimed event's wait runs from the job's ``available_at`` (set again by every
+    requeue) to that claim, so a requeued job's second claim measures its own wait, while
+    ``started_at`` keeps the first claim's time."""
+    owner = new_user(admin)
+    job_id = new_job(admin, owner)
+    admin.execute(
+        text("UPDATE jobs SET available_at = now() - interval '90 seconds' WHERE id = :id"),
+        {"id": job_id},
+    )
+    claim(app)
+    [(first, slot)] = claimed_wait(admin, job_id)
+    assert 90_000 <= first < 150_000
+    assert slot is False
+    started = job(admin, job_id).started_at
+    # As ``transitions.wait_for_analysis_slot`` requeues it: with the slot, available now.
+    admin.execute(
+        text(
+            "UPDATE jobs SET state = 'queued', attempt = attempt - 1, analysis_slot = true, "
+            "available_at = now() - interval '2 seconds', lease_version = lease_version + 1, "
+            "leased_by = NULL, lease_expires_at = NULL, heartbeat_at = NULL WHERE id = :id"
+        ),
+        {"id": job_id},
+    )
+    claim(app)
+    [_, (second, slot)] = claimed_wait(admin, job_id)
+    assert 2_000 <= second < 60_000
+    assert slot is True
+    assert job(admin, job_id).started_at == started
+
+
+def add_claims(admin: Connection, owner: uuid.UUID, rows: list[tuple[str, dict[str, Any]]]) -> None:
+    """``claimed`` events at ``created_at`` (SQL expressions) with these payloads, on one job."""
+    job_id = new_job(admin, owner)
+    for seq, (at, payload) in enumerate(rows, start=1):
+        values = f"(:o, :j, :s, 'claimed', CAST(:p AS jsonb), 1, {at})"
+        insert = "INSERT INTO job_events (owner_id, job_id, seq, kind, payload, lease_version, "
+        sql = insert + "created_at) VALUES " + values  # noqa: S608 (the test's own literals)
+        admin.execute(text(sql), {"o": owner, "j": job_id, "s": seq, "p": json.dumps(payload)})
+
+
+def test_stats_give_the_p95_waits_at_peak_and_the_analysis_times(
+    admin: Connection, app: Engine
+) -> None:
+    """#735: p95 (``percentile_disc``) of the last 7 days, slot and other claims apart, NULL below
+    20 samples; the peak is the UTC hour of the day with the most slot claims, pooled across the
+    days; legacy events without the fields and events older than 7 days do not count."""
+    owner = new_user(admin)
+    day = "date_trunc('day', now() AT TIME ZONE 'UTC') AT TIME ZONE 'UTC' - interval '1 day'"
+    evening = [  # 20 slot claims at 18:xx UTC yesterday, 1 s to 20 s
+        (f"{day} + interval '18 hours' + interval '{i} minutes'",
+         {"attempt": 1, "analysis_slot": True, "wait_ms": i * 1000})
+        for i in range(1, 21)
+    ]  # fmt: skip
+    night = [  # 5 slot claims at 03:xx UTC two days ago, 500 s each
+        (f"{day} - interval '1 day' + interval '3 hours' + interval '{i} minutes'",
+         {"attempt": 1, "analysis_slot": True, "wait_ms": 500_000})
+        for i in range(5)
+    ]  # fmt: skip
+    other = [("now()", {"attempt": 1, "analysis_slot": False, "wait_ms": 7}) for _ in range(19)]
+    ignored = [
+        ("now() - interval '8 days'", {"attempt": 1, "analysis_slot": True, "wait_ms": 9}),
+        ("now()", {"attempt": 1}),  # written before classbeat-queue v5
+    ]
+    add_claims(admin, owner, evening + night + other + ignored)
+    for i in range(1, 21):
+        new_job(
+            admin,
+            owner,
+            analysis_fetch_ms=i * 100,
+            analysis_decode_ms=i * 1000,
+            analysed_at="now()",
+            state="completed",
+            finished_at="now()",
+        )
+    new_job(
+        admin,
+        owner,
+        analysis_fetch_ms=1,
+        analysis_decode_ms=1,
+        analysed_at="2026-01-01",
+        state="completed",
+        finished_at="2026-01-01",
+    )
+    stats = dict(call(app, "SELECT metric, total FROM public.queue_stats()"))
+    assert stats["claim_wait_slot_samples_7d"] == 25
+    assert stats["claim_wait_slot_p95_ms_7d"] == 500_000
+    assert (stats["claim_wait_other_samples_7d"], stats["claim_wait_other_p95_ms_7d"]) == (19, None)
+    assert stats["claim_wait_slot_peak_hour_utc"] == 18
+    assert stats["claim_wait_slot_peak_samples"] == 20
+    assert stats["claim_wait_slot_peak_p95_ms"] == 19_000
+    assert stats["analysis_samples_7d"] == 20
+    assert stats["analysis_fetch_p95_ms_7d"] == 1_900
+    assert stats["analysis_decode_p95_ms_7d"] == 19_000
+    add_claims(admin, owner, [("now()", {"attempt": 1, "analysis_slot": False, "wait_ms": 70})])
+    stats = dict(call(app, "SELECT metric, total FROM public.queue_stats()"))
+    assert (stats["claim_wait_other_samples_7d"], stats["claim_wait_other_p95_ms_7d"]) == (20, 7)
+
+
+def test_stats_skip_a_wait_outside_zero_to_1e12_instead_of_failing(
+    admin: Connection, app: Engine
+) -> None:
+    """A ``claimed`` event whose ``wait_ms`` is negative or above 1e12 (the model's bound, and
+    past what the bigint cast takes) is left out of the measurement; the function still answers."""
+    owner = new_user(admin)
+    rows = [
+        ("now()", {"attempt": 1, "analysis_slot": True, "wait_ms": 5}),
+        ("now()", {"attempt": 1, "analysis_slot": True, "wait_ms": 10**12}),
+        ("now()", {"attempt": 1, "analysis_slot": True, "wait_ms": 10**12 + 1}),
+        ("now()", {"attempt": 1, "analysis_slot": True, "wait_ms": 10**30}),
+        ("now()", {"attempt": 1, "analysis_slot": True, "wait_ms": -1}),
+    ]
+    add_claims(admin, owner, rows)
+    stats = dict(call(app, "SELECT metric, total FROM public.queue_stats()"))
+    assert stats["claim_wait_slot_samples_7d"] == 2
+
+
+def test_stats_peak_hour_tie_goes_to_the_earlier_hour(admin: Connection, app: Engine) -> None:
+    """Two UTC hours with the same number of slot claims: the earlier hour is the peak."""
+    owner = new_user(admin)
+    day = "date_trunc('day', now() AT TIME ZONE 'UTC') AT TIME ZONE 'UTC' - interval '1 day'"
+    payload = {"attempt": 1, "analysis_slot": True, "wait_ms": 1}
+    rows = [(f"{day} + interval '{h} hours' + interval '{i} minutes'", payload)
+            for h in (20, 6) for i in range(3)]  # fmt: skip
+    add_claims(admin, owner, rows)
+    stats = dict(call(app, "SELECT metric, total FROM public.queue_stats()"))
+    assert stats["claim_wait_slot_peak_hour_utc"] == 6
+    assert stats["claim_wait_slot_peak_samples"] == 3
 
 
 def test_the_one_open_job_per_class_rule_holds_for_claimed_jobs(

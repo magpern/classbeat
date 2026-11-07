@@ -77,8 +77,13 @@ class Requeued(Payload):
     reason: Literal["analysis_slot"] | None = None
 
 
+# ADR 0026 stage 1 (#735): ``queue_claim`` records the claim's queue wait (from the job's
+# ``available_at`` to the claim, in ms) and whether the claim holds a mix-analysis slot. Both are
+# absent on events written before ``classbeat-queue v5``.
 class Claimed(Payload):
     attempt: Annotated[int, Field(ge=1, le=10)]
+    analysis_slot: bool | None = None
+    wait_ms: Annotated[int, Field(ge=0, le=10**12)] | None = None
 
 
 class StageStarted(Payload):

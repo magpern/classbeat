@@ -3,11 +3,12 @@ either behind Turnstile or exempt with its reason.
 
 The app's route table is the input. Every unsafe method of a route with no session requirement
 (``require_user``, ``require_recent_auth``, ``require_stepup``, ``require_admin``, the admin gate),
-plus ``GET /oauth/{provider}/callback`` (it creates accounts and sessions with a safe method), must
-be in ``TURNSTILE`` or ``EXEMPT``, and nothing may be listed that the app no longer serves. It is an
-allowlist: a new anonymous route, the coming contact form included, fails here until it is
-classified. Each Turnstile route's handler calls ``require_captcha`` with its own action, and
-``test_turnstile_routes.py`` shows each one refuses a request without a token when it is on.
+plus every safe-method route not named in ``READ_ONLY`` (``GET /oauth/{provider}/callback`` creates
+accounts and sessions), must be in ``TURNSTILE`` or ``EXEMPT``, and nothing may be listed that the
+app no longer serves. It is an allowlist: a new anonymous route, the coming contact form included,
+fails here until it is classified. Each Turnstile route's handler calls ``require_captcha`` with its
+own action, and ``test_turnstile_routes.py`` shows each one refuses a request without a token when
+it is on.
 """
 
 import inspect
@@ -54,8 +55,21 @@ SESSION_REQUIRED = {
     admin_gate,
 }
 UNSAFE_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
-# Safe methods that change state without a session all the same.
-STATEFUL_SAFE = {("GET", "/oauth/{provider}/callback")}
+# Every anonymous safe-method route is named here with why it changes nothing; any other one (the
+# OAuth callback creates accounts and sessions with a GET) is not assumed read-only: it lands in
+# ``found`` below, and fails the guard, until it is named here or classified in TURNSTILE / EXEMPT.
+READ_ONLY = {
+    ("GET", "/api/auth/oauth/pending"): "reads the caller's own pending sign-in row",
+    ("GET", "/api/auth/oauth/providers"): "lists the configured sign-in providers",
+    ("GET", "/api/auth/session"): "reads the caller's session and public settings",
+    ("GET", "/api/health"): "liveness",
+    ("GET", "/api/ready"): "readiness",
+    ("GET", "/api/settings/public"): "public settings",
+    ("GET", "/oauth/spotify/callback"): (
+        "acts only for a signed-in user (the flow row is bound to the session); without one it "
+        "only redirects"
+    ),
+}
 
 
 def _routes(app: Any) -> dict[tuple[str, str], APIRoute]:
@@ -74,8 +88,8 @@ def anonymous_state_changing(app: Any) -> set[tuple[str, str]]:
     for (method, path), route in _routes(app).items():
         if _calls(route.dependant) & SESSION_REQUIRED:
             continue
-        if method in UNSAFE_METHODS or (method, path) in STATEFUL_SAFE:
-            found.add((method, path))
+        if method in UNSAFE_METHODS or (method, path) not in READ_ONLY:
+            found.add((method, path))  # an unnamed safe method is not assumed read-only
     return found
 
 
@@ -91,6 +105,8 @@ def test_every_anonymous_state_changing_route_is_classified() -> None:
         "each to TURNSTILE (and call require_captcha) or to EXEMPT with its reason (ADR 0025 s. 1)"
     )
     assert stale == [], f"classified routes that are gone or now need a session: {stale}"
+    gone = sorted(READ_ONLY.keys() - _routes(create_app(_settings())).keys())
+    assert gone == [], f"READ_ONLY routes the app no longer serves: {gone}"
     assert len(found) >= 12  # not vacuous
 
 

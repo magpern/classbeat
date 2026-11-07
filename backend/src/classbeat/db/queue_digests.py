@@ -5,11 +5,11 @@ pinned Postgres image; CI regenerates it and fails when it is stale. Do not edit
 """
 
 QUEUE_DIGESTS: dict[str, str] = {
-    "queue_claim": "55947264662fc3c64d650bc0ea7671cc",
+    "queue_claim": "ea396b103fbf9f74dfc7308535523521",
     "queue_reap": "255c04d1036ab30116000b24d26a0218",
     "queue_expire": "224841070d8492c469cc188d3ced1998",
     "queue_unsettled": "d10ba360a070524788e466b18e35460a",
-    "queue_stats": "e55e920eddc871afbb4d5b0780770158",
+    "queue_stats": "c0dbef427888718c356fabc2b1ef219c",
     "mail_handoff_take": "9606336b906eab39452b21ede7aa1134",
 }
 # The M5 guard trigger functions (migrations 0007 to 0010), from the migrated database. The same

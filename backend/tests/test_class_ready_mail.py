@@ -247,7 +247,7 @@ async def test_a_taken_row_sends_one_mail_and_is_gone(jenv: JobsEnv, smtp_fake: 
     [mail] = smtp_fake.messages
     assert mail.to == email_of(jenv, owner)
     assert mail.subject == "Your classbeat class is ready"
-    link = f"{settings.public_base_url}/classes/{class_id}"
+    link = f"{settings.public_base_url}/en/classes/{class_id}"
     assert link in mail.text
     assert link in mail.html
     assert mail.message["List-Unsubscribe"]  # an optional kind carries the signed links

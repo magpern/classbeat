@@ -180,11 +180,13 @@ def test_the_mail_matches_its_golden_files(kind: Kind, code: str) -> None:
 @pytest.mark.parametrize("code", TRANSLATED)
 @pytest.mark.parametrize("kind", KINDS, ids=ids)
 def test_a_translated_mail_carries_the_same_links_as_the_english_one(kind: Kind, code: str) -> None:
-    def links(text: str) -> set[str]:
-        return set(re.findall(r"https?://[^\s\"<>]+", text))
+    def links(text: str, lang: str) -> set[str]:
+        found = set(re.findall(r"https?://[^\s\"<>]+", text))
+        # the page links carry the mail's own language (ADR 0027 section 7): compare the rest
+        return {re.sub(rf"^(https?://[^/]+)/{lang}(?=[/#]|$)", r"\1/LANG", u) for u in found}
 
     english, other = sample_message(kind, DEFAULT), sample_message(kind, code)
-    assert links(other.body) == links(english.body)
+    assert links(other.body, code) == links(english.body, DEFAULT)
     assert other.subject != english.subject
     assert "{" not in other.body
     assert "}" not in other.body

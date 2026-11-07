@@ -189,6 +189,7 @@ const da: Catalogue = {
   // ADR 0025 section 11: the Turnstile check on the sign-in, sign-up, provider-email and reset forms.
   'captcha.label': 'Sikkerhedstjek',
   'captcha.waiting': 'Tjekker, at du er et menneske…',
+  'captcha.session': 'Siden kunne ikke afgøre, om et sikkerhedstjek er nødvendigt. Genindlæs siden, og prøv igen.',
   'captcha.expired': 'Sikkerhedstjekket udløb. Det kører igen.',
   'captcha.error': 'Sikkerhedstjekket løb ind i et problem og prøver igen. Genindlæs siden, hvis det bliver ved.',
   'captcha.unsupported': 'Denne browser kan ikke køre sikkerhedstjekket. Prøv en anden browser.',

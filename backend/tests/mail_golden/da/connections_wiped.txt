@@ -14,7 +14,7 @@ Det skal du gøre:
 Tofaktorgodkendelsen er blevet fjernet, og du er blevet logget ud overalt. Vælg en ny adgangskode med linket nedenfor (gyldigt i 30 minutter), og sæt derefter tofaktorgodkendelse op igen.
 
 Vælg en ny adgangskode:
-https://classbeat.example.test/reset#token=SAMPLE
+https://classbeat.example.test/da/reset#token=SAMPLE
 
 Hvis du har spørgsmål, kan du kontakte os på support@classbeat.eu
 

@@ -97,6 +97,9 @@ services:
   web:
     <<: *app
     restart: unless-stopped
+    # ADR 0026 stage 1 (#735): the same ceilings as compose.prod.yaml (runbook vps-deploy.md 5c).
+    cpus: ${WEB_CPUS:-1.0}
+    mem_limit: ${WEB_MEMORY:-1g}
     environment:
       <<: *app-env
       # The admin area's audited role (ADR 0011 section 5); the password is the
@@ -157,6 +160,9 @@ services:
     # ADR 0005 section 3: on SIGTERM the worker waits up to 25 s for runs to reach a checkpoint,
     # then hands their leases back (each under the role's 5 s lock_timeout) within these 30 s.
     stop_grace_period: 30s
+    # ADR 0026 stage 1 (#735): the same ceilings as compose.prod.yaml (runbook vps-deploy.md 5c).
+    cpus: ${WORKER_CPUS:-1.0}
+    mem_limit: ${WORKER_MEMORY:-3g}
     environment:
       <<: *app-env
       # ADR 0006 section 9: `fake` (the default in .env.example) for the dev stack and CI;
