@@ -46,6 +46,8 @@ function cutAtQuery(to: string): [string, string] {
  * Adds the prefix to a neutral target (`/classes?x=1#y`). A target that already starts with an
  * allowlisted `/<code>/` or is `/<code>` is left alone, so a mixed value cannot become `/sv/sv/...`;
  * so is `/admin`, `/api` and `/oauth`.
+ * Only the pathname is looked at: a target that is just a fragment or a query (`#x`, `?a=1`) has
+ * an empty path, so it goes to the language's home page (`/sv#x`), not to the current page.
  */
 export function localize(to: string, lang: Locale): string {
   const [pathname, rest] = cutAtQuery(to)

@@ -131,16 +131,18 @@ export function Link({ to, onClick, children, ...rest }: LinkProps) {
 
 /** `return_to` is honoured only as a relative path (ADR 0003 section 4). */
 export function safeReturnTo(value: string | null): string | null {
-  if (value === null || !isPlainPath(value)) return null
+  if (value === null) return null
+  // Language-neutral whatever came in (the prefix is added again when it is followed, ADR 0027
+  // section 4). Neutralizing changes the value, so the checks run on what is returned.
+  const neutral = neutralize(value)
+  if (!isPlainPath(value) || !isPlainPath(neutral)) return null
   // Also refuse what a decoder further along would turn into `//host` or a backslash.
-  let decoded: string
   try {
-    decoded = decodeURIComponent(value)
+    if (!isPlainPath(decodeURIComponent(value)) || !isPlainPath(decodeURIComponent(neutral))) return null
   } catch {
     return null
   }
-  // Language-neutral whatever came in: the prefix is added again when it is followed (ADR 0027 section 4).
-  return isPlainPath(decoded) ? neutralize(value) : null
+  return neutral
 }
 
 function isPlainPath(value: string): boolean {

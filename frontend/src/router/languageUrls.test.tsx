@@ -27,6 +27,21 @@ function open(url: string) {
   )
 }
 
+/** Holds the session answer back; returns the function that releases it. Other routes pass through. */
+function holdSession(): (body: unknown) => void {
+  let release: (response: Response) => void = () => undefined
+  const held = new Promise<Response>((resolve) => {
+    release = resolve
+  })
+  const answer = (globalThis.fetch as unknown as (...args: unknown[]) => Promise<Response>).bind(globalThis)
+  vi.stubGlobal('fetch', (input: string, init?: RequestInit) =>
+    input.endsWith('/api/auth/session') ? held : answer(input, init),
+  )
+  return (body) => {
+    release(json(body))
+  }
+}
+
 function where() {
   return `${window.location.pathname}${window.location.search}${window.location.hash}`
 }
@@ -77,12 +92,30 @@ describe('an unprefixed URL', () => {
     ['/privacy', '/en/privacy'],
     ['/classes/', '/en/classes'],
     ['/', '/en'],
+    // The remaining paths backend/src/classbeat/emails/kinds.py can emit.
+    ['/signup/confirm#token=x', '/en/signup/confirm'],
+    ['/signin', '/en/signin'],
+    ['/classes/0b6f5d2e-6c1a-4a39-9d57-3f1d2a8c4e10', '/en/classes/0b6f5d2e-6c1a-4a39-9d57-3f1d2a8c4e10'],
   ])('%s goes to %s with the fragment and search kept', async (from, to) => {
     fakeApi({ 'GET /api/auth/session': ANON })
     open(from)
     await waitFor(() => {
       // Mail pages strip the fragment once they have read it, so compare the path and search.
       expect(window.location.pathname + window.location.search).toBe(to.split('#')[0])
+    })
+  })
+
+  it('mounts no page and keeps the fragment until the session answers', async () => {
+    const release = holdSession()
+    open('/reset#token=x')
+    expect(screen.getByText('Loading')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Send reset link' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: 'Page not found' })).not.toBeInTheDocument()
+    // A mail page would have stripped the token from the address on mount.
+    expect(where()).toBe('/reset#token=x')
+    release(ANON)
+    await waitFor(() => {
+      expect(window.location.pathname).toBe('/en/reset')
     })
   })
 
@@ -164,6 +197,23 @@ describe('a prefixed URL', () => {
     })
     expect(where()).toBe('/sv/classes')
     expect(window.localStorage.getItem('cb-locale')).toBe('da')
+  })
+
+  it('keeps the prefix after the session answers with another account language, and writes nothing', async () => {
+    // Three different values: the prefix (sv), the account (da) and cb-locale (en).
+    window.localStorage.setItem('cb-locale', 'en')
+    const api = fakeApi({ 'GET /api/auth/session': signedIn('da'), 'GET /api/classes': { classes: [] } })
+    open('/sv/classes')
+    // Session-dependent content is on screen, so the session has answered and `account` is `da`.
+    await waitFor(() => {
+      expect(api.to('GET', '/api/classes').length).toBeGreaterThan(0)
+    })
+    await screen.findByRole('heading', { name: 'Mina pass' })
+    await new Promise((resolve) => setTimeout(resolve, 50))
+    expect(document.documentElement.getAttribute('lang')).toBe('sv')
+    expect(where()).toBe('/sv/classes')
+    expect(window.localStorage.getItem('cb-locale')).toBe('en')
+    expect(api.calls.filter((call) => call.method !== 'GET')).toEqual([])
   })
 
   it('removes a trailing slash', async () => {
