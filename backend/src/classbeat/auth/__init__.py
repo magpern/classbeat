@@ -5,14 +5,16 @@ account tables (``classbeat.auth.tables``; guard 8 in ``tests/test_auth_tables_g
 worker's purge task and the CLI call the functions exported here.
 
 The package is lazy (PEP 562): importing ``classbeat.auth`` or one of its modules loads only
-that module, and a name below is imported on first use. So the worker, which needs only
+that module (and ``classbeat.auth.lazy``, the export table, which imports nothing else of the
+package), and a name below is imported on first use. So the worker, which needs only
 ``purge``, never loads the web-only sign-in and mail modules (``oauth_client``, ``mail``) that
 the outbound-allowlist guard exempts (ADR 0006 section 9; ``tests/test_egress_guard.py``).
 """
 
-from importlib import import_module
-from importlib.util import find_spec
 from typing import TYPE_CHECKING, Any
+
+from classbeat.auth.lazy import EXPORTS as _EXPORTS
+from classbeat.auth.lazy import resolve as _resolve
 
 if TYPE_CHECKING:
     from classbeat.auth.accounts import (
@@ -133,140 +135,16 @@ if TYPE_CHECKING:
     )
     from classbeat.auth.unsubscribe_token import UNSUBSCRIBE_ALL, issue_unsubscribe_token
 
-# Exported name -> its module in this package. ``tests/test_egress_runtime.py`` checks it matches
-# the ``TYPE_CHECKING`` imports above and ``__all__``.
-_EXPORTS: dict[str, str] = {
-    "AccountError": "accounts",
-    "UserRow": "accounts",
-    "create_invite": "accounts",
-    "InviteRow": "accounts",
-    "create_admin_invite": "accounts",
-    "disable_invite": "accounts",
-    "get_invite": "accounts",
-    "list_invites": "accounts",
-    "create_user": "accounts",
-    "find_user": "accounts",
-    "grant_admin": "accounts",
-    "grant_admin_if_listed": "accounts",
-    "reset_mfa": "accounts",
-    "revoke_admin": "accounts",
-    "AccountRow": "admin_accounts",
-    "get_account": "admin_accounts",
-    "delete_account": "admin_accounts",
-    "disable_account": "admin_accounts",
-    "enable_account": "admin_accounts",
-    "find_accounts": "admin_accounts",
-    "AccountState": "admin_lookup",
-    "account_emails": "admin_lookup",
-    "account_states": "admin_lookup",
-    "bucket_ip": "clientip",
-    "client_ip": "clientip",
-    "CSRF_COOKIE": "cookies",
-    "DEVICE_COOKIE": "cookies",
-    "SESSION_COOKIE": "cookies",
-    "clear_session_cookie": "cookies",
-    "set_device_cookie": "cookies",
-    "set_session_cookie": "cookies",
-    "current_context": "deps",
-    "current_session": "deps",
-    "operator_contexts": "deps",
-    "mail_handoff_context": "deps",
-    "request_device_token": "deps",
-    "request_ip": "deps",
-    "request_session_token": "deps",
-    "require_admin": "deps",
-    "require_recent_auth": "deps",
-    "require_stepup": "deps",
-    "require_user": "deps",
-    "forget_devices": "devices",
-    "is_known_device": "devices",
-    "remember_device": "devices",
-    "record_event": "events",
-    "EmailAddress": "flowtools",
-    "register_reset_link_sender": "hooks",
-    "send_reset_link": "hooks",
-    "MailPreferences": "mailprefs",
-    "get_mail_prefs": "mailprefs",
-    "mail_prefs_for_email": "mailprefs",
-    "UNSUBSCRIBE_ALL": "unsubscribe_token",
-    "issue_unsubscribe_token": "unsubscribe_token",
-    "Keys": "keys",
-    "decrypt_totp_secret": "keys",
-    "derive_key": "keys",
-    "encrypt_totp_secret": "keys",
-    "hmac_digest": "keys",
-    "token_hash": "keys",
-    "SecurityNotifier": "notices",
-    "register_security_notifier": "notices",
-    "account_export": "export",
-    "export_buckets": "ratelimit",
-    "mowl_playlists_buckets": "ratelimit",
-    "mowl_qr_buckets": "ratelimit",
-    "playlist_covers_buckets": "ratelimit",
-    "swedebeat_mixes_buckets": "ratelimit",
-    "owner_active": "owners",
-    "active_email": "owners",
-    "WipeEvent": "operator",
-    "mark_wipe_mailed": "operator",
-    "pending_wipe_mails": "operator",
-    "vacuum_wiped_tables": "operator",
-    "wipe_mail": "operator",
-    "wipe_user": "operator",
-    "PasswordHashBusy": "passwords",
-    "PasswordHasher": "passwords",
-    "PasswordRuleError": "passwords",
-    "normalize_password": "passwords",
-    "purge_expired": "purge",
-    "Attempt": "ratelimit",
-    "Bucket": "ratelimit",
-    "RateLimited": "ratelimit",
-    "RateLimiter": "ratelimit",
-    "connect_buckets": "ratelimit",
-    "mfa_buckets": "ratelimit",
-    "password_buckets": "ratelimit",
-    "redeem_buckets": "ratelimit",
-    "spotify_start_buckets": "ratelimit",
-    "admin_buckets": "ratelimit",
-    "admin_mail_test_buckets": "ratelimit",
-    "make_reset_link_sender": "reset_routes",
-    "IssuedSession": "sessions",
-    "Resolution": "sessions",
-    "SessionGone": "sessions",
-    "SessionInfo": "sessions",
-    "list_sessions": "sessions",
-    "resolve_session": "sessions",
-    "revoke_session": "sessions",
-    "revoke_user_sessions": "sessions",
-    "rotate_session": "sessions",
-    "start_session": "sessions",
-    "attach_state": "setup",
-    "detach_state": "setup",
-    "install": "setup",
-    "TotpUnreadable": "totp_keys",
-    "migrate_v1_secrets": "totp_keys",
-    "rewrap_v2_secrets": "totp_keys",
-    "totp_rows_by_key": "totp_keys",
-}
+# Exported name -> its module in this package (``classbeat.auth.lazy``).
+# ``tests/test_egress_runtime.py`` checks it matches the ``TYPE_CHECKING`` imports above and
+# ``__all__``.
 
 
 def __getattr__(name: str) -> Any:
-    module = _EXPORTS.get(name)
-    if module is not None:
-        value = getattr(import_module(f"{__name__}.{module}"), name)
+    value = _resolve(__name__, name)
+    if name in _EXPORTS:
         globals()[name] = value
-        return value
-    if not name.startswith("_") and "." not in name and _is_submodule(name):
-        return import_module(f"{__name__}.{name}")  # a submodule, as ``auth.tables``
-    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
-
-
-def _is_submodule(name: str) -> bool:
-    try:
-        return find_spec(f"{__name__}.{name}") is not None
-    except (
-        ImportError
-    ):  # not a package below ``name``: an attribute lookup answers "no", never raises
-        return False
+    return value
 
 
 def __dir__() -> list[str]:
