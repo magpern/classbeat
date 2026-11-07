@@ -33,6 +33,9 @@ describe('sign-in page', () => {
     renderAt('/signin')
     type('Email', 'ann@example.test')
     type('Password', 'correct horse battery')
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Sign in' })).toBeEnabled()
+    })
     fireEvent.click(screen.getByRole('button', { name: 'Sign in' }))
     expect(await screen.findByRole('heading', { name: 'Your account' })).toBeInTheDocument()
     expect(window.location.pathname).toBe('/account')
@@ -183,6 +186,9 @@ describe('sign-in page', () => {
     type('Email', 'new@example.test')
     type('Password', 'a long enough passphrase')
     expect(screen.getByText(/invite-only beta/)).toBeInTheDocument()
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Create account' })).toBeEnabled()
+    })
     fireEvent.click(screen.getByRole('button', { name: 'Create account' }))
     expect(await screen.findByText(/we sent a link/)).toBeInTheDocument()
     expect(api.to('POST', '/api/auth/signup')[0]?.body).toMatchObject({
@@ -213,6 +219,9 @@ describe('sign-in page', () => {
     renderAt('/signin')
     type('Email', 'a@example.test')
     type('Password', 'correct horse battery')
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Sign in' })).toBeEnabled()
+    })
     fireEvent.click(screen.getByRole('button', { name: 'Sign in' }))
     await waitFor(() => {
       expect(window.location.pathname).toBe('/admin')

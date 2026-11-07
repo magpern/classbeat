@@ -42,8 +42,8 @@ else, in either process; it does not follow redirects and refuses one to another
 
 **The media client** (ADR 0016 §4, threat model T109): ``mowl_media_async_client()`` fetches a
 Swedebeat mix from the temporary link MOWL returns (A3, worker only). Its list is
-``MOWL_MEDIA_ALLOWLIST``, built from the literal ``MOWL_MEDIA_HOSTS``, which is **empty until the
-owner confirms the host**; so is nothing else's: the library's MOWL opener, with its
+``MOWL_MEDIA_ALLOWLIST``, built from the literal ``MOWL_MEDIA_HOSTS``, which holds the one
+confirmed host (``users-playlists.s3-accelerate.amazonaws.com``, #524); nothing else's does: the library's MOWL opener, with its
 ``authorization`` header, cannot reach the media host (it is on no urllib list), and this client
 sends none of our headers. It follows no redirect at all, ends every request within
 ``MOWL_MEDIA_TOTAL_SECONDS`` and takes **no argument** (a list and a transport come only from
@@ -282,7 +282,7 @@ def worker_allowlist(model_providers: Iterable[str] = ()) -> Allowlist:
 
 # The Spotify client's list, in the web process and the worker alike (ADR 0009 §10).
 SPOTIFY_ALLOWLIST = Allowlist(SPOTIFY_HOSTS)
-# The media client's list (ADR 0016 §4): ``MOWL_MEDIA_HOSTS``, empty today.
+# The media client's list (ADR 0016 §4): ``MOWL_MEDIA_HOSTS``, the one confirmed host (#524).
 MOWL_MEDIA_ALLOWLIST = Allowlist(MOWL_MEDIA_HOSTS)
 # The catalogue client's list (ADR 0016 §4, B1): Swedebeat's catalogue host alone.
 SWEDEBEAT_CLOUD_ALLOWLIST = Allowlist(frozenset({SWEDEBEAT_CLOUD_HOST}))

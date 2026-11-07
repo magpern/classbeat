@@ -299,7 +299,7 @@ existing `web-out` network; the network-level egress rule stays an M6 item (acce
 |---|---|---|---|
 | 1 `feat(auth): verify Turnstile tokens on sign-in, sign-up and reset` | §1 to §10 backend (as amended, Amendment 1): settings and secret file with its empty placeholder (compose, `worktree.sh`, the `vps-deploy.md` §5 placeholder loop, prod and install checks, release assets), the fake gate of §7, egress client, verifier and fake, the four routes and the order tests, the route guard, the captcha bucket, CSP sources, `captcha` in the session, the two sentence codes (en, sv, da), ADR 0003 pointers, threat model T126. Prod default stays **off** | Opus / Opus | this ADR |
 | 2 `feat(web): Turnstile widget on the sign-in, sign-up and reset forms` | §11: the component, the four pages, the fake stand-in, the host-guard exemption, strings en, sv, da, e2e for the four forms on the `compose.e2e.yaml` stack (profile `e2e`), **including the two e2e switches of §7 (Amendment 1 (a))** | Opus / Opus (a third-party script on the auth pages) | 1 |
-| 3 `docs: privacy, cookie notice and runbook for Turnstile; on in prod` | *(Amended: the default is not flipped here, Amendment 1 (f))*  §12: privacy page and cookie notice en, sv, da, runbook and `prod.env.example` (widget, site key, live check), `compose.prod.yaml` default **on** and its `check-prod-compose.sh` assertion. Merged only after the owner's live check of step 4 below passed | Sonnet / Sonnet, then one final Opus review (it flips a security default) | 1, 2 |
+| 3 `docs: privacy, cookie notice and runbook for Turnstile` | *(Amended: the default is not flipped here and the PR is not security-critical, Amendment 1 (f))*  §12: privacy page and cookie notice en, sv, da, runbook and `prod.env.example` (widget, site key, live check). Merged only after the owner's live check of step 4 below passed | Sonnet / Sonnet | 1, 2 |
 
 ### Owner-only deploy steps (agents do not touch the Cloudflare dashboard)
 
@@ -317,7 +317,7 @@ existing `web-out` network; the network-level egress rule stays an M6 item (acce
    console shows no CSP violation and no `110200` (domain or referrer, open question 2);
    `docker compose logs web` shows no `captcha refused … why=` line for those attempts. If anything
    fails, remove `TURNSTILE_ENABLED=true` and restart web; agents fix it before PR 3.
-5. Once step 4 passes, PR 3 merges; deploy its release (the explicit setting can then go).
+5. Once step 4 passes, PR 3 merges; deploy its release (the explicit setting can then go). *(Amended: PR 3 no longer flips the default, so the explicit setting stays until the separate default-on follow-up PR; see Amendment 1 (f).)*
 6. Emergency: `TURNSTILE_ENABLED=false`, `docker compose up -d web`; switch back once Cloudflare
    recovers.
 
