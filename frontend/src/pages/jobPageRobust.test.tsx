@@ -303,6 +303,9 @@ describe('the remembered form input', () => {
     })
     renderAt(`/jobs/${JOB_ID}`)
     await screen.findByRole('heading', { name: 'Your class is ready' })
-    expect(window.sessionStorage.getItem(`classbeat.design-input.${JOB_ID}`)).toBeNull()
+    // The input is dropped in an effect after the heading is committed, so wait for it.
+    await waitFor(() => {
+      expect(window.sessionStorage.getItem(`classbeat.design-input.${JOB_ID}`)).toBeNull()
+    })
   })
 })
