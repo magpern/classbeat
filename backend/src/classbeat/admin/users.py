@@ -41,7 +41,8 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from classbeat import auth
-from classbeat.admin.audit import NoteText, Target, UserQuery, bounded_text
+from classbeat.admin.audit import Target
+from classbeat.admin.audit_text import NoteText, UserQuery, bounded_text
 from classbeat.admin.db import AdminDb, AdminRefused, admin_session
 from classbeat.admin.routes import AdminActor, admin_db, admin_router
 from classbeat.connections import connection_statuses

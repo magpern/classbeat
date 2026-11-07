@@ -262,7 +262,7 @@ def test_no_route_has_a_limit_of_its_own_yet() -> None:
 
 
 def test_the_cap_equals_the_admin_and_jobs_caps_and_covers_the_job_input() -> None:
-    from classbeat.admin.routes import MAX_BODY_BYTES
+    from classbeat.admin.body_limit import MAX_BODY_BYTES
     from classbeat.jobs.routes import BODY_MAX_BYTES, INPUT_MAX_BYTES
 
     assert LIMIT == MAX_BODY_BYTES == BODY_MAX_BYTES

@@ -4,6 +4,8 @@ window, the data minimisation (no hash, address, session id, token, route or Use
 response), and the disable shortcut's audit."""
 
 import ast
+import importlib
+import inspect
 import re
 import secrets
 import uuid
@@ -14,9 +16,11 @@ from typing import Any
 import pytest
 from sqlalchemy import text
 from sqlalchemy.engine import Connection, make_url
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from adminviews import audit, reason, stepped_admin
 from authtools import Env, running_env
+from classbeat import auth
 from classbeat.admin import abuse
 from classbeat.admin.routes import admin_area_routes, gate_problems
 
@@ -250,12 +254,59 @@ def test_the_view_reads_the_network_hash_only_inside_a_distinct_count() -> None:
     assert not [f for f in fields if re.search(r"hash|ip|addr|agent|token|route|path", f)]
 
 
+def _takes_session(value: object) -> bool:
+    """A function with a parameter typed ``AsyncSession``: what the admin package hands its maint
+    session to."""
+    if inspect.isclass(value) or not callable(value):
+        return False
+    try:
+        signature = inspect.signature(value, eval_str=True)
+    except (TypeError, ValueError, NameError):
+        return False
+    return any(p.annotation is AsyncSession for p in signature.parameters.values())
+
+
+def _maint_callees() -> set[Path]:
+    """The source file of every function outside the admin package that the admin package can
+    hand its maint session to (#753): each ``auth.<name>`` it uses, and each name (or every
+    function of a module) it imports from another ``classbeat`` package, that takes an
+    ``AsyncSession``. Derived from the imports, so a new callee cannot stay out of the scan."""
+    found: set[Path] = set()
+    for path in (SRC / "admin").rglob("*.py"):
+        for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
+            values: list[Any] = []
+            if (
+                isinstance(node, ast.ImportFrom)
+                and node.module
+                and node.module.startswith("classbeat.")
+                and not node.module.startswith("classbeat.admin")
+            ):
+                module = importlib.import_module(node.module)
+                for alias in node.names:
+                    value = getattr(module, alias.name)
+                    values += vars(value).values() if inspect.ismodule(value) else [value]
+            elif (
+                isinstance(node, ast.Attribute)
+                and isinstance(node.value, ast.Name)
+                and node.value.id == "auth"
+            ):
+                values.append(getattr(auth, node.attr))
+            for value in values:
+                if _takes_session(value):
+                    source = inspect.getsourcefile(value)
+                    assert source is not None, value
+                    found.add(Path(source).resolve())
+    return found
+
+
 def _admin_path_files() -> list[Path]:
     """Every module an admin route runs on the maint session: the admin package, the account
-    helpers written for it, and the connection status it calls."""
-    files = [*(SRC / "admin").rglob("*.py"), *(SRC / "auth").glob("admin_*.py")]
-    files += (SRC / "auth").glob("connections*.py")
-    return sorted(f for f in files if f.name != "abuse.py" or f.parent.name != "admin")
+    helpers written for it, and every function outside the package it hands the session to
+    (``_maint_callees``: ``auth/accounts.py``, ``classbeat/connections/status.py`` and others)."""
+    files = {*(SRC / "admin").rglob("*.py"), *(SRC / "auth").glob("admin_*.py")}
+    files = {f.resolve() for f in files} | _maint_callees()
+    abuse_py = (SRC / "admin" / "abuse.py").resolve()
+    return sorted(f for f in files if f != abuse_py)
 
 
 def test_no_other_admin_code_reads_the_security_log() -> None:
@@ -264,7 +315,14 @@ def test_no_other_admin_code_reads_the_security_log() -> None:
     names ``ip_hash`` is a query (the audit insert writes ``admin_audit.ip_hash``; it reads
     nothing)."""
     files = _admin_path_files()
-    assert SRC / "admin" / "audit_routes.py" in files  # the glob found the package
+    for expected in (
+        SRC / "admin" / "audit_routes.py",  # the glob found the package
+        SRC / "auth" / "accounts.py",  # the invites of the Codes page
+        SRC / "auth" / "admin_accounts.py",
+        SRC / "auth" / "admin_lookup.py",
+        SRC / "connections" / "status.py",  # a user's connection status (AD1)
+    ):
+        assert expected.resolve() in files, expected
     for path in files:
         source = path.read_text(encoding="utf-8")
         assert not re.search(r"security_?log", source, re.IGNORECASE), path.name

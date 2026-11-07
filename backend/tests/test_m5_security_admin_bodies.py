@@ -26,10 +26,7 @@ from sqlalchemy import text
 from sqlalchemy.engine import Connection, make_url
 
 from authtools import ORIGIN, Env, running_env, session_cookie
-from classbeat.admin.routes import (
-    MAX_BODY_BYTES,
-    _body_refusal,  # pyright: ignore[reportPrivateUsage]
-)
+from classbeat.admin.body_limit import MAX_BODY_BYTES, body_refusal
 
 ENTITLEMENTS = "/api/admin/users/{user_id}/entitlements"
 CODES = "/api/admin/redeem-codes"
@@ -196,10 +193,10 @@ def test_only_the_two_body_refusals_get_a_body_reason() -> None:
 
     Threats: T92.
     """
-    assert _body_refusal(HTTPException(400, "There was an error parsing the body")) == (
+    assert body_refusal(HTTPException(400, "There was an error parsing the body")) == (
         "body_unreadable"
     )
-    assert _body_refusal(HTTPException(413, {"reason": "body_too_large"})) == "body_too_large"
+    assert body_refusal(HTTPException(413, {"reason": "body_too_large"})) == "body_too_large"
     for other in (
         HTTPException(400, "bad request"),
         HTTPException(400, {"reason": "body_unreadable"}),
@@ -207,7 +204,7 @@ def test_only_the_two_body_refusals_get_a_body_reason() -> None:
         HTTPException(413, {"reason": "something_else"}),
         HTTPException(403, {"reason": "forbidden"}),
     ):
-        assert _body_refusal(other) is None, other
+        assert body_refusal(other) is None, other
     source = inspect.getsource(fastapi.routing)
     assert 'status_code=400, detail="There was an error parsing the body"' in source
 
@@ -219,7 +216,7 @@ async def test_the_limit_is_the_admin_areas_alone() -> None:
 
     Threats: T90.
     """
-    from classbeat.admin.routes import AdminBodyLimit
+    from classbeat.admin.body_limit import AdminBodyLimit
 
     async def app(scope: Any, receive: Any, send: Any) -> None:
         message = await receive()  # would raise the 413 for an admin path
