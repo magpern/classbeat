@@ -41,7 +41,7 @@ reads the repository copy) and pins a mail catalogue for each entry.
 **2. Storage and choice.** The resolved language in the browser is the first of: `users.locale`, set
 on the account page with `PUT /api/account/locale` and returned with the session; the browser's
 `localStorage` key `cb-locale` (set by a picker on the logged-out pages); the first offered entry of
-`navigator.languages`; `en`. No language in the URL and no new cookie. A pre-paint
+`navigator.languages`; `en`. No new cookie. (The language in the URL was added by [ADR 0027](0027-language-prefixed-urls.md): the prefix wins for the view.) A pre-paint
 `public/locale-init.js` sets `<html lang>`, only to a manifest locale (CSP `script-src 'self'`
 unchanged).
 
