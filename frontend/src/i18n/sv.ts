@@ -497,7 +497,7 @@ const sv: Catalogue = {
 
   // The class card, my classes and the class page.
   'class.card.tss': 'TSS {value}',
-  // The screen-reader label of the small class profile (MiniProfile). One form: English says "intervals" for every count.
+  // The screen-reader label of the small class profile (MiniProfile). Two forms (one, other), chosen by the interval count.
   'class.profile.label': {
     one: 'Passprofil, {length}, {count} intervall',
     other: 'Passprofil, {length}, {count} intervaller',
