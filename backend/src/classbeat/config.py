@@ -17,6 +17,7 @@ from pydantic_settings import BaseSettings, PydanticBaseSettingsSource, Settings
 from sqlalchemy.engine import URL, make_url
 from sqlalchemy.exc import ArgumentError
 
+from classbeat.config_hosts import _is_local_host, parse_networks, public_origin
 from classbeat.emailnorm import normalize_email
 
 logger = logging.getLogger(__name__)
@@ -61,8 +62,6 @@ MODEL_KEY_FIELDS = {
     "openai": "openai_api_key",
     "deepseek": "deepseek_api_key",
 }
-# Hosts where unencrypted SMTP (``smtp_tls = none``) is allowed: loopback and the compose service.
-PLAIN_SMTP_HOSTS = frozenset({"localhost", "mailpit"})
 MIN_APP_SECRET_BYTES = 32
 # ADR 0004 section 2: the id of the current KEK (the ``connection_kek`` secret file).
 CONNECTION_KEK_ID = re.compile(r"kek-[a-z0-9-]{1,28}")
@@ -701,40 +700,6 @@ class Settings(BaseSettings):
         if self.maint_database_url is None or password is None or not password.get_secret_value():
             return None
         return _with_password(self.maint_database_url, password)
-
-
-def _is_local_host(host: str) -> bool:
-    if host.lower() in PLAIN_SMTP_HOSTS:
-        return True
-    try:
-        return ipaddress.ip_address(host.strip("[]")).is_loopback
-    except ValueError:
-        return False
-
-
-def public_origin(url: str) -> str:
-    """``scheme://host[:port]`` of ``url``, lower case, as a browser sends it in ``Origin``."""
-    parts = urlsplit(url)
-    host = parts.hostname or ""
-    if ":" in host:
-        host = f"[{host}]"
-    default = {"http": 80, "https": 443}.get(parts.scheme.lower())
-    port = f":{parts.port}" if parts.port is not None and parts.port != default else ""
-    return f"{parts.scheme.lower()}://{host.lower()}{port}"
-
-
-def parse_networks(
-    value: str,
-) -> tuple[ipaddress.IPv4Network | ipaddress.IPv6Network, ...]:
-    """Parse a comma-separated list of addresses and CIDR ranges."""
-    networks: list[ipaddress.IPv4Network | ipaddress.IPv6Network] = []
-    for item in value.split(","):
-        if item.strip():
-            try:
-                networks.append(ipaddress.ip_network(item.strip(), strict=False))
-            except ValueError:
-                raise ValueError("trusted_proxies must list IP addresses or CIDR ranges") from None
-    return tuple(networks)
 
 
 def _with_password(url: SecretStr, password: SecretStr | None) -> URL:
