@@ -29,15 +29,18 @@ from smtpfake import SmtpFake
 from test_auth_reset import EMAIL, ask
 from test_auth_signup import invite as signup_invite
 
-TRANSLATED = ("sv", "da")
+# Every manifest language but English, so a new code cannot be skipped by the completeness,
+# placeholder, link and golden tests below (the list used to be written out by hand).
+MANIFEST = locales.SUPPORTED_LOCALES
+TRANSLATED = tuple(code for code in MANIFEST if code != DEFAULT)
 KINDS = list(REGISTRY.values())
 ids = [k.id for k in KINDS]
 
 
 @pytest.fixture
 def three_languages(monkeypatch: pytest.MonkeyPatch) -> None:
-    """The manifest lists only English until ML7; the path tests need three."""
-    monkeypatch.setattr(locales, "SUPPORTED_LOCALES", ("en", "sv", "da"))
+    """Every manifest language is offered, whatever an earlier test patched."""
+    monkeypatch.setattr(locales, "SUPPORTED_LOCALES", MANIFEST)
 
 
 # --- the catalogues ----------------------------------------------------------------------------
@@ -143,11 +146,11 @@ def test_every_month_has_a_name() -> None:
 
 
 def test_the_stored_language_is_used_only_when_offered(monkeypatch: pytest.MonkeyPatch) -> None:
-    assert mail_locale("sv") == "sv"  # the manifest offers en, sv and da
+    assert mail_locale("sv") == "sv"  # the manifest offers every language
     assert mail_locale("fr") == "en"
     monkeypatch.setattr(locales, "SUPPORTED_LOCALES", ("en",))
     assert mail_locale("sv") == "en"  # a locale the manifest does not offer falls back
-    monkeypatch.setattr(locales, "SUPPORTED_LOCALES", ("en", "sv", "da"))
+    monkeypatch.setattr(locales, "SUPPORTED_LOCALES", MANIFEST)
     assert mail_locale("sv") == "sv"
     assert mail_locale("da") == "da"
     assert mail_locale(None) == mail_locale("fr") == mail_locale(5) == "en"
@@ -201,6 +204,7 @@ async def test_the_header_names_the_language_of_the_mail(code: str, three_langua
             smtp_tls="none",
             smtp_sender="classbeat@example.test",
             public_base_url="https://classbeat.example.test",
+            locales=",".join(MANIFEST),  # every language, on by default or not
         )
         assert await send(
             Mailer(s), s, "password_reset", "to@example.com", {"token": "t"}, locale=code

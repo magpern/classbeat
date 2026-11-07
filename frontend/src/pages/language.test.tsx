@@ -5,6 +5,8 @@ import { render } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { App } from '../App'
 import { I18nProvider } from '../i18n/I18n'
+import { LOCALES } from '../i18n/locales'
+import { languageName } from '../components/LanguagePicker'
 import { localize } from '../router/paths'
 
 function renderAtRaw(url: string) {
@@ -25,7 +27,8 @@ function renderAt(url: string) {
 // so the page stays English whichever language is chosen (the catalogues have their own tests).
 vi.mock('../i18n/catalogues', () => ({ CATALOGUE_LOADERS: {} }))
 
-const OFFERED = ['en', 'sv', 'da']
+// The manifest, so a new language is in these tests without anyone editing a list.
+const OFFERED = [...LOCALES]
 const ANON = {
   authenticated: false,
   csrf_token: 'csrf-anon',
@@ -41,16 +44,24 @@ beforeEach(() => {
   window.localStorage.clear()
 })
 
+describe('the language names', () => {
+  it.each(OFFERED)('%s has its own name in NAMES (LanguagePicker.tsx), not the bare code', (code) => {
+    expect(languageName(code), `add ${code} to NAMES in components/LanguagePicker.tsx`).not.toBe(code)
+  })
+
+  it('are different for every language', () => {
+    expect(new Set(OFFERED.map(languageName)).size).toBe(OFFERED.length)
+  })
+})
+
 describe('the logged-out language picker', () => {
   it('lists the offered languages and keeps the choice in this browser', async () => {
     fakeApi({ 'GET /api/auth/session': ANON })
     renderAt('/signin')
     const picker = await screen.findByRole('combobox', { name: 'Language' })
-    expect(Array.from(picker.querySelectorAll('option')).map((o) => o.textContent)).toEqual([
-      'English',
-      'Svenska',
-      'Dansk',
-    ])
+    expect(Array.from(picker.querySelectorAll('option')).map((o) => o.textContent)).toEqual(
+      OFFERED.map(languageName),
+    )
     fireEvent.change(picker, { target: { value: 'sv' } })
     expect(window.localStorage.getItem('cb-locale')).toBe('sv')
   })
