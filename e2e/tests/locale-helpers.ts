@@ -7,7 +7,7 @@ import { audit, type Findings } from './mu-helpers'
 // the catalogue, so a wrong or missing translation fails a spec that reads like a user.
 
 export interface Words {
-  code: 'sv' | 'da'
+  code: 'en' | 'sv' | 'da'
   /** landing.signUp */
   landingSignUp: string
   /** auth.signIn, the sign-in heading and button */

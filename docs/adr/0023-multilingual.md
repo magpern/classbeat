@@ -3,7 +3,8 @@
 Status: Accepted (the owner answered the plan's questions on 2026-11-06; accepted when its PR
 (issue #662, ML0) merged after a `PASS`; the milestone is done, ML0 to ML8 merged). The plan, revision 3, is
 [docs/plans/multilingual.md](../plans/multilingual.md); where the two differ, fix the plan or amend
-this ADR in the PR that changes it. Roadmap Amendment 16.
+this ADR in the PR that changes it. Roadmap Amendment 16. Section 2's "no language in the URL" is superseded by
+[ADR 0027](0027-language-prefixed-urls.md) (`/en`, `/sv`, `/da`).
 
 Related: [ADR 0001](0001-stack-and-layout.md) (bundled frontend, own origin),
 [ADR 0003](0003-accounts-and-sessions.md) (accounts, sign-up and OAuth flows),
