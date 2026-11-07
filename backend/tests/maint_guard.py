@@ -134,8 +134,9 @@ EXPECTED: dict[tuple[str, str], frozenset[str]] = {
 EXPECTED_OTHER = {"database:CONNECT", "schema:public:USAGE"}
 
 
-# The one hash maint may read (#632): the security log's keyed hash of a coarse network, which the
-# Abuse view counts (``count(DISTINCT ip_hash)``) and never returns. An allowlist of exactly this
+# The one hash maint may read (#632): the security log's keyed hash of the client network (the
+# whole IPv4 address, the IPv6 /64), which the Abuse view
+# counts (``count(DISTINCT ip_hash)``) and never returns. An allowlist of exactly this
 # pair; every other ``*_hash`` stays secret, and ``SECRET_COLUMNS`` still wins.
 HASH_READS: frozenset[tuple[str, str]] = frozenset({("security_log", "ip_hash")})
 

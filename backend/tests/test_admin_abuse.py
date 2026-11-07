@@ -248,3 +248,34 @@ def test_the_view_reads_the_network_hash_only_inside_a_distinct_count() -> None:
     fields = {f for model in (abuse.TopUser, abuse.LimitHit, abuse.MovedSession, abuse.AbuseOut)
               for f in model.model_fields}  # fmt: skip
     assert not [f for f in fields if re.search(r"hash|ip|addr|agent|token|route|path", f)]
+
+
+def _admin_path_files() -> list[Path]:
+    """Every module an admin route runs on the maint session: the admin package, the account
+    helpers written for it, and the connection status it calls."""
+    files = [*(SRC / "admin").rglob("*.py"), *(SRC / "auth").glob("admin_*.py")]
+    files += (SRC / "auth").glob("connections*.py")
+    return sorted(f for f in files if f.name != "abuse.py" or f.parent.name != "admin")
+
+
+def test_no_other_admin_code_reads_the_security_log() -> None:
+    """The grant lets maint read ``security_log.ip_hash``, so the place is pinned as well as the
+    form: only ``admin/abuse.py`` names the table, and no other string on the admin path that
+    names ``ip_hash`` is a query (the audit insert writes ``admin_audit.ip_hash``; it reads
+    nothing)."""
+    files = _admin_path_files()
+    assert SRC / "admin" / "audit_routes.py" in files  # the glob found the package
+    for path in files:
+        source = path.read_text(encoding="utf-8")
+        assert not re.search(r"security_?log", source, re.IGNORECASE), path.name
+        tree = ast.parse(source)
+        tree.body = tree.body[1:] if ast.get_docstring(tree) else tree.body
+        for node in ast.walk(tree):
+            if (
+                isinstance(node, ast.Constant)
+                and isinstance(node.value, str)
+                and "ip_hash" in node.value
+            ):
+                assert not re.search(
+                    r"\b(SELECT|FROM|JOIN|RETURNING)\b", node.value, re.IGNORECASE
+                ), (path.name, node.value[:60])

@@ -16,6 +16,7 @@ from sqlalchemy import text
 from sqlalchemy.engine import Connection
 
 from authtools import Env
+from maint_guard import HASH_READS
 from test_m5_security_admin import (
     BODIES,
     admin,
@@ -42,6 +43,7 @@ def plant_secrets(conn: Connection, owner: uuid.UUID) -> list[str]:
         ("recovery", 32), ("rev_hash", 32), ("op_hash", 32), ("pool_hash", 32), ("flow", 32),
         ("state", 32), ("sp_state", 32), ("sp_session", 32), ("device", 32), ("token", 32),
         ("job_hash", 32), ("sw_content", 32), ("sw_state", 32), ("cp_content", 32),
+        ("log_net", 32),
     )}  # fmt: skip
     tag = secrets.token_hex(5)
     words = {
@@ -169,7 +171,15 @@ def plant_secrets(conn: Connection, owner: uuid.UUID) -> list[str]:
     run("INSERT INTO mowl_playlist_links (owner_id, source, source_id, playlist_id) "
         "VALUES (:o, 'spotify', :s, :p)", s=words["link_source"],
         p=int(words["link_playlist"]))  # fmt: skip
-    needles = list(words.values())
+    # The security log's keyed network hash is readable by maint (``HASH_READS``, #632) and so is
+    # no longer a "secret column", but no route may return it: plant every allowed hash column,
+    # and the session id beside it.
+    assert set(HASH_READS) == {("security_log", "ip_hash")}  # extend the plant
+    log_session = uuid.uuid4()
+    run("INSERT INTO security_log (owner_id, session_id, ip_hash, method, route, status, at) "
+        "VALUES (:o, :s, :n, 'GET', '/api/classes', 200, now())", s=log_session,
+        n=raw["log_net"])  # fmt: skip
+    needles = [*words.values(), str(log_session)]
     for value in raw.values():
         needles += [value.hex(), base64.b64encode(value).decode(), value.decode("latin-1")]
     return needles

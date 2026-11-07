@@ -6,12 +6,13 @@ on ``classbeat_maint`` over ``security_log`` (the privacy-safe log of #641) for 
 ``minutes``:
 
 - **top users by request rate**: requests in the window, the average and the busiest minute, the
-  429s, and in how many coarse networks and sessions the user was seen;
+  429s, and in how many networks and sessions the user was seen;
 - **limit hits**: users with a 429 in the window (the log keeps at most one 429 row per user and
   minute, so the count is minutes in which the user was limited), with the first and last, so a
   burst reads as "N minutes within M";
-- **sessions seen from several networks**: sessions whose requests came from two or more coarse
-  IP buckets in the window, with how many and when.
+- **sessions seen from several networks**: sessions whose requests came from two or more distinct
+  network hashes (a keyed pseudonym of the IPv4 address, or of the IPv6 /64) in the window, with
+  how many and when.
 
 Each row names the user (id, email, role, disabled) so the page can offer the shortcut: a button
 that calls the existing ``POST /api/admin/users/{id}/disable`` (it revokes every session of the

@@ -109,7 +109,7 @@ export function Abuse() {
         </SelectField>
       </form>
       <p className="m-0 mb-2 text-muted">
-        From the security log: a coarse network is a hashed address bucket, never shown. A rate-limit hit is a
+        From the security log: a network is a keyed hash of the client address (the IPv6 /64), only counted, never shown. A rate-limit hit is a
         minute in which the user got a 429.
       </p>
       {error !== null ? <Notice kind="error">{error}</Notice> : null}

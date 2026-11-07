@@ -896,9 +896,9 @@ auth middleware once the response's status is known (`classbeat.auth.securitylog
 - **The admin abuse view (#632 item 3).** `GET /api/admin/abuse?minutes=` (5 to 240, default 60;
   audit action `abuse.list`, English only like the admin pages) reads the last `minutes` of the
   table in one read `admin_session` and lists, at most 20 rows each (with a `*_truncated` flag):
-  the **top users by request rate** (requests, per minute, busiest minute, 429 minutes, coarse
-  networks and sessions seen), the **users who hit the rate limit** (429 minutes with the first
-  and last), and the **sessions seen from two or more coarse networks** (networks, requests, first
+  the **top users by request rate** (requests, per minute, busiest minute, 429 minutes, networks
+  and sessions seen), the **users who hit the rate limit** (429 minutes with the first
+  and last), and the **sessions seen from two or more networks** (networks, requests, first
   and last). Each row names the user (id, email, role, disabled) so the page can offer the existing
   `POST /api/admin/users/{id}/disable` (it revokes every session; its step-up and audit row are
   that route's; not offered for an admin). Maint gets `SELECT (owner_id, session_id, ip_hash,
@@ -910,7 +910,16 @@ auth middleware once the response's status is known (`classbeat.auth.securitylog
   log keeps (one per user and minute); a 409 `quota` is not distinguishable in the log. The
   rate-limit buckets (`rate_limits`) are keyed by hashes of an address or account, not by user, so
   they are not read. The aggregates scan the window of one table under maint's 30 s statement
-  timeout; an index on `at` is the follow-up if that ever bites.
+  timeout; an index on `at` is tracked as a follow-up issue (#750).
+  **A "network" is a keyed pseudonym, not always coarse:** `bucket_ip` keeps an IPv4 address whole
+  and cuts only IPv6 to /64, so for IPv4 `ip_hash` is a keyed pseudonym of the full address (the
+  key is the `security-log` key, held by the web process only). That is why the hash is only ever
+  counted. **Key rotation:** a window that spans a rotation of the `security-log` key counts one
+  network twice, which can list a false "moved session" (rare, self-healing within the window).
+  **Where the rule is enforced:** `test_admin_abuse.py` pins the form (`count(DISTINCT ip_hash)`)
+  and the place (no other module on the admin path names `security_log`), and the planted-value
+  sweep of `test_m5_security_admin_secrets.py` plants the log's hash and session id and fails if
+  any admin route returns them.
 
 **Alternatives.**
 - *Add the user to the access log:* rejected; the access log goes to the operator's log pipeline

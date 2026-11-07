@@ -141,6 +141,16 @@ def test_only_the_security_log_network_hash_is_an_allowed_hash_read(admin: Conne
     assert "admin_audit.ip_hash: classbeat_maint can read a secret column" in check_maint(admin)
 
 
+def test_the_hash_exception_is_for_the_security_log_table_only(admin: Connection) -> None:
+    """A column named ``ip_hash`` on a table that is not in ``SECRET_COLUMNS`` is still secret
+    (a table-blind exception would let it through) and a grant on it is reported."""
+    assert "ip_hash" not in SECRET_COLUMNS.get("plans", frozenset())
+    assert is_secret("plans", "ip_hash")
+    admin.execute(text("ALTER TABLE plans ADD COLUMN ip_hash bytea"))
+    admin.execute(text(f"GRANT SELECT (ip_hash) ON plans TO {MAINT}"))
+    assert "plans.ip_hash: classbeat_maint can read a secret column" in check_maint(admin)
+
+
 def test_a_new_security_log_column_needs_a_decision(admin: Connection) -> None:
     admin.execute(text("ALTER TABLE security_log ADD COLUMN extra text"))
     admin.execute(text(f"GRANT SELECT (extra) ON security_log TO {MAINT}"))
