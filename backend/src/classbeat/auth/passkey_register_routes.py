@@ -35,12 +35,12 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 from classbeat.auth.cookies import PASSKEY_COOKIES, clear_passkey_cookie, set_passkey_cookie
-from classbeat.auth.deps import current_session, request_ip
+from classbeat.auth.deps import current_session, request_ip, require_recent_auth
 from classbeat.auth.events import record_event
 from classbeat.auth.flowtools import factory, reserve
 from classbeat.auth.passkey_limits import register_buckets
 from classbeat.auth.passkey_policy import CHALLENGE_BYTES, MAX_PASSKEYS, default_label
-from classbeat.auth.passkey_routes import FeatureOn, Label, PasskeyOut, RecentAuth
+from classbeat.auth.passkey_routes import FeatureOn, Label, PasskeyOut
 from classbeat.auth.passkey_store import (
     PasskeyRow,
     count_passkeys,
@@ -58,6 +58,7 @@ from classbeat.auth.passkey_webauthn import (
 from classbeat.auth.sessions import SessionInfo
 from classbeat.auth.userlock import lock_user, session_alive
 from classbeat.config_passkeys import relying_party
+from classbeat.context import UserContext
 from classbeat.db import system_session
 from classbeat.emails.notices import happened, queue
 
@@ -89,7 +90,7 @@ async def register_start(
     _: FeatureOn,
     request: Request,
     response: Response,
-    ctx: RecentAuth,
+    ctx: Annotated[UserContext, Depends(require_recent_auth)],
     current: Annotated[SessionInfo | None, Depends(current_session)],
 ) -> dict[str, Any]:
     info = _session(current)
@@ -127,7 +128,7 @@ async def register_finish(
     body: FinishIn,
     request: Request,
     background: BackgroundTasks,
-    ctx: RecentAuth,
+    ctx: Annotated[UserContext, Depends(require_recent_auth)],
     current: Annotated[SessionInfo | None, Depends(current_session)],
 ) -> JSONResponse:
     info = _session(current)

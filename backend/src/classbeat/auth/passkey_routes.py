@@ -41,7 +41,6 @@ async def require_passkeys(request: Request) -> None:
 
 
 FeatureOn = Annotated[None, Depends(require_passkeys)]
-RecentAuth = Annotated[UserContext, Depends(require_recent_auth)]
 
 
 def check_label(value: str) -> str:
@@ -106,7 +105,11 @@ async def get_passkeys(
 
 @router.patch("/{passkey_id}")
 async def patch_passkey(
-    _: FeatureOn, passkey_id: str, body: RenameIn, request: Request, ctx: RecentAuth
+    _: FeatureOn,
+    passkey_id: str,
+    body: RenameIn,
+    request: Request,
+    ctx: Annotated[UserContext, Depends(require_recent_auth)],
 ) -> PasskeyOut:
     await reserve(request, manage_buckets(str(ctx.user_id)))
     target = _own_id(passkey_id)
@@ -127,7 +130,10 @@ async def patch_passkey(
 
 @router.delete("/{passkey_id}", status_code=204)
 async def remove_passkey(
-    passkey_id: str, request: Request, background: BackgroundTasks, ctx: RecentAuth
+    passkey_id: str,
+    request: Request,
+    background: BackgroundTasks,
+    ctx: Annotated[UserContext, Depends(require_recent_auth)],
 ) -> None:
     await reserve(request, manage_buckets(str(ctx.user_id)))
     target = _own_id(passkey_id)
