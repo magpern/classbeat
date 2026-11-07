@@ -336,7 +336,7 @@ Only **album covers of chosen songs** are shown, and only from data classbeat al
   does a song without a cover or with a failed load.
 
 The request carries no referrer, no classbeat cookie and no classbeat data. The viewer's IP address
-and browser still reach Spotify's CDN; the M6 privacy notice says so. This is the one place the
+and browser still reach Spotify's CDN; the privacy notice at `/privacy` (#718) says so. This is the one place the
 browser contacts a third party, and it changes a guard test, so UI7 has an Opus review.
 
 > Amended by [ADR 0022](0022-account-emails.md): the CSP's `frame-src` becomes path-scoped (`<public_base_url>/api/admin/mail/`) for the admin
@@ -493,7 +493,7 @@ browser contacts a third party, and it changes a guard test, so UI7 has an Opus 
 >   - The frontend guard test's exemption stays `CoverArt` only, for exactly these hosts.
 > - **Privacy.** As for album covers: no referrer, no classbeat cookie, no classbeat data. The
 >   viewer's IP address and browser reach Spotify's CDN, now on three more host names; the M6
->   privacy notice names Spotify's CDN for both.
+>   privacy notice at `/privacy` (#718) names Spotify's CDN for both.
 >
 > **CSP widening (part of this amendment).** A CSP applies to the whole document, not to one
 > component, so letting the picker load playlist covers lets any `<img>` on any page load from the

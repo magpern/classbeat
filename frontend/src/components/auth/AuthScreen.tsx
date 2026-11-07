@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { getOAuthProviders, startOAuth } from '../../api/auth'
 import { providerName } from '../../api/messages'
-import { useT } from '../../i18n/I18n'
+import { Trans, useT } from '../../i18n/I18n'
 import { goToProvider } from '../../lib/navigation'
 import { Link } from '../../router/Router'
 import { Field, Notice, useAction } from '../forms'
@@ -88,9 +88,7 @@ export function AuthScreen({ mode, returnTo, notice, noticeLink, onSubmit }: Pro
 
   return (
     <AuthCard title={t(copy.title)}>
-      {mode === 'signup' ? (
-        <p className="auth__lead">{t('auth.inviteLead')}</p>
-      ) : null}
+      {mode === 'signup' ? <p className="auth__lead">{t('auth.inviteLead')}</p> : null}
       {notice ? <Notice kind="error">{notice}</Notice> : null}
       {notice && noticeLink ? (
         <p className="card__links">
@@ -162,7 +160,14 @@ export function AuthScreen({ mode, returnTo, notice, noticeLink, onSubmit }: Pro
         </button>
       </form>
       <p className="auth__legal">
-        {t('auth.legal')}
+        {t('auth.legal')}{' '}
+        <Trans
+          id="legal.read"
+          slots={{
+            privacy: <Link to="/privacy">{t('legal.inline.privacy')}</Link>,
+            terms: <Link to="/terms">{t('legal.inline.terms')}</Link>,
+          }}
+        />
       </p>
       <p className="card__links">
         <Link to={copy.swap.to}>{t(copy.swap.text)}</Link>

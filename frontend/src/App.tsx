@@ -15,6 +15,7 @@ import { UnsubscribePage } from './pages/UnsubscribePage'
 import { JobPage } from './pages/JobPage'
 import { HomePage } from './pages/HomePage'
 import { LandingPage } from './pages/LandingPage'
+import { PrivacyPage } from './pages/PrivacyPage'
 import { MusicPage } from './pages/MusicPage'
 import { NewClassPage } from './pages/NewClassPage'
 import { ProviderEmailPage } from './pages/ProviderEmailPage'
@@ -23,6 +24,7 @@ import { SignInPage } from './pages/SignInPage'
 import { SignUpConfirmPage } from './pages/SignUpConfirmPage'
 import { SignUpPage } from './pages/SignUpPage'
 import { SpotifyPage } from './pages/SpotifyPage'
+import { TermsPage } from './pages/TermsPage'
 import { Link, RouterProvider, useRouter } from './router/Router'
 
 // The admin area is its own chunk, fetched only for a session whose role is admin or whose
@@ -84,6 +86,10 @@ function Routes() {
       return <EmailChangePage />
     case '/unsubscribe':
       return <UnsubscribePage />
+    case '/privacy':
+      return <PrivacyPage />
+    case '/terms':
+      return <TermsPage />
     case '/classes':
       return <ClassesPage />
     case '/classes/new':

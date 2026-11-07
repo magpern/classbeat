@@ -280,7 +280,7 @@ either empty it is off. Nothing about it is ever typed into a chat, an issue or 
    *Continue with Google* is shown on the sign-in and sign-up screens; a test user signs in (a new
    account still needs an invite while `SIGNUP_MODE=invite`). Publishing the app to every Google
    account later needs a verified domain and public privacy policy and terms pages on it (Google's
-   verification), which is a separate step.
+   verification); the site serves them at `/privacy` and `/terms` (#718), which is a separate step.
 
 **Provider off** (no client id, or an empty secret file): no Google button, `GET /api/auth/oauth/providers`
 lists no `google`, and starting a Google sign-in answers 404 `provider_disabled`; email and password
