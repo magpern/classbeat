@@ -6,7 +6,6 @@ import logging
 import os
 import re
 import ssl
-from collections.abc import Mapping
 from pathlib import Path
 from typing import Any, Literal
 from urllib.parse import urlsplit
@@ -18,6 +17,18 @@ from sqlalchemy.engine import URL, make_url
 from sqlalchemy.exc import ArgumentError
 
 from classbeat.config_hosts import _is_local_host, parse_networks, public_origin
+from classbeat.config_roles import (  # noqa: F401 (re-exported from classbeat.config)
+    MODEL_KEY_FIELDS,
+    MODEL_SDK_REFUSED_ENVIRONMENT,
+    MODEL_SDK_REFUSED_PREFIXES,
+    ModelProviderRefused,
+    check_web_has_no_model_key,
+    check_worker_has_no_swedebeat_app,
+    check_worker_has_no_turnstile_secret,
+    check_worker_model_provider,
+    model_sdk_environment_problems,
+    worker_model_providers,
+)
 from classbeat.emailnorm import normalize_email
 
 logger = logging.getLogger(__name__)
@@ -56,12 +67,6 @@ OPTIONAL_SECRET_FILE_FIELDS = frozenset(
 BYTE_EXACT_SECRET_FIELDS = frozenset(
     {"database_password", "database_owner_password", "database_maint_password"}
 )
-# Each model provider's key file (ADR 0006 §9, ADR 0012 §2): worker only, never the web app.
-MODEL_KEY_FIELDS = {
-    "anthropic": "anthropic_api_key",
-    "openai": "openai_api_key",
-    "deepseek": "deepseek_api_key",
-}
 MIN_APP_SECRET_BYTES = 32
 # ADR 0004 section 2: the id of the current KEK (the ``connection_kek`` secret file).
 CONNECTION_KEK_ID = re.compile(r"kek-[a-z0-9-]{1,28}")
@@ -707,88 +712,3 @@ def _with_password(url: SecretStr, password: SecretStr | None) -> URL:
     if password is not None:
         result = result.set(password=password.get_secret_value())
     return result
-
-
-class ModelProviderRefused(Exception):
-    """The worker's model-provider settings are not allowed; the message names the rule only."""
-
-
-# The model SDKs read keys, base URLs, organisation and project ids, extra headers and debug
-# logging of request bodies from variables with these prefixes, even with an explicit key and
-# base URL. classbeat passes everything explicitly, so any such variable is a misconfiguration or
-# a leak path (ADR 0012 §2; ADR 0006 §9 named ``ANTHROPIC_LOG`` and ``ANTHROPIC_CUSTOM_HEADERS``).
-# Matched case-insensitively (Windows environment names are). ``SSLKEYLOGFILE`` makes
-# ``ssl.create_default_context()`` write TLS session secrets to a file (enough to decrypt the
-# model key in a capture); the worker's own TLS contexts ignore it
-# (``classbeat.egress.tls_client_context``), and it is refused too in case any other does (#121).
-MODEL_SDK_REFUSED_PREFIXES = ("ANTHROPIC_", "OPENAI_", "DEEPSEEK_")
-MODEL_SDK_REFUSED_ENVIRONMENT = ("SSLKEYLOGFILE",)
-
-
-def model_sdk_environment_problems(environ: Mapping[str, str] | None = None) -> list[str]:
-    """The names (never the values) of the refused model SDK variables that are set, in
-    ``environ`` (the process environment by default), whatever their case."""
-    return sorted(
-        name
-        for name in (os.environ if environ is None else environ)
-        if name.upper().startswith(MODEL_SDK_REFUSED_PREFIXES)
-        or name.upper() in MODEL_SDK_REFUSED_ENVIRONMENT
-    )
-
-
-def worker_model_providers(settings: Settings) -> frozenset[str]:
-    """The model providers the worker can use (ADR 0012 §2): each one whose key file holds a
-    key, DeepSeek only with ``deepseek_enabled`` too. Their hosts, and no other model host, go on
-    the worker's allowlist (``classbeat.egress.worker_allowlist``)."""
-    usable = {provider for provider in MODEL_KEY_FIELDS if settings.model_key(provider) is not None}
-    if not settings.deepseek_enabled:
-        usable.discard("deepseek")
-    return frozenset(usable)
-
-
-def check_worker_model_provider(settings: Settings) -> None:
-    """ADR 0006 §9, ADR 0012 §2: ``anthropic`` needs the ``anthropic_api_key`` file; with a real
-    provider (``anthropic``, or any model key file present) none of the refused model SDK
-    variables may be set; ``fake`` never in prod."""
-    if settings.model_provider == "anthropic" and settings.anthropic_api_key is None:
-        raise ModelProviderRefused(
-            "model_provider is anthropic but the anthropic_api_key secret file is missing or empty"
-        )
-    refused = model_sdk_environment_problems()
-    real = settings.model_provider == "anthropic" or any(
-        settings.model_key(provider) is not None for provider in MODEL_KEY_FIELDS
-    )
-    if real and refused:
-        raise ModelProviderRefused(
-            "a real model provider: the worker must not set " + ", ".join(refused)
-        )
-    if settings.model_provider == "fake" and settings.environment == "prod":
-        raise ModelProviderRefused("model_provider fake is not allowed when environment is prod")
-
-
-def check_worker_has_no_swedebeat_app(settings: Settings) -> None:
-    """Swedebeat's app key is the web app's only (ADR 0015 section 4): no worker job signs in to
-    Swedebeat, so a readable ``swedebeat_app`` file refuses the worker's start."""
-    if settings.swedebeat_app is not None:
-        raise ModelProviderRefused(
-            "the worker must not see the swedebeat_app secret file (web only)"
-        )
-
-
-def check_worker_has_no_turnstile_secret(settings: Settings) -> None:
-    """The Turnstile secret is the web app's only (ADR 0025 section 7): the worker verifies no
-    token, so a readable ``turnstile_secret_key`` file refuses the worker's start."""
-    if settings.turnstile_secret_key is not None:
-        raise ModelProviderRefused(
-            "the worker must not see the turnstile_secret_key secret file (web only)"
-        )
-
-
-def check_web_has_no_model_key(settings: Settings) -> None:
-    """The web app never calls a model, so it never holds a model key (ADR 0006 §9, ADR 0012
-    §2): any readable model key file refuses the start."""
-    for provider, field in MODEL_KEY_FIELDS.items():
-        if settings.model_key(provider) is not None:
-            raise ModelProviderRefused(
-                f"the web app must not see the {field} secret file (worker only)"
-            )
