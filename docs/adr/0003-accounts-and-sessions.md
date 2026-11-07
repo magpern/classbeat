@@ -864,6 +864,11 @@ auth middleware once the response's status is known (`classbeat.auth.securitylog
   compared with `sessions.seen_ip_hash` (the `session-client` key) or the rate-limit buckets. With
   the key, an IPv4 hash can be reversed by trying every address; the key lives only in the web
   process (`app_secret_key`), and the abuse view needs only equality.
+  `ip_hash` is therefore a keyed pseudonym of the **full** IPv4 address (the IPv6 /64), not an
+  anonymised one. Rotating `app_secret_key` changes the key, so rows written before and after
+  do not compare equal: for up to `CLASSBEAT_SECURITY_LOG_DAYS` the abuse view's "several
+  networks" count can show one network twice. Expected and harmless; wait for the old rows to age
+  out (#749 review).
 - **Owned, with RLS (ADR 0002 §2):** `owner_id` `NOT NULL` referencing `users` `ON DELETE
   CASCADE`, `UNIQUE (owner_id, id)`, `owner_isolation`. The middleware writes the row in the
   user's own session with a bare context (`deps.security_log_context`, reachable only from the

@@ -208,6 +208,13 @@ def test_dotted_and_private_names_answer_attribute_error_not_import_error() -> N
             getattr(auth, name)
 
 
+def test_a_resolved_export_is_cached_in_the_module_dict(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delitem(vars(auth), "Keys", raising=False)  # undone after the test
+    assert "Keys" not in vars(auth)
+    resolved = auth.Keys
+    assert vars(auth)["Keys"] is resolved
+
+
 def test_dir_lists_the_lazy_exports() -> None:
     exports: dict[str, str] = auth._EXPORTS
     assert set(exports) <= set(dir(auth))
