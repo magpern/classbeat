@@ -285,7 +285,11 @@ either empty it is off. Nothing about it is ever typed into a chat, an issue or 
    *Continue with Google* is shown on the sign-in and sign-up screens; a test user signs in (a new
    account still needs an invite while `SIGNUP_MODE=invite`). Publishing the app to every Google
    account later needs a verified domain and public privacy policy and terms pages on it (Google's
-   verification); the site serves them at `/privacy` and `/terms` (#718), which is a separate step.
+   verification). The site serves them at `/en/privacy` and `/en/terms` (also `/sv/...` and `/da/...`;
+   [ADR 0027](../adr/0027-language-prefixed-urls.md)). In the consent screen's app domain fields enter
+   `https://<host>/en/privacy` and `https://<host>/en/terms`, not the bare `/privacy` and `/terms`: the
+   bare addresses only redirect in the browser, and Google's verifier may not run JavaScript. This is a
+   separate owner step.
 
 **Provider off** (no client id, or an empty secret file): no Google button, `GET /api/auth/oauth/providers`
 lists no `google`, and starting a Google sign-in answers 404 `provider_disabled`; email and password
@@ -682,6 +686,12 @@ docker compose exec web python -m classbeat admin grant you@example.test
 - [ ] swag's `/config/log/nginx/classbeat.access.log` lines show no query string and no cookie.
 - [ ] The access-log rotation of section 7 step 6 is installed and scheduled (30 days at most), so the privacy notice is true.
 - [ ] Run an external header/TLS check of the domain (for example SSL Labs, securityheaders.com).
+- [ ] Language-prefixed pages (ADR 0027): `curl -s https://<host>/sv/privacy | grep -E 'lang="sv"|canonical|hreflang'`
+      shows the language, one canonical link on `/sv/privacy` and four alternates (en, sv, da, x-default);
+      `curl -s https://<host>/sitemap.xml` and `/robots.txt` answer 200; `curl -sI https://<host>/fr/privacy`
+      is `404`. No DNS, TLS, Cloudflare or swag change is needed for the prefix (swag sends every path but the SSE one to web).
+- [ ] The owner submits `https://<host>/sitemap.xml` in Google Search Console and Bing Webmaster Tools
+      (and enters the `/en/privacy` and `/en/terms` URLs in the Google consent screen, section 5a).
 - [ ] Backups run (section 12) and a restore has been tried.
 
 ## 10. Request body size

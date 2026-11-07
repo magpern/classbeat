@@ -152,6 +152,17 @@ async def test_the_canonical_form_has_no_trailing_slash(
             assert not any(u.endswith("/") for u in alternates(html).values()), path
 
 
+async def test_only_one_trailing_slash_is_the_same_page(
+    unreachable_database_url: str, static_dir: Path
+) -> None:
+    async with make_client(unreachable_database_url, static_dir=static_dir) as client:
+        for path in ("/sv/privacy//", "/sv//"):
+            html = (await client.get(path)).text
+            assert canonical(html) == [], path
+            assert "noindex" in html, path
+            assert lang_of(html) == "sv", path
+
+
 async def test_only_enabled_languages_are_alternates_and_a_disabled_one_is_noindex(
     unreachable_database_url: str, static_dir: Path
 ) -> None:

@@ -52,7 +52,8 @@ class SpaPages:
         if first not in self.by_lang_noindex:
             return self.plain_noindex
         # one trailing slash is the same page (the client replaces it away); nothing else is
-        page = ("/" + rest).rstrip("/") if rest else ""
+        page = "/" + rest if rest else ""
+        page = page.removesuffix("/")
         return self.public.get((first, page)) or self.by_lang_noindex[first]
 
 

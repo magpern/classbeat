@@ -1,6 +1,6 @@
 # ADR 0027: Language-prefixed URLs (`/en`, `/sv`, `/da`) for the whole site (#719)
 
-Status: Proposed (Architect's design, 2026-11-07; Opus review of this PR before any code). Owner
+Status: Accepted (Architect's design, 2026-11-07, Opus review of the design PR; implemented by P1 #743, P2 #744 and P3, which confirms the proxy and records the owner steps). Owner
 decision of 2026-11-07 (issue #719): the site is public at launch, so every language gets its own
 URL. This amends [ADR 0023](0023-multilingual.md) section 2 ("no language in the URL") and the
 non-goal of the same name in [docs/plans/multilingual.md](../plans/multilingual.md).
@@ -99,8 +99,9 @@ blocked, because a crawler must fetch a page and the JavaScript it needs to see 
 the public pages need their assets. Both routes precede the SPA catch-all (like the OAuth callback).
 
 **7. Mail.** New mail links use the **recipient's mail locale**, in both places that build them:
-`Ctx.url` (`emails/layout.py`: reset, verify, email change, new-network notice, class ready, site
-footer) and the unsubscribe **page** link in `emails/dispatch.py` (`unsubscribe_links(...).page`,
+`Ctx.url` (`emails/layout.py`: reset, verify, email change, new-network notice, class ready; the footer's
+bare site link does not go through `Ctx.url`, stays unprefixed and is redirected by the client like
+any old link) and the unsubscribe **page** link in `emails/dispatch.py` (`unsubscribe_links(...).page`,
 plus `sample_unsubscribe_links`): `{base}/{mail_locale}/reset#token=...`. The RFC 8058 **one-click URL
 `{base}/api/mail/unsubscribe?token=...` stays unprefixed** (it is an API route a mail client POSTs to;
 prefixing it would break one-click unsubscribe). `check_link` still accepts only our origin; its test
@@ -117,7 +118,7 @@ link (`'/en/...'`), with an allowlist for `/api`, `/oauth` and `/admin` and for 
 **9. Proxy and static serving.** Nothing to route differently: swag proxies all paths to web, and web's
 catch-all serves `index.html` (the Vite dev server falls back the same way). The proxy PR confirms that
 `swag-classbeat.subdomain.conf` and `scripts/check-prod-compose.sh` have no path allowlist, and records
-the **owner steps** in `docs/runbooks/vps-deploy.md` and "Waiting for the owner": enter
+the **owner steps** in `docs/runbooks/vps-deploy.md` (sections 5a and 9) and "Waiting for the owner": enter
 `https://<domain>/en/privacy` and `/en/terms` in the Google consent screen (the verifier may not run
 JavaScript, so the unprefixed redirect is not enough for it), and submit `https://<domain>/sitemap.xml` to
 search consoles. No DNS, TLS or Cloudflare change. Agents do not deploy.
@@ -164,3 +165,18 @@ head built from configuration); Sonnet for P3 unless it changes a guard.
 
 None. One step is the owner's at deploy time (item 9): the Google consent-screen URLs and the sitemap
 submission.
+
+## Confirmation (P3, #719, 2026-11-07)
+
+- **No path allowlist in the proxy files.** `docs/runbooks/swag-classbeat.subdomain.conf` has two
+  locations, the SSE regex `^/api/jobs/[^/]+/events$` and `/` (everything else, to web), so `/en/...`,
+  `/sitemap.xml` and `/robots.txt` pass as they are. `scripts/check-prod-compose.sh` reads the swag
+  file for headers, server-level directives and the SSE location only; it has no rule on which paths
+  exist (its own self-test accepts an added `location = /health`). Compose and the guard have no
+  path rule either. No change was needed.
+- **Owner steps** are in the runbook (5a, 9 and the post-deploy checklist) and "Waiting for the owner".
+- **Tests.** The e2e specs `e2e/tests/lang-*.spec.ts` (en, sv, da) cover the deep link through sign-in
+  (also with a language switch in the middle), the picker keeping page, query and fragment, old
+  unprefixed mail links reaching their page with the token (the page then removes the fragment itself, `useMailToken`; the spec compares what the page shows with and without the token), `<html lang>`, canonical and hreflang, the sitemap and
+  robots, and axe at 390 px. `backend/tests/test_mail_links.py` reads `frontend/src/App.tsx`'s route
+  table and checks every path a mail can emit.
