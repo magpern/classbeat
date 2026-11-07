@@ -139,6 +139,17 @@ async def test_a_disabled_language_is_refused(
     assert (await actor.get("/api/auth/session")).json()["locales"] == ["en", "sv"]
 
 
+async def test_with_only_english_enabled_the_session_offers_english_and_refuses_the_rest(
+    env: Env, make_actor: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The roadmap done-when for ``CLASSBEAT_LOCALES=en``, on the real session endpoint."""
+    monkeypatch.setattr(env.settings, "locales", "en")
+    actor = await make_actor(await env.user("en@example.com"))
+    assert (await actor.get("/api/auth/session")).json()["locales"] == ["en"]
+    assert (await actor.call("PUT", LOCALE, {"locale": "sv"})).status_code == 400
+    assert await stored(env, "en@example.com") is None
+
+
 async def test_the_key_is_required_and_a_session_too(env: Env, make_actor: Any) -> None:
     actor = await make_actor(await env.user("req@example.com"))
     assert (await actor.call("PUT", LOCALE, {})).status_code == 422

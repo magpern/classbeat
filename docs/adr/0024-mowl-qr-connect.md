@@ -79,7 +79,8 @@ connect), is rate limited before MOWL is called (10 per user and 30 per IP per 1
 `auth.mowl_qr_buckets`; every start counts), then requests the ticket, fetches the image and
 starts the wait (`QrWaits.start`), cancelling the user's earlier wait. It answers
 `{ticket_id, image, expires_at}`, where `ticket_id` is **our own random id**. The web process
-holds at most 100 running waits (a broker connection each); over it a start is `rate_limited`.
+holds at most 100 running waits (a broker connection each); over it a start is `rate_limited`, a user's own restart included (it is refused with 429 when the
+process already has 100 waits running, and that user's earlier wait keeps running).
 The wait ends at 15 minutes (`expired`), on a new start, on `DELETE` (the page was left), on a
 broker or TLS failure (`failed`) and on shutdown. The web runs as one process (as the job event
 hub already assumes), so in-memory state is enough; nothing about a wait is written to the

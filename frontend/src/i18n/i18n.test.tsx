@@ -189,6 +189,20 @@ describe('t, fallback and plurals', () => {
     )
   })
 
+  it('words the class profile label in Swedish and Danish for one interval and for several', async () => {
+    await loadCatalogue('sv')
+    await loadCatalogue('da')
+    const p = { length: '45 min' }
+    expect(translate('sv', 'class.profile.label', { ...p, count: 1 })).toBe('Passprofil, 45 min, 1 intervall')
+    expect(translate('sv', 'class.profile.label', { ...p, count: 3 })).toBe(
+      'Passprofil, 45 min, 3 intervaller',
+    )
+    expect(translate('da', 'class.profile.label', { ...p, count: 1 })).toBe('Holdprofil, 45 min, 1 interval')
+    expect(translate('da', 'class.profile.label', { ...p, count: 3 })).toBe(
+      'Holdprofil, 45 min, 3 intervaller',
+    )
+  })
+
   it('the active locale feeds t', () => {
     expect(getActiveLocale()).toBe('en')
     expect(t('format.soonUnknown')).toBe('a few minutes from now')

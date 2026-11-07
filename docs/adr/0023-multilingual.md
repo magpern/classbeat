@@ -1,7 +1,7 @@
 # ADR 0023: Multilingual support (milestone ML, #657)
 
-Status: Accepted, subject to review (the owner answered the plan's questions on 2026-11-06; this ADR
-is accepted when its PR (issue #662, ML0) merges after a `PASS`). The plan, revision 3, is
+Status: Accepted (the owner answered the plan's questions on 2026-11-06; accepted when its PR
+(issue #662, ML0) merged after a `PASS`; the milestone is done, ML0 to ML8 merged). The plan, revision 3, is
 [docs/plans/multilingual.md](../plans/multilingual.md); where the two differ, fix the plan or amend
 this ADR in the PR that changes it. Roadmap Amendment 16.
 

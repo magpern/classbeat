@@ -192,8 +192,13 @@ async def add_identity(
 async def remove_identity(db: AsyncSession, user_id: UUID, identity_id: UUID) -> str:
     """Unlink one of the user's own identities. ``"gone"`` for an unknown id and for another
     user's (the caller answers 404), ``"last"`` when it is the user's only sign-in method,
-    else ``"removed"``. The user row is locked, so two parallel unlinks cannot remove both."""
-    await db.execute(select(users.c.id).where(users.c.id == user_id).with_for_update())
+    else ``"removed"``. The user row is locked, so two parallel unlinks cannot remove both. ``FOR
+    NO KEY UPDATE``, as ``userlock.lock_user``: a plain ``FOR UPDATE`` would block the ``FOR KEY
+    SHARE`` the session middleware's ``auth_events`` insert takes on the user (#675, #713, ADR 0019
+    section 6)."""
+    await db.execute(
+        select(users.c.id).where(users.c.id == user_id).with_for_update(key_share=True)
+    )
     own = (
         (await db.execute(select(identities.c.id).where(identities.c.user_id == user_id)))
         .scalars()
