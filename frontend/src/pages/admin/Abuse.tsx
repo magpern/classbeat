@@ -28,7 +28,7 @@ export function Abuse() {
   const onMfaRequired = useMfaRequired()
   const write = useAdminWrite()
   const action = useAction()
-  const { pathname, navigate } = useRouter()
+  const { path: pathname, navigate } = useRouter()
   const minutes = windowOf(useQuery().get('minutes'))
   const [round, setRound] = useState(0)
   // What was loaded, for the window it belongs to: another window shows "Loading" until its answer.
