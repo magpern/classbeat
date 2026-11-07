@@ -18,6 +18,9 @@ INDEX = (
     "</html>\n"
 )
 PUBLIC = ("", "/privacy", "/terms")
+# Every language the default settings offer (manifest and default `locales`): the head tags and
+# the sitemap list these, so a new language is checked without editing a list here.
+OFFERED = locales.offered_locales(Settings(_env_file=None))  # pyright: ignore[reportCallIssue]
 
 
 @pytest.fixture
@@ -126,7 +129,7 @@ async def test_a_public_page_gets_lang_canonical_and_every_enabled_alternate(
 ) -> None:
     async with make_client(unreachable_database_url, static_dir=static_dir) as client:
         for page in PUBLIC:
-            for code in ("en", "sv", "da"):
+            for code in OFFERED:
                 response = await client.get(f"/{code}{page}")
                 html = response.text
                 assert response.status_code == 200
@@ -134,9 +137,7 @@ async def test_a_public_page_gets_lang_canonical_and_every_enabled_alternate(
                 assert lang_of(html) == code
                 assert canonical(html) == [f"{BASE}/{code}{page}"]
                 assert alternates(html) == {
-                    "en": f"{BASE}/en{page}",
-                    "sv": f"{BASE}/sv{page}",
-                    "da": f"{BASE}/da{page}",
+                    **{c: f"{BASE}/{c}{page}" for c in OFFERED},
                     "x-default": f"{BASE}/en{page}",
                 }
                 assert "noindex" not in html
@@ -322,10 +323,11 @@ async def test_the_sitemap_lists_the_public_pages_in_every_enabled_language(
         assert xml.startswith('<?xml version="1.0" encoding="UTF-8"?>')
         assert 'xmlns:xhtml="http://www.w3.org/1999/xhtml"' in xml
         locs = re.findall(r"<loc>([^<]+)</loc>", xml)
-        assert sorted(locs) == sorted(f"{BASE}/{c}{p}" for c in ("en", "sv", "da") for p in PUBLIC)
-        assert xml.count("<url>") == 9
+        assert sorted(locs) == sorted(f"{BASE}/{c}{p}" for c in OFFERED for p in PUBLIC)
+        urls = len(OFFERED) * len(PUBLIC)
+        assert xml.count("<url>") == urls
         # every url carries an alternate for each language and x-default
-        assert xml.count('rel="alternate"') == 9 * 4
+        assert xml.count('rel="alternate"') == urls * (len(OFFERED) + 1)
         assert f'hreflang="x-default" href="{BASE}/en/privacy"/>' in xml
         assert f'hreflang="da" href="{BASE}/da"/>' in xml
         for private in ("/admin", "/classes", "/signin"):

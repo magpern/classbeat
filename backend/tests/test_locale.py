@@ -19,13 +19,17 @@ from test_auth_signup import EMAIL, confirm
 from test_auth_signup import invite as signup_invite
 
 LOCALE = "/api/account/locale"
-OFFERED = ("en", "sv", "da")
+SUPPORTED = locales.SUPPORTED_LOCALES
+# What the default settings offer: every manifest language the default `locales` enables. A
+# manifest code that is not on by default (docs/developer-commands.md, "Adding a language", step 9)
+# stays supported but not offered, and these tests then rightly leave it out.
+OFFERED = locales.offered_locales(Settings(_env_file=None))  # pyright: ignore[reportCallIssue]
 
 
 @pytest.fixture(autouse=True)
 def three_languages(monkeypatch: pytest.MonkeyPatch) -> None:
-    """The manifest lists only English until ML3 ships catalogues; these tests need three."""
-    monkeypatch.setattr(locales, "SUPPORTED_LOCALES", OFFERED)
+    """Pin the offered set, whatever an earlier test patched."""
+    monkeypatch.setattr(locales, "SUPPORTED_LOCALES", SUPPORTED)
 
 
 def settings(**overrides: Any) -> Settings:

@@ -3,11 +3,13 @@ import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { App } from '../App'
 import { I18nProvider } from '../i18n/I18n'
+import { LOCALES } from '../i18n/locales'
 import { SIGNED_IN, fakeApi, json } from '../test/fakeApi'
 
 // ADR 0027: the language lives in the URL. These tests open the whole app at a URL, like a browser.
 
-const OFFERED = ['en', 'sv', 'da']
+// The manifest, so a new language is in these tests without anyone editing a list.
+const OFFERED = [...LOCALES]
 const ANON = { authenticated: false, csrf_token: 'csrf-anon', locales: OFFERED }
 const signedIn = (locale: string | null, locales = OFFERED) => ({
   ...SIGNED_IN,

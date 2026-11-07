@@ -13,6 +13,7 @@ from uuid import UUID
 
 import pytest
 
+from classbeat import locales
 from classbeat.auth import Keys
 from classbeat.config import Settings
 from classbeat.emails import REGISTRY, Kind, MailPrefs, send
@@ -138,7 +139,8 @@ def test_the_sample_and_real_unsubscribe_links_split_page_and_one_click() -> Non
     )
 
 
-@pytest.mark.parametrize("locale", ["en", "sv", "da"])
+# every language the default settings offer, so a new one is checked without editing this list
+@pytest.mark.parametrize("locale", locales.offered_locales(Settings(_env_file=None)))  # pyright: ignore[reportCallIssue]
 async def test_a_sent_optional_mail_links_the_page_in_the_recipients_language(
     locale: str,
 ) -> None:

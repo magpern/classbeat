@@ -48,9 +48,7 @@ for (const code of CODES) {
           found.filter((l) => l.rel === 'alternate').map((l) => [l.hreflang, pathOf(l.href)]),
         )
         expect(alternates).toEqual({
-          en: `/en${page}`,
-          sv: `/sv${page}`,
-          da: `/da${page}`,
+          ...Object.fromEntries(CODES.map((c) => [c, `/${c}${page}`])),
           'x-default': `/en${page}`,
         })
       })
@@ -59,7 +57,8 @@ for (const code of CODES) {
         await tab.goto(path)
         await expect(tab.locator('html')).toHaveAttribute('lang', code)
         await expect(tab.locator('head link[rel="canonical"]')).toHaveAttribute('href', new RegExp(`${path}$`))
-        await expect(tab.locator('head link[rel="alternate"][hreflang]')).toHaveCount(4)
+        // every language and x-default
+        await expect(tab.locator('head link[rel="alternate"][hreflang]')).toHaveCount(CODES.length + 1)
       })
     }
   })
