@@ -64,11 +64,6 @@ everywhere; a change here changes both places in the same PR. ADR 0023 has the d
 
 ## Decisions and open notes
 
-- **"1 intervals" (open).** English `class.profile.label` reads "Class profile, {length}, {count}
-  intervals" and is not pluralised, so a one-interval class reads "1 intervals". Both catalogues
-  keep the same shape and say "intervaller" for every count. Decide with the translation whether
-  the key becomes a plural in English first (then sv and da follow with `interval` / `intervaller`);
-  until then it is a known quirk, not a translation error.
 - **`class.revisions.segments`** is `{count} segment` (sv) and `{count} segmenter` (da): the
   Swedish noun is invariant, the Danish one is not, and the key is not a plural in English.
 - **"first quarter"** (`class.rule.hard_too_early`) is the first 25% of the class: "passets första fjärdedel" / "holdets første fjerdedel", never "kvart" / "kvarter" (a quarter of an hour).
@@ -78,6 +73,4 @@ everywhere; a change here changes both places in the same PR. ADR 0023 has the d
 - **Rate limits** read "sakta ner" (sv) and "sætte tempoet ned" (da).
 - **`job.toolCalls`** uses "gång(er)" (sv) and "gang(e)" (da) because the English key does not
   pluralise.
-- **`plan.quota.feature.new`** has an English singular/plural mismatch ("Take it out" / "Take them
-  out"); the translations follow the English faithfully.
 - **Danish gender.** "konto" is common gender: "en konto", "kontoen".

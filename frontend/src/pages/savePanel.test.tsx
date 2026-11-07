@@ -253,7 +253,7 @@ describe('Save', () => {
     expect(alert).toHaveTextContent(sentence)
     expect(alert).not.toHaveTextContent('what your plan allows for now')
     // The version exists already: no sentence asks for a length to be chosen.
-    expect(alert).not.toHaveTextContent(/Choose a shorter length|Take them out and try again/)
+    expect(alert).not.toHaveTextContent(/Choose a shorter length|Take that (part )?out and try again/)
   })
 
   it.each(QUOTA_REFUSALS)('words the %s plan refusal of an Update the same way', async (_kind, detail, sentence) => {
@@ -266,7 +266,7 @@ describe('Save', () => {
     fireEvent.click(within(screen.getByRole('group', { name: 'Confirm' })).getByRole('button', { name: 'Update workout' }))
     const alert = await screen.findByRole('alert')
     expect(alert).toHaveTextContent(sentence)
-    expect(alert).not.toHaveTextContent(/Choose a shorter length|Take them out and try again/)
+    expect(alert).not.toHaveTextContent(/Choose a shorter length|Take that (part )?out and try again/)
   })
 })
 

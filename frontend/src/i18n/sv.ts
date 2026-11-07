@@ -498,7 +498,10 @@ const sv: Catalogue = {
   // The class card, my classes and the class page.
   'class.card.tss': 'TSS {value}',
   // The screen-reader label of the small class profile (MiniProfile). One form: English says "intervals" for every count.
-  'class.profile.label': 'Passprofil, {length}, {count} intervaller',
+  'class.profile.label': {
+    one: 'Passprofil, {length}, {count} intervall',
+    other: 'Passprofil, {length}, {count} intervaller',
+  },
   'class.profile.empty': 'Ingen passprofil ännu',
   'class.list.title': 'Mina pass',
   'class.list.design': 'Utforma ett pass',
@@ -1407,8 +1410,8 @@ const sv: Catalogue = {
     'Den versionen använder något som din plan inte omfattar. Välj en annan version.',
   'plan.quota.feature.versionNamed':
     'Den versionen använder {name}, vilket din plan inte omfattar. Välj en annan version.',
-  'plan.quota.feature.new': 'Din plan omfattar inte en del av det här passet. Ta bort den och försök igen.',
-  'plan.quota.feature.newNamed': 'Din plan omfattar inte {name}. Ta bort dem och försök igen.',
+  'plan.quota.feature.new': 'Din plan omfattar inte en del av det här passet. Ta bort delen och försök igen.',
+  'plan.quota.feature.newNamed': 'Din plan omfattar inte {name}. Ta bort det och försök igen.',
   'plan.quota.saves.window.day': 'de senaste 24 timmarna',
   'plan.quota.saves.window.hour': 'den senaste timmen',
   'plan.quota.saves.later.day': 'Försök igen i morgon.',

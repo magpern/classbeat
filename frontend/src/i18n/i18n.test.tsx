@@ -179,6 +179,16 @@ describe('t, fallback and plurals', () => {
     expect(plural('en', 0, { other: 'x' })).toBe('x')
   })
 
+  it('words the class profile label for one interval and for several', () => {
+    const p = { length: '45 min' }
+    expect(translate('en', 'class.profile.label', { ...p, count: 1 })).toBe(
+      'Class profile, 45 min, 1 interval',
+    )
+    expect(translate('en', 'class.profile.label', { ...p, count: 3 })).toBe(
+      'Class profile, 45 min, 3 intervals',
+    )
+  })
+
   it('the active locale feeds t', () => {
     expect(getActiveLocale()).toBe('en')
     expect(t('format.soonUnknown')).toBe('a few minutes from now')

@@ -69,7 +69,7 @@ const da: Catalogue = {
   'confirm.submit': 'Bekræft konto',
   'emailChange.title': 'Bekræft din nye e-mailadresse',
   'emailChange.noLink': 'Denne side kræver linket fra bekræftelsesmailen.',
-  'emailChange.changedTitle': 'Mailadressen er ændret',
+  'emailChange.changedTitle': 'E-mailadressen er ændret',
   'emailChange.changed': 'Din konto bruger nu {email}. Andre enheder er blevet logget ud.',
   'emailChange.back': 'Tilbage til din konto',
   'emailChange.signInFirst':
@@ -158,7 +158,7 @@ const da: Catalogue = {
   'error.reason.invite_invalid': 'Invitationen til denne oprettelse er ikke gyldig længere. Bed om en ny.',
   'error.reason.signups_closed': 'Oprettelse af konti er lukket lige nu.',
   'error.reason.password_rule': 'Vælg en adgangskode på 12 til 128 tegn.',
-  'error.reason.invalid_credentials': 'Mailadressen eller adgangskoden er forkert.',
+  'error.reason.invalid_credentials': 'E-mailadressen eller adgangskoden er forkert.',
   'error.reason.wrong_password': 'Det er ikke den adgangskode, du valgte, da du oprettede dig.',
   'error.reason.invalid_token':
     'Dette link er ikke gyldigt længere. Det kan være udløbet eller allerede brugt.',
@@ -488,7 +488,10 @@ const da: Catalogue = {
   // The class card, my classes and the class page.
   'class.card.tss': 'TSS {value}',
   // The screen-reader label of the small class profile (MiniProfile). One form: English says "intervals" for every count.
-  'class.profile.label': 'Holdprofil, {length}, {count} intervaller',
+  'class.profile.label': {
+    one: 'Holdprofil, {length}, {count} interval',
+    other: 'Holdprofil, {length}, {count} intervaller',
+  },
   'class.profile.empty': 'Ingen holdprofil endnu',
   'class.list.title': 'Mine hold',
   'class.list.design': 'Design et hold',
@@ -1391,8 +1394,8 @@ const da: Catalogue = {
     'Den version bruger noget, som din plan ikke omfatter. Vælg en anden version.',
   'plan.quota.feature.versionNamed':
     'Den version bruger {name}, som din plan ikke omfatter. Vælg en anden version.',
-  'plan.quota.feature.new': 'Din plan omfatter ikke en del af dette hold. Tag den ud, og prøv igen.',
-  'plan.quota.feature.newNamed': 'Din plan omfatter ikke {name}. Tag dem ud, og prøv igen.',
+  'plan.quota.feature.new': 'Din plan omfatter ikke en del af dette hold. Tag den del ud, og prøv igen.',
+  'plan.quota.feature.newNamed': 'Din plan omfatter ikke {name}. Tag det ud, og prøv igen.',
   'plan.quota.saves.window.day': 'de seneste 24 timer',
   'plan.quota.saves.window.hour': 'den seneste time',
   'plan.quota.saves.later.day': 'Prøv igen i morgen.',
@@ -1514,7 +1517,7 @@ const da: Catalogue = {
   'consent.keep': 'Behold mit samtykke',
 
   // Account: email address, password, delete, devices, email preferences, export.
-  'cred.email.title': 'Mailadresse',
+  'cred.email.title': 'E-mailadresse',
   'cred.email.current': 'Din adresse er {email}.',
   'cred.email.sent':
     'Hvis {email} kan bruges, er et bekræftelseslink på vej dertil. Åbn det, mens du er logget ind, for at gøre det færdigt. Din adresse ændres først da.',
