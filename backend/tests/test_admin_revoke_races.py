@@ -1,5 +1,4 @@
-# ruff: noqa: F811 - the race helpers' fixtures are imported and named as parameters
-"""Admin disable and delete racing the session middleware's location event (#675, ADR 0019 §6).
+"""Admin disable and delete, and the user's own delete, racing a location event (#675).
 
 ``POST /api/admin/users/{id}/disable`` and ``DELETE /api/admin/users/{id}`` lock the target's
 ``users`` row and then delete every session of the target. The session middleware, on a request
@@ -23,9 +22,8 @@ from uuid import UUID
 
 import httpx
 import pytest
-from sqlalchemy.engine import make_url
-
 from sqlalchemy import text
+from sqlalchemy.engine import make_url
 from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 
 from authtools import Env, running_env

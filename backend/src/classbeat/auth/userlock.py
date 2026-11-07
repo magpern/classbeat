@@ -1,9 +1,10 @@
 """The user row lock that orders sign-in, re-authentication, linking, reset and revokes (#639).
 
 ADR 0019 section 6: every transaction that creates or rotates a session, links an identity or
-revokes a user's sessions on the reset, sign-out-everywhere, ``admin mfa-reset`` or ``keys wipe``
-TOTP-reset path (#643) takes ``SELECT ... FROM users WHERE id = ... FOR NO KEY UPDATE`` as its
-first lock (a reset consumes its token first, which locks only the token row).
+revokes a user's sessions on the reset, sign-out-everywhere, ``admin mfa-reset``, ``keys wipe``
+TOTP-reset (#643) or TOTP-removal (#675) path takes ``SELECT ... FROM users WHERE id = ... FOR NO
+KEY UPDATE`` as its first lock (a reset consumes its token first, which locks only the token row).
+The admin disable and delete take the same mode through ``admin_accounts.get_account`` (#675).
 
 Why an explicit lock, not the locks the statements take anyway: inserting a session or an
 identity takes only ``FOR KEY SHARE`` on ``users``, which does not conflict with the reset's

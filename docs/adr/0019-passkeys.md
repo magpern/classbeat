@@ -296,8 +296,19 @@ A new system table `webauthn_challenges`, modelled on `oauth_flows` (ADR 0003 §
      consuming a reset token, which locks only the token row and is never taken in the other
      order). That names the register finish (§4), the **sign-in finish** (§5, step 5), the
      **re-auth finish** (§8), the remove route (§7), the reset (§9), `mfa-reset`,
-     `POST /api/auth/logout-all` and the TOTP reset of `keys wipe` (ADR 0004 §2); the last three
-     take it before they delete the TOTP or any session (#643). *(#639, #643, 2026-11-06)* The mode
+     `POST /api/auth/logout-all`, the TOTP reset of `keys wipe` (ADR 0004 §2) and
+     `DELETE /api/auth/mfa/totp`; the last four take it before they delete the TOTP or any
+     session (#643, #675). *(#639, #643, 2026-11-06)* `keys wipe` deletes the user's
+     `connections` rows (`connections.delete_all_in`) before it takes the user lock, in the same
+     transaction. That order cannot deadlock: no flow that holds the user lock takes a
+     `connections` row lock afterwards, except the cascade of an account delete (the user's own
+     or the admin's), and both run only in `web`, which the wipe refuses to run beside (the app
+     role must have no connection, ADR 0004 §2). *(#675, 2026-11-07)* The admin disable and
+     delete lock the target's row in the same mode (`admin_accounts.get_account`; not
+     `lock_user`, which reads `password_hash`, a column `classbeat_maint` may not read), and every
+     account delete deletes the sessions before the `users` row: `DELETE FROM users` locks the
+     row `FOR UPDATE` before its cascade reaches the sessions, which deadlocked the same way. The
+     mode
      is `FOR NO KEY UPDATE`, not `FOR UPDATE`: two of them conflict, which is all this order needs,
      but neither blocks the `FOR KEY SHARE` of a foreign-key insert that references `users`.
      `FOR UPDATE` deadlocked against the session middleware, which locks a session row and then

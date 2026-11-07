@@ -1,8 +1,9 @@
 # ruff: noqa: F811 - penv is imported from test_auth_reset_races and named as a parameter
-"""Sign out everywhere and the two MFA resets racing a sign-in (#643, ADR 0019 section 6).
+"""Sign out everywhere, the two MFA resets and the TOTP removal racing a sign-in (#643, #675).
 
 ``POST /api/auth/logout-all``, ``admin mfa-reset`` (``accounts.reset_mfa``) and the TOTP reset of
-``keys wipe`` (``operator.wipe_user``) revoke every session of a user. Each takes the ``users``
+``keys wipe`` (``operator.wipe_user``) revoke every session of a user; ``DELETE
+/api/auth/mfa/totp`` every other one (#675, ADR 0019 section 6). Each takes the ``users``
 row lock (``FOR NO KEY UPDATE``) before it deletes anything, so a sign-in committing at the same
 moment is waited for and its session is revoked too, instead of surviving a "revoke everything".
 
@@ -212,5 +213,48 @@ async def test_the_keys_wipe_totp_reset_and_a_location_event_both_succeed(
     )
     assert moved.status_code == 200
     assert await sessions_of(penv, user_id) == 0
+    assert await totp_rows(penv, user_id) == 0
+    assert await location_events(penv) == 1
+
+
+# --- removing TOTP revokes the other sessions under the same lock (#675) -----------------------
+
+
+async def remove_totp(browser: Browser, other: Env) -> httpx.Response:
+    """``DELETE /api/auth/mfa/totp`` from ``browser`` (needs step-up), on ``other``'s client."""
+    browser.env = other
+    return await browser.request("DELETE", "/api/auth/mfa/totp")
+
+
+async def stepped_up_with_totp(env: Env, browser: Browser, user_id: UUID) -> None:
+    await enroll(browser)
+    await env.run("UPDATE sessions SET stepup_at = now() WHERE user_id = :u", u=user_id)
+
+
+async def test_a_sign_in_inside_its_transaction_makes_the_totp_removal_wait(
+    env: Env, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    user_id = await user_with_password(env)
+    here = Browser(env)
+    assert (await here.sign_in(EMAIL)).status_code == 200
+    await stepped_up_with_totp(env, here, user_id)
+    response = await a_sign_in_parked_against(
+        env, monkeypatch, lambda other: remove_totp(here, other)
+    )
+    assert response.status_code == 204, response.text
+    assert await sessions_of(env, user_id) == 1  # only the remover's: the parked sign-in's went
+    assert await totp_rows(env, user_id) == 0
+
+
+async def test_the_totp_removal_and_a_location_event_both_succeed(
+    penv: Env, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    user_id, first, second = await two_sessions(penv)
+    await stepped_up_with_totp(penv, second, user_id)
+    moved, response = await beside_a_location_event(
+        penv, monkeypatch, first.elsewhere(penv), lambda other: remove_totp(second, other)
+    )
+    assert (moved.status_code, response.status_code) == (200, 204), response.text
+    assert await sessions_of(penv, user_id) == 1
     assert await totp_rows(penv, user_id) == 0
     assert await location_events(penv) == 1

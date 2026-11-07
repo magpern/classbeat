@@ -264,6 +264,12 @@ Every state-changing request (`POST`, `PUT`, `PATCH`, `DELETE`) must pass two ch
   against the session middleware, which locks a session row and then inserts an `auth_events`
   row for its user (#632). In the reset the explicit lock takes the same mode as the
   `UPDATE users` that follows it; it states the ADR 0019 §6 order rather than adding a wait.
+  *(#675, 2026-11-07)* Removing TOTP (`DELETE /api/auth/mfa/totp`), which signs out the
+  user's other sessions, takes the same lock first, so a sign-in in flight does not keep its
+  session past it. The admin disable and delete lock the target's row in the same mode
+  (`FOR UPDATE` deadlocked them against that middleware insert too), and an account delete,
+  the user's own or the admin's, deletes the sessions before the `users` row, whose own
+  `DELETE` locks it `FOR UPDATE` before the cascade reaches the sessions (ADR 0019 §6).
   *(#643, 2026-11-06)* The other paths that revoke every session of a user take the same
   lock first, before they delete the TOTP or any session: **sign out everywhere**
   (`POST /api/auth/logout-all`), **`admin mfa-reset`** (`accounts.reset_mfa`) and the **TOTP

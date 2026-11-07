@@ -258,6 +258,9 @@ async def remove_totp(
     session = _session(info)
     _need_totp(session)
     async with system_session(_factory(request)) as db:
+        # First, as every revoke (#675, ADR 0019 section 6): a sign-in in flight commits first
+        # and loses its session below, instead of keeping it past "sign out the others".
+        await lock_user(db, ctx.user_id)
         removed = await mfa.remove_totp(db, ctx.user_id)
         await clear_mfa(db, session.id)
         await revoke_user_sessions(db, ctx.user_id, except_id=session.id)
