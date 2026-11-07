@@ -16,8 +16,7 @@ const USER = /^\/admin\/users\/([0-9a-fA-F-]{36})$/
  * whose role is `admin`; the server's `whoami` decides in `AdminLayout`.
  */
 export function AdminPage() {
-  const { pathname } = useRouter()
-  const path = pathname.replace(/\/+$/, '') || '/'
+  const { path } = useRouter()
   const user = USER.exec(path)
   let page
   if (user?.[1] !== undefined) page = <UserDetail key={user[1]} userId={user[1]} />

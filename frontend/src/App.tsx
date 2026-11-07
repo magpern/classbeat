@@ -1,4 +1,4 @@
-import { lazy, Suspense } from 'react'
+import { lazy, Suspense, type ReactNode } from 'react'
 import { AccountLocale } from './auth/AccountLocale'
 import { GuardProvider } from './auth/GuardProvider'
 import { SessionProvider, useSession } from './auth/SessionContext'
@@ -27,6 +27,7 @@ import { SignUpConfirmPage } from './pages/SignUpConfirmPage'
 import { SignUpPage } from './pages/SignUpPage'
 import { SpotifyPage } from './pages/SpotifyPage'
 import { TermsPage } from './pages/TermsPage'
+import { hasUnknownLanguage, isAdminPath } from './router/paths'
 import { Link, RouterProvider, useRouter } from './router/Router'
 
 // The admin area is its own chunk, fetched only for a session whose role is admin or whose
@@ -61,59 +62,65 @@ function Admin() {
   )
 }
 
+// The route table: neutral paths, matched after the language prefix is taken off (ADR 0027). No
+// first segment here may be two lowercase letters (a test pins it): that shape is a language code.
+const PAGES: Readonly<Record<string, () => ReactNode>> = {
+  '/signin': () => <SignInPage />,
+  '/signin/email': () => <ProviderEmailPage />,
+  '/signup': () => <SignUpPage />,
+  '/signup/confirm': () => <SignUpConfirmPage />,
+  '/reset': () => <ResetPage />,
+  '/email-change': () => <EmailChangePage />,
+  '/unsubscribe': () => <UnsubscribePage />,
+  '/privacy': () => <PrivacyPage />,
+  '/terms': () => <TermsPage />,
+  '/help': () => <HelpPage />,
+  '/classes': () => <ClassesPage />,
+  '/classes/new': () => <NewClassPage />,
+  '/music': () => <MusicPage />,
+  '/account': () => <AccountPage />,
+  '/account/spotify': () => <SpotifyPage />,
+}
+
+/** Every path pattern the app answers, for the guard that keeps two-letter first segments free. */
+export const ROUTE_PATHS: readonly string[] = [
+  '/',
+  ...Object.keys(PAGES),
+  '/jobs/:id',
+  '/classes/:id',
+  '/admin',
+  '/admin/*',
+]
+
 function Routes() {
   const t = useT()
-  const { pathname } = useRouter()
+  const { lang, path, pathname } = useRouter()
   const { session } = useSession()
-  const path = pathname.replace(/\/+$/, '') || '/'
+  // An unprefixed URL shows nothing but the loading state: `AccountLocale` redirects it once the
+  // session has answered, and no page may mount (and, for a mail link, strip its token) before.
+  if (lang === null && !isAdminPath(path) && !hasUnknownLanguage(pathname)) {
+    return (
+      <Card title={t('shell.requireAuth.loadingTitle')}>
+        <p>{t('common.loading')}</p>
+      </Card>
+    )
+  }
   const job = /^\/jobs\/([0-9a-fA-F-]{36})$/.exec(path)
   if (job?.[1] !== undefined) return <JobPage key={job[1]} jobId={job[1]} />
   const cls = /^\/classes\/([0-9a-fA-F-]{36})$/.exec(path)
   if (cls?.[1] !== undefined) return <ClassPage key={cls[1]} classId={cls[1]} />
-  if (path === '/admin' || path.startsWith('/admin/')) return <Admin />
-  switch (path) {
-    case '/':
-      return session?.authenticated === true ? <HomePage /> : <LandingPage />
-    case '/signin':
-      return <SignInPage />
-    case '/signin/email':
-      return <ProviderEmailPage />
-    case '/signup':
-      return <SignUpPage />
-    case '/signup/confirm':
-      return <SignUpConfirmPage />
-    case '/reset':
-      return <ResetPage />
-    case '/email-change':
-      return <EmailChangePage />
-    case '/unsubscribe':
-      return <UnsubscribePage />
-    case '/privacy':
-      return <PrivacyPage />
-    case '/terms':
-      return <TermsPage />
-    case '/help':
-      return <HelpPage />
-    case '/classes':
-      return <ClassesPage />
-    case '/classes/new':
-      return <NewClassPage />
-    case '/music':
-      return <MusicPage />
-    case '/account':
-      return <AccountPage />
-    case '/account/spotify':
-      return <SpotifyPage />
-    default:
-      return (
-        <section className="card">
-          <h1 className="card__title">{t('shell.notFound')}</h1>
-          <p>
-            <Link to="/">{t('shell.backToStart')}</Link>
-          </p>
-        </section>
-      )
-  }
+  if (isAdminPath(path)) return <Admin />
+  if (path === '/') return session?.authenticated === true ? <HomePage /> : <LandingPage />
+  const page = Object.hasOwn(PAGES, path) ? PAGES[path] : undefined
+  if (page !== undefined && lang !== null) return page()
+  return (
+    <section className="card">
+      <h1 className="card__title">{t('shell.notFound')}</h1>
+      <p>
+        <Link to="/">{t('shell.backToStart')}</Link>
+      </p>
+    </section>
+  )
 }
 
 export function App() {

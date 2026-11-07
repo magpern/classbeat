@@ -173,7 +173,7 @@ function Frame({ rootClass, top, mainClass, alert, bottom, children }: FrameProp
 /** The page frame: signed out, a plain header; signed in, the navigation for the width (ADR 0013 section 4). */
 export function AppShell({ children }: { children: ReactNode }) {
   const { status, session, refresh } = useSession()
-  const { pathname, navigate } = useRouter()
+  const { path: pathname, navigate } = useRouter()
   const layout = useLayout()
   const t = useT()
   const action = useAction()

@@ -3,6 +3,7 @@ import { login } from '../api/auth'
 import { oauthOutcomeMessage } from '../api/messages'
 import { useSession } from '../auth/SessionContext'
 import { useT } from '../i18n/I18n'
+import { bestLocale, isLocale } from '../i18n/locales'
 import { AuthScreen } from '../components/auth/AuthScreen'
 import { safeReturnTo, useQuery, useRouter } from '../router/Router'
 
@@ -32,8 +33,13 @@ export function SignInPage() {
       noticeLink={outcome === 'no_account' ? { to: '/signup', text: t('auth.createAccount') } : null}
       onSubmit={async ({ email, password, captchaToken }) => {
         const { role } = await login(email, password, captchaToken)
-        await refresh()
-        navigate(returnTo ?? (role === 'admin' ? '/admin' : '/account'))
+        const next = await refresh()
+        // After sign-in the account's language wins once, as it does for a provider sign-in (the
+        // backend's unprefixed redirect); an account that follows the browser keeps the URL's
+        // language (ADR 0027 section 3). `returnTo` stays language-neutral.
+        const saved = next?.user?.locale ?? null
+        const lang = saved !== null && isLocale(saved) ? bestLocale(next?.locales ?? [], saved) : undefined
+        navigate(returnTo ?? (role === 'admin' ? '/admin' : '/account'), { lang })
       }}
     />
   )

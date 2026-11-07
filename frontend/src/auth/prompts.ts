@@ -1,4 +1,5 @@
 import { createContext, useContext } from 'react'
+import { neutralize } from '../router/paths'
 
 /** The user closed a re-authentication or step-up prompt instead of answering it. */
 export class PromptCancelled extends Error {
@@ -29,6 +30,7 @@ export function useGuard(): Guard {
 export function reauthReturnTo(path: string, search: string, hash = ''): string {
   const params = new URLSearchParams(search)
   params.set('oauth', 'reauthed')
-  return `${path}?${params.toString()}${hash}`
+  // Language-neutral like every return_to: the prefix is added when it is followed (ADR 0027 section 4).
+  return `${neutralize(path)}?${params.toString()}${hash}`
 }
 

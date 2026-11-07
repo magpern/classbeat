@@ -41,7 +41,7 @@ describe('CookieNotice', () => {
 
   it('links to the privacy notice', () => {
     mount()
-    expect(screen.getByRole('link', { name: 'privacy notice' })).toHaveAttribute('href', '/privacy')
+    expect(screen.getByRole('link', { name: 'privacy notice' })).toHaveAttribute('href', '/en/privacy')
   })
 
   it('does not crash when storage is unavailable and shows on every load', () => {

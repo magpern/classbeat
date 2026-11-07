@@ -45,7 +45,7 @@ describe('sign-up confirmation page', () => {
     const api = fakeApi({ 'POST /api/auth/signup/confirm': { status: 'created' } })
     renderAt('/signup/confirm#token=secret-token')
     expect(window.location.hash).toBe('')
-    expect(window.location.pathname).toBe('/signup/confirm')
+    expect(window.location.pathname).toBe('/en/signup/confirm')
 
     type('Password', 'correct horse battery')
     fireEvent.click(screen.getByRole('button', { name: 'Confirm account' }))
@@ -97,7 +97,7 @@ describe('provider email page', () => {
     expect(await screen.findByText(/a second try would not send anything/)).toBeInTheDocument()
     expect(screen.getByRole('link', { name: /Start the provider sign-in again/ })).toHaveAttribute(
       'href',
-      '/signin',
+      '/en/signin',
     )
     expect(screen.queryByRole('button', { name: 'Send confirmation link' })).toBeNull()
     expect(api.to('POST', '/api/auth/oauth/pending/email')[0]?.body).toEqual({
@@ -116,7 +116,7 @@ describe('provider email page', () => {
     fakeApi({ 'GET /api/auth/oauth/pending': { pending: true, provider: 'microsoft', awaiting_email: true } })
     renderAt('/signin?oauth=email_needed')
     expect(await screen.findByText('Confirm your email address')).toBeInTheDocument()
-    expect(window.location.pathname).toBe('/signin/email')
+    expect(window.location.pathname).toBe('/en/signin/email')
   })
 })
 
@@ -215,7 +215,7 @@ describe('mail links opened in an already open tab', () => {
     renderAt('/reset')
     expect(screen.getByRole('button', { name: 'Send reset link' })).toBeInTheDocument()
 
-    window.history.pushState(null, '', '/reset#token=later')
+    window.history.pushState(null, '', '/en/reset#token=later')
     window.dispatchEvent(new HashChangeEvent('hashchange'))
 
     expect(await screen.findByRole('button', { name: 'Change password' })).toBeInTheDocument()
