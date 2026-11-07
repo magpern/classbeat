@@ -1,5 +1,5 @@
 import { useLocale, useT } from '../i18n/I18n'
-import { LOCALES, resolveBrowserLocale, type Locale } from '../i18n/locales'
+import { LOCALES, bestLocale, type Locale } from '../i18n/locales'
 import { useRouter } from '../router/Router'
 
 const NAMES: Readonly<Record<string, string>> = { en: 'English', sv: 'Svenska', da: 'Dansk' }
@@ -15,14 +15,15 @@ export function languageName(code: string): string {
 
 /**
  * What choosing a language does (ADR 0027 section 2): save it where the caller says, then go to the
- * same page under the new prefix. `null` follows the browser again. The picker is the only writer.
+ * same page under the new prefix. `null` follows the browser again, among the languages the server
+ * offers. The picker is the only writer.
  */
-export function useChooseLanguage(): (choice: Locale | null) => void {
+export function useChooseLanguage(offered: readonly string[]): (choice: Locale | null) => void {
   const { setLocale } = useLocale()
   const { switchLanguage } = useRouter()
   return (choice) => {
     setLocale(choice)
-    switchLanguage(choice ?? resolveBrowserLocale())
+    switchLanguage(choice ?? bestLocale(offered, null))
   }
 }
 
@@ -30,7 +31,7 @@ export function useChooseLanguage(): (choice: Locale | null) => void {
 export function LanguagePicker({ offered }: { offered: readonly string[] }) {
   const { locale } = useLocale()
   const { lang } = useRouter()
-  const choose = useChooseLanguage()
+  const choose = useChooseLanguage(offered)
   // The URL's language is the one on show, even while its catalogue is still loading.
   const shown = lang ?? locale
   const t = useT()

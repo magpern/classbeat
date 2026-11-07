@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test'
+import { expect, test, type Page } from '@playwright/test'
 import { CODES, WORDS, whereWithHash } from './lang-url-helpers'
 
 // #719 (ADR 0027 section 3): addresses without a language are a permanent contract (mail already sent
@@ -6,6 +6,21 @@ import { CODES, WORDS, whereWithHash } from './lang-url-helpers'
 // fragment, which is where a mail token lives and never reaches the server.
 
 const TOKEN = 'old-mail-token_1234567890abcdef'
+
+// What each page shows only when it received a token, and never while it is still loading. The
+// selectors use no words, so one table serves every language. With the made-up token the server
+// says `/reset`'s link is not valid: that card links to a new request, whereas without a token the
+// page asks for an email address.
+const TOKEN_STATE: Record<string, (page: Page, code: string) => ReturnType<Page['locator']>> = {
+  // the choose-password form, or the invalid-link card once the check answered; never the email form
+  '/reset': (page, code) => page.locator(`main input[type="password"], main a[href="/${code}/reset"]`),
+  // the confirm view: the button that spends the token (a link without a token has none)
+  '/unsubscribe': (page) => page.locator('main button.button'),
+  // signed out with a token: the sign-in step (without a token there is only an error notice)
+  '/email-change': (page, code) => page.locator(`main a.button[href="/${code}/signin"]`),
+  // the form that sets the password (without a token only a link to sign-up)
+  '/signup/confirm': (page) => page.locator('main input[type="password"]'),
+}
 
 for (const code of CODES) {
   test.describe(`browser in ${WORDS[code].name}`, () => {
@@ -28,6 +43,9 @@ for (const code of CODES) {
         expect(whereWithHash(page)).toBe(`/${code}${path}`)
         await expect(page.locator('html')).toHaveAttribute('lang', code)
         await expect.poll(async () => main.innerText()).not.toBe(withoutToken)
+        // A dropped token must not pass on a transient state: the page is in its token state.
+        await expect(TOKEN_STATE[path]!(page, code).first()).toBeVisible()
+        if (path === '/reset') await expect(page.locator('main input[type="email"]')).toHaveCount(0)
       })
     }
 

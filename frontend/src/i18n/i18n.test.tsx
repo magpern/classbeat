@@ -11,6 +11,7 @@ import {
   isLocale,
   LOCALE_STORAGE_KEY,
   LOCALES,
+  bestLocale,
   resolveBrowserLocale,
   setActiveLocale,
   storeLocale,
@@ -96,6 +97,21 @@ describe('browser resolution', () => {
     })
     languages(['en'])
     expect(resolveBrowserLocale()).toBe('en')
+  })
+})
+
+describe('bestLocale (the language of a URL that names none)', () => {
+  it('never returns a language the server does not offer', () => {
+    window.localStorage.setItem('cb-locale', 'da')
+    vi.spyOn(window.navigator, 'languages', 'get').mockReturnValue(['da-DK'])
+    expect(bestLocale(['en', 'sv'], 'da')).toBe('en') // saved account language not offered
+    expect(bestLocale(['sv'], 'da')).toBe('sv') // English not offered either
+    expect(bestLocale(['sv', 'da'], 'zz')).toBe('da') // an unknown saved value is ignored
+    expect(bestLocale(['xx', 'fr'], 'da')).toBe('en') // nothing usable offered: a manifest code anyway
+  })
+
+  it('takes any supported language while the server has not said', () => {
+    expect(bestLocale([], 'sv')).toBe('sv')
   })
 })
 

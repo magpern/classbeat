@@ -389,3 +389,20 @@ async def test_without_static_dir_the_new_routes_are_absent_too(
     async with make_client(unreachable_database_url) as client:
         assert (await client.get("/en/privacy")).status_code == 404
         assert (await client.get("/sitemap.xml")).status_code == 404
+
+
+async def test_head_answers_like_get_on_the_seo_files_and_pages(
+    unreachable_database_url: str, static_dir: Path
+) -> None:
+    async with make_client(unreachable_database_url, static_dir=static_dir) as client:
+        for path, status in (
+            ("/sitemap.xml", 200),
+            ("/robots.txt", 200),
+            ("/da/privacy", 200),
+            ("/fr/privacy", 404),
+        ):
+            got, head = await client.get(path), await client.head(path)
+            assert head.status_code == got.status_code == status, path
+            assert head.content == b"", path
+            assert head.headers["content-type"] == got.headers["content-type"], path
+            assert head.headers["cache-control"] == got.headers["cache-control"], path

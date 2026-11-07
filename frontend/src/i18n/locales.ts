@@ -95,7 +95,8 @@ export function bestLocale(offered: readonly string[], account: string | null): 
   } catch {
     /* navigator blocked: stay on the default */
   }
-  return DEFAULT_LOCALE
+  // English unless the server does not offer it; then the first offered code the manifest has.
+  return allowed(DEFAULT_LOCALE) ? DEFAULT_LOCALE : (LOCALES.find(allowed) ?? DEFAULT_LOCALE)
 }
 
 // The locale the formatters and `t` use. The provider sets it; plain functions (no hook) read it.

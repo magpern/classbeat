@@ -10,11 +10,12 @@ const FOLLOW = ''
 /** The Account page's language: saved on the account; "Follow this browser" saves nothing. */
 export function LanguageSetting() {
   const { session, refresh } = useSession()
-  const chooseLanguage = useChooseLanguage()
+  const offered = session?.locales ?? []
+  const chooseLanguage = useChooseLanguage(offered)
   const t = useT()
   const action = useAction()
   const id = useId()
-  const codes = offeredLanguages(session?.locales ?? [])
+  const codes = offeredLanguages(offered)
   const saved = session?.user?.locale ?? null
   if (codes.length < 2) return null
 
