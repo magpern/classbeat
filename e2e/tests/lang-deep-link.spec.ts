@@ -19,7 +19,7 @@ for (const code of CODES) {
 
       await page.goto(`/${code}/classes/new`)
       await expect(page.getByRole('heading', { name: w.signInFirst })).toBeVisible()
-      await page.getByRole('link', { name: w.signIn, exact: true }).click()
+      await page.getByRole('region', { name: w.signInFirst }).getByRole('link', { name: w.signIn, exact: true }).click()
       // The query carries the neutral path; the URL carries the language.
       await expect(page).toHaveURL(new RegExp(`/${code}/signin\\?return_to=%2Fclasses%2Fnew$`))
 
@@ -37,7 +37,10 @@ test.describe('language switched in the middle of the round trip', () => {
     const email = await accountThenSignedOut(page, WORDS.en)
 
     await page.goto('/en/classes')
-    await page.getByRole('link', { name: WORDS.en.signIn, exact: true }).click()
+    await page
+      .getByRole('region', { name: WORDS.en.signInFirst })
+      .getByRole('link', { name: WORDS.en.signIn, exact: true })
+      .click()
     await expect(page).toHaveURL(/\/en\/signin\?return_to=%2Fclasses$/)
 
     await page.getByLabel(WORDS.en.language).selectOption('sv')

@@ -11,14 +11,30 @@ for (const code of CODES) {
   test.describe(`browser in ${WORDS[code].name}`, () => {
     test.use({ locale: code })
 
+    // The mail-link pages read the token from the fragment and remove it from the address bar on
+    // load (`useMailToken`, so it cannot leak through history or sharing): the address ends without
+    // it. That the token went through the redirect is seen in what the page shows, which is not what
+    // the same page shows without a token.
     for (const path of ['/reset', '/unsubscribe', '/email-change', '/signup/confirm']) {
-      test(`${path}#token=... goes to /${code}${path} and keeps the token`, async ({ page }) => {
-        await page.goto(`${path}#token=${TOKEN}`)
-        await expect(page).toHaveURL(new RegExp(`^[^#]*/${code}${path}#token=${TOKEN}$`))
-        expect(whereWithHash(page)).toBe(`/${code}${path}#token=${TOKEN}`)
+      test(`${path}#token=... goes to /${code}${path} and the page receives the token`, async ({ page }) => {
+        await page.goto(`/${code}${path}`)
         await expect(page.locator('html')).toHaveAttribute('lang', code)
+        const main = page.getByRole('main')
+        await expect(main).not.toBeEmpty()
+        const withoutToken = await main.innerText()
+
+        await page.goto(`${path}#token=${TOKEN}`)
+        await expect(page).toHaveURL(new RegExp(`/${code}${path}$`))
+        expect(whereWithHash(page)).toBe(`/${code}${path}`)
+        await expect(page.locator('html')).toHaveAttribute('lang', code)
+        await expect.poll(async () => main.innerText()).not.toBe(withoutToken)
       })
     }
+
+    test('the fragment of an unprefixed page is kept by the redirect', async ({ page }) => {
+      await page.goto('/privacy#cookies')
+      await expect(page).toHaveURL(new RegExp(`/${code}/privacy#cookies$`))
+    })
 
     test('the query and a plain page are kept too, and nothing is doubled', async ({ page }) => {
       await page.goto('/privacy')
