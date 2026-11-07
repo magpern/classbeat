@@ -6,7 +6,7 @@ En autentiseringsapp har kopplats (eller bytts ut) på ditt classbeat-konto.
 När det hände: 6 november 2026 kl. 12:30 UTC
 
 Granska ditt konto:
-https://classbeat.example.test/account
+https://classbeat.example.test/sv/account
 
 Om det inte var du, återställ ditt lösenord. Kontakta oss på support@classbeat.eu
 
@@ -14,4 +14,4 @@ Om det inte var du, återställ ditt lösenord. Kontakta oss på support@classbe
 Du får den här säkerhetsaviseringen för att det här är e-postadressen till ett classbeat-konto. Sådana aviseringar skickas för att skydda dig.
 classbeat: https://classbeat.example.test
 Frågor? Skriv till support@classbeat.eu
-Avsluta prenumerationen på de här mejlen: https://classbeat.example.test/unsubscribe#token=SAMPLE&all=SAMPLE
+Avsluta prenumerationen på de här mejlen: https://classbeat.example.test/sv/unsubscribe#token=SAMPLE&all=SAMPLE

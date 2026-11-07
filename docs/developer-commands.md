@@ -130,7 +130,8 @@ catalogues are `classbeat/emails/locales/<code>.py` and a string one of them sti
 the language of a mail is chosen by the caller (`locale=` on `emails.build`/`render`/`send`) or, for an
 optional kind, read from `users.locale` through the prefs lookup (`emails.catalogue.mail_locale`); the logo `frontend/public/email/logo.png` is rendered from
 `scripts/email-logo.svg` by `scripts/render-email-logo.sh`, and `/email/*` is served with
-`Cross-Origin-Resource-Policy: cross-origin` and a one-week cache; the matching
+`Cross-Origin-Resource-Policy: cross-origin` and a one-week cache (behind the SWAG proxy the server-wide
+`same-origin` value wins; ADR 0022, CORP amendment); the matching
 `CLASSBEAT_DATABASE_PASSWORD` and `CLASSBEAT_DATABASE_OWNER_PASSWORD` variables are ignored.
 "Class ready" mail (ME5, ADR 0022 section 4): a design or `swedebeat_verify_mix` job that ran a fresh
 mix analysis (`jobs.fresh_analysis`, migration 0037) writes one `mail_handoff` row in its finishing

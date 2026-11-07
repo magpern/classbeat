@@ -4,10 +4,10 @@ Du har redan ett konto
 Någon har bett om att skapa ett classbeat-konto med den här adressen, som redan har ett.
 
 Logga in:
-https://classbeat.example.test/signin
+https://classbeat.example.test/sv/signin
 
 Har du glömt ditt lösenord?:
-https://classbeat.example.test/reset
+https://classbeat.example.test/sv/reset
 
 Om det inte var du kan du bortse från det här mejlet.
 

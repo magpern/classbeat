@@ -33,7 +33,7 @@ def sample_message(kind: Kind, locale: str = DEFAULT) -> MailMessage:
         kind,
         RECIPIENT,
         kind.sample,
-        unsubscribe=sample_unsubscribe_links(settings),
+        unsubscribe=sample_unsubscribe_links(settings, locale),
         locale=locale,
     )
     assert message.html is not None
