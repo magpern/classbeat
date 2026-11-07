@@ -202,7 +202,7 @@ failures / 15 min) so a shared gym NAT is not hit first by it. 429 with `Retry-A
   - `compose.e2e.yaml`, service `web` (profile `e2e`, run as `compose.yaml` plus
     `compose.e2e.yaml`; `CLASSBEAT_ENVIRONMENT` stays `dev` there):
     `CLASSBEAT_TURNSTILE_ENABLED: "true"` and `CLASSBEAT_TURNSTILE_FAKE: "true"`, next to the other
-    e2e-only switches;
+    e2e-only switches; **amended: these land with PR 2, see Amendment 1 (a)**;
   - `compose.prod.yaml`, service `web`: `CLASSBEAT_TURNSTILE_ENABLED: ${TURNSTILE_ENABLED:-false}`
     (PR 1), `:-true` (PR 3), and `CLASSBEAT_TURNSTILE_SITE_KEY: ${TURNSTILE_SITE_KEY:-}`. It never sets
     `CLASSBEAT_TURNSTILE_FAKE`, and `check-prod-compose.sh` refuses the name in it and, from PR 3,
@@ -215,7 +215,7 @@ failures / 15 min) so a shared gym NAT is not hit first by it. 429 with `Retry-A
   `challenge_ts`, timeout, 5xx then success with the same idempotency key, reused token). The real
   client is also tested through an `httpx.MockTransport`. `netguard` stays on; nothing is marked
   `allow_network`.
-- **E2E:** `compose.e2e.yaml` (profile `e2e`) sets both switches for `web` (§7). The session then
+- **E2E:** `compose.e2e.yaml` (profile `e2e`) sets both switches for `web` (§7). *(Amended: with PR 2, Amendment 1 (a).)* The session then
   returns `captcha: {"fake": true}` and the SPA renders
   a local stand-in (a labelled checkbox) instead of loading `api.js`; it yields
   `fake-pass-<random>` (accepted once) and a test can force `fake-fail`. The e2e covers each of the
@@ -297,9 +297,9 @@ existing `web-out` network; the network-level egress rule stays an M6 item (acce
 
 | PR | Scope | Developer / Reviewer | Depends on |
 |---|---|---|---|
-| 1 `feat(auth): verify Turnstile tokens on sign-in, sign-up and reset` | §1 to §10 backend: settings and secret file with its empty placeholder (compose, `worktree.sh`, the `vps-deploy.md` §5 placeholder loop, prod and install checks, release assets), the fake gate of §7, egress client, verifier and fake, the four routes and the order tests, the route guard, the captcha bucket, CSP sources, `captcha` in the session, the two sentence codes (en, sv, da), ADR 0003 pointers, threat model T126. Prod default stays **off** | Opus / Opus | this ADR |
-| 2 `feat(web): Turnstile widget on the sign-in, sign-up and reset forms` | §11: the component, the four pages, the fake stand-in, the host-guard exemption, strings en, sv, da, e2e for the four forms on the `compose.e2e.yaml` stack (profile `e2e`) | Opus / Opus (a third-party script on the auth pages) | 1 |
-| 3 `docs: privacy, cookie notice and runbook for Turnstile; on in prod` | §12: privacy page and cookie notice en, sv, da, runbook and `prod.env.example` (widget, site key, live check), `compose.prod.yaml` default **on** and its `check-prod-compose.sh` assertion. Merged only after the owner's live check of step 4 below passed | Sonnet / Sonnet, then one final Opus review (it flips a security default) | 1, 2 |
+| 1 `feat(auth): verify Turnstile tokens on sign-in, sign-up and reset` | §1 to §10 backend (as amended, Amendment 1): settings and secret file with its empty placeholder (compose, `worktree.sh`, the `vps-deploy.md` §5 placeholder loop, prod and install checks, release assets), the fake gate of §7, egress client, verifier and fake, the four routes and the order tests, the route guard, the captcha bucket, CSP sources, `captcha` in the session, the two sentence codes (en, sv, da), ADR 0003 pointers, threat model T126. Prod default stays **off** | Opus / Opus | this ADR |
+| 2 `feat(web): Turnstile widget on the sign-in, sign-up and reset forms` | §11: the component, the four pages, the fake stand-in, the host-guard exemption, strings en, sv, da, e2e for the four forms on the `compose.e2e.yaml` stack (profile `e2e`), **including the two e2e switches of §7 (Amendment 1 (a))** | Opus / Opus (a third-party script on the auth pages) | 1 |
+| 3 `docs: privacy, cookie notice and runbook for Turnstile; on in prod` | *(Amended: the default is not flipped here, Amendment 1 (f))*  §12: privacy page and cookie notice en, sv, da, runbook and `prod.env.example` (widget, site key, live check), `compose.prod.yaml` default **on** and its `check-prod-compose.sh` assertion. Merged only after the owner's live check of step 4 below passed | Sonnet / Sonnet, then one final Opus review (it flips a security default) | 1, 2 |
 
 ### Owner-only deploy steps (agents do not touch the Cloudflare dashboard)
 
@@ -357,3 +357,24 @@ existing `web-out` network; the network-level egress rule stays an M6 item (acce
    sentence changed too. Default: no change until seen.
 3. **Widget mode:** Managed (a checkbox only for suspicious visitors). Non-interactive or invisible
    are alternatives. Default: Managed.
+
+## Amendment 1 (2026-11-07): what PR 1 (#725, merged as ced5c81) settled
+
+- **(a) e2e switches move to PR 2.** The two `compose.e2e.yaml` switches
+  (`CLASSBEAT_TURNSTILE_ENABLED`, `CLASSBEAT_TURNSTILE_FAKE`) land with PR 2 (#726) together with the
+  widget. With them on and no widget, every existing e2e sign-in and sign-up would fail for lack of
+  a token. PR 1 left `compose.e2e.yaml` unchanged. This supersedes §7 "Which file sets what", §8
+  "E2E" and the PR 1 row of §13.
+- **(b) Error body.** The body is the app's `{"detail":{"reason":…}}`, which the frontend already
+  reads, not the bare `{"reason":…}` shown in §3. Status codes and reason words are as in §3.
+- **(c) Extra log words.** The log line's `why` also takes `network` (connect or protocol error),
+  `busy` (no free verifier slot), `unknown` (a failure without a known code) and `not_configured`
+  (on, but no verifier). All are fixed words.
+- **(d) Logout is exempt.** `POST /api/auth/logout` is exempt in the §1 table: without a session it
+  does nothing.
+- **(e) Concurrency cap.** The 503 given when the concurrency cap is reached logs `why=busy` and
+  belongs in threat T126.
+- **(f) Production default (owner decision, 2026-11-07).** PR 3 (#727) does not flip the production
+  default. The owner enables Turnstile himself when testing starts. The default-on change
+  (`compose.prod.yaml` and its `check-prod-compose.sh` assertion) becomes a separate tiny follow-up
+  PR. This supersedes the "on in prod" parts of §7, §13 and owner step 5.
