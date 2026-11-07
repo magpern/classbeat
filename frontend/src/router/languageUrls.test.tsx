@@ -344,4 +344,30 @@ describe('deep link, sign-in and back', () => {
     })
     expect(window.location.search).toBe('?x=1')
   })
+
+  it("lands in the account's language after a password sign-in from another language, keeping return_to", async () => {
+    let signed = false
+    fakeApi({
+      'GET /api/auth/session': () => (signed ? signedIn('da') : ANON),
+      'GET /api/auth/oauth/providers': { providers: [] },
+      'POST /api/auth/login': () => {
+        signed = true
+        return { id: 'u1', email: 'ann@example.test', role: 'user' }
+      },
+      'GET /api/auth/identities': IDENTITIES,
+      'GET /api/auth/mfa': MFA_OFF,
+      'GET /api/classes': { classes: [] },
+    })
+    open(`/en/signin?return_to=${encodeURIComponent('/classes?x=1#y')}`)
+    fireEvent.change(await screen.findByLabelText('Email'), { target: { value: 'ann@example.test' } })
+    fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'correct horse battery' } })
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Sign in' })).toBeEnabled()
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Sign in' }))
+    await waitFor(() => {
+      expect(window.location.pathname).toBe('/da/classes')
+    })
+    expect(window.location.search).toBe('?x=1')
+  })
 })

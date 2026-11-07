@@ -25,6 +25,8 @@ interface NavigateOptions {
   replace?: boolean
   /** Scroll to the top after navigating (default). Redirects and language switches keep the place. */
   scroll?: boolean
+  /** The prefix to add instead of the current URL's (sign-in lands in the account's language). */
+  lang?: Locale
 }
 
 interface RouterValue extends Location {
@@ -64,7 +66,7 @@ export function RouterProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const navigate = useCallback((to: string, options?: NavigateOptions) => {
-    const target = localize(to, localeFromPath(window.location.pathname) ?? fallback.current)
+    const target = localize(to, options?.lang ?? localeFromPath(window.location.pathname) ?? fallback.current)
     if (options?.replace) window.history.replaceState(null, '', target)
     else window.history.pushState(null, '', target)
     setLocation(readLocation())
