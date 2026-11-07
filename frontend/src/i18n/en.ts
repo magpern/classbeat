@@ -126,7 +126,8 @@ export const en = {
   'shell.backHome': 'Back to home',
   'shell.close': 'Close',
   'cookies.label': 'Cookie notice',
-  'cookies.text': 'classbeat only uses the cookies it needs to sign you in and to remember your settings, such as language and theme. It does not track you.',
+  'cookies.text':
+    'classbeat only uses the cookies it needs to sign you in and to remember your settings, such as language and theme, and the sign-in pages use a security check from Cloudflare. It does not track you.',
   'cookies.ok': 'OK',
   'shell.menu.signOut': 'Sign out',
   'shell.classesThisMonth': 'Classes this month',

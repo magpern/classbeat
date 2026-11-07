@@ -28,6 +28,16 @@ describe('legal pages without a session', () => {
     expect(screen.getByText(/access log.*up to 30 days/)).toBeInTheDocument()
   })
 
+  it('names the Cloudflare security check among the processors and in the cookies section', async () => {
+    fakeApi({})
+    renderAt('/privacy')
+    await screen.findByRole('heading', { level: 1, name: 'Privacy notice' })
+    expect(screen.getByText(/Cloudflare Turnstile checks that a person, not a program/)).toBeInTheDocument()
+    expect(screen.getByText(/never your email or password/)).toBeInTheDocument()
+    expect(screen.getByText(/classbeat sets none for it/)).toBeInTheDocument()
+    expect(screen.getByText(/security check on the sign-in pages\)/)).toBeInTheDocument()
+  })
+
   it('shows the terms signed out and links back to the privacy notice', async () => {
     fakeApi({})
     renderAt('/terms/')

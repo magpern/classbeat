@@ -198,7 +198,7 @@ Fill in these files by hand (writing into an existing file keeps its group and m
   loop above creates them **empty** (that provider is off) and never empties one that exists; the
   files must exist, or `up` fails with a missing-file error. To switch Google on, section 5a.
 - `secrets/turnstile_secret_key`: leave **empty** (the loop above made it) while Turnstile is off
-  (`TURNSTILE_ENABLED` unset or `false`, the default). It is mounted into `web` only, so the file
+  (`TURNSTILE_ENABLED` unset or `false`, the default); section 5b switches it on. It is mounted into `web` only, so the file
   must exist or `up` fails. Web refuses to start with `TURNSTILE_ENABLED=true` and an empty file,
   and in prod with one of Cloudflare's test keys ([ADR 0025](../adr/0025-turnstile.md) section 7).
 
@@ -295,6 +295,51 @@ with `OAUTH_GITHUB_CLIENT_ID` / `OAUTH_MICROSOFT_CLIENT_ID` and their secret fil
 `https://<host>/oauth/github/callback` or `/oauth/microsoft/callback`; Microsoft also needs the
 `auth_time` optional claim, AGENTS.md), and appear on the screens only when named in
 `OAUTH_VISIBLE_PROVIDERS`.
+
+### 5b. Cloudflare Turnstile on the sign-in, sign-up, provider-email and reset forms (optional)
+
+[ADR 0025](../adr/0025-turnstile.md). Turnstile is **off by default** (`TURNSTILE_ENABLED` unset
+means `false`); the compose default stays off until the owner flips it in a separate change.
+Everything below is the owner's; agents do not touch the Cloudflare dashboard.
+
+1. **Widget.** Cloudflare dashboard, Turnstile, add a widget for the host name of the real site,
+   exactly the value of `CLASSBEAT_DOMAIN` (today `classbeat.pernemark.se`); no `localhost`. Only
+   the `CLASSBEAT_DOMAIN` host passes the check, so a second host on the widget is of no use. Mode **Managed**, pre-clearance **off**. The widget covers
+   subdomains of a listed host, so `pernemark.se` as a hostname would also cover this one; list the
+   exact host anyway. **When the domain changes, add the new host to the widget first**, then change
+   `CLASSBEAT_DOMAIN`, then remove the old host. Two different symptoms: a host **missing from the
+   widget** fails inside the widget (Cloudflare error `110200`; the page reports that the check
+   failed or did not load, and no token is sent); "Security check did not pass" (400) means a token
+   whose `hostname` is not the host of `CLASSBEAT_PUBLIC_BASE_URL`.
+2. **Keys.** The site key is public and goes in `.env`: `TURNSTILE_SITE_KEY=0x4AAAAAAF3ZKJe4og1j7PsA`
+   (the owner's key for this widget). The secret key goes in `secrets/turnstile_secret_key`, owner
+   the deploy user, group 10010, mode 0640, and never in `.env`, a command argument or chat:
+   `( umask 027; read -rs S && printf '%s' "$S" > secrets/turnstile_secret_key; unset S )`, then
+   `ls -ln secrets/turnstile_secret_key` (mode `-rw-r-----`, group 10010). Rotating only the secret
+   later needs `docker compose up -d --force-recreate web`: a changed file alone does not recreate
+   the container. Never use Cloudflare's dummy test keys in production: web refuses to start.
+3. **Enable.** Only on a release that includes the widget (PR #731, the Turnstile widget): any
+   earlier release has the backend check but no widget, so enabling it makes every sign-in, sign-up,
+   provider-email and reset request fail with `captcha_failed`. Then set `TURNSTILE_ENABLED=true` in
+   `.env` and `docker compose up -d web`. Web refuses to start when it is enabled and the site key
+   is missing or the secret file is empty. While Turnstile is off in production (the default), web
+   logs an `ERROR` at start and a `WARNING` for every protected request; that is expected until
+   this step.
+4. **Live check** (report only pass or fail and the `why` word): sign in, sign up with an invite,
+   request a password reset and finish a provider-email step; repeat in Swedish and Danish and in
+   dark and light; the browser console shows no CSP violation and no error `110200` (domain or
+   referrer); `docker compose logs web | grep 'captcha refused'` shows no line for those attempts.
+   If anything fails, set `TURNSTILE_ENABLED=false` (step 6) and report it.
+5. **Keep it on.** A deploy keeps the setting from `.env`; nothing else is needed.
+6. **Emergency switch** (Cloudflare unreachable, or the check blocks real users): set
+   `TURNSTILE_ENABLED=false` in `.env` and `docker compose up -d web`. Web then logs an `ERROR` at
+   start and a `WARNING` on every protected request; every other limit still runs. Switch it back on
+   once Cloudflare has recovered. There is no automatic bypass: while it is on and Cloudflare is
+   unreachable, new sign-ins, sign-ups and reset requests answer 503; signed-in users are not affected.
+
+The widget loads from `challenges.cloudflare.com`; if swag or Cloudflare rewrites the
+`Content-Security-Policy` header, the check does not load (section 8). The privacy notice and the
+cookie notice already name the check; do not enable it for real users while they are missing.
 
 ## 6. The proxy network and the client address
 
@@ -491,6 +536,10 @@ Either mode works; **which one is the owner's decision.**
   - Caching: the default (static file extensions only) is fine; never a "Cache Everything" rule on
     `/api/*` or `/`. The SSE stream passes Cloudflare (it writes every 15 s, inside Cloudflare's
     100 s idle limit).
+  - Turnstile (section 5b) is a separate Cloudflare product from the proxy: it works the same in
+    DNS-only and proxied mode. The widget must list the site's host (and the new host first when the
+    domain changes). Do not block or rewrite `https://challenges.cloudflare.com` in a rule, and keep
+    Rocket Loader and the other injectors off, or the check does not load.
   - Optional hardening: allow 443 at the router/firewall only from Cloudflare's ranges, or turn on
     Authenticated Origin Pulls and verify Cloudflare's client certificate in the sample
     (`ssl_client_certificate` + `ssl_verify_client on`), so the origin cannot be reached around

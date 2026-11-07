@@ -22,6 +22,12 @@ describe('CookieNotice', () => {
     vi.restoreAllMocks()
   })
 
+  it('names the Cloudflare security check on the sign-in pages and stays informational', () => {
+    mount()
+    expect(screen.getByTestId('cookie-notice')).toHaveTextContent(/security check from Cloudflare/)
+    expect(screen.queryByRole('button', { name: /accept|reject|decline/i })).toBeNull()
+  })
+
   it('shows the first time, hides after OK and stays hidden after a remount', () => {
     const first = mount()
     expect(screen.getByRole('region', { name: 'Cookie notice' })).toBeInTheDocument()

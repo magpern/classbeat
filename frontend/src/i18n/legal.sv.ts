@@ -48,7 +48,7 @@ export const legalSv: Catalogue = {
   'privacy.basis.li1':
     'För att tillhandahålla tjänsten du registrerade dig för (ditt konto, dina pass, anslutningar, användningsgränser och de mejl som behövs för driften): det behövs för att fullgöra vårt avtal med dig i användarvillkoren.',
   'privacy.basis.li2':
-    'För att hålla tjänsten säker och rättvis (inloggningssessioner och inloggningshistorik, säkerhetsloggen, webbserverns loggar och gränserna mot missbruk): vårt berättigade intresse av att skydda tjänsten och dess användare.',
+    'För att hålla tjänsten säker och rättvis (inloggningssessioner och inloggningshistorik, säkerhetsloggen, webbserverns loggar, gränserna mot missbruk och säkerhetskontrollen på inloggningssidorna): vårt berättigade intresse av att skydda tjänsten och dess användare.',
   'privacy.basis.li3':
     'För att uppfylla rättsliga skyldigheter som gäller för oss, om några: rättslig förpliktelse.',
 
@@ -73,6 +73,8 @@ export const legalSv: Catalogue = {
     'Vår driftleverantör kör servrarna, och en eventuell proxytjänst framför dem ser varje förfrågan och IP-adress. Namn och plats anges i rutan ovan.',
   'privacy.processors.li6':
     'Din webbläsare hämtar albumomslag direkt från Spotifys bildservrar, som därför ser din IP-adress och webbläsare. Vi skickar ingen referrer, ingen classbeat-cookie och inga classbeat-uppgifter med den förfrågan.',
+  'privacy.processors.li7':
+    'På sidorna för inloggning, registrering och återställning av lösenord, och på sidan som frågar efter din e-postadress efter inloggning med Google, GitHub eller Microsoft, kontrollerar Cloudflare Turnstile att det är en person, inte ett program, som använder formuläret. Din webbläsare hämtar den från Cloudflare, som ser din IP-adress och signaler från webbläsare och enhet; vår server skickar kontrollens resultatkod och din IP-adress till Cloudflare, aldrig din e-postadress eller ditt lösenord. Cloudflare kan också använda signalerna för att förbättra sitt skydd mot bottar. Företaget finns i USA, så det är en överföring till ett tredjeland.',
   'privacy.processors.p2': 'Vi säljer inte dina uppgifter och använder dem inte för reklam.',
 
   'privacy.cookies.title': 'Cookies och lagring i webbläsaren',
@@ -90,6 +92,8 @@ export const legalSv: Catalogue = {
     'Varje cookienamn börjar med __Host-, vilket betyder att den bara skickas över en säker anslutning till den här webbplatsen.',
   'privacy.cookies.p3':
     'Vi sparar också några saker i själva webbläsaren, ingen av dem för spårning. Ditt språk (cb-locale) skickas också till oss när du registrerar dig eller byter språk, och sparas som kontots språk. Ditt ljusa eller mörka tema sparas som cb-theme, och cb-cookie-notice kommer ihåg att du har stängt kakmeddelandet. Medan du arbetar i en flik sparas formuläret du just skickade bara i den fliken, så att du kan börja om utan att skriva det två gånger (classbeat.design-input.*, classbeat.pick-input.* och classbeat.design-again-key.*); det är borta när du stänger fliken.',
+  'privacy.cookies.p4':
+    'Säkerhetskontrollen körs i en ram från challenges.cloudflare.com och kan använda cookies eller lokal lagring där, bara för kontrollen; classbeat sätter inga för den.',
 
   'privacy.retention.title': 'Hur länge vi sparar det',
   'privacy.retention.li1':

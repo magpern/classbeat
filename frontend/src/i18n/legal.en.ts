@@ -50,7 +50,7 @@ export const legalEn = {
   'privacy.basis.li1':
     'To provide the service you signed up for (your account, classes, connections, usage limits and the emails needed to run it): this is needed to keep our agreement with you in the terms.',
   'privacy.basis.li2':
-    'To keep the service secure and fair (sign-in sessions and history, the security log, web server logs and the limits against abuse): our legitimate interest in protecting the service and its users.',
+    'To keep the service secure and fair (sign-in sessions and history, the security log, web server logs, the limits against abuse and the security check on the sign-in pages): our legitimate interest in protecting the service and its users.',
   'privacy.basis.li3': 'To meet legal duties that apply to us, if any: a legal obligation.',
 
   'privacy.model.title': 'What the assistant sees',
@@ -74,6 +74,8 @@ export const legalEn = {
     'Our hosting provider runs the servers, and any proxy service in front of them sees each request and IP address. Their names and location are given in the box above.',
   'privacy.processors.li6':
     "Your browser fetches album covers directly from Spotify's image servers, which therefore see your IP address and browser. We send no referrer, no classbeat cookie and no classbeat data with that request.",
+  'privacy.processors.li7':
+    "On the sign-in, sign-up and password reset pages, and on the page that asks for your email after a Google, GitHub or Microsoft sign-in, Cloudflare Turnstile checks that a person, not a program, is using the form. Your browser loads it from Cloudflare, which sees your IP address, browser and device signals; our server sends Cloudflare the check's result token and your IP address, never your email or password. Cloudflare may also use the signals to improve its bot detection. It is based in the US, so this is a transfer to a third country.",
   'privacy.processors.p2': 'We do not sell your data and we do not use it for advertising.',
 
   'privacy.cookies.title': 'Cookies and browser storage',
@@ -90,6 +92,8 @@ export const legalEn = {
     'Each cookie name starts with __Host-, which means it is sent only over a secure connection to this site.',
   'privacy.cookies.p3':
     'We also keep a few things in your browser itself, none of them for tracking. Your language (cb-locale) is also sent to us when you sign up or change it, and kept as your account language. Your light or dark theme is kept as cb-theme, and cb-cookie-notice remembers that you have dismissed the cookie notice. While you work in a tab, the form you just sent is kept in that tab only, so that you can start again without typing it twice (classbeat.design-input.*, classbeat.pick-input.* and classbeat.design-again-key.*); it is gone when you close the tab.',
+  'privacy.cookies.p4':
+    'The security check runs in a frame from challenges.cloudflare.com and may use cookies or local storage there for the check only; classbeat sets none for it.',
 
   'privacy.retention.title': 'How long we keep it',
   'privacy.retention.li1':
