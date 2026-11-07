@@ -4,7 +4,7 @@ Confirm your new address
 To use this address for your classbeat account, sign in and open the link below (valid for 1 hour).
 
 Confirm new address:
-https://classbeat.example.test/email-change#token=SAMPLE
+https://classbeat.example.test/en/email-change#token=SAMPLE
 
 If this wasn't you, ignore this mail.
 

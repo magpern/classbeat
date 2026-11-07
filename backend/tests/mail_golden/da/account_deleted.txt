@@ -11,4 +11,4 @@ Hvis det ikke var dig, skal du give os besked med det samme. Kontakt os på supp
 Du får denne mail, fordi din classbeat-konto er blevet slettet. Det er den eneste mail om det.
 classbeat: https://classbeat.example.test
 Spørgsmål? Skriv til support@classbeat.eu
-Afmeld disse mails: https://classbeat.example.test/unsubscribe#token=SAMPLE&all=SAMPLE
+Afmeld disse mails: https://classbeat.example.test/da/unsubscribe#token=SAMPLE&all=SAMPLE

@@ -4,7 +4,7 @@ Bekräfta ditt konto
 Någon har bett om att skapa ett classbeat-konto med den här adressen. För att slutföra öppnar du länken nedan (giltig i 24 timmar) och skriver det lösenord du valde.
 
 Bekräfta konto:
-https://classbeat.example.test/signup/confirm#token=SAMPLE
+https://classbeat.example.test/sv/signup/confirm#token=SAMPLE
 
 Om det inte var du kan du bortse från det här mejlet. Inget konto skapas.
 

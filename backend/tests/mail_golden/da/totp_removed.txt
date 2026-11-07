@@ -6,7 +6,7 @@ Tofaktorgodkendelse er slået fra på din classbeat-konto, og dine andre session
 Hvornår det skete: 6. november 2026 kl. 12:30 UTC
 
 Gennemgå din konto:
-https://classbeat.example.test/account
+https://classbeat.example.test/da/account
 
 Hvis det ikke var dig, skal du skifte din adgangskode og give os besked med det samme. Kontakt os på support@classbeat.eu
 
@@ -14,4 +14,4 @@ Hvis det ikke var dig, skal du skifte din adgangskode og give os besked med det 
 Du får denne sikkerhedsbesked, fordi dette er e-mailadressen til en classbeat-konto. Sådanne beskeder sendes for at beskytte dig.
 classbeat: https://classbeat.example.test
 Spørgsmål? Skriv til support@classbeat.eu
-Afmeld disse mails: https://classbeat.example.test/unsubscribe#token=SAMPLE&all=SAMPLE
+Afmeld disse mails: https://classbeat.example.test/da/unsubscribe#token=SAMPLE&all=SAMPLE

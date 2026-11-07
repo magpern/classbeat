@@ -6,10 +6,10 @@ Describe a class and classbeat picks the songs, designs it and saves it to your 
 You can sign in with Google.
 
 Open classbeat:
-https://classbeat.example.test/
+https://classbeat.example.test/en
 
 --
 You got this because a classbeat account was just created with this address.
 classbeat: https://classbeat.example.test
 Questions? Write to support@classbeat.eu
-Unsubscribe from these emails: https://classbeat.example.test/unsubscribe#token=SAMPLE&all=SAMPLE
+Unsubscribe from these emails: https://classbeat.example.test/en/unsubscribe#token=SAMPLE&all=SAMPLE
