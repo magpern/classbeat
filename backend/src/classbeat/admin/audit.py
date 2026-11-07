@@ -197,6 +197,12 @@ class JobsParams(Params):
     days: Annotated[int, Field(ge=1, le=90)]
 
 
+class AbuseParams(Params):
+    """The Abuse view's window (#632), in minutes."""
+
+    minutes: Annotated[int, Field(ge=5, le=240)]
+
+
 class RefundParams(Params):
     """An admin refund (AD3 #221): the target (user, ledger row) says everything."""
 
@@ -290,6 +296,7 @@ ACTIONS: dict[str, type[Params]] = {
     # Usage, cost and jobs; the admin refund (AD3 #221, classbeat.admin.usage and .jobs).
     "usage.read": UsageParams,
     "job.list": JobsParams,
+    "abuse.list": AbuseParams,
     "refund.credit": RefundParams,
 }
 # The audit log (AD4 #222).

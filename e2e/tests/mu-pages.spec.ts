@@ -184,6 +184,7 @@ test('the admin pages, signed in as an admin with a TOTP code', async () => {
     ['/admin/codes', 'Codes'],
     ['/admin/usage', 'Usage'],
     ['/admin/jobs', 'Jobs'],
+    ['/admin/abuse', 'Abuse'],
     ['/admin/audit', 'Audit log'],
     ['/admin/settings', 'Settings'],
   ]
@@ -196,6 +197,6 @@ test('the admin pages, signed in as an admin with a TOTP code', async () => {
 })
 
 test('every page was audited', () => {
-  // 4 before sign-in, 10 signed-in (two of them running, one with two versions), 5 account tabs, music, Spotify, 6 admin sections.
-  expect(findings.map((f) => f.page)).toHaveLength(27)
+  // 4 before sign-in, 10 signed-in (two of them running, one with two versions), 5 account tabs, music, Spotify, 7 admin sections.
+  expect(findings.map((f) => f.page)).toHaveLength(28)
 })

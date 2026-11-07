@@ -267,7 +267,7 @@ write=False, target=…, params=…)`**, the only code that may build a session 
   `*_hash` and `password_hash`, TOTP secrets and recovery codes, OAuth and Spotify flow state, PKCE
   verifiers, nonces, job `input`, revision `content`, `classes.brief`, messages, `external_id`,
   `result`, `request_context`) and fails when maint can read any of them or when a new column of
-  those tables is readable without being listed. It also fails when code under `classbeat.admin` calls `NOTIFY`, `pg_notify` or an advisory-lock function (a read-only transaction still allows them; see the audit bullet below). Writes: `UPDATE (disabled_at)` and `DELETE` on
+  those tables is readable without being listed. (Amendment 2026-11-07, #632: `HASH_READS` in `maint_guard.py` exempts exactly `security_log.ip_hash`, a keyed network hash the Abuse view counts and never returns; see ADR 0003, amendment "the security log". Every other `*_hash` stays secret.) It also fails when code under `classbeat.admin` calls `NOTIFY`, `pg_notify` or an advisory-lock function (a read-only transaction still allows them; see the audit bullet below). Writes: `UPDATE (disabled_at)` and `DELETE` on
   `users`, `DELETE` on `sessions`, `INSERT` and `UPDATE (revoked_at, revoked_by)` on
   `entitlements`, `UPDATE (state, reason, settled_at, refunded_by)` on `credit_ledger`, `INSERT` and
   `UPDATE (expires_at)` on `invites` (disabling an invite expires it, so the M1 consume path is

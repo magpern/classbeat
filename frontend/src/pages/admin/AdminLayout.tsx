@@ -29,6 +29,7 @@ const SECTIONS = [
   { to: '/admin/codes', label: 'Codes' },
   { to: '/admin/usage', label: 'Usage' },
   { to: '/admin/jobs', label: 'Jobs' },
+  { to: '/admin/abuse', label: 'Abuse' },
   { to: '/admin/audit', label: 'Audit log' },
   { to: '/admin/settings', label: 'Settings' },
   { to: '/admin/mail', label: 'Mail' },

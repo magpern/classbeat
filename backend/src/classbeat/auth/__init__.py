@@ -39,7 +39,7 @@ if TYPE_CHECKING:
         find_accounts,
         get_account,
     )
-    from classbeat.auth.admin_lookup import account_emails
+    from classbeat.auth.admin_lookup import AccountState, account_emails, account_states
     from classbeat.auth.clientip import bucket_ip, client_ip
     from classbeat.auth.cookies import (
         CSRF_COOKIE,
@@ -156,7 +156,9 @@ _EXPORTS: dict[str, str] = {
     "disable_account": "admin_accounts",
     "enable_account": "admin_accounts",
     "find_accounts": "admin_accounts",
+    "AccountState": "admin_lookup",
     "account_emails": "admin_lookup",
+    "account_states": "admin_lookup",
     "bucket_ip": "clientip",
     "client_ip": "clientip",
     "CSRF_COOKIE": "cookies",
@@ -278,6 +280,7 @@ __all__ = [
     "UNSUBSCRIBE_ALL",
     "AccountError",
     "AccountRow",
+    "AccountState",
     "Attempt",
     "Bucket",
     "EmailAddress",
@@ -299,6 +302,7 @@ __all__ = [
     "WipeEvent",
     "account_emails",
     "account_export",
+    "account_states",
     "active_email",
     "admin_buckets",
     "admin_mail_test_buckets",

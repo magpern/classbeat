@@ -125,6 +125,76 @@ describe('admin usage', () => {
   })
 })
 
+const BOSS_ID = '99999999-2222-3333-4444-555555555555'
+const WHO = { user_id: USER_ID, email: 'rider@example.test', role: 'user', disabled: false }
+const ABUSE = {
+  minutes: 60,
+  requests: 120,
+  rate_limited: 2,
+  users: 3,
+  top_users: [
+    { ...WHO, requests: 90, per_minute: 1.5, busiest_minute: 12, rate_limited: 2, networks: 3, sessions: 2 },
+    { ...WHO, user_id: BOSS_ID, email: 'boss@example.test', role: 'admin', requests: 30, per_minute: 0.5, busiest_minute: 4, rate_limited: 0, networks: 1, sessions: 1 },
+  ],
+  limit_hits: [{ ...WHO, hits: 2, first_at: '2026-10-30T09:00:00Z', last_at: '2026-10-30T09:05:00Z' }],
+  moved_sessions: [{ ...WHO, networks: 3, requests: 40, first_at: '2026-10-30T09:00:00Z', last_at: '2026-10-30T09:20:00Z' }],
+  top_users_truncated: false,
+  limit_hits_truncated: false,
+  moved_sessions_truncated: false,
+}
+
+describe('admin abuse', () => {
+  it('shows the three lists and offers the disable shortcut for a user, not an admin', async () => {
+    const api = adminApi({ 'GET /api/admin/abuse?minutes=60': ABUSE })
+    renderAt('/admin/abuse')
+    const top = await screen.findByRole('table', { name: 'Top users by request rate' })
+    expect(within(top).getByRole('link', { name: 'rider@example.test' })).toHaveAttribute('href', `/admin/users/${USER_ID}`)
+    expect(within(top).getByText('boss@example.test')).toBeInTheDocument()
+    expect(within(top).getAllByRole('button', { name: /Disable account/ })).toHaveLength(1)
+    expect(within(screen.getByRole('table', { name: 'Users who hit the rate limit' })).getByText('2')).toBeInTheDocument()
+    expect(screen.getByRole('table', { name: 'Sessions seen from several networks' })).toBeInTheDocument()
+    expect(api.to('GET', '/api/admin/abuse?minutes=60')).toHaveLength(1)
+  })
+
+  it('moves the window into the address and says when lists are cut', async () => {
+    const api = adminApi({
+      'GET /api/admin/abuse?minutes=60': ABUSE,
+      'GET /api/admin/abuse?minutes=240': { ...ABUSE, minutes: 240, top_users_truncated: true },
+    })
+    renderAt('/admin/abuse')
+    const window_ = await screen.findByLabelText('Window')
+    fireEvent.change(window_, { target: { value: '240' } })
+    await waitFor(() => {
+      expect(api.to('GET', '/api/admin/abuse?minutes=240')).toHaveLength(1)
+    })
+    expect(window.location.search).toBe('?minutes=240')
+    expect(await screen.findByText(/More rows matched than are listed/)).toBeInTheDocument()
+  })
+
+  it('disables the account through the existing route, with step-up, and reloads', async () => {
+    let done = false
+    const api = adminApi({
+      'GET /api/admin/abuse?minutes=60': () => ({
+        ...ABUSE,
+        top_users: [{ ...ABUSE.top_users[0], ...(done ? { disabled: true } : {}) }],
+      }),
+      [`POST /api/admin/users/${USER_ID}/disable`]: () => {
+        done = true
+        return { id: USER_ID, disabled_at: '2026-10-31T00:00:00Z', sessions_revoked: 1 }
+      },
+    })
+    renderAt('/admin/abuse')
+    const top = await screen.findByRole('table', { name: 'Top users by request rate' })
+    fireEvent.click(within(top).getByRole('button', { name: /Disable account/ }))
+    await waitFor(() => {
+      expect(api.to('POST', `/api/admin/users/${USER_ID}/disable`)).toHaveLength(1)
+    })
+    await waitFor(() => {
+      expect(within(screen.getByRole('table', { name: 'Top users by request rate' })).queryByRole('button')).toBeNull()
+    })
+  })
+})
+
 describe('admin jobs', () => {
   it('shows another user’s waiting approval and uncertain operation, and the failure window', async () => {
     const api = adminApi({ 'GET /api/admin/jobs?days=7': JOBS, 'GET /api/admin/jobs?days=30': { ...JOBS, days: 30 } })

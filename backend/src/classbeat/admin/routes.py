@@ -229,6 +229,7 @@ def install(app: Any) -> None:
     there."""
     # The feature modules import this one.
     from classbeat.admin import (
+        abuse,
         audit_routes,
         codes,
         jobs,
@@ -246,6 +247,7 @@ def install(app: Any) -> None:
         audit_routes.router,
         usage.router,
         jobs.router,
+        abuse.router,
         codes.router,
         settings.router,
         models.router,

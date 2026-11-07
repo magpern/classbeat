@@ -169,6 +169,7 @@ CLASSIFIED: dict[tuple[str, str], str] = {
     ("DELETE", "/api/admin/users/{user_id}"): "admin",
     ("GET", "/api/admin/audit"): "admin",
     ("GET", "/api/admin/usage"): "admin",
+    ("GET", "/api/admin/abuse"): "admin",
     ("POST", "/api/admin/users/{user_id}/credits/{ledger_id}/refund"): "admin",
     ("GET", "/api/admin/jobs"): "admin",
     ("GET", "/api/admin/invites"): "admin",
