@@ -177,6 +177,6 @@ submission.
 - **Owner steps** are in the runbook (5a, 9 and the post-deploy checklist) and "Waiting for the owner".
 - **Tests.** The e2e specs `e2e/tests/lang-*.spec.ts` (en, sv, da) cover the deep link through sign-in
   (also with a language switch in the middle), the picker keeping page, query and fragment, old
-  unprefixed mail links keeping the token, `<html lang>`, canonical and hreflang, the sitemap and
+  unprefixed mail links reaching their page with the token (the page then removes the fragment itself, `useMailToken`; the spec compares what the page shows with and without the token), `<html lang>`, canonical and hreflang, the sitemap and
   robots, and axe at 390 px. `backend/tests/test_mail_links.py` reads `frontend/src/App.tsx`'s route
   table and checks every path a mail can emit.
