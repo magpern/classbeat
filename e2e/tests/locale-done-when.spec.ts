@@ -86,7 +86,7 @@ let daEmail = ''
 test('Danish picked logged out: the account keeps it and its mail is Danish', async ({ page }) => {
   await page.goto('/')
   await expect(html(page)).toHaveAttribute('lang', 'en')
-  await page.getByLabel('Language').selectOption('da')
+  await page.getByRole('combobox', { name: 'Language' }).selectOption('da')
   await expect(html(page)).toHaveAttribute('lang', 'da')
 
   // Sign-up, the confirmation mail (subject in Danish, read from Mailpit), confirm and sign in.
@@ -112,13 +112,14 @@ test('Swedish chosen on the account page follows the account to a fresh browser'
   const first = await freshBrowser(browser, baseURL, 'en')
   await signInAs(first, daEmail, { email: 'Email', password: 'Password', button: 'Sign in' })
   await expect(html(first)).toHaveAttribute('lang', 'da')
+  await first.goto('/')
   await expect(first.getByRole('link', { name: da.design })).toBeVisible()
 
   // On the account page the language is switched to Swedish; the page changes at once and it is saved.
-  await first.goto('/account')
-  await first.getByLabel(DA.language).selectOption('sv')
+  await first.goto('/account#appearance')
+  await first.getByRole('combobox', { name: DA.language }).selectOption('sv')
   await expect(html(first)).toHaveAttribute('lang', 'sv')
-  await expect(first.getByLabel(SV.language)).toHaveValue('sv')
+  await expect(first.getByRole('combobox', { name: SV.language })).toHaveValue('sv')
   await expect.poll(() => savedLocale(daEmail)).toBe('sv')
   await first.context().close()
 
@@ -128,11 +129,12 @@ test('Swedish chosen on the account page follows the account to a fresh browser'
   await expect(html(second)).toHaveAttribute('lang', 'en')
   await signInAs(second, daEmail, { email: 'Email', password: 'Password', button: 'Sign in' })
   await expect(html(second)).toHaveAttribute('lang', 'sv')
+  await second.goto('/')
   await expect(second.getByRole('link', { name: SV.design })).toBeVisible()
 
   // "Follow this browser" saves nothing on the account and the page follows the browser (English).
-  await second.goto('/account')
-  await second.getByLabel(SV.language).selectOption({ label: SV.follow })
+  await second.goto('/account#appearance')
+  await second.getByRole('combobox', { name: SV.language }).selectOption({ label: SV.follow })
   await expect(html(second)).toHaveAttribute('lang', 'en')
   await expect.poll(() => savedLocale(daEmail)).toBe('')
   await second.context().close()
@@ -141,11 +143,13 @@ test('Swedish chosen on the account page follows the account to a fresh browser'
   const danish = await freshBrowser(browser, baseURL, 'da-DK')
   await signInAs(danish, daEmail, { email: da.email, password: da.password, button: da.signIn })
   await expect(html(danish)).toHaveAttribute('lang', 'da')
+  await danish.goto('/')
   await expect(danish.getByRole('link', { name: da.design })).toBeVisible()
   await danish.context().close()
   const swedish = await freshBrowser(browser, baseURL, 'sv-SE')
   await signInAs(swedish, daEmail, { email: 'E-post', password: 'Lösenord', button: 'Logga in' })
   await expect(html(swedish)).toHaveAttribute('lang', 'sv')
+  await swedish.goto('/')
   await expect(swedish.getByRole('link', { name: SV.design })).toBeVisible()
   await swedish.context().close()
 })
@@ -162,8 +166,8 @@ test('a class designed on the recorded model shows a Swedish page around English
   await expect(page.getByRole('heading', { name: 'Your class is ready' })).toBeVisible(LONG)
   await expect(page.getByRole('heading', { name: 'Invented Tuesday climb' })).toBeVisible()
 
-  await page.goto('/account')
-  await page.getByLabel('Language').selectOption('sv')
+  await page.goto('/account#appearance')
+  await page.getByRole('combobox', { name: 'Language' }).selectOption('sv')
   await expect(html(page)).toHaveAttribute('lang', 'sv')
   await expect.poll(() => savedLocale(email)).toBe('sv')
 
@@ -197,8 +201,12 @@ test('CLASSBEAT_LOCALES=en offers English only', async ({ page }) => {
 
   // The default stack offers all three, so the picker is there ...
   await page.goto('/')
-  await expect(page.getByLabel('Language')).toBeVisible()
-  await expect(page.getByLabel('Language').locator('option')).toHaveText(['English', 'Svenska', 'Dansk'])
+  await expect(page.getByRole('combobox', { name: 'Language' })).toBeVisible()
+  await expect(page.getByRole('combobox', { name: 'Language' }).locator('option')).toHaveText([
+    'English',
+    'Svenska',
+    'Dansk',
+  ])
 
   // ... and when the session answer lists English only, as that server's would, it is gone.
   await page.route('**/api/auth/session', async (route) => {
@@ -208,5 +216,5 @@ test('CLASSBEAT_LOCALES=en offers English only', async ({ page }) => {
   })
   await page.goto('/')
   await expect(page.getByRole('link', { name: 'Sign in' }).first()).toBeVisible()
-  await expect(page.getByLabel('Language')).toHaveCount(0)
+  await expect(page.getByRole('combobox', { name: 'Language' })).toHaveCount(0)
 })
