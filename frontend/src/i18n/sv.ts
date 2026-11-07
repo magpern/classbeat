@@ -134,6 +134,10 @@ const sv: Catalogue = {
   'shell.signUp': 'Registrera dig',
   'shell.backHome': 'Tillbaka till startsidan',
   'shell.close': 'Stäng',
+  'cookies.label': 'Information om kakor',
+  'cookies.text':
+    'classbeat använder bara de kakor som behövs för att logga in dig och komma ihåg dina inställningar, till exempel språk och tema. Vi spårar dig inte.',
+  'cookies.ok': 'OK',
   'shell.menu.signOut': 'Logga ut',
   'shell.classesThisMonth': 'Pass den här månaden',
   'shell.classesThisMonthLine': 'Pass den här månaden: {line}',

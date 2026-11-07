@@ -1,4 +1,4 @@
-import { fireEvent, screen, waitFor } from '@testing-library/react'
+import { fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
 import { fakeApi, json, reason } from '../test/fakeApi'
 import {
@@ -334,7 +334,8 @@ describe('a failed design', () => {
     })
     renderAt(`/jobs/${JOB_ID}`)
     expect(await screen.findByRole('heading', { name: 'The Swedebeat match stopped' })).toBeInTheDocument()
-    expect(screen.queryByRole('button')).toBeNull()
+    // The page itself: the cookie notice's OK button sits outside <main>.
+    expect(within(screen.getByRole('main')).queryByRole('button')).toBeNull()
   })
 
   it('points to the account page when MOWL has to be connected again', async () => {
