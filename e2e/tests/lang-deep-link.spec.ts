@@ -1,5 +1,6 @@
-import { expect, test } from '@playwright/test'
-import { PASSWORD } from './helpers'
+// `test` from helpers gives each test its own client address: sign-up is limited to 5 per hour per
+// address, and the locale specs that run later share the runner's address otherwise.
+import { PASSWORD, expect, test } from './helpers'
 import { CODES, WORDS, accountThenSignedOut, expectSignedIn, submitSignIn, where } from './lang-url-helpers'
 
 // #719 (ADR 0027 section 4): the page you wanted survives the sign-in round trip. `return_to` is
@@ -33,7 +34,9 @@ for (const code of CODES) {
 test.describe('language switched in the middle of the round trip', () => {
   test.use({ locale: 'en' })
 
-  test('the page survives, in the language picked on the sign-in page', async ({ page }) => {
+  // ADR 0027 item 3: after a password sign-in the account's saved language wins once, so an
+  // English account that picked Swedish on the sign-in page lands on the same page in English.
+  test('the page survives, and the account language wins after sign-in', async ({ page }) => {
     const email = await accountThenSignedOut(page, WORDS.en)
 
     await page.goto('/en/classes')
@@ -49,6 +52,6 @@ test.describe('language switched in the middle of the round trip', () => {
 
     await submitSignIn(page, WORDS.sv, email, PASSWORD)
     await expectSignedIn(page, email)
-    expect(where(page)).toBe('/sv/classes')
+    expect(where(page)).toBe('/en/classes')
   })
 })
