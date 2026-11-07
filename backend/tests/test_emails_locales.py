@@ -316,6 +316,9 @@ async def test_the_reset_mail_follows_the_stored_language_of_the_account(
     [mail] = smtp.messages
     assert decoded(mail) == subject_of("password_reset", "da")
     assert mail.message["Content-Language"] == "da"
+    assert "Hvis du vil vælge en ny adgangskode" in mail.text  # the body, not only the subject
+    assert "Vælg en ny adgangskode" in mail.html
+    assert "If you want to choose a new password" not in mail.text
 
 
 async def test_an_account_without_a_language_gets_english(
