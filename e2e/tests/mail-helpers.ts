@@ -30,18 +30,19 @@ async function summariesTo(request: APIRequestContext, to: string): Promise<Summ
 /** The mail with exactly this subject to this address (waits for it to arrive). */
 export async function waitForMail(request: APIRequestContext, to: string, subject: string): Promise<Mail> {
   // `expect.poll` reports the last subjects seen when the mail never comes (same 20 s as before).
-  let found: Summary | undefined
+  const found: { summary?: Summary } = {}
   await expect
     .poll(
       async () => {
         const all = await summariesTo(request, to)
-        found = all.find((m) => m.Subject === subject)
-        return found ? subject : all.map((m) => m.Subject)
+        found.summary = all.find((m) => m.Subject === subject)
+        return found.summary ? subject : all.map((m) => m.Subject)
       },
       { message: `a "${subject}" mail for ${to} arrives in mailpit`, timeout: 20_000, intervals: [500] },
     )
     .toBe(subject)
-  const id = found!.ID
+  const id = found.summary?.ID
+  if (id === undefined) throw new Error(`the "${subject}" mail for ${to} was not found`)
   const message = (await (await request.get(`${mailpit}/api/v1/message/${id}`)).json()) as {
     From: { Name: string; Address: string }
     ReplyTo: { Address: string }[] | null

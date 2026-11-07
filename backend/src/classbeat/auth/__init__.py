@@ -135,9 +135,10 @@ if TYPE_CHECKING:
     )
     from classbeat.auth.unsubscribe_token import UNSUBSCRIBE_ALL, issue_unsubscribe_token
 
-# Exported name -> its module in this package (``classbeat.auth.lazy``).
-# ``tests/test_egress_runtime.py`` checks it matches the ``TYPE_CHECKING`` imports above and
-# ``__all__``.
+# A name that is not loaded yet is resolved on first access by ``classbeat.auth.lazy.resolve``,
+# and an exported one is cached in this module's globals so later reads skip ``__getattr__``.
+# ``lazy.EXPORTS`` (exported name -> its module in this package) must match the
+# ``TYPE_CHECKING`` imports above and ``__all__``: ``tests/test_egress_runtime.py`` checks it.
 
 
 def __getattr__(name: str) -> Any:

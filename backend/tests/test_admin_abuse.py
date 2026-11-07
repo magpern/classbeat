@@ -8,6 +8,7 @@ import importlib
 import inspect
 import re
 import secrets
+import typing
 import uuid
 from collections.abc import AsyncIterator
 from pathlib import Path
@@ -254,37 +255,57 @@ def test_the_view_reads_the_network_hash_only_inside_a_distinct_count() -> None:
     assert not [f for f in fields if re.search(r"hash|ip|addr|agent|token|route|path", f)]
 
 
+def _is_session_type(annotation: object) -> bool:
+    """``AsyncSession``, or a union holding it (``AsyncSession | None``, ``Optional[...]``)."""
+    return annotation is AsyncSession or AsyncSession in typing.get_args(annotation)
+
+
 def _takes_session(value: object) -> bool:
-    """A function with a parameter typed ``AsyncSession``: what the admin package hands its maint
-    session to."""
+    """A function with a parameter typed ``AsyncSession`` (or ``AsyncSession | None``): what the
+    admin package hands its maint session to. An annotation of a ``classbeat`` function that
+    cannot be resolved fails the test, so a callee never drops out of the scan unseen."""
     if inspect.isclass(value) or not callable(value):
         return False
     try:
         signature = inspect.signature(value, eval_str=True)
-    except (TypeError, ValueError, NameError):
-        return False
-    return any(p.annotation is AsyncSession for p in signature.parameters.values())
+    except (TypeError, ValueError):
+        return False  # a builtin or C callable with no signature: it has no annotations
+    except NameError as error:
+        if str(getattr(value, "__module__", "")).startswith("classbeat"):
+            raise AssertionError(f"cannot resolve an annotation of {value!r}: {error}") from error
+        return False  # a library function outside classbeat is not an admin-path callee
+    return any(_is_session_type(p.annotation) for p in signature.parameters.values())
 
 
-def _maint_callees() -> set[Path]:
+def _maint_callees(root: Path = SRC / "admin") -> set[Path]:
     """The source file of every function outside the admin package that the admin package can
-    hand its maint session to (#753): each ``auth.<name>`` it uses, and each name (or every
-    function of a module) it imports from another ``classbeat`` package, that takes an
-    ``AsyncSession``. Derived from the imports, so a new callee cannot stay out of the scan."""
+    hand its maint session to (#753): each ``auth.<name>`` it uses, each name (or every function
+    of a module) it imports from another ``classbeat`` package, and every function of a module it
+    reaches with ``import classbeat.x``, that takes an ``AsyncSession``. Derived from the
+    imports, so a new callee cannot stay out of the scan."""
     found: set[Path] = set()
-    for path in (SRC / "admin").rglob("*.py"):
+    for path in root.rglob("*.py"):
         for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
             values: list[Any] = []
             if (
                 isinstance(node, ast.ImportFrom)
                 and node.module
-                and node.module.startswith("classbeat.")
+                and (node.module == "classbeat" or node.module.startswith("classbeat."))
                 and not node.module.startswith("classbeat.admin")
             ):
                 module = importlib.import_module(node.module)
                 for alias in node.names:
-                    value = getattr(module, alias.name)
+                    if hasattr(module, alias.name):
+                        value = getattr(module, alias.name)
+                    else:  # ``from classbeat import connections``: a submodule not yet imported
+                        value = importlib.import_module(f"{node.module}.{alias.name}")
                     values += vars(value).values() if inspect.ismodule(value) else [value]
+            elif isinstance(node, ast.Import):
+                for alias in node.names:
+                    if alias.name.startswith("classbeat.") and not alias.name.startswith(
+                        "classbeat.admin"
+                    ):
+                        values += vars(importlib.import_module(alias.name)).values()
             elif (
                 isinstance(node, ast.Attribute)
                 and isinstance(node.value, ast.Name)
@@ -297,6 +318,42 @@ def _maint_callees() -> set[Path]:
                     assert source is not None, value
                     found.add(Path(source).resolve())
     return found
+
+
+def test_the_scan_sees_optional_session_parameters() -> None:
+    def optional(db: AsyncSession | None = None) -> None: ...
+    def typing_optional(db: typing.Optional[AsyncSession] = None) -> None: ...  # noqa: UP045
+    def plain(db: AsyncSession) -> None: ...
+    def other(db: int | None = None) -> None: ...
+
+    assert [_takes_session(f) for f in (optional, typing_optional, plain, other)] == [
+        True,
+        True,
+        True,
+        False,
+    ]
+
+
+def test_the_scan_fails_on_an_annotation_it_cannot_resolve() -> None:
+    def broken(db: "NoSuchType") -> None: ...  # noqa: F821  # pyright: ignore
+
+    broken.__module__ = "classbeat.somewhere"
+    with pytest.raises(AssertionError, match="cannot resolve an annotation"):
+        _takes_session(broken)
+    broken.__module__ = "somelibrary"  # outside classbeat it is not an admin-path callee
+    assert _takes_session(broken) is False
+
+
+def test_the_scan_follows_plain_and_from_imports_of_classbeat(tmp_path: Path) -> None:
+    status = (SRC / "connections" / "status.py").resolve()
+    for line in (
+        "import classbeat.connections.status",
+        "import classbeat.connections.status as s",
+        "from classbeat import connections\nconnections.status",
+        "from classbeat.connections import status",
+    ):
+        (tmp_path / "x.py").write_text(line + "\n", encoding="utf-8")
+        assert status in _maint_callees(tmp_path), line
 
 
 def _admin_path_files() -> list[Path]:

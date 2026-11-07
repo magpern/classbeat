@@ -175,8 +175,12 @@ export async function enrollTotp(page: Page): Promise<string> {
   return secret
 }
 
-/** Answer the step-up dialog when an admin write asks for it. */
-export async function stepUp(page: Page, secret: string): Promise<void> {
+/**
+ * Answer the step-up dialog when an admin write asks for it. `writePath` is the path prefix of the
+ * write that may ask (every admin write is under `/api/admin/`), so an unrelated non-GET call
+ * cannot end the wait early.
+ */
+export async function stepUp(page: Page, secret: string, writePath = '/api/admin/'): Promise<void> {
   const dialog = page.getByRole('dialog', { name: 'Enter a two-factor code' })
   // The write's 403 opens the dialog; its success (any non-403 answer to a write) means none will
   // come, so the wait ends at once. A success that landed before this call is missed and the wait
@@ -184,9 +188,11 @@ export async function stepUp(page: Page, secret: string): Promise<void> {
   await Promise.race([
     dialog.waitFor({ state: 'visible', timeout: 3_000 }).catch(() => undefined),
     page
-      .waitForResponse((r) => r.request().method() !== 'GET' && r.url().includes('/api/') && r.status() !== 403, {
-        timeout: 3_000,
-      })
+      .waitForResponse(
+        (r) =>
+          r.request().method() !== 'GET' && new URL(r.url()).pathname.startsWith(writePath) && r.status() !== 403,
+        { timeout: 3_000 },
+      )
       .catch(() => undefined),
   ])
   const asked = await dialog.isVisible()
