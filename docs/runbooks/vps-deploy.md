@@ -304,7 +304,8 @@ Everything below is the owner's; agents do not touch the Cloudflare dashboard.
 
 1. **Widget.** Cloudflare dashboard, Turnstile, add a widget for the host name of the real site,
    exactly the value of `CLASSBEAT_DOMAIN` (today `classbeat.pernemark.se`); no `localhost`. Only
-   the `CLASSBEAT_DOMAIN` host passes the check, so a second host on the widget is of no use. Mode **Managed**, pre-clearance **off**. The widget covers
+   the `CLASSBEAT_DOMAIN` host passes the check, so a second host on the widget is of no use.
+   Mode **Managed**, pre-clearance **off**. The widget covers
    subdomains of a listed host, so `pernemark.se` as a hostname would also cover this one; list the
    exact host anyway. **When the domain changes, add the new host to the widget first**, then change
    `CLASSBEAT_DOMAIN`, then remove the old host. Two different symptoms: a host **missing from the
@@ -364,6 +365,10 @@ for memory. The defaults, and the `.env` variables that change them:
   kills the container (`docker inspect --format '{{.State.OOMKilled}}' <container>` says `true`);
   `restart: unless-stopped` starts it again, and the reaper requeues its jobs when their leases run out.
   Repeated kills mean the ceiling is too low for the cap: raise `WORKER_MEMORY` or lower the cap.
+- **Swap.** The file sets `mem_limit` only, not `memswap_limit` (the production check refuses any
+  key it does not list). On a host with swap enabled, a container that reaches its ceiling can
+  therefore swap before the kernel kills it, so it gets slow instead of restarting. Check with
+  `free -h`; on a small server prefer no swap, or size `WORKER_MEMORY` knowing it is not a hard cap.
 - `scripts/check-prod-compose.sh` refuses a production file without both ceilings on `web` and `worker`.
 - To see whether the ceilings bite: `docker stats --no-stream`, the `swedebeat mix analysed` log lines
   (`fetch_ms`, `decode_ms`, `peak_rss_mb`, `load_1m`) and `docker compose exec web python -m classbeat

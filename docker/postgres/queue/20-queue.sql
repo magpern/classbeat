@@ -559,7 +559,8 @@ BEGIN
              extract(hour FROM e.created_at AT TIME ZONE 'UTC')::integer AS hour
         FROM public.job_events e
        WHERE e.kind = 'claimed' AND e.created_at > now() - make_interval(days => c_days)
-         AND jsonb_typeof(e.payload -> 'wait_ms') = 'number'
+         AND CASE WHEN jsonb_typeof(e.payload -> 'wait_ms') = 'number'
+                  THEN (e.payload ->> 'wait_ms')::numeric BETWEEN 0 AND 1e12 END
          AND jsonb_typeof(e.payload -> 'analysis_slot') = 'boolean'
     ), peak AS (
       SELECT c.hour FROM c WHERE c.slot GROUP BY c.hour ORDER BY count(*) DESC, c.hour LIMIT 1

@@ -420,6 +420,37 @@ def test_stats_give_the_p95_waits_at_peak_and_the_analysis_times(
     assert (stats["claim_wait_other_samples_7d"], stats["claim_wait_other_p95_ms_7d"]) == (20, 7)
 
 
+def test_stats_skip_a_wait_outside_zero_to_1e12_instead_of_failing(
+    admin: Connection, app: Engine
+) -> None:
+    """A ``claimed`` event whose ``wait_ms`` is negative or above 1e12 (the model's bound, and
+    past what the bigint cast takes) is left out of the measurement; the function still answers."""
+    owner = new_user(admin)
+    rows = [
+        ("now()", {"attempt": 1, "analysis_slot": True, "wait_ms": 5}),
+        ("now()", {"attempt": 1, "analysis_slot": True, "wait_ms": 10**12}),
+        ("now()", {"attempt": 1, "analysis_slot": True, "wait_ms": 10**12 + 1}),
+        ("now()", {"attempt": 1, "analysis_slot": True, "wait_ms": 10**30}),
+        ("now()", {"attempt": 1, "analysis_slot": True, "wait_ms": -1}),
+    ]
+    add_claims(admin, owner, rows)
+    stats = dict(call(app, "SELECT metric, total FROM public.queue_stats()"))
+    assert stats["claim_wait_slot_samples_7d"] == 2
+
+
+def test_stats_peak_hour_tie_goes_to_the_earlier_hour(admin: Connection, app: Engine) -> None:
+    """Two UTC hours with the same number of slot claims: the earlier hour is the peak."""
+    owner = new_user(admin)
+    day = "date_trunc('day', now() AT TIME ZONE 'UTC') AT TIME ZONE 'UTC' - interval '1 day'"
+    payload = {"attempt": 1, "analysis_slot": True, "wait_ms": 1}
+    rows = [(f"{day} + interval '{h} hours' + interval '{i} minutes'", payload)
+            for h in (20, 6) for i in range(3)]  # fmt: skip
+    add_claims(admin, owner, rows)
+    stats = dict(call(app, "SELECT metric, total FROM public.queue_stats()"))
+    assert stats["claim_wait_slot_peak_hour_utc"] == 6
+    assert stats["claim_wait_slot_peak_samples"] == 3
+
+
 def test_the_one_open_job_per_class_rule_holds_for_claimed_jobs(
     admin: Connection, app: Engine
 ) -> None:

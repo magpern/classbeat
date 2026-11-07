@@ -130,12 +130,13 @@ export function useCaptcha(action: CaptchaAction): Captcha {
 
   // Until the session is known (loading, or its fetch failed) it is not known whether the check
   // is on, so the form waits instead of sending a request the server would answer 400 captcha_failed.
+  // A failed fetch says so (with the way out, a reload) instead of "checking" for ever.
   const unknown = status !== 'ready'
   const on = config !== null
   const ready = !unknown && (!on || token !== null)
   const element = unknown ? (
     <p id={statusId} className="field__hint" role="status">
-      {t('captcha.waiting')}
+      {t(status === 'error' ? 'captcha.session' : 'captcha.waiting')}
     </p>
   ) : on ? (
     <CaptchaBox

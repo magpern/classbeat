@@ -161,7 +161,8 @@ services:
     # ADR 0026 stage 1 (#735): ceilings so one service cannot take the box. Web is one Python
     # process (it cannot use much more than a core); the memory leaves room for its pool and
     # requests. Override in .env (WEB_CPUS, WEB_MEMORY); never above the host's CPU count, or the
-    # container does not start. Runbook section 5c.
+    # container does not start. Without memswap_limit (check-prod-compose.sh allows only the keys it
+    # lists) a container can swap before the kernel kills it on a host with swap. Runbook 5c.
     cpus: ${WEB_CPUS:-1.0}
     mem_limit: ${WEB_MEMORY:-1g}
     tmpfs:

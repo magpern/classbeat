@@ -9,7 +9,7 @@ QUEUE_DIGESTS: dict[str, str] = {
     "queue_reap": "255c04d1036ab30116000b24d26a0218",
     "queue_expire": "224841070d8492c469cc188d3ced1998",
     "queue_unsettled": "d10ba360a070524788e466b18e35460a",
-    "queue_stats": "89ada33fd5b271551b9a6a362e6ae522",
+    "queue_stats": "c0dbef427888718c356fabc2b1ef219c",
     "mail_handoff_take": "9606336b906eab39452b21ede7aa1134",
 }
 # The M5 guard trigger functions (migrations 0007 to 0010), from the migrated database. The same

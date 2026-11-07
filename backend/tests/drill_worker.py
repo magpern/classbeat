@@ -6,13 +6,17 @@ id against the test's database. It runs the real ``classbeat.worker.loop.Worker`
 test kind: a job with the note ``analyse`` takes a mix-analysis slot and then sleeps (holding the
 slot, its lease kept alive by the heartbeat) until the process is killed; any other job completes.
 It prints its worker id once and only talks to the loopback database named in
-``DRILL_DATABASE_URL`` (no other network).
+``DRILL_DATABASE_URL``: it installs the same ``netguard`` as the test process, so a non-loopback
+connect or name lookup raises here too.
 """
 
 import asyncio
 import os
 import sys
 
+import pytest
+
+import netguard
 from authtools import make_settings
 from classbeat.db import create_engine
 from classbeat.jobs import Complete, JobRun
@@ -46,4 +50,5 @@ async def main() -> None:
 
 
 if __name__ == "__main__":
+    netguard.install(pytest.MonkeyPatch())  # never undone: the process ends with the drill
     asyncio.run(main())

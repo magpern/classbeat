@@ -32,15 +32,15 @@ to [the roadmap](../roadmap.md); §7 there lists the security work per milestone
 
 ```
 browser ──TLS── (Cloudflare) ── swag ── web ──── Postgres
-   │                      │ (app role, RLS)  │
+   │                                    │  (app role, RLS)  │
+   │                                    ├── sign-in providers (Google, GitHub, Microsoft; Spotify OAuth)
+   │                                    ├── mail relay
+   │                                    ├── MOWL / Swedebeat sign-in (user's password, once)
+   │                                    └── challenges.cloudflare.com siteverify (Turnstile secret, token, client IP)
+   │                                 worker ───────────────┘
+   │                                    ├── model APIs (our keys; receives class data)
+   │                                    └── MOWL / Spotify / Swedebeat (the user's tokens)
    └── challenges.cloudflare.com (Turnstile widget, sign-in pages only; ADR 0025)
-                          ├── challenges.cloudflare.com siteverify (Turnstile secret, token, client IP)
-                          ├── sign-in providers (Google, GitHub, Microsoft; Spotify OAuth)
-                          ├── mail relay
-                          ├── MOWL / Swedebeat sign-in (user's password, once)
-                       worker ───────────────┘
-                          ├── model APIs (our keys; receives class data)
-                          └── MOWL / Spotify / Swedebeat (the user's tokens)
 GitHub repo ── Actions ── GHCR image (private) ── VPS (owner-deployed)
 development agents ── the repository, issues, PRs (their input is untrusted text too)
 ```
