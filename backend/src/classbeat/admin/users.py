@@ -425,8 +425,8 @@ async def delete_user(
         target=Target(user_id=user_id, kind="user", id=str(user_id)),  # survives the delete
     ) as session:
         # Checked without the row lock: ending the target's jobs commits in the target's own
-        # sessions, whose inserts take a key-share lock this transaction's ``FOR UPDATE`` would
-        # block (ADR 0014 section 3).
+        # sessions and can wait for a running job (ADR 0014 section 3), and the user row lock
+        # is not held across that wait. The lock (``FOR NO KEY UPDATE``, #675) is taken after.
         found = await _target(session, user_id)
         if found.role == "admin":
             raise AdminRefused("target_is_admin", 409)

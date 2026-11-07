@@ -197,8 +197,9 @@ async def logout(
 
     The user row lock comes first, as on every revoke path (ADR 0019 section 6): the event's
     foreign key takes ``FOR KEY SHARE`` on the user row after the session row is locked, which
-    would deadlock with an account deletion (user row, then the sessions by cascade) that came in
-    between. Under the lock the deletion waits for the sign-out, or the sign-out finds nothing."""
+    would deadlock with an account deletion (the user row lock, then the sessions, #675) that
+    came in between. Under the lock the deletion waits for the sign-out, or the sign-out finds
+    nothing."""
     if info is None:
         return
     async with system_session(_factory(request)) as db:
