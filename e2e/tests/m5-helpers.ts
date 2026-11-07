@@ -178,11 +178,18 @@ export async function enrollTotp(page: Page): Promise<string> {
 /** Answer the step-up dialog when an admin write asks for it. */
 export async function stepUp(page: Page, secret: string): Promise<void> {
   const dialog = page.getByRole('dialog', { name: 'Enter a two-factor code' })
-  // `isVisible` does not wait: give the write's 403 round trip a few seconds to open the dialog.
-  const asked = await dialog.waitFor({ state: 'visible', timeout: 3_000 }).then(
-    () => true,
-    () => false,
-  )
+  // The write's 403 opens the dialog; its success (any non-403 answer to a write) means none will
+  // come, so the wait ends at once. A success that landed before this call is missed and the wait
+  // falls back to the 3 s ceiling: slower, never wrong.
+  await Promise.race([
+    dialog.waitFor({ state: 'visible', timeout: 3_000 }).catch(() => undefined),
+    page
+      .waitForResponse((r) => r.request().method() !== 'GET' && r.url().includes('/api/') && r.status() !== 403, {
+        timeout: 3_000,
+      })
+      .catch(() => undefined),
+  ])
+  const asked = await dialog.isVisible()
   if (asked) {
     await dialog.getByLabel('Authenticator or recovery code').fill(await nextTotp(secret))
     await dialog.getByRole('button', { name: 'Continue' }).click()
