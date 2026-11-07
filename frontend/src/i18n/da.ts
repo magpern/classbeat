@@ -1,6 +1,8 @@
 import type { Catalogue } from './en'
+import { legalDa } from './legal.da'
 
 const da: Catalogue = {
+  ...legalDa,
   'language.label': 'Sprog',
   'language.follow': 'Følg denne browser',
   'language.help':

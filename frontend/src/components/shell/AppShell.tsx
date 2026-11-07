@@ -1,3 +1,4 @@
+import { LegalFooter } from '../../pages/legal/LegalFooter'
 import { Home, Library, Music, Plus, User, type LucideIcon } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { logout } from '../../api/auth'
@@ -161,6 +162,7 @@ function Frame({ rootClass, top, mainClass, alert, bottom, children }: FrameProp
         <div className="mx-auto max-w-5xl">
           {alert}
           {children}
+          <LegalFooter />
         </div>
       </main>
       {bottom}

@@ -1,12 +1,15 @@
 import { fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { I18nProvider } from '../i18n/I18n'
+import { RouterProvider } from '../router/Router'
 import { COOKIE_NOTICE_KEY, CookieNotice } from './CookieNotice'
 
 function mount() {
   return render(
     <I18nProvider>
-      <CookieNotice />
+      <RouterProvider>
+        <CookieNotice />
+      </RouterProvider>
     </I18nProvider>,
   )
 }
@@ -28,6 +31,11 @@ describe('CookieNotice', () => {
     first.unmount()
     mount()
     expect(screen.queryByTestId('cookie-notice')).toBeNull()
+  })
+
+  it('links to the privacy notice', () => {
+    mount()
+    expect(screen.getByRole('link', { name: 'privacy notice' })).toHaveAttribute('href', '/privacy')
   })
 
   it('does not crash when storage is unavailable and shows on every load', () => {
