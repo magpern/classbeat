@@ -30,3 +30,4 @@ Reviewer reviews each in its PR (AGENTS.md, "Decisions and ADRs").
 | [0022](0022-account-emails.md) | Account emails: registry, branded multipart mail, fire-and-forget delivery, preferences (ME, #649) | Accepted, subject to review |
 | [0023](0023-multilingual.md) | Multilingual support: English, Swedish and Danish UI and mail; agent-translated and agent-reviewed; classes stay English (ML, #657) | Accepted, subject to review |
 | [0024](0024-mowl-qr-connect.md) | Connect MOWL by scanning a QR code: anonymous ticket, image from our origin, TLS-only MQTT on 8883, per-session wait (#647) | Proposed |
+| [0025](0025-turnstile.md) | Cloudflare Turnstile on sign-in, sign-up, the provider-email step and the reset request: order before any account lookup, fail closed, web-only egress (#721) | Proposed |
