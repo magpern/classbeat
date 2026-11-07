@@ -62,6 +62,9 @@ sudo mkdir -p /opt/classbeat && sudo chown "$USER" /opt/classbeat
 cd /opt/classbeat
 V=X.Y.Z                                           # the release, without the v
 for f in compose.prod.yaml compose.prod.loopback.yaml compose.prod.lan.yaml check-prod-compose.sh \
+  check-prod-compose-rollback.bash check-prod-compose-setup.bash check-prod-compose-rules.bash check-prod-compose-secrets.bash \
+  check-prod-compose-selftest-compose.bash check-prod-compose-selftest-yaml.bash check-prod-compose-owner.bash check-prod-compose-secretfiles.bash \
+  check-prod-compose-runbook.bash check-prod-compose-site.bash check-prod-compose-site-selftest.bash check-prod-compose-probe.bash \
   swag-classbeat.subdomain.conf prod.env.example backup.sh restore.sh validate-backup.sh SHA256SUMS; do
   curl --proto '=https' --tlsv1.2 -fsSLO "https://github.com/magpern/classbeat/releases/download/v$V/$f"
 done
@@ -85,7 +88,7 @@ anything else runs:
 
 ```bash
 gh attestation verify SHA256SUMS -R magpern/classbeat --signer-workflow magpern/classbeat/.github/workflows/release.yml || echo "NOT VERIFIED: SHA256SUMS"
-for a in $(awk '{print $2}' SHA256SUMS); do        # the names in the verified list: the other nine assets
+for a in $(awk '{print $2}' SHA256SUMS); do        # the names in the verified list: the other twenty-one assets
   gh attestation verify "$a" -R magpern/classbeat --signer-workflow magpern/classbeat/.github/workflows/release.yml || echo "NOT VERIFIED: $a"
 done
 ```
@@ -722,13 +725,16 @@ echo "$OLD"                                       # write it down: a new shell h
 # 1. Download into a staging folder and verify there: a failed download changes nothing that runs.
 rm -rf "staging-$NEW" && mkdir "staging-$NEW"
 for f in compose.prod.yaml compose.prod.loopback.yaml compose.prod.lan.yaml check-prod-compose.sh \
+  check-prod-compose-rollback.bash check-prod-compose-setup.bash check-prod-compose-rules.bash check-prod-compose-secrets.bash \
+  check-prod-compose-selftest-compose.bash check-prod-compose-selftest-yaml.bash check-prod-compose-owner.bash check-prod-compose-secretfiles.bash \
+  check-prod-compose-runbook.bash check-prod-compose-site.bash check-prod-compose-site-selftest.bash check-prod-compose-probe.bash \
   swag-classbeat.subdomain.conf prod.env.example backup.sh restore.sh validate-backup.sh SHA256SUMS; do
   curl --proto '=https' --tlsv1.2 -fsSLo "staging-$NEW/$f" "https://github.com/magpern/classbeat/releases/download/v$NEW/$f"
 done
 ( cd "staging-$NEW" && sha256sum -c SHA256SUMS --quiet )          # truncation only, see section 3
 # The tamper check of section 3 (gh attestation verify, per file) also runs in staging-$NEW before step 2.
 # 2. Keep the files you run now (the rollback files), then replace them.
-mkdir -p "previous-$OLD" && cp compose.prod*.yaml check-prod-compose.sh backup.sh restore.sh validate-backup.sh \
+mkdir -p "previous-$OLD" && cp compose.prod*.yaml check-prod-compose*.sh check-prod-compose-*.bash backup.sh restore.sh validate-backup.sh \
   swag-classbeat.subdomain.conf prod.env.example SHA256SUMS "previous-$OLD/"
 mv -f "staging-$NEW"/* . && rmdir "staging-$NEW"
 chmod +x check-prod-compose.sh backup.sh restore.sh validate-backup.sh   # a download has no exec bit
@@ -823,7 +829,7 @@ secret files are backed up separately (section 5).
 ## 13. What agents checked, and what they did not
 
 `scripts/check-prod-compose.sh` (also a CI step, and the release asset `check-prod-compose.sh` you run
-in section 9) renders `compose.prod.yaml` alone and with the loopback and LAN overlays using dummy values, checks the invariants (no Caddy and no published port, web on
+in section 9; it sources the `check-prod-compose-*.bash` assets beside it, which section 3 downloads with it and which it refuses to run without) renders `compose.prod.yaml` alone and with the loopback and LAN overlays using dummy values, checks the invariants (no Caddy and no published port, web on
 `127.0.0.1` only with the overlay, one private trusted proxy equal to `PROXY_IP` or the `web-out`
 gateway, the real `PROXY_IP` from the shell or `.env` when one is set, swag's address outside the
 section 6a `--ip-range`, only web on the proxy network, internal `backend`, `db` unpublished, read-only web without
