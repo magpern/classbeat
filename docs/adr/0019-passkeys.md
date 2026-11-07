@@ -3,6 +3,9 @@
 Status: Accepted (2026-11-05, issue #311). Proposed 2026-11-03; the owner answered the six
 questions at the end on 2026-11-05 (see "Owner answers").
 
+**Amendment 2026-11-07 (owner):** the test and beta RP ID is `classbeat.pernemark.se`, production
+stays `classbeat.eu` (§3, owner answer 2). Docs only; the RP ID is configuration, no code changes.
+
 **Revision 2026-11-05** (the owner said to start #311). Folds in the non-blocking points A to E of
 #483's last Opus review (posted on #311) and the facts that changed on `main` since:
 - **A** §12 also names ADR 0003 §6 (the guarded-action list) and §9 (the rate-limit table).
@@ -150,8 +153,11 @@ tests.
   No public-suffix list is shipped, so a public suffix such as `github.io` passes this check;
   browsers refuse such an RP ID themselves, so the residual is a confusing operator error, not a
   weaker passkey.
-- **RP ID decided (owner, 2026-11-05): production is `classbeat.eu`**, a beta host may use
-  `dev.classbeat.eu` instead of `classbeat.pernemark.se`; each environment sets its own exact host.
+- **RP ID decided (owner, 2026-11-05): production is `classbeat.eu`**; each environment sets its
+  own exact host. **Amended (owner, 2026-11-07): the test and beta host is `classbeat.pernemark.se`**
+  (not `dev.classbeat.eu`). The two RP IDs are separate, so a passkey made on one never works on the
+  other, and each environment has its own database. Only the exact host is ever used, never the
+  parent `pernemark.se`.
   The earlier recommendation read: **`classbeat.pernemark.se`** (the exact host, the default). A
   parent such as `pernemark.se` would let any other page on that domain ask for the same passkeys.
   The RP ID is baked into every passkey: changing the domain later makes all existing passkeys
@@ -736,9 +742,10 @@ defaults the issues build to; a different answer is a later amendment.
 ## Owner answers (2026-11-05)
 
 1. Licence: **yes**, `webauthn` (py_webauthn, BSD-3-Clause) is accepted; W1 may add it.
-2. RP ID: production is **`classbeat.eu`** (exact host, never the parent). A beta or dev host uses
-   its own exact host (`dev.classbeat.eu`), never `classbeat.pernemark.se` for a new setup. The
-   Architect picks the value per environment; the owner applies it in the server's env file.
+2. RP ID: production is **`classbeat.eu`** (exact host, never the parent). The test and beta host
+   is **`classbeat.pernemark.se`** (exact host, never `pernemark.se`); this replaces the first
+   answer of 2026-11-05, which named `dev.classbeat.eu` (owner, 2026-11-07). The Architect picks the
+   value per environment; the owner applies it in the server's env file.
 3. Admin MFA: **no**; TOTP stays the admin factor, admin security is unchanged.
 4. Shared computers: **yes**; W9 (24-hour absolute session, no known-device cookie for a
    `cross-platform` assertion) exists, and W6 depends on it.
