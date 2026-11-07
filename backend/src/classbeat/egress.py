@@ -43,8 +43,8 @@ else, in either process; it does not follow redirects and refuses one to another
 **The media client** (ADR 0016 §4, threat model T109): ``mowl_media_async_client()`` fetches a
 Swedebeat mix from the temporary link MOWL returns (A3, worker only). Its list is
 ``MOWL_MEDIA_ALLOWLIST``, built from the literal ``MOWL_MEDIA_HOSTS``, which holds the one
-confirmed host (``users-playlists.s3-accelerate.amazonaws.com``, #524); nothing else's does: the library's MOWL opener, with its
-``authorization`` header, cannot reach the media host (it is on no urllib list), and this client
+confirmed host (``users-playlists.s3-accelerate.amazonaws.com``, #524); nothing else's does: the
+library's MOWL opener, with its ``authorization`` header, cannot reach the media host (it is on no urllib list), and this client
 sends none of our headers. It follows no redirect at all, ends every request within
 ``MOWL_MEDIA_TOTAL_SECONDS`` and takes **no argument** (a list and a transport come only from
 tests, through ``mowl_media_test_client``, which the guard refuses in ``classbeat``). The body is
