@@ -167,6 +167,15 @@ def test_the_shown_kinds_are_kinds_the_code_writes() -> None:
     assert missing == set()
 
 
+def test_the_frontend_fixture_lists_the_shown_kinds() -> None:
+    """``fixtures/activity_kinds.json`` is ``SHOWN_KINDS`` written out; the frontend test holds
+    its own list (``ACTIVITY_KINDS``, each worded in every catalogue) equal to the same file."""
+    from pathlib import Path
+
+    fixture = Path(__file__).parent / "fixtures" / "activity_kinds.json"
+    assert json.loads(fixture.read_text(encoding="utf-8")) == sorted(activity.SHOWN_KINDS)
+
+
 # --- paging ----------------------------------------------------------------------------------
 
 
