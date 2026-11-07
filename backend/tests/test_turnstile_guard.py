@@ -43,6 +43,17 @@ EXEMPT: dict[tuple[str, str], str] = {
     ("POST", "/api/auth/password/reset/complete"): "the 32-byte mailed token is the proof",
     ("POST", "/api/mail/unsubscribe"): "a signed token; changes only that mail preference",
     ("POST", "/api/mail/unsubscribe/confirm"): "a signed token; changes only that mail preference",
+    # ADR 0019 (#773): passkey sign-in. Like the OAuth start and callback: the start touches no
+    # account or mailbox and is bounded per address, per IPv6 /48 and globally; the finish's proof
+    # is a signature by the caller's own authenticator with user verification.
+    ("POST", "/api/auth/passkeys/signin/start"): (
+        "touches no account or mailbox: a 5-minute challenge row with no user, limited per "
+        "address, per IPv6 /48 and globally (ADR 0019 section 10)"
+    ),
+    ("POST", "/api/auth/passkeys/signin/finish"): (
+        "single-use challenge found by the browser's flow cookie; the proof is a signature by the "
+        "caller's own authenticator with user verification, and failures are limited"
+    ),
     ("POST", "/api/auth/logout"): (
         "ends the caller's own session; without one it does nothing (no account, mail or session)"
     ),

@@ -29,6 +29,7 @@ class S(Enum):
     SUBJECT_CLASS_READY = auto()
     SUBJECT_PASSKEY_ADDED = auto()
     SUBJECT_PASSKEY_REMOVED = auto()
+    SUBJECT_PASSKEY_COUNTER = auto()
     # Footer.
     FOOTER_SITE = auto()
     FOOTER_SUPPORT = auto()
@@ -150,6 +151,10 @@ class S(Enum):
     PASSKEY_REMOVED_BODY = auto()
     PASSKEY_REMOVED_WARN = auto()
     PASSKEY_WHEN = auto()
+    PASSKEY_COUNTER_HEADING = auto()
+    PASSKEY_COUNTER_PRE = auto()
+    PASSKEY_COUNTER_BODY = auto()
+    PASSKEY_COUNTER_WARN = auto()
 
 
 CATALOGUE: dict[S, str] = {
@@ -348,6 +353,18 @@ CATALOGUE: dict[S, str] = {
     ),
     S.PASSKEY_REMOVED_WARN: "If this wasn't you, change your password and tell us right away.",
     S.PASSKEY_WHEN: "When it happened",
+    S.SUBJECT_PASSKEY_COUNTER: "A passkey sign-in to your classbeat account was refused",
+    S.PASSKEY_COUNTER_HEADING: "A passkey sign-in was refused",
+    S.PASSKEY_COUNTER_PRE: "A passkey on your classbeat account may have been copied.",
+    S.PASSKEY_COUNTER_BODY: (
+        'A sign-in with the passkey named "{label}" was refused because its signature counter '
+        "did not go up. This can happen when a passkey has been copied to another device, and "
+        "now and then when two sign-ins arrive at once. The passkey still works."
+    ),
+    S.PASSKEY_COUNTER_WARN: (
+        "If you did not just sign in with this passkey, remove it from your account page, "
+        "change your password and tell us right away."
+    ),
 }
 
 

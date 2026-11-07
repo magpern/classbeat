@@ -87,6 +87,12 @@ _ALL = (
     # ADR 0019 (#772): a passkey added or removed, like a provider linked or unlinked.
     _activity("passkey_added", passkey_kinds.passkey_added, {"label": "MacBook", **_WHEN}),
     _activity("passkey_removed", passkey_kinds.passkey_removed, {"label": "MacBook", **_WHEN}),
+    # ADR 0019 (#773): a sign-in refused for a counter that did not go up, at most once a day.
+    _activity(
+        "passkey_counter_regressed",
+        passkey_kinds.passkey_counter_regressed,
+        {"label": "MacBook", **_WHEN},
+    ),
     # ME5 (#656): sent by the web process from the worker's hand-off row (``emails.handoff``).
     _class_ready("class_ready", kinds.class_ready, {"class_id": SAMPLE_CLASS_ID}),
 )

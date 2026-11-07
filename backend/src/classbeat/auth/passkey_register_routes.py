@@ -7,9 +7,10 @@ middleware). Finish checks them again rather than trusting start, so a step-up o
 out, or a move to a new network (#632 clears the times), fails closed with ``reauth_required`` or
 ``stepup_required``. Both count in the register buckets (every request).
 
-Start makes the user handle if needed, stores a 32-byte challenge bound to this user and session
-and sets the ``register`` flow cookie (the previous flow of that cookie goes first). Refused with
-409 ``passkey_limit`` at 10 passkeys.
+Start locks the user row first (section 6) and checks its session is still there, then makes the
+user handle if needed, stores a 32-byte challenge bound to this user and session and sets the
+``register`` flow cookie (the previous flow of that cookie goes first). Refused with 409
+``passkey_limit`` at 10 passkeys.
 
 Finish, in three steps (section 6):
 
@@ -97,6 +98,13 @@ async def register_start(
     await reserve(request, register_buckets(str(ctx.user_id), request_ip(request)))
     challenge = secrets.token_bytes(CHALLENGE_BYTES)
     async with system_session(factory(request)) as db:
+        # The user row first (section 6, #782 review N3): the previous flow's delete below locks
+        # a challenge row that a reset's session delete cascades to, and the insert's foreign key
+        # waits for the session row that reset is deleting. Under this lock the reset waits, or
+        # has committed and the session check below stops the start.
+        locked = await lock_user(db, ctx.user_id)
+        if locked is None or locked.disabled or not await session_alive(db, ctx.user_id, info.id):
+            raise HTTPException(status_code=401, detail={"reason": "not_authenticated"})
         if await count_passkeys(db, ctx.user_id) >= MAX_PASSKEYS:
             raise HTTPException(status_code=409, detail={"reason": "passkey_limit"})
         handle = await ensure_user_handle(db, ctx.user_id)
