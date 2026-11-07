@@ -140,5 +140,5 @@ export const legalSv: Catalogue = {
   'terms.law.p1':
     'Vi kan uppdatera villkoren och säger det i tjänsten innan en ändring som spelar roll för dig börjar gälla. Frågor går till {email}.',
   'terms.law.p2':
-    'Vilken lag som gäller för villkoren och vilken domstol som avgör tvister är inte bestämt ännu och anges här före lanseringen.',
+    'Svensk lag gäller för de här villkoren, utan att ta bort de tvingande konsumentskyddsreglerna i det EU- eller EES-land där du bor; GDPR och EU:s konsumentlagstiftning gäller som vanligt. Tvister avgörs av svenska domstolar, men som konsument kan du också väcka talan vid domstol i ditt eget EU-land, och du kan fortfarande vända dig till din nationella konsumenttvistnämnd.',
 }

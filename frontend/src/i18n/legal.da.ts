@@ -140,5 +140,5 @@ export const legalDa: Catalogue = {
   'terms.law.p1':
     'Vi kan opdatere vilkårene og siger det i tjenesten, før en ændring, der betyder noget for dig, træder i kraft. Spørgsmål går til {email}.',
   'terms.law.p2':
-    'Hvilken lov der gælder for vilkårene, og hvilken domstol der afgør tvister, er ikke bestemt endnu og angives her før lanceringen.',
+    "Svensk lov gælder for disse vilkår, uden at fjerne de ufravigelige forbrugerbeskyttelsesregler i det EU- eller EØS-land, hvor du bor; GDPR og EU's forbrugerlovgivning gælder som sædvanligt. Tvister afgøres af de svenske domstole, men som forbruger kan du også anlægge sag ved domstolene i dit eget EU-land, og du kan stadig henvende dig til dit nationale forbrugerklagenævn.",
 }

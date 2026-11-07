@@ -140,5 +140,5 @@ export const legalEn = {
   'terms.law.p1':
     'We may update these terms and will say so in the service before a change that matters to you applies. Questions go to {email}.',
   'terms.law.p2':
-    'The law that governs these terms and the court that decides disputes are not yet decided and will be set here before launch.',
+    'Swedish law governs these terms, without taking away the mandatory consumer-protection rules of the country in the EU or EEA where you live; the GDPR and EU consumer law apply as usual. Disputes go to the Swedish courts, but as a consumer you may also bring a claim in the courts of your own EU country, and you can still turn to your national consumer dispute board.',
 }
