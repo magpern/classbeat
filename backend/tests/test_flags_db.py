@@ -61,12 +61,37 @@ async def test_public_settings_hold_the_banner_and_the_effective_mode_and_nothin
         with stored(database_url):
             response = await Browser(env).get(PUBLIC)  # no session, no stored row
             assert response.status_code == 200
-            assert response.json() == {"banner": None, "signup_mode": "open"}
+            assert response.json() == {
+                "banner": None,
+                "signup_mode": "open",
+                "support_address": "support@classbeat.eu",
+            }
             assert response.headers["cache-control"] == "no-store"
         with stored(database_url, banner=banner, signup_mode="invite", trial={"plan": "pro"}):
             response = await Browser(env).get(PUBLIC)
-            assert response.json() == {"banner": banner, "signup_mode": "invite"}
-            assert set(response.json()) == {"banner", "signup_mode"}  # no other setting leaks
+            assert response.json() == {
+                "banner": banner,
+                "signup_mode": "invite",
+                "support_address": "support@classbeat.eu",
+            }
+            # No other setting leaks.
+            assert set(response.json()) == {"banner", "signup_mode", "support_address"}
+
+
+async def test_public_settings_serve_the_support_address_the_mails_use(
+    clean_auth: None, app_database_url: str, database_url: str
+) -> None:
+    """The admin's address wins when valid; otherwise the environment's (#650)."""
+    async with running_env(app_database_url, mail_support_address="env@example.com") as env:
+        for row, expected in (
+            (None, "env@example.com"),
+            ("help@example.org", "help@example.org"),
+            ("Name <x@example.org>", "env@example.com"),  # not a bare address: ignored
+            (5, "env@example.com"),
+        ):
+            with stored(database_url, **({} if row is None else {"mail_support_email": row})):
+                response = await Browser(env).get(PUBLIC)
+                assert response.json()["support_address"] == expected, row
 
 
 async def test_an_invalid_or_oversized_banner_is_not_served(

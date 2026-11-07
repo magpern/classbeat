@@ -16,6 +16,7 @@ import { UnsubscribePage } from './pages/UnsubscribePage'
 import { JobPage } from './pages/JobPage'
 import { HomePage } from './pages/HomePage'
 import { LandingPage } from './pages/LandingPage'
+import { HelpPage } from './pages/HelpPage'
 import { PrivacyPage } from './pages/PrivacyPage'
 import { MusicPage } from './pages/MusicPage'
 import { NewClassPage } from './pages/NewClassPage'
@@ -91,6 +92,8 @@ function Routes() {
       return <PrivacyPage />
     case '/terms':
       return <TermsPage />
+    case '/help':
+      return <HelpPage />
     case '/classes':
       return <ClassesPage />
     case '/classes/new':

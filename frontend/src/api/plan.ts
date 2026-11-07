@@ -102,3 +102,14 @@ export function decodeBanner(value: unknown): Banner | null {
 export async function getBanner(signal?: AbortSignal): Promise<Banner | null> {
   return decodeBanner(await get('/api/settings/public', signal))
 }
+
+/** The address people write to for help (`support_address`), or null when none came back. */
+export function decodeSupportAddress(value: unknown): string | null {
+  if (!isObject(value)) return null
+  const address = value.support_address
+  return typeof address === 'string' && address.trim() !== '' ? address.trim() : null
+}
+
+export async function getSupportAddress(signal?: AbortSignal): Promise<string | null> {
+  return decodeSupportAddress(await get('/api/settings/public', signal))
+}

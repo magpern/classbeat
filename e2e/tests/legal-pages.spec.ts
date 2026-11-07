@@ -52,3 +52,29 @@ test('the sign-in page links to both pages', async ({ page }) => {
   await page.getByRole('navigation', { name: 'Legal' }).getByRole('link', { name: 'Terms' }).click()
   await expect(page).toHaveURL(/\/terms$/)
 })
+
+// Issue #650: the help and contact page is public too, linked from the footer, in en, sv and da.
+const HELP = [
+  { code: 'en', locale: 'en-US', title: 'Help and contact', link: 'Help', footer: 'Legal' },
+  { code: 'sv', locale: 'sv-SE', title: 'Hjälp och kontakt', link: 'Hjälp', footer: 'Juridisk information' },
+  { code: 'da', locale: 'da-DK', title: 'Hjælp og kontakt', link: 'Hjælp', footer: 'Juridisk information' },
+] as const
+
+for (const help of HELP) {
+  test.describe(`help ${help.code}`, () => {
+    test.use({ locale: help.locale })
+
+    test('opens from the footer link signed out and passes axe', async ({ page }) => {
+      await page.goto('/signin')
+      await page
+        .getByRole('navigation', { name: help.footer })
+        .getByRole('link', { name: help.link, exact: true })
+        .click()
+      await expect(page).toHaveURL(/\/help$/)
+      const heading = page.getByRole('heading', { level: 1, name: help.title })
+      await expect(heading).toBeVisible()
+      await expectValidLang(page, help.code)
+      await auditPage(page, `${help.code} /help`, heading)
+    })
+  })
+}

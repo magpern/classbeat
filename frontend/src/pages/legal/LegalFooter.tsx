@@ -15,6 +15,9 @@ export function LegalFooter() {
       <Link to="/terms" className="inline-flex min-h-11 items-center">
         {t('legal.link.terms')}
       </Link>{' '}
+      <Link to="/help" className="inline-flex min-h-11 items-center">
+        {t('help.link')}
+      </Link>{' '}
     </nav>
   )
 }

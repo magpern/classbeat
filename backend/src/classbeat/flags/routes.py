@@ -1,5 +1,5 @@
-"""``GET /api/settings/public`` (ADR 0011 section 9): no sign-in, nothing but the banner and the
-effective sign-up mode."""
+"""``GET /api/settings/public`` (ADR 0011 section 9): no sign-in, nothing but the banner, the
+effective sign-up mode and the support address (the mails name it, the help page shows it, #650)."""
 
 from fastapi import APIRouter, Request, Response
 from pydantic import BaseModel
@@ -18,6 +18,7 @@ class BannerOut(BaseModel):
 class PublicOut(BaseModel):
     banner: BannerOut | None
     signup_mode: str
+    support_address: str
 
 
 @router.get("/public", response_model=PublicOut)
@@ -26,7 +27,10 @@ async def public_settings(request: Request, response: Response) -> PublicOut:
     async with system_session(request.app.state.session_factory) as db:
         shown = await effective.banner(db)
         mode = await effective.signup_mode(db, request.app.state.settings.signup_mode)
+        configured = request.app.state.settings.mail_support_address
+        support = await effective.mail_support_address(db, configured)
     return PublicOut(
         banner=None if shown is None else BannerOut(text=shown.text, level=shown.level),
         signup_mode=mode,
+        support_address=support,
     )
