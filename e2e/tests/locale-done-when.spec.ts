@@ -114,8 +114,10 @@ test('Swedish chosen on the account page follows the account to a fresh browser'
   // A browser that prefers English signs in to the Danish account and gets Danish.
   const first = await freshBrowser(browser, baseURL, 'en')
   await signInAs(first, daEmail, { email: 'Email', password: 'Password', button: 'Sign in' })
-  await expect(html(first)).toHaveAttribute('lang', 'da')
+  // The sign-in page keeps the language of its URL (ADR 0027); the account's language is what an
+  // unprefixed URL redirects to.
   await first.goto('/')
+  await expect(html(first)).toHaveAttribute('lang', 'da')
   await expect(first.getByRole('link', { name: da.design })).toBeVisible()
 
   // On the account page the language is switched to Swedish; the page changes at once and it is saved.
@@ -131,8 +133,10 @@ test('Swedish chosen on the account page follows the account to a fresh browser'
   await second.goto('/signin')
   await expect(html(second)).toHaveAttribute('lang', 'en')
   await signInAs(second, daEmail, { email: 'Email', password: 'Password', button: 'Sign in' })
-  await expect(html(second)).toHaveAttribute('lang', 'sv')
+  // The sign-in page keeps the language of its URL (ADR 0027); the account's language is what an
+  // unprefixed URL redirects to.
   await second.goto('/')
+  await expect(html(second)).toHaveAttribute('lang', 'sv')
   await expect(second.getByRole('link', { name: SV.design })).toBeVisible()
 
   // "Follow this browser" saves nothing on the account and the page follows the browser (English).
@@ -145,14 +149,18 @@ test('Swedish chosen on the account page follows the account to a fresh browser'
   // A Danish browser then gets Danish, a Swedish one Swedish: the account no longer decides.
   const danish = await freshBrowser(browser, baseURL, 'da-DK')
   await signInAs(danish, daEmail, { email: da.email, password: da.password, button: da.signIn })
-  await expect(html(danish)).toHaveAttribute('lang', 'da')
+  // The sign-in page keeps the language of its URL (ADR 0027); the account's language is what an
+  // unprefixed URL redirects to.
   await danish.goto('/')
+  await expect(html(danish)).toHaveAttribute('lang', 'da')
   await expect(danish.getByRole('link', { name: da.design })).toBeVisible()
   await danish.context().close()
   const swedish = await freshBrowser(browser, baseURL, 'sv-SE')
   await signInAs(swedish, daEmail, { email: 'E-post', password: 'Lösenord', button: 'Logga in' })
-  await expect(html(swedish)).toHaveAttribute('lang', 'sv')
+  // The sign-in page keeps the language of its URL (ADR 0027); the account's language is what an
+  // unprefixed URL redirects to.
   await swedish.goto('/')
+  await expect(html(swedish)).toHaveAttribute('lang', 'sv')
   await expect(swedish.getByRole('link', { name: SV.design })).toBeVisible()
   await swedish.context().close()
 })
