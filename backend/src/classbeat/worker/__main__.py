@@ -10,6 +10,7 @@ from classbeat.config import (
     ModelProviderRefused,
     Settings,
     check_worker_has_no_swedebeat_app,
+    check_worker_has_no_turnstile_secret,
     check_worker_model_provider,
     worker_model_providers,
 )
@@ -86,6 +87,7 @@ def main() -> int:
     try:
         check_worker_model_provider(settings)
         check_worker_has_no_swedebeat_app(settings)
+        check_worker_has_no_turnstile_secret(settings)  # web only (ADR 0025 section 7)
     except ModelProviderRefused as refused:
         logger.error("worker refused to start", extra={"reason": str(refused)})
         return 2

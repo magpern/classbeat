@@ -8,7 +8,7 @@ step-up. Change: recent authentication (and step-up with a confirmed TOTP), revo
 session.
 """
 
-from typing import Annotated
+from typing import Annotated, Any
 from uuid import UUID
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
@@ -19,6 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from classbeat.auth import locale as account_locale
 from classbeat.auth import mails
 from classbeat.auth.accounts import find_user
+from classbeat.auth.captcha import require_captcha
 from classbeat.auth.clientip import bucket_ip
 from classbeat.auth.deps import current_session, request_ip, require_recent_auth
 from classbeat.auth.devices import forget_devices
@@ -63,6 +64,8 @@ PURPOSE = "reset_password"
 
 class ResetRequestIn(BaseModel):
     email: EmailAddress
+    # The Turnstile token (ADR 0025 section 2): any value; a bad one is captcha_failed, never 422.
+    captcha_token: Any = None
 
 
 class TokenIn(BaseModel):
@@ -120,6 +123,8 @@ def make_reset_link_sender(
 async def request_reset(
     body: ResetRequestIn, request: Request, background: BackgroundTasks
 ) -> Accepted:
+    # ADR 0025 section 2: before the mail buckets, the account lookup and the mail.
+    await require_captcha(request, "reset", body.captcha_token)
     normalized, ip = normalize_email(body.email), bucket_ip(request_ip(request))
     await reserve(
         request,

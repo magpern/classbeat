@@ -195,6 +195,12 @@ Every state-changing request (`POST`, `PUT`, `PATCH`, `DELETE`) must pass two ch
 
 ### 5. Sign-in methods
 
+**Amended by [ADR 0025](0025-turnstile.md) (Turnstile, #721, #724):** password sign-in, password
+sign-up, the provider-email step and the reset request check a Cloudflare Turnstile token first,
+after the body's shape and before any account lookup, account-scoped bucket, argon2, mail or session
+(ADR 0025 sections 1 to 5); off by default (`CLASSBEAT_TURNSTILE_ENABLED`). Everything below keeps
+its order after that check.
+
 **Passwords**
 - **Hashing:** argon2id via `argon2-cffi`, with memory 19 MiB, time 2 and parallelism 1 (the
   OWASP minimum). Hashes are rehashed on sign-in when these parameters change.
@@ -637,11 +643,13 @@ Fixed windows are counted in `rate_limits` with one upsert per check. There is n
 | Sign-up requests, incl. the email entered on the provider path | 3 / hour (per address) | — | 5 / hour |
 | Reset and email-change mail | 3 / hour | 10 / hour | 10 / hour |
 | OAuth start and callback | — | — | 30 / 15 min |
+| Captcha verification (ADR 0025 section 6; every request counts, a success too) | — | — | 60 / 15 min |
 
 **Residual risk (T3).** Someone who knows a victim's email can, from many IPs, exhaust the
 per-account cap. The victim can then sign in only from a known device or by OAuth, and reset
 mails pause for up to an hour. This is accepted for the beta, where accounts are few and
-invited; the M6 security review revisits it.
+invited; the M6 security review revisits it. With Turnstile on (ADR 0025, T126) the per-account
+buckets are reserved only after a valid token, so this needs a solved challenge per attempt.
 
 ### 10. Logging
 

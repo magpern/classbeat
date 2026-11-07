@@ -9,6 +9,9 @@ T20, T93 and T97).
   framing by anyone. The one framing exception is the admin mail preview (ADR 0022 section 6,
   #653): ``frame-src`` is the path-scoped ``<public_base_url>/api/admin/mail/``, the only prefix a
   page may frame.
+- With Turnstile on and not the fake (ADR 0025 section 10), ``https://challenges.cloudflare.com``
+  joins ``script-src`` and ``frame-src`` (the widget's script and frame); nothing else changes (no
+  nonce, no ``unsafe-inline``, no ``connect-src``).
 - ``Referrer-Policy: no-referrer``, page-wide, so a cover request (or any link) carries no
   classbeat URL.
 
@@ -34,11 +37,12 @@ from classbeat.covers import IMG_SOURCES
 
 # The only prefix a page may frame: the admin mail preview (ADR 0022 section 6).
 PREVIEW_PREFIX: Final = "/api/admin/mail/"
+# Cloudflare Turnstile's script and frame origin (ADR 0025 section 10), only while it is on.
+TURNSTILE_SOURCE: Final = "https://challenges.cloudflare.com"
 _PREVIEW_PATH: Final = re.compile(r"^/api/admin/mail/[a-z][a-z_]{0,39}/preview$")
 
+_DIRECTIVES_BEFORE_SCRIPT: Final = ("default-src 'self'",)
 _DIRECTIVES_BEFORE_FRAME: Final = (
-    "default-src 'self'",
-    "script-src 'self'",
     "style-src 'self'",
     " ".join(("img-src 'self'", *IMG_SOURCES)),
     "font-src 'self'",
@@ -55,15 +59,25 @@ _DIRECTIVES_AFTER_FRAME: Final = (
 )
 
 
-def csp_directives(base_url: str | None = None) -> tuple[str, ...]:
+def csp_directives(base_url: str | None = None, *, turnstile: bool = False) -> tuple[str, ...]:
     """The app's directives; ``frame-src`` is ``'none'`` without a base URL, else the path-scoped
-    preview prefix under it (a CSP source with a path ending in ``/`` matches that prefix)."""
-    frame = "frame-src 'none'" if base_url is None else f"frame-src {base_url}{PREVIEW_PREFIX}"
-    return (*_DIRECTIVES_BEFORE_FRAME, frame, *_DIRECTIVES_AFTER_FRAME)
+    preview prefix under it (a CSP source with a path ending in ``/`` matches that prefix). With
+    ``turnstile`` Cloudflare's origin joins ``script-src`` and ``frame-src``."""
+    extra = (TURNSTILE_SOURCE,) if turnstile else ()
+    script = " ".join(("script-src 'self'", *extra))
+    framed = (*extra, *(() if base_url is None else (f"{base_url}{PREVIEW_PREFIX}",)))
+    frame = " ".join(("frame-src", *framed)) if framed else "frame-src 'none'"
+    return (
+        *_DIRECTIVES_BEFORE_SCRIPT,
+        script,
+        *_DIRECTIVES_BEFORE_FRAME,
+        frame,
+        *_DIRECTIVES_AFTER_FRAME,
+    )
 
 
-def content_security_policy(base_url: str | None = None) -> str:
-    return "; ".join(csp_directives(base_url))
+def content_security_policy(base_url: str | None = None, *, turnstile: bool = False) -> str:
+    return "; ".join(csp_directives(base_url, turnstile=turnstile))
 
 
 CSP_DIRECTIVES: Final = csp_directives()
@@ -81,8 +95,8 @@ def preview_keeps_own_csp(scope: Scope, status: int, headers: MutableHeaders) ->
     )
 
 
-def unhandled_error_handler(base_url: str | None = None) -> Any:
-    csp = content_security_policy(base_url)
+def unhandled_error_handler(base_url: str | None = None, *, turnstile: bool = False) -> Any:
+    csp = content_security_policy(base_url, turnstile=turnstile)
 
     async def handler(_request: Request, _exc: Exception) -> Response:
         return await unhandled_error(_request, _exc, csp)
@@ -109,9 +123,9 @@ async def unhandled_error(
 
 
 class SecurityHeaders:
-    def __init__(self, app: ASGIApp, base_url: str | None = None) -> None:
+    def __init__(self, app: ASGIApp, base_url: str | None = None, turnstile: bool = False) -> None:
         self.app = app
-        self.csp = content_security_policy(base_url)
+        self.csp = content_security_policy(base_url, turnstile=turnstile)
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         if scope["type"] != "http":

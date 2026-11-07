@@ -17,6 +17,7 @@ from sqlalchemy import delete, func, select, update
 from classbeat.auth import locale as account_locale
 from classbeat.auth import mails
 from classbeat.auth.accounts import find_user
+from classbeat.auth.captcha import require_captcha
 from classbeat.auth.clientip import bucket_ip
 from classbeat.auth.cookies import PENDING_COOKIE, clear_pending_cookie
 from classbeat.auth.deps import request_ip
@@ -49,6 +50,8 @@ class PendingEmailIn(BaseModel):
 
     email: EmailAddress
     locale: Any = None
+    # The Turnstile token (ADR 0025 section 2): any value; a bad one is captcha_failed, never 422.
+    captcha_token: Any = None
 
 
 class Accepted(BaseModel):
@@ -91,6 +94,8 @@ async def pending_state(request: Request) -> PendingState:
 async def submit_email(
     body: PendingEmailIn, request: Request, background: BackgroundTasks
 ) -> Accepted:
+    # ADR 0025 section 2: before the buckets, the pending cookie's row, the account lookup and mail.
+    await require_captcha(request, "signup_email", body.captcha_token)
     settings = request.app.state.settings
     normalized = normalize_email(body.email)
     await reserve(

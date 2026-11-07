@@ -37,6 +37,7 @@ SECRET_FILE_FIELDS = (
     "openai_api_key",
     "deepseek_api_key",
     "swedebeat_app",
+    "turnstile_secret_key",
 )
 # Secret files the app runs without (the feature is off): an unreadable one is not set, with a
 # warning naming the field (#511). Every other secret file that exists but cannot be read is fatal.
@@ -47,6 +48,7 @@ OPTIONAL_SECRET_FILE_FIELDS = frozenset(
         "oauth_github_client_secret",
         "oauth_microsoft_client_secret",
         "swedebeat_app",
+        "turnstile_secret_key",
     }
 )
 # Read by the SQL init scripts too, with the same bytes (tests/test_roles_script.py): kept exact.
@@ -66,6 +68,12 @@ MIN_APP_SECRET_BYTES = 32
 CONNECTION_KEK_ID = re.compile(r"kek-[a-z0-9-]{1,28}")
 # A bare address (no display name, no angle brackets, no whitespace or control characters).
 SUPPORT_ADDRESS = re.compile(r"[A-Za-z0-9._%+-]{1,64}@[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)+")
+# Cloudflare's Turnstile test keys (ADR 0025 section 7): a digit, ``x``, zeros and two capitals
+# (``1x00000000000000000000AA`` and the like). A pattern, not a list, so a test key Cloudflare adds
+# later is refused in prod too.
+TURNSTILE_DUMMY_KEY = re.compile(r"[0-9]x0{16,}[A-Z]{2}")
+# A Turnstile site key is public; it goes into the session answer and the widget's options.
+TURNSTILE_SITE_KEY = re.compile(r"[A-Za-z0-9_-]{1,128}")
 
 
 def swedebeat_app_keys(value: SecretStr) -> dict[str, str] | None:
@@ -383,6 +391,14 @@ class Settings(BaseSettings):
     # environment's switch, off by default until the owner's live scan; the password form stays
     # either way.
     mowl_qr_enabled: bool = False
+    # ADR 0025 (#721): Cloudflare Turnstile on sign-in, sign-up, the provider-email step and the
+    # reset request. Off by default (dev, CI, tests); on, it needs the public site key and the
+    # ``turnstile_secret_key`` secret file (web only, never the environment), unless
+    # ``turnstile_fake`` (the e2e stack's local stand-in, no network) is on, which prod refuses.
+    turnstile_enabled: bool = False
+    turnstile_fake: bool = False
+    turnstile_site_key: str | None = None
+    turnstile_secret_key: SecretStr | None = None
     swedebeat_app_file: Path = Path("/app/swedebeat_app.json")
 
     @classmethod
@@ -458,6 +474,54 @@ class Settings(BaseSettings):
                 "swedebeat_app must be JSON with a 32-character key and a 16-character iv"
             )
         return value
+
+    @field_validator("turnstile_site_key")
+    @classmethod
+    def _check_turnstile_site_key(cls, value: str | None) -> str | None:
+        if value is not None and TURNSTILE_SITE_KEY.fullmatch(value) is None:
+            raise ValueError("turnstile_site_key must be 1 to 128 of A-Z, a-z, 0-9, _ and -")
+        return value
+
+    @field_validator("turnstile_secret_key")
+    @classmethod
+    def _check_turnstile_secret_key(cls, value: SecretStr | None) -> SecretStr | None:
+        if value is None or not value.get_secret_value().strip():
+            return None  # the empty placeholder: no secret, so Turnstile cannot be on
+        key = value.get_secret_value()
+        # The message names the file, never its content.
+        bad = any(c.isspace() or not c.isprintable() for c in key)
+        if len(key) > 1024 or not key.isascii() or bad:
+            raise ValueError("turnstile_secret_key has whitespace, control or non-ASCII characters")
+        return value
+
+    @model_validator(mode="after")
+    def _check_turnstile(self) -> "Settings":
+        # ADR 0025 section 7. In prod the fake is refused whatever ``turnstile_enabled`` says (as
+        # the fake model provider is), and so is a Cloudflare test key: it always passes (or always
+        # fails) and would answer for example.com.
+        if self.environment == "prod":
+            if self.turnstile_fake:
+                raise ValueError("turnstile_fake is not allowed when environment is prod")
+            secret = self.turnstile_secret_key
+            for name, value in (
+                ("turnstile_site_key", self.turnstile_site_key),
+                ("turnstile_secret_key", None if secret is None else secret.get_secret_value()),
+            ):
+                if value is not None and TURNSTILE_DUMMY_KEY.fullmatch(value) is not None:
+                    raise ValueError(f"{name} is a Cloudflare test key, not allowed in prod")
+        if self.turnstile_enabled and not self.turnstile_fake:
+            if self.turnstile_site_key is None:
+                raise ValueError("turnstile_enabled needs CLASSBEAT_TURNSTILE_SITE_KEY")
+            if self.turnstile_secret_key is None:
+                raise ValueError(
+                    "turnstile_enabled needs the turnstile_secret_key secret file (it is empty)"
+                )
+        return self
+
+    @property
+    def turnstile_hostname(self) -> str:
+        """The host a Turnstile answer must name (ADR 0025 section 4): ``public_base_url``'s."""
+        return urlsplit(self.public_base_url).hostname or ""
 
     def swedebeat_keys(self) -> dict[str, str] | None:
         """``{"key", "iv"}`` for the library's ``Credentials.swedebeat_app``, or ``None``: the
@@ -743,6 +807,15 @@ def check_worker_has_no_swedebeat_app(settings: Settings) -> None:
     if settings.swedebeat_app is not None:
         raise ModelProviderRefused(
             "the worker must not see the swedebeat_app secret file (web only)"
+        )
+
+
+def check_worker_has_no_turnstile_secret(settings: Settings) -> None:
+    """The Turnstile secret is the web app's only (ADR 0025 section 7): the worker verifies no
+    token, so a readable ``turnstile_secret_key`` file refuses the worker's start."""
+    if settings.turnstile_secret_key is not None:
+        raise ModelProviderRefused(
+            "the worker must not see the turnstile_secret_key secret file (web only)"
         )
 
 

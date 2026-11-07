@@ -184,6 +184,8 @@ const da: Catalogue = {
   'error.reason.reauth_use_password': 'Din konto har en adgangskode, så bekræft med din adgangskode.',
   'error.reason.forbidden': 'Din konto må ikke gøre det.',
   'error.reason.busy': 'Serveren er optaget. Prøv igen om nogle sekunder.',
+  'error.reason.captcha_failed': 'Sikkerhedstjekket blev ikke godkendt. Prøv igen.',
+  'error.reason.captcha_unavailable': 'Sikkerhedstjekket kan ikke nås lige nu. Prøv igen om et minut.',
   'error.tooMany': 'For mange forsøg. Vent lidt, og prøv igen.',
   'error.tooManyWait': 'For mange forsøg. Prøv igen om {wait}.',
   // Both forms read the same in English today; the other languages need the split.

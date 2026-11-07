@@ -22,6 +22,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from classbeat.auth import locale as account_locale
 from classbeat.auth import mails
 from classbeat.auth.accounts import create_user, find_user, use_invite
+from classbeat.auth.captcha import require_captcha
 from classbeat.auth.clientip import bucket_ip
 from classbeat.auth.deps import request_ip
 from classbeat.auth.events import record_event
@@ -50,6 +51,8 @@ class SignUpIn(BaseModel):
     # The app's resolved language (ADR 0023 section 2). Any value is accepted here: one that is not
     # an offered code is ignored, never refused and never echoed.
     locale: Any = None
+    # The Turnstile token (ADR 0025 section 2): any value; a bad one is captcha_failed, never 422.
+    captcha_token: Any = None
 
 
 class ConfirmIn(BaseModel):
@@ -92,6 +95,9 @@ async def sign_up(body: SignUpIn, request: Request, background: BackgroundTasks)
     except PasswordRuleError:
         raise refuse(400, "password_rule") from None
     normalized = normalize_email(body.email)
+    # ADR 0025 section 2: after the checks of the body alone, before the buckets, the sign-up mode,
+    # the invite, argon2, the account lookup and the mail.
+    await require_captcha(request, "signup", body.captcha_token)
     # Limited per normalized address and per IP; every request counts, known address or not.
     await reserve(
         request,

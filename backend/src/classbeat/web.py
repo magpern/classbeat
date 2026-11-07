@@ -263,7 +263,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.add_middleware(BodyLimit)
     # Added last, so it is the outermost middleware: the CSP and Referrer-Policy go on every
     # response, the auth middleware's own answers included (ADR 0013 section 9).
-    app.add_middleware(SecurityHeaders, base_url=settings.public_base_url)
+    # ADR 0025 section 10: Cloudflare's origin in script-src and frame-src only with real Turnstile.
+    turnstile = settings.turnstile_enabled and not settings.turnstile_fake
+    app.add_middleware(SecurityHeaders, base_url=settings.public_base_url, turnstile=turnstile)
     # Starlette answers an unhandled exception outside that middleware: its 500 adds the headers.
-    app.add_exception_handler(Exception, unhandled_error_handler(settings.public_base_url))
+    app.add_exception_handler(
+        Exception, unhandled_error_handler(settings.public_base_url, turnstile=turnstile)
+    )
     return app

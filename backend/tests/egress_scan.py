@@ -141,6 +141,10 @@ _CALLS = frozenset(
         # ADR 0024 (#647): the QR image client with a transport of the caller's own is for tests.
         "classbeat.egress.mowl_qr_image_network_transport",
         "classbeat.egress.mowl_qr_image_test_client",
+        # ADR 0025 section 9: the Turnstile client with a transport of the caller's own: tests only.
+        "classbeat.egress.turnstile_network_transport",
+        "classbeat.egress.turnstile_test_client",
+        "classbeat.egress._turnstile_client",
     }
 )
 # Allowed only without an allowlist argument (the list is the function's own).
@@ -154,6 +158,8 @@ _NO_ARGUMENTS = frozenset(
         # ADR 0024 (#647): the QR image client and the broker connection (host, port 8883, TLS).
         "classbeat.egress.mowl_qr_image_async_client",
         "classbeat.egress.mowl_mqtt_open",
+        # ADR 0025 section 9: the Turnstile siteverify client (list, deadline, transport its own).
+        "classbeat.egress.turnstile_async_client",
     }
 )
 

@@ -9,7 +9,8 @@ set -euo pipefail
 SELF="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/$(basename "${BASH_SOURCE[0]}")"
 SECRETS=(postgres_password database_owner_password database_password database_maint_password
   app_secret_key connection_kek anthropic_api_key openai_api_key deepseek_api_key
-  oauth_google_client_secret oauth_github_client_secret oauth_microsoft_client_secret swedebeat_app)
+  oauth_google_client_secret oauth_github_client_secret oauth_microsoft_client_secret
+  turnstile_secret_key swedebeat_app)
 
 die() { echo "worktree.sh: $*" >&2; exit 1; }
 
@@ -60,13 +61,15 @@ cmd_init() {
   local name bytes
   for name in "${SECRETS[@]}"; do
     if [ ! -f "secrets/$name" ]; then
-      if [[ "$name" == *_api_key || "$name" == swedebeat_app || "$name" == oauth_*_client_secret ]]; then
+      if [[ "$name" == *_api_key || "$name" == swedebeat_app || "$name" == oauth_*_client_secret \
+        || "$name" == turnstile_secret_key ]]; then
         # ADR 0006 section 9, ADR 0012 section 2: the model keys are empty placeholders, never
         # a real key (an empty file is no key; the worker refuses MODEL_PROVIDER=anthropic until
         # the owner puts the key here, and uses no OpenAI or DeepSeek host without its key).
         # swedebeat_app (ADR 0015 section 4) is the same: empty is no key, web only; a release
         # image holds the key itself, so this file is only for a runtime override.
         # oauth_*_client_secret (ADR 0003 section 5) are empty too: empty is that provider off.
+        # turnstile_secret_key (ADR 0025 section 7) as well: empty, Turnstile cannot be on.
         : > "secrets/$name"
         chmod 644 "secrets/$name" 2>/dev/null || true
         echo "created secrets/$name (empty placeholder)"

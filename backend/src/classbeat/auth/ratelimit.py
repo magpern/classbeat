@@ -49,6 +49,11 @@ MAIL_PAIR = Limit("mail", "pair", 3, 3600)
 MAIL_ACCOUNT = Limit("mail", "account", 10, 3600)
 MAIL_IP = Limit("mail", "ip", 10, 3600)
 OAUTH_IP = Limit("oauth", "ip", 30, 15 * 60)
+# ADR 0025 section 6: Turnstile verifications on the four anonymous auth forms, per IP. Every
+# request counts (a success too; nothing is released), reserved before the siteverify call, so it
+# caps our outbound calls per client; above the per-IP sign-in limit, so a shared NAT meets that one
+# first.
+CAPTCHA_IP = Limit("captcha", "ip", 60, 15 * 60)
 # The unsubscribe POST (ME4 #655): anonymous (the token is the credential) and exempt from the
 # Origin check, so only the network is counted; a mail client's one-click and the page share it.
 UNSUBSCRIBE_IP = Limit("unsubscribe", "ip", 60, 3600)

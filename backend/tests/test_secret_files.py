@@ -55,6 +55,7 @@ def test_the_optional_secrets_are_exactly_these() -> None:
         "oauth_microsoft_client_secret",
         "smtp_password",
         "swedebeat_app",
+        "turnstile_secret_key",
     ]
     assert set(SECRET_FILE_FIELDS) >= OPTIONAL_SECRET_FILE_FIELDS
     assert not OPTIONAL_SECRET_FILE_FIELDS & BYTE_EXACT_SECRET_FIELDS
