@@ -36,7 +36,7 @@ const SECTIONS = [
 ] as const
 
 function AdminNav() {
-  const { pathname } = useRouter()
+  const { path: pathname } = useRouter()
   return (
     <nav aria-label="Admin" className="mb-6 flex flex-wrap gap-x-1 border-b border-line">
       {SECTIONS.map((section) => {

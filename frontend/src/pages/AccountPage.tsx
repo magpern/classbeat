@@ -23,7 +23,7 @@ import { LanguageSetting } from '../components/account/LanguageSetting'
 import { offeredLanguages } from '../components/LanguagePicker'
 import { EmailPreferences } from '../components/account/EmailPreferences'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs'
-import { useQuery, useRouter } from '../router/Router'
+import { replaceHash, useQuery, useRouter } from '../router/Router'
 import { ThemeSwitch } from '../theme/ThemeSwitch'
 
 const OAUTH_NOTES: Record<string, CatalogueKey> = {
@@ -127,7 +127,7 @@ function Account() {
   const choose = (value: string) => {
     if (!isTab(value)) return
     setTab(value)
-    window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}#${value}`)
+    replaceHash(value)
   }
 
   return (

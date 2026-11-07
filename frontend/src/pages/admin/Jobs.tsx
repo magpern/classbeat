@@ -27,7 +27,7 @@ function owner(userId: string, email: string | null) {
  */
 export function Jobs() {
   const onMfaRequired = useMfaRequired()
-  const { pathname, navigate } = useRouter()
+  const { path: pathname, navigate } = useRouter()
   const days = windowOf(useQuery().get('days'))
   // What was loaded, for the window it belongs to: another window shows "Loading" until its answer.
   const [loaded, setLoaded] = useState<{ days: number; data: JobsData | null; error: string | null }>({

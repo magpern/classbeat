@@ -16,7 +16,7 @@ describe('My classes', () => {
     fakeApi({ ...SESSION_ROUTES, 'GET /api/classes': { classes: [] } })
     renderAt('/classes')
     expect(await screen.findByRole('heading', { name: 'No classes yet' })).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: 'Design a class' })).toHaveAttribute('href', '/classes/new')
+    expect(screen.getByRole('link', { name: 'Design a class' })).toHaveAttribute('href', '/en/classes/new')
   })
 
   it('lists the classes as cards with their state, titles as text', async () => {
@@ -32,7 +32,7 @@ describe('My classes', () => {
       }),
     ])
     const first = await screen.findByRole('link', { name: 'Hills <img src=x onerror=alert(1)>' })
-    expect(first).toHaveAttribute('href', `/classes/${CLASS_ID}`)
+    expect(first).toHaveAttribute('href', `/en/classes/${CLASS_ID}`)
     expect(document.querySelector('main img')).toBeNull()
     expect(screen.getByText('Version 1, not saved to MOWL')).toBeInTheDocument()
     expect(screen.getByText('Being designed')).toBeInTheDocument()

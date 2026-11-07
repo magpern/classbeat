@@ -104,7 +104,7 @@ test('sign-up with Google and no invite never leaves the page (#617)', async ({ 
   await expect(invite).toHaveAttribute('aria-invalid', 'true')
   await expect(invite).toHaveAttribute('required', '')
   await expect(invite).toBeFocused()
-  expect(new URL(page.url()).pathname).toBe('/signup')
+  expect(new URL(page.url()).pathname).toBe('/en/signup')
   expect(providerVisits).toBe(0)
   expect(accountsWith(email)).toBe(0)
   const findings = await audit(page, 'Sign up, invite missing', page.getByRole('button', { name: 'Create account' }))
@@ -119,7 +119,7 @@ test('sign-in with an unknown Google account says no account is linked and creat
   await expect(page.getByRole('alert')).toHaveText(
     'No classbeat account is linked to this Google account. Create an account to join the invite-only beta.',
   )
-  expect(new URL(page.url()).pathname).toBe('/signin')
+  expect(new URL(page.url()).pathname).toBe('/en/signin')
   await expect(page.getByText(/invite code/i)).toHaveCount(0)
   await expect(page.getByLabel(/Invite code/)).toHaveCount(0)
   await expect(page.getByRole('navigation', { name: 'Account' })).toContainText('Sign in')
@@ -147,7 +147,7 @@ test('Microsoft: an unverified email is handed off to the address page and confi
   await page.getByRole('button', { name: 'Continue with Microsoft' }).click()
 
   await expect(page.getByRole('heading', { name: 'Confirm your email address' })).toBeVisible()
-  expect(new URL(page.url()).pathname).toBe('/signin/email')
+  expect(new URL(page.url()).pathname).toBe('/en/signin/email')
   await page.getByLabel('Email', { exact: true }).fill(email)
   await passCaptcha(page)
   await page.getByRole('button', { name: 'Send confirmation link' }).click()

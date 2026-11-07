@@ -43,7 +43,7 @@ describe('help page', () => {
     fakeApi({})
     renderAt('/signin')
     const footer = await screen.findByRole('navigation', { name: 'Legal' })
-    expect(within(footer).getByRole('link', { name: 'Help' })).toHaveAttribute('href', '/help')
+    expect(within(footer).getByRole('link', { name: 'Help' })).toHaveAttribute('href', '/en/help')
   })
 })
 

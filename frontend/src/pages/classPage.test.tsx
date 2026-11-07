@@ -255,7 +255,7 @@ describe('the class page', () => {
     })
     renderAt(PAGE)
     expect(await screen.findByText(/This class is being designed/)).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: 'See how it is going' })).toHaveAttribute('href', `/jobs/${REVISE_JOB}`)
+    expect(screen.getByRole('link', { name: 'See how it is going' })).toHaveAttribute('href', `/en/jobs/${REVISE_JOB}`)
   })
 
   it.each([

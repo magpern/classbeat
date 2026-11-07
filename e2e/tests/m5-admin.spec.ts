@@ -1,6 +1,7 @@
 import { expect, nextTotp, test } from './helpers'
 import {
   FREE,
+  enrollTotp,
   LONG,
   INSTRUCTOR,
   burst,
@@ -12,36 +13,13 @@ import {
   lapseAdminCheck,
   newUser,
   statusesOf,
+  stepUp,
 } from './m5-helpers'
-import type { Page } from '@playwright/test'
 
 // M5 T1 (#228, ADR 0011 sections 6 and 10): an admin with TOTP grants Instructor and the user's
 // limit rises at once; the admin refunds a committed credit; both are in the audit log; a redeem
 // code raises a second user's limit. Fakes only (the fake MOWL, the FakeProvider).
 test.setTimeout(420_000)
-
-/** The first admin visit: the page offers two-factor set-up (the session still says `user`). */
-async function enrollTotp(page: Page): Promise<string> {
-  await page.goto('/admin')
-  await expect(page.getByRole('heading', { name: 'Set up two-factor' })).toBeVisible()
-  await page.getByRole('button', { name: 'Set up an authenticator app' }).click()
-  const secret = (await page.locator('code').first().textContent())!.trim()
-  await page.getByLabel('Code from the app').fill(await nextTotp(secret))
-  await page.getByRole('button', { name: 'Turn on two-factor' }).click()
-  await page.getByRole('button', { name: 'I have saved them' }).click()
-  await expect(page.getByRole('heading', { name: 'Admin', exact: true })).toBeVisible()
-  return secret
-}
-
-/** Answer the step-up dialog when an admin write asks for it. */
-async function stepUp(page: Page, secret: string): Promise<void> {
-  const dialog = page.getByRole('dialog', { name: 'Enter a two-factor code' })
-  if (await dialog.isVisible({ timeout: 3_000 }).catch(() => false)) {
-    await dialog.getByLabel('Authenticator or recovery code').fill(await nextTotp(secret))
-    await dialog.getByRole('button', { name: 'Continue' }).click()
-    await expect(dialog).toBeHidden()
-  }
-}
 
 test('an admin grants a plan, refunds a credit, and a code raises another limit', async ({ browser, baseURL }) => {
   const admin = await newUser(browser, baseURL, 'm5-admin', false, true)

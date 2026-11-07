@@ -30,7 +30,7 @@ describe('navigation by width', () => {
     const links = within(mainNav()).getAllByRole('link')
     expect(links.map((l) => l.textContent || l.getAttribute('aria-label'))).toEqual(ITEMS)
     expect(links[2]).toHaveAccessibleName('New class')
-    expect(links[2]).toHaveAttribute('href', '/classes/new')
+    expect(links[2]).toHaveAttribute('href', '/en/classes/new')
     expect(within(screen.getByRole('banner')).getByRole('button', { name: 'ann@example.test' })).toBeInTheDocument()
     // Phone: no sidebar meter.
     expect(screen.queryByText('Classes this month')).toBeNull()
@@ -71,7 +71,7 @@ describe('navigation by width', () => {
       stubApi()
       renderAt(path)
       await screen.findByRole('navigation', { name: 'Main' })
-      expect(within(mainNav()).getByRole('link', { name: 'Account' })).toHaveAttribute('href', '/account')
+      expect(within(mainNav()).getByRole('link', { name: 'Account' })).toHaveAttribute('href', '/en/account')
     },
   )
 
@@ -163,7 +163,7 @@ describe('focus layout', () => {
     renderAt('/classes/new')
     await screen.findByRole('heading', { name: 'Design a class' })
     expect(screen.queryByRole('navigation', { name: 'Main' })).toBeNull()
-    expect(screen.getByRole('link', { name: 'Close' })).toHaveAttribute('href', '/')
+    expect(screen.getByRole('link', { name: 'Close' })).toHaveAttribute('href', '/en')
     expect(screen.getByRole('link', { name: 'classbeat home' })).toBeInTheDocument()
   })
 
@@ -171,7 +171,7 @@ describe('focus layout', () => {
     setWidth(390)
     fakeApi({ 'GET /api/auth/session': SIGNED_IN })
     renderAt(`/jobs/${JOB_ID}`)
-    expect(await screen.findByRole('link', { name: 'Back to home' })).toHaveAttribute('href', '/')
+    expect(await screen.findByRole('link', { name: 'Back to home' })).toHaveAttribute('href', '/en')
     expect(screen.queryByRole('navigation', { name: 'Main' })).toBeNull()
   })
 })

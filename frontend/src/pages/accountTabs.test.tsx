@@ -258,7 +258,7 @@ describe('delete my account', () => {
     const prompt = await screen.findByRole('dialog')
     await confirmWithPassword(prompt, 'my password here')
     await waitFor(() => {
-      expect(window.location.pathname).toBe('/')
+      expect(window.location.pathname).toBe('/en')
     })
     const calls = api.to('POST', '/api/account/delete')
     expect(calls).toHaveLength(2)
@@ -315,7 +315,7 @@ describe('delete my account, refused', () => {
     fireEvent.change(within(confirm).getByLabelText('Your email'), { target: { value: 'ann@example.test' } })
     fireEvent.click(within(confirm).getByRole('button', { name: 'Delete for good' }))
     expect(await screen.findByRole('alert')).toHaveTextContent('Nothing was deleted')
-    expect(window.location.pathname).toBe('/account')
+    expect(window.location.pathname).toBe('/en/account')
   })
 })
 

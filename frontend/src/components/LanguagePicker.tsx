@@ -1,5 +1,6 @@
 import { useLocale, useT } from '../i18n/I18n'
-import { LOCALES } from '../i18n/locales'
+import { LOCALES, resolveBrowserLocale, type Locale } from '../i18n/locales'
+import { useRouter } from '../router/Router'
 
 const NAMES: Readonly<Record<string, string>> = { en: 'English', sv: 'Svenska', da: 'Dansk' }
 
@@ -12,18 +13,35 @@ export function languageName(code: string): string {
   return Object.hasOwn(NAMES, code) ? (NAMES[code] ?? code) : code
 }
 
+/**
+ * What choosing a language does (ADR 0027 section 2): save it where the caller says, then go to the
+ * same page under the new prefix. `null` follows the browser again. The picker is the only writer.
+ */
+export function useChooseLanguage(): (choice: Locale | null) => void {
+  const { setLocale } = useLocale()
+  const { switchLanguage } = useRouter()
+  return (choice) => {
+    setLocale(choice)
+    switchLanguage(choice ?? resolveBrowserLocale())
+  }
+}
+
 /** The logged-out picker: saves the choice in this browser only (`cb-locale`). Hidden for one language. */
 export function LanguagePicker({ offered }: { offered: readonly string[] }) {
-  const { locale, setLocale } = useLocale()
+  const { locale } = useLocale()
+  const { lang } = useRouter()
+  const choose = useChooseLanguage()
+  // The URL's language is the one on show, even while its catalogue is still loading.
+  const shown = lang ?? locale
   const t = useT()
   const codes = offeredLanguages(offered)
   if (codes.length < 2) return null
   return (
     <select
       aria-label={t('language.label')}
-      value={codes.includes(locale) ? locale : 'en'}
+      value={codes.includes(shown) ? shown : 'en'}
       onChange={(event) => {
-        setLocale(event.target.value)
+        choose(event.target.value)
       }}
       className="min-h-11 rounded-md border border-line bg-raised px-3 text-[0.9375rem] text-text"
     >

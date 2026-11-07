@@ -76,7 +76,7 @@ describe('an uncertain attach whose list is empty or unreadable', () => {
     expect(note).toHaveTextContent('disconnect MOWL and connect it again')
     expect(note).toHaveTextContent('a second time')
     expect(note).not.toHaveTextContent('checks the playlist once more')
-    expect(screen.getByRole('link', { name: 'your account page' })).toHaveAttribute('href', '/account')
+    expect(screen.getByRole('link', { name: 'your account page' })).toHaveAttribute('href', '/en/account')
     expect(await screen.findByRole('button', { name: 'Design again' })).toBeInTheDocument()
   })
 
@@ -186,7 +186,7 @@ describe('the job hook', () => {
     fakeApi({ ...SESSION_ROUTES, [`GET ${JOB}`]: reason(401, 'not_authenticated') })
     renderAt(`/jobs/${JOB_ID}`)
     expect(await screen.findByRole('heading', { name: 'You are signed out' })).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: 'Sign in' })).toHaveAttribute('href', `/signin?return_to=${encodeURIComponent(`/jobs/${JOB_ID}`)}`)
+    expect(screen.getByRole('link', { name: 'Sign in' })).toHaveAttribute('href', `/en/signin?return_to=${encodeURIComponent(`/jobs/${JOB_ID}`)}`)
     expect(document.body).not.toHaveTextContent('could not be reached')
   })
 
@@ -232,7 +232,7 @@ describe('Design again', () => {
     expect(document.body).not.toHaveTextContent('class_busy')
     fireEvent.click(screen.getByRole('button', { name: 'Try again' }))
     await waitFor(() => {
-      expect(window.location.pathname).toBe(`/jobs/${NEXT}`)
+      expect(window.location.pathname).toBe(`/en/jobs/${NEXT}`)
     })
     const keys = api.to('POST', '/api/jobs').map((c) => c.headers.get('Idempotency-Key'))
     expect(keys).toHaveLength(2)
@@ -260,7 +260,7 @@ describe('Design again after MOWL was connected again', () => {
     expect(screen.queryByRole('button', { name: 'Try again' })).toBeNull()
     fireEvent.click(screen.getByRole('button', { name: 'Start a new design' }))
     await waitFor(() => {
-      expect(window.location.pathname).toBe('/classes/new')
+      expect(window.location.pathname).toBe('/en/classes/new')
     })
   })
 })
@@ -303,6 +303,9 @@ describe('the remembered form input', () => {
     })
     renderAt(`/jobs/${JOB_ID}`)
     await screen.findByRole('heading', { name: 'Your class is ready' })
-    expect(window.sessionStorage.getItem(`classbeat.design-input.${JOB_ID}`)).toBeNull()
+    // The input is dropped in an effect after the heading is committed, so wait for it.
+    await waitFor(() => {
+      expect(window.sessionStorage.getItem(`classbeat.design-input.${JOB_ID}`)).toBeNull()
+    })
   })
 })

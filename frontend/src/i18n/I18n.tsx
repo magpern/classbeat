@@ -13,6 +13,7 @@ import {
   clearStoredLocale,
   DEFAULT_LOCALE,
   isLocale,
+  localeFromPath,
   resolveBrowserLocale,
   setActiveLocale,
   storeLocale,
@@ -25,12 +26,15 @@ interface I18n {
   t: TFunction
   /** A language, or `null` to follow the browser again (forgets the saved choice). */
   setLocale: (locale: Locale | null) => void
+  /** Shows a language without saving it anywhere: the URL's prefix decides the view (ADR 0027 section 2). */
+  showLocale: (locale: Locale) => void
 }
 
 const fallback: I18n = {
   locale: DEFAULT_LOCALE,
   t: (key, params) => translate(DEFAULT_LOCALE, key, params),
   setLocale: () => undefined,
+  showLocale: () => undefined,
 }
 
 const Context = createContext<I18n>(fallback)
@@ -40,7 +44,9 @@ const Context = createContext<I18n>(fallback)
  * and re-renders once it is there; until then, and for any missing key, the text is English.
  */
 export function I18nProvider({ children, initial }: { children: ReactNode; initial?: Locale }) {
-  const [wanted, setWanted] = useState<Locale>(() => initial ?? resolveBrowserLocale())
+  const [wanted, setWanted] = useState<Locale>(
+    () => initial ?? localeFromPath(window.location.pathname) ?? resolveBrowserLocale(),
+  )
   const [ready, setReady] = useState<Locale>(DEFAULT_LOCALE)
 
   useEffect(() => {
@@ -66,13 +72,18 @@ export function I18nProvider({ children, initial }: { children: ReactNode; initi
     }
   }, [])
 
+  const showLocale = useCallback((locale: Locale) => {
+    if (isLocale(locale)) setWanted(locale)
+  }, [])
+
   const value = useMemo<I18n>(
     () => ({
       locale: ready,
       t: (key, params) => translate(ready, key, params),
       setLocale,
+      showLocale,
     }),
-    [ready, setLocale],
+    [ready, setLocale, showLocale],
   )
   return <Context value={value}>{children}</Context>
 }
@@ -81,9 +92,9 @@ export function useT(): TFunction {
   return useContext(Context).t
 }
 
-export function useLocale(): { locale: Locale; setLocale: (locale: Locale | null) => void } {
-  const { locale, setLocale } = useContext(Context)
-  return { locale, setLocale }
+export function useLocale(): Pick<I18n, 'locale' | 'setLocale' | 'showLocale'> {
+  const { locale, setLocale, showLocale } = useContext(Context)
+  return { locale, setLocale, showLocale }
 }
 
 /**
