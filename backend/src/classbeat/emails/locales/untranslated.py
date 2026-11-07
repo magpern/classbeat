@@ -8,4 +8,19 @@ a missing string that is not listed and on a listed one that is translated or no
 
 from classbeat.emails.locales.en import S
 
-UNTRANSLATED: frozenset[S] = frozenset()
+# ADR 0019 W2 (#772): the passkey added and removed notices.
+UNTRANSLATED: frozenset[S] = frozenset(
+    {
+        S.SUBJECT_PASSKEY_ADDED,
+        S.SUBJECT_PASSKEY_REMOVED,
+        S.PASSKEY_ADDED_HEADING,
+        S.PASSKEY_ADDED_PRE,
+        S.PASSKEY_ADDED_BODY,
+        S.PASSKEY_ADDED_WARN,
+        S.PASSKEY_REMOVED_HEADING,
+        S.PASSKEY_REMOVED_PRE,
+        S.PASSKEY_REMOVED_BODY,
+        S.PASSKEY_REMOVED_WARN,
+        S.PASSKEY_WHEN,
+    }
+)

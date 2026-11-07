@@ -29,6 +29,8 @@ from classbeat.auth.oauth_client import OAuthRuntime
 from classbeat.auth.oauth_handoff import router as handoff_router
 from classbeat.auth.oauth_providers import enabled_providers
 from classbeat.auth.oauth_routes import router as oauth_router
+from classbeat.auth.passkey_register_routes import router as passkey_register_router
+from classbeat.auth.passkey_routes import router as passkey_router
 from classbeat.auth.passwords import PasswordHashBusy, PasswordHasher
 from classbeat.auth.ratelimit import RateLimited, RateLimiter
 from classbeat.auth.reset_routes import router as reset_router
@@ -64,6 +66,9 @@ def install(app: FastAPI) -> None:
     # installs auth first). "pending" routes before the "{provider}" ones.
     for oauth in (handoff_router, oauth_router, identity_router):
         app.include_router(oauth)
+    # ADR 0019 (#772): passkeys. The register routes before ``/{passkey_id}``.
+    for passkeys in (passkey_register_router, passkey_router):
+        app.include_router(passkeys)
     app.include_router(admin_router)
     app.add_middleware(AuthMiddleware)
 

@@ -50,7 +50,7 @@ def parse(html: str) -> Links:
 
 
 def test_the_registry_holds_the_existing_kinds_and_the_new_notices() -> None:
-    assert len(REGISTRY) == 17
+    assert len(REGISTRY) == 19
     assert {k.id for k in KINDS if k.category is Category.WELCOME} == {"welcome"}
     assert {k.id for k in KINDS if k.category is Category.ACCOUNT_ACTIVITY} == {
         "totp_enrolled",
@@ -60,6 +60,8 @@ def test_the_registry_holds_the_existing_kinds_and_the_new_notices() -> None:
         "account_deleted",
         "identity_unlinked",
         "totp_removed",
+        "passkey_added",
+        "passkey_removed",
     }
     essential = {k.id for k in KINDS if k.essential}
     assert essential == {
@@ -155,6 +157,8 @@ SUBJECTS = {
     "identity_unlinked": "A sign-in method was removed from your classbeat account",
     "totp_removed": "Two-factor authentication was turned off on your classbeat account",
     "class_ready": "Your classbeat class is ready",  # ME5, new
+    "passkey_added": "A passkey was added to your classbeat account",  # ADR 0019, #772
+    "passkey_removed": "A passkey was removed from your classbeat account",
 }
 
 

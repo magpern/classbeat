@@ -27,6 +27,8 @@ class S(Enum):
     SUBJECT_IDENTITY_UNLINKED = auto()
     SUBJECT_TOTP_REMOVED = auto()
     SUBJECT_CLASS_READY = auto()
+    SUBJECT_PASSKEY_ADDED = auto()
+    SUBJECT_PASSKEY_REMOVED = auto()
     # Footer.
     FOOTER_SITE = auto()
     FOOTER_SUPPORT = auto()
@@ -138,6 +140,16 @@ class S(Enum):
     READY_BODY = auto()
     READY_BUTTON = auto()
     READY_REASON = auto()
+    # Passkeys (ADR 0019 sections 4 and 7, #772).
+    PASSKEY_ADDED_HEADING = auto()
+    PASSKEY_ADDED_PRE = auto()
+    PASSKEY_ADDED_BODY = auto()
+    PASSKEY_ADDED_WARN = auto()
+    PASSKEY_REMOVED_HEADING = auto()
+    PASSKEY_REMOVED_PRE = auto()
+    PASSKEY_REMOVED_BODY = auto()
+    PASSKEY_REMOVED_WARN = auto()
+    PASSKEY_WHEN = auto()
 
 
 CATALOGUE: dict[S, str] = {
@@ -318,6 +330,24 @@ CATALOGUE: dict[S, str] = {
     S.READY_REASON: (
         "You got this because classbeat finished a class you asked for, after analysing its music."
     ),
+    S.SUBJECT_PASSKEY_ADDED: "A passkey was added to your classbeat account",
+    S.SUBJECT_PASSKEY_REMOVED: "A passkey was removed from your classbeat account",
+    S.PASSKEY_ADDED_HEADING: "A passkey was added",
+    S.PASSKEY_ADDED_PRE: "A new passkey can now be used to sign in to your classbeat account.",
+    S.PASSKEY_ADDED_BODY: (
+        'A passkey named "{label}" was added to your classbeat account as a way to sign in.'
+    ),
+    S.PASSKEY_ADDED_WARN: (
+        "If this wasn't you, remove the passkey from your account page, change your password "
+        "and tell us right away."
+    ),
+    S.PASSKEY_REMOVED_HEADING: "A passkey was removed",
+    S.PASSKEY_REMOVED_PRE: "A passkey can no longer be used to sign in to your classbeat account.",
+    S.PASSKEY_REMOVED_BODY: (
+        'The passkey named "{label}" was removed from your classbeat account.'
+    ),
+    S.PASSKEY_REMOVED_WARN: "If this wasn't you, change your password and tell us right away.",
+    S.PASSKEY_WHEN: "When it happened",
 }
 
 
