@@ -524,13 +524,13 @@ so check it by hand.
 | 3 | Add the code to the list in `frontend/public/locale-init.js`. | `i18n.test.tsx` ("is the list in public/locale-init.js"), `guard.test.ts` manifest check |
 | 4 | Write the app catalogue `frontend/src/i18n/nb.ts` (default export, every key of `en.ts`; keys it lacks go in `untranslated.json`) and the two spread-in files `help.nb.ts` and `legal.nb.ts`. | `guard.test.ts` ("nb is complete and consistent": missing keys, placeholder names, markup, plural categories from `Intl.PluralRules`; leaving out the `legal` or `help` spread fails it with `legal.link.privacy is missing` and so on) |
 | 5 | Add the language's own name to `NAMES` in `frontend/src/components/LanguagePicker.tsx` (`nb: 'Norsk bokmål'`). | nothing: without it the picker shows the bare code `nb` and every test passes. Check the picker by hand. |
-| 6 | Mail: write `backend/src/classbeat/emails/locales/nb.py` (`CATALOGUE`, `MONTHS`, `format_when`; model it on `da.py`), and register it in `backend/src/classbeat/emails/catalogue.py` (`LOCALES` and `_FORMAT_WHEN`). | `test_emails_locales.py::test_every_manifest_code_has_a_catalogue` (step 1 alone fails it) |
+| 6 | Mail: write `backend/src/classbeat/emails/locales/nb.py` (`CATALOGUE`, `MONTHS`, `format_when`; model it on `da.py`), and register it in `backend/src/classbeat/emails/catalogue.py` (`LOCALES` and `_FORMAT_WHEN`); a string the new catalogue still lacks is listed in `emails/locales/untranslated.py` (ADR 0023 section 4). | `test_emails_locales.py::test_every_manifest_code_has_a_catalogue` (step 1 alone fails it) |
 | 7 | Mail tests: add `nb` to `TRANSLATED` in `backend/tests/test_emails_locales.py` and to the literal manifest tuples there (the `three_languages` fixture and `mail_locale` tests). | nothing for `TRANSLATED`: without it the completeness, placeholder, link and golden tests silently skip `nb`. A stale `three_languages` tuple fails `test_the_header_names_the_language_of_the_mail[nb]` (`Content-Language` is `en`). |
 | 8 | Regenerate the mail golden files: from `backend/`, `uv run python tests/mailgolden.py`, creating `backend/tests/mail_golden/nb/` (34 files today); read the diff. | `test_emails_locales.py::test_the_mail_matches_its_golden_files[nb-*]` (18 failures with `nb` in `TRANSLATED` and no files) |
 | 9 | Decide whether it is on by default: `CLASSBEAT_LOCALES` is a subset switch, and the default in `backend/src/classbeat/config.py` (`locales`), `compose.prod.yaml` (`LOCALES`), `docs/runbooks/prod.env.example` and the "Language preference" paragraph in this file lists the offered languages. Without the change `nb` is supported but not offered until an operator sets `LOCALES`. | `test_web_language.py` and `test_locale.py` pin `("en", "sv", "da")`: changing the default fails the two sitemap and head-tag tests there until the lists are extended |
 | 10 | Extend the hard-coded language lists in the other tests: `test_web_language.py` (public-page alternates, sitemap), `test_locale.py` (`OFFERED`), `test_mail_links.py`, `frontend/src/pages/language.test.tsx` (`OFFERED` and the picker's option names), `frontend/src/router/languageUrls.test.tsx` (`OFFERED`), `frontend/src/pages/helpPage.test.tsx` and `legalPages.test.tsx` (one row per language). | `i18n.test.tsx` ("lists English, Swedish and Danish") fails at once; the others are fixtures, so a stale list keeps passing and only leaves `nb` untested. Add a row. |
-| 11 | e2e (CI only, not run in the trial): add `nb` to `CODES` and `WORDS` in `e2e/tests/lang-url-helpers.ts` (the `lang-*` specs loop over them), to the `Words` code type in `locale-helpers.ts`, add a `locale-nb.spec.ts` after `locale-da.spec.ts`, and a row in `cookie-notice.spec.ts`, `legal-pages.spec.ts` (privacy, terms, help) and `locale-done-when.spec.ts`. | nothing locally: these are CI specs and list their languages by hand |
-| 12 | Docs: the manifest line in the "Languages" bullet and the "Language preference" paragraph in this file, `docs/status.md`, and the languages named in ADR 0023 if the owner accepted a new one. | nothing |
+| 11 | e2e (CI only, not run in the trial): add `nb` to `CODES` and `WORDS` in `e2e/tests/lang-url-helpers.ts` (`lang-axe`, `lang-deep-link`, `lang-old-links` and `lang-switch` loop over `CODES`), to the `Words` code type in `locale-helpers.ts`, add a `locale-nb.spec.ts` after `locale-da.spec.ts`, and a row in `cookie-notice.spec.ts`, `legal-pages.spec.ts` (privacy, terms, help) and `locale-done-when.spec.ts`. Two specs list languages by hand: `lang-head.spec.ts` (the alternates per language and `toHaveCount(4)` for en, sv, da and `x-default`, which becomes 5) and `lang-switch.spec.ts` (its fixed `da` and `sv` cases). | nothing locally: these are CI specs |
+| 12 | Docs: the manifest line in the "Languages" bullet and the "Language preference" paragraph in this file, `docs/runbooks/vps-deploy.md` (the `/sv/...` and `/da/...` mentions and the "four alternates (en, sv, da, x-default)" live check), `docs/status.md`, and the languages named in ADR 0023 if the owner accepted a new one. | nothing |
 
 **Not needed (checked).** Model prompts, briefs, prompt versions and eval suites: generated classes stay English
 (ADR 0023 section 7). The admin area stays English. No SQL migration: `users.locale`, `pending_signups.locale` and
@@ -544,11 +544,13 @@ prefix such as `/fr/...`, the prefix in new mail links (`Ctx.url`, the unsubscri
 `Accept-Language` match, the stored account language and the allowlist checks. Head tags and the sitemap list only
 *offered* languages, so they stay out of search results until step 9 or `LOCALES` enables the code.
 
-**Human work.** The agents translate and review (ADR 0023); nobody proofreads the Swedish and Danish text, so for a
-new language the owner decides whether the privacy notice, the terms and the consent sentences (`legal.nb.ts`)
-need a native speaker before the language is offered. Also the owner's:
-turning the language on in production (`LOCALES`; deploying needs the owner's authorization) and adding the
-language's glossary entries to `docs/i18n/glossary.md`.
+**Human work.** The agents translate and review: a Sonnet translator writes the catalogues and the independent
+Opus-class Reviewer checks them against the glossary (ADR 0023 section 8). Writing the new language's entries in
+`docs/i18n/glossary.md` is part of that agent work, not the owner's. ADR 0023 records the owner's decision that
+Swedish and Danish text, legal and consent sentences included, is reviewed by no human, and rejects human
+proofreading before a language is offered; it says nothing about a further language such as `nb`. The owner must
+confirm or amend the ADR before a new language is offered. Turning it on in production (`LOCALES`; deploying
+needs the owner's authorization) is also the owner's.
 
 **Check before pushing.** From `frontend/`: `npx vitest run src/i18n src/pages src/router src/components`,
 `npm run typecheck`, `npm run lint`. From `backend/`: `uv run pytest tests/test_emails_locales.py tests/test_emails.py
