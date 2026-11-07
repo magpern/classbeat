@@ -1,7 +1,7 @@
 import { execFileSync } from 'node:child_process'
 import { expect, type Browser, type BrowserContext, type Page } from '@playwright/test'
 import { PLAYLISTS, connectMowl, getJob } from './design-helpers'
-import { PASSWORD, signInThroughUi, signUpThroughUi, uniqueEmail } from './helpers'
+import { PASSWORD, passCaptcha, signInThroughUi, signUpThroughUi, uniqueEmail } from './helpers'
 
 // Shared by m5-quota.spec.ts and m5-admin.spec.ts (M5 T1, #228): parallel API calls from several
 // browser contexts that hold one user's session, and the account page's plan line. Fakes only.
@@ -146,6 +146,7 @@ export async function newUser(browser: Browser, baseURL: string | undefined, tag
     await page.goto('/signin')
     await page.getByLabel('Email', { exact: true }).fill(email)
     await page.getByLabel('Password', { exact: true }).fill(PASSWORD)
+    await passCaptcha(page)
     await page.getByRole('button', { name: 'Sign in', exact: true }).click()
     await expect(page).not.toHaveURL(/\/signin/)
   } else await signInThroughUi(page, email)

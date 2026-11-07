@@ -1,6 +1,6 @@
 import AxeBuilder from '@axe-core/playwright'
 import { expect, type Page } from '@playwright/test'
-import { PASSWORD, createInvite, linkFromMail, uniqueEmail } from './helpers'
+import { PASSWORD, createInvite, linkFromMail, passCaptcha, uniqueEmail } from './helpers'
 import { audit, type Findings } from './mu-helpers'
 
 // Shared by the Swedish and Danish specs (ML7, ADR 0023): the words are written out here, taken from
@@ -45,6 +45,7 @@ export async function signUpAndIn(page: Page, w: Words): Promise<string> {
   await page.getByLabel(w.inviteCode).fill(createInvite())
   await page.getByLabel(w.email, { exact: true }).fill(email)
   await page.getByLabel(w.password, { exact: true }).fill(PASSWORD)
+  await passCaptcha(page)
   await page.getByRole('button', { name: w.createAccount }).click()
   await expect(page.getByRole('heading', { name: w.checkInbox })).toBeVisible()
 
@@ -57,6 +58,7 @@ export async function signUpAndIn(page: Page, w: Words): Promise<string> {
   await page.goto('/signin')
   await page.getByLabel(w.email, { exact: true }).fill(email)
   await page.getByLabel(w.password, { exact: true }).fill(PASSWORD)
+  await passCaptcha(page)
   await page.getByRole('button', { name: w.signIn, exact: true }).click()
   await expect(page.getByRole('button', { name: email })).toBeVisible()
   return email

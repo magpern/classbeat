@@ -4,6 +4,7 @@ import {
   PASSWORD,
   expect,
   linkFromMail,
+  passCaptcha,
   randomClientIp,
   signInThroughUi,
   signUpThroughUi,
@@ -76,6 +77,7 @@ async function signInAs(
   await page.goto('/signin')
   await page.getByLabel(labels.email, { exact: true }).fill(email)
   await page.getByLabel(labels.password, { exact: true }).fill(PASSWORD)
+  await passCaptcha(page)
   await page.getByRole('button', { name: labels.button, exact: true }).click()
   await expect(page.getByRole('button', { name: email })).toBeVisible()
 }
@@ -99,6 +101,7 @@ test('Danish picked logged out: the account keeps it and its mail is Danish', as
   await expect(page.getByRole('heading', { name: da.signIn, exact: true })).toBeVisible()
   await page.goto('/reset')
   await page.getByLabel(da.email, { exact: true }).fill(daEmail)
+  await passCaptcha(page)
   await page.getByRole('button', { name: DA.resetSend }).click()
   await expect(page.getByRole('heading', { name: da.checkInbox })).toBeVisible()
   await linkFromMail(page.request, daEmail, DA.resetSubject)

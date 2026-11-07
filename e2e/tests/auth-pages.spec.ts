@@ -1,4 +1,14 @@
-import { PASSWORD, createInvite, expect, test, linkFromMail, signInThroughUi, signUpThroughUi, uniqueEmail } from './helpers'
+import {
+  PASSWORD,
+  createInvite,
+  expect,
+  test,
+  linkFromMail,
+  passCaptcha,
+  signInThroughUi,
+  signUpThroughUi,
+  uniqueEmail,
+} from './helpers'
 
 // The pages of #40 against the compose stack: sign up with an invite, confirm by the mailed
 // link, sign in, sign out, change the password, and reset it by mail.
@@ -27,6 +37,7 @@ test('a wrong password on the confirmation page does not create the account', as
   await page.getByLabel('Invite code').fill(createInvite())
   await page.getByLabel('Email', { exact: true }).fill(email)
   await page.getByLabel('Password', { exact: true }).fill(PASSWORD)
+  await passCaptcha(page)
   await page.getByRole('button', { name: 'Create account' }).click()
   await page.goto(await linkFromMail(page.request, email, 'Confirm your classbeat account'))
   await page.getByLabel('Password', { exact: true }).fill('not the chosen one')
@@ -43,6 +54,7 @@ test('a bad invite is refused with its own message', async ({ page }) => {
   await page.getByLabel('Invite code').fill('definitely-not-an-invite')
   await page.getByLabel('Email', { exact: true }).fill(uniqueEmail('badinvite'))
   await page.getByLabel('Password', { exact: true }).fill(PASSWORD)
+  await passCaptcha(page)
   await page.getByRole('button', { name: 'Create account' }).click()
   await expect(page.getByRole('alert')).toContainText('invite code is not valid')
 })
@@ -54,6 +66,7 @@ test('forgot password: request, mailed link, new password, old one stops working
 
   await page.goto('/reset')
   await page.getByLabel('Email', { exact: true }).fill(email)
+  await passCaptcha(page)
   await page.getByRole('button', { name: 'Send reset link' }).click()
   await expect(page.getByRole('heading', { name: 'Check your inbox' })).toBeVisible()
 
@@ -67,6 +80,7 @@ test('forgot password: request, mailed link, new password, old one stops working
   await page.goto('/signin')
   await page.getByLabel('Email', { exact: true }).fill(email)
   await page.getByLabel('Password', { exact: true }).fill(PASSWORD)
+  await passCaptcha(page)
   await page.getByRole('button', { name: 'Sign in', exact: true }).click()
   await expect(page.getByRole('alert')).toContainText('not right')
 
