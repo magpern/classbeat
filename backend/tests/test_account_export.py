@@ -1,6 +1,7 @@
 """The data export (ADR 0014 section 2; #337): the user's own rows and nothing else, no secret."""
 
 import json
+from base64 import urlsafe_b64encode
 from collections.abc import Iterator
 from typing import Any
 
@@ -34,15 +35,18 @@ FORBIDDEN_KEYS = {
     "nonce",
     "password_hash",
     "pkce_verifier",
+    "public_key",
     "refunded_by",
     "request_hash",
     "revoked_by",
     "secret",
     "secret_ciphertext",
     "secret_nonce",
+    "sign_count",
     "state_hash",
     "token_hash",
     "verifier",
+    "webauthn_user_handle",
     "wrapped_dek",
 }
 
@@ -89,6 +93,18 @@ async def test_the_export_holds_my_rows_and_none_of_the_other_users(songenv: Son
         assert needle not in answer.text, needle
     # The sign-in side shows what I did myself.
     assert [m["provider"] for m in document["sign_in_methods"]] == ["github"]
+    # ADR 0019 (#771): the passkey, its id as base64url; never the key, counter or user handle.
+    [passkey] = document["passkeys"]
+    assert passkey["label"] == "My phone"
+    assert passkey["credential_id"] == urlsafe_b64encode(mine.passkey_id).rstrip(b"=").decode()
+    assert (passkey["transports"], passkey["synced"]) == (["internal", "hybrid"], True)
+    assert set(passkey) == {
+        "label", "credential_id", "transports", "synced", "backup_eligible", "created_at",
+        "last_used_at",
+    }  # fmt: skip
+    assert "a50102" not in answer.text  # the planted public key, as hex
+    assert "pQEC" not in answer.text  # ... and as base64
+    assert urlsafe_b64encode(other.passkey_id).rstrip(b"=").decode() not in answer.text
     assert document["two_factor"]["enabled"] is True
     assert document["two_factor"]["unused_recovery_codes"] == 1
     assert any(s["ip"] == mine.ip and s["user_agent"] == AGENT for s in document["sessions"])

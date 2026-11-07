@@ -34,7 +34,7 @@ EXPECTED_SETTINGS = {
 SECRET_COLUMNS: dict[str, frozenset[str]] = {
     table: frozenset(columns.split())
     for table, columns in {
-        "users": "password_hash",
+        "users": "password_hash webauthn_user_handle",
         "sessions": "token_hash ip user_agent",
         "known_devices": "device_hash",
         "pending_signups": "token_hash password_hash browser_hash",
@@ -45,6 +45,9 @@ SECRET_COLUMNS: dict[str, frozenset[str]] = {
         "mfa_recovery_codes": "code_hash",
         "rate_limits": "bucket_hash",
         "auth_events": "ip detail",
+        # ADR 0019 (#771): passkeys and their ceremonies are no operator's business.
+        "webauthn_credentials": "credential_id public_key label transports",
+        "webauthn_challenges": "flow_hash challenge",
         "connections": "public secret secret_nonce wrapped_dek dek_nonce",
         "connection_keks": "check_value",
         "spotify_oauth_flows": "state_hash session_hash client_id verifier redirect_uri",

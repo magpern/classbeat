@@ -1,6 +1,7 @@
 """The hourly purge (ADR 0003 section 1), directly and through the worker."""
 
 import asyncio
+import hashlib
 
 from sqlalchemy import text
 
@@ -47,6 +48,18 @@ async def seed(env: Env) -> None:
         "SELECT id, 'd2', now() - interval '89 days' FROM users",
         "INSERT INTO auth_events (kind, at) VALUES ('old', now() - interval '31 days')",
         "INSERT INTO auth_events (kind, at) VALUES ('new', now() - interval '29 days')",
+        # ADR 0019 section 6 (#771): passkey challenges, expired and live, anonymous (sign_in)
+        # and bound to the live session (register); the passkey itself is never purged.
+        "INSERT INTO webauthn_challenges (flow_hash, purpose, challenge, user_id, session_id, "
+        "expires_at) SELECT sha256(w.flow::bytea), w.purpose, sha256('c'::bytea), "
+        "CASE WHEN w.bound THEN s.user_id END, CASE WHEN w.bound THEN s.id END, "
+        "now() + w.ttl::interval FROM sessions s, (VALUES "
+        "('w1', 'sign_in', false, '-1 second'), ('w2', 'sign_in', false, '5 minutes'), "
+        "('w3', 'register', true, '-1 second'), ('w4', 'register', true, '5 minutes')"
+        ") AS w (flow, purpose, bound, ttl) WHERE s.token_hash = 'c'",
+        "INSERT INTO webauthn_credentials (user_id, credential_id, public_key, backup_eligible, "
+        "backup_state, label, last_used_at) SELECT id, 'k', 'p', false, false, 'Old key', "
+        "now() - interval '400 days' FROM users",
     ]
     # The security log (#632) is owned: planted as the user, older and younger than 7 days.
     for age in (8, 6):
@@ -83,6 +96,7 @@ async def test_purge_deletes_what_is_expired_or_used_and_keeps_the_rest(env: Env
         "pending_signups": 1,
         "auth_tokens": 2,
         "oauth_flows": 1,
+        "webauthn_challenges": 2,
         "rate_limits": 1,
         "invites": 2,
         "known_devices": 1,
@@ -101,6 +115,9 @@ async def test_purge_deletes_what_is_expired_or_used_and_keeps_the_rest(env: Env
     assert await env.scalar("SELECT count(*) FROM invites") == 2
     assert await env.scalar("SELECT count(*) FROM known_devices") == 1
     assert await env.scalar("SELECT count(*) FROM rate_limits") == 1
+    live = await remaining(env, "encode(flow_hash, 'hex')", "webauthn_challenges")
+    assert live == {hashlib.sha256(flow).hexdigest() for flow in (b"w2", b"w4")}
+    assert await env.scalar("SELECT count(*) FROM webauthn_credentials") == 1
     assert await env.scalar("SELECT count(*) FROM users") == 1  # users are never purged
 
 

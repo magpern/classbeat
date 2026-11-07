@@ -1,7 +1,6 @@
 """Application settings, read from the environment (prefix ``CLASSBEAT_``) and secret files."""
 
 import ipaddress
-import json
 import logging
 import os
 import re
@@ -17,6 +16,7 @@ from sqlalchemy.engine import URL, make_url
 from sqlalchemy.exc import ArgumentError
 
 from classbeat.config_hosts import _is_local_host, parse_networks, public_origin
+from classbeat.config_passkeys import check_passkey_settings
 from classbeat.config_roles import (  # noqa: F401 (re-exported from classbeat.config)
     MODEL_KEY_FIELDS,
     MODEL_SDK_REFUSED_ENVIRONMENT,
@@ -29,6 +29,7 @@ from classbeat.config_roles import (  # noqa: F401 (re-exported from classbeat.c
     model_sdk_environment_problems,
     worker_model_providers,
 )
+from classbeat.config_swedebeat import swedebeat_app_keys
 from classbeat.emailnorm import normalize_email
 
 logger = logging.getLogger(__name__)
@@ -78,25 +79,6 @@ SUPPORT_ADDRESS = re.compile(r"[A-Za-z0-9._%+-]{1,64}@[A-Za-z0-9-]+(\.[A-Za-z0-9
 TURNSTILE_DUMMY_KEY = re.compile(r"[0-9]x0{16,}[A-Z]{2}")
 # A Turnstile site key is public; it goes into the session answer and the widget's options.
 TURNSTILE_SITE_KEY = re.compile(r"[A-Za-z0-9_-]{1,128}")
-
-
-def swedebeat_app_keys(value: SecretStr) -> dict[str, str] | None:
-    """The ``swedebeat_app`` file's key and iv if it is a JSON object whose ``key`` is 32 and
-    ``iv`` 16 single-byte characters (the library encodes both as latin-1); else ``None``."""
-    try:
-        data = json.loads(value.get_secret_value())
-    except ValueError:
-        return None
-    if not isinstance(data, dict) or set(data) != {"key", "iv"}:  # pyright: ignore[reportUnknownArgumentType]
-        return None
-    key, iv = data["key"], data["iv"]
-    if not isinstance(key, str) or not isinstance(iv, str):
-        return None
-    try:
-        sized = len(key.encode("latin-1")) == 32 and len(iv.encode("latin-1")) == 16
-    except UnicodeEncodeError:
-        return None
-    return {"key": key, "iv": iv} if sized else None
 
 
 def secrets_dir() -> Path:
@@ -403,6 +385,10 @@ class Settings(BaseSettings):
     turnstile_fake: bool = False
     turnstile_site_key: str | None = None
     turnstile_secret_key: SecretStr | None = None
+    # ADR 0019 (#771): passkeys, off by default (web only). On, it needs the RP ID, the exact host
+    # (production classbeat.eu, test and beta classbeat.pernemark.se); ``config_passkeys``.
+    passkeys: bool = False
+    webauthn_rp_id: str | None = None
     swedebeat_app_file: Path = Path("/app/swedebeat_app.json")
 
     @classmethod
@@ -626,6 +612,11 @@ class Settings(BaseSettings):
     def spotify_redirect_uri(self) -> str:
         """The fixed callback URL (ADR 0009 section 2): from settings only, never from input."""
         return f"{self.public_base_url}/oauth/spotify/callback"
+
+    @model_validator(mode="after")
+    def _check_passkeys(self) -> "Settings":
+        check_passkey_settings(self.passkeys, self.webauthn_rp_id, self.public_base_url)
+        return self
 
     @model_validator(mode="after")
     def _prod_needs_https(self) -> "Settings":
