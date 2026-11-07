@@ -241,11 +241,13 @@ def test_the_running_stages_hold_the_length_cap(data: MusicData) -> None:
 
 PRICE_COLUMNS = ("monthly_price_cents", "intro_price_cents", "intro_price_until")
 # Where a price column may be named or ``plans`` read whole: its table's mirror and the admin
-# area's edit and audit (ADR 0011, 2026-11-03 amendment, lists the same three).
+# area's edit (three modules since #762) and audit (ADR 0011, 2026-11-03 amendment).
 PRICE_MODULES = frozenset(
     {
         SRC / "plans" / "tables.py",
         SRC / "admin" / "settings.py",
+        SRC / "admin" / "plan_rules.py",  # split out of settings.py (#762)
+        SRC / "admin" / "settings_models.py",
         SRC / "admin" / "audit.py",
     }
 )

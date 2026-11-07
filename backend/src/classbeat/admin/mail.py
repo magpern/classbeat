@@ -28,7 +28,8 @@ from classbeat import auth
 from classbeat.admin.audit import Target
 from classbeat.admin.db import AdminDb, AdminRefused, admin_session
 from classbeat.admin.routes import AdminActor, admin_db, admin_router
-from classbeat.admin.settings import FlagOut, mail_flags
+from classbeat.admin.settings import mail_flags
+from classbeat.admin.settings_models import FlagOut
 from classbeat.config import Settings
 from classbeat.emails import live
 from classbeat.emails.dispatch import build, sample_unsubscribe_links

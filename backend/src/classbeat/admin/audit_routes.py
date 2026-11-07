@@ -33,13 +33,8 @@ from fastapi import Query, Request
 from pydantic import AwareDatetime, BaseModel, ConfigDict
 from sqlalchemy import text
 
-from classbeat.admin.audit import (
-    OUTCOMES,
-    FilterEmail,
-    FilterTargetId,
-    UnknownAction,
-    checked_params,
-)
+from classbeat.admin.audit import OUTCOMES, UnknownAction, checked_params
+from classbeat.admin.audit_text import FilterEmail, FilterTargetId
 from classbeat.admin.db import AdminDb, AdminRefused, admin_session
 from classbeat.admin.routes import AdminActor, admin_db, admin_router
 from classbeat.emailnorm import normalize_email

@@ -267,7 +267,10 @@ def test_the_e2e_stack_turns_on_the_fake_on_web_only() -> None:
 def test_every_placeholder_list_creates_the_file() -> None:
     assert "turnstile_secret_key" in (ROOT / "scripts" / "worktree.sh").read_text("utf-8")
     assert "turnstile_secret_key" in (ROOT / "scripts" / "test-install-check.sh").read_text("utf-8")
-    check = (ROOT / "scripts" / "check-prod-compose.sh").read_text("utf-8")
+    # check-prod-compose.sh is split into sourced parts (#763): read the script and its parts.
+    check = "".join(
+        f.read_text("utf-8") for f in sorted((ROOT / "scripts").glob("check-prod-compose*"))
+    )
     assert "turnstile_secret_key belongs to web only" in check
     assert "CLASSBEAT_TURNSTILE_FAKE is never set" in check
     runbook = (ROOT / "docs" / "runbooks" / "vps-deploy.md").read_text("utf-8")

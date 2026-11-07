@@ -122,15 +122,17 @@ jobs:
           fi
 
       - name: bash -n
-        run: for f in scripts/*.sh; do bash -n "$f"; done
+        run: for f in scripts/*.sh scripts/*.bash; do bash -n "$f"; done
 
       # koalaman/shellcheck v0.11.0, pinned by its index digest. Dependabot does not track an
-      # image used in a `run:` step: bump the tag and digest here by hand.
+      # image used in a `run:` step: bump the tag and digest here by hand. -x follows `source`: the
+      # scripts/check-prod-compose-*.bash parts are checked as part of check-prod-compose.sh (alone
+      # they lack its variables), so a part that is not sourced there is not checked.
       - name: shellcheck
         run: |
           docker run --rm -v "$PWD:/mnt:ro" -w /mnt \
             koalaman/shellcheck@sha256:61862eba1fcf09a484ebcc6feea46f1782532571a34ed51fedf90dd25f925a8d \
-            scripts/*.sh
+            -x -P SCRIPTDIR scripts/*.sh
 
       - name: CI gate and change-filter tests
         run: scripts/test-ci-gate.sh
