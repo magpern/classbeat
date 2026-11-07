@@ -27,8 +27,9 @@ values). The log does not hold the
 rate-limit buckets' owners (``rate_limits`` keys are hashes of an address or account, not a user),
 so those counters are not read here.
 
-Lists stop at ``LIST_ROWS``; ``*_truncated`` says when there were more. The aggregates scan the
-window of one table under maint's 30 s statement timeout.
+Lists stop at ``LIST_ROWS``; ``*_truncated`` says when there were more. The aggregates read the
+window of one table (a range scan on ``security_log (at)``, migration 0040) under maint's 30 s
+statement timeout.
 """
 
 from datetime import datetime
