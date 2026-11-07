@@ -4,11 +4,15 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type AnchorHTMLAttributes,
   type MouseEvent,
   type ReactNode,
 } from 'react'
+import { useLocale } from '../i18n/I18n'
+import { localeFromPath, type Locale } from '../i18n/locales'
+import { isAdminPath, localize, neutralize, splitPath, withLanguage } from './paths'
 
 // A tiny history-API router: the app has a handful of flat routes and no need for a library.
 
@@ -17,8 +21,21 @@ interface Location {
   search: string
 }
 
+interface NavigateOptions {
+  replace?: boolean
+  /** Scroll to the top after navigating (default). Redirects and language switches keep the place. */
+  scroll?: boolean
+}
+
 interface RouterValue extends Location {
-  navigate: (to: string, options?: { replace?: boolean }) => void
+  /** The language of the URL's prefix, or null (unprefixed, such as `/admin`). */
+  lang: Locale | null
+  /** The path without the prefix and the trailing slash: what routes match and `return_to` carries. */
+  path: string
+  /** Takes a language-neutral target; the prefix is added here (ADR 0027 section 8). */
+  navigate: (to: string, options?: NavigateOptions) => void
+  /** The same page in another language, keeping search and fragment. Writes nothing. */
+  switchLanguage: (lang: Locale) => void
 }
 
 const RouterContext = createContext<RouterValue | null>(null)
@@ -29,6 +46,12 @@ function readLocation(): Location {
 
 export function RouterProvider({ children }: { children: ReactNode }) {
   const [location, setLocation] = useState<Location>(readLocation)
+  const { locale } = useLocale()
+  // The language to prefix with when the URL names none (admin pages).
+  const fallback = useRef(locale)
+  useEffect(() => {
+    fallback.current = locale
+  }, [locale])
 
   useEffect(() => {
     const onPop = () => {
@@ -40,14 +63,29 @@ export function RouterProvider({ children }: { children: ReactNode }) {
     }
   }, [])
 
-  const navigate = useCallback((to: string, options?: { replace?: boolean }) => {
-    if (options?.replace) window.history.replaceState(null, '', to)
-    else window.history.pushState(null, '', to)
+  const navigate = useCallback((to: string, options?: NavigateOptions) => {
+    const target = localize(to, localeFromPath(window.location.pathname) ?? fallback.current)
+    if (options?.replace) window.history.replaceState(null, '', target)
+    else window.history.pushState(null, '', target)
     setLocation(readLocation())
-    window.scrollTo?.(0, 0)
+    if (options?.scroll !== false) window.scrollTo?.(0, 0)
   }, [])
 
-  const value = useMemo(() => ({ ...location, navigate }), [location, navigate])
+  const switchLanguage = useCallback(
+    (lang: Locale) => {
+      const { path } = splitPath(window.location.pathname)
+      // The admin area has no language in its URL (ADR 0027 section 1).
+      if (isAdminPath(path)) return
+      const { search, hash } = window.location
+      navigate(`${withLanguage(lang, path)}${search}${hash}`, { replace: true, scroll: false })
+    },
+    [navigate],
+  )
+
+  const value = useMemo(() => {
+    const { lang, path } = splitPath(location.pathname)
+    return { ...location, lang, path, navigate, switchLanguage }
+  }, [location, navigate, switchLanguage])
   return <RouterContext.Provider value={value}>{children}</RouterContext.Provider>
 }
 
@@ -67,7 +105,8 @@ interface LinkProps extends Omit<AnchorHTMLAttributes<HTMLAnchorElement>, 'href'
 }
 
 export function Link({ to, onClick, children, ...rest }: LinkProps) {
-  const { navigate } = useRouter()
+  const { navigate, lang } = useRouter()
+  const { locale } = useLocale()
   const handle = (event: MouseEvent<HTMLAnchorElement>) => {
     onClick?.(event)
     if (
@@ -84,7 +123,7 @@ export function Link({ to, onClick, children, ...rest }: LinkProps) {
     navigate(to)
   }
   return (
-    <a {...rest} href={to} onClick={handle}>
+    <a {...rest} href={localize(to, lang ?? locale)} onClick={handle}>
       {children}
     </a>
   )
@@ -100,7 +139,8 @@ export function safeReturnTo(value: string | null): string | null {
   } catch {
     return null
   }
-  return isPlainPath(decoded) ? value : null
+  // Language-neutral whatever came in: the prefix is added again when it is followed (ADR 0027 section 4).
+  return isPlainPath(decoded) ? neutralize(value) : null
 }
 
 function isPlainPath(value: string): boolean {
@@ -110,6 +150,11 @@ function isPlainPath(value: string): boolean {
     if (char.charCodeAt(0) < 0x20 || char.charCodeAt(0) === 0x7f) return false
   }
   return true
+}
+
+/** Changes only the fragment of the current URL (a tab choice); the prefix and search stay as they are. */
+export function replaceHash(hash: string): void {
+  window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}#${hash}`)
 }
 
 /**

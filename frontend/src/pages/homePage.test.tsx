@@ -31,20 +31,20 @@ describe('Home', () => {
     home({ 'GET /api/connections': { connections: [MOWL] } })
     renderAt('/')
     expect(await screen.findByRole('heading', { name: 'Welcome back, ann' })).toBeInTheDocument()
-    expect(await screen.findByRole('link', { name: 'Tuesday climb' })).toHaveAttribute('href', expect.stringMatching(/^\/classes\//))
+    expect(await screen.findByRole('link', { name: 'Tuesday climb' })).toHaveAttribute('href', expect.stringMatching(/^\/en\/classes\//))
     expect(screen.getByRole('img', { name: /Class profile/ })).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: 'See all your classes' })).toHaveAttribute('href', '/classes')
+    expect(screen.getByRole('link', { name: 'See all your classes' })).toHaveAttribute('href', '/en/classes')
   })
 
   it('has one primary Design a class action and presets that link to the form', async () => {
     home()
     renderAt('/')
     const region = await screen.findByRole('region', { name: 'Design a new class' })
-    expect(within(region).getByRole('link', { name: 'Design a class' })).toHaveAttribute('href', '/classes/new')
+    expect(within(region).getByRole('link', { name: 'Design a class' })).toHaveAttribute('href', '/en/classes/new')
     const presets = within(region).getByRole('list', { name: 'Start from a preset' })
     const links = within(presets).getAllByRole('link')
     expect(links.map((l) => l.textContent)).toEqual(['45 min hills', '30 min intervals', '60 min endurance'])
-    expect(links[0]).toHaveAttribute('href', '/classes/new?length=45&climbs=3&intensity=moderate')
+    expect(links[0]).toHaveAttribute('href', '/en/classes/new?length=45&climbs=3&intensity=moderate')
   })
 
   it('says so when there are no classes yet', async () => {
@@ -72,8 +72,8 @@ describe('Get set up checklist', () => {
       'Connect MOWL, not done yetConnect',
       'Connect Spotify (optional), not done yetConnect',
     ])
-    expect(within(items[1] as HTMLElement).getByRole('link', { name: 'Connect' })).toHaveAttribute('href', '/account')
-    expect(within(items[2] as HTMLElement).getByRole('link', { name: 'Connect' })).toHaveAttribute('href', '/account/spotify')
+    expect(within(items[1] as HTMLElement).getByRole('link', { name: 'Connect' })).toHaveAttribute('href', '/en/account')
+    expect(within(items[2] as HTMLElement).getByRole('link', { name: 'Connect' })).toHaveAttribute('href', '/en/account/spotify')
   })
 
   it('has no Spotify step with song picking off, and asks to connect MOWL again when it needs it', async () => {

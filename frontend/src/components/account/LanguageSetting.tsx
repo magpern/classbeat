@@ -1,16 +1,16 @@
 import { useId } from 'react'
 import { setAccountLocale } from '../../api/locale'
 import { useSession } from '../../auth/SessionContext'
-import { useLocale, useT } from '../../i18n/I18n'
+import { useT } from '../../i18n/I18n'
 import { Notice, useAction } from '../forms'
-import { languageName, offeredLanguages } from '../LanguagePicker'
+import { languageName, offeredLanguages, useChooseLanguage } from '../LanguagePicker'
 
 const FOLLOW = ''
 
 /** The Account page's language: saved on the account; "Follow this browser" saves nothing. */
 export function LanguageSetting() {
   const { session, refresh } = useSession()
-  const { setLocale } = useLocale()
+  const chooseLanguage = useChooseLanguage()
   const t = useT()
   const action = useAction()
   const id = useId()
@@ -22,7 +22,7 @@ export function LanguageSetting() {
     const next = value === FOLLOW ? null : value
     void action.run(async () => {
       await setAccountLocale(next)
-      setLocale(next)
+      chooseLanguage(next)
       await refresh()
     })
   }

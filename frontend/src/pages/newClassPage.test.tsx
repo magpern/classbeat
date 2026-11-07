@@ -48,7 +48,7 @@ describe('the new-class form', () => {
     fireEvent.change(screen.getByLabelText('Anything else?'), { target: { value: 'No standing please' } })
     fireEvent.click(screen.getByRole('button', { name: 'Design my class' }))
     await waitFor(() => {
-      expect(window.location.pathname).toBe(`/jobs/${JOB_ID}`)
+      expect(window.location.pathname).toBe(`/en/jobs/${JOB_ID}`)
     })
     const [call] = api.to('POST', '/api/jobs')
     expect(call?.body).toEqual({
@@ -185,7 +185,7 @@ describe('the new-class form', () => {
   it('asks the user to connect MOWL first', async () => {
     fakeApi({ ...SESSION_ROUTES })
     renderAt('/classes/new')
-    expect(await screen.findByRole('link', { name: 'Connect MOWL on your account page' })).toHaveAttribute('href', '/account')
+    expect(await screen.findByRole('link', { name: 'Connect MOWL on your account page' })).toHaveAttribute('href', '/en/account')
     expect(screen.queryByLabelText('Class name')).toBeNull()
   })
 
@@ -530,7 +530,7 @@ describe('the new-class form', () => {
     fireEvent.click(screen.getByRole('radio', { name: /Sunday climb/ }))
     fireEvent.click(screen.getByRole('button', { name: 'Design my class' }))
     await waitFor(() => {
-      expect(window.location.pathname).toBe(`/jobs/${JOB_ID}`)
+      expect(window.location.pathname).toBe(`/en/jobs/${JOB_ID}`)
     })
     const [call] = api.to('POST', '/api/jobs')
     expect(call?.body).toMatchObject({

@@ -1,14 +1,14 @@
 import userEvent from '@testing-library/user-event'
-import { render, screen, within } from '@testing-library/react'
+import { screen, within } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
-import { App } from './App'
 import { SIGNED_IN, fakeApi, reason } from './test/fakeApi'
+import { renderAt } from './test/render'
 
 describe('App shell', () => {
   it('renders the product name in the header', () => {
     vi.stubGlobal('fetch', vi.fn(() => new Promise<Response>(() => undefined)))
 
-    render(<App />)
+    renderAt('/')
 
     expect(within(screen.getByRole('banner')).getByText('classbeat')).toBeInTheDocument()
   })
@@ -25,7 +25,7 @@ describe('App shell', () => {
       ),
     )
 
-    render(<App />)
+    renderAt('/')
 
     const landing = screen.getByRole('region', { name: /classbeat picks the songs/i })
     expect(within(landing).getByText('Private beta')).toBeInTheDocument()
@@ -38,13 +38,12 @@ describe('App shell', () => {
       'POST /api/auth/logout': reason(500, 'boom'),
       'GET /api/classes': { classes: [] },
     })
-    window.history.replaceState(null, '', '/')
-    render(<App />)
+    renderAt('/')
     await userEvent.click(await screen.findByRole('button', { name: 'ann@example.test' }))
     await userEvent.click(await screen.findByRole('menuitem', { name: 'Sign out' }))
     expect(await screen.findByRole('alert')).toHaveTextContent(/went wrong on the server/)
     await userEvent.click(screen.getByRole('button', { name: 'ann@example.test' }))
     expect(await screen.findByRole('menuitem', { name: 'Sign out' })).not.toHaveAttribute('data-disabled')
-    expect(window.location.pathname).toBe('/')
+    expect(window.location.pathname).toBe('/en')
   })
 })

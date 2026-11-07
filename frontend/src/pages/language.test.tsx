@@ -5,14 +5,20 @@ import { render } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { App } from '../App'
 import { I18nProvider } from '../i18n/I18n'
+import { localize } from '../router/paths'
 
-function renderAt(url: string) {
+function renderAtRaw(url: string) {
   window.history.replaceState(null, '', url)
   return render(
     <I18nProvider>
       <App />
     </I18nProvider>,
   )
+}
+
+// A neutral path opens under /en, like the redirect for an English browser (ADR 0027).
+function renderAt(url: string) {
+  return renderAtRaw(localize(url, 'en'))
 }
 
 // These tests are about choosing and saving a language, not about its words: no catalogue loads,
@@ -80,7 +86,7 @@ describe('the logged-out language picker', () => {
 })
 
 describe('the language after sign-out', () => {
-  it("keeps the account language as this browser's choice (pinned: ADR 0023 order users.locale, then cb-locale)", async () => {
+  it('stays in the language of the URL after sign-out and saves nothing (ADR 0027 section 2)', async () => {
     let signedInNow = true
     fakeApi({
       'GET /api/auth/session': () => (signedInNow ? signedIn('sv') : ANON),
@@ -90,14 +96,17 @@ describe('the language after sign-out', () => {
       },
       'GET /api/classes': { classes: [] },
     })
-    renderAt('/classes')
+    renderAtRaw('/classes')
+    // The unprefixed URL goes to the account's language once the session has answered.
     await waitFor(() => {
-      expect(window.localStorage.getItem('cb-locale')).toBe('sv')
+      expect(window.location.pathname).toBe('/sv/classes')
     })
     await userEvent.click(await screen.findByRole('button', { name: 'ann@example.test' }))
     await userEvent.click(await screen.findByRole('menuitem', { name: 'Sign out' }))
-    await screen.findByRole('combobox', { name: 'Language' })
-    expect(window.localStorage.getItem('cb-locale')).toBe('sv')
+    const picker = await screen.findByRole('combobox', { name: 'Language' })
+    expect(picker).toHaveValue('sv')
+    expect(window.location.pathname.startsWith('/sv/')).toBe(true)
+    expect(window.localStorage.getItem('cb-locale')).toBeNull()
   })
 })
 

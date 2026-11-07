@@ -33,7 +33,7 @@ describe('the Music page', () => {
     expect(await screen.findByRole('heading', { name: 'Playlists classbeat made' })).toBeInTheDocument()
     const open = await screen.findByRole('link', { name: 'OPEN SPOTIFY' })
     expect(open).toHaveAttribute('href', LINK)
-    expect(screen.getByRole('link', { name: 'Hill day' })).toHaveAttribute('href', '/classes/c1')
+    expect(screen.getByRole('link', { name: 'Hill day' })).toHaveAttribute('href', '/en/classes/c1')
     const mowl = await screen.findByRole('heading', { name: 'Your playlists in MOWL' })
     expect(within(mowl.parentElement!).getByText('Warm up')).toBeInTheDocument()
     expect(screen.getAllByAltText('Spotify')[0]).toBeInTheDocument()
@@ -77,6 +77,6 @@ describe('the Music page', () => {
       }),
     )
     renderAt('/music')
-    expect(await screen.findByRole('link', { name: 'Connect Spotify' })).toHaveAttribute('href', '/account/spotify')
+    expect(await screen.findByRole('link', { name: 'Connect Spotify' })).toHaveAttribute('href', '/en/account/spotify')
   })
 })
