@@ -34,6 +34,14 @@ export default defineConfig({
     baseURL,
     // The specs read English text (ADR 0023): pin the browser language so a runner's own never decides.
     locale: 'en',
+    // The cookie notice (#715) would sit over the page in every spec: start each context with it
+    // dismissed. cookie-notice.spec.ts overrides this to see it as a first-time visitor.
+    storageState: {
+      cookies: [],
+      origins: [
+        { origin: new URL(baseURL).origin, localStorage: [{ name: 'cb-cookie-notice', value: '1' }] },
+      ],
+    },
     trace: 'retain-on-failure',
   },
   projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],

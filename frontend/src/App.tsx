@@ -3,6 +3,7 @@ import { AccountLocale } from './auth/AccountLocale'
 import { GuardProvider } from './auth/GuardProvider'
 import { SessionProvider, useSession } from './auth/SessionContext'
 import { Banner } from './components/Banner'
+import { CookieNotice } from './components/CookieNotice'
 import { Card } from './components/forms'
 import { RequireAuth } from './components/RequireAuth'
 import { AppShell } from './components/shell/AppShell'
@@ -116,6 +117,7 @@ export function App() {
           <AppShell>
             <Routes />
           </AppShell>
+          <CookieNotice />
         </GuardProvider>
       </SessionProvider>
     </RouterProvider>
