@@ -141,7 +141,7 @@ const da: Catalogue = {
   'shell.close': 'Luk',
   'cookies.label': 'Information om cookies',
   'cookies.text':
-    'classbeat bruger kun de cookies, der skal til for at logge dig ind og huske dine indstillinger, for eksempel sprog og tema. Vi sporer dig ikke.',
+    'classbeat bruger kun de cookies, der skal til for at logge dig ind og huske dine indstillinger, for eksempel sprog og tema, og loginsiderne bruger et sikkerhedstjek fra Cloudflare. Vi sporer dig ikke.',
   'cookies.ok': 'OK',
   'shell.menu.signOut': 'Log ud',
   'shell.classesThisMonth': 'Hold denne måned',
