@@ -123,6 +123,9 @@ export const en = {
   'shell.signUp': 'Sign up',
   'shell.backHome': 'Back to home',
   'shell.close': 'Close',
+  'cookies.label': 'Cookie notice',
+  'cookies.text': 'classbeat only uses the cookies it needs to sign you in and to remember your settings, such as language and theme. It does not track you.',
+  'cookies.ok': 'OK',
   'shell.menu.signOut': 'Sign out',
   'shell.classesThisMonth': 'Classes this month',
   'shell.classesThisMonthLine': 'Classes this month: {line}',
@@ -524,7 +527,8 @@ export const en = {
   'class.duplicate.reason.idempotency_mismatch': 'This copy was already asked for with other details. Close this and try again.',
   'class.duplicate.reason.internal': 'This version can no longer be read, so it cannot be copied.',
   // Shown on the account page and on the undecided-attach panel (components/account/mowlWarning.ts).
-  'account.forgetWarning': 'classbeat forgets which playlists it has added to your MOWL music, and any adding that was left undecided. The next class you design from one of those playlists may add it to your MOWL music a second time, so you could see two copies there.',
+  'account.forgetWarning':
+    'classbeat forgets which playlists it has added to your MOWL music, and any adding that was left undecided. The next class you design from one of those playlists may add it to your MOWL music a second time, so you could see two copies there.',
 
   // Draft summary and revision view.
   'class.draft.summary': 'Draft {number}, {total} in total',
