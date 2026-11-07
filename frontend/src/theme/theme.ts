@@ -37,3 +37,16 @@ export function setTheme(choice: ThemeChoice): void {
     /* storage blocked: the choice lasts until the page closes */
   }
 }
+
+/** The theme the page shows: `system` is resolved by the device's light or dark preference. */
+export function resolvedTheme(): 'dark' | 'light' {
+  const attribute = document.documentElement.getAttribute('data-theme')
+  const choice = isThemeChoice(attribute) ? attribute : DEFAULT_THEME
+  if (choice !== 'system') return choice
+  return lightPreferred()?.matches === true ? 'light' : 'dark'
+}
+
+/** The device's light preference, or null where the browser has no media queries. */
+export function lightPreferred(): MediaQueryList | null {
+  return typeof window.matchMedia === 'function' ? window.matchMedia('(prefers-color-scheme: light)') : null
+}

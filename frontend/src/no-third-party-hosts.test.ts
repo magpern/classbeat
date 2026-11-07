@@ -38,12 +38,17 @@ const COVER_HOSTS = [
 ]
 const QUOTED = COVER_HOSTS.map((host) => `'${host}'`)
 const COVER_HOST = QUOTED[0] ?? ''
+// ADR 0025 section 11: Cloudflare Turnstile's script, inserted by the Turnstile component on the
+// four auth forms only. The exemption is this exact quoted string in that one file.
+const TURNSTILE = './components/auth/Turnstile.tsx'
+const TURNSTILE_SCRIPT = "'https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit'"
 
 /** The remote URLs in a source file, after the SVG namespace and the allowed hosts. */
 function remoteUrls(path: string, source: string): string[] {
   // The SVG namespace is an identifier, not a request.
   let checked = source.replaceAll('http://www.w3.org/2000/svg', '')
   if (path === COVER_ART) for (const quoted of QUOTED) checked = checked.replaceAll(quoted, "''")
+  if (path === TURNSTILE) checked = checked.replaceAll(TURNSTILE_SCRIPT, "''")
   return checked.match(REMOTE_URL) ?? []
 }
 
@@ -91,10 +96,37 @@ describe('no third-party hosts', () => {
     expect(remoteUrls(COVER_ART, 'const a = "https://i.scdn.co"')).toHaveLength(1)
   })
 
+  it('the Turnstile component names its script once and no other host', () => {
+    const source = scripts[TURNSTILE] ?? ''
+    expect(source.split(TURNSTILE_SCRIPT).length - 1).toBe(1)
+    expect(remoteUrls('./elsewhere.tsx', source)).toEqual(['https://challenges.cloudflare.com'])
+    expect(remoteUrls(TURNSTILE, source)).toEqual([])
+  })
+
+  it('still fails for the Turnstile script in any other file, and for anything else in that file', () => {
+    expect(remoteUrls('./pages/SignInPage.tsx', `const a = ${TURNSTILE_SCRIPT}`)).toHaveLength(1)
+    expect(remoteUrls('./components/auth/AuthScreen.tsx', `const a = ${TURNSTILE_SCRIPT}`)).toHaveLength(1)
+    for (const other of [
+      "'https://challenges.cloudflare.com/turnstile/v0/api.js'",
+      "'https://challenges.cloudflare.com'",
+      '"https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit"',
+      "'https://evil.example/api.js?render=explicit'",
+      "'//challenges.cloudflare.com/turnstile/v0/api.js?render=explicit'",
+    ]) {
+      expect(remoteUrls(TURNSTILE, `const a = ${other}`)).toHaveLength(1)
+    }
+  })
+
+  it('index.html never loads the Turnstile script (only the component does, on the auth forms)', () => {
+    expect(indexHtml).not.toContain('challenges.cloudflare.com')
+  })
+
   it('no app source names or builds a Spotify URL (links come only from the API)', () => {
     const naming = Object.entries(scripts)
       .filter(([path]) => !path.startsWith('./test/'))
-      .filter(([, source]) => /open\.spotify\.com|spotify:(?:track|playlist|album|artist)|spotify\.link/i.test(source))
+      .filter(([, source]) =>
+        /open\.spotify\.com|spotify:(?:track|playlist|album|artist)|spotify\.link/i.test(source),
+      )
       .map(([path]) => path)
     expect(naming).toEqual([])
   })

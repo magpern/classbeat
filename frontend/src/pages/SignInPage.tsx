@@ -24,12 +24,14 @@ export function SignInPage() {
       mode="signin"
       returnTo={returnTo}
       notice={
-        outcome && outcome !== 'email_needed' ? oauthOutcomeMessage(outcome, undefined, query.get('provider')) : null
+        outcome && outcome !== 'email_needed'
+          ? oauthOutcomeMessage(outcome, undefined, query.get('provider'))
+          : null
       }
       // A new provider account has no classbeat account: sign-up is where an invite creates one (#617).
       noticeLink={outcome === 'no_account' ? { to: '/signup', text: t('auth.createAccount') } : null}
-      onSubmit={async ({ email, password }) => {
-        const { role } = await login(email, password)
+      onSubmit={async ({ email, password, captchaToken }) => {
+        const { role } = await login(email, password, captchaToken)
         await refresh()
         navigate(returnTo ?? (role === 'admin' ? '/admin' : '/account'))
       }}
