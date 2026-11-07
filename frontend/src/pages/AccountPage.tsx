@@ -10,6 +10,7 @@ import { ChangeEmail, ChangePassword } from '../components/account/Credentials'
 import { DeleteAccount } from '../components/account/DeleteAccount'
 import { Devices } from '../components/account/Devices'
 import { ExportData } from '../components/account/ExportData'
+import { SecurityActivity } from '../components/account/SecurityActivity'
 import { Plan } from '../components/account/Plan'
 import { SignInMethods } from '../components/account/SignInMethods'
 import { SpotifySummary } from '../components/account/Spotify'
@@ -189,6 +190,7 @@ function Account() {
               signOut(true)
             }}
           />
+          <SecurityActivity />
         </TabsContent>
         <TabsContent value="data" className="flex flex-col gap-4">
           <Section title={t('account.email')}>

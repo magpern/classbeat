@@ -298,7 +298,10 @@ A new system table `webauthn_challenges`, modelled on `oauth_flows` (ADR 0003 §
      **re-auth finish** (§8), the remove route (§7), the reset (§9), `mfa-reset`,
      `POST /api/auth/logout-all`, the TOTP reset of `keys wipe` (ADR 0004 §2) and
      `DELETE /api/auth/mfa/totp`; the last four take it before they delete the TOTP or any
-     session (#643, #675). *(#639, #643, 2026-11-06)* `keys wipe` deletes the user's
+     session (#643, #675). `POST /api/auth/logout` (#646) and `DELETE /api/auth/sessions/{id}`
+     (#678) take it before they delete their one session, because each then writes a `sign_out`
+     event whose foreign key takes `FOR KEY SHARE` on the user row after the session row is
+     locked (ADR 0003 amendments of 2026-11-06 and 2026-11-07). *(#639, #643, 2026-11-06)* `keys wipe` deletes the user's
      `connections` rows (`connections.delete_all_in`) before it takes the user lock, in the same
      transaction. No flow that holds the user lock takes a `connections` row lock afterwards,
      except the cascade of an account delete (the user's own or the admin's), and both run only

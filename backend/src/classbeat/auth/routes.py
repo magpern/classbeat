@@ -3,9 +3,11 @@
 Sign-in itself arrives with #37 to #39. Every query here filters on the ``user_id`` of the
 request's own session, and another user's session id answers 404, the same as an unknown one.
 
-Sign-out and sign-out-everywhere write one ``auth_events`` row (``sign_out``, ``sign_out_all``;
-ADR 0003 amendment of 2026-11-06, #646) in the revoke's own transaction, and only when the revoke
-deleted a session: a repeated call, or a session a parallel request already ended, writes none.
+Sign-out, sign-out-everywhere and signing out one session from the list write one
+``auth_events`` row (``sign_out``, ``sign_out_all``; ADR 0003 amendments of 2026-11-06, #646, and
+2026-11-07, #678) in the revoke's own transaction, and only when the revoke deleted a session: a
+repeated call, or a session a parallel request already ended, writes none. ``GET /api/auth/events``
+lists the caller's own events (``activity``).
 """
 
 import logging
@@ -14,11 +16,19 @@ from datetime import datetime
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Request, Response
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from pydantic import BaseModel
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from classbeat.auth.activity import (
+    CURSOR_PATTERN,
+    OTHER_SESSION_KEY,
+    PAGE_DEFAULT,
+    PAGE_MAX,
+    decode_cursor,
+    list_activity,
+)
 from classbeat.auth.cookies import CSRF_COOKIE, clear_session_cookie, set_csrf_cookie
 from classbeat.auth.deps import current_session, request_ip, require_user
 from classbeat.auth.events import record_event
@@ -81,6 +91,20 @@ class SessionItem(BaseModel):
     # cleared by a re-authentication, MFA or step-up in that session.
     location_changed_at: datetime | None
     current: bool
+
+
+class ActivityItemOut(BaseModel):
+    id: UUID
+    kind: str
+    at: datetime
+    ip: str | None
+    provider: str | None  # google, github or microsoft, for the kinds that record one
+    other_session: bool  # a sign-out made from another session's list
+
+
+class ActivityOut(BaseModel):
+    events: list[ActivityItemOut]
+    next_before: str | None  # pass as ``before`` for the next, older page; null at the end
 
 
 def _factory(request: Request) -> async_sessionmaker[AsyncSession]:
@@ -174,17 +198,58 @@ async def delete_session(
     ctx: Annotated[UserContext, Depends(require_user)],
     info: Annotated[SessionInfo | None, Depends(current_session)],
 ) -> None:
-    """Sign out one of the user's own sessions. 404 for an unknown id and for another user's."""
+    """Sign out one of the user's own sessions. 404 for an unknown id and for another user's.
+
+    One ``sign_out`` event when it ended a session (#678): ``detail`` holds the ended session's id
+    and, when another of the user's sessions ended it, that session's id (``from_session``). Ending
+    this session from the list is an ordinary sign-out and carries the id only."""
     try:
         target = UUID(session_id)
     except ValueError:
         raise HTTPException(status_code=404) from None
     async with system_session(_factory(request)) as db:
+        # The user row lock first, as on every revoke path (ADR 0019 section 6; see ``logout``).
+        await lock_user(db, ctx.user_id)
         deleted = await revoke_session(db, ctx.user_id, target)
+        if deleted:
+            detail: dict[str, object] = {"session_id": str(target)}
+            if info is not None and target != info.id:
+                detail[OTHER_SESSION_KEY] = str(info.id)
+            await _record_sign_out(db, "sign_out", ctx.user_id, request_ip(request), detail)
     if not deleted:
         raise HTTPException(status_code=404)
     if info is not None and target == info.id:
         clear_session_cookie(response)
+
+
+@router.get("/events")
+async def list_own_events(
+    request: Request,
+    ctx: Annotated[UserContext, Depends(require_user)],
+    limit: Annotated[int, Query(ge=1, le=PAGE_MAX)] = PAGE_DEFAULT,
+    before: Annotated[str | None, Query(pattern=CURSOR_PATTERN, max_length=60)] = None,
+) -> ActivityOut:
+    """The caller's own security activity, newest first (#678; ``activity``). ``before`` is the
+    ``next_before`` of the previous page; a cursor that names no time we could make is a 422."""
+    position = None if before is None else decode_cursor(before)
+    if before is not None and position is None:
+        raise HTTPException(status_code=422)
+    async with system_session(_factory(request)) as db:
+        page = await list_activity(db, ctx.user_id, limit=limit, before=position)
+    return ActivityOut(
+        events=[
+            ActivityItemOut(
+                id=item.id,
+                kind=item.kind,
+                at=item.at,
+                ip=item.ip,
+                provider=item.provider,
+                other_session=item.other_session,
+            )
+            for item in page.items
+        ],
+        next_before=page.next_cursor,
+    )
 
 
 @router.post("/logout", status_code=204)
