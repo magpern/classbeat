@@ -6,6 +6,7 @@ export const legalDa: Catalogue = {
   'legal.link.terms': 'Vilkår',
   'legal.footer.label': 'Juridisk information',
   'legal.read': 'Læs {privacy} og {terms}.',
+  'cookies.more': 'Mere i {privacy}.',
   'legal.inline.privacy': 'privatlivspolitikken',
   'legal.inline.terms': 'brugsvilkårene',
   'legal.updated': 'Senest opdateret 7. november 2026.',
@@ -17,7 +18,7 @@ export const legalDa: Catalogue = {
   'legal.controller.address': 'Postadresse',
   'legal.controller.company': 'Virksomheds- eller registreringsnummer',
   'legal.controller.value': '[Udfyldes af ejeren]',
-  'legal.controller.hosting': 'Hvor tjenesten drives',
+  'legal.controller.hosting': 'Driftsleverandør, placering og eventuel proxytjeneste',
 
   'privacy.title': 'Privatlivspolitik',
   'privacy.lead':
@@ -30,22 +31,32 @@ export const legalDa: Catalogue = {
   'privacy.data.title': 'Hvad vi gemmer',
   'privacy.data.p1': 'Vi gemmer det, tjenesten skal bruge for at virke, og intet til reklamer.',
   'privacy.data.li1':
-    'Din konto: din e-mailadresse, din adgangskode kun som en envejs-hash og hvilke loginmetoder du bruger.',
+    'Din konto: din e-mailadresse, din adgangskode kun som en envejs-hash, de loginmetoder du bruger (med det konto-id, et login med Google, GitHub eller Microsoft giver os), dine indstillinger for tofaktorlogin og dit sprog.',
   'privacy.data.li2':
     'Dine logins: de enheder du har logget ind fra, tidspunktet og IP-adressen for en session.',
   'privacy.data.li3':
     'Dine hold: det du beskriver, samtalen med assistenten, sangene og de færdige hold med tidligere versioner.',
   'privacy.data.li4':
-    'Dine forbindelser til MOWL, Spotify og Swedebeat: kun det login-token, hver tjeneste gav os, gemt krypteret. Adgangskoderne du skriver til MOWL eller Swedebeat gemmer vi aldrig.',
+    'Dine forbindelser til MOWL, Spotify og Swedebeat: det login-token, hver tjeneste gav os, gemt krypteret, og den kontoidentifikator, tjenesten oplyser (din e-mailadresse hos Swedebeat, dit Spotify-bruger-id og Spotifys Client ID). Swedebeat giver os også et enheds-id, gemt krypteret. Adgangskoderne du skriver til MOWL eller Swedebeat gemmer vi aldrig.',
   'privacy.data.li5':
-    'Dit forbrug: hvor mange hold du har lavet, og hvad assistenten kostede for dem, hvilket styrer din månedlige grænse.',
+    'Dit forbrug: hvor mange hold du har lavet, hvad assistenten kostede for dem, og de kreditter du har brugt og fået, hvilket styrer din månedlige grænse.',
   'privacy.data.li6': 'Dine e-mailindstillinger.',
+  'privacy.data.li7': 'Din plan: den plan du har, og eventuelle koder du har indløst.',
+
+  'privacy.basis.title': 'Hvorfor vi må bruge dem',
+  'privacy.basis.p1': 'Loven kræver et grundlag for hver måde, vi bruger dine oplysninger på. Vores er:',
+  'privacy.basis.li1':
+    'For at levere den tjeneste, du har tilmeldt dig (din konto, dine hold, forbindelser, forbrugsgrænser og de mails, der skal til for driften): det er nødvendigt for at opfylde vores aftale med dig i brugsvilkårene.',
+  'privacy.basis.li2':
+    'For at holde tjenesten sikker og fair (loginsessioner og loginhistorik, sikkerhedsloggen, webserverens logge og grænserne mod misbrug): vores legitime interesse i at beskytte tjenesten og dens brugere.',
+  'privacy.basis.li3':
+    'For at opfylde retlige forpligtelser, der gælder for os, hvis der er nogen: retlig forpligtelse.',
 
   'privacy.model.title': 'Hvad assistenten ser',
   'privacy.model.p1':
-    'For at udforme et hold sender vi det, du har skrevet om det, og et resumé af sangene (afspilningslistens navn og for hver sang titel, kunstner, tempo og længde) til en udbyder af AI-modeller.',
+    'For at udforme et hold sender vi til en udbyder af AI-modeller det, du har skrevet om det, dine ændringsønsker og tidligere ønsker, de udkast og tidslinjer, der er lavet indtil nu, og et resumé af sangene (afspilningslistens navn og for hver sang oplysninger som titel, kunstner, tempo og længde).',
   'privacy.model.p2':
-    "Vi sender aldrig din e-mailadresse, dit navn, adgangskoder, tokens eller konto- eller tjeneste-id'er. Assistenten foreslår kun: intet gemmes i MOWL eller Spotify, før du har godkendt det.",
+    "Vi sender aldrig din e-mailadresse, dit navn, adgangskoder, tokens eller konto- eller tjeneste-id'er. Assistenten foreslår kun: classbeat gemmer kun i MOWL eller Spotify det, du godkender, eller det, du på forhånd har tilladt med dit engangssamtykke til en privat sangpulje i din Spotify.",
 
   'privacy.processors.title': 'Hvem andre håndterer dine oplysninger',
   'privacy.processors.p1':
@@ -53,13 +64,13 @@ export const legalDa: Catalogue = {
   'privacy.processors.li1':
     'En udbyder af AI-modeller (Anthropic) får holdteksten og sangresuméet ovenfor for at udforme dit hold. Den er uden for EU, så det er en overførsel til et tredjeland.',
   'privacy.processors.li2':
-    'MOWL, Spotify og Swedebeat får kun forespørgsler, når du tilslutter en konto eller gemmer noget der. De har deres egne privatlivspolitikker.',
+    'MOWL, Spotify og Swedebeat får forespørgsler via din forbindelse, når du tilslutter en konto, når classbeat læser din musik for at udforme et hold (dine afspilningslister og deres analyse, søgninger efter sange og mixes), og når det gemmer det, du har godkendt. De har deres egne privatlivspolitikker.',
   'privacy.processors.li3':
-    'Hvis du vælger at logge ind med Google, GitHub eller Microsoft, fortæller den udbyder os din bekræftede e-mailadresse.',
+    'Hvis du vælger at logge ind med Google, GitHub eller Microsoft, fortæller den udbyder os din bekræftede e-mailadresse og dit konto-id.',
   'privacy.processors.li4':
     'Vores e-mailtjeneste sender de mails, vi sender til dig (bekræftelse ved tilmelding, nulstilling af adgangskode og lignende).',
   'privacy.processors.li5':
-    'Vores driftsleverandør kører serverne. Hvor de står, er angivet i boksen ovenfor.',
+    'Vores driftsleverandør kører serverne, og en eventuel proxytjeneste foran dem ser hver forespørgsel og IP-adresse. Navne og placering er angivet i boksen ovenfor.',
   'privacy.processors.li6':
     'Din browser henter albumcovers direkte fra Spotifys billedservere, som derfor ser din IP-adresse og browser. Vi sender ingen referrer, ingen classbeat-cookie og ingen classbeat-data med den forespørgsel.',
   'privacy.processors.p2': 'Vi sælger ikke dine oplysninger og bruger dem ikke til reklamer.',
@@ -76,19 +87,26 @@ export const legalDa: Catalogue = {
   'privacy.cookies.li5':
     'classbeat_pending: holder et login, der stadig mangler et trin fra dig, i 24 timer.',
   'privacy.cookies.p2':
-    'Hvert cookienavn begynder med __Host-, hvilket betyder, at den kun sendes over en sikker forbindelse til denne side. Vi gemmer også dit valgte sprog i browseren (cb-locale); det sendes aldrig til os.',
+    'Hvert cookienavn begynder med __Host-, hvilket betyder, at den kun sendes over en sikker forbindelse til denne side.',
+  'privacy.cookies.p3':
+    'Vi gemmer også nogle få ting i selve browseren, ingen af dem til sporing. Dit sprog (cb-locale) sendes også til os, når du tilmelder dig eller skifter sprog, og gemmes som kontoens sprog. Dit lyse eller mørke tema gemmes som cb-theme, og cb-cookie-notice husker, at du har lukket cookiemeddelelsen. Mens du arbejder i en fane, gemmes formularen, du lige har sendt, kun i den fane, så du kan starte forfra uden at skrive den to gange (classbeat.design-input.*, classbeat.pick-input.* og classbeat.design-again-key.*); den er væk, når du lukker fanen.',
 
   'privacy.retention.title': 'Hvor længe vi gemmer det',
   'privacy.retention.li1':
     'Loginsessioner: fjernes, når de udløber eller efter 7 dage uden brug; IP-adressen ryddes efter 30 dage.',
   'privacy.retention.li2': 'Loginhistorik: 30 dage.',
   'privacy.retention.li3': 'Kendte enheder: fjernes efter 90 dage uden brug.',
-  'privacy.retention.li4': 'Sikkerhedslog: 7 dage.',
+  'privacy.retention.li4':
+    'Sikkerhedslog: 7 dage (kan indstilles fra 1 til 30 dage; politikken holdes i trit med indstillingen).',
   'privacy.retention.li5': 'Invitationer: fjernes 30 dage efter, de er brugt eller udløbet.',
   'privacy.retention.li6':
     'Din konto, dine hold, forbindelser og dit forbrug: indtil du sletter dem eller din konto.',
+  'privacy.retention.li7':
+    'Webserverens adgangslog, som indeholder din IP-adresse, tidspunktet og den adresse, der blev bedt om: op til 30 dage.',
   'privacy.retention.p1':
     'Når du sletter din konto, slettes alt ovenfor med den. Kopier i sikkerhedskopier af vores database gemmes i en begrænset tid og udløber derefter; slettede oplysninger kan blive i en sikkerhedskopi indtil da.',
+  'privacy.retention.p2':
+    'Det, vi har gemt på dine MOWL- og Spotify-konti efter din anmodning, for eksempel workouts og afspilningslister, bliver i de tjenester, når du sletter din konto; slet det dér. Er du administrator, bliver din e-mailadresse også i administrationens revisionslog.',
 
   'privacy.rights.title': 'Dine rettigheder',
   'privacy.rights.p1':
@@ -119,7 +137,7 @@ export const legalDa: Catalogue = {
 
   'terms.content.title': 'Dine hold og din musik',
   'terms.content.p1':
-    'De hold, du laver, er dine. Du er ansvarlig for, at du har ret til at bruge musikken i dem. Vi gemmer kun det, du godkender, på dine konti, og altid som privat.',
+    'De hold, du laver, er dine. Du er ansvarlig for, at du har ret til at bruge musikken i dem. Vi gemmer kun det, du godkender eller på forhånd har tilladt med dit engangssamtykke, på dine konti, og altid som privat.',
   'terms.content.p2':
     'Assistenten kan lave fejl: sange, tider og indsats er forslag. Tjek et hold, før du underviser i det.',
 
@@ -140,5 +158,5 @@ export const legalDa: Catalogue = {
   'terms.law.p1':
     'Vi kan opdatere vilkårene og siger det i tjenesten, før en ændring, der betyder noget for dig, træder i kraft. Spørgsmål går til {email}.',
   'terms.law.p2':
-    "Svensk lov gælder for disse vilkår, uden at fjerne de ufravigelige forbrugerbeskyttelsesregler i det EU- eller EØS-land, hvor du bor; GDPR og EU's forbrugerlovgivning gælder som sædvanligt. Tvister afgøres af de svenske domstole, men som forbruger kan du også anlægge sag ved domstolene i dit eget EU-land, og du kan stadig henvende dig til dit nationale forbrugerklagenævn.",
+    'Svensk lov gælder for disse vilkår, uden at fjerne de ufravigelige forbrugerbeskyttelsesregler i det EU- eller EØS-land, hvor du bor. Er du forbruger i EU eller EØS, kan du indbringe en tvist for domstolene i det land, hvor du bor, eller for de svenske domstole, og vi kan kun anlægge sag mod dig ved domstolene i det land, hvor du bor. Du kan også henvende dig til dit nationale forbrugerklagenævn.',
 }

@@ -6,6 +6,7 @@ export const legalSv: Catalogue = {
   'legal.link.terms': 'Villkor',
   'legal.footer.label': 'Juridisk information',
   'legal.read': 'Läs {privacy} och {terms}.',
+  'cookies.more': 'Mer i {privacy}.',
   'legal.inline.privacy': 'integritetspolicyn',
   'legal.inline.terms': 'användarvillkoren',
   'legal.updated': 'Senast uppdaterad 7 november 2026.',
@@ -17,7 +18,7 @@ export const legalSv: Catalogue = {
   'legal.controller.address': 'Postadress',
   'legal.controller.company': 'Företags- eller registreringsnummer',
   'legal.controller.value': '[Fylls i av ägaren]',
-  'legal.controller.hosting': 'Var tjänsten drivs',
+  'legal.controller.hosting': 'Driftleverantör, plats och eventuell proxytjänst',
 
   'privacy.title': 'Integritetspolicy',
   'privacy.lead':
@@ -30,35 +31,46 @@ export const legalSv: Catalogue = {
   'privacy.data.title': 'Vad vi sparar',
   'privacy.data.p1': 'Vi sparar det tjänsten behöver för att fungera och ingenting för reklam.',
   'privacy.data.li1':
-    'Ditt konto: din e-postadress, ditt lösenord som enbart en enkelriktad hash och vilka inloggningssätt du använder.',
+    'Ditt konto: din e-postadress, ditt lösenord som enbart en enkelriktad hash, de inloggningssätt du använder (med det konto-ID som en inloggning med Google, GitHub eller Microsoft ger oss), dina inställningar för tvåstegsverifiering och ditt språk.',
   'privacy.data.li2':
     'Dina inloggningar: de enheter du loggat in från, tidpunkten och IP-adressen för en session.',
   'privacy.data.li3':
     'Dina pass: det du beskriver, samtalet med assistenten, låtarna och de färdiga passen med tidigare versioner.',
   'privacy.data.li4':
-    'Dina anslutningar till MOWL, Spotify och Swedebeat: bara den inloggningstoken varje tjänst gav oss, lagrad krypterad. Lösenorden du skriver för MOWL eller Swedebeat sparar vi aldrig.',
+    'Dina anslutningar till MOWL, Spotify och Swedebeat: den inloggningstoken varje tjänst gav oss, lagrad krypterad, och det konto-ID som tjänsten anger (din e-postadress hos Swedebeat, ditt Spotify-användar-ID och Spotifys Client ID). Swedebeat ger oss också ett enhets-ID, lagrat krypterat. Lösenorden du skriver för MOWL eller Swedebeat sparar vi aldrig.',
   'privacy.data.li5':
-    'Din användning: hur många pass du gjort och assistentens kostnad för dem, vilket styr din månadsgräns.',
+    'Din användning: hur många pass du gjort, assistentens kostnad för dem och de krediter du använt och fått, vilket styr din månadsgräns.',
   'privacy.data.li6': 'Dina e-postinställningar.',
+  'privacy.data.li7': 'Din plan: den plan du har och eventuella koder du löst in.',
+
+  'privacy.basis.title': 'Varför vi får använda dem',
+  'privacy.basis.p1': 'Lagen kräver en grund för varje sätt vi använder dina uppgifter. Våra är:',
+  'privacy.basis.li1':
+    'För att tillhandahålla tjänsten du registrerade dig för (ditt konto, dina pass, anslutningar, användningsgränser och de mejl som behövs för driften): det behövs för att fullgöra vårt avtal med dig i användarvillkoren.',
+  'privacy.basis.li2':
+    'För att hålla tjänsten säker och rättvis (inloggningssessioner och inloggningshistorik, säkerhetsloggen, webbserverns loggar och gränserna mot missbruk): vårt berättigade intresse av att skydda tjänsten och dess användare.',
+  'privacy.basis.li3':
+    'För att uppfylla rättsliga skyldigheter som gäller för oss, om några: rättslig förpliktelse.',
 
   'privacy.model.title': 'Vad assistenten ser',
   'privacy.model.p1':
-    'För att utforma ett pass skickar vi det du skrivit om det och en sammanfattning av låtarna (spellistans namn och för varje låt titel, artist, tempo och längd) till en leverantör av AI-modeller.',
+    'För att utforma ett pass skickar vi till en leverantör av AI-modeller det du skrivit om det, dina ändringsönskemål och tidigare önskemål, de utkast och tidslinjer som gjorts hittills och en sammanfattning av låtarna (spellistans namn och för varje låt uppgifter som titel, artist, tempo och längd).',
   'privacy.model.p2':
-    'Vi skickar aldrig din e-postadress, ditt namn, lösenord, tokens eller några konto- eller tjänst-ID:n. Assistenten föreslår bara: ingenting sparas i MOWL eller Spotify förrän du godkänt det.',
+    'Vi skickar aldrig din e-postadress, ditt namn, lösenord, tokens eller några konto- eller tjänst-ID:n. Assistenten föreslår bara: classbeat sparar i MOWL eller Spotify bara det du godkänner, eller det du tillåtit i förväg genom ditt engångssamtycke till en privat låtpool i ditt Spotify.',
 
   'privacy.processors.title': 'Vilka andra hanterar dina uppgifter',
   'privacy.processors.p1':
     'Vi använder de här tjänsterna för att driva classbeat. Var och en får bara det den behöver för sin uppgift.',
   'privacy.processors.li1':
-    'En leverantör av AI-modeller (Anthropic) får klartexten och låtsammanfattningen ovan för att utforma ditt pass. Den finns utanför EU, så det är en överföring till tredje land.',
+    'En leverantör av AI-modeller (Anthropic) får texten om passet och låtsammanfattningen ovan för att utforma ditt pass. Den finns utanför EU, så det är en överföring till tredje land.',
   'privacy.processors.li2':
-    'MOWL, Spotify och Swedebeat får förfrågningar bara när du ansluter ett konto eller sparar något där. De har egna integritetspolicyer.',
+    'MOWL, Spotify och Swedebeat får förfrågningar via din anslutning när du ansluter ett konto, när classbeat läser din musik för att utforma ett pass (dina spellistor och deras analys, sökningar efter låtar och mixar) och när det sparar det du godkänt. De har egna integritetspolicyer.',
   'privacy.processors.li3':
-    'Om du väljer att logga in med Google, GitHub eller Microsoft talar den leverantören om din verifierade e-postadress för oss.',
+    'Om du väljer att logga in med Google, GitHub eller Microsoft talar den leverantören om din verifierade e-postadress och ditt konto-ID för oss.',
   'privacy.processors.li4':
     'Vår e-posttjänst skickar de mejl vi skickar till dig (bekräftelse vid registrering, återställning av lösenord och liknande).',
-  'privacy.processors.li5': 'Vår driftleverantör kör servrarna. Var de finns anges i rutan ovan.',
+  'privacy.processors.li5':
+    'Vår driftleverantör kör servrarna, och en eventuell proxytjänst framför dem ser varje förfrågan och IP-adress. Namn och plats anges i rutan ovan.',
   'privacy.processors.li6':
     'Din webbläsare hämtar albumomslag direkt från Spotifys bildservrar, som därför ser din IP-adress och webbläsare. Vi skickar ingen referrer, ingen classbeat-cookie och inga classbeat-uppgifter med den förfrågan.',
   'privacy.processors.p2': 'Vi säljer inte dina uppgifter och använder dem inte för reklam.',
@@ -75,23 +87,30 @@ export const legalSv: Catalogue = {
   'privacy.cookies.li5':
     'classbeat_pending: håller en inloggning som ännu kräver ett steg av dig, i 24 timmar.',
   'privacy.cookies.p2':
-    'Varje cookienamn börjar med __Host-, vilket betyder att den bara skickas över en säker anslutning till den här webbplatsen. Vi sparar också ditt valda språk i webbläsaren (cb-locale); det skickas aldrig till oss.',
+    'Varje cookienamn börjar med __Host-, vilket betyder att den bara skickas över en säker anslutning till den här webbplatsen.',
+  'privacy.cookies.p3':
+    'Vi sparar också några saker i själva webbläsaren, ingen av dem för spårning. Ditt språk (cb-locale) skickas också till oss när du registrerar dig eller byter språk, och sparas som kontots språk. Ditt ljusa eller mörka tema sparas som cb-theme, och cb-cookie-notice kommer ihåg att du har stängt kakmeddelandet. Medan du arbetar i en flik sparas formuläret du just skickade bara i den fliken, så att du kan börja om utan att skriva det två gånger (classbeat.design-input.*, classbeat.pick-input.* och classbeat.design-again-key.*); det är borta när du stänger fliken.',
 
   'privacy.retention.title': 'Hur länge vi sparar det',
   'privacy.retention.li1':
     'Inloggningssessioner: tas bort när de går ut eller efter 7 dagar utan användning; IP-adressen rensas efter 30 dagar.',
   'privacy.retention.li2': 'Inloggningshistorik: 30 dagar.',
   'privacy.retention.li3': 'Kända enheter: tas bort efter 90 dagar utan användning.',
-  'privacy.retention.li4': 'Säkerhetslogg: 7 dagar.',
+  'privacy.retention.li4':
+    'Säkerhetslogg: 7 dagar (kan ställas in från 1 till 30 dagar; policyn hålls i takt med inställningen).',
   'privacy.retention.li5': 'Inbjudningar: tas bort 30 dagar efter att de använts eller gått ut.',
   'privacy.retention.li6':
     'Ditt konto, dina pass, anslutningar och din användning: tills du raderar dem eller ditt konto.',
+  'privacy.retention.li7':
+    'Webbserverns åtkomstlogg, som innehåller din IP-adress, tidpunkten och den adress som begärdes: upp till 30 dagar.',
   'privacy.retention.p1':
     'När du raderar ditt konto raderas allt ovan med det. Kopior i säkerhetskopior av vår databas sparas en begränsad tid och går sedan ut; raderade uppgifter kan finnas kvar i en säkerhetskopia till dess.',
+  'privacy.retention.p2':
+    'Sådant vi sparat i dina MOWL- och Spotify-konton på din begäran, till exempel pass och spellistor, finns kvar i de tjänsterna när du raderar ditt konto; radera dem där. Om du är administratör finns din e-postadress också kvar i administrationens granskningslogg.',
 
   'privacy.rights.title': 'Dina rättigheter',
   'privacy.rights.p1':
-    'Du kan själv se, rätta, exportera och radera dina uppgifter. På din kontosida ger Ladda ner mina data ger dig en fil med ditt konto, dina pass, låtlistor, din användning och inloggningshistorik, och Radera mitt konto tar bort kontot och dess uppgifter. Där kan du också byta e-postadress och lösenord.',
+    'Du kan själv se, rätta, exportera och radera dina uppgifter. På din kontosida ger Ladda ner mina data dig en fil med ditt konto, dina pass, låtlistor, din användning och inloggningshistorik, och Radera mitt konto tar bort kontot och dess uppgifter. Där kan du också byta e-postadress och lösenord.',
   'privacy.rights.p2':
     'Du har också rätt att be oss begränsa hur vi använder dina uppgifter, att invända mot det och att få en kopia. Skriv till {email}. Vi svarar inom en månad.',
   'privacy.rights.p3':
@@ -118,7 +137,7 @@ export const legalSv: Catalogue = {
 
   'terms.content.title': 'Dina pass och din musik',
   'terms.content.p1':
-    'Passen du gör är dina. Du ansvarar för att du har rätt att använda musiken i dem. Vi sparar i dina konton bara det du godkänner, och alltid som privat.',
+    'Passen du gör är dina. Du ansvarar för att du har rätt att använda musiken i dem. Vi sparar i dina konton bara det du godkänner eller tillåtit i förväg med ditt engångssamtycke, och alltid som privat.',
   'terms.content.p2':
     'Assistenten kan göra fel: låtar, tider och ansträngning är förslag. Kontrollera ett pass innan du håller det.',
 
@@ -140,5 +159,5 @@ export const legalSv: Catalogue = {
   'terms.law.p1':
     'Vi kan uppdatera villkoren och säger det i tjänsten innan en ändring som spelar roll för dig börjar gälla. Frågor går till {email}.',
   'terms.law.p2':
-    'Svensk lag gäller för de här villkoren, utan att ta bort de tvingande konsumentskyddsreglerna i det EU- eller EES-land där du bor; GDPR och EU:s konsumentlagstiftning gäller som vanligt. Tvister avgörs av svenska domstolar, men som konsument kan du också väcka talan vid domstol i ditt eget EU-land, och du kan fortfarande vända dig till din nationella konsumenttvistnämnd.',
+    'Svensk lag gäller för de här villkoren, utan att ta bort de tvingande konsumentskyddsreglerna i det EU- eller EES-land där du bor. Om du är konsument i EU eller EES kan du låta en tvist prövas av domstol i det land där du bor eller av svensk domstol, och vi kan väcka talan mot dig bara vid domstol i det land där du bor. Du kan också vända dig till din nationella konsumenttvistnämnd.',
 }

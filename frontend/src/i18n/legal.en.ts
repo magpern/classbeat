@@ -8,6 +8,7 @@ export const legalEn = {
   'legal.link.terms': 'Terms',
   'legal.footer.label': 'Legal',
   'legal.read': 'Read the {privacy} and the {terms}.',
+  'cookies.more': 'More in the {privacy}.',
   'legal.inline.privacy': 'privacy notice',
   'legal.inline.terms': 'terms of use',
   'legal.updated': 'Last updated 7 November 2026.',
@@ -19,7 +20,7 @@ export const legalEn = {
   'legal.controller.address': 'Postal address',
   'legal.controller.company': 'Company or registration number',
   'legal.controller.value': '[To be filled in by the owner]',
-  'legal.controller.hosting': 'Hosting location',
+  'legal.controller.hosting': 'Hosting provider, location and any proxy service',
 
   'privacy.title': 'Privacy notice',
   'privacy.lead':
@@ -32,22 +33,31 @@ export const legalEn = {
   'privacy.data.title': 'What we keep',
   'privacy.data.p1': 'We keep what the service needs to work and nothing for advertising.',
   'privacy.data.li1':
-    'Your account: your email address, your password stored only as a one-way hash, and which sign-in methods you use.',
+    'Your account: your email address, your password stored only as a one-way hash, the sign-in methods you use (with the account ID a Google, GitHub or Microsoft sign-in gives us), your two-factor settings and your language.',
   'privacy.data.li2':
     'Your sign-ins: the devices you signed in from, the time, and the IP address of a session.',
   'privacy.data.li3':
     'Your classes: what you describe, the conversation with the assistant, the songs and the finished designs with their earlier versions.',
   'privacy.data.li4':
-    'Your connections to MOWL, Spotify and Swedebeat: only the sign-in token each service gave us, stored encrypted. We never store the passwords you type for MOWL or Swedebeat.',
+    'Your connections to MOWL, Spotify and Swedebeat: the sign-in token each service gave us, stored encrypted, and the account identifier the service reports (your Swedebeat email address, your Spotify user ID and the Spotify Client ID). Swedebeat also gives us a device ID, stored encrypted. We never store the passwords you type for MOWL or Swedebeat.',
   'privacy.data.li5':
-    'Your usage: how many classes you made and the cost of the assistant for them, which sets your monthly limit.',
+    'Your usage: how many classes you made, the cost of the assistant for them, and the credits you have used and received, which set your monthly limit.',
   'privacy.data.li6': 'Your email preferences.',
+  'privacy.data.li7': 'Your plan: the plan you are on and any codes you have redeemed.',
+
+  'privacy.basis.title': 'Why we may use it',
+  'privacy.basis.p1': 'The law requires a reason for each way we use your data. Ours are:',
+  'privacy.basis.li1':
+    'To provide the service you signed up for (your account, classes, connections, usage limits and the emails needed to run it): this is needed to keep our agreement with you in the terms.',
+  'privacy.basis.li2':
+    'To keep the service secure and fair (sign-in sessions and history, the security log, web server logs and the limits against abuse): our legitimate interest in protecting the service and its users.',
+  'privacy.basis.li3': 'To meet legal duties that apply to us, if any: a legal obligation.',
 
   'privacy.model.title': 'What the assistant sees',
   'privacy.model.p1':
-    'To design a class we send what you wrote about it and a summary of the songs (the playlist name, and for each song its title, artist, tempo and length) to an AI model provider.',
+    'To design a class we send an AI model provider what you wrote about it, your change requests and earlier requests, the drafts and timelines made so far, and a summary of the songs (the playlist name, and for each song details such as its title, artist, tempo and length).',
   'privacy.model.p2':
-    'We never send it your email address, name, passwords, tokens or any account or service IDs. The assistant only proposes: nothing is saved to MOWL or Spotify until you approve it.',
+    'We never send it your email address, name, passwords, tokens or any account or service IDs. The assistant only proposes: classbeat saves to MOWL or Spotify only what you approve, or what you have allowed in advance by giving your one-time consent for a private song pool in your Spotify.',
 
   'privacy.processors.title': 'Who else handles your data',
   'privacy.processors.p1':
@@ -55,12 +65,13 @@ export const legalEn = {
   'privacy.processors.li1':
     'An AI model provider (Anthropic) gets the class text and song summary described above to design your class. It is based outside the EU, so this is a transfer to a third country.',
   'privacy.processors.li2':
-    'MOWL, Spotify and Swedebeat receive requests only when you connect an account or save something to it. They have their own privacy notices.',
+    'MOWL, Spotify and Swedebeat receive requests through your connection when you connect an account, when classbeat reads your music to design a class (your playlists and their analysis, searches for songs, and mixes) and when it saves what you approved. They have their own privacy notices.',
   'privacy.processors.li3':
-    'If you choose to sign in with Google, GitHub or Microsoft, that provider tells us your verified email address.',
+    'If you choose to sign in with Google, GitHub or Microsoft, that provider tells us your verified email address and your account ID with it.',
   'privacy.processors.li4':
     'Our email service sends the emails we send you (sign-up confirmation, password reset, and the like).',
-  'privacy.processors.li5': 'Our hosting provider runs the servers. Its location is given in the box above.',
+  'privacy.processors.li5':
+    'Our hosting provider runs the servers, and any proxy service in front of them sees each request and IP address. Their names and location are given in the box above.',
   'privacy.processors.li6':
     "Your browser fetches album covers directly from Spotify's image servers, which therefore see your IP address and browser. We send no referrer, no classbeat cookie and no classbeat data with that request.",
   'privacy.processors.p2': 'We do not sell your data and we do not use it for advertising.',
@@ -76,19 +87,26 @@ export const legalEn = {
     'classbeat_oauth: holds the state of a Google, GitHub, Microsoft or Spotify sign-in while it runs, for 10 minutes.',
   'privacy.cookies.li5': 'classbeat_pending: holds a sign-in that still needs a step from you, for 24 hours.',
   'privacy.cookies.p2':
-    'Each cookie name starts with __Host-, which means it is sent only over a secure connection to this site. We also keep your chosen language in your browser (cb-locale); it is never sent to us.',
+    'Each cookie name starts with __Host-, which means it is sent only over a secure connection to this site.',
+  'privacy.cookies.p3':
+    'We also keep a few things in your browser itself, none of them for tracking. Your language (cb-locale) is also sent to us when you sign up or change it, and kept as your account language. Your light or dark theme is kept as cb-theme, and cb-cookie-notice remembers that you have dismissed the cookie notice. While you work in a tab, the form you just sent is kept in that tab only, so that you can start again without typing it twice (classbeat.design-input.*, classbeat.pick-input.* and classbeat.design-again-key.*); it is gone when you close the tab.',
 
   'privacy.retention.title': 'How long we keep it',
   'privacy.retention.li1':
     'Sign-in sessions: removed when they expire or after 7 days without use; the IP address is cleared after 30 days.',
   'privacy.retention.li2': 'Sign-in history: 30 days.',
   'privacy.retention.li3': 'Known devices: removed after 90 days without use.',
-  'privacy.retention.li4': 'Security log: 7 days.',
+  'privacy.retention.li4':
+    'Security log: 7 days (this can be set from 1 to 30 days; the notice is kept in step with the setting).',
   'privacy.retention.li5': 'Invites: removed 30 days after they are used or expire.',
   'privacy.retention.li6':
     'Your account, classes, connections and usage: until you delete them or your account.',
+  'privacy.retention.li7':
+    'The web server access log, which holds your IP address, the time and the address requested: up to 30 days.',
   'privacy.retention.p1':
     'When you delete your account everything above is deleted with it. Copies in backups of our database are kept for a limited time and then expire; deleted data can remain in a backup until then.',
+  'privacy.retention.p2':
+    'Things we saved to your MOWL and Spotify accounts at your request, such as workouts and playlists, stay in those services when you delete your account; delete them there. If you are an administrator, your email address also stays in the administration audit log.',
 
   'privacy.rights.title': 'Your rights',
   'privacy.rights.p1':
@@ -119,7 +137,7 @@ export const legalEn = {
 
   'terms.content.title': 'Your classes and music',
   'terms.content.p1':
-    'The classes you make are yours. You are responsible for having the right to use the music in them. We save to your accounts only what you approve, and always as private.',
+    'The classes you make are yours. You are responsible for having the right to use the music in them. We save to your accounts only what you approve or have allowed in advance with your one-time consent, and always as private.',
   'terms.content.p2':
     'The assistant can make mistakes: songs, timings and efforts are suggestions. Check a class before you teach it.',
 
@@ -140,5 +158,5 @@ export const legalEn = {
   'terms.law.p1':
     'We may update these terms and will say so in the service before a change that matters to you applies. Questions go to {email}.',
   'terms.law.p2':
-    'Swedish law governs these terms, without taking away the mandatory consumer-protection rules of the country in the EU or EEA where you live; the GDPR and EU consumer law apply as usual. Disputes go to the Swedish courts, but as a consumer you may also bring a claim in the courts of your own EU country, and you can still turn to your national consumer dispute board.',
+    'Swedish law governs these terms, without taking away the mandatory consumer-protection rules of the EU or EEA country where you live. If you are a consumer in the EU or EEA, you can take a dispute to the courts of the country where you live or to the Swedish courts, and we can bring a claim against you only in the courts of the country where you live. You can also turn to your national consumer dispute board.',
 }

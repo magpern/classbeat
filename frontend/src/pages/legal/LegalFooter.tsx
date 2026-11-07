@@ -11,10 +11,10 @@ export function LegalFooter() {
     >
       <Link to="/privacy" className="inline-flex min-h-11 items-center">
         {t('legal.link.privacy')}
-      </Link>
+      </Link>{' '}
       <Link to="/terms" className="inline-flex min-h-11 items-center">
         {t('legal.link.terms')}
-      </Link>
+      </Link>{' '}
     </nav>
   )
 }

@@ -431,6 +431,30 @@ the server's own address. It does not look at any firewall. The hop from swag to
    server block, any `proxy_set_header` or `add_header` in a location (it would replace every
    inherited one), a second server block and the other lines the app relies on, then runs `nginx -t`
    on it.
+6. **Access-log retention: 30 days (required; the privacy notice at `/privacy` says so).** The log
+   holds each visitor's IP address, and the sample sets no retention itself. Write this rotation rule
+   to `/config/log/classbeat-logrotate.conf` in swag's volume (the current file holds at most one
+   day, so 29 rotated files make 30 days at most):
+
+   ```
+   /config/log/nginx/classbeat.access.log {
+       daily
+       rotate 29
+       maxage 30
+       missingok
+       notifempty
+       compress
+       delaycompress
+       copytruncate
+   }
+   ```
+
+   Check it with `docker exec swag logrotate -d /config/log/classbeat-logrotate.conf`, and run it
+   daily as the deploy user (cron or a systemd timer):
+   `docker exec swag logrotate -s /config/log/classbeat-logrotate.status /config/log/classbeat-logrotate.conf`.
+   If you change the period, change the privacy notice in the same PR (`privacy.retention.li7`).
+   Likewise the security log's period is `CLASSBEAT_SECURITY_LOG_DAYS` (default 7, 1 to 30): if you
+   change it, change the notice (`privacy.retention.li4`) too.
 
 What the sample does, so a later edit keeps it: proxies to `classbeat-web:8000` (web's alias on
 the proxy network, resolved per request so swag starts while classbeat is down); the progress
@@ -569,6 +593,7 @@ docker compose exec web python -m classbeat admin grant you@example.test
       The logged address must be the hotspot's public IP (`curl -s https://ifconfig.me` from that
       device), never `6.6.6.6`, never swag's `172.29.90.10`, never a Cloudflare address.
 - [ ] swag's `/config/log/nginx/classbeat.access.log` lines show no query string and no cookie.
+- [ ] The access-log rotation of section 7 step 6 is installed and scheduled (30 days at most), so the privacy notice is true.
 - [ ] Run an external header/TLS check of the domain (for example SSL Labs, securityheaders.com).
 - [ ] Backups run (section 12) and a restore has been tried.
 

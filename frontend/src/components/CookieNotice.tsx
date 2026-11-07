@@ -1,5 +1,6 @@
 import { useState } from 'react'
-import { useT } from '../i18n/I18n'
+import { Trans, useT } from '../i18n/I18n'
+import { Link } from '../router/Router'
 
 export const COOKIE_NOTICE_KEY = 'cb-cookie-notice'
 
@@ -30,7 +31,13 @@ export function CookieNotice() {
   }
   return (
     <section className="cookie-notice" aria-label={t('cookies.label')} data-testid="cookie-notice">
-      <p className="cookie-notice__text">{t('cookies.text')}</p>
+      <p className="cookie-notice__text">
+        {t('cookies.text')}{' '}
+        <Trans
+          id="cookies.more"
+          slots={{ privacy: <Link to="/privacy">{t('legal.inline.privacy')}</Link> }}
+        />
+      </p>
       <button type="button" className="cookie-notice__ok" onClick={dismiss}>
         {t('cookies.ok')}
       </button>

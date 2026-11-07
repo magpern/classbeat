@@ -10,11 +10,12 @@ export interface LegalSection {
 
 export const PRIVACY: readonly LegalSection[] = [
   { id: 'who', parts: ['p1'], controller: true },
-  { id: 'data', parts: ['p1', 'li1', 'li2', 'li3', 'li4', 'li5', 'li6'] },
+  { id: 'data', parts: ['p1', 'li1', 'li2', 'li3', 'li4', 'li5', 'li6', 'li7'] },
+  { id: 'basis', parts: ['p1', 'li1', 'li2', 'li3'] },
   { id: 'model', parts: ['p1', 'p2'] },
   { id: 'processors', parts: ['p1', 'li1', 'li2', 'li3', 'li4', 'li5', 'li6', 'p2'] },
-  { id: 'cookies', parts: ['p1', 'li1', 'li2', 'li3', 'li4', 'li5', 'p2'] },
-  { id: 'retention', parts: ['li1', 'li2', 'li3', 'li4', 'li5', 'li6', 'p1'] },
+  { id: 'cookies', parts: ['p1', 'li1', 'li2', 'li3', 'li4', 'li5', 'p2', 'p3'] },
+  { id: 'retention', parts: ['li1', 'li2', 'li3', 'li4', 'li5', 'li6', 'li7', 'p1', 'p2'] },
   { id: 'rights', parts: ['p1', 'p2', 'p3'] },
   { id: 'changes', parts: ['p1'] },
 ]

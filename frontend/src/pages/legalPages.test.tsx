@@ -22,6 +22,10 @@ describe('legal pages without a session', () => {
     // The five cookies are all named.
     for (const name of ['session', 'device', 'csrf', 'oauth', 'pending'])
       expect(screen.getByText(new RegExp(`^classbeat_${name}:`))).toBeInTheDocument()
+    // Browser storage and the access log are named too.
+    for (const name of ['cb-locale', 'cb-theme', 'cb-cookie-notice', 'classbeat.design-input'])
+      expect(screen.getByText(new RegExp(name.replace('.', '\\.')))).toBeInTheDocument()
+    expect(screen.getByText(/access log.*up to 30 days/)).toBeInTheDocument()
   })
 
   it('shows the terms signed out and links back to the privacy notice', async () => {
@@ -73,7 +77,7 @@ describe('legal catalogue keys', () => {
 
   it('names the same cookies and the same placeholders in every language', () => {
     for (const catalogue of [legalSv, legalDa] as Record<string, string>[])
-      for (const key of needed) {
+      for (const key of fixed) {
         const slots = (text: string) => (text.match(/\{\w+\}/g) ?? []).sort().join()
         expect(slots(catalogue[key] ?? '')).toBe(slots((legalEn as Record<string, string>)[key] ?? ''))
       }
