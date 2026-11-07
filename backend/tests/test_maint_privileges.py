@@ -12,7 +12,14 @@ from sqlalchemy.engine import Connection
 
 from conftest import RoleUrls
 from dbtools import migrated
-from maint_guard import MAINT, SECRET_COLUMNS, check_maint, forbidden_calls, is_secret
+from maint_guard import (
+    HASH_READS,
+    MAINT,
+    SECRET_COLUMNS,
+    check_maint,
+    forbidden_calls,
+    is_secret,
+)
 
 SRC = Path(__file__).resolve().parent.parent / "src" / "classbeat"
 MAINT_NAMES = frozenset(
@@ -98,6 +105,47 @@ def test_a_new_readable_column_needs_a_decision(admin: Connection) -> None:
     problems = check_maint(admin)
     assert "app_settings.extra: classbeat_maint can read a column no registry decision covers" in (
         problems
+    )
+
+
+def test_maint_reads_the_security_log_columns_of_the_abuse_view_only(admin: Connection) -> None:
+    """#632: five columns, the keyed network hash among them; never the method or route."""
+    held = {
+        column: admin.execute(
+            text("SELECT has_column_privilege(:r, 'public.security_log', :c, 'SELECT')"),
+            {"r": MAINT, "c": column},
+        ).scalar_one()
+        for column in ("owner_id", "session_id", "ip_hash", "status", "at", "id", "method",
+                       "route", "limited_minute")
+    }  # fmt: skip
+    assert {c for c, ok in held.items() if ok} == {"owner_id", "session_id", "ip_hash", "status",
+                                                   "at"}  # fmt: skip
+    writes = admin.execute(
+        text(
+            "SELECT p FROM unnest(ARRAY['INSERT', 'UPDATE', 'DELETE', 'TRUNCATE']) AS p "
+            "WHERE has_table_privilege(:r, 'public.security_log', p)"
+        ),
+        {"r": MAINT},
+    ).all()
+    assert writes == []
+
+
+def test_only_the_security_log_network_hash_is_an_allowed_hash_read(admin: Connection) -> None:
+    assert {("security_log", "ip_hash")} == HASH_READS
+    assert not is_secret("security_log", "ip_hash")
+    assert is_secret("admin_audit", "ip_hash")  # the audit log's stays secret
+    assert is_secret("sessions", "token_hash")
+    assert is_secret("security_log", "session_hash")
+    # Reading the hash is allowed only on that table: the same grant elsewhere fails.
+    admin.execute(text(f"GRANT SELECT (ip_hash) ON admin_audit TO {MAINT}"))
+    assert "admin_audit.ip_hash: classbeat_maint can read a secret column" in check_maint(admin)
+
+
+def test_a_new_security_log_column_needs_a_decision(admin: Connection) -> None:
+    admin.execute(text("ALTER TABLE security_log ADD COLUMN extra text"))
+    admin.execute(text(f"GRANT SELECT (extra) ON security_log TO {MAINT}"))
+    assert "security_log.extra: classbeat_maint can read a column no registry decision covers" in (
+        check_maint(admin)
     )
 
 

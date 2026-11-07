@@ -1,4 +1,5 @@
 import { Link, useRouter } from '../router/Router'
+import { Abuse } from './admin/Abuse'
 import { AdminLayout } from './admin/AdminLayout'
 import { Audit } from './admin/Audit'
 import { Codes } from './admin/Codes'
@@ -25,6 +26,7 @@ export function AdminPage() {
   else if (path === '/admin/codes') page = <Codes />
   else if (path === '/admin/usage') page = <Usage />
   else if (path === '/admin/jobs') page = <Jobs />
+  else if (path === '/admin/abuse') page = <Abuse />
   else if (path === '/admin/audit') page = <Audit />
   else if (path === '/admin/settings') page = <Settings />
   else if (path === '/admin/mail') page = <Mail />

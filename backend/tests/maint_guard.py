@@ -100,6 +100,7 @@ _COLUMNS = {
     "total_cost_micros authorization_note seq",
     "model_routes": "route_key stage_group provider model effort eval_result_id gate_passed "
     "set_at set_by",
+    "security_log": "owner_id session_id ip_hash status at",
 }
 READABLE: dict[str, frozenset[str]] = {t: frozenset(c.split()) for t, c in _COLUMNS.items()}
 _UPDATES = {
@@ -133,8 +134,16 @@ EXPECTED: dict[tuple[str, str], frozenset[str]] = {
 EXPECTED_OTHER = {"database:CONNECT", "schema:public:USAGE"}
 
 
+# The one hash maint may read (#632): the security log's keyed hash of a coarse network, which the
+# Abuse view counts (``count(DISTINCT ip_hash)``) and never returns. An allowlist of exactly this
+# pair; every other ``*_hash`` stays secret, and ``SECRET_COLUMNS`` still wins.
+HASH_READS: frozenset[tuple[str, str]] = frozenset({("security_log", "ip_hash")})
+
+
 def is_secret(table: str, column: str) -> bool:
-    return column in SECRET_COLUMNS.get(table, frozenset()) or bool(SECRET_NAME.search(column))
+    if column in SECRET_COLUMNS.get(table, frozenset()):
+        return True
+    return (table, column) not in HASH_READS and bool(SECRET_NAME.search(column))
 
 
 def check_maint(conn: Connection) -> list[str]:

@@ -9,7 +9,7 @@ because this is a middleware no route can forget them.
   session, else the value of the ``__Host-classbeat_csrf`` cookie (double submit).
 
 Section 9, amendment of 2026-11-05 (#577): every signed-in ``/api`` request takes a slot in the
-general limit's buckets (``ratelimit.api_buckets``) before anything else runs, CSRF included, so
+general limit's buckets (``ratelimit.api_buckets``) before CSRF and before the route runs, so
 no route can forget it either; above a limit it is 429 ``rate_limited`` with ``Retry-After``.
 Anonymous requests have the limits of their own routes (sign-in, sign-up, mail, OAuth).
 

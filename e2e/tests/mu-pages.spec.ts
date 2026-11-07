@@ -184,6 +184,7 @@ test('the admin pages, signed in as an admin with a TOTP code', async () => {
     ['/admin/codes', 'Codes'],
     ['/admin/usage', 'Usage'],
     ['/admin/jobs', 'Jobs'],
+    ['/admin/abuse', 'Abuse'],
     ['/admin/audit', 'Audit log'],
     ['/admin/settings', 'Settings'],
   ]
