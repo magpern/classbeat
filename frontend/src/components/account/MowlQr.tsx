@@ -90,6 +90,9 @@ export function MowlQr({ onConnected }: { onConnected: (connection: Connection) 
             } else if (status.status === 'connected' && status.connection !== null) {
               finish(null)
               onConnected(status.connection)
+            } else if (status.status === 'connected') {
+              // Scanned and stored, but the connection row is gone again (removed meanwhile).
+              finish(t('mowlqr.connectedGone'))
             } else {
               finish(endText(status))
             }

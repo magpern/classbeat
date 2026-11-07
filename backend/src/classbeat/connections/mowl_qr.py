@@ -291,16 +291,21 @@ class QrWaits:
         if self._by_user.get(wait.user_id) is wait:
             del self._by_user[wait.user_id]
 
-    def start(self, user_id: UUID, session_id: UUID, ticket: QrTicket, image: QrImage) -> QrWait:
-        """A new wait for ``user_id``, bound to ``session_id``; the user's earlier one is
-        cancelled first. Refused (``ConnectionFailure("rate_limited")``) when ``MAX_WAITS`` are
-        already running."""
-        loop = asyncio.get_running_loop()
-        now = loop.time()
-        self._prune(now)
-        self.cancel_user(user_id)
+    def check_room(self) -> None:
+        """Refuse (``ConnectionFailure("rate_limited")``) when ``MAX_WAITS`` waits are already
+        running. The route calls this before it asks MOWL for a ticket or fetches the image, and
+        ``start`` calls it again before it cancels the user's earlier wait, so a refused start
+        costs MOWL nothing and leaves that earlier wait running."""
+        self._prune(asyncio.get_running_loop().time())
         if sum(1 for w in self._by_user.values() if w.finished_at is None) >= MAX_WAITS:
             raise ConnectionFailure("rate_limited", 60)
+
+    def start(self, user_id: UUID, session_id: UUID, ticket: QrTicket, image: QrImage) -> QrWait:
+        """A new wait for ``user_id``, bound to ``session_id``; the user's earlier one is
+        cancelled once there is room (``check_room``)."""
+        self.check_room()
+        now = asyncio.get_running_loop().time()
+        self.cancel_user(user_id)
         wait = QrWait(
             id=secrets.token_urlsafe(24),
             user_id=user_id,

@@ -126,7 +126,7 @@ async def _link(db: AsyncSession, req: Request) -> Outcome:
             ip=req.ip,
             detail={"provider": req.flow.provider},
         )
-        notice = happened("identity_linked", info.email, provider=req.flow.provider)
+        notice = happened("identity_linked", info.email, user_id, provider=req.flow.provider)
         return Outcome("ok", notice=notice, next="linked")
     owner = await identity_owner(db, req.flow.provider, ident.subject)
     if owner is not None and owner[0] == user_id:
@@ -347,7 +347,7 @@ async def _create_account(db: AsyncSession, req: Request, email: str) -> Outcome
     outcome = await _session_for(db, req, user_id)
     # An account was created, not a method added: the welcome names the provider (ADR 0022 s.7).
     outcome.notice = Notice(
-        "welcome", email, {"provider": req.flow.provider}, locale=req.flow.locale
+        "welcome", email, {"provider": req.flow.provider}, locale=req.flow.locale, user_id=user_id
     )
     return outcome
 

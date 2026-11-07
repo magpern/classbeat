@@ -34,11 +34,13 @@ class Notice:
     params: Mapping[str, Any] = field(default_factory=lambda: {})
     prefs: MailPrefs | None = None
     locale: str | None = None  # the language when the route knows it (else the stored one)
+    user_id: UUID | None = None  # the recipient's account, so preferences are read by id
 
 
-def happened(kind_id: str, recipient: str, **params: Any) -> Notice:
-    """A notice that names when it happened (now, UTC)."""
-    return Notice(kind_id, recipient, {"when": datetime.now(UTC), **params})
+def happened(kind_id: str, recipient: str, user_id: UUID | None = None, **params: Any) -> Notice:
+    """A notice that names when it happened (now, UTC). ``user_id`` is the recipient's account
+    when the route knows it: the send path then reads the preferences by id, not by address."""
+    return Notice(kind_id, recipient, {"when": datetime.now(UTC), **params}, user_id=user_id)
 
 
 async def read_prefs(db: AsyncSession, user_id: UUID) -> MailPrefs:
@@ -68,6 +70,7 @@ async def send_notice(request_app: Any, notice: Notice) -> None:
             notice.params,
             prefs=notice.prefs,
             locale=notice.locale,
+            user_id=notice.user_id,
         )
     except Exception as exc:
         logger.warning("mail not sent (%s): %s", notice.kind_id, type(exc).__name__)

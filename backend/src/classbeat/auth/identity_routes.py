@@ -84,7 +84,7 @@ async def unlink_identity(
         if result == "removed":
             await record_event(db, "identity_unlinked", user_id=ctx.user_id, ip=request_ip(request))
             if provider is not None and email is not None:
-                notice = happened("identity_unlinked", email, provider=provider)
+                notice = happened("identity_unlinked", email, ctx.user_id, provider=provider)
     queue(background, request, notice)
     if result == "gone":
         raise HTTPException(status_code=404)  # unknown, or another user's: the same answer

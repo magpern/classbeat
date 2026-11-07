@@ -92,6 +92,17 @@ describe('Scan with the MOWL app', () => {
     expect(mowl.getByRole('button', { name: 'Show a new code' })).toBeInTheDocument()
   })
 
+  it('says so when the scan worked but the connection is gone', async () => {
+    fakeApi({ ...ACCOUNT_ROUTES, ...ON, [`POST ${QR}`]: TICKET, [`GET ${QR}/${ID}`]: status('connected') })
+    renderAt('/account')
+    const mowl = await mowlSection()
+    fireEvent.click(await mowl.findByRole('button', { name: 'Show the code' }))
+    await mowl.findByRole('img', { name: /QR code/ })
+    await nextPoll()
+    expect(await mowl.findByText(/connection could not be found/)).toBeInTheDocument()
+    expect(mowl.queryByText(/did not work/)).toBeNull()
+  })
+
   it('explains a failed wait in plain words and never shows a raw code', async () => {
     fakeApi({
       ...ACCOUNT_ROUTES,

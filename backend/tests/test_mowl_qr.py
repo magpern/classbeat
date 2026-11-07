@@ -396,6 +396,27 @@ async def test_too_many_waits_refuse_a_start(
     assert len(waits) == 0
 
 
+async def test_a_refused_start_leaves_the_users_earlier_wait_running(
+    broker: FakeBroker, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(mowl_qr, "MAX_WAITS", 2)
+    waits = QrWaits()
+    user, session = uuid4(), uuid4()
+    try:
+        earlier = waits.start(user, session, ticket(), IMAGE)
+        waits.start(uuid4(), uuid4(), ticket(), IMAGE)
+        with pytest.raises(ConnectionFailure) as refused:
+            waits.check_room()
+        assert refused.value.category == "rate_limited"
+        # Full: the user's restart is refused and the earlier wait is not cancelled.
+        with pytest.raises(ConnectionFailure):
+            waits.start(user, session, ticket(), IMAGE)
+        assert earlier.state == "waiting"
+        assert waits.get(user, session, earlier.id) is earlier
+    finally:
+        await waits.close()
+
+
 async def test_a_ticket_request_goes_out_without_authorization(mowl_api: Any) -> None:
     parsed = await mowl_qr.request_ticket()
     assert parsed.ticket_id == TICKET_ID

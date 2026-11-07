@@ -318,3 +318,21 @@ async def test_deleting_an_opted_out_account_sends_no_deleted_mail(
     await menv.run("DELETE FROM users WHERE id = :i", i=user)
     await deliver(menv, with_prefs("quiet@example.com", prefs))
     assert smtp.to("quiet@example.com") == []
+
+
+async def test_a_notice_with_a_user_id_reads_the_preferences_by_id(
+    menv: Env, smtp: SmtpFake
+) -> None:
+    user = await menv.user("byid@example.com")
+    other = "old-address@example.com"  # not the account's address: only the id finds the row
+    assert notices.happened("totp_removed", other, user).user_id == user
+    assert notices.happened("totp_removed", other).user_id is None
+    await deliver(menv, notices.happened("totp_removed", other))
+    assert smtp.to(other) == []  # no id and no account with that address: dropped
+    await deliver(menv, notices.happened("totp_removed", other, user))
+    assert [mail.subject for mail in smtp.to(other)] == [TOTP_OFF]
+    await menv.run(
+        "UPDATE users SET mail_opted_out = ARRAY['account_activity'] WHERE id = :i", i=user
+    )
+    await deliver(menv, notices.happened("totp_removed", other, user))
+    assert len(smtp.to(other)) == 1  # the stored choice, read by id, now drops it

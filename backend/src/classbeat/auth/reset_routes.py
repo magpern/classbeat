@@ -221,7 +221,7 @@ async def complete_reset(
     if token is None or email is None:
         raise refuse(400, "invalid_token")  # a parallel request consumed it
     await attempt.succeed()
-    queue(background, request, happened("password_changed", email))
+    queue(background, request, happened("password_changed", email, token.user_id))
     return Done()
 
 
@@ -255,5 +255,5 @@ async def change_password(
         await delete_outstanding_tokens(db, ctx.user_id)
         await record_event(db, "password_changed", user_id=ctx.user_id, ip=request_ip(request))
     if email is not None:
-        queue(background, request, happened("password_changed", email))
+        queue(background, request, happened("password_changed", email, ctx.user_id))
     return Done()
