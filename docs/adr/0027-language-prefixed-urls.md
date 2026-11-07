@@ -32,10 +32,13 @@ links and `check_link`), [ADR 0023](0023-multilingual.md).
 
 **1. Shape.** Every app page lives at `/<lang>/<path>` with `<lang>` in the supported manifest
 (`frontend/src/i18n/locales.json`): `/sv/classes/new`, `/en/privacy`, `/da` (the landing or home).
-The path part is today's path, unchanged. **Not prefixed:** `/api/...`, `/oauth/...` (callbacks and the
-QR ticket routes), `/email/...` and other static assets, `/healthz` and friends, `/sitemap.xml`,
-`/robots.txt`, and **`/admin/...`** (English-only and never public; a prefix would only suggest a
-language choice that does not exist). Trailing slashes are ignored as today.
+The path part is today's path, unchanged. **Not prefixed:** `/api/...`, `/oauth/...` (the provider
+callbacks; the MOWL QR routes are under `/api`), `/email/...` and other static assets, `/health` and
+`/ready` (under the API router), `/sitemap.xml`, `/robots.txt`, and **`/admin/...`** (English-only and
+never public; a prefix would only suggest a language choice that does not exist; `/<lang>/admin` is not
+a route and redirects to `/admin`). The canonical form has **no trailing slash** (`/sv`, `/sv/classes`);
+a trailing slash is `replaceState`d away. The full route list, with the sub-pages `/signin/email`,
+`/signup/confirm` and `/account/spotify`, is `App.tsx`'s table; the prefix applies to all of it.
 
 **2. The prefix is the language of the view.** The URL wins over the account and the browser for what
 the page shows. Opening `/sv/...` as a `da` account shows Swedish and **writes nothing** (a shared
@@ -45,9 +48,15 @@ kept). A language that is supported but not enabled (`CLASSBEAT_LOCALES`) is rep
 offered language, same page.
 
 **3. Unprefixed URLs redirect, in the client, to the best language.** A route table match without a
-prefix (`/classes`, `/reset#token=...`, `/privacy`) is `replaceState`d to `/<lang><path><search><hash>`
-before first render, where `<lang>` is resolved by the existing order (`users.locale` once the session
-is known, `cb-locale`, `navigator.languages`, `en`). `navigator.languages` is the same data as
+prefix (`/classes`, `/reset#token=...`, `/privacy`) is `replaceState`d **once**, to
+`/<lang><path><search><hash>`, where `<lang>` is resolved by the existing order (`users.locale`,
+`cb-locale`, `navigator.languages`, `en`). Because `users.locale` is only known once the session has
+loaded, **an unprefixed URL renders nothing but the shell's loading state until the session answers**
+(it is one request that `RequireAuth` already waits for; signed out it answers at once), then redirects.
+This is what makes the backend's own unprefixed redirects (`/account?oauth=...`,
+`/account/spotify?...`) and mail links to `/account` land in the account's language. **`AccountLocale`
+changes accordingly:** on a prefixed URL it does nothing (the prefix wins, item 2); the account
+language is used only by this redirect and by the picker. `navigator.languages` is the same data as
 `Accept-Language`; the client is the only place that can read `cb-locale`, which is why the redirect is
 not a server 302 (a server 302 on `Accept-Language` alone would override a language the visitor picked).
 The **hash is copied explicitly**, so mail tokens survive (a test pins `/reset#token=x` and
@@ -60,37 +69,50 @@ the same result) and server-side rendering (out of proportion, ADR 0001).
 plus `location.pathname + search + hash` of the *current* origin; it always begins with
 `/<code>/`, so a path of `//evil.example` becomes `/sv//evil.example`, same origin. It is never built
 from a query value. `return_to` keeps its rules (a plain relative path, no `//`, no backslash, no `://`,
-checked on both sides) and now carries the prefixed path the page had, so a deep link survives the
-sign-in round trip in the language it was opened in; an unprefixed `return_to` from an old flow still
-works through item 3. The backend's OAuth redirects stay unprefixed (`/signin`, `/account?oauth=...`)
+checked on both sides) and is **always language-neutral**: the frontend builds it from the router's
+unprefixed `path` (`RequireAuth`, `JobPage`, `GuardProvider`), the backend stores and returns it
+unchanged, and `navigate(returnTo)` adds the prefix of the language in effect. A deep link therefore
+survives the sign-in round trip and a language switch in the middle of it. As a safety net `navigate`
+and `Link` add a prefix **only when the target does not already start with an allowlisted
+`/<code>/` (or equal `/<code>`)**, so a mixed or old value cannot become `/sv/sv/...`; no neutral route
+is two letters, so the check is unambiguous. The backend's OAuth redirects stay unprefixed (`/signin`, `/account?oauth=...`)
 and the client adds the language; the backend needs no language there.
 
 **5. Unknown first segment.** A first segment that is two lowercase letters and not in the manifest
 (`/fr/privacy`) is a **404**: the server answers 404 with `index.html` and the client shows the not-found
 card in the best language. Any other unknown path stays the SPA's not-found card (status 200 as
-today). No existing route is two letters, so nothing collides; adding one needs this ADR's guard test
-to be changed on purpose.
+today). No existing route is two letters, so nothing collides. Two guard tests keep it so, owned by P1 (the
+frontend route table has no two-letter first segment) and P2 (the server's 404 rule and the files in
+`frontend/public`).
 
 **6. Head tags from the server, for public pages and the language.** The SPA's `index.html` is read once
-at start; for a prefixed path the server fills in `<html lang>` and, for the public pages (`/<lang>`,
+at start; a response with injected head carries `Cache-Control: no-cache` (the file itself is
+unchanged, the hashed assets keep their caching); for a prefixed path the server fills in `<html lang>` and, for the public pages (`/<lang>`,
 `/<lang>/privacy`, `/<lang>/terms`), a canonical link and `hreflang` alternates for every **enabled**
 language plus `x-default` (→ `/en/...`). Every URL is built from `public_base_url`, the manifest and a
 fixed list of public paths, **never from the request's Host or raw path**. Other prefixed pages get
 `<meta name="robots" content="noindex">` (signed-in app, sign-in flows), as do unprefixed ones; no
 inline script is added (CSP `script-src 'self'` unchanged). `locale-init.js` reads the URL prefix first
 and only then falls back to today's order. `GET /sitemap.xml` is generated from the same lists (the three
-public pages × enabled languages, with `xhtml:link` alternates) and `GET /robots.txt` points to it and
-allows the public pages only. Both routes precede the SPA catch-all (like the OAuth callback).
+public pages × enabled languages, with `xhtml:link` alternates) and `GET /robots.txt` is `Allow: /` plus the `Sitemap:` line: nothing is
+blocked, because a crawler must fetch a page and the JavaScript it needs to see its `noindex`, and
+the public pages need their assets. Both routes precede the SPA catch-all (like the OAuth callback).
 
-**7. Mail.** New mail links use the **recipient's mail locale**: `ctx.link("/reset", token)` becomes
-`{base}/{mail_locale}/reset#token=...`. `check_link` still accepts only our origin; its test adds the
-prefixed forms and keeps refusing every other host. Old links keep working through item 3.
+**7. Mail.** New mail links use the **recipient's mail locale**, in both places that build them:
+`Ctx.url` (`emails/layout.py`: reset, verify, email change, new-network notice, class ready, site
+footer) and the unsubscribe **page** link in `emails/dispatch.py` (`unsubscribe_links(...).page`,
+plus `sample_unsubscribe_links`): `{base}/{mail_locale}/reset#token=...`. The RFC 8058 **one-click URL
+`{base}/api/mail/unsubscribe?token=...` stays unprefixed** (it is an API route a mail client POSTs to;
+prefixing it would break one-click unsubscribe). `check_link` still accepts only our origin; its test
+adds the prefixed forms and keeps refusing every other host. The "every path a mail can emit" test
+enumerates both builders. Old links keep working through item 3.
 
 **8. Links inside the app.** `Link` and `navigate` take a language-neutral path and add the prefix
 themselves (`useRouter` exposes `lang` and `path` without the prefix, and `App.tsx` matches on `path`),
 so no component writes a prefix. A guard test (like the string guard) fails on a raw `<a href="/...">`,
-`window.location` assignment or `navigate(...)` that bypasses them, with an allowlist for `/api`,
-`/oauth` and `/admin`.
+`window.location` assignment or `navigate(...)` that bypasses them, and on a **hard-coded prefix** in a
+link (`'/en/...'`), with an allowlist for `/api`, `/oauth` and `/admin` and for the provider start
+(`goToProvider`, a full-page navigation to `/api/auth/oauth/...`).
 
 **9. Proxy and static serving.** Nothing to route differently: swag proxies all paths to web, and web's
 catch-all serves `index.html` (the Vite dev server falls back the same way). The proxy PR confirms that
@@ -102,7 +124,7 @@ search consoles. No DNS, TLS or Cloudflare change. Agents do not deploy.
 
 ## PR split (all depend on this ADR; #718/#720 is merged)
 
-1. **P0, this ADR** and the doc edits (plan, ADR 0023 note, status). Opus review.
+1. **P0, this ADR** and the doc edits (plan, ADR 0023 note, ADR index, status). Opus review.
 2. **P1, frontend router and links** (items 1 to 5, 8): prefix-aware `RouterProvider`, `Link`,
    `navigate`, the redirect, `App.tsx` matching, picker, `return_to` flows, `locale-init.js`, the
    raw-link guard, unit tests (redirect never leaves the origin, hash kept, unknown code, disabled
