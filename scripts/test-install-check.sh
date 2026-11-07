@@ -25,7 +25,7 @@ bad()  { echo "FAIL: $*" >&2; fails=$((fails + 1)); }
 "$root/scripts/release-assets.sh" build "$work/assets"
 ( cd "$work/assets" && sha256sum -c --quiet SHA256SUMS ) || bad "SHA256SUMS does not verify"
 # The asset list is exactly what the runbook downloads.
-want="SHA256SUMS backup.sh check-prod-compose.sh compose.prod.lan.yaml compose.prod.loopback.yaml compose.prod.yaml prod.env.example restore.sh swag-classbeat.subdomain.conf validate-backup.sh"
+want="SHA256SUMS backup.sh check-prod-compose-owner.bash check-prod-compose-probe.bash check-prod-compose-rollback.bash check-prod-compose-rules.bash check-prod-compose-runbook.bash check-prod-compose-secretfiles.bash check-prod-compose-secrets.bash check-prod-compose-selftest-compose.bash check-prod-compose-selftest-yaml.bash check-prod-compose-setup.bash check-prod-compose-site-selftest.bash check-prod-compose-site.bash check-prod-compose.sh compose.prod.lan.yaml compose.prod.loopback.yaml compose.prod.yaml prod.env.example restore.sh swag-classbeat.subdomain.conf validate-backup.sh"
 # find, not a glob: a glob (`*`) would not list a dotfile, so a hidden asset (a .env) could never fail this.
 list_dir() { find "$work/assets" -mindepth 1 -maxdepth 1 -printf '%f\n'; }
 got="$(list_dir | LC_ALL=C sort | tr '\n' ' ' | sed 's/ $//')"
@@ -158,7 +158,7 @@ sed -i '/CLIENT_SECRET/d' "$install/.env"
 # next to the install folder's files is an install, whatever the folder above it holds (#575 review).
 parent="$work/parent"; mkdir -p "$parent/docs/runbooks" "$parent/inst"
 cp "$install/compose.prod.yaml" "$parent/"
-cp "$install"/check-prod-compose.sh "$install"/compose.prod.*.yaml "$install"/compose.prod.yaml "$parent/inst/"
+cp "$install"/check-prod-compose*.sh "$install"/check-prod-compose-*.bash "$install"/compose.prod.*.yaml "$install"/compose.prod.yaml "$parent/inst/"
 out="$(cd "$parent/inst" && ./check-prod-compose.sh 2>&1)" && rc=0 || rc=$?
 if [ "$rc" = 1 ] && grep -Eq 'no .*\.env: cp prod\.env\.example' <<<"$out"; then ok "a parent folder with compose.prod.yaml and docs/runbooks is still an install"
 else bad "parent-folder layout (rc $rc): $(tail -2 <<<"$out")"; fi
@@ -328,6 +328,19 @@ if [ -s "$work/ls-run.args" ] && ! grep -qv -- '--network none' "$work/ls-run.ar
   ok "rollback: the old image's ls runs with --network none"
 else bad "rollback: the old image's ls ran without --network none: $(tail -1 "$work/ls-run.args" 2>&1)"; fi
 if ( cd "$install" && ./check-prod-compose.sh --rollback-check >/dev/null 2>&1 ); then bad "rollback: no version given passed"; else ok "rollback: needs a version"; fi
+
+# The script is split into sourced parts (#763) that travel with it: without one, it refuses to run
+# (a download of the script alone must not run a partial set of checks), and every part in scripts/ is
+# one the script sources and the release ships.
+miss="$work/missing-part"; mkdir "$miss"; cp "$install"/check-prod-compose* "$install"/compose.prod*.yaml "$miss/"
+rm "$miss/check-prod-compose-owner.bash"
+out="$(cd "$miss" && ./check-prod-compose.sh 2>&1)" && rc=0 || rc=$?
+if [ "$rc" = 1 ] && grep -q 'check-prod-compose-owner.bash must be next to this script' <<<"$out"; then ok "a missing part is refused"
+else bad "a missing part (rc $rc): $(tail -2 <<<"$out")"; fi
+# shellcheck disable=SC2016  # a literal `$here` in the pattern, not a shell expansion
+srcd="$(grep -o 'source "$here/check-prod-compose-[a-z-]*\.bash"' "$root/scripts/check-prod-compose.sh" | sed 's/.*compose-//; s/\.bash"//' | LC_ALL=C sort | tr '\n' ' ')"
+have="$(cd "$root/scripts" && printf '%s\n' check-prod-compose-*.bash | sed 's/check-prod-compose-//; s/\.bash$//' | LC_ALL=C sort | tr '\n' ' ')"
+if [ -n "$srcd" ] && [ "$srcd" = "$have" ]; then ok "every part is sourced"; else bad "parts sourced '$srcd' differ from the files '$have'"; fi
 
 (( fails == 0 )) || { echo "test-install-check: $fails failure(s)" >&2; exit 1; }
 echo "test-install-check: ok"
