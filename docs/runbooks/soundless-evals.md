@@ -1,6 +1,7 @@
 # Soundless classes: the owner's live eval and switching soundless on
 
-[ADR 0007](../adr/0007-classes-revisions-and-saving.md) (amendment of 2026-11-03, "soundless classes", items 2 and 6),
+[ADR 0007](../adr/0007-classes-revisions-and-saving.md) (amendment of 2026-11-03, "soundless classes", items 2 and 6,
+and the amendment of 2026-11-08, which retired the admin flag, #824),
 [ADR 0012](../adr/0012-eval-suite-and-model-providers.md) (section 5 and its amendment of 2026-11-03).
 Suite version 12 holds soundless cases: the `soundless` category (`soundless_45`, `soundless_30_sprints`,
 `soundless_revise_sprints`) and `soundless_adversarial` in `adversarial`, all in the `design` stage group. CI
@@ -17,9 +18,9 @@ group ones, `soundless_design` and `soundless_revise` among them, and the two so
 result for that model failed. A result recorded on version 10 or earlier never covers soundless, however
 recent its prompt versions. The bootstrap model (no route) never serves soundless. Without such a route a
 soundless job ends `model_config` before any model call, a design or revise is refused
-`soundless_not_evaluated` (the job's own plan) or `feature_off` (another plan), and the admin refuses to store
-`soundless_enabled` = `on` (422 `soundless_not_evaluated`) until **every plan's route key** has one.
-`CLASSBEAT_SOUNDLESS_ENABLED` stays the kill switch.
+`soundless_not_evaluated` (the job's own plan) or `feature_off` (another plan), and "No music" is not offered
+until **every plan's route key** has one. Soundless is on exactly when `CLASSBEAT_SOUNDLESS_ENABLED` (the kill
+switch) is on and every plan's route key is covered; there is no admin setting to store.
 
 The suite sends the soundless stages synthetic briefs only and **no music at all**: the model sees the brief,
 never a playlist, a track or a BPM. A soundless case is judged on the asked length, the zone share and the
@@ -66,9 +67,10 @@ Run from the stack's checkout, in the worker container (it has the key file and 
 3. **Enable the route for every plan key** that will serve soundless (the admin's Model routes page or
    `docker compose exec worker python -m classbeat models enable KEY design anthropic claude-opus-5-5 medium
    --yes`), as in [m3c-model-enable.md](m3c-model-enable.md). `models list` must show no stale reason.
-4. **Switch soundless on.** Set `SOUNDLESS_ENABLED=true` in `.env` (web and worker; restart both), then store
-   `soundless_enabled` = `on` on the admin's Settings page, which refuses with `soundless_not_evaluated`
-   while a plan's key lacks a covering route. Record the decision in `docs/status.md`.
+4. **Switch soundless on.** Set `SOUNDLESS_ENABLED=true` in `.env` (web and worker; restart both). Nothing is
+   stored in the admin: "No music" appears once every plan's key has a covering route (check with
+   `GET /api/connections`, which answers `soundless_enabled: true`), and stays off while any key lacks one.
+   Record the decision in `docs/status.md`.
 
 ## After a change
 

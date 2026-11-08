@@ -471,7 +471,7 @@ def test_the_diff_compares_running_gradients() -> None:
 
 
 def test_the_running_switch_needs_the_environment_and_a_stored_on() -> None:
-    """#509: as ``soundless_switch``, only a stored ``on`` under the environment switches it on;
+    """#509: only a stored ``on`` under the environment switches it on;
     nothing stored (or the cleared ``null``) is off."""
     assert [core.running_switch(False, v) for v in (None, "on", "off")] == [False] * 3
     assert [core.running_switch(True, v) for v in (None, "on", "off")] == [False, True, False]

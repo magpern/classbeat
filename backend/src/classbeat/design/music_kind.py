@@ -4,24 +4,25 @@
 A class's music **kind** is ``none`` (``{"source": "none"}``, a soundless class) or not. This
 module holds the checks that are not the input's own validation:
 
-- **The gate** (item 2). ``CLASSBEAT_SOUNDLESS_ENABLED`` is the environment's kill switch
-  (``SoundlessGate.enabled``, set by the web app and the worker at start). Soundless is on only
-  when all three hold: that switch, a stored ``soundless_enabled`` of exactly ``on`` (missing,
-  ``null`` or invalid is off; ``flags.core.soundless_switch``), and a ``design`` route covering
+- **The gate** (item 2, as amended on 2026-11-08, #824). ``CLASSBEAT_SOUNDLESS_ENABLED`` is the
+  environment's kill switch (``SoundlessGate.enabled``, set by the web app and the worker at
+  start). Soundless is on only when both hold: that switch, and a ``design`` route covering
   soundless for every plan's ``route_key`` (``flags.effective.soundless_enabled``, read on every
-  request). ``admit_soundless`` runs in ``design_draft``'s ``admit``, before the job row and
-  before any credit is reserved (``jobs.user.create`` calls ``admit`` first), in this order:
+  request). There is no stored admin value. ``admit_soundless`` runs in ``design_draft``'s
+  ``admit``, before the job row and before any credit is reserved (``jobs.user.create`` calls
+  ``admit`` first), in this order:
 
-  1. the switch (environment and stored value): off is ``feature_off``;
+  1. the switch (``switch_on``, the environment's): off is ``feature_off``;
   2. the job's **own** plan's ``route_key`` covers soundless: otherwise
      ``soundless_not_evaluated`` (checked before step 3, so this answer is reachable: step 3
      includes the user's plan and would answer ``feature_off`` first);
   3. every plan's ``route_key`` covers soundless (the effective flag the form reads): otherwise
      ``feature_off``, so a plan added or a route cleared later refuses even a covered user.
 
-  A queued job ends ``feature_off`` in the worker when the switch is off by then (``still_on``)
-  and ``model_config`` when its attempt's model does not cover soundless
-  (``require_covered``), both before any call: the backstop for a race with the admin.
+  A queued job ends ``feature_off`` in the worker when the worker's own switch is off
+  (``still_on``) and ``model_config`` when its attempt's model does not cover soundless
+  (``require_covered``), both before any call: the backstop for a route cleared after admission
+  or a worker started with the switch off.
 - **The web's ``fake``.** The web process has no provider; there the ``fake`` model provider
   counts as covering soundless only when its **own** ``CLASSBEAT_MODEL_PROVIDER`` is ``fake`` and
   ``CLASSBEAT_ENVIRONMENT`` is not ``prod`` (``SoundlessGate.from_settings``), so a production
@@ -60,7 +61,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from classbeat.config import Settings
 from classbeat.context import UserContext
 from classbeat.flags import effective
-from classbeat.jobs import FencedSession, JobFailure, JobRun
+from classbeat.jobs import FencedSession, JobFailure
 from classbeat.jobs.kinds import Refused
 from classbeat.models.jobs import GroupModel
 
@@ -123,12 +124,17 @@ async def _plan_covers(db: AsyncSession, ctx: UserContext) -> bool:
     return await covers(db, plan.route_key, "soundless")
 
 
+def switch_on() -> bool:
+    """``CLASSBEAT_SOUNDLESS_ENABLED`` of this process (the kill switch; no stored value, #824).
+    Not the effective flag: ``soundless_on`` also checks coverage."""
+    return current().enabled
+
+
 async def admit_soundless(db: AsyncSession, ctx: UserContext) -> Refused | None:
     """A soundless design at creation, in the order of the module: the switch (``feature_off``),
     the job's own plan's route (``soundless_not_evaluated``), every plan's route (``feature_off``).
     None admits. Reads only; reserves nothing."""
-    gate = current()
-    if not await effective.soundless_switch(db, gate.enabled):
+    if not switch_on():
         return Refused("feature_off")
     if not await _plan_covers(db, ctx):
         return Refused("soundless_not_evaluated")
@@ -197,12 +203,11 @@ async def admit_class(db: AsyncSession, ctx: UserContext, class_id: UUID) -> Ref
     return await admit_soundless(db, ctx)
 
 
-async def still_on(run: JobRun) -> None:
-    """In the worker, before a soundless job calls anything: ``feature_off`` when the switch
-    (environment and stored value) is off now. Coverage is the model's (``require_covered``)."""
-    async with run.fenced() as fs:
-        on = await effective.soundless_switch(fs.db, current().enabled)
-    if not on:
+def still_on() -> None:
+    """In the worker, before a soundless job calls anything: ``feature_off`` when the worker's
+    switch (``CLASSBEAT_SOUNDLESS_ENABLED``) is off. Coverage is the model's
+    (``require_covered``)."""
+    if not switch_on():
         raise JobFailure("feature_off")
 
 

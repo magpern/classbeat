@@ -80,7 +80,7 @@ async def running_switch(db: AsyncSession, environment_on: bool) -> bool:
 
 async def running_enabled(db: AsyncSession, environment_on: bool, *, fake_covers: bool) -> bool:
     """The effective ``running_enabled`` (ADR 0018 amendment of 2026-11-04, #509), computed on
-    every read as ``soundless_enabled`` is: the switch (``running_switch``) **and** every plan's
+    every read: the switch (``running_switch``) **and** every plan's
     ``route_key`` has a ``design`` route that covers running now
     (``models.routes.every_plan_covers``). ``fake_covers`` as for ``soundless_enabled``."""
     if not await running_switch(db, environment_on):
@@ -92,24 +92,16 @@ async def running_enabled(db: AsyncSession, environment_on: bool, *, fake_covers
     return await every_plan_covers(db, "running")
 
 
-async def soundless_switch(db: AsyncSession, environment_on: bool) -> bool:
-    """``CLASSBEAT_SOUNDLESS_ENABLED`` and a stored ``soundless_enabled`` of exactly ``on``
-    (``core.soundless_switch``: missing, ``null`` or invalid is off). Not the effective flag:
-    ``soundless_enabled`` also checks coverage."""
-    if not environment_on:
-        return False
-    return core.soundless_switch(environment_on, await _stored(db, "soundless_enabled"))
-
-
 async def soundless_enabled(db: AsyncSession, environment_on: bool, *, fake_covers: bool) -> bool:
-    """The effective ``soundless_enabled`` (ADR 0007 amendment of 2026-11-03, item 2), computed
-    on every read: the switch (``soundless_switch``) **and** every plan's ``route_key`` has a
-    ``design`` route that covers soundless now (``models.routes.every_plan_covers``), so a plan
-    added later or a route cleared later turns it off without anyone storing anything.
-    ``fake_covers`` is the web's own ``fake`` model provider outside prod
-    (``design.music_kind.SoundlessGate``), which counts as covering, as the worker's ``fake``
-    bypass does; it is never true in prod."""
-    if not await soundless_switch(db, environment_on):
+    """The effective ``soundless_enabled`` (ADR 0007 amendment of 2026-11-03, item 2, as amended
+    on 2026-11-08, #824), computed on every read: ``CLASSBEAT_SOUNDLESS_ENABLED`` (the kill
+    switch, ``environment_on``) **and** every plan's ``route_key`` has a ``design`` route that
+    covers soundless now (``models.routes.every_plan_covers``), so a plan added later or a route
+    cleared later turns it off without anyone storing anything. There is no stored admin value:
+    no ``app_settings`` row is read. ``fake_covers`` is the web's own ``fake`` model provider
+    outside prod (``design.music_kind.SoundlessGate``), which counts as covering, as the worker's
+    ``fake`` bypass does; it is never true in prod."""
+    if not environment_on:  # the kill switch: no read needed
         return False
     if fake_covers:
         return True

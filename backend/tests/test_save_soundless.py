@@ -7,11 +7,12 @@ no link, attach or playlist read; the saved row's ``playlist_id`` is NULL; the r
 context carry ``-1`` while a playlist class's are byte for byte as before; the read-back of
 ``-1``, ``null`` or a missing ``PlaylistID`` verifies and any other value does not; the
 uncertain-write path and both reconcilers; the revision's music and the class's ``music_source``
-must agree (both ways, and a running class never saves ``none``); the soundless switch
-(environment and stored value) at creation and in the worker, never read by a reconciler; every
-existing ``state_hash`` unchanged. **What real MOWL returns for a program saved or updated with
-``-1`` is unverified** (the owner's live checks): the fake serves each of the three forms, and an
-Update that keeps a playlist attached in the app, so every case is decided by the same rules.
+must agree (both ways, and a running class never saves ``none``); the soundless switch (the
+environment's, no stored value since #824) at creation and in the worker, never read by a
+reconciler; every existing ``state_hash`` unchanged. **What real MOWL returns for a program
+saved or updated with ``-1`` is unverified** (the owner's live checks): the fake serves each of
+the three forms, and an Update that keeps a playlist attached in the app, so every case is
+decided by the same rules.
 """
 
 import copy
@@ -69,26 +70,21 @@ GOLDEN = {
 SPECS = {"DRAFT": SPEC, "DRAFT_2": spec_of(DRAFT_2), "RUN": running_spec_of(RUNNING_DRAFT)}
 
 
-def gate(senv: SaveEnv, *, enabled: bool = True, stored: Any = "on") -> None:
-    """The soundless switch: the environment's (``enabled``) and the stored admin flag (None: no
-    row). Coverage is never consulted by Save, so the gate's ``fake_covers`` stays false."""
+def gate(*, enabled: bool = True) -> None:
+    """The soundless switch: the environment's (``enabled``); there is no stored admin flag since
+    #824, so nothing is stored. Coverage is never consulted by Save, so the gate's
+    ``fake_covers`` stays false."""
     music_kind.configure(music_kind.SoundlessGate(enabled=enabled, fake_covers=False))
-    senv.sql("DELETE FROM app_settings WHERE key = 'soundless_enabled'")
-    if stored is not None:
-        senv.sql(
-            "INSERT INTO app_settings (key, value) VALUES ('soundless_enabled', CAST(:v AS jsonb))",
-            v=json.dumps(stored),
-        )
 
 
 @pytest.fixture(autouse=True)
 def soundless_on(senv: SaveEnv) -> Iterator[None]:
-    gate(senv)
+    """After ``senv``, whose app configured the gate from its settings (off)."""
+    gate()
     try:
         yield
     finally:
         music_kind.configure(None)
-        senv.sql("DELETE FROM app_settings WHERE key = 'soundless_enabled'")
 
 
 def first_write(fake: FakeMowlPrograms, path: str = "/v1/programs") -> dict[str, Any]:
@@ -316,7 +312,7 @@ async def test_the_save_reconciler_needs_a_program_without_music(
     assert await reconcile(senv, saved.owner, op, operation.SAVE) == Reconciliation("inconclusive")
     fake_programs.delete(on_playlist)
     made = fake_programs.plant(TOKEN_A, SPEC, playlist_id=-1)
-    gate(senv, enabled=False, stored=None)  # the reconciler never reads the switch
+    gate(enabled=False)  # the reconciler never reads the switch
     for shown in NO_MUSIC_READS:
         fake_programs.no_music_read = shown
         got = await reconcile(senv, saved.owner, op, operation.SAVE)
@@ -370,7 +366,7 @@ async def test_a_class_with_music_still_saves_its_linked_playlist(
     senv: SaveEnv, fake_programs: FakeMowlPrograms
 ) -> None:
     """A playlist class whose ``music_source`` is stored is saved as before, flag off or on."""
-    gate(senv, enabled=False, stored=None)
+    gate(enabled=False)
     owner, connection = await senv.owner()
     saved = senv.plant(owner, connection)
     senv.sql(
@@ -390,22 +386,18 @@ async def test_a_class_with_music_still_saves_its_linked_playlist(
 # --- the switch ------------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize(
-    ("enabled", "stored"),
-    [(False, "on"), (True, "off"), (True, None), (True, "maybe")],
-)
 async def test_save_and_update_are_feature_off_while_the_switch_is_off(
     uenv: UpdateEnv,
     fake_programs: FakeMowlPrograms,
     save_browser: Any,
     update_browser: Any,
-    enabled: bool,
-    stored: Any,
 ) -> None:
+    """The environment's switch off refuses both (#824: the only switch; the saves above ran with
+    it on and no ``app_settings`` row at all)."""
     live = await uenv.soundless_live()  # saved while on
     revision = uenv.revision(live, DRAFT_2, NO_MUSIC)
     other = await uenv.s.soundless_class()
-    gate(uenv.s, enabled=enabled, stored=stored)
+    gate(enabled=False)
     writes, lists = fake_programs.write_count, fake_programs.lists
     refused = await (await save_browser(other)).save()
     assert refused.status_code == 409, refused.text
@@ -539,7 +531,7 @@ async def test_the_update_reconciler_decides_a_soundless_write(
     revision = uenv.revision(live, DRAFT_2, NO_MUSIC)
     op = update_op(uenv, live, revision)
     owner = live.saved.owner
-    gate(uenv.s, enabled=False, stored=None)  # never read by a reconciler
+    gate(enabled=False)  # never read by a reconciler
     # Unchanged, nothing new: provably no effect.
     assert await reconcile(uenv.s, owner, op, update_operation.UPDATE) == Reconciliation("failed")
     # Updated, but the playlist kept (the unverified case): inconclusive, never proof.

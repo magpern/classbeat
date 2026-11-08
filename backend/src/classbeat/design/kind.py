@@ -267,7 +267,7 @@ async def run(job_run: JobRun) -> Complete:
     if isinstance(given.music, SwedebeatMusicChoice):
         await mixadmit.still_on(job_run, runtime.swedebeat_enabled, new_design=True)
     if isinstance(given.music, NoMusicChoice):
-        await music_kind.still_on(job_run)  # #527: the switch, before anything is called
+        music_kind.still_on()  # #527: the switch, before anything is called
     model = await group_model(runtime, job_run, given.route_key, "design")  # before any MOWL call
     if given.brief.sport == sport.RUNNING:
         sport.require_evaluated(model)  # an evaluated model only (ADR 0012, issue #465)

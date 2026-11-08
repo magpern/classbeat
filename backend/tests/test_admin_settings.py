@@ -198,8 +198,7 @@ async def test_the_read_shows_each_flag_with_its_effective_value_and_source(
         "song_picking",
         "swedebeat_enabled",
         "running_enabled",  # ADR 0018 section 5
-        "soundless_enabled",  # ADR 0007 amendment of 2026-11-03 (#527)
-        "trial",
+        "trial",  # no soundless_enabled: retired by ADR 0007's amendment of 2026-11-08 (#824)
         "banner",
     ]
     signup = flag(await actor.get(SETTINGS), "signup_mode")
@@ -383,56 +382,31 @@ async def test_running_is_stored_on_only_on_an_evaluated_model_for_every_plan(
     assert stored(superuser, "running_enabled") == "on"
 
 
-async def test_soundless_is_stored_on_only_when_every_plan_covers_soundless(
-    env: Env, make_actor: Any, superuser: Connection, monkeypatch: pytest.MonkeyPatch
+async def test_the_retired_soundless_key_is_not_shown_and_put_or_delete_is_unknown_key(
+    env: Env, make_actor: Any, superuser: Connection
 ) -> None:
-    """ADR 0007 amendment of 2026-11-03, item 2 (#527): ``on`` needs, for every plan's route key,
-    a ``design`` route that covers soundless (``SOUNDLESS_SUITE_VERSION``, 11 since SL5; a result
-    below it, or the SL1 ``None``, covers nothing); ``off`` never does. The shown effective value
-    is the three conditions, read again on every request: a route cleared later or the admin's
-    DELETE turns it off."""
-    from classbeat.models import routes as routes_module
-    from classbeat.models.versions import running_suite_version
-
+    """ADR 0007 amendment of 2026-11-08 (#824): ``soundless_enabled`` is no setting any more. The
+    read does not list it, even with the environment's switch on and the web's ``fake``
+    covering; a PUT (``on`` or ``off``) or DELETE is 422 ``unknown_key``, stores nothing and
+    writes a ``refused`` audit row."""
     actor = await stepped_admin(env, make_actor)
-    env.app.state.settings = env.settings.model_copy(update={"soundless_enabled": True})
-    clear_gate(superuser)
-
-    async def shown() -> Any:
-        return flag(await actor.get(SETTINGS), "soundless_enabled")
-
-    for setup in ("none", "sl1", "below", "skip"):
-        if setup == "sl1":
-            monkeypatch.setattr(routes_module, "SOUNDLESS_SUITE_VERSION", None)  # as in SL1
-            route_every_plan(superuser)  # covers nothing
-        elif setup == "below":
-            monkeypatch.setattr(
-                routes_module, "SOUNDLESS_SUITE_VERSION", running_suite_version() + 1
-            )
-        elif setup == "skip":
-            monkeypatch.setattr(routes_module, "SOUNDLESS_SUITE_VERSION", running_suite_version())
-            route_every_plan(superuser, skip="pro")
-        refused = await put(actor, "soundless_enabled", "on")
-        assert refused.status_code == 422, (setup, refused.text)
-        assert refused.json()["detail"]["reason"] == "soundless_not_evaluated"
-        assert stored(superuser, "soundless_enabled") is None
-    last = [r for r in rows_of(superuser, actor.user_id) if r.action == "setting.set"][-1]
-    assert (last.outcome, last.reason) == ("refused", "soundless_not_evaluated")
-    assert (await put(actor, "soundless_enabled", "off")).status_code == 200  # tightening: always
-    route_every_plan(superuser)
-    stored_on = await put(actor, "soundless_enabled", "on")
-    assert stored_on.status_code == 200, stored_on.text
-    assert (stored_on.json()["effective"], stored(superuser, "soundless_enabled")) == ("on", "on")
-    superuser.execute(text("DELETE FROM model_routes WHERE route_key = 'pro'"))
-    assert (await shown())["effective"] == "off"  # a route cleared later, nothing stored
-    route_every_plan(superuser)
-    assert (await shown())["effective"] == "on"
-    env.app.state.settings = env.settings.model_copy(update={"soundless_enabled": False})
-    assert (await shown())["effective"] == "off"  # the kill switch
-    env.app.state.settings = env.settings.model_copy(update={"soundless_enabled": True})
+    env.app.state.settings = env.settings.model_copy(
+        update={"soundless_enabled": True, "model_provider": "fake", "environment": "dev"}
+    )
+    body = (await actor.get(SETTINGS)).json()
+    assert "soundless_enabled" not in [f["key"] for f in body["flags"]]
+    for value in ("on", "off"):
+        refused = await put(actor, "soundless_enabled", value)
+        assert (refused.status_code, reason(refused)) == (422, "unknown_key"), value
     cleared = await actor.call("DELETE", f"{SETTINGS}/soundless_enabled", None)
-    assert cleared.status_code == 200, cleared.text
-    assert cleared.json()["effective"] == "off"  # cleared is off, as for running_enabled
+    assert (cleared.status_code, reason(cleared)) == (422, "unknown_key")
+    assert stored(superuser, "soundless_enabled") is None
+    outcomes = [(r.action, r.outcome, r.reason) for r in rows_of(superuser, actor.user_id)]
+    assert outcomes[-3:] == [
+        ("setting.set", "refused", "unknown_key"),
+        ("setting.set", "refused", "unknown_key"),
+        ("setting.clear", "refused", "unknown_key"),
+    ]
 
 
 async def test_running_shows_on_only_with_every_plan_covered_read_on_every_request(
@@ -481,7 +455,8 @@ async def test_running_shows_on_only_with_every_plan_covered_read_on_every_reque
 async def test_the_webs_own_fake_covers_running_outside_prod_only(
     env: Env, make_actor: Any, superuser: Connection, environment: str, accepted: bool
 ) -> None:
-    """As for soundless: the web's own ``fake`` covers running only outside prod."""
+    """The web counts ``fake`` only when its own provider is ``fake`` and it is not prod (the e2e
+    stack); a production web treats nothing as covered without a recorded route."""
     actor = await stepped_admin(env, make_actor)
     env.app.state.settings = env.settings.model_copy(
         update={"running_enabled": True, "model_provider": "fake", "environment": environment}
@@ -494,26 +469,6 @@ async def test_the_webs_own_fake_covers_running_outside_prod_only(
     else:
         assert answer.status_code == 422, answer.text
         assert answer.json()["detail"]["reason"] == "running_not_evaluated"
-
-
-@pytest.mark.parametrize(("environment", "accepted"), [("dev", True), ("prod", False)])
-async def test_the_webs_own_fake_covers_soundless_outside_prod_only(
-    env: Env, make_actor: Any, superuser: Connection, environment: str, accepted: bool
-) -> None:
-    """The web counts ``fake`` only when its own provider is ``fake`` and it is not prod (the e2e
-    stack); a production web treats nothing as covered without a recorded route."""
-    actor = await stepped_admin(env, make_actor)
-    env.app.state.settings = env.settings.model_copy(
-        update={"soundless_enabled": True, "model_provider": "fake", "environment": environment}
-    )
-    clear_gate(superuser)
-    answer = await put(actor, "soundless_enabled", "on")
-    if accepted:
-        assert answer.status_code == 200, answer.text
-        assert answer.json()["effective"] == "on"
-    else:
-        assert answer.status_code == 422, answer.text
-        assert answer.json()["detail"]["reason"] == "soundless_not_evaluated"
 
 
 # --- flag writes ------------------------------------------------------------------------------

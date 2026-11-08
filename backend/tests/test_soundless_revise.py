@@ -6,9 +6,9 @@ Covered: the revision is a child of the base, current by compare-and-set, with i
 music ``{"source": "none"}``, ``origin = revise_draft``, no credit, no MOWL request and no
 ``music`` stage; the model sees the soundless revise prompt, two tools (no ``songs_requested``),
 no ``music`` key and no music value (planted); a "change the songs" request cannot end
-``use_change_songs``; earlier requests travel and notes never do; the gate at ``admit`` (all three
-conditions, nothing written) and the worker's backstops (``feature_off``, ``model_config``) before
-any call; the music kind never changing in the final store.
+``use_change_songs``; earlier requests travel and notes never do; the gate at ``admit`` (the
+switch and the routes, nothing written) and the worker's backstops (``feature_off``,
+``model_config``) before any call; the music kind never changing in the final store.
 """
 
 import json
@@ -33,7 +33,6 @@ from test_soundless_jobs import (  # noqa: F401  (soundless_on is the autouse fi
     MUSIC_WORDS,
     NONE,
     SPOTIFY,
-    admin_flag,
     connections_flag,
     counts,
     gate,
@@ -210,24 +209,17 @@ async def test_a_change_the_songs_request_cannot_end_use_change_songs(
 # --- the gate at creation --------------------------------------------------------------------
 
 
-@pytest.mark.parametrize(
-    "case", ["environment_off", "nothing_stored", "deleted", "invalid", "stored_off"]
-)
-async def test_a_revise_is_refused_feature_off_on_every_switch_path_writing_nothing(
-    renv: ReviseEnv, fake_mowl: FakeMowlMusic, case: str
+@pytest.mark.parametrize("fake", [True, False])
+async def test_a_revise_is_refused_feature_off_with_the_switch_off_writing_nothing(
+    renv: ReviseEnv, fake_mowl: FakeMowlMusic, monkeypatch: pytest.MonkeyPatch, fake: bool
 ) -> None:
+    """The environment's switch, the only one since #824: off refuses even with every plan's
+    route covering soundless (or the web's ``fake``)."""
     class_id, design_job = await soundless_class(renv)
     [base] = renv.denv.revisions(design_job)
-    if case == "environment_off":
-        gate(enabled=False)
-    elif case == "nothing_stored":
-        admin_flag(renv, None)
-    elif case == "deleted":
-        admin_flag(renv, None, raw="null")
-    elif case == "invalid":
-        admin_flag(renv, "yes")
-    else:
-        admin_flag(renv, "off")
+    monkeypatch.setattr(routes_module, "SOUNDLESS_SUITE_VERSION", running_suite_version())
+    route(renv, *plan_keys(renv))
+    gate(enabled=False, fake=fake)
     assert await connections_flag(renv) is False
     await refused_with(renv, class_id, base.id, "feature_off")
     assert fake_mowl.requests == []
@@ -253,9 +245,8 @@ async def test_a_revise_checks_the_switch_then_its_own_plan_then_every_plan(
 ) -> None:
     class_id, design_job = await soundless_class(renv)  # designed under the web's fake
     [base] = renv.denv.revisions(design_job)
-    gate(fake=False)
+    gate(enabled=switch, fake=False)
     monkeypatch.setattr(routes_module, "SOUNDLESS_SUITE_VERSION", running_suite_version())
-    admin_flag(renv, "on" if switch else "off")
     keys, mine = plan_keys(renv), await own_key(renv)
     route(renv, *([mine] if own else []), *([k for k in keys if k != mine] if others else []))
     if reason is None:
@@ -270,7 +261,6 @@ async def test_a_music_class_is_revised_whatever_the_soundless_gate_says(
 ) -> None:
     class_id, base = await renv.design()
     gate(enabled=False)
-    admin_flag(renv, None)
     job_id, _ = await renv.revise(class_id, base, "revise_good")
     assert renv.denv.ops.row(job_id).state == "completed"
 
@@ -288,7 +278,7 @@ async def test_a_queued_soundless_revise_whose_switch_went_off_ends_feature_off_
     made = await ask(renv, class_id, base.id)
     assert made.status_code == 201, made.text
     job_id = UUID(made.json()["id"])
-    admin_flag(renv, None)  # the admin cleared it while the job waited
+    gate(enabled=False)  # the worker runs with the environment's switch off
     await renv.run(design.REVISE_KIND)
     row = renv.denv.ops.row(job_id)
     assert (row.state, row.error_category) == ("failed", "feature_off")

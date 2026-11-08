@@ -146,8 +146,8 @@ services:
       # (the default stack keeps them off).
       CLASSBEAT_SOUNDLESS_ENABLED: "true"
       # ADR 0018 amendment of 2026-11-04 (#509): running is on only with a stored `on` and every
-      # plan's route covering running; soundless classes (ADR 0007 amendment, #533) likewise with a
-      # stored `soundless_enabled` of `on`. The web's own `fake` outside prod counts as covering
+      # plan's route covering running; soundless classes (ADR 0007 amendments, #533 and #824) need
+      # no stored value, only the routes. The web's own `fake` outside prod counts as covering
       # both (the worker replays scripts with `fake` too). The web builds no provider and holds no key.
       CLASSBEAT_MODEL_PROVIDER: fake
       CLASSBEAT_OAUTH_GOOGLE_CLIENT_ID: e2e-fake-google-client
