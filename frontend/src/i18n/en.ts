@@ -1605,7 +1605,7 @@ export const en = {
   'passkey.neverUsed': 'Never used',
   'passkey.lastUsed': 'Last used {date}',
   'passkey.signIn': 'Sign in with a passkey',
-  'passkey.phoneNotice': 'Signed in with your phone; sign out when you are done.',
+  'passkey.phoneNotice': 'Signed in with your phone or security key; sign out when you are done.',
   'passkey.error.exists': 'This device already has a passkey for classbeat.',
   'passkey.error.unsupported': 'This browser or device cannot make a passkey here.',
   'passkey.error.failed': 'The passkey did not work. Try again.',

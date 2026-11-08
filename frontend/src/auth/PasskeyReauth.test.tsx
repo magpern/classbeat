@@ -9,13 +9,13 @@ import { SessionProvider } from './SessionContext'
 
 afterEach(uninstallPasskeys)
 
-function Runner({ grant }: { grant: { ok: boolean } }) {
+function Runner({ grant, reason }: { grant: { ok: boolean }; reason: string }) {
   const guard = useGuard()
   return (
     <button
       type="button"
       onClick={() => {
-        guard(() => (grant.ok ? Promise.resolve('x') : Promise.reject(new ApiError(403, 'reauth_required', null, undefined)))).catch(
+        guard(() => (grant.ok ? Promise.resolve('x') : Promise.reject(new ApiError(403, reason, null, undefined)))).catch(
           () => undefined,
         )
       }}
@@ -38,11 +38,11 @@ function routes(extra: { flag: boolean; passkeys: unknown[]; grant: { ok: boolea
   })
 }
 
-function open(grant: { ok: boolean }) {
+function open(grant: { ok: boolean }, reason = 'reauth_required') {
   render(
     <SessionProvider>
       <GuardProvider>
-        <Runner grant={grant} />
+        <Runner grant={grant} reason={reason} />
       </GuardProvider>
     </SessionProvider>,
   )
@@ -82,6 +82,16 @@ describe('passkey option in the re-authentication prompt', () => {
     await waitFor(() => {
       expect(api.to('GET', '/api/auth/identities').length).toBeGreaterThan(0)
     })
+    expect(within(dialog).queryByRole('button', { name: 'Confirm with a passkey' })).toBeNull()
+  })
+
+  it('the step-up prompt asks for the code and has no passkey button even when one is offered elsewhere', async () => {
+    installPasskeys()
+    const grant = { ok: false }
+    routes({ flag: true, passkeys: ONE, grant })
+    open(grant, 'stepup_required')
+    const dialog = await screen.findByRole('dialog')
+    await within(dialog).findByLabelText('Authenticator or recovery code')
     expect(within(dialog).queryByRole('button', { name: 'Confirm with a passkey' })).toBeNull()
   })
 })

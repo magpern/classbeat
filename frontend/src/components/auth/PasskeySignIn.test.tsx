@@ -68,7 +68,7 @@ describe('passkey sign-in', () => {
     expect(browser.get.mock.calls[0]?.[0]).not.toHaveProperty('mediation')
     expect(api.to('POST', '/api/auth/passkeys/signin/finish')[0]?.body).toEqual({ credential: credential().toJSON?.() })
     expect(isPhoneSignIn()).toBe(false)
-    expect(screen.queryByText(/Signed in with your phone/)).toBeNull()
+    expect(screen.queryByText(/Signed in with your phone or security key/)).toBeNull()
   })
 
   it('shows the shared-computer notice after a cross-platform sign-in, and signing out clears it', async () => {
@@ -89,9 +89,9 @@ describe('passkey sign-in', () => {
     )
     renderAt('/signin')
     fireEvent.click(await screen.findByRole('button', { name: 'Sign in with a passkey' }))
-    expect(await screen.findByText('Signed in with your phone; sign out when you are done.')).toBeInTheDocument()
+    expect(await screen.findByText('Signed in with your phone or security key; sign out when you are done.')).toBeInTheDocument()
     expect(isPhoneSignIn()).toBe(true)
-    const notice = screen.getByText('Signed in with your phone; sign out when you are done.').closest('div')!
+    const notice = screen.getByText('Signed in with your phone or security key; sign out when you are done.').closest('div')!
     fireEvent.click(notice.querySelector('button')!)
     await waitFor(() => {
       expect(isPhoneSignIn()).toBe(false)
@@ -122,7 +122,7 @@ describe('passkey sign-in', () => {
     })
     fireEvent.click(screen.getByRole('button', { name: 'Sign in' }))
     expect(await screen.findByRole('heading', { name: 'Your account' })).toBeInTheDocument()
-    expect(screen.queryByText(/Signed in with your phone/)).toBeNull()
+    expect(screen.queryByText(/Signed in with your phone or security key/)).toBeNull()
   })
 
   it('stays quiet when the browser dialog is closed', async () => {

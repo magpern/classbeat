@@ -506,7 +506,7 @@ npm run build        # typecheck, then Vite writes frontend/dist
 - Bundle budget (ADR 0013 section 11): `npm run check:bundle` (`scripts/bundle-size.ts`, after `npm run build`)
   gzips the scripts `dist/index.html` loads first (entry and static preloads, not lazy chunks like the admin
   area) and fails above 250 kB (1000 bytes per kB, as Vite reports); `src/bundleSize.test.ts` tests the rules.
-- Passkey UI (#777, ADR 0019 W6): `src/auth/webauthn.ts` (browser calls, feature detection, the `signal*` hints), `passkeyCeremony.ts` (start, browser, finish), `components/account/Passkeys.tsx` (account card), `components/auth/PasskeySignIn.tsx` with `usePasskeyAutofill.ts` (button and conditional mediation, restarted only while the page is visible), `PasskeyReauth.tsx` (re-authentication prompt) and `components/shell/PhoneSignInNotice.tsx` (shown when the client reported `authenticatorAttachment` exactly `cross-platform`; kept in sessionStorage). The public `GET /api/auth/session` carries `passkeys` (the flag) so the anonymous sign-in page knows whether to offer a passkey; `GET /api/auth/events` items carry `passkey` (true when `detail.method` is `passkey`). Tests use `src/test/passkeyMock.ts` (a fake `navigator.credentials`); `src/auth/passkeyCsp.test.ts` scans the files for inline style and script. axe runs in the e2e suite (W7), not under vitest.
+- Passkey UI (#777, ADR 0019 W6): `src/auth/webauthn.ts` (browser calls, feature detection, the `signal*` hints), `passkeyCeremony.ts` (start, browser, finish), `components/account/Passkeys.tsx` (account card), `components/auth/PasskeySignIn.tsx` with `usePasskeyAutofill.ts` (button and conditional mediation, restarted only while the page is visible), `PasskeyReauth.tsx` (re-authentication prompt) and `components/shell/PhoneSignInNotice.tsx` (shown when the client reported `authenticatorAttachment` exactly `cross-platform`; kept in sessionStorage). The public `GET /api/auth/session` carries `passkeys` (the flag) so the anonymous sign-in page knows whether to offer a passkey; `GET /api/auth/events` items carry `passkey` (true when `detail.method` is `passkey`). Tests use `src/test/passkeyMock.ts` (a fake `navigator.credentials`); `src/auth/passkeyCsp.test.ts` scans the files for inline style and script. axe runs in the e2e suite (W7, `e2e/tests/passkey-a11y.spec.ts`), not under vitest.
 - CI runs the same commands in the `frontend` job, then `check:bundle`.
 
 ### Adding a language
@@ -579,8 +579,8 @@ docker compose down -v                   # stop and delete the volume
 ```
 
 Every worktree gets its own project name, volume and ports (web `20000+<issue>`, Postgres
-`30000+<issue>`, Mailpit UI `40000+<issue>`; issue numbers 1-9999), disjoint from the defaults of
-the main checkout (8000, 55432, 8025), so stacks never collide:
+`30000+<issue>`, Mailpit UI `40000+<issue>`, the e2e `web-passkeys` `50000+<issue>`; issue numbers
+1-9999), disjoint from the defaults of the main checkout (8000, 55432, 8025, 8001), so stacks never collide:
 
 ```bash
 scripts/worktree.sh new 7 some-slug      # ../classbeat-wt/7-some-slug on branch 7-some-slug, then init
@@ -715,6 +715,8 @@ stores it as written and nothing in the spec shows how MOWL behaves.
 Swedebeat mix, Later on the class page's Beat 1 panel and Apply timing fixes (a `refit_draft` job, no model) move the fitted
 changes, a chat revision keeps the corrections, Save and Update write the corrected timing to the fake MOWL, another user gets
 404, the export holds the rows without the fingerprint and deleting the account removes them; axe audits the panel.
+
+Passkey e2e (ADR 0019 section 11, W7): `e2e/tests/passkey*.spec.ts` run against the `web-passkeys` service of `compose.e2e.yaml` (same image and database as `web`, on `http://localhost:$WEB_PASSKEYS_PORT`, default 8001, override the URL with `E2E_PASSKEY_BASE_URL`; passkeys on, RP ID `localhost`). It mounts only `database_password`, `app_secret_key` and `connection_kek`, never `database_maint_password` (CI's maint-password check lists exactly `db-functions web`). The specs use a Chromium virtual authenticator over CDP (`passkey-helpers.ts`; `usb` stands in for a phone, which CDP cannot simulate): register, username-less sign-in, re-authentication, rename and remove, a removed passkey, two users, the reset keep list, the 24 h cross-device session and notice, and axe plus a real-CSP check (no violation) of the Passkeys card, sign-in page, re-auth prompt and reset page. Not covered: the real hybrid (QR) transport and the refusal of the last sign-in method.
 
 Language-prefixed URLs (ADR 0027, #719): `e2e/tests/lang-*.spec.ts` run each subject in en, sv and da on the compose stack (`lang-deep-link`: the page survives sign-in, also with a switch on the sign-in page; `lang-switch`: the picker keeps page, query and fragment; `lang-old-links`: unprefixed mail links such as `/reset#token=...` reach the page with the token; `lang-head`: `<html lang>`, canonical, hreflang, noindex, sitemap, robots, the 404 for an unknown language; `lang-axe`: axe and no sideways scroll at 390 px), with the words in `lang-url-helpers.ts`. The head specs compare paths only, because the links use `public_base_url`, not the test origin.
 
