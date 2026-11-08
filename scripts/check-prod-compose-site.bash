@@ -115,6 +115,20 @@ site_verdict() {
       if (a1 == "content-security-policy" || a1 == "referrer-policy") bad("the app CSP and Referrer-Policy are neither added, hidden nor replaced here")
       if (a1 == "strict-transport-security" && ctx == "server") hsts = 1
     }
+    # ADR 0019 section 11: the browser own passkey calls need both publickey features for self.
+    # `()` or `*`, or an allowlist without self, breaks sign-in and registration; leaving them
+    # unnamed is right (their default allowlist is self). `usb=()` is WebUSB and does not concern them.
+    name == "add_header" && a1 == "permissions-policy" {
+      np = split($5, pp, ",")
+      for (j = 1; j <= np; j++) {
+        item = pp[j]; gsub(/^[ \t]+|[ \t]+$/, "", item)
+        eq = index(item, "=")
+        if (eq == 0) continue
+        feat = tolower(substr(item, 1, eq - 1)); allow = substr(item, eq + 1)
+        if (feat != "publickey-credentials-get" && feat != "publickey-credentials-create") continue
+        if (index(allow, "*") > 0 || allow !~ /(^|[ (])self([ )]|$)/) bad("Permissions-Policy must leave " feat " as (self) or unnamed: () or * breaks passkeys (ADR 0019 section 11)")
+      }
+    }
     name == "proxy_hide_header" || name == "more_clear_headers" || name == "more_set_headers" { bad("the app CSP and Referrer-Policy are neither added, hidden nor replaced here") }
     name == "include" {
       if (ctx != "server" || NF != 4 || ($4 != "/config/nginx/ssl.conf" && $4 != "/config/nginx/cf_real-ip.conf")) bad("include only /config/nginx/ssl.conf and cf_real-ip.conf, in the server")
