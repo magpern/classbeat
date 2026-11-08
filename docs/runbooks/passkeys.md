@@ -50,7 +50,7 @@ Once it is merged and released:
 2. Check the swag site keeps today's `Permissions-Policy` line, which names neither
    `publickey-credentials-get` nor `publickey-credentials-create` (both then default to the site
    itself, which passkeys need). `scripts/check-prod-compose.sh` refuses a sample that sets either to
-   `()` or `*`; if you edit the header on the server by hand, keep it that way.
+   `()` or `*`, and one whose allowlist leaves out `self`; if you edit the header on the server by hand, keep it that way.
 3. Do the real-phone check (section 5).
 
 **Switching off:** set `CLASSBEAT_PASSKEYS=false` (or remove it) and redeploy. Then:

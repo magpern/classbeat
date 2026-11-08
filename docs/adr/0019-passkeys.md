@@ -143,7 +143,7 @@ tests.
 
 ### 3. RP ID and origin
 
-- **`CLASSBEAT_WEBAUTHN_RP_ID`** (optional). Default: the host of `CLASSBEAT_PUBLIC_BASE_URL`.
+- **`CLASSBEAT_WEBAUTHN_RP_ID`** (required when `CLASSBEAT_PASSKEYS` is on; start-up refuses to run without it, so the RP ID is always an explicit choice). It must be the host of `CLASSBEAT_PUBLIC_BASE_URL` or a parent of it.
   **Never derived from a request header**: not `Host`, `Origin`, `X-Forwarded-Host` or anything
   the proxy sets. Both values are read once at start.
 - **Expected origin** is exactly the `CLASSBEAT_PUBLIC_BASE_URL` origin (scheme, host, port), one
