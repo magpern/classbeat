@@ -1,21 +1,23 @@
 """Application settings, read from the environment (prefix ``CLASSBEAT_``) and secret files."""
 
 import ipaddress
-import logging
-import os
 import re
 import ssl
 from pathlib import Path
-from typing import Any, Literal
+from typing import Literal
 from urllib.parse import urlsplit
 
 from pydantic import Field, SecretStr, ValidationInfo, field_validator, model_validator
-from pydantic.fields import FieldInfo
 from pydantic_settings import BaseSettings, PydanticBaseSettingsSource, SettingsConfigDict
 from sqlalchemy.engine import URL, make_url
 from sqlalchemy.exc import ArgumentError
 
-from classbeat.config_hosts import _is_local_host, parse_networks, public_origin
+from classbeat.config_hosts import (
+    _is_local_host,
+    check_prod_trusted_proxies,
+    check_public_base_url,
+    parse_networks,
+)
 from classbeat.config_passkeys import check_settings as check_passkey_settings
 from classbeat.config_roles import (  # noqa: F401 (re-exported from classbeat.config)
     MODEL_KEY_FIELDS,
@@ -29,13 +31,25 @@ from classbeat.config_roles import (  # noqa: F401 (re-exported from classbeat.c
     model_sdk_environment_problems,
     worker_model_providers,
 )
+from classbeat.config_secrets import (  # noqa: F401 (re-exported from classbeat.config)
+    DEFAULT_SECRETS_DIR,
+    SecretFilesSettingsSource,
+    WithoutSecretsSource,
+    logger,
+    read_files,
+    secrets_dir,
+)
 from classbeat.config_swedebeat import swedebeat_app_keys
+from classbeat.config_turnstile import (  # noqa: F401 (re-exported from classbeat.config)
+    TURNSTILE_DUMMY_KEY,
+    TURNSTILE_SITE_KEY,
+)
+from classbeat.config_turnstile import check_secret_key as check_turnstile_secret_key
+from classbeat.config_turnstile import check_settings as check_turnstile_settings
+from classbeat.config_turnstile import check_site_key as check_turnstile_site_key
 from classbeat.emailnorm import normalize_email
 
-logger = logging.getLogger(__name__)
-
 DATABASE_DRIVER = "postgresql+psycopg"
-DEFAULT_SECRETS_DIR = "/run/secrets"
 # Fields read from secret files, and never from the environment.
 SECRET_FILE_FIELDS = (
     "database_password",
@@ -73,79 +87,19 @@ MIN_APP_SECRET_BYTES = 32
 CONNECTION_KEK_ID = re.compile(r"kek-[a-z0-9-]{1,28}")
 # A bare address (no display name, no angle brackets, no whitespace or control characters).
 SUPPORT_ADDRESS = re.compile(r"[A-Za-z0-9._%+-]{1,64}@[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)+")
-# Cloudflare's Turnstile test keys (ADR 0025 section 7): a digit, ``x``, zeros and two capitals
-# (``1x00000000000000000000AA`` and the like). A pattern, not a list, so a test key Cloudflare adds
-# later is refused in prod too.
-TURNSTILE_DUMMY_KEY = re.compile(r"[0-9]x0{16,}[A-Z]{2}")
-# A Turnstile site key is public; it goes into the session answer and the widget's options.
-TURNSTILE_SITE_KEY = re.compile(r"[A-Za-z0-9_-]{1,128}")
-
-
-def secrets_dir() -> Path:
-    """Where secret files live: ``CLASSBEAT_SECRETS_DIR``, default ``/run/secrets``."""
-    return Path(os.environ.get("CLASSBEAT_SECRETS_DIR") or DEFAULT_SECRETS_DIR)
 
 
 def read_secret_files(
     directory: Path, names: tuple[str, ...], optional: frozenset[str] = frozenset()
 ) -> dict[str, str]:
-    """Read ``<directory>/<name>`` for each name; missing files and directories are skipped.
-
-    A file of a name in ``optional`` that cannot be read (its mode or group, #511) counts as not
-    set, and one warning names the field, never the path's content; any other unreadable file
-    raises. A file holding only whitespace counts as empty, except the three database passwords,
-    which ``10-roles.sql`` and ``31-maint-password.psql`` read byte for byte the same way.
-    """
-    if not directory.is_dir():
-        return {}
-    values: dict[str, str] = {}
-    for name in names:
-        path = directory / name
-        if path.is_file():
-            try:
-                raw = path.read_bytes()
-            except OSError:
-                if name not in optional:
-                    raise
-                logger.warning("secret file %s is not readable; treated as not set", name)
-                continue
-            text = raw.decode("utf-8")
-            # Only the trailing newline an editor or `echo` adds; spaces may be part of a secret.
-            text = text.removesuffix("\n").removesuffix("\r")
-            if name not in BYTE_EXACT_SECRET_FIELDS and not text.strip():
-                text = ""  # a blank file is the empty placeholder: that secret is off
-            values[name] = text
-    return values
+    """``classbeat.config_secrets.read_files`` with the database passwords read byte for byte
+    (``BYTE_EXACT_SECRET_FIELDS``): missing files are skipped, an unreadable one of a name in
+    ``optional`` is not set (with a warning naming the field), any other unreadable one raises."""
+    return read_files(directory, names, optional=optional, byte_exact=BYTE_EXACT_SECRET_FIELDS)
 
 
-class SecretFilesSettingsSource(PydanticBaseSettingsSource):
-    """Secrets come only from files, named after the field without the env prefix.
-
-    ``/run/secrets/database_password`` sets ``database_password``. pydantic-settings' own
-    secrets source would look for ``classbeat_database_password`` because of ``env_prefix``.
-    """
-
-    def get_field_value(self, field: FieldInfo, field_name: str) -> tuple[Any, str, bool]:
-        return None, field_name, False  # unused: __call__ reads the files directly
-
-    def __call__(self) -> dict[str, Any]:
-        return dict(
-            read_secret_files(secrets_dir(), SECRET_FILE_FIELDS, OPTIONAL_SECRET_FILE_FIELDS)
-        )
-
-
-class WithoutSecretsSource(PydanticBaseSettingsSource):
-    """Wraps the environment source and drops the secret fields: env vars never set secrets."""
-
-    def __init__(self, inner: PydanticBaseSettingsSource) -> None:
-        super().__init__(inner.settings_cls)
-        self._inner = inner
-
-    def get_field_value(self, field: FieldInfo, field_name: str) -> tuple[Any, str, bool]:
-        return self._inner.get_field_value(field, field_name)
-
-    def __call__(self) -> dict[str, Any]:
-        return {k: v for k, v in self._inner().items() if k not in SECRET_FILE_FIELDS}
+def _read_settings_secret_files() -> dict[str, str]:
+    return read_secret_files(secrets_dir(), SECRET_FILE_FIELDS, OPTIONAL_SECRET_FILE_FIELDS)
 
 
 class Settings(BaseSettings):
@@ -402,8 +356,8 @@ class Settings(BaseSettings):
     ) -> tuple[PydanticBaseSettingsSource, ...]:
         return (
             init_settings,
-            WithoutSecretsSource(env_settings),
-            SecretFilesSettingsSource(settings_cls),
+            WithoutSecretsSource(env_settings, SECRET_FILE_FIELDS),
+            SecretFilesSettingsSource(settings_cls, _read_settings_secret_files),
         )
 
     @field_validator("log_level", mode="before")
@@ -468,44 +422,16 @@ class Settings(BaseSettings):
     @field_validator("turnstile_site_key")
     @classmethod
     def _check_turnstile_site_key(cls, value: str | None) -> str | None:
-        if value is not None and TURNSTILE_SITE_KEY.fullmatch(value) is None:
-            raise ValueError("turnstile_site_key must be 1 to 128 of A-Z, a-z, 0-9, _ and -")
-        return value
+        return check_turnstile_site_key(value)
 
     @field_validator("turnstile_secret_key")
     @classmethod
     def _check_turnstile_secret_key(cls, value: SecretStr | None) -> SecretStr | None:
-        if value is None or not value.get_secret_value().strip():
-            return None  # the empty placeholder: no secret, so Turnstile cannot be on
-        key = value.get_secret_value()
-        # The message names the file, never its content.
-        bad = any(c.isspace() or not c.isprintable() for c in key)
-        if len(key) > 1024 or not key.isascii() or bad:
-            raise ValueError("turnstile_secret_key has whitespace, control or non-ASCII characters")
-        return value
+        return check_turnstile_secret_key(value)  # the empty placeholder becomes None
 
     @model_validator(mode="after")
     def _check_turnstile(self) -> "Settings":
-        # ADR 0025 section 7. In prod the fake is refused whatever ``turnstile_enabled`` says (as
-        # the fake model provider is), and so is a Cloudflare test key: it always passes (or always
-        # fails) and would answer for example.com.
-        if self.environment == "prod":
-            if self.turnstile_fake:
-                raise ValueError("turnstile_fake is not allowed when environment is prod")
-            secret = self.turnstile_secret_key
-            for name, value in (
-                ("turnstile_site_key", self.turnstile_site_key),
-                ("turnstile_secret_key", None if secret is None else secret.get_secret_value()),
-            ):
-                if value is not None and TURNSTILE_DUMMY_KEY.fullmatch(value) is not None:
-                    raise ValueError(f"{name} is a Cloudflare test key, not allowed in prod")
-        if self.turnstile_enabled and not self.turnstile_fake:
-            if self.turnstile_site_key is None:
-                raise ValueError("turnstile_enabled needs CLASSBEAT_TURNSTILE_SITE_KEY")
-            if self.turnstile_secret_key is None:
-                raise ValueError(
-                    "turnstile_enabled needs the turnstile_secret_key secret file (it is empty)"
-                )
+        check_turnstile_settings(self)  # ADR 0025 section 7: no fake or test key in prod
         return self
 
     @property
@@ -547,18 +473,7 @@ class Settings(BaseSettings):
     @field_validator("public_base_url")
     @classmethod
     def _check_public_base_url(cls, value: str) -> str:
-        parts = urlsplit(value)
-        if (
-            parts.scheme not in ("http", "https")
-            or not parts.hostname
-            or parts.path not in ("", "/")
-            or parts.query
-            or parts.fragment
-            or parts.username
-            or parts.password
-        ):
-            raise ValueError("public_base_url must be an http(s) origin without a path")
-        return public_origin(value)
+        return check_public_base_url(value)
 
     @model_validator(mode="after")
     def _plain_smtp_only_locally(self) -> "Settings":
@@ -626,23 +541,8 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def _prod_trusts_only_private_proxies(self) -> "Settings":
-        # Section 9: a trusted proxy chooses the client address that rate limits bucket by. In
-        # prod the one trusted peer is the reverse proxy on a private Docker network (swag,
-        # docs/runbooks/vps-deploy.md); a public range (Cloudflare's included: swag restores the
-        # client from CF-Connecting-IP, never this app) would let the open internet pick its own.
-        if self.environment != "prod":
-            return self
-        networks = self.trusted_proxy_networks
-        if not all(net.is_private for net in networks):
-            raise ValueError("trusted_proxies must be private addresses when environment is prod")
-        # #495: exactly one host (/32 or /128), never a range or a list. A range on the proxy
-        # network would let any other container there forge X-Forwarded-For and choose its
-        # rate-limit bucket. Empty (nothing trusted) stays allowed: it fails closed.
-        if len(networks) > 1 or any(net.prefixlen != net.max_prefixlen for net in networks):
-            raise ValueError(
-                "trusted_proxies must be one address (not a range or a list) when environment "
-                "is prod"
-            )
+        if self.environment == "prod":
+            check_prod_trusted_proxies(self.trusted_proxy_networks)  # section 9, #495
         return self
 
     @field_validator("trusted_proxies")
