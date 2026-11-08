@@ -1,6 +1,6 @@
-"""The plan edit's pure rules (ADR 0011 section 4; #496): the table's ranges, the environment's
-upper bounds, which edits are refused and the audit params of an edit. No database, no request:
-``classbeat.admin.settings`` calls these inside its ``admin_session``."""
+"""The plan edit's pure rules (ADR 0011 section 4; #496, #809): the table's ranges, the
+environment's upper bounds, which edits are refused and the audit params of an edit. No database,
+no request: ``classbeat.admin.plans`` calls these inside its ``admin_session``."""
 
 import re
 from datetime import date
@@ -19,6 +19,12 @@ LIMITS = tuple(HARD_BOUNDS)
 GATES = ("games_allowed", "races_allowed", "ftp_tests_allowed")
 PRICE_CENTS = ("monthly_price_cents", "intro_price_cents")
 PRICES = (*PRICE_CENTS, "intro_price_until", "currency")
+# The Save and Update caps (#806, #809): the table's checks (migration 0042), NULL = the setting.
+# No environment bound: a value above ``CLASSBEAT_SAVES_PER_*`` is stored and has no effect
+# (``classbeat.quota.save_caps_policy`` takes the smaller of the two).
+SAVE_CAPS = {"saves_per_hour": (1, 1000), "saves_per_day": (1, 10_000)}
+# Sent as ``null``, these are cleared (set to NULL); a limit or gate sent as ``null`` is left out.
+NULLABLE = (*PRICES, *SAVE_CAPS)
 PRICE_RANGE = (0, 10_000_000)  # migration 0026
 INTRO_UNTIL_RANGE = (date(2020, 1, 1), date(2100, 12, 31))
 CURRENCY = re.compile(r"[A-Z]{3}")
@@ -46,7 +52,7 @@ def plan_params(asked: dict[str, Any]) -> dict[str, Any]:
     """The audit params of a plan edit: numbers, gates, an ISO date and a currency code; a
     currency that is not three capital letters (free text) is left out."""
     params: dict[str, Any] = {}
-    cleared = [name for name in PRICES if name in asked and asked[name] is None]
+    cleared = [name for name in NULLABLE if name in asked and asked[name] is None]
     for name, value in asked.items():
         if value is None or (name == "currency" and not CURRENCY.fullmatch(value)):
             continue
@@ -57,7 +63,8 @@ def plan_params(asked: dict[str, Any]) -> dict[str, Any]:
 
 
 def plan_refusal(asked: dict[str, Any], bounds: dict[str, int]) -> str | None:
-    """``out_of_range`` for a value the table refuses, ``above_environment_bound`` for a limit
+    """``out_of_range`` for a value the table refuses (a save cap included; ``null`` clears one),
+    ``above_environment_bound`` for a limit
     within the table's range but over the environment's bound, ``invalid_value`` for a currency
     that is not three capital letters; ``nothing_to_change`` for none."""
     if not asked:
@@ -69,6 +76,10 @@ def plan_refusal(asked: dict[str, Any], bounds: dict[str, int]) -> str | None:
                 return "out_of_range"
             if value > bounds[name]:
                 return "above_environment_bound"
+        elif name in SAVE_CAPS and value is not None:
+            low, high = SAVE_CAPS[name]
+            if not low <= value <= high:
+                return "out_of_range"
         elif name in PRICE_CENTS and value is not None:
             if not PRICE_RANGE[0] <= value <= PRICE_RANGE[1]:
                 return "out_of_range"

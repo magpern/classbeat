@@ -5,14 +5,13 @@ per action, and the limiter that keeps refusal rows from flooding the table.
 (``extra="forbid"``, bounded fields), and ``admin_session`` refuses an action that is not listed
 or params its model rejects, before it opens a connection. The admin feature modules (#218,
 #220, #221, #222, #223) add their actions to ``ACTIONS``. The free-text validators and types the
-feature modules' fields use are in ``classbeat.admin.audit_text``.
+feature modules' fields use are in ``classbeat.admin.audit_text``, the refusal-row limiter in
+``classbeat.admin.refusal_limiter`` (re-exported here).
 """
 
 import json
-import logging
-import time
 from collections.abc import Mapping
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import date
 from typing import Annotated, Any, Final, Literal
 from uuid import UUID
@@ -27,7 +26,7 @@ from pydantic import (
     ValidationError,
 )
 
-logger = logging.getLogger(__name__)
+from classbeat.admin.refusal_limiter import RefusalLimiter as RefusalLimiter
 
 MAX_PARAMS_BYTES: Final = 2048
 OUTCOMES: Final = ("ok", "refused", "error")
@@ -167,13 +166,16 @@ class MailTestParams(Params):
     kind: Annotated[str, StringConstraints(pattern=r"^[a-z][a-z_]{0,39}$")]
 
 
-PlanPrice = Literal["monthly_price_cents", "intro_price_cents", "intro_price_until", "currency"]
+PlanCleared = Literal[
+    "monthly_price_cents", "intro_price_cents", "intro_price_until", "currency",
+    "saves_per_hour", "saves_per_day",
+]  # fmt: skip
 
 
 class PlanUpdateParams(Params):
-    """A plan edit (AD4 #222, #496): the limits, gates and prices asked for (refused ones
-    included), the prices cleared by name; a currency only as three capital letters, a date only
-    as a date, so no free text."""
+    """A plan edit (AD4 #222, #496, #809): the limits, gates, prices and save caps asked for
+    (refused ones included), the prices and save caps cleared by name; a currency only as three
+    capital letters, a date only as a date, so no free text."""
 
     classes_per_month: Annotated[int, Field(ge=-(10**12), le=10**12)] | None = None
     revisions_per_class: Annotated[int, Field(ge=-(10**12), le=10**12)] | None = None
@@ -187,7 +189,9 @@ class PlanUpdateParams(Params):
     intro_price_cents: Annotated[int, Field(ge=-(10**12), le=10**12)] | None = None
     intro_price_until: date | None = None
     currency: Annotated[str, StringConstraints(pattern=r"^[A-Z]{3}$")] | None = None
-    cleared: list[PlanPrice] | None = None
+    saves_per_hour: Annotated[int, Field(ge=-(10**12), le=10**12)] | None = None
+    saves_per_day: Annotated[int, Field(ge=-(10**12), le=10**12)] | None = None
+    cleared: list[PlanCleared] | None = None
 
 
 MODEL_PATTERN: Final = r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,99}$"
@@ -293,31 +297,3 @@ class Target:
     user_id: UUID | None = None
     kind: str | None = None
     id: str | None = None
-
-
-@dataclass(slots=True)
-class RefusalLimiter:
-    """Refusal rows per minute (ADR 0011 section 6): at most ``per_admin`` per admin and
-    ``total`` overall, in fixed one-minute windows of this process; beyond that a log count.
-    Neither the table nor the maint pool (2 connections) can be exhausted by refusals."""
-
-    per_admin: int = 20
-    total: int = 100
-    clock: Any = time.monotonic
-    _window: float = -1.0
-    _counts: dict[UUID, int] = field(default_factory=lambda: dict[UUID, int]())
-    _total: int = 0
-    _dropped: int = 0
-
-    def allow(self, admin_id: UUID) -> bool:
-        window = float(int(self.clock() // 60))
-        if window != self._window:
-            if self._dropped:
-                logger.warning("admin refusal rows not written", extra={"dropped": self._dropped})
-            self._window, self._counts, self._total, self._dropped = window, {}, 0, 0
-        if self._total >= self.total or self._counts.get(admin_id, 0) >= self.per_admin:
-            self._dropped += 1
-            return False
-        self._counts[admin_id] = self._counts.get(admin_id, 0) + 1
-        self._total += 1
-        return True

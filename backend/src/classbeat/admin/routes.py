@@ -178,6 +178,7 @@ def install(app: Any) -> None:
         jobs,
         mail,
         models,
+        plans,
         settings,
         usage,
         users,
@@ -193,6 +194,7 @@ def install(app: Any) -> None:
         abuse.router,
         codes.router,
         settings.router,
+        plans.router,
         models.router,
         mail.router,
     ):

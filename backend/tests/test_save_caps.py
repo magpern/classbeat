@@ -25,7 +25,7 @@ from classbeat.quota import bounds
 from classbeat.saving import kind as save_kind
 from classbeat.saving import update as update_kind
 from ctx import make_context
-from jobtools import new_job
+from jobtools import grant_plan, new_job
 from optools import TOKEN_B
 from savetools import FakeMowlPrograms, Saved, SaveEnv
 from updatetools import UpdateEnv
@@ -115,17 +115,19 @@ async def test_save_at_the_hour_cap_is_409_and_creates_nothing(
 
 @pytest.fixture
 def plan_caps(senv: SaveEnv) -> Iterator[Callable[..., None]]:
-    """Set ``pro``'s own caps; ``plans`` is shared by the whole database, so reset them after."""
+    """Set a plan's own caps (``pro`` unless named); ``plans`` is shared by the whole database, so
+    every plan's are reset after."""
 
-    def set_caps(hour: int | None, day: int | None) -> None:
+    def set_caps(hour: int | None, day: int | None, plan: str = "pro") -> None:
         senv.sql(
-            "UPDATE plans SET saves_per_hour = :h, saves_per_day = :d WHERE id = 'pro'",
+            "UPDATE plans SET saves_per_hour = :h, saves_per_day = :d WHERE id = :p",
             h=hour,
             d=day,
+            p=plan,
         )
 
     yield set_caps
-    set_caps(None, None)
+    senv.sql("UPDATE plans SET saves_per_hour = NULL, saves_per_day = NULL")
 
 
 async def test_a_plan_value_tightens_the_setting(
@@ -176,9 +178,66 @@ async def test_a_plan_without_a_value_uses_the_setting(
 
 
 def test_the_plan_columns_are_range_checked(senv: SaveEnv, plan_caps: Any) -> None:
-    for column, bad in (("saves_per_hour", 0), ("saves_per_hour", 1001), ("saves_per_day", 10001)):
+    for column, bad in (
+        ("saves_per_hour", 0),
+        ("saves_per_hour", 1001),
+        ("saves_per_day", 0),
+        ("saves_per_day", 10001),
+    ):
         with pytest.raises(Exception, match=f"plans_{column}"):
             senv.sql(f"UPDATE plans SET {column} = :v WHERE id = 'pro'", v=bad)  # noqa: S608
+
+
+def move_to(senv: SaveEnv, owner: UUID, plan: str) -> None:
+    """End the user's grants and give them ``plan`` instead (``effective_plan`` takes the highest
+    active grant, so the old one must go)."""
+    senv.sql("UPDATE entitlements SET revoked_at = now() WHERE owner_id = :o", o=owner)
+    grant_plan(senv.ops.admin, owner, plan)
+
+
+async def test_a_plan_cap_leaves_users_on_other_plans_alone(
+    senv: SaveEnv, save_browser: Any, caps: Any, plan_caps: Any
+) -> None:
+    """``instructor`` allows one Save an hour, ``pro`` has no value of its own: only the user on
+    ``instructor`` is refused (#809, N2)."""
+    caps(hour=10, day=10)
+    on_pro = await senv.saved_class()
+    on_instructor = await senv.saved_class(TOKEN_B)
+    move_to(senv, on_instructor.owner, "instructor")
+    plan_caps(hour=1, day=None, plan="instructor")
+    plan_caps(hour=1, day=None, plan="free")
+    for saved in (on_pro, on_instructor):
+        plant(senv, saved.owner, "save_workout")
+    detail = await refused_save(senv, save_browser, on_instructor)
+    assert (detail["limit"], detail["used"], detail["window"]) == (1, 1, "hour")
+    browser = await save_browser(on_pro)
+    assert (await browser.save()).status_code == 201
+
+
+async def test_a_plan_change_takes_effect_on_the_next_request(
+    senv: SaveEnv, save_browser: Any, caps: Any, plan_caps: Any
+) -> None:
+    """The cap is read from the plan on every request (#809, N2): a new value, a cleared value and
+    a move to another plan each apply to the very next Save, with no restart or cache."""
+    caps(hour=3, day=10)
+    saved = await senv.saved_class()
+    plant(senv, saved.owner, "save_workout")
+    plan_caps(hour=1, day=None)
+    assert (await refused_save(senv, save_browser, saved))["limit"] == 1
+    plan_caps(hour=None, day=None)  # cleared: the setting's 3 applies again
+    browser = await save_browser(saved)
+    created = await browser.save()
+    assert created.status_code == 201  # two used of three
+    # End it, so the next request meets the cap and not the job still running.
+    cancelled = await browser.browser.post(f"/api/jobs/{created.json()['id']}/cancel", {})
+    assert cancelled.status_code == 200, cancelled.text
+    plan_caps(hour=2, day=None)  # the plan's value tightens it again
+    assert (await refused_save(senv, save_browser, saved))["limit"] == 2
+    plan_caps(hour=1, day=None, plan="instructor")
+    plan_caps(hour=None, day=None)
+    move_to(senv, saved.owner, "instructor")  # the user's plan changes
+    detail = await refused_save(senv, save_browser, saved)
+    assert (detail["limit"], detail["used"]) == (1, 2)
 
 
 async def test_the_hour_rolls(senv: SaveEnv, save_browser: Any, caps: Any) -> None:
@@ -259,3 +318,28 @@ async def test_update_is_capped_too(uenv: UpdateEnv, senv: SaveEnv, caps: Any) -
             with pytest.raises(QuotaRefused) as refused:
                 await admit(db, ctx, parsed)
         assert refused.value.detail() == {"quota": "saves", "limit": 2, "used": 2, "window": "hour"}
+
+
+async def test_the_plan_cap_applies_on_the_update_path(
+    uenv: UpdateEnv, senv: SaveEnv, caps: Any, plan_caps: Any
+) -> None:
+    """Update's ``admit`` reads the plan's cap too, not only Save's (#809, N2): the setting allows
+    10, the user's plan (``pro``) 2."""
+    live = await uenv.live()  # one real Save job: it counts
+    saved = live.saved
+    ctx = make_context(saved.owner, connections=[("mowl", saved.connection)])
+    update_in = saving.UpdateWorkoutInput.model_validate(live.input())
+    caps(hour=10, day=10)
+    plan_caps(hour=2, day=None)
+    async with user_session(senv.ops.factory, ctx) as db:
+        assert isinstance(await update_kind.admit(db, ctx, update_in), update_kind.Admitted)
+    plant(senv, saved.owner, "update_workout")
+    async with user_session(senv.ops.factory, ctx) as db:
+        with pytest.raises(QuotaRefused) as refused:
+            await update_kind.admit(db, ctx, update_in)
+    assert refused.value.detail() == {"quota": "saves", "limit": 2, "used": 2, "window": "hour"}
+    plan_caps(hour=None, day=1)  # the day's cap of the plan, on the same path
+    async with user_session(senv.ops.factory, ctx) as db:
+        with pytest.raises(QuotaRefused) as refused:
+            await update_kind.admit(db, ctx, update_in)
+    assert refused.value.detail() == {"quota": "saves", "limit": 1, "used": 2, "window": "day"}

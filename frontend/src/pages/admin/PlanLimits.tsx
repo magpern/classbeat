@@ -6,23 +6,7 @@ import { Button } from '../../components/ui/button'
 import { Switch } from '../../components/ui/switch'
 import { useAdminWrite } from './StepUp'
 import { when } from './Table'
-
-/** Whole dollars and cents typed by the admin as micro-dollars; null when it is not a number. */
-export function micros(typed: string): number | null {
-  if (!/^\d+(\.\d{1,2})?$/.test(typed.trim())) return null
-  return Math.round(Number(typed.trim()) * 100) * 10_000
-}
-
-/** Price in whole cents from typed currency units ("9.90"); blank clears (null); undefined if malformed. */
-export function cents(typed: string): number | null | undefined {
-  if (typed.trim() === '') return null
-  if (!/^\d+(\.\d{1,2})?$/.test(typed.trim())) return undefined
-  return Math.round(Number(typed.trim()) * 100)
-}
-
-function centsText(value: number | null): string {
-  return value === null ? '' : (value / 100).toFixed(2)
-}
+import { SAVES_PER_DAY_RANGE, SAVES_PER_HOUR_RANGE, cap, capText, cents, centsText, micros, whole } from './planInput'
 
 function SwitchRow({
   label,
@@ -40,10 +24,6 @@ function SwitchRow({
       <label htmlFor={id}>{label}</label>
     </div>
   )
-}
-
-function whole(typed: string): number | null {
-  return /^\d+$/.test(typed.trim()) ? Number(typed.trim()) : null
 }
 
 /**
@@ -89,6 +69,8 @@ function PlanForm({ plan, bounds, onChanged }: { plan: Plan; bounds: Bounds; onC
   const [intro, setIntro] = useState(centsText(plan.introPriceCents))
   const [until, setUntil] = useState(plan.introPriceUntil ?? '')
   const [currency, setCurrency] = useState(plan.currency ?? '')
+  const [perHour, setPerHour] = useState(capText(plan.savesPerHour))
+  const [perDay, setPerDay] = useState(capText(plan.savesPerDay))
   const [local, setLocal] = useState<string | null>(null)
 
   const submit = (event: FormEvent) => {
@@ -121,6 +103,12 @@ function PlanForm({ plan, bounds, onChanged }: { plan: Plan; bounds: Bounds; onC
       setLocal('The currency is a three-letter code such as USD or SEK, or empty for none.')
       return
     }
+    const hourCap = cap(perHour, ...SAVES_PER_HOUR_RANGE)
+    const dayCap = cap(perDay, ...SAVES_PER_DAY_RANGE)
+    if (hourCap === undefined || dayCap === undefined) {
+      setLocal('Saves per hour are 1 to 1000 and saves per day 1 to 10000, or empty for the server setting.')
+      return
+    }
     const until_ = until.trim() === '' ? null : until.trim()
     setLocal(null)
     const changed: Limits = {}
@@ -136,6 +124,8 @@ function PlanForm({ plan, bounds, onChanged }: { plan: Plan; bounds: Bounds; onC
     if (introCents !== plan.introPriceCents) changed.introPriceCents = introCents
     if (until_ !== plan.introPriceUntil) changed.introPriceUntil = until_
     if ((code === '' ? null : code) !== plan.currency) changed.currency = code === '' ? null : code
+    if (hourCap !== plan.savesPerHour) changed.savesPerHour = hourCap
+    if (dayCap !== plan.savesPerDay) changed.savesPerDay = dayCap
     if (Object.keys(changed).length === 0) {
       setLocal('Nothing was changed.')
       return
@@ -244,6 +234,33 @@ function PlanForm({ plan, bounds, onChanged }: { plan: Plan; bounds: Bounds; onC
             value={currency}
             onChange={(e) => {
               setCurrency(e.target.value)
+            }}
+          />
+        </div>
+      </fieldset>
+      <fieldset className="m-0 flex flex-col gap-1 border-0 p-0">
+        <legend className="mb-1 p-0 font-medium">Saves to MOWL</legend>
+        <p className="m-0 text-[0.875rem] text-muted">
+          Save and Update together, per user. Leave empty for the server setting. A larger number than the server
+          setting has no effect.
+        </p>
+        <div className="flex flex-wrap items-end gap-2">
+          <Field
+            label="Saves per hour"
+            inputMode="numeric"
+            hint={`Server setting: ${String(bounds.savesPerHour)}.`}
+            value={perHour}
+            onChange={(e) => {
+              setPerHour(e.target.value)
+            }}
+          />
+          <Field
+            label="Saves per day"
+            inputMode="numeric"
+            hint={`Server setting: ${String(bounds.savesPerDay)}.`}
+            value={perDay}
+            onChange={(e) => {
+              setPerDay(e.target.value)
             }}
           />
         </div>

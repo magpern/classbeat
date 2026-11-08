@@ -109,16 +109,18 @@ GRANT INSERT, UPDATE (expires_at) ON public.invites TO classbeat_maint;
 
 -- Tiers (ADR 0011 sections 1 and 2).
 -- The class length cap, the feature gates and the prices of migration 0026 (#496) are read and
--- edited here too; the prices are shown in the admin area only (billing is off).
+-- edited here too; the prices are shown in the admin area only (billing is off). So are the
+-- plan's own Save and Update caps of migration 0042 (#806; edited by #809, NULL = the setting).
 GRANT SELECT (id, name, rank, classes_per_month, revisions_per_class, concurrent_jobs,
               monthly_cost_micros, route_key, features, created_at, updated_at, updated_by,
               max_class_minutes, games_allowed, races_allowed, ftp_tests_allowed,
-              monthly_price_cents, intro_price_cents, intro_price_until, currency)
+              monthly_price_cents, intro_price_cents, intro_price_until, currency,
+              saves_per_hour, saves_per_day)
   ON public.plans TO classbeat_maint;
 GRANT UPDATE (classes_per_month, revisions_per_class, concurrent_jobs, monthly_cost_micros,
               max_class_minutes, games_allowed, races_allowed, ftp_tests_allowed,
               monthly_price_cents, intro_price_cents, intro_price_until, currency,
-              updated_at, updated_by)
+              saves_per_hour, saves_per_day, updated_at, updated_by)
   ON public.plans TO classbeat_maint;
 GRANT SELECT (id, label, plan_id, features, grant_days, max_redemptions, redeemed_count,
               expires_at, disabled_at, created_by, created_at)

@@ -7,7 +7,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, StrictBool, StrictInt
 
-from classbeat.admin.plan_rules import GATES, LIMITS, PRICES
+from classbeat.admin.plan_rules import GATES, LIMITS, NULLABLE
 
 
 class Out(BaseModel):
@@ -51,6 +51,9 @@ class PlanOut(Out):
     intro_price_cents: int | None
     intro_price_until: date | None
     currency: str | None
+    # The plan's own Save and Update caps (#806, #809); None = the environment's setting.
+    saves_per_hour: int | None
+    saves_per_day: int | None
     features: list[str]
     updated_at: datetime
     updated_by: PersonOut | None
@@ -63,6 +66,10 @@ class BoundsOut(Out):
     monthly_cost_micros: int
     max_class_minutes: int
     trial_days: int
+    # ``CLASSBEAT_SAVES_PER_HOUR`` and ``_PER_DAY``: what a plan without a value (or a larger one)
+    # gets; a plan's own value can only tighten them.
+    saves_per_hour: int
+    saves_per_day: int
 
 
 class ReadOnlyOut(Out):
@@ -99,11 +106,13 @@ class PlanIn(In):
     intro_price_cents: StrictInt | None = Field(default=None, ge=-(10**12), le=10**12)
     intro_price_until: date | None = None
     currency: str | None = Field(default=None, max_length=8)
+    saves_per_hour: StrictInt | None = Field(default=None, ge=-(10**12), le=10**12)
+    saves_per_day: StrictInt | None = Field(default=None, ge=-(10**12), le=10**12)
 
     def asked(self) -> dict[str, Any]:
-        """What the edit changes: every limit and gate given a value, and every price named at
-        all (``null`` clears a price)."""
+        """What the edit changes: every limit and gate given a value, and every price and save
+        cap named at all (``null`` clears it)."""
         sent = self.model_dump()
         out: dict[str, Any] = {k: sent[k] for k in (*LIMITS, *GATES) if sent[k] is not None}
-        out.update({k: sent[k] for k in PRICES if k in self.model_fields_set})
+        out.update({k: sent[k] for k in NULLABLE if k in self.model_fields_set})
         return out

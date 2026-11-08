@@ -737,7 +737,9 @@ with 409 `quota` `saves` (`limit`, `used`, `window`). A plan may carry smaller v
 (#806, migration `0042_plan_save_caps`: `plans.saves_per_hour` 1 to 1000 and `plans.saves_per_day`
 1 to 10 000, NULL on every plan): the effective cap is the smaller of the plan's value and the
 setting, so a plan can only tighten them, and a plan without a value uses the setting. The 409
-body is unchanged (`limit` is the effective cap).
+body is unchanged (`limit` is the effective cap). The admin sets and clears them on the Settings
+page (#809, `PATCH /api/admin/plans/{id}`, the table's ranges, audited as `plan.update`;
+`classbeat_maint` holds `SELECT` and `UPDATE` on the two columns).
 
 **Residual risk.** The user's buckets are shared with whoever holds the session: a script can use
 them up and slow the user down for up to an hour (sign-out stays open). The buckets are per user,
