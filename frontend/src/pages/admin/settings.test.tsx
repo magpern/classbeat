@@ -56,7 +56,7 @@ function plan(id: string, name: string, rank: number, limits: [number, number, n
 }
 
 function view(
-  overrides: { songPicking?: string; swedebeat?: string; trialDays?: number; signupStored?: string | null } = {},
+  overrides: { songPicking?: string; swedebeat?: string; trialDays?: number; signupStored?: string | null; banner?: { text: string; level: string } | null } = {},
 ) {
   const stored = overrides.signupStored ?? null
   return {
@@ -72,7 +72,18 @@ function view(
       flagRow('song_picking', { effective: 'off', environment: overrides.songPicking ?? 'off' }),
       flagRow('swedebeat_enabled', { effective: 'off', environment: overrides.swedebeat ?? 'off' }),
       flagRow('trial', { environment: { plan: null, days: 0 } }),
-      flagRow('banner', {}),
+      flagRow(
+        'banner',
+        overrides.banner
+          ? {
+              source: 'database',
+              effective: overrides.banner,
+              stored: overrides.banner,
+              updated_at: '2026-10-31T09:00:00Z',
+              updated_by: ANN,
+            }
+          : {},
+      ),
     ],
     plans: [
       plan('free', 'Free', 0, [3, 3, 1, 10_000_000]),
@@ -231,6 +242,33 @@ describe('admin settings', () => {
     })
     expect(api.to('DELETE', '/api/admin/settings/signup_mode')).toHaveLength(1)
     expect(screen.queryByRole('button', { name: "Use the environment's value" })).toBeNull()
+  })
+
+  it('removes a set banner with a labelled button that calls the clear action', async () => {
+    let cleared = false
+    const api = adminApi({
+      [`GET ${SETTINGS}`]: () => view({ banner: cleared ? null : { text: 'Back at nine', level: 'info' } }),
+      'DELETE /api/admin/settings/banner': () => {
+        cleared = true
+        return view().flags[4]
+      },
+    })
+    renderAt('/admin/settings')
+    const banner = await screen.findByRole('region', { name: 'Banner' })
+    expect(within(banner).queryByRole('button', { name: "Use the environment's value" })).toBeNull()
+    fireEvent.click(within(banner).getByRole('button', { name: 'Remove banner' }))
+    await waitFor(() => {
+      expect(within(screen.getByTestId('flag-banner')).getByText('no banner')).toBeInTheDocument()
+    })
+    expect(api.to('DELETE', '/api/admin/settings/banner')).toHaveLength(1)
+    expect(within(banner).queryByRole('button', { name: 'Remove banner' })).toBeNull()
+  })
+
+  it('shows no Remove banner button while no banner is set', async () => {
+    adminApi({ [`GET ${SETTINGS}`]: view() })
+    renderAt('/admin/settings')
+    const banner = await screen.findByRole('region', { name: 'Banner' })
+    expect(within(banner).queryByRole('button', { name: 'Remove banner' })).toBeNull()
   })
 
   it('sends only the plan limits that changed, and shows a refusal in words', async () => {
