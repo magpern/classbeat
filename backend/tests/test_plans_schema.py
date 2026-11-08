@@ -236,9 +236,12 @@ def test_the_role_guard_fails_on_a_new_column_grant_or_a_wider_table_grant(
         ),
         (
             "GRANT SELECT ON public.plans TO classbeat_app",
-            # A table-level REVOKE drops the column grants too: put migration 0030's back.
+            # A table-level REVOKE drops the column grants too: put those of migrations 0030
+            # and 0042 back.
             "REVOKE ALL ON public.plans FROM classbeat_app; "
-            + migration_module("plan_price_privilege").APP_GRANT,
+            + migration_module("plan_price_privilege").APP_GRANT
+            + "; "
+            + migration_module("plan_save_caps").GRANT,
         ),
     ):
         admin.execute(text(grant))

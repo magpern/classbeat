@@ -733,8 +733,11 @@ limited, so a user can always end every session, a script's included.
 account were bounded only by the per-user job limit. Both kinds' `admit` now count the user's
 `save_workout` and `update_workout` jobs created in the last hour and the last 24 hours
 (`CLASSBEAT_SAVES_PER_HOUR`, 30; `CLASSBEAT_SAVES_PER_DAY`, 100), under the owner lock, and refuse
-with 409 `quota` `saves` (`limit`, `used`, `window`). No plan has its own value yet; a plan column
-that tightens them is a later change.
+with 409 `quota` `saves` (`limit`, `used`, `window`). A plan may carry smaller values of its own
+(#806, migration `0042_plan_save_caps`: `plans.saves_per_hour` 1 to 1000 and `plans.saves_per_day`
+1 to 10 000, NULL on every plan): the effective cap is the smaller of the plan's value and the
+setting, so a plan can only tighten them, and a plan without a value uses the setting. The 409
+body is unchanged (`limit` is the effective cap).
 
 **Residual risk.** The user's buckets are shared with whoever holds the session: a script can use
 them up and slow the user down for up to an hour (sign-out stays open). The buckets are per user,

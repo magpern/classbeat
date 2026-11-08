@@ -139,7 +139,8 @@ SELECT format('GRANT SELECT (%s) ON TABLE public.plans TO classbeat_app',
    AND attname = ANY (ARRAY['id', 'name', 'rank', 'classes_per_month', 'revisions_per_class',
                             'concurrent_jobs', 'monthly_cost_micros', 'route_key', 'features',
                             'created_at', 'updated_at', 'updated_by', 'max_class_minutes',
-                            'games_allowed', 'races_allowed', 'ftp_tests_allowed'])
+                            'games_allowed', 'races_allowed', 'ftp_tests_allowed',
+                            'saves_per_hour', 'saves_per_day'])
 HAVING count(*) > 0 \gexec
 SELECT 'REVOKE ALL ON TABLE public.app_settings FROM classbeat_app',
        'GRANT SELECT ON TABLE public.app_settings TO classbeat_app'

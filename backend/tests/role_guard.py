@@ -78,6 +78,7 @@ APP_PLAN_COLUMNS = frozenset(
         "id", "name", "rank", "classes_per_month", "revisions_per_class", "concurrent_jobs",
         "monthly_cost_micros", "route_key", "features", "created_at", "updated_at", "updated_by",
         "max_class_minutes", "games_allowed", "races_allowed", "ftp_tests_allowed",
+        "saves_per_hour", "saves_per_day",
     }
 )  # fmt: skip
 # The only column-level privileges in public, exactly: (table, column) -> {(grantee, privilege)}.

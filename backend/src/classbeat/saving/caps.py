@@ -9,9 +9,10 @@ was already created never reaches it (the idempotency key is checked before ``ad
 
 What counts is every ``save_workout`` and ``update_workout`` job the user created in the last
 hour and in the last 24 hours (rolling, by the database's clock), whatever became of it: a job
-that failed may still have reached MOWL. Above ``CLASSBEAT_SAVES_PER_HOUR`` or
-``CLASSBEAT_SAVES_PER_DAY`` the request is a 409 ``quota`` ``saves`` with ``limit``, ``used`` and
-``window`` (``hour`` or ``day``), and nothing is created.
+that failed may still have reached MOWL. Above the hour's or the day's cap (the user's plan value
+under ``CLASSBEAT_SAVES_PER_HOUR`` or ``CLASSBEAT_SAVES_PER_DAY``, which a plan can only tighten:
+``classbeat.quota.save_caps_policy``, #806) the request is a 409 ``quota`` ``saves`` with
+``limit``, ``used`` and ``window`` (``hour`` or ``day``), and nothing is created.
 """
 
 from typing import Final
@@ -21,7 +22,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from classbeat.context import UserContext, require_context
 from classbeat.jobs.credits import QuotaRefused
+from classbeat.plans.resolve import effective_plan
 from classbeat.quota import bounds as quota_bounds
+from classbeat.quota.save_caps_policy import effective_save_caps
 
 WRITE_KINDS: Final = ("save_workout", "update_workout")
 
@@ -37,8 +40,12 @@ async def check_write_caps(db: AsyncSession, ctx: UserContext) -> None:
     jobs as the hour's or the day's cap allows."""
     ctx = require_context(ctx)
     bounds = quota_bounds.current()
+    plan = await effective_plan(db, ctx)
+    caps = effective_save_caps(
+        plan.saves_per_hour, plan.saves_per_day, bounds.saves_per_hour, bounds.saves_per_day
+    )
     row = (await db.execute(_COUNTS, {"o": ctx.user_id, "kinds": list(WRITE_KINDS)})).one()
-    if row.hour >= bounds.saves_per_hour:
-        raise QuotaRefused("saves", limit=bounds.saves_per_hour, used=row.hour, window="hour")
-    if row.day >= bounds.saves_per_day:
-        raise QuotaRefused("saves", limit=bounds.saves_per_day, used=row.day, window="day")
+    if row.hour >= caps.per_hour:
+        raise QuotaRefused("saves", limit=caps.per_hour, used=row.hour, window="hour")
+    if row.day >= caps.per_day:
+        raise QuotaRefused("saves", limit=caps.per_day, used=row.day, window="day")

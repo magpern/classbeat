@@ -79,7 +79,12 @@ def test_plans_get_the_columns_of_migration_0030_and_no_price() -> None:
     grant = script.index("GRANT SELECT (%s) ON TABLE public.plans TO classbeat_app")
     assert grant > script.index("'REVOKE ALL ON TABLE public.plans FROM classbeat_app'")
     (listed,) = re.findall(r"attname = ANY \(ARRAY\[([^\]]*)\]\)", script[grant:])
-    assert re.findall(r"'(\w+)'", listed) == list(migration.APP_COLUMNS)
+    # Migration 0042 (#806) adds its two columns to the list.
+    assert re.findall(r"'(\w+)'", listed) == [
+        *migration.APP_COLUMNS,
+        "saves_per_hour",
+        "saves_per_day",
+    ]
     assert not set(migration.APP_COLUMNS) & set(migration.PRICE_COLUMNS)
 
 

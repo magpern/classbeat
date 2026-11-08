@@ -26,7 +26,7 @@ _ACTIVE = (
 _PLAN = text(
     "SELECT id, name, rank, classes_per_month, revisions_per_class, concurrent_jobs, "  # noqa: S608
     "monthly_cost_micros, route_key, features, max_class_minutes, games_allowed, races_allowed, "
-    "ftp_tests_allowed FROM plans WHERE id = coalesce(("
+    "ftp_tests_allowed, saves_per_hour, saves_per_day FROM plans WHERE id = coalesce(("
     "SELECT p.id FROM entitlements e JOIN plans p ON p.id = e.plan_id "
     f"WHERE {_ACTIVE} ORDER BY p.rank DESC LIMIT 1), :free)"
 )
@@ -54,6 +54,9 @@ class Plan:
     games: bool
     races: bool
     ftp_tests: bool
+    # Migration 0042 (#806): NULL (None) = the environment's setting; a value only tightens it.
+    saves_per_hour: int | None = None
+    saves_per_day: int | None = None
 
 
 async def effective_plan(db: AsyncSession, ctx: UserContext) -> Plan:
@@ -76,6 +79,8 @@ async def effective_plan(db: AsyncSession, ctx: UserContext) -> Plan:
         games=row.games_allowed,
         races=row.races_allowed,
         ftp_tests=row.ftp_tests_allowed,
+        saves_per_hour=row.saves_per_hour,
+        saves_per_day=row.saves_per_day,
     )
 
 

@@ -34,7 +34,7 @@ def applied_revisions(database_url: str) -> list[str]:
 
 def test_the_revisions_form_one_line() -> None:
     script = ScriptDirectory.from_config(alembic_config())
-    assert script.get_heads() == ["0041_passkeys"]
+    assert script.get_heads() == ["0042_plan_save_caps"]
     assert script.get_base() == "0001_baseline"
 
 
@@ -55,7 +55,7 @@ def test_upgrade_head_then_downgrade_base(
     config = alembic_config()
     try:
         command.upgrade(config, "head")
-        assert applied_revisions(database_url) == ["0041_passkeys"]
+        assert applied_revisions(database_url) == ["0042_plan_save_caps"]
         command.downgrade(config, "base")
         assert applied_revisions(database_url) == []
     finally:
@@ -756,5 +756,58 @@ def test_0041_passkeys_up_and_down(
     finally:
         with admin.begin() as connection:
             connection.execute(text("DELETE FROM users"))
+        admin.dispose()
+        command.downgrade(config, "base")
+
+
+def test_0042_plan_save_caps_up_and_down(
+    owner_database_url: str, database_url: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """#806: ``plans`` gains NULL ``saves_per_hour`` and ``saves_per_day`` that the app role may
+    read (column grant, migration 0030) but not write; the downgrade drops them, even with a
+    value."""
+    monkeypatch.setenv("CLASSBEAT_MIGRATIONS_DATABASE_URL", owner_database_url)
+    config = alembic_config()
+    admin = create_engine(database_url)
+
+    def columns() -> set[str]:
+        with admin.connect() as connection:
+            return set(
+                connection.execute(
+                    text(
+                        "SELECT column_name FROM information_schema.columns "
+                        "WHERE table_name = 'plans' AND column_name LIKE 'saves_per_%'"
+                    )
+                ).scalars()
+            )
+
+    try:
+        command.upgrade(config, "head")
+        assert columns() == {"saves_per_hour", "saves_per_day"}
+        with admin.begin() as connection:
+            assert (
+                connection.execute(
+                    text(
+                        "SELECT count(*) FROM plans WHERE saves_per_hour IS NOT NULL "
+                        "OR saves_per_day IS NOT NULL"
+                    )
+                ).scalar_one()
+                == 0
+            )
+            for column, privilege in (
+                ("saves_per_hour", "SELECT"),
+                ("saves_per_day", "SELECT"),
+                ("saves_per_hour", "UPDATE"),
+            ):
+                assert connection.execute(
+                    text("SELECT has_column_privilege('classbeat_app', 'public.plans', :c, :p)"),
+                    {"c": column, "p": privilege},
+                ).scalar_one() == (privilege == "SELECT"), (column, privilege)
+            connection.execute(text("UPDATE plans SET saves_per_hour = 5 WHERE id = 'free'"))
+        command.downgrade(config, "0041_passkeys")
+        assert columns() == set()
+        command.upgrade(config, "head")
+        assert columns() == {"saves_per_hour", "saves_per_day"}
+    finally:
         admin.dispose()
         command.downgrade(config, "base")
