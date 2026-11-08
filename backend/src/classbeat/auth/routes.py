@@ -29,6 +29,7 @@ from classbeat.auth.activity import (
     decode_cursor,
     list_activity,
 )
+from classbeat.auth.activity_schema import ActivityItemOut, ActivityOut
 from classbeat.auth.captcha import captcha_config
 from classbeat.auth.cookies import CSRF_COOKIE, clear_session_cookie, set_csrf_cookie
 from classbeat.auth.deps import current_session, request_ip, require_user
@@ -89,6 +90,7 @@ class SessionState(BaseModel):
     locales: list[str] = []
     # null while Turnstile is off; the same for everyone (no account is named).
     captcha: CaptchaOut | None = None
+    passkeys: bool = False  # CLASSBEAT_PASSKEYS: the sign-in and re-auth pages show passkey UI
 
 
 class SessionItem(BaseModel):
@@ -102,20 +104,6 @@ class SessionItem(BaseModel):
     # cleared by a re-authentication, MFA or step-up in that session.
     location_changed_at: datetime | None
     current: bool
-
-
-class ActivityItemOut(BaseModel):
-    id: UUID
-    kind: str
-    at: datetime
-    ip: str | None
-    provider: str | None  # google, github or microsoft, for the kinds that record one
-    other_session: bool  # a sign-out made from another session's list
-
-
-class ActivityOut(BaseModel):
-    events: list[ActivityItemOut]
-    next_before: str | None  # pass as ``before`` for the next, older page; null at the end
 
 
 def _factory(request: Request) -> async_sessionmaker[AsyncSession]:
@@ -172,6 +160,7 @@ async def get_session(
             ),
             locales=list(offered_locales(request.app.state.settings)),
             captcha=_captcha(request),
+            passkeys=request.app.state.settings.passkeys,
         )
     value = request.cookies.get(CSRF_COOKIE, "")
     if not value or len(value) > CSRF_VALUE_MAX:
@@ -182,6 +171,7 @@ async def get_session(
         csrf_token=value,
         locales=list(offered_locales(request.app.state.settings)),
         captcha=_captcha(request),
+        passkeys=request.app.state.settings.passkeys,
     )
 
 
@@ -263,6 +253,7 @@ async def list_own_events(
                 ip=item.ip,
                 provider=item.provider,
                 other_session=item.other_session,
+                passkey=item.passkey,
             )
             for item in page.items
         ],

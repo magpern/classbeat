@@ -506,6 +506,7 @@ npm run build        # typecheck, then Vite writes frontend/dist
 - Bundle budget (ADR 0013 section 11): `npm run check:bundle` (`scripts/bundle-size.ts`, after `npm run build`)
   gzips the scripts `dist/index.html` loads first (entry and static preloads, not lazy chunks like the admin
   area) and fails above 250 kB (1000 bytes per kB, as Vite reports); `src/bundleSize.test.ts` tests the rules.
+- Passkey UI (#777, ADR 0019 W6): `src/auth/webauthn.ts` (browser calls, feature detection, the `signal*` hints), `passkeyCeremony.ts` (start, browser, finish), `components/account/Passkeys.tsx` (account card), `components/auth/PasskeySignIn.tsx` with `usePasskeyAutofill.ts` (button and conditional mediation, restarted only while the page is visible), `PasskeyReauth.tsx` (re-authentication prompt) and `components/shell/PhoneSignInNotice.tsx` (shown when the client reported `authenticatorAttachment` exactly `cross-platform`; kept in sessionStorage). The public `GET /api/auth/session` carries `passkeys` (the flag) so the anonymous sign-in page knows whether to offer a passkey; `GET /api/auth/events` items carry `passkey` (true when `detail.method` is `passkey`). Tests use `src/test/passkeyMock.ts` (a fake `navigator.credentials`); `src/auth/passkeyCsp.test.ts` scans the files for inline style and script. axe runs in the e2e suite (W7), not under vitest.
 - CI runs the same commands in the `frontend` job, then `check:bundle`.
 
 ### Adding a language

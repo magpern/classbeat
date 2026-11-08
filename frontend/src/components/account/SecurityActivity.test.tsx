@@ -2,7 +2,7 @@ import { fireEvent, screen, within } from '@testing-library/react'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { ACTIVITY_KINDS } from '../../api/auth'
+import { ACTIVITY_KINDS } from '../../api/activity'
 import { en, type CatalogueKey } from '../../i18n/en'
 import { SIGNED_IN, fakeApi, json } from '../../test/fakeApi'
 import { renderAt } from '../../test/render'
@@ -54,6 +54,33 @@ describe('security activity', () => {
     expect(items[2]).toHaveTextContent('Password changed')
     expect(items[2]).not.toHaveTextContent('From')
     expect(screen.queryByRole('button', { name: 'Show older' })).toBeNull()
+  })
+
+  it('words passkey events, and the passkey method of sign-in and re-authentication', async () => {
+    fakeApi({
+      ...ACCOUNT,
+      'GET /api/auth/events': {
+        events: [
+          event('e1', 'sign_in', { passkey: true }),
+          event('e2', 'sign_in', { passkey: false }),
+          event('e3', 'reauth', { passkey: true }),
+          event('e4', 'reauth_failed', { passkey: true }),
+          event('e5', 'sign_in_failed', { passkey: true }),
+          event('e6', 'passkey_added'),
+          event('e7', 'passkey_counter_regressed'),
+        ],
+        next_before: null,
+      },
+    })
+    renderAt('/account#security')
+    const list = await activityList()
+    expect(await list.findByText('Signed in with a passkey')).toBeInTheDocument()
+    expect(list.getByText('Signed in')).toBeInTheDocument()
+    expect(list.getByText('Confirmed it was you with a passkey')).toBeInTheDocument()
+    expect(list.getByText('Failed attempt to confirm it was you with a passkey')).toBeInTheDocument()
+    expect(list.getByText('Failed sign-in attempt with a passkey')).toBeInTheDocument()
+    expect(list.getByText('Passkey added')).toBeInTheDocument()
+    expect(list.getByText('A passkey was used in a way that suggests it was copied')).toBeInTheDocument()
   })
 
   it('loads the next page with the cursor', async () => {

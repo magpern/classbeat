@@ -12,6 +12,7 @@ import { Devices } from '../components/account/Devices'
 import { ExportData } from '../components/account/ExportData'
 import { SecurityActivity } from '../components/account/SecurityActivity'
 import { Plan } from '../components/account/Plan'
+import { Passkeys } from '../components/account/Passkeys'
 import { SignInMethods } from '../components/account/SignInMethods'
 import { SpotifySummary } from '../components/account/Spotify'
 import { TwoFactor } from '../components/account/TwoFactor'
@@ -182,6 +183,7 @@ function Account() {
         </TabsContent>
         <TabsContent value="security" className="flex flex-col gap-4">
           <SignInMethods />
+          <Passkeys />
           <ChangePassword />
           <TwoFactor />
           <Devices

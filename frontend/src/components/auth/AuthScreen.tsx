@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
+import type { SignInOutcome } from '../../auth/passkeyCeremony'
 import { getOAuthProviders, startOAuth } from '../../api/auth'
 import { providerName } from '../../api/messages'
 import { Trans, useT } from '../../i18n/I18n'
@@ -6,6 +7,7 @@ import { goToProvider } from '../../lib/navigation'
 import { Link } from '../../router/Router'
 import { Field, Notice, useAction } from '../forms'
 import { AuthCard } from './AuthCard'
+import { PasskeySignIn } from './PasskeySignIn'
 import { useCaptcha } from './Turnstile'
 
 export type AuthMode = 'signin' | 'signup'
@@ -17,6 +19,11 @@ interface Props {
   notice?: string | null
   /** A link shown right under the notice (sign-in's "Create an account" for `no_account`). */
   noticeLink?: { to: string; text: string } | null
+  /**
+   * Passkey sign-in (ADR 0019 section 5): given only on the sign-in page, where the flag is on and
+   * the browser has WebAuthn. Adds the button, and the `webauthn` autofill token to the email field.
+   */
+  onPasskeySignedIn?: (outcome: SignInOutcome) => Promise<void>
   /** The email and password path; throws on failure, which is shown in plain language. */
   onSubmit: (values: {
     email: string
@@ -47,7 +54,7 @@ const COPY = {
  * server lists (`oauth_visible_providers`); none listed means no buttons and no divider.
  * Sign up carries the beta invite code once, for both ways of creating the account.
  */
-export function AuthScreen({ mode, returnTo, notice, noticeLink, onSubmit }: Props) {
+export function AuthScreen({ mode, returnTo, notice, noticeLink, onPasskeySignedIn, onSubmit }: Props) {
   const t = useT()
   const copy = COPY[mode]
   const [providers, setProviders] = useState<string[]>([])
@@ -129,9 +136,10 @@ export function AuthScreen({ mode, returnTo, notice, noticeLink, onSubmit }: Pro
           }}
         />
       ) : null}
-      {providers.length > 0 ? (
+      {providers.length > 0 || onPasskeySignedIn ? (
         <>
           <div className="auth__social">
+            {onPasskeySignedIn ? <PasskeySignIn onSignedIn={onPasskeySignedIn} /> : null}
             {providers.map((provider) => (
               <button
                 key={provider}
@@ -155,7 +163,7 @@ export function AuthScreen({ mode, returnTo, notice, noticeLink, onSubmit }: Pro
         <Field
           label={t('common.email')}
           type="email"
-          autoComplete={mode === 'signin' ? 'username' : 'email'}
+          autoComplete={mode === 'signin' ? (onPasskeySignedIn ? 'username webauthn' : 'username') : 'email'}
           value={email}
           onChange={(e) => {
             setEmail(e.target.value)

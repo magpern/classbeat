@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { listActivity, type ActivityEvent, type ActivityKind } from '../../api/auth'
+import { listActivity, type ActivityEvent, type ActivityKind } from '../../api/activity'
 import { providerName } from '../../api/messages'
 import type { CatalogueKey } from '../../i18n/en'
 import { dateTime } from '../../i18n/format'
@@ -28,6 +28,10 @@ const LABELS: Record<ActivityKind, CatalogueKey> = {
   mfa_failed: 'activity.kind.mfa_failed',
   mfa_reset: 'activity.kind.mfa_reset',
   session_location_changed: 'activity.kind.session_location_changed',
+  passkey_added: 'activity.kind.passkey_added',
+  passkey_renamed: 'activity.kind.passkey_renamed',
+  passkey_removed: 'activity.kind.passkey_removed',
+  passkey_counter_regressed: 'activity.kind.passkey_counter_regressed',
 }
 
 /** The kinds that can name the provider they used (`{provider}` in the text). */
@@ -38,9 +42,19 @@ const WITH_PROVIDER: Partial<Record<ActivityKind, CatalogueKey>> = {
   identity_linked: 'activity.kind.identity_linked.provider',
 }
 
+/** The kinds a passkey can cause (`method: passkey`, ADR 0019). */
+const WITH_PASSKEY: Partial<Record<ActivityKind, CatalogueKey>> = {
+  sign_in: 'activity.kind.sign_in.passkey',
+  sign_in_failed: 'activity.kind.sign_in_failed.passkey',
+  reauth: 'activity.kind.reauth.passkey',
+  reauth_failed: 'activity.kind.reauth_failed.passkey',
+}
+
 function useLabel() {
   const t = useT()
   return (event: ActivityEvent): string => {
+    const withPasskey = WITH_PASSKEY[event.kind]
+    if (event.passkey && withPasskey !== undefined) return t(withPasskey)
     const withProvider = WITH_PROVIDER[event.kind]
     if (event.provider !== null && withProvider !== undefined) {
       return t(withProvider, { provider: providerName(event.provider) })

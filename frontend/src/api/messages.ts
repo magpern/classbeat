@@ -29,6 +29,13 @@ const REASON_CODES = [
   // ADR 0025 section 3: the Turnstile check of sign-in, sign-up, reset and the provider-email step.
   'captcha_failed',
   'captcha_unavailable',
+  // ADR 0019: passkeys. 503 `passkey_busy` is the sign-in challenge store being full.
+  'passkey_busy',
+  'passkey_failed',
+  'passkey_unknown',
+  'passkey_limit',
+  'passkey_exists',
+  'feature_off',
 ] as const
 
 function reasonKey(reason: string): CatalogueKey | undefined {
