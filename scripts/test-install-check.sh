@@ -25,7 +25,7 @@ bad()  { echo "FAIL: $*" >&2; fails=$((fails + 1)); }
 "$root/scripts/release-assets.sh" build "$work/assets"
 ( cd "$work/assets" && sha256sum -c --quiet SHA256SUMS ) || bad "SHA256SUMS does not verify"
 # The asset list is exactly what the runbook downloads.
-want="SHA256SUMS backup.sh check-prod-compose-owner.bash check-prod-compose-probe.bash check-prod-compose-rollback.bash check-prod-compose-rules.bash check-prod-compose-runbook.bash check-prod-compose-secretfiles.bash check-prod-compose-secrets.bash check-prod-compose-selftest-compose.bash check-prod-compose-selftest-yaml.bash check-prod-compose-setup.bash check-prod-compose-site-selftest.bash check-prod-compose-site.bash check-prod-compose.sh compose.prod.lan.yaml compose.prod.loopback.yaml compose.prod.yaml prod.env.example restore.sh swag-classbeat.subdomain.conf validate-backup.sh"
+want="SHA256SUMS backup.sh check-prod-compose-owner.bash check-prod-compose-probe.bash check-prod-compose-rollback.bash check-prod-compose-rules.bash check-prod-compose-runbook.bash check-prod-compose-secretfiles.bash check-prod-compose-secrets.bash check-prod-compose-selftest-compose.bash check-prod-compose-selftest-yaml.bash check-prod-compose-setup.bash check-prod-compose-site-selftest.bash check-prod-compose-site.bash check-prod-compose-turnstile.bash check-prod-compose.sh compose.prod.lan.yaml compose.prod.loopback.yaml compose.prod.yaml prod.env.example restore.sh swag-classbeat.subdomain.conf validate-backup.sh"
 # find, not a glob: a glob (`*`) would not list a dotfile, so a hidden asset (a .env) could never fail this.
 list_dir() { find "$work/assets" -mindepth 1 -maxdepth 1 -printf '%f\n'; }
 got="$(list_dir | LC_ALL=C sort | tr '\n' ' ' | sed 's/ $//')"
@@ -64,6 +64,8 @@ mkdir "$install"
 cp "$work/assets"/* "$install/"
 cp "$install/prod.env.example" "$install/.env"
 sed -i -e 's/^CLASSBEAT_VERSION=.*/CLASSBEAT_VERSION=1.2.3/' "$install/.env"
+# Turnstile is on by default (#792): a good install has the public site key (a placeholder) and, below, a secret file.
+echo 'TURNSTILE_SITE_KEY=0x4AAAAAAcheck' >> "$install/.env"
 names=(postgres_password database_owner_password database_password database_maint_password app_secret_key
   connection_kek smtp_password anthropic_api_key openai_api_key deepseek_api_key swedebeat_app
   oauth_google_client_secret oauth_github_client_secret oauth_microsoft_client_secret turnstile_secret_key)
@@ -216,6 +218,20 @@ if (( can_gid )); then
   expect "folder open to the group" 1 'gives the group or others access'
   mksecrets; rm "$install/secrets/openai_api_key"
   expect "missing file" 1 'openai_api_key is missing'
+  # 2c. Turnstile on (the default) needs its keys (#798); the secret file is only size-tested, and
+  # `expect` fails if a canary (the other files' content, or this one's) shows in the output.
+  mksecrets; : > "$install/secrets/turnstile_secret_key"
+  expect "Turnstile on, empty secret file" 1 'turnstile_secret_key is missing or empty.*section 5b.*TURNSTILE_ENABLED=false'
+  mksecrets; cp "$install/.env" "$work/env.ts"; sed -i '/^TURNSTILE_SITE_KEY=/d' "$install/.env"
+  expect "Turnstile on, no site key" 1 'TURNSTILE_SITE_KEY in .env is empty.*section 5b|section 5b.*TURNSTILE_ENABLED=false'
+  echo 'TURNSTILE_SITE_KEY=' >> "$install/.env"
+  expect "Turnstile on, empty site key" 1 'TURNSTILE_SITE_KEY in .env is empty'
+  echo 'TURNSTILE_ENABLED=false' >> "$install/.env"
+  : > "$install/secrets/turnstile_secret_key"
+  expect "Turnstile off, no keys" 0 '^install check'
+  mksecrets; cp "$work/env.ts" "$install/.env"; echo 'TURNSTILE_ENABLED=true' >> "$install/.env"
+  expect "Turnstile on explicitly, both keys present" 0 '^install check'
+  cp "$work/env.ts" "$install/.env"
   mksecrets
 else
   echo "skip: no root or passwordless sudo: the secret-file cases need group $gid"

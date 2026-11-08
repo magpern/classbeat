@@ -27,6 +27,7 @@ assets=(
   "scripts/check-prod-compose-selftest-yaml.bash check-prod-compose-selftest-yaml.bash"
   "scripts/check-prod-compose-owner.bash check-prod-compose-owner.bash"
   "scripts/check-prod-compose-secretfiles.bash check-prod-compose-secretfiles.bash"
+  "scripts/check-prod-compose-turnstile.bash check-prod-compose-turnstile.bash"
   "scripts/check-prod-compose-runbook.bash check-prod-compose-runbook.bash"
   "scripts/check-prod-compose-site.bash check-prod-compose-site.bash"
   "scripts/check-prod-compose-site-selftest.bash check-prod-compose-site-selftest.bash"
