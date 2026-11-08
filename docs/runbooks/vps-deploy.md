@@ -53,7 +53,8 @@ directly to a real SMTP service; Proton Mail Bridge is an alternative,
 - A mail account for the app, reached directly over SMTP (the default: SMTP host, 587 with STARTTLS
   or 465 with TLS, a login, a sender on a domain you control, SPF and DKIM). Proton Mail Bridge is
   an alternative, not assumed anywhere below unless a step says so.
-- The release you deploy exists, with its assets: <https://github.com/magpern/classbeat/releases> (tag `vX.Y.Z`; the owner or an agent checks `gh run list --workflow release.yml`). No `git`, no clone.
+- The release you deploy exists, with its assets: <https://github.com/magpern/classbeat/releases> (tag
+  `vX.Y.Z`; the owner or an agent checks `gh run list --workflow release.yml`). No `git`, no clone.
 
 ## 2. What is reachable from the internet
 
@@ -347,7 +348,8 @@ section is no longer optional). Everything below is the owner's; agents do not t
    `./check-prod-compose.sh` (section 9) refuses an empty (zero-byte) file before `up`
    (size test only, the file is never read, so a blank-only file passes it: write the key with the
    command in step 2). It renders with the caller's environment ahead of `.env`, so an exported
-   `TURNSTILE_ENABLED` or `TURNSTILE_SITE_KEY` in your shell wins over `.env` there. Both refusals are skipped with `TURNSTILE_ENABLED=false`. A release older than that one has the widget (PR #731) but a default of
+   `TURNSTILE_ENABLED` or `TURNSTILE_SITE_KEY` in your shell wins over `.env` there. Both refusals are skipped
+   with `TURNSTILE_ENABLED=false`. A release older than that one has the widget (PR #731) but a default of
    off: set `TURNSTILE_ENABLED=true` in `.env` there. A release older than #731 has the backend check
    but no widget, so enabling it makes every sign-in, sign-up, provider-email and reset request fail
    with `captcha_failed`. With `TURNSTILE_ENABLED=false` web logs an `ERROR` at start and a `WARNING`
@@ -788,7 +790,8 @@ Swedebeat connection (#366) has no `secrets/swedebeat_app`, and one older than #
 `secrets/oauth_*_client_secret`, and one older than #724 has no `secrets/turnstile_secret_key`;
 without them `up` fails with a missing-file error for that secret, which the `touch` line above fixes
 (an empty OAuth file keeps that provider off; an empty Turnstile file only works with
-`TURNSTILE_ENABLED=false`, because Turnstile is on by default; `touch` never empties a file). A file it creates gets group 10010 from the folder and mode 640 from `umask 027`. A stack
+`TURNSTILE_ENABLED=false`, because Turnstile is on by default; `touch` never empties a file). A file it
+creates gets group 10010 from the folder and mode 640 from `umask 027`. A stack
 set up before #511 has files of mode 600 and the deploy user's group, which the containers cannot
 read: run the one-time commands of section 5 (`groupadd`, `chgrp` and `chmod 2700` on the folder,
 then `sudo chgrp 10010 secrets/* && chmod 640 secrets/*`) before `up`; the check names them.
@@ -857,7 +860,9 @@ secret files are backed up separately (section 5).
 ## 13. What agents checked, and what they did not
 
 `scripts/check-prod-compose.sh` (also a CI step, and the release asset `check-prod-compose.sh` you run
-in section 9; it sources the `check-prod-compose-*.bash` assets beside it, which section 3 downloads with it and which it refuses to run without) renders `compose.prod.yaml` alone and with the loopback and LAN overlays using dummy values, checks the invariants (no Caddy and no published port, web on
+in section 9; it sources the `check-prod-compose-*.bash` assets beside it, which section 3 downloads with it
+and which it refuses to run without) renders `compose.prod.yaml` alone and with the loopback and LAN overlays
+using dummy values, checks the invariants (no Caddy and no published port, web on
 `127.0.0.1` only with the overlay, one private trusted proxy equal to `PROXY_IP` or the `web-out`
 gateway, the real `PROXY_IP` from the shell or `.env` when one is set, swag's address outside the
 section 6a `--ip-range`, only web on the proxy network, internal `backend`, `db` unpublished, read-only web without
