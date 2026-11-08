@@ -21,9 +21,11 @@ test('reset keeps the passkeys that are not ticked and removes the ticked ones',
   const email = await userOnSecurityTab(page, 'pk-reset')
   await addPasskey(page, 'Keep me')
   await removeAuthenticator(first)
-  await addAuthenticator(page)
+  const second = await addAuthenticator(page)
   await addPasskey(page, 'Drop me')
   expect(passkeyLabels(email)).toEqual(['Drop me', 'Keep me'])
+  // the device forgets its passkeys so the sign-in page does not sign straight back in
+  await removeAuthenticator(second)
   await signOut(page, email)
 
   await openResetLink(page, email)

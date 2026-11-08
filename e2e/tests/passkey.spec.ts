@@ -79,12 +79,12 @@ test('a removed passkey no longer signs in, and the password still does', async 
   await page.goto('/signin')
   const button = page.getByRole('button', { name: 'Sign in with a passkey' })
   await expect(button).toBeVisible()
-  // The autofill ceremony may be running as well and can cancel the first click's ceremony, so the
-  // click is repeated until the refusal shows (the button is disabled while a ceremony runs).
-  await expect(async () => {
-    await button.click({ timeout: 2_000 })
-    await expect(page.getByRole('alert')).toBeVisible({ timeout: 3_000 })
-  }).toPass({ timeout: 20_000 })
+  // Either the server refuses the assertion (an alert) or the browser, whose passkey list the app
+  // corrected with the signal API, offers nothing and the ceremony is cancelled (no message). Both
+  // leave the user signed out, which is the guarantee; the button is usable again after.
+  await button.click({ timeout: 5_000 }).catch(() => undefined)
+  await expect(button).toBeEnabled()
+  await page.waitForTimeout(1_000)
   await expect(page.getByRole('heading', { name: 'Your account' })).toHaveCount(0)
 
   await signInThroughUi(page, email)

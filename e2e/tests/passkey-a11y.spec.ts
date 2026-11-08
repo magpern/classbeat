@@ -6,6 +6,7 @@ import {
   ageReauth,
   openResetLink,
   passkeyUse,
+  removeAuthenticator,
   signOut,
   userOnSecurityTab,
   watchCsp,
@@ -17,13 +18,19 @@ test.use(passkeyUse)
 
 test('the passkey pages pass axe and break no CSP rule', async ({ page }) => {
   const csp = await watchCsp(page)
-  await addAuthenticator(page)
   const problems: string[] = []
   const check = async (name: string, primary: ReturnType<typeof page.locator>, scope?: string) => {
     problems.push(...(await audit(page, name, primary, scope)).problems.map((p) => `${name}: ${p}`))
     problems.push(...(await csp()).map((v) => `${name}: CSP ${v}`))
   }
 
+  // The sign-in page first, while the authenticator holds nothing: with a passkey in it the autofill
+  // ceremony would sign the user in at once and the page would be gone before it is audited.
+  await page.goto('/signin')
+  await expect(page.getByRole('button', { name: 'Sign in with a passkey' })).toBeVisible()
+  await check('sign-in page', page.getByRole('button', { name: 'Sign in with a passkey' }), 'main')
+
+  const authenticator = await addAuthenticator(page)
   const email = await userOnSecurityTab(page, 'pk-a11y')
   await addPasskey(page, 'Work laptop')
   await check('passkeys card', page.getByRole('button', { name: 'Add a passkey' }), 'main')
@@ -37,9 +44,9 @@ test('the passkey pages pass axe and break no CSP rule', async ({ page }) => {
   await dialog.getByRole('button', { name: 'Cancel' }).click()
   await expect(dialog).toHaveCount(0)
 
+  // the server keeps the passkey; the device forgets it so sign-out does not sign straight back in
+  await removeAuthenticator(authenticator)
   await signOut(page, email)
-  await expect(page.getByRole('button', { name: 'Sign in with a passkey' })).toBeVisible()
-  await check('sign-in page', page.getByRole('button', { name: 'Sign in with a passkey' }), 'main')
 
   await openResetLink(page, email)
   await expect(page.getByRole('checkbox', { name: 'Remove Work laptop' })).toBeVisible()
