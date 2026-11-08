@@ -34,7 +34,8 @@ test('the passkey pages pass axe and break no CSP rule', async ({ page }) => {
   const dialog = page.getByRole('dialog')
   await expect(dialog.getByRole('button', { name: 'Confirm with a passkey' })).toBeVisible()
   await check('re-auth prompt', dialog.getByRole('button', { name: 'Confirm with a passkey' }), '[role="dialog"]')
-  await page.keyboard.press('Escape')
+  await dialog.getByRole('button', { name: 'Cancel' }).click()
+  await expect(dialog).toHaveCount(0)
 
   await signOut(page, email)
   await expect(page.getByRole('button', { name: 'Sign in with a passkey' })).toBeVisible()

@@ -35,7 +35,7 @@ test('register a passkey, sign out and sign in with it, no password typed', asyn
   await expect(page.getByText(/Signed in with your phone or security key/)).toHaveCount(0)
 
   await openSecurityTab(page)
-  await expect(page.getByText(/Last used/)).toBeVisible()
+  await expect(page.getByText(/Last used/).first()).toBeVisible()
 })
 
 test('re-authentication with the passkey, then rename and remove', async ({ page }) => {
@@ -61,7 +61,7 @@ test('rename a passkey', async ({ page }) => {
 
   await page.getByRole('button', { name: 'Rename Old name' }).click()
   await page.getByLabel('Name', { exact: true }).fill('New name')
-  await page.getByRole('button', { name: 'Save' }).click()
+  await page.getByRole('button', { name: 'Save', exact: true }).click()
   await expect(page.getByRole('button', { name: 'Remove New name' })).toBeVisible()
   expect(passkeyLabels(email)).toEqual(['New name'])
 })
@@ -79,8 +79,12 @@ test('a removed passkey no longer signs in, and the password still does', async 
   await page.goto('/signin')
   const button = page.getByRole('button', { name: 'Sign in with a passkey' })
   await expect(button).toBeVisible()
-  await button.click()
-  await expect(page.getByRole('alert')).toBeVisible()
+  // The autofill ceremony may be running as well and can cancel the first click's ceremony, so the
+  // click is repeated until the refusal shows (the button is disabled while a ceremony runs).
+  await expect(async () => {
+    await button.click({ timeout: 2_000 })
+    await expect(page.getByRole('alert')).toBeVisible({ timeout: 3_000 })
+  }).toPass({ timeout: 20_000 })
   await expect(page.getByRole('heading', { name: 'Your account' })).toHaveCount(0)
 
   await signInThroughUi(page, email)
