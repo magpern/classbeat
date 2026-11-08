@@ -67,6 +67,12 @@ check_common() {
     || fail "the Turnstile settings belong to web only" || return 1
   q '[.services[] | .environment // {} | has("CLASSBEAT_TURNSTILE_FAKE")] | any | not' \
     || fail "CLASSBEAT_TURNSTILE_FAKE is never set in a production file" || return 1
+  # ADR 0019 (#790): passkeys are off by default (the owner switches them on in .env after
+  # choosing the RP ID) and their two settings belong to web only.
+  q '.services.web.environment.CLASSBEAT_PASSKEYS == "false"' \
+    || fail "passkeys must be off by default" || return 1
+  q '[.services | to_entries[] | select(.value.environment // {} | keys | map(select(. == "CLASSBEAT_PASSKEYS" or . == "CLASSBEAT_WEBAUTHN_RP_ID")) | length > 0) | .key] == ["web"]' \
+    || fail "the passkey settings belong to web only" || return 1
   q '.services.web.environment.CLASSBEAT_LOCALES | tostring | length > 0' \
     || fail "the offered languages are set on web" || return 1
   q '.services.worker.environment | has("CLASSBEAT_LOCALES") | not' \
@@ -173,7 +179,7 @@ check_keys() {
       "web": (app + flags + ["CLASSBEAT_MAINT_DATABASE_URL","CLASSBEAT_OAUTH_GITHUB_CLIENT_ID",
         "CLASSBEAT_OAUTH_GOOGLE_CLIENT_ID","CLASSBEAT_OAUTH_MICROSOFT_CLIENT_ID","CLASSBEAT_OAUTH_VISIBLE_PROVIDERS",
         "CLASSBEAT_LOCALES","CLASSBEAT_MOWL_QR_ENABLED","CLASSBEAT_SMTP_CA_FILE","CLASSBEAT_TRUSTED_PROXIES",
-        "CLASSBEAT_TURNSTILE_ENABLED","CLASSBEAT_TURNSTILE_SITE_KEY"])
+        "CLASSBEAT_TURNSTILE_ENABLED","CLASSBEAT_TURNSTILE_SITE_KEY","CLASSBEAT_PASSKEYS","CLASSBEAT_WEBAUTHN_RP_ID"])
     };
     .services | to_entries[] | .key as $n | (.value.environment // {}) as $e
     | if ($e | type) != "object" then "services.\($n).environment (not a mapping)"
