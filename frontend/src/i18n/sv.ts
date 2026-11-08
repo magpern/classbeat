@@ -1876,7 +1876,7 @@ const sv: Catalogue = {
   'passkey.neverUsed': 'Aldrig använd',
   'passkey.lastUsed': 'Senast använd {date}',
   'passkey.signIn': 'Logga in med en passkey',
-  'passkey.phoneNotice': 'Inloggad med din telefon; logga ut när du är klar.',
+  'passkey.phoneNotice': 'Inloggad med din telefon eller säkerhetsnyckel; logga ut när du är klar.',
   'passkey.error.exists': 'Den här enheten har redan en passkey för classbeat.',
   'passkey.error.unsupported': 'Den här webbläsaren eller enheten kan inte skapa en passkey här.',
   'passkey.error.failed': 'Passkeyn fungerade inte. Försök igen.',

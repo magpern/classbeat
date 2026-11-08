@@ -1859,7 +1859,7 @@ const da: Catalogue = {
   'passkey.neverUsed': 'Aldrig brugt',
   'passkey.lastUsed': 'Sidst brugt {date}',
   'passkey.signIn': 'Log ind med en passkey',
-  'passkey.phoneNotice': 'Logget ind med din telefon; log ud, når du er færdig.',
+  'passkey.phoneNotice': 'Logget ind med din telefon eller sikkerhedsnøgle; log ud, når du er færdig.',
   'passkey.error.exists': 'Denne enhed har allerede en passkey til classbeat.',
   'passkey.error.unsupported': 'Denne browser eller enhed kan ikke oprette en passkey her.',
   'passkey.error.failed': 'Passkeyen virkede ikke. Prøv igen.',
